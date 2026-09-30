@@ -61,5 +61,5 @@ test("Team keeps the relay-signed human position after reload in the integration
 
   await page.reload();
   await expect(profile).toBeVisible({ timeout: 20_000 });
-  await expect(role).toHaveText(roleBeforeReload);
+  await expect.poll(() => role.innerText()).toBe(roleBeforeReload);
 });

@@ -59,6 +59,14 @@ export type TraceEntry = {
   error: string | null;
 };
 
+export type WorkflowScheduleContext = {
+  scheduledFor: string;
+  firstMissedOccurrence: string | null;
+  latestMissedOccurrence: string | null;
+  missedOccurrences: number;
+  skippedOccurrences: number;
+};
+
 export type WorkflowRun = {
   id: string;
   workflowId: string;
@@ -70,6 +78,7 @@ export type WorkflowRun = {
   errorCode: string | null;
   errorMessage: string | null;
   createdAt: number;
+  scheduleContext: WorkflowScheduleContext | null;
 };
 
 export type WorkflowApprovalStatus =

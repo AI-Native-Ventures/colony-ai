@@ -272,6 +272,16 @@ type MockBridgeOptions = {
   companyEmployeeRevisionHeads?: RelayEvent[];
   /** Reject employee history action publishes in order, then accept them. */
   companyEmployeeRevisionActionErrors?: string[];
+  /** Relay-signed duty heads used by employee profile E2E coverage. */
+  companyDutyHeads?: RelayEvent[];
+  /** Synthetic relay key used to broker duty actions in focused E2E tests. */
+  companyDutyRelayPrivateKeyHex?: string;
+  /** Relay-signed lesson heads used by employee profile E2E coverage. */
+  companyLessonHeads?: RelayEvent[];
+  /** Synthetic relay key used to broker lesson actions in focused E2E tests. */
+  companyLessonRelayPrivateKeyHex?: string;
+  /** Reject successive duty or lesson action publishes in order, then accept. */
+  companyDutyLessonActionErrors?: string[];
   /** Relay-signed employee allowance heads for AI spend E2E coverage. */
   employeeAllowanceHeads?: RelayEvent[];
   /** Relay-signed AI spend record heads for AI spend E2E coverage. */

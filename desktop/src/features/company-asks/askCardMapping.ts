@@ -1,7 +1,7 @@
 import type { AskRecord } from "./askRecords";
 
 export type SpecializedAskCard = {
-  kind: "funding" | "tool" | "hire";
+  kind: "funding" | "tool" | "hire" | "duty";
   listLabel: string;
   decisionTitle: string;
   submitLabel: string;
@@ -43,6 +43,13 @@ export function mapSpecializedAskCard(
         listLabel: "Approval",
         decisionTitle: "Hiring approval",
         submitLabel: "Record hiring decision",
+      };
+    case "duty":
+      return {
+        kind: "duty",
+        listLabel: "Approval",
+        decisionTitle: "Duty approval",
+        submitLabel: "Approve duty",
       };
     default:
       return null;

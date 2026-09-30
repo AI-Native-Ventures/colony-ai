@@ -2,7 +2,6 @@ import * as React from "react";
 import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { relayClient } from "@/shared/api/relayClient";
@@ -12,20 +11,18 @@ import { normalizePubkey } from "@/shared/lib/pubkey";
 import { Button } from "@/shared/ui/button";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { hirePrimaryButtonClass } from "@/features/company-hiring/ui/HirePresentation";
-import type { AskHeadRecord, HireProposal } from "../askRecords";
+import type { AskHeadRecord } from "../askRecords";
 import type { AskHeadQueryState } from "../hooks";
 import { formatAskDate } from "./askCardFormatting";
 
-type HireAskCardProps = {
+type DutyAskCardProps = {
   askId: string;
   channelId: string;
   channelName: string;
   currentPubkey?: string;
   profiles?: UserProfileLookup;
-  membershipRole?: string | null;
   query: AskHeadQueryState["query"];
   headRecord: AskHeadRecord;
-  hireProposal: HireProposal;
   checksReady: boolean;
   deniedReason: string | null;
   accessFailure: boolean;
@@ -35,16 +32,14 @@ type HireAskCardProps = {
   askerIsAgent: boolean;
 };
 
-export function HireAskCard({
+export function DutyAskCard({
   askId,
   channelId,
   channelName,
   currentPubkey,
   profiles,
-  membershipRole,
   query,
   headRecord,
-  hireProposal,
   checksReady,
   deniedReason,
   accessFailure,
@@ -52,79 +47,65 @@ export function HireAskCard({
   statusText,
   needsYou,
   askerIsAgent,
-}: HireAskCardProps) {
+}: DutyAskCardProps) {
   const queryClient = useQueryClient();
-  const { goHireReview } = useAppNavigation();
-  const [declineState, setDeclineState] = React.useState({
+  const [decisionState, setDecisionState] = React.useState({
     failed: false,
     pending: false,
   });
-  const declineGeneration = React.useRef(0);
-  React.useEffect(() => {
-    declineGeneration.current += 1;
-    return () => {
-      declineGeneration.current += 1;
-    };
-  }, []);
-
+  const decisionGeneration = React.useRef(0);
   const head = headRecord.head;
+  const currentHeadId = headRecord.event.id;
+  const previousHeadId = React.useRef(currentHeadId);
   const asker = resolveUserLabel({
     pubkey: head.askerPubkey,
     currentPubkey,
     profiles,
   });
   const askerProfile = profiles?.[normalizePubkey(head.askerPubkey)];
-  const addresseePubkey = head.ask.addresseePubkey;
-  const addresseeIsCurrentUser = Boolean(
-    addresseePubkey &&
-      currentPubkey &&
-      normalizePubkey(addresseePubkey) === normalizePubkey(currentPubkey),
-  );
-  const addresseeProfile = addresseePubkey
-    ? profiles?.[normalizePubkey(addresseePubkey)]
-    : undefined;
-  const addresseeRole = addresseeIsCurrentUser
-    ? membershipRole === "owner"
-      ? "Owner"
-      : membershipRole === "admin"
-        ? "Administrator"
-        : null
-    : null;
-  const addresseeLabel = addresseePubkey
-    ? addresseeIsCurrentUser
-      ? `${addresseeProfile?.displayName ?? "You"}${addresseeRole ? ` · ${addresseeRole}` : ""}`
-      : resolveUserLabel({
-          pubkey: addresseePubkey,
-          currentPubkey,
-          profiles,
-        })
-    : "Owner or administrator";
-  const declinePending = declineState.pending;
-  const hireDeclined =
-    head.status === "resolved" && head.resolution?.outcome === "rejected";
-  const hireApproved =
+  const approved =
     head.status === "resolved" && head.resolution?.outcome === "approved";
-  const decisionFailed = declineState.failed && head.status === "open";
+  const rejected =
+    head.status === "resolved" && head.resolution?.outcome === "rejected";
+  const decisionFailed = decisionState.failed && head.status === "open";
 
-  const declineHire = async () => {
-    if (!checksReady || deniedReason || declinePending) return;
-    const generation = declineGeneration.current;
-    const updateDeclineState = (patch: {
+  React.useEffect(() => {
+    if (previousHeadId.current !== currentHeadId) {
+      previousHeadId.current = currentHeadId;
+      decisionGeneration.current += 1;
+      setDecisionState({ failed: false, pending: false });
+    }
+    return () => {
+      decisionGeneration.current += 1;
+    };
+  }, [currentHeadId]);
+
+  const submitDecision = async (outcome: "approved" | "rejected") => {
+    if (
+      head.status !== "open" ||
+      !checksReady ||
+      deniedReason ||
+      decisionState.pending
+    ) {
+      return;
+    }
+    const generation = ++decisionGeneration.current;
+    const updateDecisionState = (patch: {
       failed?: boolean;
       pending?: boolean;
     }) => {
-      if (generation !== declineGeneration.current) return;
-      setDeclineState((current) => ({ ...current, ...patch }));
+      if (generation !== decisionGeneration.current) return;
+      setDecisionState((current) => ({ ...current, ...patch }));
     };
-    updateDeclineState({ failed: false, pending: true });
+    updateDecisionState({ failed: false, pending: true });
     try {
       const signedResponse = await signRelayEvent({
         kind: KIND_ASK_RESPONSE,
         content: JSON.stringify({
           schemaVersion: 1,
           askId,
-          expectedHeadEventId: headRecord.event.id,
-          outcome: "rejected",
+          expectedHeadEventId: currentHeadId,
+          outcome,
         }),
         tags: [
           ["h", channelId],
@@ -141,7 +122,7 @@ export function HireAskCard({
         const refreshed = await query.refetch();
         if (
           refreshed.data?.head.status !== "resolved" ||
-          refreshed.data.head.resolution?.outcome !== "rejected"
+          refreshed.data.head.resolution?.outcome !== outcome
         ) {
           throw cause;
         }
@@ -151,25 +132,47 @@ export function HireAskCard({
           queryKey: ["company-ask-head", channelId, askId],
           exact: false,
         }),
-        queryClient.invalidateQueries({ queryKey: ["company-hire-head"] }),
+        queryClient.invalidateQueries({ queryKey: ["employee-duties"] }),
+        queryClient.invalidateQueries({ queryKey: ["workflows"] }),
+        queryClient.invalidateQueries({ queryKey: ["workflows-all"] }),
       ]);
     } catch {
-      updateDeclineState({ failed: true });
+      updateDecisionState({ failed: true });
     } finally {
-      updateDeclineState({ pending: false });
+      updateDecisionState({ pending: false });
     }
   };
+
+  const statusLabel = decisionFailed
+    ? "failed"
+    : rejected
+      ? "denied"
+      : approved
+        ? "resolved"
+        : isOverdue
+          ? "overdue"
+          : head.status;
+  const addresseeLabel = head.ask.addresseePubkey
+    ? resolveUserLabel({
+        pubkey: head.ask.addresseePubkey,
+        currentPubkey,
+        profiles,
+        preferResolvedSelfLabel: Boolean(
+          profiles?.[normalizePubkey(head.ask.addresseePubkey)],
+        ),
+      })
+    : "Owner or administrator";
 
   return (
     <section
       aria-label="Approval ask"
-      className="colony-ask-card colony-ask-card-hire colony-ask-card-specialized-detail"
+      className="colony-ask-card colony-ask-card-duty colony-ask-card-specialized-detail"
       data-ask-id={askId}
-      data-ask-variant="hire"
+      data-ask-variant="duty"
       data-testid="ask-card"
     >
       <div className="colony-ask-special-grid">
-        <section aria-label="Hire ask" className="colony-ask-special-request">
+        <section aria-label="Duty ask" className="colony-ask-special-request">
           <h2>Decision requested</h2>
           <header className="colony-ask-special-header">
             <div className="colony-ask-special-identity">
@@ -192,42 +195,42 @@ export function HireAskCard({
               </div>
             </div>
             <span
-              className={`colony-ask-status colony-ask-status-${decisionFailed ? "failed" : hireDeclined ? "denied" : hireApproved ? "resolved" : isOverdue ? "overdue" : head.status}`}
+              className={`colony-ask-status colony-ask-status-${statusLabel}`}
               data-testid="ask-status"
             >
               {decisionFailed
                 ? "failed"
-                : hireDeclined
+                : rejected
                   ? "denied"
-                  : hireApproved
+                  : approved
                     ? "resolved"
                     : needsYou
                       ? "Needs you"
-                      : statusText}
+                      : (statusText ?? head.status)}
             </span>
           </header>
           {head.ask.body ? (
             <p className="colony-ask-special-description">{head.ask.body}</p>
           ) : null}
-          {decisionFailed || hireDeclined || hireApproved ? (
+          {decisionFailed || rejected || approved ? (
             <div
               className="colony-ask-outcome"
               data-outcome={
-                decisionFailed ? "failed" : hireDeclined ? "denied" : "resolved"
+                decisionFailed ? "failed" : rejected ? "denied" : "resolved"
               }
               role={decisionFailed ? "alert" : undefined}
             >
               <strong>
                 {decisionFailed
                   ? "Decision could not be saved"
-                  : hireDeclined
+                  : rejected
                     ? "Request declined"
                     : "Decision recorded"}
               </strong>
               <p>
                 {decisionFailed
                   ? "No action has been released. Your review is kept; retry once connected."
-                  : hireDeclined
+                  : rejected
                     ? `No authority or funding changed. ${asker} will keep the work paused.`
                     : "The requester has the outcome in the original thread."}
               </p>
@@ -238,21 +241,16 @@ export function HireAskCard({
               <div className="flex flex-wrap gap-3">
                 <Button
                   className={hirePrimaryButtonClass}
-                  disabled={declinePending}
-                  onClick={() =>
-                    void goHireReview(hireProposal.hireId, {
-                      channelId,
-                      askId,
-                    })
-                  }
+                  disabled={decisionState.pending}
+                  onClick={() => void submitDecision("approved")}
                   type="button"
                 >
-                  Review hire
+                  Approve duty
                 </Button>
                 <Button
                   className="colony-ask-special-work-link"
-                  disabled={declinePending}
-                  onClick={() => void declineHire()}
+                  disabled={decisionState.pending}
+                  onClick={() => void submitDecision("rejected")}
                   type="button"
                   variant="outline"
                 >

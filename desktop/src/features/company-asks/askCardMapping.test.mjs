@@ -37,6 +37,10 @@ test("specialized cards map only verified approval categories", () => {
     mapSpecializedAskCard({ type: "approval", category: "hire" })?.kind,
     "hire",
   );
+  assert.equal(
+    mapSpecializedAskCard({ type: "approval", category: "duty" })?.kind,
+    "duty",
+  );
 });
 
 test("Needs me labels keep category approvals recognizable", () => {
@@ -54,6 +58,10 @@ test("Needs me labels keep category approvals recognizable", () => {
   );
   assert.equal(
     needsMeAskLabel({ type: "approval", category: "hire" }),
+    "Approval",
+  );
+  assert.equal(
+    needsMeAskLabel({ type: "approval", category: "duty" }),
     "Approval",
   );
   assert.equal(
