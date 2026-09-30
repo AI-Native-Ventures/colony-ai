@@ -45,6 +45,14 @@ pub(super) struct PreparedAllowanceHead {
     pub event: Event,
 }
 
+struct GlobalHeadAction<'a, T> {
+    d_tag: String,
+    head_kind: u32,
+    head: &'a T,
+    expected_head_event_id: Option<&'a str>,
+    employee_pubkey: Option<&'a str>,
+}
+
 /// Prepare the allowance head linked to an approved money ask.
 pub(super) async fn prepare_approved_allowance_head(
     tenant: &TenantContext,
@@ -186,11 +194,13 @@ async fn handle_allowance_action(
         tenant,
         state,
         event,
-        d_tag,
-        KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
-        &next,
-        action.expected_head_event_id.as_deref(),
-        Some(&action.employee_pubkey),
+        GlobalHeadAction {
+            d_tag,
+            head_kind: KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
+            head: &next,
+            expected_head_event_id: action.expected_head_event_id.as_deref(),
+            employee_pubkey: Some(&action.employee_pubkey),
+        },
     )
     .await
 }
@@ -274,11 +284,13 @@ async fn handle_spend_action(
         tenant,
         state,
         event,
-        d_tag,
-        KIND_AI_SPEND_RECORD_HEAD,
-        &next,
-        action.expected_head_event_id.as_deref(),
-        employee_pubkey,
+        GlobalHeadAction {
+            d_tag,
+            head_kind: KIND_AI_SPEND_RECORD_HEAD,
+            head: &next,
+            expected_head_event_id: action.expected_head_event_id.as_deref(),
+            employee_pubkey,
+        },
     )
     .await
 }
@@ -287,12 +299,15 @@ async fn persist_global_head_action<T: serde::Serialize>(
     tenant: &TenantContext,
     state: &Arc<AppState>,
     event: Event,
-    d_tag: String,
-    head_kind: u32,
-    head: &T,
-    expected_head_event_id: Option<&str>,
-    employee_pubkey: Option<&str>,
+    action: GlobalHeadAction<'_, T>,
 ) -> Result<IngestResult, IngestError> {
+    let GlobalHeadAction {
+        d_tag,
+        head_kind,
+        head,
+        expected_head_event_id,
+        employee_pubkey,
+    } = action;
     let community_id = tenant.community();
     let mut tx = state
         .db
