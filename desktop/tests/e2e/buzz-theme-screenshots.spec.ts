@@ -22,7 +22,7 @@ const COMMUNITY_THEME_STORAGE_KEY = `buzz-community-theme.v1:${MOCK_PUBKEY}:${en
  */
 async function seedTheme(page: Page, theme: string, followSystem = false) {
   await page.addInitScript(
-    ({ communityKey, key, value }) => {
+    ({ communityKey, key, value, followSystem }) => {
       window.localStorage.setItem(key, value);
       window.localStorage.setItem(
         communityKey,
@@ -38,6 +38,7 @@ async function seedTheme(page: Page, theme: string, followSystem = false) {
       communityKey: COMMUNITY_THEME_STORAGE_KEY,
       key: THEME_STORAGE_KEY,
       value: theme,
+      followSystem,
     },
   );
 }
