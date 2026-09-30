@@ -246,6 +246,9 @@ export function SettingsView({
 
   const activeSection = canonicalSettingsSection(section);
   const activeGroup = routeGroup(activeSection);
+  const activeInnerSection = activeSection.startsWith("settings/theme")
+    ? "appearance"
+    : activeSection;
   const TopbarIcon =
     activeGroup.id === "agents-group" ? Settings : activeGroup.icon;
   const signedInDisplayName =
@@ -615,10 +618,10 @@ export function SettingsView({
             >
               {activeGroup.sections.map((entry) => (
                 <button
-                  aria-selected={entry.value === activeSection}
+                  aria-selected={entry.value === activeInnerSection}
                   className={cn(
                     "w20-inner-tab",
-                    entry.value === activeSection && "is-active",
+                    entry.value === activeInnerSection && "is-active",
                   )}
                   data-testid={`settings-inner-${entry.value}`}
                   key={entry.value}

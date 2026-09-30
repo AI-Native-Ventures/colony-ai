@@ -380,6 +380,10 @@ test("workspace appearance saves the named theme and density together", async ({
       page.evaluate(() => document.documentElement.classList.contains("dark")),
     )
     .toBe(true);
+  await expect(page.getByTestId("settings-inner-appearance")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect.poll(innerTabIndicatorColor).toBe("rgb(157, 193, 251)");
   await expect.poll(sharedChrome).toEqual({
     sectionLabelTracking: "-0.22px",
