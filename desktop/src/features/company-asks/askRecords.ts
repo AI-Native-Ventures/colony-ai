@@ -545,7 +545,6 @@ function parseAskHead(content: string, channelId: string): AskHead {
     invalidSecretRequest ||
     !validToolConsent ||
     invalidSpendAllowanceProposal ||
-    invalidDutyProposal ||
     (ask.type === "tool_consent" &&
       (ask.category !== "tool" || !isRecord(toolConsent))) ||
     (ask.type !== "tool_consent" && toolConsent != null)

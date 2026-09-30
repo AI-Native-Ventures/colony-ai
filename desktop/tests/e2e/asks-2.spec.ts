@@ -26,6 +26,7 @@ async function openAskThread(
   companyMemberPositionEvents?: MockBridgeOptions["companyMemberPositionEvents"],
   relaySecret = generateSecretKey(),
   employeeAllowanceHeads?: MockBridgeOptions["employeeAllowanceHeads"],
+  relayMembers?: MockBridgeOptions["relayMembers"],
 ) {
   await page.setViewportSize({ width: 1440, height: 900 });
   const relaySelf = getPublicKey(relaySecret);
@@ -38,6 +39,7 @@ async function openAskThread(
     ...(personas ? { personas } : {}),
     ...(companyMemberPositionEvents ? { companyMemberPositionEvents } : {}),
     ...(employeeAllowanceHeads ? { employeeAllowanceHeads } : {}),
+    ...(relayMembers ? { relayMembers } : {}),
   });
   await page.goto("/#/today");
   await page.waitForFunction(() => {
@@ -335,6 +337,12 @@ test("raise a typed allowance request from Power and retry the same signed ask",
     [employeePositionHead({ relaySecret, pubkey: employeePubkey })],
     relaySecret,
     [employeeAllowanceHead({ relaySecret, pubkey: employeePubkey })],
+    [
+      { pubkey: TEST_IDENTITIES.tyler.pubkey, role: "owner" },
+      { pubkey: TEST_IDENTITIES.alice.pubkey, role: "admin" },
+      { pubkey: TEST_IDENTITIES.bob.pubkey, role: "member" },
+      { pubkey: employeePubkey, role: "member" },
+    ],
   );
 
   await page.goto("/#/power");
