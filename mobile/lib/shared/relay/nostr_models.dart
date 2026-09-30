@@ -104,6 +104,10 @@ abstract final class EventKind {
   static const toolPermissionAction = 47035;
   static const factoryRunHead = 30649;
   static const factoryRunAction = 47038;
+  static const dutyHead = 30655;
+  static const dutyAction = 47044;
+  static const lessonHead = 30656;
+  static const lessonAction = 47045;
 
   /// Company-record event kinds, outside the chat timeline until ask cards
   /// render in threads.
@@ -129,6 +133,10 @@ abstract final class EventKind {
     toolPermissionAction,
     factoryRunHead,
     factoryRunAction,
+    dutyHead,
+    dutyAction,
+    lessonHead,
+    lessonAction,
     employeeAiAllowanceHead,
     employeeAiAllowanceAction,
     aiSpendRecordHead,
