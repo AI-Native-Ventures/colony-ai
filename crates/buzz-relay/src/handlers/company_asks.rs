@@ -69,6 +69,13 @@ pub(super) async fn handle(
         CompanyCommand::HireAction(_) => Err(IngestError::Rejected(
             "restricted: hire commands are handled by the company hire broker".into(),
         )),
+        CompanyCommand::EmployeeAllowanceAction(_) => Err(IngestError::Rejected(
+            "restricted: employee allowance commands are handled by the employee spend broker"
+                .into(),
+        )),
+        CompanyCommand::AiSpendRecordAction(_) => Err(IngestError::Rejected(
+            "restricted: AI spend record commands are handled by the employee spend broker".into(),
+        )),
     }
 }
 

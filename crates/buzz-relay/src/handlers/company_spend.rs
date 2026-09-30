@@ -11,13 +11,15 @@ use nostr::{Event, EventId, Kind};
 use sqlx::{Postgres, Transaction};
 
 use buzz_core::company_members::MemberKind;
-use buzz_core::company_records::{parse_company_command, CompanyCommand};
+use buzz_core::company_records::{
+    parse_company_command, CompanyCommand, COMPANY_RECORD_SCHEMA_VERSION,
+};
 use buzz_core::company_spend::{
     ai_spend_record_d_tag, employee_allowance_d_tag, validate_ai_spend_record_action,
     validate_ai_spend_record_head, validate_employee_allowance_action,
     validate_employee_allowance_head, AiSpendRecord, AiSpendRecordAction, AiSpendRecordHead,
     EmployeeAllowanceAction, EmployeeAllowanceHead, SourceOfFunds, SpendRecordActionKind,
-    SpendRecordStatus, COMPANY_RECORD_SCHEMA_VERSION,
+    SpendRecordStatus,
 };
 use buzz_core::kind::{
     KIND_AGENT_TURN_METRIC, KIND_AI_SPEND_RECORD_ACTION, KIND_AI_SPEND_RECORD_HEAD,
