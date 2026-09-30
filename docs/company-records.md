@@ -3,7 +3,8 @@
 Status: company layer batches 1, 2, and 3 contract (Asks, Goals, Company Work,
 and member positions), PERM-1 standing tool permissions, secret bindings,
 FACTORY-1 Factory run preview and pull request records, HIRE-1 employee hiring,
-and WORK-2 company work tracking APIs.
+WORK-2 company work tracking APIs, DUTY-1 employee duties, and LESSON-1
+employee lessons.
 Schema version: `1`. Goals, asks, work, permissions, and member positions
 follow design baseline
 `docs/superpowers/plans/2026-09-24-phase-2-handoff/20260927-company-v7/`
@@ -41,6 +42,8 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30650 | Hire head | Relay signed, replaceable | Company hiring |
 | 30651 | Employee configuration revision head | Relay signed, replaceable | Company team |
 | 30652 | Company work tracking head | Relay signed, replaceable | Company work |
+| 30655 | Employee duty head | Relay signed, replaceable | Company duties |
+| 30656 | Employee lesson head | Relay signed, replaceable | Employee lessons |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
@@ -52,6 +55,8 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47039 | Hire action | Brokered | Company hiring |
 | 47040 | Employee configuration revision action | Brokered, append only | Company team |
 | 47041 | Company work tracking action | Brokered | Company work |
+| 47044 | Employee duty action | Brokered | Company duties |
+| 47045 | Employee lesson action | Brokered | Employee lessons |
 
 The Factory run record contract is in
 [`factory-run-records.md`](factory-run-records.md). It extends the company
@@ -784,6 +789,86 @@ verdicts, or watchdog events. A watchdog check-in appears as its actual message
 in the thread; its durable delivery state is read from the watchdog record and
 delivery journal.
 
+
+## Duties
+
+Duties are community-wide employee records. A duty head has no h tag, uses
+d-tag company:duty:<duty-uuid>, and has one p tag for employeePubkey. The head
+is relay-signed kind 30655. The employee pubkey is the only duty owner; the
+member who proposed or administers it is recorded separately. A duty points to
+one existing workflow definition whose ID is the duty UUID. The workflow engine
+remains the only scheduler and runner.
+
+A duty proposal is a typed ask in the conversation where it came up. The ask
+uses category duty, subject kind duty, and a dutyProposal snapshot. Any active
+human member or managed agent in the channel may propose it. Only community
+owners and admins may approve or reject it. Approval creates the active duty
+head and its versioned workflow definition atomically with the ask response.
+The workflow is owned by the approving owner or admin for the existing
+workflow-engine authority checks. A failed transaction changes neither ask nor
+duty. A rejected proposal leaves no active duty head.
+
+The proposal snapshot contains schemaVersion, dutyId, employeePubkey, title,
+scheduleText, scheduleCron, timeZone, channelId, and instructions. The schedule
+text is retained verbatim for display. The parsed schedule is a recurring
+calendar schedule in the supplied IANA timezone. The current frozen editor has
+no timezone control, so the desktop supplies the signed-in account timezone;
+an absent or invalid timezone blocks submission. The relay validates the
+timezone and the supported readable-schedule grammar before it creates a
+workflow definition with the existing schedule trigger. No mock schedule,
+sample instruction, watchdog interval, or catch-up timing is a default.
+
+Duty actions use kind 47044 and include schemaVersion, dutyId, action,
+expectedHeadEventId, and action-specific payload. Update, pause, resume, and
+delete require an exact current head and owner or admin authority. Update
+replaces the complete duty snapshot and workflow definition as one transaction.
+Pause disables the existing workflow; resume enables it; delete writes a
+tombstone and disables the workflow while retaining run history. Status is
+active, paused, or deleted. The head carries sourceActionEventId,
+createdAt, updatedAt, lastRun, nextRun, and schedule/workflow references.
+lastRun and nextRun are derived from stored workflow runs and the real schedule,
+never copied from a prototype fixture.
+
+The workflow definition uses the existing versioned-definition and
+exact-version-approval contract. Every duty run records the workflow definition
+version and hash used. The schedule engine evaluates the stored schedule and
+timezone. After downtime, one catch-up run is created for the latest missed
+occurrence. Its run trigger context records the first and latest missed
+occurrence and the exact count of earlier occurrences skipped. Ordinary runs
+record zero skipped occurrences. The employee profile history reads actual
+workflow runs; an unavailable run query is an error state, not an empty history.
+
+## Lessons
+
+Lessons are community-wide records attached to one employee, with no h tag,
+d-tag company:lesson:<lesson-uuid>, one p tag for employeePubkey, and
+relay-signed kind 30656 heads. Member-signed kind 47045 actions include
+schemaVersion, lessonId, action, expectedHeadEventId, and a typed snapshot or
+decision. IDs are stable UUIDs. A lesson contains its text and explicit
+evidence references to existing events; the relay verifies every reference is
+present in the same community. Evidence count is derived from those references.
+The relay and clients do not infer or generate lessons from activity.
+
+Lifecycle states are candidate, approved, and deprecated. Create and every
+edit produce candidate state. An edit to an approved lesson clears the current
+approval while the append-only action history preserves the previous decision.
+Approval stores approvedByPubkey and approvedAt. Deprecate and restore as
+candidate name the exact current head. Sensitive policy changes must be
+approved by an owner or admin. The frozen editor has no reliable control for
+classifying a lesson as touching tools, spending, or secrets, so all lesson
+approvals require an owner or admin until that scope has an approved design.
+
+Confidence is an explicit recorded value, not a score guessed by the relay or
+client. New lessons begin unassessed. Evidence may carry an explicit helpful or
+harmful assessment; counts are derived from assessed evidence only. The frozen
+lesson form has no confidence or evidence-assessment controls, so the desktop
+does not invent them. The CLI and broker can store an explicit confidence and
+assessment. UI states display unassessed records as such. A future desktop
+control for setting confidence or assessing evidence is NEEDS_DESIGN.
+
+Agent memory kind 30174 and the existing buzz memory CLI remain a separate
+Memory section within Lessons. Memory entries are not lesson records and are
+not changed by lesson create, edit, approval, deprecation, or restore actions.
 
 ## Proof boundaries
 
