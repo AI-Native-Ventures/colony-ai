@@ -970,41 +970,6 @@ fn event_has_workflow_tag(event: &nostr::Event) -> bool {
     })
 }
 
-/// Find the cron schedule instant that fired within the `window_secs`-wide
-/// window ending at `now`, if any.
-///
-/// Uses window-based matching: finds the next scheduled time after
-/// `(now - window_secs)` and returns it when it falls at or before `now`.
-/// This tolerates tick drift gracefully — a 61s tick won't miss a
-/// minute-granularity cron expression. The returned instant is the cron's own
-/// scheduled time (not `now`), so every pod evaluating the same expression in
-/// the same window computes the *same* value — making it a safe, deterministic
-/// claim anchor for cross-pod at-most-once firing.
-///
-/// Returns `None` (and logs a warning) if the expression is invalid or nothing
-/// is due in the window.
-fn cron_fire_instant(
-    expr: &str,
-    now: DateTime<Utc>,
-    window_secs: i64,
-    workflow_id: Uuid,
-) -> Option<DateTime<Utc>> {
-    let normalized = schema::normalize_cron(expr);
-    match normalized.parse::<cron::Schedule>() {
-        Ok(sched) => {
-            let window_start = now - chrono::Duration::seconds(window_secs);
-            sched.after(&window_start).next().filter(|t| *t <= now)
-        }
-        Err(e) => {
-            tracing::warn!(
-                workflow_id = %workflow_id,
-                "Cron tick: invalid cron expression '{expr}': {e}"
-            );
-            None
-        }
-    }
-}
-
 const MAX_CRON_CATCH_UP_OCCURRENCES: usize = 10_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1351,96 +1316,48 @@ mod postgres_tests {
     use super::*;
 
     #[test]
-    fn cron_fire_instant_matches_within_window() {
-        // "every minute" cron — should always fire within a 60s window.
-        let now = chrono::DateTime::parse_from_rfc3339("2026-06-15T12:00:30Z")
+    fn cron_catch_up_uses_the_scheduled_anchor_across_tick_drift() {
+        let watermark = DateTime::parse_from_rfc3339("2026-06-15T08:59:00Z")
             .unwrap()
             .with_timezone(&Utc);
-        let wf_id = Uuid::new_v4();
-        // The matched instant is the minute boundary 12:00:00, NOT `now`.
-        assert_eq!(
-            cron_fire_instant("* * * * *", now, 60, wf_id),
-            Some(
-                chrono::DateTime::parse_from_rfc3339("2026-06-15T12:00:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc)
-            ),
-            "every-minute cron should return the minute boundary as the anchor"
-        );
+        let scheduled = DateTime::parse_from_rfc3339("2026-06-15T09:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        for now in ["2026-06-15T09:00:00Z", "2026-06-15T09:00:45Z"] {
+            let now = DateTime::parse_from_rfc3339(now)
+                .unwrap()
+                .with_timezone(&Utc);
+            let summary = cron_catch_up("0 9 * * *", "UTC", watermark, now, 10)
+                .unwrap()
+                .unwrap();
+            assert_eq!(summary.first_missed, scheduled);
+            assert_eq!(summary.last_missed, scheduled);
+            assert_eq!(summary.occurrence_count, 1);
+        }
     }
 
     #[test]
-    fn cron_fire_instant_returns_none_for_invalid_expr() {
-        let now = Utc::now();
-        let wf_id = Uuid::new_v4();
-        assert!(
-            cron_fire_instant("not-a-cron", now, 60, wf_id).is_none(),
-            "invalid cron should return None"
-        );
+    fn cron_catch_up_returns_none_when_no_occurrence_is_due_after_watermark() {
+        let watermark = DateTime::parse_from_rfc3339("2026-06-15T09:00:01Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let now = DateTime::parse_from_rfc3339("2026-06-15T09:01:01Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert!(cron_catch_up("0 9 * * *", "UTC", watermark, now, 10)
+            .unwrap()
+            .is_none());
     }
 
     #[test]
-    fn cron_fire_instant_returns_none_outside_window() {
-        // Fixed time: 2026-06-15 14:30:00 UTC (a Sunday in June)
-        let now = chrono::DateTime::parse_from_rfc3339("2026-06-15T14:30:00Z")
+    fn cron_catch_up_rejects_invalid_expressions() {
+        let watermark = DateTime::parse_from_rfc3339("2026-06-15T08:59:00Z")
             .unwrap()
             .with_timezone(&Utc);
-        let wf_id = Uuid::new_v4();
-        // "0 0 1 1 *" = midnight on Jan 1 only — June 15 is definitely outside.
-        assert!(
-            cron_fire_instant("0 0 1 1 *", now, 60, wf_id).is_none(),
-            "Jan-1-only cron should not fire on June 15"
-        );
-    }
-
-    #[test]
-    fn cron_fire_instant_at_exact_minute_boundary() {
-        // Fixed time: exactly 09:00:00 UTC. Cron "0 9 * * *" fires at 09:00.
-        // Window [08:59:00, 09:00:00] should contain the fire time.
-        let now = chrono::DateTime::parse_from_rfc3339("2026-06-15T09:00:00Z")
+        let now = DateTime::parse_from_rfc3339("2026-06-15T09:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
-        let wf_id = Uuid::new_v4();
-        assert_eq!(
-            cron_fire_instant("0 9 * * *", now, 60, wf_id),
-            Some(now),
-            "cron should fire at exact minute boundary, anchored on 09:00:00"
-        );
-    }
-
-    #[test]
-    fn cron_fire_instant_within_drift_window_anchors_on_scheduled_time() {
-        // Fixed time: 09:00:45 UTC (45s drift). Cron "0 9 * * *" fires at 09:00.
-        // Window [08:59:45, 09:00:45] should still contain 09:00:00. Critically,
-        // the anchor is the *scheduled* 09:00:00 — not the drifted `now` — so a
-        // second pod ticking at 09:00:50 computes the identical claim key.
-        let now = chrono::DateTime::parse_from_rfc3339("2026-06-15T09:00:45Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let wf_id = Uuid::new_v4();
-        assert_eq!(
-            cron_fire_instant("0 9 * * *", now, 60, wf_id),
-            Some(
-                chrono::DateTime::parse_from_rfc3339("2026-06-15T09:00:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc)
-            ),
-            "cron anchor must be the scheduled instant, stable across pod tick drift"
-        );
-    }
-
-    #[test]
-    fn cron_fire_instant_returns_none_just_outside_window() {
-        // Fixed time: 09:01:01 UTC. Cron "0 9 * * *" fires at 09:00:00.
-        // Window [09:00:01, 09:01:01] does NOT contain 09:00:00.
-        let now = chrono::DateTime::parse_from_rfc3339("2026-06-15T09:01:01Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let wf_id = Uuid::new_v4();
-        assert!(
-            cron_fire_instant("0 9 * * *", now, 60, wf_id).is_none(),
-            "cron should not fire 61s after the scheduled time"
-        );
+        assert!(cron_catch_up("not-a-cron", "UTC", watermark, now, 10).is_err());
     }
 
     #[test]
