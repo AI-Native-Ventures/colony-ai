@@ -31,7 +31,13 @@ pub fn build_employee_revision_action(
         .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
     let p = Tag::parse(["p", action.employee_pubkey.as_str()])
         .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
-    Ok(EventBuilder::new(Kind::Custom(KIND_EMPLOYEE_REVISION_ACTION as u16), content).tags([d, p]))
+    // Undo and record actions can be signed by the employee itself; keep the `p`
+    // tag the relay requires instead of letting nostr scrub a same-pubkey tag.
+    Ok(
+        EventBuilder::new(Kind::Custom(KIND_EMPLOYEE_REVISION_ACTION as u16), content)
+            .tags([d, p])
+            .allow_self_tagging(),
+    )
 }
 
 #[cfg(test)]
@@ -77,5 +83,34 @@ mod tests {
             .tags
             .iter()
             .any(|tag| { tag.kind().to_string() == "p" && tag.content() == Some(EMPLOYEE) }));
+    }
+
+    #[test]
+    fn employee_revision_keeps_the_employee_p_tag_when_the_employee_signs() {
+        let employee = Keys::generate();
+        let employee_hex = employee.public_key().to_hex();
+        let action = EmployeeRevisionAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            employee_pubkey: employee_hex.clone(),
+            action: EmployeeRevisionActionKind::Record,
+            expected_head_event_id: None,
+            previous_revision_event_id: None,
+            before: EmployeeConfigSnapshot::default(),
+            after: EmployeeConfigSnapshot {
+                instructions: Some("Be accurate".into()),
+                provider: Some("provider-key".into()),
+                model: Some("model-key".into()),
+                runtime: Some("runtime-key".into()),
+            },
+            undo_of_event_id: None,
+        };
+        let event = build_employee_revision_action(&action)
+            .expect("builder")
+            .sign_with_keys(&employee)
+            .expect("event");
+        assert_eq!(event.tags.len(), 2);
+        assert!(event.tags.iter().any(|tag| {
+            tag.kind().to_string() == "p" && tag.content() == Some(employee_hex.as_str())
+        }));
     }
 }
