@@ -941,17 +941,21 @@ test.describe("signed-in canary company UI", () => {
       const ownerFilter = page.getByTestId("company-work-owner-filter");
       const goalFilter = page.getByTestId("company-work-goal-filter");
       await ownerFilter.click();
-      await page.getByRole("textbox", { name: "Search owners" }).fill("You");
       await page
         .getByRole("textbox", { name: "Search owners" })
-        .press("ArrowDown");
-      await page.keyboard.press("Enter");
+        .fill(identity.pubkey.slice(0, 8));
+      const ownerOption = page.getByTestId(
+        `company-work-owner-filter-option-${identity.pubkey.toLowerCase()}`,
+      );
+      await expect(ownerOption).toBeVisible();
+      await ownerOption.click();
       await goalFilter.click();
       await page.getByRole("textbox", { name: "Search goals" }).fill(goalTitle);
-      await page
-        .getByRole("textbox", { name: "Search goals" })
-        .press("ArrowDown");
-      await page.keyboard.press("Enter");
+      const goalOption = page.getByTestId(
+        `company-work-goal-filter-option-${goalId}`,
+      );
+      await expect(goalOption).toBeVisible();
+      await goalOption.click();
       await expect(
         page.getByTestId(`company-work-row-${workId}`),
       ).toBeVisible();
