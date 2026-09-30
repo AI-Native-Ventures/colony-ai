@@ -262,6 +262,8 @@ type MockBridgeOptions = {
   goalRelayPrivateKey?: string;
   /** Relay-signed member-position heads for Company Team E2E coverage. */
   companyMemberPositionEvents?: RelayEvent[];
+  /** Relay-signed member-position actions for Company Team history coverage. */
+  companyMemberPositionActions?: RelayEvent[];
   /** Synthetic relay key used only to broker member-position actions in focused E2E tests. */
   companyMemberRelayPrivateKeyHex?: string;
   /** Reject successive member-position writes in order, then accept them. */
@@ -288,6 +290,8 @@ type MockBridgeOptions = {
   aiSpendRecordHeads?: RelayEvent[];
   /** Relay-signed company work events for company work UI E2E coverage. */
   companyWorkEvents?: RelayEvent[];
+  /** Reject successive company work head reads in order, then accept them. */
+  companyWorkReadErrors?: string[];
   /** Synthetic relay key used to broker company work actions in focused E2E tests. */
   companyWorkRelayPrivateKey?: string;
   /** Reject company work action publishes in order, then accept them. */

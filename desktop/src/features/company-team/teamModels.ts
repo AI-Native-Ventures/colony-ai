@@ -6,7 +6,10 @@ import type {
   RelayEvent,
   RelayMember,
 } from "@/shared/api/types";
-import { KIND_MEMBER_POSITION_HEAD } from "@/shared/constants/kinds";
+import {
+  KIND_MEMBER_POSITION_ACTION,
+  KIND_MEMBER_POSITION_HEAD,
+} from "@/shared/constants/kinds";
 
 export const MEMBER_POSITION_SCHEMA_VERSION = 1;
 export const MEMBER_POSITION_HEAD_QUERY_LIMIT = 10_000;
@@ -29,6 +32,11 @@ export type MemberPositionAction = {
   title?: string;
   managerPubkey?: string | null;
   reason?: string;
+};
+
+export type MemberPositionActionRecord = {
+  event: RelayEvent;
+  action: MemberPositionAction;
 };
 
 export type MemberPositionHead = {
@@ -274,6 +282,36 @@ export function parseMemberPositionAction(
         ? action
         : null;
   }
+}
+
+export function parseMemberPositionActionEvent(
+  event: RelayEvent,
+  memberPubkey: string,
+): MemberPositionActionRecord | null {
+  const expectedPubkey = normalizeTeamPubkey(memberPubkey);
+  if (event.kind !== KIND_MEMBER_POSITION_ACTION || !verifyEvent(event)) {
+    return null;
+  }
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  if (
+    event.tags.length !== 1 ||
+    dTags.length !== 1 ||
+    dTags[0]?.length !== 2 ||
+    dTags[0][1] !== memberPositionDTag(expectedPubkey)
+  ) {
+    return null;
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(event.content) as unknown;
+  } catch {
+    return null;
+  }
+  const action = parseMemberPositionAction(value);
+  if (!action || normalizeTeamPubkey(action.pubkey) !== expectedPubkey) {
+    return null;
+  }
+  return { event, action };
 }
 
 export function mergeTeamMembers(input: {

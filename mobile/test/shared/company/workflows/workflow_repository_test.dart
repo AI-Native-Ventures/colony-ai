@@ -72,6 +72,18 @@ steps:
       );
     });
 
+    test('accepts an empty signed draft without exposing it as active', () {
+      final event = _draftEvent(empty: true);
+
+      final draft = parseWorkflowDraftEvent(event);
+
+      expect(draft, isNotNull);
+      expect(draft!.isDraft, isTrue);
+      expect(draft.steps, isEmpty);
+      expect(parseWorkflowDefinitionEvent(event), isNull);
+      expect(draft.triggerWire, {'on': 'manual'});
+    });
+
     test('parses only signed active and paused status commands', () {
       final paused = _statusEvent('paused');
       final invalid = _statusEvent('archived');
@@ -154,6 +166,53 @@ steps:
       );
       expect(gateway.publishedKind, isNull);
     });
+
+    test(
+      'saves an empty draft while preserving the real trigger wire value',
+      () async {
+        final active = _definitionEvent();
+        final gateway = _FakeWorkflowGateway([active]);
+        final record = parseWorkflowDefinitionEvent(active)!;
+
+        final event = await WorkflowRepository(gateway).saveDraft(
+          workflowId: record.workflowId,
+          channelId: record.channelId,
+          ownerPubkey: record.ownerPubkey,
+          name: record.name,
+          description: record.description,
+          triggerWire: record.triggerWire,
+          steps: const [],
+          expectedDraft: null,
+        );
+
+        final draft = parseWorkflowDraftEvent(event);
+        expect(draft, isNotNull);
+        expect(draft!.steps, isEmpty);
+        expect(draft.triggerWire, record.triggerWire);
+        expect(gateway.publishedKind, EventKind.workflowDraft);
+      },
+    );
+
+    test(
+      'publishes a first workflow definition with no active revision',
+      () async {
+        final draftEvent = _draftEvent();
+        final draft = parseWorkflowDraftEvent(draftEvent)!;
+        final gateway = _FakeWorkflowGateway([draftEvent]);
+
+        await WorkflowRepository(gateway).publishDraft(
+          expectedDraft: draft,
+          expectedActive: null,
+          ownerPubkey: draft.ownerPubkey,
+        );
+
+        expect(gateway.publishedKind, EventKind.workflowDefinition);
+        expect(gateway.publishedTags, [
+          ['d', _workflowId],
+          ['h', _channelId],
+        ]);
+      },
+    );
   });
 }
 
@@ -205,6 +264,36 @@ NostrEvent _statusEvent(String status, {int createdAt = 100}) => _signedEvent(
   createdAt: createdAt,
 );
 
+NostrEvent _draftEvent({bool empty = false}) => _signedEvent(
+  kind: EventKind.workflowDraft,
+  tags: [
+    ['d', _workflowId],
+    ['h', _channelId],
+  ],
+  content: empty
+      ? '''
+name: Untitled workflow
+enabled: true
+trigger:
+  on: manual
+steps: []
+'''
+      : '''
+name: Draft workflow
+enabled: true
+trigger:
+  on: manual
+steps:
+  - id: prepare
+    name: Prepare a draft
+    action: ask_agent
+    agent_pubkey: $_agentPubkey
+    instruction: Prepare a working draft.
+    expected_result: A draft is ready
+''',
+  createdAt: 200,
+);
+
 NostrEvent _signedEvent({
   required int kind,
   required List<List<String>> tags,
@@ -247,11 +336,13 @@ class _FakeWorkflowGateway implements WorkflowRecordGateway {
     publishedKind = kind;
     publishedContent = content;
     publishedTags = tags;
-    return _signedEvent(
+    final event = _signedEvent(
       kind: kind,
       tags: tags,
       content: content,
       createdAt: 300,
     );
+    events.add(event);
+    return event;
   }
 }
