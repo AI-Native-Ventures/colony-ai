@@ -190,7 +190,6 @@ export function TeamMemberScreen({
       <EmployeeAllowanceEditScreen
         canManage={canManage}
         employee={member}
-        employeeName={fullName}
         onBack={() => void goTeamMemberSalary(member.pubkey)}
       />
     );

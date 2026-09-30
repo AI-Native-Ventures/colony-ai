@@ -7,14 +7,14 @@ import { Input } from "@/shared/ui/input";
 import { PageHeader } from "@/shared/ui/PageHeader";
 
 import {
-  allowancePeriodStart,
   effectiveAllowanceAt,
   formatUsdCents,
+  nanoUsdToCents,
   parseUsdCents,
+  summarizeAllowanceUsage,
   type AllowancePeriod,
   type AllowanceValue,
   type EmployeeAllowanceHeadRecord,
-  type AiSpendRecordHeadRecord,
 } from "./spendModels";
 import {
   useAiSpendHeadsQuery,
@@ -56,60 +56,50 @@ export function EmployeeSalaryPanel({
     : null;
   const limitCents = effective ? BigInt(effective.allowance.amountCents) : null;
   const usedCents = usage ? nanoUsdToCents(usage.totalNanoUsd) : null;
+  const hasReportedUsage = usage !== null && usage.pricedTurnCount > 0;
   const overByCents =
     limitCents !== null && usedCents !== null && usedCents > limitCents
       ? usedCents - limitCents
       : null;
 
   return (
-    <section className="max-w-3xl space-y-6" data-testid="employee-salary">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight">
-            API-equivalent allowance
+    <section className="space-y-8" data-testid="employee-salary">
+      <div className="max-w-2xl rounded-lg border border-border bg-muted/20 p-5">
+        <p className="text-sm text-muted-foreground">
+          API-equivalent allowance
+        </p>
+        {effective ? (
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight">
+            {formatUsdCents(effective.allowance.amountCents)}
+            <span className="ml-2 text-sm font-medium">
+              / {effective.allowance.period}
+            </span>
           </h2>
-          {effective ? (
-            <>
-              <p className="mt-2 text-2xl font-semibold">
-                {formatUsdCents(effective.allowance.amountCents)} /{" "}
-                {effective.allowance.period}
-              </p>
-              {effective.temporary ? (
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Temporary allowance ends{" "}
-                  {formatUtcDate(allowance?.head.temporaryAllowance?.expiresAt)}
-                  . The permanent allowance resumes automatically.
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <p className="mt-2 text-2xl font-semibold">No allowance set</p>
-          )}
-        </div>
-        {canManage ? (
-          <Button onClick={onEdit} type="button">
-            Change allowance or funding
-          </Button>
+        ) : (
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight">
+            Not configured
+          </h2>
+        )}
+        {effective?.temporary && allowance?.head.temporaryAllowance ? (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Temporary allowance ends{" "}
+            {formatUtcDate(allowance.head.temporaryAllowance.expiresAt)}.
+            Previous allowance:{" "}
+            {formatUsdCents(allowance.head.allowance.amountCents)}.
+          </p>
         ) : null}
-      </div>
-
-      <div className="rounded-lg border border-border p-5">
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h3 className="text-base font-semibold">Used this period</h3>
-          {usage ? (
-            <p className="text-lg font-semibold">
-              {formatUsdCents(usedCents ?? 0n)}
-              {limitCents === null ? null : (
-                <span className="text-sm font-normal text-muted-foreground">
-                  {` of ${formatUsdCents(limitCents)}`}
-                </span>
-              )}
-            </p>
-          ) : (
-            <p className="text-lg font-semibold">Unavailable</p>
-          )}
-        </div>
-        {usage ? (
+        <p className="mt-3 text-sm text-muted-foreground">
+          {hasReportedUsage
+            ? `${formatUsdCents(usedCents ?? 0n)} estimated used this period`
+            : usage?.turnCount === 0
+              ? "Usage not reported"
+              : "Usage unavailable"}
+          {limitCents === null ? "" : ` of ${formatUsdCents(limitCents)}`}
+          {usage && usage.unpricedTurnCount > 0
+            ? ` · ${usage.unpricedTurnCount} turn costs not reported`
+            : ""}
+        </p>
+        {hasReportedUsage ? (
           <>
             {limitCents !== null && limitCents > 0n ? (
               <progress
@@ -119,18 +109,8 @@ export function EmployeeSalaryPanel({
                 value={percentage(usedCents ?? 0n, limitCents)}
               />
             ) : null}
-            <p className="mt-3 text-sm text-muted-foreground">
-              API-equivalent usage from metered turns. All reported turn costs
-              are estimates.
-              {usage.unpricedTurnCount > 0
-                ? ` ${usage.unpricedTurnCount} ${usage.unpricedTurnCount === 1 ? "turn has" : "turns have"} no reported cost.`
-                : ""}
-            </p>
             {overByCents !== null ? (
-              <p
-                className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm"
-                role="status"
-              >
+              <p className="mt-3 text-sm" role="status">
                 Over allowance by {formatUsdCents(overByCents)}. A runtime
                 budget stop is unavailable.
               </p>
@@ -139,31 +119,12 @@ export function EmployeeSalaryPanel({
         ) : null}
       </div>
 
-      <div>
+      <div className="max-w-3xl">
         <h3 className="text-base font-semibold">Funding order</h3>
-        <div className="mt-3 rounded-lg border border-border p-4">
-          {(allowance?.head.fundingOrder.length ?? 0) > 0 ? (
-            <ol className="space-y-2">
-              {allowance?.head.fundingOrder.map((source, index) => (
-                <li
-                  className="flex items-center justify-between gap-3 text-sm"
-                  key={source}
-                >
-                  <span>
-                    {index + 1}. {source}
-                  </span>
-                  <span className="text-muted-foreground">
-                    Status unavailable
-                  </span>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Funding source order is unavailable because no source records are
-              connected.
-            </p>
-          )}
+        <div className="mt-3 rounded-lg border border-border bg-muted/20 p-4 text-sm">
+          {allowance?.head.fundingOrder.length
+            ? allowance.head.fundingOrder.join(" → ")
+            : "Not configured"}
         </div>
       </div>
 
@@ -171,6 +132,12 @@ export function EmployeeSalaryPanel({
         An allowance is not a cash salary. Provider limits and reset dates come
         from the connected source.
       </p>
+
+      {canManage ? (
+        <Button className="w-full" onClick={onEdit} type="button">
+          Change allowance or funding
+        </Button>
+      ) : null}
 
       {allowancesQuery.isError || spendQuery.isError || sync.error ? (
         <p className="text-sm text-destructive" role="alert">
@@ -190,12 +157,10 @@ export function EmployeeSalaryPanel({
 
 export function EmployeeAllowanceEditScreen({
   employee,
-  employeeName,
   canManage,
   onBack,
 }: {
   employee: TeamMember;
-  employeeName: string;
   canManage: boolean;
   onBack: () => void;
 }) {
@@ -211,7 +176,7 @@ export function EmployeeAllowanceEditScreen({
   const [duration, setDuration] = React.useState<"permanent" | "temporary">(
     "permanent",
   );
-  const [temporaryAmount, setTemporaryAmount] = React.useState("");
+  const [fundingOrderText, setFundingOrderText] = React.useState("");
   const [endDate, setEndDate] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const initializedHead = React.useRef<string | null>(null);
@@ -222,21 +187,21 @@ export function EmployeeAllowanceEditScreen({
     const key = existing?.event.id ?? "unconfigured";
     if (initializedHead.current === key) return;
     initializedHead.current = key;
+    const temporary = existing?.head.temporaryAllowance;
+    const activeTemporary =
+      temporary && Date.parse(temporary.expiresAt) > Date.now()
+        ? temporary
+        : null;
+    const currentAllowance = activeTemporary
+      ? activeTemporary.allowance
+      : existing?.head.allowance;
     setAmount(
-      existing ? centsToInput(existing.head.allowance.amountCents) : "",
+      currentAllowance ? centsToInput(currentAllowance.amountCents) : "",
     );
     setPeriod(existing?.head.allowance.period ?? "");
-    setDuration(existing?.head.temporaryAllowance ? "temporary" : "permanent");
-    setTemporaryAmount(
-      existing?.head.temporaryAllowance
-        ? centsToInput(existing.head.temporaryAllowance.allowance.amountCents)
-        : "",
-    );
-    setEndDate(
-      existing?.head.temporaryAllowance
-        ? existing.head.temporaryAllowance.expiresAt.slice(0, 10)
-        : "",
-    );
+    setDuration(activeTemporary ? "temporary" : "permanent");
+    setFundingOrderText(existing?.head.fundingOrder.join(" → ") ?? "");
+    setEndDate(activeTemporary ? activeTemporary.expiresAt.slice(0, 10) : "");
   }, [allowancesQuery.isSuccess, existing]);
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
@@ -257,24 +222,44 @@ export function EmployeeAllowanceEditScreen({
       setError("Enter a valid USD allowance with up to two decimal places.");
       return;
     }
-    const allowance: AllowanceValue = { amountCents: permanentCents, period };
+    let allowance: AllowanceValue = { amountCents: permanentCents, period };
     let temporaryAllowance: EmployeeAllowanceHeadRecord["head"]["temporaryAllowance"];
     if (duration === "temporary") {
-      const temporaryCents = parseUsdCents(temporaryAmount);
-      if (temporaryCents === null || !endDate) {
-        setError("Enter the temporary USD allowance and its end date.");
+      if (!existing) {
+        setError("Set a permanent allowance before a temporary raise.");
         return;
       }
-      if (BigInt(temporaryCents) <= BigInt(permanentCents)) {
+      if (period !== existing.head.allowance.period) {
+        setError("A temporary allowance uses the permanent allowance period.");
+        return;
+      }
+      if (
+        BigInt(permanentCents) <= BigInt(existing.head.allowance.amountCents)
+      ) {
         setError(
           "A temporary allowance must be higher than the permanent allowance.",
         );
         return;
       }
+      allowance = existing.head.allowance;
+      if (!endDate || Number.isNaN(Date.parse(`${endDate}T00:00:00Z`))) {
+        setError("Choose the temporary allowance end date.");
+        return;
+      }
+      const expiresAt = new Date(`${endDate}T23:59:59.999Z`);
+      if (expiresAt.getTime() <= Date.now()) {
+        setError("Choose a future end date.");
+        return;
+      }
       temporaryAllowance = {
-        allowance: { amountCents: temporaryCents, period },
-        expiresAt: new Date(`${endDate}T23:59:59.999Z`).toISOString(),
+        allowance: { amountCents: permanentCents, period },
+        expiresAt: expiresAt.toISOString(),
       };
+    }
+    const fundingOrder = parseFundingOrder(fundingOrderText);
+    if (!fundingOrder) {
+      setError("Enter a valid funding order using arrows between sources.");
+      return;
     }
 
     try {
@@ -284,7 +269,7 @@ export function EmployeeAllowanceEditScreen({
         ...(existing ? { expectedHeadEventId: existing.event.id } : {}),
         allowance,
         ...(temporaryAllowance ? { temporaryAllowance } : {}),
-        fundingOrder: existing?.head.fundingOrder ?? [],
+        fundingOrder,
       });
       onBack();
     } catch (cause) {
@@ -314,13 +299,10 @@ export function EmployeeAllowanceEditScreen({
     >
       <Button onClick={onBack} size="sm" type="button" variant="ghost">
         <ArrowLeft />
-        {employeeName}
+        Back
       </Button>
-      <PageHeader
-        description="Set an API-equivalent allowance for this employee."
-        title="Adjust allowance"
-      />
-      <form className="max-w-2xl" onSubmit={(event) => void save(event)}>
+      <PageHeader title="Edit salary" />
+      <form className="max-w-3xl" onSubmit={(event) => void save(event)}>
         <div className="grid gap-x-5 sm:grid-cols-2">
           <label
             className="mb-5 flex min-w-0 flex-col gap-2 text-sm font-medium"
@@ -335,6 +317,7 @@ export function EmployeeAllowanceEditScreen({
               placeholder=""
               step="0.01"
               type="number"
+              required
               value={amount}
             />
           </label>
@@ -346,18 +329,30 @@ export function EmployeeAllowanceEditScreen({
             <select
               className="h-10 rounded-md border border-input bg-background px-3 text-sm"
               id="employee-allowance-period"
+              required
               onChange={(event) =>
                 setPeriod(event.currentTarget.value as AllowancePeriod | "")
               }
               value={period}
             >
               <option value="">Choose a period</option>
-              <option value="day">Day</option>
-              <option value="week">Week</option>
-              <option value="month">Month</option>
+              <option value="day">day</option>
+              <option value="week">week</option>
+              <option value="month">month</option>
             </select>
           </label>
         </div>
+        <label
+          className="mb-5 flex flex-col gap-2 text-sm font-medium"
+          htmlFor="employee-funding-order"
+        >
+          Funding order
+          <Input
+            id="employee-funding-order"
+            onChange={(event) => setFundingOrderText(event.currentTarget.value)}
+            value={fundingOrderText}
+          />
+        </label>
         <label
           className="mb-5 flex max-w-sm flex-col gap-2 text-sm font-medium"
           htmlFor="employee-allowance-duration"
@@ -366,63 +361,45 @@ export function EmployeeAllowanceEditScreen({
           <select
             className="h-10 rounded-md border border-input bg-background px-3 text-sm"
             id="employee-allowance-duration"
-            onChange={(event) =>
-              setDuration(
-                event.currentTarget.value as "permanent" | "temporary",
-              )
-            }
+            onChange={(event) => {
+              const nextDuration = event.currentTarget.value as
+                | "permanent"
+                | "temporary";
+              setDuration(nextDuration);
+              if (
+                nextDuration === "permanent" &&
+                existing?.head.temporaryAllowance &&
+                Date.parse(existing.head.temporaryAllowance.expiresAt) >
+                  Date.now()
+              ) {
+                setAmount(centsToInput(existing.head.allowance.amountCents));
+              }
+              if (nextDuration === "temporary" && existing) {
+                setAmount(centsToInput(existing.head.allowance.amountCents));
+                setPeriod(existing.head.allowance.period);
+              }
+            }}
             value={duration}
           >
             <option value="permanent">Permanent</option>
             <option value="temporary">Temporary</option>
           </select>
         </label>
-        {duration === "temporary" ? (
-          <div className="grid gap-x-5 sm:grid-cols-2">
-            <label
-              className="mb-5 flex min-w-0 flex-col gap-2 text-sm font-medium"
-              htmlFor="employee-temporary-amount"
-            >
-              Temporary allowance in USD
-              <Input
-                id="employee-temporary-amount"
-                inputMode="decimal"
-                min="0"
-                onChange={(event) =>
-                  setTemporaryAmount(event.currentTarget.value)
-                }
-                placeholder=""
-                step="0.01"
-                type="number"
-                value={temporaryAmount}
-              />
-            </label>
-            <label
-              className="mb-5 flex min-w-0 flex-col gap-2 text-sm font-medium"
-              htmlFor="employee-temporary-end-date"
-            >
-              Temporary end date
-              <Input
-                id="employee-temporary-end-date"
-                onChange={(event) => setEndDate(event.currentTarget.value)}
-                type="date"
-                value={endDate}
-              />
-            </label>
-          </div>
-        ) : null}
-        {duration === "temporary" ? (
-          <p className="mb-5 text-sm text-muted-foreground">
-            Temporary changes revert to the permanent allowance at the end date.
-          </p>
-        ) : null}
-        <div className="mb-5 rounded-lg border border-border p-4">
-          <h2 className="text-base font-semibold">Funding order</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Funding sources and live status are unavailable because no source
-            records are connected.
-          </p>
-        </div>
+        <label
+          className="mb-3 flex flex-col gap-2 text-sm font-medium"
+          htmlFor="employee-temporary-end-date"
+        >
+          Temporary end date (if applicable)
+          <Input
+            id="employee-temporary-end-date"
+            onChange={(event) => setEndDate(event.currentTarget.value)}
+            type="date"
+            value={endDate}
+          />
+        </label>
+        <p className="mb-5 text-sm text-muted-foreground">
+          Temporary changes revert to the previous allowance at their end date.
+        </p>
         {error || allowancesQuery.error ? (
           <p className="mb-4 text-sm text-destructive" role="alert">
             {error ?? allowancesQuery.error?.message}
@@ -446,45 +423,6 @@ export function EmployeeAllowanceEditScreen({
   );
 }
 
-function summarizeAllowanceUsage(
-  records: AiSpendRecordHeadRecord[],
-  employeePubkey: string,
-  period: AllowancePeriod,
-  now: Date,
-) {
-  const start = allowancePeriodStart(period, now).getTime();
-  let totalNanoUsd = 0n;
-  let unpricedTurnCount = 0;
-  const byModel = new Map<string, bigint>();
-  for (const record of records) {
-    const head = record.head;
-    if (
-      head.status !== "active" ||
-      head.record.recordType !== "agent_turn" ||
-      head.record.employeePubkey.toLowerCase() !==
-        employeePubkey.toLowerCase() ||
-      Date.parse(head.record.reportedAt) < start ||
-      Date.parse(head.record.reportedAt) > now.getTime()
-    ) {
-      continue;
-    }
-    const amount = head.record.estimatedAmountNanoUsd;
-    if (amount === undefined) {
-      unpricedTurnCount += 1;
-      continue;
-    }
-    const nanoUsd = BigInt(amount);
-    totalNanoUsd += nanoUsd;
-    const model = head.record.model ?? "Model not reported";
-    byModel.set(model, (byModel.get(model) ?? 0n) + nanoUsd);
-  }
-  return { totalNanoUsd, unpricedTurnCount, byModel };
-}
-
-function nanoUsdToCents(nanoUsd: bigint) {
-  return (nanoUsd + 5_000_000n) / 10_000_000n;
-}
-
 function percentage(used: bigint, limit: bigint) {
   return Number((used * 100n) / limit > 100n ? 100n : (used * 100n) / limit);
 }
@@ -500,4 +438,18 @@ function formatUtcDate(value: string | undefined) {
     dateStyle: "medium",
     timeZone: "UTC",
   }).format(new Date(value));
+}
+
+function parseFundingOrder(value: string): string[] | null {
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  const sources = trimmed.split("→").map((source) => source.trim());
+  if (
+    sources.some((source) => !source || source.length > 64) ||
+    new Set(sources.map((source) => source.toLocaleLowerCase("en-US"))).size !==
+      sources.length
+  ) {
+    return null;
+  }
+  return sources;
 }

@@ -89,6 +89,14 @@ export type AiSpendRecordHeadRecord = {
   head: AiSpendRecordHead;
 };
 
+export type AllowanceUsageSummary = {
+  totalNanoUsd: bigint;
+  turnCount: number;
+  pricedTurnCount: number;
+  unpricedTurnCount: number;
+  byModel: Map<string, bigint>;
+};
+
 export function employeeAllowanceDTag(employeePubkey: string) {
   return `company:employee-allowance:${employeePubkey}`;
 }
@@ -290,7 +298,76 @@ export function formatUsdCents(value: string | bigint): string {
   const cents = typeof value === "bigint" ? value : BigInt(value);
   const dollars = cents / 100n;
   const remainder = (cents % 100n).toString().padStart(2, "0");
-  return `USD ${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(dollars)}.${remainder}`;
+  const formattedDollars = new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 0,
+  }).format(dollars);
+  return `USD ${formattedDollars}${remainder === "00" ? "" : `.${remainder}`}`;
+}
+
+export function formatUsdCentsFixed(value: string | bigint): string {
+  const cents = typeof value === "bigint" ? value : BigInt(value);
+  const dollars = cents / 100n;
+  const remainder = (cents % 100n).toString().padStart(2, "0");
+  return `USD ${dollars.toLocaleString("en-US")}.${remainder}`;
+}
+
+export function nanoUsdToCents(nanoUsd: bigint): bigint {
+  return (nanoUsd + 5_000_000n) / 10_000_000n;
+}
+
+export function summarizeAllowanceUsage(
+  records: AiSpendRecordHeadRecord[],
+  employeePubkey: string,
+  period: AllowancePeriod,
+  now: Date,
+): AllowanceUsageSummary {
+  const start = allowancePeriodStart(period, now).getTime();
+  let totalNanoUsd = 0n;
+  let turnCount = 0;
+  let pricedTurnCount = 0;
+  let unpricedTurnCount = 0;
+  const byModel = new Map<string, bigint>();
+  for (const record of records) {
+    const head = record.head;
+    if (
+      head.status !== "active" ||
+      head.record.recordType !== "agent_turn" ||
+      head.record.employeePubkey.toLowerCase() !==
+        employeePubkey.toLowerCase() ||
+      Date.parse(head.record.reportedAt) < start ||
+      Date.parse(head.record.reportedAt) > now.getTime()
+    ) {
+      continue;
+    }
+    turnCount += 1;
+    const amount = head.record.estimatedAmountNanoUsd;
+    if (amount === undefined) {
+      unpricedTurnCount += 1;
+      continue;
+    }
+    pricedTurnCount += 1;
+    const nanoUsd = BigInt(amount);
+    totalNanoUsd += nanoUsd;
+    const model = head.record.model ?? "Model not reported";
+    byModel.set(model, (byModel.get(model) ?? 0n) + nanoUsd);
+  }
+  return {
+    totalNanoUsd,
+    turnCount,
+    pricedTurnCount,
+    unpricedTurnCount,
+    byModel,
+  };
+}
+
+export function weeklyAllowanceEquivalentCents(
+  amountCents: string,
+  period: AllowancePeriod,
+): bigint {
+  const amount = BigInt(amountCents);
+  if (period === "day") return amount * 7n;
+  if (period === "week") return amount;
+  return (amount * 12n + 26n) / 52n;
 }
 
 function employeeAllowanceDTagFromContent(content: string) {

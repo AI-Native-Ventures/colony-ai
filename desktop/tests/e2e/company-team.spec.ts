@@ -7,6 +7,7 @@ import {
 } from "nostr-tools/pure";
 
 import { KIND_MEMBER_POSITION_HEAD } from "../../src/shared/constants/kinds";
+import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 const OWNER_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
@@ -220,7 +221,7 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
 
   await page.getByRole("tab", { name: "Salary" }).click();
   await expect(page.getByTestId("employee-salary")).toContainText(
-    "No allowance set",
+    "Not configured",
   );
   await page
     .getByRole("button", { name: "Change allowance or funding" })
@@ -233,11 +234,21 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   await page.getByLabel("Period").selectOption("week");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByTestId("employee-salary")).toContainText(
-    "USD 50.00 / week",
+    "USD 50 / week",
   );
+  await waitForAnimations(page);
+  await page.screenshot({ path: "test-results/employee-salary.png" });
+  await page
+    .getByRole("button", { name: "Change allowance or funding" })
+    .click();
+  await expect(page.getByTestId("employee-allowance-edit")).toBeVisible();
+  await waitForAnimations(page);
+  await page.screenshot({ path: "test-results/employee-allowance-edit.png" });
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByTestId("employee-salary")).toBeVisible();
   await page.reload();
   await expect(page.getByTestId("employee-salary")).toContainText(
-    "USD 50.00 / week",
+    "USD 50 / week",
   );
   await page.getByRole("tab", { name: "Workers" }).click();
   await expect(page.getByTestId("employee-unavailable-workers")).toContainText(

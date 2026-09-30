@@ -746,6 +746,8 @@ type E2eConfig = {
     employeeAllowanceHeads?: RelayEvent[];
     /** Relay-signed AI spend record heads for AI spend E2E coverage. */
     aiSpendRecordHeads?: RelayEvent[];
+    /** Decrypted local archive rows returned by read_archived_events. */
+    archivedEvents?: RelayEvent[];
     /** Relay-signed company work events for company work UI E2E coverage. */
     companyWorkEvents?: RelayEvent[];
     /** Synthetic relay key used to broker company work actions in focused E2E tests. */
@@ -20992,6 +20994,47 @@ export function maybeInstallE2eTauriMocks() {
       case "archive_events":
         // Returns the ArchiveBatchResult shape the UI expects.
         return { persisted: 0, dropped: 0 };
+      case "read_archived_events": {
+        const request = payload as {
+          scopeType: string;
+          scopeValue: string;
+          kinds?: number[] | null;
+          beforeCreatedAt?: number | null;
+          beforeId?: string | null;
+          limit?: number | null;
+        };
+        return (activeConfig?.mock?.archivedEvents ?? [])
+          .filter((event) => {
+            if (request.kinds && !request.kinds.includes(event.kind)) {
+              return false;
+            }
+            if (request.scopeType === "owner_p") {
+              return event.tags.some(
+                (tag) =>
+                  tag[0] === "p" &&
+                  tag[1]?.toLowerCase() === request.scopeValue.toLowerCase(),
+              );
+            }
+            return true;
+          })
+          .filter((event) => {
+            if (request.beforeCreatedAt == null || request.beforeId == null) {
+              return true;
+            }
+            return (
+              event.created_at < request.beforeCreatedAt ||
+              (event.created_at === request.beforeCreatedAt &&
+                event.id.localeCompare(request.beforeId) < 0)
+            );
+          })
+          .sort(
+            (left, right) =>
+              right.created_at - left.created_at ||
+              right.id.localeCompare(left.id),
+          )
+          .slice(0, request.limit ?? 50)
+          .map((event) => JSON.stringify(event));
+      }
       // Archive sync runs natively; the bridge has no relay-backed backend to
       // drive, so these are accepted no-ops. Without them every AppShell mount
       // logs an unknown-command warning once the gate opens.
