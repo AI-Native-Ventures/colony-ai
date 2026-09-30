@@ -1,8 +1,10 @@
-import type { AskType } from "./askRecords";
+import type { AskType, HireProposal } from "./askRecords";
 
-/** Editable fields for the five supported ask types. */
+export type AskComposerType = AskType | "hire_proposal";
+
+/** Editable fields for the supported ask types and typed hire proposals. */
 export type AskComposerDraft = {
-  type: AskType;
+  type: AskComposerType;
   title: string;
   body: string;
   threadTitle: string;
@@ -11,6 +13,12 @@ export type AskComposerDraft = {
   decideBy: string;
   options: string;
   items: string;
+  hireRolePackId: string;
+  hireName: string;
+  hireTitle: string;
+  hireReason: string;
+  hireAllowance: string;
+  hireAllowancePeriod: "" | "day" | "week" | "month";
 };
 
 /** Field-level validation feedback for the create form. */
@@ -21,7 +29,14 @@ export type AskComposerCoordinates = {
   channelId: string;
   threadRootEventId?: string;
   askId: string;
+  hireId?: string;
 };
+
+/** Existing role and runtime details used to build a typed hire proposal. */
+export type AskComposerHireContext = Pick<
+  HireProposal,
+  "rolePack" | "runtimeId" | "providerId" | "modelId"
+>;
 
 /** Kind 47032 command content for creating one ask. */
 export type AskCreateAction = {
@@ -32,7 +47,7 @@ export type AskCreateAction = {
     schemaVersion: 1;
     askId: string;
     type: AskType;
-    category: "general";
+    category: "general" | "hire";
     title: string;
     body?: string;
     threadRootEventId?: string;
@@ -41,6 +56,8 @@ export type AskCreateAction = {
     decideBy?: string;
     options?: Array<{ id: string; label: string }>;
     items?: Array<{ id: string; label: string }>;
+    subject?: { kind: "hire"; id: string };
+    hireProposal?: HireProposal;
   };
 };
 
@@ -55,6 +72,12 @@ export const EMPTY_ASK_COMPOSER_DRAFT: AskComposerDraft = {
   decideBy: "",
   options: "",
   items: "",
+  hireRolePackId: "",
+  hireName: "",
+  hireTitle: "",
+  hireReason: "",
+  hireAllowance: "",
+  hireAllowancePeriod: "",
 };
 
 const UUID_PATTERN =
@@ -72,14 +95,55 @@ function listItems(value: string) {
 export function validateAskComposerDraft(
   draft: AskComposerDraft,
   coordinates?: Pick<AskComposerCoordinates, "channelId" | "threadRootEventId">,
+  hire?: AskComposerHireContext,
 ): AskComposerErrors {
   const errors: AskComposerErrors = {};
-  const title = draft.title.trim();
-  if (!title) errors.title = "Add a short title.";
-  else if (title.length > 180) errors.title = "Use 180 characters or fewer.";
+  if (draft.type === "hire_proposal") {
+    if (
+      !draft.hireRolePackId ||
+      !hire ||
+      hire.rolePack.personaId !== draft.hireRolePackId
+    ) {
+      errors.hireRolePackId = "Choose a company role pack.";
+    }
+    if (!draft.hireName.trim()) errors.hireName = "Add the proposed name.";
+    else if (draft.hireName.trim().length > 120) {
+      errors.hireName = "Use 120 characters or fewer.";
+    }
+    if (!draft.hireTitle.trim()) errors.hireTitle = "Add the job title.";
+    else if (draft.hireTitle.trim().length > 120) {
+      errors.hireTitle = "Use 120 characters or fewer.";
+    }
+    if (!draft.hireReason.trim()) {
+      errors.hireReason =
+        "A reason is required. Spaces alone are not a reason.";
+    } else if (Array.from(draft.hireReason).length > 1000) {
+      errors.hireReason = "Use 1,000 characters or fewer.";
+    }
+    if (
+      !/^\d+(?:\.\d{1,2})?$/.test(draft.hireAllowance) ||
+      Number(draft.hireAllowance) <= 0
+    ) {
+      errors.hireAllowance = "Enter a positive allowance amount.";
+    }
+    if (draft.hireAllowancePeriod !== "week") {
+      errors.hireAllowancePeriod = "Choose an available allowance period.";
+    }
+    if (
+      hire &&
+      (!hire.runtimeId.trim() ||
+        !hire.rolePack.workerMenu.includes(hire.runtimeId))
+    ) {
+      errors.hireRolePackId = "The selected role has no configured runtime.";
+    }
+  } else {
+    const title = draft.title.trim();
+    if (!title) errors.title = "Add a short title.";
+    else if (title.length > 180) errors.title = "Use 180 characters or fewer.";
 
-  if (draft.body.trim().length > 4000) {
-    errors.body = "Use 4,000 characters or fewer.";
+    if (draft.body.trim().length > 4000) {
+      errors.body = "Use 4,000 characters or fewer.";
+    }
   }
 
   if (!HEX_ID_PATTERN.test(draft.addresseePubkey)) {
@@ -136,10 +200,33 @@ export function validateAskComposerDraft(
 export function buildAskCreateAction(
   draft: AskComposerDraft,
   coordinates: AskComposerCoordinates,
+  hire?: AskComposerHireContext,
 ): AskCreateAction {
-  const errors = validateAskComposerDraft(draft, coordinates);
+  const errors = validateAskComposerDraft(draft, coordinates, hire);
   if (Object.keys(errors).length > 0) {
     throw new Error("The ask draft is not valid.");
+  }
+
+  const isHireProposal = draft.type === "hire_proposal";
+  const askType: AskType =
+    draft.type === "hire_proposal" ? "approval" : draft.type;
+  let hireProposal: HireProposal | undefined;
+  if (isHireProposal) {
+    if (!hire) throw new Error("Choose an existing company role pack.");
+    hireProposal = {
+      hireId: coordinates.hireId ?? "",
+      rolePack: hire.rolePack,
+      displayName: draft.hireName.trim(),
+      title: draft.hireTitle.trim(),
+      introductionChannelId: coordinates.channelId,
+      runtimeId: hire.runtimeId,
+      ...(hire.providerId ? { providerId: hire.providerId } : {}),
+      ...(hire.modelId ? { modelId: hire.modelId } : {}),
+      weeklyAllowance: draft.hireAllowance.trim(),
+    };
+    if (!UUID_PATTERN.test(hireProposal.hireId)) {
+      throw new Error("The hire proposal coordinates are not valid.");
+    }
   }
 
   const decideBy = draft.decideBy
@@ -148,10 +235,14 @@ export function buildAskCreateAction(
   const ask: AskCreateAction["ask"] = {
     schemaVersion: 1,
     askId: coordinates.askId,
-    type: draft.type,
-    category: "general",
-    title: draft.title.trim(),
-    ...(draft.body.trim() ? { body: draft.body.trim() } : {}),
+    type: askType,
+    category: isHireProposal ? "hire" : "general",
+    title: isHireProposal ? draft.hireTitle.trim() : draft.title.trim(),
+    ...(isHireProposal
+      ? { body: draft.hireReason.trim() }
+      : draft.body.trim()
+        ? { body: draft.body.trim() }
+        : {}),
     ...(coordinates.threadRootEventId
       ? { threadRootEventId: coordinates.threadRootEventId }
       : {
@@ -163,7 +254,14 @@ export function buildAskCreateAction(
           },
         }),
     addresseePubkey: draft.addresseePubkey.toLowerCase(),
-    ...(decideBy ? { decideBy } : {}),
+    ...(hireProposal
+      ? {
+          subject: { kind: "hire" as const, id: hireProposal.hireId },
+          hireProposal,
+        }
+      : decideBy
+        ? { decideBy }
+        : {}),
     ...(draft.type === "choice"
       ? {
           options: listItems(draft.options).map((label, index) => ({

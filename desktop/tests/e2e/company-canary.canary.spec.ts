@@ -727,9 +727,7 @@ test.describe("signed-in canary company UI", () => {
         `Ask detail did not load. Canary relay frames: ${JSON.stringify(trace)}. ${error instanceof Error ? error.message : ""}`,
       );
     }
-    await page
-      .getByLabel("Reason or requested changes")
-      .fill("Approved for canary review.");
+    await page.getByLabel("Reason").fill("Approved for canary review.");
     await waitForCanaryWriteWindow(page);
     await page.getByRole("button", { name: "Record response" }).click();
     await expect(page.getByTestId("ask-resolved")).toContainText(

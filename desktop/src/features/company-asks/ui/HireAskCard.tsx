@@ -55,10 +55,17 @@ export function HireAskCard({
 }: HireAskCardProps) {
   const queryClient = useQueryClient();
   const { goHireReview } = useAppNavigation();
+  const declineReasonId = React.useId();
   const [declineState, setDeclineState] = React.useState({
     failed: false,
     pending: false,
   });
+  const [declineOpen, setDeclineOpen] = React.useState(false);
+  const [declineReason, setDeclineReason] = React.useState("");
+  const [declineError, setDeclineError] = React.useState<string | null>(null);
+  const [pendingDeclineEvent, setPendingDeclineEvent] = React.useState<Awaited<
+    ReturnType<typeof signRelayEvent>
+  > | null>(null);
   const declineGeneration = React.useRef(0);
   React.useEffect(() => {
     declineGeneration.current += 1;
@@ -66,6 +73,19 @@ export function HireAskCard({
       declineGeneration.current += 1;
     };
   }, []);
+  React.useEffect(() => {
+    if (!pendingDeclineEvent) return;
+    try {
+      const content = JSON.parse(pendingDeclineEvent.content) as {
+        expectedHeadEventId?: string;
+      };
+      if (content.expectedHeadEventId === headRecord.event.id) return;
+    } catch {
+      // A malformed local event cannot be retried against a new head.
+    }
+    setPendingDeclineEvent(null);
+    setDeclineError(null);
+  }, [headRecord.event.id, pendingDeclineEvent]);
 
   const head = headRecord.head;
   const asker = resolveUserLabel({
@@ -108,6 +128,12 @@ export function HireAskCard({
 
   const declineHire = async () => {
     if (!checksReady || deniedReason || declinePending) return;
+    if (!declineReason.trim()) {
+      setDeclineError(
+        "A reason is required. Use 1 to 1,000 characters. Spaces alone are not a reason.",
+      );
+      return;
+    }
     const generation = declineGeneration.current;
     const updateDeclineState = (patch: {
       failed?: boolean;
@@ -117,20 +143,26 @@ export function HireAskCard({
       setDeclineState((current) => ({ ...current, ...patch }));
     };
     updateDeclineState({ failed: false, pending: true });
+    setDeclineError(null);
     try {
-      const signedResponse = await signRelayEvent({
-        kind: KIND_ASK_RESPONSE,
-        content: JSON.stringify({
-          schemaVersion: 1,
-          askId,
-          expectedHeadEventId: headRecord.event.id,
-          outcome: "rejected",
-        }),
-        tags: [
-          ["h", channelId],
-          ["d", `channel:${channelId}:ask:${askId}`],
-        ],
-      });
+      let signedResponse = pendingDeclineEvent;
+      if (!signedResponse) {
+        signedResponse = await signRelayEvent({
+          kind: KIND_ASK_RESPONSE,
+          content: JSON.stringify({
+            schemaVersion: 1,
+            askId,
+            expectedHeadEventId: headRecord.event.id,
+            outcome: "rejected",
+            reason: declineReason.trim(),
+          }),
+          tags: [
+            ["h", channelId],
+            ["d", `channel:${channelId}:ask:${askId}`],
+          ],
+        });
+        setPendingDeclineEvent(signedResponse);
+      }
       try {
         await relayClient.publishEvent(
           signedResponse,
@@ -146,6 +178,8 @@ export function HireAskCard({
           throw cause;
         }
       }
+      setPendingDeclineEvent(null);
+      setDeclineOpen(false);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ["company-ask-head", channelId, askId],
@@ -153,7 +187,12 @@ export function HireAskCard({
         }),
         queryClient.invalidateQueries({ queryKey: ["company-hire-head"] }),
       ]);
-    } catch {
+    } catch (cause) {
+      setDeclineError(
+        cause instanceof Error
+          ? cause.message
+          : "The decision was not recorded. Your reason is kept; you can retry.",
+      );
       updateDeclineState({ failed: true });
     } finally {
       updateDeclineState({ pending: false });
@@ -231,6 +270,9 @@ export function HireAskCard({
                     ? `No authority or funding changed. ${asker} will keep the work paused.`
                     : "The requester has the outcome in the original thread."}
               </p>
+              {!decisionFailed && head.resolution?.reason ? (
+                <p>{head.resolution.reason}</p>
+              ) : null}
             </div>
           ) : null}
           {head.status === "open" ? (
@@ -252,11 +294,11 @@ export function HireAskCard({
                 <Button
                   className="colony-ask-special-work-link"
                   disabled={declinePending}
-                  onClick={() => void declineHire()}
+                  onClick={() => setDeclineOpen((current) => !current)}
                   type="button"
                   variant="outline"
                 >
-                  Decline
+                  {declineOpen ? "Cancel decline" : "Decline"}
                 </Button>
               </div>
             ) : (
@@ -275,6 +317,54 @@ export function HireAskCard({
                 </p>
               </div>
             )
+          ) : null}
+          {head.status === "open" && declineOpen ? (
+            <form
+              className="colony-ask-compose-form colony-hire-decline-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void declineHire();
+              }}
+            >
+              <label htmlFor={`${declineReasonId}-reason`}>Reason</label>
+              <textarea
+                aria-describedby={`${declineReasonId}-count${declineError ? ` ${declineReasonId}-error` : ""}`}
+                aria-invalid={Boolean(declineError)}
+                disabled={declinePending}
+                id={`${declineReasonId}-reason`}
+                maxLength={1000}
+                onChange={(event) => {
+                  setDeclineReason(event.target.value);
+                  setDeclineError(null);
+                  setPendingDeclineEvent(null);
+                }}
+                required
+                rows={3}
+                value={declineReason}
+              />
+              <small id={`${declineReasonId}-count`}>
+                {Array.from(declineReason).length} / 1,000 characters · Required
+              </small>
+              {declineError ? (
+                <span
+                  className="colony-ask-compose-error"
+                  id={`${declineReasonId}-error`}
+                  role="alert"
+                >
+                  {declineError}
+                </span>
+              ) : null}
+              <Button
+                disabled={!declineReason.trim() || declinePending}
+                type="submit"
+              >
+                {declinePending
+                  ? "Recording…"
+                  : pendingDeclineEvent
+                    ? "Retry decline"
+                    : "Decline request"}
+              </Button>
+            </form>
           ) : null}
           {head.status !== "open" ? (
             <Link

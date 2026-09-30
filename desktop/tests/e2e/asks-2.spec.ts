@@ -7,11 +7,14 @@ import { KIND_STREAM_MESSAGE } from "../../src/shared/constants/kinds";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 const CHANNEL_ROOTS = ["general", "buzz"] as const;
+const HIRE_PERSONA_ID = "company-role-operations";
+type MockBridgeOptions = NonNullable<Parameters<typeof installMockBridge>[1]>;
 
 async function openAskThread(
   page: import("@playwright/test").Page,
   askActionErrors: string[] = [],
   openThread = true,
+  personas?: MockBridgeOptions["personas"],
 ) {
   await page.setViewportSize({ width: 1440, height: 900 });
   const relaySecret = generateSecretKey();
@@ -19,8 +22,10 @@ async function openAskThread(
   await installMockBridge(page, {
     relaySelf,
     companyAskRelayPrivateKeyHex: bytesToHex(relaySecret),
+    companyHireRelayPrivateKeyHex: bytesToHex(relaySecret),
     askActionErrors,
     relayRequiresMembership: true,
+    ...(personas ? { personas } : {}),
   });
   await page.goto("/#/today");
   await page.waitForFunction(() => {
@@ -165,6 +170,88 @@ test("raise an ask from a message action and keep the message thread root", asyn
   await expect(page.getByTestId("ask-card")).toContainText(
     "Choose the final concept",
   );
+});
+
+test("submit a typed hire proposal and retry without losing the selected scope", async ({
+  page,
+}) => {
+  const personas = [
+    {
+      id: HIRE_PERSONA_ID,
+      displayName: "Operations coordinator",
+      systemPrompt: "Coordinate company operations.",
+      isActive: true,
+      runtime: "buzz-agent",
+      provider: "openai",
+      model: "gpt-5.5",
+      companyRole: {
+        job: "Coordinate team operations",
+        skills: ["Planning"],
+        tools: [{ name: "calendar_read", risk: "low" as const }],
+        workerMenu: ["buzz-agent"],
+      },
+    },
+  ] satisfies NonNullable<MockBridgeOptions["personas"]>;
+  const thread = await openAskThread(
+    page,
+    ["Temporary relay write failure"],
+    false,
+    personas,
+  );
+  await page.getByTestId("raise-ask-from-composer").click();
+  await page.getByRole("button", { name: "Hire proposal" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Propose a hire" }),
+  ).toBeVisible();
+  await page.getByLabel("Recipient").selectOption(TEST_IDENTITIES.bob.pubkey);
+  await page.getByLabel("Role pack").selectOption(HIRE_PERSONA_ID);
+  await page.getByLabel("Proposed name").fill("Operations coordinator");
+  await page.getByLabel("Job title").fill("Operations Coordinator");
+  await page
+    .getByLabel("Reason")
+    .fill("The team needs support coordinating supplier work.");
+  await page.getByLabel("Requested allowance, USD").fill("12.50");
+  await page.getByLabel("Allowance period").selectOption("week");
+  await page.getByRole("button", { name: "Review proposal" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Review hire proposal" }),
+  ).toBeVisible();
+  await expect(page.getByText("#general / Launch discussion")).toBeVisible();
+  await page.getByRole("button", { name: "Submit proposal" }).click();
+
+  await expect(page.getByRole("alert")).toContainText(
+    "Temporary relay write failure",
+  );
+  await expect(page.getByText("USD 12.50 / week")).toBeVisible();
+  const signedAskActions = await page.evaluate(() => {
+    const testWindow = window as Window & {
+      __BUZZ_E2E_SIGNED_EVENTS__?: Array<{ kind: number }>;
+    };
+    return (
+      testWindow.__BUZZ_E2E_SIGNED_EVENTS__?.filter(
+        (event) => event.kind === 47032,
+      ).length ?? 0
+    );
+  });
+  expect(signedAskActions).toBe(1);
+
+  await page.getByRole("button", { name: "Retry send" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Proposal raised" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("No position or agent has been created."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "View proposal" }).click();
+  await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+  await expect(page.getByTestId("ask-card")).toContainText(
+    "The team needs support coordinating supplier work.",
+  );
+  await expect(page.getByTestId("ask-card")).toHaveAttribute(
+    "data-ask-variant",
+    "hire",
+  );
+  expect(thread.rootId).toMatch(/^[0-9a-f]{64}$/);
 });
 
 test("busy Needs me groups the full deadline-sorted queue", async ({

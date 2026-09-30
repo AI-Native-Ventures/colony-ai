@@ -175,6 +175,12 @@ export function HireReviewScreen({
   const channelsQuery = useChannelsQuery();
   const { goHireConfigure, goHireSuccess } = useAppNavigation();
   const [founderConfirmed, setFounderConfirmed] = React.useState(false);
+  const [decisionReason, setDecisionReason] = React.useState("");
+  const [decisionReasonTouched, setDecisionReasonTouched] =
+    React.useState(false);
+  const [pendingAskResponse, setPendingAskResponse] = React.useState<Awaited<
+    ReturnType<typeof signRelayEvent>
+  > | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [failure, setFailure] = React.useState(false);
   const submittingRef = React.useRef(false);
@@ -214,6 +220,22 @@ export function HireReviewScreen({
   );
   const identityPubkey = identityQuery.data?.pubkey;
   const currentRole = membershipQuery.data?.role ?? null;
+  const linkedAsk = Boolean(source?.channelId && source?.askId);
+  const decisionReasonInvalid =
+    linkedAsk && decisionReasonTouched && decisionReason.trim().length === 0;
+
+  React.useEffect(() => {
+    if (!pendingAskResponse) return;
+    try {
+      const content = JSON.parse(pendingAskResponse.content) as {
+        expectedHeadEventId?: string;
+      };
+      if (content.expectedHeadEventId === askState.query.data?.event.id) return;
+    } catch {
+      // A malformed local response cannot be retried against a new ask head.
+    }
+    setPendingAskResponse(null);
+  }, [askState.query.data?.event.id, pendingAskResponse]);
 
   React.useEffect(() => {
     if (hireQuery.data?.head.status === "hired") {
@@ -417,6 +439,10 @@ export function HireReviewScreen({
   const approveAndHire = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!founderConfirmed || !proposal || submittingRef.current) return;
+    if (linkedAsk && !decisionReason.trim()) {
+      setDecisionReasonTouched(true);
+      return;
+    }
     submittingRef.current = true;
     setSubmitting(true);
     setFailure(false);
@@ -501,19 +527,24 @@ export function HireReviewScreen({
           current.head.status === "proposed" &&
           askRecord?.head.status === "open"
         ) {
-          const response = await signRelayEvent({
-            kind: KIND_ASK_RESPONSE,
-            content: JSON.stringify({
-              schemaVersion: 1,
-              askId: source.askId,
-              expectedHeadEventId: askRecord.event.id,
-              outcome: "approved",
-            }),
-            tags: [
-              ["h", source.channelId],
-              ["d", `channel:${source.channelId}:ask:${source.askId}`],
-            ],
-          });
+          let response = pendingAskResponse;
+          if (!response) {
+            response = await signRelayEvent({
+              kind: KIND_ASK_RESPONSE,
+              content: JSON.stringify({
+                schemaVersion: 1,
+                askId: source.askId,
+                expectedHeadEventId: askRecord.event.id,
+                outcome: "approved",
+                reason: decisionReason.trim(),
+              }),
+              tags: [
+                ["h", source.channelId],
+                ["d", `channel:${source.channelId}:ask:${source.askId}`],
+              ],
+            });
+            setPendingAskResponse(response);
+          }
           try {
             await relayClient.publishEvent(
               response,
@@ -534,6 +565,7 @@ export function HireReviewScreen({
               throw cause;
             }
           }
+          setPendingAskResponse(null);
           await queryClient.invalidateQueries({
             queryKey: ["company-ask-head", source.channelId, source.askId],
             exact: false,
@@ -661,6 +693,45 @@ export function HireReviewScreen({
               {proposal.rolePack.tools.map((tool) => tool.name).join(", ")}
             </dd>
           </dl>
+          {linkedAsk ? (
+            <div className="colony-hire-decision-reason">
+              <label htmlFor="hire-decision-reason">Reason</label>
+              <textarea
+                aria-describedby={`hire-decision-reason-count${decisionReasonInvalid ? " hire-decision-reason-error" : ""}`}
+                aria-invalid={decisionReasonInvalid}
+                disabled={submitting}
+                id="hire-decision-reason"
+                maxLength={1000}
+                onBlur={() => setDecisionReasonTouched(true)}
+                onChange={(reasonEvent) => {
+                  setDecisionReasonTouched(true);
+                  setDecisionReason(reasonEvent.target.value);
+                  setPendingAskResponse(null);
+                }}
+                required
+                rows={3}
+                value={decisionReason}
+              />
+              <small id="hire-decision-reason-count">
+                {Array.from(decisionReason).length} / 1,000 characters ·
+                Required
+              </small>
+              <p>
+                This explanation appears beside your decision in the thread and
+                history.
+              </p>
+              {decisionReasonInvalid ? (
+                <span
+                  className="colony-ask-compose-error"
+                  id="hire-decision-reason-error"
+                  role="alert"
+                >
+                  A reason is required. Use 1 to 1,000 characters. Spaces alone
+                  are not a reason.
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           <label
             className="flex items-start gap-3 border-b border-border px-1 py-4 text-sm text-foreground"
             htmlFor="hire-founder-confirm"
@@ -691,7 +762,10 @@ export function HireReviewScreen({
               className={hirePrimaryButtonClass}
               data-testid="hire-approve"
               disabled={
-                !founderConfirmed || currentRole !== "owner" || submitting
+                !founderConfirmed ||
+                currentRole !== "owner" ||
+                (linkedAsk && !decisionReason.trim()) ||
+                submitting
               }
               type="submit"
             >

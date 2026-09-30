@@ -231,6 +231,10 @@ async function seedHireAsk(
           status === "resolved"
             ? {
                 outcome,
+                reason:
+                  outcome === "rejected"
+                    ? "The proposed scope needs changes."
+                    : "The proposed scope is approved.",
                 resolvedByPubkey: identity.pubkey,
                 resolvedAt: createdAt,
                 responseEventId: "c".repeat(64),
@@ -294,6 +298,10 @@ test("hire ask card shows the designed open and declined states", async ({
   const askCard = page.getByTestId("ask-card");
   await expect(askCard).toBeVisible();
   await askCard.getByRole("button", { name: "Decline" }).click();
+  await askCard
+    .getByLabel("Reason")
+    .fill("The proposed scope needs a clearer owner.");
+  await askCard.getByRole("button", { name: "Decline request" }).click();
   await expect(
     askCard.getByRole("heading", { name: "Decision requested" }),
   ).toBeVisible();
@@ -306,6 +314,9 @@ test("hire ask card shows the designed open and declined states", async ({
   );
   await expect(askCard).toContainText(
     /No authority or funding changed\. alice will keep the work paused\./i,
+  );
+  await expect(askCard).toContainText(
+    "The proposed scope needs a clearer owner.",
   );
   await expect(
     askCard.getByRole("link", { name: "Open conversation" }),
@@ -323,6 +334,9 @@ test("hire ask card keeps its review and offers retry after a failed decline", a
 
   const card = page.getByTestId("ask-card");
   await card.getByRole("button", { name: "Decline" }).click();
+  const reason = card.getByLabel("Reason");
+  await reason.fill("The proposed scope needs a clearer owner.");
+  await card.getByRole("button", { name: "Decline request" }).click();
   await expect(
     card.getByRole("heading", { name: "Decision requested" }),
   ).toBeVisible();
@@ -336,9 +350,12 @@ test("hire ask card keeps its review and offers retry after a failed decline", a
   await expect(card).toContainText(
     "Proposed by Mina. Scope: hospitality research for Olive Studio. Weekly allowance: USD 8.00.",
   );
+  await expect(reason).toHaveValue("The proposed scope needs a clearer owner.");
   await expect(card.getByRole("button", { name: "Review hire" })).toBeVisible();
-  await expect(card.getByRole("button", { name: "Decline" })).toBeVisible();
-  await card.getByRole("button", { name: "Decline" }).click();
+  await expect(
+    card.getByRole("button", { name: "Retry decline" }),
+  ).toBeVisible();
+  await card.getByRole("button", { name: "Retry decline" }).click();
   await expect(
     card.getByText("Request declined", { exact: true }),
   ).toBeVisible();
@@ -368,6 +385,7 @@ test("resolved hire ask card explains that the requester has the outcome", async
   await expect(card).toContainText(
     "The requester has the outcome in the original thread.",
   );
+  await expect(card).toContainText("The proposed scope is approved.");
   await expect(card).toContainText(
     "Proposed by Mina. Scope: hospitality research for Olive Studio. Weekly allowance: USD 8.00.",
   );

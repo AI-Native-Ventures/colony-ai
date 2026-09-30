@@ -162,6 +162,98 @@ test("new-thread asks carry their opening context without a separate root event"
   ]);
 });
 
+test("hire proposal drafts create one typed hire ask using the selected role record", () => {
+  const draft = {
+    ...validDraft("hire_proposal"),
+    hireRolePackId: "persona-operations",
+    hireName: "Operations assistant",
+    hireTitle: "Operations Assistant",
+    hireReason: "The team needs help coordinating supplier work.",
+    hireAllowance: "240.00",
+    hireAllowancePeriod: "week",
+  };
+  const hire = {
+    rolePack: {
+      personaId: "persona-operations",
+      title: "Operations",
+      job: "Coordinate team operations",
+      skills: ["Planning"],
+      tools: [{ name: "calendar_read", risk: "low" }],
+      workerMenu: ["runtime-current"],
+    },
+    runtimeId: "runtime-current",
+    providerId: "provider-current",
+    modelId: "model-current",
+  };
+  const action = buildAskCreateAction(
+    draft,
+    {
+      ...coordinates,
+      askId: ASK_ID,
+      hireId: "38eb1501-90ea-4f6e-9e6a-b41b6b4f09bb",
+    },
+    hire,
+  );
+
+  assert.equal(action.ask.type, "approval");
+  assert.equal(action.ask.category, "hire");
+  assert.equal(action.ask.title, "Operations Assistant");
+  assert.equal(action.ask.body, draft.hireReason);
+  assert.deepEqual(action.ask.subject, {
+    kind: "hire",
+    id: "38eb1501-90ea-4f6e-9e6a-b41b6b4f09bb",
+  });
+  assert.deepEqual(action.ask.hireProposal, {
+    hireId: "38eb1501-90ea-4f6e-9e6a-b41b6b4f09bb",
+    rolePack: hire.rolePack,
+    displayName: draft.hireName,
+    title: draft.hireTitle,
+    introductionChannelId: CHANNEL_ID,
+    runtimeId: "runtime-current",
+    providerId: "provider-current",
+    modelId: "model-current",
+    weeklyAllowance: "240.00",
+  });
+  assert.equal(action.ask.threadRootEventId, THREAD_ROOT);
+});
+
+test("hire proposals require an explicit supported allowance period and reason", () => {
+  const draft = {
+    ...validDraft("hire_proposal"),
+    hireRolePackId: "persona-operations",
+    hireName: "Operations assistant",
+    hireTitle: "Operations Assistant",
+    hireReason: "The team needs help coordinating supplier work.",
+    hireAllowance: "240.00",
+    hireAllowancePeriod: "week",
+  };
+  const hire = {
+    rolePack: {
+      personaId: "persona-operations",
+      title: "Operations",
+      job: "Coordinate team operations",
+      skills: [],
+      tools: [],
+      workerMenu: ["runtime-current"],
+    },
+    runtimeId: "runtime-current",
+  };
+  assert.deepEqual(validateAskComposerDraft(draft, coordinates, hire), {});
+  assert.match(
+    validateAskComposerDraft({ ...draft, hireReason: "   " }, coordinates, hire)
+      .hireReason ?? "",
+    /reason is required/i,
+  );
+  assert.match(
+    validateAskComposerDraft(
+      { ...draft, hireAllowancePeriod: "month" },
+      coordinates,
+      hire,
+    ).hireAllowancePeriod ?? "",
+    /available allowance period/i,
+  );
+});
+
 test("invalid drafts cannot be converted into sendable actions", () => {
   assert.throws(
     () =>
