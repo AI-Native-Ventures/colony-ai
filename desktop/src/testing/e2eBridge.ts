@@ -119,6 +119,7 @@ import {
   KIND_DUTY_HEAD,
   KIND_DM_VISIBILITY,
   KIND_EVENT_REMINDER,
+  KIND_FACTORY_RUN_ACTION,
   KIND_FACTORY_RUN_HEAD,
   KIND_GOAL_ACTION,
   KIND_GOAL_HEAD,
@@ -397,6 +398,8 @@ type E2eConfig = {
     factoryRuns?: MockFactoryRunSeed[];
     /** Signed run preview and pull request heads for focused Factory E2E coverage. */
     factoryRunRecordEvents?: RelayEvent[];
+    /** Reject successive Factory run actions in focused failure-state tests. */
+    factoryRunActionErrors?: string[];
     /** Run ids whose snapshot reads fail, exercising reconnect states. */
     factorySnapshotFailureRunIds?: string[];
     /** Local checkout paths returned by the E2E filesystem boundary. */
@@ -16913,6 +16916,13 @@ function sendToMockSocket(args: {
       } else {
         acknowledge();
       }
+      return;
+    }
+
+    if (event.kind === KIND_FACTORY_RUN_ACTION) {
+      const configuredErrors = getConfig()?.mock?.factoryRunActionErrors;
+      const error = configuredErrors?.length ? configuredErrors.shift() : null;
+      sendWsText(socket.handler, ["OK", event.id, error === null, error ?? ""]);
       return;
     }
 

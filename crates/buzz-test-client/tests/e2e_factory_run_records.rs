@@ -157,6 +157,8 @@ fn action(
         action: kind,
         command: None,
         local_url: None,
+        port: None,
+        readiness: None,
         preview: None,
         pull_request: None,
     }
@@ -198,6 +200,8 @@ async fn factory_run_records_validate_state_and_enforce_owner_or_admin_authority
     intruder_start.preview = Some(FactoryPreviewState::Starting {
         command: "pnpm dev".to_owned(),
         local_url: "http://127.0.0.1:4100".to_owned(),
+        port: None,
+        readiness: None,
     });
     assert_rejected(&submit_action(&member, &intruder_start).await);
 
@@ -221,6 +225,8 @@ async fn factory_run_records_validate_state_and_enforce_owner_or_admin_authority
         local_url: "http://127.0.0.1:4100".to_owned(),
         reason: "The configured command exited".to_owned(),
         startup_output: Some("Missing script: dev".to_owned()),
+        port: None,
+        readiness: None,
     });
     assert_accepted(&submit_action(&owner, &report_failure).await);
     let (failed_id, failed) = current_head(&owner, run_id).await;
@@ -236,6 +242,8 @@ async fn factory_run_records_validate_state_and_enforce_owner_or_admin_authority
         command: "pnpm dev".to_owned(),
         local_url: "http://127.0.0.1:4100".to_owned(),
         url: "http://127.0.0.1:4100".to_owned(),
+        port: None,
+        readiness: None,
     });
     assert_rejected(&submit_action(&owner, &invalid_transition).await);
 
@@ -246,6 +254,8 @@ async fn factory_run_records_validate_state_and_enforce_owner_or_admin_authority
         local_url: "http://127.0.0.1:4100".to_owned(),
         reason: "A stale failure report".to_owned(),
         startup_output: Some("Superseded report".to_owned()),
+        port: None,
+        readiness: None,
     });
     assert_rejected(&submit_action(&owner, &stale_update).await);
 

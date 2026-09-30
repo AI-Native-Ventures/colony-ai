@@ -8,7 +8,8 @@ use uuid::Uuid;
 
 use buzz_core::factory_run_records::{
     apply_factory_run_action, factory_run_d_tag, parse_factory_run_action,
-    validate_factory_run_head, FactoryRunHead, FactoryRunRecordError,
+    validate_factory_pull_request_provider, validate_factory_run_head, FactoryRunAction,
+    FactoryRunActionKind, FactoryRunHead, FactoryRunRecordError,
 };
 use buzz_core::kind::{KIND_FACTORY_RUN_ACTION, KIND_FACTORY_RUN_HEAD};
 use buzz_core::tenant::TenantContext;
@@ -132,6 +133,8 @@ pub async fn handle(
         &updated_at,
     )
     .map_err(map_record_error)?;
+    validate_configured_provider(&action, &state.config.factory_pr_allowed_hosts)
+        .map_err(map_record_error)?;
     let head_event = super::business_records::relay_global_head_event(
         KIND_FACTORY_RUN_HEAD,
         &d_tag,
@@ -199,6 +202,76 @@ pub async fn handle(
         accepted: true,
         message: String::new(),
     })
+}
+
+fn validate_configured_provider(
+    action: &FactoryRunAction,
+    allowed_hosts: &[String],
+) -> Result<(), FactoryRunRecordError> {
+    if action.action != FactoryRunActionKind::LinkPullRequest {
+        return Ok(());
+    }
+    let pull_request = action
+        .pull_request
+        .as_ref()
+        .ok_or(FactoryRunRecordError::Invalid("pullRequest is required"))?;
+    validate_factory_pull_request_provider(pull_request, allowed_hosts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use buzz_core::factory_run_records::{
+        FactoryPullRequest, FactoryPullRequestState, FactoryRunRecordError,
+        FACTORY_RUN_RECORD_SCHEMA_VERSION,
+    };
+    use uuid::Uuid;
+
+    fn link_action(url: &str) -> FactoryRunAction {
+        FactoryRunAction {
+            schema_version: FACTORY_RUN_RECORD_SCHEMA_VERSION,
+            run_id: Uuid::from_u128(1),
+            run_owner_pubkey: None,
+            expected_head_event_id: Some("ab".repeat(32)),
+            action: FactoryRunActionKind::LinkPullRequest,
+            command: None,
+            local_url: None,
+            port: None,
+            readiness: None,
+            preview: None,
+            pull_request: Some(FactoryPullRequest {
+                url: url.to_owned(),
+                number: 42,
+                state: FactoryPullRequestState::Unknown,
+                check_results: Vec::new(),
+                review_handoff: None,
+            }),
+        }
+    }
+
+    #[test]
+    fn pull_request_action_requires_an_exact_configured_host() {
+        let allowed = vec!["code.example.test".to_owned()];
+        assert!(validate_configured_provider(
+            &link_action("https://code.example.test/team/project/pull/42"),
+            &allowed,
+        )
+        .is_ok());
+        assert_eq!(
+            validate_configured_provider(
+                &link_action("https://other.example.test/team/project/pull/42"),
+                &allowed,
+            ),
+            Err(FactoryRunRecordError::Invalid(
+                "pull request provider host is not configured"
+            ))
+        );
+        assert!(validate_configured_provider(
+            &link_action("https://code.example.test/team/project/pull/42"),
+            &[],
+        )
+        .is_err());
+    }
 }
 
 fn factory_run_command_d_tag(event: &Event, run_id: Uuid) -> Result<String, IngestError> {

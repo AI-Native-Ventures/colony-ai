@@ -13,17 +13,49 @@ import {
 
 export type FactoryPreviewState =
   | { state: "not_configured" }
-  | { state: "not_started"; command: string; localUrl: string }
-  | { state: "starting"; command: string; localUrl: string }
-  | { state: "running"; command: string; localUrl: string; url: string }
+  | {
+      state: "not_started";
+      command: string;
+      localUrl: string;
+      port?: number;
+      readiness?: FactoryPreviewReadiness;
+    }
+  | {
+      state: "starting";
+      command: string;
+      localUrl: string;
+      port?: number;
+      readiness?: FactoryPreviewReadiness;
+    }
+  | {
+      state: "running";
+      command: string;
+      localUrl: string;
+      url: string;
+      port?: number;
+      readiness?: FactoryPreviewReadiness;
+    }
   | {
       state: "failed";
       command: string;
       localUrl: string;
       reason: string;
       startupOutput?: string;
+      port?: number;
+      readiness?: FactoryPreviewReadiness;
     }
-  | { state: "stopped"; command: string; localUrl: string };
+  | {
+      state: "stopped";
+      command: string;
+      localUrl: string;
+      port?: number;
+      readiness?: FactoryPreviewReadiness;
+    };
+
+export type FactoryPreviewReadiness = {
+  mode: "http_endpoint" | "output_message";
+  value: string;
+};
 
 export type FactoryCheckResult = {
   name: string;
@@ -65,6 +97,8 @@ export type FactoryRunAction = {
     | "unlink_pull_request";
   command?: string;
   localUrl?: string;
+  port?: number;
+  readiness?: FactoryPreviewReadiness;
   preview?: FactoryPreviewState;
   pullRequest?: FactoryPullRequest;
 };
@@ -156,12 +190,48 @@ function isValidUrl(value: unknown, httpsOnly: boolean): value is string {
   }
 }
 
-function validPreviewState(value: unknown): value is FactoryPreviewState {
+function validPreviewReadiness(
+  value: unknown,
+): value is FactoryPreviewReadiness {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ["mode", "value"]) ||
+    typeof value.mode !== "string" ||
+    typeof value.value !== "string"
+  ) {
+    return false;
+  }
+  if (value.mode === "http_endpoint") {
+    return (
+      value.value.startsWith("/") &&
+      !value.value.startsWith("//") &&
+      !value.value.includes("\r") &&
+      !value.value.includes("\n") &&
+      Array.from(value.value).length <= 2048
+    );
+  }
+  return (
+    value.mode === "output_message" &&
+    value.value.trim().length > 0 &&
+    Array.from(value.value).length <= 512
+  );
+}
+
+export function isValidFactoryPreviewState(
+  value: unknown,
+): value is FactoryPreviewState {
   if (!isRecord(value) || typeof value.state !== "string") return false;
   if (!PREVIEW_STATES.has(value.state)) return false;
   if (value.state === "not_configured") {
     return hasOnlyKeys(value, ["state"]);
   }
+  const allowedConfigurationKeys = [
+    "state",
+    "command",
+    "localUrl",
+    "port",
+    "readiness",
+  ];
   if (
     typeof value.command !== "string" ||
     value.command.trim().length === 0 ||
@@ -170,18 +240,35 @@ function validPreviewState(value: unknown): value is FactoryPreviewState {
   ) {
     return false;
   }
+  if ((value.port === undefined) !== (value.readiness === undefined)) {
+    return false;
+  }
+  if (value.port !== undefined) {
+    if (
+      typeof value.port !== "number" ||
+      !Number.isSafeInteger(value.port) ||
+      value.port < 1 ||
+      value.port > 65535 ||
+      !validPreviewReadiness(value.readiness)
+    ) {
+      return false;
+    }
+    const localUrl = new URL(value.localUrl as string);
+    const actualPort = Number(
+      localUrl.port || (localUrl.protocol === "https:" ? "443" : "80"),
+    );
+    if (actualPort !== value.port) return false;
+  }
   if (value.state === "running") {
     return (
-      hasOnlyKeys(value, ["state", "command", "localUrl", "url"]) &&
+      hasOnlyKeys(value, [...allowedConfigurationKeys, "url"]) &&
       isValidUrl(value.url, false)
     );
   }
   if (value.state === "failed") {
     return (
       hasOnlyKeys(value, [
-        "state",
-        "command",
-        "localUrl",
+        ...allowedConfigurationKeys,
         "reason",
         "startupOutput",
       ]) &&
@@ -193,21 +280,25 @@ function validPreviewState(value: unknown): value is FactoryPreviewState {
           new TextEncoder().encode(value.startupOutput).length <= 4096))
     );
   }
-  return hasOnlyKeys(value, ["state", "command", "localUrl"]);
+  return hasOnlyKeys(value, allowedConfigurationKeys);
 }
 
-function pullRequestNumber(url: string): number | null {
-  const segments = new URL(url).pathname.split("/").filter(Boolean);
-  for (let index = 0; index < segments.length; index += 1) {
-    const segment = segments[index];
-    if (["pull", "pulls", "pullrequest"].includes(segment ?? "")) {
-      const number = Number(segments[index + 1]);
-      return Number.isSafeInteger(number) && number > 0 ? number : null;
+export function factoryPullRequestNumber(url: string): number | null {
+  try {
+    const segments = new URL(url).pathname.split("/").filter(Boolean);
+    for (let index = 0; index < segments.length; index += 1) {
+      const segment = segments[index];
+      if (["pull", "pulls", "pullrequest"].includes(segment ?? "")) {
+        const number = Number(segments[index + 1]);
+        return Number.isSafeInteger(number) && number > 0 ? number : null;
+      }
+      if (segment === "merge_requests" && segments[index - 1] === "-") {
+        const number = Number(segments[index + 1]);
+        return Number.isSafeInteger(number) && number > 0 ? number : null;
+      }
     }
-    if (segment === "merge_requests" && segments[index - 1] === "-") {
-      const number = Number(segments[index + 1]);
-      return Number.isSafeInteger(number) && number > 0 ? number : null;
-    }
+  } catch {
+    return null;
   }
   return null;
 }
@@ -232,7 +323,7 @@ function validPullRequest(value: unknown): value is FactoryPullRequest {
   ) {
     return false;
   }
-  if (pullRequestNumber(value.url) !== value.number) return false;
+  if (factoryPullRequestNumber(value.url) !== value.number) return false;
   for (const check of value.checkResults) {
     if (
       !isRecord(check) ||
@@ -274,7 +365,7 @@ function validFactoryRunHead(
     value.runId.toLowerCase() !== expectedRunId.toLowerCase() ||
     typeof value.runOwnerPubkey !== "string" ||
     !PUBKEY_PATTERN.test(value.runOwnerPubkey) ||
-    !validPreviewState(value.preview) ||
+    !isValidFactoryPreviewState(value.preview) ||
     typeof value.updatedAt !== "string" ||
     !Number.isFinite(Date.parse(value.updatedAt)) ||
     (value.pullRequest !== undefined && !validPullRequest(value.pullRequest))
