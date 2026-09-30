@@ -67,7 +67,7 @@ import {
 import { ChannelTemplatesSettingsCard } from "./ChannelTemplatesSettingsCard";
 import { ExperimentalFeaturesCard } from "./ExperimentalFeaturesCard";
 import { KeyboardShortcutsCard } from "./KeyboardShortcutsCard";
-import { MeshComputeSettingsCard } from "@/features/mesh-compute/ui/MeshComputeSettingsCard";
+import { MeshComputeWorkspace } from "@/features/mesh-compute/ui/MeshComputeWorkspace";
 import { MobilePairingCard } from "./MobilePairingCard";
 import { ModerationQueueCard } from "./ModerationQueueCard";
 import { NotificationSettingsCard } from "./NotificationSettingsCard";
@@ -233,7 +233,7 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
       { value: "mobile", label: "Mobile" },
       { value: "updates", label: "Updates" },
       { value: "experimental", label: "Experiments" },
-      { value: "compute", label: "Compute & hosts" },
+      { value: "compute", label: "Compute" },
     ],
   },
   {
@@ -1052,7 +1052,7 @@ export function renderSettingsSection(
     case "channel-templates":
       return <ChannelTemplatesSettingsCard />;
     case "compute":
-      return <MeshComputeSettingsCard />;
+      return <MeshComputeWorkspace />;
     case "appearance":
       return (
         <WorkspaceAppearanceSettingsPanel

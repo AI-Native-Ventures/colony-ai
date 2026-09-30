@@ -1803,9 +1803,16 @@ declare global {
     __BUZZ_E2E_SET_MESH__?: (mesh: {
       admitted?: boolean;
       models?: Array<{ id: string; name: string | null }>;
+      hosts?: MockMeshHost[];
+      hostsError?: string | null;
+      hostsHold?: boolean;
+      catalogInstalled?: boolean;
+      catalogError?: string | null;
+      statusError?: string | null;
+      startError?: string | null;
       denyReason?: string;
       /** Seed the runtime slot's lifecycle state (default "off"). */
-      nodeState?: "off" | "running";
+      nodeState?: "off" | "starting" | "running";
       /**
        * Seed the runtime slot's role. "client" models this machine CONSUMING a
        * peer's compute — it shares the single slot and reports state:"running",
@@ -4332,6 +4339,12 @@ type MockServingUsage = {
   peers: number;
 };
 
+type MockMeshHost = {
+  id: string;
+  name: string | null;
+  local: boolean;
+};
+
 const ZERO_SERVING_USAGE: MockServingUsage = {
   inflight: 0,
   peakInflight: 0,
@@ -4349,7 +4362,15 @@ const mockMeshState: {
   models: Array<{ id: string; name: string | null }>;
   activeModel: { id: string; name: string | null } | null;
   denyReason: string;
-  nodeState: "off" | "running";
+  hosts: MockMeshHost[];
+  hostsError: string | null;
+  hostsHold: boolean;
+  releaseHosts: (() => void) | null;
+  catalogInstalled: boolean;
+  catalogError: string | null;
+  statusError: string | null;
+  startError: string | null;
+  nodeState: "off" | "starting" | "running";
   nodeMode: "serve" | "client" | null;
   servingUsage: MockServingUsage;
 } = {
@@ -4357,6 +4378,14 @@ const mockMeshState: {
   models: [{ id: "Gemma-4-E4B-it-Q4_K_M", name: "Gemma 4 E4B" }],
   activeModel: null,
   denyReason: "not a relay member",
+  hosts: [],
+  hostsError: null,
+  hostsHold: false,
+  releaseHosts: null,
+  catalogInstalled: true,
+  catalogError: null,
+  statusError: null,
+  startError: null,
   nodeState: "off",
   nodeMode: null,
   servingUsage: { ...ZERO_SERVING_USAGE },
@@ -4367,6 +4396,14 @@ function resetMockMesh() {
   mockMeshState.models = [{ id: "Gemma-4-E4B-it-Q4_K_M", name: "Gemma 4 E4B" }];
   mockMeshState.activeModel = null;
   mockMeshState.denyReason = "not a relay member";
+  mockMeshState.hosts = [];
+  mockMeshState.hostsError = null;
+  mockMeshState.hostsHold = false;
+  mockMeshState.releaseHosts = null;
+  mockMeshState.catalogInstalled = true;
+  mockMeshState.catalogError = null;
+  mockMeshState.statusError = null;
+  mockMeshState.startError = null;
   mockMeshState.nodeState = "off";
   mockMeshState.nodeMode = null;
   mockMeshState.servingUsage = { ...ZERO_SERVING_USAGE };
@@ -17743,6 +17780,24 @@ export function maybeInstallE2eTauriMocks() {
   window.__BUZZ_E2E_SET_MESH__ = (mesh) => {
     if (mesh.admitted !== undefined) mockMeshState.admitted = mesh.admitted;
     if (mesh.models !== undefined) mockMeshState.models = mesh.models;
+    if (mesh.hosts !== undefined) mockMeshState.hosts = mesh.hosts;
+    if (mesh.hostsError !== undefined)
+      mockMeshState.hostsError = mesh.hostsError;
+    if (mesh.hostsHold !== undefined) {
+      mockMeshState.hostsHold = mesh.hostsHold;
+      if (!mesh.hostsHold) {
+        mockMeshState.releaseHosts?.();
+        mockMeshState.releaseHosts = null;
+      }
+    }
+    if (mesh.catalogInstalled !== undefined)
+      mockMeshState.catalogInstalled = mesh.catalogInstalled;
+    if (mesh.catalogError !== undefined)
+      mockMeshState.catalogError = mesh.catalogError;
+    if (mesh.statusError !== undefined)
+      mockMeshState.statusError = mesh.statusError;
+    if (mesh.startError !== undefined)
+      mockMeshState.startError = mesh.startError;
     if (mesh.denyReason !== undefined)
       mockMeshState.denyReason = mesh.denyReason;
     if (mesh.nodeState !== undefined) mockMeshState.nodeState = mesh.nodeState;
@@ -17785,7 +17840,7 @@ export function maybeInstallE2eTauriMocks() {
       .replaceAll("-", " ");
   };
   const meshNodeStatus = (
-    state: "off" | "running",
+    state: "off" | "starting" | "running",
     mode: "serve" | "client" | null,
   ) => {
     const model = mockMeshState.activeModel ?? mockMeshState.models[0] ?? null;
@@ -18437,6 +18492,8 @@ export function maybeInstallE2eTauriMocks() {
       case "mesh_installed_models":
         return mockMeshState.models;
       case "mesh_model_catalog":
+        if (mockMeshState.catalogError)
+          throw new Error(mockMeshState.catalogError);
         return {
           gpuName: "Mock Apple GPU",
           vramDisplay: "32 GB",
@@ -18449,17 +18506,28 @@ export function maybeInstallE2eTauriMocks() {
               sizeGb: 3.5,
               description: "Buzz-curated local agent model",
               fit: "comfortable",
-              installed: true,
+              installed: mockMeshState.catalogInstalled,
               recommended: true,
               curated: true,
             },
           ],
         };
       case "mesh_node_status":
+        if (mockMeshState.statusError)
+          throw new Error(mockMeshState.statusError);
         return meshNodeStatus(mockMeshState.nodeState, mockMeshState.nodeMode);
+      case "mesh_connected_hosts":
+        if (mockMeshState.hostsError) throw new Error(mockMeshState.hostsError);
+        if (mockMeshState.hostsHold) {
+          await new Promise<void>((resolve) => {
+            mockMeshState.releaseHosts = resolve;
+          });
+        }
+        return mockMeshState.hosts;
       case "mesh_serving_usage":
         return mockMeshState.servingUsage;
       case "mesh_start_node": {
+        if (mockMeshState.startError) throw new Error(mockMeshState.startError);
         const req = (
           payload as {
             request?: { mode?: "serve" | "client"; modelId?: string };
@@ -18470,6 +18538,12 @@ export function maybeInstallE2eTauriMocks() {
         mockMeshState.activeModel = req?.modelId
           ? { id: req.modelId, name: meshModelName(req.modelId) }
           : (mockMeshState.models[0] ?? null);
+        if (mockMeshState.nodeMode === "serve") {
+          mockMeshState.hosts = [
+            ...mockMeshState.hosts.filter((host) => !host.local),
+            { id: "test-local-device", name: "Local test host", local: true },
+          ];
+        }
         return meshNodeStatus(mockMeshState.nodeState, mockMeshState.nodeMode);
       }
       case "mesh_stop_node":
@@ -18484,6 +18558,7 @@ export function maybeInstallE2eTauriMocks() {
         mockMeshState.nodeState = "off";
         mockMeshState.nodeMode = null;
         mockMeshState.activeModel = null;
+        mockMeshState.hosts = mockMeshState.hosts.filter((host) => !host.local);
         return meshNodeStatus("off", null);
       /** Build a test-only signed-looking observer control event. */
       case "build_observer_control_event": {
