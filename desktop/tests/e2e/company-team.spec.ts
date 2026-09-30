@@ -296,7 +296,7 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   await expect(page.getByTestId("employee-lessons")).toContainText("Memory");
   await page.getByRole("button", { name: "Propose lesson" }).click();
   await page
-    .getByLabel("Lesson")
+    .getByLabel("Lesson", { exact: true })
     .fill("Keep campaign conclusions linked to their sources.");
   await page.getByLabel("Supporting evidence").fill(employeePositionEvent.id);
   await page.getByRole("button", { name: "Save candidate" }).click();

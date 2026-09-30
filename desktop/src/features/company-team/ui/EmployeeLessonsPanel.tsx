@@ -22,6 +22,11 @@ function displayStatus(status: string) {
   return status.replaceAll("_", " ");
 }
 
+function statusBadgeClass(status: string) {
+  const isActive = status === "active" || status === "approved";
+  return `normal-case tracking-normal border-transparent ${isActive ? "bg-colony-success/[0.12] text-colony-success" : "bg-colony-accent-soft text-colony-accent"}`;
+}
+
 function emptySnapshot(
   lessonId: string,
   employeePubkey: string,
@@ -308,7 +313,9 @@ export function EmployeeLessonsPanel({
         <h2 className="text-lg font-semibold">Lesson review</h2>
         <h3 className="mt-4 text-base font-semibold">{head.snapshot.lesson}</h3>
         <div className="my-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-          <Badge variant="outline">{displayStatus(head.status)}</Badge>
+          <Badge className={statusBadgeClass(head.status)} variant="outline">
+            {displayStatus(head.status)}
+          </Badge>
           <span>{head.snapshot.evidence.length} evidence records</span>
           <span>Confidence: {head.snapshot.confidence}</span>
         </div>
@@ -395,7 +402,12 @@ export function EmployeeLessonsPanel({
                   {head.snapshot.evidence.length} evidence records
                 </span>
               </span>
-              <Badge variant="outline">{displayStatus(head.status)}</Badge>
+              <Badge
+                className={statusBadgeClass(head.status)}
+                variant="outline"
+              >
+                {displayStatus(head.status)}
+              </Badge>
             </button>
           ))}
         </div>

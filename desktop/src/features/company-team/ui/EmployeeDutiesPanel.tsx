@@ -30,6 +30,11 @@ function displayStatus(status: string) {
   return status.replaceAll("_", " ");
 }
 
+function statusBadgeClass(status: string) {
+  const isActive = status === "active" || status === "approved";
+  return `normal-case tracking-normal border-transparent ${isActive ? "bg-colony-success/[0.12] text-colony-success" : "bg-colony-accent-soft text-colony-accent"}`;
+}
+
 function formatDutyTime(value: string | null, timeZone: string) {
   if (!value) return null;
   const date = new Date(value);
@@ -377,7 +382,9 @@ export function EmployeeDutiesPanel({
           {head.proposal.title}
         </h2>
         <div className="my-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-          <Badge variant="outline">{displayStatus(head.status)}</Badge>
+          <Badge className={statusBadgeClass(head.status)} variant="outline">
+            {displayStatus(head.status)}
+          </Badge>
           <span>{head.proposal.scheduleText}</span>
           <span>#{channelName ?? head.proposal.channelId}</span>
         </div>
@@ -523,7 +530,12 @@ export function EmployeeDutiesPanel({
                     {channelName ?? head.proposal.channelId}
                   </span>
                 </span>
-                <Badge variant="outline">{displayStatus(head.status)}</Badge>
+                <Badge
+                  className={statusBadgeClass(head.status)}
+                  variant="outline"
+                >
+                  {displayStatus(head.status)}
+                </Badge>
               </button>
             );
           })}
