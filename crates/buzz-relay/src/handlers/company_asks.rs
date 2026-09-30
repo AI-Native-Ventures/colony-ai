@@ -1222,7 +1222,10 @@ mod unit_tests {
         assert_eq!(metadata.event_id, event.id.as_bytes());
         assert_eq!(metadata.channel_id, channel_id);
         assert!(metadata.parent_event_id.is_none());
-        assert_eq!(metadata.root_event_id.as_deref(), Some(event.id.as_bytes()));
+        assert_eq!(
+            metadata.root_event_id.as_deref(),
+            Some(event.id.as_bytes().as_slice())
+        );
         assert_eq!(metadata.depth, 0);
 
         let tagged_event = event_with_tags(vec![
