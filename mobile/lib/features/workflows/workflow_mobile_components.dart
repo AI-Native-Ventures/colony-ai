@@ -343,6 +343,56 @@ class _WorkflowStepCard extends StatelessWidget {
   }
 }
 
+class _WorkflowLatestRunButton extends StatelessWidget {
+  const _WorkflowLatestRunButton({required this.status, required this.onTap});
+
+  final String status;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return Material(
+      color: tokens.paper,
+      borderRadius: BorderRadius.circular(Radii.companyCard),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Radii.companyCard),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            border: Border.all(color: tokens.line),
+            borderRadius: BorderRadius.circular(Radii.companyCard),
+          ),
+          child: Row(
+            children: [
+              Icon(LucideIcons.refreshCw, size: 17, color: tokens.action),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Latest run', style: _sectionStyle(context)),
+                    const SizedBox(height: 2),
+                    Text(
+                      status,
+                      style: _mutedStyle(context),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(LucideIcons.chevronRight, size: 17, color: tokens.muted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 String _stepRunnerName(WorkflowStepRecord step, List<ChannelMember>? members) {
   final pubkey = step.kind == WorkflowStepKind.agent
       ? step.assigneePubkey

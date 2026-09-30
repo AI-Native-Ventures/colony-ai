@@ -143,6 +143,9 @@ class WorkflowDetailMobilePage extends HookConsumerWidget {
     final actor = ref.watch(myPubkeyProvider)?.toLowerCase();
     final community = ref.watch(activeCommunityProvider).asData?.value;
     final membersAsync = ref.watch(channelMembersProvider(record.channelId));
+    final runsAsync = record.isDraft
+        ? null
+        : ref.watch(workflowRunsProvider(record.workflowId));
     final canEditDraft = actor != null && actor == record.ownerPubkey;
 
     Future<void> editDraft([int? stepIndex]) async {
@@ -196,6 +199,7 @@ class WorkflowDetailMobilePage extends HookConsumerWidget {
               workflowId: record.workflowId,
               runId: runId,
               workflowName: record.name,
+              activeVersion: record,
             ),
           ),
         );
@@ -220,6 +224,27 @@ class WorkflowDetailMobilePage extends HookConsumerWidget {
         channels: channels,
       );
     }
+
+    if (runsAsync!.isLoading) {
+      return WorkflowLoadingPage(
+        workflowName: record.name,
+        communityName: community?.name,
+      );
+    }
+    if (runsAsync.hasError) {
+      return WorkflowUnavailablePage(
+        workflowName: record.name,
+        communityName: community?.name,
+        onRetry: () => ref.invalidate(workflowRunsProvider(record.workflowId)),
+      );
+    }
+    final runs = runsAsync.asData?.value ?? const <WorkflowRunRecord>[];
+    final latestRun = runs.isEmpty
+        ? null
+        : runs.reduce(
+            (latest, candidate) =>
+                candidate.createdAt > latest.createdAt ? candidate : latest,
+          );
 
     return Material(
       color: context.mobileTokens.canvas,
@@ -273,6 +298,24 @@ class WorkflowDetailMobilePage extends HookConsumerWidget {
                   ),
                   if (index < record.steps.length - 1)
                     Divider(color: context.mobileTokens.line),
+                ],
+                if (latestRun != null) ...[
+                  const SizedBox(height: 8),
+                  _WorkflowLatestRunButton(
+                    status: _runStatusMessage(latestRun.status),
+                    onTap: () {
+                      Navigator.of(context).push<void>(
+                        MaterialPageRoute<void>(
+                          builder: (_) => WorkflowRunMobilePage(
+                            workflowId: record.workflowId,
+                            runId: latestRun.id,
+                            workflowName: record.name,
+                            activeVersion: record,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ],
               ],
             ),
@@ -1002,17 +1045,23 @@ class WorkflowRunMobilePage extends HookConsumerWidget {
     required this.workflowId,
     required this.runId,
     required this.workflowName,
+    this.activeVersion,
     super.key,
   });
 
   final String workflowId;
   final String runId;
   final String workflowName;
+  final WorkflowRecord? activeVersion;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final runsAsync = ref.watch(workflowRunsProvider(workflowId));
     final community = ref.watch(activeCommunityProvider).asData?.value;
+    final channelId = activeVersion?.channelId;
+    final members = channelId == null
+        ? null
+        : ref.watch(channelMembersProvider(channelId)).asData?.value;
     return runsAsync.when(
       loading: () => WorkflowLoadingPage(
         workflowName: workflowName,
@@ -1038,6 +1087,8 @@ class WorkflowRunMobilePage extends HookConsumerWidget {
           run: run,
           workflowName: workflowName,
           communityName: community?.name,
+          activeVersion: activeVersion,
+          members: members,
         );
       },
     );
@@ -1048,58 +1099,86 @@ class _WorkflowRunContent extends StatelessWidget {
   const _WorkflowRunContent({
     required this.run,
     required this.workflowName,
+    required this.activeVersion,
+    required this.members,
     this.communityName,
   });
 
   final WorkflowRunRecord run;
   final String workflowName;
+  final WorkflowRecord? activeVersion;
+  final List<ChannelMember>? members;
   final String? communityName;
 
   @override
-  Widget build(BuildContext context) => Material(
-    color: context.mobileTokens.canvas,
-    child: Column(
-      children: [
-        _WorkflowHeader(
-          title: workflowName,
-          subtitle: communityName,
-          onBack: () => unawaited(Navigator.of(context).maybePop()),
-        ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-            children: [
-              _WorkflowHero(
-                kicker: 'Run',
-                title: workflowName,
-                message: _runStatusMessage(run.status),
-              ),
-              if (run.status == 'failed' || run.errorMessage != null) ...[
-                const SizedBox(height: 12),
-                _WorkflowNotice(
-                  title: run.errorCode ?? 'Run failed',
-                  message: run.errorMessage ?? 'The workflow could not finish.',
-                  kind: _WorkflowNoticeKind.error,
-                ),
-              ],
-              if (run.definitionVersion != null) ...[
-                const SizedBox(height: 12),
-                _WorkflowFactRow(
-                  label: 'Workflow version',
-                  value: run.definitionVersion!,
-                ),
-              ],
-              if (run.currentStep != null)
-                _WorkflowFactRow(
-                  label: 'Current step',
-                  value: '${run.currentStep! + 1}',
-                ),
-            ],
+  Widget build(BuildContext context) {
+    final runVersion = run.definitionVersion;
+    final definition =
+        runVersion != null &&
+            runVersion == activeVersion?.event.id.toLowerCase()
+        ? activeVersion
+        : null;
+    final currentStep = run.currentStep;
+    final currentStepLabel = currentStep == null
+        ? null
+        : definition != null &&
+              currentStep >= 0 &&
+              currentStep < definition.steps.length
+        ? '${currentStep + 1} · ${definition.steps[currentStep].title}'
+        : '${currentStep + 1}';
+
+    return Material(
+      color: context.mobileTokens.canvas,
+      child: Column(
+        children: [
+          _WorkflowHeader(
+            title: workflowName,
+            subtitle: communityName,
+            onBack: () => unawaited(Navigator.of(context).maybePop()),
           ),
-        ),
-      ],
-    ),
-  );
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+              children: [
+                _WorkflowHero(
+                  kicker: 'Run',
+                  title: workflowName,
+                  message: _runStatusMessage(run.status),
+                ),
+                if (run.status == 'failed' || run.errorMessage != null) ...[
+                  const SizedBox(height: 12),
+                  _WorkflowNotice(
+                    title: 'Run failed',
+                    message: run.errorMessage,
+                    kind: _WorkflowNoticeKind.error,
+                  ),
+                ],
+                if (currentStepLabel != null)
+                  _WorkflowFactRow(
+                    label: 'Current step',
+                    value: currentStepLabel,
+                  ),
+                if (definition != null)
+                  for (
+                    var index = 0;
+                    index < definition.steps.length;
+                    index++
+                  ) ...[
+                    _WorkflowStepCard(
+                      index: index + 1,
+                      step: definition.steps[index],
+                      members: members,
+                    ),
+                    if (index < definition.steps.length - 1)
+                      Divider(color: context.mobileTokens.line),
+                  ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 String _runStatusMessage(String status) => switch (status) {
