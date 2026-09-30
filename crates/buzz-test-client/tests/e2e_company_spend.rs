@@ -397,10 +397,12 @@ async fn company_spend_records_require_authority_and_verified_employee_turn_evid
     let (usage_head_id, usage_head) = current_spend_head(&owner, &usage_id).await;
     assert_eq!(usage_head.record, usage_record);
 
+    mark_managed_agent(&employee, &admin).await;
     assert_rejected(
         &submit_spend_action(&admin, &create_usage).await,
         "authenticated member does not own the reported employee",
     );
+    mark_managed_agent(&employee, &owner).await;
     let mut unverifiable_funding = usage_record.clone();
     if let AiSpendRecord::AgentTurn {
         source_of_funds, ..
