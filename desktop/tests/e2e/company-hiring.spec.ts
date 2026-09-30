@@ -527,12 +527,21 @@ test("hire ask card keeps its review and offers retry after a failed decline", a
   await page.goto(`/#/asks/${channelId}/${askId}`);
 
   const card = page.getByTestId("ask-card");
+  await expect(card).toBeVisible();
+  await expect(
+    card.getByRole("heading", { name: "Decision requested" }),
+  ).toBeVisible();
   await card.getByRole("button", { name: "Decline" }).click();
   const reason = page.getByTestId("hire-handoff-reason");
   await reason.fill("The proposal needs another review.");
   await page.getByTestId("hire-handoff-decline").click();
   await expect(page.getByTestId("hire-handoff-error")).toBeVisible();
   await expect(reason).toHaveValue("The proposal needs another review.");
+  await expect(
+    page.getByText(
+      "Your inputs are kept. Review them or retry without starting again.",
+    ),
+  ).toBeVisible();
   await page.getByTestId("hire-handoff-decline").click();
   await expect(
     page.getByText("Request declined", { exact: true }),
@@ -541,7 +550,13 @@ test("hire ask card keeps its review and offers retry after a failed decline", a
     page.getByText("The proposal needs another review."),
   ).toBeVisible();
   await page.goto(`/#/asks/${channelId}/${askId}`);
-  await expect(page.getByTestId("ask-status")).toHaveText("denied");
+  await expect(card.getByTestId("ask-status")).toHaveText("denied");
+  await expect(
+    card.getByText("Request declined", { exact: true }),
+  ).toBeVisible();
+  await expect(card).toContainText(
+    "Proposed by Mina. Scope: hospitality research for Olive Studio. Weekly allowance: USD 8.00.",
+  );
 });
 
 test("an administrator refers the proposal without hiring the employee", async ({
