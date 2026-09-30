@@ -32,6 +32,7 @@ import {
   type PendingEmployeeRevision,
 } from "../employeeHistory";
 import { CompanyEmployeeProfileActions } from "./CompanyEmployeeProfileActions";
+import { EmployeeSalaryPanel } from "@/features/power/EmployeeAllowanceScreens";
 import { EmployeeHistoryPanel } from "./EmployeeHistoryPanel";
 import { MemberDoingNowSection } from "./MemberDoingNowSection";
 import type { CompanyTeamData } from "../teamRelay";
@@ -197,25 +198,27 @@ export function EmployeeProfileScreen({
   fullName,
   profiles,
   teamData,
-  canManage,
   initialTab,
+  canManage,
   onBack,
   onEditPosition,
   onOpenMember,
   onPause,
   onTerminate,
+  onEditSalary,
 }: {
   member: TeamMember;
   fullName: string;
   profiles: Record<string, ProfileSummary>;
   teamData: CompanyTeamData;
   canManage: boolean;
-  initialTab?: "overview" | "history";
+  initialTab?: "overview" | "salary" | "history";
   onBack: () => void;
   onEditPosition: () => void;
   onOpenMember: (pubkey: string) => void;
   onPause: () => void;
   onTerminate: () => void;
+  onEditSalary: () => void;
 }) {
   const agent = member.managedAgent;
   const identity = useIdentityQuery();
@@ -1098,7 +1101,14 @@ export function EmployeeProfileScreen({
             testId="employee-activity"
           />
         ) : null}
-        {tab === "salary" ? unavailableState("Salary") : null}
+        {tab === "salary" ? (
+          <EmployeeSalaryPanel
+            canManage={canManage}
+            employee={member}
+            employees={teamData.members}
+            onEdit={onEditSalary}
+          />
+        ) : null}
         {tab === "workers" ? unavailableState("Workers") : null}
         {tab === "duties" ? unavailableState("Duties") : null}
         {tab === "lessons" ? (

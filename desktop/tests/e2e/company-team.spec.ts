@@ -11,6 +11,7 @@ import {
   KIND_STREAM_MESSAGE,
   KIND_WORK_ITEM_HEAD,
 } from "../../src/shared/constants/kinds";
+import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 const OWNER_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
@@ -346,8 +347,35 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   );
 
   await page.getByRole("tab", { name: "Salary" }).click();
-  await expect(page.getByTestId("employee-unavailable-salary")).toContainText(
-    "Not available yet.",
+  await expect(page.getByTestId("employee-salary")).toContainText(
+    "Not configured",
+  );
+  await page
+    .getByRole("button", { name: "Change allowance or funding" })
+    .click();
+  await expect(page).toHaveURL(
+    new RegExp(`/team/detail/${employeePubkey}\\?panel=salary-edit$`),
+  );
+  await expect(page.getByTestId("employee-allowance-edit")).toBeVisible();
+  await page.getByLabel("Allowance in USD API-equivalent").fill("50.00");
+  await page.getByLabel("Period").selectOption("week");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByTestId("employee-salary")).toContainText(
+    "USD 50 / week",
+  );
+  await waitForAnimations(page);
+  await page.screenshot({ path: "test-results/employee-salary.png" });
+  await page
+    .getByRole("button", { name: "Change allowance or funding" })
+    .click();
+  await expect(page.getByTestId("employee-allowance-edit")).toBeVisible();
+  await waitForAnimations(page);
+  await page.screenshot({ path: "test-results/employee-allowance-edit.png" });
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByTestId("employee-salary")).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("employee-salary")).toContainText(
+    "USD 50 / week",
   );
   await page.getByRole("tab", { name: "Workers" }).click();
   await expect(page.getByTestId("employee-unavailable-workers")).toContainText(

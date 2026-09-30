@@ -670,6 +670,10 @@ pub const KIND_PROSPECT_HEAD: u32 = 30644;
 pub const KIND_MONEY_FOLLOW_UP_HEAD: u32 = 30645;
 /// Current company-scoped commitment suggestion or work watchdog configuration.
 pub const KIND_COMPANY_WORK_TRACKING_HEAD: u32 = 30652;
+/// Relay-authored canonical employee AI allowance head (community-wide).
+pub const KIND_EMPLOYEE_AI_ALLOWANCE_HEAD: u32 = 30653;
+/// Relay-authored canonical AI spend record head (community-wide).
+pub const KIND_AI_SPEND_RECORD_HEAD: u32 = 30654;
 
 // Member-authored business actions and immutable versions use the 47000 band.
 // The company-record kinds reserve 47031 through 47033; business prospect
@@ -741,6 +745,10 @@ pub const KIND_MONEY_FOLLOW_UP: u32 = 47030;
 pub const KIND_PROSPECT_ACTION: u32 = 47034;
 /// Requested change to a company work suggestion or watchdog configuration.
 pub const KIND_COMPANY_WORK_TRACKING_ACTION: u32 = 47041;
+/// Member-authored employee AI allowance update, brokered.
+pub const KIND_EMPLOYEE_AI_ALLOWANCE_ACTION: u32 = 47042;
+/// Member-authored AI spend record update, brokered.
+pub const KIND_AI_SPEND_RECORD_ACTION: u32 = 47043;
 
 // Company records (docs/company-records.md). Goals are community-wide; asks
 // live in channel threads. Heads are relay-signed like business heads.
@@ -785,6 +793,8 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_ASK_HEAD,
     KIND_MEMBER_POSITION_HEAD,
     KIND_HIRE_HEAD,
+    KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
+    KIND_AI_SPEND_RECORD_HEAD,
     KIND_GOAL_ACTION,
     KIND_ASK_ACTION,
     KIND_ASK_RESPONSE,
@@ -798,6 +808,8 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_EMPLOYEE_REVISION_HEAD,
     KIND_EMPLOYEE_REVISION_ACTION,
     KIND_HIRE_ACTION,
+    KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
+    KIND_AI_SPEND_RECORD_ACTION,
 ];
 
 /// Returns `true` for member actions that execute through the company broker.
@@ -813,6 +825,8 @@ pub const fn is_company_command_kind(kind: u32) -> bool {
             | KIND_HIRE_ACTION
             | KIND_TOOL_PERMISSION_ACTION
             | KIND_FACTORY_RUN_ACTION
+            | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
+            | KIND_AI_SPEND_RECORD_ACTION
     )
 }
 
@@ -834,6 +848,10 @@ pub const fn is_company_global_kind(kind: u32) -> bool {
             | KIND_TOOL_PERMISSION_ACTION
             | KIND_FACTORY_RUN_HEAD
             | KIND_FACTORY_RUN_ACTION
+            | KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
+            | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
+            | KIND_AI_SPEND_RECORD_HEAD
+            | KIND_AI_SPEND_RECORD_ACTION
     )
 }
 
@@ -1127,6 +1145,10 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_HIRE_HEAD,
     KIND_FACTORY_RUN_HEAD,
     KIND_FACTORY_RUN_ACTION,
+    KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
+    KIND_AI_SPEND_RECORD_HEAD,
+    KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
+    KIND_AI_SPEND_RECORD_ACTION,
     KIND_GOAL_ACTION,
     KIND_ASK_ACTION,
     KIND_ASK_RESPONSE,
@@ -1219,6 +1241,8 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_MEMBER_POSITION_ACTION
             | KIND_HIRE_ACTION
             | KIND_FACTORY_RUN_ACTION
+            | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
+            | KIND_AI_SPEND_RECORD_ACTION
     )
 }
 
@@ -1257,6 +1281,8 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_EMPLOYEE_REVISION_HEAD
             | KIND_HIRE_HEAD
             | KIND_FACTORY_RUN_HEAD
+            | KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
+            | KIND_AI_SPEND_RECORD_HEAD
     )
 }
 
@@ -1295,6 +1321,10 @@ const _: () = assert!(is_parameterized_replaceable(
     KIND_COMPANY_WORK_TRACKING_HEAD
 )); // 30652 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_EMPLOYEE_REVISION_HEAD)); // 30651 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(
+    KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
+)); // 30653 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_AI_SPEND_RECORD_HEAD)); // 30654 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_TOOL_PERMISSION_HEAD)); // 30646 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PROSPECT_HEAD)); // 30644 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_FOLLOW_UP_HEAD)); // 30645 ∈ 30000–39999
@@ -1373,6 +1403,19 @@ mod tests {
         assert!(is_business_command_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
         assert!(is_command_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
         assert!(!is_relay_only_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
+    }
+
+    #[test]
+    fn employee_spend_actions_are_transactional_company_commands() {
+        for kind in [
+            KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
+            KIND_AI_SPEND_RECORD_ACTION,
+        ] {
+            assert!(is_company_command_kind(kind));
+            assert!(is_command_kind(kind));
+            assert!(is_company_global_kind(kind));
+            assert!(!is_relay_only_kind(kind));
+        }
     }
 
     #[test]
