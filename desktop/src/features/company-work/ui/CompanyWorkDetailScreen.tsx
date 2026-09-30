@@ -26,6 +26,10 @@ import {
 } from "../hooks";
 import type { CompanyWorkAction } from "../companyWorkModels";
 import { COMPANY_WORK_SCHEMA_VERSION } from "../companyWorkModels";
+import {
+  formatCompanyWorkDueDate,
+  isCompanyWorkOverdue,
+} from "../companyWorkDueDate";
 import { projectCompanyWorkTimeline } from "../companyWorkTimeline";
 import {
   companyWorkPrimaryButtonClass,
@@ -62,8 +66,10 @@ function DetailError({
 
 export function CompanyWorkDetailScreen({
   workItemId,
+  dueDateUpdated = false,
 }: {
   workItemId: string;
+  dueDateUpdated?: boolean;
 }) {
   const headsQuery = useCompanyWorkHeadsQuery();
   const { activeCommunity } = useCommunities();
@@ -159,6 +165,7 @@ export function CompanyWorkDetailScreen({
   const canChangeStatus = Boolean(canOwn || communityAdmin);
   const canVerify = Boolean(canRequest || communityAdmin);
   const canArchive = Boolean(canOwn || canRequest || communityAdmin);
+  const overdue = head ? isCompanyWorkOverdue(head.dueAt, head.status) : false;
 
   const handleSimpleAction = async (
     actionKind: Extract<CompanyWorkAction["action"], "archive" | "restore">,
@@ -310,6 +317,24 @@ export function CompanyWorkDetailScreen({
             </strong>
           </span>
         </div>
+        {dueDateUpdated ? (
+          <p className="mb-4 text-sm" role="status">
+            <strong>Due date updated</strong>{" "}
+            {head.dueAt
+              ? formatCompanyWorkDueDate(head.dueAt)
+              : "No due date is set."}
+          </p>
+        ) : null}
+        {head.dueAt ? (
+          <p className="mb-4 text-sm text-muted-foreground">
+            Due date {formatCompanyWorkDueDate(head.dueAt)}
+            {overdue ? (
+              <strong className="ml-2 font-semibold text-destructive">
+                Overdue
+              </strong>
+            ) : null}
+          </p>
+        ) : null}
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1.8fr)_minmax(240px,1fr)] lg:gap-12">
           <div className="min-w-0">
             <h2 className="text-base font-semibold">Done condition</h2>
@@ -465,6 +490,15 @@ export function CompanyWorkDetailScreen({
                 ? `# ${channel.name}${conversationPreview ? ` · ${conversationPreview}` : ""}`
                 : "Conversation unavailable"}
             </Button>
+            {canEdit && head.status !== "archived" ? (
+              <Button
+                className="mt-2 w-full font-semibold"
+                onClick={() => void goCompanyWorkTracking("due", workItemId)}
+                variant="outline"
+              >
+                {head.dueAt ? "Change due date" : "Set a due date"}
+              </Button>
+            ) : null}
             {canEdit && head.status !== "archived" ? (
               <Button
                 className="mt-2 w-full font-semibold"

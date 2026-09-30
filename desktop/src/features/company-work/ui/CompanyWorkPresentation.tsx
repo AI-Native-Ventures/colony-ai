@@ -3,6 +3,10 @@ import type {
   CompanyWorkHeadRecord,
   CompanyWorkStatus,
 } from "../companyWorkModels";
+import {
+  formatCompanyWorkDueDate,
+  isCompanyWorkOverdue,
+} from "../companyWorkDueDate";
 
 export const companyWorkPrimaryButtonClass =
   "bg-[#536d9c] text-white shadow hover:bg-[#4d668f] disabled:bg-[#536d9c] disabled:text-white disabled:opacity-100";
@@ -56,6 +60,14 @@ export function CompanyWorkListRow({
         <span className="mt-1 block truncate text-xs text-muted-foreground">
           {ownerLabel} · #{channelLabel}
         </span>
+        {record.head.dueAt ? (
+          <span className="mt-1 block truncate text-xs text-muted-foreground">
+            {formatCompanyWorkDueDate(record.head.dueAt)}
+            {isCompanyWorkOverdue(record.head.dueAt, record.head.status)
+              ? " · Overdue"
+              : ""}
+          </span>
+        ) : null}
       </span>
       <CompanyWorkStatusBadge status={record.head.status} />
       <span aria-hidden="true" className="text-lg text-muted-foreground">

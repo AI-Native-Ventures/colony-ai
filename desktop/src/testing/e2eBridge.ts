@@ -10673,6 +10673,49 @@ function brokerMockCompanyWorkAction(event: RelayEvent): string | null {
         : {}),
       sourceActionEventId: event.id,
     };
+  } else if (actionKind === "set_due_date" || actionKind === "clear_due_date") {
+    if (!previous) return "conflict: company work item does not exist.";
+    const assigned = Array.isArray(previous.assignedPubkeys)
+      ? previous.assignedPubkeys
+      : [];
+    const isOwner = assigned.some(
+      (pubkey) => typeof pubkey === "string" && pubkey.toLowerCase() === signer,
+    );
+    const isRequester =
+      typeof previous.requesterPubkey === "string" &&
+      previous.requesterPubkey.toLowerCase() === signer;
+    if (!isOwner && !isRequester && !communityAdmin) {
+      return "restricted: only the work owner, requester, or a community owner or admin can edit this item.";
+    }
+    if (previous.status === "archived") {
+      return "conflict: archived company work items are read-only.";
+    }
+    if (actionKind === "set_due_date") {
+      const dueAt = action.dueAt;
+      if (
+        typeof dueAt !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(dueAt) ||
+        !Number.isFinite(Date.parse(dueAt))
+      ) {
+        return "invalid: dueAt must be valid UTC RFC 3339.";
+      }
+      if (
+        typeof previous.acceptedAt === "string" &&
+        Date.parse(dueAt) <= Date.parse(previous.acceptedAt)
+      ) {
+        return "invalid: dueAt must be later than acceptance.";
+      }
+      if (previous.dueAt === dueAt) {
+        return "conflict: company work item already has this due date.";
+      }
+      next = { ...previous, dueAt, sourceActionEventId: event.id };
+    } else {
+      if (typeof previous.dueAt !== "string") {
+        return "conflict: company work item has no due date to clear.";
+      }
+      const { dueAt: _dueAt, ...withoutDueDate } = previous;
+      next = { ...withoutDueDate, sourceActionEventId: event.id };
+    }
   } else if (actionKind === "set_status") {
     if (!previous) return "conflict: company work item does not exist.";
     const assigned = Array.isArray(previous.assignedPubkeys)
@@ -10870,6 +10913,10 @@ function brokerMockCompanyWorkTrackingAction(event: RelayEvent): string | null {
   if (!verifyEvent(event)) {
     return "invalid: company work tracking action signature is invalid.";
   }
+  const watchdogDTag = event.tags.find((tag) => tag[0] === "d")?.[1];
+  if (watchdogDTag?.startsWith("company:work-watchdog:")) {
+    return brokerMockCompanyWatchdogAction(event, watchdogDTag);
+  }
   if (
     event.tags.length !== 2 ||
     event.tags.some(
@@ -11061,6 +11108,209 @@ function brokerMockCompanyWorkTrackingAction(event: RelayEvent): string | null {
   emitMockLiveEvent(channelId, event);
   emitMockLiveEvent(channelId, nextTrackingHead);
   if (createdWorkHead) emitMockLiveEvent(channelId, createdWorkHead);
+  return null;
+}
+
+function brokerMockCompanyWatchdogAction(
+  event: RelayEvent,
+  dTag: string,
+): string | null {
+  const coordinate = /^company:work-watchdog:([0-9a-f-]{36})$/i.exec(dTag);
+  const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+  if (
+    !coordinate ||
+    !channelId ||
+    event.tags.length !== 2 ||
+    event.tags.some(
+      (tag) => tag.length !== 2 || (tag[0] !== "h" && tag[0] !== "d"),
+    )
+  ) {
+    return "invalid: watchdog configuration coordinate is malformed.";
+  }
+  const workItemId = coordinate[1].toLowerCase();
+  let action: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(event.content);
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      return "invalid: watchdog action content is not an object.";
+    }
+    action = parsed as Record<string, unknown>;
+  } catch {
+    return "invalid: watchdog action content is not JSON.";
+  }
+  if (
+    action.schemaVersion !== 1 ||
+    action.action !== "configure" ||
+    typeof action.recordId !== "string" ||
+    action.recordId.toLowerCase() !== workItemId ||
+    !action.config ||
+    typeof action.config !== "object" ||
+    Array.isArray(action.config)
+  ) {
+    return "invalid: watchdog configuration is incomplete.";
+  }
+  const config = action.config as Record<string, unknown>;
+  if (
+    (config.checkWhen !== "no_update" &&
+      config.checkWhen !== "due_date_passes" &&
+      config.checkWhen !== "worker_reports_failure") ||
+    !Number.isInteger(config.checkIntervalSeconds) ||
+    Number(config.checkIntervalSeconds) <= 0 ||
+    Number(config.checkIntervalSeconds) > 4_294_967_295 ||
+    (config.askFirstPubkey !== undefined &&
+      (typeof config.askFirstPubkey !== "string" ||
+        !/^[0-9a-f]{64}$/i.test(config.askFirstPubkey)))
+  ) {
+    return "invalid: watchdog configuration requires an explicit positive interval.";
+  }
+  const signer = event.pubkey.toLowerCase();
+  const channel = [...buildVisualChannels(getConfig()), ...mockChannels].find(
+    (candidate) => candidate.id.toLowerCase() === channelId.toLowerCase(),
+  );
+  if (
+    channel?.channel_type !== "stream" ||
+    channel.archived_at !== null ||
+    !channel.members.some((member) => member.pubkey.toLowerCase() === signer) ||
+    !mockRelayMembers.some((member) => member.pubkey.toLowerCase() === signer)
+  ) {
+    return "restricted: watchdog configuration requires a current channel member.";
+  }
+  const work = mockCompanyWorkHeadByDTag(`company:work:${workItemId}`);
+  if (
+    !work ||
+    work.tags.find((tag) => tag[0] === "h")?.[1]?.toLowerCase() !==
+      channelId.toLowerCase()
+  ) {
+    return "conflict: company work item does not exist in this channel.";
+  }
+  let workHead: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(work.content);
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      return "error: stored company work head is invalid.";
+    }
+    workHead = parsed as Record<string, unknown>;
+  } catch {
+    return "error: stored company work head is invalid.";
+  }
+  if (
+    ["archived", "done_unverified", "done_verified"].includes(
+      String(workHead.status),
+    )
+  ) {
+    return "conflict: completed or archived work cannot enable a watchdog.";
+  }
+  const configuredRole = getConfig()?.mock?.relayRole;
+  const configuredMember = getConfig()?.mock?.relayMembers?.find(
+    (member) => member.pubkey.toLowerCase() === signer,
+  );
+  const communityAdmin =
+    configuredRole === "owner" ||
+    configuredRole === "admin" ||
+    configuredMember?.role === "owner" ||
+    configuredMember?.role === "admin";
+  const isOwner =
+    Array.isArray(workHead.assignedPubkeys) &&
+    workHead.assignedPubkeys.some(
+      (pubkey) => typeof pubkey === "string" && pubkey.toLowerCase() === signer,
+    );
+  const isRequester =
+    typeof workHead.requesterPubkey === "string" &&
+    workHead.requesterPubkey.toLowerCase() === signer;
+  if (!communityAdmin && !isOwner && !isRequester) {
+    return "restricted: only the work owner, requester, or a community owner or admin can configure its watchdog.";
+  }
+  const current = mockCompanyWorkTrackingHeadByDTag(dTag);
+  if (current) {
+    if (action.expectedHeadEventId !== current.id) {
+      return "conflict: watchdog configuration changed; retry from its latest head.";
+    }
+    try {
+      const head = JSON.parse(current.content) as {
+        recordType?: string;
+        workItemId?: string;
+      };
+      if (
+        head.recordType !== "watchdog_configuration" ||
+        head.workItemId?.toLowerCase() !== workItemId
+      ) {
+        return "conflict: tracking head does not match this watchdog.";
+      }
+    } catch {
+      return "error: stored watchdog head is invalid.";
+    }
+  } else if (action.expectedHeadEventId !== undefined) {
+    return "conflict: watchdog configuration does not exist.";
+  }
+  if (
+    typeof config.askFirstPubkey === "string" &&
+    !channel.members.some(
+      (member) => member.pubkey.toLowerCase() === config.askFirstPubkey,
+    )
+  ) {
+    return "restricted: watchdog reviewer is not a member of the work channel.";
+  }
+  const privateKey = getConfig()?.mock?.companyWorkRelayPrivateKey;
+  if (!privateKey) {
+    return "error: mock company work relay signing key is not configured.";
+  }
+  let relaySecret: Uint8Array;
+  try {
+    relaySecret = hexToBytes(privateKey);
+  } catch {
+    return "error: mock company work relay key is invalid.";
+  }
+  if (
+    getPublicKey(relaySecret).toLowerCase() !==
+    getConfig()?.mock?.relaySelf?.toLowerCase()
+  ) {
+    return "error: mock company work relay key does not match relay self.";
+  }
+  const nextHead = finalizeEvent(
+    {
+      kind: KIND_COMPANY_WORK_TRACKING_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (current?.created_at ?? 0) + 1,
+      ),
+      tags: [
+        ["h", channelId],
+        ["d", dTag],
+      ],
+      content: JSON.stringify({
+        recordType: "watchdog_configuration",
+        schemaVersion: 1,
+        workItemId,
+        enabled: true,
+        config: {
+          checkWhen: config.checkWhen,
+          checkIntervalSeconds: config.checkIntervalSeconds,
+          ...(typeof config.askFirstPubkey === "string"
+            ? { askFirstPubkey: config.askFirstPubkey.toLowerCase() }
+            : {}),
+        },
+        sourceActionEventId: event.id,
+      }),
+    },
+    relaySecret,
+  );
+  const store = getMockCompanyWorkEventStore();
+  if (current) {
+    const currentIndex = store.findIndex(
+      (candidate) => candidate.id === current.id,
+    );
+    if (currentIndex >= 0) store.splice(currentIndex, 1);
+  }
+  store.push(event, nextHead);
+  persistMockCompanyWorkEventStore();
   return null;
 }
 
@@ -16469,7 +16719,9 @@ function sendToMockSocket(args: {
       event.kind === KIND_COMPANY_WORK_TRACKING_ACTION &&
       event.tags.some(
         (tag) =>
-          tag[0] === "d" && tag[1]?.startsWith("company:work-suggestion:"),
+          tag[0] === "d" &&
+          (tag[1]?.startsWith("company:work-suggestion:") ||
+            tag[1]?.startsWith("company:work-watchdog:")),
       )
     ) {
       const configuredError =
@@ -17187,8 +17439,12 @@ export function maybeInstallE2eTauriMocks() {
     }
     const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
     const dTag = event.tags.find((tag) => tag[0] === "d")?.[1];
-    if (!channelId || !dTag?.startsWith("company:work-suggestion:")) {
-      throw new Error("A suggestion channel and coordinate are required.");
+    if (
+      !channelId ||
+      (!dTag?.startsWith("company:work-suggestion:") &&
+        !dTag?.startsWith("company:work-watchdog:"))
+    ) {
+      throw new Error("A tracking channel and coordinate are required.");
     }
     const store = getMockCompanyWorkEventStore();
     for (let index = store.length - 1; index >= 0; index -= 1) {

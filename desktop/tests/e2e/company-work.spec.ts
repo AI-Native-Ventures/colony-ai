@@ -20,6 +20,27 @@ const LINK_FAILURE_WORK_ID = "7a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const LINK_SUCCESS_WORK_ID = "8a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const MOVE_WORK_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 
+function formatExpectedDue(value: string) {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(value));
+  const part = (type: string) =>
+    parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")} · ${timeZone}`;
+}
+
+function formatLocalInputValue(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 type SeedWorkItem = {
   workItemId: string;
   title: string;
@@ -27,6 +48,7 @@ type SeedWorkItem = {
   ownerPubkey?: string;
   reviewerPubkey?: string;
   dueAt?: string;
+  acceptedAt?: string;
   status?:
     | "active"
     | "paused"
@@ -96,7 +118,9 @@ function companyWorkHeadEvent(
         ...(workItem.goalId ? { goalId: workItem.goalId } : {}),
         ...(workItem.dueAt
           ? {
-              acceptedAt: new Date(Date.now() - 60_000).toISOString(),
+              acceptedAt:
+                workItem.acceptedAt ??
+                new Date(Date.now() - 60_000).toISOString(),
               dueAt: workItem.dueAt,
             }
           : {}),
@@ -130,6 +154,7 @@ async function installCompanyWorkMock(
   companyWorkActionErrors: string[] = [],
   workItems: SeedWorkItem[] = [],
   goals: SeedGoal[] = [{ goalId: GOAL_ID, title: "Complete the launch brief" }],
+  companyWorkTrackingActionErrors: string[] = [],
 ) {
   const relaySecret = generateSecretKey();
   const relaySelf = getPublicKey(relaySecret);
@@ -146,6 +171,7 @@ async function installCompanyWorkMock(
     ),
     companyWorkActionErrors,
     companyWorkRelayPrivateKey: bytesToHex(relaySecret),
+    companyWorkTrackingActionErrors,
     goalEvents: goals.map((goal) =>
       goalHeadEvent(relaySecret, TEST_IDENTITIES.tyler.pubkey, goal),
     ),
@@ -807,7 +833,9 @@ test("company work tracking reads current owner records and keeps unavailable au
   const aliceWorkId = "4a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
   const tylerWorkId = "5a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
   const dueWorkId = "6a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+  const overdueWorkId = "7a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
   const dueAt = new Date(Date.now() + 86_400_000).toISOString();
+  const overdueAt = new Date(Date.now() - 60_000).toISOString();
   await installCompanyWorkMock(
     page,
     [],
@@ -824,7 +852,15 @@ test("company work tracking reads current owner records and keeps unavailable au
         reviewerPubkey: TEST_IDENTITIES.alice.pubkey,
         dueAt,
       },
+      {
+        workItemId: overdueWorkId,
+        title: "Review the account handover",
+        dueAt: overdueAt,
+        acceptedAt: new Date(Date.now() - 86_400_000).toISOString(),
+      },
     ],
+    undefined,
+    ["error: temporary settings failure"],
   );
 
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
@@ -846,35 +882,62 @@ test("company work tracking reads current owner records and keeps unavailable au
   await expect(
     page.getByRole("heading", { name: "Work context" }),
   ).toBeVisible();
-  const dueDate = new Date(dueAt);
-  const expectedDue = `${new Intl.DateTimeFormat(undefined, {
-    weekday: "long",
-  }).format(dueDate)}, ${new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    hourCycle: "h23",
-    minute: "2-digit",
-  }).format(dueDate)}`;
+  const expectedDue = formatExpectedDue(dueAt);
   await expect(page.getByText("Reviewer", { exact: true })).toBeVisible();
   await expect(page.getByText("Due", { exact: true })).toBeVisible();
   await expect(page.getByText(expectedDue, { exact: true })).toBeVisible();
   await captureCompanyWorkMatrix(page, "work-timeline-due");
 
+  await page.goto(`/#/work/detail/${overdueWorkId}`);
+  await expect(page.getByTestId("company-work-detail")).toContainText(
+    "Overdue",
+  );
+  await captureCompanyWorkMatrix(page, "work-due-overdue");
+
   await page.goto(`/#/work/tracking/watchdog/${aliceWorkId}`);
-  await expect(page.getByText("Watchdog is off")).toBeVisible();
   await expect(
-    page.getByText("No interval is selected or saved."),
+    page.getByRole("heading", { name: "Off until configured" }),
   ).toBeVisible();
-  await expect(page.getByRole("spinbutton")).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Save changes" }),
+    page.getByText(
+      "No interval selected. Choose an interval before enabling checks. There is no preset.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("spinbutton")).toHaveValue("");
+  await expect(page.getByLabel("Reviewer")).toHaveValue("");
+  await expect(
+    page.getByRole("button", { name: "Review configuration" }),
   ).toBeDisabled();
   await captureCompanyWorkMatrix(page, "work-watchdog-off");
 
-  await page.goto(`/#/work/tracking/watchdog-saved/${aliceWorkId}`);
+  await page.locator("#company-work-watchdog-interval").fill("5");
+  await page.getByLabel("Reviewer").selectOption(TEST_IDENTITIES.alice.pubkey);
+  await page.getByRole("button", { name: "Review configuration" }).click();
   await expect(
-    page.getByText("Watchdog settings were not saved"),
+    page.getByText(
+      "Could not save. Your inputs are kept. Review them or retry without starting again.",
+    ),
   ).toBeVisible();
-  await expect(page.getByText("The watchdog remains off")).toBeVisible();
+  await expect(page.locator("#company-work-watchdog-interval")).toHaveValue(
+    "5",
+  );
+  await expect(page.getByLabel("Reviewer")).toHaveValue(
+    TEST_IDENTITIES.alice.pubkey,
+  );
+  await captureCompanyWorkMatrix(page, "work-watchdog-failed");
+
+  await page.getByRole("button", { name: "Review configuration" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Watchdog configuration prepared" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Quiet time before a review: 5 minutes"),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Only the interval explicitly entered for this business will be used.",
+    ),
+  ).toBeVisible();
   await captureCompanyWorkMatrix(page, "work-watchdog-saved");
 
   await page.goto(`/#/work/tracking/suggestion/${aliceWorkId}`);
@@ -888,6 +951,70 @@ test("company work tracking reads current owner records and keeps unavailable au
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Track this" })).toHaveCount(0);
   await captureCompanyWorkMatrix(page, "work-suggestion-missing");
+});
+
+test("work due dates keep failed input, save exact-head updates, and retain cleared dates in history", async ({
+  page,
+}) => {
+  const workItemId = "8a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+  await installCompanyWorkMock(
+    page,
+    ["error: temporary relay failure"],
+    [{ workItemId, title: "Prepare the client handover" }],
+  );
+  await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
+  await page.getByRole("button", { name: "Join to participate" }).click();
+  await expect(page.getByTestId("reference-goal-button")).toBeVisible();
+  await page.goto(`/#/work/detail/${workItemId}`);
+  await page.getByRole("button", { name: "Set a due date" }).click();
+
+  const dueDate = new Date(Date.now() + 48 * 60 * 60 * 1_000);
+  dueDate.setMinutes(0, 0, 0);
+  const value = formatLocalInputValue(dueDate);
+  const expectedDue = formatExpectedDue(dueDate.toISOString());
+  const input = page.getByLabel("Due date and time");
+  await input.fill(value);
+  await page.getByRole("button", { name: "Save due date" }).click();
+  await expect(
+    page.getByText(
+      "Could not save. Your inputs are kept. Review them or retry without starting again.",
+    ),
+  ).toBeVisible();
+  await expect(input).toHaveValue(value);
+  await captureCompanyWorkMatrix(page, "work-due-failed");
+
+  await page.getByRole("button", { name: "Save due date" }).click();
+  const detail = page.getByTestId("company-work-detail");
+  await expect(detail).toContainText("Due date updated");
+  await expect(detail).toContainText(expectedDue);
+  await captureCompanyWorkMatrix(page, "work-due-saved");
+
+  await page.goto("/#/company-work");
+  await expect(
+    page.getByTestId(`company-work-row-${workItemId}`),
+  ).toContainText(expectedDue);
+  await page.getByTestId(`company-work-row-${workItemId}`).click();
+  await page.getByRole("button", { name: "Change due date" }).click();
+  await page.getByRole("button", { name: "Clear due date" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Clear this due date?" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "The work stays active. Its previous date remains in the timeline.",
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Clear due date" }).click();
+  await expect(page.getByTestId("company-work-detail")).toContainText(
+    "No due date is set.",
+  );
+
+  await page.waitForTimeout(1_100);
+  await page.getByRole("button", { name: "Full timeline" }).click();
+  const timeline = page.getByTestId("company-work-full-timeline");
+  await expect(timeline).toContainText("cleared the due date.");
+  await expect(timeline).toContainText(expectedDue);
+  await captureCompanyWorkMatrix(page, "work-due-timeline");
 });
 
 test("company work move keeps its destination on failure and preserves standalone roots on edit", async ({
