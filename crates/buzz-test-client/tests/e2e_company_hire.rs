@@ -380,6 +380,7 @@ async fn company_member_can_propose_a_hire_ask_for_authorized_review() {
         member_proposal: None,
         secret_request: None,
         hire_proposal: Some(proposal),
+        spend_allowance_proposal: None,
     };
     let action = AskAction {
         schema_version: COMPANY_RECORD_SCHEMA_VERSION,
