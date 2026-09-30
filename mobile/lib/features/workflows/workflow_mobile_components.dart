@@ -31,41 +31,44 @@ class _WorkflowPickerRow extends HookConsumerWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
-            child: Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: tokens.soft,
-                    borderRadius: BorderRadius.circular(12),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 78),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: tokens.soft,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      record.isDraft ? LucideIcons.plus : LucideIcons.workflow,
+                      size: 17,
+                      color: tokens.action,
+                    ),
                   ),
-                  child: Icon(
-                    record.isDraft ? LucideIcons.plus : LucideIcons.workflow,
-                    size: 17,
-                    color: tokens.action,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(record.name, style: _rowTitleStyle(context)),
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: _rowDescriptionStyle(context),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(record.name, style: _rowTitleStyle(context)),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: _rowDescriptionStyle(context),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(LucideIcons.chevronRight, size: 17, color: tokens.muted),
-              ],
+                  Icon(LucideIcons.chevronRight, size: 17, color: tokens.muted),
+                ],
+              ),
             ),
           ),
         ),
@@ -87,11 +90,11 @@ class _WorkflowHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final tokens = context.mobileTokens;
+    final brightness = Theme.of(context).brightness;
+    final foreground = Batch2MobileVisualTokens.heroForeground(brightness);
     return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: colors.companyWashGradient,
+        gradient: Batch2MobileVisualTokens.heroGradient(brightness),
         borderRadius: BorderRadius.circular(23),
       ),
       child: Padding(
@@ -102,16 +105,24 @@ class _WorkflowHero extends StatelessWidget {
             Text(
               kicker.toUpperCase(),
               style: context.mobileTypography.companySection.copyWith(
-                color: tokens.action,
+                color: foreground,
                 fontSize: 10,
                 letterSpacing: 1.3,
               ),
             ),
             const SizedBox(height: 13),
-            Text(title, style: _heroTitleStyle(context)),
+            Text(
+              title,
+              style: _heroTitleStyle(context).copyWith(color: foreground),
+            ),
             if (message != null) ...[
               const SizedBox(height: 9),
-              Text(message!, style: _heroDescriptionStyle(context)),
+              Text(
+                message!,
+                style: _heroDescriptionStyle(
+                  context,
+                ).copyWith(color: foreground),
+              ),
             ],
           ],
         ),
@@ -135,9 +146,11 @@ class _WorkflowNotice extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
     final accent = switch (kind) {
-      _WorkflowNoticeKind.neutral => tokens.action,
-      _WorkflowNoticeKind.success => const Color(0xFF4C957B),
-      _WorkflowNoticeKind.error => const Color(0xFFD8798C),
+      _WorkflowNoticeKind.neutral =>
+        Batch2MobileVisualTokens.neutralNoticeAccent,
+      _WorkflowNoticeKind.success =>
+        Batch2MobileVisualTokens.successNoticeAccent,
+      _WorkflowNoticeKind.error => Batch2MobileVisualTokens.errorNoticeAccent,
     };
     return Container(
       decoration: BoxDecoration(
@@ -462,43 +475,65 @@ class _WorkflowHeader extends StatelessWidget {
   final VoidCallback? onBack;
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-    bottom: false,
-    child: SizedBox(
-      height: 56,
-      child: Row(
-        children: [
-          if (onBack != null)
-            IconButton(
-              tooltip: 'Back',
-              onPressed: onBack,
-              icon: const Icon(LucideIcons.chevronLeft),
-            ),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.mobileTypography.companyEntryTitle.copyWith(
-                    color: context.mobileTokens.ink,
-                    fontSize: 15,
-                    height: 1.35,
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return SafeArea(
+      bottom: false,
+      child: SizedBox(
+        height: 56,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(15, 4, 15, 8),
+          child: Row(
+            children: [
+              if (onBack != null) ...[
+                IconButton(
+                  tooltip: 'Back',
+                  onPressed: onBack,
+                  icon: const Icon(LucideIcons.chevronLeft),
+                  constraints: const BoxConstraints.tightFor(
+                    width: MobileLayoutTokens.minimumTapTarget,
+                    height: MobileLayoutTokens.minimumTapTarget,
+                  ),
+                  padding: EdgeInsets.zero,
+                  style: IconButton.styleFrom(
+                    backgroundColor: tokens.paper,
+                    foregroundColor: tokens.ink,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(Radii.button),
+                      side: BorderSide(color: tokens.line),
+                    ),
                   ),
                 ),
-                if (subtitle?.isNotEmpty == true)
-                  Text(subtitle!, style: _headerSubtitleStyle(context)),
+                const SizedBox(width: 8),
               ],
-            ),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.mobileTypography.companyEntryTitle
+                          .copyWith(
+                            color: tokens.ink,
+                            fontSize: 15,
+                            height: 1.35,
+                          ),
+                    ),
+                    if (subtitle?.isNotEmpty == true)
+                      Text(subtitle!, style: _headerSubtitleStyle(context)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: MobileLayoutTokens.minimumTapTarget),
+            ],
           ),
-          const SizedBox(width: 16),
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _WorkflowActionButton extends StatelessWidget {

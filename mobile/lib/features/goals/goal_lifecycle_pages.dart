@@ -5,6 +5,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../shared/company/batch2_visual_tokens.dart';
 import '../../shared/community/community_provider.dart';
 import '../../shared/community/community_membership_provider.dart';
 import '../../shared/company/goals/goal_records.dart';
@@ -57,7 +58,7 @@ class GoalActionsPage extends HookConsumerWidget {
                   head: head,
                 );
                 return ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
                   children: [
                     _GoalActionBanner(title: 'Keep the direction clear.'),
                     const SizedBox(height: 16),
@@ -319,7 +320,7 @@ class GoalEditPage extends HookConsumerWidget {
                 final allFieldsSaved =
                     failureField.value == null && savedFields.value.length == 3;
                 return ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
                   children: [
                     _GoalActionBanner(
                       kicker: 'EDIT GOAL',
@@ -350,6 +351,7 @@ class GoalEditPage extends HookConsumerWidget {
                       const _GoalNotice(
                         title: 'Changes saved',
                         message: 'Each field was acknowledged by its own save.',
+                        isSuccess: true,
                       ),
                     ],
                     const SizedBox(height: 14),
@@ -499,7 +501,7 @@ class GoalLifecycleConfirmationPage extends HookConsumerWidget {
               data: (record) {
                 if (record == null) return const _GoalPageError();
                 return ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
                   children: [
                     _GoalConfirmationCard(
                       title: title,
@@ -555,7 +557,7 @@ class GoalLifecycleFeedbackPage extends HookConsumerWidget {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
               children: [
                 _GoalActionBanner(
                   kicker: isDelete ? 'DELETED' : 'ARCHIVED',
@@ -612,7 +614,7 @@ class GoalDeniedPage extends HookConsumerWidget {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
               children: [
                 const GoalDeniedContent(),
                 const SizedBox(height: 12),
@@ -725,7 +727,7 @@ class GoalRestoreFailedPage extends HookConsumerWidget {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
               children: [
                 _GoalActionBanner(
                   kicker: 'ARCHIVED',

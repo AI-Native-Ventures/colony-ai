@@ -256,7 +256,7 @@ abstract final class MobileLayoutTokens {
   static const goalHeroPadding = 22.0;
 
   /// Top inset before the goal detail hero.
-  static const goalDetailTopInset = 7.0;
+  static const goalDetailTopInset = 15.0;
 
   /// Gap between the goal status chip and its title.
   static const goalHeroStatusTitleGap = 14.0;

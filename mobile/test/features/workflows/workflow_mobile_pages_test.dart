@@ -48,6 +48,7 @@ void main() {
           home: WorkflowStepEditorPage(
             channelId: _channelId,
             workflowName: 'Team workflow',
+            communityName: 'Lerato Studio',
             step: step,
             onSave: (_) async {},
           ),
@@ -62,6 +63,77 @@ void main() {
     );
     expect(find.text('Save step'), findsOneWidget);
   });
+
+  testWidgets(
+    'step save failure stays below the hero and keeps typed entries',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final step = WorkflowStepRecord(
+        id: 'step_existing',
+        kind: WorkflowStepKind.agent,
+        title: 'Prepare report',
+        instruction: 'Turn the brief into a first draft.',
+        assigneePubkey: _owner,
+        expectedResult: 'The report is ready.',
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            activeCommunityProvider.overrideWith((ref) async => null),
+            channelMembersProvider.overrideWith(
+              (ref, channelId) async => [
+                ChannelMember(
+                  pubkey: _owner,
+                  role: 'bot',
+                  joinedAt: DateTime.utc(2026, 1, 1),
+                  displayName: 'Workflow agent',
+                ),
+              ],
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: WorkflowStepEditorPage(
+              channelId: _channelId,
+              workflowName: 'Team workflow',
+              communityName: 'Lerato Studio',
+              step: step,
+              onSave: (_) async => throw StateError('offline'),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final fields = find.byType(TextField);
+      await tester.enterText(fields.at(0), 'Revised report');
+      await tester.enterText(fields.at(1), 'Keep the revised instructions.');
+      await tester.ensureVisible(find.text('Save step'));
+      await tester.tap(find.text('Save step'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Your changes were not saved'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Make it clear.')).dy,
+        lessThan(
+          tester.getTopLeft(find.text('Your changes were not saved')).dy,
+        ),
+      );
+      expect(
+        tester.getTopLeft(find.text('Your changes were not saved')).dy,
+        lessThan(tester.getTopLeft(_visibleFieldLabel('Step name')).dy),
+      );
+      expect(
+        tester.widget<TextField>(fields.at(0)).controller!.text,
+        'Revised report',
+      );
+      expect(
+        tester.widget<TextField>(fields.at(1)).controller!.text,
+        'Keep the revised instructions.',
+      );
+    },
+  );
 
   testWidgets('latest run opens its exact matching workflow version', (
     tester,

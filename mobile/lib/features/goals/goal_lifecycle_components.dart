@@ -13,11 +13,11 @@ class _GoalActionBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final tokens = context.mobileTokens;
+    final brightness = Theme.of(context).brightness;
+    final foreground = Batch2MobileVisualTokens.heroForeground(brightness);
     return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: colors.companyWashGradient,
+        gradient: Batch2MobileVisualTokens.heroGradient(brightness),
         borderRadius: BorderRadius.circular(23),
       ),
       child: Padding(
@@ -28,16 +28,24 @@ class _GoalActionBanner extends StatelessWidget {
             Text(
               kicker,
               style: context.mobileTypography.companySection.copyWith(
-                color: tokens.action,
+                color: foreground,
                 fontSize: 10,
                 letterSpacing: 1.3,
               ),
             ),
             const SizedBox(height: 13),
-            Text(title, style: _goalHeroTitleStyle(context)),
+            Text(
+              title,
+              style: _goalHeroTitleStyle(context).copyWith(color: foreground),
+            ),
             if (message != null) ...[
               const SizedBox(height: 9),
-              Text(message!, style: _goalHeroDescriptionStyle(context)),
+              Text(
+                message!,
+                style: _goalHeroDescriptionStyle(
+                  context,
+                ).copyWith(color: foreground),
+              ),
             ],
           ],
         ),
@@ -71,32 +79,35 @@ class _GoalActionRow extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: tokens.soft,
-                  borderRadius: BorderRadius.circular(12),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 78),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: tokens.soft,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, size: 17, color: tokens.action),
                 ),
-                child: Icon(icon, size: 17, color: tokens.action),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: _goalRowTitleStyle(context)),
-                    const SizedBox(height: 2),
-                    Text(subtitle, style: _goalRowDescriptionStyle(context)),
-                  ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: _goalRowTitleStyle(context)),
+                      const SizedBox(height: 2),
+                      Text(subtitle, style: _goalRowDescriptionStyle(context)),
+                    ],
+                  ),
                 ),
-              ),
-              Icon(LucideIcons.chevronRight, size: 16, color: tokens.muted),
-            ],
+                Icon(LucideIcons.chevronRight, size: 16, color: tokens.muted),
+              ],
+            ),
           ),
         ),
       ),
@@ -369,16 +380,26 @@ class _GoalCard extends StatelessWidget {
 }
 
 class _GoalNotice extends StatelessWidget {
-  const _GoalNotice({required this.title, this.message, this.isError = false});
+  const _GoalNotice({
+    required this.title,
+    this.message,
+    this.isError = false,
+    this.isSuccess = false,
+  });
 
   final String title;
   final String? message;
   final bool isError;
+  final bool isSuccess;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
-    final border = isError ? tokens.error : tokens.action;
+    final accent = isError
+        ? Batch2MobileVisualTokens.errorNoticeAccent
+        : isSuccess
+        ? Batch2MobileVisualTokens.successNoticeAccent
+        : Batch2MobileVisualTokens.neutralNoticeAccent;
     return Container(
       decoration: BoxDecoration(
         color: tokens.paper,
@@ -420,7 +441,7 @@ class _GoalNotice extends StatelessWidget {
               left: 0,
               top: 0,
               bottom: 0,
-              child: SizedBox(width: 3, child: ColoredBox(color: border)),
+              child: SizedBox(width: 3, child: ColoredBox(color: accent)),
             ),
           ],
         ),

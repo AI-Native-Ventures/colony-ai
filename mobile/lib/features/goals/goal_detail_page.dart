@@ -22,7 +22,7 @@ import 'goal_sheets.dart';
 import 'goal_lifecycle_pages.dart';
 import 'goal_widgets.dart';
 
-const _goalLifecycleTopInset = 13.0;
+const _goalLifecycleTopInset = 21.0;
 const _goalLifecycleBannerKickerStyle = TextStyle(
   fontFamily: 'Manrope',
   fontSize: 10,

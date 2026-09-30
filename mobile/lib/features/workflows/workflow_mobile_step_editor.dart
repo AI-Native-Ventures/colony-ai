@@ -28,6 +28,7 @@ class WorkflowStepEditorPage extends HookConsumerWidget {
     );
     final completion = useState<String?>(step?.expectedResult);
     final saveFailed = useState(false);
+    final scrollController = useScrollController();
     final saving = useState(false);
     final removing = useState(false);
     final denied = useState(false);
@@ -66,6 +67,13 @@ class WorkflowStepEditorPage extends HookConsumerWidget {
         completion.value!,
     ];
 
+    void showSaveFailure() {
+      saveFailed.value = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (scrollController.hasClients) scrollController.jumpTo(0);
+      });
+    }
+
     Future<void> save() async {
       if (saving.value || removing.value) return;
       final selected = member;
@@ -103,7 +111,7 @@ class WorkflowStepEditorPage extends HookConsumerWidget {
         if (failure is _WorkflowDraftAccessException) {
           denied.value = true;
         } else {
-          saveFailed.value = true;
+          showSaveFailure();
         }
       } finally {
         saving.value = false;
@@ -121,7 +129,7 @@ class WorkflowStepEditorPage extends HookConsumerWidget {
         if (failure is _WorkflowDraftAccessException) {
           denied.value = true;
         } else {
-          saveFailed.value = true;
+          showSaveFailure();
         }
       } finally {
         removing.value = false;
@@ -173,6 +181,7 @@ class WorkflowStepEditorPage extends HookConsumerWidget {
           ),
           Expanded(
             child: ListView(
+              controller: scrollController,
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
               children: [
                 _WorkflowHero(
@@ -181,7 +190,17 @@ class WorkflowStepEditorPage extends HookConsumerWidget {
                   message:
                       'Write the task as you would explain it to a teammate.',
                 ),
-                const SizedBox(height: 16),
+                if (saveFailed.value) ...[
+                  const SizedBox(height: 12),
+                  const _WorkflowNotice(
+                    title: 'Your changes were not saved',
+                    message:
+                        'Everything you typed is kept. Try again when the connection returns.',
+                    kind: _WorkflowNoticeKind.error,
+                  ),
+                  const SizedBox(height: 16),
+                ] else
+                  const SizedBox(height: 16),
                 _workflowFieldLabel(context, 'Step name'),
                 TextField(
                   controller: title,
@@ -267,15 +286,6 @@ class WorkflowStepEditorPage extends HookConsumerWidget {
                     saveFailed.value = false;
                   },
                 ),
-                if (saveFailed.value) ...[
-                  const SizedBox(height: 12),
-                  const _WorkflowNotice(
-                    title: 'Your changes were not saved',
-                    message:
-                        'Everything you typed is kept. Try again when the connection returns.',
-                    kind: _WorkflowNoticeKind.error,
-                  ),
-                ],
                 const SizedBox(height: 20),
                 _WorkflowActionButton(
                   label: 'Save step',
