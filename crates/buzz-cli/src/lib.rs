@@ -3138,6 +3138,7 @@ mod tests {
             "repos",
             "secrets",
             "social",
+            "spend",
             "team",
             "upload",
             "users",
