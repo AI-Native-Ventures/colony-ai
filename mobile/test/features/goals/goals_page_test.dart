@@ -268,8 +268,15 @@ void main() {
 
     expect(reportedErrors, hasLength(1));
     expect(reportedErrors.single.exception, isA<StateError>());
-    expect(find.byKey(const ValueKey('goal-archived-state')), findsOneWidget);
-    expect(find.byKey(const ValueKey('goal-restore')), findsOneWidget);
+    expect(find.text('Could not restore the goal'), findsOneWidget);
+    expect(find.text('Restore goal'), findsOneWidget);
+    expect(find.text('Back to goals'), findsOneWidget);
+
+    await tester.tap(find.text('Restore goal'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Could not restore the goal'), findsOneWidget);
+    expect(find.text('Restore goal'), findsOneWidget);
   });
 
   testWidgets('does not expose restore to a regular member', (tester) async {

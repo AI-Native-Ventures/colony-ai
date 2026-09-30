@@ -286,9 +286,19 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
             goalId: goalId,
             onShareInChat: onShareInChat,
             onOpenDiscussion: onOpenDiscussion,
+            onOpenGoalActions: () => unawaited(
+              Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => GoalActionsPage(goalId: goalId),
+                ),
+              ),
+            ),
           );
         },
       );
+    })
+    .register(MobileBusinessRoutes.workflows, (context, _) {
+      return const WorkflowPickerPage();
     })
     .register(MobileBusinessRoutes.workflowDetail, workflowDetailRoute)
     .register(MobileRoutes.business, (context, routeContext) {
