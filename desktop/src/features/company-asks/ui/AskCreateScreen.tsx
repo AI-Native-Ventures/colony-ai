@@ -177,7 +177,6 @@ export function AskCreateScreen({
     threadRootId: string;
   } | null>(null);
   const [isSending, setIsSending] = React.useState(false);
-
   const {
     roleOptions: hireRoleOptions,
     selectedRole: selectedHireRole,
