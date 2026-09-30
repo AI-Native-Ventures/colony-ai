@@ -170,7 +170,7 @@ class _GoalConfirmationCard extends StatelessWidget {
             if (failure != null) ...[
               const SizedBox(height: 12),
               _GoalNotice(
-                title: 'Could not save this change',
+                title: 'Could not save',
                 message: failure,
                 isError: true,
               ),
@@ -202,8 +202,8 @@ class _GoalEditFieldCard extends StatelessWidget {
     required this.controller,
     required this.buttonLabel,
     required this.isSaving,
-    required this.saved,
     required this.onSave,
+    required this.onChanged,
     this.maxLines = 1,
   });
 
@@ -212,9 +212,9 @@ class _GoalEditFieldCard extends StatelessWidget {
   final TextEditingController controller;
   final String buttonLabel;
   final bool isSaving;
-  final bool saved;
   final int maxLines;
   final VoidCallback onSave;
+  final ValueChanged<String> onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -223,7 +223,7 @@ class _GoalEditFieldCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _GoalFieldTitle(title: title, saved: saved),
+          _GoalFieldTitle(title: title),
           const SizedBox(height: 10),
           Text(
             label,
@@ -236,6 +236,7 @@ class _GoalEditFieldCard extends StatelessWidget {
             controller: controller,
             maxLines: maxLines,
             minLines: maxLines,
+            onChanged: onChanged,
             decoration: _fieldDecoration(context),
           ),
           const SizedBox(height: 12),
@@ -254,14 +255,12 @@ class _GoalEditFieldCard extends StatelessWidget {
 class _GoalStatusFieldCard extends StatelessWidget {
   const _GoalStatusFieldCard({
     required this.status,
-    required this.saved,
     required this.isSaving,
     required this.onChanged,
     required this.onSave,
   });
 
   final GoalStatus status;
-  final bool saved;
   final bool isSaving;
   final ValueChanged<GoalStatus> onChanged;
   final VoidCallback onSave;
@@ -273,7 +272,7 @@ class _GoalStatusFieldCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _GoalFieldTitle(title: 'Status', saved: saved),
+          _GoalFieldTitle(title: 'Status'),
           const SizedBox(height: 10),
           Text(
             'Goal status',
@@ -283,6 +282,7 @@ class _GoalStatusFieldCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           DropdownButtonFormField<GoalStatus>(
+            isExpanded: true,
             key: ValueKey(status),
             initialValue: status,
             decoration: _fieldDecoration(context),
@@ -330,32 +330,22 @@ class _GoalStatusFieldCard extends StatelessWidget {
 }
 
 class _GoalFieldTitle extends StatelessWidget {
-  const _GoalFieldTitle({required this.title, required this.saved});
+  const _GoalFieldTitle({required this.title});
 
   final String title;
-  final bool saved;
 
   @override
   Widget build(BuildContext context) {
-    final tokens = context.mobileTokens;
     return Row(
       children: [
         Expanded(
           child: Text(
             title,
             style: context.mobileTypography.companyEntryTitle.copyWith(
-              color: tokens.ink,
+              color: context.mobileTokens.ink,
             ),
           ),
         ),
-        if (saved)
-          Text(
-            'Saved',
-            style: context.mobileTypography.companyEntryDescription.copyWith(
-              color: tokens.success,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
       ],
     );
   }

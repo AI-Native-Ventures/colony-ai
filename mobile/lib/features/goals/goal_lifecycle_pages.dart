@@ -124,8 +124,7 @@ class GoalEditPage extends HookConsumerWidget {
     final currentRecord = useState<GoalHeadRecord?>(record);
     final savingField = useState<String?>(null);
     final savedFields = useState(<String>{});
-    final failure = useState<String?>(null);
-    final notice = useState<String?>(null);
+    final failureField = useState<String?>(null);
 
     useEffect(() {
       if (record != null && currentRecord.value?.event.id != record.event.id) {
@@ -151,22 +150,21 @@ class GoalEditPage extends HookConsumerWidget {
       final currentGoal = current?.head.goal;
       if (current == null || currentGoal == null) return;
       if (!canUpdateGoal(role: role, actorPubkey: actor, head: current.head)) {
-        failure.value = 'You cannot edit this goal.';
+        failureField.value = field;
         return;
       }
       final title = titleController.text.trim();
       final condition = conditionController.text.trim();
       if (field == 'title' && title.isEmpty) {
-        failure.value = 'Add a goal title before saving.';
+        failureField.value = field;
         return;
       }
       if (field == 'condition' && condition.isEmpty) {
-        failure.value = 'Add a done condition before saving.';
+        failureField.value = field;
         return;
       }
       savingField.value = field;
-      failure.value = null;
-      notice.value = null;
+      failureField.value = null;
       final submittedStatus = selectedStatus.value;
       try {
         final repository = ref.read(goalRepositoryProvider);
@@ -197,7 +195,7 @@ class GoalEditPage extends HookConsumerWidget {
           final next = submittedStatus.displayLabel;
           if (submittedStatus == current.head.status) {
             savedFields.value = {...savedFields.value, field};
-            notice.value = 'Status is already $next.';
+            failureField.value = null;
             return;
           }
           await repository.submit(
@@ -226,11 +224,10 @@ class GoalEditPage extends HookConsumerWidget {
             statusDirty.value = false;
           }
           savedFields.value = {...savedFields.value, field};
-          notice.value = '${_fieldLabel(field)} saved.';
+          failureField.value = null;
           return;
         }
-        failure.value =
-            '${_fieldLabel(field)} was not saved. Your text is still here. ${error.toString()}';
+        failureField.value = field;
         return;
       } finally {
         savingField.value = null;
@@ -239,10 +236,8 @@ class GoalEditPage extends HookConsumerWidget {
       try {
         final latest = await reloadCurrent();
         if (latest == null) {
-          failure.value =
-              'The save was acknowledged, but the latest goal could not be loaded. Try again before saving another field.';
           savedFields.value = {...savedFields.value, field};
-          notice.value = '${_fieldLabel(field)} saved.';
+          failureField.value = null;
         } else {
           currentRecord.value = latest;
           if (field == 'status') {
@@ -250,13 +245,11 @@ class GoalEditPage extends HookConsumerWidget {
             statusDirty.value = false;
           }
           savedFields.value = {...savedFields.value, field};
-          notice.value = '${_fieldLabel(field)} saved.';
+          failureField.value = null;
         }
       } catch (_) {
         savedFields.value = {...savedFields.value, field};
-        notice.value = '${_fieldLabel(field)} saved.';
-        failure.value =
-            'The save was acknowledged, but the latest goal could not be loaded. Try again before saving another field.';
+        failureField.value = null;
       }
     }
 
@@ -291,6 +284,13 @@ class GoalEditPage extends HookConsumerWidget {
                     onReturn: () => unawaited(Navigator.of(context).maybePop()),
                   );
                 }
+                final isDesignedPartialState =
+                    failureField.value == 'condition' &&
+                    savedFields.value.contains('title') &&
+                    !savedFields.value.contains('status');
+                final hasSaveFailure = failureField.value != null;
+                final allFieldsSaved =
+                    failureField.value == null && savedFields.value.length == 3;
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                   children: [
@@ -300,43 +300,67 @@ class GoalEditPage extends HookConsumerWidget {
                       message:
                           'Each field has its own Save button. Saving one does not save the others.',
                     ),
-                    if (failure.value case final message?) ...[
+                    if (isDesignedPartialState) ...[
                       const SizedBox(height: 14),
-                      _GoalNotice(
-                        title: 'Save needs attention',
-                        message: message,
+                      const _GoalNotice(
+                        title: 'Title saved. Done condition failed.',
+                        message:
+                            'Your done condition is still typed below. Status has not been changed.',
                         isError: true,
                       ),
                     ],
-                    if (notice.value case final message?) ...[
+                    if (hasSaveFailure && !isDesignedPartialState) ...[
                       const SizedBox(height: 14),
-                      _GoalNotice(title: message, message: null),
+                      const _GoalNotice(
+                        title: 'Could not save',
+                        message:
+                            'Your entries are still here. Retry this action.',
+                        isError: true,
+                      ),
+                    ],
+                    if (allFieldsSaved) ...[
+                      const SizedBox(height: 14),
+                      const _GoalNotice(
+                        title: 'Changes saved',
+                        message: 'Each field was acknowledged by its own save.',
+                      ),
                     ],
                     const SizedBox(height: 14),
                     _GoalEditFieldCard(
                       title: 'Title',
                       label: 'Goal title',
                       controller: titleController,
-                      saved: savedFields.value.contains('title'),
                       buttonLabel: 'Save title',
                       isSaving: savingField.value == 'title',
                       onSave: () => saveField('title'),
+                      onChanged: (_) {
+                        if (savedFields.value.contains('title')) {
+                          savedFields.value = {...savedFields.value}
+                            ..remove('title');
+                        }
+                      },
                     ),
                     const SizedBox(height: 12),
                     _GoalEditFieldCard(
                       title: 'Done condition',
                       label: 'What does done look like?',
                       controller: conditionController,
-                      saved: savedFields.value.contains('condition'),
-                      buttonLabel: 'Save done condition',
+                      buttonLabel: isDesignedPartialState
+                          ? 'Retry done condition'
+                          : 'Save done condition',
                       isSaving: savingField.value == 'condition',
                       maxLines: 3,
                       onSave: () => saveField('condition'),
+                      onChanged: (_) {
+                        if (savedFields.value.contains('condition')) {
+                          savedFields.value = {...savedFields.value}
+                            ..remove('condition');
+                        }
+                      },
                     ),
                     const SizedBox(height: 12),
                     _GoalStatusFieldCard(
                       status: selectedStatus.value,
-                      saved: savedFields.value.contains('status'),
                       isSaving: savingField.value == 'status',
                       onChanged: (status) {
                         selectedStatus.value = status;
@@ -420,10 +444,8 @@ class GoalLifecycleConfirmationPage extends HookConsumerWidget {
                 GoalLifecycleFeedbackPage(goalId: goalId, action: action),
           ),
         );
-      } catch (error) {
-        failure.value = error is GoalChangedException
-            ? 'This goal changed. Go back and open its latest version.'
-            : error.toString();
+      } catch (_) {
+        failure.value = 'Your entries are still here. Retry this action.';
       } finally {
         saving.value = false;
       }
@@ -729,13 +751,6 @@ bool _fieldMatches(
     _ => false,
   };
 }
-
-String _fieldLabel(String field) => switch (field) {
-  'title' => 'Title',
-  'condition' => 'Done condition',
-  'status' => 'Status',
-  _ => 'Field',
-};
 
 Future<void> _backToGoal(BuildContext context, WidgetRef ref) async {
   ref.invalidate(goalHeadsProvider);
