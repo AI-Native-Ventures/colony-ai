@@ -73,7 +73,7 @@ function accessReason(input: {
   const { head, channelMember, isAgent, pubkey, communityRole } = input;
   if (head.ask.category !== "general") {
     if (isAgent)
-      return "Agents cannot decide spending, hires, tools or secrets";
+      return "Agents cannot decide spending, hires, tools, secrets or duties";
     if (communityRole !== "owner" && communityRole !== "admin") {
       return "Only company owners and admins can decide this";
     }
