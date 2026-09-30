@@ -1,16 +1,89 @@
 import { defineConfig, devices } from "@playwright/test";
+import { realpathSync } from "node:fs";
+import { isAbsolute, relative, resolve, sep } from "node:path";
+
+const canaryEnabled = process.env.BUZZ_E2E_CANARY === "1";
+const canaryAccountFile = process.env.BUZZ_E2E_CANARY_ACCOUNT_FILE;
+const canaryArtifactDir = process.env.BUZZ_E2E_CANARY_ARTIFACT_DIR;
+const appPort = canaryEnabled ? 4174 : 4173;
+
+function assertOutsideRepository(path: string, label: string) {
+  const repositoryRoot = realpathSync(resolve(process.cwd(), ".."));
+  const actualPath = realpathSync(path);
+  const relativePath = relative(repositoryRoot, actualPath);
+  if (
+    !relativePath ||
+    (relativePath !== ".." && !relativePath.startsWith(`..${sep}`))
+  ) {
+    throw new Error(`${label} must be outside the repository.`);
+  }
+}
+
+if (canaryEnabled) {
+  if (process.env.CI) {
+    throw new Error("The canary Playwright project is local-only.");
+  }
+  if (!canaryAccountFile || !canaryArtifactDir) {
+    throw new Error(
+      "The canary project requires its account file and artifact directory environment variables.",
+    );
+  }
+  if (!isAbsolute(canaryAccountFile) || !isAbsolute(canaryArtifactDir)) {
+    throw new Error("Canary account and artifact paths must be absolute.");
+  }
+  const canaryAccountRoot = realpathSync(
+    resolve(process.env.HOME ?? "", ".colony-canary"),
+  );
+  const accountRelativePath = relative(
+    canaryAccountRoot,
+    realpathSync(canaryAccountFile),
+  );
+  if (
+    !accountRelativePath ||
+    accountRelativePath === ".." ||
+    accountRelativePath.startsWith(`..${sep}`)
+  ) {
+    throw new Error("The canary account file must be inside ~/.colony-canary.");
+  }
+  assertOutsideRepository(canaryAccountFile, "The canary account file");
+  assertOutsideRepository(canaryArtifactDir, "The canary artifact directory");
+}
+
+const canaryProjects = canaryEnabled
+  ? [
+      {
+        name: "canary",
+        testMatch: "**/company-canary.canary.spec.ts",
+        retries: 0,
+        use: {
+          ...devices["Desktop Chrome"],
+          viewport: { width: 1440, height: 900 },
+          screenshot: "off" as const,
+          trace: "off" as const,
+          video: "off" as const,
+        },
+      },
+    ]
+  : [];
 
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 30_000,
+  expect: { timeout: canaryEnabled ? 30_000 : 5_000 },
   retries: process.env.CI ? 2 : 0,
   workers: 1,
-  reporter: [
-    ["list"],
-    ["html", { open: "never", outputFolder: "playwright-report" }],
-  ],
+  outputDir:
+    canaryEnabled && canaryArtifactDir
+      ? resolve(canaryArtifactDir, "playwright-results")
+      : "test-results",
+  reporter: canaryEnabled
+    ? [["list"]]
+    : [
+        ["list"],
+        ["html", { open: "never", outputFolder: "playwright-report" }],
+      ],
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL: `http://127.0.0.1:${appPort}`,
     screenshot: "only-on-failure",
     trace: "on-first-retry",
     video: "retain-on-failure",
@@ -241,11 +314,12 @@ export default defineConfig({
         timeout: process.env.CI ? 15_000 : 10_000,
       },
     },
+    ...canaryProjects,
   ],
   webServer: {
-    command: "python3 -m http.server 4173 -d dist",
+    command: `python3 -m http.server ${appPort} -d dist`,
     cwd: ".",
     reuseExistingServer: !process.env.CI,
-    url: "http://127.0.0.1:4173",
+    url: `http://127.0.0.1:${appPort}`,
   },
 });

@@ -201,6 +201,20 @@ END $$;
 -- post-0029 conversion claim table. Attach it after desired-state DDL and fail
 -- bootstrap if the live catalog does not contain the guard.
 SELECT attach_community_write_fence('business_proposal_conversion_claims');
+SELECT attach_community_write_fence('company_work_watchdog_deliveries');
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgrelid = 'company_work_watchdog_deliveries'::regclass
+          AND tgname = 'community_write_fence_company_work_watchdog_deliveries'
+          AND NOT tgisinternal
+    ) THEN
+        RAISE EXCEPTION 'company_work_watchdog_deliveries must have its community write fence after pgschema apply';
+    END IF;
+END $$;
 
 DO $$
 BEGIN

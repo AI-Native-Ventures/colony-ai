@@ -2,8 +2,8 @@
 
 Status: company layer batches 1, 2, and 3 contract (Asks, Goals, Company Work,
 and member positions), PERM-1 standing tool permissions, secret bindings,
-FACTORY-1 Factory run preview and pull request records, and HIRE-1 employee
-hiring.
+FACTORY-1 Factory run preview and pull request records, HIRE-1 employee hiring,
+and WORK-2 company work tracking APIs.
 Schema version: `1`. Goals, asks, work, permissions, and member positions
 follow design baseline
 `docs/superpowers/plans/2026-09-24-phase-2-handoff/20260927-company-v7/`
@@ -40,6 +40,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30649 | Factory run preview and pull request head | Relay signed, replaceable | Software Factory |
 | 30650 | Hire head | Relay signed, replaceable | Company hiring |
 | 30651 | Employee configuration revision head | Relay signed, replaceable | Company team |
+| 30652 | Company work tracking head | Relay signed, replaceable | Company work |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
@@ -50,6 +51,7 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47038 | Factory run preview and pull request action | Brokered | Software Factory |
 | 47039 | Hire action | Brokered | Company hiring |
 | 47040 | Employee configuration revision action | Brokered, append only | Company team |
+| 47041 | Company work tracking action | Brokered | Company work |
 
 The Factory run record contract is in
 [`factory-run-records.md`](factory-run-records.md). It extends the company
@@ -646,8 +648,15 @@ The company work head contains the shared work item fields `schemaVersion`,
 `workItemId`, `title`, `status`, `assignedPubkeys`, `approverPubkeys`, and
 `deliverables`, plus `requesterPubkey`, `doneCondition`, optional `goalId`,
 `sourceEventId`, optional `threadRootEventId`, `evidence`, and
-`sourceActionEventId`. `sourceEventId` is the original message when the item is
-created from a conversation. When the item is created from the approved
+`sourceActionEventId`, optional `acceptedAt`, and optional `dueAt`.
+`acceptedAt` is set by the relay when a new work item is accepted. `dueAt` is an
+RFC 3339 UTC timestamp ending in `Z`. If supplied at creation it must be later
+than `acceptedAt`. A later due-date change must also be later than the
+immutable `acceptedAt`; it may be in the past relative to the change, so an
+overdue date can be recorded honestly. Existing heads without `acceptedAt`
+remain valid and receive format validation when a due date is set.
+`sourceEventId` is the original message when the item is created from a
+conversation. When the item is created from the approved
 standalone Work form, `sourceEventId` and `threadRootEventId` are absent because
 that form selects a conversation but has no source-message or thread picker.
 If a chat message is the source, both values are required and the relay checks
@@ -695,30 +704,93 @@ every action except create. The relay stores the member action and emits the
 relay-signed kind 30634 head in one transaction. Client work validation and
 W11 behavior remain unchanged.
 
-### Work tracking API boundary
+Due dates use the existing company work head and action kinds. A create may
+include `dueAt`. Later edits use the exact-head `set_due_date` or
+`clear_due_date` action, each stored as kind 47006 and attributed to its
+signing member and event time. Generic work edits preserve the current due date
+so older clients cannot clear it by omitting a field. The timeline derives
+"Due date set", "Due date changed", and "Due date cleared" from this action
+history. Due dates do not change work status.
+The frozen Work create and edit forms do not show a due-date input, so this
+slice keeps date changes on the agent-first CLI and displays saved dates in the
+existing work context and timeline.
 
-The desktop timeline is a projection of signed kind 47006 actions and current
-kind 30634 heads. It may show only fields carried by those records. The work
-head has no due date, and the action stream has no attachment, detected
-commitment, watchdog check-in, or automatic verdict event.
+### Work tracking records, kinds 30652 and 47041
 
-Auto-detected commitments require an authoritative, persisted suggestion
-source that identifies its source message and proposed work fields. The person
-must explicitly accept a suggestion before the client creates a work item.
-There is no suggestion record or acceptance action in the current contract.
-Until one is specified and brokered, clients must not infer suggestions from
-message text or show a `Track this?` action for an ordinary message.
+Kind 30652 is the relay-signed replaceable head for either a persisted
+commitment suggestion or a watchdog configuration. Its typed content includes
+`recordType`, and the coordinate distinguishes the records:
 
-The watchdog requires a company-scoped settings record, explicit opt-in,
-owner-entered timing with no preset interval, and a scheduler that can deliver
-check-ins with durable retry and cancellation. No such settings or scheduler
-API exists yet. It remains off; clients must not claim that settings were saved
-or that a check-in was scheduled.
+- Suggestions use `company:work-suggestion:<suggestion-uuid>` and the `h` tag
+  of the source message's channel.
+- Watchdog configurations use `company:work-watchdog:<work-item-uuid>` and the
+  `h` tag of the work item's current channel. The community derived from the
+  relay host is the business boundary. The configuration belongs to that
+  business and work item, never to a user's local preferences.
+
+Kind 47041 stores member-signed propose, accept, dismiss, expire, configure,
+and disable actions. Actions carry the same `h` and `d` coordinates as their head.
+Mutations name the exact current head event id, except initial creation. Relay
+authorization and head replacement are checked and committed in one database
+transaction.
+
+A commitment suggestion is an explicit proposal by a channel member or a
+managed agent. It stores the source message id, the proposed company work
+fields, proposer pubkey, status, and source action id. The relay verifies that
+the source event and thread root exist in the same community and channel, and
+that the proposed requester and owner are channel members. Managed-agent
+identity comes from the authorization-grade account record, never a client tag.
+No relay or client text heuristic creates a suggestion or work item.
+
+Only a human community owner or admin, or a human member of the source channel,
+may accept a proposed suggestion. Acceptance names a new work-item UUID and
+uses the existing company work create validation and identity rules. In one
+transaction, the relay stores the kind 47041 accept action, advances the
+suggestion head to `accepted`, and writes the relay-signed kind 30634 work
+head. The new work head points to the original source message and uses the
+accept action as `sourceActionEventId`. The work timeline includes that accept
+action with its real signer and timestamp. Dismissal and expiry are explicit
+exact-head actions. If `expiresAt` is present, the relay rejects expiry before
+that time. Expiry is never inferred from message text or silently applied by a
+client.
+
+Watchdog configuration is absent and therefore OFF until explicitly saved.
+Enabling it requires an explicit positive check-in interval in the action;
+there is no selected interval, code default, documentation default, or
+production fixture interval. Test configurations supply their chosen interval
+in the test itself. The configuration records the selected recipients and any
+explicit escalation interval. The work item owner, requester, or a community
+owner or admin may configure it, subject to the existing channel membership
+and work authority rules.
+
+The watchdog worker uses a durable database schedule and delivery journal. It
+posts check-ins as ordinary messages in the work item's current thread. A
+check-in never changes the work status and never retries a failed work action.
+Disabling the watchdog, archiving or completing the work, or moving the work
+cancels or updates pending deliveries transactionally. Delivery retries have
+bounded attempts and backoff; exhausted rows remain in a terminal failure
+state with the last error for recovery. The worker receives a clock dependency
+so scheduling, retry, and cancellation behavior can be tested without sleeps.
+
+### Work tracking availability boundary
+
+The desktop timeline is a projection of signed kind 47006 actions, kind 47041
+suggestion acceptance actions, current kind 30634 heads, and verified thread
+messages. It may show only fields carried by those records. Suggestions are
+shown only when a validated persisted suggestion exists for that source
+message. An ordinary message alone never receives a `Track this` affordance.
+The timeline does not synthesize attachments, review requests, automatic
+verdicts, or watchdog events. A watchdog check-in appears as its actual message
+in the thread; its durable delivery state is read from the watchdog record and
+delivery journal.
+
 
 ## Proof boundaries
 
 Kind registration and typed content live in `buzz-core`; relay, SDK, CLI, and
 desktop implementation each have their own proof gates. Relay integration
-tests cover authority, exact-head races, and lifecycle side effects. Desktop
-E2E covers the list, org chart, lifecycle screens, reload, and community
-switching, with visual comparison against the approved baseline routes.
+tests cover authority, exact-head races, due-date lifecycle, suggestion
+acceptance atomicity, and watchdog retry and cancellation using an injected
+clock. Desktop E2E covers suggestion acceptance, watchdog saved and failed
+states, timeline activity, reload, and community switching, with visual
+comparison against the approved baseline routes.

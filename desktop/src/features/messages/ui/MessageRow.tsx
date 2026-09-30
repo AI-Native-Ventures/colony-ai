@@ -68,6 +68,7 @@ import { SentFromThreadLine } from "./SentFromThreadLine";
 import { WaveMessageAttachment } from "./WaveMessageAttachment";
 import { WorkItemReferenceCard } from "@/features/clients/ui/WorkItemReferenceCard";
 import { CompanyWorkMessageProvider } from "@/features/company-work/companyWorkMessageContext";
+import { CompanyWorkSuggestionMessageCard } from "@/features/company-work/ui/CompanyWorkSuggestionMessageCard";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useMessageAgentAddressPrefix } from "./MessageAgentAddressPrefix";
 const DiffMessage = React.lazy(() => import("./DiffMessage"));
@@ -765,6 +766,7 @@ export const MessageRow = React.memo(
             }}
           >
             {renderBody()}
+            <CompanyWorkSuggestionMessageCard />
           </CompanyWorkMessageProvider>
         ) : (
           renderBody()

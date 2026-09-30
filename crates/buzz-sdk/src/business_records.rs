@@ -329,6 +329,7 @@ mod tests {
             status: None,
             reason: None,
             verification: None,
+            due_at: None,
         };
 
         assert!(build_company_work_item_action(Uuid::from_u128(7), &action).is_err());
@@ -357,10 +358,12 @@ mod tests {
                 source_event_id: None,
                 thread_root_event_id: None,
                 evidence: None,
+                due_at: None,
             }),
             status: None,
             reason: None,
             verification: None,
+            due_at: None,
         };
         let event = build_company_work_item_action(channel_id, &action)
             .expect("builder")

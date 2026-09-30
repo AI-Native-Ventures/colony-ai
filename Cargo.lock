@@ -1444,6 +1444,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "buzz-core",
+ "buzz-db",
  "buzz-media",
  "buzz-sdk",
  "buzz-ws-client",

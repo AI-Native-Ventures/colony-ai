@@ -4,6 +4,7 @@ import { finalizeEvent, getPublicKey } from "nostr-tools/pure";
 
 import {
   companyWorkDTag,
+  parseCompanyWorkActionEvent,
   parseCompanyWorkHeadEvent,
 } from "./companyWorkModels.ts";
 import {
@@ -17,6 +18,11 @@ import {
   parseCompanyWorkThreadRoots,
 } from "./companyWorkMove.ts";
 import { projectCompanyWorkTimeline } from "./companyWorkTimeline.ts";
+import {
+  companyWorkSuggestionDTag,
+  parseCompanyWorkSuggestionAcceptanceEvent,
+  parseCompanyWorkTrackingHeadEvent,
+} from "./companyWorkTrackingModels.ts";
 
 const RELAY_SECRET = new Uint8Array(32).fill(4);
 const OTHER_SECRET = new Uint8Array(32).fill(5);
@@ -29,6 +35,8 @@ function signedHead({
   status = "active",
   assignedPubkeys = ["a".repeat(64)],
   goalId,
+  acceptedAt,
+  dueAt,
   tags = [
     ["h", CHANNEL_ID],
     ["d", companyWorkDTag(workItemId)],
@@ -47,6 +55,8 @@ function signedHead({
     requesterPubkey: "b".repeat(64),
     doneCondition: "Every launch task has an owner",
     ...(goalId ? { goalId } : {}),
+    ...(acceptedAt ? { acceptedAt } : {}),
+    ...(dueAt ? { dueAt } : {}),
     sourceActionEventId: "c".repeat(64),
   };
   return finalizeEvent(
@@ -135,6 +145,75 @@ test("company work head parsing accepts a moved standalone item", () => {
   assert.equal(
     parseCompanyWorkHeadEvent(event, RELAY_PUBKEY)?.head.threadRootEventId,
     "d".repeat(64),
+  );
+});
+
+test("company work due dates require UTC RFC 3339 and follow acceptance", () => {
+  const parsed = parseCompanyWorkHeadEvent(
+    signedHead({
+      acceptedAt: "2026-10-01T09:00:00Z",
+      dueAt: "2026-10-08T09:00:00Z",
+    }),
+    RELAY_PUBKEY,
+  );
+  assert.equal(parsed?.head.dueAt, "2026-10-08T09:00:00Z");
+  assert.equal(
+    parseCompanyWorkHeadEvent(
+      signedHead({
+        acceptedAt: "2026-10-01T09:00:00Z",
+        dueAt: "2026-10-08T09:00:00+00:00",
+      }),
+      RELAY_PUBKEY,
+    ),
+    null,
+  );
+  assert.equal(
+    parseCompanyWorkHeadEvent(
+      signedHead({
+        acceptedAt: "2026-10-01T09:00:00Z",
+        dueAt: "2026-10-01T09:00:00Z",
+      }),
+      RELAY_PUBKEY,
+    ),
+    null,
+  );
+});
+
+test("company work due-date action parsing rejects invalid timestamps", () => {
+  const actionEvent = (dueAt) =>
+    finalizeEvent(
+      {
+        kind: 47006,
+        created_at: 1_790_000_000,
+        tags: [
+          ["h", CHANNEL_ID],
+          ["d", companyWorkDTag(WORK_ID)],
+        ],
+        content: JSON.stringify({
+          schemaVersion: 1,
+          workItemId: WORK_ID,
+          action: "set_due_date",
+          expectedHeadEventId: "d".repeat(64),
+          dueAt,
+        }),
+      },
+      OTHER_SECRET,
+    );
+  assert.equal(
+    parseCompanyWorkActionEvent(
+      actionEvent("2026-10-08T09:00:00Z"),
+      CHANNEL_ID,
+      WORK_ID,
+    )?.action.dueAt,
+    "2026-10-08T09:00:00Z",
+  );
+  assert.equal(
+    parseCompanyWorkActionEvent(
+      actionEvent("2026-10-08T09:00:00+00:00"),
+      CHANNEL_ID,
+      WORK_ID,
+    ),
+    null,
   );
 });
 
@@ -381,4 +460,143 @@ test("work activity comes from signed actions and labels thread moves", () => {
   assert.equal(timeline[2].reason, "Add the missing source.");
   assert.equal(timeline[2].evidence, "The source link is not attached.");
   assert.deepEqual(projectCompanyWorkTimeline([]), []);
+});
+
+test("work due date history distinguishes set, change, and clear", () => {
+  const history = [
+    {
+      event: { id: "d", created_at: 4, pubkey: "a".repeat(64) },
+      channelId: CHANNEL_ID,
+      action: { action: "clear_due_date" },
+    },
+    {
+      event: { id: "c", created_at: 3, pubkey: "a".repeat(64) },
+      channelId: CHANNEL_ID,
+      action: { action: "set_due_date", dueAt: "2026-10-10T12:00:00Z" },
+    },
+    {
+      event: { id: "b", created_at: 2, pubkey: "a".repeat(64) },
+      channelId: CHANNEL_ID,
+      action: { action: "set_due_date", dueAt: "2026-10-09T12:00:00Z" },
+    },
+    {
+      event: { id: "a", created_at: 1, pubkey: "a".repeat(64) },
+      channelId: CHANNEL_ID,
+      action: { action: "create", head: {} },
+    },
+  ];
+  assert.deepEqual(
+    projectCompanyWorkTimeline(history).map((entry) => entry.label),
+    [
+      "cleared the due date.",
+      "changed the due date.",
+      "set a due date.",
+      "created this commitment.",
+    ],
+  );
+});
+
+test("commitment suggestions require a signed source-linked tracking head", () => {
+  const suggestionId = "123e4567-e89b-12d3-a456-426614174012";
+  const sourceEventId = "d".repeat(64);
+  const head = {
+    recordType: "commitment_suggestion",
+    schemaVersion: 1,
+    suggestionId,
+    sourceEventId,
+    sourceChannelId: CHANNEL_ID,
+    proposedByPubkey: getPublicKey(OTHER_SECRET),
+    workItem: {
+      schemaVersion: 1,
+      workItemId: WORK_ID,
+      title: "Prepare the launch checklist",
+      status: "active",
+      assignedPubkeys: ["a".repeat(64)],
+      approverPubkeys: [],
+      deliverables: [],
+      requesterPubkey: "b".repeat(64),
+      doneCondition: "Every launch task has an owner",
+      sourceEventId,
+      threadRootEventId: sourceEventId,
+    },
+    status: "pending",
+    sourceActionEventId: "c".repeat(64),
+  };
+  const event = finalizeEvent(
+    {
+      kind: 30652,
+      created_at: 1_790_000_000,
+      tags: [
+        ["h", CHANNEL_ID],
+        ["d", companyWorkSuggestionDTag(suggestionId)],
+      ],
+      content: JSON.stringify(head),
+    },
+    RELAY_SECRET,
+  );
+  assert.equal(
+    parseCompanyWorkTrackingHeadEvent(event, RELAY_PUBKEY)?.head.recordType,
+    "commitment_suggestion",
+  );
+  assert.equal(
+    parseCompanyWorkTrackingHeadEvent(event, getPublicKey(OTHER_SECRET)),
+    null,
+  );
+
+  const mismatchedSource = finalizeEvent(
+    {
+      kind: 30652,
+      created_at: 1_790_000_001,
+      tags: event.tags,
+      content: JSON.stringify({
+        ...head,
+        workItem: { ...head.workItem, sourceEventId: "e".repeat(64) },
+      }),
+    },
+    RELAY_SECRET,
+  );
+  assert.equal(
+    parseCompanyWorkTrackingHeadEvent(mismatchedSource, RELAY_PUBKEY),
+    null,
+  );
+});
+
+test("suggestion acceptance is attributed to its action event in the timeline", () => {
+  const suggestionId = "123e4567-e89b-12d3-a456-426614174012";
+  const acceptance = finalizeEvent(
+    {
+      kind: 47041,
+      created_at: 1_790_000_002,
+      tags: [
+        ["h", CHANNEL_ID],
+        ["d", companyWorkSuggestionDTag(suggestionId)],
+      ],
+      content: JSON.stringify({
+        schemaVersion: 1,
+        action: "accept",
+        recordId: suggestionId,
+        expectedHeadEventId: "d".repeat(64),
+        acceptedWorkItemId: WORK_ID,
+      }),
+    },
+    OTHER_SECRET,
+  );
+  const parsed = parseCompanyWorkSuggestionAcceptanceEvent(
+    acceptance,
+    CHANNEL_ID,
+    WORK_ID,
+  );
+  assert.equal(parsed?.action.acceptedWorkItemId, WORK_ID);
+  assert.deepEqual(
+    projectCompanyWorkTimeline([parsed]).map((entry) => entry.label),
+    ["accepted a commitment suggestion."],
+  );
+  assert.equal(
+    parseCompanyWorkSuggestionAcceptanceEvent(
+      acceptance,
+      CHANNEL_ID,
+      "123e4567-e89b-12d3-a456-426614174013",
+    ),
+    null,
+  );
 });

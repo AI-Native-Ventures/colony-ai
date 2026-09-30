@@ -16,14 +16,15 @@ use buzz_core::business_records::{
     invoice_total_minor, invoice_version_d_tag, is_iso_currency_code, money_adjustment_d_tag,
     money_follow_up_d_tag, parse_business_command, payment_d_tag, proposal_version_d_tag,
     prospect_d_tag, validate_business_command_scope, validate_company_work_d_tag,
-    validate_company_work_item_action, validate_hex_reference, BusinessCommand, ClientAction,
-    ClientHead, CompanyWorkItemAction, CompanyWorkItemActionKind, CompanyWorkItemHead,
-    CompanyWorkStatus, CompanyWorkVerification, DeliverablePointer, DeliverableVersion,
-    InvoiceHead, InvoiceStatus, InvoiceVersion, InvoiceVersionAction, MoneyAdjustment,
-    MoneyAdjustmentType, MoneyFollowUpAction, MoneyFollowUpActionKind, MoneyFollowUpHead,
-    MoneyFollowUpStatus, PartyAction, PartyHead, PaymentEvidence, ProposalAcceptance, ProposalHead,
-    ProposalVersion, ProspectAction, ProspectActivity, ProspectHead, ProspectStage, RecordAction,
-    ServiceAction, ServiceHead, WorkItemAction, WorkItemHead, BUSINESS_RECORD_SCHEMA_VERSION,
+    validate_company_work_item_action, validate_hex_reference, validate_utc_rfc3339,
+    BusinessCommand, ClientAction, ClientHead, CompanyWorkItemAction, CompanyWorkItemActionKind,
+    CompanyWorkItemHead, CompanyWorkStatus, CompanyWorkVerification, DeliverablePointer,
+    DeliverableVersion, InvoiceHead, InvoiceStatus, InvoiceVersion, InvoiceVersionAction,
+    MoneyAdjustment, MoneyAdjustmentType, MoneyFollowUpAction, MoneyFollowUpActionKind,
+    MoneyFollowUpHead, MoneyFollowUpStatus, PartyAction, PartyHead, PaymentEvidence,
+    ProposalAcceptance, ProposalHead, ProposalVersion, ProspectAction, ProspectActivity,
+    ProspectHead, ProspectStage, RecordAction, ServiceAction, ServiceHead, WorkItemAction,
+    WorkItemHead, BUSINESS_RECORD_SCHEMA_VERSION,
 };
 use buzz_core::company_records::{goal_d_tag, GoalHead, GoalStatus};
 use buzz_core::kind::*;
@@ -119,6 +120,9 @@ pub async fn handle(
     event: Event,
     auth: IngestAuth,
 ) -> Result<IngestResult, IngestError> {
+    if event.kind.as_u16() as u32 == KIND_COMPANY_WORK_TRACKING_ACTION {
+        return super::company_work_tracking::handle(tenant, state, event, auth).await;
+    }
     let (channel_id, d_tag) = command_coordinates(&event)?;
     let kind = event.kind.as_u16() as u32;
     let command = parse_business_command(kind, &event.content)
@@ -1500,7 +1504,10 @@ fn initializes_business_channel(command: &BusinessCommand) -> bool {
     )
 }
 
-fn require_token_channel_scope(auth: &IngestAuth, channel_id: Uuid) -> Result<(), IngestError> {
+pub(super) fn require_token_channel_scope(
+    auth: &IngestAuth,
+    channel_id: Uuid,
+) -> Result<(), IngestError> {
     if auth
         .channel_ids()
         .is_some_and(|channel_ids| !channel_ids.contains(&channel_id))
@@ -2382,7 +2389,7 @@ async fn get_private_stream_channel(
     Ok(channel)
 }
 
-async fn get_company_work_stream_channel(
+pub(super) async fn get_company_work_stream_channel(
     state: &AppState,
     community_id: CommunityId,
     channel_id: Uuid,
@@ -2404,7 +2411,7 @@ async fn get_company_work_stream_channel(
     Ok(channel)
 }
 
-fn command_coordinates(event: &Event) -> Result<(Uuid, String), IngestError> {
+pub(super) fn command_coordinates(event: &Event) -> Result<(Uuid, String), IngestError> {
     let h_tags = event
         .tags
         .iter()
@@ -2432,7 +2439,7 @@ fn command_coordinates(event: &Event) -> Result<(Uuid, String), IngestError> {
     Ok((channel_id, d_parts[1].to_string()))
 }
 
-async fn current_head<T: DeserializeOwned>(
+pub(super) async fn current_head<T: DeserializeOwned>(
     state: &AppState,
     community_id: CommunityId,
     kind: u32,
@@ -2598,7 +2605,7 @@ fn relay_event<T: Serialize>(
     )
 }
 
-fn relay_head_event<T: Serialize>(
+pub(super) fn relay_head_event<T: Serialize>(
     kind: u32,
     channel_id: Uuid,
     d_tag: &str,
@@ -3019,6 +3026,10 @@ async fn handle_company_work_item_action(
                 true,
             )
             .await?;
+            let accepted_at = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+            if let Some(due_at) = input.due_at.as_deref() {
+                validate_work_due_after_acceptance(due_at, Some(&accepted_at))?;
+            }
             CompanyWorkItemHead {
                 schema_version: input.schema_version,
                 work_item_id: input.work_item_id,
@@ -3036,6 +3047,8 @@ async fn handle_company_work_item_action(
                 status_reason: None,
                 verification: None,
                 source_action_event_id: event.id.to_hex(),
+                accepted_at: Some(accepted_at),
+                due_at: input.due_at,
             }
         }
         CompanyWorkItemActionKind::Update => {
@@ -3068,6 +3081,12 @@ async fn handle_company_work_item_action(
                 tx.rollback().await.map_err(internal)?;
                 return Err(invalid(
                     "company work actions cannot change deliverable version pointers",
+                ));
+            }
+            if input.due_at.is_some() && input.due_at != previous.due_at {
+                tx.rollback().await.map_err(internal)?;
+                return Err(invalid(
+                    "due dates must use the explicit set_due_date or clear_due_date action",
                 ));
             }
             if input.source_event_id != previous.source_event_id {
@@ -3133,6 +3152,8 @@ async fn handle_company_work_item_action(
                 status_reason: previous.status_reason.clone(),
                 verification: previous.verification.clone(),
                 source_action_event_id: event.id.to_hex(),
+                accepted_at: previous.accepted_at.clone(),
+                due_at: previous.due_at.clone(),
             }
         }
         CompanyWorkItemActionKind::SetStatus => {
@@ -3251,6 +3272,67 @@ async fn handle_company_work_item_action(
             next.source_action_event_id = event.id.to_hex();
             next
         }
+        CompanyWorkItemActionKind::SetDueDate => {
+            let previous = previous
+                .as_ref()
+                .ok_or_else(|| conflict("company work item does not exist"))?;
+            if previous.status == CompanyWorkStatus::Archived {
+                tx.rollback().await.map_err(internal)?;
+                return Err(conflict("archived company work items are read-only"));
+            }
+            let is_owner = previous
+                .assigned_pubkeys
+                .iter()
+                .any(|pubkey| pubkey == &actor_pubkey);
+            let is_requester = previous.requester_pubkey == actor_pubkey;
+            if !is_owner && !is_requester && !actor_is_community_admin {
+                tx.rollback().await.map_err(internal)?;
+                return Err(forbidden(
+                    "only the work owner, requester, or a community owner or admin can edit this item",
+                ));
+            }
+            let due_at = action
+                .due_at
+                .as_deref()
+                .ok_or_else(|| invalid("dueAt is required"))?;
+            validate_work_due_after_acceptance(due_at, previous.accepted_at.as_deref())?;
+            if previous.due_at.as_deref() == Some(due_at) {
+                tx.rollback().await.map_err(internal)?;
+                return Err(conflict("company work item already has this due date"));
+            }
+            let mut next = previous.clone();
+            next.due_at = Some(due_at.to_owned());
+            next.source_action_event_id = event.id.to_hex();
+            next
+        }
+        CompanyWorkItemActionKind::ClearDueDate => {
+            let previous = previous
+                .as_ref()
+                .ok_or_else(|| conflict("company work item does not exist"))?;
+            if previous.status == CompanyWorkStatus::Archived {
+                tx.rollback().await.map_err(internal)?;
+                return Err(conflict("archived company work items are read-only"));
+            }
+            let is_owner = previous
+                .assigned_pubkeys
+                .iter()
+                .any(|pubkey| pubkey == &actor_pubkey);
+            let is_requester = previous.requester_pubkey == actor_pubkey;
+            if !is_owner && !is_requester && !actor_is_community_admin {
+                tx.rollback().await.map_err(internal)?;
+                return Err(forbidden(
+                    "only the work owner, requester, or a community owner or admin can edit this item",
+                ));
+            }
+            if previous.due_at.is_none() {
+                tx.rollback().await.map_err(internal)?;
+                return Err(conflict("company work item has no due date to clear"));
+            }
+            let mut next = previous.clone();
+            next.due_at = None;
+            next.source_action_event_id = event.id.to_hex();
+            next
+        }
     };
 
     let next_event = relay_head_event(
@@ -3314,6 +3396,23 @@ async fn handle_company_work_item_action(
             ));
         }
     }
+    let watchdog_head = if previous.as_ref().is_some_and(|previous| {
+        previous.status != next_head.status
+            || previous.thread_root_event_id != next_head.thread_root_event_id
+            || next_channel_id != channel_id
+    }) {
+        super::company_work_tracking::sync_watchdog_for_work_change(
+            &mut tx,
+            community_id,
+            channel_id,
+            next_channel_id,
+            &next_head,
+            state,
+        )
+        .await?
+    } else {
+        None
+    };
     tx.commit().await.map_err(internal)?;
 
     super::event::dispatch_persistent_event(
@@ -3325,6 +3424,17 @@ async fn handle_company_work_item_action(
         None,
     )
     .await;
+    if let Some(watchdog_head) = watchdog_head.as_ref() {
+        super::event::dispatch_persistent_event(
+            tenant,
+            state,
+            watchdog_head,
+            KIND_COMPANY_WORK_TRACKING_HEAD,
+            &watchdog_head.event.pubkey.to_hex(),
+            None,
+        )
+        .await;
+    }
     super::event::dispatch_persistent_event(
         tenant,
         state,
@@ -3341,7 +3451,7 @@ async fn handle_company_work_item_action(
     })
 }
 
-async fn ensure_company_work_people_are_members(
+pub(super) async fn ensure_company_work_people_are_members(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     community_id: CommunityId,
     channel_id: Uuid,
@@ -3376,7 +3486,29 @@ async fn ensure_company_work_people_are_members(
     Ok(())
 }
 
-async fn require_company_work_channel_membership(
+fn validate_work_due_after_acceptance(
+    due_at: &str,
+    accepted_at: Option<&str>,
+) -> Result<(), IngestError> {
+    validate_utc_rfc3339(due_at)
+        .map_err(|error| invalid(format!("company work due date: {error}")))?;
+    let due_at = chrono::DateTime::parse_from_rfc3339(due_at)
+        .map_err(|_| invalid("company work due date is invalid"))?;
+    if let Some(accepted_at) = accepted_at {
+        validate_utc_rfc3339(accepted_at)
+            .map_err(|_| IngestError::Internal("company work acceptedAt is invalid".into()))?;
+        let accepted_at = chrono::DateTime::parse_from_rfc3339(accepted_at)
+            .map_err(|_| IngestError::Internal("company work acceptedAt is invalid".into()))?;
+        if due_at <= accepted_at {
+            return Err(invalid(
+                "company work due date must be later than its acceptance time",
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub(super) async fn require_company_work_channel_membership(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     community_id: CommunityId,
     channel_id: Uuid,
@@ -4024,7 +4156,7 @@ fn is_admin(role: &str) -> bool {
     role == "owner" || role == "admin"
 }
 
-fn is_community_admin(role: &str) -> bool {
+pub(super) fn is_community_admin(role: &str) -> bool {
     role == "owner" || role == "admin"
 }
 
@@ -4054,19 +4186,19 @@ fn require_acceptor_channel_role(role: &str) -> Result<(), IngestError> {
     }
 }
 
-fn conflict(message: &str) -> IngestError {
+pub(super) fn conflict(message: &str) -> IngestError {
     IngestError::Rejected(format!("conflict: {message}"))
 }
 
-fn forbidden(message: &str) -> IngestError {
+pub(super) fn forbidden(message: &str) -> IngestError {
     IngestError::AuthFailed(format!("forbidden: {message}"))
 }
 
-fn invalid(message: impl Into<String>) -> IngestError {
+pub(super) fn invalid(message: impl Into<String>) -> IngestError {
     IngestError::Rejected(format!("invalid: {}", message.into()))
 }
 
-fn internal(error: impl std::fmt::Display) -> IngestError {
+pub(super) fn internal(error: impl std::fmt::Display) -> IngestError {
     IngestError::Internal(format!("error: {error}"))
 }
 
