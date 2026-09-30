@@ -36,6 +36,16 @@ pub(crate) struct PreparedDutyHead {
     pub(crate) workflow_hash: Vec<u8>,
 }
 
+/// Ask-resolution data needed to create the approved duty and workflow.
+pub(crate) struct ApprovedDutyAsk<'a> {
+    pub(crate) proposal: &'a DutyProposal,
+    pub(crate) proposer_pubkey: &'a str,
+    pub(crate) approver_pubkey: &'a str,
+    pub(crate) ask_id: Uuid,
+    pub(crate) ask_channel_id: Uuid,
+    pub(crate) response_event_id: String,
+}
+
 /// Handles a member-signed duty lifecycle mutation (kind 47044).
 pub(super) async fn handle(
     tenant: &TenantContext,
@@ -254,13 +264,16 @@ pub(super) async fn handle(
 pub(crate) async fn prepare_approved_duty(
     tenant: &TenantContext,
     state: &AppState,
-    proposal: &DutyProposal,
-    proposer_pubkey: &str,
-    approver_pubkey: &str,
-    ask_id: Uuid,
-    ask_channel_id: Uuid,
-    response_event_id: &str,
+    approval: ApprovedDutyAsk<'_>,
 ) -> Result<PreparedDutyHead, IngestError> {
+    let ApprovedDutyAsk {
+        proposal,
+        proposer_pubkey,
+        approver_pubkey,
+        ask_id,
+        ask_channel_id,
+        response_event_id,
+    } = approval;
     validate_duty_proposal_route(tenant, state, proposal, ask_channel_id).await?;
     let (_, definition_json, definition_hash) = workflow_definition(proposal)?;
     let d_tag = duty_d_tag(proposal.duty_id);
@@ -278,7 +291,7 @@ pub(crate) async fn prepare_approved_duty(
         workflow_definition_hash: hex::encode(&definition_hash),
         created_at: now.clone(),
         updated_at: now,
-        source_action_event_id: response_event_id.to_owned(),
+        source_action_event_id: response_event_id,
     };
     let event = relay_duty_head_event(&head, &d_tag, None, state)?;
     Ok(PreparedDutyHead {

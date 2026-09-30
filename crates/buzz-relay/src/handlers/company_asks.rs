@@ -368,12 +368,14 @@ async fn handle_ask_response(
                 super::company_duties::prepare_approved_duty(
                     tenant,
                     state,
-                    proposal,
-                    &head.asker_pubkey,
-                    &actor.pubkey,
-                    head.ask.ask_id,
-                    channel_id,
-                    &event.id.to_hex(),
+                    super::company_duties::ApprovedDutyAsk {
+                        proposal,
+                        proposer_pubkey: &head.asker_pubkey,
+                        approver_pubkey: &actor.pubkey,
+                        ask_id: head.ask.ask_id,
+                        ask_channel_id: channel_id,
+                        response_event_id: event.id.to_hex(),
+                    },
                 )
                 .await?,
             ),
