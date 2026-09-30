@@ -183,7 +183,8 @@ test.beforeEach(async ({ page }, testInfo) => {
                 },
               },
             }
-          : testInfo.title.includes("mixed link preview image outcomes")
+          : testInfo.title.includes("mixed") &&
+              testInfo.title.includes("link preview image outcomes")
             ? {
                 linkPreviewMetadataByHref: {
                   "https://github.com/block/buzz/pull/4001": {
@@ -320,7 +321,7 @@ test.beforeEach(async ({ page }, testInfo) => {
                             ],
                           }
                         : testInfo.title.includes(
-                              "sent link preview media uses",
+                              "link preview media uses the authenticated proxy",
                             )
                           ? {
                               mediaProxyInitiallyUnavailable: true,
