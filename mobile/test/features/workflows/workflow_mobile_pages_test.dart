@@ -15,6 +15,52 @@ const _owner =
     'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
 void main() {
+  testWidgets('editing a real step preserves its saved completion condition', (
+    tester,
+  ) async {
+    final step = WorkflowStepRecord(
+      id: 'step_existing',
+      kind: WorkflowStepKind.agent,
+      title: 'Prepare report',
+      instruction: 'Turn the brief into a first draft.',
+      assigneePubkey: _owner,
+      expectedResult: 'The signed report is ready for the team.',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          activeCommunityProvider.overrideWith((ref) async => null),
+          channelMembersProvider.overrideWith(
+            (ref, channelId) async => [
+              ChannelMember(
+                pubkey: _owner,
+                role: 'bot',
+                joinedAt: DateTime.utc(2026, 1, 1),
+                displayName: 'Workflow agent',
+              ),
+            ],
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: WorkflowStepEditorPage(
+            channelId: _channelId,
+            workflowName: 'Team workflow',
+            step: step,
+            onSave: (_) async {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('The signed report is ready for the team.'),
+      findsOneWidget,
+    );
+    expect(find.text('Save step'), findsOneWidget);
+  });
+
   testWidgets('latest run opens its exact matching workflow version', (
     tester,
   ) async {

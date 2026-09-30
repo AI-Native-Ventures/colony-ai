@@ -696,6 +696,15 @@ class WorkflowStepEditorPage extends HookConsumerWidget {
               selectedRunner.value?.toLowerCase(),
         )
         .firstOrNull;
+    final completionChoices = <String>[
+      if (member?.isBot != false) 'A draft is ready',
+      'A human approves the result',
+      if (member?.isBot != false &&
+          completion.value != null &&
+          completion.value != 'A draft is ready' &&
+          completion.value != 'A human approves the result')
+        completion.value!,
+    ];
 
     Future<void> save() async {
       if (saving.value || removing.value) return;
@@ -870,15 +879,8 @@ class WorkflowStepEditorPage extends HookConsumerWidget {
                     label: 'Done when',
                   ),
                   items: [
-                    if (member?.isBot != false)
-                      const DropdownMenuItem(
-                        value: 'A draft is ready',
-                        child: Text('A draft is ready'),
-                      ),
-                    const DropdownMenuItem(
-                      value: 'A human approves the result',
-                      child: Text('A human approves the result'),
-                    ),
+                    for (final choice in completionChoices)
+                      DropdownMenuItem(value: choice, child: Text(choice)),
                   ],
                   onChanged: (value) {
                     completion.value = value;
