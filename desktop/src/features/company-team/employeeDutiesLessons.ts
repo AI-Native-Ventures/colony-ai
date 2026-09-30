@@ -151,10 +151,12 @@ export function parseDutyProposal(value: unknown): DutyProposal {
   if (
     Array.from(value.title).length > 180 ||
     Array.from(value.scheduleText).length > 180 ||
-    Array.from(value.instructions).length > 4000 ||
-    validateReadableDutySchedule(value.scheduleText) !== value.scheduleCron
+    Array.from(value.instructions).length > 4000
   ) {
     throw new Error("The relay returned an invalid duty proposal.");
+  }
+  if (validateReadableDutySchedule(value.scheduleText) !== value.scheduleCron) {
+    throw new Error("The relay returned a mismatched duty schedule.");
   }
   return value as unknown as DutyProposal;
 }
@@ -202,12 +204,6 @@ export function parseDutyHead(value: unknown): DutyHead {
   const proposal = parseDutyProposal(value.proposal);
   if (proposal.dutyId !== value.dutyId) {
     throw new Error("The relay returned a duty head with mismatched identity.");
-  }
-  if (
-    validateReadableDutySchedule(proposal.scheduleText) !==
-    proposal.scheduleCron
-  ) {
-    throw new Error("The relay returned a mismatched duty schedule.");
   }
   return { ...value, proposal } as DutyHead;
 }
