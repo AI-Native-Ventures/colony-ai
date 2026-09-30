@@ -37,7 +37,7 @@ test.describe("company Team live relay journey", () => {
     "set BUZZ_E2E_COMPANY_TEAM_LIVE=1 for the isolated live relay gate",
   );
 
-  test("persists an owner position across reload and community switching", async ({
+  test("keeps the human profile position across reload and community switching", async ({
     page,
   }) => {
     test.setTimeout(120_000);
@@ -98,19 +98,20 @@ test.describe("company Team live relay journey", () => {
     );
     await expect(ownerRow).toBeVisible();
     await ownerRow.click();
-    await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
-    await page.getByRole("button", { name: "Edit role and reporting" }).click();
-    const title = `Team relay position ${Date.now()}`;
-    await page.getByLabel("Title").fill(title);
-    await page.getByRole("button", { name: "Save changes" }).click();
-    await expect(page.getByTestId("company-team-member-profile")).toContainText(
-      title,
-    );
+    const profile = page.getByTestId("company-team-member-profile");
+    const role = page.getByTestId("company-human-role");
+    await expect(profile).toBeVisible();
+    await expect(page.getByTestId("company-human-tab-overview")).toBeVisible();
+    await expect(page.getByTestId("company-human-tab-history")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Edit role and reporting" }),
+    ).toHaveCount(0);
+    await expect(role).toBeVisible();
+    const positionBeforeReload = await role.innerText();
+
     await page.reload();
-    await expect(page.getByTestId("company-team-member-profile")).toContainText(
-      title,
-      { timeout: 20_000 },
-    );
+    await expect(profile).toBeVisible({ timeout: 20_000 });
+    await expect(role).toHaveText(positionBeforeReload);
 
     await page.goto("/#/team");
     await page.getByTestId(`community-rail-button-${COMMUNITY_B_ID}`).click();
@@ -123,9 +124,6 @@ test.describe("company Team live relay journey", () => {
       .toBe(COMMUNITY_B_ID);
     await expect(page.getByTestId("company-team-screen")).toBeVisible();
     await expect(page.getByTestId("company-team-list")).toBeVisible();
-    await expect(page.getByTestId("company-team-list")).not.toContainText(
-      title,
-    );
 
     await page.getByTestId(`community-rail-button-${COMMUNITY_A_ID}`).click();
     await expect
@@ -135,6 +133,10 @@ test.describe("company Team live relay journey", () => {
         ),
       )
       .toBe(COMMUNITY_A_ID);
-    await expect(page.getByTestId("company-team-list")).toContainText(title);
+    await expect(page.getByTestId("company-team-screen")).toBeVisible();
+    await ownerRow.waitFor({ state: "visible" });
+    await ownerRow.click();
+    await expect(profile).toBeVisible();
+    await expect(role).toHaveText(positionBeforeReload);
   });
 });
