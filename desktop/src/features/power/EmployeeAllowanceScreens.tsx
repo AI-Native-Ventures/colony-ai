@@ -70,8 +70,8 @@ export function EmployeeSalaryPanel({
         </p>
         {effective ? (
           <h2 className="mt-3 text-3xl font-semibold tracking-tight">
-            {formatUsdCents(effective.allowance.amountCents)}
-            <span className="ml-2 text-sm font-medium">
+            {formatUsdCents(effective.allowance.amountCents)}{" "}
+            <span className="text-sm font-medium">
               / {effective.allowance.period}
             </span>
           </h2>
