@@ -209,8 +209,41 @@ fn run_json(run: &buzz_db::workflow::WorkflowRunRecord) -> Value {
         "completed_at": run.completed_at.map(|value| value.timestamp()),
         "error_code": run.error_code,
         "error_message": run.error_message,
+        "schedule_context": schedule_context(run),
         "created_at": run.created_at.timestamp(),
     })
+}
+
+fn schedule_context(run: &buzz_db::workflow::WorkflowRunRecord) -> Option<Value> {
+    let fields = run
+        .trigger_context
+        .as_ref()?
+        .get("webhook_fields")?
+        .as_object()?;
+    let scheduled_for = fields.get("scheduled_for")?.as_str()?;
+    let first_missed_occurrence = fields
+        .get("first_missed_occurrence")
+        .and_then(Value::as_str);
+    let latest_missed_occurrence = fields
+        .get("latest_missed_occurrence")
+        .and_then(Value::as_str);
+    let missed_occurrences = fields
+        .get("missed_occurrences")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
+    let skipped_occurrences = fields
+        .get("skipped_occurrences")
+        .and_then(Value::as_str)
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
+    Some(serde_json::json!({
+        "scheduled_for": scheduled_for,
+        "first_missed_occurrence": first_missed_occurrence,
+        "latest_missed_occurrence": latest_missed_occurrence,
+        "missed_occurrences": missed_occurrences,
+        "skipped_occurrences": skipped_occurrences,
+    }))
 }
 
 fn approval_json(approval: &buzz_db::workflow::ApprovalRecord) -> Value {
@@ -290,5 +323,52 @@ mod tests {
         let wire = run_json(&run);
         assert_eq!(wire["definition_version"], hex::encode(version));
         assert!(wire.get("definition_snapshot").is_none());
+        assert!(wire["schedule_context"].is_null());
+    }
+
+    #[test]
+    fn run_wire_exposes_bounded_schedule_catch_up_fields_without_trigger_content() {
+        let run = buzz_db::workflow::WorkflowRunRecord {
+            id: Uuid::new_v4(),
+            community_id: buzz_core::CommunityId::from_uuid(Uuid::new_v4()),
+            workflow_id: Uuid::new_v4(),
+            workflow_channel_id: Some(Uuid::new_v4()),
+            definition_version: Some(vec![0xcd; 32]),
+            definition_snapshot: None,
+            status: buzz_db::workflow::RunStatus::Completed,
+            trigger_event_id: None,
+            current_step: 0,
+            execution_trace: serde_json::json!([]),
+            trigger_context: Some(serde_json::json!({
+                "text": "private trigger text",
+                "webhook_fields": {
+                    "scheduled_for": "2026-09-14T08:00:00+00:00",
+                    "first_missed_occurrence": "2026-09-07T08:00:00+00:00",
+                    "latest_missed_occurrence": "2026-09-14T08:00:00+00:00",
+                    "missed_occurrences": "2",
+                    "skipped_occurrences": "1",
+                    "unrelated": "private field"
+                }
+            })),
+            started_at: None,
+            completed_at: None,
+            error_message: None,
+            error_code: None,
+            created_at: Utc::now(),
+        };
+
+        let wire = run_json(&run);
+        assert_eq!(
+            wire["schedule_context"],
+            serde_json::json!({
+                "scheduled_for": "2026-09-14T08:00:00+00:00",
+                "first_missed_occurrence": "2026-09-07T08:00:00+00:00",
+                "latest_missed_occurrence": "2026-09-14T08:00:00+00:00",
+                "missed_occurrences": 2,
+                "skipped_occurrences": 1
+            })
+        );
+        assert!(!wire.to_string().contains("private trigger text"));
+        assert!(!wire.to_string().contains("private field"));
     }
 }

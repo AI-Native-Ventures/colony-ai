@@ -488,10 +488,10 @@ impl WorkflowEngine {
     /// trigger, checks whether the cron expression or interval has elapsed
     /// and spawns execution if so.
     ///
-    /// Uses window-based matching for cron expressions to handle tick drift:
-    /// `schedule.after(&(now - 60s)).next() <= now` instead of `includes(now)`.
-    ///
-    /// Interval tracking is anchored on the durable scheduled-fire claim:
+    /// Cron catch-up is anchored on the latest durable scheduled-fire claim,
+    /// workflow creation, or definition update. Missed occurrences coalesce
+    /// into one run whose trigger context records the covered interval and
+    /// number skipped. Interval tracking is anchored on the durable claim:
     /// `last_fired` is an in-memory pre-filter, but the
     /// `(community_id, workflow_id, scheduled_for)` claim row is the
     /// at-most-once boundary across pods and restarts. On the first tick after
@@ -565,17 +565,58 @@ impl WorkflowEngine {
                 // pod (cron's own scheduled time, or the interval bucket
                 // boundary) so all pods collide on a single durable claim —
                 // never `now`, which is per-pod and would let every pod fire.
+                let mut catch_up = None;
                 let (scheduled_for, trigger_type) = match &def.trigger {
                     schema::TriggerDef::Schedule {
                         cron: Some(expr),
                         interval: None,
-                    } => match cron_fire_instant(expr, now, 60, workflow.id) {
-                        Some(instant) => (instant, "cron"),
-                        None => continue,
-                    },
+                        timezone,
+                    } => {
+                        let last = match self
+                            .db
+                            .latest_scheduled_workflow_fire(community_id, workflow.id)
+                            .await
+                        {
+                            Ok(last) => last,
+                            Err(error) => {
+                                tracing::error!(
+                                    community_id = %community_id,
+                                    workflow_id = %workflow.id,
+                                    "Cron tick: failed to read cron restart anchor: {error}"
+                                );
+                                continue;
+                            }
+                        };
+                        let watermark = last
+                            .map(|last| last.max(workflow.created_at).max(workflow.updated_at))
+                            .unwrap_or_else(|| workflow.created_at.max(workflow.updated_at));
+                        match cron_catch_up(
+                            expr,
+                            timezone.as_deref().unwrap_or("UTC"),
+                            watermark,
+                            now,
+                            MAX_CRON_CATCH_UP_OCCURRENCES,
+                        ) {
+                            Ok(Some(summary)) => {
+                                let instant = summary.last_missed;
+                                catch_up = Some(summary);
+                                (instant, "cron")
+                            }
+                            Ok(None) => continue,
+                            Err(error) => {
+                                tracing::error!(
+                                    community_id = %community_id,
+                                    workflow_id = %workflow.id,
+                                    "Cron tick: unable to calculate due cron occurrences: {error}"
+                                );
+                                continue;
+                            }
+                        }
+                    }
                     schema::TriggerDef::Schedule {
                         cron: None,
                         interval: Some(dur),
+                        timezone: None,
                     } => {
                         // Cheap pre-filter: skip the claim attempt when the
                         // in-memory clock says we're clearly mid-interval. The
@@ -678,6 +719,30 @@ impl WorkflowEngine {
                 let trigger_ctx = executor::TriggerContext {
                     channel_id: channel_id.to_string(),
                     timestamp: now.timestamp().to_string(),
+                    webhook_fields: catch_up
+                        .as_ref()
+                        .map(|summary| {
+                            HashMap::from([
+                                ("scheduled_for".to_owned(), summary.last_missed.to_rfc3339()),
+                                (
+                                    "first_missed_occurrence".to_owned(),
+                                    summary.first_missed.to_rfc3339(),
+                                ),
+                                (
+                                    "latest_missed_occurrence".to_owned(),
+                                    summary.last_missed.to_rfc3339(),
+                                ),
+                                (
+                                    "missed_occurrences".to_owned(),
+                                    summary.occurrence_count.to_string(),
+                                ),
+                                (
+                                    "skipped_occurrences".to_owned(),
+                                    summary.occurrence_count.saturating_sub(1).to_string(),
+                                ),
+                            ])
+                        })
+                        .unwrap_or_default(),
                     ..Default::default()
                 };
                 let trigger_ctx_json = match serde_json::to_value(&trigger_ctx) {
@@ -938,6 +1003,64 @@ fn cron_fire_instant(
             None
         }
     }
+}
+
+const MAX_CRON_CATCH_UP_OCCURRENCES: usize = 10_000;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CronCatchUp {
+    first_missed: DateTime<Utc>,
+    last_missed: DateTime<Utc>,
+    occurrence_count: usize,
+}
+
+/// Coalesce due calendar occurrences after the durable watermark into one run.
+///
+/// The caller supplies `now`, so downtime and DST behavior can be tested with
+/// a fixed clock. The bounded iterator fails closed for unexpectedly old,
+/// high-frequency schedules rather than consuming unbounded CPU.
+fn cron_catch_up(
+    expr: &str,
+    timezone: &str,
+    after: DateTime<Utc>,
+    now: DateTime<Utc>,
+    max_occurrences: usize,
+) -> Result<Option<CronCatchUp>, String> {
+    let tz = timezone
+        .parse::<chrono_tz::Tz>()
+        .map_err(|_| format!("invalid IANA timezone '{timezone}'"))?;
+    let schedule = schema::normalize_cron(expr)
+        .parse::<cron::Schedule>()
+        .map_err(|error| format!("invalid cron expression '{expr}': {error}"))?;
+    let cursor = after.with_timezone(&tz);
+    let mut first_missed = None;
+    let mut last_missed = None;
+    let mut occurrence_count = 0usize;
+    for occurrence in schedule
+        .after(&cursor)
+        .take(max_occurrences.saturating_add(1))
+    {
+        let occurrence_utc = occurrence.with_timezone(&Utc);
+        if occurrence_utc > now {
+            break;
+        }
+        occurrence_count = occurrence_count.saturating_add(1);
+        if occurrence_count > max_occurrences {
+            return Err(format!(
+                "more than {max_occurrences} due occurrences require a bounded recovery policy"
+            ));
+        }
+        first_missed.get_or_insert(occurrence_utc);
+        last_missed = Some(occurrence_utc);
+    }
+    Ok(match (first_missed, last_missed) {
+        (Some(first_missed), Some(last_missed)) => Some(CronCatchUp {
+            first_missed,
+            last_missed,
+            occurrence_count,
+        }),
+        _ => None,
+    })
 }
 
 /// Quantize `now` to the interval bucket boundary, yielding a deterministic
@@ -1300,6 +1423,61 @@ mod postgres_tests {
     }
 
     #[test]
+    fn cron_catch_up_coalesces_missed_occurrences_with_an_injected_clock() {
+        let watermark = DateTime::parse_from_rfc3339("2026-09-01T08:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let now = DateTime::parse_from_rfc3339("2026-09-15T09:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let summary = cron_catch_up("0 8 * * 1", "UTC", watermark, now, 100)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            summary.first_missed.to_rfc3339(),
+            "2026-09-07T08:00:00+00:00"
+        );
+        assert_eq!(
+            summary.last_missed.to_rfc3339(),
+            "2026-09-14T08:00:00+00:00"
+        );
+        assert_eq!(summary.occurrence_count, 2);
+        assert_eq!(summary.occurrence_count.saturating_sub(1), 1);
+    }
+
+    #[test]
+    fn cron_catch_up_uses_the_schedule_timezone() {
+        let watermark = DateTime::parse_from_rfc3339("2026-03-07T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let now = DateTime::parse_from_rfc3339("2026-03-09T07:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let summary = cron_catch_up("0 8 * * *", "Africa/Johannesburg", watermark, now, 100)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(summary.occurrence_count, 2);
+        assert_eq!(
+            summary.last_missed.to_rfc3339(),
+            "2026-03-09T06:00:00+00:00"
+        );
+    }
+
+    #[test]
+    fn cron_catch_up_is_bounded_and_rejects_bad_timezone() {
+        let watermark = DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let now = DateTime::parse_from_rfc3339("2026-01-01T01:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert!(cron_catch_up("* * * * *", "UTC", watermark, now, 10).is_err());
+        assert!(cron_catch_up("0 8 * * *", "not-a-timezone", watermark, now, 100).is_err());
+    }
+
+    #[test]
     fn interval_fire_instant_quantizes_to_bucket_boundary() {
         // Two pods ticking at different sub-interval offsets must compute the
         // *same* bucket boundary so they collide on one claim. 1h interval,
@@ -1564,6 +1742,7 @@ steps:
         let trigger = TriggerDef::Schedule {
             cron: Some("0 9 * * 1-5".to_owned()),
             interval: None,
+            timezone: None,
         };
         // Schedule triggers are fired by the cron loop, not by events.
         assert!(!trigger_matches_event(
@@ -1676,6 +1855,7 @@ steps:
         let sched_trigger = TriggerDef::Schedule {
             cron: None,
             interval: Some("1h".to_owned()),
+            timezone: None,
         };
         let webhook_trigger = TriggerDef::Webhook;
 
