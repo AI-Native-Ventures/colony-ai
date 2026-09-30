@@ -7,6 +7,13 @@ import { expectCornerRadiusPx, expectSmoothCorners } from "../helpers/css";
 
 async function openMoreActionsMenu(page: Page, messageId: string) {
   const row = page.locator(`[data-message-id="${messageId}"]`);
+  await row.evaluate((element) => {
+    element.scrollIntoView({
+      block: "center",
+      inline: "nearest",
+      behavior: "instant",
+    });
+  });
   await row.hover();
   await page.getByTestId(`more-actions-${messageId}`).click();
   await expect(page.locator('[role="menuitem"]').first()).toBeVisible({
