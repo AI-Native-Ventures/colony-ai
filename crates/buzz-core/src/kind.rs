@@ -1241,6 +1241,8 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_MEMBER_POSITION_ACTION
             | KIND_HIRE_ACTION
             | KIND_FACTORY_RUN_ACTION
+            | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
+            | KIND_AI_SPEND_RECORD_ACTION
     )
 }
 
@@ -1401,6 +1403,19 @@ mod tests {
         assert!(is_business_command_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
         assert!(is_command_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
         assert!(!is_relay_only_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
+    }
+
+    #[test]
+    fn employee_spend_actions_are_transactional_company_commands() {
+        for kind in [
+            KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
+            KIND_AI_SPEND_RECORD_ACTION,
+        ] {
+            assert!(is_company_command_kind(kind));
+            assert!(is_command_kind(kind));
+            assert!(is_company_global_kind(kind));
+            assert!(!is_relay_only_kind(kind));
+        }
     }
 
     #[test]
