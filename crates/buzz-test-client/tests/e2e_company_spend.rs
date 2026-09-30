@@ -399,7 +399,7 @@ async fn company_spend_records_require_authority_and_verified_employee_turn_evid
 
     mark_managed_agent(&employee, &admin).await;
     assert_rejected(
-        &submit_spend_action(&admin, &create_usage).await,
+        &submit_spend_action(&owner, &create_usage).await,
         "authenticated member does not own the reported employee",
     );
     mark_managed_agent(&employee, &owner).await;
