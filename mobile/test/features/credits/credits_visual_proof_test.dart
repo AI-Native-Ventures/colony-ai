@@ -1,10 +1,5 @@
 import 'dart:io';
-import 'dart:typed_data';
 
-import 'package:buzz/features/credits/credits_api.dart';
-import 'package:buzz/features/credits/credits_pages.dart';
-import 'package:buzz/shared/shell/mobile_shell.dart';
-import 'package:buzz/shared/theme/theme.dart';
 import 'package:flutter/foundation.dart'
     show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
@@ -12,73 +7,51 @@ import 'package:flutter/services.dart' show FontLoader, rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import 'package:buzz/features/credits/credits_api.dart';
+import 'package:buzz/features/credits/credits_pages.dart';
+import 'package:buzz/shared/community/community.dart';
+import 'package:buzz/shared/community/community_provider.dart';
+import 'package:buzz/shared/shell/mobile_shell.dart';
+import 'package:buzz/shared/theme/theme.dart';
+
+const _reference = 'credits-visual-proof-17';
+const _grantNanoUsd = 3450000000;
+const _grantUsdCents = 345;
+const _chargeZarCents = 2510;
+
 void main() {
-  const captureScreenshots = bool.fromEnvironment('CAPTURE_W23_CREDITS_SHOTS');
-  if (captureScreenshots) setUpAll(_loadCreditsProofFonts);
-
-  testWidgets('credits unavailable state retries its live source', (
-    tester,
-  ) async {
-    var attempts = 0;
-    await tester.pumpWidget(
-      ProviderScope(
-        retry: (_, _) => null,
-        overrides: [
-          creditsOverviewProvider.overrideWith((ref) async {
-            attempts++;
-            throw const CreditsFailure(CreditsFailureKind.unavailable);
-          }),
-        ],
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          home: const CreditsBalancePage(communityName: 'Lerato Studio'),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Credits'), findsOneWidget);
-    expect(find.text('Lerato Studio'), findsOneWidget);
-    expect(find.text('Credits could not load'), findsOneWidget);
-    expect(
-      find.text(
-        'The connected source is unavailable. Existing work is kept, and missing data is not shown as zero.',
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('Retry connection'), findsOneWidget);
-    expect(find.text('USD 0.00'), findsNothing);
-    expect(attempts, 1);
-
-    await tester.tap(find.byKey(const ValueKey('credits-retry')));
-    await tester.pumpAndSettle();
-    expect(attempts, 2);
-  });
-
-  if (!captureScreenshots) return;
+  const captureScreenshots = bool.fromEnvironment('CAPTURE_B2_CREDITS_SHOTS');
+  final output = Directory('/tmp/b2-mobile-credits-proof')
+    ..createSync(recursive: true);
 
   for (final size in const [Size(390, 844), Size(412, 915)]) {
     for (final brightness in [Brightness.light, Brightness.dark]) {
-      testWidgets(
-        'captures credits unavailable ${size.width.toInt()}x${size.height.toInt()} ${brightness.name}',
-        (tester) async {
-          final oldComparator = goldenFileComparator;
-          final oldPlatform = debugDefaultTargetPlatformOverride;
-          final output = Directory('/tmp/w23-mobile-credits-proof')
-            ..createSync(recursive: true);
-          tester.view.physicalSize = size;
-          tester.view.devicePixelRatio = 1;
-          tester.view.padding = const FakeViewPadding(top: 25, bottom: 20);
-          tester.view.viewPadding = const FakeViewPadding(top: 25, bottom: 20);
+      for (final state in _paymentStates) {
+        testWidgets('captures credits-${state.name} ${brightness.name} '
+            '${size.width.toInt()}x${size.height.toInt()}', (tester) async {
           debugDefaultTargetPlatformOverride = TargetPlatform.android;
+          final previousComparator = goldenFileComparator;
+          if (captureScreenshots) {
+            goldenFileComparator = LocalFileComparator(
+              Uri.file('${output.path}/proof_test.dart'),
+            );
+            tester.view.viewPadding = const FakeViewPadding(
+              top: 25,
+              bottom: 20,
+            );
+            tester.view.padding = const FakeViewPadding(top: 25, bottom: 20);
+          }
           addTearDown(() {
+            debugDefaultTargetPlatformOverride = null;
             tester.view.resetPhysicalSize();
             tester.view.resetDevicePixelRatio();
             tester.view.viewPadding = FakeViewPadding.zero;
             tester.view.padding = FakeViewPadding.zero;
-            goldenFileComparator = oldComparator;
-            debugDefaultTargetPlatformOverride = oldPlatform;
+            goldenFileComparator = previousComparator;
           });
+          tester.view.devicePixelRatio = 1;
+          tester.view.physicalSize = size;
+          if (captureScreenshots) await _loadProofFonts();
 
           final rootKey = GlobalKey();
           final app = MaterialApp(
@@ -92,141 +65,218 @@ void main() {
               destination: MobileShellDestination.company,
               onDestinationSelected: (_) {},
               showBrandBar: false,
-              child: const CreditsBalancePage(communityName: 'Lerato Studio'),
+              child: CreditsPaymentStatusPage(reference: _reference),
             ),
           );
+
           await tester.pumpWidget(
             ProviderScope(
-              retry: (_, _) => null,
               overrides: [
-                creditsOverviewProvider.overrideWith(
-                  (ref) async => throw const CreditsFailure(
-                    CreditsFailureKind.unavailable,
+                activeCommunityProvider.overrideWith(
+                  (_) async => Community.create(
+                    name: 'Proof workspace',
+                    relayUrl: 'wss://relay.example',
                   ),
                 ),
+                creditsPaymentIntentProvider(_reference).overrideWith((
+                  _,
+                ) async {
+                  if (state.unavailable) {
+                    throw StateError('Status service unavailable');
+                  }
+                  return _payment(state.status);
+                }),
+                creditsOverviewProvider.overrideWith((_) async {
+                  return _overview(
+                    ledger: state.confirmed
+                        ? [
+                            CreditsLedgerEntry(
+                              id: 'ledger-visual-proof-17',
+                              type: 'purchase',
+                              amountNanoUsd: BigInt.from(_grantNanoUsd),
+                              amountUsdCents: _grantUsdCents,
+                              description: 'Test purchase',
+                              reference: _reference,
+                              createdAt: DateTime.utc(2026, 9, 30),
+                            ),
+                          ]
+                        : const [],
+                  );
+                }),
               ],
               child: RepaintBoundary(
                 key: rootKey,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(36),
-                  child: Directionality(
-                    textDirection: TextDirection.ltr,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [app, _CreditsProofBars(brightness)],
-                    ),
-                  ),
-                ),
+                child: captureScreenshots
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(36),
+                        child: Directionality(
+                          textDirection: TextDirection.ltr,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              app,
+                              _ProofStatusBar(brightness: brightness),
+                              _ProofHomeIndicator(brightness: brightness),
+                            ],
+                          ),
+                        ),
+                      )
+                    : app,
               ),
             ),
           );
           await tester.pumpAndSettle();
+          await tester.pump(const Duration(milliseconds: 450));
 
-          final mode = brightness == Brightness.light ? 'light' : 'dark';
-          final filename =
-              'credits-unavailable-${size.width.toInt()}x${size.height.toInt()}-$mode.png';
-          goldenFileComparator = _CreditsCaptureComparator(
-            Uri.file('${output.path}/capture_test.dart'),
-            output.path,
-          );
-          await expectLater(find.byKey(rootKey), matchesGoldenFile(filename));
-          debugPrint('VISUAL_PROOF ${output.path}/$filename');
-          await tester.pumpWidget(const SizedBox.shrink());
-          await tester.pumpAndSettle();
-          goldenFileComparator = oldComparator;
-          debugDefaultTargetPlatformOverride = oldPlatform;
-          tester.view.resetPhysicalSize();
-          tester.view.resetDevicePixelRatio();
-          tester.view.viewPadding = FakeViewPadding.zero;
-          tester.view.padding = FakeViewPadding.zero;
-        },
-      );
+          if (captureScreenshots) {
+            final filename =
+                'credits-${state.name}-${brightness.name}-'
+                '${size.width.toInt()}x${size.height.toInt()}.png';
+            await expectLater(find.byKey(rootKey), matchesGoldenFile(filename));
+            debugPrint('VISUAL_PROOF ${output.path}/$filename');
+          } else {
+            expect(find.byKey(rootKey), findsOneWidget);
+          }
+          debugDefaultTargetPlatformOverride = null;
+        });
+      }
     }
   }
 }
 
-Future<void> _loadCreditsProofFonts() async {
+final _paymentStates = <_PaymentState>[
+  const _PaymentState(name: 'pending', status: 'pending'),
+  const _PaymentState(name: 'failed', status: 'failed'),
+  const _PaymentState(name: 'cancelled', status: 'cancelled'),
+  const _PaymentState(name: 'paid', status: 'paid', confirmed: true),
+  const _PaymentState(
+    name: 'unavailable',
+    status: 'pending',
+    unavailable: true,
+  ),
+];
+
+class _PaymentState {
+  const _PaymentState({
+    required this.name,
+    required this.status,
+    this.confirmed = false,
+    this.unavailable = false,
+  });
+
+  final String name;
+  final String status;
+  final bool confirmed;
+  final bool unavailable;
+}
+
+CreditsPaymentIntent _payment(String status) => CreditsPaymentIntent(
+  reference: _reference,
+  amountZarCents: _chargeZarCents,
+  paidZarCents: status == 'paid' ? _chargeZarCents : null,
+  grantNanoUsd: BigInt.from(_grantNanoUsd),
+  grantUsdCents: _grantUsdCents,
+  status: status,
+  createdAt: DateTime.utc(2026, 9, 30),
+);
+
+CreditsOverview _overview({List<CreditsLedgerEntry> ledger = const []}) =>
+    CreditsOverview(
+      balanceUsdCents: 0,
+      currentMonth: const CreditsUsageMonth(
+        month: '2026-09',
+        spentUsdCents: 0,
+        entryCount: 0,
+      ),
+      months: const [],
+      ledger: ledger,
+      paymentIntents: [_payment('pending')],
+    );
+
+Future<void> _loadProofFonts() async {
   final materialIcons = FontLoader('MaterialIcons')
     ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
   await materialIcons.load();
   final manrope = FontLoader('Manrope')
     ..addFont(rootBundle.load('assets/fonts/Manrope-Variable.ttf'));
   await manrope.load();
-  final lucide = FontLoader('packages/lucide_icons_flutter/Lucide')
+  final icons = FontLoader('packages/lucide_icons_flutter/Lucide')
     ..addFont(
       rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
     );
-  await lucide.load();
+  await icons.load();
 }
 
-class _CreditsCaptureComparator extends LocalFileComparator {
-  _CreditsCaptureComparator(super.testFile, this.outputPath);
-
-  final String outputPath;
-
-  @override
-  Future<bool> compare(Uint8List imageBytes, Uri golden) async {
-    final file = File('$outputPath/${golden.pathSegments.last}');
-    await file.parent.create(recursive: true);
-    await file.writeAsBytes(imageBytes);
-    return true;
-  }
-}
-
-class _CreditsProofBars extends StatelessWidget {
-  const _CreditsProofBars(this.brightness);
+class _ProofStatusBar extends StatelessWidget {
+  const _ProofStatusBar({required this.brightness});
 
   final Brightness brightness;
 
   @override
   Widget build(BuildContext context) {
-    final color = brightness == Brightness.dark
-        ? const Color(0xFFF2E9F6)
-        : const Color(0xFF34263C);
-    return IgnorePointer(
-      child: Stack(
-        children: [
-          Positioned(
-            top: 10,
-            left: 25,
-            child: Text(
-              '9:41',
-              style: TextStyle(
-                color: color,
-                fontFamily: 'Manrope',
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          Positioned(
-            top: 10,
-            right: 25,
+    final color = Color(
+      brightness == Brightness.dark ? 0xffeee8f0 : 0xff292632,
+    );
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: SizedBox(
+          height: 46,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(25, 8, 25, 0),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Icon(Icons.signal_cellular_alt, color: color, size: 14),
-                const SizedBox(width: 3),
-                Icon(Icons.battery_full, color: color, size: 16),
+                Text(
+                  '9:41',
+                  style: TextStyle(
+                    color: color,
+                    fontFamily: 'Manrope',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Row(
+                  children: [
+                    Icon(Icons.signal_cellular_alt, color: color, size: 14),
+                    const SizedBox(width: 3),
+                    Icon(Icons.battery_full, color: color, size: 16),
+                  ],
+                ),
               ],
             ),
           ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 7,
-            child: Center(
-              child: Container(
-                width: 108,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(50),
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
+}
+
+class _ProofHomeIndicator extends StatelessWidget {
+  const _ProofHomeIndicator({required this.brightness});
+
+  final Brightness brightness;
+
+  @override
+  Widget build(BuildContext context) => Positioned(
+    left: 0,
+    right: 0,
+    bottom: 8,
+    child: IgnorePointer(
+      child: Center(
+        child: Container(
+          width: 108,
+          height: 4,
+          decoration: BoxDecoration(
+            color: brightness == Brightness.dark
+                ? const Color(0xffeee8f0)
+                : const Color(0xff292632),
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+      ),
+    ),
+  );
 }

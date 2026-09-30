@@ -1,6 +1,6 @@
 part of 'appearance_settings_pages.dart';
 
-class ThemeAppliedPage extends ConsumerWidget {
+class ThemeAppliedPage extends HookConsumerWidget {
   const ThemeAppliedPage({required this.themeName, super.key});
 
   final String themeName;
@@ -8,91 +8,64 @@ class ThemeAppliedPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = findTheme(themeName) ?? findTheme('buzz')!;
-    final preference = ref.watch(appearanceDisplayPreferenceProvider);
+    final community = ref.watch(activeCommunityProvider).asData?.value;
+    final displayName = _themeDisplayName(theme);
+    final sparse = useState(true);
     return Scaffold(
       backgroundColor: context.mobileTokens.canvas,
-      appBar: const MobileFlowAppBar(title: 'Appearance'),
-      body: Column(
+      appBar: MobileFlowAppBar(
+        title: displayName,
+        subtitle: community?.name,
+        compact: true,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(
+          Grid.gutter,
+          Grid.xs,
+          Grid.gutter,
+          Grid.xs,
+        ),
         children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(
-                Grid.gutter,
-                Grid.gutter,
-                Grid.gutter,
-                Grid.xs,
-              ),
-              children: [
-                Text(
-                  'Your theme is set.',
-                  style: context.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: Grid.sm),
-                _AppliedThemePreview(theme: theme),
-                const SizedBox(height: Grid.xs),
-                Text(
-                  _themeDisplayName(theme),
-                  style: context.mobileTypography.body.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: Grid.xs),
-                _PreferenceSummary(label: 'Scope', value: 'Only you'),
-                _PreferenceSummary(
-                  label: 'Density',
-                  value: preference.density.label,
-                ),
-                _PreferenceSummary(
-                  label: 'Text size',
-                  value: preference.textSize.label,
-                ),
-                const SizedBox(height: Grid.sm),
-                SizedBox(
-                  width: double.infinity,
-                  height: 44,
-                  child: OutlinedButton(
-                    onPressed: () =>
-                        MobileNavigation.push<NoMobileRouteArguments, Object?>(
-                          context,
-                          MobileRoutes.settingsThemes,
-                          const NoMobileRouteArguments(),
-                        ),
-                    child: const Text('Browse themes'),
-                  ),
-                ),
-              ],
+          _ThemePreviewHero(
+            eyebrow: 'APPLIED',
+            title: displayName,
+            description: 'Preview uses sample content, never private messages.',
+          ),
+          const SizedBox(height: Grid.xs),
+          const _ThemeSavedNotice(),
+          const SizedBox(height: Grid.xs),
+          _ThemeSampleConversation(theme: theme, sparse: sparse.value),
+          const SizedBox(height: Grid.xxs),
+          OutlinedButton(
+            onPressed: () => sparse.value = !sparse.value,
+            child: Text(
+              sparse.value
+                  ? 'Preview an empty channel'
+                  : 'Preview with a message',
             ),
           ),
-          SafeArea(
-            top: false,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(
-                Grid.gutter,
-                Grid.xs,
-                Grid.gutter,
-                Grid.xs,
-              ),
-              decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(color: context.mobileTokens.line),
-                ),
-              ),
-              child: SizedBox(
-                height: 44,
-                child: FilledButton(
-                  style: mobileFlowActionButtonStyle(context),
-                  onPressed: () => Navigator.of(context).popUntil(
-                    (route) =>
-                        route.settings.name ==
-                        MobileRoutes.settingsAppearance.path,
+          const SizedBox(height: Grid.xxs),
+          FilledButton(
+            style: mobileFlowActionButtonStyle(context),
+            onPressed: () => ref
+                .read(communityThemeProvider.notifier)
+                .setPreference(
+                  CommunityThemePreference(
+                    theme: theme.name,
+                    accent: ref.read(communityThemeProvider).accent,
+                    followSystem: false,
                   ),
-                  child: const Text('Done'),
                 ),
-              ),
-            ),
+            child: Text('Use $displayName'),
+          ),
+          TextButton(
+            onPressed: () =>
+                MobileNavigation.push<NoMobileRouteArguments, Object?>(
+                  context,
+                  MobileRoutes.settingsThemes,
+                  const NoMobileRouteArguments(),
+                ),
+            child: const Text('Back to themes'),
           ),
         ],
       ),
@@ -100,100 +73,68 @@ class ThemeAppliedPage extends ConsumerWidget {
   }
 }
 
-class _AppliedThemePreview extends ConsumerWidget {
-  const _AppliedThemePreview({required this.theme});
-
-  final ThemeColors theme;
+class _ThemeSavedNotice extends StatelessWidget {
+  const _ThemeSavedNotice();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final channels = ref.watch(channelsProvider).asData?.value;
-    if (channels == null) return const SizedBox.shrink();
-
-    final candidates =
-        channels
-            .where(
-              (channel) =>
-                  !channel.isDm &&
-                  !channel.isArchived &&
-                  channel.lastMessageContent?.trim().isNotEmpty == true &&
-                  channel.lastMessageCreatedAt != null,
-            )
-            .toList()
-          ..sort(
-            (left, right) => right.lastMessageCreatedAt!.compareTo(
-              left.lastMessageCreatedAt!,
-            ),
-          );
-    if (candidates.isEmpty) return const SizedBox.shrink();
-
-    final channel = candidates.first;
-    final defaultTheme =
-        theme.name.toLowerCase() == 'buzz' ||
-        theme.name.toLowerCase() == 'colony';
-    final gradientColors = defaultTheme
-        ? const [Color(0xFFEFDCE8), Color(0xFFC8D5EB)]
-        : [
-            Color.alphaBlend(theme.fg.withValues(alpha: 0.06), theme.bg),
-            Color.alphaBlend(theme.comment.withValues(alpha: 0.24), theme.bg),
-          ];
-
-    return Container(
-      height: 98,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: theme.bg,
-        border: Border.all(color: theme.fg.withValues(alpha: 0.12)),
-        borderRadius: BorderRadius.circular(Radii.dialog),
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 84,
-            height: double.infinity,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: gradientColors,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-            ),
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    const statusMessage =
+        'Theme selected. This preference will apply when you return to the app.';
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: statusMessage,
+      child: ExcludeSemantics(
+        child: Container(
+          decoration: BoxDecoration(
+            color: tokens.paper,
+            border: Border.all(color: tokens.line),
+            borderRadius: BorderRadius.circular(Radii.dialog),
           ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(Grid.xs),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(Radii.dialog),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    channel.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: theme.fg,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  const SizedBox(
+                    width: 3,
+                    child: ColoredBox(color: Color(0xFF5B9374)),
                   ),
-                  const SizedBox(height: Grid.xxs),
-                  Text(
-                    channel.lastMessageContent!.trim(),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: theme.fg, fontSize: 10),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: Grid.xs,
+                        vertical: Grid.scrollInset,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Theme selected',
+                            style: context.mobileTypography.conversation
+                                .copyWith(
+                                  color: tokens.ink,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                          Text(
+                            'This preference will apply when you return to the app.',
+                            style: context.mobileTypography.metadata.copyWith(
+                              color: tokens.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 }
-
-/// Saves app-local accessibility preferences without implying notification
-/// controls that the current push API does not support.

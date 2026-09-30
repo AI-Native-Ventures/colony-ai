@@ -7,6 +7,7 @@ import 'package:buzz/features/settings/appearance_settings_pages.dart';
 import 'package:buzz/shared/navigation/mobile_route.dart';
 import 'package:buzz/shared/navigation/mobile_route_scope.dart';
 import 'package:buzz/shared/navigation/mobile_routes.dart';
+import 'package:buzz/shared/community/community_provider.dart';
 import 'package:buzz/shared/profile/user_profile.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:flutter/material.dart';
@@ -45,40 +46,88 @@ void main() {
     _expectThemeCatalog();
   });
 
-  testWidgets('applied theme keeps its frozen preview and actions', (
+  testWidgets('selected theme keeps its frozen preview and actions', (
     tester,
   ) async {
     await _pumpPage(tester, child: const ThemeAppliedPage(themeName: 'Colony'));
 
-    expect(find.text('Launch notes'), findsOneWidget);
-    expect(find.text('A real workspace update.'), findsOneWidget);
-    expect(find.text('Maya Ndlovu'), findsNothing);
-    expect(find.text('Colony'), findsOneWidget);
-    expect(find.text('Browse themes'), findsOneWidget);
+    expect(find.text('APPLIED'), findsOneWidget);
     expect(
-      find.ancestor(of: find.text('Done'), matching: find.byType(SafeArea)),
+      find.text('Preview uses sample content, never private messages.'),
       findsOneWidget,
     );
-    await tester.tap(find.text('Browse themes'));
+    expect(find.text('Theme selected'), findsOneWidget);
+    expect(find.text('Sample message'), findsOneWidget);
+    expect(find.text('A real workspace update.'), findsNothing);
+    expect(find.text('Launch notes'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Preview an empty channel'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Preview an empty channel'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('A little space to begin.'), findsOneWidget);
+    expect(find.text('Sample message'), findsNothing);
+    expect(find.text('Preview with a message'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('Back to themes'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Use Colony'), findsOneWidget);
+    await tester.tap(find.text('Back to themes'));
     await tester.pumpAndSettle();
 
     _expectThemeCatalog();
   });
+
+  testWidgets('theme preview starts empty and only shows generic sample copy', (
+    tester,
+  ) async {
+    await _pumpPage(tester, child: const ThemePreviewPage(themeName: 'Colony'));
+
+    expect(find.text('A little space to begin.'), findsOneWidget);
+    expect(
+      find.text('Your first conversation will appear here.'),
+      findsOneWidget,
+    );
+    expect(find.text('Launch notes'), findsNothing);
+    expect(find.text('A real workspace update.'), findsNothing);
+    expect(
+      find.text('Preview uses sample content, never private messages.'),
+      findsOneWidget,
+    );
+
+    await tester.scrollUntilVisible(
+      find.text('Preview with a message'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(find.text('Preview with a message'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Preview with a message'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sample message'), findsOneWidget);
+    expect(find.text('Illustrative content'), findsOneWidget);
+    expect(find.text('A real workspace update.'), findsNothing);
+    expect(find.text('Maya Ndlovu'), findsNothing);
+  });
 }
 
 void _expectThemeCatalog() {
+  expect(find.text('Named themes'), findsOneWidget);
   expect(find.text('Find your atmosphere.'), findsOneWidget);
   expect(
-    find.byWidgetPredicate(
-      (widget) =>
-          widget is TextField &&
-          widget.decoration?.hintText == 'Search ${themeCatalog.length} themes',
-    ),
+    find.text('Preview with sample content before applying.'),
     findsOneWidget,
   );
-  expect(find.text('All'), findsOneWidget);
-  expect(find.text('Light'), findsOneWidget);
-  expect(find.text('Dark'), findsOneWidget);
+  expect(find.text('Search'), findsNothing);
+  expect(find.text('Colony'), findsOneWidget);
+  expect(find.text('Colony Dark'), findsOneWidget);
 }
 
 Future<void> _pumpPage(WidgetTester tester, {required Widget child}) async {
@@ -97,6 +146,7 @@ Future<void> _pumpPage(WidgetTester tester, {required Widget child}) async {
         profileProvider.overrideWith(_TestProfileNotifier.new),
         userStatusProvider.overrideWith(_TestUserStatusNotifier.new),
         channelsProvider.overrideWith(_TestChannelsNotifier.new),
+        activeCommunityProvider.overrideWith((_) async => null),
       ],
       child: MaterialApp(
         theme: AppTheme.light(),

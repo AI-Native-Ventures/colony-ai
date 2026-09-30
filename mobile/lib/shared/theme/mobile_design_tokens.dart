@@ -183,6 +183,7 @@ abstract final class MobileLayoutTokens {
   static const statusBarHeight = 46.0;
   static const brandBarHeight = 54.0;
   static const appBarHeight = 66.0;
+  static const compactAppBarHeight = 58.0;
 
   /// Height of the Company hub header beneath the status bar.
   static const companyHeaderHeight = 70.0;
