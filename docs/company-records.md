@@ -41,6 +41,8 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30650 | Hire head | Relay signed, replaceable | Company hiring |
 | 30651 | Employee configuration revision head | Relay signed, replaceable | Company team |
 | 30652 | Company work tracking head | Relay signed, replaceable | Company work |
+| 30653 | Employee AI allowance head | Relay signed, replaceable | AI spend |
+| 30654 | AI spend record head | Relay signed, replaceable | AI spend |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
@@ -52,6 +54,8 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47039 | Hire action | Brokered | Company hiring |
 | 47040 | Employee configuration revision action | Brokered, append only | Company team |
 | 47041 | Company work tracking action | Brokered | Company work |
+| 47042 | Employee AI allowance action | Brokered | AI spend |
+| 47043 | AI spend record action | Brokered | AI spend |
 
 The Factory run record contract is in
 [`factory-run-records.md`](factory-run-records.md). It extends the company
@@ -783,6 +787,98 @@ The timeline does not synthesize attachments, review requests, automatic
 verdicts, or watchdog events. A watchdog check-in appears as its actual message
 in the thread; its durable delivery state is read from the watchdog record and
 delivery journal.
+
+### Employee AI allowances and AI spend records, kinds 30653 through 30654 and 47042 through 47043
+
+Kinds 30653 and 30654 are relay-signed replaceable heads. Kinds 47042 and
+47043 are member-signed broker actions. All four kinds are community-wide and
+carry a `d` tag without an `h` tag. Their public content contains financial
+metadata and estimates only, never provider credentials or secret values.
+
+| Kind | Name | Write status | Owner |
+| ---: | --- | --- | --- |
+| 30653 | Employee AI allowance head | Relay signed, replaceable | AI spend |
+| 47042 | Employee AI allowance action | Brokered | AI spend |
+| 30654 | AI spend record head | Relay signed, replaceable | AI spend |
+| 47043 | AI spend record action | Brokered | AI spend |
+
+An allowance is keyed by `company:employee-allowance:<employee-pubkey>`.
+Its head stores the current permanent allowance, its explicitly selected
+period (`day`, `week`, or `month`), an optional temporary allowance and its
+`expiresAt`, the selected funding order, actor, update time, and source action
+id. Amounts use integer USD cents. An unset allowance stays unset; there is no
+implicit amount or period. Used-to-date is derived from metered spend records
+in the applicable period, not copied into the allowance head. A temporary
+allowance takes effect before its end timestamp and the permanent value is
+effective at and after that timestamp. Reversion is derived from the timestamp
+and does not require a scheduled write. A permanent change clears the temporary
+value.
+
+Every allowance action names the employee and exact current head event id,
+except initial creation. Only a community owner or admin may commit an
+allowance or funding-order change. An employee or agent request for an
+allowance change is represented by an existing company ask with category
+`money`, a typed spend proposal, and a thread root. Only a community owner or
+admin may resolve that ask. The approved ask and new allowance head commit in
+one transaction. Agents cannot resolve money asks.
+
+AI spend records use `company:ai-spend:<record-id>`. A turn usage record id is
+derived from its source kind 44200 event id; an external cost record id is a
+UUID. Each head has a `recordType` of `agent_turn` or `external_cost` and a
+status of `active` or `removed`. Agent turn records refer to exactly one
+kind 44200 event, name the employee, record an integer `estimatedAmountNanoUsd`
+when the source report has a cost, set `isEstimate` to true, and carry a
+`sourceOfFunds` value of `colony_credits`, `provider_subscription`,
+`provider_api_key`, or `unknown`. A missing cost remains missing and never
+becomes zero. The source event id makes ingestion idempotent. Relay validation
+requires the referenced event to exist in the same community, be authored by
+the named managed agent, and be owner-addressed to the signing member. The
+relay cannot decrypt the private report, so the amount and source claim are
+explicit owner-attributed evidence, not provider invoices.
+
+External cost records contain provider, plan or description, type
+(`subscription` or `credit_top_up`), integer actual cash cost in USD cents,
+and the recorded renewal or purchase date. They do not contain or imply a
+purchase instruction. Removing one changes its record status only and does not
+cancel a provider subscription or reverse a provider top-up. Cash costs and
+API-equivalent usage remain separate values and totals.
+
+Spend actions are exact-head operations. A first write creates the record;
+edits and removal name the exact head event id. The relay validates every
+field, ensures the event author is a human member with owner or admin role,
+and stores the action and relay-signed head atomically. No action in this
+contract calls a payment provider or sends money. Colony-credit ledger debits
+are permitted only after the runtime provides verifiable per-turn
+source-of-funds evidence that the turn used Colony credits. Unknown and
+provider-funded turns never debit Colony credits.
+
+### AI spend availability boundary
+
+Existing kind 44200 harness reports contain token counts and an estimated USD
+cost, but do not identify whether a turn used a provider subscription, a
+provider API key, or Colony credits. The current runtime also has no persisted
+funding-order source status, no next-turn cost estimate, and no verified
+per-turn Colony-credit execution signal. Until those runtime capabilities
+exist, such records display an unknown funding source, source live-status and
+capacity are unavailable, and no Colony-credit debit or budget-stop runtime
+action is reachable. The UI must preserve the explicit unavailable states in
+the frozen spend screens. No fixture amount, source, status, or forecast is a
+default.
+
+An over-allowance total may be derived from active per-turn estimates and the
+effective allowance. Deriving that total does not stop a worker. Budget-stop
+approval cards may be created only when an actual next-turn estimate and a
+thread root are available; the relay does not synthesize either value.
+
+### AI spend proof boundaries
+
+Relay tests cover authority, event ownership, exact-head replacement,
+idempotent turn ingestion, removal semantics, money-ask approval and integer
+minor-unit validation. Ledger math tests inject the clock for period boundaries
+and temporary reversion. Desktop tests cover the employee allowance and AI
+spend journeys through a reload. Visual review compares the relevant power,
+employee salary, allowance edit, spend record, and budget-stop routes with the
+frozen company v7 and v8 references.
 
 
 ## Proof boundaries
