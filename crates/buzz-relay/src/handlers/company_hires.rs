@@ -236,6 +236,7 @@ pub(super) async fn handle(
                 employee_pubkey: None,
                 introduction_event_id: None,
                 denial_reason: None,
+                founder_approval_reason: None,
                 source_action_event_id: event.id.to_hex(),
             }
         }
@@ -269,9 +270,13 @@ pub(super) async fn handle(
             ) {
                 return Err(conflict("hire is not waiting for founder sign-off"));
             }
+            if head.status == HireStatus::AwaitingFounder && action.reason.is_none() {
+                return Err(invalid("founder sign-off needs a reason"));
+            }
             head.status = HireStatus::Approved;
             head.founder_pubkey = Some(actor_pubkey.clone());
             head.denial_reason = None;
+            head.founder_approval_reason = action.reason.clone();
             head.source_action_event_id = event.id.to_hex();
             head
         }
@@ -305,6 +310,7 @@ pub(super) async fn handle(
             }
             head.status = HireStatus::Denied;
             head.denial_reason = action.reason.clone();
+            head.founder_approval_reason = None;
             head.source_action_event_id = event.id.to_hex();
             head
         }
@@ -561,6 +567,7 @@ pub(super) async fn prepare_ask_proposal(
         employee_pubkey: None,
         introduction_event_id: None,
         denial_reason: None,
+        founder_approval_reason: None,
         source_action_event_id: source_action_event_id.to_owned(),
     };
     let event = relay_hire_head_event(&head, &d_tag, None, state)?;

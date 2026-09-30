@@ -21,7 +21,10 @@ type AgentsRouteSearch = {
   profilePersona?: string;
   profileTab?: ProfilePanelTab;
   profileView?: ProfilePanelView;
+  editRolePack?: string;
+  resumeRolePack?: "1";
   rows?: string;
+  rolePack?: "create";
   view?: AgentWorkspaceView;
 };
 
@@ -48,7 +51,10 @@ function validateAgentsSearch(
     profilePersona: nonEmptyString(search.profilePersona),
     profileTab: parseProfilePanelTab(search.profileTab) ?? undefined,
     profileView: parseProfilePanelView(search.profileView) ?? undefined,
+    editRolePack: nonEmptyString(search.editRolePack),
+    resumeRolePack: search.resumeRolePack === "1" ? "1" : undefined,
     rows: directoryPageSize(search.rows),
+    rolePack: search.rolePack === "create" ? "create" : undefined,
     view:
       view === "directory" || view === "teams" || view === "templates"
         ? view
