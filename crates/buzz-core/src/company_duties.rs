@@ -241,7 +241,7 @@ pub fn validate_duty_d_tag(d_tag: &str, duty_id: Uuid) -> Result<(), CompanyReco
 /// Convert a supported readable recurrence to the canonical five-field cron form.
 pub fn parse_readable_schedule(schedule: &str) -> Option<String> {
     let words = schedule.split_whitespace().collect::<Vec<_>>();
-    if words.first()?.eq_ignore_ascii_case("every") == false {
+    if !words.first()?.eq_ignore_ascii_case("every") {
         return None;
     }
     let (hour, minute, day_of_month, day_of_week) = match words.as_slice() {

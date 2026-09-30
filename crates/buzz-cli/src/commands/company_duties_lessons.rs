@@ -73,7 +73,7 @@ async fn propose_duty(
     proposal_input: &str,
 ) -> Result<(), CliError> {
     let channel_id = parse_uuid(channel)?;
-    let thread_root = parse_event_id(thread_root)?.to_hex();
+    let thread_root = parse_event_id(thread_root)?;
     let proposal: DutyProposal = read_json(proposal_input, "duty proposal")?;
     validate_duty_proposal(&proposal)
         .map_err(|error| CliError::Usage(format!("invalid duty proposal: {error}")))?;
@@ -514,9 +514,10 @@ fn verify_duty_head_coordinates(
     let d_tags = tag_values(event, "d");
     let p_tags = tag_values(event, "p");
     let expected_employee = employee.unwrap_or(&head.proposal.employee_pubkey);
+    let expected_p_tags = std::slice::from_ref(&head.proposal.employee_pubkey);
     if event.tags.len() != 2
         || d_tags.as_slice() != [duty_d_tag(head.duty_id)]
-        || p_tags.as_slice() != [head.proposal.employee_pubkey]
+        || p_tags.as_slice() != expected_p_tags
         || expected_employee != head.proposal.employee_pubkey
     {
         return Err(CliError::Other(
@@ -534,9 +535,10 @@ fn verify_lesson_head_coordinates(
     let d_tags = tag_values(event, "d");
     let p_tags = tag_values(event, "p");
     let expected_employee = employee.unwrap_or(&head.snapshot.employee_pubkey);
+    let expected_p_tags = std::slice::from_ref(&head.snapshot.employee_pubkey);
     if event.tags.len() != 2
         || d_tags.as_slice() != [lesson_d_tag(head.lesson_id)]
-        || p_tags.as_slice() != [head.snapshot.employee_pubkey]
+        || p_tags.as_slice() != expected_p_tags
         || expected_employee != head.snapshot.employee_pubkey
     {
         return Err(CliError::Other(
