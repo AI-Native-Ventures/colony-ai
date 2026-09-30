@@ -198,6 +198,19 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goTeamMemberHistory = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/team/detail/$memberPubkey",
+          params: { memberPubkey },
+          search: { tab: "history" },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goTeamEdit = React.useCallback(
     (memberPubkey: string, behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -993,6 +1006,7 @@ export function useAppNavigation() {
     goTeam,
     goTeamOrg,
     goTeamMember,
+    goTeamMemberHistory,
     goTeamEdit,
     goTeamPause,
     goTeamArchive,

@@ -18,7 +18,6 @@ import { runtimeForAgent } from "@/features/agents/agentDirectoryModel";
 import { AgentConfigPanel } from "@/features/agents/ui/AgentConfigPanel";
 import { AgentInstanceEditDialog } from "@/features/agents/ui/AgentInstanceEditDialog";
 import { ModelPicker } from "@/features/agents/ui/ModelPicker";
-import { useCompanyWorkHeadsQuery } from "@/features/company-work/hooks";
 import { useOpenDmMutation } from "@/features/channels/hooks";
 import { fetchSecretBindings } from "@/features/company-secrets/secretBindings";
 import { ToolPermissionList } from "@/features/company-permissions/ui/ToolPermissionScreen";
@@ -34,6 +33,7 @@ import {
 } from "../employeeHistory";
 import { CompanyEmployeeProfileActions } from "./CompanyEmployeeProfileActions";
 import { EmployeeHistoryPanel } from "./EmployeeHistoryPanel";
+import { MemberDoingNowSection } from "./MemberDoingNowSection";
 import type { CompanyTeamData } from "../teamRelay";
 import type { TeamMember } from "../teamModels";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
@@ -44,8 +44,8 @@ import type {
   UpdatePersonaInput,
 } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
-import { Badge } from "@/shared/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
+import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { Textarea } from "@/shared/ui/textarea";
 import { truncateNpub } from "@/shared/lib/pubkey";
 
@@ -198,6 +198,7 @@ export function EmployeeProfileScreen({
   profiles,
   teamData,
   canManage,
+  initialTab,
   onBack,
   onEditPosition,
   onOpenMember,
@@ -209,6 +210,7 @@ export function EmployeeProfileScreen({
   profiles: Record<string, ProfileSummary>;
   teamData: CompanyTeamData;
   canManage: boolean;
+  initialTab?: "overview" | "history";
   onBack: () => void;
   onEditPosition: () => void;
   onOpenMember: (pubkey: string) => void;
@@ -217,11 +219,10 @@ export function EmployeeProfileScreen({
 }) {
   const agent = member.managedAgent;
   const identity = useIdentityQuery();
-  const { goChannel, goCompanyWorkDetail } = useAppNavigation();
+  const { goChannel, goCompanyWork, goPower } = useAppNavigation();
   const openDm = useOpenDmMutation();
   const personasQuery = usePersonasQuery();
   const runtimesQuery = useAcpRuntimesQuery({ enabled: true });
-  const workQuery = useCompanyWorkHeadsQuery(true);
   const employeePubkey = member.pubkey.toLowerCase();
   const queryClient = useQueryClient();
   const historyQuery = useEmployeeHistoryQuery(employeePubkey);
@@ -278,7 +279,7 @@ export function EmployeeProfileScreen({
     enabled: Boolean(relaySelf),
     staleTime: 15_000,
   });
-  const [tab, setTab] = React.useState<EmployeeTab>("overview");
+  const [tab, setTab] = React.useState<EmployeeTab>(initialTab ?? "overview");
   const [editInstructions, setEditInstructions] = React.useState(false);
   const [instructionDraft, setInstructionDraft] = React.useState("");
   const [instructionError, setInstructionError] = React.useState<string | null>(
@@ -302,6 +303,10 @@ export function EmployeeProfileScreen({
   }, [snapshot?.instructions]);
 
   React.useEffect(() => {
+    if (initialTab) setTab(initialTab);
+  }, [initialTab]);
+
+  React.useEffect(() => {
     setPendingRevisions(readPendingRevisions(employeePubkey));
   }, [employeePubkey]);
 
@@ -315,22 +320,6 @@ export function EmployeeProfileScreen({
     (record) =>
       record.head.binding.employeePubkey.toLowerCase() === employeePubkey,
   );
-  const workRecords = (workQuery.data ?? [])
-    .filter(
-      (record) =>
-        record.head.assignedPubkeys.some(
-          (pubkey) => pubkey.toLowerCase() === employeePubkey,
-        ) &&
-        record.head.status !== "archived" &&
-        record.head.status !== "done_verified",
-    )
-    .sort((first, second) => second.event.created_at - first.event.created_at);
-  const currentWorkRecords = workRecords.filter((record) =>
-    ["active", "paused", "blocked", "done_unverified"].includes(
-      record.head.status,
-    ),
-  );
-
   function buildRecordAction(
     before: EmployeeConfigSnapshot,
     after: EmployeeConfigSnapshot,
@@ -630,62 +619,6 @@ export function EmployeeProfileScreen({
     }
   }
 
-  function workContent() {
-    if (workQuery.isLoading)
-      return (
-        <p className="text-sm text-muted-foreground" role="status">
-          Loading work
-        </p>
-      );
-    if (workQuery.isError)
-      return (
-        <p className="text-sm text-destructive" role="alert">
-          Work could not be loaded.
-        </p>
-      );
-    if (currentWorkRecords.length === 0)
-      return (
-        <p className="text-sm text-muted-foreground">No current commitments.</p>
-      );
-    return (
-      <div className="divide-y divide-border rounded-lg border border-border">
-        {currentWorkRecords.map((record) => {
-          const channelName = workQuery.channelsQuery.data?.find(
-            (channel) =>
-              channel.id.toLowerCase() === record.channelId.toLowerCase(),
-          )?.name;
-          return (
-            <button
-              className="flex min-h-16 w-full items-center justify-between gap-4 px-4 py-3 text-left hover:bg-muted/30"
-              data-testid={`employee-work-${record.head.workItemId}`}
-              key={record.head.workItemId}
-              onClick={() => void goCompanyWorkDetail(record.head.workItemId)}
-              type="button"
-            >
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-medium">
-                  {record.head.title}
-                </span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  {channelName
-                    ? `#${channelName}`
-                    : `channel:${record.channelId}`}
-                </span>
-              </span>
-              <Badge
-                variant={
-                  record.head.status === "blocked" ? "warning" : "outline"
-                }
-              >
-                {record.head.status.replaceAll("_", " ")}
-              </Badge>
-            </button>
-          );
-        })}
-      </div>
-    );
-  }
-
   function instructionsContent() {
     if (editInstructions) {
       return (
@@ -782,7 +715,104 @@ export function EmployeeProfileScreen({
   }
 
   if (!agent) {
-    return null;
+    const positionStatus = currentPosition?.status ?? "active";
+    return (
+      <main
+        className="mx-auto w-full max-w-[72rem] px-6 py-8 xl:px-0"
+        data-testid="company-position-unlinked"
+      >
+        <div className="mb-8 text-xs text-muted-foreground">
+          Company position
+        </div>
+        <h1 className="mb-8 text-2xl font-semibold tracking-tight">
+          Company position
+        </h1>
+        <div className="mb-8 flex items-center gap-4">
+          <UserAvatar
+            avatarUrl={profile?.avatarUrl ?? null}
+            displayName={fullName}
+            fallbackVariant="muted"
+            shape="squircle"
+            size="md"
+          />
+          <div className="min-w-0">
+            <p className="truncate text-base font-medium">{fullName}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Company position · No managed agent on this device
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,1fr)]">
+          <section
+            className="rounded-lg border border-border p-6"
+            data-testid="company-position-record"
+          >
+            <h2 className="text-base font-semibold">Company record</h2>
+            <dl className="mt-5 divide-y divide-border text-sm">
+              <div className="grid grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)] gap-4 py-3">
+                <dt className="text-muted-foreground">Title</dt>
+                <dd className="min-w-0 break-words">
+                  {currentPosition?.title ?? ""}
+                </dd>
+              </div>
+              <div className="grid grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)] gap-4 py-3">
+                <dt className="text-muted-foreground">Reports to</dt>
+                <dd className="min-w-0 break-words">
+                  {managerName ?? "Company owner"}
+                </dd>
+              </div>
+              <div className="grid grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)] gap-4 py-3">
+                <dt className="text-muted-foreground">Status</dt>
+                <dd>
+                  {positionStatus === "active"
+                    ? "Position exists"
+                    : positionStatus}
+                  {positionStatus !== "active" && currentPosition?.reason
+                    ? ` · ${currentPosition.reason}`
+                    : ""}
+                </dd>
+              </div>
+              <div className="grid grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)] gap-4 py-3">
+                <dt className="text-muted-foreground">Work and history</dt>
+                <dd>Available from the shared company record</dd>
+              </div>
+            </dl>
+            <Button
+              className="mt-5"
+              onClick={() => void goCompanyWork()}
+              type="button"
+              variant="outline"
+            >
+              Open work
+            </Button>
+          </section>
+          <aside className="rounded-lg border border-border p-6">
+            <h2 className="text-base font-semibold">Runtime not linked here</h2>
+            <div className="mt-5 rounded-lg border-l-2 border-primary bg-muted/40 px-4 py-4">
+              <p className="text-sm font-medium">
+                This is not a deleted employee
+              </p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                The position can exist without a local agent. Instructions,
+                model and tools cannot be configured on this device yet.
+              </p>
+            </div>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Button disabled type="button">
+                Connect a managed agent
+              </Button>
+              <Button
+                onClick={() => void goPower()}
+                type="button"
+                variant="outline"
+              >
+                View compute hosts
+              </Button>
+            </div>
+          </aside>
+        </div>
+      </main>
+    );
   }
 
   if (editInstructions) {
@@ -920,18 +950,10 @@ export function EmployeeProfileScreen({
         {tab === "overview" ? (
           <>
             <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
-              <section
-                aria-labelledby="employee-doing-now-heading"
-                data-testid="employee-doing-now"
-              >
-                <h2
-                  className="mb-4 text-base font-semibold"
-                  id="employee-doing-now-heading"
-                >
-                  Doing now
-                </h2>
-                {workContent()}
-              </section>
+              <MemberDoingNowSection
+                memberPubkey={employeePubkey}
+                testId="employee-doing-now"
+              />
               <aside
                 className="rounded-lg border border-border p-4"
                 data-testid="employee-salary-overview-unavailable"
@@ -1069,12 +1091,12 @@ export function EmployeeProfileScreen({
           </section>
         ) : null}
         {tab === "activity" ? (
-          <section data-testid="employee-activity">
-            <h2 className="mb-4 text-lg font-semibold tracking-tight">
-              Activity
-            </h2>
-            {workContent()}
-          </section>
+          <MemberDoingNowSection
+            heading="Activity"
+            headingClassName="mb-4 text-lg font-semibold tracking-tight"
+            memberPubkey={employeePubkey}
+            testId="employee-activity"
+          />
         ) : null}
         {tab === "salary" ? unavailableState("Salary") : null}
         {tab === "workers" ? unavailableState("Workers") : null}

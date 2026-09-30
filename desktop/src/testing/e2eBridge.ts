@@ -728,6 +728,8 @@ type E2eConfig = {
     companyHireActionErrors?: string[];
     /** Relay-signed member-position heads for Company Team E2E coverage. */
     companyMemberPositionEvents?: RelayEvent[];
+    /** Relay-signed member-position actions for Company Team history coverage. */
+    companyMemberPositionActions?: RelayEvent[];
     /** Synthetic relay key used only to broker member-position actions in focused E2E tests. */
     companyMemberRelayPrivateKeyHex?: string;
     /** Reject successive member-position writes in order, then accept them. */
@@ -740,6 +742,8 @@ type E2eConfig = {
     companyEmployeeRevisionActionErrors?: string[];
     /** Relay-signed company work events for company work UI E2E coverage. */
     companyWorkEvents?: RelayEvent[];
+    /** Reject successive company work head reads in order, then accept them. */
+    companyWorkReadErrors?: string[];
     /** Synthetic relay key used to broker company work actions in focused E2E tests. */
     companyWorkRelayPrivateKey?: string;
     /** Reject company work action publishes in order, then accept them. */
@@ -3953,6 +3957,9 @@ const mockCompanyHireHeads: RelayEvent[] = [];
 const mockCompanyMemberPositionEvents: RelayEvent[] = [];
 const MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY =
   "buzz-e2e-company-member-position-events-v1";
+const mockCompanyMemberPositionActions: RelayEvent[] = [];
+const MOCK_COMPANY_MEMBER_POSITION_ACTIONS_STORAGE_KEY =
+  "buzz-e2e-company-member-position-actions-v1";
 const mockCompanyEmployeeRevisionActions: RelayEvent[] = [];
 const MOCK_COMPANY_EMPLOYEE_REVISION_ACTIONS_STORAGE_KEY =
   "buzz-e2e-company-employee-revision-actions-v1";
@@ -6155,6 +6162,32 @@ function filterMockCompanyMemberPositions(filter: MockFilter): RelayEvent[] {
     .slice(0, filter.limit ?? 500);
 }
 
+function filterMockCompanyMemberPositionActions(
+  filter: MockFilter,
+): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return mockCompanyMemberPositionActions
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
 function filterMockEmployeeRevisionEvents(filter: MockFilter): RelayEvent[] {
   const authors = filter.authors?.map((author) => author.toLowerCase());
   const dTags = filter["#d"];
@@ -6648,6 +6681,11 @@ function acceptMockMemberPositionAction(
   window.localStorage.setItem(
     MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY,
     JSON.stringify(mockCompanyMemberPositionEvents),
+  );
+  mockCompanyMemberPositionActions.push(event);
+  window.localStorage.setItem(
+    MOCK_COMPANY_MEMBER_POSITION_ACTIONS_STORAGE_KEY,
+    JSON.stringify(mockCompanyMemberPositionActions),
   );
   emitMockGlobalEvent(nextEvent);
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
@@ -16022,6 +16060,13 @@ function sendToMockSocket(args: {
       companyWorkTrackingHeadQuery ||
       companyWorkTrackingActionQuery
     ) {
+      const readError = companyWorkHeadQuery
+        ? getConfig()?.mock?.companyWorkReadErrors?.shift()
+        : undefined;
+      if (readError) {
+        sendWsText(socket.handler, ["CLOSED", subId, readError]);
+        return;
+      }
       for (const event of filterMockCompanyWorkEvents(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
       }
@@ -16125,6 +16170,14 @@ function sendToMockSocket(args: {
 
     if (filter.kinds?.includes(KIND_MEMBER_POSITION_HEAD)) {
       for (const event of filterMockCompanyMemberPositions(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_MEMBER_POSITION_ACTION)) {
+      for (const event of filterMockCompanyMemberPositionActions(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
       }
       sendWsText(socket.handler, ["EOSE", subId]);
@@ -16669,6 +16722,20 @@ export function maybeInstallE2eTauriMocks() {
     0,
     mockCompanyMemberPositionEvents.length,
     ...memberPositionEvents,
+  );
+  const storedMemberPositionActions = window.localStorage.getItem(
+    MOCK_COMPANY_MEMBER_POSITION_ACTIONS_STORAGE_KEY,
+  );
+  const memberPositionActions = storedMemberPositionActions
+    ? (JSON.parse(storedMemberPositionActions) as RelayEvent[])
+    : (config.mock?.companyMemberPositionActions ?? []);
+  if (!Array.isArray(memberPositionActions)) {
+    throw new Error("Stored mock member position actions must be an array.");
+  }
+  mockCompanyMemberPositionActions.splice(
+    0,
+    mockCompanyMemberPositionActions.length,
+    ...memberPositionActions,
   );
   const storedEmployeeRevisionActions = window.localStorage.getItem(
     MOCK_COMPANY_EMPLOYEE_REVISION_ACTIONS_STORAGE_KEY,
