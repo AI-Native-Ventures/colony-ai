@@ -218,62 +218,6 @@ fn validate_configured_provider(
     validate_factory_pull_request_provider(pull_request, allowed_hosts)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use buzz_core::factory_run_records::{
-        FactoryPullRequest, FactoryPullRequestState, FactoryRunRecordError,
-        FACTORY_RUN_RECORD_SCHEMA_VERSION,
-    };
-    use uuid::Uuid;
-
-    fn link_action(url: &str) -> FactoryRunAction {
-        FactoryRunAction {
-            schema_version: FACTORY_RUN_RECORD_SCHEMA_VERSION,
-            run_id: Uuid::from_u128(1),
-            run_owner_pubkey: None,
-            expected_head_event_id: Some("ab".repeat(32)),
-            action: FactoryRunActionKind::LinkPullRequest,
-            command: None,
-            local_url: None,
-            port: None,
-            readiness: None,
-            preview: None,
-            pull_request: Some(FactoryPullRequest {
-                url: url.to_owned(),
-                number: 42,
-                state: FactoryPullRequestState::Unknown,
-                check_results: Vec::new(),
-                review_handoff: None,
-            }),
-        }
-    }
-
-    #[test]
-    fn pull_request_action_requires_an_exact_configured_host() {
-        let allowed = vec!["code.example.test".to_owned()];
-        assert!(validate_configured_provider(
-            &link_action("https://code.example.test/team/project/pull/42"),
-            &allowed,
-        )
-        .is_ok());
-        assert_eq!(
-            validate_configured_provider(
-                &link_action("https://other.example.test/team/project/pull/42"),
-                &allowed,
-            ),
-            Err(FactoryRunRecordError::Invalid(
-                "pull request provider host is not configured"
-            ))
-        );
-        assert!(validate_configured_provider(
-            &link_action("https://code.example.test/team/project/pull/42"),
-            &[],
-        )
-        .is_err());
-    }
-}
-
 fn factory_run_command_d_tag(event: &Event, run_id: Uuid) -> Result<String, IngestError> {
     let d_tags = event
         .tags
@@ -373,4 +317,60 @@ fn conflict(message: impl Into<String>) -> IngestError {
 
 fn internal(error: impl std::fmt::Display) -> IngestError {
     IngestError::Internal(format!("error: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use buzz_core::factory_run_records::{
+        FactoryPullRequest, FactoryPullRequestState, FactoryRunRecordError,
+        FACTORY_RUN_RECORD_SCHEMA_VERSION,
+    };
+    use uuid::Uuid;
+
+    fn link_action(url: &str) -> FactoryRunAction {
+        FactoryRunAction {
+            schema_version: FACTORY_RUN_RECORD_SCHEMA_VERSION,
+            run_id: Uuid::from_u128(1),
+            run_owner_pubkey: None,
+            expected_head_event_id: Some("ab".repeat(32)),
+            action: FactoryRunActionKind::LinkPullRequest,
+            command: None,
+            local_url: None,
+            port: None,
+            readiness: None,
+            preview: None,
+            pull_request: Some(FactoryPullRequest {
+                url: url.to_owned(),
+                number: 42,
+                state: FactoryPullRequestState::Unknown,
+                check_results: Vec::new(),
+                review_handoff: None,
+            }),
+        }
+    }
+
+    #[test]
+    fn pull_request_action_requires_an_exact_configured_host() {
+        let allowed = vec!["code.example.test".to_owned()];
+        assert!(validate_configured_provider(
+            &link_action("https://code.example.test/team/project/pull/42"),
+            &allowed,
+        )
+        .is_ok());
+        assert_eq!(
+            validate_configured_provider(
+                &link_action("https://other.example.test/team/project/pull/42"),
+                &allowed,
+            ),
+            Err(FactoryRunRecordError::Invalid(
+                "pull request provider host is not configured"
+            ))
+        );
+        assert!(validate_configured_provider(
+            &link_action("https://code.example.test/team/project/pull/42"),
+            &[],
+        )
+        .is_err());
+    }
 }
