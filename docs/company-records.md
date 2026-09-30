@@ -524,9 +524,9 @@ during configuration, and the chosen value is kept with the hire record.
 projections, not a new event kind. It contains a job title, skill labels, tool
 names with a risk label of `low`, `medium`, or `high`, and an optional
 allowance field. These labels describe the role and do not grant permission.
-The existing catalog records do not yet expose these fields, so HIRE-1 adds the
-metadata to those real records and their existing catalog projections. Catalog
-entries without `companyRole` metadata are not presented as hire role packs.
+Authorized owners and admins curate this metadata through the existing
+Community Catalog and persona editor. Catalog entries without valid
+`companyRole` metadata are not presented as hire role packs.
 
 The hire head is community-wide at `company:hire:<hire-uuid>`. Its content
 contains `schemaVersion`, `hireId`, the immutable role-pack coordinate and
@@ -565,8 +565,12 @@ UUID, and carries the proposed configuration. The ask head and proposed hire
 head commit together. Only community owners and admins may resolve a hire ask
 under D2. An admin approval moves the hire to `awaiting_founder`; it does not
 activate an employee until the community owner signs the final hire approval.
-An owner approval can record the ask resolution and founder approval in the
-same transaction. `approve` and `complete` name the exact current
+The admin's reason stays with the ask resolution. A founder reviewing a
+referred hire supplies a separate reason on the owner-only `approve` action;
+the relay records it as `founderApprovalReason` on the hire head. An owner
+approval that resolves an open hire ask records the ask reason and founder
+approval in the same transaction. Sign-off does not create an employee or
+position. `approve` and `complete` name the exact current
 `expectedHeadEventId`. Rejection marks the hire denied and never creates a
 persona, managed agent, member position, channel membership, tool grant, or
 introduction. After founder approval, the owner records the managed employee
@@ -619,17 +623,11 @@ The relay supports an administrator decision that waits for the founder, but
 the handoff from that decision to a founder review is not designed. The desktop
 approval action is restricted to the owner until that handoff is specified.
 
-NEEDS_DESIGN: the frozen role-picker and configure screens do not specify the
-empty role-catalog state or what to show when no supported runtime, provider,
-or model is available. The flow uses live catalog records and does not invent
-fallback roles or models; these states need design before they can be handled
-in the UI.
-
-NEEDS_DESIGN: the existing `CommunityCatalogDialog` and `AgentDialog` do not
-expose a role-pack editor for `companyRole`, and this repository has no shipped
-role-pack values. The hire picker can show only real catalog entries that
-already contain valid metadata. Designing how owners curate those fields is
-required before the catalog can be populated through the app.
+Role catalog empty, loading, unavailable, denied, save-failed, and runtime,
+provider, and model recovery states use the approved Batch 2 design. New role
+packs contain no seeded allowance, worker menu, runtime, provider, or model.
+Creation does not start or hire an agent. Edits retain the existing
+`companyRole.defaultAllowance` value when one has been configured.
 
 ## Company work items
 

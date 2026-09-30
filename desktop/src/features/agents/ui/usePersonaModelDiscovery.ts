@@ -168,6 +168,7 @@ export function usePersonaModelDiscovery({
   modelFieldVisible,
   open,
   provider,
+  refreshToken = 0,
   selectedRuntime,
 }: {
   envVars: EnvVarsValue;
@@ -175,6 +176,7 @@ export function usePersonaModelDiscovery({
   modelFieldVisible: boolean;
   open: boolean;
   provider: string;
+  refreshToken?: number;
   selectedRuntime: AcpRuntimeCatalogEntry | undefined;
 }) {
   const [modelDiscoveryData, setModelDiscoveryData] =
@@ -230,12 +232,14 @@ export function usePersonaModelDiscovery({
       agentArgs: modelDiscoveryArgsKey,
       provider: trimmedProvider,
       envVars: modelDiscoveryEnvKey,
+      refreshToken,
     });
   }, [
     canDiscoverModelOptions,
     discoveryAgentCommand,
     modelDiscoveryArgsKey,
     modelDiscoveryEnvKey,
+    refreshToken,
     trimmedProvider,
   ]);
 

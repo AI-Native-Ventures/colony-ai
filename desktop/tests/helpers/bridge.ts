@@ -380,6 +380,8 @@ type MockBridgeOptions = {
       | "stopped";
   }>;
   personas?: MockPersonaSeed[];
+  /** Reject successive local persona creates or updates in order. */
+  personaWriteErrors?: string[];
   /** Community catalog replaceable-event heads returned by relay queries. */
   personaCatalogEvents?: RelayEvent[];
   /** Outcomes for successive explicit persona share publications. */

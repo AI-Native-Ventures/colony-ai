@@ -38,6 +38,7 @@ import {
   HirePageHeader,
   hirePrimaryButtonClass,
 } from "./HirePresentation";
+import { HireHandoffScreen } from "./HireHandoffScreen";
 import { readHireDraft, removeHireDraft, writeHireDraft } from "../hireDraft";
 import {
   useCompanyHireActionMutation,
@@ -173,14 +174,24 @@ export function HireReviewScreen({
   const createManagedAgent = useCreateManagedAgentMutation();
   const teamQuery = useCompanyTeamQuery();
   const channelsQuery = useChannelsQuery();
-  const { goHireConfigure, goHireSuccess } = useAppNavigation();
+  const {
+    goAskDetail,
+    goChannel,
+    goHireConfigure,
+    goHireReview,
+    goHireSuccess,
+    goTeam,
+  } = useAppNavigation();
   const [founderConfirmed, setFounderConfirmed] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [failure, setFailure] = React.useState(false);
   const submittingRef = React.useRef(false);
 
   const draft = readHireDraft(relayUrl, hireId);
-  const proposal = draft?.proposal ?? hireQuery.data?.head.proposal ?? null;
+  const hasAskSource = Boolean(source?.channelId && source?.askId);
+  const proposal = hasAskSource
+    ? (hireQuery.data?.head.proposal ?? draft?.proposal ?? null)
+    : (draft?.proposal ?? hireQuery.data?.head.proposal ?? null);
   const persona = personasQuery.data?.find(
     (candidate) => candidate.id === proposal?.rolePack.personaId,
   );
@@ -202,8 +213,12 @@ export function HireReviewScreen({
     [teamQuery.data?.members],
   );
   const memberPubkeys = React.useMemo(
-    () => teamMembers.map((member) => member.pubkey),
-    [teamMembers],
+    () =>
+      [
+        ...teamMembers.map((member) => member.pubkey),
+        askState.query.data?.head.askerPubkey,
+      ].filter((pubkey): pubkey is string => Boolean(pubkey)),
+    [askState.query.data?.head.askerPubkey, teamMembers],
   );
   const profilesQuery = useUsersBatchQuery(memberPubkeys, {
     enabled: memberPubkeys.length > 0,
@@ -222,6 +237,7 @@ export function HireReviewScreen({
   }, [goHireSuccess, hireId, hireQuery.data?.head.status]);
 
   React.useEffect(() => {
+    if (hasAskSource) return;
     if (hireQuery.isError) throw hireQuery.error;
     if (askState.query.isError) throw askState.query.error;
     if (personasQuery.isError) throw personasQuery.error;
@@ -241,6 +257,7 @@ export function HireReviewScreen({
     runtimesQuery.isError,
     teamQuery.error,
     teamQuery.isError,
+    hasAskSource,
   ]);
 
   const publishAction = async (
@@ -261,6 +278,135 @@ export function HireReviewScreen({
     if (!matches(observed))
       throw new Error("The relay did not confirm the hire change.");
     return observed;
+  };
+
+  const resolveHandoff = async (
+    outcome: "approved" | "rejected",
+    reason: string,
+  ) => {
+    if (!hasAskSource || !source?.askId || !source.channelId) {
+      throw new Error("The hire ask coordinate is missing.");
+    }
+    if (!identityPubkey || !currentRole) {
+      throw new Error("The current member role could not be verified.");
+    }
+
+    let askRecord = (await askState.query.refetch()).data;
+    let current = (await hireQuery.refetch()).data;
+    if (
+      !askRecord ||
+      !current ||
+      current.head.sourceAskId !== source.askId ||
+      current.head.sourceAskChannelId !== source.channelId ||
+      askRecord.head.askId !== source.askId ||
+      askRecord.channelId !== source.channelId ||
+      askRecord.head.ask.hireProposal?.hireId !== hireId
+    ) {
+      throw new Error("The hire proposal and ask no longer match.");
+    }
+
+    if (
+      current.head.status === "proposed" &&
+      askRecord.head.status === "open"
+    ) {
+      if (currentRole !== "owner" && currentRole !== "admin") {
+        throw new Error("Only an owner or admin can resolve a hire ask.");
+      }
+      const signedResponse = await signRelayEvent({
+        kind: KIND_ASK_RESPONSE,
+        content: JSON.stringify({
+          schemaVersion: 1,
+          askId: source.askId,
+          expectedHeadEventId: askRecord.event.id,
+          outcome,
+          reason,
+        }),
+        tags: [
+          ["h", source.channelId],
+          ["d", `channel:${source.channelId}:ask:${source.askId}`],
+        ],
+      });
+      let publishError: unknown;
+      try {
+        await relayClient.publishEvent(
+          signedResponse,
+          "The ask response timed out before the relay confirmed it.",
+          "The ask response timed out before the relay confirmed it.",
+        );
+      } catch (cause) {
+        publishError = cause;
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["company-ask-head", source.channelId, source.askId],
+          exact: false,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["company-hire-head", relayUrl, hireId.toLowerCase()],
+          exact: true,
+        }),
+      ]);
+      askRecord = (await askState.query.refetch()).data;
+      current = (await hireQuery.refetch()).data;
+      const askConfirmed =
+        askRecord?.head.status === "resolved" &&
+        askRecord.head.resolution?.outcome === outcome &&
+        askRecord.head.resolution.reason === reason;
+      const hireConfirmed =
+        outcome === "rejected"
+          ? current?.head.status === "denied" &&
+            current.head.denialReason === reason
+          : currentRole === "owner"
+            ? current?.head.status === "approved" &&
+              current.head.founderPubkey?.toLowerCase() ===
+                identityPubkey.toLowerCase() &&
+              current.head.founderApprovalReason === reason
+            : current?.head.status === "awaiting_founder" &&
+              current.head.founderPubkey === undefined;
+      if (!askConfirmed || !hireConfirmed) {
+        throw (
+          publishError ?? new Error("The relay did not confirm the decision.")
+        );
+      }
+      return;
+    }
+
+    if (
+      current.head.status === "awaiting_founder" &&
+      askRecord.head.status === "resolved" &&
+      askRecord.head.resolution?.outcome === "approved"
+    ) {
+      if (currentRole !== "owner") {
+        throw new Error("Founder sign-off requires the community owner.");
+      }
+      await publishAction(
+        {
+          schemaVersion: COMPANY_HIRE_SCHEMA_VERSION,
+          hireId,
+          action: outcome === "approved" ? "approve" : "deny",
+          expectedHeadEventId: current.event.id,
+          reason,
+        },
+        (record) =>
+          outcome === "approved"
+            ? record?.head.status === "approved" &&
+              record.head.founderPubkey?.toLowerCase() ===
+                identityPubkey.toLowerCase() &&
+              record.head.founderApprovalReason === reason
+            : record?.head.status === "denied" &&
+              record.head.denialReason === reason,
+      );
+      const confirmedAsk = (await askState.query.refetch()).data;
+      if (
+        confirmedAsk?.head.status !== "resolved" ||
+        confirmedAsk.head.resolution?.outcome !== "approved"
+      ) {
+        throw new Error("The hire ask changed during founder sign-off.");
+      }
+      return;
+    }
+
+    throw new Error("The hire stage changed. Refresh the proposal and retry.");
   };
 
   const runApprovedHire = async (
@@ -600,6 +746,69 @@ export function HireReviewScreen({
       setSubmitting(false);
     }
   };
+
+  if (hasAskSource && source?.askId && source.channelId) {
+    const handoffRecord = hireQuery.data ?? null;
+    const handoffAsk = askState.query.data ?? null;
+    const handoffLoading =
+      hireQuery.isPending ||
+      askState.query.isPending ||
+      identityQuery.isPending ||
+      membershipQuery.isPending;
+    const coordinatesMatch = Boolean(
+      handoffRecord &&
+        handoffAsk &&
+        handoffRecord.head.sourceAskId === source.askId &&
+        handoffRecord.head.sourceAskChannelId === source.channelId &&
+        handoffAsk.head.askId === source.askId &&
+        handoffAsk.channelId === source.channelId &&
+        handoffAsk.head.ask.hireProposal?.hireId === hireId,
+    );
+    const unavailable =
+      hireQuery.isError ||
+      askState.query.isError ||
+      (!handoffLoading && !coordinatesMatch);
+    const requesterPubkey = handoffAsk?.head.askerPubkey;
+    const askerLabel = requesterPubkey
+      ? resolveUserLabel({
+          pubkey: requesterPubkey,
+          currentPubkey: identityPubkey,
+          profiles,
+        })
+      : "Requester";
+
+    return (
+      <HireHandoffScreen
+        askerLabel={askerLabel}
+        askRecord={handoffAsk}
+        currentRole={currentRole}
+        loading={handoffLoading}
+        onBack={() => {
+          const threadRootId = handoffAsk?.head.ask.threadRootEventId;
+          if (threadRootId && source.channelId) {
+            void goChannel(source.channelId, {
+              messageId: threadRootId,
+              threadRootId,
+            });
+          } else {
+            void goTeam();
+          }
+        }}
+        onOpenPosition={() => void goHireReview(hireId)}
+        onReadProposal={() => {
+          if (source.channelId && source.askId) {
+            void goAskDetail(source.channelId, source.askId);
+          }
+        }}
+        onResolve={resolveHandoff}
+        onRetry={() => {
+          void Promise.all([hireQuery.refetch(), askState.query.refetch()]);
+        }}
+        record={handoffRecord}
+        unavailable={unavailable}
+      />
+    );
+  }
 
   if (
     !proposal ||
