@@ -766,6 +766,10 @@ pub const KIND_HIRE_HEAD: u32 = 30650;
 pub const KIND_TOOL_PERMISSION_HEAD: u32 = 30646;
 /// Relay-authored canonical Factory run preview and pull request head.
 pub const KIND_FACTORY_RUN_HEAD: u32 = 30649;
+/// Relay-authored canonical employee duty head (community-wide).
+pub const KIND_DUTY_HEAD: u32 = 30655;
+/// Relay-authored canonical employee lesson head (community-wide).
+pub const KIND_LESSON_HEAD: u32 = 30656;
 /// Member goal mutation, brokered.
 pub const KIND_GOAL_ACTION: u32 = 47031;
 /// Member ask create or cancel, brokered; the create is a thread item.
@@ -786,6 +790,10 @@ pub const KIND_HIRE_ACTION: u32 = 47039;
 pub const KIND_TOOL_PERMISSION_ACTION: u32 = 47035;
 /// Member Factory run preview or pull request action, brokered.
 pub const KIND_FACTORY_RUN_ACTION: u32 = 47038;
+/// Member duty mutation, brokered and community-wide.
+pub const KIND_DUTY_ACTION: u32 = 47044;
+/// Member lesson mutation, brokered and community-wide.
+pub const KIND_LESSON_ACTION: u32 = 47045;
 
 /// Every company-record kind, including heads.
 pub const COMPANY_RECORD_KINDS: &[u32] = &[
@@ -793,6 +801,8 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_ASK_HEAD,
     KIND_MEMBER_POSITION_HEAD,
     KIND_HIRE_HEAD,
+    KIND_DUTY_HEAD,
+    KIND_LESSON_HEAD,
     KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
     KIND_AI_SPEND_RECORD_HEAD,
     KIND_GOAL_ACTION,
@@ -808,6 +818,8 @@ pub const COMPANY_RECORD_KINDS: &[u32] = &[
     KIND_EMPLOYEE_REVISION_HEAD,
     KIND_EMPLOYEE_REVISION_ACTION,
     KIND_HIRE_ACTION,
+    KIND_DUTY_ACTION,
+    KIND_LESSON_ACTION,
     KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
     KIND_AI_SPEND_RECORD_ACTION,
 ];
@@ -825,6 +837,8 @@ pub const fn is_company_command_kind(kind: u32) -> bool {
             | KIND_HIRE_ACTION
             | KIND_TOOL_PERMISSION_ACTION
             | KIND_FACTORY_RUN_ACTION
+            | KIND_DUTY_ACTION
+            | KIND_LESSON_ACTION
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_ACTION
     )
@@ -848,6 +862,10 @@ pub const fn is_company_global_kind(kind: u32) -> bool {
             | KIND_TOOL_PERMISSION_ACTION
             | KIND_FACTORY_RUN_HEAD
             | KIND_FACTORY_RUN_ACTION
+            | KIND_DUTY_HEAD
+            | KIND_DUTY_ACTION
+            | KIND_LESSON_HEAD
+            | KIND_LESSON_ACTION
             | KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_HEAD
@@ -1144,6 +1162,8 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_MEMBER_POSITION_HEAD,
     KIND_HIRE_HEAD,
     KIND_FACTORY_RUN_HEAD,
+    KIND_DUTY_HEAD,
+    KIND_LESSON_HEAD,
     KIND_FACTORY_RUN_ACTION,
     KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
     KIND_AI_SPEND_RECORD_HEAD,
@@ -1158,6 +1178,8 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_EMPLOYEE_REVISION_HEAD,
     KIND_EMPLOYEE_REVISION_ACTION,
     KIND_HIRE_ACTION,
+    KIND_DUTY_ACTION,
+    KIND_LESSON_ACTION,
 ];
 
 /// Returns `true` if `kind` is in the ephemeral range (20000–29999).
@@ -1241,6 +1263,8 @@ pub const fn is_command_kind(kind: u32) -> bool {
             | KIND_MEMBER_POSITION_ACTION
             | KIND_HIRE_ACTION
             | KIND_FACTORY_RUN_ACTION
+            | KIND_DUTY_ACTION
+            | KIND_LESSON_ACTION
             | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
             | KIND_AI_SPEND_RECORD_ACTION
     )
@@ -1281,6 +1305,8 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_EMPLOYEE_REVISION_HEAD
             | KIND_HIRE_HEAD
             | KIND_FACTORY_RUN_HEAD
+            | KIND_DUTY_HEAD
+            | KIND_LESSON_HEAD
             | KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
             | KIND_AI_SPEND_RECORD_HEAD
     )
@@ -1403,6 +1429,23 @@ mod tests {
         assert!(is_business_command_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
         assert!(is_command_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
         assert!(!is_relay_only_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
+    }
+
+    #[test]
+    fn duty_and_lesson_kinds_have_expected_write_authority() {
+        for (head, action) in [
+            (KIND_DUTY_HEAD, KIND_DUTY_ACTION),
+            (KIND_LESSON_HEAD, KIND_LESSON_ACTION),
+        ] {
+            assert!(COMPANY_RECORD_KINDS.contains(&head));
+            assert!(COMPANY_RECORD_KINDS.contains(&action));
+            assert!(is_company_global_kind(head));
+            assert!(is_company_global_kind(action));
+            assert!(is_relay_only_kind(head));
+            assert!(is_company_command_kind(action));
+            assert!(is_command_kind(action));
+            assert!(!is_relay_only_kind(action));
+        }
     }
 
     #[test]

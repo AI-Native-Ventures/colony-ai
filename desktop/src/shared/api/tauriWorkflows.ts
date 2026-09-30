@@ -7,6 +7,7 @@ import type {
   WorkflowDraft,
   WorkflowPreview,
   WorkflowRun,
+  WorkflowScheduleContext,
   WorkflowSaveResult,
   TraceEntry,
 } from "@/shared/api/types";
@@ -74,6 +75,20 @@ type RawWorkflowRun = {
   error_code?: string | null;
   error_message: string | null;
   created_at: number;
+  schedule_context?: {
+    scheduled_for: string;
+    first_missed_occurrence?: string | null;
+    latest_missed_occurrence?: string | null;
+    missed_occurrences: number;
+    skipped_occurrences: number;
+  } | null;
+};
+
+type RawWorkflowRunsMetadata = {
+  next_scheduled_at?: string | null;
+  workflow_definition_hash?: string;
+  workflow_channel_id?: string;
+  workflow_enabled?: boolean;
 };
 
 type RawWorkflowRunCursor = {
@@ -84,11 +99,15 @@ type RawWorkflowRunCursor = {
 type RawWorkflowRunsResponse = {
   runs: RawWorkflowRun[];
   next: RawWorkflowRunCursor | null;
-};
+} & RawWorkflowRunsMetadata;
 
 export type WorkflowRunsPage = {
   runs: WorkflowRun[];
   next: RawWorkflowRunCursor | null;
+  nextScheduledAt: string | null;
+  workflowDefinitionHash: string | null;
+  workflowChannelId: string | null;
+  workflowEnabled: boolean | null;
 };
 
 type RawWorkflowApproval = {
@@ -184,6 +203,17 @@ function fromRawTraceEntry(raw: RawTraceEntry): TraceEntry {
 }
 
 function fromRawWorkflowRun(raw: RawWorkflowRun): WorkflowRun {
+  const scheduleContext: WorkflowScheduleContext | null = raw.schedule_context
+    ? {
+        scheduledFor: raw.schedule_context.scheduled_for,
+        firstMissedOccurrence:
+          raw.schedule_context.first_missed_occurrence ?? null,
+        latestMissedOccurrence:
+          raw.schedule_context.latest_missed_occurrence ?? null,
+        missedOccurrences: raw.schedule_context.missed_occurrences,
+        skippedOccurrences: raw.schedule_context.skipped_occurrences,
+      }
+    : null;
   return {
     id: raw.id,
     workflowId: raw.workflow_id,
@@ -195,6 +225,7 @@ function fromRawWorkflowRun(raw: RawWorkflowRun): WorkflowRun {
     errorCode: raw.error_code ?? null,
     errorMessage: raw.error_message,
     createdAt: raw.created_at,
+    scheduleContext,
   };
 }
 
@@ -373,6 +404,10 @@ export async function getWorkflowRunsPage(
   return {
     runs: raw.runs.map(fromRawWorkflowRun),
     next: raw.next,
+    nextScheduledAt: raw.next_scheduled_at ?? null,
+    workflowDefinitionHash: raw.workflow_definition_hash ?? null,
+    workflowChannelId: raw.workflow_channel_id ?? null,
+    workflowEnabled: raw.workflow_enabled ?? null,
   };
 }
 

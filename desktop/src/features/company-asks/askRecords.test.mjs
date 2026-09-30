@@ -280,6 +280,82 @@ test("decodeRelayAskHead validates a hire ask manager pubkey", () => {
   );
 });
 
+test("decodeRelayAskHead validates duty proposals against ask identity and channel", () => {
+  const proposal = {
+    schemaVersion: 1,
+    dutyId: ASK_ID,
+    employeePubkey: "f".repeat(64),
+    title: "Review saved hospitality research",
+    scheduleText: "Every Monday at 09:00",
+    scheduleCron: "0 9 * * 1",
+    timeZone: "Etc/UTC",
+    channelId: CHANNEL_ID,
+    instructions: "Review the saved list and report changes.",
+  };
+  const makeDutyContent = (dutyProposal = proposal, subjectId = ASK_ID) =>
+    headContent({
+      ask: {
+        schemaVersion: 1,
+        askId: ASK_ID,
+        type: "approval",
+        category: "duty",
+        title: "Give Aya a weekly research duty",
+        body: "Every Monday, review the saved hospitality list and report changes.",
+        threadRootEventId: THREAD_ROOT,
+        subject: { kind: "duty", id: subjectId },
+        dutyProposal,
+      },
+    });
+
+  const decoded = decodeRelayAskHead(
+    signHead({ content: makeDutyContent() }),
+    RELAY_PUBKEY,
+    CHANNEL_ID,
+  );
+  assert.equal(decoded?.head.ask.category, "duty");
+  assert.equal(decoded?.head.ask.dutyProposal?.dutyId, ASK_ID);
+
+  assert.throws(
+    () =>
+      decodeRelayAskHead(
+        signHead({
+          content: makeDutyContent(
+            proposal,
+            "7916ba1a-e078-42ef-b896-00be34a94f12",
+          ),
+        }),
+        RELAY_PUBKEY,
+        CHANNEL_ID,
+      ),
+    /malformed duty proposal ask/i,
+  );
+
+  const crossChannelProposal = {
+    ...proposal,
+    channelId: "9dae0116-799b-5071-a0a8-fdd30a91a35d",
+  };
+  assert.throws(
+    () =>
+      decodeRelayAskHead(
+        signHead({ content: makeDutyContent(crossChannelProposal) }),
+        RELAY_PUBKEY,
+        CHANNEL_ID,
+      ),
+    /malformed duty proposal ask/i,
+  );
+
+  const mismatchedSchedule = { ...proposal, scheduleCron: "1 9 * * 1" };
+  assert.throws(
+    () =>
+      decodeRelayAskHead(
+        signHead({ content: makeDutyContent(mismatchedSchedule) }),
+        RELAY_PUBKEY,
+        CHANNEL_ID,
+      ),
+    /malformed duty proposal ask/i,
+  );
+});
+
 test("askIdFromAction reads create commands only", () => {
   assert.equal(
     askIdFromAction(JSON.stringify({ action: "create", askId: ASK_ID })),
