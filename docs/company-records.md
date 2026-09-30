@@ -808,6 +808,13 @@ The workflow is owned by the approving owner or admin for the existing
 workflow-engine authority checks. A failed transaction changes neither ask nor
 duty. A rejected proposal leaves no active duty head.
 
+The frozen employee profile editor can select a channel but does not identify an
+originating conversation root. The duty contract requires the proposal ask to
+live in the conversation where the need came up. Profile-originated submission
+therefore stays unavailable until the design specifies how that editor chooses
+or establishes the ask thread root. This is a NEEDS_DESIGN boundary; do not
+silently create a separate root message or choose one from channel history.
+
 The proposal snapshot contains schemaVersion, dutyId, employeePubkey, title,
 scheduleText, scheduleCron, timeZone, channelId, and instructions. The schedule
 text is retained verbatim for display. The parsed schedule is a recurring
@@ -848,6 +855,13 @@ decision. IDs are stable UUIDs. A lesson contains its text and explicit
 evidence references to existing events; the relay verifies every reference is
 present in the same community. Evidence count is derived from those references.
 The relay and clients do not infer or generate lessons from activity.
+
+The frozen lesson detail also shows a prose evidence summary and a last-validated
+date. The current lesson record has no curated summary or validation record;
+`updatedAt` is an edit timestamp and cannot stand in for validation. These fields
+remain unavailable until the record contract has backing data. This is a
+NEEDS_API boundary; do not generate the summary from referenced event content or
+label the edit timestamp as validation.
 
 Lifecycle states are candidate, approved, and deprecated. Create and every
 edit produce candidate state. An edit to an approved lesson clears the current
