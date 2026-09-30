@@ -182,11 +182,12 @@ fn assert_rejected(response: &Value, expected: &str) {
         !response["accepted"].as_bool().unwrap_or(false),
         "event should have been rejected: {response}"
     );
+    let message = response["message"]
+        .as_str()
+        .or_else(|| response["error"].as_str())
+        .unwrap_or_default();
     assert!(
-        response["message"]
-            .as_str()
-            .unwrap_or_default()
-            .contains(expected),
+        message.contains(expected),
         "rejection should explain {expected}: {response}"
     );
 }
