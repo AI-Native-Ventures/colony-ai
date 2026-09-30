@@ -1873,7 +1873,15 @@ test("notification settings drive the Inbox badge and desktop alerts", async ({
   await page.goto("/");
   await expect(page.getByTestId("sidebar-home-count")).toHaveCount(0);
 
-  await openSettings(page, "notifications");
+  await openSettings(page, "privacy");
+  const messagePreviews = page.getByTestId("privacy-message-text");
+  await expect(messagePreviews).not.toBeChecked();
+  await messagePreviews.check();
+  await page.getByRole("button", { name: "Save privacy preferences" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "Privacy preferences saved",
+  );
+  await selectSettingsSection(page, "notifications");
   await expect(page.getByTestId("settings-notifications")).toBeVisible();
   await expect(
     page.getByRole("heading", { level: 1, name: "Notifications & sounds" }),
