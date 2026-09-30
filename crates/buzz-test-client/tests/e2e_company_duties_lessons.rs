@@ -17,8 +17,8 @@ use buzz_core::company_records::{
     AskSubject, AskSubjectKind, AskType, COMPANY_RECORD_SCHEMA_VERSION,
 };
 use buzz_core::kind::{
-    KIND_ASK_HEAD, KIND_DUTY_ACTION, KIND_DUTY_HEAD, KIND_LESSON_ACTION, KIND_LESSON_HEAD,
-    KIND_MEMBER_POSITION_ACTION,
+    KIND_ASK_ACTION, KIND_ASK_HEAD, KIND_DUTY_ACTION, KIND_DUTY_HEAD, KIND_LESSON_ACTION,
+    KIND_LESSON_HEAD, KIND_MEMBER_POSITION_ACTION,
 };
 use buzz_test_client::BuzzTestClient;
 use nostr::{Alphabet, Event, EventBuilder, Filter, Keys, Kind, SingleLetterTag, Tag};
@@ -281,6 +281,26 @@ async fn submit_ask_action(keys: &Keys, channel_id: Uuid, action: &AskAction) ->
     post_event(keys, &event).await
 }
 
+async fn submit_unvalidated_ask_action(keys: &Keys, channel_id: Uuid, action: &AskAction) -> Value {
+    let ask = action.ask.as_ref().expect("unvalidated create ask");
+    let channel = channel_id.to_string();
+    let d_tag = ask_d_tag(channel_id, action.ask_id);
+    let root = ask.thread_root_event_id.as_str();
+    let event = EventBuilder::new(
+        Kind::Custom(KIND_ASK_ACTION as u16),
+        serde_json::to_string(action).expect("serialize unvalidated ask action"),
+    )
+    .tags([
+        Tag::parse(["h", channel.as_str()]).expect("ask channel tag"),
+        Tag::parse(["d", d_tag.as_str()]).expect("ask d-tag"),
+        Tag::parse(["e", root, "", "root"]).expect("ask root tag"),
+        Tag::parse(["e", root, "", "reply"]).expect("ask reply tag"),
+    ])
+    .sign_with_keys(keys)
+    .expect("sign unvalidated ask action");
+    post_event(keys, &event).await
+}
+
 async fn submit_ask_response(keys: &Keys, channel_id: Uuid, response: &AskResponse) -> Value {
     let event = buzz_sdk::asks::build_ask_response(channel_id, response)
         .expect("build duty ask response")
@@ -388,7 +408,7 @@ async fn company_duty_ask_requires_owner_or_admin_and_creates_the_versioned_work
         .expect("duty payload")
         .schedule_cron = "30 8 * * 1".into();
     assert_rejected(
-        &submit_ask_action(&employee, channel_id, &invalid_schedule).await,
+        &submit_unvalidated_ask_action(&employee, channel_id, &invalid_schedule).await,
         "scheduleCron must match",
     );
     assert_accepted(&submit_ask_action(&employee, channel_id, &action).await);
