@@ -617,6 +617,8 @@ jobs:
           cargo test -p buzz-test-client --test e2e_company_work company_work_watchdogs_require_explicit_config_retry_durably_deliver_and_cancel -- --ignored --nocapture
           cargo test -p buzz-test-client --test e2e_company_duties_lessons company_duty_ask_requires_owner_or_admin_and_creates_the_versioned_workflow -- --ignored --nocapture
           cargo test -p buzz-test-client --test e2e_company_duties_lessons company_lessons_require_evidence_and_record_approval_then_reset_on_edit -- --ignored --nocapture
+          cargo test -p buzz-test-client --test e2e_company_spend company_spend_records_require_authority_and_verified_employee_turn_evidence -- --ignored --nocapture
+          cargo test -p buzz-test-client --test e2e_company_spend money_ask_approval_atomically_commits_allowance_for_an_authorized_human -- --ignored --nocapture
           cargo test -p buzz-test-client --test e2e_relay invite -- --ignored --nocapture
           cargo test -p buzz-test-client --test e2e_relay nip43_membership_snapshots_are_rejected -- --ignored --nocapture
           cargo test -p buzz-test-client --test e2e_relay nip29_departure_wire -- --ignored --nocapture

@@ -74,6 +74,13 @@ pub(super) async fn handle(
                 "restricted: this action is handled by its company record broker".into(),
             ))
         }
+        CompanyCommand::EmployeeAllowanceAction(_) => Err(IngestError::Rejected(
+            "restricted: employee allowance commands are handled by the employee spend broker"
+                .into(),
+        )),
+        CompanyCommand::AiSpendRecordAction(_) => Err(IngestError::Rejected(
+            "restricted: AI spend record commands are handled by the employee spend broker".into(),
+        )),
     }
 }
 
@@ -208,6 +215,7 @@ async fn handle_ask_action(
                     member_position_action: None,
                     hire_head,
                     duty_head: None,
+                    allowance_head: None,
                 },
             )
             .await
@@ -256,6 +264,7 @@ async fn handle_ask_action(
                     member_position_action: None,
                     hire_head: None,
                     duty_head: None,
+                    allowance_head: None,
                 },
             )
             .await
@@ -384,6 +393,24 @@ async fn handle_ask_response(
     } else {
         None
     };
+    let allowance_head = if response.outcome == buzz_core::company_records::AskOutcome::Approved {
+        if let Some(proposal) = head.ask.spend_allowance_proposal.as_ref() {
+            Some(
+                super::company_spend::prepare_approved_allowance_head(
+                    tenant,
+                    state,
+                    proposal,
+                    &actor.pubkey,
+                    &response_event_id,
+                )
+                .await?,
+            )
+        } else {
+            None
+        }
+    } else {
+        None
+    };
     head.status = AskStatus::Resolved;
     head.resolution = Some(AskResolution {
         response: AskResolutionPayload {
@@ -417,6 +444,7 @@ async fn handle_ask_response(
                 .flatten(),
             hire_head,
             duty_head,
+            allowance_head,
         },
     )
     .await
@@ -432,6 +460,7 @@ struct AskCommandWrite<'a> {
     member_position_action: Option<MemberPositionAction>,
     hire_head: Option<super::company_hires::PreparedHireHead>,
     duty_head: Option<super::company_duties::PreparedDutyHead>,
+    allowance_head: Option<super::company_spend::PreparedAllowanceHead>,
 }
 
 async fn persist_ask_command(
@@ -449,6 +478,7 @@ async fn persist_ask_command(
         member_position_action,
         hire_head,
         duty_head,
+        allowance_head,
     } = write;
     before_ask_persist_for_test(d_tag).await;
     let mut tx = state
@@ -537,6 +567,35 @@ async fn persist_ask_command(
         if locked_duty_head.is_some() {
             tx.rollback().await.map_err(internal)?;
             return Err(conflict("duty already exists; refresh the proposal"));
+        }
+    }
+
+    if let Some(prepared_allowance) = allowance_head.as_ref() {
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(format!(
+                "company-member-tree:{}",
+                tenant.community().as_uuid()
+            ))
+            .execute(&mut *tx)
+            .await
+            .map_err(internal)?;
+        super::company_spend::require_employee(tenant, state, &prepared_allowance.employee_pubkey)
+            .await?;
+        let locked_allowance_head_id =
+            buzz_db::replaceable::lock_parameterized_event_head_in_transaction(
+                &mut tx,
+                tenant.community(),
+                buzz_core::kind::KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
+                &state.relay_keypair.public_key().to_bytes(),
+                &prepared_allowance.d_tag,
+            )
+            .await
+            .map_err(internal)?;
+        if locked_allowance_head_id.as_deref() != prepared_allowance.expected_head_id.as_deref() {
+            tx.rollback().await.map_err(internal)?;
+            return Err(conflict(
+                "employee allowance changed before the approval could commit; refresh and retry",
+            ));
         }
     }
 
@@ -646,6 +705,16 @@ async fn persist_ask_command(
         )
         .await?;
         stored_events.push((stored_duty, state.relay_keypair.public_key().to_hex()));
+    }
+    if let Some(prepared_allowance) = allowance_head.as_ref() {
+        let stored_allowance = super::company_spend::replace_prepared_allowance_head(
+            &mut tx,
+            tenant.community(),
+            prepared_allowance,
+            state,
+        )
+        .await?;
+        stored_events.push((stored_allowance, state.relay_keypair.public_key().to_hex()));
     }
     tx.commit().await.map_err(internal)?;
 
@@ -1483,6 +1552,7 @@ mod postgres_tests {
             }),
             hire_proposal: None,
             duty_proposal: None,
+            spend_allowance_proposal: None,
         }
     }
 

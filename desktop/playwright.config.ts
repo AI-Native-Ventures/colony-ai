@@ -172,6 +172,7 @@ export default defineConfig({
         "**/company-hiring.spec.ts",
         "**/company-duty-ask.spec.ts",
         "**/company-team.spec.ts",
+        "**/company-spend.spec.ts",
         "**/company-permissions.spec.ts",
         "**/company-work.spec.ts",
         "**/asks-2.spec.ts",

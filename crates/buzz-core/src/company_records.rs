@@ -85,6 +85,10 @@ pub enum CompanyCommand {
     MemberPositionAction(crate::company_members::MemberPositionAction),
     /// Employee configuration revision (kind 47040).
     EmployeeRevisionAction(crate::company_employee_history::EmployeeRevisionAction),
+    /// Employee AI allowance change (kind 47042).
+    EmployeeAllowanceAction(crate::company_spend::EmployeeAllowanceAction),
+    /// AI spend record mutation (kind 47043).
+    AiSpendRecordAction(crate::company_spend::AiSpendRecordAction),
     /// Hire proposal, founder approval or completion (kind 47039).
     HireAction(HireAction),
     /// Employee duty lifecycle action (kind 47044).
@@ -634,6 +638,9 @@ pub struct AskRecord {
     /// Typed duty proposal attached to an owner/admin approval ask.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duty_proposal: Option<crate::company_duties::DutyProposal>,
+    /// Typed employee allowance change attached to a money approval ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spend_allowance_proposal: Option<crate::company_spend::EmployeeAllowanceAction>,
 }
 
 /// Risk level shown for one tool included in a role pack.
@@ -1304,6 +1311,14 @@ pub fn parse_company_command(
             serde_json::from_str::<crate::company_lessons::LessonAction>(content)
                 .map(CompanyCommand::LessonAction)
         }
+        crate::kind::KIND_EMPLOYEE_AI_ALLOWANCE_ACTION => {
+            serde_json::from_str::<crate::company_spend::EmployeeAllowanceAction>(content)
+                .map(CompanyCommand::EmployeeAllowanceAction)
+        }
+        crate::kind::KIND_AI_SPEND_RECORD_ACTION => {
+            serde_json::from_str::<crate::company_spend::AiSpendRecordAction>(content)
+                .map(CompanyCommand::AiSpendRecordAction)
+        }
         _ => return Err(CompanyRecordError::UnsupportedKind),
     }
     .map_err(|_| CompanyRecordError::InvalidContent)?;
@@ -1319,6 +1334,8 @@ pub fn parse_company_command(
         CompanyCommand::HireAction(value) => value.schema_version,
         CompanyCommand::DutyAction(value) => value.schema_version,
         CompanyCommand::LessonAction(value) => value.schema_version,
+        CompanyCommand::EmployeeAllowanceAction(value) => value.schema_version,
+        CompanyCommand::AiSpendRecordAction(value) => value.schema_version,
     };
     if schema_version != COMPANY_RECORD_SCHEMA_VERSION {
         return Err(CompanyRecordError::UnsupportedSchemaVersion);
@@ -1921,6 +1938,7 @@ pub fn validate_ask_record(
             || ask.member_proposal.is_some()
             || ask.secret_request.is_some()
             || ask.hire_proposal.is_some()
+            || ask.spend_allowance_proposal.is_some()
             || ask.options.is_some()
             || ask.items.is_some()
         {
@@ -1937,6 +1955,29 @@ pub fn validate_ask_record(
         return Err(CompanyRecordError::Invalid(
             "duty approval asks need a dutyProposal",
         ));
+    }
+    if let Some(proposal) = ask.spend_allowance_proposal.as_ref() {
+        crate::company_spend::validate_employee_allowance_action(proposal)?;
+        if ask.ask_type != AskType::Approval
+            || ask.category != AskCategory::Money
+            || !matches!(
+                ask.subject.as_ref(),
+                Some(AskSubject {
+                    kind: AskSubjectKind::CompanyMember,
+                    id,
+                }) if id == &proposal.employee_pubkey
+            )
+            || ask.hire_proposal.is_some()
+            || ask.member_proposal.is_some()
+            || ask.secret_request.is_some()
+            || ask.duty_proposal.is_some()
+            || ask.options.is_some()
+            || ask.items.is_some()
+        {
+            return Err(CompanyRecordError::Invalid(
+                "allowance proposals need a company member money approval ask",
+            ));
+        }
     }
     match (&ask.subject, &ask.member_proposal) {
         (Some(subject), Some(proposal)) => {
@@ -1960,7 +2001,10 @@ pub fn validate_ask_record(
             }
             crate::company_members::validate_member_position_action(proposal)?;
         }
-        (Some(subject), None) if subject.kind == AskSubjectKind::CompanyMember => {
+        (Some(subject), None)
+            if subject.kind == AskSubjectKind::CompanyMember
+                && ask.spend_allowance_proposal.is_none() =>
+        {
             return Err(CompanyRecordError::Invalid(
                 "company member subjects need a memberProposal",
             ));
@@ -2051,6 +2095,13 @@ pub fn validate_ask_response(
     {
         return Err(CompanyRecordError::Invalid(
             "employee proposals are approved or rejected",
+        ));
+    }
+    if ask.spend_allowance_proposal.is_some()
+        && !matches!(response.outcome, O::Approved | O::Rejected)
+    {
+        return Err(CompanyRecordError::Invalid(
+            "an allowance proposal is approved or rejected",
         ));
     }
     let (reason, answer, option, checked) = (
@@ -2380,6 +2431,7 @@ mod tests {
             secret_request: None,
             hire_proposal: None,
             duty_proposal: None,
+            spend_allowance_proposal: None,
         }
     }
 

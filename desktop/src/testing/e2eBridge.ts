@@ -124,6 +124,10 @@ import {
   KIND_GOAL_HEAD,
   KIND_HIRE_ACTION,
   KIND_HIRE_HEAD,
+  KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
+  KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
+  KIND_AI_SPEND_RECORD_ACTION,
+  KIND_AI_SPEND_RECORD_HEAD,
   KIND_GIT_ISSUE,
   KIND_GIT_PATCH,
   KIND_GIT_PR_UPDATE,
@@ -752,6 +756,12 @@ type E2eConfig = {
     companyLessonRelayPrivateKeyHex?: string;
     /** Reject successive duty or lesson action publishes in order, then accept. */
     companyDutyLessonActionErrors?: string[];
+    /** Relay-signed employee allowance heads for AI spend E2E coverage. */
+    employeeAllowanceHeads?: RelayEvent[];
+    /** Relay-signed AI spend record heads for AI spend E2E coverage. */
+    aiSpendRecordHeads?: RelayEvent[];
+    /** Decrypted local archive rows returned by read_archived_events. */
+    archivedEvents?: RelayEvent[];
     /** Relay-signed company work events for company work UI E2E coverage. */
     companyWorkEvents?: RelayEvent[];
     /** Synthetic relay key used to broker company work actions in focused E2E tests. */
@@ -3981,6 +3991,12 @@ const MOCK_COMPANY_LESSON_HEADS_STORAGE_KEY =
 const mockCompanyDutyActions: RelayEvent[] = [];
 const mockCompanyLessonActions: RelayEvent[] = [];
 const mockCompanyToolPermissionHeads: RelayEvent[] = [];
+const mockEmployeeAllowanceHeads: RelayEvent[] = [];
+const MOCK_EMPLOYEE_ALLOWANCE_HEADS_STORAGE_KEY =
+  "buzz-e2e-employee-ai-allowance-heads-v1";
+const mockAiSpendRecordHeads: RelayEvent[] = [];
+const MOCK_AI_SPEND_RECORD_HEADS_STORAGE_KEY =
+  "buzz-e2e-ai-spend-record-heads-v1";
 const mockAskActionIds = new Set<string>();
 const mockCompanySecretBindingHeads: RelayEvent[] = [];
 const mockSecretBindingActionIds = new Set<string>();
@@ -6200,6 +6216,38 @@ function filterMockCompanyMemberPositions(filter: MockFilter): RelayEvent[] {
     .slice(0, filter.limit ?? 500);
 }
 
+function filterMockCompanySpendHeads(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const kinds = filter.kinds ?? [];
+  const events = [
+    ...(kinds.includes(KIND_EMPLOYEE_AI_ALLOWANCE_HEAD)
+      ? mockEmployeeAllowanceHeads
+      : []),
+    ...(kinds.includes(KIND_AI_SPEND_RECORD_HEAD)
+      ? mockAiSpendRecordHeads
+      : []),
+  ];
+  const dTags = filter["#d"];
+  return events
+    .filter((event) => {
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
 function filterMockEmployeeRevisionEvents(filter: MockFilter): RelayEvent[] {
   const authors = filter.authors?.map((author) => author.toLowerCase());
   const dTags = filter["#d"];
@@ -7061,6 +7109,193 @@ function acceptMockMemberPositionAction(
   window.localStorage.setItem(
     MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY,
     JSON.stringify(mockCompanyMemberPositionEvents),
+  );
+  emitMockGlobalEvent(nextEvent);
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
+function acceptMockCompanySpendAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  if (!verifyEvent(event)) {
+    reject("invalid: AI spend action signature is invalid.");
+    return;
+  }
+  const relaySecretHex = config?.mock?.companyMemberRelayPrivateKeyHex;
+  if (!relaySecretHex || !/^[0-9a-f]{64}$/i.test(relaySecretHex)) {
+    reject("error: mock relay signer is not configured for AI spend.");
+    return;
+  }
+  const relaySecret = hexToBytes(relaySecretHex);
+  if (
+    getPublicKey(relaySecret).toLowerCase() !==
+    config?.mock?.relaySelf?.toLowerCase()
+  ) {
+    reject("error: mock AI spend signer does not match relay self.");
+    return;
+  }
+  const actor = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  );
+  if (!actor || (actor.role !== "owner" && actor.role !== "admin")) {
+    reject("restricted: only a company owner or admin can change AI spend.");
+    return;
+  }
+  let action: Record<string, unknown>;
+  try {
+    action = JSON.parse(event.content) as Record<string, unknown>;
+  } catch {
+    reject("invalid: AI spend action is not JSON.");
+    return;
+  }
+  if (action.schemaVersion !== 1) {
+    reject("invalid: AI spend action schema version is unsupported.");
+    return;
+  }
+  const allowanceAction = event.kind === KIND_EMPLOYEE_AI_ALLOWANCE_ACTION;
+  const recordId = typeof action.recordId === "string" ? action.recordId : "";
+  const subject = allowanceAction
+    ? typeof action.employeePubkey === "string"
+      ? action.employeePubkey.toLowerCase()
+      : ""
+    : "";
+  const dTag = allowanceAction
+    ? `company:employee-allowance:${subject}`
+    : `company:ai-spend:${recordId}`;
+  const matchingTags = event.tags.filter((tag) => tag[0] === "d");
+  const employeeTag = event.tags.filter((tag) => tag[0] === "p");
+  const record = action.record as
+    | { recordType?: string; employeePubkey?: string }
+    | undefined;
+  const recordEmployee =
+    record?.recordType === "agent_turn"
+      ? (record.employeePubkey?.toLowerCase() ?? "")
+      : "";
+  if (
+    matchingTags.length !== 1 ||
+    matchingTags[0]?.[1] !== dTag ||
+    event.tags.length !== (allowanceAction || recordEmployee ? 2 : 1) ||
+    (allowanceAction &&
+      (subject.length !== 64 ||
+        employeeTag.length !== 1 ||
+        employeeTag[0]?.[1] !== subject)) ||
+    (!allowanceAction &&
+      (event.kind !== KIND_AI_SPEND_RECORD_ACTION ||
+        (recordEmployee &&
+          (employeeTag.length !== 1 ||
+            employeeTag[0]?.[1] !== recordEmployee)) ||
+        (!recordEmployee && employeeTag.length > 0)))
+  ) {
+    reject("invalid: AI spend action tags do not match its subject.");
+    return;
+  }
+  const heads = allowanceAction
+    ? mockEmployeeAllowanceHeads
+    : mockAiSpendRecordHeads;
+  const currentEvent = heads.find((candidate) =>
+    candidate.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+  const expected = action.expectedHeadEventId;
+  if ((currentEvent?.id ?? undefined) !== expected) {
+    reject(
+      `conflict: AI spend record changed; current head is ${currentEvent?.id ?? "missing"}`,
+    );
+    return;
+  }
+
+  let content: Record<string, unknown>;
+  if (allowanceAction) {
+    const position = mockCompanyMemberPositionEvents.find((candidate) => {
+      try {
+        const parsed = JSON.parse(candidate.content) as {
+          pubkey?: string;
+          kind?: string;
+          status?: string;
+        };
+        return (
+          parsed.pubkey?.toLowerCase() === subject &&
+          parsed.kind === "employee" &&
+          parsed.status === "active"
+        );
+      } catch {
+        return false;
+      }
+    });
+    if (!position) {
+      reject("invalid: allowance target is not an active employee.");
+      return;
+    }
+    content = {
+      schemaVersion: 1,
+      employeePubkey: subject,
+      allowance: action.allowance,
+      ...(action.temporaryAllowance
+        ? { temporaryAllowance: action.temporaryAllowance }
+        : {}),
+      fundingOrder: action.fundingOrder,
+      actorPubkey: event.pubkey,
+      updatedAt: new Date().toISOString(),
+      sourceActionEventId: event.id,
+    };
+  } else {
+    let storedRecord = record;
+    let status: "active" | "removed" = "active";
+    if (action.action === "remove") {
+      if (!currentEvent) {
+        reject("conflict: AI spend record does not exist.");
+        return;
+      }
+      const previous = JSON.parse(currentEvent.content) as {
+        record?: unknown;
+      };
+      storedRecord = previous.record as typeof record;
+      status = "removed";
+    }
+    if (!storedRecord || typeof storedRecord !== "object") {
+      reject("invalid: AI spend action requires a record.");
+      return;
+    }
+    content = {
+      schemaVersion: 1,
+      recordId,
+      record: storedRecord,
+      status,
+      actorPubkey: event.pubkey,
+      updatedAt: new Date().toISOString(),
+      sourceActionEventId: event.id,
+    };
+  }
+  const nextEvent = finalizeEvent(
+    {
+      kind: allowanceAction
+        ? KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
+        : KIND_AI_SPEND_RECORD_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (currentEvent?.created_at ?? 0) + 1,
+      ),
+      tags: [["d", dTag]],
+      content: JSON.stringify(content),
+    },
+    relaySecret,
+  );
+  if (currentEvent) {
+    const index = heads.findIndex(
+      (candidate) => candidate.id === currentEvent.id,
+    );
+    if (index >= 0) heads.splice(index, 1);
+  }
+  heads.push(nextEvent);
+  window.localStorage.setItem(
+    allowanceAction
+      ? MOCK_EMPLOYEE_ALLOWANCE_HEADS_STORAGE_KEY
+      : MOCK_AI_SPEND_RECORD_HEADS_STORAGE_KEY,
+    JSON.stringify(heads),
   );
   emitMockGlobalEvent(nextEvent);
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
@@ -16545,6 +16780,17 @@ function sendToMockSocket(args: {
     }
 
     if (
+      filter.kinds?.includes(KIND_EMPLOYEE_AI_ALLOWANCE_HEAD) ||
+      filter.kinds?.includes(KIND_AI_SPEND_RECORD_HEAD)
+    ) {
+      for (const event of filterMockCompanySpendHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (
       filter.kinds?.includes(KIND_EMPLOYEE_REVISION_ACTION) ||
       filter.kinds?.includes(KIND_EMPLOYEE_REVISION_HEAD)
     ) {
@@ -16699,6 +16945,13 @@ function sendToMockSocket(args: {
 
     if (event.kind === KIND_MEMBER_POSITION_ACTION) {
       acceptMockMemberPositionAction(socket, event, getConfig());
+      return;
+    }
+    if (
+      event.kind === KIND_EMPLOYEE_AI_ALLOWANCE_ACTION ||
+      event.kind === KIND_AI_SPEND_RECORD_ACTION
+    ) {
+      acceptMockCompanySpendAction(socket, event, getConfig());
       return;
     }
     if (event.kind === KIND_EMPLOYEE_REVISION_ACTION) {
@@ -17101,6 +17354,34 @@ export function maybeInstallE2eTauriMocks() {
     0,
     mockCompanyMemberPositionEvents.length,
     ...memberPositionEvents,
+  );
+  const storedAllowanceHeads = window.localStorage.getItem(
+    MOCK_EMPLOYEE_ALLOWANCE_HEADS_STORAGE_KEY,
+  );
+  const allowanceHeads = storedAllowanceHeads
+    ? (JSON.parse(storedAllowanceHeads) as RelayEvent[])
+    : (config.mock?.employeeAllowanceHeads ?? []);
+  if (!Array.isArray(allowanceHeads)) {
+    throw new Error("Stored mock employee allowance heads must be an array.");
+  }
+  mockEmployeeAllowanceHeads.splice(
+    0,
+    mockEmployeeAllowanceHeads.length,
+    ...allowanceHeads,
+  );
+  const storedAiSpendHeads = window.localStorage.getItem(
+    MOCK_AI_SPEND_RECORD_HEADS_STORAGE_KEY,
+  );
+  const aiSpendHeads = storedAiSpendHeads
+    ? (JSON.parse(storedAiSpendHeads) as RelayEvent[])
+    : (config.mock?.aiSpendRecordHeads ?? []);
+  if (!Array.isArray(aiSpendHeads)) {
+    throw new Error("Stored mock AI spend record heads must be an array.");
+  }
+  mockAiSpendRecordHeads.splice(
+    0,
+    mockAiSpendRecordHeads.length,
+    ...aiSpendHeads,
   );
   const storedEmployeeRevisionActions = window.localStorage.getItem(
     MOCK_COMPANY_EMPLOYEE_REVISION_ACTIONS_STORAGE_KEY,
@@ -21171,6 +21452,47 @@ export function maybeInstallE2eTauriMocks() {
       case "archive_events":
         // Returns the ArchiveBatchResult shape the UI expects.
         return { persisted: 0, dropped: 0 };
+      case "read_archived_events": {
+        const request = payload as {
+          scopeType: string;
+          scopeValue: string;
+          kinds?: number[] | null;
+          beforeCreatedAt?: number | null;
+          beforeId?: string | null;
+          limit?: number | null;
+        };
+        return (activeConfig?.mock?.archivedEvents ?? [])
+          .filter((event) => {
+            if (request.kinds && !request.kinds.includes(event.kind)) {
+              return false;
+            }
+            if (request.scopeType === "owner_p") {
+              return event.tags.some(
+                (tag) =>
+                  tag[0] === "p" &&
+                  tag[1]?.toLowerCase() === request.scopeValue.toLowerCase(),
+              );
+            }
+            return true;
+          })
+          .filter((event) => {
+            if (request.beforeCreatedAt == null || request.beforeId == null) {
+              return true;
+            }
+            return (
+              event.created_at < request.beforeCreatedAt ||
+              (event.created_at === request.beforeCreatedAt &&
+                event.id.localeCompare(request.beforeId) < 0)
+            );
+          })
+          .sort(
+            (left, right) =>
+              right.created_at - left.created_at ||
+              right.id.localeCompare(left.id),
+          )
+          .slice(0, request.limit ?? 50)
+          .map((event) => JSON.stringify(event));
+      }
       // Archive sync runs natively; the bridge has no relay-backed backend to
       // drive, so these are accepted no-ops. Without them every AppShell mount
       // logs an unknown-command warning once the gate opens.

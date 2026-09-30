@@ -28,6 +28,8 @@ pub mod company_lessons;
 pub mod company_members;
 /// Typed event builders for Colony company records.
 pub mod company_records;
+/// Typed event builders for Colony AI allowances and spend records.
+pub mod company_spend;
 /// Typed event builders for persisted company work suggestions and watchdog settings.
 pub mod company_work_tracking;
 pub mod mentions;

@@ -255,6 +255,9 @@ enum Cmd {
     /// Propose and manage structured employee lessons
     #[command(subcommand)]
     Lessons(LessonsCmd),
+    /// Read and record employee AI allowances and AI spend evidence
+    #[command(subcommand)]
+    Spend(SpendCmd),
     /// List, bind and revoke company secret metadata
     #[command(subcommand)]
     Secrets(SecretsCmd),
@@ -1417,6 +1420,38 @@ pub enum LessonConfidenceArg {
     Moderate,
     #[value(name = "high")]
     High,
+}
+
+#[derive(Subcommand)]
+pub enum SpendCmd {
+    /// Read and update employee AI allowances
+    #[command(subcommand)]
+    Allowance(SpendAllowanceCmd),
+    /// Read and record AI spend evidence
+    #[command(subcommand)]
+    Records(SpendRecordsCmd),
+}
+
+#[derive(Subcommand)]
+pub enum SpendAllowanceCmd {
+    /// List current relay-signed employee allowance heads
+    List,
+    /// Submit a typed EmployeeAllowanceAction JSON object or path; use - for stdin
+    Set {
+        #[arg(long)]
+        action: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SpendRecordsCmd {
+    /// List current relay-signed AI spend record heads
+    List,
+    /// Submit a typed AiSpendRecordAction JSON object or path; use - for stdin
+    Set {
+        #[arg(long)]
+        action: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -3044,6 +3079,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Team(sub) => commands::team::dispatch(sub, &client).await,
         Cmd::Duties(sub) => commands::company_duties_lessons::dispatch_duties(sub, &client).await,
         Cmd::Lessons(sub) => commands::company_duties_lessons::dispatch_lessons(sub, &client).await,
+        Cmd::Spend(sub) => commands::spend::dispatch(sub, &client).await,
         Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
         Cmd::Work(sub) => commands::work::dispatch(sub, &client).await,
         Cmd::Factory(sub) => commands::factory::dispatch(sub, &client).await,
@@ -3241,6 +3277,7 @@ mod tests {
             "repos",
             "secrets",
             "social",
+            "spend",
             "team",
             "upload",
             "users",

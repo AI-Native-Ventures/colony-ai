@@ -237,8 +237,8 @@ buzz secrets bind --record "$SECRET_BINDING_METADATA_PATH" | jq .
 buzz secrets revoke --binding-id "$SECRET_BINDING_ID" | jq .
 ```
 
-The `team`, `secrets`, `permissions`, `work`, `duties` and `lessons` command
-groups are included in the stable command inventory test in
+The `team`, `secrets`, `permissions`, `work`, `duties`, `lessons` and
+`spend` command groups are included in the stable command inventory test in
 `crates/buzz-cli/src/lib.rs`.
 
 ### 6.1 Channels

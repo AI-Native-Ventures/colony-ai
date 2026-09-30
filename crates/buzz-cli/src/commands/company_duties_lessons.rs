@@ -104,6 +104,7 @@ async fn propose_duty(
         secret_request: None,
         hire_proposal: None,
         duty_proposal: Some(proposal),
+        spend_allowance_proposal: None,
     };
     let action = AskAction {
         schema_version: COMPANY_RECORD_SCHEMA_VERSION,

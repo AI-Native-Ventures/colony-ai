@@ -86,6 +86,7 @@ async fn propose_hire(
         secret_request: None,
         hire_proposal: Some(proposal.clone()),
         duty_proposal: None,
+        spend_allowance_proposal: None,
     };
     let action = AskAction {
         schema_version: COMPANY_RECORD_SCHEMA_VERSION,
