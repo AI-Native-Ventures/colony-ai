@@ -17,6 +17,7 @@ import '../../shared/theme/theme.dart';
 import '../../shared/utils/string_utils.dart';
 import '../goals/goal_widgets.dart';
 import 'team_position_edit_page.dart';
+import 'team_hero_gradient.dart';
 import 'team_reports_page.dart';
 
 /// Shows a member using the latest membership and signed position heads.
@@ -436,7 +437,10 @@ class _TeamMemberHero extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(Grid.gutter),
       decoration: BoxDecoration(
-        gradient: context.appColors.companyWashGradient,
+        gradient: teamHeroGradientFor(
+          Theme.of(context).brightness,
+          terminated: label == 'TERMINATED',
+        ),
         borderRadius: BorderRadius.circular(Radii.card),
       ),
       child: Column(

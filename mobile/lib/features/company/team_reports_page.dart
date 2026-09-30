@@ -12,6 +12,7 @@ import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/profile/user_profile.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/utils/string_utils.dart';
+import 'team_hero_gradient.dart';
 import '../goals/goal_widgets.dart';
 
 /// Lists the current real member-position records reporting to one member.
@@ -106,7 +107,9 @@ class TeamMemberReportsPage extends HookConsumerWidget {
                     Container(
                       padding: const EdgeInsets.all(Grid.gutter),
                       decoration: BoxDecoration(
-                        gradient: context.appColors.companyWashGradient,
+                        gradient: teamHeroGradientFor(
+                          Theme.of(context).brightness,
+                        ),
                         borderRadius: BorderRadius.circular(Radii.card),
                       ),
                       child: Column(

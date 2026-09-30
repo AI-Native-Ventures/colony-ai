@@ -161,14 +161,11 @@ void main() {
               ],
               child: RepaintBoundary(
                 key: _captureRootKey,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(36),
-                  child: Directionality(
-                    textDirection: TextDirection.ltr,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [app, _TeamProofSystemBars(brightness)],
-                    ),
+                child: Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [app, _TeamProofSystemBars(brightness)],
                   ),
                 ),
               ),

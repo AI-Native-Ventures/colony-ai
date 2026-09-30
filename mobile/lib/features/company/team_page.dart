@@ -15,6 +15,7 @@ import '../../shared/utils/string_utils.dart';
 import '../goals/goal_widgets.dart';
 import 'team_member_detail_page.dart';
 import 'team_reports_page.dart';
+import 'team_hero_gradient.dart';
 
 /// Mobile team flow backed by relay membership and signed member positions.
 class TeamPage extends HookConsumerWidget {
@@ -197,7 +198,7 @@ class _TeamHero extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(Grid.gutter),
       decoration: BoxDecoration(
-        gradient: context.appColors.companyWashGradient,
+        gradient: teamHeroGradientFor(Theme.of(context).brightness),
         borderRadius: BorderRadius.circular(Radii.card),
       ),
       child: Column(
@@ -343,7 +344,7 @@ class _TeamLoadFailure extends StatelessWidget {
       Container(
         padding: const EdgeInsets.all(Grid.gutter),
         decoration: BoxDecoration(
-          gradient: context.appColors.companyWashGradient,
+          gradient: teamHeroGradientFor(Theme.of(context).brightness),
           borderRadius: BorderRadius.circular(Radii.card),
         ),
         child: Column(

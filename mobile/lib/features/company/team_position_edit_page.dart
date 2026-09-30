@@ -13,6 +13,7 @@ import '../../shared/profile/user_profile.dart';
 import '../../shared/relay/relay_provider.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/utils/string_utils.dart';
+import 'team_hero_gradient.dart';
 import '../goals/goal_widgets.dart';
 
 /// Edits the two member-position fields exposed on mobile.
@@ -285,7 +286,7 @@ class _PositionEditHero extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(Grid.gutter),
       decoration: BoxDecoration(
-        gradient: context.appColors.companyWashGradient,
+        gradient: teamHeroGradientFor(Theme.of(context).brightness),
         borderRadius: BorderRadius.circular(Radii.card),
       ),
       child: Column(
@@ -302,7 +303,7 @@ class _PositionEditHero extends StatelessWidget {
             'Keep the team aligned.',
             style: context.mobileTypography.goalDetailTitle.copyWith(
               color: tokens.ink,
-              fontSize: 32,
+              fontSize: 30,
               height: 1.3,
             ),
           ),
