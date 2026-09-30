@@ -489,6 +489,91 @@ pub async fn upsert_workflow(
     Ok(())
 }
 
+/// Insert or replace a workflow using the caller's open event transaction.
+///
+/// The upsert is intended for a broker that writes a linked company record and
+/// workflow definition as one action. Existing ownership and channel identity
+/// must match exactly, preventing a linked record from taking over a workflow.
+#[allow(clippy::too_many_arguments)]
+pub async fn upsert_workflow_in_transaction(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    community_id: CommunityId,
+    id: Uuid,
+    channel_id: Uuid,
+    owner_pubkey: &[u8],
+    name: &str,
+    definition_json: &str,
+    definition_hash: &[u8],
+    enabled: bool,
+) -> Result<()> {
+    let row = sqlx::query(
+        r#"
+        INSERT INTO workflows
+            (community_id, id, name, owner_pubkey, channel_id, definition, definition_hash, status, enabled)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, 'active', $8)
+        ON CONFLICT (community_id, id) DO UPDATE
+        SET name = EXCLUDED.name,
+            channel_id = EXCLUDED.channel_id,
+            definition = EXCLUDED.definition,
+            definition_hash = EXCLUDED.definition_hash,
+            enabled = EXCLUDED.enabled,
+            updated_at = NOW()
+        WHERE workflows.owner_pubkey = EXCLUDED.owner_pubkey
+        RETURNING id
+        "#,
+    )
+    .bind(community_id.as_uuid())
+    .bind(id)
+    .bind(name)
+    .bind(owner_pubkey)
+    .bind(channel_id)
+    .bind(definition_json)
+    .bind(definition_hash)
+    .bind(enabled)
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    if row.is_none() {
+        return Err(DbError::AccessDenied(format!(
+            "workflow {id} belongs to a different owner or channel"
+        )));
+    }
+    Ok(())
+}
+
+/// Create a workflow linked to a company record without overwriting an existing id.
+#[allow(clippy::too_many_arguments)]
+pub async fn create_workflow_in_transaction(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    community_id: CommunityId,
+    id: Uuid,
+    channel_id: Uuid,
+    owner_pubkey: &[u8],
+    name: &str,
+    definition_json: &str,
+    definition_hash: &[u8],
+) -> Result<bool> {
+    let row = sqlx::query(
+        r#"
+        INSERT INTO workflows
+            (community_id, id, name, owner_pubkey, channel_id, definition, definition_hash, status, enabled)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, 'active', TRUE)
+        ON CONFLICT (community_id, id) DO NOTHING
+        RETURNING id
+        "#,
+    )
+    .bind(community_id.as_uuid())
+    .bind(id)
+    .bind(name)
+    .bind(owner_pubkey)
+    .bind(channel_id)
+    .bind(definition_json)
+    .bind(definition_hash)
+    .fetch_optional(&mut **tx)
+    .await?;
+    Ok(row.is_some())
+}
+
 /// Fetch a single workflow by ID, scoped to its community.
 ///
 /// `workflows` is keyed `(community_id, id)`; the same workflow UUID can exist
@@ -826,7 +911,7 @@ pub async fn set_workflow_enabled(
     let affected = sqlx::query(
         r#"
         UPDATE workflows
-        SET enabled = $1
+        SET enabled = $1, updated_at = NOW()
         WHERE community_id = $2 AND id = $3
         "#,
     )

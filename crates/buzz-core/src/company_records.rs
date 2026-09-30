@@ -91,6 +91,10 @@ pub enum CompanyCommand {
     AiSpendRecordAction(crate::company_spend::AiSpendRecordAction),
     /// Hire proposal, founder approval or completion (kind 47039).
     HireAction(HireAction),
+    /// Employee duty lifecycle action (kind 47044).
+    DutyAction(crate::company_duties::DutyAction),
+    /// Employee lesson lifecycle action (kind 47045).
+    LessonAction(crate::company_lessons::LessonAction),
 }
 
 /// Storage location for a secret value. The value is never part of a company record.
@@ -535,6 +539,8 @@ pub enum AskCategory {
     Tool,
     /// Secret or credential handling.
     Secret,
+    /// A proposed employee duty and its scheduled workflow.
+    Duty,
 }
 
 impl AskCategory {
@@ -568,6 +574,8 @@ pub enum AskSubjectKind {
     CompanyMember,
     /// A proposed employee hire.
     Hire,
+    /// A proposed employee duty.
+    Duty,
 }
 
 /// Optional link from an ask to the record it is about.
@@ -633,6 +641,9 @@ pub struct AskRecord {
     /// Typed employee hire proposal attached to a hire approval ask.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hire_proposal: Option<HireProposal>,
+    /// Typed duty proposal attached to an owner/admin approval ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duty_proposal: Option<crate::company_duties::DutyProposal>,
     /// Typed employee allowance change attached to a money approval ask.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spend_allowance_proposal: Option<crate::company_spend::EmployeeAllowanceAction>,
@@ -1309,6 +1320,14 @@ pub fn parse_company_command(
         crate::kind::KIND_HIRE_ACTION => {
             serde_json::from_str::<HireAction>(content).map(CompanyCommand::HireAction)
         }
+        crate::kind::KIND_DUTY_ACTION => {
+            serde_json::from_str::<crate::company_duties::DutyAction>(content)
+                .map(CompanyCommand::DutyAction)
+        }
+        crate::kind::KIND_LESSON_ACTION => {
+            serde_json::from_str::<crate::company_lessons::LessonAction>(content)
+                .map(CompanyCommand::LessonAction)
+        }
         crate::kind::KIND_EMPLOYEE_AI_ALLOWANCE_ACTION => {
             serde_json::from_str::<crate::company_spend::EmployeeAllowanceAction>(content)
                 .map(CompanyCommand::EmployeeAllowanceAction)
@@ -1330,6 +1349,8 @@ pub fn parse_company_command(
         CompanyCommand::MemberPositionAction(value) => value.schema_version,
         CompanyCommand::EmployeeRevisionAction(value) => value.schema_version,
         CompanyCommand::HireAction(value) => value.schema_version,
+        CompanyCommand::DutyAction(value) => value.schema_version,
+        CompanyCommand::LessonAction(value) => value.schema_version,
         CompanyCommand::EmployeeAllowanceAction(value) => value.schema_version,
         CompanyCommand::AiSpendRecordAction(value) => value.schema_version,
     };
@@ -1899,7 +1920,7 @@ pub fn validate_ask_record(
         let ok = match subject.kind {
             AskSubjectKind::Goal | AskSubjectKind::WorkItem => Uuid::parse_str(&subject.id).is_ok(),
             AskSubjectKind::WorkflowRun => !subject.id.is_empty() && subject.id.len() <= 64,
-            AskSubjectKind::Hire => is_canonical_uuid(&subject.id),
+            AskSubjectKind::Hire | AskSubjectKind::Duty => is_canonical_uuid(&subject.id),
             AskSubjectKind::CompanyMember => {
                 subject.id.len() == 64
                     && subject
@@ -1942,6 +1963,38 @@ pub fn validate_ask_record(
             "hire subjects need a hireProposal",
         ));
     }
+    if let Some(proposal) = ask.duty_proposal.as_ref() {
+        crate::company_duties::validate_duty_proposal(proposal)?;
+        if !matches!(
+            ask.subject.as_ref(),
+            Some(AskSubject {
+                kind: AskSubjectKind::Duty,
+                id,
+            }) if id == &proposal.duty_id.to_string()
+        ) || ask.ask_type != AskType::Approval
+            || ask.category != AskCategory::Duty
+            || ask.addressee_pubkey.is_some()
+            || ask.member_proposal.is_some()
+            || ask.secret_request.is_some()
+            || ask.hire_proposal.is_some()
+            || ask.spend_allowance_proposal.is_some()
+            || ask.options.is_some()
+            || ask.items.is_some()
+        {
+            return Err(CompanyRecordError::Invalid(
+                "duty proposals need an unaddressed duty approval ask",
+            ));
+        }
+    } else if ask
+        .subject
+        .as_ref()
+        .is_some_and(|subject| subject.kind == AskSubjectKind::Duty)
+        || ask.category == AskCategory::Duty
+    {
+        return Err(CompanyRecordError::Invalid(
+            "duty approval asks need a dutyProposal",
+        ));
+    }
     if let Some(proposal) = ask.spend_allowance_proposal.as_ref() {
         crate::company_spend::validate_employee_allowance_action(proposal)?;
         if ask.ask_type != AskType::Approval
@@ -1956,6 +2009,7 @@ pub fn validate_ask_record(
             || ask.hire_proposal.is_some()
             || ask.member_proposal.is_some()
             || ask.secret_request.is_some()
+            || ask.duty_proposal.is_some()
             || ask.options.is_some()
             || ask.items.is_some()
         {
@@ -2084,9 +2138,11 @@ pub fn validate_ask_response(
             "secret binding references are only valid for secret asks",
         ));
     }
-    if ask.hire_proposal.is_some() && !matches!(response.outcome, O::Approved | O::Rejected) {
+    if (ask.hire_proposal.is_some() || ask.duty_proposal.is_some())
+        && !matches!(response.outcome, O::Approved | O::Rejected)
+    {
         return Err(CompanyRecordError::Invalid(
-            "a hire proposal is approved or rejected with a reason",
+            "employee proposals are approved or rejected",
         ));
     }
     if ask.spend_allowance_proposal.is_some()
@@ -2137,11 +2193,15 @@ pub fn validate_ask_response(
                     "only a reason goes with this outcome",
                 ));
             }
-            require_text(
-                reason.unwrap_or_default(),
-                MAX_REASON_CHARS,
-                "a reason is required, 1000 characters at most",
-            )
+            if (ask.hire_proposal.is_some() || ask.duty_proposal.is_some()) && reason.is_none() {
+                Ok(())
+            } else {
+                require_text(
+                    reason.unwrap_or_default(),
+                    MAX_REASON_CHARS,
+                    "a reason is required, 1000 characters at most",
+                )
+            }
         }
         AskType::Question => {
             if response.outcome != O::Answered
@@ -2311,8 +2371,8 @@ pub struct AskResolver<'a> {
 
 /// Returns why `resolver` may not resolve `ask`, or `None` when allowed.
 ///
-/// Owner decision D2: owners and admins resolve money, hire, tool and secret
-/// asks and agents never may; an addressed general ask is resolved by its
+/// Owner decision D2: owners and admins resolve money, hire, tool, secret and
+/// duty asks and agents never may; an addressed general ask is resolved by its
 /// addressee (agents only for questions and verdicts); an unaddressed general
 /// ask by any human member of the channel.
 pub fn ask_resolution_denied_reason(
@@ -2328,7 +2388,7 @@ pub fn ask_resolution_denied_reason(
     }
     if ask.category.requires_authority() {
         if resolver.is_agent {
-            return Some("Agents cannot decide spending, hires, tools or secrets");
+            return Some("Agents cannot decide spending, hires, tools, secrets or duties");
         }
         return match resolver.community_role {
             Some(CommunityRole::Owner | CommunityRole::Admin) => None,
@@ -2419,6 +2479,7 @@ mod tests {
             member_proposal: None,
             secret_request: None,
             hire_proposal: None,
+            duty_proposal: None,
             spend_allowance_proposal: None,
         }
     }
@@ -2587,6 +2648,24 @@ mod tests {
     }
 
     #[test]
+    fn approval_decisions_require_a_non_whitespace_reason() {
+        let request = ask(AskType::Approval);
+        let mut approved = response(AskOutcome::Approved);
+        assert!(validate_ask_response(&request, &approved).is_err());
+        approved.reason = Some("The request fits the agreed scope.".into());
+        assert!(validate_ask_response(&request, &approved).is_ok());
+        approved.reason = Some("   ".into());
+        assert!(validate_ask_response(&request, &approved).is_err());
+        approved.reason = Some("x".repeat(MAX_REASON_CHARS + 1));
+        assert!(validate_ask_response(&request, &approved).is_err());
+
+        let mut rejected = response(AskOutcome::Rejected);
+        assert!(validate_ask_response(&request, &rejected).is_err());
+        rejected.reason = Some("The request needs another review.".into());
+        assert!(validate_ask_response(&request, &rejected).is_ok());
+    }
+
+    #[test]
     fn hire_proposals_require_a_typed_hire_approval_ask() {
         let proposal = hire_proposal();
         let mut request = ask(AskType::Approval);
@@ -2616,11 +2695,11 @@ mod tests {
         });
         resolved_ask.hire_proposal = Some(proposal);
         let mut approved = response(AskOutcome::Approved);
-        assert!(validate_ask_response(&resolved_ask, &approved).is_err());
+        assert!(validate_ask_response(&resolved_ask, &approved).is_ok());
         approved.reason = Some("The requested scope is approved.".into());
         assert!(validate_ask_response(&resolved_ask, &approved).is_ok());
         let mut rejected = response(AskOutcome::Rejected);
-        assert!(validate_ask_response(&resolved_ask, &rejected).is_err());
+        assert!(validate_ask_response(&resolved_ask, &rejected).is_ok());
         rejected.reason = Some("The proposed role needs revision.".into());
         assert!(validate_ask_response(&resolved_ask, &rejected).is_ok());
         rejected.reason = Some("   ".into());
@@ -2630,6 +2709,39 @@ mod tests {
         let mut revision = approved;
         revision.outcome = AskOutcome::RevisionRequested;
         assert!(validate_ask_response(&resolved_ask, &revision).is_err());
+    }
+
+    #[test]
+    fn duty_proposals_are_direct_owner_approval_decisions() {
+        let proposal = crate::company_duties::DutyProposal {
+            schema_version: 1,
+            duty_id: Uuid::from_u128(22),
+            employee_pubkey: PK_A.into(),
+            title: "Review saved hospitality research".into(),
+            schedule_text: "Every Monday at 09:00".into(),
+            schedule_cron: "0 9 * * 1".into(),
+            time_zone: "Etc/UTC".into(),
+            channel_id: Uuid::from_u128(23),
+            instructions: "Review the saved hospitality list and report changes.".into(),
+        };
+        let mut ask_record = ask(AskType::Approval);
+        ask_record.category = AskCategory::Duty;
+        ask_record.subject = Some(AskSubject {
+            kind: AskSubjectKind::Duty,
+            id: proposal.duty_id.to_string(),
+        });
+        ask_record.duty_proposal = Some(proposal.clone());
+        assert!(validate_ask_record(&ask_record, false).is_ok());
+
+        let mut approved = response(AskOutcome::Approved);
+        assert!(validate_ask_response(&ask_record, &approved).is_ok());
+        approved.outcome = AskOutcome::Rejected;
+        assert!(validate_ask_response(&ask_record, &approved).is_ok());
+        approved.outcome = AskOutcome::RevisionRequested;
+        assert!(validate_ask_response(&ask_record, &approved).is_err());
+        approved.outcome = AskOutcome::Approved;
+        approved.reason = Some("   ".into());
+        assert!(validate_ask_response(&ask_record, &approved).is_err());
     }
 
     #[test]
@@ -3263,7 +3375,24 @@ mod tests {
         };
         assert_eq!(
             ask_resolution_denied_reason(&money, agent_owner),
-            Some("Agents cannot decide spending, hires, tools or secrets")
+            Some("Agents cannot decide spending, hires, tools, secrets or duties")
+        );
+
+        let mut duty = ask(AskType::Approval);
+        duty.category = AskCategory::Duty;
+        let agent_owner = AskResolver {
+            is_agent: true,
+            ..human(Some(CommunityRole::Owner), true)
+        };
+        assert_eq!(
+            ask_resolution_denied_reason(&duty, agent_owner),
+            Some("Agents cannot decide spending, hires, tools, secrets or duties")
+        );
+        assert!(
+            ask_resolution_denied_reason(&duty, human(Some(CommunityRole::Admin), true)).is_none()
+        );
+        assert!(
+            ask_resolution_denied_reason(&duty, human(Some(CommunityRole::Member), true)).is_some()
         );
 
         let mut addressed = ask(AskType::Question);

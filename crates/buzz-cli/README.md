@@ -83,6 +83,22 @@ buzz workflows trigger --workflow <uuid>
 buzz workflows approve --token <uuid>
 buzz workflows approve --token <uuid> --approved false --note "needs revision"
 
+# Employee duties and lessons
+buzz duties propose --channel <uuid> --thread-root <event-id> --proposal <json-or-path>
+buzz duties list --employee <pubkey>
+buzz duties get --duty <uuid> --runs <limit>
+buzz duties update --duty <uuid> --proposal <json-or-path>
+buzz duties pause --duty <uuid>
+buzz duties resume --duty <uuid>
+buzz duties delete --duty <uuid>
+buzz lessons create --employee <pubkey> --record <json-or-path>
+buzz lessons list --employee <pubkey>
+buzz lessons get --lesson <uuid>
+buzz lessons update --lesson <uuid> --record <json-or-path>
+buzz lessons approve --lesson <uuid> --confidence <low|moderate|high>
+buzz lessons deprecate --lesson <uuid>
+buzz lessons restore --lesson <uuid>
+
 # Forum
 buzz messages vote --event <event-id> --direction up
 
@@ -165,6 +181,18 @@ The table below mirrors that tree for readers who are not at a terminal.
 | | `trigger` | Trigger a workflow |
 | | `runs` | Get workflow run history |
 | | `approve` | Approve/deny a workflow step |
+| `duties` | `propose` | Propose a duty in an existing conversation thread |
+| | `list` | List employee duty heads |
+| | `get` | Get a duty and its workflow run history |
+| | `update` | Update a duty schedule, channel or instructions |
+| | `pause` / `resume` | Pause or resume a duty schedule |
+| | `delete` | Delete a duty and retain its run history |
+| `lessons` | `create` | Propose a structured lesson with evidence references |
+| | `list` | List employee lessons |
+| | `get` | Get a lesson and its evidence |
+| | `update` | Edit a lesson and return it to candidate state |
+| | `approve` | Approve a lesson and record confidence |
+| | `deprecate` / `restore` | Deprecate a lesson or restore it as a candidate |
 | `feed` | `get` | Get your activity feed |
 | `social` | `publish` | Publish a NIP-01 note |
 | | `set-contacts` | Set NIP-02 contact list |

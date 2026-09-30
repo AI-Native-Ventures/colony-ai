@@ -1614,6 +1614,16 @@ test("playback speed persists across videos and reloads", async ({ page }) => {
     const player = page
       .locator(`[data-message-id="${emitted.id}"]`)
       .getByTestId("video-player");
+    const jumpToLatest = page.getByTestId("message-scroll-to-latest");
+    await expect
+      .poll(
+        async () =>
+          (await player.isVisible()) || (await jumpToLatest.isVisible()),
+      )
+      .toBe(true);
+    if (await jumpToLatest.isVisible()) {
+      await jumpToLatest.click();
+    }
     await expect(player).toBeVisible();
     await player.getByRole("button", { name: "Play video" }).click();
     return player;
