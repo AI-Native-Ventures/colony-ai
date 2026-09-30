@@ -203,6 +203,12 @@ test("submit a typed hire proposal and retry without losing the selected scope",
   await expect(
     page.getByRole("heading", { name: "Propose a hire" }),
   ).toBeVisible();
+  await expect(page.getByLabel("Channel", { exact: true })).toHaveValue(
+    thread.channelId,
+  );
+  await expect(page.getByLabel("Thread", { exact: true })).toHaveValue(
+    thread.rootId,
+  );
   await page.getByLabel("Recipient").selectOption(TEST_IDENTITIES.bob.pubkey);
   await page.getByLabel("Role pack").selectOption(HIRE_PERSONA_ID);
   await page.getByLabel("Proposed name").fill("Operations coordinator");
@@ -212,6 +218,9 @@ test("submit a typed hire proposal and retry without losing the selected scope",
     .fill("The team needs support coordinating supplier work.");
   await page.getByLabel("Requested allowance, USD").fill("12.50");
   await page.getByLabel("Allowance period").selectOption("week");
+  await expect(page.getByLabel("Recipient")).toHaveValue(
+    TEST_IDENTITIES.bob.pubkey,
+  );
   await page.getByRole("button", { name: "Review proposal" }).click();
   await expect(
     page.getByRole("heading", { name: "Review hire proposal" }),

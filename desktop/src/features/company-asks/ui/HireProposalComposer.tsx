@@ -56,6 +56,8 @@ export function useAskHireProposal(
 }
 
 type AskHireRecipientOption = { pubkey: string; label: string };
+type AskHireChannelOption = { id: string; name: string };
+type AskHireThreadOption = { id: string; label: string };
 type UpdateAskDraft = <K extends keyof AskComposerDraft>(
   key: K,
   value: AskComposerDraft[K],
@@ -74,9 +76,19 @@ type HireProposalComposerProps = {
   recipientLoading: boolean;
   recipientError: boolean;
   channelPeople: number;
+  channelOptions: AskHireChannelOption[];
+  selectedChannelId: string;
+  selectedThreadRootId: string;
+  startNewThread: boolean;
+  threadOptions: AskHireThreadOption[];
+  threadsPending: boolean;
+  threadsError: boolean;
   proposalDestination: string;
   locked: boolean;
   onUpdateDraft: UpdateAskDraft;
+  onChangeChannel: (channelId: string) => void;
+  onChangeThread: (threadRootId: string) => void;
+  onRetryThreads: () => void;
   onRetryRoleOptions: () => void;
   onOpenRoleCatalog: () => void;
 };
@@ -94,9 +106,19 @@ export function HireProposalComposer({
   recipientLoading,
   recipientError,
   channelPeople,
+  channelOptions,
+  selectedChannelId,
+  selectedThreadRootId,
+  startNewThread,
+  threadOptions,
+  threadsPending,
+  threadsError,
   proposalDestination,
   locked,
   onUpdateDraft,
+  onChangeChannel,
+  onChangeThread,
+  onRetryThreads,
   onRetryRoleOptions,
   onOpenRoleCatalog,
 }: HireProposalComposerProps) {
@@ -133,37 +155,92 @@ export function HireProposalComposer({
     </div>
   ) : (
     <>
-      <label htmlFor="ask-addressee">Recipient</label>
-      <select
-        aria-describedby={
-          errors.addresseePubkey ? "ask-addressee-error" : undefined
-        }
-        aria-invalid={Boolean(errors.addresseePubkey)}
-        disabled={
-          locked || recipientLoading || recipientError || channelPeople === 0
-        }
-        id="ask-addressee"
-        onChange={(event) =>
-          onUpdateDraft("addresseePubkey", event.target.value)
-        }
-        value={draft.addresseePubkey}
-      >
-        <option value="">Choose recipient</option>
-        {recipientOptions.map((member) => (
-          <option key={member.pubkey} value={member.pubkey}>
-            {member.label}
-          </option>
-        ))}
-      </select>
-      {errors.addresseePubkey ? (
-        <span
-          className="colony-ask-compose-error"
-          id="ask-addressee-error"
-          role="alert"
-        >
-          {errors.addresseePubkey}
-        </span>
-      ) : null}
+      <h2>The proposed position</h2>
+      <fieldset className="colony-ask-hire-context">
+        <legend>Conversation and recipient</legend>
+        <div className="colony-ask-hire-context-grid">
+          <div>
+            <label htmlFor="ask-channel">Channel</label>
+            <select
+              disabled={locked}
+              id="ask-channel"
+              onChange={(event) => onChangeChannel(event.target.value)}
+              value={selectedChannelId}
+            >
+              <option value="">Choose channel</option>
+              {channelOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="ask-thread">Thread</label>
+            <select
+              disabled={locked || threadsPending || threadsError}
+              id="ask-thread"
+              onChange={(event) => onChangeThread(event.target.value)}
+              value={startNewThread ? "new" : selectedThreadRootId}
+            >
+              {startNewThread ? (
+                <option value="new">New thread</option>
+              ) : (
+                <option value="">Choose thread</option>
+              )}
+              {threadOptions.map((thread) => (
+                <option key={thread.id} value={thread.id}>
+                  {thread.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="colony-ask-hire-recipient">
+            <label htmlFor="ask-addressee">Recipient</label>
+            <select
+              aria-describedby={
+                errors.addresseePubkey ? "ask-addressee-error" : undefined
+              }
+              aria-invalid={Boolean(errors.addresseePubkey)}
+              disabled={
+                locked ||
+                recipientLoading ||
+                recipientError ||
+                channelPeople === 0
+              }
+              id="ask-addressee"
+              onChange={(event) =>
+                onUpdateDraft("addresseePubkey", event.target.value)
+              }
+              value={draft.addresseePubkey}
+            >
+              <option value="">Choose recipient</option>
+              {recipientOptions.map((member) => (
+                <option key={member.pubkey} value={member.pubkey}>
+                  {member.label}
+                </option>
+              ))}
+            </select>
+            {errors.addresseePubkey ? (
+              <span
+                className="colony-ask-compose-error"
+                id="ask-addressee-error"
+                role="alert"
+              >
+                {errors.addresseePubkey}
+              </span>
+            ) : null}
+          </div>
+        </div>
+        {threadsError ? (
+          <div role="alert">
+            <p>Threads could not load. Your draft is kept.</p>
+            <Button onClick={onRetryThreads} type="button" variant="outline">
+              Retry threads
+            </Button>
+          </div>
+        ) : null}
+      </fieldset>
 
       <label htmlFor="hire-role-pack">Role pack</label>
       <select
@@ -198,17 +275,16 @@ export function HireProposalComposer({
             Retry role packs
           </Button>
         </div>
-      ) : roleOptions.length === 0 ? (
-        <div role="status">
-          <p>No role pack is available.</p>
-          <Button
-            onClick={() => void onOpenRoleCatalog()}
-            type="button"
-            variant="outline"
-          >
-            No role available? Open catalog
-          </Button>
-        </div>
+      ) : null}
+      {!roleOptionsPending && !roleOptionsError ? (
+        <Button
+          className="colony-ask-hire-catalog"
+          onClick={() => void onOpenRoleCatalog()}
+          type="button"
+          variant="outline"
+        >
+          No role available? Open catalog
+        </Button>
       ) : null}
       {errors.hireRolePackId ? (
         <span

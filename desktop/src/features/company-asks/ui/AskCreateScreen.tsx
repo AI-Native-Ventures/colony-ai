@@ -78,6 +78,10 @@ function threadLabel(event: RelayEvent | undefined) {
       return "Ask discussion";
     }
   }
+  const heading = event.content.match(/^\s{0,3}#{1,6}\s+([^\r\n]+)(?:\r?\n|$)/);
+  if (heading?.[1]) {
+    return heading[1].replace(/\s+#+\s*$/, "").trim();
+  }
   const content = event.content.replace(/\s+/g, " ").trim();
   return content.slice(0, 140) || "Discussion";
 }
@@ -303,12 +307,36 @@ export function AskCreateScreen({
   };
 
   const changeChannel = (nextChannelId: string) => {
+    const nextThreadIsNew = step === "destination" || startNewThread;
     setSelectedChannelId(nextChannelId);
     setSelectedThreadRootId("");
-    setStartNewThread(true);
+    setStartNewThread(nextThreadIsNew);
     setDraft((current) => ({ ...current, addresseePubkey: "" }));
     setErrors((current) => ({ ...current, addresseePubkey: undefined }));
     setFormError(null);
+  };
+
+  const changeHireThread = (threadRootId: string) => {
+    if (threadRootId === "new") {
+      setSelectedThreadRootId("");
+      setStartNewThread(true);
+      return;
+    }
+    setSelectedThreadRootId(threadRootId);
+    setStartNewThread(false);
+  };
+
+  const goBack = () => {
+    if (step !== "compose") {
+      returnedToThread();
+      return;
+    }
+    if (isHireProposal && hireProposalReview) {
+      setHireProposalReview(false);
+      setFormError(null);
+      return;
+    }
+    changeAskType();
   };
 
   const continueToAsk = () => {
@@ -519,20 +547,22 @@ export function AskCreateScreen({
       <GoalRouteHeader
         title={isHireProposal ? "Propose a hire" : "Raise an ask"}
       />
-      <div className="colony-ask-detail-scroll">
+      <div
+        className={`colony-ask-detail-scroll${isHireProposal ? " colony-ask-detail-scroll--hire" : ""}`}
+      >
         <section
           aria-labelledby="ask-create-title"
-          className="colony-ask-create-content"
+          className={`colony-ask-create-content${isHireProposal ? " colony-ask-create-content--hire" : ""}${hireProposalReview ? " colony-ask-create-content--hire-review" : ""}`}
         >
           <GoalRouteBackLink
             label={
               step !== "compose"
                 ? "Back"
                 : isHireProposal
-                  ? "Change ask type"
+                  ? "Back"
                   : "Change destination"
             }
-            onClick={step !== "compose" ? returnedToThread : changeAskType}
+            onClick={goBack}
             disabled={locked}
           />
           {sentContext ? (
@@ -779,21 +809,25 @@ export function AskCreateScreen({
               <h1 id="ask-create-title">
                 {isHireProposal ? "Propose a hire" : "Raise an ask"}
               </h1>
-              <div className="colony-ask-create-grid">
+              <div
+                className={`colony-ask-create-grid${isHireProposal ? " colony-ask-create-grid--hire" : ""}${hireProposalReview ? " colony-ask-create-grid--hire-review" : ""}`}
+              >
                 <section
                   aria-label="Ask details"
                   className="colony-ask-create-main"
                 >
-                  <p className="colony-ask-create-context">
-                    <strong>#{channelName}</strong>
-                    {startNewThread
-                      ? draft.threadTitle.trim()
-                      : threadLabel(
-                          threadRoots.find(
-                            (message) => message.id === selectedThreadRootId,
-                          ) ?? threadRoots[0],
-                        )}
-                  </p>
+                  {!isHireProposal ? (
+                    <p className="colony-ask-create-context">
+                      <strong>#{channelName}</strong>
+                      {startNewThread
+                        ? draft.threadTitle.trim()
+                        : threadLabel(
+                            threadRoots.find(
+                              (message) => message.id === selectedThreadRootId,
+                            ) ?? threadRoots[0],
+                          )}
+                    </p>
+                  ) : null}
                   <fieldset
                     aria-label="Ask type"
                     className="colony-ask-create-types"
@@ -863,7 +897,7 @@ export function AskCreateScreen({
                     </div>
                   ) : null}
                   <form
-                    className="colony-ask-compose-form"
+                    className={`colony-ask-compose-form${isHireProposal && !hireProposalReview ? " colony-ask-hire-form" : ""}${hireProposalReview ? " colony-ask-hire-review-form" : ""}`}
                     noValidate={isHireProposal}
                     onSubmit={submitComposer}
                   >
@@ -881,9 +915,31 @@ export function AskCreateScreen({
                         recipientLoading={recipientLoading}
                         recipientError={recipientError}
                         channelPeople={channelPeople}
+                        channelOptions={(channelsQuery.data ?? [])
+                          .filter(
+                            (candidate) =>
+                              candidate.channelType !== "dm" &&
+                              candidate.isMember,
+                          )
+                          .map((candidate) => ({
+                            id: candidate.id,
+                            name: candidate.name,
+                          }))}
+                        selectedChannelId={selectedChannelId}
+                        selectedThreadRootId={selectedThreadRootId}
+                        startNewThread={startNewThread}
+                        threadOptions={threadRoots.map((thread) => ({
+                          id: thread.id,
+                          label: threadLabel(thread),
+                        }))}
+                        threadsPending={messagesQuery.isPending}
+                        threadsError={messagesQuery.isError}
                         proposalDestination={`#${channelName} / ${startNewThread ? draft.threadTitle.trim() : threadLabel(threadRoots.find((message) => message.id === selectedThreadRootId) ?? threadRoots[0])}`}
                         locked={locked}
                         onUpdateDraft={updateDraft}
+                        onChangeChannel={changeChannel}
+                        onChangeThread={changeHireThread}
+                        onRetryThreads={retryThreads}
                         onRetryRoleOptions={() => void personasQuery.refetch()}
                         onOpenRoleCatalog={() => void goHireRoles()}
                       />
@@ -946,60 +1002,64 @@ export function AskCreateScreen({
                   </form>
                 </section>
 
-                <aside
-                  aria-label={
-                    isHireProposal ? "Proposal review steps" : "Who can answer?"
-                  }
-                  className="colony-ask-create-aside"
-                >
-                  {isHireProposal ? (
-                    <HireProposalReviewSteps />
-                  ) : (
-                    <>
-                      <h2>Who can answer?</h2>
-                      <p>
-                        Questions and verdicts can go to a person or an AI
-                        employee. Sensitive decisions stay with authorized
-                        people.
-                      </p>
-                      <dl>
-                        <div>
-                          <dt>Raised by</dt>
-                          <dd>
-                            {currentPubkey
-                              ? resolveUserLabel({
-                                  pubkey: currentPubkey,
-                                  currentPubkey,
-                                  fallbackName: "You",
-                                  preferResolvedSelfLabel: true,
-                                  profiles: profilesQuery.data?.profiles,
-                                })
-                              : "Your account"}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>Visibility</dt>
-                          <dd>People in #{channelName}</dd>
-                        </div>
-                        <div>
-                          <dt>After a response</dt>
-                          <dd>
-                            The decision stays linked to this conversation.
-                          </dd>
-                        </div>
-                      </dl>
-                    </>
-                  )}
-                  {membersQuery.isError ? (
-                    <Button
-                      onClick={retryRecipients}
-                      type="button"
-                      variant="outline"
-                    >
-                      Retry teammates
-                    </Button>
-                  ) : null}
-                </aside>
+                {!hireProposalReview ? (
+                  <aside
+                    aria-label={
+                      isHireProposal
+                        ? "Proposal review steps"
+                        : "Who can answer?"
+                    }
+                    className="colony-ask-create-aside"
+                  >
+                    {isHireProposal ? (
+                      <HireProposalReviewSteps />
+                    ) : (
+                      <>
+                        <h2>Who can answer?</h2>
+                        <p>
+                          Questions and verdicts can go to a person or an AI
+                          employee. Sensitive decisions stay with authorized
+                          people.
+                        </p>
+                        <dl>
+                          <div>
+                            <dt>Raised by</dt>
+                            <dd>
+                              {currentPubkey
+                                ? resolveUserLabel({
+                                    pubkey: currentPubkey,
+                                    currentPubkey,
+                                    fallbackName: "You",
+                                    preferResolvedSelfLabel: true,
+                                    profiles: profilesQuery.data?.profiles,
+                                  })
+                                : "Your account"}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Visibility</dt>
+                            <dd>People in #{channelName}</dd>
+                          </div>
+                          <div>
+                            <dt>After a response</dt>
+                            <dd>
+                              The decision stays linked to this conversation.
+                            </dd>
+                          </div>
+                        </dl>
+                      </>
+                    )}
+                    {membersQuery.isError ? (
+                      <Button
+                        onClick={retryRecipients}
+                        type="button"
+                        variant="outline"
+                      >
+                        Retry teammates
+                      </Button>
+                    ) : null}
+                  </aside>
+                ) : null}
               </div>
             </>
           )}
