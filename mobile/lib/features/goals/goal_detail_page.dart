@@ -19,9 +19,10 @@ import '../../shared/utils/string_utils.dart';
 import '../../shared/widgets/buzz_loading_indicator.dart';
 import '../../shared/widgets/modal_presentation.dart';
 import 'goal_sheets.dart';
+import 'goal_lifecycle_pages.dart';
 import 'goal_widgets.dart';
 
-const _goalLifecycleTopInset = 13.0;
+const _goalLifecycleTopInset = 21.0;
 const _goalLifecycleBannerKickerStyle = TextStyle(
   fontFamily: 'Manrope',
   fontSize: 10,
@@ -67,12 +68,14 @@ class GoalDetailPage extends HookConsumerWidget {
     required this.goalId,
     this.onShareInChat,
     this.onOpenDiscussion,
+    this.onOpenGoalActions,
     super.key,
   });
 
   final String goalId;
   final VoidCallback? onShareInChat;
   final VoidCallback? onOpenDiscussion;
+  final VoidCallback? onOpenGoalActions;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -131,15 +134,17 @@ class GoalDetailPage extends HookConsumerWidget {
             subtitle: community?.name,
             onBack: () => unawaited(Navigator.of(context).maybePop()),
             backLabel: 'Back',
-            action: onOpenDiscussion == null && sharedGoal == null
-                ? null
-                : () => _openContextActions(
-                    context,
-                    onOpenDiscussion: onOpenDiscussion,
-                    sharedGoalId: sharedGoal?.head.goalId,
-                  ),
+            action:
+                onOpenGoalActions ??
+                (onOpenDiscussion == null && sharedGoal == null
+                    ? null
+                    : () => _openContextActions(
+                        context,
+                        onOpenDiscussion: onOpenDiscussion,
+                        sharedGoalId: sharedGoal?.head.goalId,
+                      )),
             actionLabel: 'Goal actions',
-            actionIcon: LucideIcons.plus,
+            actionIcon: LucideIcons.ellipsis,
           ),
           Expanded(
             child: recordAsync.when(
@@ -184,16 +189,25 @@ class GoalDetailPage extends HookConsumerWidget {
                                 goalHistoryProvider(value.head.goalId),
                               );
                             } catch (error, stackTrace) {
-                              FlutterError.reportError(
-                                FlutterErrorDetails(
-                                  exception: error,
-                                  stack: stackTrace,
-                                  library: 'Colony mobile goals',
-                                  context: ErrorDescription(
-                                    'while restoring an archived goal',
+                              if (context.mounted) {
+                                Navigator.of(context).push<void>(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => GoalRestoreFailedPage(
+                                      goalId: value.head.goalId,
+                                    ),
                                   ),
-                                ),
-                              );
+                                );
+                                FlutterError.reportError(
+                                  FlutterErrorDetails(
+                                    exception: error,
+                                    stack: stackTrace,
+                                    library: 'Colony mobile goals',
+                                    context: ErrorDescription(
+                                      'while restoring an archived goal',
+                                    ),
+                                  ),
+                                );
+                              }
                             } finally {
                               if (context.mounted) {
                                 isSubmittingLifecycleAction.value = false;
