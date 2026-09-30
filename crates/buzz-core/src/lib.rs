@@ -17,6 +17,8 @@ pub mod company_employee_history;
 pub mod company_members;
 /// Typed content and validation for company records (goals and asks).
 pub mod company_records;
+/// Typed content and validation for employee allowances and AI spend.
+pub mod company_spend;
 /// Typed content and validation for company work tracking records.
 pub mod company_work_tracking;
 /// NIP-AE Agent Engrams — slug grammar, conversation key, d-tag derivation,
