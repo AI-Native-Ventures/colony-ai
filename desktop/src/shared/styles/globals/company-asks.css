@@ -137,77 +137,6 @@
   padding: 1.5rem;
 }
 
-.colony-ask-hire-fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.8rem;
-}
-
-.colony-ask-hire-fields > div {
-  display: grid;
-  min-width: 0;
-  gap: 0.6rem;
-}
-
-.colony-ask-hire-review {
-  display: grid;
-  gap: 1rem;
-}
-
-.colony-ask-hire-review > h2 {
-  margin: 0;
-  color: hsl(var(--foreground));
-  font-size: var(--text-base);
-  font-weight: 600;
-}
-
-.colony-ask-hire-review > dl {
-  display: grid;
-  margin: 0;
-}
-
-.colony-ask-hire-review > dl > div {
-  display: grid;
-  grid-template-columns: minmax(8rem, 1fr) minmax(0, 1.5fr);
-  gap: 1rem;
-  border-bottom: 1px solid hsl(var(--border));
-  padding: 0.65rem 0;
-}
-
-.colony-ask-hire-review dt {
-  color: hsl(var(--muted-foreground));
-  font-size: var(--text-xs);
-}
-
-.colony-ask-hire-review dd {
-  min-width: 0;
-  margin: 0;
-  color: hsl(var(--foreground));
-  font-size: var(--text-sm);
-  overflow-wrap: anywhere;
-}
-
-.colony-ask-hire-review > p {
-  margin: 0;
-  color: hsl(var(--muted-foreground));
-  font-size: var(--text-xs);
-}
-
-.colony-ask-hire-steps {
-  display: grid;
-  gap: 1.1rem;
-  margin: 1.5rem 0 0;
-  padding-left: 1.25rem;
-  color: hsl(var(--foreground));
-  font-size: var(--text-xs);
-}
-
-.colony-ask-hire-steps p {
-  margin: 0.45rem 0 0;
-  color: hsl(var(--muted-foreground));
-  line-height: 1.55;
-}
-
 .colony-ask-create-context {
   border: 1px solid hsl(var(--border));
   border-left: 0.2rem solid #536d9c;
@@ -295,58 +224,6 @@
   min-height: 5.25rem;
   resize: vertical;
   line-height: 1.55;
-}
-
-.colony-ask-compose-form > small,
-.colony-ask-response-form > small {
-  color: hsl(var(--muted-foreground));
-  font-size: var(--text-2xs);
-  text-align: right;
-}
-
-.colony-hire-decision-reason {
-  display: grid;
-  gap: 0.6rem;
-}
-
-.colony-hire-decision-reason > label {
-  color: hsl(var(--foreground));
-  font-size: var(--text-sm);
-  font-weight: 600;
-}
-
-.colony-hire-decision-reason > textarea {
-  width: 100%;
-  min-height: 5.25rem;
-  resize: vertical;
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.4rem;
-  background: hsl(var(--background));
-  padding: 0.55rem 0.65rem;
-  color: hsl(var(--foreground));
-  font-size: var(--text-sm);
-  line-height: 1.55;
-}
-
-.colony-hire-decision-reason > textarea:focus-visible {
-  outline: 2px solid hsl(var(--ring));
-  outline-offset: 1px;
-}
-
-.colony-hire-decision-reason > textarea[aria-invalid="true"] {
-  border-color: hsl(var(--destructive));
-}
-
-.colony-hire-decision-reason > small {
-  color: hsl(var(--muted-foreground));
-  font-size: var(--text-2xs);
-  text-align: right;
-}
-
-.colony-hire-decision-reason > p {
-  margin: 0;
-  color: hsl(var(--muted-foreground));
-  font-size: var(--text-xs);
 }
 
 .colony-ask-compose-form input:focus-visible,
@@ -1200,15 +1077,6 @@ button.colony-needs-me-row:hover {
 
   .colony-ask-create-aside {
     padding: 1rem;
-  }
-
-  .colony-ask-hire-fields {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .colony-ask-hire-review > dl > div {
-    grid-template-columns: minmax(5.5rem, 0.75fr) minmax(0, 1.25fr);
-    gap: 0.65rem;
   }
 
   .colony-ask-create-content > h1 {
