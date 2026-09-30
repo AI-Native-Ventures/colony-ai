@@ -2,6 +2,7 @@ pub mod agents;
 pub mod asks;
 pub mod channel_templates;
 pub mod channels;
+pub mod company_duties_lessons;
 pub mod credits;
 pub mod dms;
 pub mod emoji;
