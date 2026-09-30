@@ -15,6 +15,7 @@ import 'package:buzz/features/settings/settings_save_failed_page.dart';
 import 'package:buzz/shared/navigation/mobile_route.dart';
 import 'package:buzz/shared/navigation/mobile_route_scope.dart';
 import 'package:buzz/shared/navigation/mobile_routes.dart';
+import 'package:buzz/shared/community/community_provider.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:buzz/shared/widgets/avatar_image.dart';
 import 'package:flutter/material.dart';
@@ -269,15 +270,14 @@ void main() {
 
     await tester.tap(find.text('Preview privacy'));
     await tester.pumpAndSettle();
-    expect(find.text('Lock-screen preview'), findsOneWidget);
-    expect(find.text('Colony · You have a new notification.'), findsOneWidget);
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    expect(find.text('Show message previews'), findsOneWidget);
+    expect(find.text('Consider your lock screen'), findsOneWidget);
+    expect(find.text('A real workspace update.'), findsNothing);
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
+    await tester.tap(find.byType(Checkbox));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Show message previews').last);
-    await tester.pumpAndSettle();
-    expect(find.textContaining('A real workspace update.'), findsOneWidget);
-    expect(find.textContaining('Maya'), findsNothing);
-    await tester.tap(find.text('Save preview privacy'));
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+    await tester.tap(find.text('Save preference'));
     await tester.pumpAndSettle();
 
     expect(
@@ -285,6 +285,8 @@ void main() {
       'Show message previews',
     );
     expect(find.text('Preferences'), findsOneWidget);
+    expect(find.text('Notification preference saved'), findsOneWidget);
+    expect(find.text('A real workspace update.'), findsNothing);
   });
 
   testWidgets(
@@ -329,6 +331,7 @@ Widget _testApp({
   overrides: [
     savedPrefsProvider.overrideWithValue(prefs),
     channelsProvider.overrideWith(_TestChannelsNotifier.new),
+    activeCommunityProvider.overrideWith((_) async => null),
   ],
   child: MaterialApp(
     theme: AppTheme.light(),
