@@ -321,6 +321,7 @@ async fn create_tool_consent_ask(
         member_proposal: None,
         secret_request: None,
         hire_proposal: None,
+        spend_allowance_proposal: None,
     };
     let action_command = AskAction {
         schema_version: COMPANY_RECORD_SCHEMA_VERSION,

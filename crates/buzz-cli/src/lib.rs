@@ -249,6 +249,9 @@ enum Cmd {
     /// Read and update company member positions
     #[command(subcommand)]
     Team(TeamCmd),
+    /// Read and record employee AI allowances and AI spend evidence
+    #[command(subcommand)]
+    Spend(SpendCmd),
     /// List, bind and revoke company secret metadata
     #[command(subcommand)]
     Secrets(SecretsCmd),
@@ -1281,6 +1284,38 @@ pub enum TeamCmd {
         /// Clear the manager and report directly to the company owner
         #[arg(long, conflicts_with = "manager")]
         clear_manager: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SpendCmd {
+    /// Read and update employee AI allowances
+    #[command(subcommand)]
+    Allowance(SpendAllowanceCmd),
+    /// Read and record AI spend evidence
+    #[command(subcommand)]
+    Records(SpendRecordsCmd),
+}
+
+#[derive(Subcommand)]
+pub enum SpendAllowanceCmd {
+    /// List current relay-signed employee allowance heads
+    List,
+    /// Submit a typed EmployeeAllowanceAction JSON object or path; use - for stdin
+    Set {
+        #[arg(long)]
+        action: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SpendRecordsCmd {
+    /// List current relay-signed AI spend record heads
+    List,
+    /// Submit a typed AiSpendRecordAction JSON object or path; use - for stdin
+    Set {
+        #[arg(long)]
+        action: String,
     },
 }
 
@@ -2907,6 +2942,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Asks(sub) => commands::asks::dispatch(sub, &client).await,
         Cmd::Goals(sub) => commands::goals::dispatch(sub, &client).await,
         Cmd::Team(sub) => commands::team::dispatch(sub, &client).await,
+        Cmd::Spend(sub) => commands::spend::dispatch(sub, &client).await,
         Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
         Cmd::Work(sub) => commands::work::dispatch(sub, &client).await,
         Cmd::Factory(sub) => commands::factory::dispatch(sub, &client).await,
@@ -3102,6 +3138,7 @@ mod tests {
             "repos",
             "secrets",
             "social",
+            "spend",
             "team",
             "upload",
             "users",

@@ -1,11 +1,5 @@
 import * as React from "react";
-import {
-  ArrowLeft,
-  ArrowUpRight,
-  CreditCard,
-  History,
-  TrendingUp,
-} from "lucide-react";
+import { ArrowLeft, CreditCard, History } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 import {
@@ -19,43 +13,94 @@ import {
   type CreditsOnboardingApi,
 } from "@/features/onboarding/ui/creditsOnboardingApi";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
+import type { TeamMember } from "@/features/company-team/teamModels";
+import { useUsersBatchQuery } from "@/features/profile/hooks";
+import { useIdentityQuery } from "@/shared/api/hooks";
 import type {
   AgentUsageSeries,
   AgentUsageSeriesBucket,
 } from "@/shared/api/tauriArchive";
 import type { ManagedAgent } from "@/shared/api/types";
 import { truncateNpub } from "@/shared/lib/pubkey";
-import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { PageHeader, SectionHeader } from "@/shared/ui/PageHeader";
 import type { UsagePeriodDays } from "./usageBoundaries";
 import { useAgentUsageSeries } from "./useAgentUsageSeries";
+import {
+  AiSpendEmployeeScreen,
+  AiSpendOverview,
+  ExternalAiCostDetail,
+  ExternalAiCostEditor,
+  ExternalAiCostRemoveConfirmation,
+  type PowerEmployee,
+} from "./AiSpendScreens";
+import {
+  useAiSpendHeadsQuery,
+  useEmployeeAllowanceHeadsQuery,
+  useSyncAgentTurnSpendRecords,
+} from "./spendRelay";
 
-export type PowerSection = "overview" | "usage" | "history" | "checkout";
+export type PowerPanel =
+  | "employee"
+  | "new-cost"
+  | "edit-cost"
+  | "source"
+  | "remove-cost";
+
+export type PowerSection =
+  | "overview"
+  | "usage"
+  | "connections"
+  | "history"
+  | "checkout";
 
 const POWER_TABS: Array<{ id: PowerSection; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "usage", label: "Usage" },
+  { id: "connections", label: "Connections" },
   { id: "history", label: "Billing history" },
 ];
 
 export function parsePowerSection(
   value: string | null | undefined,
 ): PowerSection {
-  return value === "usage" || value === "history" || value === "checkout"
+  return value === "usage" ||
+    value === "connections" ||
+    value === "history" ||
+    value === "checkout"
     ? value
     : "overview";
 }
 
 export function PowerScreen({
   section,
+  panel,
+  employeePubkey,
+  recordId,
   onSectionChange,
+  onOpenEmployee,
+  onOpenNewCost,
+  onOpenCost,
+  onEditCost,
+  onRemoveCost,
+  onClosePanel,
 }: {
   section: PowerSection;
+  panel?: PowerPanel;
+  employeePubkey?: string;
+  recordId?: string;
   onSectionChange: (section: PowerSection) => void;
+  onOpenEmployee: (pubkey: string) => void;
+  onOpenNewCost: () => void;
+  onOpenCost: (recordId: string) => void;
+  onEditCost: (recordId: string) => void;
+  onRemoveCost: (recordId: string) => void;
+  onClosePanel: () => void;
 }) {
   const { activeCommunity } = useCommunities();
   const communityId = activeCommunity?.id ?? "";
+  const { goSettings } = useAppNavigation();
   const creditApi: CreditsOnboardingApi = unavailableCreditsOnboardingApi;
   const creditsQuery = useQuery({
     enabled: Boolean(communityId),
@@ -66,32 +111,145 @@ export function PowerScreen({
   const usageQuery = useAgentUsageSeries(30);
   const agentsQuery = useManagedAgentsQuery();
   const runtimesQuery = useAcpRuntimesQuery({ enabled: true });
-  const { goSupervision } = useAppNavigation();
+  const spendEnabled = section === "overview" || panel !== undefined;
+  const teamQuery = useCompanyTeamQuery(spendEnabled);
+  const identityQuery = useIdentityQuery();
+  const employees = (teamQuery.data?.members ?? []).filter(
+    (member): member is TeamMember => member.kind === "employee",
+  );
+  const profilesQuery = useUsersBatchQuery(
+    employees.map((member) => member.pubkey),
+    { enabled: spendEnabled && employees.length > 0 },
+  );
+  const allowancesQuery = useEmployeeAllowanceHeadsQuery(spendEnabled);
+  const spendQuery = useAiSpendHeadsQuery(spendEnabled);
+  const sync = useSyncAgentTurnSpendRecords(
+    employees,
+    spendQuery,
+    spendEnabled,
+  );
   const credits = creditsQuery.data ?? {
     status: "unavailable" as const,
     reason: "contract-not-available" as const,
   };
   const agents = agentsQuery.data ?? [];
   const runtimes = runtimesQuery.data ?? [];
-  const configuredHarnessCount = new Set(
-    agents
-      .map(
-        (agent) =>
-          runtimes.find(
-            (runtime) =>
-              runtime.id === agent.runtime ||
-              runtime.command === agent.agentCommand,
-          )?.id,
-      )
-      .filter(Boolean),
-  ).size;
+  const profileRecords = profilesQuery.data?.profiles ?? {};
+  const powerEmployees: PowerEmployee[] = employees.map((member) => ({
+    member,
+    name:
+      profileRecords[member.pubkey]?.displayName?.trim() ||
+      member.fallbackName?.trim() ||
+      truncateNpub(member.pubkey),
+    title:
+      member.position?.head.title ||
+      (member.kind === "employee" ? "Employee" : "Human"),
+  }));
+  const allowanceRecords = allowancesQuery.data?.records ?? [];
+  const spendRecords = spendQuery.data?.records ?? [];
+  const selfPubkey = identityQuery.data?.pubkey.toLowerCase();
+  const currentRole = teamQuery.data?.relayMembers.find(
+    (member) => member.pubkey.toLowerCase() === selfPubkey,
+  )?.role;
+  const canManage = currentRole === "owner" || currentRole === "admin";
+  const spendError =
+    (teamQuery.error instanceof Error ? teamQuery.error : null) ??
+    (profilesQuery.error instanceof Error ? profilesQuery.error : null) ??
+    (allowancesQuery.error instanceof Error ? allowancesQuery.error : null) ??
+    (spendQuery.error instanceof Error ? spendQuery.error : null) ??
+    sync.error;
+  const spendLoading =
+    teamQuery.isLoading ||
+    profilesQuery.isLoading ||
+    allowancesQuery.isLoading ||
+    spendQuery.isLoading;
+  const selectedEmployee = powerEmployees.find(
+    (item) =>
+      item.member.pubkey.toLowerCase() === employeePubkey?.toLowerCase(),
+  );
+  const selectedAllowance = allowanceRecords.find(
+    (item) =>
+      item.head.employeePubkey.toLowerCase() ===
+      selectedEmployee?.member.pubkey.toLowerCase(),
+  );
+  const selectedCost = spendRecords.find(
+    (item) => item.head.recordId === recordId,
+  );
+  const showCostEditor =
+    (panel === "new-cost" && (teamQuery.isLoading || canManage)) ||
+    (panel === "edit-cost" &&
+      (teamQuery.isLoading ||
+        (canManage && (spendQuery.isLoading || selectedCost !== undefined))));
+  const showCostRemoval =
+    panel === "remove-cost" && (teamQuery.isLoading || canManage);
+  const showSpendPanel =
+    (panel === "employee" && selectedEmployee !== undefined) ||
+    panel === "source" ||
+    showCostRemoval ||
+    showCostEditor;
 
   return (
     <div
       className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8"
       data-testid="power-screen"
     >
-      {section === "checkout" ? (
+      {showSpendPanel && panel === "employee" && selectedEmployee ? (
+        <AiSpendEmployeeScreen
+          allowance={selectedAllowance}
+          employee={selectedEmployee}
+          onBack={onClosePanel}
+          records={spendRecords}
+        />
+      ) : showSpendPanel && panel === "source" ? (
+        <ExternalAiCostDetail
+          canManage={canManage}
+          onBack={onClosePanel}
+          onEdit={() => recordId && onEditCost(recordId)}
+          onRemove={() => recordId && onRemoveCost(recordId)}
+          record={selectedCost}
+        />
+      ) : showSpendPanel && panel === "remove-cost" ? (
+        teamQuery.isLoading ? (
+          <p
+            className="py-12 text-center text-sm text-muted-foreground"
+            role="status"
+          >
+            Loading cost record
+          </p>
+        ) : (
+          <ExternalAiCostRemoveConfirmation
+            canManage={canManage}
+            onCancel={() => (recordId ? onOpenCost(recordId) : onClosePanel())}
+            onRemoved={onClosePanel}
+            record={selectedCost}
+          />
+        )
+      ) : showSpendPanel && (panel === "new-cost" || panel === "edit-cost") ? (
+        teamQuery.isLoading ||
+        (panel === "edit-cost" && spendQuery.isLoading) ? (
+          <p
+            className="py-12 text-center text-sm text-muted-foreground"
+            role="status"
+          >
+            Loading cost record
+          </p>
+        ) : canManage ? (
+          <ExternalAiCostEditor
+            canManage={canManage}
+            onBack={
+              panel === "edit-cost" && recordId
+                ? () => onOpenCost(recordId)
+                : onClosePanel
+            }
+            onSaved={
+              panel === "edit-cost" && recordId
+                ? () => onOpenCost(recordId)
+                : onClosePanel
+            }
+            record={panel === "edit-cost" ? selectedCost : undefined}
+          />
+        ) : null
+      ) : section === "checkout" ? (
         <CheckoutScreen
           creditsUnavailable={credits.status === "unavailable"}
           onBack={() => onSectionChange("overview")}
@@ -100,7 +258,11 @@ export function PowerScreen({
         <>
           <PageHeader
             action={
-              section === "history" ? (
+              section === "overview" && canManage ? (
+                <Button onClick={onOpenNewCost} size="sm" type="button">
+                  Record external AI cost
+                </Button>
+              ) : section === "history" ? (
                 <Button
                   onClick={() => onSectionChange("checkout")}
                   size="sm"
@@ -111,13 +273,14 @@ export function PowerScreen({
                 </Button>
               ) : null
             }
-            description="Agent usage and credit availability."
             title={
               section === "usage"
                 ? "Agent usage"
-                : section === "history"
-                  ? "Billing history"
-                  : "Power & usage"
+                : section === "connections"
+                  ? "Agent connections"
+                  : section === "history"
+                    ? "Billing history"
+                    : "AI spend & power"
             }
           />
           <PowerNavigation
@@ -125,21 +288,14 @@ export function PowerScreen({
             onSectionChange={onSectionChange}
           />
           {section === "overview" ? (
-            <PowerOverview
-              credits={credits}
-              configuredHarnessCount={configuredHarnessCount}
-              isAgentLoading={agentsQuery.isLoading}
-              isRuntimeLoading={runtimesQuery.isLoading}
-              agents={agents}
-              runtimes={runtimes}
-              usage={usageQuery.data}
-              isUsageLoading={usageQuery.isLoading}
-              usageError={
-                usageQuery.error instanceof Error ? usageQuery.error : null
-              }
-              onAddCredits={() => onSectionChange("checkout")}
-              onOpenUsage={() => onSectionChange("usage")}
-              onOpenSupervision={() => void goSupervision()}
+            <AiSpendOverview
+              allowances={allowanceRecords}
+              employees={powerEmployees}
+              error={spendError}
+              isLoading={spendLoading}
+              onOpenCost={onOpenCost}
+              onOpenEmployee={onOpenEmployee}
+              records={spendRecords}
             />
           ) : section === "usage" ? (
             <PowerUsage
@@ -150,6 +306,12 @@ export function PowerScreen({
                 usageQuery.error instanceof Error ? usageQuery.error : null
               }
               series={usageQuery.data}
+            />
+          ) : section === "connections" ? (
+            <PowerConnections
+              credits={credits}
+              isCreditsLoading={creditsQuery.isLoading}
+              onManage={() => void goSettings("agents")}
             />
           ) : (
             <BillingHistory
@@ -192,175 +354,76 @@ function PowerNavigation({
   );
 }
 
-function PowerOverview({
+function PowerConnections({
   credits,
-  configuredHarnessCount,
-  isAgentLoading,
-  isRuntimeLoading,
-  agents,
-  runtimes,
-  usage,
-  isUsageLoading,
-  usageError,
-  onAddCredits,
-  onOpenUsage,
-  onOpenSupervision,
+  isCreditsLoading,
+  onManage,
 }: {
   credits: { status: string; balanceUsdCents?: number };
-  configuredHarnessCount: number;
-  isAgentLoading: boolean;
-  isRuntimeLoading: boolean;
-  agents: ManagedAgent[];
-  runtimes: ReturnType<typeof useAcpRuntimesQuery>["data"];
-  usage?: AgentUsageSeries;
-  isUsageLoading: boolean;
-  usageError: Error | null;
-  onAddCredits: () => void;
-  onOpenUsage: () => void;
-  onOpenSupervision: () => void;
+  isCreditsLoading: boolean;
+  onManage: () => void;
 }) {
-  const creditBalance =
-    credits.status === "available" && credits.balanceUsdCents !== undefined
-      ? moneyFromCents(credits.balanceUsdCents)
-      : "Unavailable";
-  const reportedCost = sumReportedCost(usage);
-  const knownRuntimeIds = new Set(
-    (runtimes ?? []).map((runtime) => runtime.id),
-  );
-  const agentHarnesses = agents
-    .map((agent) => ({
-      agent,
-      label: agentHarnessLabel(agent, runtimes ?? []),
-    }))
-    .filter(
-      ({ agent }) =>
-        knownRuntimeIds.has(agent.runtime ?? "") ||
-        agentHarnessLabel(agent, runtimes ?? []) !== "Not reported",
-    );
-  const uniqueHarnesses = new Map<
-    string,
-    { label: string; count: number; runtimeId: string | null }
-  >();
-  for (const { agent, label } of agentHarnesses) {
-    const key = agent.runtime ?? label;
-    const current = uniqueHarnesses.get(key);
-    uniqueHarnesses.set(key, {
-      label,
-      count: (current?.count ?? 0) + 1,
-      runtimeId: agent.runtime,
-    });
-  }
-
   return (
-    <div className="space-y-6" data-testid="power-overview">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          label="Colony credits"
-          value={creditBalance}
-          detail="Balance unavailable"
-        />
-        <MetricCard
-          label="Reported usage · 30 days"
-          value={isUsageLoading ? "Loading" : reportedCost}
-          detail="Provider-reported cost only"
-        />
-        <MetricCard
-          label="Monthly cap"
-          value="Unavailable"
-          detail="No cap service is connected"
-        />
-        <MetricCard
-          label="Configured harnesses"
-          value={
-            isAgentLoading || isRuntimeLoading
-              ? "Loading"
-              : String(configuredHarnessCount)
-          }
-          detail="From the runtime catalogue"
-        />
-      </div>
-
-      {credits.status === "unavailable" ? <PriceUnavailableNotice /> : null}
-      {usageError ? (
-        <p
-          className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-          role="alert"
-        >
-          {usageError.message}
-        </p>
-      ) : null}
-
-      <div className="grid gap-5 lg:grid-cols-2">
-        <section className="space-y-3 rounded-xl border border-border/70 bg-background/70 p-4">
-          <SectionHeader title="Keep work moving" />
-          <ActionRow
-            title="Colony credits"
-            detail="Review a credit purchase before payment."
-            action={
-              <Button onClick={onAddCredits} size="sm" type="button">
-                Add credits
-              </Button>
-            }
-          />
-          <ActionRow
-            title="Monthly spending cap"
-            detail="Pause new credit-funded work at the limit."
-            action={
-              <Button disabled size="sm" type="button" variant="outline">
-                Unavailable
-              </Button>
-            }
-          />
-        </section>
-        <section className="space-y-3 rounded-xl border border-border/70 bg-background/70 p-4">
-          <SectionHeader title="Where usage comes from" />
-          {runtimes === undefined ? (
-            <p className="text-sm text-muted-foreground">
-              Loading runtime catalogue…
-            </p>
-          ) : uniqueHarnesses.size > 0 ? (
-            [...uniqueHarnesses.entries()].map(([id, row]) => {
-              const runtime = runtimes.find(
-                (candidate) => candidate.id === row.runtimeId,
-              );
-              return (
-                <ActionRow
-                  key={id}
-                  title={row.label}
-                  detail={`${row.count} configured ${row.count === 1 ? "agent" : "agents"} · ${runtime ? authStatusLabel(runtime.authStatus.status) : "Authentication unknown"}`}
-                  action={<Badge variant="secondary">Harness</Badge>}
-                />
-              );
-            })
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No configured harnesses were reported.
-            </p>
-          )}
-          <p className="border-t border-border/55 pt-3 text-sm text-muted-foreground">
-            Harness authentication is separate from provider funding. A reported
-            usage cost is not an invoice or account balance.
-          </p>
-        </section>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={onOpenUsage} size="sm" type="button" variant="outline">
-          <TrendingUp />
-          Review usage
-          <ArrowUpRight />
-        </Button>
-        <Button
-          onClick={onOpenSupervision}
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          Inspect agent activity
-          <ArrowUpRight />
-        </Button>
-      </div>
+    <div className="divide-y divide-border/70" data-testid="power-connections">
+      <ConnectionRow
+        detail="Harness-reported allowance unavailable"
+        onManage={onManage}
+        status="Unavailable"
+        title="Existing subscriptions"
+      />
+      <ConnectionRow
+        detail="Pay for supported agent work"
+        onManage={onManage}
+        status={
+          isCreditsLoading
+            ? "Loading"
+            : credits.status === "available" &&
+                credits.balanceUsdCents !== undefined
+              ? moneyFromCents(credits.balanceUsdCents)
+              : "Unavailable"
+        }
+        title="Colony credits"
+      />
+      <ConnectionRow
+        detail="Provider balance not synced"
+        onManage={onManage}
+        status="Unavailable"
+        title="OpenRouter"
+      />
+      <ConnectionRow
+        detail="Provider key connection status unavailable"
+        onManage={onManage}
+        status="Unavailable"
+        title="Provider keys"
+      />
     </div>
+  );
+}
+
+function ConnectionRow({
+  title,
+  detail,
+  status,
+  onManage,
+}: {
+  title: string;
+  detail: string;
+  status: string;
+  onManage: () => void;
+}) {
+  return (
+    <section className="flex flex-wrap items-center justify-between gap-4 py-5">
+      <div className="min-w-0 space-y-1">
+        <h2 className="text-base font-semibold">{title}</h2>
+        <p className="text-sm text-muted-foreground">{detail}</p>
+      </div>
+      <div className="flex items-center gap-4">
+        <span className="text-sm text-muted-foreground">{status}</span>
+        <Button onClick={onManage} size="sm" type="button" variant="outline">
+          Manage
+        </Button>
+      </div>
+    </section>
   );
 }
 
@@ -633,74 +696,6 @@ function CheckoutScreen({
   );
 }
 
-function PriceUnavailableNotice() {
-  return (
-    <div
-      className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm"
-      role="status"
-    >
-      Current prices are unavailable. Your balance has not changed.
-    </div>
-  );
-}
-
-function MetricCard({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <section className="min-h-28 rounded-xl border border-border/70 bg-background/70 p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-3 text-xl font-semibold tracking-tight">{value}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-    </section>
-  );
-}
-
-function ActionRow({
-  title,
-  detail,
-  action,
-}: {
-  title: string;
-  detail: string;
-  action: React.ReactNode;
-}) {
-  return (
-    <div className="flex min-h-16 items-center justify-between gap-3 border-t border-border/55 py-3 first:border-t-0">
-      <div className="min-w-0">
-        <p className="text-sm font-medium">{title}</p>
-        <p className="mt-0.5 text-sm text-muted-foreground">{detail}</p>
-      </div>
-      <div className="shrink-0">{action}</div>
-    </div>
-  );
-}
-
-function sumReportedCost(series: AgentUsageSeries | undefined) {
-  if (!series || series.agents.length === 0) return "Not reported";
-  let sum = 0;
-  let found = false;
-  let unknown = false;
-  for (const agent of series.agents) {
-    const cost = agent.usage.estimatedCostUsd;
-    if (cost.value === null) {
-      unknown = true;
-      continue;
-    }
-    found = true;
-    sum += cost.value;
-    unknown ||= cost.incomplete || agent.hasUnknownUsage;
-  }
-  if (!found) return "Not reported";
-  return `${money(sum)}${unknown ? " + unknown" : ""}`;
-}
-
 function money(amount: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -716,19 +711,4 @@ function formatDay(unixSeconds: number) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
     new Date(unixSeconds * 1000),
   );
-}
-
-function authStatusLabel(status: string) {
-  switch (status) {
-    case "logged_in":
-      return "Harness account signed in";
-    case "logged_out":
-      return "Harness sign-in needed";
-    case "config_invalid":
-      return "Harness configuration issue";
-    case "not_applicable":
-      return "Harness account not checked";
-    default:
-      return "Harness account status unknown";
-  }
 }
