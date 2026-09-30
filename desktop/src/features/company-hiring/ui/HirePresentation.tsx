@@ -17,7 +17,7 @@ export function HireBackButton({ onClick }: { onClick: () => void }) {
   return (
     <Button
       aria-label="Back"
-      className="mb-8 inline-flex items-center gap-1 px-0 pt-4 text-xs text-muted-foreground hover:text-foreground"
+      className="mb-4 inline-flex items-center gap-1 px-0 pt-4 text-xs text-muted-foreground hover:text-foreground"
       onClick={onClick}
       type="button"
       variant="ghost"
@@ -46,7 +46,7 @@ export function HireField({
 
 export function HirePageContent({ children }: { children: ReactNode }) {
   return (
-    <main className="mx-auto flex w-full max-w-[76.875rem] flex-col px-6 pb-12">
+    <main className="mx-auto flex w-full max-w-[74.5rem] flex-col px-6 pb-12">
       {children}
     </main>
   );

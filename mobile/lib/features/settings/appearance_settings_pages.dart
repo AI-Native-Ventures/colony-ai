@@ -5,10 +5,9 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../channels/channels_provider.dart';
-import '../channels/date_formatters.dart';
 import '../profile/profile_provider.dart';
 import '../profile/user_status_provider.dart';
+import '../../shared/community/community_provider.dart';
 import '../../shared/navigation/mobile_navigation.dart';
 import '../../shared/navigation/mobile_route.dart';
 import '../../shared/navigation/mobile_routes.dart';
@@ -297,99 +296,60 @@ class _ThemeTile extends StatelessWidget {
     onTap: onPressed,
     child: ExcludeSemantics(
       child: Material(
-        color: Colors.transparent,
+        color: context.mobileTokens.paper,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Radii.dialog),
+          side: BorderSide(color: context.mobileTokens.line),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onPressed,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              LayoutBuilder(
-                builder: (context, constraints) => Container(
-                  height: 100,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: theme.bg,
-                    border: Border.all(color: const Color(0x35888888)),
-                    borderRadius: BorderRadius.circular(9),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: constraints.maxWidth * 0.24,
-                        height: double.infinity,
-                        child: const DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [Color(0x55CF90B8), Color(0x5583A5D2)],
-                            ),
-                          ),
-                        ),
+          child: Padding(
+            padding: const EdgeInsets.all(Grid.xxs),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: theme.bg,
+                      border: Border.all(
+                        color: theme.fg.withValues(alpha: 0.18),
                       ),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(8, 14, 6, 10),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                width: constraints.maxWidth * 0.42,
-                                height: 4,
-                                decoration: BoxDecoration(
-                                  color: theme.fg.withValues(alpha: 0.8),
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Container(
-                                width: constraints.maxWidth * 0.68,
-                                height: 4,
-                                decoration: BoxDecoration(
-                                  color: theme.fg.withValues(alpha: 0.56),
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Container(
-                                width: constraints.maxWidth * 0.28,
-                                height: 4,
-                                decoration: BoxDecoration(
-                                  color: theme.added ?? theme.fg,
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                      borderRadius: BorderRadius.circular(Radii.field),
+                    ),
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(horizontal: Grid.xs),
+                    child: Text(
+                      'Aa',
+                      style: TextStyle(
+                        color: theme.fg,
+                        fontFamily: 'Manrope',
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700,
                       ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _themeDisplayName(theme),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: context.textTheme.labelSmall?.copyWith(
-                        color: context.mobileTokens.ink,
-                      ),
-                    ),
+                const SizedBox(height: Grid.xxs),
+                Text(
+                  _themeDisplayName(theme),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.mobileTypography.conversation.copyWith(
+                    color: context.mobileTokens.ink,
+                    fontWeight: FontWeight.w600,
                   ),
-                  if (selected)
-                    Icon(
-                      LucideIcons.check,
-                      size: 14,
-                      color: context.mobileTokens.ink,
-                    ),
-                ],
-              ),
-            ],
+                ),
+                Text(
+                  theme.isDark ? 'Dark' : 'Light',
+                  style: context.mobileTypography.metadata.copyWith(
+                    color: context.mobileTokens.muted,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -397,70 +357,60 @@ class _ThemeTile extends StatelessWidget {
   );
 }
 
-class _ConversationPreview extends ConsumerWidget {
-  const _ConversationPreview({required this.theme});
+class _ThemePreviewHero extends StatelessWidget {
+  const _ThemePreviewHero({
+    required this.eyebrow,
+    required this.title,
+    required this.description,
+  });
 
-  final ThemeColors theme;
+  final String eyebrow;
+  final String title;
+  final String description;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final channels = ref.watch(channelsProvider).asData?.value;
-    if (channels == null) return const SizedBox.shrink();
-    final activeChannels =
-        channels
-            .where(
-              (channel) =>
-                  !channel.isDm &&
-                  !channel.isArchived &&
-                  channel.lastMessageContent?.trim().isNotEmpty == true &&
-                  channel.lastMessagePubkey != null &&
-                  channel.lastMessageCreatedAt != null,
-            )
-            .toList()
-          ..sort(
-            (left, right) => right.lastMessageCreatedAt!.compareTo(
-              left.lastMessageCreatedAt!,
-            ),
-          );
-    if (activeChannels.isEmpty) return const SizedBox.shrink();
-
-    final channel = activeChannels.first;
-    final authorPubkey = channel.lastMessagePubkey!;
-    final name = shortPubkey(authorPubkey);
-    final initials = name.substring(0, 1).toUpperCase();
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final tokens = context.mobileTokens;
     return Container(
+      padding: const EdgeInsets.fromLTRB(20, 28, 20, 28),
       decoration: BoxDecoration(
-        color: theme.bg,
-        border: Border.all(color: theme.fg.withValues(alpha: 0.2)),
         borderRadius: BorderRadius.circular(Radii.dialog),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: dark
+              ? const [Color(0xFF42384E), Color(0xFF514146)]
+              : const [Color(0xFFE8DFF0), Color(0xFFF3E3D5)],
+        ),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(Grid.xs),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '# ${channel.name}',
-                style: TextStyle(color: theme.fg, fontWeight: FontWeight.w600),
-              ),
+          Text(
+            eyebrow,
+            style: context.mobileTypography.metadata.copyWith(
+              color: tokens.ink,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
             ),
           ),
-          const Divider(height: 1),
-          _PreviewMessage(
-            initials: initials,
-            name: name,
-            content: channel.lastMessageContent!.trim(),
-            time: formatMessageTime(channel.lastMessageCreatedAt!),
-            theme: theme,
+          const SizedBox(height: Grid.xxs),
+          Text(
+            title,
+            style: context.mobileTypography.flowTitle.copyWith(
+              color: tokens.ink,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(Grid.xs),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Message ${channel.name}…',
-                style: TextStyle(color: theme.comment, fontSize: 12),
+          const SizedBox(height: Grid.xxs),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 310),
+            child: Text(
+              description,
+              style: context.mobileTypography.conversation.copyWith(
+                color: tokens.ink,
+                height: 1.45,
               ),
             ),
           ),
@@ -468,81 +418,6 @@ class _ConversationPreview extends ConsumerWidget {
       ),
     );
   }
-}
-
-class _PreviewMessage extends StatelessWidget {
-  const _PreviewMessage({
-    required this.initials,
-    required this.name,
-    required this.content,
-    required this.time,
-    required this.theme,
-  });
-
-  final String initials;
-  final String name;
-  final String content;
-  final String time;
-  final ThemeColors theme;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(Grid.xs),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        CircleAvatar(
-          radius: 13,
-          backgroundColor: theme.comment.withValues(alpha: 0.3),
-          child: Text(initials, style: TextStyle(color: theme.fg, fontSize: 9)),
-        ),
-        const SizedBox(width: Grid.xxs),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '$name  $time',
-                style: TextStyle(
-                  color: theme.fg,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Text(content, style: TextStyle(color: theme.fg, fontSize: 11)),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _PreferenceSummary extends StatelessWidget {
-  const _PreferenceSummary({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    height: 48,
-    decoration: BoxDecoration(
-      border: Border(bottom: BorderSide(color: context.mobileTokens.line)),
-    ),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: context.mobileTypography.body.copyWith(
-            color: context.mobileTokens.muted,
-          ),
-        ),
-        Text(value, style: context.mobileTypography.body),
-      ],
-    ),
-  );
 }
 
 class _PreferenceCheckbox extends StatelessWidget {

@@ -88,6 +88,9 @@ type CommunityCatalogDialogProps = {
 
   // Dialog
   open: boolean;
+  rolePackMode?: boolean;
+  createTitle?: string;
+  createDescription?: string;
   preferSection: "agents" | "teams";
   onOpenChange: (open: boolean) => void;
 };
@@ -115,6 +118,9 @@ export function CommunityCatalogDialog({
   teamsAdding,
   onAddTeam,
   open,
+  rolePackMode = false,
+  createTitle = "Add agent",
+  createDescription = "Create, discover, and import agents and teams.",
   preferSection,
   onOpenChange,
 }: CommunityCatalogDialogProps) {
@@ -288,10 +294,14 @@ export function CommunityCatalogDialog({
         open={open}
       >
         <ChooserDialogContent
-          className="h-[42rem] max-w-4xl"
+          className={
+            rolePackMode
+              ? "h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-[1300px]"
+              : "h-[42rem] max-w-4xl"
+          }
           contentClassName="flex min-h-0 min-w-0 flex-1 p-0"
           data-testid="community-catalog-dialog"
-          description="Create, discover, and import agents and teams."
+          description={createDescription}
           headerClassName="bg-sidebar pb-3 text-sidebar-foreground"
           headerTestId="community-catalog-dialog-header"
           onOpenAutoFocus={(event) => {
@@ -302,7 +312,7 @@ export function CommunityCatalogDialog({
           scrollAreaClassName="flex min-h-0 overflow-hidden px-0"
           scrollAreaTestId="community-catalog-dialog-body"
           tabIndex={-1}
-          title="Add agent"
+          title={createTitle}
           onDragEnter={(event) => {
             if (!isImportSelected || !hasFiles(event)) return;
             event.preventDefault();

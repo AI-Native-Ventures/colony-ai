@@ -396,8 +396,8 @@ function InvoiceList({
       {invoices.length === 0 ? (
         <div className="money-empty">
           <FileText aria-hidden="true" />
-          <h2>No records for this selection</h2>
-          <p>Change the period/client or create an invoice.</p>
+          <h2>No invoices for this selection</h2>
+          <p>Change the period or client to find other invoices.</p>
         </div>
       ) : (
         <div className="w10-table-wrap">

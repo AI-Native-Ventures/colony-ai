@@ -149,6 +149,35 @@ export type MoneyWorkspaceRecords = {
   followUpActions: EventRecord<MoneyFollowUpAction>[];
 };
 
+export function invoiceIssueMissingDetails(
+  invoice: MoneyInvoiceHead,
+): string[] {
+  const missing: string[] = [];
+  if (!invoice.clientId.trim()) missing.push("Client");
+  if (!/^[A-Z]{3}$/.test(invoice.currency)) missing.push("Currency");
+  if (
+    !invoice.lines.length ||
+    invoice.lines.some(
+      (line) =>
+        !line.description.trim() ||
+        !Number.isSafeInteger(line.quantityHundredths) ||
+        line.quantityHundredths <= 0 ||
+        !Number.isSafeInteger(line.unitAmountMinor) ||
+        line.unitAmountMinor < 0,
+    )
+  ) {
+    missing.push("Invoice lines");
+  }
+  if (
+    invoice.dueAt === null ||
+    !Number.isSafeInteger(invoice.dueAt) ||
+    invoice.dueAt <= 0
+  ) {
+    missing.push("Due date");
+  }
+  return missing;
+}
+
 export const MONEY_RECORD_KINDS = [
   KIND_INVOICE_HEAD,
   KIND_INVOICE_VERSION,

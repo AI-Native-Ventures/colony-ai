@@ -114,10 +114,10 @@ void main() {
               Uri.file('${output.path}/proof_test.dart'),
             );
             tester.view.viewPadding = const FakeViewPadding(
-              top: 72,
+              top: 25,
               bottom: 20,
             );
-            tester.view.padding = const FakeViewPadding(top: 72, bottom: 20);
+            tester.view.padding = const FakeViewPadding(top: 25, bottom: 20);
           }
           addTearDown(() {
             debugDefaultTargetPlatformOverride = null;
@@ -132,9 +132,14 @@ void main() {
           if (captureScreenshots) await _loadProofFonts();
 
           final prefs = await _proofPreferences(
-            showMessagePreview: screen.name == 'settings-privacy-message',
+            showMessagePreview:
+                screen.name == 'settings-privacy-message' ||
+                screen.name == 'settings-privacy-saved',
           );
           final rootKey = GlobalKey();
+          final useCompanyShell =
+              screen.name.startsWith('settings-') ||
+              screen.name.startsWith('profile-');
           final app = MaterialApp(
             debugShowCheckedModeBanner: false,
             theme: AppTheme.light(),
@@ -142,7 +147,7 @@ void main() {
             themeMode: brightness == Brightness.dark
                 ? ThemeMode.dark
                 : ThemeMode.light,
-            home: screen.name == 'settings-home'
+            home: useCompanyShell
                 ? MobileShell(
                     destination: MobileShellDestination.company,
                     onDestinationSelected: (_) {},
@@ -203,6 +208,15 @@ void main() {
           await tester.pumpAndSettle();
           await tester.pump(const Duration(milliseconds: 450));
 
+          if (screen.name == 'settings-theme-preview-sparse') {
+            await tester.tap(find.text('Preview with a message'));
+            await tester.pumpAndSettle();
+          }
+          if (screen.name == 'settings-privacy-saved') {
+            await tester.tap(find.text('Save preference'));
+            await tester.pumpAndSettle();
+          }
+
           if (captureScreenshots) {
             if (screen.name == 'settings-appearance') {
               expect(find.text('System'), findsOneWidget);
@@ -255,6 +269,10 @@ final _screenCases = <_ScreenCase>[
     () => const ThemePreviewPage(themeName: 'Colony'),
   ),
   _ScreenCase(
+    'settings-theme-preview-sparse',
+    () => const ThemePreviewPage(themeName: 'Colony'),
+  ),
+  _ScreenCase(
     'settings-theme-applied',
     () => const ThemeAppliedPage(themeName: 'Colony'),
   ),
@@ -287,6 +305,7 @@ final _screenCases = <_ScreenCase>[
   ),
   _ScreenCase('settings-privacy', () => const SettingsPrivacyPage()),
   _ScreenCase('settings-privacy-message', () => const SettingsPrivacyPage()),
+  _ScreenCase('settings-privacy-saved', () => const SettingsPrivacyPage()),
   _ScreenCase('settings-export', () => const SettingsExportPage()),
   _ScreenCase('settings-export-failed', () => const SettingsExportFailedPage()),
   _ScreenCase(
@@ -480,7 +499,7 @@ class _ProofStatusBar extends StatelessWidget {
       brightness == Brightness.dark ? 0xffeee8f0 : 0xff292632,
     );
     return Positioned(
-      top: 26,
+      top: 0,
       left: 0,
       right: 0,
       child: IgnorePointer(
