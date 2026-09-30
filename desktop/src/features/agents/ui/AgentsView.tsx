@@ -42,7 +42,11 @@ import { AgentDirectory } from "./AgentDirectory";
 import { AgentProfileView, type AgentProfileTab } from "./AgentProfileView";
 import { parseAgentDirectoryPageSize } from "@/features/agents/agentDirectoryModel";
 import { useAppShell } from "@/app/AppShellContext";
-import { useRelayMembersQuery } from "@/features/community-members/hooks";
+import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import {
+  useMyRelayMembershipQuery,
+  useRelayMembersQuery,
+} from "@/features/community-members/hooks";
 import { Button } from "@/shared/ui/button";
 import {
   DropdownMenu,
@@ -66,6 +70,9 @@ export function AgentsView({
   agentPubkey,
   agentTab,
   pageSize,
+  createRolePack = false,
+  editRolePackPersonaId,
+  resumeRolePack = false,
   onWorkspaceViewChange,
   onOpenAgent,
   onMessageAgent,
@@ -78,6 +85,9 @@ export function AgentsView({
   agentPubkey?: string;
   agentTab: AgentProfileTab;
   pageSize?: string;
+  createRolePack?: boolean;
+  editRolePackPersonaId?: string;
+  resumeRolePack?: boolean;
   onWorkspaceViewChange: (view: AgentWorkspaceView) => void;
   onOpenAgent: (pubkey: string) => void;
   onMessageAgent: (pubkey: string) => Promise<void>;
@@ -86,6 +96,13 @@ export function AgentsView({
   onAgentTabChange: (tab: AgentProfileTab) => void;
   onOpenSupervision: () => void;
 }) {
+  const { goHireRoleRecovery, goHireRoles } = useAppNavigation();
+  const handleRoleRecovery = React.useCallback(
+    (kind: "runtime" | "provider" | "model", draftPersonaId: string) => {
+      void goHireRoleRecovery(kind, draftPersonaId);
+    },
+    [goHireRoleRecovery],
+  );
   const { openPersonaProfilePanel, openProfilePanel } = useProfilePanel();
   const { globalConfig } = useGlobalAgentConfig();
   const appShell = useAppShell();
@@ -96,6 +113,10 @@ export function AgentsView({
   const inheritedDefaults = getInheritedAgentDefaults(globalConfig, bakedEnv);
   const agents = useManagedAgentActions();
   const personas = usePersonaActions();
+  const membershipQuery = useMyRelayMembershipQuery();
+  const canCurateCompanyRoles =
+    membershipQuery.data?.role === "owner" ||
+    membershipQuery.data?.role === "admin";
   const teamImportInputRef = React.useRef<HTMLInputElement | null>(null);
   const aiDefaultsTriggerRef = React.useRef<HTMLButtonElement>(null);
   const fullAiDefaultsTriggerRef = React.useRef<HTMLButtonElement>(null);
@@ -140,14 +161,69 @@ export function AgentsView({
   const [catalogLaunchTarget, setCatalogLaunchTarget] = React.useState<
     "agents" | "teams" | null
   >(null);
+  const [catalogLaunchRolePack, setCatalogLaunchRolePack] =
+    React.useState(false);
+  const pendingRolePackSavedIdRef = React.useRef<string | null>(null);
 
-  function openCommunityCatalog(target: "agents" | "teams") {
+  function openCommunityCatalog(
+    target: "agents" | "teams",
+    rolePackMode = false,
+  ) {
     personas.clearFeedback("catalog");
     personas.prepareCreate();
     void personas.catalogQuery.refetch();
     void teamActions.catalogQuery.refetch();
+    setCatalogLaunchRolePack(rolePackMode);
+    pendingRolePackSavedIdRef.current = null;
     setCatalogLaunchTarget(target);
   }
+
+  const didOpenRolePackRef = React.useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the route flag is a one-shot command that must open the catalog once.
+  React.useEffect(() => {
+    if (!createRolePack) {
+      didOpenRolePackRef.current = false;
+      return;
+    }
+    if (didOpenRolePackRef.current || membershipQuery.isPending) return;
+    didOpenRolePackRef.current = true;
+    if (canCurateCompanyRoles && !membershipQuery.isError) {
+      openCommunityCatalog("agents", true);
+    }
+  }, [
+    canCurateCompanyRoles,
+    createRolePack,
+    membershipQuery.isError,
+    membershipQuery.isPending,
+  ]);
+
+  const didOpenRolePackEditRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!editRolePackPersonaId) {
+      didOpenRolePackEditRef.current = null;
+      return;
+    }
+    if (didOpenRolePackEditRef.current === editRolePackPersonaId) return;
+    if (membershipQuery.isPending || personas.personasQuery.isPending) {
+      return;
+    }
+    didOpenRolePackEditRef.current = editRolePackPersonaId;
+    if (!canCurateCompanyRoles || membershipQuery.isError) return;
+    const persona = (personas.personasQuery.data ?? []).find(
+      (candidate) => candidate.id === editRolePackPersonaId,
+    );
+    if (persona?.companyRole && persona.isActive && !persona.isBuiltIn) {
+      personas.openEdit(persona);
+    }
+  }, [
+    canCurateCompanyRoles,
+    editRolePackPersonaId,
+    membershipQuery.isError,
+    membershipQuery.isPending,
+    personas.openEdit,
+    personas.personasQuery.data,
+    personas.personasQuery.isPending,
+  ]);
 
   const isActionPending =
     agents.isPending ||
@@ -638,7 +714,18 @@ export function AgentsView({
       ) : null}
       {personas.personaDialogState ? (
         <AgentDialog
-          description={personas.personaDialogState.description}
+          companyRoleMode={Boolean(
+            personas.personaDialogState.initialValues.companyRole &&
+              canCurateCompanyRoles,
+          )}
+          onRoleRecovery={handleRoleRecovery}
+          suppressRoleRecovery={resumeRolePack}
+          description={
+            personas.personaDialogState.initialValues.companyRole &&
+            canCurateCompanyRoles
+              ? "Define the job, skills, scoped tools and allowed worker menu."
+              : personas.personaDialogState.description
+          }
           error={
             personas.updatePersonaMutation.error instanceof Error
               ? personas.updatePersonaMutation.error
@@ -651,6 +738,9 @@ export function AgentsView({
           initialValues={personas.personaDialogState.initialValues}
           isPending={personas.isPending}
           mode="definition-edit"
+          onSavedPersona={(persona) => {
+            if (persona.companyRole) void goHireRoles(persona.id);
+          }}
           runtimes={personas.acpRuntimesQuery.data ?? []}
           runtimeCatalogStatus={
             personas.acpRuntimesQuery.isLoading
@@ -661,16 +751,21 @@ export function AgentsView({
           }
           onOpenChange={(open) => {
             if (!open) {
+              const isRolePack = Boolean(
+                personas.personaDialogState?.initialValues.companyRole,
+              );
               personas.setPersonaDialogState(null);
+              if (isRolePack) void goHireRoles();
             }
           }}
-          onSubmit={(input, options) =>
+          onSubmit={(input, options, onSavedPersona) =>
             personas.handleSubmit(
               input,
               undefined,
               undefined,
               undefined,
               options,
+              onSavedPersona,
             )
           }
           open={personas.personaDialogState !== null}
@@ -680,8 +775,18 @@ export function AgentsView({
               personas.personaDialogState.initialValues.id,
             )
           }
-          submitLabel={personas.personaDialogState.submitLabel}
-          title={personas.personaDialogState.title}
+          submitLabel={
+            personas.personaDialogState.initialValues.companyRole &&
+            canCurateCompanyRoles
+              ? "Save role pack"
+              : personas.personaDialogState.submitLabel
+          }
+          title={
+            personas.personaDialogState.initialValues.companyRole &&
+            canCurateCompanyRoles
+              ? "Edit a role pack"
+              : personas.personaDialogState.title
+          }
         />
       ) : null}
       {personas.personaToDelete ? (
@@ -777,8 +882,17 @@ export function AgentsView({
       ) : null}
       {catalogLaunchTarget !== null ? (
         <CommunityCatalogDialog
+          createDescription={
+            catalogLaunchRolePack
+              ? "Define the job, skills, scoped tools and allowed worker menu."
+              : undefined
+          }
+          createTitle={catalogLaunchRolePack ? "Role catalog" : undefined}
+          rolePackMode={catalogLaunchRolePack}
           createContent={({ onDirtyChange, onRequestClose }) => (
             <AgentDialog
+              onRoleRecovery={handleRoleRecovery}
+              companyRoleMode={catalogLaunchRolePack}
               definitionError={
                 personas.createPersonaMutation.error instanceof Error
                   ? personas.createPersonaMutation.error
@@ -791,7 +905,25 @@ export function AgentsView({
               onOpenChange={(open) => {
                 if (!open) onRequestClose();
               }}
-              onSubmitDefinition={personas.handleSubmit}
+              onSubmitDefinition={(
+                input,
+                intent,
+                backendIntent,
+                onSavedPersona,
+              ) =>
+                personas.handleSubmit(
+                  input,
+                  intent,
+                  backendIntent,
+                  undefined,
+                  undefined,
+                  onSavedPersona,
+                )
+              }
+              onRolePackSaved={(personaId) => {
+                pendingRolePackSavedIdRef.current = personaId;
+              }}
+              suppressRoleRecovery={resumeRolePack}
               runtimes={personas.acpRuntimesQuery.data ?? []}
               runtimeCatalogStatus={
                 personas.acpRuntimesQuery.isLoading
@@ -857,7 +989,16 @@ export function AgentsView({
           open={catalogLaunchTarget !== null}
           preferSection={catalogLaunchTarget}
           onOpenChange={(open) => {
-            if (!open) setCatalogLaunchTarget(null);
+            if (!open) {
+              const returnToRoleCatalog = catalogLaunchRolePack;
+              const savedRolePackId = pendingRolePackSavedIdRef.current;
+              pendingRolePackSavedIdRef.current = null;
+              setCatalogLaunchTarget(null);
+              setCatalogLaunchRolePack(false);
+              if (returnToRoleCatalog) {
+                void goHireRoles(savedRolePackId ?? undefined);
+              }
+            }
           }}
         />
       ) : null}

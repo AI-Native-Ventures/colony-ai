@@ -736,6 +736,8 @@ type E2eConfig = {
     companyHireActionErrors?: string[];
     /** Relay-signed member-position heads for Company Team E2E coverage. */
     companyMemberPositionEvents?: RelayEvent[];
+    /** Relay-signed member-position actions for Company Team history coverage. */
+    companyMemberPositionActions?: RelayEvent[];
     /** Synthetic relay key used only to broker member-position actions in focused E2E tests. */
     companyMemberRelayPrivateKeyHex?: string;
     /** Reject successive member-position writes in order, then accept them. */
@@ -764,6 +766,8 @@ type E2eConfig = {
     archivedEvents?: RelayEvent[];
     /** Relay-signed company work events for company work UI E2E coverage. */
     companyWorkEvents?: RelayEvent[];
+    /** Reject successive company work head reads in order, then accept them. */
+    companyWorkReadErrors?: string[];
     /** Synthetic relay key used to broker company work actions in focused E2E tests. */
     companyWorkRelayPrivateKey?: string;
     /** Reject company work action publishes in order, then accept them. */
@@ -977,6 +981,8 @@ type E2eConfig = {
      * returning a catalog.
      */
     discoverAgentModelsError?: string;
+    /** Reject successive local persona creates or updates in order. */
+    personaWriteErrors?: string[];
     // Backend provider mocks for the create-agent "Run on" section. See
     // tests/helpers/bridge.ts:MockBridgeOptions for semantics.
     backendProviders?: Array<{ id: string; binaryPath: string }>;
@@ -3977,6 +3983,9 @@ const mockCompanyHireHeads: RelayEvent[] = [];
 const mockCompanyMemberPositionEvents: RelayEvent[] = [];
 const MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY =
   "buzz-e2e-company-member-position-events-v1";
+const mockCompanyMemberPositionActions: RelayEvent[] = [];
+const MOCK_COMPANY_MEMBER_POSITION_ACTIONS_STORAGE_KEY =
+  "buzz-e2e-company-member-position-actions-v1";
 const mockCompanyEmployeeRevisionActions: RelayEvent[] = [];
 const MOCK_COMPANY_EMPLOYEE_REVISION_ACTIONS_STORAGE_KEY =
   "buzz-e2e-company-employee-revision-actions-v1";
@@ -6216,6 +6225,32 @@ function filterMockCompanyMemberPositions(filter: MockFilter): RelayEvent[] {
     .slice(0, filter.limit ?? 500);
 }
 
+function filterMockCompanyMemberPositionActions(
+  filter: MockFilter,
+): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return mockCompanyMemberPositionActions
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
 function filterMockCompanySpendHeads(filter: MockFilter): RelayEvent[] {
   const authors = filter.authors?.map((author) => author.toLowerCase());
   const kinds = filter.kinds ?? [];
@@ -7110,6 +7145,11 @@ function acceptMockMemberPositionAction(
     MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY,
     JSON.stringify(mockCompanyMemberPositionEvents),
   );
+  mockCompanyMemberPositionActions.push(event);
+  window.localStorage.setItem(
+    MOCK_COMPANY_MEMBER_POSITION_ACTIONS_STORAGE_KEY,
+    JSON.stringify(mockCompanyMemberPositionActions),
+  );
   emitMockGlobalEvent(nextEvent);
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
@@ -7641,6 +7681,98 @@ function acceptMockAskResponse(
     },
     relaySecret,
   );
+  let resolvedHireHead: RelayEvent | undefined;
+  const hireProposal = (
+    head.ask as { hireProposal?: { hireId?: unknown } } | undefined
+  )?.hireProposal;
+  if (
+    hireProposal &&
+    (response.outcome === "approved" || response.outcome === "rejected")
+  ) {
+    const actor = mockRelayMembers.find(
+      (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+    );
+    if (!actor || (actor.role !== "owner" && actor.role !== "admin")) {
+      reject(
+        "restricted: only a community owner or admin can resolve a hire ask",
+      );
+      return;
+    }
+    if (
+      typeof response.reason !== "string" ||
+      response.reason.trim().length === 0 ||
+      response.reason.length > 1000
+    ) {
+      reject("invalid: hire decisions need a reason");
+      return;
+    }
+    const hireId = hireProposal.hireId;
+    if (typeof hireId !== "string") {
+      reject("invalid: hire ask is missing its hire coordinate");
+      return;
+    }
+    const hireDTag = `company:hire:${hireId.toLowerCase()}`;
+    const currentHireEvent = filterMockCompanyHireHeads({
+      kinds: [KIND_HIRE_HEAD],
+      "#d": [hireDTag],
+      limit: 2,
+    })[0];
+    if (!currentHireEvent) {
+      reject("conflict: linked hire does not exist");
+      return;
+    }
+    const hirePrivateKeyHex = config?.mock?.companyHireRelayPrivateKeyHex;
+    if (
+      !hirePrivateKeyHex ||
+      !/^[0-9a-f]{64}$/i.test(hirePrivateKeyHex) ||
+      getPublicKey(hexToBytes(hirePrivateKeyHex)).toLowerCase() !==
+        relayPubkey.toLowerCase()
+    ) {
+      reject("mock relay signer is not configured for linked hires");
+      return;
+    }
+    let hireHead: Record<string, unknown>;
+    try {
+      hireHead = JSON.parse(currentHireEvent.content) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      reject("invalid: linked hire head is malformed");
+      return;
+    }
+    if (
+      hireHead.status !== "proposed" ||
+      hireHead.sourceAskId !== response.askId ||
+      hireHead.sourceAskChannelId !== channelId
+    ) {
+      reject("conflict: linked hire changed");
+      return;
+    }
+    if (response.outcome === "approved" && actor.role === "owner") {
+      hireHead.status = "approved";
+      hireHead.founderPubkey = event.pubkey;
+      hireHead.founderApprovalReason = response.reason;
+    } else if (response.outcome === "approved") {
+      hireHead.status = "awaiting_founder";
+    } else {
+      hireHead.status = "denied";
+      hireHead.denialReason = response.reason;
+    }
+    hireHead.sourceActionEventId = event.id;
+    resolvedHireHead = finalizeEvent(
+      {
+        kind: KIND_HIRE_HEAD,
+        created_at: Math.max(
+          Math.floor(Date.now() / 1_000),
+          currentHireEvent.created_at + 1,
+        ),
+        tags: currentHireEvent.tags,
+        content: JSON.stringify(hireHead),
+      },
+      hexToBytes(hirePrivateKeyHex),
+    );
+  }
   for (let index = mockCompanyAskHeads.length - 1; index >= 0; index -= 1) {
     const candidate = mockCompanyAskHeads[index];
     if (
@@ -7651,6 +7783,26 @@ function acceptMockAskResponse(
     }
   }
   mockCompanyAskHeads.push(resolvedHead);
+  if (resolvedHireHead) {
+    const hireDTag = resolvedHireHead.tags.find((tag) => tag[0] === "d")?.[1];
+    if (hireDTag) {
+      for (
+        let index = mockCompanyHireHeads.length - 1;
+        index >= 0;
+        index -= 1
+      ) {
+        if (
+          mockCompanyHireHeads[index]?.tags.some(
+            (tag) => tag[0] === "d" && tag[1] === hireDTag,
+          )
+        ) {
+          mockCompanyHireHeads.splice(index, 1);
+        }
+      }
+      mockCompanyHireHeads.push(resolvedHireHead);
+      emitMockGlobalEvent(resolvedHireHead);
+    }
+  }
   emitMockLiveEvent(channelId, resolvedHead);
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
 }
@@ -7755,6 +7907,17 @@ function acceptMockHireAction(
         reject("conflict: hire is not awaiting founder sign-off");
         return;
       }
+      if (status === "awaiting_founder") {
+        if (
+          typeof action.reason !== "string" ||
+          action.reason.trim().length === 0 ||
+          action.reason.length > 1000
+        ) {
+          reject("invalid: founder sign-off needs a reason");
+          return;
+        }
+        head.founderApprovalReason = action.reason;
+      }
       head.status = "approved";
       head.founderPubkey = event.pubkey;
     } else if (action.action === "attach_employee") {
@@ -7788,6 +7951,7 @@ function acceptMockHireAction(
       }
       head.status = "denied";
       if (typeof action.reason === "string") head.denialReason = action.reason;
+      delete head.founderApprovalReason;
     } else {
       reject("invalid: hire action type is unsupported");
       return;
@@ -14561,6 +14725,7 @@ async function handleCreatePersona(args: {
     displayName: string;
     avatarUrl?: string;
     description?: string | null;
+    companyRole?: NonNullable<RawPersona["company_role"]> | null;
     systemPrompt: string;
     runtime?: string;
     model?: string;
@@ -14576,6 +14741,15 @@ async function handleCreatePersona(args: {
     display_name: args.input.displayName.trim(),
     avatar_url: args.input.avatarUrl?.trim() || null,
     description: args.input.description?.trim() || null,
+    company_role: args.input.companyRole
+      ? {
+          job: args.input.companyRole.job,
+          skills: [...args.input.companyRole.skills],
+          tools: args.input.companyRole.tools.map((tool) => ({ ...tool })),
+          workerMenu: [...args.input.companyRole.workerMenu],
+          defaultAllowance: args.input.companyRole.defaultAllowance ?? null,
+        }
+      : null,
     system_prompt: args.input.systemPrompt.trim(),
     runtime: args.input.runtime?.trim() || null,
     model: args.input.model?.trim() || null,
@@ -14610,6 +14784,7 @@ type MockUpdatePersonaInput = {
   displayName: string;
   avatarUrl?: string;
   description?: string | null;
+  companyRole?: NonNullable<RawPersona["company_role"]> | null;
   systemPrompt: string;
   runtime?: string;
   model?: string;
@@ -14644,6 +14819,17 @@ async function applyMockPersonaUpdate(
   persona.display_name = input.displayName.trim();
   persona.avatar_url = input.avatarUrl?.trim() || null;
   persona.description = input.description?.trim() || null;
+  if (input.companyRole !== undefined) {
+    persona.company_role = input.companyRole
+      ? {
+          job: input.companyRole.job,
+          skills: [...input.companyRole.skills],
+          tools: input.companyRole.tools.map((tool) => ({ ...tool })),
+          workerMenu: [...input.companyRole.workerMenu],
+          defaultAllowance: input.companyRole.defaultAllowance ?? null,
+        }
+      : null;
+  }
   persona.system_prompt = input.systemPrompt.trim();
   persona.runtime = input.runtime?.trim() || null;
   persona.model = input.model?.trim() || null;
@@ -16670,6 +16856,13 @@ function sendToMockSocket(args: {
       companyWorkTrackingHeadQuery ||
       companyWorkTrackingActionQuery
     ) {
+      const readError = companyWorkHeadQuery
+        ? getConfig()?.mock?.companyWorkReadErrors?.shift()
+        : undefined;
+      if (readError) {
+        sendWsText(socket.handler, ["CLOSED", subId, readError]);
+        return;
+      }
       for (const event of filterMockCompanyWorkEvents(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
       }
@@ -16773,6 +16966,14 @@ function sendToMockSocket(args: {
 
     if (filter.kinds?.includes(KIND_MEMBER_POSITION_HEAD)) {
       for (const event of filterMockCompanyMemberPositions(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_MEMBER_POSITION_ACTION)) {
+      for (const event of filterMockCompanyMemberPositionActions(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
       }
       sendWsText(socket.handler, ["EOSE", subId]);
@@ -17354,6 +17555,20 @@ export function maybeInstallE2eTauriMocks() {
     0,
     mockCompanyMemberPositionEvents.length,
     ...memberPositionEvents,
+  );
+  const storedMemberPositionActions = window.localStorage.getItem(
+    MOCK_COMPANY_MEMBER_POSITION_ACTIONS_STORAGE_KEY,
+  );
+  const memberPositionActions = storedMemberPositionActions
+    ? (JSON.parse(storedMemberPositionActions) as RelayEvent[])
+    : (config.mock?.companyMemberPositionActions ?? []);
+  if (!Array.isArray(memberPositionActions)) {
+    throw new Error("Stored mock member position actions must be an array.");
+  }
+  mockCompanyMemberPositionActions.splice(
+    0,
+    mockCompanyMemberPositionActions.length,
+    ...memberPositionActions,
   );
   const storedAllowanceHeads = window.localStorage.getItem(
     MOCK_EMPLOYEE_ALLOWANCE_HEADS_STORAGE_KEY,
@@ -20036,14 +20251,20 @@ export function maybeInstallE2eTauriMocks() {
       }
       case "list_personas":
         return handleListPersonas();
-      case "create_persona":
+      case "create_persona": {
+        const writeError = activeConfig?.mock?.personaWriteErrors?.shift();
+        if (writeError) throw new Error(writeError);
         return handleCreatePersona(
           payload as Parameters<typeof handleCreatePersona>[0],
         );
-      case "update_persona":
+      }
+      case "update_persona": {
+        const writeError = activeConfig?.mock?.personaWriteErrors?.shift();
+        if (writeError) throw new Error(writeError);
         return handleUpdatePersona(
           payload as Parameters<typeof handleUpdatePersona>[0],
         );
+      }
       case "update_persona_and_publish":
         return handleUpdatePersonaAndPublish(
           payload as Parameters<typeof handleUpdatePersonaAndPublish>[0],

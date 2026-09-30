@@ -352,13 +352,16 @@ async fn handle_ask_response(
                     if actor.community_role == Some(CommunityRole::Owner) {
                         hire.status = HireStatus::Approved;
                         hire.founder_pubkey = Some(actor.pubkey.clone());
+                        hire.founder_approval_reason = response.reason.clone();
                     } else {
                         hire.status = HireStatus::AwaitingFounder;
+                        hire.founder_approval_reason = None;
                     }
                     hire.denial_reason = None;
                 } else {
                     hire.status = HireStatus::Denied;
                     hire.denial_reason = response.reason.clone();
+                    hire.founder_approval_reason = None;
                 }
                 hire.source_action_event_id = response_event_id.clone();
                 let hire_event = super::company_hires::relay_hire_head_event(

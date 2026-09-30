@@ -25,17 +25,13 @@ import {
   useCompanyTeamQuery,
   useMemberPositionActionMutation,
 } from "../teamRelay";
-import type { MemberPositionActionKind, TeamMember } from "../teamModels";
+import type { MemberPositionActionKind } from "../teamModels";
 import type { CompanyTeamData } from "../teamRelay";
 import { EmployeeProfileScreen } from "./EmployeeProfileScreen";
+import { HumanMemberProfile } from "./HumanMemberProfile";
 import { EmployeeAllowanceEditScreen } from "@/features/power/EmployeeAllowanceScreens";
 
 export type TeamMemberScreenMode = "detail" | "edit" | "pause" | "archive";
-
-function statusLabel(member: TeamMember) {
-  const status = member.position?.head.status ?? "active";
-  return status === "terminated" ? "archived" : status;
-}
 
 function AppError({ children }: { children: React.ReactNode }) {
   return (
@@ -49,10 +45,12 @@ function AppError({ children }: { children: React.ReactNode }) {
 export function TeamMemberScreen({
   memberPubkey,
   mode,
+  initialTab,
   salaryPanel,
 }: {
   memberPubkey: string;
   mode: TeamMemberScreenMode;
+  initialTab?: "overview" | "history";
   salaryPanel?: "salary" | "salary-edit";
 }) {
   const teamQuery = useCompanyTeamQuery();
@@ -101,28 +99,6 @@ export function TeamMemberScreen({
     : member?.role === "owner"
       ? "Company owner"
       : "";
-  const directReports = React.useMemo(
-    () =>
-      member
-        ? otherMembers
-            .filter(
-              (candidate) =>
-                candidate.position?.head.managerPubkey?.toLowerCase() ===
-                member.pubkey.toLowerCase(),
-            )
-            .map((candidate) => ({
-              pubkey: candidate.pubkey,
-              name:
-                allProfiles[candidate.pubkey]?.displayName?.trim() ||
-                candidate.fallbackName?.trim() ||
-                truncateNpub(candidate.pubkey),
-              title:
-                candidate.position?.head.title ||
-                (candidate.kind === "employee" ? "Employee" : "Human"),
-            }))
-        : [],
-    [allProfiles, member, otherMembers],
-  );
   const [titleInput, setTitleInput] = React.useState("");
   const [managerInput, setManagerInput] = React.useState("");
   const [reasonInput, setReasonInput] = React.useState("");
@@ -151,18 +127,39 @@ export function TeamMemberScreen({
   });
   const stopMutation = useStopManagedAgentMutation();
 
-  if (teamQuery.isLoading) {
+  if (teamQuery.isLoading && !teamQuery.data) {
     return (
-      <p
+      <main
         aria-live="polite"
-        className="py-12 text-center text-sm text-muted-foreground"
+        className="mx-auto w-full max-w-[46rem] px-6 py-12"
+        data-testid="company-team-member-loading"
       >
-        Loading Team member
-      </p>
+        <p className="text-base font-medium">Loading the latest record</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Actions become available after the shared source responds.
+        </p>
+      </main>
     );
   }
-  if (teamQuery.isError) {
-    return <AppError>{teamQuery.error.message}</AppError>;
+  if (teamQuery.isError && !teamQuery.data) {
+    return (
+      <main className="mx-auto w-full max-w-[46rem] px-6 py-8">
+        <Alert data-testid="company-team-unavailable">
+          <AlertTitle>This information could not load</AlertTitle>
+          <AlertDescription>
+            A connection failure is not an empty record.
+          </AlertDescription>
+          <Button
+            className="mt-3"
+            onClick={() => void teamQuery.refetch()}
+            type="button"
+            variant="outline"
+          >
+            Try again
+          </Button>
+        </Alert>
+      </main>
+    );
   }
   if (!member) {
     return (
@@ -204,7 +201,7 @@ export function TeamMemberScreen({
         canManage={canManage}
         fullName={fullName}
         member={member}
-        initialTab={salaryPanel === "salary" ? "salary" : "overview"}
+        initialTab={salaryPanel === "salary" ? "salary" : initialTab}
         onBack={() => void goTeam()}
         onEditSalary={() => void goTeamSalaryEdit(member.pubkey)}
         onEditPosition={() => void goTeamEdit(member.pubkey)}
@@ -311,122 +308,16 @@ export function TeamMemberScreen({
   }
 
   if (mode === "detail") {
-    const status = statusLabel(member);
     return (
-      <main
-        className="mx-auto w-full max-w-[72rem] px-6 py-8"
-        data-testid="company-team-member-profile"
-      >
-        <button
-          className="mb-7 inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
-          onClick={back}
-          type="button"
-        >
-          <ArrowLeft aria-hidden="true" className="size-3.5" /> Back
-        </button>
-        <div className="mb-8 flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <PageHeader
-              description={`${title || ""}${title ? " · " : ""}Human · ${status}`}
-              title={fullName}
-            />
-          </div>
-        </div>
-        {status === "paused" ? (
-          <Alert className="mb-6">
-            <AlertTitle>Paused · {member.position?.head.reason}</AlertTitle>
-            <AlertDescription>
-              Work remains visible with a paused reason. The employee can be
-              resumed later.
-            </AlertDescription>
-          </Alert>
-        ) : null}
-        <div
-          aria-label="Member profile"
-          className="flex gap-6 border-b border-border"
-          role="tablist"
-        >
-          <button
-            aria-selected="true"
-            className="-mb-px border-b-2 border-primary pb-3 text-sm font-semibold"
-            role="tab"
-            type="button"
-          >
-            Overview
-          </button>
-          <button
-            aria-selected="false"
-            className="-mb-px border-b-2 border-transparent pb-3 text-sm text-muted-foreground"
-            role="tab"
-            type="button"
-            disabled
-          >
-            History
-          </button>
-        </div>
-        <div className="grid gap-10 py-6 md:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
-          <section
-            aria-labelledby="team-direct-reports-heading"
-            data-testid="company-human-direct-reports"
-          >
-            <h2
-              className="mb-5 text-base font-semibold"
-              id="team-direct-reports-heading"
-            >
-              Direct reports
-            </h2>
-            {directReports.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No direct reports.
-              </p>
-            ) : (
-              directReports.map((report) => (
-                <button
-                  aria-label={`${report.name} · ${report.title}`}
-                  className="block min-h-12 w-full border-b border-border px-3 py-4 text-left text-sm hover:bg-muted/40"
-                  data-testid={`company-human-report-${report.pubkey}`}
-                  key={report.pubkey}
-                  onClick={() => void goTeamMember(report.pubkey)}
-                  type="button"
-                >
-                  {report.name} · {report.title}
-                </button>
-              ))
-            )}
-          </section>
-          <aside className="border-l border-border pl-8">
-            <h2 className="mb-4 text-base font-semibold">Role and reporting</h2>
-            <p className="mb-5 text-sm text-muted-foreground">
-              {title}
-              <br />
-              {reportsTo ? `Reports to ${reportsTo}` : "Company founder"}
-            </p>
-            {canManage ? (
-              <Button
-                className="w-full"
-                onClick={() => void goTeamEdit(member.pubkey)}
-                type="button"
-                variant="outline"
-              >
-                Edit role and reporting
-              </Button>
-            ) : null}
-            <div className="mt-6">
-              <h2 className="text-sm font-semibold">Responsibilities</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Contribute, discuss, own commitments and review outcomes.
-              </p>
-            </div>
-            <div className="mt-6">
-              <h2 className="text-sm font-semibold">Manager actions</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Assign work, propose hires and raises, pause direct reports.
-                Money and sensitive access require an authorized human.
-              </p>
-            </div>
-          </aside>
-        </div>
-      </main>
+      <HumanMemberProfile
+        fullName={fullName}
+        initialTab={initialTab}
+        member={member}
+        onBack={() => void goTeam()}
+        profile={allProfiles[member.pubkey]}
+        reportsTo={reportsTo || "Company owner"}
+        title={title}
+      />
     );
   }
 

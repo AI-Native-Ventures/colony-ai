@@ -128,6 +128,9 @@ export function editPersonaDialogState(
       displayName: persona.displayName,
       avatarUrl: persona.avatarUrl ?? "",
       description: persona.description ?? undefined,
+      ...(persona.companyRole == null
+        ? {}
+        : { companyRole: persona.companyRole }),
       systemPrompt: persona.systemPrompt,
       runtime: persona.runtime ?? undefined,
       model: persona.model ?? undefined,

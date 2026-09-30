@@ -40,10 +40,13 @@ type ProfilePanelTarget =
 const AGENTS_PROFILE_SEARCH_KEYS = [
   "agent",
   "agentTab",
+  "editRolePack",
   "profile",
   "profilePersona",
   "profileTab",
   "profileView",
+  "rolePack",
+  "resumeRolePack",
   "rows",
   "view",
 ] as const;
@@ -179,6 +182,9 @@ export function AgentsScreen() {
               onOpenSupervision={() => void goSupervision()}
               onWorkspaceViewChange={handleWorkspaceViewChange}
               pageSize={values.rows ?? undefined}
+              createRolePack={values.rolePack === "create"}
+              editRolePackPersonaId={values.editRolePack ?? undefined}
+              resumeRolePack={values.resumeRolePack === "1"}
               view={workspaceViewFromSearch(values.view)}
             />
           </React.Suspense>

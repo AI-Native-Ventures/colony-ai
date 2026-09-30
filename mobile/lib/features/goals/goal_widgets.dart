@@ -35,10 +35,8 @@ class GoalPageHeader extends StatelessWidget {
     return SafeArea(
       bottom: false,
       child: Container(
-        height: MobileLayoutTokens.appBarHeight,
-        padding: const EdgeInsets.symmetric(
-          horizontal: MobileLayoutTokens.goalContentHorizontalInset,
-        ),
+        height: 58,
+        padding: const EdgeInsets.fromLTRB(15, 4, 15, 10),
         color: tokens.canvas,
         child: Row(
           children: [
@@ -51,9 +49,14 @@ class GoalPageHeader extends StatelessWidget {
                   LucideIcons.chevronLeft,
                   size: Grid.xs + Grid.half,
                 ),
+                constraints: const BoxConstraints.tightFor(
+                  width: MobileLayoutTokens.minimumTapTarget,
+                  height: MobileLayoutTokens.minimumTapTarget,
+                ),
+                padding: EdgeInsets.zero,
                 style: _goalHeaderButtonStyle(context),
               ),
-              const SizedBox(width: Grid.half),
+              const SizedBox(width: 8),
             ],
             Expanded(
               child: Column(
@@ -66,6 +69,8 @@ class GoalPageHeader extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: typography.companyHubTitle.copyWith(
                       color: tokens.ink,
+                      fontSize: 15,
+                      height: 1.35,
                     ),
                   ),
                   if (subtitle?.isNotEmpty == true)
@@ -75,6 +80,7 @@ class GoalPageHeader extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: typography.companyHubSubtitle.copyWith(
                         color: tokens.muted,
+                        fontSize: 10,
                       ),
                     ),
                 ],
@@ -86,8 +92,15 @@ class GoalPageHeader extends StatelessWidget {
                 tooltip: actionLabel,
                 onPressed: action,
                 icon: Icon(actionIcon, size: Grid.xs + Grid.half),
+                constraints: const BoxConstraints.tightFor(
+                  width: MobileLayoutTokens.minimumTapTarget,
+                  height: MobileLayoutTokens.minimumTapTarget,
+                ),
+                padding: EdgeInsets.zero,
                 style: _goalHeaderButtonStyle(context),
-              ),
+              )
+            else
+              const SizedBox(width: MobileLayoutTokens.minimumTapTarget),
           ],
         ),
       ),
@@ -100,7 +113,7 @@ ButtonStyle _goalHeaderButtonStyle(BuildContext context) {
   return IconButton.styleFrom(
     backgroundColor: tokens.paper,
     foregroundColor: tokens.ink,
-    minimumSize: Size.square(MobileLayoutTokens.goalHeaderButtonSize),
+    minimumSize: Size.square(MobileLayoutTokens.minimumTapTarget),
     padding: EdgeInsets.zero,
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(Radii.button),

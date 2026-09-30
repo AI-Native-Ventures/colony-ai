@@ -183,6 +183,7 @@ abstract final class MobileLayoutTokens {
   static const statusBarHeight = 46.0;
   static const brandBarHeight = 54.0;
   static const appBarHeight = 66.0;
+  static const compactAppBarHeight = 58.0;
 
   /// Height of the Company hub header beneath the status bar.
   static const companyHeaderHeight = 70.0;
@@ -256,7 +257,7 @@ abstract final class MobileLayoutTokens {
   static const goalHeroPadding = 22.0;
 
   /// Top inset before the goal detail hero.
-  static const goalDetailTopInset = 7.0;
+  static const goalDetailTopInset = 15.0;
 
   /// Gap between the goal status chip and its title.
   static const goalHeroStatusTitleGap = 14.0;

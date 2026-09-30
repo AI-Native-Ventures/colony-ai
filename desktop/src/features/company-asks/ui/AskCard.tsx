@@ -824,7 +824,6 @@ export function AskCard({
         membershipRole={membershipQuery.data?.role}
         needsYou={needsYou}
         profiles={profiles}
-        query={query}
         statusText={statusText}
         key={askId}
       />

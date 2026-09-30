@@ -151,6 +151,28 @@ test("hired status requires the founder, employee and introduction coordinates",
     ),
     null,
   );
+  assert.equal(
+    parseCompanyHireHeadEvent(
+      signedHead({
+        content: headContent({
+          status: "approved",
+          founderPubkey: "c".repeat(64),
+          founderApprovalReason: "The referral meets the approved scope.",
+        }),
+      }),
+      RELAY_PUBKEY,
+    )?.head.founderApprovalReason,
+    "The referral meets the approved scope.",
+  );
+  assert.equal(
+    parseCompanyHireHeadEvent(
+      signedHead({
+        content: headContent({ founderApprovalReason: 7 }),
+      }),
+      RELAY_PUBKEY,
+    ),
+    null,
+  );
 });
 
 test("hire action parser binds each action to its required coordinates", () => {
@@ -209,6 +231,22 @@ test("hire action parser binds each action to its required coordinates", () => {
       expectedHeadEventId: "f".repeat(64),
       employeePubkey: "7".repeat(64),
     }),
+    null,
+  );
+  const founderApproval = {
+    schemaVersion: 1,
+    hireId: HIRE_ID,
+    action: "approve",
+    expectedHeadEventId: "f".repeat(64),
+    reason: "The founder reviewed the referred scope.",
+  };
+  assert.equal(parseCompanyHireAction(founderApproval)?.action, "approve");
+  assert.equal(
+    parseCompanyHireAction({ ...founderApproval, reason: "   " }),
+    null,
+  );
+  assert.equal(
+    parseCompanyHireAction({ ...founderApproval, reason: "x".repeat(1001) }),
     null,
   );
 });
