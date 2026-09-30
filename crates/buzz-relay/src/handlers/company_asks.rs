@@ -95,9 +95,9 @@ async fn handle_ask_action(
     }
     match action.action {
         AskActionKind::Create => {
-            let ask = action
+            let mut ask = action
                 .ask
-                .as_ref()
+                .clone()
                 .ok_or_else(|| invalid("create needs the ask"))?;
             if !actor.is_channel_member {
                 return Err(forbidden("only channel members can create an ask"));
@@ -116,6 +116,7 @@ async fn handle_ask_action(
             };
             validate_ask_action(&action, addressee_is_agent)
                 .map_err(|error| invalid(format!("ask action: {error}")))?;
+            validate_ask_addressee(ask.addressee_pubkey.as_deref(), &actor.pubkey)?;
             if ask.member_proposal.is_some() {
                 if !actor.is_community_member {
                     return Err(forbidden(
@@ -146,16 +147,23 @@ async fn handle_ask_action(
                 None
             };
 
-            let thread_meta = super::ingest::resolve_nip10_thread_meta(
-                tenant.community(),
-                &event,
-                channel_id,
-                state,
-            )
-            .await
-            .map_err(|message| invalid(format!("ask thread: {message}")))?
-            .ok_or_else(|| invalid("ask create must reference an existing thread"))?;
-            validate_thread_root(ask, &thread_meta)?;
+            let thread_meta = if ask.thread_start.is_some() {
+                let thread_meta = new_ask_thread_metadata(&event, channel_id)?;
+                ask.thread_root_event_id = Some(event.id.to_hex());
+                thread_meta
+            } else {
+                let thread_meta = super::ingest::resolve_nip10_thread_meta(
+                    tenant.community(),
+                    &event,
+                    channel_id,
+                    state,
+                )
+                .await
+                .map_err(|message| invalid(format!("ask thread: {message}")))?
+                .ok_or_else(|| invalid("ask create must reference an existing thread"))?;
+                validate_thread_root(&ask, &thread_meta)?;
+                thread_meta
+            };
 
             let current = current_ask_head(state, tenant, channel_id, &d_tag).await?;
             if let Some(current) = current {
@@ -172,7 +180,7 @@ async fn handle_ask_action(
                 status: AskStatus::Open,
                 asker_pubkey: auth.pubkey().to_hex(),
                 created_at: now,
-                ask: ask.clone(),
+                ask,
                 resolution: None,
                 cancellation: None,
                 source_action_event_id: event.id.to_hex(),
@@ -950,13 +958,51 @@ fn validate_thread_root(
     ask: &AskRecord,
     thread_meta: &ThreadMetadataOwned,
 ) -> Result<(), IngestError> {
-    let resolved_root = hex::encode(&thread_meta.root_event_id);
-    if ask.thread_root_event_id != resolved_root {
+    let resolved_root = thread_meta
+        .root_event_id
+        .as_deref()
+        .map(hex::encode)
+        .unwrap_or_else(|| hex::encode(&thread_meta.event_id));
+    if ask.thread_root_event_id.as_deref() != Some(resolved_root.as_str()) {
         return Err(invalid(
             "ask threadRootEventId must match the referenced thread root",
         ));
     }
     Ok(())
+}
+
+fn validate_ask_addressee(
+    addressee_pubkey: Option<&str>,
+    asker_pubkey: &str,
+) -> Result<(), IngestError> {
+    if addressee_pubkey.is_some_and(|pubkey| pubkey.eq_ignore_ascii_case(asker_pubkey)) {
+        return Err(invalid("an ask cannot be addressed to its asker"));
+    }
+    Ok(())
+}
+
+fn new_ask_thread_metadata(
+    event: &Event,
+    channel_id: Uuid,
+) -> Result<ThreadMetadataOwned, IngestError> {
+    if count_e_tags(event) != 0 {
+        return Err(invalid(
+            "a new ask thread must not include existing-thread e tags",
+        ));
+    }
+    let event_created_at = chrono::DateTime::from_timestamp(event.created_at.as_secs() as i64, 0)
+        .unwrap_or_else(Utc::now);
+    Ok(ThreadMetadataOwned {
+        event_id: event.id.as_bytes().to_vec(),
+        event_created_at,
+        channel_id,
+        parent_event_id: None,
+        parent_event_created_at: None,
+        root_event_id: None,
+        root_event_created_at: None,
+        depth: 0,
+        broadcast: false,
+    })
 }
 
 fn parse_head(event: &Event) -> Result<AskHead, IngestError> {
@@ -1040,7 +1086,12 @@ pub(super) fn relay_ask_head_event(
         .map_err(|error| internal(format!("ask h tag: {error}")))?;
     let d_tag =
         Tag::parse(["d", d_tag]).map_err(|error| internal(format!("ask d tag: {error}")))?;
-    let root_tag = Tag::parse(["e", head.ask.thread_root_event_id.as_str(), "", "root"])
+    let thread_root_event_id = head
+        .ask
+        .thread_root_event_id
+        .as_deref()
+        .ok_or_else(|| internal("stored ask head has no thread root"))?;
+    let root_tag = Tag::parse(["e", thread_root_event_id, "", "root"])
         .map_err(|error| internal(format!("ask thread root tag: {error}")))?;
     let mut tags = vec![channel_tag, d_tag, root_tag];
     if head.ask.ask_type == AskType::ToolConsent {
@@ -1149,6 +1200,37 @@ mod unit_tests {
             command_coordinates(&duplicate_h),
             Err(IngestError::Rejected(message)) if message.contains("exactly one h tag")
         ));
+    }
+
+    #[test]
+    fn ask_addressee_cannot_be_the_asking_identity() {
+        let asker = "a".repeat(64);
+        assert!(validate_ask_addressee(Some(&asker), &asker).is_err());
+        assert!(validate_ask_addressee(Some(&asker.to_uppercase()), &asker).is_err());
+        assert!(validate_ask_addressee(Some(&"b".repeat(64)), &asker).is_ok());
+        assert!(validate_ask_addressee(None, &asker).is_ok());
+    }
+
+    #[test]
+    fn new_ask_thread_is_a_root_event_without_nip10_parent_tags() {
+        let channel_id = Uuid::from_u128(3);
+        let event = event_with_tags(vec![
+            Tag::parse(["h", channel_id.to_string().as_str()]).expect("h tag"),
+            Tag::parse(["d", "channel:asks"]).expect("d tag"),
+        ]);
+        let metadata = new_ask_thread_metadata(&event, channel_id).expect("root metadata");
+        assert_eq!(metadata.event_id, event.id.as_bytes());
+        assert_eq!(metadata.channel_id, channel_id);
+        assert!(metadata.parent_event_id.is_none());
+        assert!(metadata.root_event_id.is_none());
+        assert_eq!(metadata.depth, 0);
+
+        let tagged_event = event_with_tags(vec![
+            Tag::parse(["h", channel_id.to_string().as_str()]).expect("h tag"),
+            Tag::parse(["d", "channel:asks"]).expect("d tag"),
+            Tag::parse(["e", "a".repeat(64).as_str(), "", "root"]).expect("root tag"),
+        ]);
+        assert!(new_ask_thread_metadata(&tagged_event, channel_id).is_err());
     }
 
     #[test]
@@ -1388,7 +1470,8 @@ mod postgres_tests {
             category,
             title: "Review the launch plan".into(),
             body: None,
-            thread_root_event_id: thread_root_event_id.into(),
+            thread_root_event_id: Some(thread_root_event_id.into()),
+            thread_start: None,
             addressee_pubkey: None,
             decide_by: (ask_type == AskType::ToolConsent)
                 .then(|| (Utc::now() + chrono::Duration::minutes(2)).to_rfc3339()),
@@ -1466,7 +1549,7 @@ mod postgres_tests {
         keys: &Keys,
         mut ask: AskRecord,
     ) -> (Event, StoredEvent) {
-        ask.thread_root_event_id = fixture.root.id.to_hex();
+        ask.thread_root_event_id = Some(fixture.root.id.to_hex());
         let d_tag = buzz_core::company_records::ask_d_tag(fixture.channel_id, ask.ask_id);
         let action = AskAction {
             schema_version: COMPANY_RECORD_SCHEMA_VERSION,

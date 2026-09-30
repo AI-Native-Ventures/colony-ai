@@ -1263,7 +1263,7 @@ pub(crate) fn is_tool_consent_head_event(
         && root_tags.len() == 1
         && uuid::Uuid::parse_str(channel).is_ok()
         && d_tags[0].content() == Some(format!("channel:{channel}:ask:{}", head.ask_id).as_str())
-        && root_tags[0].content() == Some(head.ask.thread_root_event_id.as_str())
+        && head.ask.thread_root_event_id.as_deref() == root_tags[0].content()
 }
 
 /// Extract the complete channel set when every filter is explicitly #h-scoped.

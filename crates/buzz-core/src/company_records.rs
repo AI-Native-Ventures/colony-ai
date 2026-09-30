@@ -594,8 +594,14 @@ pub struct AskRecord {
     /// Optional markdown detail.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
-    /// Root event of the thread the card belongs to.
-    pub thread_root_event_id: String,
+    /// Root event of the thread the card belongs to. Omitted in a create
+    /// command only when `threadStart` creates the thread atomically.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_root_event_id: Option<String>,
+    /// Opening context for a thread created by this ask action. The relay binds
+    /// its root event id to the signed create event before storing the head.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_start: Option<AskThreadStart>,
     /// Optional person or employee the ask is addressed to.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub addressee_pubkey: Option<String>,
@@ -623,6 +629,17 @@ pub struct AskRecord {
     /// Typed employee hire proposal attached to a hire approval ask.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hire_proposal: Option<HireProposal>,
+}
+
+/// Opening title and optional context for a new ask thread.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct AskThreadStart {
+    /// Title of the new discussion.
+    pub title: String,
+    /// Optional opening context for the discussion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opening_context: Option<String>,
 }
 
 /// Risk level shown for one tool included in a role pack.
@@ -1730,10 +1747,32 @@ pub fn validate_ask_record(
         }
         (_, None) => {}
     }
-    if !is_hex_id(&ask.thread_root_event_id) {
+    if let Some(thread_root_event_id) = ask.thread_root_event_id.as_deref() {
+        if !is_hex_id(thread_root_event_id) {
+            return Err(CompanyRecordError::Invalid(
+                "threadRootEventId must be an event id",
+            ));
+        }
+    } else if ask.thread_start.is_none() {
         return Err(CompanyRecordError::Invalid(
-            "threadRootEventId must be an event id",
+            "ask create needs an existing thread or threadStart",
         ));
+    }
+    if let Some(thread_start) = ask.thread_start.as_ref() {
+        require_text(
+            &thread_start.title,
+            MAX_TITLE_CHARS,
+            "threadStart title is required, 180 characters at most",
+        )?;
+        if thread_start
+            .opening_context
+            .as_ref()
+            .is_some_and(|context| char_len(context) > MAX_ASK_BODY_CHARS)
+        {
+            return Err(CompanyRecordError::Invalid(
+                "threadStart openingContext is 4000 characters at most",
+            ));
+        }
     }
     if let Some(addressee) = &ask.addressee_pubkey {
         if !is_hex_id(addressee) {
@@ -1944,7 +1983,16 @@ pub fn validate_ask_action(
             if ask.ask_id != action.ask_id {
                 return Err(CompanyRecordError::Invalid("ask.askId must equal askId"));
             }
-            validate_ask_record(ask, addressee_is_agent)
+            validate_ask_record(ask, addressee_is_agent)?;
+            match (
+                ask.thread_root_event_id.is_some(),
+                ask.thread_start.is_some(),
+            ) {
+                (true, false) | (false, true) => Ok(()),
+                _ => Err(CompanyRecordError::Invalid(
+                    "ask create needs exactly one existing thread or threadStart",
+                )),
+            }
         }
         AskActionKind::Cancel => {
             if action.ask.is_some() {
@@ -2315,7 +2363,8 @@ mod tests {
             category: AskCategory::General,
             title: "Choose the campaign direction".into(),
             body: None,
-            thread_root_event_id: EV.into(),
+            thread_root_event_id: Some(EV.into()),
+            thread_start: None,
             addressee_pubkey: None,
             decide_by: None,
             options: None,
@@ -2956,6 +3005,51 @@ mod tests {
         let mut mismatched = create;
         mismatched.ask_id = Uuid::from_u128(10);
         assert!(validate_ask_action(&mismatched, false).is_err());
+    }
+
+    #[test]
+    fn new_thread_asks_require_a_valid_thread_start_and_no_existing_root() {
+        let mut create = AskAction {
+            schema_version: 1,
+            ask_id: Uuid::from_u128(9),
+            action: AskActionKind::Create,
+            expected_head_event_id: None,
+            ask: Some(ask(AskType::Question)),
+            reason: None,
+        };
+        let new_thread = create.ask.as_mut().expect("create ask");
+        new_thread.thread_root_event_id = None;
+        new_thread.thread_start = Some(AskThreadStart {
+            title: "Planning the client launch".into(),
+            opening_context: Some("The customer asked for a revised plan.".into()),
+        });
+        assert!(validate_ask_action(&create, false).is_ok());
+
+        let new_thread = create.ask.as_mut().expect("create ask");
+        new_thread.thread_root_event_id = Some(EV.into());
+        assert!(validate_ask_action(&create, false).is_err());
+
+        let new_thread = create.ask.as_mut().expect("create ask");
+        new_thread.thread_root_event_id = None;
+        new_thread
+            .thread_start
+            .as_mut()
+            .expect("thread start")
+            .title = "  ".into();
+        assert!(validate_ask_action(&create, false).is_err());
+
+        let new_thread = create.ask.as_mut().expect("create ask");
+        new_thread
+            .thread_start
+            .as_mut()
+            .expect("thread start")
+            .title = "Launch plan".into();
+        new_thread
+            .thread_start
+            .as_mut()
+            .expect("thread start")
+            .opening_context = Some("x".repeat(MAX_ASK_BODY_CHARS + 1));
+        assert!(validate_ask_action(&create, false).is_err());
     }
 
     #[test]

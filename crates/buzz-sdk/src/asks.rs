@@ -31,8 +31,9 @@ fn build(
 
 /// Build a channel-scoped ask create or cancel command (kind 47032).
 ///
-/// Create commands include the NIP-10 root and reply markers so the relay can
-/// store the action as a reply in the same transaction that advances the ask head.
+/// Existing-thread create commands include NIP-10 root and reply markers. A
+/// `threadStart` create omits them so the relay stores the signed command as the
+/// root in the same transaction that advances the ask head.
 pub fn build_ask_action(channel_id: Uuid, action: &AskAction) -> Result<EventBuilder, SdkError> {
     if action.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
         return Err(SdkError::InvalidInput(
@@ -47,20 +48,21 @@ pub fn build_ask_action(channel_id: Uuid, action: &AskAction) -> Result<EventBui
     let mut builder = build(channel_id, KIND_ASK_ACTION, action.ask_id, content)?;
 
     if action.action == AskActionKind::Create {
-        let root_id = action
+        let ask = action
             .ask
             .as_ref()
-            .map(|ask| ask.thread_root_event_id.as_str())
             .ok_or_else(|| SdkError::InvalidInput("create needs the ask".into()))?;
-        let root_id = EventId::parse(root_id).map_err(|error| {
-            SdkError::InvalidInput(format!("invalid thread root event id: {error}"))
-        })?;
-        let root_hex = root_id.to_hex();
-        let root_tag = Tag::parse(["e", root_hex.as_str(), "", "root"])
-            .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
-        let reply_tag = Tag::parse(["e", root_hex.as_str(), "", "reply"])
-            .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
-        builder = builder.tag(root_tag).tag(reply_tag);
+        if let Some(root_id) = ask.thread_root_event_id.as_deref() {
+            let root_id = EventId::parse(root_id).map_err(|error| {
+                SdkError::InvalidInput(format!("invalid thread root event id: {error}"))
+            })?;
+            let root_hex = root_id.to_hex();
+            let root_tag = Tag::parse(["e", root_hex.as_str(), "", "root"])
+                .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
+            let reply_tag = Tag::parse(["e", root_hex.as_str(), "", "reply"])
+                .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
+            builder = builder.tag(root_tag).tag(reply_tag);
+        }
     }
 
     Ok(builder)
@@ -99,7 +101,8 @@ mod tests {
             category: AskCategory::General,
             title: "What should we do?".into(),
             body: None,
-            thread_root_event_id,
+            thread_root_event_id: Some(thread_root_event_id),
+            thread_start: None,
             addressee_pubkey: None,
             decide_by: None,
             options: None,
@@ -147,6 +150,32 @@ mod tests {
             .tags
             .iter()
             .any(|tag| { tag.as_slice() == ["e", root_id.to_hex().as_str(), "", "reply"] }));
+    }
+
+    #[test]
+    fn new_thread_create_builder_omits_existing_thread_tags() {
+        let channel_id = Uuid::from_u128(1);
+        let ask_id = Uuid::from_u128(2);
+        let mut ask = ask(ask_id, EventId::all_zeros().to_hex());
+        ask.thread_root_event_id = None;
+        ask.thread_start = Some(buzz_core::company_records::AskThreadStart {
+            title: "Client delivery".into(),
+            opening_context: Some("The launch date changed.".into()),
+        });
+        let action = AskAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            ask_id,
+            action: AskActionKind::Create,
+            expected_head_event_id: None,
+            ask: Some(ask),
+            reason: None,
+        };
+
+        let event = build_ask_action(channel_id, &action)
+            .expect("build")
+            .sign_with_keys(&Keys::generate())
+            .expect("sign");
+        assert!(!event.tags.iter().any(|tag| tag.kind().to_string() == "e"));
     }
 
     #[test]
