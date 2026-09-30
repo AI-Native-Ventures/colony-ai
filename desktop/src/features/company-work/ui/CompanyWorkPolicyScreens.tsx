@@ -221,14 +221,20 @@ export function CompanyWorkWatchdogScreen({
           onClick={() => void goCompanyWorkDetail(workItemId)}
         />
         <h1 className="text-2xl font-bold tracking-tight">Work watchdog</h1>
-        {mutation.error ? (
-          <p className="mt-4 text-sm text-destructive" role="alert">
-            Could not save. Your inputs are kept. Review them or retry without
-            starting again.
-          </p>
-        ) : null}
         <section className="mt-7 rounded-xl border border-border p-6">
           <h2 className="text-sm font-semibold">Off until configured</h2>
+          {mutation.error ? (
+            <div
+              className="mt-4 rounded-lg border border-border border-l-2 border-destructive bg-muted/60 p-4 text-sm"
+              role="alert"
+            >
+              <strong className="text-destructive">Could not save</strong>
+              <p className="mt-1 text-muted-foreground">
+                Your inputs are kept. Review them or retry without starting
+                again.
+              </p>
+            </div>
+          ) : null}
           <p className="mt-4 rounded-lg border-l-2 border-primary/60 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
             <span className="block font-semibold text-foreground">
               No interval selected

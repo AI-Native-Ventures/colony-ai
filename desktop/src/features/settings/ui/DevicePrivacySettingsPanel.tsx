@@ -74,15 +74,17 @@ function DevicePrivacyPreferencesPanel({
         <SettingsOptionGroup title="What this device reveals">
           <div className="space-y-4 p-4">
             {saveFailed ? (
-              <p
-                className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              <div
+                className="rounded-lg border border-border border-l-2 border-destructive bg-muted/60 p-4 text-sm"
                 role="alert"
               >
-                Could not save. Your inputs are kept. Review them or retry
-                without starting again.
-              </p>
+                <strong className="text-destructive">Could not save</strong>
+                <p className="mt-1 text-muted-foreground">
+                  Your inputs are kept. Review them or retry without starting
+                  again.
+                </p>
+              </div>
             ) : null}
-
             <label
               className="flex min-h-11 items-center gap-3 text-sm"
               htmlFor="privacy-message-previews"

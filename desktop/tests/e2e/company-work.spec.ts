@@ -899,11 +899,10 @@ test("company work tracking reads current owner records and keeps unavailable au
   await page.locator("#company-work-watchdog-interval").fill("5");
   await page.getByLabel("Reviewer").selectOption(TEST_IDENTITIES.alice.pubkey);
   await page.getByRole("button", { name: "Review configuration" }).click();
-  await expect(
-    page.getByText(
-      "Could not save. Your inputs are kept. Review them or retry without starting again.",
-    ),
-  ).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("Could not save");
+  await expect(page.getByRole("alert")).toContainText(
+    "Your inputs are kept. Review them or retry without starting again.",
+  );
   await expect(page.locator("#company-work-watchdog-interval")).toHaveValue(
     "5",
   );
