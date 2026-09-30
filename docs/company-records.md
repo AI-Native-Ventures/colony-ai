@@ -805,8 +805,10 @@ metadata and estimates only, never provider credentials or secret values.
 An allowance is keyed by `company:employee-allowance:<employee-pubkey>`.
 Its head stores the current permanent allowance, its explicitly selected
 period (`day`, `week`, or `month`), an optional temporary allowance and its
-`expiresAt`, the selected funding order, actor, update time, and source action
-id. Amounts use integer USD cents. An unset allowance stays unset; there is no
+`expiresAt`, the selected ordered funding source labels, actor, update time,
+and source action id. Amounts use integer USD cents. Funding labels are
+owner-entered identifiers until a source registry can validate and report
+their live status. An unset allowance stays unset; there is no
 implicit amount or period. Used-to-date is derived from metered spend records
 in the applicable period, not copied into the allowance head. A temporary
 allowance takes effect before its end timestamp and the permanent value is
