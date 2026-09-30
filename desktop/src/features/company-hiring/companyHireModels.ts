@@ -26,6 +26,7 @@ export type CompanyHireHead = {
   employeePubkey?: string;
   introductionEventId?: string;
   denialReason?: string;
+  founderApprovalReason?: string;
   sourceActionEventId: string;
 };
 
@@ -167,6 +168,7 @@ export function companyHireRolePackFromPersona(
   const role = persona.companyRole;
   if (
     !role ||
+    persona.isBuiltIn ||
     !persona.isActive ||
     typeof role.job !== "string" ||
     !role.job.trim() ||
@@ -201,6 +203,7 @@ function parseHead(value: unknown): CompanyHireHead | null {
       "employeePubkey",
       "introductionEventId",
       "denialReason",
+      "founderApprovalReason",
       "sourceActionEventId",
     ]) ||
     value.schemaVersion !== COMPANY_HIRE_SCHEMA_VERSION ||
@@ -228,6 +231,8 @@ function parseHead(value: unknown): CompanyHireHead | null {
         !HEX64_RE.test(value.introductionEventId))) ||
     (value.denialReason !== undefined &&
       typeof value.denialReason !== "string") ||
+    (value.founderApprovalReason !== undefined &&
+      typeof value.founderApprovalReason !== "string") ||
     typeof value.sourceActionEventId !== "string" ||
     !HEX64_RE.test(value.sourceActionEventId)
   ) {
@@ -363,7 +368,8 @@ export function parseCompanyHireAction(
   if (action === "approve") {
     return value.employeePubkey === undefined &&
       value.introductionEventId === undefined &&
-      value.reason === undefined
+      (value.reason === undefined ||
+        (value.reason.trim().length > 0 && value.reason.length <= 1000))
       ? (value as unknown as CompanyHireAction)
       : null;
   }
@@ -383,6 +389,7 @@ export function parseCompanyHireAction(
   }
   return typeof value.reason === "string" &&
     value.reason.trim().length > 0 &&
+    value.reason.length <= 1000 &&
     value.employeePubkey === undefined &&
     value.introductionEventId === undefined
     ? (value as unknown as CompanyHireAction)

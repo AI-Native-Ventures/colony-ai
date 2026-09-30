@@ -113,6 +113,30 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goAgentRolePack = React.useCallback(
+    (resumeDraft = false) =>
+      commitNavigation({
+        to: "/agents",
+        search: {
+          rolePack: "create",
+          resumeRolePack: resumeDraft ? "1" : undefined,
+        },
+      }),
+    [commitNavigation],
+  );
+
+  const goAgentRolePackEdit = React.useCallback(
+    (personaId: string, resumeDraft = false) =>
+      commitNavigation({
+        to: "/agents",
+        search: {
+          editRolePack: personaId,
+          resumeRolePack: resumeDraft ? "1" : undefined,
+        },
+      }),
+    [commitNavigation],
+  );
+
   const goAgentProfile = React.useCallback(
     (agentPubkey: string, behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -265,8 +289,26 @@ export function useAppNavigation() {
   );
 
   const goHireRoles = React.useCallback(
-    (behavior?: NavigationBehavior) =>
-      commitNavigation({ to: "/hire/roles" }, behavior),
+    (savedRolePackId?: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/hire/roles",
+          search: { savedRolePack: savedRolePackId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goHireRoleRecovery = React.useCallback(
+    (kind: "runtime" | "provider" | "model", draftPersonaId: string) =>
+      commitNavigation({
+        to: "/hire/roles",
+        search: {
+          roleRecovery: `${kind}-empty`,
+          rolePersonaId: draftPersonaId,
+        },
+      }),
     [commitNavigation],
   );
 
@@ -1012,6 +1054,8 @@ export function useAppNavigation() {
     closeSettings,
     closeWorkflowDetail,
     goAgents,
+    goAgentRolePack,
+    goAgentRolePackEdit,
     goAgentProfile,
     goAskDetail,
     goChannel,
@@ -1039,6 +1083,7 @@ export function useAppNavigation() {
     goTeamPause,
     goTeamArchive,
     goHireRoles,
+    goHireRoleRecovery,
     goHireConfigure,
     goHireReview,
     goHireSuccess,

@@ -19,6 +19,7 @@ type AgentIdentityFieldsProps = {
   onDisplayNameChange: (value: string) => void;
   description: string;
   onDescriptionChange: (value: string) => void;
+  nameLabel?: string;
   disabled: boolean;
 };
 
@@ -34,6 +35,7 @@ export function AgentIdentityFields({
   onDisplayNameChange,
   description,
   onDescriptionChange,
+  nameLabel = "Agent name",
   disabled,
 }: AgentIdentityFieldsProps) {
   const placeholder = "What this agent does, in a sentence";
@@ -48,7 +50,7 @@ export function AgentIdentityFields({
           className="text-sm font-medium text-foreground"
           htmlFor="persona-display-name"
         >
-          Agent name
+          {nameLabel}
         </label>
         <div
           className={cn(
