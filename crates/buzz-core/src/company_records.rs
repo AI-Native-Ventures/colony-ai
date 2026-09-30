@@ -2088,15 +2088,11 @@ pub fn validate_ask_response(
                     "only a reason goes with this outcome",
                 ));
             }
-            if ask.hire_proposal.is_some() && reason.is_none() {
-                Ok(())
-            } else {
-                require_text(
-                    reason.unwrap_or_default(),
-                    MAX_REASON_CHARS,
-                    "a reason is required, 1000 characters at most",
-                )
-            }
+            require_text(
+                reason.unwrap_or_default(),
+                MAX_REASON_CHARS,
+                "a reason is required, 1000 characters at most",
+            )
         }
         AskType::Question => {
             if response.outcome != O::Answered
@@ -2569,11 +2565,17 @@ mod tests {
             id: proposal.hire_id.to_string(),
         });
         resolved_ask.hire_proposal = Some(proposal);
-        let approved = response(AskOutcome::Approved);
+        let mut approved = response(AskOutcome::Approved);
+        assert!(validate_ask_response(&resolved_ask, &approved).is_err());
+        approved.reason = Some("The requested scope is approved.".into());
         assert!(validate_ask_response(&resolved_ask, &approved).is_ok());
         let mut rejected = response(AskOutcome::Rejected);
+        assert!(validate_ask_response(&resolved_ask, &rejected).is_err());
+        rejected.reason = Some("The proposed role needs revision.".into());
         assert!(validate_ask_response(&resolved_ask, &rejected).is_ok());
         rejected.reason = Some("   ".into());
+        assert!(validate_ask_response(&resolved_ask, &rejected).is_err());
+        rejected.reason = Some("x".repeat(MAX_REASON_CHARS + 1));
         assert!(validate_ask_response(&resolved_ask, &rejected).is_err());
         let mut revision = approved;
         revision.outcome = AskOutcome::RevisionRequested;
