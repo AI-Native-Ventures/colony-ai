@@ -2,21 +2,11 @@ import * as React from "react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
-import { useCommunities } from "@/features/communities/useCommunities";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { Button } from "@/shared/ui/button";
-import {
-  useCompanyWorkHeadsQuery,
-  useCompanyWorkActionMutation,
-} from "../hooks";
-import { COMPANY_WORK_SCHEMA_VERSION } from "../companyWorkModels";
-import {
-  companyWorkTimeZone,
-  localDateTimeInputToUtc,
-  utcToLocalDateTimeInput,
-} from "../companyWorkDueDate";
+import { useCompanyWorkHeadsQuery } from "../hooks";
 import {
   companyWorkWatchdogDTag,
   COMPANY_WORK_TRACKING_SCHEMA_VERSION,
@@ -30,345 +20,30 @@ import {
   CompanyWorkPageHeader,
 } from "./CompanyWorkPresentation";
 
-const DUE_DRAFT_KEY = "buzz.company-work.due-date-draft.v1";
-
 function messageForError(error: unknown) {
   return error instanceof Error
     ? error.message
     : "The request could not be completed.";
 }
 
-function readDueDraft(key: string) {
-  try {
-    return window.sessionStorage.getItem(key) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function writeDueDraft(key: string, value: string | null) {
-  try {
-    if (value === null) window.sessionStorage.removeItem(key);
-    else window.sessionStorage.setItem(key, value);
-  } catch {
-    // The form state remains available for this screen when storage is blocked.
-  }
-}
-
-function dueDraftKey(communityId: string | undefined, workItemId: string) {
-  return `${DUE_DRAFT_KEY}:${communityId ?? "local"}:${workItemId}`;
-}
-
+/**
+ * Due date routes stay unreachable until the server exposes the configured
+ * workspace timezone. Falling back to the device timezone would save a
+ * different commitment for members in other locations.
+ */
 export function CompanyWorkDueDateScreen({
-  screen,
   workItemId,
 }: {
-  screen: "due" | "due-clear" | "due-denied";
   workItemId: string;
 }) {
-  const headsQuery = useCompanyWorkHeadsQuery();
-  const identity = useIdentityQuery();
-  const membership = useMyRelayMembershipQuery();
-  const { activeCommunity } = useCommunities();
-  const { goCompanyWorkDetail, goCompanyWorkTracking } = useAppNavigation();
-  const mutation = useCompanyWorkActionMutation();
-  const record = headsQuery.data?.find(
-    (candidate) => candidate.head.workItemId === workItemId,
-  );
-  const currentPubkey = identity.data?.pubkey.toLowerCase();
-  const canEdit = Boolean(
-    currentPubkey &&
-      record &&
-      (record.head.requesterPubkey.toLowerCase() === currentPubkey ||
-        record.head.assignedPubkeys.some(
-          (pubkey) => pubkey.toLowerCase() === currentPubkey,
-        ) ||
-        membership.data?.role === "owner" ||
-        membership.data?.role === "admin"),
-  );
-  const draftKey = dueDraftKey(activeCommunity?.id, workItemId);
-
-  if (
-    headsQuery.channelsQuery.isPending ||
-    headsQuery.isPending ||
-    identity.isPending ||
-    membership.isPending
-  ) {
-    return <CompanyWorkPageHeader title="Loading due date" />;
-  }
-  if (headsQuery.channelsQuery.isError || headsQuery.isError) {
-    return (
-      <CompanyWorkDueUnavailable
-        message={messageForError(
-          headsQuery.channelsQuery.isError
-            ? headsQuery.channelsQuery.error
-            : headsQuery.error,
-        )}
-        title="Work item unavailable"
-      />
-    );
-  }
-  if (!record) {
-    return (
-      <CompanyWorkDueUnavailable
-        message="This work item is not available in the current community."
-        title="Work item unavailable"
-      />
-    );
-  }
-
-  if (screen === "due-denied" || !canEdit) {
-    return (
-      <>
-        <CompanyWorkPageHeader title={record.head.title} />
-        <main className="mx-auto w-full max-w-[1230px] px-8 py-8">
-          <CompanyWorkBackButton
-            onClick={() => void goCompanyWorkDetail(workItemId)}
-          />
-          <h1 className="text-2xl font-bold tracking-tight">
-            You do not have permission for this action
-          </h1>
-          <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
-            Your view access is unchanged. An authorized person can review the
-            proposal.
-          </p>
-          <Button
-            className="mt-6"
-            onClick={() => void goCompanyWorkDetail(workItemId)}
-            variant="outline"
-          >
-            Back to the record
-          </Button>
-        </main>
-      </>
-    );
-  }
-
-  if (screen === "due-clear") {
-    return (
-      <CompanyWorkDueClearScreen
-        record={record}
-        onCancel={() => {
-          writeDueDraft(draftKey, null);
-          void goCompanyWorkDetail(workItemId);
-        }}
-        onClear={async () => {
-          try {
-            await mutation.mutateAsync({
-              channelId: record.channelId,
-              action: {
-                schemaVersion: COMPANY_WORK_SCHEMA_VERSION,
-                workItemId,
-                action: "clear_due_date",
-                expectedHeadEventId: record.event.id,
-              },
-            });
-            writeDueDraft(draftKey, null);
-            await goCompanyWorkTracking("due-saved", workItemId);
-          } catch {
-            // Keep the saved deadline and staged input available for a retry.
-          }
-        }}
-        onKeep={() => void goCompanyWorkTracking("due", workItemId)}
-        pending={mutation.isPending}
-        saveError={mutation.error}
-      />
-    );
-  }
-
-  return (
-    <CompanyWorkDueEditScreen
-      draftKey={draftKey}
-      record={record}
-      onCancel={() => {
-        writeDueDraft(draftKey, null);
-        void goCompanyWorkDetail(workItemId);
-      }}
-      onClear={() => void goCompanyWorkTracking("due-clear", workItemId)}
-      onSave={async (dueAt) => {
-        try {
-          await mutation.mutateAsync({
-            channelId: record.channelId,
-            action: {
-              schemaVersion: COMPANY_WORK_SCHEMA_VERSION,
-              workItemId,
-              action: "set_due_date",
-              expectedHeadEventId: record.event.id,
-              dueAt,
-            },
-          });
-          writeDueDraft(draftKey, null);
-          await goCompanyWorkTracking("due-saved", workItemId);
-        } catch {
-          // The failed mutation keeps the existing input in place for retry.
-        }
-      }}
-      pending={mutation.isPending}
-      saveError={mutation.error}
-    />
-  );
-}
-
-function CompanyWorkDueEditScreen({
-  draftKey,
-  record,
-  onCancel,
-  onClear,
-  onSave,
-  pending,
-  saveError,
-}: {
-  draftKey: string;
-  record: NonNullable<
-    ReturnType<typeof useCompanyWorkHeadsQuery>["data"]
-  >[number];
-  onCancel: () => void;
-  onClear: () => void;
-  onSave: (dueAt: string) => Promise<void>;
-  pending: boolean;
-  saveError: unknown;
-}) {
-  const [value, setValue] = React.useState("");
-  const initializedForDraft = React.useRef<string | null>(null);
-  const [invalidTime, setInvalidTime] = React.useState(false);
+  const { goCompanyWorkDetail } = useAppNavigation();
+  const redirected = React.useRef(false);
   React.useEffect(() => {
-    if (initializedForDraft.current === draftKey) return;
-    initializedForDraft.current = draftKey;
-    setInvalidTime(false);
-    setValue(
-      readDueDraft(draftKey) ||
-        (record.head.dueAt ? utcToLocalDateTimeInput(record.head.dueAt) : ""),
-    );
-  }, [draftKey, record.head.dueAt]);
-  const dueAt = localDateTimeInputToUtc(value);
-  const acceptedAtInput = record.head.acceptedAt
-    ? utcToLocalDateTimeInput(record.head.acceptedAt)
-    : undefined;
-
-  return (
-    <>
-      <CompanyWorkPageHeader title={record.head.title} />
-      <main className="mx-auto w-full max-w-[1230px] px-8 py-8">
-        <CompanyWorkBackButton onClick={onCancel} />
-        <h1 className="text-2xl font-bold tracking-tight">Set a due date</h1>
-        {saveError ? (
-          <p className="mt-4 text-sm text-destructive" role="alert">
-            Could not save. Your inputs are kept. Review them or retry without
-            starting again.
-          </p>
-        ) : null}
-        {invalidTime ? (
-          <p className="mt-4 text-sm text-destructive" role="alert">
-            Choose a valid date and time.
-          </p>
-        ) : null}
-        <section className="mt-7 max-w-2xl rounded-xl border border-border p-6">
-          <label
-            className="block text-sm font-medium"
-            htmlFor="company-work-due-at"
-          >
-            Due date and time
-          </label>
-          <input
-            className="mt-2 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            id="company-work-due-at"
-            max="9999-12-31T23:59"
-            min={acceptedAtInput}
-            onChange={(event) => {
-              setInvalidTime(false);
-              setValue(event.currentTarget.value);
-              writeDueDraft(draftKey, event.currentTarget.value);
-            }}
-            required
-            type="datetime-local"
-            value={value}
-          />
-          <p className="mt-2 text-xs text-muted-foreground">
-            Timezone: {companyWorkTimeZone()}
-          </p>
-          <p className="mt-5 text-sm text-muted-foreground">
-            A due date is a commitment deadline. It does not start a timer or
-            automatically complete the work.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-2">
-            <Button
-              disabled={pending || !value.trim()}
-              onClick={() => {
-                if (!dueAt) {
-                  setInvalidTime(true);
-                  return;
-                }
-                setInvalidTime(false);
-                void onSave(dueAt);
-              }}
-            >
-              Save due date
-            </Button>
-            <Button disabled={pending} onClick={onCancel} variant="outline">
-              Cancel
-            </Button>
-            {record.head.dueAt ? (
-              <Button disabled={pending} onClick={onClear} variant="ghost">
-                Clear due date
-              </Button>
-            ) : null}
-          </div>
-        </section>
-      </main>
-    </>
-  );
-}
-
-function CompanyWorkDueClearScreen({
-  record,
-  onCancel,
-  onClear,
-  onKeep,
-  pending,
-  saveError,
-}: {
-  record: NonNullable<
-    ReturnType<typeof useCompanyWorkHeadsQuery>["data"]
-  >[number];
-  onCancel: () => void;
-  onClear: () => Promise<void>;
-  onKeep: () => void;
-  pending: boolean;
-  saveError: unknown;
-}) {
-  return (
-    <>
-      <CompanyWorkPageHeader title={record.head.title} />
-      <main className="mx-auto w-full max-w-[1230px] px-8 py-8">
-        <CompanyWorkBackButton onClick={onCancel} />
-        <h1 className="text-2xl font-bold tracking-tight">
-          Clear this due date?
-        </h1>
-        <section className="mt-7 max-w-2xl rounded-xl border border-border p-6">
-          {saveError ? (
-            <p className="mb-4 text-sm text-destructive" role="alert">
-              Could not save. Your inputs are kept. Review them or retry without
-              starting again.
-            </p>
-          ) : null}
-          <p className="text-sm text-muted-foreground">
-            The work stays active. Its previous date remains in the timeline.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-2">
-            <Button
-              disabled={pending || !record.head.dueAt}
-              onClick={() => void onClear()}
-            >
-              Clear due date
-            </Button>
-            <Button disabled={pending} onClick={onKeep} variant="outline">
-              Keep date
-            </Button>
-          </div>
-        </section>
-      </main>
-    </>
-  );
+    if (redirected.current) return;
+    redirected.current = true;
+    void goCompanyWorkDetail(workItemId);
+  }, [goCompanyWorkDetail, workItemId]);
+  return null;
 }
 
 export function CompanyWorkWatchdogScreen({
@@ -627,16 +302,6 @@ export function CompanyWorkWatchdogScreen({
       </main>
     </>
   );
-}
-
-function CompanyWorkDueUnavailable({
-  title,
-  message,
-}: {
-  title: string;
-  message: string;
-}) {
-  return <CompanyWorkPolicyUnavailable message={message} title={title} />;
 }
 
 function CompanyWorkPolicyUnavailable({

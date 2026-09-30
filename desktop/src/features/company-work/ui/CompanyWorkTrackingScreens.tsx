@@ -24,7 +24,6 @@ import {
 } from "@/shared/constants/kinds";
 import type { RelayEvent } from "@/shared/api/types";
 import { projectCompanyWorkTimeline } from "../companyWorkTimeline";
-import { formatCompanyWorkDueDate } from "../companyWorkDueDate";
 import {
   CompanyWorkBackButton,
   CompanyWorkPageHeader,
@@ -83,16 +82,9 @@ export function CompanyWorkTrackingScreens(
     case "due":
     case "due-clear":
     case "due-denied":
-      return (
-        <CompanyWorkDueDateScreen
-          screen={props.screen}
-          workItemId={props.resourceId}
-        />
-      );
+      return <CompanyWorkDueDateScreen workItemId={props.resourceId} />;
     case "due-saved":
-      return (
-        <CompanyWorkDetailScreen dueDateUpdated workItemId={props.resourceId} />
-      );
+      return <CompanyWorkDetailScreen workItemId={props.resourceId} />;
     case "failed":
       return (
         <UnavailableScreen
@@ -376,11 +368,6 @@ function CompanyWorkTimelineScreen({ workItemId }: { workItemId: string }) {
                       })}{" "}
                       {entry.label}
                     </strong>
-                    {entry.dueAt ? (
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {formatCompanyWorkDueDate(entry.dueAt)}
-                      </p>
-                    ) : null}
                     {entry.reason ? (
                       <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
                         {entry.reason}
@@ -408,12 +395,6 @@ function CompanyWorkTimelineScreen({ workItemId }: { workItemId: string }) {
                     profiles,
                     pubkey: record.head.approverPubkeys[0],
                   })}
-                />
-              ) : null}
-              {record.head.dueAt ? (
-                <ContextRow
-                  label="Due"
-                  value={formatDueAt(record.head.dueAt)}
                 />
               ) : null}
               <ContextRow
@@ -784,10 +765,6 @@ function ContextRow({ label, value }: { label: string; value: string }) {
       <dd className="text-right">{value}</dd>
     </div>
   );
-}
-
-function formatDueAt(value: string) {
-  return formatCompanyWorkDueDate(value);
 }
 
 function errorMessage(error: unknown) {

@@ -1,42 +1,8 @@
 import type { CompanyWorkStatus } from "./companyWorkModels";
 
-const LOCAL_DATE_TIME_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
-
-export function companyWorkTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  } catch {
-    return "UTC";
-  }
-}
-
-export function localDateTimeInputToUtc(value: string): string | null {
-  const match = LOCAL_DATE_TIME_RE.exec(value);
-  if (!match) return null;
-  const [, year, month, day, hour, minute] = match.map(Number);
-  const date = new Date(year, month - 1, day, hour, minute, 0, 0);
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day ||
-    date.getHours() !== hour ||
-    date.getMinutes() !== minute
-  ) {
-    return null;
-  }
-  return date.toISOString().replace(/\.\d{3}Z$/, "Z");
-}
-
-export function utcToLocalDateTimeInput(value: string): string {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "";
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
 export function formatCompanyWorkDueDate(
   value: string,
-  timeZone = companyWorkTimeZone(),
+  timeZone: string,
 ): string {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "";

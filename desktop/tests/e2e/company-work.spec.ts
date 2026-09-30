@@ -20,27 +20,6 @@ const LINK_FAILURE_WORK_ID = "7a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const LINK_SUCCESS_WORK_ID = "8a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const MOVE_WORK_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 
-function formatExpectedDue(value: string) {
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(value));
-  const part = (type: string) =>
-    parts.find((item) => item.type === type)?.value ?? "";
-  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")} · ${timeZone}`;
-}
-
-function formatLocalInputValue(date: Date) {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
 type SeedWorkItem = {
   workItemId: string;
   title: string;
@@ -882,17 +861,17 @@ test("company work tracking reads current owner records and keeps unavailable au
   await expect(
     page.getByRole("heading", { name: "Work context" }),
   ).toBeVisible();
-  const expectedDue = formatExpectedDue(dueAt);
   await expect(page.getByText("Reviewer", { exact: true })).toBeVisible();
-  await expect(page.getByText("Due", { exact: true })).toBeVisible();
-  await expect(page.getByText(expectedDue, { exact: true })).toBeVisible();
-  await captureCompanyWorkMatrix(page, "work-timeline-due");
+  await expect(page.getByText("Due", { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/Africa\//)).toHaveCount(0);
+  await captureCompanyWorkMatrix(page, "work-timeline-timezone-unavailable");
 
   await page.goto(`/#/work/detail/${overdueWorkId}`);
-  await expect(page.getByTestId("company-work-detail")).toContainText(
+  await expect(page.getByTestId("company-work-detail")).not.toContainText(
     "Overdue",
   );
-  await captureCompanyWorkMatrix(page, "work-due-overdue");
+  await expect(page.getByRole("button", { name: /due date/i })).toHaveCount(0);
+  await captureCompanyWorkMatrix(page, "work-due-timezone-unavailable");
 
   await page.goto(`/#/work/tracking/watchdog/${aliceWorkId}`);
   await expect(
@@ -953,68 +932,45 @@ test("company work tracking reads current owner records and keeps unavailable au
   await captureCompanyWorkMatrix(page, "work-suggestion-missing");
 });
 
-test("work due dates keep failed input, save exact-head updates, and retain cleared dates in history", async ({
+test("due date routes stay unavailable until the workspace timezone is configured", async ({
   page,
 }) => {
   const workItemId = "8a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
   await installCompanyWorkMock(
     page,
-    ["error: temporary relay failure"],
-    [{ workItemId, title: "Prepare the client handover" }],
+    [],
+    [
+      {
+        workItemId,
+        title: "Prepare the client handover",
+        dueAt: new Date(Date.now() + 48 * 60 * 60 * 1_000).toISOString(),
+      },
+    ],
   );
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
   await page.getByRole("button", { name: "Join to participate" }).click();
   await expect(page.getByTestId("reference-goal-button")).toBeVisible();
+
   await page.goto(`/#/work/detail/${workItemId}`);
-  await page.getByRole("button", { name: "Set a due date" }).click();
-
-  const dueDate = new Date(Date.now() + 48 * 60 * 60 * 1_000);
-  dueDate.setMinutes(0, 0, 0);
-  const value = formatLocalInputValue(dueDate);
-  const expectedDue = formatExpectedDue(dueDate.toISOString());
-  const input = page.getByLabel("Due date and time");
-  await input.fill(value);
-  await page.getByRole("button", { name: "Save due date" }).click();
-  await expect(
-    page.getByText(
-      "Could not save. Your inputs are kept. Review them or retry without starting again.",
-    ),
-  ).toBeVisible();
-  await expect(input).toHaveValue(value);
-  await captureCompanyWorkMatrix(page, "work-due-failed");
-
-  await page.getByRole("button", { name: "Save due date" }).click();
   const detail = page.getByTestId("company-work-detail");
-  await expect(detail).toContainText("Due date updated");
-  await expect(detail).toContainText(expectedDue);
-  await captureCompanyWorkMatrix(page, "work-due-saved");
+  await expect(detail).toContainText("Prepare the client handover");
+  await expect(detail).not.toContainText("Due date");
+  await expect(page.getByRole("button", { name: /due date/i })).toHaveCount(0);
 
   await page.goto("/#/company-work");
-  await expect(
-    page.getByTestId(`company-work-row-${workItemId}`),
-  ).toContainText(expectedDue);
-  await page.getByTestId(`company-work-row-${workItemId}`).click();
-  await page.getByRole("button", { name: "Change due date" }).click();
-  await page.getByRole("button", { name: "Clear due date" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Clear this due date?" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(
-      "The work stays active. Its previous date remains in the timeline.",
-    ),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Clear due date" }).click();
-  await expect(page.getByTestId("company-work-detail")).toContainText(
-    "No due date is set.",
-  );
+  const workRow = page.getByTestId(`company-work-row-${workItemId}`);
+  await expect(workRow).toBeVisible();
+  await expect(workRow).not.toContainText(/\d{4}-\d{2}-\d{2}/);
 
-  await page.waitForTimeout(1_100);
-  await page.getByRole("button", { name: "Full timeline" }).click();
-  const timeline = page.getByTestId("company-work-full-timeline");
-  await expect(timeline).toContainText("cleared the due date.");
-  await expect(timeline).toContainText(expectedDue);
-  await captureCompanyWorkMatrix(page, "work-due-timeline");
+  await page.goto(`/#/work/tracking/due/${workItemId}`);
+  await expect(page).toHaveURL(new RegExp(`/work/detail/${workItemId}`));
+  await expect(page.getByLabel("Due date and time")).toHaveCount(0);
+
+  await page.goto(`/#/work/tracking/due-clear/${workItemId}`);
+  await expect(page).toHaveURL(new RegExp(`/work/detail/${workItemId}`));
+  await expect(
+    page.getByRole("button", { name: "Clear due date" }),
+  ).toHaveCount(0);
 });
 
 test("company work move keeps its destination on failure and preserves standalone roots on edit", async ({
