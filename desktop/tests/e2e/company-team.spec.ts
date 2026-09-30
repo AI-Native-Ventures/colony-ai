@@ -6,7 +6,10 @@ import {
   getPublicKey,
 } from "nostr-tools/pure";
 
-import { KIND_MEMBER_POSITION_HEAD } from "../../src/shared/constants/kinds";
+import {
+  KIND_DUTY_HEAD,
+  KIND_MEMBER_POSITION_HEAD,
+} from "../../src/shared/constants/kinds";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 const OWNER_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
@@ -40,6 +43,48 @@ function positionHead(input: {
   );
 }
 
+function dutyHead(input: { relaySecret: Uint8Array; employeePubkey: string }) {
+  const dutyId = "9d55771d-6404-4f92-9c6b-4ff59aa12260";
+  const channelId = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+  const now = new Date().toISOString();
+  return finalizeEvent(
+    {
+      kind: KIND_DUTY_HEAD,
+      created_at: Math.floor(Date.now() / 1_000),
+      tags: [
+        ["d", `company:duty:${dutyId}`],
+        ["p", input.employeePubkey],
+      ],
+      content: JSON.stringify({
+        schemaVersion: 1,
+        dutyId,
+        proposal: {
+          schemaVersion: 1,
+          dutyId,
+          employeePubkey: input.employeePubkey,
+          title: "Review the weekly content calendar",
+          scheduleText: "Every Monday at 08:00",
+          scheduleCron: "0 8 * * 1",
+          timeZone: "UTC",
+          channelId,
+          instructions: "Review the calendar and flag exceptions.",
+        },
+        status: "active",
+        proposedByPubkey: TEST_IDENTITIES.tyler.pubkey,
+        approvedByPubkey: TEST_IDENTITIES.tyler.pubkey,
+        approvedAt: now,
+        sourceAskId: "7d2d873b-f5a6-4b95-bb2f-2ac0ae2f74f8",
+        sourceAskChannelId: channelId,
+        workflowDefinitionHash: "c".repeat(64),
+        createdAt: now,
+        updatedAt: now,
+        sourceActionEventId: "d".repeat(64),
+      }),
+    },
+    input.relaySecret,
+  );
+}
+
 test("Team shows mixed reporting lines and lets an owner edit and pause an employee", async ({
   page,
 }) => {
@@ -51,6 +96,13 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   const workerPubkey = getPublicKey(generateSecretKey());
   const alicePubkey = TEST_IDENTITIES.alice.pubkey;
   const bobPubkey = TEST_IDENTITIES.bob.pubkey;
+  const employeePositionEvent = positionHead({
+    relaySecret,
+    pubkey: employeePubkey,
+    title: EMPLOYEE_TITLE,
+    kind: "employee",
+    managerPubkey: OWNER_PUBKEY,
+  });
   await page.addInitScript((identity) => {
     window.localStorage.setItem(
       "buzz:e2e-identity-override.v1",
@@ -73,13 +125,7 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
         kind: "human",
         managerPubkey: OWNER_PUBKEY,
       }),
-      positionHead({
-        relaySecret,
-        pubkey: employeePubkey,
-        title: EMPLOYEE_TITLE,
-        kind: "employee",
-        managerPubkey: OWNER_PUBKEY,
-      }),
+      employeePositionEvent,
       positionHead({
         relaySecret,
         pubkey: bobPubkey,
@@ -88,6 +134,9 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
         managerPubkey: alicePubkey,
       }),
     ],
+    companyDutyHeads: [dutyHead({ relaySecret, employeePubkey })],
+    companyDutyRelayPrivateKeyHex: bytesToHex(relaySecret),
+    companyLessonRelayPrivateKeyHex: bytesToHex(relaySecret),
     relayMembers: [
       { pubkey: OWNER_PUBKEY, role: "owner" },
       { pubkey: alicePubkey, role: "member" },
@@ -227,12 +276,35 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
     "Not available yet.",
   );
   await page.getByRole("tab", { name: "Duties" }).click();
-  await expect(page.getByTestId("employee-unavailable-duties")).toContainText(
-    "Not available yet.",
+  await expect(page.getByTestId("employee-duties")).toContainText("Routines");
+  const duty = page.getByTestId(
+    "employee-duty-9d55771d-6404-4f92-9c6b-4ff59aa12260",
   );
+  await expect(duty).toContainText("Review the weekly content calendar");
+  await duty.click();
+  await expect(page.getByTestId("employee-duty-detail")).toContainText(
+    "Run history",
+  );
+  await expect(page.getByTestId("employee-duty-detail")).toContainText(
+    "Not run yet",
+  );
+  await page.getByRole("button", { name: "Routines" }).click();
   await page.getByRole("tab", { name: "Lessons" }).click();
   await expect(page.getByTestId("employee-lessons")).toContainText(
-    "Not available yet.",
+    "Lessons with evidence",
+  );
+  await expect(page.getByTestId("employee-lessons")).toContainText("Memory");
+  await page.getByRole("button", { name: "Propose lesson" }).click();
+  await page
+    .getByLabel("Lesson")
+    .fill("Keep campaign conclusions linked to their sources.");
+  await page.getByLabel("Supporting evidence").fill(employeePositionEvent.id);
+  await page.getByRole("button", { name: "Save candidate" }).click();
+  await expect(page.getByTestId("employee-lesson-detail")).toContainText(
+    "Keep campaign conclusions linked to their sources.",
+  );
+  await expect(page.getByTestId("employee-lesson-detail")).toContainText(
+    "Confidence: unassessed",
   );
 
   await page.getByRole("tab", { name: "History" }).click();
@@ -241,6 +313,11 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   );
   await page.reload();
   await expect(page.getByTestId("company-employee-profile")).toBeVisible();
+  await page.getByRole("tab", { name: "Lessons" }).click();
+  await page.getByTestId(/^employee-lesson-/).click();
+  await expect(page.getByTestId("employee-lesson-detail")).toContainText(
+    "Keep campaign conclusions linked to their sources.",
+  );
   await page.getByRole("tab", { name: "History" }).click();
   await expect(page.getByTestId("employee-history")).toContainText(
     "Second revised employee instructions.",

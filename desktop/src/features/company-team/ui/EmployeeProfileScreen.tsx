@@ -34,6 +34,8 @@ import {
 } from "../employeeHistory";
 import { CompanyEmployeeProfileActions } from "./CompanyEmployeeProfileActions";
 import { EmployeeHistoryPanel } from "./EmployeeHistoryPanel";
+import { EmployeeDutiesPanel } from "./EmployeeDutiesPanel";
+import { EmployeeLessonsPanel } from "./EmployeeLessonsPanel";
 import type { CompanyTeamData } from "../teamRelay";
 import type { TeamMember } from "../teamModels";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
@@ -1078,15 +1080,19 @@ export function EmployeeProfileScreen({
         ) : null}
         {tab === "salary" ? unavailableState("Salary") : null}
         {tab === "workers" ? unavailableState("Workers") : null}
-        {tab === "duties" ? unavailableState("Duties") : null}
+        {tab === "duties" ? (
+          <EmployeeDutiesPanel
+            canManage={canManage}
+            employeePubkey={employeePubkey}
+          />
+        ) : null}
         {tab === "lessons" ? (
           <section data-testid="employee-lessons">
-            <h2 className="mb-4 text-lg font-semibold tracking-tight">
-              Lessons
-            </h2>
-            <p className="mb-6 text-sm text-muted-foreground">
-              Not available yet.
-            </p>
+            <EmployeeLessonsPanel
+              actorPubkey={actorPubkey}
+              canManage={canManage}
+              employeePubkey={employeePubkey}
+            />
             <div className="border-t border-border pt-5">
               <div className="mb-4 flex items-center justify-between gap-4">
                 <h3 className="text-base font-semibold">Memory</h3>
