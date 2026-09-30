@@ -40,6 +40,7 @@ class WorkflowStepRecord {
     required this.title,
     required this.instruction,
     this.assigneePubkey,
+    this.expectedResult,
     this.reviewerPubkey,
     this.reviewerScope,
   });
@@ -49,6 +50,7 @@ class WorkflowStepRecord {
   final String title;
   final String instruction;
   final String? assigneePubkey;
+  final String? expectedResult;
   final String? reviewerPubkey;
   final String? reviewerScope;
 }
@@ -83,6 +85,8 @@ class WorkflowRecord {
     required this.trigger,
     required this.steps,
     required this.status,
+    this.triggerWire,
+    this.isDraft = false,
     this.statusEvent,
   });
 
@@ -92,8 +96,10 @@ class WorkflowRecord {
   final String name;
   final String? description;
   final WorkflowTriggerRecord trigger;
+  final Map<String, Object?>? triggerWire;
   final List<WorkflowStepRecord> steps;
   final WorkflowStatus status;
+  final bool isDraft;
   final NostrEvent? statusEvent;
 
   String get ownerPubkey => event.pubkey.toLowerCase();
@@ -106,8 +112,10 @@ class WorkflowRecord {
         name: name,
         description: description,
         trigger: trigger,
+        triggerWire: triggerWire,
         steps: steps,
         status: next,
+        isDraft: isDraft,
         statusEvent: source,
       );
 }
@@ -130,8 +138,28 @@ class WorkflowStatusRecord {
 
 /// Parses and verifies a workflow definition for the mobile detail.
 WorkflowRecord? parseWorkflowDefinitionEvent(NostrEvent event) {
-  if (event.kind != EventKind.workflowDefinition ||
-      !_hasValidSignature(event)) {
+  return _parseWorkflowEvent(
+    event,
+    expectedKind: EventKind.workflowDefinition,
+    isDraft: false,
+  );
+}
+
+/// Parses a signed, unpublished workflow definition. Empty drafts are valid.
+WorkflowRecord? parseWorkflowDraftEvent(NostrEvent event) {
+  return _parseWorkflowEvent(
+    event,
+    expectedKind: EventKind.workflowDraft,
+    isDraft: true,
+  );
+}
+
+WorkflowRecord? _parseWorkflowEvent(
+  NostrEvent event, {
+  required int expectedKind,
+  required bool isDraft,
+}) {
+  if (event.kind != expectedKind || !_hasValidSignature(event)) {
     return null;
   }
   final workflowId = _singleTagValue(event, 'd');
@@ -179,7 +207,7 @@ WorkflowRecord? parseWorkflowDefinitionEvent(NostrEvent event) {
     if (step == null || !seenStepIds.add(step.id)) return null;
     steps.add(step);
   }
-  if (steps.isEmpty && enabled) return null;
+  if (steps.isEmpty && enabled && !isDraft) return null;
 
   return WorkflowRecord(
     event: event,
@@ -188,8 +216,12 @@ WorkflowRecord? parseWorkflowDefinitionEvent(NostrEvent event) {
     name: name.trim(),
     description: (description as String?)?.trim(),
     trigger: trigger,
+    triggerWire: Map.unmodifiable(
+      definition['trigger'] as Map<String, Object?>,
+    ),
     steps: List.unmodifiable(steps),
     status: enabled ? WorkflowStatus.active : WorkflowStatus.paused,
+    isDraft: isDraft,
   );
 }
 
@@ -354,11 +386,13 @@ WorkflowStepRecord? _parseStep(Object? value) {
       })) {
     final pubkey = value['agent_pubkey'];
     final instruction = value['instruction'];
+    final expectedResult = value['expected_result'];
     final timeout = value['timeout_secs'];
     if (pubkey is! String ||
         !_hex64Pattern.hasMatch(pubkey) ||
         instruction is! String ||
         instruction.trim().isEmpty ||
+        (expectedResult != null && expectedResult is! String) ||
         (timeout != null && timeout != 900)) {
       return null;
     }
@@ -368,6 +402,7 @@ WorkflowStepRecord? _parseStep(Object? value) {
       title: title.trim(),
       instruction: instruction.trim(),
       assigneePubkey: pubkey.toLowerCase(),
+      expectedResult: (expectedResult as String?)?.trim(),
     );
   }
   if (value['action'] == 'request_approval' &&

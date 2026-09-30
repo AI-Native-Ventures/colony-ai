@@ -298,7 +298,7 @@ jobs:
         # map and fails closed on an unmapped host. The channel reconciler binds
         # the deployment community ONCE at boot (outside its retry loop) and
         # exits permanently on an unmapped host, so the 'localhost:3000'
-        # community MUST exist before the relay starts — the retry loop only
+        # community MUST exist before the relay starts; the retry loop only
         # handles late-seeded channels, not a late-seeded community. The relay
         # migrates at boot via BUZZ_AUTO_MIGRATE, but that's too late for the
         # pre-boot seed, so apply the schema here first (then drop AUTO_MIGRATE
@@ -466,7 +466,7 @@ jobs:
         # map and fails closed on an unmapped host. The reminder scheduler binds
         # the deployment community ONCE at boot and exits permanently on an
         # unmapped host (no retry, unlike the channel reconciler), so the
-        # 'localhost:3000' community MUST exist before the relay starts — seeding
+        # 'localhost:3000' community MUST exist before the relay starts; seeding
         # after boot leaves the scheduler dead. The relay migrates at boot via
         # BUZZ_AUTO_MIGRATE, but that's too late for the pre-boot seed, so apply
         # the schema here first (then drop AUTO_MIGRATE below). lower(host) is the
@@ -615,6 +615,10 @@ jobs:
           cargo test -p buzz-test-client --test e2e_persona --test e2e_team_catalog --test e2e_nostr_interop --test e2e_project --test e2e_factory_run_records -- --ignored --nocapture
           cargo test -p buzz-test-client --test e2e_company_work company_work_suggestions_validate_source_authority_and_explicit_lifecycle -- --ignored --nocapture
           cargo test -p buzz-test-client --test e2e_company_work company_work_watchdogs_require_explicit_config_retry_durably_deliver_and_cancel -- --ignored --nocapture
+          cargo test -p buzz-test-client --test e2e_company_duties_lessons company_duty_ask_requires_owner_or_admin_and_creates_the_versioned_workflow -- --ignored --nocapture
+          cargo test -p buzz-test-client --test e2e_company_duties_lessons company_lessons_require_evidence_and_record_approval_then_reset_on_edit -- --ignored --nocapture
+          cargo test -p buzz-test-client --test e2e_company_spend company_spend_records_require_authority_and_verified_employee_turn_evidence -- --ignored --nocapture
+          cargo test -p buzz-test-client --test e2e_company_spend money_ask_approval_atomically_commits_allowance_for_an_authorized_human -- --ignored --nocapture
           cargo test -p buzz-test-client --test e2e_relay invite -- --ignored --nocapture
           cargo test -p buzz-test-client --test e2e_relay nip43_membership_snapshots_are_rejected -- --ignored --nocapture
           cargo test -p buzz-test-client --test e2e_relay nip29_departure_wire -- --ignored --nocapture

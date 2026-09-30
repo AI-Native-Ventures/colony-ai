@@ -109,6 +109,8 @@ mod tests {
             member_proposal: None,
             secret_request: None,
             hire_proposal: None,
+            duty_proposal: None,
+            spend_allowance_proposal: None,
         }
     }
 

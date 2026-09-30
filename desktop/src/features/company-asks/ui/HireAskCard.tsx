@@ -211,7 +211,7 @@ export function HireAskCard({
           ) : null}
           {decisionFailed || hireDeclined || hireApproved ? (
             <div
-              className="colony-ask-hire-outcome"
+              className="colony-ask-outcome"
               data-outcome={
                 decisionFailed ? "failed" : hireDeclined ? "denied" : "resolved"
               }

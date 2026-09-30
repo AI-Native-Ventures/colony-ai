@@ -115,6 +115,8 @@ import {
   KIND_COMPANY_WORK_TRACKING_HEAD,
   KIND_DELIVERABLE_APPROVAL,
   KIND_DELIVERABLE_VERSION,
+  KIND_DUTY_ACTION,
+  KIND_DUTY_HEAD,
   KIND_DM_VISIBILITY,
   KIND_EVENT_REMINDER,
   KIND_FACTORY_RUN_HEAD,
@@ -122,6 +124,10 @@ import {
   KIND_GOAL_HEAD,
   KIND_HIRE_ACTION,
   KIND_HIRE_HEAD,
+  KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
+  KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
+  KIND_AI_SPEND_RECORD_ACTION,
+  KIND_AI_SPEND_RECORD_HEAD,
   KIND_GIT_ISSUE,
   KIND_GIT_PATCH,
   KIND_GIT_PR_UPDATE,
@@ -141,6 +147,8 @@ import {
   KIND_EMPLOYEE_REVISION_ACTION,
   KIND_EMPLOYEE_REVISION_HEAD,
   KIND_MEMBER_REMOVED_NOTIFICATION,
+  KIND_LESSON_ACTION,
+  KIND_LESSON_HEAD,
   KIND_PAYMENT,
   KIND_PERSONA,
   KIND_PRODUCT_FEEDBACK,
@@ -738,6 +746,22 @@ type E2eConfig = {
     companyEmployeeRevisionHeads?: RelayEvent[];
     /** Reject employee history action publishes in order, then accept them. */
     companyEmployeeRevisionActionErrors?: string[];
+    /** Relay-signed duty heads used by employee profile E2E coverage. */
+    companyDutyHeads?: RelayEvent[];
+    /** Synthetic relay key used to broker duty actions in focused E2E tests. */
+    companyDutyRelayPrivateKeyHex?: string;
+    /** Relay-signed lesson heads used by employee profile E2E coverage. */
+    companyLessonHeads?: RelayEvent[];
+    /** Synthetic relay key used to broker lesson actions in focused E2E tests. */
+    companyLessonRelayPrivateKeyHex?: string;
+    /** Reject successive duty or lesson action publishes in order, then accept. */
+    companyDutyLessonActionErrors?: string[];
+    /** Relay-signed employee allowance heads for AI spend E2E coverage. */
+    employeeAllowanceHeads?: RelayEvent[];
+    /** Relay-signed AI spend record heads for AI spend E2E coverage. */
+    aiSpendRecordHeads?: RelayEvent[];
+    /** Decrypted local archive rows returned by read_archived_events. */
+    archivedEvents?: RelayEvent[];
     /** Relay-signed company work events for company work UI E2E coverage. */
     companyWorkEvents?: RelayEvent[];
     /** Synthetic relay key used to broker company work actions in focused E2E tests. */
@@ -3959,7 +3983,20 @@ const MOCK_COMPANY_EMPLOYEE_REVISION_ACTIONS_STORAGE_KEY =
 const mockCompanyEmployeeRevisionHeads: RelayEvent[] = [];
 const MOCK_COMPANY_EMPLOYEE_REVISION_HEADS_STORAGE_KEY =
   "buzz-e2e-company-employee-revision-heads-v1";
+const mockCompanyDutyHeads: RelayEvent[] = [];
+const MOCK_COMPANY_DUTY_HEADS_STORAGE_KEY = "buzz-e2e-company-duty-heads-v1";
+const mockCompanyLessonHeads: RelayEvent[] = [];
+const MOCK_COMPANY_LESSON_HEADS_STORAGE_KEY =
+  "buzz-e2e-company-lesson-heads-v1";
+const mockCompanyDutyActions: RelayEvent[] = [];
+const mockCompanyLessonActions: RelayEvent[] = [];
 const mockCompanyToolPermissionHeads: RelayEvent[] = [];
+const mockEmployeeAllowanceHeads: RelayEvent[] = [];
+const MOCK_EMPLOYEE_ALLOWANCE_HEADS_STORAGE_KEY =
+  "buzz-e2e-employee-ai-allowance-heads-v1";
+const mockAiSpendRecordHeads: RelayEvent[] = [];
+const MOCK_AI_SPEND_RECORD_HEADS_STORAGE_KEY =
+  "buzz-e2e-ai-spend-record-heads-v1";
 const mockAskActionIds = new Set<string>();
 const mockCompanySecretBindingHeads: RelayEvent[] = [];
 const mockSecretBindingActionIds = new Set<string>();
@@ -5045,9 +5082,33 @@ function handleGetWorkflowRuns(args: {
   const runs = mockWorkflowRuns.filter(
     (run) => run.workflow_id === args.workflowId,
   );
+  const dutyEvent = mockCompanyDutyHeads.find((event) =>
+    event.tags.some(
+      (tag) => tag[0] === "d" && tag[1] === `company:duty:${args.workflowId}`,
+    ),
+  );
+  let dutyHead: Record<string, unknown> | null = null;
+  try {
+    dutyHead = dutyEvent
+      ? (JSON.parse(dutyEvent.content) as Record<string, unknown>)
+      : null;
+  } catch {
+    dutyHead = null;
+  }
+  const dutyProposal = dutyHead?.proposal as
+    | Record<string, unknown>
+    | undefined;
   return {
     runs: args.limit ? runs.slice(0, args.limit) : runs,
     next: null,
+    ...(dutyHead && dutyProposal
+      ? {
+          next_scheduled_at: null,
+          workflow_definition_hash: dutyHead.workflowDefinitionHash,
+          workflow_channel_id: dutyProposal.channelId,
+          workflow_enabled: dutyHead.status === "active",
+        }
+      : {}),
   };
 }
 
@@ -6155,6 +6216,38 @@ function filterMockCompanyMemberPositions(filter: MockFilter): RelayEvent[] {
     .slice(0, filter.limit ?? 500);
 }
 
+function filterMockCompanySpendHeads(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const kinds = filter.kinds ?? [];
+  const events = [
+    ...(kinds.includes(KIND_EMPLOYEE_AI_ALLOWANCE_HEAD)
+      ? mockEmployeeAllowanceHeads
+      : []),
+    ...(kinds.includes(KIND_AI_SPEND_RECORD_HEAD)
+      ? mockAiSpendRecordHeads
+      : []),
+  ];
+  const dTags = filter["#d"];
+  return events
+    .filter((event) => {
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
 function filterMockEmployeeRevisionEvents(filter: MockFilter): RelayEvent[] {
   const authors = filter.authors?.map((author) => author.toLowerCase());
   const dTags = filter["#d"];
@@ -6188,6 +6281,374 @@ function filterMockEmployeeRevisionEvents(filter: MockFilter): RelayEvent[] {
         first.id.localeCompare(second.id),
     )
     .slice(0, filter.limit ?? 1_000);
+}
+
+function filterMockDutyLessonEvents(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  const pTags = filter["#p"];
+  return [...mockCompanyDutyHeads, ...mockCompanyLessonHeads]
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      if (
+        pTags &&
+        !event.tags.some(
+          (tag) => tag[0] === "p" && pTags.includes(tag[1]?.toLowerCase()),
+        )
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 1_000);
+}
+
+function acceptMockDutyAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) =>
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  const accept = () => sendWsText(socket.handler, ["OK", event.id, true, ""]);
+  const configuredError = config?.mock?.companyDutyLessonActionErrors?.shift();
+  if (configuredError) return reject(configuredError);
+  if (event.kind !== KIND_DUTY_ACTION || !verifyEvent(event)) {
+    return reject("invalid: duty action signature or kind is invalid.");
+  }
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  const pTags = event.tags.filter((tag) => tag[0] === "p");
+  let action: {
+    schemaVersion?: number;
+    dutyId?: string;
+    action?: string;
+    expectedHeadEventId?: string;
+    proposal?: Record<string, unknown>;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    return reject("invalid: duty action is not JSON.");
+  }
+  const employeePubkey = pTags[0]?.[1]?.toLowerCase();
+  const dTag = action.dutyId ? `company:duty:${action.dutyId}` : "";
+  if (
+    event.tags.length !== 2 ||
+    dTags.length !== 1 ||
+    pTags.length !== 1 ||
+    action.schemaVersion !== 1 ||
+    !employeePubkey ||
+    dTags[0]?.[1] !== dTag ||
+    !/^[0-9a-f]{64}$/.test(employeePubkey)
+  ) {
+    return reject("invalid: duty action coordinates are invalid.");
+  }
+  const actor = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  );
+  if (actor?.role !== "owner" && actor?.role !== "admin") {
+    return reject("restricted: only an owner or admin can manage duties.");
+  }
+  const current = mockCompanyDutyHeads.find((head) =>
+    head.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+  if (!current || current.id !== action.expectedHeadEventId) {
+    return reject("conflict: duty changed; refresh and retry.");
+  }
+  let head: Record<string, unknown>;
+  try {
+    head = JSON.parse(current.content);
+  } catch {
+    return reject("error: stored duty head is invalid.");
+  }
+  if (
+    !head.proposal ||
+    typeof head.proposal !== "object" ||
+    (head.proposal as Record<string, unknown>).employeePubkey !== employeePubkey
+  ) {
+    return reject("invalid: duty owner does not match the head.");
+  }
+  if (
+    action.action === "update" &&
+    action.proposal &&
+    action.proposal.employeePubkey === employeePubkey
+  ) {
+    head.proposal = action.proposal;
+  } else if (action.action === "pause" && head.status === "active") {
+    head.status = "paused";
+  } else if (action.action === "resume" && head.status === "paused") {
+    head.status = "active";
+  } else if (action.action === "delete" && head.status !== "deleted") {
+    head.status = "deleted";
+  } else {
+    return reject("invalid: duty lifecycle transition is not supported.");
+  }
+  const privateKeyHex = config?.mock?.companyDutyRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    return reject("error: mock relay signer is not configured for duties.");
+  }
+  const relaySecret = hexToBytes(privateKeyHex);
+  if (
+    getPublicKey(relaySecret).toLowerCase() !==
+    config?.mock?.relaySelf?.toLowerCase()
+  ) {
+    return reject("error: mock duty signer does not match relay self.");
+  }
+  const next = finalizeEvent(
+    {
+      kind: KIND_DUTY_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        current.created_at + 1,
+      ),
+      tags: [
+        ["d", dTag],
+        ["p", employeePubkey],
+      ],
+      content: JSON.stringify({
+        ...head,
+        updatedAt: new Date().toISOString(),
+        sourceActionEventId: event.id,
+      }),
+    },
+    relaySecret,
+  );
+  const index = mockCompanyDutyHeads.findIndex(
+    (candidate) => candidate.id === current.id,
+  );
+  if (index >= 0) mockCompanyDutyHeads.splice(index, 1);
+  mockCompanyDutyHeads.push(next);
+  mockCompanyDutyActions.push(event);
+  window.localStorage.setItem(
+    MOCK_COMPANY_DUTY_HEADS_STORAGE_KEY,
+    JSON.stringify(mockCompanyDutyHeads),
+  );
+  emitMockGlobalEvent(next);
+  accept();
+}
+
+function acceptMockLessonAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) =>
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  const accept = () => sendWsText(socket.handler, ["OK", event.id, true, ""]);
+  const configuredError = config?.mock?.companyDutyLessonActionErrors?.shift();
+  if (configuredError) return reject(configuredError);
+  if (event.kind !== KIND_LESSON_ACTION || !verifyEvent(event)) {
+    return reject("invalid: lesson action signature or kind is invalid.");
+  }
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  const pTags = event.tags.filter((tag) => tag[0] === "p");
+  let action: {
+    schemaVersion?: number;
+    lessonId?: string;
+    action?: string;
+    expectedHeadEventId?: string;
+    snapshot?: Record<string, unknown>;
+    confidence?: string;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    return reject("invalid: lesson action is not JSON.");
+  }
+  const employeePubkey = pTags[0]?.[1]?.toLowerCase();
+  const dTag = action.lessonId ? `company:lesson:${action.lessonId}` : "";
+  if (
+    event.tags.length !== 2 ||
+    dTags.length !== 1 ||
+    pTags.length !== 1 ||
+    action.schemaVersion !== 1 ||
+    !employeePubkey ||
+    dTags[0]?.[1] !== dTag ||
+    !/^[0-9a-f]{64}$/.test(employeePubkey)
+  ) {
+    return reject("invalid: lesson action coordinates are invalid.");
+  }
+  const actor = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  );
+  const current = mockCompanyLessonHeads.find((head) =>
+    head.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+  if (
+    action.action === "create"
+      ? current !== undefined
+      : current?.id !== action.expectedHeadEventId
+  ) {
+    return reject("conflict: lesson changed; refresh and retry.");
+  }
+  const actorIsAdmin = actor?.role === "owner" || actor?.role === "admin";
+  if (
+    action.action !== "create" &&
+    action.action !== "update" &&
+    action.action !== "deprecate" &&
+    action.action !== "restore_candidate"
+  ) {
+    return reject("invalid: unsupported lesson action.");
+  }
+  if (
+    !actor &&
+    !mockRelayAgents.some(
+      (agent) => agent.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+    )
+  ) {
+    return reject("restricted: actor is not a member or managed employee.");
+  }
+  let currentHead: Record<string, unknown> | null = null;
+  if (current) {
+    try {
+      currentHead = JSON.parse(current.content);
+    } catch {
+      return reject("error: stored lesson head is invalid.");
+    }
+  }
+  if (
+    action.action === "update" &&
+    currentHead?.proposedByPubkey !== event.pubkey &&
+    !actorIsAdmin
+  ) {
+    return reject(
+      "restricted: only the proposer or an owner or admin can edit.",
+    );
+  }
+  if (
+    (action.action === "deprecate" || action.action === "restore_candidate") &&
+    !actorIsAdmin
+  ) {
+    return reject("restricted: only an owner or admin can manage lessons.");
+  }
+  const snapshot =
+    action.snapshot ??
+    (currentHead?.snapshot as Record<string, unknown> | undefined);
+  const snapshotEmployee =
+    snapshot && typeof snapshot.employeePubkey === "string"
+      ? snapshot.employeePubkey.toLowerCase()
+      : null;
+  if (snapshotEmployee !== employeePubkey) {
+    return reject("invalid: lesson employee does not match its p tag.");
+  }
+  const employeePosition = mockCompanyMemberPositionEvents.find((candidate) =>
+    candidate.tags.some(
+      (tag) => tag[0] === "d" && tag[1] === `company:member:${employeePubkey}`,
+    ),
+  );
+  if (!employeePosition) {
+    return reject("invalid: lesson employee does not exist.");
+  }
+  if (
+    (action.action === "create" || action.action === "update") &&
+    (snapshot?.schemaVersion !== 1 ||
+      snapshot.lessonId !== action.lessonId ||
+      typeof snapshot.lesson !== "string" ||
+      !snapshot.lesson.trim() ||
+      !Array.isArray(snapshot.evidence) ||
+      snapshot.evidence.length === 0 ||
+      snapshot.evidence.length > 100 ||
+      snapshot.confidence !== "unassessed")
+  ) {
+    return reject("invalid: lesson snapshot is incomplete.");
+  }
+  if (
+    snapshot &&
+    (!Array.isArray(snapshot.evidence) ||
+      snapshot.evidence.some(
+        (ref) =>
+          !ref ||
+          typeof ref !== "object" ||
+          !/^[0-9a-f]{64}$/.test(
+            String((ref as { eventId?: unknown }).eventId),
+          ),
+      ))
+  ) {
+    return reject("invalid: lesson evidence needs 64-character event IDs.");
+  }
+  if (
+    snapshot &&
+    Array.isArray(snapshot.evidence) &&
+    new Set(
+      snapshot.evidence.map((ref) => (ref as { eventId: string }).eventId),
+    ).size !== snapshot.evidence.length
+  ) {
+    return reject("invalid: lesson evidence references must be unique.");
+  }
+  const privateKeyHex = config?.mock?.companyLessonRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    return reject("error: mock relay signer is not configured for lessons.");
+  }
+  const relaySecret = hexToBytes(privateKeyHex);
+  if (
+    getPublicKey(relaySecret).toLowerCase() !==
+    config?.mock?.relaySelf?.toLowerCase()
+  ) {
+    return reject("error: mock lesson signer does not match relay self.");
+  }
+  const now = new Date().toISOString();
+  const status = action.action === "deprecate" ? "deprecated" : "candidate";
+  const nextHead = {
+    schemaVersion: 1,
+    lessonId: action.lessonId,
+    snapshot: {
+      ...snapshot,
+      confidence:
+        action.action === "update" || action.action === "restore_candidate"
+          ? "unassessed"
+          : snapshot?.confidence,
+    },
+    status,
+    proposedByPubkey: currentHead?.proposedByPubkey ?? event.pubkey,
+    ...(action.action === "deprecate" && currentHead?.approval
+      ? { approval: currentHead.approval }
+      : {}),
+    createdAt: currentHead?.createdAt ?? now,
+    updatedAt: now,
+    sourceActionEventId: event.id,
+  };
+  const next = finalizeEvent(
+    {
+      kind: KIND_LESSON_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (current?.created_at ?? 0) + 1,
+      ),
+      tags: [
+        ["d", dTag],
+        ["p", employeePubkey],
+      ],
+      content: JSON.stringify(nextHead),
+    },
+    relaySecret,
+  );
+  if (current) {
+    const index = mockCompanyLessonHeads.findIndex(
+      (candidate) => candidate.id === current.id,
+    );
+    if (index >= 0) mockCompanyLessonHeads.splice(index, 1);
+  }
+  mockCompanyLessonHeads.push(next);
+  mockCompanyLessonActions.push(event);
+  window.localStorage.setItem(
+    MOCK_COMPANY_LESSON_HEADS_STORAGE_KEY,
+    JSON.stringify(mockCompanyLessonHeads),
+  );
+  emitMockGlobalEvent(next);
+  accept();
 }
 
 function acceptMockEmployeeRevisionAction(
@@ -6648,6 +7109,193 @@ function acceptMockMemberPositionAction(
   window.localStorage.setItem(
     MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY,
     JSON.stringify(mockCompanyMemberPositionEvents),
+  );
+  emitMockGlobalEvent(nextEvent);
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
+function acceptMockCompanySpendAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  if (!verifyEvent(event)) {
+    reject("invalid: AI spend action signature is invalid.");
+    return;
+  }
+  const relaySecretHex = config?.mock?.companyMemberRelayPrivateKeyHex;
+  if (!relaySecretHex || !/^[0-9a-f]{64}$/i.test(relaySecretHex)) {
+    reject("error: mock relay signer is not configured for AI spend.");
+    return;
+  }
+  const relaySecret = hexToBytes(relaySecretHex);
+  if (
+    getPublicKey(relaySecret).toLowerCase() !==
+    config?.mock?.relaySelf?.toLowerCase()
+  ) {
+    reject("error: mock AI spend signer does not match relay self.");
+    return;
+  }
+  const actor = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  );
+  if (!actor || (actor.role !== "owner" && actor.role !== "admin")) {
+    reject("restricted: only a company owner or admin can change AI spend.");
+    return;
+  }
+  let action: Record<string, unknown>;
+  try {
+    action = JSON.parse(event.content) as Record<string, unknown>;
+  } catch {
+    reject("invalid: AI spend action is not JSON.");
+    return;
+  }
+  if (action.schemaVersion !== 1) {
+    reject("invalid: AI spend action schema version is unsupported.");
+    return;
+  }
+  const allowanceAction = event.kind === KIND_EMPLOYEE_AI_ALLOWANCE_ACTION;
+  const recordId = typeof action.recordId === "string" ? action.recordId : "";
+  const subject = allowanceAction
+    ? typeof action.employeePubkey === "string"
+      ? action.employeePubkey.toLowerCase()
+      : ""
+    : "";
+  const dTag = allowanceAction
+    ? `company:employee-allowance:${subject}`
+    : `company:ai-spend:${recordId}`;
+  const matchingTags = event.tags.filter((tag) => tag[0] === "d");
+  const employeeTag = event.tags.filter((tag) => tag[0] === "p");
+  const record = action.record as
+    | { recordType?: string; employeePubkey?: string }
+    | undefined;
+  const recordEmployee =
+    record?.recordType === "agent_turn"
+      ? (record.employeePubkey?.toLowerCase() ?? "")
+      : "";
+  if (
+    matchingTags.length !== 1 ||
+    matchingTags[0]?.[1] !== dTag ||
+    event.tags.length !== (allowanceAction || recordEmployee ? 2 : 1) ||
+    (allowanceAction &&
+      (subject.length !== 64 ||
+        employeeTag.length !== 1 ||
+        employeeTag[0]?.[1] !== subject)) ||
+    (!allowanceAction &&
+      (event.kind !== KIND_AI_SPEND_RECORD_ACTION ||
+        (recordEmployee &&
+          (employeeTag.length !== 1 ||
+            employeeTag[0]?.[1] !== recordEmployee)) ||
+        (!recordEmployee && employeeTag.length > 0)))
+  ) {
+    reject("invalid: AI spend action tags do not match its subject.");
+    return;
+  }
+  const heads = allowanceAction
+    ? mockEmployeeAllowanceHeads
+    : mockAiSpendRecordHeads;
+  const currentEvent = heads.find((candidate) =>
+    candidate.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+  const expected = action.expectedHeadEventId;
+  if ((currentEvent?.id ?? undefined) !== expected) {
+    reject(
+      `conflict: AI spend record changed; current head is ${currentEvent?.id ?? "missing"}`,
+    );
+    return;
+  }
+
+  let content: Record<string, unknown>;
+  if (allowanceAction) {
+    const position = mockCompanyMemberPositionEvents.find((candidate) => {
+      try {
+        const parsed = JSON.parse(candidate.content) as {
+          pubkey?: string;
+          kind?: string;
+          status?: string;
+        };
+        return (
+          parsed.pubkey?.toLowerCase() === subject &&
+          parsed.kind === "employee" &&
+          parsed.status === "active"
+        );
+      } catch {
+        return false;
+      }
+    });
+    if (!position) {
+      reject("invalid: allowance target is not an active employee.");
+      return;
+    }
+    content = {
+      schemaVersion: 1,
+      employeePubkey: subject,
+      allowance: action.allowance,
+      ...(action.temporaryAllowance
+        ? { temporaryAllowance: action.temporaryAllowance }
+        : {}),
+      fundingOrder: action.fundingOrder,
+      actorPubkey: event.pubkey,
+      updatedAt: new Date().toISOString(),
+      sourceActionEventId: event.id,
+    };
+  } else {
+    let storedRecord = record;
+    let status: "active" | "removed" = "active";
+    if (action.action === "remove") {
+      if (!currentEvent) {
+        reject("conflict: AI spend record does not exist.");
+        return;
+      }
+      const previous = JSON.parse(currentEvent.content) as {
+        record?: unknown;
+      };
+      storedRecord = previous.record as typeof record;
+      status = "removed";
+    }
+    if (!storedRecord || typeof storedRecord !== "object") {
+      reject("invalid: AI spend action requires a record.");
+      return;
+    }
+    content = {
+      schemaVersion: 1,
+      recordId,
+      record: storedRecord,
+      status,
+      actorPubkey: event.pubkey,
+      updatedAt: new Date().toISOString(),
+      sourceActionEventId: event.id,
+    };
+  }
+  const nextEvent = finalizeEvent(
+    {
+      kind: allowanceAction
+        ? KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
+        : KIND_AI_SPEND_RECORD_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (currentEvent?.created_at ?? 0) + 1,
+      ),
+      tags: [["d", dTag]],
+      content: JSON.stringify(content),
+    },
+    relaySecret,
+  );
+  if (currentEvent) {
+    const index = heads.findIndex(
+      (candidate) => candidate.id === currentEvent.id,
+    );
+    if (index >= 0) heads.splice(index, 1);
+  }
+  heads.push(nextEvent);
+  window.localStorage.setItem(
+    allowanceAction
+      ? MOCK_EMPLOYEE_ALLOWANCE_HEADS_STORAGE_KEY
+      : MOCK_AI_SPEND_RECORD_HEADS_STORAGE_KEY,
+    JSON.stringify(heads),
   );
   emitMockGlobalEvent(nextEvent);
   sendWsText(socket.handler, ["OK", event.id, true, ""]);
@@ -11267,6 +11915,9 @@ async function relayQuery(
   }
 
   if (config?.relayAuthMode === "nip42") {
+    if (filters.some((filter) => filter.top_level === true)) {
+      return nip98RelayQuery(config, filters);
+    }
     return nip42RelayRequest(config, { type: "query", filters });
   }
 
@@ -11282,6 +11933,43 @@ async function relayQuery(
   return response.json() as Promise<RelayEvent[]>;
 }
 
+/**
+ * Channel-window extensions are implemented by the relay's HTTP `/query`
+ * bridge. The desktop host also uses signed NIP-98 HTTP queries, so relay-mode
+ * E2E must preserve the extension by using that same transport instead of
+ * sending a plain NIP-01 REQ over WebSocket.
+ */
+async function nip98RelayQuery(
+  config: E2eConfig | undefined,
+  filters: Array<Record<string, unknown>>,
+): Promise<RelayEvent[]> {
+  const identity = getRelayIdentity(config);
+  const url = `${getRelayHttpUrl(config).replace(/\/+$/, "")}/query`;
+  const body = JSON.stringify(filters);
+  const authEvent = await signWithIdentity(identity, {
+    kind: 27235,
+    content: "",
+    tags: [
+      ["u", url],
+      ["method", "POST"],
+      ["payload", bytesToHex(sha256(new TextEncoder().encode(body)))],
+      ["nonce", crypto.randomUUID()],
+    ],
+  });
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Nostr ${btoa(JSON.stringify(authEvent))}`,
+      "Content-Type": "application/json",
+    },
+    body,
+    signal: AbortSignal.timeout(NIP98_QUERY_TIMEOUT_MS),
+  });
+  await assertOk(response);
+  return response.json() as Promise<RelayEvent[]>;
+}
+
+const NIP98_QUERY_TIMEOUT_MS = 30_000;
 const NIP42_REQUEST_TIMEOUT_MS = 25_000;
 const NIP42_MAX_RESPONSE_BYTES = 8_000_000;
 const NIP42_MAX_QUERY_EVENTS = 2_000;
@@ -16092,10 +16780,32 @@ function sendToMockSocket(args: {
     }
 
     if (
+      filter.kinds?.includes(KIND_EMPLOYEE_AI_ALLOWANCE_HEAD) ||
+      filter.kinds?.includes(KIND_AI_SPEND_RECORD_HEAD)
+    ) {
+      for (const event of filterMockCompanySpendHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (
       filter.kinds?.includes(KIND_EMPLOYEE_REVISION_ACTION) ||
       filter.kinds?.includes(KIND_EMPLOYEE_REVISION_HEAD)
     ) {
       for (const event of filterMockEmployeeRevisionEvents(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (
+      filter.kinds?.includes(KIND_DUTY_HEAD) ||
+      filter.kinds?.includes(KIND_LESSON_HEAD)
+    ) {
+      for (const event of filterMockDutyLessonEvents(filter)) {
         sendWsText(socket.handler, ["EVENT", subId, event]);
       }
       sendWsText(socket.handler, ["EOSE", subId]);
@@ -16237,8 +16947,23 @@ function sendToMockSocket(args: {
       acceptMockMemberPositionAction(socket, event, getConfig());
       return;
     }
+    if (
+      event.kind === KIND_EMPLOYEE_AI_ALLOWANCE_ACTION ||
+      event.kind === KIND_AI_SPEND_RECORD_ACTION
+    ) {
+      acceptMockCompanySpendAction(socket, event, getConfig());
+      return;
+    }
     if (event.kind === KIND_EMPLOYEE_REVISION_ACTION) {
       acceptMockEmployeeRevisionAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_DUTY_ACTION) {
+      acceptMockDutyAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_LESSON_ACTION) {
+      acceptMockLessonAction(socket, event, getConfig());
       return;
     }
     if (event.kind === KIND_SECRET_BINDING_ACTION) {
@@ -16630,6 +17355,34 @@ export function maybeInstallE2eTauriMocks() {
     mockCompanyMemberPositionEvents.length,
     ...memberPositionEvents,
   );
+  const storedAllowanceHeads = window.localStorage.getItem(
+    MOCK_EMPLOYEE_ALLOWANCE_HEADS_STORAGE_KEY,
+  );
+  const allowanceHeads = storedAllowanceHeads
+    ? (JSON.parse(storedAllowanceHeads) as RelayEvent[])
+    : (config.mock?.employeeAllowanceHeads ?? []);
+  if (!Array.isArray(allowanceHeads)) {
+    throw new Error("Stored mock employee allowance heads must be an array.");
+  }
+  mockEmployeeAllowanceHeads.splice(
+    0,
+    mockEmployeeAllowanceHeads.length,
+    ...allowanceHeads,
+  );
+  const storedAiSpendHeads = window.localStorage.getItem(
+    MOCK_AI_SPEND_RECORD_HEADS_STORAGE_KEY,
+  );
+  const aiSpendHeads = storedAiSpendHeads
+    ? (JSON.parse(storedAiSpendHeads) as RelayEvent[])
+    : (config.mock?.aiSpendRecordHeads ?? []);
+  if (!Array.isArray(aiSpendHeads)) {
+    throw new Error("Stored mock AI spend record heads must be an array.");
+  }
+  mockAiSpendRecordHeads.splice(
+    0,
+    mockAiSpendRecordHeads.length,
+    ...aiSpendHeads,
+  );
   const storedEmployeeRevisionActions = window.localStorage.getItem(
     MOCK_COMPANY_EMPLOYEE_REVISION_ACTIONS_STORAGE_KEY,
   );
@@ -16658,6 +17411,32 @@ export function maybeInstallE2eTauriMocks() {
     mockCompanyEmployeeRevisionHeads.length,
     ...employeeRevisionHeads,
   );
+  const storedDutyHeads = window.localStorage.getItem(
+    MOCK_COMPANY_DUTY_HEADS_STORAGE_KEY,
+  );
+  const dutyHeads = storedDutyHeads
+    ? (JSON.parse(storedDutyHeads) as RelayEvent[])
+    : (config.mock?.companyDutyHeads ?? []);
+  if (!Array.isArray(dutyHeads)) {
+    throw new Error("Stored mock duty heads must be an array.");
+  }
+  mockCompanyDutyHeads.splice(0, mockCompanyDutyHeads.length, ...dutyHeads);
+  const storedLessonHeads = window.localStorage.getItem(
+    MOCK_COMPANY_LESSON_HEADS_STORAGE_KEY,
+  );
+  const lessonHeads = storedLessonHeads
+    ? (JSON.parse(storedLessonHeads) as RelayEvent[])
+    : (config.mock?.companyLessonHeads ?? []);
+  if (!Array.isArray(lessonHeads)) {
+    throw new Error("Stored mock lesson heads must be an array.");
+  }
+  mockCompanyLessonHeads.splice(
+    0,
+    mockCompanyLessonHeads.length,
+    ...lessonHeads,
+  );
+  mockCompanyDutyActions.splice(0, mockCompanyDutyActions.length);
+  mockCompanyLessonActions.splice(0, mockCompanyLessonActions.length);
   mockCompanyToolPermissionHeads.splice(
     0,
     mockCompanyToolPermissionHeads.length,
@@ -20673,6 +21452,47 @@ export function maybeInstallE2eTauriMocks() {
       case "archive_events":
         // Returns the ArchiveBatchResult shape the UI expects.
         return { persisted: 0, dropped: 0 };
+      case "read_archived_events": {
+        const request = payload as {
+          scopeType: string;
+          scopeValue: string;
+          kinds?: number[] | null;
+          beforeCreatedAt?: number | null;
+          beforeId?: string | null;
+          limit?: number | null;
+        };
+        return (activeConfig?.mock?.archivedEvents ?? [])
+          .filter((event) => {
+            if (request.kinds && !request.kinds.includes(event.kind)) {
+              return false;
+            }
+            if (request.scopeType === "owner_p") {
+              return event.tags.some(
+                (tag) =>
+                  tag[0] === "p" &&
+                  tag[1]?.toLowerCase() === request.scopeValue.toLowerCase(),
+              );
+            }
+            return true;
+          })
+          .filter((event) => {
+            if (request.beforeCreatedAt == null || request.beforeId == null) {
+              return true;
+            }
+            return (
+              event.created_at < request.beforeCreatedAt ||
+              (event.created_at === request.beforeCreatedAt &&
+                event.id.localeCompare(request.beforeId) < 0)
+            );
+          })
+          .sort(
+            (left, right) =>
+              right.created_at - left.created_at ||
+              right.id.localeCompare(left.id),
+          )
+          .slice(0, request.limit ?? 50)
+          .map((event) => JSON.stringify(event));
+      }
       // Archive sync runs natively; the bridge has no relay-backed backend to
       // drive, so these are accepted no-ops. Without them every AppShell mount
       // logs an unknown-command warning once the gate opens.

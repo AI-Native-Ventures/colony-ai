@@ -69,6 +69,18 @@ pub(super) async fn handle(
         CompanyCommand::HireAction(_) => Err(IngestError::Rejected(
             "restricted: hire commands are handled by the company hire broker".into(),
         )),
+        CompanyCommand::DutyAction(_) | CompanyCommand::LessonAction(_) => {
+            Err(IngestError::Rejected(
+                "restricted: this action is handled by its company record broker".into(),
+            ))
+        }
+        CompanyCommand::EmployeeAllowanceAction(_) => Err(IngestError::Rejected(
+            "restricted: employee allowance commands are handled by the employee spend broker"
+                .into(),
+        )),
+        CompanyCommand::AiSpendRecordAction(_) => Err(IngestError::Rejected(
+            "restricted: AI spend record commands are handled by the employee spend broker".into(),
+        )),
     }
 }
 
@@ -145,6 +157,17 @@ async fn handle_ask_action(
             } else {
                 None
             };
+            if let Some(proposal) = ask.duty_proposal.as_ref() {
+                if !actor.is_community_member && !actor.is_agent {
+                    return Err(forbidden(
+                        "only a company member or managed employee can propose a duty",
+                    ));
+                }
+                super::company_duties::validate_duty_proposal_route(
+                    tenant, state, proposal, channel_id,
+                )
+                .await?;
+            }
 
             let thread_meta = super::ingest::resolve_nip10_thread_meta(
                 tenant.community(),
@@ -191,6 +214,8 @@ async fn handle_ask_action(
                     thread_meta: Some(thread_meta),
                     member_position_action: None,
                     hire_head,
+                    duty_head: None,
+                    allowance_head: None,
                 },
             )
             .await
@@ -238,6 +263,8 @@ async fn handle_ask_action(
                     thread_meta: None,
                     member_position_action: None,
                     hire_head: None,
+                    duty_head: None,
+                    allowance_head: None,
                 },
             )
             .await
@@ -344,6 +371,46 @@ async fn handle_ask_response(
     } else {
         None
     };
+    let duty_head = if response.outcome == buzz_core::company_records::AskOutcome::Approved {
+        match head.ask.duty_proposal.as_ref() {
+            Some(proposal) => Some(
+                super::company_duties::prepare_approved_duty(
+                    tenant,
+                    state,
+                    super::company_duties::ApprovedDutyAsk {
+                        proposal,
+                        proposer_pubkey: &head.asker_pubkey,
+                        approver_pubkey: &actor.pubkey,
+                        ask_id: head.ask.ask_id,
+                        ask_channel_id: channel_id,
+                        response_event_id: event.id.to_hex(),
+                    },
+                )
+                .await?,
+            ),
+            None => None,
+        }
+    } else {
+        None
+    };
+    let allowance_head = if response.outcome == buzz_core::company_records::AskOutcome::Approved {
+        if let Some(proposal) = head.ask.spend_allowance_proposal.as_ref() {
+            Some(
+                super::company_spend::prepare_approved_allowance_head(
+                    tenant,
+                    state,
+                    proposal,
+                    &actor.pubkey,
+                    &response_event_id,
+                )
+                .await?,
+            )
+        } else {
+            None
+        }
+    } else {
+        None
+    };
     head.status = AskStatus::Resolved;
     head.resolution = Some(AskResolution {
         response: AskResolutionPayload {
@@ -376,6 +443,8 @@ async fn handle_ask_response(
                 .then(|| head.ask.member_proposal.clone())
                 .flatten(),
             hire_head,
+            duty_head,
+            allowance_head,
         },
     )
     .await
@@ -390,6 +459,8 @@ struct AskCommandWrite<'a> {
     thread_meta: Option<ThreadMetadataOwned>,
     member_position_action: Option<MemberPositionAction>,
     hire_head: Option<super::company_hires::PreparedHireHead>,
+    duty_head: Option<super::company_duties::PreparedDutyHead>,
+    allowance_head: Option<super::company_spend::PreparedAllowanceHead>,
 }
 
 async fn persist_ask_command(
@@ -406,6 +477,8 @@ async fn persist_ask_command(
         thread_meta,
         member_position_action,
         hire_head,
+        duty_head,
+        allowance_head,
     } = write;
     before_ask_persist_for_test(d_tag).await;
     let mut tx = state
@@ -470,6 +543,59 @@ async fn persist_ask_command(
                 None,
             )
             .await?;
+        }
+    }
+    if let Some(prepared_duty) = duty_head.as_ref() {
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(format!(
+                "company-duty:{}:{}",
+                tenant.community().as_uuid(),
+                prepared_duty.duty_id
+            ))
+            .execute(&mut *tx)
+            .await
+            .map_err(internal)?;
+        let locked_duty_head = buzz_db::replaceable::lock_parameterized_event_head_in_transaction(
+            &mut tx,
+            tenant.community(),
+            buzz_core::kind::KIND_DUTY_HEAD,
+            &state.relay_keypair.public_key().to_bytes(),
+            &prepared_duty.d_tag,
+        )
+        .await
+        .map_err(internal)?;
+        if locked_duty_head.is_some() {
+            tx.rollback().await.map_err(internal)?;
+            return Err(conflict("duty already exists; refresh the proposal"));
+        }
+    }
+
+    if let Some(prepared_allowance) = allowance_head.as_ref() {
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(format!(
+                "company-member-tree:{}",
+                tenant.community().as_uuid()
+            ))
+            .execute(&mut *tx)
+            .await
+            .map_err(internal)?;
+        super::company_spend::require_employee(tenant, state, &prepared_allowance.employee_pubkey)
+            .await?;
+        let locked_allowance_head_id =
+            buzz_db::replaceable::lock_parameterized_event_head_in_transaction(
+                &mut tx,
+                tenant.community(),
+                buzz_core::kind::KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
+                &state.relay_keypair.public_key().to_bytes(),
+                &prepared_allowance.d_tag,
+            )
+            .await
+            .map_err(internal)?;
+        if locked_allowance_head_id.as_deref() != prepared_allowance.expected_head_id.as_deref() {
+            tx.rollback().await.map_err(internal)?;
+            return Err(conflict(
+                "employee allowance changed before the approval could commit; refresh and retry",
+            ));
         }
     }
 
@@ -569,6 +695,26 @@ async fn persist_ask_command(
         )
         .await?;
         stored_events.push((stored_hire, state.relay_keypair.public_key().to_hex()));
+    }
+    if let Some(prepared_duty) = duty_head.as_ref() {
+        let stored_duty = super::company_duties::replace_prepared_duty_head(
+            &mut tx,
+            tenant.community(),
+            prepared_duty,
+            state,
+        )
+        .await?;
+        stored_events.push((stored_duty, state.relay_keypair.public_key().to_hex()));
+    }
+    if let Some(prepared_allowance) = allowance_head.as_ref() {
+        let stored_allowance = super::company_spend::replace_prepared_allowance_head(
+            &mut tx,
+            tenant.community(),
+            prepared_allowance,
+            state,
+        )
+        .await?;
+        stored_events.push((stored_allowance, state.relay_keypair.public_key().to_hex()));
     }
     tx.commit().await.map_err(internal)?;
 
@@ -1405,6 +1551,8 @@ mod postgres_tests {
                 }
             }),
             hire_proposal: None,
+            duty_proposal: None,
+            spend_allowance_proposal: None,
         }
     }
 
@@ -1754,7 +1902,7 @@ mod postgres_tests {
                 (&admin, None),
                 (
                     &agent,
-                    Some("Agents cannot decide spending, hires, tools or secrets"),
+                    Some("Agents cannot decide spending, hires, tools, secrets or duties"),
                 ),
             ] {
                 let ask = ask_record(

@@ -249,6 +249,15 @@ enum Cmd {
     /// Read and update company member positions
     #[command(subcommand)]
     Team(TeamCmd),
+    /// Propose and manage employee duties
+    #[command(subcommand)]
+    Duties(DutiesCmd),
+    /// Propose and manage structured employee lessons
+    #[command(subcommand)]
+    Lessons(LessonsCmd),
+    /// Read and record employee AI allowances and AI spend evidence
+    #[command(subcommand)]
+    Spend(SpendCmd),
     /// List, bind and revoke company secret metadata
     #[command(subcommand)]
     Secrets(SecretsCmd),
@@ -1281,6 +1290,167 @@ pub enum TeamCmd {
         /// Clear the manager and report directly to the company owner
         #[arg(long, conflicts_with = "manager")]
         clear_manager: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum DutiesCmd {
+    /// Propose a scheduled duty in an existing channel conversation
+    Propose {
+        /// Channel UUID containing the conversation thread
+        #[arg(long)]
+        channel: String,
+        /// Existing NIP-10 thread root event id
+        #[arg(long)]
+        thread_root: String,
+        /// DutyProposal JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        proposal: String,
+    },
+    /// List current duty heads, optionally for one employee
+    List {
+        /// Employee public key in 64-character hex
+        #[arg(long)]
+        employee: Option<String>,
+        /// Maximum number of records to return, at most 10000
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Get one duty and its real workflow run history
+    Get {
+        /// Duty UUID
+        #[arg(long)]
+        duty: String,
+        /// Maximum number of workflow runs to include
+        #[arg(long)]
+        runs: Option<u32>,
+    },
+    /// Update a duty's schedule, channel or instructions
+    Update {
+        /// Duty UUID
+        #[arg(long)]
+        duty: String,
+        /// Replacement DutyProposal JSON or a path to JSON; use - for stdin
+        #[arg(long)]
+        proposal: String,
+    },
+    /// Pause a duty schedule
+    Pause {
+        /// Duty UUID
+        #[arg(long)]
+        duty: String,
+    },
+    /// Resume a paused duty schedule
+    Resume {
+        /// Duty UUID
+        #[arg(long)]
+        duty: String,
+    },
+    /// Delete a duty while retaining its run history
+    Delete {
+        /// Duty UUID
+        #[arg(long)]
+        duty: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum LessonsCmd {
+    /// Propose a structured lesson with explicit evidence references
+    Create {
+        /// Employee public key in 64-character hex
+        #[arg(long)]
+        employee: String,
+        /// LessonSnapshot JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// List current lesson heads, optionally for one employee
+    List {
+        /// Employee public key in 64-character hex
+        #[arg(long)]
+        employee: Option<String>,
+        /// Maximum number of records to return, at most 10000
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Get one current lesson head
+    Get {
+        /// Lesson UUID
+        #[arg(long)]
+        lesson: String,
+    },
+    /// Edit a lesson and return it to candidate state
+    Update {
+        /// Lesson UUID
+        #[arg(long)]
+        lesson: String,
+        /// Replacement LessonSnapshot JSON or a path to JSON; use - to stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Approve a candidate lesson with explicit confidence
+    Approve {
+        /// Lesson UUID
+        #[arg(long)]
+        lesson: String,
+        /// Explicit confidence: low, moderate, or high
+        #[arg(long, value_enum)]
+        confidence: LessonConfidenceArg,
+    },
+    /// Deprecate a lesson from current guidance
+    Deprecate {
+        /// Lesson UUID
+        #[arg(long)]
+        lesson: String,
+    },
+    /// Restore a deprecated lesson as a candidate
+    Restore {
+        /// Lesson UUID
+        #[arg(long)]
+        lesson: String,
+    },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum LessonConfidenceArg {
+    #[value(name = "low")]
+    Low,
+    #[value(name = "moderate")]
+    Moderate,
+    #[value(name = "high")]
+    High,
+}
+
+#[derive(Subcommand)]
+pub enum SpendCmd {
+    /// Read and update employee AI allowances
+    #[command(subcommand)]
+    Allowance(SpendAllowanceCmd),
+    /// Read and record AI spend evidence
+    #[command(subcommand)]
+    Records(SpendRecordsCmd),
+}
+
+#[derive(Subcommand)]
+pub enum SpendAllowanceCmd {
+    /// List current relay-signed employee allowance heads
+    List,
+    /// Submit a typed EmployeeAllowanceAction JSON object or path; use - for stdin
+    Set {
+        #[arg(long)]
+        action: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SpendRecordsCmd {
+    /// List current relay-signed AI spend record heads
+    List,
+    /// Submit a typed AiSpendRecordAction JSON object or path; use - for stdin
+    Set {
+        #[arg(long)]
+        action: String,
     },
 }
 
@@ -2907,6 +3077,9 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Asks(sub) => commands::asks::dispatch(sub, &client).await,
         Cmd::Goals(sub) => commands::goals::dispatch(sub, &client).await,
         Cmd::Team(sub) => commands::team::dispatch(sub, &client).await,
+        Cmd::Duties(sub) => commands::company_duties_lessons::dispatch_duties(sub, &client).await,
+        Cmd::Lessons(sub) => commands::company_duties_lessons::dispatch_lessons(sub, &client).await,
+        Cmd::Spend(sub) => commands::spend::dispatch(sub, &client).await,
         Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
         Cmd::Work(sub) => commands::work::dispatch(sub, &client).await,
         Cmd::Factory(sub) => commands::factory::dispatch(sub, &client).await,
@@ -3081,12 +3254,14 @@ mod tests {
             "channels",
             "credits",
             "dms",
+            "duties",
             "emoji",
             "factory",
             "feed",
             "gifs",
             "goals",
             "issues",
+            "lessons",
             "media",
             "mem",
             "messages",
@@ -3102,6 +3277,7 @@ mod tests {
             "repos",
             "secrets",
             "social",
+            "spend",
             "team",
             "upload",
             "users",

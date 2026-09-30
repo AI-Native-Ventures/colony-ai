@@ -1,6 +1,8 @@
 import { verifyEvent } from "nostr-tools/pure";
 
 import { parseMemberPositionAction } from "@/features/company-team/teamModels";
+import { parseDutyProposal } from "@/features/company-team/employeeDutiesLessons";
+import type { DutyProposal } from "@/features/company-team/employeeDutiesLessons";
 import { KIND_ASK_HEAD } from "@/shared/constants/kinds";
 import { MAX_EXPLICIT_CHANNEL_VALUES } from "@/shared/api/relayClientShared";
 import { relayClient } from "@/shared/api/relayClient";
@@ -13,7 +15,13 @@ export type AskType =
   | "checklist"
   | "verdict"
   | "tool_consent";
-export type AskCategory = "general" | "money" | "hire" | "tool" | "secret";
+export type AskCategory =
+  | "general"
+  | "money"
+  | "hire"
+  | "tool"
+  | "secret"
+  | "duty";
 export type AskStatus = "open" | "resolved" | "cancelled";
 export type AskOutcome =
   | "approved"
@@ -79,13 +87,20 @@ export type AskRecord = {
   options?: AskOption[] | null;
   items?: AskOption[] | null;
   subject?: {
-    kind: "goal" | "workflowRun" | "workItem" | "companyMember" | "hire";
+    kind:
+      | "goal"
+      | "workflowRun"
+      | "workItem"
+      | "companyMember"
+      | "hire"
+      | "duty";
     id: string;
   } | null;
   memberProposal?:
     | import("@/features/company-team/teamModels").MemberPositionAction
     | null;
   hireProposal?: HireProposal | null;
+  dutyProposal?: DutyProposal | null;
   toolConsent?: ToolConsentPreview | null;
   secretRequest?: SecretAskRequest | null;
 };
@@ -165,6 +180,7 @@ const ASK_CATEGORIES = new Set<AskCategory>([
   "hire",
   "tool",
   "secret",
+  "duty",
 ]);
 
 function oneTagValue(event: RelayEvent, name: string): string | null {
@@ -272,7 +288,7 @@ function parseHireProposal(value: unknown): HireProposal | null {
   return proposal;
 }
 
-function parseAskHead(content: string): AskHead {
+function parseAskHead(content: string, channelId: string): AskHead {
   let value: unknown;
   try {
     value = JSON.parse(content);
@@ -301,6 +317,15 @@ function parseAskHead(content: string): AskHead {
     ask.hireProposal === undefined || ask.hireProposal === null
       ? null
       : parseHireProposal(ask.hireProposal);
+  let dutyProposal: DutyProposal | null = null;
+  let malformedDutyProposal = false;
+  if (ask.dutyProposal !== undefined && ask.dutyProposal !== null) {
+    try {
+      dutyProposal = parseDutyProposal(ask.dutyProposal);
+    } catch {
+      malformedDutyProposal = true;
+    }
+  }
   const secretRequest = ask.secretRequest;
   const invalidSecretRequest =
     ask.category === "secret"
@@ -355,6 +380,19 @@ function parseAskHead(content: string): AskHead {
         subject.id !== hireProposal.hireId ||
         memberProposal !== null)) ||
     (subject?.kind === "hire" && hireProposal === null);
+  const invalidDutyProposal =
+    malformedDutyProposal ||
+    (dutyProposal !== null &&
+      (ask.type !== "approval" ||
+        ask.category !== "duty" ||
+        subject?.kind !== "duty" ||
+        subject.id !== dutyProposal.dutyId ||
+        dutyProposal.channelId !== channelId ||
+        ask.addresseePubkey != null ||
+        memberProposal !== null ||
+        hireProposal !== null)) ||
+    (subject?.kind === "duty" && dutyProposal === null) ||
+    (ask.category === "duty" && dutyProposal === null);
   if (
     head.schemaVersion !== 1 ||
     typeof head.askId !== "string" ||
@@ -394,6 +432,9 @@ function parseAskHead(content: string): AskHead {
   if (invalidHireProposal) {
     throw new Error("The relay returned a malformed hire proposal ask.");
   }
+  if (invalidDutyProposal) {
+    throw new Error("The relay returned a malformed duty proposal ask.");
+  }
   return head;
 }
 
@@ -423,7 +464,7 @@ export function decodeRelayAskHead(
     return null;
   }
 
-  const head = parseAskHead(event.content);
+  const head = parseAskHead(event.content, channelId);
   if (dTag !== `channel:${channelId}:ask:${head.askId}`) return null;
   return { channelId, event, head };
 }

@@ -33,7 +33,10 @@ import {
   type PendingEmployeeRevision,
 } from "../employeeHistory";
 import { CompanyEmployeeProfileActions } from "./CompanyEmployeeProfileActions";
+import { EmployeeSalaryPanel } from "@/features/power/EmployeeAllowanceScreens";
 import { EmployeeHistoryPanel } from "./EmployeeHistoryPanel";
+import { EmployeeDutiesPanel } from "./EmployeeDutiesPanel";
+import { EmployeeLessonsPanel } from "./EmployeeLessonsPanel";
 import type { CompanyTeamData } from "../teamRelay";
 import type { TeamMember } from "../teamModels";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
@@ -197,23 +200,27 @@ export function EmployeeProfileScreen({
   fullName,
   profiles,
   teamData,
+  initialTab,
   canManage,
   onBack,
   onEditPosition,
   onOpenMember,
   onPause,
   onTerminate,
+  onEditSalary,
 }: {
   member: TeamMember;
   fullName: string;
   profiles: Record<string, ProfileSummary>;
   teamData: CompanyTeamData;
+  initialTab?: "overview" | "salary";
   canManage: boolean;
   onBack: () => void;
   onEditPosition: () => void;
   onOpenMember: (pubkey: string) => void;
   onPause: () => void;
   onTerminate: () => void;
+  onEditSalary: () => void;
 }) {
   const agent = member.managedAgent;
   const identity = useIdentityQuery();
@@ -278,7 +285,7 @@ export function EmployeeProfileScreen({
     enabled: Boolean(relaySelf),
     staleTime: 15_000,
   });
-  const [tab, setTab] = React.useState<EmployeeTab>("overview");
+  const [tab, setTab] = React.useState<EmployeeTab>(initialTab ?? "overview");
   const [editInstructions, setEditInstructions] = React.useState(false);
   const [instructionDraft, setInstructionDraft] = React.useState("");
   const [instructionError, setInstructionError] = React.useState<string | null>(
@@ -1076,17 +1083,28 @@ export function EmployeeProfileScreen({
             {workContent()}
           </section>
         ) : null}
-        {tab === "salary" ? unavailableState("Salary") : null}
+        {tab === "salary" ? (
+          <EmployeeSalaryPanel
+            canManage={canManage}
+            employee={member}
+            employees={teamData.members}
+            onEdit={onEditSalary}
+          />
+        ) : null}
         {tab === "workers" ? unavailableState("Workers") : null}
-        {tab === "duties" ? unavailableState("Duties") : null}
+        {tab === "duties" ? (
+          <EmployeeDutiesPanel
+            canManage={canManage}
+            employeePubkey={employeePubkey}
+          />
+        ) : null}
         {tab === "lessons" ? (
           <section data-testid="employee-lessons">
-            <h2 className="mb-4 text-lg font-semibold tracking-tight">
-              Lessons
-            </h2>
-            <p className="mb-6 text-sm text-muted-foreground">
-              Not available yet.
-            </p>
+            <EmployeeLessonsPanel
+              actorPubkey={actorPubkey}
+              canManage={canManage}
+              employeePubkey={employeePubkey}
+            />
             <div className="border-t border-border pt-5">
               <div className="mb-4 flex items-center justify-between gap-4">
                 <h3 className="text-base font-semibold">Memory</h3>
