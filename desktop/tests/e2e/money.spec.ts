@@ -3,12 +3,14 @@ import { expect, test } from "@playwright/test";
 import { installMockBridge } from "../helpers/bridge";
 
 const CEDAR_PARTIAL_INVOICE_ID = "3e3a7000-0000-4000-8000-000000000027";
+const NORTHLINE_DRAFT_INVOICE_ID = "3e3a7000-0000-4000-8000-000000000029";
 
 async function openMoney(
   page: import("@playwright/test").Page,
   route: string,
   channelRole: "owner" | "admin" | "member" = "owner",
   relayRole: "owner" | "admin" | "member" = channelRole,
+  moneyRecords = true,
 ) {
   await page.clock.install({ time: new Date("2026-09-23T12:00:00+02:00") });
   await installMockBridge(page, {
@@ -16,6 +18,7 @@ async function openMoney(
     referenceWorkspaceRole: channelRole,
     relayRequiresMembership: true,
     relayRole,
+    referenceWorkspaceMoneyRecords: moneyRecords,
   });
   await page.goto(route);
 }
@@ -48,6 +51,36 @@ test("money overview and invoice list derive scoped totals from reference record
     .click();
   await expect(page.getByTestId("money-invoice-detail")).toBeVisible();
   await expect(page.getByRole("button", { name: "All revenue" })).toBeVisible();
+});
+
+test("empty invoice list offers only the available filters and recovery path", async ({
+  page,
+}) => {
+  await openMoney(page, "/#/money/invoices", "owner", "owner", false);
+
+  const invoices = page.getByTestId("money-invoice-list");
+  await expect(invoices).toContainText("No invoices for this selection");
+  await expect(invoices).toContainText(
+    "Change the period or client to find other invoices.",
+  );
+  await expect(
+    invoices.getByRole("button", { name: /New invoice/i }),
+  ).toHaveCount(0);
+});
+
+test("incomplete draft identifies missing details and cannot be issued", async ({
+  page,
+}) => {
+  await openMoney(page, `/#/money/invoice/${NORTHLINE_DRAFT_INVOICE_ID}`);
+
+  await page.getByRole("button", { name: "Review & issue" }).click();
+  const dialog = page.getByRole("dialog", { name: /Issue/ });
+  await expect(dialog.getByRole("alert")).toHaveText(
+    "Details missing before issue: Due date.",
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Issue invoice" }),
+  ).toBeDisabled();
 });
 
 test("invoice detail records payment evidence and keeps typed values after a rejected save", async ({

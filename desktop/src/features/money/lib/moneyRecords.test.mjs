@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   deriveMoneyTotals,
   formatMoneyMinor,
+  invoiceIssueMissingDetails,
   invoiceTaxTotalMinor,
   parseMoneyInput,
   parseMoneyRecords,
@@ -66,6 +67,30 @@ const invoiceHead = {
   issuedAt: Date.parse("2026-09-01T00:00:00Z") / 1_000,
   sourceEventId: EVENT_ID_2,
 };
+
+test("invoice issue readiness names missing minimum billing details", () => {
+  assert.deepEqual(
+    invoiceIssueMissingDetails({ ...invoiceHead, dueAt: null }),
+    ["Due date"],
+  );
+  assert.deepEqual(
+    invoiceIssueMissingDetails({
+      ...invoiceHead,
+      clientId: "",
+      currency: "",
+      dueAt: null,
+      lines: [],
+    }),
+    ["Client", "Currency", "Invoice lines", "Due date"],
+  );
+});
+
+test("invoice issue readiness does not require optional tax", () => {
+  assert.deepEqual(
+    invoiceIssueMissingDetails({ ...invoiceHead, taxLines: [] }),
+    [],
+  );
+});
 
 test("money totals derive from scoped invoice, payment, and adjustment records", () => {
   const events = [

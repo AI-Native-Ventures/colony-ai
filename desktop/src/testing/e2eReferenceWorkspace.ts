@@ -439,7 +439,7 @@ function referenceMoneyRecordEvents(selfPubkey: string, firstIndex: number) {
       description: "First monthly retainer",
       amountMinor: 850_000,
       issuedAt: null,
-      dueAt: new Date("2026-10-01T12:00:00+02:00").getTime() / 1_000,
+      dueAt: null,
       status: "draft" as const,
       collectedMinor: 0,
       paymentDate: null,

@@ -3903,6 +3903,9 @@ fn validate_invoice_version(version: &InvoiceVersion) -> Result<(), IngestError>
             ));
         }
     }
+    if version.action == InvoiceVersionAction::Issue && version.due_at.is_none() {
+        return Err(invalid("issuing an invoice requires a due date"));
+    }
     if version.tax_lines.len() > 100
         || version.tax_lines.iter().any(|tax_line| {
             tax_line
@@ -4205,6 +4208,44 @@ pub(super) fn internal(error: impl std::fmt::Display) -> IngestError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn invoice_issue_requires_a_due_date() {
+        let version = InvoiceVersion {
+            schema_version: BUSINESS_RECORD_SCHEMA_VERSION,
+            client_id: Uuid::from_u128(1),
+            invoice_id: Uuid::from_u128(2),
+            version: 2,
+            previous_version_event_id: Some("a".repeat(64)),
+            proposal_version_event_id: Some("b".repeat(64)),
+            expected_head_event_id: Some("c".repeat(64)),
+            action: InvoiceVersionAction::Issue,
+            currency: "ZAR".into(),
+            lines: vec![buzz_core::business_records::ProposalLine {
+                service_id: None,
+                description: "Approved work".into(),
+                quantity_hundredths: 100,
+                unit_amount_minor: 100,
+            }],
+            tax_lines: Vec::new(),
+            seller_tax_number: None,
+            customer_tax_number: None,
+            total_minor: 100,
+            status: InvoiceStatus::Issued,
+            due_at: None,
+            void_reason: None,
+        };
+
+        assert!(matches!(
+            validate_invoice_version(&version),
+            Err(IngestError::Rejected(message)) if message.contains("requires a due date")
+        ));
+        assert!(validate_invoice_version(&InvoiceVersion {
+            due_at: Some(1),
+            ..version
+        })
+        .is_ok());
+    }
 
     fn prospect_action() -> ProspectAction {
         let prospect_id = Uuid::from_u128(31);
@@ -6314,7 +6355,15 @@ mod postgres_tests {
         business_stream(&fixture, &owner).await;
         let owner_client = private_stream(&fixture, "money-owner-client", &owner).await;
         let owner_invoice = Uuid::new_v4();
-        seed_draft_invoice(&fixture, &owner, owner_client, owner_invoice, 10_000, None).await;
+        seed_draft_invoice(
+            &fixture,
+            &owner,
+            owner_client,
+            owner_invoice,
+            10_000,
+            Some(1_800_000_000),
+        )
+        .await;
         let (owner_head_event, owner_head) =
             issue_test_invoice(&fixture, &owner, owner_client, owner_invoice).await;
         assert_eq!(owner_head.status, InvoiceStatus::Issued);
@@ -6324,7 +6373,15 @@ mod postgres_tests {
         let admin_client = private_stream(&fixture, "money-admin-client", &admin).await;
         add_community_role(&fixture, &admin, "admin").await;
         let admin_invoice = Uuid::new_v4();
-        seed_draft_invoice(&fixture, &admin, admin_client, admin_invoice, 2_500, None).await;
+        seed_draft_invoice(
+            &fixture,
+            &admin,
+            admin_client,
+            admin_invoice,
+            2_500,
+            Some(1_800_000_000),
+        )
+        .await;
         let (_, admin_head) =
             issue_test_invoice(&fixture, &admin, admin_client, admin_invoice).await;
         assert_eq!(admin_head.status, InvoiceStatus::Issued);
@@ -6339,7 +6396,7 @@ mod postgres_tests {
             member_client,
             member_invoice,
             1_200,
-            None,
+            Some(1_800_000_000),
         )
         .await;
         let (member_head_event, member_head) = current_invoice_head(
@@ -6428,7 +6485,15 @@ mod postgres_tests {
         business_stream(&fixture, &owner).await;
         let client_id = private_stream(&fixture, "money-tax-client", &owner).await;
         let invoice_id = Uuid::new_v4();
-        seed_draft_invoice(&fixture, &owner, client_id, invoice_id, 10_000, None).await;
+        seed_draft_invoice(
+            &fixture,
+            &owner,
+            client_id,
+            invoice_id,
+            10_000,
+            Some(1_800_000_000),
+        )
+        .await;
         let (head_event, draft) = current_invoice_head(
             &fixture.state,
             fixture.tenant.community(),
@@ -6536,7 +6601,15 @@ mod postgres_tests {
         business_stream(&fixture, &owner).await;
         let client_id = private_stream(&fixture, "money-payment-client", &owner).await;
         let invoice_id = Uuid::new_v4();
-        seed_draft_invoice(&fixture, &owner, client_id, invoice_id, 10_000, None).await;
+        seed_draft_invoice(
+            &fixture,
+            &owner,
+            client_id,
+            invoice_id,
+            10_000,
+            Some(1_800_000_000),
+        )
+        .await;
         let (head_event, issued) =
             issue_test_invoice(&fixture, &owner, client_id, invoice_id).await;
         assert_eq!(issued.outstanding_minor, 10_000);
@@ -6632,7 +6705,15 @@ mod postgres_tests {
         business_stream(&fixture, &owner).await;
         let client_id = private_stream(&fixture, "money-adjustment-client", &owner).await;
         let invoice_id = Uuid::new_v4();
-        seed_draft_invoice(&fixture, &owner, client_id, invoice_id, 10_000, None).await;
+        seed_draft_invoice(
+            &fixture,
+            &owner,
+            client_id,
+            invoice_id,
+            10_000,
+            Some(1_800_000_000),
+        )
+        .await;
         issue_test_invoice(&fixture, &owner, client_id, invoice_id).await;
 
         let (head_event, _head) = current_invoice_head(
@@ -6752,7 +6833,15 @@ mod postgres_tests {
         expect_event_missing(&fixture, &void_event).await;
 
         let writeoff_invoice = Uuid::new_v4();
-        seed_draft_invoice(&fixture, &owner, client_id, writeoff_invoice, 10_000, None).await;
+        seed_draft_invoice(
+            &fixture,
+            &owner,
+            client_id,
+            writeoff_invoice,
+            10_000,
+            Some(1_800_000_000),
+        )
+        .await;
         issue_test_invoice(&fixture, &owner, client_id, writeoff_invoice).await;
         let (writeoff_head_event, _writeoff_head) = current_invoice_head(
             &fixture.state,
@@ -6954,7 +7043,15 @@ mod postgres_tests {
         business_stream(&fixture, &owner).await;
         let client_id = private_stream(&fixture, "money-race-client", &owner).await;
         let invoice_id = Uuid::new_v4();
-        seed_draft_invoice(&fixture, &owner, client_id, invoice_id, 10_000, None).await;
+        seed_draft_invoice(
+            &fixture,
+            &owner,
+            client_id,
+            invoice_id,
+            10_000,
+            Some(1_800_000_000),
+        )
+        .await;
         let (head_event, _) = issue_test_invoice(&fixture, &owner, client_id, invoice_id).await;
         let expected_head = head_event.event.id.to_hex();
         let first = payment_evidence(client_id, invoice_id, &expected_head, 7_000, "ZAR");
