@@ -85,6 +85,7 @@ async fn propose_hire(
         member_proposal: None,
         secret_request: None,
         hire_proposal: Some(proposal.clone()),
+        duty_proposal: None,
         spend_allowance_proposal: None,
     };
     let action = AskAction {

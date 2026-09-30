@@ -57,41 +57,36 @@ pub async fn cmd_get_workflow(client: &BuzzClient, workflow_id: &str) -> Result<
     Ok(())
 }
 
-/// Get workflow run history — query kinds [46001, 46002, 46003].
-///
-/// NOTE: The relay does not currently emit workflow execution events (46001-46003).
-/// Run history is stored in the workflow_runs DB table, not as Nostr events.
-/// This command will return an empty array until the relay adds event emission
-/// or a dedicated REST endpoint for run history.
+/// Get the relay's authorized, keyset-paginated workflow run read model.
 pub async fn cmd_get_workflow_runs(
     client: &BuzzClient,
     workflow_id: &str,
     limit: Option<u32>,
 ) -> Result<(), CliError> {
-    validate_uuid(workflow_id)?;
-    let limit = limit.unwrap_or(20).min(100);
-    let filter = serde_json::json!({
-        "kinds": [46001, 46002, 46003],
-        "#d": [workflow_id],
-        "limit": limit
-    });
-    let resp = client.query(&filter).await?;
-    let events: Vec<serde_json::Value> = serde_json::from_str(&resp).unwrap_or_default();
-    let normalized: Vec<serde_json::Value> = events
-        .iter()
-        .map(|e| {
-            serde_json::json!({
-                "event_id": e.get("id").and_then(|v| v.as_str()).unwrap_or(""),
-                "kind": e.get("kind").and_then(|v| v.as_u64()).unwrap_or(0),
-                "content": e.get("content").and_then(|v| v.as_str()).unwrap_or(""),
-                "created_at": e.get("created_at").and_then(|v| v.as_u64()).unwrap_or(0),
-                "tags": e.get("tags").cloned().unwrap_or(serde_json::json!([])),
-            })
-        })
-        .collect();
-    let output = serde_json::to_string(&normalized).unwrap_or_default();
-    println!("{output}");
+    let runs = load_workflow_runs(client, workflow_id, limit).await?;
+    println!("{runs}");
     Ok(())
+}
+
+/// Load one bounded workflow run page from the existing authorized relay API.
+pub async fn load_workflow_runs(
+    client: &BuzzClient,
+    workflow_id: &str,
+    limit: Option<u32>,
+) -> Result<serde_json::Value, CliError> {
+    validate_uuid(workflow_id)?;
+    let limit = limit.unwrap_or(20).clamp(1, 100);
+    let response = client
+        .get_authed(&format!("/workflows/{workflow_id}/runs?limit={limit}"))
+        .await?;
+    let value: serde_json::Value = serde_json::from_str(&response)
+        .map_err(|error| CliError::Other(format!("invalid workflow runs response: {error}")))?;
+    if !value.get("runs").is_some_and(serde_json::Value::is_array) {
+        return Err(CliError::Other(
+            "workflow runs response is missing its runs array".into(),
+        ));
+    }
+    Ok(value)
 }
 
 /// Create a workflow — sign and submit a kind:30620 event.
