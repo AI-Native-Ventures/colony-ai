@@ -116,6 +116,22 @@ fn owner_identity(path: PathBuf, keypair: &OwnerKeypair) -> OwnerIdentity {
     }
 }
 
+/// Load the machine's Mesh owner identity without creating one when absent.
+pub fn existing_owner_identity() -> anyhow::Result<Option<OwnerIdentity>> {
+    let path = default_keystore_path()
+        .map_err(|error| anyhow::anyhow!("cannot resolve mesh owner keystore path: {error}"))?;
+    if !keystore_exists(&path) {
+        return Ok(None);
+    }
+    let keypair = load_keystore(&path, None).map_err(|error| {
+        anyhow::anyhow!(
+            "failed to load mesh owner keystore at {}: {error}",
+            path.display()
+        )
+    })?;
+    Ok(Some(owner_identity(path, &keypair)))
+}
+
 /// Load-or-generate the machine's mesh owner identity. Cached for the process
 /// lifetime — the keystore is stable once created.
 pub fn ensure_owner_identity() -> anyhow::Result<OwnerIdentity> {
