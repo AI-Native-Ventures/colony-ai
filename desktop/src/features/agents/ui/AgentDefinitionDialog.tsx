@@ -9,8 +9,6 @@ import type {
   UpdatePersonaInput,
 } from "@/shared/api/types";
 import { useAppShell } from "@/app/AppShellContext";
-import { useCommunities } from "@/features/communities/useCommunities";
-import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { cn } from "@/shared/lib/cn";
 import { Input } from "@/shared/ui/input";
 import { Textarea } from "@/shared/ui/textarea";
@@ -95,13 +93,9 @@ import {
   companyRoleDraftFromMetadata,
   companyRoleDraftIsValid,
   companyRoleMetadataFromDraft,
-  type CompanyRoleDraft,
 } from "./CompanyRoleFields";
-import {
-  readCompanyRoleDraft,
-  removeCompanyRoleDraft,
-  writeCompanyRoleDraft,
-} from "../companyRoleDraftStore";
+import { removeCompanyRoleDraft } from "../companyRoleDraftStore";
+import { useCompanyRoleEditorState } from "./useCompanyRoleEditorState";
 import {
   ADD_CUSTOM_HARNESS_OPTION,
   runtimeDropdownAction,
@@ -168,11 +162,6 @@ export function AgentDefinitionDialog({
   companyRoleMode = false,
 }: AgentDefinitionDialogProps) {
   const appShell = useAppShell();
-  const { activeCommunity } = useCommunities();
-  const roleDraftRelayUrl = activeCommunity?.relayUrl ?? null;
-  const roleDraftPersonaId =
-    initialValues && "id" in initialValues ? initialValues.id : "new";
-  const membershipQuery = useMyRelayMembershipQuery();
   const runtimesLoading = runtimeCatalogStatus === "loading";
   const [displayName, setDisplayName] = React.useState("");
   const [descriptionDraft, setDescriptionDraft] = React.useState("");
@@ -193,8 +182,6 @@ export function AgentDefinitionDialog({
   const [behaviorDraft, setBehaviorDraft] = React.useState(
     emptyPersonaBehaviorDraft,
   );
-  const [companyRoleDraft, setCompanyRoleDraft] =
-    React.useState<CompanyRoleDraft>(() => companyRoleDraftFromMetadata(null));
   const [modelDiscoveryRefreshToken, setModelDiscoveryRefreshToken] =
     React.useState(0);
   // The seed the draft is diffed against at submit: an untouched quad
@@ -228,19 +215,6 @@ export function AgentDefinitionDialog({
     [globalConfig.preferred_runtime, runtimes],
   );
   const isCreateMode = Boolean(initialValues && !("id" in initialValues));
-  const companyRoleRequested = Boolean(
-    companyRoleMode || initialValues?.companyRole,
-  );
-  const canCurateCompanyRoles =
-    membershipQuery.data?.role === "owner" ||
-    membershipQuery.data?.role === "admin";
-  const rolePackEditorVisible = companyRoleRequested && canCurateCompanyRoles;
-  const rolePackAccessPending = companyRoleMode && membershipQuery.isPending;
-  const rolePackAccessDenied =
-    companyRoleMode &&
-    !membershipQuery.isPending &&
-    !membershipQuery.isError &&
-    !canCurateCompanyRoles;
   const shouldReduceMotion = useReducedMotion();
   const initialModelProviderEditableWithoutRuntime = Boolean(
     initialValues &&
@@ -282,15 +256,6 @@ export function AgentDefinitionDialog({
     const nextBehaviorDraft = draftFromBehavior(initialValues.behavior);
     behaviorSeedRef.current = draftFromBehavior(initialValues.behavior);
     setBehaviorDraft(nextBehaviorDraft);
-    const storedRoleDraft = readCompanyRoleDraft(
-      roleDraftRelayUrl,
-      roleDraftPersonaId,
-    );
-    setCompanyRoleDraft(
-      storedRoleDraft?.roleDraft ??
-        companyRoleDraftFromMetadata(initialValues.companyRole),
-    );
-    if (storedRoleDraft) setDisplayName(storedRoleDraft.displayName);
     setNamePoolText(nextNamePoolText);
     setEnvVars(nextEnvVars);
     // Advanced always starts collapsed and only changes from its toggle.
@@ -299,7 +264,29 @@ export function AgentDefinitionDialog({
     setHasUserChanges(false);
     isRuntimeAutoSeededRef.current = false;
     hasSeededForOpenRef.current = false;
-  }, [initialValues, open, roleDraftPersonaId, roleDraftRelayUrl]);
+  }, [initialValues, open]);
+
+  const {
+    canCurateCompanyRoles,
+    companyRoleDraft,
+    companyRoleRequested,
+    membershipQuery,
+    roleDraftPersonaId,
+    roleDraftRelayUrl,
+    rolePackAccessDenied,
+    rolePackAccessPending,
+    rolePackEditorVisible,
+    setCompanyRoleDraft,
+    updateCompanyRoleDraft,
+    updateCompanyRoleTitle,
+  } = useCompanyRoleEditorState({
+    companyRoleMode,
+    open,
+    displayName,
+    initialValues,
+    setDisplayName,
+    setHasUserChanges,
+  });
 
   React.useEffect(() => {
     if (
@@ -775,23 +762,6 @@ export function AgentDefinitionDialog({
     isCustomProviderEditing,
     isCustomModelEditing,
     envVars,
-  };
-
-  const updateCompanyRoleDraft = (next: CompanyRoleDraft) => {
-    setHasUserChanges(true);
-    setCompanyRoleDraft(next);
-    writeCompanyRoleDraft(roleDraftRelayUrl, roleDraftPersonaId, {
-      displayName,
-      roleDraft: next,
-    });
-  };
-  const updateCompanyRoleTitle = (next: string) => {
-    setHasUserChanges(true);
-    setDisplayName(next);
-    writeCompanyRoleDraft(roleDraftRelayUrl, roleDraftPersonaId, {
-      displayName: next,
-      roleDraft: companyRoleDraft,
-    });
   };
 
   function applySelection(next: RuntimeModelProviderSelection) {
