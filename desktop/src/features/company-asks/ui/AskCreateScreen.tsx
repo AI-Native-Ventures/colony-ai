@@ -13,6 +13,8 @@ import { ChannelMemberInviteCard } from "@/features/channels/ui/ChannelMemberInv
 import { useChannelMessagesQuery } from "@/features/messages/hooks";
 import { getThreadReference } from "@/features/messages/lib/threading";
 import { isTimelineContentEvent } from "@/features/messages/lib/formatTimelineMessages";
+import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
+import { useEmployeeAllowanceHeadsQuery } from "@/features/power/spendRelay";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
 import { relayClient } from "@/shared/api/relayClient";
@@ -24,10 +26,12 @@ import {
   useAskHireProposal,
 } from "./HireProposalComposer";
 import { AskCreateSuccess } from "./AskCreateSuccess";
+import { AskDestinationStep } from "./AskDestinationStep";
 import { AskStandardComposer } from "./AskStandardComposer";
+import { MoneyAllowanceComposer } from "./MoneyAllowanceComposer";
+import { MoneyAllowanceChooser } from "./MoneyAllowanceChooser";
 import { KIND_ASK_ACTION } from "@/shared/constants/kinds";
 import { Button } from "@/shared/ui/button";
-import { Input } from "@/shared/ui/input";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import {
@@ -49,6 +53,7 @@ import {
   validateAskComposerDraft,
   type AskComposerDraft,
   type AskComposerErrors,
+  type AskComposerMoneyAllowanceContext,
   type AskComposerType,
 } from "../askComposer";
 
@@ -90,9 +95,11 @@ function threadLabel(event: RelayEvent | undefined) {
 export function AskCreateScreen({
   channelId,
   threadRootEventId,
+  initialType,
 }: {
   channelId: string | null;
   threadRootEventId: string | null;
+  initialType?: AskComposerType;
 }) {
   const queryClient = useQueryClient();
   const identityQuery = useIdentityQuery();
@@ -110,6 +117,7 @@ export function AskCreateScreen({
     channelId && threadRootEventId ? "compose" : "destination",
   );
   const [hireProposalReview, setHireProposalReview] = React.useState(false);
+  const [moneyProposalReview, setMoneyProposalReview] = React.useState(false);
   const [hireProposalId, setHireProposalId] = React.useState("");
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const membersQuery = useChannelMembersQuery(selectedChannelId || null);
@@ -128,10 +136,35 @@ export function AskCreateScreen({
   const profilesQuery = useUsersBatchQuery(memberPubkeys, {
     enabled: memberPubkeys.length > 0,
   });
-  const { goChannel, goToday, goHireRoles } = useAppNavigation();
-  const [draft, setDraft] = React.useState(EMPTY_ASK_COMPOSER_DRAFT);
+  const { goChannel, goToday, goHireRoles, goPower } = useAppNavigation();
+  const [draft, setDraft] = React.useState(() => ({
+    ...EMPTY_ASK_COMPOSER_DRAFT,
+    ...(initialType ? { type: initialType } : {}),
+  }));
+  const [moneyAllowanceChosen, setMoneyAllowanceChosen] = React.useState(
+    initialType !== "money_allowance_proposal",
+  );
+  const isMoneyProposal = draft.type === "money_allowance_proposal";
   const personasQuery = usePersonasQuery({
     enabled: draft.type === "hire_proposal",
+  });
+  const moneyTeamQuery = useCompanyTeamQuery(isMoneyProposal);
+  const moneyAllowancesQuery = useEmployeeAllowanceHeadsQuery(isMoneyProposal);
+  const moneyEmployees = React.useMemo(
+    () =>
+      (moneyTeamQuery.data?.members ?? []).filter(
+        (member) =>
+          member.kind === "employee" &&
+          member.position?.head.status !== "terminated",
+      ),
+    [moneyTeamQuery.data?.members],
+  );
+  const moneyEmployeePubkeys = React.useMemo(
+    () => moneyEmployees.map((employee) => employee.pubkey),
+    [moneyEmployees],
+  );
+  const moneyEmployeeProfilesQuery = useUsersBatchQuery(moneyEmployeePubkeys, {
+    enabled: isMoneyProposal && moneyEmployeePubkeys.length > 0,
   });
   const [errors, setErrors] = React.useState<AskComposerErrors>({});
   const [formError, setFormError] = React.useState<string | null>(null);
@@ -158,7 +191,58 @@ export function AskCreateScreen({
     setStep(channelId && threadRootEventId ? "compose" : "destination");
   }, [channelId, threadRootEventId]);
 
+  React.useEffect(() => {
+    setMoneyAllowanceChosen(initialType !== "money_allowance_proposal");
+    setDraft((current) => ({
+      ...current,
+      type: initialType ?? "approval",
+    }));
+    setMoneyProposalReview(false);
+  }, [initialType]);
+
   const currentPubkey = identityQuery.data?.pubkey ?? "";
+  const moneyEmployeeOptions = moneyEmployees.map((employee) => ({
+    pubkey: employee.pubkey,
+    label: resolveUserLabel({
+      pubkey: employee.pubkey,
+      currentPubkey,
+      fallbackName: employee.fallbackName ?? "AI employee",
+      profiles: moneyEmployeeProfilesQuery.data?.profiles,
+    }),
+    ...(moneyAllowancesQuery.data?.records.find(
+      (record) =>
+        record.head.employeePubkey.toLowerCase() ===
+        employee.pubkey.toLowerCase(),
+    )
+      ? {
+          allowance: moneyAllowancesQuery.data.records.find(
+            (record) =>
+              record.head.employeePubkey.toLowerCase() ===
+              employee.pubkey.toLowerCase(),
+          )?.head.allowance,
+        }
+      : {}),
+  }));
+  const selectedMoneyEmployee = moneyEmployeeOptions.find(
+    (employee) =>
+      employee.pubkey.toLowerCase() === draft.moneyEmployeePubkey.toLowerCase(),
+  );
+  const selectedMoneyAllowance = moneyAllowancesQuery.data?.records.find(
+    (record) =>
+      record.head.employeePubkey.toLowerCase() ===
+      draft.moneyEmployeePubkey.toLowerCase(),
+  );
+  const moneyAllowanceContext: AskComposerMoneyAllowanceContext | undefined =
+    selectedMoneyEmployee &&
+    moneyTeamQuery.isSuccess &&
+    moneyAllowancesQuery.isSuccess
+      ? {
+          employeePubkey: selectedMoneyEmployee.pubkey,
+          ...(selectedMoneyAllowance
+            ? { existing: selectedMoneyAllowance }
+            : {}),
+        }
+      : undefined;
   const channelName = channel?.name ?? "conversation";
   const contextReady = Boolean(
     selectedChannelId && (selectedThreadRootId || startNewThread),
@@ -213,9 +297,41 @@ export function AskCreateScreen({
     }),
     description: recipientDescription(member.isAgent),
   }));
+  const moneyApproverPubkeys = new Set(
+    (moneyTeamQuery.data?.relayMembers ?? [])
+      .filter((member) => member.role === "owner" || member.role === "admin")
+      .map((member) => normalizePubkey(member.pubkey)),
+  );
+  const moneyRecipientMembers = (membersQuery.data ?? []).filter(
+    (member) =>
+      !member.isAgent &&
+      normalizePubkey(member.pubkey) !== normalizePubkey(currentPubkey) &&
+      moneyApproverPubkeys.has(normalizePubkey(member.pubkey)),
+  );
+  const moneyRecipientOptions = moneyRecipientMembers.map((member) => ({
+    pubkey: member.pubkey,
+    label: resolveUserLabel({
+      pubkey: member.pubkey,
+      currentPubkey,
+      fallbackName: member.displayName,
+      profiles: profilesQuery.data?.profiles,
+    }),
+    description: "Owner or administrator",
+  }));
   const recipientLoading = membersQuery.isPending;
   const recipientError = membersQuery.isError;
   const recipientOptionsReady = membersQuery.isSuccess;
+  const moneyRecipientLoading =
+    membersQuery.isPending || moneyTeamQuery.isPending;
+  const moneyRecipientError = membersQuery.isError || moneyTeamQuery.isError;
+  const moneyRecipientOptionsReady =
+    membersQuery.isSuccess && moneyTeamQuery.isSuccess;
+  const moneyEmployeesLoading =
+    moneyTeamQuery.isPending || moneyAllowancesQuery.isPending;
+  const moneyEmployeesError =
+    moneyTeamQuery.isError || moneyAllowancesQuery.isError;
+  const moneyEmployeesReady =
+    moneyTeamQuery.isSuccess && moneyAllowancesQuery.isSuccess;
   const locked = isSending || pendingEvent !== null;
   const returnedToThread = React.useCallback(() => {
     if (!selectedChannelId) {
@@ -232,6 +348,10 @@ export function AskCreateScreen({
       void goChannel(selectedChannelId);
     }
   }, [goChannel, goToday, selectedChannelId, selectedThreadRootId]);
+
+  const returnedToPower = React.useCallback(() => {
+    void goPower();
+  }, [goPower]);
 
   const updateDraft = React.useCallback(
     <K extends keyof AskComposerDraft>(key: K, value: AskComposerDraft[K]) => {
@@ -327,12 +447,26 @@ export function AskCreateScreen({
   };
 
   const goBack = () => {
+    if (isMoneyProposal && !moneyAllowanceChosen) {
+      returnedToPower();
+      return;
+    }
     if (step !== "compose") {
       returnedToThread();
       return;
     }
     if (isHireProposal && hireProposalReview) {
       setHireProposalReview(false);
+      setFormError(null);
+      return;
+    }
+    if (isMoneyProposal && moneyProposalReview) {
+      setMoneyProposalReview(false);
+      setFormError(null);
+      return;
+    }
+    if (isMoneyProposal && moneyAllowanceChosen) {
+      setMoneyAllowanceChosen(false);
       setFormError(null);
       return;
     }
@@ -376,6 +510,7 @@ export function AskCreateScreen({
         ...(startNewThread ? {} : { threadRootEventId: selectedThreadRootId }),
       },
       hireContext,
+      moneyAllowanceContext,
     );
     setErrors(validation);
     setFormError(null);
@@ -400,6 +535,7 @@ export function AskCreateScreen({
           ...(hireId ? { hireId } : {}),
         },
         hireContext,
+        moneyAllowanceContext,
       );
       const signedEvent = await signRelayEvent({
         kind: KIND_ASK_ACTION,
@@ -427,6 +563,7 @@ export function AskCreateScreen({
         threadRootId: startNewThread ? signedEvent.id : selectedThreadRootId,
       });
     } catch (cause) {
+      if (isMoneyProposal) setMoneyProposalReview(false);
       setFormError(
         cause instanceof Error
           ? cause.message
@@ -452,6 +589,23 @@ export function AskCreateScreen({
     if (Object.keys(validation).length > 0) return;
     setHireProposalId((current) => current || crypto.randomUUID());
     setHireProposalReview(true);
+  };
+
+  const reviewMoneyProposal = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const validation = validateAskComposerDraft(
+      draft,
+      {
+        channelId: selectedChannelId,
+        ...(startNewThread ? {} : { threadRootEventId: selectedThreadRootId }),
+      },
+      hireContext,
+      moneyAllowanceContext,
+    );
+    setErrors(validation);
+    setFormError(null);
+    if (Object.keys(validation).length > 0) return;
+    setMoneyProposalReview(true);
   };
 
   const retryAsk = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -490,6 +644,15 @@ export function AskCreateScreen({
   const retryCurrentEvent = Boolean(pendingEvent);
   const submitForm = retryCurrentEvent ? retryAsk : sendAsk;
   const isHireProposal = draft.type === "hire_proposal";
+  const activeRecipientError = isMoneyProposal
+    ? moneyRecipientError
+    : recipientError;
+  const activeRecipientOptionsReady = isMoneyProposal
+    ? moneyRecipientOptionsReady
+    : recipientOptionsReady;
+  const channelPeople = isMoneyProposal
+    ? moneyRecipientOptions.length
+    : recipients.length;
   const submitLabel = isSending
     ? "Sending…"
     : retryCurrentEvent
@@ -498,8 +661,11 @@ export function AskCreateScreen({
         ? hireProposalReview
           ? "Submit proposal"
           : "Review proposal"
-        : "Send ask";
-  const channelPeople = recipients.length;
+        : isMoneyProposal
+          ? moneyProposalReview
+            ? "Submit request"
+            : "Review request"
+          : "Send ask";
   const recipientLoadingText = recipientLoading
     ? "Loading teammates…"
     : "Choose a person or AI employee";
@@ -507,14 +673,16 @@ export function AskCreateScreen({
     step === "compose" &&
     contextReady &&
     Boolean(channel?.isMember) &&
-    recipientOptionsReady &&
+    activeRecipientOptionsReady &&
     channelPeople > 0;
+  const moneyRecordsReady = moneyEmployeesReady;
   const canSubmit = retryCurrentEvent
     ? !isSending
     : canCreate &&
       Boolean(draft.addresseePubkey) &&
       !isSending &&
-      !recipientError;
+      !activeRecipientError &&
+      (!isMoneyProposal || moneyRecordsReady);
   const canContinue = Boolean(
     selectedChannelId &&
       channel?.isMember &&
@@ -535,8 +703,16 @@ export function AskCreateScreen({
   };
 
   const submitComposer = (event: React.FormEvent<HTMLFormElement>) => {
+    if (retryCurrentEvent) {
+      submitForm(event);
+      return;
+    }
     if (isHireProposal && !hireProposalReview) {
       reviewHireProposal(event);
+      return;
+    }
+    if (isMoneyProposal && !moneyProposalReview) {
+      reviewMoneyProposal(event);
       return;
     }
     submitForm(event);
@@ -545,14 +721,20 @@ export function AskCreateScreen({
   return (
     <div className="colony-ask-detail-screen">
       <GoalRouteHeader
-        title={isHireProposal ? "Propose a hire" : "Raise an ask"}
+        title={
+          isHireProposal
+            ? "Propose a hire"
+            : isMoneyProposal
+              ? "Request an allowance or cost approval"
+              : "Raise an ask"
+        }
       />
       <div
-        className={`colony-ask-detail-scroll${isHireProposal ? " colony-ask-detail-scroll--hire" : ""}`}
+        className={`colony-ask-detail-scroll${isHireProposal ? " colony-ask-detail-scroll--hire" : ""}${isMoneyProposal ? " colony-ask-detail-scroll--money" : ""}`}
       >
         <section
           aria-labelledby="ask-create-title"
-          className={`colony-ask-create-content${isHireProposal ? " colony-ask-create-content--hire" : ""}${hireProposalReview ? " colony-ask-create-content--hire-review" : ""}`}
+          className={`colony-ask-create-content${isHireProposal ? " colony-ask-create-content--hire" : ""}${hireProposalReview ? " colony-ask-create-content--hire-review" : ""}${isMoneyProposal ? " colony-ask-create-content--money" : ""}${moneyProposalReview ? " colony-ask-create-content--money-review" : ""}`}
         >
           <GoalRouteBackLink
             label={
@@ -560,7 +742,9 @@ export function AskCreateScreen({
                 ? "Back"
                 : isHireProposal
                   ? "Back"
-                  : "Change destination"
+                  : isMoneyProposal
+                    ? "Back"
+                    : "Change destination"
             }
             onClick={goBack}
             disabled={locked}
@@ -568,236 +752,80 @@ export function AskCreateScreen({
           {sentContext ? (
             <AskCreateSuccess
               title={
-                isHireProposal ? "Proposal raised" : "Ask raised in its thread"
+                isHireProposal
+                  ? "Proposal raised"
+                  : isMoneyProposal
+                    ? "Money request submitted"
+                    : "Ask raised in its thread"
               }
               description={
                 isHireProposal
                   ? "The proposal is waiting for review. No position or agent has been created."
                   : undefined
               }
-              message={`${draft.title.trim()} · #${channelName} / ${startNewThread ? draft.threadTitle.trim() : threadLabel(threadRoots.find((message) => message.id === sentContext.threadRootId) ?? threadRoots[0])}`}
+              message={
+                isMoneyProposal
+                  ? "No balance or spending limit changes until an authorized human approves."
+                  : `${draft.title.trim()} · #${channelName} / ${startNewThread ? draft.threadTitle.trim() : threadLabel(threadRoots.find((message) => message.id === sentContext.threadRootId) ?? threadRoots[0])}`
+              }
               actionLabel={
-                isHireProposal ? "View proposal" : "Open the conversation"
+                isHireProposal
+                  ? "View proposal"
+                  : isMoneyProposal
+                    ? "Open decision"
+                    : "Open the conversation"
               }
               onAction={openSentConversation}
             />
+          ) : isMoneyProposal && !moneyAllowanceChosen ? (
+            <MoneyAllowanceChooser
+              onSelect={() => {
+                setMoneyAllowanceChosen(true);
+                setStep("compose");
+              }}
+            />
           ) : step === "destination" ? (
-            <div className="colony-ask-context-step">
-              <h1 id="ask-create-title">Raise an ask</h1>
-              <div className="colony-ask-context-panel">
-                <h2>Where should the conversation happen?</h2>
-                <p>
-                  <strong>Every ask belongs to a thread</strong>
-                  <span>
-                    Choose a channel first, then an existing thread or a new
-                    discussion.
-                  </span>
-                </p>
-                {channelsQuery.isPending ? (
-                  <p role="status">Loading conversations…</p>
-                ) : channelsQuery.isError ? (
-                  <div role="alert">
-                    <p>Conversations could not load. Your ask draft is kept.</p>
-                    <Button
-                      onClick={() => void channelsQuery.refetch()}
-                      type="button"
-                      variant="outline"
-                    >
-                      Retry conversations
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <label htmlFor="ask-channel">Channel</label>
-                    <select
-                      id="ask-channel"
-                      onChange={(event) => changeChannel(event.target.value)}
-                      value={selectedChannelId}
-                    >
-                      <option value="">Choose channel</option>
-                      {(channelsQuery.data ?? [])
-                        .filter((candidate) => candidate.channelType !== "dm")
-                        .map((candidate) => (
-                          <option key={candidate.id} value={candidate.id}>
-                            {candidate.name}
-                          </option>
-                        ))}
-                    </select>
-                    {selectedChannelId && !channel ? (
-                      <p role="alert">
-                        This conversation is unavailable to your account.
-                      </p>
-                    ) : null}
-                    {channel && !channel.isMember ? (
-                      <p role="alert">
-                        You need to be a member of this conversation to raise an
-                        ask.
-                      </p>
-                    ) : null}
-                    {channel?.isMember ? (
-                      <>
-                        <fieldset
-                          aria-label="Thread destination"
-                          className="colony-ask-context-options"
-                        >
-                          <legend>Thread</legend>
-                          <label>
-                            <input
-                              checked={!startNewThread}
-                              name="ask-thread-mode"
-                              onChange={() => setStartNewThread(false)}
-                              type="radio"
-                            />
-                            Existing thread
-                          </label>
-                          <label>
-                            <input
-                              checked={startNewThread}
-                              name="ask-thread-mode"
-                              onChange={() => {
-                                setSelectedThreadRootId("");
-                                setStartNewThread(true);
-                              }}
-                              type="radio"
-                            />
-                            Start a new thread
-                          </label>
-                        </fieldset>
-                        {startNewThread ? (
-                          <>
-                            <label htmlFor="ask-thread-title">
-                              New thread title
-                            </label>
-                            <Input
-                              aria-describedby={
-                                errors.threadTitle
-                                  ? "ask-thread-title-error"
-                                  : undefined
-                              }
-                              aria-invalid={Boolean(errors.threadTitle)}
-                              id="ask-thread-title"
-                              maxLength={180}
-                              onChange={(event) =>
-                                updateDraft("threadTitle", event.target.value)
-                              }
-                              value={draft.threadTitle}
-                            />
-                            {errors.threadTitle ? (
-                              <span
-                                className="colony-ask-compose-error"
-                                id="ask-thread-title-error"
-                                role="alert"
-                              >
-                                {errors.threadTitle}
-                              </span>
-                            ) : null}
-                            <label htmlFor="ask-thread-context">
-                              Opening context, optional
-                            </label>
-                            <textarea
-                              aria-describedby={
-                                errors.threadContext
-                                  ? "ask-thread-context-error"
-                                  : undefined
-                              }
-                              aria-invalid={Boolean(errors.threadContext)}
-                              id="ask-thread-context"
-                              maxLength={4000}
-                              onChange={(event) =>
-                                updateDraft("threadContext", event.target.value)
-                              }
-                              rows={4}
-                              value={draft.threadContext}
-                            />
-                            {errors.threadContext ? (
-                              <span
-                                className="colony-ask-compose-error"
-                                id="ask-thread-context-error"
-                                role="alert"
-                              >
-                                {errors.threadContext}
-                              </span>
-                            ) : null}
-                          </>
-                        ) : messagesQuery.isPending ? (
-                          <p role="status">Loading threads…</p>
-                        ) : messagesQuery.isError ? (
-                          <div role="alert">
-                            <p>
-                              Threads could not load. Your ask draft is kept.
-                            </p>
-                            <Button
-                              onClick={retryThreads}
-                              type="button"
-                              variant="outline"
-                            >
-                              Retry threads
-                            </Button>
-                          </div>
-                        ) : threadRoots.length === 0 ? (
-                          <div className="colony-ask-context-empty">
-                            <strong>No threads in this channel yet</strong>
-                            <span>
-                              Start a thread for this discussion. The ask and
-                              its responses will live there.
-                            </span>
-                            <Button
-                              onClick={() => setStartNewThread(true)}
-                              type="button"
-                              variant="outline"
-                            >
-                              Start a thread
-                            </Button>
-                          </div>
-                        ) : (
-                          <div
-                            aria-label="Threads"
-                            className="colony-ask-thread-list"
-                            role="radiogroup"
-                          >
-                            {threadRoots.map((thread) => (
-                              <label key={thread.id}>
-                                <input
-                                  checked={selectedThreadRootId === thread.id}
-                                  name="ask-existing-thread"
-                                  onChange={() =>
-                                    setSelectedThreadRootId(thread.id)
-                                  }
-                                  type="radio"
-                                />
-                                <span>{threadLabel(thread)}</span>
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                      </>
-                    ) : null}
-                    {channel?.isMember ? (
-                      <div className="colony-ask-compose-actions">
-                        <Button
-                          disabled={!canContinue}
-                          onClick={continueToAsk}
-                          type="button"
-                        >
-                          Continue to ask
-                        </Button>
-                        <Button
-                          onClick={returnedToThread}
-                          type="button"
-                          variant="outline"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    ) : null}
-                  </>
-                )}
-              </div>
-            </div>
-          ) : !contextReady || !channel?.isMember ? (
+            <AskDestinationStep
+              channels={(channelsQuery.data ?? []).filter(
+                (candidate) => candidate.channelType !== "dm",
+              )}
+              channelsPending={channelsQuery.isPending}
+              channelsError={channelsQuery.isError}
+              selectedChannelId={selectedChannelId}
+              channelIsMember={Boolean(channel?.isMember)}
+              selectedChannelExists={Boolean(channel)}
+              startNewThread={startNewThread}
+              selectedThreadRootId={selectedThreadRootId}
+              threadOptions={threadRoots.map((thread) => ({
+                id: thread.id,
+                label: threadLabel(thread),
+              }))}
+              threadsPending={messagesQuery.isPending}
+              threadsError={messagesQuery.isError}
+              draft={draft}
+              errors={errors}
+              canContinue={canContinue}
+              onChangeChannel={changeChannel}
+              onChooseExistingThread={() => setStartNewThread(false)}
+              onStartNewThread={() => {
+                setSelectedThreadRootId("");
+                setStartNewThread(true);
+              }}
+              onSelectThread={setSelectedThreadRootId}
+              onRetryChannels={() => void channelsQuery.refetch()}
+              onRetryThreads={retryThreads}
+              onContinue={continueToAsk}
+              onCancel={returnedToThread}
+              onUpdateDraft={updateDraft}
+            />
+          ) : (!contextReady || !channel?.isMember) && !isMoneyProposal ? (
             <div className="colony-ask-route-state" role="alert">
               <h1 id="ask-create-title">
-                {isHireProposal ? "Propose a hire" : "Raise an ask"}
+                {isHireProposal
+                  ? "Propose a hire"
+                  : isMoneyProposal
+                    ? "Request an allowance or cost approval"
+                    : "Raise an ask"}
               </h1>
               <p>
                 This conversation is unavailable. Choose a conversation you can
@@ -807,16 +835,20 @@ export function AskCreateScreen({
           ) : (
             <>
               <h1 id="ask-create-title">
-                {isHireProposal ? "Propose a hire" : "Raise an ask"}
+                {isHireProposal
+                  ? "Propose a hire"
+                  : isMoneyProposal
+                    ? "Request an allowance or cost approval"
+                    : "Raise an ask"}
               </h1>
               <div
-                className={`colony-ask-create-grid${isHireProposal ? " colony-ask-create-grid--hire" : ""}${hireProposalReview ? " colony-ask-create-grid--hire-review" : ""}`}
+                className={`colony-ask-create-grid${isHireProposal ? " colony-ask-create-grid--hire" : ""}${hireProposalReview ? " colony-ask-create-grid--hire-review" : ""}${isMoneyProposal ? " colony-ask-create-grid--money" : ""}`}
               >
                 <section
                   aria-label="Ask details"
                   className="colony-ask-create-main"
                 >
-                  {!isHireProposal ? (
+                  {!isHireProposal && !isMoneyProposal ? (
                     <p className="colony-ask-create-context">
                       <strong>#{channelName}</strong>
                       {startNewThread
@@ -831,7 +863,7 @@ export function AskCreateScreen({
                   <fieldset
                     aria-label="Ask type"
                     className="colony-ask-create-types"
-                    hidden={isHireProposal}
+                    hidden={isHireProposal || isMoneyProposal}
                   >
                     <legend className="sr-only">Ask type</legend>
                     {ASK_TYPES.map((type) => (
@@ -850,14 +882,14 @@ export function AskCreateScreen({
                       </Button>
                     ))}
                   </fieldset>
-                  {recipientLoading ? (
+                  {!isHireProposal && !isMoneyProposal && recipientLoading ? (
                     <p
                       className="colony-ask-create-recipient-state"
                       role="status"
                     >
                       {recipientLoadingText}
                     </p>
-                  ) : recipientError ? (
+                  ) : !isHireProposal && !isMoneyProposal && recipientError ? (
                     <div
                       className="colony-ask-create-recipient-state"
                       role="alert"
@@ -871,7 +903,9 @@ export function AskCreateScreen({
                         Retry teammates
                       </Button>
                     </div>
-                  ) : !recipientOptionsReady || channelPeople === 0 ? (
+                  ) : !isHireProposal &&
+                    !isMoneyProposal &&
+                    (!recipientOptionsReady || channelPeople === 0) ? (
                     <div
                       className="colony-ask-create-recipient-state"
                       role="status"
@@ -897,8 +931,8 @@ export function AskCreateScreen({
                     </div>
                   ) : null}
                   <form
-                    className={`colony-ask-compose-form${isHireProposal && !hireProposalReview ? " colony-ask-hire-form" : ""}${hireProposalReview ? " colony-ask-hire-review-form" : ""}`}
-                    noValidate={isHireProposal}
+                    className={`colony-ask-compose-form${isHireProposal && !hireProposalReview ? " colony-ask-hire-form" : ""}${hireProposalReview ? " colony-ask-hire-review-form" : ""}${isMoneyProposal ? " colony-ask-money-form" : ""}${isMoneyProposal && moneyProposalReview ? " colony-ask-money-review-form" : ""}`}
+                    noValidate={isHireProposal || isMoneyProposal}
                     onSubmit={submitComposer}
                   >
                     {isHireProposal ? (
@@ -943,6 +977,60 @@ export function AskCreateScreen({
                         onRetryRoleOptions={() => void personasQuery.refetch()}
                         onOpenRoleCatalog={() => void goHireRoles()}
                       />
+                    ) : isMoneyProposal ? (
+                      <MoneyAllowanceComposer
+                        draft={draft}
+                        errors={errors}
+                        locked={locked}
+                        review={moneyProposalReview}
+                        channelOptions={(channelsQuery.data ?? [])
+                          .filter(
+                            (candidate) =>
+                              candidate.channelType !== "dm" &&
+                              candidate.isMember,
+                          )
+                          .map((candidate) => ({
+                            id: candidate.id,
+                            name: candidate.name,
+                          }))}
+                        selectedChannelId={selectedChannelId}
+                        selectedThreadRootId={selectedThreadRootId}
+                        startNewThread={startNewThread}
+                        threadOptions={threadRoots.map((thread) => ({
+                          id: thread.id,
+                          label: threadLabel(thread),
+                        }))}
+                        threadsPending={messagesQuery.isPending}
+                        threadsError={messagesQuery.isError}
+                        recipientOptions={moneyRecipientOptions}
+                        recipientLoading={moneyRecipientLoading}
+                        recipientError={moneyRecipientError}
+                        channelsPending={channelsQuery.isPending}
+                        channelsError={channelsQuery.isError}
+                        employeeOptions={moneyEmployeeOptions}
+                        employeesLoading={moneyEmployeesLoading}
+                        employeesError={moneyEmployeesError}
+                        channelHasOtherMembers={
+                          moneyRecipientMembers.length > 0 ||
+                          (membersQuery.data ?? []).some(
+                            (member) =>
+                              normalizePubkey(member.pubkey) !==
+                              normalizePubkey(currentPubkey),
+                          )
+                        }
+                        canInviteToChannel={canInviteToChannel}
+                        onUpdateDraft={updateDraft}
+                        onChangeChannel={changeChannel}
+                        onChangeThread={changeHireThread}
+                        onRetryChannels={() => void channelsQuery.refetch()}
+                        onRetryThreads={retryThreads}
+                        onRetryEmployees={() => {
+                          void moneyTeamQuery.refetch();
+                          void moneyAllowancesQuery.refetch();
+                        }}
+                        onRetryRecipients={retryRecipients}
+                        onInvite={() => setInviteOpen(true)}
+                      />
                     ) : (
                       <AskStandardComposer
                         draft={draft}
@@ -961,14 +1049,18 @@ export function AskCreateScreen({
                         <strong>
                           {isHireProposal
                             ? "Could not save"
-                            : "Ask was not sent"}
+                            : isMoneyProposal
+                              ? "Money request was not sent"
+                              : "Ask was not sent"}
                         </strong>
                         <p>{formError}</p>
                         {pendingEvent ? (
                           <p className="colony-ask-compose-retained">
                             {isHireProposal
                               ? "Your inputs are kept. Retry sends the same proposal."
-                              : "Your wording and response details are kept. Retry sends the same ask."}
+                              : isMoneyProposal
+                                ? "Your inputs are kept. Retry sends the same request."
+                                : "Your wording and response details are kept. Retry sends the same ask."}
                           </p>
                         ) : null}
                       </div>
@@ -989,9 +1081,22 @@ export function AskCreateScreen({
                         >
                           Edit proposal
                         </Button>
+                      ) : isMoneyProposal && moneyProposalReview ? (
+                        <Button
+                          disabled={locked}
+                          onClick={() => {
+                            setMoneyProposalReview(false);
+                            setFormError(null);
+                          }}
+                          type="button"
+                          variant="outline"
+                        >
+                          Edit request
+                        </Button>
                       ) : (
                         <Button
-                          onClick={returnedToThread}
+                          disabled={locked}
+                          onClick={isMoneyProposal ? goBack : returnedToThread}
                           type="button"
                           variant="outline"
                         >
@@ -1002,7 +1107,7 @@ export function AskCreateScreen({
                   </form>
                 </section>
 
-                {!hireProposalReview ? (
+                {!isMoneyProposal && !hireProposalReview ? (
                   <aside
                     aria-label={
                       isHireProposal

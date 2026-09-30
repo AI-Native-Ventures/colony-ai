@@ -12,6 +12,8 @@ const CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const THREAD_ROOT = "a".repeat(64);
 const ASK_ID = "7245ba1a-e078-42ef-b896-00be34a94f11";
 const ADDRESSEE = "e".repeat(64);
+const MONEY_EMPLOYEE = "f".repeat(64);
+const MONEY_ALLOWANCE_HEAD = "b".repeat(64);
 
 function validDraft(type) {
   return {
@@ -251,6 +253,112 @@ test("hire proposals require an explicit supported allowance period and reason",
       hire,
     ).hireAllowancePeriod ?? "",
     /available allowance period/i,
+  );
+});
+
+test("permanent allowance requests use a real employee and no default values", () => {
+  const draft = {
+    ...validDraft("money_allowance_proposal"),
+    moneyEmployeePubkey: MONEY_EMPLOYEE,
+    moneyDuration: "permanent",
+    moneyAllowance: "125.50",
+    moneyAllowancePeriod: "week",
+    moneyReason:
+      "The configured weekly allowance no longer covers the workload.",
+  };
+  const allowance = { employeePubkey: MONEY_EMPLOYEE };
+  const action = buildAskCreateAction(
+    draft,
+    { ...coordinates, askId: ASK_ID },
+    undefined,
+    allowance,
+  );
+
+  assert.equal(action.ask.type, "approval");
+  assert.equal(action.ask.category, "money");
+  assert.equal(action.ask.title, "Allowance change request");
+  assert.equal(action.ask.body, draft.moneyReason);
+  assert.deepEqual(action.ask.subject, {
+    kind: "companyMember",
+    id: MONEY_EMPLOYEE,
+  });
+  assert.deepEqual(action.ask.spendAllowanceProposal, {
+    schemaVersion: 1,
+    employeePubkey: MONEY_EMPLOYEE,
+    allowance: { amountCents: "12550", period: "week" },
+    fundingOrder: [],
+  });
+});
+
+test("temporary allowance requests preserve the configured head and need a valid end date", () => {
+  const draft = {
+    ...validDraft("money_allowance_proposal"),
+    moneyEmployeePubkey: MONEY_EMPLOYEE,
+    moneyDuration: "temporary",
+    moneyAllowance: "125.50",
+    moneyAllowancePeriod: "week",
+    moneyEndDate: "2026-10-05",
+    moneyReason: "The approved project needs a short term increase.",
+  };
+  const allowance = {
+    employeePubkey: MONEY_EMPLOYEE,
+    existing: {
+      event: { id: MONEY_ALLOWANCE_HEAD },
+      head: {
+        allowance: { amountCents: "10000", period: "week" },
+        fundingOrder: ["Existing provider subscription"],
+      },
+    },
+  };
+  const errors = validateAskComposerDraft(
+    draft,
+    coordinates,
+    undefined,
+    allowance,
+    new Date("2026-09-30T12:00:00Z"),
+  );
+  assert.deepEqual(errors, {});
+
+  const action = buildAskCreateAction(
+    draft,
+    { ...coordinates, askId: ASK_ID },
+    undefined,
+    allowance,
+  );
+  assert.deepEqual(action.ask.spendAllowanceProposal, {
+    schemaVersion: 1,
+    employeePubkey: MONEY_EMPLOYEE,
+    expectedHeadEventId: MONEY_ALLOWANCE_HEAD,
+    allowance: { amountCents: "10000", period: "week" },
+    temporaryAllowance: {
+      allowance: { amountCents: "12550", period: "week" },
+      expiresAt: "2026-10-05T23:59:59.999Z",
+    },
+    fundingOrder: ["Existing provider subscription"],
+  });
+
+  assert.match(
+    validateAskComposerDraft(
+      { ...draft, moneyEndDate: "2026-02-31" },
+      coordinates,
+      undefined,
+      allowance,
+      new Date("2026-01-01T00:00:00Z"),
+    ).moneyEndDate ?? "",
+    /future end date/i,
+  );
+  assert.match(
+    validateAskComposerDraft(
+      { ...draft, moneyAllowance: "0" },
+      coordinates,
+      undefined,
+      allowance,
+    ).moneyAllowance ?? "",
+    /positive usd amount/i,
+  );
+  assert.match(
+    validateAskComposerDraft(draft, coordinates).moneyEmployeePubkey ?? "",
+    /unavailable/i,
   );
 });
 

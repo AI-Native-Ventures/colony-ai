@@ -1,5 +1,6 @@
 import * as React from "react";
 import { ArrowLeft, CreditCard, History } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
 import {
@@ -116,6 +117,9 @@ export function PowerScreen({
   const identityQuery = useIdentityQuery();
   const employees = (teamQuery.data?.members ?? []).filter(
     (member): member is TeamMember => member.kind === "employee",
+  );
+  const activeEmployees = employees.filter(
+    (employee) => employee.position?.head.status !== "terminated",
   );
   const profilesQuery = useUsersBatchQuery(
     employees.map((member) => member.pubkey),
@@ -258,10 +262,29 @@ export function PowerScreen({
         <>
           <PageHeader
             action={
-              section === "overview" && canManage ? (
-                <Button onClick={onOpenNewCost} size="sm" type="button">
-                  Record external AI cost
-                </Button>
+              section === "overview" &&
+              (canManage || activeEmployees.length > 0) ? (
+                <div className="flex flex-wrap justify-end gap-2">
+                  {activeEmployees.length > 0 ? (
+                    <Button asChild size="sm" type="button" variant="outline">
+                      <Link
+                        search={{
+                          channelId: null,
+                          threadRootEventId: null,
+                          type: "money",
+                        }}
+                        to="/asks/new"
+                      >
+                        Request allowance change
+                      </Link>
+                    </Button>
+                  ) : null}
+                  {canManage ? (
+                    <Button onClick={onOpenNewCost} size="sm" type="button">
+                      Record external AI cost
+                    </Button>
+                  ) : null}
+                </div>
               ) : section === "history" ? (
                 <Button
                   onClick={() => onSectionChange("checkout")}

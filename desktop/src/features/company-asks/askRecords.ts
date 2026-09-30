@@ -1,6 +1,7 @@
 import { verifyEvent } from "nostr-tools/pure";
 
 import { parseMemberPositionAction } from "@/features/company-team/teamModels";
+import type { EmployeeAllowanceAction } from "@/features/power/spendModels";
 import { KIND_ASK_HEAD } from "@/shared/constants/kinds";
 import { MAX_EXPLICIT_CHANNEL_VALUES } from "@/shared/api/relayClientShared";
 import { relayClient } from "@/shared/api/relayClient";
@@ -87,6 +88,7 @@ export type AskRecord = {
     | import("@/features/company-team/teamModels").MemberPositionAction
     | null;
   hireProposal?: HireProposal | null;
+  spendAllowanceProposal?: EmployeeAllowanceAction | null;
   toolConsent?: ToolConsentPreview | null;
   secretRequest?: SecretAskRequest | null;
 };
@@ -273,6 +275,100 @@ function parseHireProposal(value: unknown): HireProposal | null {
   return proposal;
 }
 
+function parseSpendAllowanceProposal(
+  value: unknown,
+): EmployeeAllowanceAction | null {
+  if (!isRecord(value) || !isRecord(value.allowance)) return null;
+  const allowance = value.allowance;
+  const periodValid = (period: unknown) =>
+    period === "day" || period === "week" || period === "month";
+  const parseAmount = (amount: unknown) => {
+    if (
+      typeof amount !== "string" ||
+      amount.length > 20 ||
+      !/^(0|[1-9][0-9]*)$/.test(amount)
+    ) {
+      return null;
+    }
+    const cents = BigInt(amount);
+    return cents <= (1n << 64n) - 1n ? cents : null;
+  };
+  const expectedHeadEventId = value.expectedHeadEventId;
+  const rawTemporary = value.temporaryAllowance;
+  const temporary =
+    rawTemporary === undefined || rawTemporary === null
+      ? undefined
+      : isRecord(rawTemporary) && isRecord(rawTemporary.allowance)
+        ? rawTemporary
+        : null;
+  const allowanceAmount = parseAmount(allowance.amountCents);
+  const temporaryAllowance =
+    temporary && isRecord(temporary.allowance) ? temporary.allowance : null;
+  const temporaryAmount = temporaryAllowance
+    ? parseAmount(temporaryAllowance.amountCents)
+    : null;
+  const fundingOrder = value.fundingOrder;
+  if (
+    Object.keys(value).some(
+      (key) =>
+        ![
+          "schemaVersion",
+          "employeePubkey",
+          "expectedHeadEventId",
+          "allowance",
+          "temporaryAllowance",
+          "fundingOrder",
+        ].includes(key),
+    ) ||
+    value.schemaVersion !== 1 ||
+    typeof value.employeePubkey !== "string" ||
+    !/^[0-9a-f]{64}$/i.test(value.employeePubkey) ||
+    (expectedHeadEventId !== undefined &&
+      (typeof expectedHeadEventId !== "string" ||
+        !/^[0-9a-f]{64}$/i.test(expectedHeadEventId))) ||
+    Object.keys(allowance).some(
+      (key) => !["amountCents", "period"].includes(key),
+    ) ||
+    allowanceAmount === null ||
+    !periodValid(allowance.period) ||
+    temporary === null ||
+    (temporary !== undefined &&
+      (temporary === null ||
+        temporaryAllowance === null ||
+        Object.keys(temporary).some(
+          (key) => !["allowance", "expiresAt"].includes(key),
+        ) ||
+        Object.keys(temporaryAllowance).some(
+          (key) => !["amountCents", "period"].includes(key),
+        ) ||
+        temporaryAmount === null ||
+        !periodValid(temporaryAllowance.period) ||
+        temporaryAllowance.period !== allowance.period ||
+        temporaryAmount < allowanceAmount ||
+        typeof temporary.expiresAt !== "string" ||
+        !Number.isFinite(Date.parse(temporary.expiresAt)))) ||
+    !Array.isArray(fundingOrder) ||
+    fundingOrder.length > 12 ||
+    fundingOrder.some(
+      (entry) =>
+        typeof entry !== "string" ||
+        !entry.trim() ||
+        entry.trim() !== entry ||
+        Array.from(entry).length > 64 ||
+        entry.includes("→") ||
+        Array.from(entry).some((character) => {
+          const code = character.charCodeAt(0);
+          return code < 32 || code === 127;
+        }),
+    ) ||
+    new Set(fundingOrder.map((entry) => entry.toLowerCase())).size !==
+      fundingOrder.length
+  ) {
+    return null;
+  }
+  return value as unknown as EmployeeAllowanceAction;
+}
+
 function parseAskHead(content: string): AskHead {
   let value: unknown;
   try {
@@ -316,6 +412,11 @@ function parseAskHead(content: string): AskHead {
     ask.hireProposal === undefined || ask.hireProposal === null
       ? null
       : parseHireProposal(ask.hireProposal);
+  const spendAllowanceProposal =
+    ask.spendAllowanceProposal === undefined ||
+    ask.spendAllowanceProposal === null
+      ? null
+      : parseSpendAllowanceProposal(ask.spendAllowanceProposal);
   const secretRequest = ask.secretRequest;
   const invalidSecretRequest =
     ask.category === "secret"
@@ -358,7 +459,9 @@ function parseAskHead(content: string): AskHead {
         memberProposal.action === "rehire"
           ? ask.category !== "hire"
           : ask.category !== "general"))) ||
-    (subject?.kind === "companyMember" && memberProposal === null);
+    (subject?.kind === "companyMember" &&
+      memberProposal === null &&
+      spendAllowanceProposal === null);
   const invalidHireProposal =
     (ask.hireProposal !== undefined &&
       ask.hireProposal !== null &&
@@ -370,6 +473,20 @@ function parseAskHead(content: string): AskHead {
         subject.id !== hireProposal.hireId ||
         memberProposal !== null)) ||
     (subject?.kind === "hire" && hireProposal === null);
+  const invalidSpendAllowanceProposal =
+    (ask.spendAllowanceProposal !== undefined &&
+      ask.spendAllowanceProposal !== null &&
+      !spendAllowanceProposal) ||
+    (spendAllowanceProposal !== null &&
+      (ask.type !== "approval" ||
+        ask.category !== "money" ||
+        subject?.kind !== "companyMember" ||
+        subject.id !== spendAllowanceProposal.employeePubkey ||
+        memberProposal !== null ||
+        hireProposal !== null ||
+        ask.secretRequest != null ||
+        ask.options != null ||
+        ask.items != null));
   if (
     head.schemaVersion !== 1 ||
     typeof head.askId !== "string" ||
@@ -389,6 +506,7 @@ function parseAskHead(content: string): AskHead {
     !validThreadStart ||
     invalidSecretRequest ||
     !validToolConsent ||
+    invalidSpendAllowanceProposal ||
     (ask.type === "tool_consent" &&
       (ask.category !== "tool" || !isRecord(toolConsent))) ||
     (ask.type !== "tool_consent" && toolConsent != null)

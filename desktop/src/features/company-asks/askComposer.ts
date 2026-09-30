@@ -1,6 +1,11 @@
+import type { EmployeeAllowanceAction } from "@/features/power/spendModels";
 import type { AskType, HireProposal } from "./askRecords";
 
-export type AskComposerType = AskType | "hire_proposal";
+export type AskComposerType =
+  | AskType
+  | "hire_proposal"
+  | "money_allowance_proposal";
+export type AskComposerAllowancePeriod = "day" | "week" | "month";
 
 /** Editable fields for the supported ask types and typed hire proposals. */
 export type AskComposerDraft = {
@@ -19,6 +24,12 @@ export type AskComposerDraft = {
   hireReason: string;
   hireAllowance: string;
   hireAllowancePeriod: "" | "day" | "week" | "month";
+  moneyEmployeePubkey: string;
+  moneyDuration: "" | "permanent" | "temporary";
+  moneyAllowance: string;
+  moneyAllowancePeriod: "" | AskComposerAllowancePeriod;
+  moneyEndDate: string;
+  moneyReason: string;
 };
 
 /** Field-level validation feedback for the create form. */
@@ -38,6 +49,18 @@ export type AskComposerHireContext = Pick<
   "rolePack" | "runtimeId" | "providerId" | "modelId"
 >;
 
+/** Live employee allowance head used to prepare a versioned approval ask. */
+export type AskComposerMoneyAllowanceContext = {
+  employeePubkey: string;
+  existing?: {
+    event: { id: string };
+    head: {
+      allowance: { amountCents: string; period: AskComposerAllowancePeriod };
+      fundingOrder: string[];
+    };
+  };
+};
+
 /** Kind 47032 command content for creating one ask. */
 export type AskCreateAction = {
   schemaVersion: 1;
@@ -47,7 +70,7 @@ export type AskCreateAction = {
     schemaVersion: 1;
     askId: string;
     type: AskType;
-    category: "general" | "hire";
+    category: "general" | "hire" | "money";
     title: string;
     body?: string;
     threadRootEventId?: string;
@@ -56,8 +79,9 @@ export type AskCreateAction = {
     decideBy?: string;
     options?: Array<{ id: string; label: string }>;
     items?: Array<{ id: string; label: string }>;
-    subject?: { kind: "hire"; id: string };
+    subject?: { kind: "hire" | "companyMember"; id: string };
     hireProposal?: HireProposal;
+    spendAllowanceProposal?: EmployeeAllowanceAction;
   };
 };
 
@@ -78,11 +102,34 @@ export const EMPTY_ASK_COMPOSER_DRAFT: AskComposerDraft = {
   hireReason: "",
   hireAllowance: "",
   hireAllowancePeriod: "",
+  moneyEmployeePubkey: "",
+  moneyDuration: "",
+  moneyAllowance: "",
+  moneyAllowancePeriod: "",
+  moneyEndDate: "",
+  moneyReason: "",
 };
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HEX_ID_PATTERN = /^[0-9a-f]{64}$/i;
+const ALLOWANCE_PERIODS = new Set<AskComposerAllowancePeriod>([
+  "day",
+  "week",
+  "month",
+]);
+const MAX_ALLOWANCE_CENTS = (1n << 64n) - 1n;
+
+function allowanceCents(value: string) {
+  const normalized = value.trim();
+  if (normalized.length > 21) return null;
+  const match = /^(0|[1-9][0-9]*)(?:\.([0-9]{1,2}))?$/.exec(normalized);
+  if (!match) return null;
+  const whole = BigInt(match[1] ?? "0");
+  const fraction = BigInt((match[2] ?? "").padEnd(2, "0") || "0");
+  const cents = whole * 100n + fraction;
+  return cents <= MAX_ALLOWANCE_CENTS ? cents : null;
+}
 
 function listItems(value: string) {
   return value
@@ -96,6 +143,8 @@ export function validateAskComposerDraft(
   draft: AskComposerDraft,
   coordinates?: Pick<AskComposerCoordinates, "channelId" | "threadRootEventId">,
   hire?: AskComposerHireContext,
+  moneyAllowance?: AskComposerMoneyAllowanceContext,
+  now = new Date(),
 ): AskComposerErrors {
   const errors: AskComposerErrors = {};
   if (draft.type === "hire_proposal") {
@@ -135,6 +184,73 @@ export function validateAskComposerDraft(
         !hire.rolePack.workerMenu.includes(hire.runtimeId))
     ) {
       errors.hireRolePackId = "The selected role has no configured runtime.";
+    }
+  } else if (draft.type === "money_allowance_proposal") {
+    if (!HEX_ID_PATTERN.test(draft.moneyEmployeePubkey)) {
+      errors.moneyEmployeePubkey =
+        "Choose an employee with a real allowance record.";
+    } else if (
+      !moneyAllowance ||
+      moneyAllowance.employeePubkey.toLowerCase() !==
+        draft.moneyEmployeePubkey.toLowerCase()
+    ) {
+      errors.moneyEmployeePubkey = "The selected employee is unavailable.";
+    }
+    if (
+      draft.moneyDuration !== "permanent" &&
+      draft.moneyDuration !== "temporary"
+    ) {
+      errors.moneyDuration = "Choose a change duration.";
+    }
+    const cents = allowanceCents(draft.moneyAllowance);
+    if (cents === null || cents === 0n) {
+      errors.moneyAllowance =
+        "Enter a positive USD amount with up to two decimal places.";
+    }
+    if (
+      !ALLOWANCE_PERIODS.has(
+        draft.moneyAllowancePeriod as AskComposerAllowancePeriod,
+      )
+    ) {
+      errors.moneyAllowancePeriod = "Choose an allowance period.";
+    }
+    if (!draft.moneyReason.trim()) {
+      errors.moneyReason = "Add a reason for the allowance change.";
+    } else if (Array.from(draft.moneyReason).length > 1000) {
+      errors.moneyReason = "Use 1,000 characters or fewer.";
+    }
+    if (draft.moneyDuration === "temporary") {
+      const existing = moneyAllowance?.existing;
+      if (!existing) {
+        errors.moneyDuration =
+          "A temporary change needs a configured permanent allowance.";
+      } else {
+        if (draft.moneyAllowancePeriod !== existing.head.allowance.period) {
+          errors.moneyAllowancePeriod =
+            "A temporary change uses the configured allowance period.";
+        }
+        if (
+          cents !== null &&
+          cents > 0n &&
+          cents <= BigInt(existing.head.allowance.amountCents)
+        ) {
+          errors.moneyAllowance =
+            "A temporary allowance must be higher than the permanent allowance.";
+        }
+      }
+      const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(draft.moneyEndDate);
+      const endDate = dateMatch
+        ? new Date(`${draft.moneyEndDate}T23:59:59.999Z`)
+        : null;
+      const validDate = Boolean(
+        dateMatch &&
+          endDate &&
+          Number.isFinite(endDate.getTime()) &&
+          endDate.toISOString().slice(0, 10) === draft.moneyEndDate,
+      );
+      if (!validDate || !endDate || endDate <= now) {
+        errors.moneyEndDate = "Choose a future end date.";
+      }
     }
   } else {
     const title = draft.title.trim();
@@ -201,15 +317,24 @@ export function buildAskCreateAction(
   draft: AskComposerDraft,
   coordinates: AskComposerCoordinates,
   hire?: AskComposerHireContext,
+  moneyAllowance?: AskComposerMoneyAllowanceContext,
 ): AskCreateAction {
-  const errors = validateAskComposerDraft(draft, coordinates, hire);
+  const errors = validateAskComposerDraft(
+    draft,
+    coordinates,
+    hire,
+    moneyAllowance,
+  );
   if (Object.keys(errors).length > 0) {
     throw new Error("The ask draft is not valid.");
   }
 
   const isHireProposal = draft.type === "hire_proposal";
+  const isMoneyAllowanceProposal = draft.type === "money_allowance_proposal";
   const askType: AskType =
-    draft.type === "hire_proposal" ? "approval" : draft.type;
+    draft.type === "hire_proposal" || draft.type === "money_allowance_proposal"
+      ? "approval"
+      : draft.type;
   let hireProposal: HireProposal | undefined;
   if (isHireProposal) {
     if (!hire) throw new Error("Choose an existing company role pack.");
@@ -229,6 +354,46 @@ export function buildAskCreateAction(
     }
   }
 
+  let spendAllowanceProposal: EmployeeAllowanceAction | undefined;
+  if (isMoneyAllowanceProposal) {
+    if (!moneyAllowance) {
+      throw new Error("The selected employee allowance is unavailable.");
+    }
+    const existing = moneyAllowance.existing;
+    const amountCents = allowanceCents(draft.moneyAllowance);
+    if (amountCents === null) {
+      throw new Error("The proposed allowance amount is invalid.");
+    }
+    const temporary = draft.moneyDuration === "temporary";
+    const period = draft.moneyAllowancePeriod as AskComposerAllowancePeriod;
+    if (temporary && !existing) {
+      throw new Error(
+        "A temporary change needs a configured permanent allowance.",
+      );
+    }
+    const expiresAt = temporary
+      ? new Date(`${draft.moneyEndDate}T23:59:59.999Z`).toISOString()
+      : undefined;
+    spendAllowanceProposal = {
+      schemaVersion: 1,
+      employeePubkey: draft.moneyEmployeePubkey.toLowerCase(),
+      ...(existing ? { expectedHeadEventId: existing.event.id } : {}),
+      allowance:
+        temporary && existing
+          ? existing.head.allowance
+          : { amountCents: amountCents.toString(), period },
+      ...(temporary && expiresAt
+        ? {
+            temporaryAllowance: {
+              allowance: { amountCents: amountCents.toString(), period },
+              expiresAt,
+            },
+          }
+        : {}),
+      fundingOrder: existing?.head.fundingOrder ?? [],
+    };
+  }
+
   const decideBy = draft.decideBy
     ? new Date(draft.decideBy).toISOString()
     : undefined;
@@ -236,13 +401,23 @@ export function buildAskCreateAction(
     schemaVersion: 1,
     askId: coordinates.askId,
     type: askType,
-    category: isHireProposal ? "hire" : "general",
-    title: isHireProposal ? draft.hireTitle.trim() : draft.title.trim(),
+    category: isHireProposal
+      ? "hire"
+      : isMoneyAllowanceProposal
+        ? "money"
+        : "general",
+    title: isHireProposal
+      ? draft.hireTitle.trim()
+      : isMoneyAllowanceProposal
+        ? "Allowance change request"
+        : draft.title.trim(),
     ...(isHireProposal
       ? { body: draft.hireReason.trim() }
-      : draft.body.trim()
-        ? { body: draft.body.trim() }
-        : {}),
+      : isMoneyAllowanceProposal
+        ? { body: draft.moneyReason.trim() }
+        : draft.body.trim()
+          ? { body: draft.body.trim() }
+          : {}),
     ...(coordinates.threadRootEventId
       ? { threadRootEventId: coordinates.threadRootEventId }
       : {
@@ -259,9 +434,17 @@ export function buildAskCreateAction(
           subject: { kind: "hire" as const, id: hireProposal.hireId },
           hireProposal,
         }
-      : decideBy
-        ? { decideBy }
-        : {}),
+      : spendAllowanceProposal
+        ? {
+            subject: {
+              kind: "companyMember" as const,
+              id: spendAllowanceProposal.employeePubkey,
+            },
+            spendAllowanceProposal,
+          }
+        : decideBy
+          ? { decideBy }
+          : {}),
     ...(draft.type === "choice"
       ? {
           options: listItems(draft.options).map((label, index) => ({

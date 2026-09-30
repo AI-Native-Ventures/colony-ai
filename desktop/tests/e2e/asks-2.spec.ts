@@ -1,9 +1,16 @@
 import { expect, test } from "@playwright/test";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
+import {
+  finalizeEvent,
+  generateSecretKey,
+  getPublicKey,
+} from "nostr-tools/pure";
 
 import type { RelayEvent } from "../../src/shared/api/types";
-import { KIND_STREAM_MESSAGE } from "../../src/shared/constants/kinds";
+import {
+  KIND_MEMBER_POSITION_HEAD,
+  KIND_STREAM_MESSAGE,
+} from "../../src/shared/constants/kinds";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 const CHANNEL_ROOTS = ["general", "buzz"] as const;
@@ -15,9 +22,10 @@ async function openAskThread(
   askActionErrors: string[] = [],
   openThread = true,
   personas?: MockBridgeOptions["personas"],
+  companyMemberPositionEvents?: MockBridgeOptions["companyMemberPositionEvents"],
+  relaySecret = generateSecretKey(),
 ) {
   await page.setViewportSize({ width: 1440, height: 900 });
-  const relaySecret = generateSecretKey();
   const relaySelf = getPublicKey(relaySecret);
   await installMockBridge(page, {
     relaySelf,
@@ -26,6 +34,7 @@ async function openAskThread(
     askActionErrors,
     relayRequiresMembership: true,
     ...(personas ? { personas } : {}),
+    ...(companyMemberPositionEvents ? { companyMemberPositionEvents } : {}),
   });
   await page.goto("/#/today");
   await page.waitForFunction(() => {
@@ -74,7 +83,30 @@ async function openAskThread(
   if (openThread) {
     await expect(page.getByTestId("message-thread-panel")).toBeVisible();
   }
-  return { ...thread, relaySelf };
+  return { ...thread, relaySelf, relaySecret };
+}
+
+function employeePositionHead(input: {
+  relaySecret: Uint8Array;
+  pubkey: string;
+}) {
+  return finalizeEvent(
+    {
+      kind: KIND_MEMBER_POSITION_HEAD,
+      created_at: Math.floor(Date.now() / 1_000),
+      tags: [["d", `company:member:${input.pubkey}`]],
+      content: JSON.stringify({
+        schemaVersion: 1,
+        pubkey: input.pubkey,
+        title: "Employee",
+        kind: "employee",
+        status: "active",
+        sourceActionEventId: "b".repeat(64),
+        updatedAt: new Date().toISOString(),
+      }),
+    },
+    input.relaySecret,
+  );
 }
 
 test("raise an ask from the message composer and retry the same signed action", async ({
@@ -259,6 +291,102 @@ test("submit a typed hire proposal and retry without losing the selected scope",
   await expect(page.getByTestId("ask-card")).toHaveAttribute(
     "data-ask-variant",
     "hire",
+  );
+  expect(thread.rootId).toMatch(/^[0-9a-f]{64}$/);
+});
+
+test("raise a typed allowance request from Power and retry the same signed ask", async ({
+  page,
+}) => {
+  const relaySecret = generateSecretKey();
+  const employeePubkey = getPublicKey(generateSecretKey());
+  const thread = await openAskThread(
+    page,
+    ["Temporary relay write failure"],
+    false,
+    undefined,
+    [employeePositionHead({ relaySecret, pubkey: employeePubkey })],
+    relaySecret,
+  );
+
+  await page.goto("/#/power");
+  const requestAllowance = page.getByRole("button", {
+    name: "Request allowance change",
+  });
+  await expect(requestAllowance).toBeVisible();
+  await requestAllowance.click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Request an allowance or cost approval",
+    }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Adjust an allowance/ }).click();
+  await page
+    .getByLabel("Channel", { exact: true })
+    .selectOption(thread.channelId);
+  await page.getByLabel("Thread", { exact: true }).selectOption("new");
+  await page.getByLabel("New thread title").fill("Allowance discussion");
+  await page
+    .getByLabel("Opening context, optional")
+    .fill("The workload has changed and needs review.");
+  await page
+    .getByLabel("Recipient", { exact: true })
+    .selectOption(TEST_IDENTITIES.alice.pubkey);
+  await page
+    .getByLabel("Employee", { exact: true })
+    .selectOption(employeePubkey);
+  await page.getByLabel("Change duration").selectOption("permanent");
+  await page.getByLabel("Requested amount, USD").fill("8.75");
+  await page.getByLabel("Allowance period").selectOption("week");
+  await page
+    .getByLabel("Reason", { exact: true })
+    .fill("The employee needs more capacity for the approved work.");
+
+  await page.getByRole("button", { name: "Review request" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Review money request" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("The employee needs more capacity for the approved work."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Submit request" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Temporary relay write failure",
+  );
+  await expect(page.getByLabel("Employee", { exact: true })).toHaveValue(
+    employeePubkey,
+  );
+  await expect(page.getByLabel("Reason", { exact: true })).toHaveValue(
+    "The employee needs more capacity for the approved work.",
+  );
+  const signedAskActions = await page.evaluate(() => {
+    const testWindow = window as Window & {
+      __BUZZ_E2E_SIGNED_EVENTS__?: Array<{ kind: number }>;
+    };
+    return (
+      testWindow.__BUZZ_E2E_SIGNED_EVENTS__?.filter(
+        (event) => event.kind === 47032,
+      ).length ?? 0
+    );
+  });
+  expect(signedAskActions).toBe(1);
+
+  await page.getByRole("button", { name: "Retry send" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Money request submitted" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "No balance or spending limit changes until an authorized human approves.",
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Open decision" }).click();
+  await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+  await expect(page.getByTestId("ask-money-allowance-proposal")).toContainText(
+    "USD 8.75 / week",
+  );
+  await expect(page.getByTestId("ask-card")).toContainText(
+    "The employee needs more capacity for the approved work.",
   );
   expect(thread.rootId).toMatch(/^[0-9a-f]{64}$/);
 });

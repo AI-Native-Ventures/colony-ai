@@ -30,6 +30,7 @@ import type { AskHeadQueryState } from "../hooks";
 import { mapSpecializedAskCard } from "../askCardMapping";
 import { HireAskCard } from "./HireAskCard";
 import { formatAskDate } from "./askCardFormatting";
+import { formatUsdCents } from "@/features/power/spendModels";
 import type {
   AskHead,
   AskHeadRecord,
@@ -751,6 +752,52 @@ export function AskCard({
       : head.status === "resolved"
         ? "Decision recorded"
         : "Decision withdrawn";
+  const allowanceProposal = head.ask.spendAllowanceProposal;
+  const allowanceValue =
+    allowanceProposal?.temporaryAllowance?.allowance ??
+    allowanceProposal?.allowance;
+  const allowanceProposalDetails =
+    allowanceProposal && allowanceValue ? (
+      <dl
+        className="colony-ask-money-proposal-details"
+        data-testid="ask-money-allowance-proposal"
+      >
+        <div>
+          <dt>Employee</dt>
+          <dd>
+            {resolveUserLabel({
+              pubkey: allowanceProposal.employeePubkey,
+              currentPubkey,
+              profiles,
+              preferResolvedSelfLabel: Boolean(
+                profiles?.[normalizePubkey(allowanceProposal.employeePubkey)],
+              ),
+            })}
+          </dd>
+        </div>
+        <div>
+          <dt>Requested allowance</dt>
+          <dd>
+            {formatUsdCents(allowanceValue.amountCents)} /{" "}
+            {allowanceValue.period}
+          </dd>
+        </div>
+        <div>
+          <dt>Duration</dt>
+          <dd>
+            {allowanceProposal.temporaryAllowance ? "Temporary" : "Permanent"}
+          </dd>
+        </div>
+        {allowanceProposal.temporaryAllowance ? (
+          <div>
+            <dt>End date</dt>
+            <dd>
+              {allowanceProposal.temporaryAllowance.expiresAt.slice(0, 10)}
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+    ) : null;
 
   const hireProposal = head.ask.hireProposal;
   if (
@@ -826,6 +873,7 @@ export function AskCard({
             {head.ask.body ? (
               <p className="colony-ask-special-description">{head.ask.body}</p>
             ) : null}
+            {allowanceProposalDetails}
             {head.ask.toolConsent ? (
               <p className="colony-ask-body" data-testid="tool-consent-preview">
                 {head.ask.toolConsent.actionPreview}
@@ -1012,6 +1060,7 @@ export function AskCard({
           {head.ask.body ? (
             <p className="colony-ask-body">{head.ask.body}</p>
           ) : null}
+          {allowanceProposalDetails}
           {head.ask.toolConsent ? (
             <p className="colony-ask-body" data-testid="tool-consent-preview">
               {head.ask.toolConsent.actionPreview}
