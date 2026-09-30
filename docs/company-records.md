@@ -864,7 +864,11 @@ harmful assessment; counts are derived from assessed evidence only. The frozen
 lesson form has no confidence or evidence-assessment controls, so the desktop
 does not invent them. The CLI and broker can store an explicit confidence and
 assessment. UI states display unassessed records as such. A future desktop
-control for setting confidence or assessing evidence is NEEDS_DESIGN.
+control for setting confidence or assessing evidence is NEEDS_DESIGN. The
+frozen candidate detail includes an Approve lesson action but has no confidence
+input. That action cannot approve an unassessed record without substituting the
+prototype's sample confidence. Approval from an unassessed desktop record stays
+unavailable until the confidence input has a frozen design.
 
 Agent memory kind 30174 and the existing buzz memory CLI remain a separate
 Memory section within Lessons. Memory entries are not lesson records and are
