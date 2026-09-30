@@ -18,6 +18,41 @@ const _reader =
     'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 
 void main() {
+  testWidgets('goal editor fills fields after the real record loads', (
+    tester,
+  ) async {
+    final record = _goalHead(
+      title: 'Current goal title',
+      condition: 'The project is ready.',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          goalHeadsProvider.overrideWith((ref) async => [record]),
+          currentCommunityRoleProvider.overrideWithValue(
+            const AsyncData(CommunityMemberRole.owner),
+          ),
+          activeCommunityProvider.overrideWith((ref) async => null),
+          myPubkeyProvider.overrideWithValue(_owner),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const GoalEditPage(goalId: _goalId),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField).first).controller!.text,
+      'Current goal title',
+    );
+    expect(
+      tester.widget<TextField>(find.byType(TextField).at(1)).controller!.text,
+      'The project is ready.',
+    );
+  });
+
   testWidgets(
     'failed title save keeps typed text and sends only title update',
     (tester) async {

@@ -117,6 +117,8 @@ class GoalEditPage extends HookConsumerWidget {
     final conditionController = useTextEditingController(
       text: goal?.doneCondition,
     );
+    final titleDirty = useState(false);
+    final conditionDirty = useState(false);
     final selectedStatus = useState<GoalStatus>(
       record?.head.status ?? GoalStatus.active,
     );
@@ -126,15 +128,35 @@ class GoalEditPage extends HookConsumerWidget {
     final savedFields = useState(<String>{});
     final failureField = useState<String?>(null);
 
-    useEffect(() {
-      if (record != null && currentRecord.value?.event.id != record.event.id) {
-        currentRecord.value = record;
-      }
-      if (record != null && !statusDirty.value) {
-        selectedStatus.value = record.head.status;
-      }
-      return null;
-    }, [record?.event.id, statusDirty.value]);
+    useEffect(
+      () {
+        if (record != null &&
+            currentRecord.value?.event.id != record.event.id) {
+          currentRecord.value = record;
+          if (!titleDirty.value) {
+            titleController.text = record.head.goal?.title ?? record.head.title;
+          }
+          if (!conditionDirty.value) {
+            conditionController.text = record.head.goal?.doneCondition ?? '';
+          }
+        }
+        if (record != null && !statusDirty.value) {
+          selectedStatus.value = record.head.status;
+        }
+        return null;
+      },
+      [
+        record?.event.id,
+        statusDirty.value,
+        titleDirty.value,
+        conditionDirty.value,
+      ],
+    );
+
+    void markTextFieldClean(String field) {
+      if (field == 'title') titleDirty.value = false;
+      if (field == 'condition') conditionDirty.value = false;
+    }
 
     Future<GoalHeadRecord?> reloadCurrent() async {
       ref.invalidate(goalHeadsProvider);
@@ -195,6 +217,7 @@ class GoalEditPage extends HookConsumerWidget {
           final next = submittedStatus.displayLabel;
           if (submittedStatus == current.head.status) {
             savedFields.value = {...savedFields.value, field};
+            statusDirty.value = false;
             failureField.value = null;
             return;
           }
@@ -219,6 +242,7 @@ class GoalEditPage extends HookConsumerWidget {
         if (latest != null &&
             _fieldMatches(latest, field, title, condition, submittedStatus)) {
           currentRecord.value = latest;
+          markTextFieldClean(field);
           if (field == 'status') {
             selectedStatus.value = latest.head.status;
             statusDirty.value = false;
@@ -236,10 +260,12 @@ class GoalEditPage extends HookConsumerWidget {
       try {
         final latest = await reloadCurrent();
         if (latest == null) {
+          markTextFieldClean(field);
           savedFields.value = {...savedFields.value, field};
           failureField.value = null;
         } else {
           currentRecord.value = latest;
+          markTextFieldClean(field);
           if (field == 'status') {
             selectedStatus.value = latest.head.status;
             statusDirty.value = false;
@@ -248,6 +274,7 @@ class GoalEditPage extends HookConsumerWidget {
           failureField.value = null;
         }
       } catch (_) {
+        markTextFieldClean(field);
         savedFields.value = {...savedFields.value, field};
         failureField.value = null;
       }
@@ -334,6 +361,7 @@ class GoalEditPage extends HookConsumerWidget {
                       isSaving: savingField.value == 'title',
                       onSave: () => saveField('title'),
                       onChanged: (_) {
+                        titleDirty.value = true;
                         if (savedFields.value.contains('title')) {
                           savedFields.value = {...savedFields.value}
                             ..remove('title');
@@ -352,6 +380,7 @@ class GoalEditPage extends HookConsumerWidget {
                       maxLines: 3,
                       onSave: () => saveField('condition'),
                       onChanged: (_) {
+                        conditionDirty.value = true;
                         if (savedFields.value.contains('condition')) {
                           savedFields.value = {...savedFields.value}
                             ..remove('condition');
