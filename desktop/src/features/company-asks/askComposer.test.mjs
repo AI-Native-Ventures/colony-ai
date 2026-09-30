@@ -256,17 +256,24 @@ test("hire proposals require an explicit supported allowance period and reason",
   );
 });
 
-test("permanent allowance requests use a real employee and no default values", () => {
+test("permanent allowance requests use the configured period and head", () => {
   const draft = {
     ...validDraft("money_allowance_proposal"),
     moneyEmployeePubkey: MONEY_EMPLOYEE,
     moneyDuration: "permanent",
     moneyAllowance: "125.50",
-    moneyAllowancePeriod: "week",
-    moneyReason:
-      "The configured weekly allowance no longer covers the workload.",
+    moneyReason: "The configured allowance no longer covers the workload.",
   };
-  const allowance = { employeePubkey: MONEY_EMPLOYEE };
+  const allowance = {
+    employeePubkey: MONEY_EMPLOYEE,
+    existing: {
+      event: { id: MONEY_ALLOWANCE_HEAD },
+      head: {
+        allowance: { amountCents: "10000", period: "month" },
+        fundingOrder: ["Existing provider subscription"],
+      },
+    },
+  };
   const action = buildAskCreateAction(
     draft,
     { ...coordinates, askId: ASK_ID },
@@ -285,9 +292,16 @@ test("permanent allowance requests use a real employee and no default values", (
   assert.deepEqual(action.ask.spendAllowanceProposal, {
     schemaVersion: 1,
     employeePubkey: MONEY_EMPLOYEE,
-    allowance: { amountCents: "12550", period: "week" },
-    fundingOrder: [],
+    expectedHeadEventId: MONEY_ALLOWANCE_HEAD,
+    allowance: { amountCents: "12550", period: "month" },
+    fundingOrder: ["Existing provider subscription"],
   });
+  const missingHead = { employeePubkey: MONEY_EMPLOYEE };
+  assert.match(
+    validateAskComposerDraft(draft, coordinates, undefined, missingHead)
+      .moneyEmployeePubkey ?? "",
+    /configured allowance/i,
+  );
 });
 
 test("temporary allowance requests preserve the configured head and need a valid end date", () => {
@@ -296,7 +310,6 @@ test("temporary allowance requests preserve the configured head and need a valid
     moneyEmployeePubkey: MONEY_EMPLOYEE,
     moneyDuration: "temporary",
     moneyAllowance: "125.50",
-    moneyAllowancePeriod: "week",
     moneyEndDate: "2026-10-05",
     moneyReason: "The approved project needs a short term increase.",
   };

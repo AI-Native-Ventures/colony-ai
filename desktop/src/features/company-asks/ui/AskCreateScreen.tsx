@@ -201,28 +201,26 @@ export function AskCreateScreen({
   }, [initialType]);
 
   const currentPubkey = identityQuery.data?.pubkey ?? "";
-  const moneyEmployeeOptions = moneyEmployees.map((employee) => ({
-    pubkey: employee.pubkey,
-    label: resolveUserLabel({
-      pubkey: employee.pubkey,
-      currentPubkey,
-      fallbackName: employee.fallbackName ?? "AI employee",
-      profiles: moneyEmployeeProfilesQuery.data?.profiles,
-    }),
-    ...(moneyAllowancesQuery.data?.records.find(
+  const moneyEmployeeOptions = moneyEmployees.flatMap((employee) => {
+    const allowance = moneyAllowancesQuery.data?.records.find(
       (record) =>
         record.head.employeePubkey.toLowerCase() ===
         employee.pubkey.toLowerCase(),
-    )
-      ? {
-          allowance: moneyAllowancesQuery.data.records.find(
-            (record) =>
-              record.head.employeePubkey.toLowerCase() ===
-              employee.pubkey.toLowerCase(),
-          )?.head.allowance,
-        }
-      : {}),
-  }));
+    );
+    return allowance
+      ? [
+          {
+            pubkey: employee.pubkey,
+            label: resolveUserLabel({
+              pubkey: employee.pubkey,
+              currentPubkey,
+              fallbackName: employee.fallbackName ?? "AI employee",
+              profiles: moneyEmployeeProfilesQuery.data?.profiles,
+            }),
+          },
+        ]
+      : [];
+  });
   const selectedMoneyEmployee = moneyEmployeeOptions.find(
     (employee) =>
       employee.pubkey.toLowerCase() === draft.moneyEmployeePubkey.toLowerCase(),
@@ -234,13 +232,12 @@ export function AskCreateScreen({
   );
   const moneyAllowanceContext: AskComposerMoneyAllowanceContext | undefined =
     selectedMoneyEmployee &&
+    selectedMoneyAllowance &&
     moneyTeamQuery.isSuccess &&
     moneyAllowancesQuery.isSuccess
       ? {
           employeePubkey: selectedMoneyEmployee.pubkey,
-          ...(selectedMoneyAllowance
-            ? { existing: selectedMoneyAllowance }
-            : {}),
+          existing: selectedMoneyAllowance,
         }
       : undefined;
   const channelName = channel?.name ?? "conversation";
@@ -1050,17 +1047,19 @@ export function AskCreateScreen({
                           {isHireProposal
                             ? "Could not save"
                             : isMoneyProposal
-                              ? "Money request was not sent"
+                              ? "Could not save"
                               : "Ask was not sent"}
                         </strong>
-                        <p>{formError}</p>
-                        {pendingEvent ? (
+                        <p>
+                          {isMoneyProposal
+                            ? "Your inputs are kept. Review them or retry without starting again."
+                            : formError}
+                        </p>
+                        {pendingEvent && !isMoneyProposal ? (
                           <p className="colony-ask-compose-retained">
                             {isHireProposal
                               ? "Your inputs are kept. Retry sends the same proposal."
-                              : isMoneyProposal
-                                ? "Your inputs are kept. Retry sends the same request."
-                                : "Your wording and response details are kept. Retry sends the same ask."}
+                              : "Your wording and response details are kept. Retry sends the same ask."}
                           </p>
                         ) : null}
                       </div>
@@ -1091,7 +1090,7 @@ export function AskCreateScreen({
                           type="button"
                           variant="outline"
                         >
-                          Edit request
+                          Back
                         </Button>
                       ) : (
                         <Button

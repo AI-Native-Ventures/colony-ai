@@ -27,7 +27,6 @@ export type AskComposerDraft = {
   moneyEmployeePubkey: string;
   moneyDuration: "" | "permanent" | "temporary";
   moneyAllowance: string;
-  moneyAllowancePeriod: "" | AskComposerAllowancePeriod;
   moneyEndDate: string;
   moneyReason: string;
 };
@@ -105,7 +104,6 @@ export const EMPTY_ASK_COMPOSER_DRAFT: AskComposerDraft = {
   moneyEmployeePubkey: "",
   moneyDuration: "",
   moneyAllowance: "",
-  moneyAllowancePeriod: "",
   moneyEndDate: "",
   moneyReason: "",
 };
@@ -113,11 +111,6 @@ export const EMPTY_ASK_COMPOSER_DRAFT: AskComposerDraft = {
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HEX_ID_PATTERN = /^[0-9a-f]{64}$/i;
-const ALLOWANCE_PERIODS = new Set<AskComposerAllowancePeriod>([
-  "day",
-  "week",
-  "month",
-]);
 const MAX_ALLOWANCE_CENTS = (1n << 64n) - 1n;
 
 function allowanceCents(value: string) {
@@ -195,6 +188,9 @@ export function validateAskComposerDraft(
         draft.moneyEmployeePubkey.toLowerCase()
     ) {
       errors.moneyEmployeePubkey = "The selected employee is unavailable.";
+    } else if (!moneyAllowance.existing) {
+      errors.moneyEmployeePubkey =
+        "Choose an employee with a configured allowance.";
     }
     if (
       draft.moneyDuration !== "permanent" &&
@@ -207,13 +203,6 @@ export function validateAskComposerDraft(
       errors.moneyAllowance =
         "Enter a positive USD amount with up to two decimal places.";
     }
-    if (
-      !ALLOWANCE_PERIODS.has(
-        draft.moneyAllowancePeriod as AskComposerAllowancePeriod,
-      )
-    ) {
-      errors.moneyAllowancePeriod = "Choose an allowance period.";
-    }
     if (!draft.moneyReason.trim()) {
       errors.moneyReason = "Add a reason for the allowance change.";
     } else if (Array.from(draft.moneyReason).length > 1000) {
@@ -225,10 +214,6 @@ export function validateAskComposerDraft(
         errors.moneyDuration =
           "A temporary change needs a configured permanent allowance.";
       } else {
-        if (draft.moneyAllowancePeriod !== existing.head.allowance.period) {
-          errors.moneyAllowancePeriod =
-            "A temporary change uses the configured allowance period.";
-        }
         if (
           cents !== null &&
           cents > 0n &&
@@ -360,37 +345,39 @@ export function buildAskCreateAction(
       throw new Error("The selected employee allowance is unavailable.");
     }
     const existing = moneyAllowance.existing;
+    if (!existing) {
+      throw new Error("The selected employee allowance is unavailable.");
+    }
     const amountCents = allowanceCents(draft.moneyAllowance);
     if (amountCents === null) {
       throw new Error("The proposed allowance amount is invalid.");
     }
     const temporary = draft.moneyDuration === "temporary";
-    const period = draft.moneyAllowancePeriod as AskComposerAllowancePeriod;
-    if (temporary && !existing) {
-      throw new Error(
-        "A temporary change needs a configured permanent allowance.",
-      );
-    }
     const expiresAt = temporary
       ? new Date(`${draft.moneyEndDate}T23:59:59.999Z`).toISOString()
       : undefined;
     spendAllowanceProposal = {
       schemaVersion: 1,
       employeePubkey: draft.moneyEmployeePubkey.toLowerCase(),
-      ...(existing ? { expectedHeadEventId: existing.event.id } : {}),
-      allowance:
-        temporary && existing
-          ? existing.head.allowance
-          : { amountCents: amountCents.toString(), period },
+      expectedHeadEventId: existing.event.id,
+      allowance: temporary
+        ? existing.head.allowance
+        : {
+            amountCents: amountCents.toString(),
+            period: existing.head.allowance.period,
+          },
       ...(temporary && expiresAt
         ? {
             temporaryAllowance: {
-              allowance: { amountCents: amountCents.toString(), period },
+              allowance: {
+                amountCents: amountCents.toString(),
+                period: existing.head.allowance.period,
+              },
               expiresAt,
             },
           }
         : {}),
-      fundingOrder: existing?.head.fundingOrder ?? [],
+      fundingOrder: existing.head.fundingOrder,
     };
   }
 

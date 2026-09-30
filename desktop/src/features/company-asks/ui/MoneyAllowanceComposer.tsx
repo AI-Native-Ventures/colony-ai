@@ -9,7 +9,6 @@ type ThreadOption = { id: string; label: string };
 type EmployeeOption = {
   pubkey: string;
   label: string;
-  allowance?: { amountCents: string; period: string };
 };
 type UpdateAskDraft = <K extends keyof AskComposerDraft>(
   key: K,
@@ -79,18 +78,6 @@ export function MoneyAllowanceComposer({
   onRetryRecipients,
   onInvite,
 }: MoneyAllowanceComposerProps) {
-  const employee = employeeOptions.find(
-    (option) => option.pubkey === draft.moneyEmployeePubkey,
-  );
-  const channelName = channelOptions.find(
-    (option) => option.id === selectedChannelId,
-  )?.name;
-  const threadName = startNewThread
-    ? draft.threadTitle.trim()
-    : threadOptions.find((thread) => thread.id === selectedThreadRootId)?.label;
-  const recipientName = recipientOptions.find(
-    (option) => option.pubkey === draft.addresseePubkey,
-  )?.label;
   if (review) {
     return (
       <section
@@ -98,57 +85,11 @@ export function MoneyAllowanceComposer({
         className="colony-ask-money-review"
       >
         <h2>Review money request</h2>
-        <dl>
-          <div>
-            <dt>Type</dt>
-            <dd>Allowance</dd>
-          </div>
-          <div>
-            <dt>Employee</dt>
-            <dd>{employee?.label ?? ""}</dd>
-          </div>
-          <div>
-            <dt>Duration</dt>
-            <dd>
-              {draft.moneyDuration === "temporary" ? "Temporary" : "Permanent"}
-            </dd>
-          </div>
-          {draft.moneyDuration === "temporary" ? (
-            <div>
-              <dt>End date</dt>
-              <dd>{draft.moneyEndDate}</dd>
-            </div>
-          ) : null}
-          <div>
-            <dt>Requested amount, USD</dt>
-            <dd>{draft.moneyAllowance}</dd>
-          </div>
-          <div>
-            <dt>Allowance period</dt>
-            <dd>{draft.moneyAllowancePeriod}</dd>
-          </div>
-          <div>
-            <dt>Reason</dt>
-            <dd>{draft.moneyReason}</dd>
-          </div>
-          <div>
-            <dt>Channel</dt>
-            <dd>{channelName ? `#${channelName}` : ""}</dd>
-          </div>
-          <div>
-            <dt>Thread</dt>
-            <dd>{threadName ?? ""}</dd>
-          </div>
-          <div>
-            <dt>Recipient</dt>
-            <dd>{recipientName ?? ""}</dd>
-          </div>
-        </dl>
         <aside>
           <strong>Authority is checked on response</strong>
           <p>
-            Submitting does not change an allowance or spending limit. An
-            authorized human must approve the request.
+            Submitting does not charge a card, reimburse a cost or change an
+            allowance.
           </p>
         </aside>
       </section>
@@ -327,7 +268,7 @@ export function MoneyAllowanceComposer({
         ) : null}
       </fieldset>
 
-      <label htmlFor="money-employee">Employee</label>
+      <label htmlFor="money-employee">Employee or budget</label>
       <select
         aria-describedby={
           errors.moneyEmployeePubkey ? "money-employee-error" : undefined
@@ -384,7 +325,7 @@ export function MoneyAllowanceComposer({
       >
         <option value="">Choose change duration</option>
         <option value="permanent">Permanent</option>
-        <option value="temporary">Temporary</option>
+        <option value="temporary">Temporary, with an end date</option>
       </select>
       {errors.moneyDuration ? (
         <span
@@ -442,37 +383,6 @@ export function MoneyAllowanceComposer({
           role="alert"
         >
           {errors.moneyAllowance}
-        </span>
-      ) : null}
-
-      <label htmlFor="money-allowance-period">Allowance period</label>
-      <select
-        aria-describedby={
-          errors.moneyAllowancePeriod ? "money-period-error" : undefined
-        }
-        aria-invalid={Boolean(errors.moneyAllowancePeriod)}
-        disabled={locked}
-        id="money-allowance-period"
-        onChange={(event) =>
-          onUpdateDraft(
-            "moneyAllowancePeriod",
-            event.target.value as AskComposerDraft["moneyAllowancePeriod"],
-          )
-        }
-        value={draft.moneyAllowancePeriod}
-      >
-        <option value="">Choose allowance period</option>
-        <option value="day">Day</option>
-        <option value="week">Week</option>
-        <option value="month">Month</option>
-      </select>
-      {errors.moneyAllowancePeriod ? (
-        <span
-          className="colony-ask-compose-error"
-          id="money-period-error"
-          role="alert"
-        >
-          {errors.moneyAllowancePeriod}
         </span>
       ) : null}
 

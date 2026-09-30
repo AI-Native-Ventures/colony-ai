@@ -8,6 +8,7 @@ import {
 
 import type { RelayEvent } from "../../src/shared/api/types";
 import {
+  KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
   KIND_MEMBER_POSITION_HEAD,
   KIND_STREAM_MESSAGE,
 } from "../../src/shared/constants/kinds";
@@ -24,6 +25,7 @@ async function openAskThread(
   personas?: MockBridgeOptions["personas"],
   companyMemberPositionEvents?: MockBridgeOptions["companyMemberPositionEvents"],
   relaySecret = generateSecretKey(),
+  employeeAllowanceHeads?: MockBridgeOptions["employeeAllowanceHeads"],
 ) {
   await page.setViewportSize({ width: 1440, height: 900 });
   const relaySelf = getPublicKey(relaySecret);
@@ -35,6 +37,7 @@ async function openAskThread(
     relayRequiresMembership: true,
     ...(personas ? { personas } : {}),
     ...(companyMemberPositionEvents ? { companyMemberPositionEvents } : {}),
+    ...(employeeAllowanceHeads ? { employeeAllowanceHeads } : {}),
   });
   await page.goto("/#/today");
   await page.waitForFunction(() => {
@@ -103,6 +106,30 @@ function employeePositionHead(input: {
         status: "active",
         sourceActionEventId: "b".repeat(64),
         updatedAt: new Date().toISOString(),
+      }),
+    },
+    input.relaySecret,
+  );
+}
+
+function employeeAllowanceHead(input: {
+  relaySecret: Uint8Array;
+  pubkey: string;
+}) {
+  const relaySelf = getPublicKey(input.relaySecret);
+  return finalizeEvent(
+    {
+      kind: KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
+      created_at: Math.floor(Date.now() / 1_000),
+      tags: [["d", `company:employee-allowance:${input.pubkey}`]],
+      content: JSON.stringify({
+        schemaVersion: 1,
+        employeePubkey: input.pubkey,
+        allowance: { amountCents: "5000", period: "week" },
+        fundingOrder: [],
+        actorPubkey: relaySelf,
+        updatedAt: new Date().toISOString(),
+        sourceActionEventId: "c".repeat(64),
       }),
     },
     input.relaySecret,
@@ -307,6 +334,7 @@ test("raise a typed allowance request from Power and retry the same signed ask",
     undefined,
     [employeePositionHead({ relaySecret, pubkey: employeePubkey })],
     relaySecret,
+    [employeeAllowanceHead({ relaySecret, pubkey: employeePubkey })],
   );
 
   await page.goto("/#/power");
@@ -333,11 +361,10 @@ test("raise a typed allowance request from Power and retry the same signed ask",
     .getByLabel("Recipient", { exact: true })
     .selectOption(TEST_IDENTITIES.alice.pubkey);
   await page
-    .getByLabel("Employee", { exact: true })
+    .getByLabel("Employee or budget", { exact: true })
     .selectOption(employeePubkey);
   await page.getByLabel("Change duration").selectOption("permanent");
   await page.getByLabel("Requested amount, USD").fill("8.75");
-  await page.getByLabel("Allowance period").selectOption("week");
   await page
     .getByLabel("Reason", { exact: true })
     .fill("The employee needs more capacity for the approved work.");
@@ -347,15 +374,16 @@ test("raise a typed allowance request from Power and retry the same signed ask",
     page.getByRole("heading", { name: "Review money request" }),
   ).toBeVisible();
   await expect(
-    page.getByText("The employee needs more capacity for the approved work."),
+    page.getByText("Authority is checked on response"),
   ).toBeVisible();
   await page.getByRole("button", { name: "Submit request" }).click();
+  await expect(page.getByRole("alert")).toContainText("Could not save");
   await expect(page.getByRole("alert")).toContainText(
-    "Temporary relay write failure",
+    "Your inputs are kept. Review them or retry without starting again.",
   );
-  await expect(page.getByLabel("Employee", { exact: true })).toHaveValue(
-    employeePubkey,
-  );
+  await expect(
+    page.getByLabel("Employee or budget", { exact: true }),
+  ).toHaveValue(employeePubkey);
   await expect(page.getByLabel("Reason", { exact: true })).toHaveValue(
     "The employee needs more capacity for the approved work.",
   );

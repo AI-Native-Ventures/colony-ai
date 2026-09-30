@@ -1,3 +1,5 @@
+import { ArrowUpRight } from "lucide-react";
+
 export function MoneyAllowanceChooser({ onSelect }: { onSelect: () => void }) {
   return (
     <div className="colony-ask-money-choose">
@@ -8,9 +10,15 @@ export function MoneyAllowanceChooser({ onSelect }: { onSelect: () => void }) {
           onClick={onSelect}
           type="button"
         >
-          <span>Proposal</span>
-          <strong>Adjust an allowance</strong>
-          <span>Propose an allowance change for an employee.</span>
+          <span aria-hidden="true" className="colony-ask-money-choice-icon">
+            A
+          </span>
+          <span className="colony-ask-money-choice-copy">
+            <strong>Adjust an allowance</strong>
+            <span>Propose a salary or budget change</span>
+          </span>
+          <span className="colony-ask-money-choice-badge">Proposal</span>
+          <ArrowUpRight aria-hidden="true" size={16} />
         </button>
       </div>
     </div>
