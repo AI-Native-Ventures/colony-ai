@@ -2101,21 +2101,20 @@ test("opens settings with the keyboard shortcut and applies a named theme", asyn
     )
     .toBe(true);
 
-  await page.getByTestId("appearance-open-themes").click();
+  await page.getByRole("button", { name: "Browse named themes" }).click();
   await expect(page.getByTestId("settings-theme-catalog")).toBeVisible();
   await page.getByTestId("theme-catalog-github-light").click();
   await expect(page.getByTestId("settings-theme-preview")).toBeVisible();
-  const themePreview = page.getByRole("region", {
-    name: "Theme preview conversation",
-  });
-  await expect(themePreview).toContainText("Campaign studio");
-  await expect(themePreview.getByText("Autumn, softly.")).toBeVisible();
-  await expect(
-    themePreview.getByText("The September designs are ready for feedback."),
-  ).toBeVisible();
+  const themePreview = page.getByTestId("theme-workspace-preview");
+  const signedInName = await page.locator(".w20-nav-person strong").innerText();
+  await expect(themePreview).toContainText("Preview content only");
+  await expect(themePreview.getByTestId("theme-preview-person")).toHaveText(
+    signedInName,
+  );
+  await page.getByTestId("appearance-preview-density").selectOption("compact");
   await page.getByTestId("theme-use").click();
   await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-  await expect(themePreview.getByText("Autumn, softly.")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Compact");
 
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
@@ -2328,7 +2327,7 @@ test("settings subtitles share the Appearance secondary color", async ({
   const settingsView = page.getByTestId("settings-view");
   const appearancePanel = page.getByTestId("settings-appearance");
   const secondaryColor = await appearancePanel
-    .locator(".ap-heading p")
+    .locator("[data-settings-subcopy]:visible")
     .evaluate((element) => getComputedStyle(element).color);
 
   for (const section of [
@@ -2359,10 +2358,7 @@ test("settings subtitles share the Appearance secondary color", async ({
       ).toHaveCount(0);
       continue;
     }
-    const subtitles =
-      section === "appearance"
-        ? appearancePanel.locator(".ap-heading p:visible")
-        : settingsView.locator("[data-settings-subcopy]:visible");
+    const subtitles = settingsView.locator("[data-settings-subcopy]:visible");
     await expect(subtitles.first(), `${section} subtitle`).toBeVisible();
     const colors = await subtitles.evaluateAll((elements) =>
       elements.map((element) => getComputedStyle(element).color),
