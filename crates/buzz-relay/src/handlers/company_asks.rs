@@ -1832,7 +1832,7 @@ mod postgres_tests {
                 (&admin, None),
                 (
                     &agent,
-                    Some("Agents cannot decide spending, hires, tools or secrets"),
+                    Some("Agents cannot decide spending, hires, tools, secrets or duties"),
                 ),
             ] {
                 let ask = ask_record(
