@@ -854,6 +854,7 @@ export type {
   WorkflowPreviewStep,
   WorkflowRun,
   WorkflowRunStatus,
+  WorkflowScheduleContext,
   WorkflowSaveResult,
   WorkflowStatus,
   TraceEntry,

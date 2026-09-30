@@ -222,6 +222,32 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goTeamMemberSalary = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/team/detail/$memberPubkey",
+          params: { memberPubkey },
+          search: { panel: "salary" },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goTeamSalaryEdit = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/team/detail/$memberPubkey",
+          params: { memberPubkey },
+          search: { panel: "salary-edit" },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goTeamEdit = React.useCallback(
     (memberPubkey: string, behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -1037,6 +1063,8 @@ export function useAppNavigation() {
     goTeam,
     goTeamOrg,
     goTeamMember,
+    goTeamMemberSalary,
+    goTeamSalaryEdit,
     goTeamEdit,
     goTeamPause,
     goTeamArchive,

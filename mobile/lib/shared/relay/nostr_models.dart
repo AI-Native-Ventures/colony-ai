@@ -88,6 +88,8 @@ abstract final class EventKind {
   static const memberPositionHead = 30648;
   static const employeeRevisionHead = 30651;
   static const hireHead = 30650;
+  static const employeeAiAllowanceHead = 30653;
+  static const aiSpendRecordHead = 30654;
   static const toolPermissionHead = 30646;
   static const goalAction = 47031;
   static const askAction = 47032;
@@ -97,9 +99,15 @@ abstract final class EventKind {
   static const memberPositionAction = 47037;
   static const employeeRevisionAction = 47040;
   static const hireAction = 47039;
+  static const employeeAiAllowanceAction = 47042;
+  static const aiSpendRecordAction = 47043;
   static const toolPermissionAction = 47035;
   static const factoryRunHead = 30649;
   static const factoryRunAction = 47038;
+  static const dutyHead = 30655;
+  static const dutyAction = 47044;
+  static const lessonHead = 30656;
+  static const lessonAction = 47045;
 
   /// Company-record event kinds, outside the chat timeline until ask cards
   /// render in threads.
@@ -109,6 +117,8 @@ abstract final class EventKind {
     memberPositionHead,
     employeeRevisionHead,
     hireHead,
+    employeeAiAllowanceHead,
+    aiSpendRecordHead,
     goalAction,
     askAction,
     askResponse,
@@ -117,10 +127,20 @@ abstract final class EventKind {
     memberPositionAction,
     employeeRevisionAction,
     hireAction,
+    employeeAiAllowanceAction,
+    aiSpendRecordAction,
     toolPermissionHead,
     toolPermissionAction,
     factoryRunHead,
     factoryRunAction,
+    dutyHead,
+    dutyAction,
+    lessonHead,
+    lessonAction,
+    employeeAiAllowanceHead,
+    employeeAiAllowanceAction,
+    aiSpendRecordHead,
+    aiSpendRecordAction,
   ];
 
   /// Phase 2 business-record event kinds, outside the chat timeline.

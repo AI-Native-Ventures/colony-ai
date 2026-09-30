@@ -11,12 +11,18 @@ pub mod agent_turn_metric;
 pub mod business_records;
 /// Channel and membership enums shared across crates.
 pub mod channel;
+/// Typed employee duties and schedule validation.
+pub mod company_duties;
 /// Typed content and validation for employee configuration history.
 pub mod company_employee_history;
+/// Typed employee lessons and evidence validation.
+pub mod company_lessons;
 /// Typed content and validation for company member positions.
 pub mod company_members;
 /// Typed content and validation for company records (goals and asks).
 pub mod company_records;
+/// Typed content and validation for employee allowances and AI spend.
+pub mod company_spend;
 /// Typed content and validation for company work tracking records.
 pub mod company_work_tracking;
 /// NIP-AE Agent Engrams — slug grammar, conversation key, d-tag derivation,
