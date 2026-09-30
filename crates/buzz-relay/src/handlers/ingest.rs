@@ -1128,7 +1128,7 @@ pub(crate) async fn resolve_relay_reply_thread_meta(
 }
 
 /// Count all `e` tags regardless of content validity.
-fn count_e_tags(event: &Event) -> usize {
+pub(super) fn count_e_tags(event: &Event) -> usize {
     event
         .tags
         .iter()
@@ -3263,12 +3263,14 @@ async fn ingest_event_inner(
     // window. Page responses recompute summaries independently, so this is
     // fan-out-only and best-effort.
     if let Some(meta) = &thread_meta {
-        crate::handlers::side_effects::emit_live_thread_summary(
-            tenant,
-            state,
-            meta.channel_id,
-            meta.root_event_id.clone(),
-        );
+        if let Some(root_event_id) = meta.root_event_id.clone() {
+            crate::handlers::side_effects::emit_live_thread_summary(
+                tenant,
+                state,
+                meta.channel_id,
+                root_event_id,
+            );
+        }
     }
 
     let pubkey_hex = auth.pubkey().to_hex();

@@ -22,7 +22,7 @@ use buzz_core::StoredEvent;
 use buzz_db::replaceable::{ParameterizedReplacePrecondition, ParameterizedReplaceStatus};
 use buzz_db::EventQuery;
 
-use super::ingest::{IngestAuth, IngestError, IngestResult, ThreadMetadataOwned};
+use super::ingest::{count_e_tags, IngestAuth, IngestError, IngestResult, ThreadMetadataOwned};
 use crate::state::AppState;
 
 #[cfg(test)]
@@ -108,7 +108,7 @@ async fn handle_ask_action(
                 ));
             }
             if ask.ask_type == AskType::ToolConsent {
-                validate_tool_consent_deadline(ask)?;
+                validate_tool_consent_deadline(&ask)?;
             }
             let addressee_is_agent = match ask.addressee_pubkey.as_deref() {
                 Some(pubkey) => is_managed_agent(state, tenant, pubkey).await?,
@@ -123,7 +123,7 @@ async fn handle_ask_action(
                         "only community members can propose a member-position change",
                     ));
                 }
-                validate_member_proposal_route(tenant, state, ask).await?;
+                validate_member_proposal_route(tenant, state, &ask).await?;
             }
             let hire_head = if let Some(proposal) = ask.hire_proposal.as_ref() {
                 if !actor.is_community_member && !actor.is_agent {
@@ -998,8 +998,8 @@ fn new_ask_thread_metadata(
         channel_id,
         parent_event_id: None,
         parent_event_created_at: None,
-        root_event_id: None,
-        root_event_created_at: None,
+        root_event_id: Some(event.id.as_bytes().to_vec()),
+        root_event_created_at: Some(event_created_at),
         depth: 0,
         broadcast: false,
     })
@@ -1222,7 +1222,7 @@ mod unit_tests {
         assert_eq!(metadata.event_id, event.id.as_bytes());
         assert_eq!(metadata.channel_id, channel_id);
         assert!(metadata.parent_event_id.is_none());
-        assert!(metadata.root_event_id.is_none());
+        assert_eq!(metadata.root_event_id.as_deref(), Some(event.id.as_bytes()));
         assert_eq!(metadata.depth, 0);
 
         let tagged_event = event_with_tags(vec![

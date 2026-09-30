@@ -463,12 +463,14 @@ impl ActionSink for RelayActionSink {
                 // ingest path does after a reply insert. Fan-out-only and
                 // best-effort; skipped for top-level (non-reply) messages.
                 if let Some(owned) = &thread_meta_owned {
-                    crate::handlers::side_effects::emit_live_thread_summary(
-                        &tenant,
-                        &state,
-                        channel_uuid,
-                        owned.root_event_id.clone(),
-                    );
+                    if let Some(root_event_id) = owned.root_event_id.clone() {
+                        crate::handlers::side_effects::emit_live_thread_summary(
+                            &tenant,
+                            &state,
+                            channel_uuid,
+                            root_event_id,
+                        );
+                    }
                 }
             }
 
