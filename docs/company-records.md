@@ -824,10 +824,10 @@ delete require an exact current head and owner or admin authority. Update
 replaces the complete duty snapshot and workflow definition as one transaction.
 Pause disables the existing workflow; resume enables it; delete writes a
 tombstone and disables the workflow while retaining run history. Status is
-active, paused, or deleted. The head carries sourceActionEventId,
-createdAt, updatedAt, lastRun, nextRun, and schedule/workflow references.
-lastRun and nextRun are derived from stored workflow runs and the real schedule,
-never copied from a prototype fixture.
+active, paused, or deleted. The head carries sourceActionEventId, createdAt,
+updatedAt, and schedule/workflow references. Last run and next run are derived
+from stored workflow runs and the real schedule, never copied from a prototype
+fixture.
 
 The workflow definition uses the existing versioned-definition and
 exact-version-approval contract. Every duty run records the workflow definition
