@@ -368,6 +368,9 @@ test.beforeEach(async ({ page }, testInfo) => {
                                               "style defaults",
                                             ) ||
                                             testInfo.title.includes(
+                                              "style unfurls descriptions",
+                                            ) ||
+                                            testInfo.title.includes(
                                               "attachment-sized",
                                             )
                                           ? 1_500
