@@ -338,7 +338,7 @@ test("raise a typed allowance request from Power and retry the same signed ask",
     relaySecret,
     [employeeAllowanceHead({ relaySecret, pubkey: employeePubkey })],
     [
-      { pubkey: TEST_IDENTITIES.tyler.pubkey, role: "owner" },
+      { pubkey: "deadbeef".repeat(8), role: "owner" },
       { pubkey: TEST_IDENTITIES.alice.pubkey, role: "admin" },
       { pubkey: TEST_IDENTITIES.bob.pubkey, role: "member" },
       { pubkey: employeePubkey, role: "member" },
