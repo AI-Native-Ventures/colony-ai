@@ -274,15 +274,16 @@ pub fn validate_employee_allowance_action(
     }
     let mut seen = std::collections::HashSet::new();
     for source in &action.funding_order {
-        if source.is_empty()
-            || source.len() > 64
-            || !source
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b':' | b'_' | b'-'))
-            || !seen.insert(source)
+        let normalized = source.to_lowercase();
+        if source.trim() != source
+            || source.is_empty()
+            || source.chars().count() > 64
+            || source.contains('→')
+            || source.chars().any(char::is_control)
+            || !seen.insert(normalized)
         {
             return Err(CompanyRecordError::Invalid(
-                "fundingOrder contains an invalid or duplicate source",
+                "fundingOrder contains an invalid or duplicate source label",
             ));
         }
     }
@@ -488,7 +489,7 @@ fn validate_spend_record(
                 .and_then(|id| uuid::Uuid::parse_str(id).ok());
             if !record_id.starts_with("cost:")
                 || record_id.len() != 41
-                || cost_id.map_or(true, |id| id.to_string() != record_id[5..])
+                || cost_id.is_none_or(|id| id.to_string() != record_id[5..])
             {
                 return Err(CompanyRecordError::Invalid(
                     "external cost record id must be cost:<uuid>",
@@ -628,5 +629,23 @@ mod tests {
             *is_estimate = false;
         }
         assert!(validate_ai_spend_record_action(&unlabelled).is_err());
+    }
+
+    #[test]
+    fn funding_order_accepts_explicit_labels_and_rejects_duplicates() {
+        let mut action = EmployeeAllowanceAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            employee_pubkey: "aa".repeat(32),
+            expected_head_event_id: None,
+            allowance: AllowanceValue {
+                amount_cents: "100".into(),
+                period: AllowancePeriod::Week,
+            },
+            temporary_allowance: None,
+            funding_order: vec!["Provider subscription".into(), "Colony credits".into()],
+        };
+        assert!(validate_employee_allowance_action(&action).is_ok());
+        action.funding_order.push("provider subscription".into());
+        assert!(validate_employee_allowance_action(&action).is_err());
     }
 }
