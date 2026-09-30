@@ -28,6 +28,7 @@ import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { useAskHeadQuery } from "../hooks";
 import type { AskHeadQueryState } from "../hooks";
 import { mapSpecializedAskCard } from "../askCardMapping";
+import { DutyAskCard } from "./DutyAskCard";
 import { HireAskCard } from "./HireAskCard";
 import { formatAskDate } from "./askCardFormatting";
 import type {
@@ -672,7 +673,9 @@ export function AskCard({
   const specializedVariant = mapSpecializedAskCard(head.ask);
   const specializedDetail = Boolean(
     specializedVariant &&
-      (!showDetailLink || specializedVariant.kind === "hire"),
+      (!showDetailLink ||
+        specializedVariant.kind === "hire" ||
+        specializedVariant.kind === "duty"),
   );
   const asker = resolveUserLabel({
     pubkey: head.askerPubkey,
@@ -717,6 +720,33 @@ export function AskCard({
         hireProposal={hireProposal}
         isOverdue={isOverdue}
         membershipRole={membershipQuery.data?.role}
+        needsYou={needsYou}
+        profiles={profiles}
+        query={query}
+        statusText={statusText}
+        key={askId}
+      />
+    );
+  }
+
+  const dutyProposal = head.ask.dutyProposal;
+  if (
+    specializedDetail &&
+    specializedVariant?.kind === "duty" &&
+    dutyProposal
+  ) {
+    return (
+      <DutyAskCard
+        accessFailure={accessFailure}
+        askId={askId}
+        askerIsAgent={askerIsAgent}
+        channelId={channelId}
+        channelName={channelName}
+        checksReady={checksReady}
+        currentPubkey={currentPubkey}
+        deniedReason={deniedReason}
+        headRecord={headRecord}
+        isOverdue={isOverdue}
         needsYou={needsYou}
         profiles={profiles}
         query={query}

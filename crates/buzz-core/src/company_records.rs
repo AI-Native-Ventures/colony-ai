@@ -2046,9 +2046,11 @@ pub fn validate_ask_response(
             "secret binding references are only valid for secret asks",
         ));
     }
-    if ask.hire_proposal.is_some() && !matches!(response.outcome, O::Approved | O::Rejected) {
+    if (ask.hire_proposal.is_some() || ask.duty_proposal.is_some())
+        && !matches!(response.outcome, O::Approved | O::Rejected)
+    {
         return Err(CompanyRecordError::Invalid(
-            "a hire proposal is approved or rejected with a reason",
+            "employee proposals are approved or rejected",
         ));
     }
     let (reason, answer, option, checked) = (
@@ -2092,7 +2094,7 @@ pub fn validate_ask_response(
                     "only a reason goes with this outcome",
                 ));
             }
-            if ask.hire_proposal.is_some() && reason.is_none() {
+            if (ask.hire_proposal.is_some() || ask.duty_proposal.is_some()) && reason.is_none() {
                 Ok(())
             } else {
                 require_text(
@@ -2582,6 +2584,39 @@ mod tests {
         let mut revision = approved;
         revision.outcome = AskOutcome::RevisionRequested;
         assert!(validate_ask_response(&resolved_ask, &revision).is_err());
+    }
+
+    #[test]
+    fn duty_proposals_are_direct_owner_approval_decisions() {
+        let proposal = crate::company_duties::DutyProposal {
+            schema_version: 1,
+            duty_id: Uuid::from_u128(22),
+            employee_pubkey: PK_A.into(),
+            title: "Review saved hospitality research".into(),
+            schedule_text: "Every Monday at 09:00".into(),
+            schedule_cron: "0 9 * * 1".into(),
+            time_zone: "Etc/UTC".into(),
+            channel_id: Uuid::from_u128(23),
+            instructions: "Review the saved hospitality list and report changes.".into(),
+        };
+        let mut ask_record = ask(AskType::Approval);
+        ask_record.category = AskCategory::Duty;
+        ask_record.subject = Some(AskSubject {
+            kind: AskSubjectKind::Duty,
+            id: proposal.duty_id.to_string(),
+        });
+        ask_record.duty_proposal = Some(proposal.clone());
+        assert!(validate_ask_record(&ask_record, false).is_ok());
+
+        let mut approved = response(AskOutcome::Approved);
+        assert!(validate_ask_response(&ask_record, &approved).is_ok());
+        approved.outcome = AskOutcome::Rejected;
+        assert!(validate_ask_response(&ask_record, &approved).is_ok());
+        approved.outcome = AskOutcome::RevisionRequested;
+        assert!(validate_ask_response(&ask_record, &approved).is_err());
+        approved.outcome = AskOutcome::Approved;
+        approved.reason = Some("   ".into());
+        assert!(validate_ask_response(&ask_record, &approved).is_err());
     }
 
     #[test]

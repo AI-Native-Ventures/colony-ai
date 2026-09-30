@@ -170,6 +170,7 @@ export default defineConfig({
         "**/workflows.spec.ts",
         "**/company-asks.spec.ts",
         "**/company-hiring.spec.ts",
+        "**/company-duty-ask.spec.ts",
         "**/company-team.spec.ts",
         "**/company-permissions.spec.ts",
         "**/company-work.spec.ts",

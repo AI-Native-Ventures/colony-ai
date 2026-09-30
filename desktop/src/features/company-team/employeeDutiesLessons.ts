@@ -111,7 +111,7 @@ function isIsoTime(value: unknown): value is string {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
 }
 
-function parseDutyProposal(value: unknown): DutyProposal {
+export function parseDutyProposal(value: unknown): DutyProposal {
   if (
     !isRecord(value) ||
     !exactKeys(value, [
@@ -147,6 +147,14 @@ function parseDutyProposal(value: unknown): DutyProposal {
     new Intl.DateTimeFormat("en", { timeZone: value.timeZone });
   } catch {
     throw new Error("The relay returned a duty with an invalid timezone.");
+  }
+  if (
+    Array.from(value.title).length > 180 ||
+    Array.from(value.scheduleText).length > 180 ||
+    Array.from(value.instructions).length > 4000 ||
+    validateReadableDutySchedule(value.scheduleText) !== value.scheduleCron
+  ) {
+    throw new Error("The relay returned an invalid duty proposal.");
   }
   return value as unknown as DutyProposal;
 }
