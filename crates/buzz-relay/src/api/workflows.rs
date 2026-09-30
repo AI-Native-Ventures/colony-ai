@@ -40,13 +40,37 @@ fn request_path(path: &str, raw_query: Option<&str>) -> String {
     }
 }
 
+fn next_scheduled_at(
+    definition: &Value,
+    enabled: bool,
+    now: DateTime<Utc>,
+) -> Result<Option<DateTime<Utc>>, String> {
+    if !enabled {
+        return Ok(None);
+    }
+    let Some(trigger) = definition.get("trigger") else {
+        return Err("workflow definition is missing its trigger".into());
+    };
+    if trigger.get("on").and_then(Value::as_str) != Some("schedule") {
+        return Ok(None);
+    }
+    let Some(cron) = trigger.get("cron").and_then(Value::as_str) else {
+        return Ok(None);
+    };
+    let timezone = trigger
+        .get("timezone")
+        .and_then(Value::as_str)
+        .unwrap_or("UTC");
+    buzz_workflow::next_cron_occurrence(cron, timezone, now)
+}
+
 async fn authorize_workflow_read(
     state: &Arc<AppState>,
     headers: &HeaderMap,
     path: &str,
     raw_query: Option<&str>,
     workflow_id: Uuid,
-) -> Result<TenantContext, (StatusCode, Json<Value>)> {
+) -> Result<(TenantContext, buzz_db::workflow::WorkflowRecord), (StatusCode, Json<Value>)> {
     let raw_host = headers
         .get(axum::http::header::HOST)
         .and_then(|value| value.to_str().ok())
@@ -105,7 +129,7 @@ async fn authorize_workflow_read(
         ));
     }
 
-    Ok(tenant)
+    Ok((tenant, workflow))
 }
 
 /// `GET /workflows/{workflow_id}/runs` — one authorized, keyset-paginated page.
@@ -131,8 +155,12 @@ pub async fn workflow_runs(
     }
 
     let path = format!("/workflows/{workflow_id}/runs");
-    let tenant =
+    let (tenant, workflow) =
         authorize_workflow_read(&state, &headers, &path, raw_query.as_deref(), workflow_id).await?;
+    let next_scheduled_at = next_scheduled_at(&workflow.definition, workflow.enabled, Utc::now())
+        .map_err(|error| {
+        internal_error(&format!("calculate next workflow schedule: {error}"))
+    })?;
     let mut rows = state
         .db
         .list_workflow_runs_page(
@@ -161,6 +189,10 @@ pub async fn workflow_runs(
     Ok(Json(serde_json::json!({
         "runs": rows.iter().map(run_json).collect::<Vec<_>>(),
         "next": next,
+        "next_scheduled_at": next_scheduled_at.map(|instant| instant.to_rfc3339()),
+        "workflow_definition_hash": hex::encode(&workflow.definition_hash),
+        "workflow_channel_id": workflow.channel_id,
+        "workflow_enabled": workflow.enabled,
     })))
 }
 
@@ -171,7 +203,8 @@ pub async fn run_approvals(
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let path = format!("/workflows/{workflow_id}/runs/{run_id}/approvals");
-    let tenant = authorize_workflow_read(&state, &headers, &path, None, workflow_id).await?;
+    let (tenant, _workflow) =
+        authorize_workflow_read(&state, &headers, &path, None, workflow_id).await?;
 
     let run = state
         .db

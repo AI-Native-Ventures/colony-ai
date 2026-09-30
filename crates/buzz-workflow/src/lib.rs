@@ -1063,6 +1063,27 @@ fn cron_catch_up(
     })
 }
 
+/// Return the next cron occurrence after `after` using the workflow timezone.
+///
+/// The caller provides the clock value so readers and tests share the same
+/// schedule semantics as the background scheduler.
+pub fn next_cron_occurrence(
+    expr: &str,
+    timezone: &str,
+    after: DateTime<Utc>,
+) -> Result<Option<DateTime<Utc>>, String> {
+    let tz = timezone
+        .parse::<chrono_tz::Tz>()
+        .map_err(|_| format!("invalid IANA timezone '{timezone}'"))?;
+    let schedule = schema::normalize_cron(expr)
+        .parse::<cron::Schedule>()
+        .map_err(|error| format!("invalid cron expression '{expr}': {error}"))?;
+    Ok(schedule
+        .after(&after.with_timezone(&tz))
+        .next()
+        .map(|occurrence| occurrence.with_timezone(&Utc)))
+}
+
 /// Quantize `now` to the interval bucket boundary, yielding a deterministic
 /// claim anchor that every pod computes identically within the same bucket.
 ///
@@ -1475,6 +1496,17 @@ mod postgres_tests {
             .with_timezone(&Utc);
         assert!(cron_catch_up("* * * * *", "UTC", watermark, now, 10).is_err());
         assert!(cron_catch_up("0 8 * * *", "not-a-timezone", watermark, now, 100).is_err());
+    }
+
+    #[test]
+    fn next_cron_occurrence_uses_the_schedule_timezone_and_injected_clock() {
+        let after = DateTime::parse_from_rfc3339("2026-09-30T04:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let next = next_cron_occurrence("0 9 * * *", "Africa/Johannesburg", after)
+            .unwrap()
+            .unwrap();
+        assert_eq!(next.to_rfc3339(), "2026-09-30T07:00:00+00:00");
     }
 
     #[test]
