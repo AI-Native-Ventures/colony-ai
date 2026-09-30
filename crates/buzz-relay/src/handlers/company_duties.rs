@@ -207,6 +207,7 @@ pub(super) async fn handle(
         tx.rollback().await.map_err(internal)?;
         return Ok(duplicate_result(&event));
     }
+    let expected_revision = stored.event.id.to_bytes();
     let replaced = state
         .db
         .replace_parameterized_event_in_transaction(
@@ -215,7 +216,7 @@ pub(super) async fn handle(
             &head_event,
             &d_tag,
             None,
-            ParameterizedReplacePrecondition::ExpectedRevision(stored.event.id.to_bytes().to_vec()),
+            ParameterizedReplacePrecondition::ExpectedRevision(&expected_revision),
         )
         .await
         .map_err(internal)?;
