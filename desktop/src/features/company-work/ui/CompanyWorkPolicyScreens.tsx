@@ -163,40 +163,24 @@ export function CompanyWorkWatchdogScreen({
   }
 
   if (saved) {
-    const savedInterval =
-      savedConfigRecord?.head.recordType === "watchdog_configuration" &&
-      savedConfigRecord.head.enabled &&
-      savedConfigRecord.head.config
-        ? savedConfigRecord.head.config.checkIntervalSeconds / 60
-        : null;
     return (
       <>
-        <CompanyWorkPageHeader title={record.head.title} />
+        <CompanyWorkPageHeader title="Work watchdog" />
         <main className="mx-auto w-full max-w-[1230px] px-8 py-8">
           <CompanyWorkBackButton
             onClick={() => void goCompanyWorkDetail(workItemId)}
           />
-          <h1 className="text-2xl font-bold tracking-tight">
-            Watchdog configuration prepared
-          </h1>
-          <section className="mt-7 max-w-2xl rounded-xl border border-border p-6">
-            {savedInterval !== null ? (
-              <p className="mb-3 text-sm font-medium">
-                Quiet time before a review: {savedInterval} minutes
-              </p>
-            ) : null}
-            <p className="text-sm text-muted-foreground">
+          <h1 className="text-2xl font-bold tracking-tight">Work watchdog</h1>
+          <section
+            className="mt-7 rounded-lg border-l-2 border-emerald-600 bg-muted/60 p-5 text-sm"
+            role="status"
+          >
+            <strong>Watchdog configuration prepared</strong>
+            <p className="mt-1 text-muted-foreground">
               Only the interval explicitly entered for this business will be
               used.
             </p>
           </section>
-          <Button
-            className="mt-5"
-            onClick={() => void goCompanyWorkDetail(workItemId)}
-            variant="outline"
-          >
-            Back to the record
-          </Button>
         </main>
       </>
     );
@@ -231,24 +215,27 @@ export function CompanyWorkWatchdogScreen({
 
   return (
     <>
-      <CompanyWorkPageHeader title={record.head.title} />
+      <CompanyWorkPageHeader title="Work watchdog" />
       <main className="mx-auto w-full max-w-[1230px] px-8 py-8">
         <CompanyWorkBackButton
           onClick={() => void goCompanyWorkDetail(workItemId)}
         />
-        <h1 className="text-2xl font-bold tracking-tight">
-          Off until configured
-        </h1>
+        <h1 className="text-2xl font-bold tracking-tight">Work watchdog</h1>
         {mutation.error ? (
           <p className="mt-4 text-sm text-destructive" role="alert">
             Could not save. Your inputs are kept. Review them or retry without
             starting again.
           </p>
         ) : null}
-        <section className="mt-7 max-w-2xl rounded-xl border border-border p-6">
-          <p className="text-sm text-muted-foreground">
-            No interval selected. Choose an interval before enabling checks.
-            There is no preset.
+        <section className="mt-7 rounded-xl border border-border p-6">
+          <h2 className="text-sm font-semibold">Off until configured</h2>
+          <p className="mt-4 rounded-lg border-l-2 border-primary/60 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+            <span className="block font-semibold text-foreground">
+              No interval selected
+            </span>
+            <span className="mt-1 block">
+              Choose an interval before enabling checks. There is no preset.
+            </span>
           </p>
           <div className="mt-5">
             <label

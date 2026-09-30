@@ -823,6 +823,7 @@ test("company work tracking reads current owner records and keeps unavailable au
         workItemId: aliceWorkId,
         title: "Prepare the client handover",
         ownerPubkey: TEST_IDENTITIES.alice.pubkey,
+        reviewerPubkey: TEST_IDENTITIES.alice.pubkey,
       },
       { workItemId: tylerWorkId, title: "Review the launch brief" },
       {
@@ -875,11 +876,17 @@ test("company work tracking reads current owner records and keeps unavailable au
 
   await page.goto(`/#/work/tracking/watchdog/${aliceWorkId}`);
   await expect(
+    page.getByRole("heading", { name: "Work watchdog" }),
+  ).toBeVisible();
+  await expect(
     page.getByRole("heading", { name: "Off until configured" }),
   ).toBeVisible();
   await expect(
+    page.getByText("No interval selected", { exact: true }),
+  ).toBeVisible();
+  await expect(
     page.getByText(
-      "No interval selected. Choose an interval before enabling checks. There is no preset.",
+      "Choose an interval before enabling checks. There is no preset.",
     ),
   ).toBeVisible();
   await expect(page.getByRole("spinbutton")).toHaveValue("");
@@ -906,17 +913,18 @@ test("company work tracking reads current owner records and keeps unavailable au
   await captureCompanyWorkMatrix(page, "work-watchdog-failed");
 
   await page.getByRole("button", { name: "Review configuration" }).click();
+  await expect(page.getByRole("button", { name: "Back" })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Watchdog configuration prepared" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Quiet time before a review: 5 minutes"),
+    page.getByText("Watchdog configuration prepared", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText(
       "Only the interval explicitly entered for this business will be used.",
     ),
   ).toBeVisible();
+  await expect(
+    page.getByText("Quiet time before a review: 5 minutes", { exact: true }),
+  ).toHaveCount(0);
   await captureCompanyWorkMatrix(page, "work-watchdog-saved");
 
   await page.goto(`/#/work/tracking/suggestion/${aliceWorkId}`);
