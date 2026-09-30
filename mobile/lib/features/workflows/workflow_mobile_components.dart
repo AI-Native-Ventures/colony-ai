@@ -21,20 +21,23 @@ class _WorkflowPickerRow extends HookConsumerWidget {
         : '$status · ${runners.join(' + ')}';
     final tokens = context.mobileTokens;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Material(
         color: tokens.paper,
-        borderRadius: BorderRadius.circular(Radii.companyCard),
+        shape: RoundedRectangleBorder(
+          side: BorderSide(color: tokens.line),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(Radii.companyCard),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
             child: Row(
               children: [
                 Container(
-                  width: 36,
-                  height: 36,
+                  width: 38,
+                  height: 40,
                   decoration: BoxDecoration(
                     color: tokens.soft,
                     borderRadius: BorderRadius.circular(12),
@@ -50,11 +53,11 @@ class _WorkflowPickerRow extends HookConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(record.name, style: _sectionStyle(context)),
+                      Text(record.name, style: _rowTitleStyle(context)),
                       const SizedBox(height: 2),
                       Text(
                         subtitle,
-                        style: _mutedStyle(context),
+                        style: _rowDescriptionStyle(context),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -89,35 +92,26 @@ class _WorkflowHero extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: colors.companyWashGradient,
-        borderRadius: BorderRadius.circular(Radii.companyCard),
+        borderRadius: BorderRadius.circular(23),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 23),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               kicker.toUpperCase(),
-              style: context.mobileTypography.companyEntryDescription.copyWith(
+              style: context.mobileTypography.companySection.copyWith(
                 color: tokens.action,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.8,
+                fontSize: 10,
+                letterSpacing: 1.3,
               ),
             ),
-            const SizedBox(height: 10),
-            Text(
-              title,
-              style: context.mobileTypography.companyHubTitle.copyWith(
-                color: tokens.ink,
-              ),
-            ),
+            const SizedBox(height: 13),
+            Text(title, style: _heroTitleStyle(context)),
             if (message != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                message!,
-                style: context.mobileTypography.companyEntryDescription
-                    .copyWith(color: tokens.muted, height: 1.45),
-              ),
+              const SizedBox(height: 9),
+              Text(message!, style: _heroDescriptionStyle(context)),
             ],
           ],
         ),
@@ -148,19 +142,34 @@ class _WorkflowNotice extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: tokens.paper,
-        borderRadius: BorderRadius.circular(Radii.companyCard),
-        border: Border(left: BorderSide(color: accent, width: 3)),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: tokens.line),
       ),
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: _sectionStyle(context)),
-          if (message != null) ...[
-            const SizedBox(height: 5),
-            Text(message!, style: _mutedStyle(context).copyWith(height: 1.45)),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(13),
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 15, 17, 15),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: _noticeTitleStyle(context)),
+                  if (message != null) ...[
+                    const SizedBox(height: 5),
+                    Text(message!, style: _noticeDescriptionStyle(context)),
+                  ],
+                ],
+              ),
+            ),
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: SizedBox(width: 3, child: ColoredBox(color: accent)),
+            ),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -175,7 +184,7 @@ class _WorkflowUnavailableContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+    padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
     children: [
       const _WorkflowHero(
         kicker: 'Connection unavailable',
@@ -183,11 +192,7 @@ class _WorkflowUnavailableContent extends StatelessWidget {
         message: 'This is not an empty record.',
       ),
       const SizedBox(height: 12),
-      _WorkflowActionButton(
-        label: 'Retry connection',
-        icon: LucideIcons.refreshCw,
-        onPressed: onRetry,
-      ),
+      _WorkflowActionButton(label: 'Retry connection', onPressed: onRetry),
     ],
   );
 }
@@ -197,7 +202,7 @@ class _WorkflowLoadingContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+    padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
     children: [
       const _WorkflowNotice(
         title: 'Loading the latest information',
@@ -233,7 +238,7 @@ class _WorkflowFactRow extends StatelessWidget {
             Flexible(
               child: Text(
                 value,
-                style: _sectionStyle(context),
+                style: _factValueStyle(context),
                 textAlign: TextAlign.end,
               ),
             ),
@@ -266,35 +271,48 @@ class _WorkflowStepCard extends StatelessWidget {
         ? step.expectedResult
         : 'A human approves the result';
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
+      padding: const EdgeInsets.symmetric(vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 14,
-                backgroundColor: tokens.soft,
-                child: Text('$index', style: _mutedStyle(context)),
+              Container(
+                width: 29,
+                height: 29,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: tokens.soft,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text('$index', style: _stepNumberStyle(context)),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(step.title, style: _sectionStyle(context)),
+                    Text(step.title, style: _stepTitleStyle(context)),
                     const SizedBox(height: 3),
-                    Text(step.instruction, style: _bodyStyle(context)),
-                    const SizedBox(height: 9),
+                    Text(
+                      step.instruction,
+                      style: _stepDescriptionStyle(context),
+                    ),
+                    const SizedBox(height: 13),
                     Row(
                       children: [
-                        CircleAvatar(
-                          radius: 12,
-                          backgroundColor: tokens.soft,
+                        Container(
+                          width: 28,
+                          height: 28,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: tokens.soft,
+                            borderRadius: BorderRadius.circular(9),
+                          ),
                           child: Text(
                             _initials(runner),
-                            style: _mutedStyle(context),
+                            style: _runnerInitialStyle(context),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -302,11 +320,11 @@ class _WorkflowStepCard extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(runner, style: _sectionStyle(context)),
+                              Text(runner, style: _runnerTitleStyle(context)),
                               if (completion?.isNotEmpty == true)
                                 Text(
                                   completion!,
-                                  style: _mutedStyle(context),
+                                  style: _runnerDescriptionStyle(context),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -321,9 +339,9 @@ class _WorkflowStepCard extends StatelessWidget {
             ],
           ),
           if (onEdit != null) ...[
-            const SizedBox(height: 9),
+            const SizedBox(height: 10),
             SizedBox(
-              height: 42,
+              height: 46,
               child: FilledButton.tonal(
                 onPressed: onEdit,
                 style: FilledButton.styleFrom(
@@ -354,15 +372,16 @@ class _WorkflowLatestRunButton extends StatelessWidget {
     final tokens = context.mobileTokens;
     return Material(
       color: tokens.paper,
-      borderRadius: BorderRadius.circular(Radii.companyCard),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(Radii.companyCard),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          constraints: const BoxConstraints(minHeight: 78),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
           decoration: BoxDecoration(
             border: Border.all(color: tokens.line),
-            borderRadius: BorderRadius.circular(Radii.companyCard),
+            borderRadius: BorderRadius.circular(16),
           ),
           child: Row(
             children: [
@@ -372,11 +391,11 @@ class _WorkflowLatestRunButton extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Latest run', style: _sectionStyle(context)),
+                    Text('Latest run', style: _rowTitleStyle(context)),
                     const SizedBox(height: 2),
                     Text(
                       status,
-                      style: _mutedStyle(context),
+                      style: _rowDescriptionStyle(context),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -464,12 +483,14 @@ class _WorkflowHeader extends StatelessWidget {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: context.mobileTypography.companyHubTitle.copyWith(
+                  style: context.mobileTypography.companyEntryTitle.copyWith(
                     color: context.mobileTokens.ink,
+                    fontSize: 15,
+                    height: 1.35,
                   ),
                 ),
                 if (subtitle?.isNotEmpty == true)
-                  Text(subtitle!, style: _mutedStyle(context)),
+                  Text(subtitle!, style: _headerSubtitleStyle(context)),
               ],
             ),
           ),
@@ -483,54 +504,164 @@ class _WorkflowHeader extends StatelessWidget {
 class _WorkflowActionButton extends StatelessWidget {
   const _WorkflowActionButton({
     required this.label,
-    required this.icon,
     required this.onPressed,
     this.isLoading = false,
+    this.isPrimary = true,
   });
 
   final String label;
-  final IconData icon;
   final VoidCallback? onPressed;
   final bool isLoading;
+  final bool isPrimary;
 
   @override
-  Widget build(BuildContext context) => FilledButton.icon(
-    onPressed: onPressed,
-    icon: isLoading
-        ? const SizedBox.square(
-            dimension: 16,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
-        : Icon(icon, size: 18),
-    label: Text(label),
-    style: FilledButton.styleFrom(
-      minimumSize: const Size.fromHeight(46),
-      backgroundColor: context.appColors.plum,
-      foregroundColor: context.mobileTokens.canvas,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(Radii.button),
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    return FilledButton(
+      onPressed: onPressed,
+      style: FilledButton.styleFrom(
+        minimumSize: const Size.fromHeight(46),
+        backgroundColor: isPrimary ? context.appColors.plum : tokens.soft,
+        foregroundColor: isPrimary ? tokens.canvas : tokens.action,
+        disabledBackgroundColor: tokens.soft,
+        disabledForegroundColor: tokens.muted,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Radii.button),
+        ),
       ),
-    ),
-  );
+      child: isLoading
+          ? const SizedBox.square(
+              dimension: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Text(label),
+    );
+  }
 }
 
 InputDecoration _workflowFieldDecoration(
   BuildContext context, {
-  required String label,
+  required String hint,
 }) => InputDecoration(
-  labelText: label,
+  hintText: hint,
+  hintStyle: TextStyle(
+    color: context.mobileTokens.paper,
+    fontSize: 14,
+    height: 1.6,
+  ),
   filled: true,
   fillColor: context.mobileTokens.paper,
-  border: OutlineInputBorder(borderRadius: BorderRadius.circular(Radii.button)),
+  contentPadding: const EdgeInsets.all(12),
+  border: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(12),
+    borderSide: BorderSide(color: context.mobileTokens.line),
+  ),
+  enabledBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(12),
+    borderSide: BorderSide(color: context.mobileTokens.line),
+  ),
+  focusedBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(12),
+    borderSide: BorderSide(color: context.mobileTokens.action, width: 1.5),
+  ),
 );
+
+Widget _workflowFieldLabel(BuildContext context, String label) =>
+    ExcludeSemantics(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 16, bottom: 7),
+        child: Text(
+          label,
+          style: context.mobileTypography.companyEntryTitle.copyWith(
+            color: context.mobileTokens.ink,
+            fontSize: 12.5,
+          ),
+        ),
+      ),
+    );
+
+TextStyle _workflowControlStyle(BuildContext context) => context
+    .mobileTypography
+    .goalBody
+    .copyWith(color: context.mobileTokens.ink, fontSize: 14, height: 1.6);
 
 TextStyle _sectionStyle(BuildContext context) => context
     .mobileTypography
-    .companyHubTitle
-    .copyWith(color: context.mobileTokens.ink);
+    .goalSectionTitle
+    .copyWith(color: context.mobileTokens.ink, fontSize: 16);
 
-TextStyle _bodyStyle(BuildContext context) =>
-    context.mobileTypography.goalBody.copyWith(color: context.mobileTokens.ink);
+TextStyle _heroTitleStyle(BuildContext context) =>
+    context.mobileTypography.companyHubTitle.copyWith(
+      color: context.mobileTokens.ink,
+      fontSize: 29,
+      height: 1.16,
+      letterSpacing: -1,
+    );
+
+TextStyle _heroDescriptionStyle(BuildContext context) => context
+    .mobileTypography
+    .companyEntryDescription
+    .copyWith(color: context.mobileTokens.muted, fontSize: 14, height: 1.6);
+
+TextStyle _noticeTitleStyle(BuildContext context) => context
+    .mobileTypography
+    .companyEntryTitle
+    .copyWith(color: context.mobileTokens.ink, fontSize: 13.5);
+
+TextStyle _noticeDescriptionStyle(BuildContext context) => context
+    .mobileTypography
+    .companyEntryDescription
+    .copyWith(color: context.mobileTokens.muted, fontSize: 12.5, height: 1.6);
+
+TextStyle _stepTitleStyle(BuildContext context) => context
+    .mobileTypography
+    .goalSectionTitle
+    .copyWith(color: context.mobileTokens.ink, fontSize: 15);
+
+TextStyle _stepDescriptionStyle(BuildContext context) => context
+    .mobileTypography
+    .goalBody
+    .copyWith(color: context.mobileTokens.ink, fontSize: 14, height: 1.6);
+
+TextStyle _runnerTitleStyle(BuildContext context) => context
+    .mobileTypography
+    .companyEntryTitle
+    .copyWith(color: context.mobileTokens.ink, fontSize: 13);
+
+TextStyle _runnerDescriptionStyle(BuildContext context) => context
+    .mobileTypography
+    .companyEntryDescription
+    .copyWith(color: context.mobileTokens.muted, fontSize: 11, height: 1.45);
+
+TextStyle _runnerInitialStyle(BuildContext context) => context
+    .mobileTypography
+    .companyEntryDescription
+    .copyWith(color: context.mobileTokens.action, fontSize: 10, height: 1.2);
+
+TextStyle _stepNumberStyle(BuildContext context) => context
+    .mobileTypography
+    .companyEntryDescription
+    .copyWith(color: context.mobileTokens.action, fontSize: 13, height: 1.2);
+
+TextStyle _rowTitleStyle(BuildContext context) => context
+    .mobileTypography
+    .companyEntryTitle
+    .copyWith(color: context.mobileTokens.ink, fontSize: 14);
+
+TextStyle _rowDescriptionStyle(BuildContext context) => context
+    .mobileTypography
+    .companyEntryDescription
+    .copyWith(color: context.mobileTokens.muted, fontSize: 11, height: 1.45);
+
+TextStyle _factValueStyle(BuildContext context) => context
+    .mobileTypography
+    .companyEntryTitle
+    .copyWith(color: context.mobileTokens.ink, fontSize: 13);
+
+TextStyle _headerSubtitleStyle(BuildContext context) => context
+    .mobileTypography
+    .companyEntryDescription
+    .copyWith(color: context.mobileTokens.muted, fontSize: 10.5, height: 1.4);
 
 TextStyle _mutedStyle(BuildContext context) => context
     .mobileTypography

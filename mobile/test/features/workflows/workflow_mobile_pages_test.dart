@@ -18,6 +18,8 @@ void main() {
   testWidgets('editing a real step preserves its saved completion condition', (
     tester,
   ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     final step = WorkflowStepRecord(
       id: 'step_existing',
       kind: WorkflowStepKind.agent,
@@ -178,13 +180,24 @@ void main() {
     await tester.tap(find.text('Add the first step'));
     await tester.pumpAndSettle();
 
+    final semantics = tester.ensureSemantics();
     expect(find.text('Make it clear.'), findsOneWidget);
-    expect(find.text('What should happen?'), findsOneWidget);
-    expect(find.text('Who does this step?'), findsOneWidget);
-    expect(find.text('Done when'), findsOneWidget);
+    expect(_visibleFieldLabel('What should happen?'), findsOneWidget);
+    expect(_visibleFieldLabel('Who does this step?'), findsOneWidget);
+    expect(_visibleFieldLabel('Done when'), findsOneWidget);
+    expect(
+      tester.getSemantics(find.byType(TextField).at(1)).label,
+      'What should happen?',
+    );
     expect(find.text('Save step'), findsOneWidget);
+    semantics.dispose();
   });
 }
+
+Finder _visibleFieldLabel(String label) => find.byWidgetPredicate(
+  (widget) =>
+      widget is Text && widget.data == label && widget.style?.fontSize == 12.5,
+);
 
 WorkflowRecord _emptyDraft() => WorkflowRecord(
   event: const NostrEvent(

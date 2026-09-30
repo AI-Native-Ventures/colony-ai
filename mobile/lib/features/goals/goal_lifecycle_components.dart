@@ -18,35 +18,26 @@ class _GoalActionBanner extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: colors.companyWashGradient,
-        borderRadius: BorderRadius.circular(Radii.companyCard),
+        borderRadius: BorderRadius.circular(23),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 23),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               kicker,
-              style: context.mobileTypography.companyEntryDescription.copyWith(
+              style: context.mobileTypography.companySection.copyWith(
                 color: tokens.action,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.8,
+                fontSize: 10,
+                letterSpacing: 1.3,
               ),
             ),
-            const SizedBox(height: 10),
-            Text(
-              title,
-              style: context.mobileTypography.companyHubTitle.copyWith(
-                color: tokens.ink,
-              ),
-            ),
+            const SizedBox(height: 13),
+            Text(title, style: _goalHeroTitleStyle(context)),
             if (message != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                message!,
-                style: context.mobileTypography.companyEntryDescription
-                    .copyWith(color: tokens.muted, height: 1.45),
-              ),
+              const SizedBox(height: 9),
+              Text(message!, style: _goalHeroDescriptionStyle(context)),
             ],
           ],
         ),
@@ -73,17 +64,20 @@ class _GoalActionRow extends StatelessWidget {
     final tokens = context.mobileTokens;
     return Material(
       color: tokens.paper,
-      borderRadius: BorderRadius.circular(Radii.companyCard),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: tokens.line),
+        borderRadius: BorderRadius.circular(16),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
           child: Row(
             children: [
               Container(
-                width: 36,
-                height: 36,
+                width: 38,
+                height: 40,
                 decoration: BoxDecoration(
                   color: tokens.soft,
                   borderRadius: BorderRadius.circular(12),
@@ -95,17 +89,9 @@ class _GoalActionRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: context.mobileTypography.companyEntryTitle
-                          .copyWith(color: tokens.ink),
-                    ),
+                    Text(title, style: _goalRowTitleStyle(context)),
                     const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: context.mobileTypography.companyEntryDescription
-                          .copyWith(color: tokens.muted),
-                    ),
+                    Text(subtitle, style: _goalRowDescriptionStyle(context)),
                   ],
                 ),
               ),
@@ -146,25 +132,27 @@ class _GoalConfirmationCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: tokens.paper,
         border: Border.all(color: tokens.line),
-        borderRadius: BorderRadius.circular(Radii.companyCard),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(19),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
               title,
-              style: context.mobileTypography.companyEntryTitle.copyWith(
+              style: context.mobileTypography.goalSectionTitle.copyWith(
                 color: tokens.ink,
+                fontSize: 16.5,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               message,
-              style: context.mobileTypography.companyEntryDescription.copyWith(
+              style: context.mobileTypography.goalBody.copyWith(
                 color: tokens.muted,
-                height: 1.5,
+                fontSize: 14,
+                height: 1.6,
               ),
             ),
             if (failure != null) ...[
@@ -229,6 +217,7 @@ class _GoalEditFieldCard extends StatelessWidget {
             label,
             style: context.mobileTypography.companyEntryDescription.copyWith(
               color: tokens.muted,
+              fontSize: 12.5,
             ),
           ),
           const SizedBox(height: 6),
@@ -237,6 +226,11 @@ class _GoalEditFieldCard extends StatelessWidget {
             maxLines: maxLines,
             minLines: maxLines,
             onChanged: onChanged,
+            style: context.mobileTypography.goalBody.copyWith(
+              color: tokens.ink,
+              fontSize: 14,
+              height: 1.6,
+            ),
             decoration: _fieldDecoration(context),
           ),
           const SizedBox(height: 12),
@@ -278,6 +272,7 @@ class _GoalStatusFieldCard extends StatelessWidget {
             'Goal status',
             style: context.mobileTypography.companyEntryDescription.copyWith(
               color: tokens.muted,
+              fontSize: 12.5,
             ),
           ),
           const SizedBox(height: 6),
@@ -286,6 +281,11 @@ class _GoalStatusFieldCard extends StatelessWidget {
             key: ValueKey(status),
             initialValue: status,
             decoration: _fieldDecoration(context),
+            style: context.mobileTypography.goalBody.copyWith(
+              color: tokens.ink,
+              fontSize: 14,
+              height: 1.6,
+            ),
             items:
                 const [
                       GoalStatus.active,
@@ -295,7 +295,14 @@ class _GoalStatusFieldCard extends StatelessWidget {
                     .map(
                       (value) => DropdownMenuItem(
                         value: value,
-                        child: Text(value.displayLabel),
+                        child: Text(
+                          value.displayLabel,
+                          style: context.mobileTypography.goalBody.copyWith(
+                            color: tokens.ink,
+                            fontSize: 14,
+                            height: 1.6,
+                          ),
+                        ),
                       ),
                     )
                     .toList(),
@@ -303,14 +310,7 @@ class _GoalStatusFieldCard extends StatelessWidget {
               if (value != null) onChanged(value);
             },
           ),
-          const SizedBox(height: 8),
-          Text(
-            'You decide when it is achieved. Progress numbers never mark a goal achieved automatically.',
-            style: context.mobileTypography.companyEntryDescription.copyWith(
-              color: tokens.muted,
-            ),
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           _GoalNotice(
             title: 'You decide when it is achieved',
             message:
@@ -341,8 +341,9 @@ class _GoalFieldTitle extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: context.mobileTypography.companyEntryTitle.copyWith(
+            style: context.mobileTypography.goalSectionTitle.copyWith(
               color: context.mobileTokens.ink,
+              fontSize: 16.5,
             ),
           ),
         ),
@@ -361,9 +362,9 @@ class _GoalCard extends StatelessWidget {
     decoration: BoxDecoration(
       color: context.mobileTokens.paper,
       border: Border.all(color: context.mobileTokens.line),
-      borderRadius: BorderRadius.circular(Radii.companyCard),
+      borderRadius: BorderRadius.circular(20),
     ),
-    child: Padding(padding: const EdgeInsets.all(14), child: child),
+    child: Padding(padding: const EdgeInsets.all(19), child: child),
   );
 }
 
@@ -379,46 +380,50 @@ class _GoalNotice extends StatelessWidget {
     final tokens = context.mobileTokens;
     final border = isError ? tokens.error : tokens.action;
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: tokens.paper,
+        borderRadius: BorderRadius.circular(13),
         border: Border.all(color: tokens.line),
-        borderRadius: BorderRadius.circular(Radii.companyCard),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 3,
-            height: message == null ? 20 : 44,
-            margin: const EdgeInsets.only(right: 9),
-            decoration: BoxDecoration(
-              color: border,
-              borderRadius: BorderRadius.circular(3),
-            ),
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: context.mobileTypography.companyEntryTitle.copyWith(
-                    color: tokens.ink,
-                  ),
-                ),
-                if (message != null) ...[
-                  const SizedBox(height: 5),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(13),
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 15, 17, 15),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    message!,
-                    style: context.mobileTypography.companyEntryDescription
-                        .copyWith(color: tokens.muted, height: 1.45),
+                    title,
+                    style: context.mobileTypography.companyEntryTitle.copyWith(
+                      color: tokens.ink,
+                      fontSize: 13.5,
+                    ),
                   ),
+                  if (message != null) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      message!,
+                      style: context.mobileTypography.companyEntryDescription
+                          .copyWith(
+                            color: tokens.muted,
+                            fontSize: 12.5,
+                            height: 1.6,
+                          ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-        ],
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: SizedBox(width: 3, child: ColoredBox(color: border)),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -445,7 +450,7 @@ class _GoalWideButton extends StatelessWidget {
       style: FilledButton.styleFrom(
         backgroundColor: isPrimary ? context.appColors.plum : tokens.soft,
         foregroundColor: isPrimary ? tokens.canvas : tokens.action,
-        minimumSize: const Size.fromHeight(44),
+        minimumSize: const Size.fromHeight(46),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(Radii.button),
         ),
@@ -463,7 +468,7 @@ class _GoalWideButton extends StatelessWidget {
 InputDecoration _fieldDecoration(BuildContext context) => InputDecoration(
   filled: true,
   fillColor: context.mobileTokens.paper,
-  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
   border: OutlineInputBorder(
     borderRadius: BorderRadius.circular(Radii.button),
     borderSide: BorderSide(color: context.mobileTokens.line),
@@ -477,3 +482,26 @@ InputDecoration _fieldDecoration(BuildContext context) => InputDecoration(
     borderSide: BorderSide(color: context.mobileTokens.action, width: 1.5),
   ),
 );
+
+TextStyle _goalHeroTitleStyle(BuildContext context) =>
+    context.mobileTypography.companyHubTitle.copyWith(
+      color: context.mobileTokens.ink,
+      fontSize: 29,
+      height: 1.16,
+      letterSpacing: -1,
+    );
+
+TextStyle _goalHeroDescriptionStyle(BuildContext context) => context
+    .mobileTypography
+    .companyEntryDescription
+    .copyWith(color: context.mobileTokens.muted, fontSize: 14, height: 1.6);
+
+TextStyle _goalRowTitleStyle(BuildContext context) => context
+    .mobileTypography
+    .companyEntryTitle
+    .copyWith(color: context.mobileTokens.ink, fontSize: 14);
+
+TextStyle _goalRowDescriptionStyle(BuildContext context) => context
+    .mobileTypography
+    .companyEntryDescription
+    .copyWith(color: context.mobileTokens.muted, fontSize: 11, height: 1.45);

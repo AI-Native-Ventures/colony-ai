@@ -17,6 +17,7 @@ import '../channels/channel_management_provider.dart';
 import '../channels/channels_provider.dart';
 
 part 'workflow_mobile_components.dart';
+part 'workflow_mobile_step_editor.dart';
 
 class WorkflowPickerPage extends HookConsumerWidget {
   const WorkflowPickerPage({super.key});
@@ -79,11 +80,11 @@ class WorkflowPickerPage extends HookConsumerWidget {
                           ),
                         );
                     return ListView(
-                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
                       children: [
                         const _WorkflowHero(
                           kicker: 'Team routines',
-                          title: 'Good work, on repeat.',
+                          title: 'Good work,\non repeat.',
                           message:
                               'Choose a workflow to see its steps and runs.',
                         ),
@@ -257,7 +258,7 @@ class WorkflowDetailMobilePage extends HookConsumerWidget {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
               children: [
                 if (showPublishedNotice) ...[
                   const _WorkflowNotice(
@@ -276,7 +277,6 @@ class WorkflowDetailMobilePage extends HookConsumerWidget {
                 if (record.status == WorkflowStatus.active)
                   _WorkflowActionButton(
                     label: 'Run workflow',
-                    icon: LucideIcons.play,
                     onPressed: startRun,
                   ),
                 if (canEditDraft) ...[
@@ -284,7 +284,7 @@ class WorkflowDetailMobilePage extends HookConsumerWidget {
                     const SizedBox(height: 9),
                   _WorkflowActionButton(
                     label: 'Edit a draft version',
-                    icon: LucideIcons.filePenLine,
+                    isPrimary: false,
                     onPressed: editDraft,
                   ),
                 ],
@@ -352,7 +352,6 @@ class _WorkflowEmptyDraftCard extends StatelessWidget {
           const SizedBox(height: 14),
           _WorkflowActionButton(
             label: 'Add the first step',
-            icon: LucideIcons.plus,
             onPressed: onAddFirstStep,
           ),
         ],
@@ -576,12 +575,16 @@ class WorkflowDraftEditorPage extends HookConsumerWidget {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
               children: [
                 _WorkflowHero(
                   kicker: 'Draft',
-                  title: base.name,
-                  message: 'Changes stay in draft until you publish.',
+                  title: steps.value.isEmpty
+                      ? 'Start with one step.'
+                      : base.name,
+                  message: steps.value.isEmpty
+                      ? 'What should happen, and who should do it?'
+                      : 'Changes stay in draft until you publish.',
                 ),
                 if (lifecycleFailure.value) ...[
                   const SizedBox(height: 12),
@@ -598,7 +601,6 @@ class WorkflowDraftEditorPage extends HookConsumerWidget {
                   const SizedBox(height: 10),
                   _WorkflowActionButton(
                     label: 'Publish workflow',
-                    icon: LucideIcons.arrowUpRight,
                     onPressed: null,
                   ),
                 ] else ...[
@@ -615,13 +617,12 @@ class WorkflowDraftEditorPage extends HookConsumerWidget {
                   const SizedBox(height: 8),
                   _WorkflowActionButton(
                     label: 'Add step',
-                    icon: LucideIcons.plus,
+                    isPrimary: false,
                     onPressed: () => editStep(),
                   ),
                   const SizedBox(height: 10),
                   _WorkflowActionButton(
                     label: 'Review & publish',
-                    icon: LucideIcons.arrowUpRight,
                     onPressed: savedDraft.value == null
                         ? null
                         : reviewAndPublish,
@@ -638,295 +639,6 @@ class WorkflowDraftEditorPage extends HookConsumerWidget {
 
 class _WorkflowDraftAccessException implements Exception {
   const _WorkflowDraftAccessException();
-}
-
-class WorkflowStepEditorPage extends HookConsumerWidget {
-  const WorkflowStepEditorPage({
-    required this.channelId,
-    required this.workflowName,
-    required this.onSave,
-    this.communityName,
-    this.step,
-    this.onRemove,
-    super.key,
-  });
-
-  final String channelId;
-  final String workflowName;
-  final String? communityName;
-  final WorkflowStepRecord? step;
-  final Future<void> Function(WorkflowStepRecord step) onSave;
-  final Future<void> Function()? onRemove;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final membersAsync = ref.watch(channelMembersProvider(channelId));
-    final title = useTextEditingController(text: step?.title);
-    final instruction = useTextEditingController(text: step?.instruction);
-    final selectedRunner = useState<String?>(
-      step?.assigneePubkey ?? step?.reviewerPubkey,
-    );
-    final completion = useState<String?>(step?.expectedResult);
-    final saveFailed = useState(false);
-    final saving = useState(false);
-    final removing = useState(false);
-    final denied = useState(false);
-    final actor = ref.watch(myPubkeyProvider);
-    useListenable(title);
-    useListenable(instruction);
-
-    if (membersAsync.isLoading) {
-      return WorkflowLoadingPage(
-        workflowName: workflowName,
-        communityName: communityName,
-      );
-    }
-    if (membersAsync.hasError) {
-      return WorkflowUnavailablePage(
-        workflowName: workflowName,
-        communityName: communityName,
-        onRetry: () => ref.invalidate(channelMembersProvider(channelId)),
-      );
-    }
-    final members = membersAsync.asData?.value ?? const <ChannelMember>[];
-    final member = members
-        .where(
-          (candidate) =>
-              candidate.pubkey.toLowerCase() ==
-              selectedRunner.value?.toLowerCase(),
-        )
-        .firstOrNull;
-    final completionChoices = <String>[
-      if (member?.isBot != false) 'A draft is ready',
-      'A human approves the result',
-      if (member?.isBot != false &&
-          completion.value != null &&
-          completion.value != 'A draft is ready' &&
-          completion.value != 'A human approves the result')
-        completion.value!,
-    ];
-
-    Future<void> save() async {
-      if (saving.value || removing.value) return;
-      final selected = member;
-      if (title.text.trim().isEmpty ||
-          instruction.text.trim().isEmpty ||
-          selected == null) {
-        return;
-      }
-      final kind = selected.isBot
-          ? WorkflowStepKind.agent
-          : WorkflowStepKind.approval;
-      if (kind == WorkflowStepKind.agent && completion.value == null) return;
-      saving.value = true;
-      saveFailed.value = false;
-      try {
-        await onSave(
-          WorkflowStepRecord(
-            id: step?.id ?? 'step_${DateTime.now().microsecondsSinceEpoch}',
-            kind: kind,
-            title: title.text.trim(),
-            instruction: instruction.text.trim(),
-            assigneePubkey: kind == WorkflowStepKind.agent
-                ? selected.pubkey.toLowerCase()
-                : null,
-            expectedResult: kind == WorkflowStepKind.agent
-                ? completion.value
-                : null,
-            reviewerPubkey: kind == WorkflowStepKind.approval
-                ? selected.pubkey.toLowerCase()
-                : null,
-          ),
-        );
-        if (context.mounted) Navigator.of(context).pop();
-      } catch (failure) {
-        if (failure is _WorkflowDraftAccessException) {
-          denied.value = true;
-        } else {
-          saveFailed.value = true;
-        }
-      } finally {
-        saving.value = false;
-      }
-    }
-
-    Future<void> remove() async {
-      if (onRemove == null || saving.value || removing.value) return;
-      removing.value = true;
-      saveFailed.value = false;
-      try {
-        await onRemove!();
-        if (context.mounted) Navigator.of(context).pop();
-      } catch (failure) {
-        if (failure is _WorkflowDraftAccessException) {
-          denied.value = true;
-        } else {
-          saveFailed.value = true;
-        }
-      } finally {
-        removing.value = false;
-      }
-    }
-
-    if (denied.value) {
-      return Material(
-        color: context.mobileTokens.canvas,
-        child: Column(
-          children: [
-            _WorkflowHeader(
-              title: workflowName,
-              subtitle: communityName,
-              onBack: () => unawaited(Navigator.of(context).maybePop()),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-                children: [
-                  const _WorkflowNotice(
-                    title: 'You can view, but cannot change this',
-                    message:
-                        'An authorized person can make the update. Your draft has been kept.',
-                    kind: _WorkflowNoticeKind.error,
-                  ),
-                  const SizedBox(height: 10),
-                  _WorkflowActionButton(
-                    label: 'Back to the record',
-                    icon: LucideIcons.arrowLeft,
-                    onPressed: () => Navigator.of(context).maybePop(),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Material(
-      color: context.mobileTokens.canvas,
-      child: Column(
-        children: [
-          _WorkflowHeader(
-            title: workflowName,
-            subtitle: communityName,
-            onBack: () => unawaited(Navigator.of(context).maybePop()),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-              children: [
-                _WorkflowHero(
-                  kicker: step == null ? 'New step' : 'Edit step',
-                  title: 'Make it clear.',
-                  message:
-                      'Write the task as you would explain it to a teammate.',
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: title,
-                  decoration: _workflowFieldDecoration(
-                    context,
-                    label: 'Step name',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: instruction,
-                  minLines: 3,
-                  maxLines: 5,
-                  decoration: _workflowFieldDecoration(
-                    context,
-                    label: 'What should happen?',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  isExpanded: true,
-                  key: ValueKey(selectedRunner.value),
-                  initialValue:
-                      members.any(
-                        (candidate) =>
-                            candidate.pubkey.toLowerCase() ==
-                            selectedRunner.value?.toLowerCase(),
-                      )
-                      ? selectedRunner.value
-                      : null,
-                  decoration: _workflowFieldDecoration(
-                    context,
-                    label: 'Who does this step?',
-                  ),
-                  items: [
-                    for (final candidate in members)
-                      DropdownMenuItem(
-                        value: candidate.pubkey.toLowerCase(),
-                        child: Text(candidate.labelFor(actor)),
-                      ),
-                  ],
-                  onChanged: (value) {
-                    selectedRunner.value = value;
-                    saveFailed.value = false;
-                  },
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  isExpanded: true,
-                  key: ValueKey('${member?.isBot}:${completion.value}'),
-                  initialValue: member?.isBot == false
-                      ? 'A human approves the result'
-                      : completion.value,
-                  decoration: _workflowFieldDecoration(
-                    context,
-                    label: 'Done when',
-                  ),
-                  items: [
-                    for (final choice in completionChoices)
-                      DropdownMenuItem(value: choice, child: Text(choice)),
-                  ],
-                  onChanged: (value) {
-                    completion.value = value;
-                    saveFailed.value = false;
-                  },
-                ),
-                if (saveFailed.value) ...[
-                  const SizedBox(height: 12),
-                  const _WorkflowNotice(
-                    title: 'Your changes were not saved',
-                    message:
-                        'Everything you typed is kept. Try again when the connection returns.',
-                    kind: _WorkflowNoticeKind.error,
-                  ),
-                ],
-                const SizedBox(height: 18),
-                _WorkflowActionButton(
-                  label: 'Save step',
-                  icon: LucideIcons.check,
-                  isLoading: saving.value,
-                  onPressed:
-                      saving.value ||
-                          removing.value ||
-                          title.text.trim().isEmpty ||
-                          instruction.text.trim().isEmpty ||
-                          member == null ||
-                          (member.isBot && completion.value == null)
-                      ? null
-                      : save,
-                ),
-                if (onRemove != null) ...[
-                  const SizedBox(height: 9),
-                  _WorkflowActionButton(
-                    label: 'Remove step',
-                    icon: LucideIcons.trash2,
-                    isLoading: removing.value,
-                    onPressed: saving.value || removing.value ? null : remove,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class WorkflowPublishReviewPage extends HookConsumerWidget {
@@ -977,7 +689,7 @@ class WorkflowPublishReviewPage extends HookConsumerWidget {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
               children: [
                 const _WorkflowHero(
                   kicker: 'Review & publish',
@@ -1023,14 +735,13 @@ class WorkflowPublishReviewPage extends HookConsumerWidget {
                 const SizedBox(height: 18),
                 _WorkflowActionButton(
                   label: 'Publish workflow',
-                  icon: LucideIcons.arrowUpRight,
                   isLoading: publishing.value,
                   onPressed: publishing.value ? null : publish,
                 ),
                 const SizedBox(height: 10),
                 _WorkflowActionButton(
                   label: 'Back to draft',
-                  icon: LucideIcons.arrowLeft,
+                  isPrimary: false,
                   onPressed: () => Navigator.of(context).maybePop(),
                 ),
               ],
@@ -1140,7 +851,7 @@ class _WorkflowRunContent extends StatelessWidget {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
               children: [
                 _WorkflowHero(
                   kicker: 'Run',
