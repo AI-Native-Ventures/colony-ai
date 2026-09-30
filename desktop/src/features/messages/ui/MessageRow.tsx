@@ -71,6 +71,8 @@ import { CompanyWorkMessageProvider } from "@/features/company-work/companyWorkM
 import { CompanyWorkSuggestionMessageCard } from "@/features/company-work/ui/CompanyWorkSuggestionMessageCard";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useMessageAgentAddressPrefix } from "./MessageAgentAddressPrefix";
+import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { useCompanyTeamMemberQuery } from "@/features/company-team/teamRelay";
 const DiffMessage = React.lazy(() => import("./DiffMessage"));
 const DiffMessageExpanded = React.lazy(() => import("./DiffMessageExpanded"));
 export type ThreadDepthGuideAction = {
@@ -299,6 +301,22 @@ export const MessageRow = React.memo(
       (message.pubkey && isKnownAgentPubkey(message.pubkey))
         ? "bot"
         : message.role;
+    const { goTeamMemberHistory } = useAppNavigation();
+    const memberQuery = useCompanyTeamMemberQuery(
+      message.pubkey ?? "",
+      Boolean(
+        message.pubkey && !message.pending && profilePopoverRole === "bot",
+      ),
+    );
+    const employeeStatus =
+      memberQuery.data?.kind === "employee" &&
+      (memberQuery.data.position?.head.status === "paused" ||
+        memberQuery.data.position?.head.status === "terminated")
+        ? memberQuery.data.position.head.status
+        : null;
+    const employeeStatusLabel =
+      employeeStatus === "paused" ? "Paused" : "Terminated";
+    const employeeReason = memberQuery.data?.position?.head.reason;
     const agentMentionPubkeysByName = React.useMemo(() => {
       if (!mentionPubkeysByName) {
         return undefined;
@@ -739,6 +757,11 @@ export const MessageRow = React.memo(
         ) : (
           authorNode
         )}
+        {employeeStatus ? (
+          <span className="rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
+            {employeeStatusLabel}
+          </span>
+        ) : null}
         {/* Author is not a segment: "Alice 9:53 AM" needs no divider. */}
         <MessageMetaSegments
           segments={[
@@ -755,6 +778,20 @@ export const MessageRow = React.memo(
 
     const messageBodyNode = (
       <>
+        {employeeStatus && isDisplayedAsContinuation ? (
+          <span className="mb-1 inline-flex rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
+            {employeeStatusLabel}
+          </span>
+        ) : null}
+        {employeeStatus && employeeReason ? (
+          <p
+            className="mb-1 text-xs text-muted-foreground"
+            data-testid={`employee-message-status-${employeeStatus}`}
+          >
+            {employeeStatus === "paused" ? "Paused by manager" : "Terminated"}:{" "}
+            {employeeReason}
+          </p>
+        ) : null}
         <SentFromThreadLine channelId={channelId} tags={message.tags} />
         {channelId && message.pubkey && !message.pending ? (
           <CompanyWorkMessageProvider
@@ -771,6 +808,18 @@ export const MessageRow = React.memo(
         ) : (
           renderBody()
         )}
+        {employeeStatus && !isDisplayedAsContinuation ? (
+          <button
+            className="mt-1 inline-flex min-h-8 items-center rounded-md border border-border bg-background px-3 py-1 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            data-testid="open-employee-history"
+            onClick={() =>
+              void goTeamMemberHistory(memberQuery.data?.pubkey ?? "")
+            }
+            type="button"
+          >
+            Open employee history
+          </button>
+        ) : null}
         {continuationMetadataNode}
         <MessageReactions
           messageId={message.id}
