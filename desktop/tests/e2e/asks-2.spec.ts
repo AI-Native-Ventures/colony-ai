@@ -346,7 +346,7 @@ test("raise a typed allowance request from Power and retry the same signed ask",
   );
 
   await page.goto("/#/power");
-  const requestAllowance = page.getByRole("button", {
+  const requestAllowance = page.getByRole("link", {
     name: "Request allowance change",
   });
   await expect(requestAllowance).toBeVisible();
