@@ -10,6 +10,7 @@ class MobileFlowAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.subtitle,
     this.backLabel = 'Back',
     this.onBack,
+    this.compact = false,
     super.key,
   });
 
@@ -17,10 +18,14 @@ class MobileFlowAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String? subtitle;
   final String backLabel;
   final VoidCallback? onBack;
+  final bool compact;
+
+  double get _height => compact
+      ? MobileLayoutTokens.compactAppBarHeight
+      : MobileLayoutTokens.appBarHeight;
 
   @override
-  Size get preferredSize =>
-      const Size.fromHeight(MobileLayoutTokens.appBarHeight);
+  Size get preferredSize => Size.fromHeight(_height);
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +36,7 @@ class MobileFlowAppBar extends StatelessWidget implements PreferredSizeWidget {
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
-      toolbarHeight: MobileLayoutTokens.appBarHeight - 1,
+      toolbarHeight: _height - 1,
       titleSpacing: 16,
       title: Column(
         mainAxisSize: MainAxisSize.min,
