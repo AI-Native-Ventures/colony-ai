@@ -1,65 +1,388 @@
 part of 'workflow_mobile_pages.dart';
 
-class _WorkflowPickerRow extends StatelessWidget {
-  const _WorkflowPickerRow({
-    required this.record,
-    required this.channel,
-    required this.onTap,
-  });
+class _WorkflowPickerRow extends HookConsumerWidget {
+  const _WorkflowPickerRow({required this.record, required this.onTap});
 
   final WorkflowRecord record;
-  final Channel? channel;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 10),
-    child: _WorkflowSectionCard(
-      onTap: onTap,
-      title: record.name,
-      trailing: const Icon(LucideIcons.chevronRight, size: 18),
-      child: Row(
-        children: [
-          _StatusChip(label: record.isDraft ? 'Draft' : record.status.name),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              channel?.name ?? record.channelId,
-              style: _mutedStyle(context),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+  Widget build(BuildContext context, WidgetRef ref) {
+    final members = ref
+        .watch(channelMembersProvider(record.channelId))
+        .asData
+        ?.value;
+    final runners = _stepRunnerNames(record.steps, members);
+    final status = record.isDraft
+        ? 'Draft · Not running'
+        : _statusLabel(record.status.name);
+    final subtitle = runners.isEmpty
+        ? status
+        : '$status · ${runners.join(' + ')}';
+    final tokens = context.mobileTokens;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: tokens.paper,
+        borderRadius: BorderRadius.circular(Radii.companyCard),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(Radii.companyCard),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: tokens.soft,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    record.isDraft ? LucideIcons.plus : LucideIcons.workflow,
+                    size: 17,
+                    color: tokens.action,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(record.name, style: _sectionStyle(context)),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: _mutedStyle(context),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(LucideIcons.chevronRight, size: 17, color: tokens.muted),
+              ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WorkflowHero extends StatelessWidget {
+  const _WorkflowHero({
+    required this.kicker,
+    required this.title,
+    this.message,
+  });
+
+  final String kicker;
+  final String title;
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final tokens = context.mobileTokens;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: colors.companyWashGradient,
+        borderRadius: BorderRadius.circular(Radii.companyCard),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              kicker.toUpperCase(),
+              style: context.mobileTypography.companyEntryDescription.copyWith(
+                color: tokens.action,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              title,
+              style: context.mobileTypography.companyHubTitle.copyWith(
+                color: tokens.ink,
+              ),
+            ),
+            if (message != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                message!,
+                style: context.mobileTypography.companyEntryDescription
+                    .copyWith(color: tokens.muted, height: 1.45),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WorkflowNotice extends StatelessWidget {
+  const _WorkflowNotice({
+    required this.title,
+    this.message,
+    this.kind = _WorkflowNoticeKind.neutral,
+  });
+
+  final String title;
+  final String? message;
+  final _WorkflowNoticeKind kind;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    final accent = switch (kind) {
+      _WorkflowNoticeKind.neutral => tokens.action,
+      _WorkflowNoticeKind.success => const Color(0xFF4C957B),
+      _WorkflowNoticeKind.error => const Color(0xFFD8798C),
+    };
+    return Container(
+      decoration: BoxDecoration(
+        color: tokens.paper,
+        borderRadius: BorderRadius.circular(Radii.companyCard),
+        border: Border(left: BorderSide(color: accent, width: 3)),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: _sectionStyle(context)),
+          if (message != null) ...[
+            const SizedBox(height: 5),
+            Text(message!, style: _mutedStyle(context).copyWith(height: 1.45)),
+          ],
         ],
       ),
-    ),
+    );
+  }
+}
+
+enum _WorkflowNoticeKind { neutral, success, error }
+
+class _WorkflowUnavailableContent extends StatelessWidget {
+  const _WorkflowUnavailableContent({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+    children: [
+      const _WorkflowHero(
+        kicker: 'Connection unavailable',
+        title: 'Let’s try again.',
+        message: 'This is not an empty record.',
+      ),
+      const SizedBox(height: 12),
+      _WorkflowActionButton(
+        label: 'Retry connection',
+        icon: LucideIcons.refreshCw,
+        onPressed: onRetry,
+      ),
+    ],
   );
 }
 
-class _WorkflowStepSummary extends StatelessWidget {
-  const _WorkflowStepSummary({required this.index, required this.step});
+class _WorkflowLoadingContent extends StatelessWidget {
+  const _WorkflowLoadingContent();
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+    children: [
+      const _WorkflowNotice(
+        title: 'Loading the latest information',
+        message: 'Actions will appear when this record is ready.',
+      ),
+      const SizedBox(height: 12),
+      Container(
+        height: 244,
+        decoration: BoxDecoration(
+          color: context.mobileTokens.paper,
+          borderRadius: BorderRadius.circular(Radii.companyCard),
+        ),
+      ),
+    ],
+  );
+}
+
+class _WorkflowFactRow extends StatelessWidget {
+  const _WorkflowFactRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Expanded(child: Text(label, style: _mutedStyle(context))),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(
+                value,
+                style: _sectionStyle(context),
+                textAlign: TextAlign.end,
+              ),
+            ),
+          ],
+        ),
+      ),
+      Divider(height: 1, color: context.mobileTokens.line),
+    ],
+  );
+}
+
+class _WorkflowStepCard extends StatelessWidget {
+  const _WorkflowStepCard({
+    required this.index,
+    required this.step,
+    required this.members,
+    this.onEdit,
+  });
 
   final int index;
   final WorkflowStepRecord step;
+  final List<ChannelMember>? members;
+  final VoidCallback? onEdit;
 
   @override
-  Widget build(BuildContext context) => ListTile(
-    contentPadding: EdgeInsets.zero,
-    leading: CircleAvatar(
-      radius: 15,
-      backgroundColor: context.mobileTokens.soft,
-      child: Text('$index', style: _mutedStyle(context)),
-    ),
-    title: Text(step.title.isEmpty ? 'Step $index' : step.title),
-    subtitle: Text(
-      step.kind == WorkflowStepKind.agent
-          ? 'Agent · ${step.expectedResult ?? 'Completion condition not set'}'
-          : 'Human review · A human approves the result',
-      style: _mutedStyle(context),
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-    ),
-  );
+  Widget build(BuildContext context) {
+    final tokens = context.mobileTokens;
+    final runner = _stepRunnerName(step, members);
+    final completion = step.kind == WorkflowStepKind.agent
+        ? step.expectedResult
+        : 'A human approves the result';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: tokens.soft,
+                child: Text('$index', style: _mutedStyle(context)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(step.title, style: _sectionStyle(context)),
+                    const SizedBox(height: 3),
+                    Text(step.instruction, style: _bodyStyle(context)),
+                    const SizedBox(height: 9),
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 12,
+                          backgroundColor: tokens.soft,
+                          child: Text(
+                            _initials(runner),
+                            style: _mutedStyle(context),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(runner, style: _sectionStyle(context)),
+                              if (completion?.isNotEmpty == true)
+                                Text(
+                                  completion!,
+                                  style: _mutedStyle(context),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (onEdit != null) ...[
+            const SizedBox(height: 9),
+            SizedBox(
+              height: 42,
+              child: FilledButton.tonal(
+                onPressed: onEdit,
+                style: FilledButton.styleFrom(
+                  foregroundColor: tokens.action,
+                  backgroundColor: tokens.soft,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(Radii.button),
+                  ),
+                ),
+                child: Text('Edit step $index'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+String _stepRunnerName(WorkflowStepRecord step, List<ChannelMember>? members) {
+  final pubkey = step.kind == WorkflowStepKind.agent
+      ? step.assigneePubkey
+      : step.reviewerPubkey;
+  if (pubkey == null) return _workflowReviewerScope(step.reviewerScope ?? '');
+  final member = members
+      ?.where(
+        (candidate) => candidate.pubkey.toLowerCase() == pubkey.toLowerCase(),
+      )
+      .firstOrNull;
+  final displayName = member?.displayName?.trim();
+  return displayName?.isNotEmpty == true ? displayName! : shortPubkey(pubkey);
+}
+
+String _workflowReviewerScope(String scope) => switch (scope) {
+  'owner_or_admin' => 'Owner or admin',
+  'channel_member' => 'Channel member',
+  'any' => 'Anyone',
+  _ => scope,
+};
+
+List<String> _stepRunnerNames(
+  List<WorkflowStepRecord> steps,
+  List<ChannelMember>? members,
+) {
+  final names = <String>[];
+  for (final step in steps) {
+    final name = _stepRunnerName(step, members);
+    if (name.isNotEmpty && !names.contains(name)) names.add(name);
+  }
+  return names;
+}
+
+String _initials(String name) {
+  final words = name
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((word) => word.isNotEmpty);
+  final initials = words.take(2).map((word) => word[0].toUpperCase()).join();
+  return initials.isEmpty ? '?' : initials;
 }
 
 class _WorkflowHeader extends StatelessWidget {
@@ -107,92 +430,6 @@ class _WorkflowHeader extends StatelessWidget {
   );
 }
 
-class _WorkflowSectionCard extends StatelessWidget {
-  const _WorkflowSectionCard({
-    required this.title,
-    required this.child,
-    this.onTap,
-    this.trailing,
-  });
-
-  final String title;
-  final Widget child;
-  final VoidCallback? onTap;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) => Card(
-    color: context.mobileTokens.paper,
-    elevation: 0,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(Radii.companyCard),
-      side: BorderSide(color: context.mobileTokens.line),
-    ),
-    clipBehavior: Clip.antiAlias,
-    child: InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(child: Text(title, style: _sectionStyle(context))),
-                ?trailing,
-              ],
-            ),
-            const SizedBox(height: 8),
-            child,
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-class _WorkflowStatusCard extends StatelessWidget {
-  const _WorkflowStatusCard({
-    required this.label,
-    required this.detail,
-    required this.icon,
-  });
-
-  final String label;
-  final String detail;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) => _WorkflowSectionCard(
-    title: label,
-    child: Row(
-      children: [
-        Icon(icon, size: 18, color: context.mobileTokens.action),
-        const SizedBox(width: 8),
-        Expanded(child: Text(detail, style: _mutedStyle(context))),
-      ],
-    ),
-  );
-}
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      color: context.mobileTokens.soft,
-      borderRadius: BorderRadius.circular(Radii.button),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      child: Text(label, style: _mutedStyle(context)),
-    ),
-  );
-}
-
 class _WorkflowActionButton extends StatelessWidget {
   const _WorkflowActionButton({
     required this.label,
@@ -222,74 +459,6 @@ class _WorkflowActionButton extends StatelessWidget {
       foregroundColor: context.mobileTokens.canvas,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Radii.button),
-      ),
-    ),
-  );
-}
-
-class _WorkflowInlineError extends StatelessWidget {
-  const _WorkflowInlineError({required this.message, this.title});
-
-  final String? title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(
-      color: context.mobileTokens.soft,
-      borderRadius: BorderRadius.circular(Radii.companyCard),
-      border: Border.all(color: context.mobileTokens.line),
-    ),
-    padding: const EdgeInsets.all(14),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title ?? 'Could not save workflow', style: _sectionStyle(context)),
-        const SizedBox(height: 5),
-        Text(message, style: _mutedStyle(context)),
-      ],
-    ),
-  );
-}
-
-class _WorkflowMessage extends StatelessWidget {
-  const _WorkflowMessage({
-    required this.title,
-    this.message,
-    this.actionLabel,
-    this.onAction,
-  });
-
-  final String title;
-  final String? message;
-  final String? actionLabel;
-  final VoidCallback? onAction;
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            title,
-            style: _sectionStyle(context),
-            textAlign: TextAlign.center,
-          ),
-          if (message != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              message!,
-              style: _mutedStyle(context),
-              textAlign: TextAlign.center,
-            ),
-          ],
-          if (onAction != null && actionLabel != null) ...[
-            const SizedBox(height: 16),
-            TextButton(onPressed: onAction, child: Text(actionLabel!)),
-          ],
-        ],
       ),
     ),
   );
@@ -327,9 +496,6 @@ String _triggerLabel(WorkflowTriggerRecord trigger) {
       : 'Daily · $time';
 }
 
-String _stepKindLabel(WorkflowStepRecord step) =>
-    step.kind == WorkflowStepKind.agent ? 'Agent step' : 'Human review';
-
 String _statusLabel(String status) => status
     .replaceAll('_', ' ')
     .split(' ')
@@ -338,23 +504,3 @@ String _statusLabel(String status) => status
       return '${word[0].toUpperCase()}${word.substring(1)}';
     })
     .join(' ');
-
-String _dateLabel(int timestamp) {
-  final date = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
-  return '${date.day} ${_month(date.month)} ${date.year} · ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-}
-
-String _month(int month) => const [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-][month - 1];

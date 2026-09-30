@@ -41,10 +41,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('No steps yet'), findsOneWidget);
-    await tester.tap(find.text('Add first step'));
+    await tester.tap(find.text('Add the first step'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Add step'), findsOneWidget);
+    expect(find.text('Make it clear.'), findsOneWidget);
     expect(find.text('What should happen?'), findsOneWidget);
     expect(find.text('Who does this step?'), findsOneWidget);
     expect(find.text('Done when'), findsOneWidget);
