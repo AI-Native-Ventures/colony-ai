@@ -826,8 +826,9 @@ AI spend records use `company:ai-spend:<record-id>`. A turn usage record id is
 derived from its source kind 44200 event id; an external cost record id is a
 UUID. Each head has a `recordType` of `agent_turn` or `external_cost` and a
 status of `active` or `removed`. Agent turn records refer to exactly one
-kind 44200 event, name the employee, record an integer `estimatedAmountNanoUsd`
-when the source report has a cost, set `isEstimate` to true, and carry a
+kind 44200 event, name the employee, optionally retain its reported model,
+record an integer `estimatedAmountNanoUsd` when the source report has a cost,
+set `isEstimate` to true, and carry a
 `sourceOfFunds` value of `colony_credits`, `provider_subscription`,
 `provider_api_key`, or `unknown`. A missing cost remains missing and never
 becomes zero. The source event id makes ingestion idempotent. Relay validation
