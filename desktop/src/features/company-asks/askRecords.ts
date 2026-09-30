@@ -74,6 +74,7 @@ export type AskRecord = {
   title: string;
   body?: string;
   threadRootEventId: string;
+  threadStart?: { title: string; openingContext?: string } | null;
   addresseePubkey?: string | null;
   decideBy?: string | null;
   options?: AskOption[] | null;
@@ -284,6 +285,20 @@ function parseAskHead(content: string): AskHead {
   }
   const head = value as unknown as AskHead;
   const ask = value.ask;
+  const threadStart = ask.threadStart;
+  const validThreadStart =
+    threadStart === undefined ||
+    threadStart === null ||
+    (isRecord(threadStart) &&
+      Object.keys(threadStart).every(
+        (key) => key === "title" || key === "openingContext",
+      ) &&
+      typeof threadStart.title === "string" &&
+      threadStart.title.trim().length > 0 &&
+      Array.from(threadStart.title).length <= 180 &&
+      (threadStart.openingContext === undefined ||
+        (typeof threadStart.openingContext === "string" &&
+          Array.from(threadStart.openingContext).length <= 4000)));
   const rawSubject = ask.subject;
   const subject =
     rawSubject === undefined || rawSubject === null
@@ -371,6 +386,7 @@ function parseAskHead(content: string): AskHead {
     !ASK_CATEGORIES.has(ask.category as AskCategory) ||
     typeof ask.title !== "string" ||
     typeof ask.threadRootEventId !== "string" ||
+    !validThreadStart ||
     invalidSecretRequest ||
     !validToolConsent ||
     (ask.type === "tool_consent" &&
@@ -443,6 +459,42 @@ export function askIdFromAction(content: string): string | null {
     return null;
   }
   return null;
+}
+
+/** Reads a valid new-thread opening from a signed ask create event. */
+export function askThreadStartFromAction(
+  content: string,
+): { title: string; openingContext?: string } | null {
+  try {
+    const action: unknown = JSON.parse(content);
+    if (
+      !isRecord(action) ||
+      action.action !== "create" ||
+      !isRecord(action.ask)
+    ) {
+      return null;
+    }
+    const threadStart = action.ask.threadStart;
+    if (
+      !isRecord(threadStart) ||
+      typeof threadStart.title !== "string" ||
+      threadStart.title.trim().length === 0 ||
+      Array.from(threadStart.title).length > 180 ||
+      (threadStart.openingContext !== undefined &&
+        (typeof threadStart.openingContext !== "string" ||
+          Array.from(threadStart.openingContext).length > 4000))
+    ) {
+      return null;
+    }
+    return {
+      title: threadStart.title,
+      ...(typeof threadStart.openingContext === "string"
+        ? { openingContext: threadStart.openingContext }
+        : {}),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function compareNewest(first: RelayEvent, second: RelayEvent) {

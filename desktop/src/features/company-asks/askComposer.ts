@@ -5,6 +5,8 @@ export type AskComposerDraft = {
   type: AskType;
   title: string;
   body: string;
+  threadTitle: string;
+  threadContext: string;
   addresseePubkey: string;
   decideBy: string;
   options: string;
@@ -17,7 +19,7 @@ export type AskComposerErrors = Partial<Record<keyof AskComposerDraft, string>>;
 /** Coordinates needed to build a channel-thread ask create action. */
 export type AskComposerCoordinates = {
   channelId: string;
-  threadRootEventId: string;
+  threadRootEventId?: string;
   askId: string;
 };
 
@@ -33,7 +35,8 @@ export type AskCreateAction = {
     category: "general";
     title: string;
     body?: string;
-    threadRootEventId: string;
+    threadRootEventId?: string;
+    threadStart?: { title: string; openingContext?: string };
     addresseePubkey: string;
     decideBy?: string;
     options?: Array<{ id: string; label: string }>;
@@ -46,6 +49,8 @@ export const EMPTY_ASK_COMPOSER_DRAFT: AskComposerDraft = {
   type: "approval",
   title: "",
   body: "",
+  threadTitle: "",
+  threadContext: "",
   addresseePubkey: "",
   decideBy: "",
   options: "",
@@ -89,8 +94,20 @@ export function validateAskComposerDraft(
     if (!UUID_PATTERN.test(coordinates.channelId)) {
       errors.title = "The conversation is unavailable.";
     }
-    if (!HEX_ID_PATTERN.test(coordinates.threadRootEventId)) {
-      errors.title = "The discussion thread is unavailable.";
+    if (coordinates.threadRootEventId) {
+      if (!HEX_ID_PATTERN.test(coordinates.threadRootEventId)) {
+        errors.title = "The discussion thread is unavailable.";
+      }
+    } else {
+      const threadTitle = draft.threadTitle.trim();
+      if (!threadTitle) {
+        errors.threadTitle = "Add a title for the new discussion.";
+      } else if (threadTitle.length > 180) {
+        errors.threadTitle = "Use 180 characters or fewer.";
+      }
+      if (draft.threadContext.trim().length > 4000) {
+        errors.threadContext = "Use 4,000 characters or fewer.";
+      }
     }
   }
 
@@ -135,7 +152,16 @@ export function buildAskCreateAction(
     category: "general",
     title: draft.title.trim(),
     ...(draft.body.trim() ? { body: draft.body.trim() } : {}),
-    threadRootEventId: coordinates.threadRootEventId,
+    ...(coordinates.threadRootEventId
+      ? { threadRootEventId: coordinates.threadRootEventId }
+      : {
+          threadStart: {
+            title: draft.threadTitle.trim(),
+            ...(draft.threadContext.trim()
+              ? { openingContext: draft.threadContext.trim() }
+              : {}),
+          },
+        }),
     addresseePubkey: draft.addresseePubkey.toLowerCase(),
     ...(decideBy ? { decideBy } : {}),
     ...(draft.type === "choice"
@@ -167,13 +193,18 @@ export function buildAskCreateAction(
 /** Builds Nostr tags for a create action, including its thread placement. */
 export function buildAskCreateTags(
   channelId: string,
-  threadRootEventId: string,
+  threadRootEventId: string | undefined,
   askId: string,
 ): string[][] {
-  return [
+  const tags = [
     ["h", channelId],
     ["d", `channel:${channelId}:ask:${askId}`],
-    ["e", threadRootEventId, "", "root"],
-    ["e", threadRootEventId, "", "reply"],
   ];
+  if (threadRootEventId) {
+    tags.push(
+      ["e", threadRootEventId, "", "root"],
+      ["e", threadRootEventId, "", "reply"],
+    );
+  }
+  return tags;
 }

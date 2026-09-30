@@ -140,6 +140,28 @@ test("create action uses the existing channel ask schema and stable thread tags"
   ]);
 });
 
+test("new-thread asks carry their opening context without a separate root event", () => {
+  const draft = {
+    ...validDraft("question"),
+    threadTitle: "Client delivery",
+    threadContext: "The client asked for an updated launch date.",
+  };
+  const action = buildAskCreateAction(draft, {
+    channelId: CHANNEL_ID,
+    askId: ASK_ID,
+  });
+
+  assert.deepEqual(action.ask.threadStart, {
+    title: "Client delivery",
+    openingContext: "The client asked for an updated launch date.",
+  });
+  assert.equal("threadRootEventId" in action.ask, false);
+  assert.deepEqual(buildAskCreateTags(CHANNEL_ID, undefined, ASK_ID), [
+    ["h", CHANNEL_ID],
+    ["d", `channel:${CHANNEL_ID}:ask:${ASK_ID}`],
+  ]);
+});
+
 test("invalid drafts cannot be converted into sendable actions", () => {
   assert.throws(
     () =>

@@ -115,15 +115,18 @@ test("raise an ask from the message composer and retry the same signed action", 
   expect(signedAskActions).toBe(1);
 
   await page.getByRole("button", { name: "Retry send" }).click();
-  await expect(page.getByTestId("ask-detail-screen")).toBeVisible();
-  await expect(page.getByTestId("ask-thread-root")).toContainText(
+  await expect(
+    page.getByRole("heading", { name: "Ask raised in its thread" }),
+  ).toBeVisible();
+  await expect(page.getByText(/Approve the launch outline/)).toBeVisible();
+  await page.getByRole("button", { name: "Open the conversation" }).click();
+  await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+  await expect(page.getByTestId("message-thread-panel")).toContainText(
     "Share the question that needs a decision.",
   );
   await expect(page.getByTestId("ask-card")).toContainText(
     "Approve the launch outline",
   );
-  await page.getByRole("link", { name: "Back to discussion" }).click();
-  await expect(page.getByTestId("message-thread-panel")).toBeVisible();
   await expect(page.getByTestId("ask-card")).toHaveCount(1);
   expect(thread.rootId).toMatch(/^[0-9a-f]{64}$/);
 });
@@ -151,8 +154,12 @@ test("raise an ask from a message action and keep the message thread root", asyn
     .getByLabel("Response from")
     .selectOption(TEST_IDENTITIES.alice.pubkey);
   await page.getByRole("button", { name: "Send ask" }).click();
-  await expect(page.getByTestId("ask-detail-screen")).toBeVisible();
-  await expect(page.getByTestId("ask-thread-root")).toContainText(
+  await expect(
+    page.getByRole("heading", { name: "Ask raised in its thread" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Open the conversation" }).click();
+  await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+  await expect(page.getByTestId("message-thread-panel")).toContainText(
     "Share the question that needs a decision.",
   );
   await expect(page.getByTestId("ask-card")).toContainText(
