@@ -9,12 +9,14 @@ import {
 import {
   KIND_MEMBER_POSITION_HEAD,
   KIND_STREAM_MESSAGE,
+  KIND_WORK_ITEM_HEAD,
 } from "../../src/shared/constants/kinds";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 const OWNER_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
 const EMPLOYEE_NAME = "Mina";
 const EMPLOYEE_TITLE = "Social Media Manager";
+const EMPLOYEE_WORK_ITEM_ID = "e3a4b5c6-d7e8-49f0-a1b2-c3d4e5f60718";
 const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 
 function positionHead(input: {
@@ -44,6 +46,32 @@ function positionHead(input: {
       }),
     },
     input.relaySecret,
+  );
+}
+
+function companyWorkHeadEvent(relaySecret: Uint8Array, assignedPubkey: string) {
+  return finalizeEvent(
+    {
+      kind: KIND_WORK_ITEM_HEAD,
+      created_at: Math.floor(Date.now() / 1_000),
+      tags: [
+        ["h", GENERAL_CHANNEL_ID],
+        ["d", `company:work:${EMPLOYEE_WORK_ITEM_ID}`],
+      ],
+      content: JSON.stringify({
+        schemaVersion: 1,
+        workItemId: EMPLOYEE_WORK_ITEM_ID,
+        title: "Prepare the launch brief",
+        status: "active",
+        assignedPubkeys: [assignedPubkey],
+        approverPubkeys: [],
+        deliverables: [],
+        requesterPubkey: OWNER_PUBKEY,
+        doneCondition: "The launch brief is ready for review.",
+        sourceActionEventId: "c".repeat(64),
+      }),
+    },
+    relaySecret,
   );
 }
 
@@ -108,10 +136,7 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   await installMockBridge(page, {
     relaySelf,
     companyMemberRelayPrivateKeyHex: bytesToHex(relaySecret),
-    companyMemberActionErrors: [
-      "restricted: e2e member write rejected.",
-      "restricted: e2e member write rejected.",
-    ],
+    companyMemberActionErrors: ["restricted: e2e member write rejected."],
     searchProfiles: [
       { pubkey: OWNER_PUBKEY, displayName: "tyler" },
       { pubkey: alicePubkey, displayName: "alice" },
@@ -188,7 +213,12 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
         channelNames: ["general"],
       },
     ],
-    companyWorkReadErrors: ["invalid: e2e forced work read failure."],
+    companyWorkEvents: [companyWorkHeadEvent(relaySecret, employeePubkey)],
+    channelsReadErrors: Array.from(
+      { length: 4 },
+      () => "invalid: e2e forced channel read failure.",
+    ),
+    visualChannels: [{ id: GENERAL_CHANNEL_ID, name: "general" }],
   });
 
   await page.goto("/#/team");
@@ -244,19 +274,11 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   await page.getByRole("tab", { name: "History" }).click();
   await expect(
     page.getByTestId("company-member-position-history"),
-  ).toContainText("Title changed");
+  ).toContainText("Position changed");
   await expect(
     page.getByTestId("company-member-position-history"),
   ).toContainText("Chief of Staff");
 
-  await page.getByRole("button", { name: "Back", exact: true }).click();
-  await page.getByTestId(`company-team-member-${bobPubkey}`).click();
-  await expect(page).toHaveURL(new RegExp(`/team/detail/${bobPubkey}$`));
-  await expect(page.getByTestId("company-team-member-profile")).toContainText(
-    "Designer",
-  );
-
-  await page.getByRole("button", { name: "Back", exact: true }).click();
   await page.goto(`/#/team/detail/${unlinkedPubkey}`);
   await expect(page.getByTestId("company-position-unlinked")).toBeVisible();
   await expect(page.getByTestId("company-position-record")).toContainText(
@@ -288,8 +310,11 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   );
   await page.getByRole("button", { name: "Retry current work" }).click();
   await expect(page.getByTestId("employee-doing-now")).toContainText(
-    "No current commitments.",
+    "Prepare the launch brief",
   );
+  await expect(
+    page.getByTestId(`employee-work-${EMPLOYEE_WORK_ITEM_ID}`),
+  ).toBeVisible();
 
   await page.getByRole("tab", { name: "Instructions" }).click();
   await expect(page.getByTestId("employee-instructions")).toContainText(
@@ -357,6 +382,14 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   await page.getByRole("button", { name: "Pause employee" }).click();
   await expect(page.getByTestId("company-team-pause-screen")).toBeVisible();
   await page.getByLabel("Reason").fill("Reviewing the October workload.");
+  await page.evaluate(() => {
+    const e2e = window.__BUZZ_E2E__ as {
+      mock?: { companyMemberActionErrors?: string[] };
+    };
+    e2e.mock?.companyMemberActionErrors?.push(
+      "restricted: e2e member write rejected.",
+    );
+  });
   await page.getByRole("button", { name: "Pause employee" }).click();
   await expect(page.getByRole("alert")).toContainText(
     "e2e member write rejected",
@@ -364,6 +397,12 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   await expect(page.getByLabel("Reason")).toHaveValue(
     "Reviewing the October workload.",
   );
+  await page.evaluate(() => {
+    const e2e = window.__BUZZ_E2E__ as {
+      mock?: { companyMemberActionErrors?: string[] };
+    };
+    if (e2e.mock) e2e.mock.companyMemberActionErrors = [];
+  });
   await page.getByRole("button", { name: "Pause employee" }).click();
   await expect(page.getByTestId("company-paused-banner")).toContainText(
     "Reviewing the October workload.",
@@ -387,6 +426,7 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
 
   await page.goto(`/#/team/detail/${employeePubkey}`);
   await expect(page.getByTestId("company-employee-profile")).toBeVisible();
+  await page.getByRole("tab", { name: "Overview" }).click();
   await page.getByRole("button", { name: "Terminate employee" }).click();
   await expect(page.getByTestId("company-team-archive-screen")).toBeVisible();
   await page.getByLabel("Reason").fill("The role has ended after review.");
@@ -403,4 +443,12 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
     page.getByTestId("employee-message-status-terminated").last(),
   ).toHaveText("Terminated: The role has ended after review.");
   await expect(page.getByTestId("open-employee-history").last()).toBeVisible();
+
+  await page.goto(`/#/team/detail/${bobPubkey}`);
+  await expect(page.getByTestId("company-team-member-profile")).toContainText(
+    "Designer",
+  );
+  await expect(page.getByTestId("company-member-doing-now")).toContainText(
+    "No current commitments.",
+  );
 });
