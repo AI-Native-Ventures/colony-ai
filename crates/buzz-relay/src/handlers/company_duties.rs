@@ -92,6 +92,7 @@ pub(super) async fn handle(
         .ok_or_else(|| conflict("duty does not exist"))?;
     let mut head = parse_duty_head(&stored, state)?;
     ensure_head_identity(&head, action.duty_id)?;
+    ensure_command_employee_tag(&event, &head.proposal.employee_pubkey)?;
     ensure_expected_head(&action, &stored)?;
 
     let mut tx = state
@@ -582,15 +583,23 @@ fn command_d_tag(event: &Event, duty_id: Uuid) -> Result<String, IngestError> {
         .iter()
         .filter(|tag| tag.kind().to_string() == "auth")
         .count();
+    // The SDK and desktop builders name the duty's employee in one `p` tag; it is
+    // checked against the stored duty head once that is loaded.
+    let employee_tag_count = event
+        .tags
+        .iter()
+        .filter(|tag| tag.kind().to_string() == "p")
+        .count();
     if d_tags.len() != 1
         || auth_tag_count > 1
+        || employee_tag_count > 1
         || event.tags.iter().any(|tag| {
             let kind = tag.kind().to_string();
-            kind != "d" && kind != "auth"
+            kind != "d" && kind != "auth" && kind != "p"
         })
     {
         return Err(invalid(
-            "duty commands require one d tag, no h tag, and no unsupported tags",
+            "duty commands require one d tag, at most one employee p tag, no h tag, and no unsupported tags",
         ));
     }
     let d_tag = d_tags[0]
@@ -599,6 +608,20 @@ fn command_d_tag(event: &Event, duty_id: Uuid) -> Result<String, IngestError> {
     validate_duty_d_tag(d_tag, duty_id)
         .map_err(|error| invalid(format!("duty command d tag: {error}")))?;
     Ok(d_tag.to_owned())
+}
+
+/// A command's optional employee `p` tag must name the stored duty's employee.
+fn ensure_command_employee_tag(event: &Event, employee_pubkey: &str) -> Result<(), IngestError> {
+    let mismatched = event
+        .tags
+        .iter()
+        .filter(|tag| tag.kind().to_string() == "p")
+        .any(|tag| tag.content() != Some(employee_pubkey));
+    if mismatched {
+        Err(invalid("duty command p tag must name the duty's employee"))
+    } else {
+        Ok(())
+    }
 }
 
 fn is_admin(role: &str) -> bool {
@@ -627,4 +650,58 @@ fn conflict(message: impl Into<String>) -> IngestError {
 
 fn internal(error: impl std::fmt::Display) -> IngestError {
     IngestError::Internal(format!("error: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nostr::Keys;
+
+    fn pause_command(extra_tags: Vec<Tag>, employee_pubkey: &str) -> (Event, Uuid) {
+        let duty_id = Uuid::from_u128(7);
+        let action = DutyAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            duty_id,
+            action: DutyActionKind::Pause,
+            expected_head_event_id: "ab".repeat(32),
+            proposal: None,
+            reason: None,
+        };
+        let event = buzz_sdk::company_duties::build_duty_action(&action, employee_pubkey)
+            .expect("build duty action")
+            .tags(extra_tags)
+            .sign_with_keys(&Keys::generate())
+            .expect("sign duty action");
+        (event, duty_id)
+    }
+
+    #[test]
+    fn command_tags_accept_the_layout_the_sdk_and_desktop_send() {
+        let employee = Keys::generate().public_key().to_hex();
+        let (event, duty_id) = pause_command(Vec::new(), &employee);
+        assert!(event.tags.iter().any(|tag| tag.kind().to_string() == "p"));
+        assert!(command_d_tag(&event, duty_id).is_ok());
+    }
+
+    #[test]
+    fn command_tags_reject_channel_scope_and_a_second_employee_tag() {
+        let employee = Keys::generate().public_key().to_hex();
+        let channel = Tag::parse(["h", "ebe2a2eb-24c7-4cb0-ab92-65e5ffb90971"]).expect("h tag");
+        let (event, duty_id) = pause_command(vec![channel], &employee);
+        assert!(command_d_tag(&event, duty_id).is_err());
+
+        let other = Keys::generate().public_key().to_hex();
+        let second = Tag::parse(["p", other.as_str()]).expect("p tag");
+        let (event, duty_id) = pause_command(vec![second], &employee);
+        assert!(command_d_tag(&event, duty_id).is_err());
+    }
+
+    #[test]
+    fn command_employee_tag_must_name_the_stored_duty_employee() {
+        let employee = Keys::generate().public_key().to_hex();
+        let (event, _) = pause_command(Vec::new(), &employee);
+        assert!(ensure_command_employee_tag(&event, &employee).is_ok());
+        let someone_else = Keys::generate().public_key().to_hex();
+        assert!(ensure_command_employee_tag(&event, &someone_else).is_err());
+    }
 }
