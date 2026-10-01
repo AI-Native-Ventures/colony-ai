@@ -411,6 +411,8 @@ test("message agent avatar uses square initials and preserves its profile shortc
     name: /^Open profile for .+$/,
   });
   await expect(avatarButton).toHaveCount(1);
+  await expect(avatarButton.locator('button, [role="button"]')).toHaveCount(0);
+  await expect(avatar.locator("xpath=ancestor::button[1]")).toHaveCount(0);
   await page.keyboard.press("Tab");
   await avatarButton.focus();
   await expect(avatarButton).toBeFocused();
