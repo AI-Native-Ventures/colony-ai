@@ -31,7 +31,7 @@ Status: fixed in PR #163. The production parser test failed first on eleven filt
 
 After a relay rate-limit response, concurrent history requests, publishes, and paced frames awaited the shared gate before entering the scheduler. Those suspended operations bypassed its 256-item queue bound. The new `RelaySessionNotifier.publish` regression failed before the fix: publish 257 timed out waiting on the active gate instead of failing promptly with the scheduler's queue-full `StateError`.
 
-Status: fixed in PR #174, commits `730292b19` (test first) and `e59921cd9` (fix). History requests, publishes, and paced frames now enter the bounded scheduler before the gate delay. Local `relay_session_test.dart` passed all 54 tests, `flutter analyze --no-pub` passed, and pre-push file-size checks passed. On head `e59921cd924fa2ede9fbf431aa322b54ee5622b6`, the first hosted CI attempt failed during Android debug APK packaging after format, analysis, and tests passed. Safe job metadata identified Gradle dependency resolution. The same-head rerun passed. The first iOS landing and relaunch proof failed in its XCTest step; its log contained token-like content, so no lines were printed, and available artifact metadata did not identify a failing assertion. The same-head iOS rerun passed. All current PR checks now pass or are intentionally skipped. CI run `36928647163` attempt 2 and iOS runtime run `36928646696` attempt 2 completed successfully. Not merged, deployed, or live-verified.
+Status: fixed in PR #174, commits `730292b19` (test first) and `e59921cd9` (fix). History requests, publishes, and paced frames now enter the bounded scheduler before the gate delay. Local `relay_session_test.dart` passed all 54 tests, `flutter analyze --no-pub` passed, and pre-push file-size checks passed. On head `e59921cd924fa2ede9fbf431aa322b54ee5622b6`, the first hosted CI attempt failed during Android debug APK packaging after format, analysis, and tests passed. Safe job metadata identified Gradle dependency resolution. The same-head rerun passed. The first iOS landing and relaunch proof failed in its XCTest step; its log contained token-like content, so no lines were printed, and available artifact metadata did not identify a failing assertion. The same-head iOS rerun passed. All current PR checks passed or were intentionally skipped. CI run `36928647163` attempt 2 and iOS runtime run `36928646696` attempt 2 completed successfully. PR #174 was merged by the coordinator at `f5013d52c8a1289e22cf4a053c17b9973958418f`. Not deployed or live-verified.
 
 ### Medium, confidence 9/10: signup reveals whether an email is registered
 
@@ -66,8 +66,8 @@ No confirmed Payfast signature, source validation, merchant or amount mismatch, 
 
 ## Delivery state
 
-- Implemented and merged: account sign-in ordering, PR #166; HTTP filter count bounds, PR #163.
-- Implemented and locally tested: mobile scheduler admission, PR #174. Hosted CI passed on head `e59921cd924fa2ede9fbf431aa322b54ee5622b6`, including a passing retry of the Android package build and iOS runtime proof after their first attempts failed. The first iOS failure cause remains unconfirmed.
+- Implemented and merged: account sign-in ordering, PR #166; HTTP filter count bounds, PR #163; mobile scheduler admission, PR #174 at merge commit `f5013d52c8a1289e22cf4a053c17b9973958418f`.
+- Hosted CI passed on PR #174 head `e59921cd924fa2ede9fbf431aa322b54ee5622b6`, including successful same-head retries of the Android package build and iOS runtime proof after their first attempts failed. The cause of the first iOS failure remains unconfirmed.
 - Open product decision: whether signup should keep its account-specific `email_taken` recovery response or use a uniform response.
 - Deployed and live-verified: none.
 - Production actions: none. The production workflow was reviewed statically only and never run.
