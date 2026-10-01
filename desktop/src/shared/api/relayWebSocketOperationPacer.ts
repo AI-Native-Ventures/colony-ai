@@ -4,11 +4,18 @@ const RELAY_OPERATION_INTERVAL_MS = 125;
 // An eight-operation burst plus an eight-per-second refill stays below that
 // fixed-window budget while allowing initial app subscriptions to start at once.
 const RELAY_OPERATION_BURST_CAPACITY = 8;
+// Persistable EVENT attempts also consume the relay's 60-per-minute message
+// quota. A four-event burst plus one event every 1.2 seconds tops out at 53 in
+// any 60-second window, below the relay limit.
+const HUMAN_MESSAGE_BURST_CAPACITY = 4;
+const HUMAN_MESSAGE_INTERVAL_MS = 1_200;
 const MAX_QUEUED_RELAY_OPERATIONS = 256;
 
 type PacerState = {
   tokens: number;
   lastRefillAt: number;
+  humanMessageTokens: number;
+  lastHumanMessageRefillAt: number;
   nextSequence: number;
   waiters: QueuedOperation[];
   refillTimer: number | null;
@@ -23,6 +30,7 @@ type RelayOperationPriority =
 type QueuedOperation = {
   sequence: number;
   priority: RelayOperationPriority;
+  humanMessage: boolean;
   isCurrent: () => boolean;
   minimumDelayMs: () => number;
   resolve: () => void;
@@ -33,6 +41,8 @@ function createPacerState(): PacerState {
   return {
     tokens: RELAY_OPERATION_BURST_CAPACITY,
     lastRefillAt: Date.now(),
+    humanMessageTokens: HUMAN_MESSAGE_BURST_CAPACITY,
+    lastHumanMessageRefillAt: Date.now(),
     nextSequence: 0,
     waiters: [],
     refillTimer: null,
@@ -45,6 +55,14 @@ function isAdmissionFrame(frame: unknown[]): boolean {
   return (
     typeof frame[0] === "string" && RELAY_ADMISSION_FRAME_TYPES.has(frame[0])
   );
+}
+
+function isPersistedEventFrame(frame: unknown[]): boolean {
+  if (frame[0] !== "EVENT" || typeof frame[1] !== "object" || !frame[1]) {
+    return false;
+  }
+  const kind = (frame[1] as { kind?: unknown }).kind;
+  return typeof kind === "number" && (kind < 20_000 || kind > 29_999);
 }
 
 function isSyntheticE2eRelay(): boolean {
@@ -62,6 +80,12 @@ function refillTokens(state: PacerState, now: number): void {
     state.tokens + elapsedMs / RELAY_OPERATION_INTERVAL_MS,
   );
   state.lastRefillAt = now;
+  const elapsedMessageMs = Math.max(0, now - state.lastHumanMessageRefillAt);
+  state.humanMessageTokens = Math.min(
+    HUMAN_MESSAGE_BURST_CAPACITY,
+    state.humanMessageTokens + elapsedMessageMs / HUMAN_MESSAGE_INTERVAL_MS,
+  );
+  state.lastHumanMessageRefillAt = now;
 }
 
 const PRIORITY_RANK: Record<RelayOperationPriority, number> = {
@@ -96,27 +120,55 @@ function drainQueue(state: PacerState): void {
       left.sequence - right.sequence,
   );
 
-  while (state.waiters.length > 0) {
-    const current = state.waiters[0];
-    if (!current.isCurrent()) {
-      state.waiters.shift();
-      current.reject(
+  for (let index = state.waiters.length - 1; index >= 0; index--) {
+    const operation = state.waiters[index];
+    if (!operation.isCurrent()) {
+      state.waiters.splice(index, 1);
+      operation.reject(
         new Error("Relay operation was superseded before sending."),
       );
-      continue;
     }
-    const tokenDelayMs = Math.ceil(
-      Math.max(0, 1 - state.tokens) * RELAY_OPERATION_INTERVAL_MS,
-    );
-    const minimumDelayMs = Math.max(0, current.minimumDelayMs());
-    if (state.tokens < 1 || minimumDelayMs > 0) {
-      scheduleRefill(state, Math.max(tokenDelayMs, minimumDelayMs));
+  }
+
+  while (state.waiters.length > 0) {
+    let selectedIndex = -1;
+    let nextReadyInMs = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < state.waiters.length; index++) {
+      const operation = state.waiters[index];
+      const tokenDelayMs = Math.ceil(
+        Math.max(0, 1 - state.tokens) * RELAY_OPERATION_INTERVAL_MS,
+      );
+      const messageDelayMs = operation.humanMessage
+        ? Math.ceil(
+            Math.max(0, 1 - state.humanMessageTokens) *
+              HUMAN_MESSAGE_INTERVAL_MS,
+          )
+        : 0;
+      const delayMs = Math.max(
+        tokenDelayMs,
+        messageDelayMs,
+        Math.max(0, operation.minimumDelayMs()),
+      );
+      if (delayMs === 0) {
+        selectedIndex = index;
+        break;
+      }
+      nextReadyInMs = Math.min(nextReadyInMs, delayMs);
+    }
+    if (selectedIndex < 0) {
+      scheduleRefill(state, nextReadyInMs);
       return;
     }
-    const operation = state.waiters.shift();
+
+    const operation = state.waiters.splice(selectedIndex, 1)[0];
     if (!operation) break;
     state.tokens -= 1;
+    if (operation.humanMessage) state.humanMessageTokens -= 1;
     operation.resolve();
+  }
+  if (state.waiters.length === 0 && state.refillTimer !== null) {
+    window.clearTimeout(state.refillTimer);
+    state.refillTimer = null;
   }
 }
 
@@ -125,6 +177,7 @@ function acquireToken(
   priority: RelayOperationPriority,
   isCurrent: () => boolean,
   minimumDelayMs: () => number,
+  humanMessage: boolean,
 ): Promise<void> {
   if (state !== activeState) {
     return Promise.reject(
@@ -139,6 +192,7 @@ function acquireToken(
     state.waiters.push({
       sequence: state.nextSequence++,
       priority,
+      humanMessage,
       isCurrent,
       minimumDelayMs,
       resolve,
@@ -170,7 +224,13 @@ export async function sendPacedRelayOperation<T>(
   }
 
   const state = activeState;
-  await acquireToken(state, priority, isCurrent, minimumDelayMs);
+  await acquireToken(
+    state,
+    priority,
+    isCurrent,
+    minimumDelayMs,
+    isPersistedEventFrame(frame),
+  );
   if (state !== activeState || !isCurrent()) {
     throw new Error("Relay operation was superseded before sending.");
   }

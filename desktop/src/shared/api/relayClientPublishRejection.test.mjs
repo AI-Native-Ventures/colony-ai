@@ -47,9 +47,8 @@ const { invokeTauri } = await import("./tauri.ts");
 const { activateRateLimit, isRateLimited, resetRateLimitGate } = await import(
   "./relayRateLimitGate.ts"
 );
-const { resetRelayWebSocketOperationPacer } = await import(
-  "./relayWebSocketOperationPacer.ts"
-);
+const { resetRelayWebSocketOperationPacer, sendPacedRelayOperation } =
+  await import("./relayWebSocketOperationPacer.ts");
 
 function reset() {
   resetRateLimitGate();
@@ -504,6 +503,35 @@ test("synthetic E2E relay does not spend a real relay quota budget", async () =>
     await Promise.all(subscriptions);
   } finally {
     delete window.__BUZZ_E2E_USES_REAL_RELAY__;
+  }
+});
+
+test("persisted EVENT pacing stays below 60 messages per minute", async () => {
+  reset();
+  const eventTimes = [];
+  const operations = Array.from({ length: 60 }, (_, index) =>
+    sendPacedRelayOperation(
+      ["EVENT", { id: `event-${index}`, kind: 9 }],
+      () => true,
+      async () => eventTimes.push(fakeNow),
+      "interactive",
+    ),
+  );
+
+  await advanceTimersUntil(
+    () => eventTimes.length === operations.length,
+    70_000,
+  );
+  await Promise.all(operations);
+
+  for (const startAt of eventTimes) {
+    const count = eventTimes.filter(
+      (sentAt) => sentAt >= startAt && sentAt - startAt < 60_000,
+    ).length;
+    assert.ok(
+      count <= 53,
+      `found ${count} persisted EVENT frames in one 60-second window`,
+    );
   }
 });
 
