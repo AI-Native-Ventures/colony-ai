@@ -464,14 +464,20 @@ async function capture(page: Page, name: string) {
                 .map((id) => document.getElementById(id)?.textContent ?? "")
                 .join(" ")
             : "";
+          const nativeLabels = (
+            element as HTMLElement & {
+              labels?: NodeListOf<HTMLLabelElement>;
+            }
+          ).labels;
+          const nativeLabelText = Array.from(nativeLabels ?? [])
+            .map((label) => label.textContent ?? "")
+            .join(" ");
           const labelText =
             element.getAttribute("aria-label") ||
             labelledText ||
             element.getAttribute("title") ||
-            (element instanceof HTMLInputElement ||
-            element instanceof HTMLTextAreaElement
-              ? element.labels?.[0]?.textContent
-              : "") ||
+            nativeLabelText ||
+            element.closest("label")?.textContent ||
             element.textContent ||
             "";
           return !labelText.trim();
@@ -1653,6 +1659,18 @@ test.describe("signed-in canary company UI", () => {
                 ? "settings-profile"
                 : "settings-account-security";
       await expect(page.getByTestId(marker)).toBeVisible();
+      if (section === "privacy") {
+        await expect(
+          page.getByRole("checkbox", {
+            name: "Show message text in desktop notifications",
+          }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole("checkbox", {
+            name: "Share typing activity with the conversation",
+          }),
+        ).toBeVisible();
+      }
       await capture(page, `16-settings-${section}-read-only`);
       if (section === "appearance") {
         await page.getByRole("button", { name: "Browse named themes" }).click();
