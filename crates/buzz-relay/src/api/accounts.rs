@@ -138,7 +138,6 @@ enum SigninDecision {
 
 fn signin_decision(email_verified: bool, password_matches: Option<bool>) -> SigninDecision {
     match password_matches {
-        None if !email_verified => SigninDecision::EmailUnverified,
         None => SigninDecision::VerifyPassword,
         Some(false) => SigninDecision::InvalidCredentials,
         Some(true) if !email_verified => SigninDecision::EmailUnverified,
