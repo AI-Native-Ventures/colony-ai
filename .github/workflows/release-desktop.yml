@@ -163,6 +163,7 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --title "Colony $RELEASE_VERSION" \
               --notes-file release-notes.md \
+              --draft=false \
               --latest
           else
             gh release create "$RELEASE_TAG" release-assets/* \
