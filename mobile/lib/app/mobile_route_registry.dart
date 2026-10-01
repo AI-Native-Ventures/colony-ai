@@ -157,6 +157,7 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
       MobileBusinessRoutes.team,
       (context, _) => Consumer(
         builder: (context, ref, _) => TeamPage(
+          onBackToCompany: () => Navigator.of(context).maybePop(),
           onInvite: () => Navigator.of(context).push<void>(
             MaterialPageRoute<void>(
               builder: (_) => const CommunityInvitePage(),
