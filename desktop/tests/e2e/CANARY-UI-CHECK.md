@@ -57,11 +57,22 @@ the signed-in owner is not offered as a recipient, and records the
 single-member recovery state only when that state is present. Ask creation,
 new-thread setup, ask-type selection, allowance drafts, and hire-proposal drafts
 are left unsent.
+The synthetic approval and decision-reason check runs only when the canary has
+an eligible human recipient that the managed-agent fixture lets the suite
+identify. The relay permits agents to receive only question or verdict asks, so
+the suite reports decision reasons as unproven when it cannot confirm a human
+recipient.
 
 The frozen company-v9 contract gives human members Overview and History only.
 The suite checks those tabs on the owner and checks employee-only tabs with the
 managed agent. The fixture must have mode `0600`; the test reads only its public
 key and never returns or logs its signing material.
+
+The existing Tools & access grant page is separate from the frozen batch 2
+context-bound tool-consent flow. The suite checks that the generic grant starts
+with blank action, scope and expiry fields, but reports the batch 2 consent flow
+as `NEEDS_API` when the canary has no real pending tool-consent request. It does
+not synthesize that request from mockup state.
 
 The suite captures each exercised desktop state in light and dark at 1440x900
 and 1728x1117. It records console and page errors, failed requests, HTTP errors,

@@ -719,7 +719,10 @@ async function createMessage(
   return id;
 }
 
-async function createAsk(page: Page, input: { askId: string; title: string }) {
+async function createAsk(
+  page: Page,
+  input: { askId: string; title: string; addresseePubkey: string },
+) {
   const now = Math.floor(Date.now() / 1000);
   const ask = {
     schemaVersion: 1,
@@ -729,7 +732,7 @@ async function createAsk(page: Page, input: { askId: string; title: string }) {
     title: input.title,
     body: "Confirm the synthetic canary checklist is complete.",
     threadRootEventId: account.rootId,
-    addresseePubkey: identity.pubkey,
+    addresseePubkey: input.addresseePubkey,
     decideBy: new Date((now + 3600) * 1000).toISOString(),
   };
   const createAction = {
@@ -952,6 +955,7 @@ test.describe("signed-in canary company UI", () => {
         return "loading";
       })
       .toMatch(/^(empty|ready)$/);
+    let decisionRecipientPubkey: string | undefined;
     if (
       (await page
         .getByText("You’re the only member here", { exact: true })
@@ -976,7 +980,15 @@ test.describe("signed-in canary company UI", () => {
         (pubkey) => pubkey.toLowerCase() !== identity.pubkey.toLowerCase(),
       );
       expect(eligibleRecipients.length).toBeGreaterThan(0);
-      await askRecipient.selectOption(eligibleRecipients[0]);
+      decisionRecipientPubkey = managedAgentPubkey
+        ? eligibleRecipients.find(
+            (pubkey) =>
+              pubkey.toLowerCase() !== managedAgentPubkey.toLowerCase(),
+          )
+        : undefined;
+      await askRecipient.selectOption(
+        decisionRecipientPubkey ?? eligibleRecipients[0],
+      );
       await expect(askRecipient).not.toHaveValue(identity.pubkey);
       await page
         .getByLabel("What needs a response?")
@@ -987,91 +999,101 @@ test.describe("signed-in canary company UI", () => {
       await capture(page, "03-asks-recipient-draft-not-sent");
     }
 
-    const askId = randomUUID();
-    const askTitle = `Canary approval ${askId.slice(0, 8)}`;
-    await waitForCanaryWriteWindow(page);
-    await createAsk(page, { askId, title: askTitle });
-    const seededAskHeads = await queryRelay(page, [
-      {
-        kinds: [30643],
-        authors: [relaySelf],
-        "#h": [account.channel],
-        "#d": [`channel:${account.channel}:ask:${askId}`],
-        limit: 10,
-      },
-    ]);
-    expect(seededAskHeads.length).toBeGreaterThan(0);
-    const initialAskHeadId = seededAskHeads[0]?.id;
-    if (!initialAskHeadId) {
-      throw new Error("The new canary ask did not produce a head event.");
-    }
-    try {
-      await openCanaryAsk(page, askId, askTitle);
-    } catch (error) {
-      const trace = Object.fromEntries(relayFrameCounts);
-      throw new Error(
-        `Ask detail did not load. Canary relay frames: ${JSON.stringify(trace)}. ${error instanceof Error ? error.message : ""}`,
-      );
-    }
-    await page.getByLabel("Reason").fill("Approved for canary review.");
-    await waitForCanaryWriteWindow(page);
-    await page.getByRole("button", { name: "Record response" }).click();
-    await expect(page.getByTestId("ask-resolved")).toContainText(
-      "Approved by You",
-      { timeout: 30_000 },
-    );
-    await page.reload();
-    await expect(page.getByTestId("ask-resolved")).toContainText(
-      "Approved by You",
-      { timeout: 30_000 },
-    );
-    await capture(page, "03-asks-approved");
-
-    await waitForCanaryWriteWindow(page);
-    const staleDecisionMessage = await publishExpectedRelayRejection(page, {
-      kind: KIND_ASK_RESPONSE,
-      content: JSON.stringify({
-        schemaVersion: 1,
+    if (decisionRecipientPubkey) {
+      const askId = randomUUID();
+      const askTitle = `Canary approval ${askId.slice(0, 8)}`;
+      await waitForCanaryWriteWindow(page);
+      await createAsk(page, {
         askId,
-        expectedHeadEventId: initialAskHeadId,
-        outcome: "approved",
-        reason: "A stale decision must fail.",
-      }),
-      tags: [
-        ["h", account.channel],
-        ["d", `channel:${account.channel}:ask:${askId}`],
-      ],
-    });
-    if (/current ask|ask is resolved/i.test(staleDecisionMessage)) {
-      console.log("CANARY_STALE_ASK_REJECTION", "stale head rejected");
-    } else if (/rate-limited/i.test(staleDecisionMessage)) {
-      relayWritesRateLimited = true;
-      canaryFindings.push(
-        "Asks stale decision: relay quota blocked the stale-head rejection check.",
+        title: askTitle,
+        addresseePubkey: decisionRecipientPubkey,
+      });
+      const seededAskHeads = await queryRelay(page, [
+        {
+          kinds: [30643],
+          authors: [relaySelf],
+          "#h": [account.channel],
+          "#d": [`channel:${account.channel}:ask:${askId}`],
+          limit: 10,
+        },
+      ]);
+      expect(seededAskHeads.length).toBeGreaterThan(0);
+      const initialAskHeadId = seededAskHeads[0]?.id;
+      if (!initialAskHeadId) {
+        throw new Error("The new canary ask did not produce a head event.");
+      }
+      try {
+        await openCanaryAsk(page, askId, askTitle);
+      } catch (error) {
+        const trace = Object.fromEntries(relayFrameCounts);
+        throw new Error(
+          `Ask detail did not load. Canary relay frames: ${JSON.stringify(trace)}. ${error instanceof Error ? error.message : ""}`,
+        );
+      }
+      await page.getByLabel("Reason").fill("Approved for canary review.");
+      await waitForCanaryWriteWindow(page);
+      await page.getByRole("button", { name: "Record response" }).click();
+      await expect(page.getByTestId("ask-resolved")).toContainText(
+        "Approved by You",
+        { timeout: 30_000 },
+      );
+      await page.reload();
+      await expect(page.getByTestId("ask-resolved")).toContainText(
+        "Approved by You",
+        { timeout: 30_000 },
+      );
+      await capture(page, "03-asks-approved");
+
+      await waitForCanaryWriteWindow(page);
+      const staleDecisionMessage = await publishExpectedRelayRejection(page, {
+        kind: KIND_ASK_RESPONSE,
+        content: JSON.stringify({
+          schemaVersion: 1,
+          askId,
+          expectedHeadEventId: initialAskHeadId,
+          outcome: "approved",
+          reason: "A stale decision must fail.",
+        }),
+        tags: [
+          ["h", account.channel],
+          ["d", `channel:${account.channel}:ask:${askId}`],
+        ],
+      });
+      if (/current ask|ask is resolved/i.test(staleDecisionMessage)) {
+        console.log("CANARY_STALE_ASK_REJECTION", "stale head rejected");
+      } else if (/rate-limited/i.test(staleDecisionMessage)) {
+        relayWritesRateLimited = true;
+        canaryFindings.push(
+          "Asks stale decision: relay quota blocked the stale-head rejection check.",
+        );
+      } else {
+        throw new Error(
+          "The stale decision was rejected for a reason other than the current ask or relay quota.",
+        );
+      }
+      await expect(page.getByTestId("ask-resolved")).toContainText(
+        "Approved by You",
+        { timeout: 30_000 },
+      );
+      await expect(
+        page.getByRole("button", { name: "Record response" }),
+      ).toHaveCount(0);
+      await page.reload();
+      await expect(page.getByTestId("ask-resolved")).toContainText(
+        "Approved by You",
+        { timeout: 30_000 },
+      );
+      await capture(
+        page,
+        relayWritesRateLimited
+          ? "03-asks-current-head-after-rate-limit"
+          : "03-asks-stale-decision-refused",
       );
     } else {
-      throw new Error(
-        "The stale decision was rejected for a reason other than the current ask or relay quota.",
+      unproven.push(
+        "Ask decision reasons remain unproven because the suite cannot confirm an eligible human decision recipient. The managed agent can only receive question or verdict asks.",
       );
     }
-    await expect(page.getByTestId("ask-resolved")).toContainText(
-      "Approved by You",
-      { timeout: 30_000 },
-    );
-    await expect(
-      page.getByRole("button", { name: "Record response" }),
-    ).toHaveCount(0);
-    await page.reload();
-    await expect(page.getByTestId("ask-resolved")).toContainText(
-      "Approved by You",
-      { timeout: 30_000 },
-    );
-    await capture(
-      page,
-      relayWritesRateLimited
-        ? "03-asks-current-head-after-rate-limit"
-        : "03-asks-stale-decision-refused",
-    );
 
     if (relayWritesRateLimited) {
       canaryFindings.push(
@@ -1514,9 +1536,11 @@ test.describe("signed-in canary company UI", () => {
     await startNewThread.focus();
     await page.keyboard.press("Space");
     await expect(page.getByLabel("New thread title")).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Cancel", exact: true }),
-    ).toHaveCount(0);
+    const cancelNewThread = page.getByRole("button", {
+      name: "Cancel",
+      exact: true,
+    });
+    await expect(cancelNewThread).toBeVisible();
     await page
       .getByLabel("New thread title")
       .fill("Canary draft discussion, not sent");
@@ -1529,6 +1553,10 @@ test.describe("signed-in canary company UI", () => {
     const continueButton = page.getByRole("button", {
       name: "Continue to ask",
     });
+    await expect(continueButton).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(cancelNewThread).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
     await expect(continueButton).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(
@@ -1798,7 +1826,10 @@ test.describe("signed-in canary company UI", () => {
           `The managed-agent permission route settled in the ${await authorityMessage.isVisible().then((visible) => (visible ? "unauthorized" : "unavailable"))} state, so the empty-scope and empty-expiry guard could not be checked.`,
         );
       }
-      await capture(page, "15-permission-unselected-scope-and-expiry");
+      await capture(page, "15-existing-standing-grant-explicit-fields");
+      needsApi.push(
+        "The canary has no real pending tool-consent request for the frozen B2 scope-and-expiry flow. The existing Tools & access grant page is a separate standing-grant entry and cannot stand in for that context-bound request.",
+      );
     } else {
       unproven.push(
         "Permission grant scope and expiry checks need BUZZ_E2E_CANARY_AGENT_FILE.",
