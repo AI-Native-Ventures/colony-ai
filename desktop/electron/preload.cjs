@@ -13,6 +13,7 @@ const windowLabel =
     ?.slice(LABEL_ARG.length) ?? "main";
 const listeners = new Map();
 const browserListeners = new Set();
+const updaterListeners = new Set();
 let sequence = 0;
 
 ipcRenderer.on("colony:event", (_event, message) => {
@@ -31,6 +32,16 @@ ipcRenderer.on("colony:browser-event", (_event, message) => {
       callback(message);
     } catch {
       // A throwing browser listener must not starve the others.
+    }
+  }
+});
+
+ipcRenderer.on("colony:updater-status", (_event, status) => {
+  for (const callback of updaterListeners) {
+    try {
+      callback(status);
+    } catch {
+      // A throwing renderer listener must not starve the others.
     }
   }
 });
@@ -55,6 +66,17 @@ contextBridge.exposeInMainWorld("colonyDesktop", {
     const id = ++sequence;
     listeners.set(id, callback);
     return () => listeners.delete(id);
+  },
+  updater: {
+    getStatus: () => ipcRenderer.invoke("colony:updater", "status"),
+    check: () => ipcRenderer.invoke("colony:updater", "check"),
+    install: () => ipcRenderer.invoke("colony:updater", "install"),
+    subscribe: (callback) => {
+      if (typeof callback !== "function")
+        throw new Error("Invalid updater listener");
+      updaterListeners.add(callback);
+      return () => updaterListeners.delete(callback);
+    },
   },
 });
 

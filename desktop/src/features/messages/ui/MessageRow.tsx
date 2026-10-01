@@ -38,11 +38,8 @@ import {
   KIND_STREAM_MESSAGE_DIFF,
   KIND_WORK_ITEM_HEAD,
 } from "@/shared/constants/kinds";
-import { AskCard } from "@/features/company-asks/ui/AskCard";
-import {
-  askIdFromAction,
-  askThreadStartFromAction,
-} from "@/features/company-asks/askRecords";
+import { AskActionAttachment } from "@/features/messages/ui/AskActionAttachment";
+import { askIdFromAction } from "@/features/company-asks/askRecords";
 import { getConfigNudgeAuthorPubkey } from "@/features/messages/ui/configNudgeAuthPubkey";
 import { cn } from "@/shared/lib/cn";
 import { useMeasuredCssVariable } from "@/shared/layout/useMeasuredCssVariable";
@@ -78,6 +75,7 @@ import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useCompanyTeamMemberQuery } from "@/features/company-team/teamRelay";
 const DiffMessage = React.lazy(() => import("./DiffMessage"));
 const DiffMessageExpanded = React.lazy(() => import("./DiffMessageExpanded"));
+
 export type ThreadDepthGuideAction = {
   active?: boolean;
   depth: number;
@@ -477,27 +475,14 @@ export const MessageRow = React.memo(
           );
         case KIND_ASK_ACTION: {
           const askId = askIdFromAction(message.body);
-          const threadStart = askThreadStartFromAction(message.body);
           return askId ? (
-            <div>
-              {threadStart ? (
-                <section
-                  aria-label="Discussion opening"
-                  className="colony-ask-create-context mb-3"
-                >
-                  <strong>{threadStart.title}</strong>
-                  {threadStart.openingContext ? (
-                    <span>{threadStart.openingContext}</span>
-                  ) : null}
-                </section>
-              ) : null}
-              <AskCard
-                askId={askId}
-                channelId={channelId}
-                currentPubkey={currentPubkey}
-                profiles={profiles}
-              />
-            </div>
+            <AskActionAttachment
+              askId={askId}
+              channelId={channelId}
+              currentPubkey={currentPubkey}
+              messageBody={message.body}
+              profiles={profiles}
+            />
           ) : (
             <p role="alert">This ask request could not be read.</p>
           );

@@ -794,6 +794,7 @@ type MockBridgeOptions = {
 type BridgeOptions = {
   mode: BridgeMode;
   mock?: MockBridgeOptions;
+  forceRelayPacing?: boolean;
   relayHttpUrl?: string;
   relayWsUrl?: string;
   autoConnectDefaultRelay?: boolean;
@@ -1067,6 +1068,7 @@ export async function installBridge(page: Page, options: BridgeOptions) {
       identity: bridgeIdentity,
       mock,
       mode,
+      forceRelayPacing,
       relayHttpUrl,
       relayWsUrl,
       relayAuthMode,
@@ -1126,6 +1128,7 @@ export async function installBridge(page: Page, options: BridgeOptions) {
         identity: bridgeIdentity ?? currentConfig.identity,
         mock,
         mode,
+        forceRelayPacing: forceRelayPacing ?? currentConfig.forceRelayPacing,
         relayHttpUrl: relayHttpUrl ?? currentConfig.relayHttpUrl,
         relayWsUrl: relayWsUrl ?? currentConfig.relayWsUrl,
         relayAuthMode: relayAuthMode ?? currentConfig.relayAuthMode,
@@ -1151,6 +1154,7 @@ export async function installBridge(page: Page, options: BridgeOptions) {
       identity,
       mock: options.mock,
       mode: options.mode,
+      forceRelayPacing: options.forceRelayPacing,
       relayHttpUrl: options.relayHttpUrl,
       relayWsUrl: options.relayWsUrl,
       relayAuthMode: options.relayAuthMode,
@@ -1168,10 +1172,12 @@ export async function installMockBridge(
     skipOnboardingSeed?: boolean;
     skipCommunitySeed?: boolean;
     seedPreviewFeatures?: boolean;
+    forceRelayPacing?: boolean;
   },
 ) {
   await installBridge(page, {
     mode: "mock",
+    forceRelayPacing: options?.forceRelayPacing,
     mock,
     relayWsUrl: options?.relayWsUrl,
     autoConnectDefaultRelay: options?.autoConnectDefaultRelay,

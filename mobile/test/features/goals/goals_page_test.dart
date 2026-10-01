@@ -1260,6 +1260,9 @@ class _GoalCaptureSystemBars extends StatelessWidget {
 class _EmptyUserCache extends UserCacheNotifier {
   @override
   Map<String, UserProfile> build() => const {};
+
+  @override
+  UserProfile? get(String pubkey) => null;
 }
 
 class _GoalCaptureUserCache extends UserCacheNotifier {

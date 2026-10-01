@@ -241,7 +241,26 @@ function captureCanaryDiagnostics(page: Page, label: string) {
 async function assertAskCardsSettle(page: Page) {
   const loadingCards = page.getByTestId("ask-card-loading");
   if ((await loadingCards.count()) > 0) {
-    await expect(loadingCards).toHaveCount(0, { timeout: 35_000 });
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () =>
+              [
+                ...document.querySelectorAll(
+                  '[data-testid="ask-card-loading"]',
+                ),
+              ].filter((element) => {
+                const bounds = element.getBoundingClientRect();
+                return (
+                  bounds.bottom >= -320 &&
+                  bounds.top <= window.innerHeight + 320
+                );
+              }).length,
+          ),
+        { timeout: 35_000 },
+      )
+      .toBe(0);
   }
   const errorCards = page.getByTestId("ask-card-error");
   const errorCount = await errorCards.count();
@@ -261,6 +280,12 @@ async function assertAskCardsSettle(page: Page) {
     ].filter((element) =>
       (element.textContent ?? "").includes("Loading the latest ask"),
     ).length,
+    offscreenLoadingCards: [
+      ...document.querySelectorAll('[data-testid="ask-card-loading"]'),
+    ].filter((element) => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.bottom < -320 || bounds.top > window.innerHeight + 320;
+    }).length,
   }));
   console.log("CANARY_THREAD_ASK_CARD_STATE", JSON.stringify(state));
 }

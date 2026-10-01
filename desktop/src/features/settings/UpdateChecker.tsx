@@ -89,9 +89,8 @@ export function UpdateChecker() {
                 className="text-sm font-normal text-muted-foreground/70"
                 data-settings-subcopy
               >
-                In-app updates aren't supported on this Linux package. Download
-                the new version from GitHub.{" "}
-                <span>Switch to the AppImage build for automatic updates.</span>
+                Automatic installation isn't available for this build. Download
+                the new version from GitHub.
               </p>
             </div>
             <Button size="sm" onClick={() => void openUrl(status.releaseUrl)}>

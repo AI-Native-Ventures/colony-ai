@@ -69,7 +69,9 @@ class RelayRateLimitGate {
   int remainingMs() {
     final expiresAt = _expiresAt;
     if (expiresAt == null) return 0;
-    return max(0, expiresAt.difference(_now()).inMilliseconds);
+    final remainingMicroseconds = expiresAt.difference(_now()).inMicroseconds;
+    if (remainingMicroseconds <= 0) return 0;
+    return (remainingMicroseconds + 999) ~/ 1000;
   }
 
   /// Clears the gate and releases all current waiters.

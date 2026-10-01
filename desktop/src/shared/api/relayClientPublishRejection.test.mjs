@@ -47,9 +47,8 @@ const { invokeTauri } = await import("./tauri.ts");
 const { activateRateLimit, isRateLimited, resetRateLimitGate } = await import(
   "./relayRateLimitGate.ts"
 );
-const { resetRelayWebSocketOperationPacer } = await import(
-  "./relayWebSocketOperationPacer.ts"
-);
+const { resetRelayWebSocketOperationPacer, sendPacedRelayOperation } =
+  await import("./relayWebSocketOperationPacer.ts");
 
 function reset() {
   resetRateLimitGate();
@@ -258,6 +257,57 @@ test("an accepted OK still resolves the pending publish", async () => {
   assert.equal(outcome.value.id, eventId);
 });
 
+test("identical live filters share one relay REQ until the last listener leaves", async () => {
+  reset();
+  const client = connectedClient();
+  client.ensureConnected = async () => client.connectionGeneration;
+  const filter = { kinds: [9], "#h": ["visible-channel"], limit: 50 };
+  const firstEvents = [];
+  const secondEvents = [];
+  const first = client.subscribeLive(filter, (event) =>
+    firstEvents.push(event),
+  );
+  const second = client.subscribeLive(
+    { limit: 50, "#h": ["visible-channel"], kinds: [9] },
+    (event) => secondEvents.push(event),
+  );
+
+  await flushUntil(() => requestFrames().length === 1);
+  assert.equal(requestFrames().length, 1);
+  const subId = JSON.parse(requestFrames()[0].message.data)[1];
+  const event = {
+    id: "a".repeat(64),
+    pubkey: "b".repeat(64),
+    created_at: 1,
+    kind: 9,
+    tags: [],
+    content: "shared update",
+    sig: "c".repeat(128),
+  };
+  await deliver(client, ["EVENT", subId, event]);
+  await deliver(client, ["EOSE", subId]);
+  assert.deepEqual(firstEvents, [event]);
+  assert.deepEqual(secondEvents, [event]);
+  const [unsubscribeFirst, unsubscribeSecond] = await Promise.all([
+    first,
+    second,
+  ]);
+
+  await unsubscribeFirst();
+  assert.equal(
+    sendAttempts.some(({ message }) => JSON.parse(message.data)[0] === "CLOSE"),
+    false,
+    "the shared wire subscription stays open while one listener remains",
+  );
+  await unsubscribeSecond();
+  assert.equal(
+    sendAttempts.filter(
+      ({ message }) => JSON.parse(message.data)[0] === "CLOSE",
+    ).length,
+    1,
+  );
+});
+
 test("a publish started during an ordinary outage reconnects once and settles", async () => {
   reset();
   const client = new RelayClient();
@@ -453,6 +503,35 @@ test("synthetic E2E relay does not spend a real relay quota budget", async () =>
     await Promise.all(subscriptions);
   } finally {
     delete window.__BUZZ_E2E_USES_REAL_RELAY__;
+  }
+});
+
+test("persisted EVENT pacing stays below 60 messages per minute", async () => {
+  reset();
+  const eventTimes = [];
+  const operations = Array.from({ length: 60 }, (_, index) =>
+    sendPacedRelayOperation(
+      ["EVENT", { id: `event-${index}`, kind: 9 }],
+      () => true,
+      async () => eventTimes.push(fakeNow),
+      "interactive",
+    ),
+  );
+
+  await advanceTimersUntil(
+    () => eventTimes.length === operations.length,
+    70_000,
+  );
+  await Promise.all(operations);
+
+  for (const startAt of eventTimes) {
+    const count = eventTimes.filter(
+      (sentAt) => sentAt >= startAt && sentAt - startAt < 60_000,
+    ).length;
+    assert.ok(
+      count <= 53,
+      `found ${count} persisted EVENT frames in one 60-second window`,
+    );
   }
 });
 

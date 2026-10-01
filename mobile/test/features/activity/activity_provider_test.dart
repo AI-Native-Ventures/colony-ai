@@ -18,6 +18,7 @@ class _RecordingSessionNotifier extends RelaySessionNotifier {
   Completer<void>? mentionFetchGate;
   bool failNextMentionFetch = false;
   bool failNextQueryRelay = false;
+  bool failNextRateLimitedQuery = false;
   int mentionFetchCount = 0;
   int activeMentionFetches = 0;
   int maxActiveMentionFetches = 0;
@@ -67,6 +68,13 @@ class _RecordingSessionNotifier extends RelaySessionNotifier {
     Duration timeout = const Duration(seconds: 8),
   }) async {
     queryFilterCounts.add(filters.length);
+    if (failNextRateLimitedQuery) {
+      failNextRateLimitedQuery = false;
+      throw RelayException(
+        429,
+        '{"error":"rate-limited: quota exceeded; retry in 1s"}',
+      );
+    }
     if (failNextQueryRelay) {
       failNextQueryRelay = false;
       throw StateError('transient HTTP query failure');
@@ -302,6 +310,36 @@ void main() {
     expect(session.queryFilterCounts, [3]);
     expect(session.mentionFetchCount, 1);
     expect(feed.mentions.map((item) => item.id), ['fallback-mention']);
+  });
+
+  test('surfaces HTTP rate limits without another history attempt', () async {
+    final session = _RecordingSessionNotifier()
+      ..failNextRateLimitedQuery = true;
+    final container = ProviderContainer(
+      overrides: [
+        relayConfigProvider.overrideWith(_FixedRelayConfigNotifier.new),
+        myPubkeyProvider.overrideWithValue('me_pk'),
+        relaySessionProvider.overrideWith(() => session),
+        channelsProvider.overrideWith(
+          () => _FixedChannelsNotifier(const <Channel>[]),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(channelsProvider.future);
+    await expectLater(
+      container.read(activityProvider.future),
+      throwsA(
+        isA<RelayException>().having(
+          (error) => error.statusCode,
+          'statusCode',
+          429,
+        ),
+      ),
+    );
+
+    expect(session.mentionFetchCount, 0);
   });
 
   test('only pending workflow approval requests need action', () async {
