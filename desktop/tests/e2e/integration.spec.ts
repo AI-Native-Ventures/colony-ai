@@ -72,6 +72,7 @@ async function enableDesktopMessagePreviews(
       "Privacy preferences saved",
     );
   }
+  await page.getByTestId("settings-back-to-app").click();
 }
 
 async function sendChannelMessage(
