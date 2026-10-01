@@ -110,9 +110,10 @@ export function AskCreateScreen({
   const [selectedThreadRootId, setSelectedThreadRootId] = React.useState(
     threadRootEventId ?? "",
   );
-  const [startNewThread, setStartNewThread] = React.useState(
-    !threadRootEventId,
-  );
+  const [startNewThread, setStartNewThread] = React.useState(false);
+  const [destinationMode, setDestinationMode] = React.useState<
+    "channel" | "threads" | "new-thread"
+  >(channelId ? "threads" : "channel");
   const [step, setStep] = React.useState<"destination" | "compose">(
     channelId && threadRootEventId ? "compose" : "destination",
   );
@@ -186,7 +187,8 @@ export function AskCreateScreen({
   React.useEffect(() => {
     setSelectedChannelId(channelId ?? "");
     setSelectedThreadRootId(threadRootEventId ?? "");
-    setStartNewThread(!threadRootEventId);
+    setStartNewThread(false);
+    setDestinationMode(channelId ? "threads" : "channel");
     setStep(channelId && threadRootEventId ? "compose" : "destination");
   }, [channelId, threadRootEventId]);
 
@@ -423,7 +425,7 @@ export function AskCreateScreen({
   };
 
   const changeChannel = (nextChannelId: string) => {
-    const nextThreadIsNew = step === "destination" || startNewThread;
+    const nextThreadIsNew = destinationMode === "new-thread" || startNewThread;
     setSelectedChannelId(nextChannelId);
     setSelectedThreadRootId("");
     setStartNewThread(nextThreadIsNew);
@@ -448,6 +450,15 @@ export function AskCreateScreen({
       return;
     }
     if (step !== "compose") {
+      if (destinationMode === "new-thread") {
+        setDestinationMode("threads");
+        setStartNewThread(false);
+        return;
+      }
+      if (destinationMode === "threads") {
+        setDestinationMode("channel");
+        return;
+      }
       returnedToThread();
       return;
     }
@@ -682,12 +693,14 @@ export function AskCreateScreen({
   const canContinue = Boolean(
     selectedChannelId &&
       channel?.isMember &&
-      (startNewThread
-        ? draft.threadTitle.trim().length > 0 &&
+      (destinationMode === "threads"
+        ? threadRoots.some((message) => message.id === selectedThreadRootId)
+        : destinationMode === "new-thread" &&
+          draft.threadTitle.trim().length > 0 &&
           draft.threadTitle.trim().length <= 180 &&
-          draft.threadContext.length <= 4000
-        : threadRoots.some((message) => message.id === selectedThreadRootId)),
+          draft.threadContext.length <= 4000),
   );
+  const canChooseThreads = Boolean(selectedChannelId && channel?.isMember);
 
   const openSentConversation = () => {
     if (!sentContext) return;
@@ -726,7 +739,7 @@ export function AskCreateScreen({
         }
       />
       <div
-        className={`colony-ask-detail-scroll${isHireProposal ? " colony-ask-detail-scroll--hire" : ""}${isMoneyProposal ? " colony-ask-detail-scroll--money" : ""}`}
+        className={`colony-ask-detail-scroll${step === "destination" ? " colony-ask-detail-scroll--destination" : ""}${isHireProposal ? " colony-ask-detail-scroll--hire" : ""}${isMoneyProposal ? " colony-ask-detail-scroll--money" : ""}`}
       >
         <section
           aria-labelledby="ask-create-title"
@@ -790,7 +803,7 @@ export function AskCreateScreen({
               selectedChannelId={selectedChannelId}
               channelIsMember={Boolean(channel?.isMember)}
               selectedChannelExists={Boolean(channel)}
-              startNewThread={startNewThread}
+              destinationMode={destinationMode}
               selectedThreadRootId={selectedThreadRootId}
               threadOptions={threadRoots.map((thread) => ({
                 id: thread.id,
@@ -800,14 +813,23 @@ export function AskCreateScreen({
               threadsError={messagesQuery.isError}
               draft={draft}
               errors={errors}
+              canChooseThreads={canChooseThreads}
               canContinue={canContinue}
               onChangeChannel={changeChannel}
-              onChooseExistingThread={() => setStartNewThread(false)}
+              onChooseThreads={() => {
+                setSelectedThreadRootId("");
+                setStartNewThread(false);
+                setDestinationMode("threads");
+              }}
               onStartNewThread={() => {
                 setSelectedThreadRootId("");
                 setStartNewThread(true);
+                setDestinationMode("new-thread");
               }}
-              onSelectThread={setSelectedThreadRootId}
+              onSelectThread={(threadRootId) => {
+                setSelectedThreadRootId(threadRootId);
+                setStartNewThread(false);
+              }}
               onRetryChannels={() => void channelsQuery.refetch()}
               onRetryThreads={retryThreads}
               onContinue={continueToAsk}
