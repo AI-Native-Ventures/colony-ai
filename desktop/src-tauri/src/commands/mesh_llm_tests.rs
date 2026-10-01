@@ -99,6 +99,32 @@ fn buzz_mesh_join_keeps_other_device_with_the_same_member_key() {
 }
 
 #[test]
+fn connected_hosts_group_real_targets_without_serializing_private_mesh_fields() {
+    let mut first_model = target("model-one", "join-token-one");
+    first_model.owner_id = Some("owner-local".to_string());
+    first_model.device_id = Some("device-one".to_string());
+    first_model.device_name = Some("Test workstation".to_string());
+
+    let mut second_model = target("model-two", "join-token-two");
+    second_model.owner_id = Some("owner-local".to_string());
+    second_model.device_id = Some("device-one".to_string());
+
+    let hosts = connected_hosts_from_targets(vec![first_model, second_model], Some("owner-local"));
+
+    assert_eq!(hosts.len(), 1);
+    assert_eq!(
+        hosts[0].id,
+        hex::encode(Sha256::digest(b"owner-local\0device-one"))
+    );
+    assert_eq!(hosts[0].name, "Test workstation");
+    assert!(hosts[0].local);
+    let serialized = serde_json::to_string(&hosts).expect("host response serializes");
+    assert!(!serialized.contains("join-token"));
+    assert!(!serialized.contains("owner-local"));
+    assert!(!serialized.contains("device-one"));
+}
+
+#[test]
 fn buzz_mesh_name_is_stable_and_does_not_expose_the_relay() {
     let first = buzz_mesh_name_for_relay("WSS://EXAMPLE.COM/");
     let second = buzz_mesh_name_for_relay("wss://example.com:443/some/path?ignored=yes");

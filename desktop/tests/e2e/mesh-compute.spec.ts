@@ -10,49 +10,71 @@ type E2eWindow = Window & {
     payload: { request?: { mode?: string; modelId?: string } } | null;
   }>;
   __BUZZ_E2E_SET_MESH__?: (mesh: {
-    nodeState?: "off" | "running";
+    models?: Array<{ id: string; name: string | null }>;
+    nodeState?: "off" | "starting" | "running";
     nodeMode?: "serve" | "client" | null;
+    hosts?: Array<{ id: string; name: string; local: boolean }>;
+    hostsError?: string | null;
+    hostsHold?: boolean;
+    catalogInstalled?: boolean;
+    catalogError?: string | null;
+    statusError?: string | null;
+    startError?: string | null;
   }) => void;
 };
 
-test("Share compute chooses a model before sharing", async ({ page }) => {
+test("Share compute keeps the selected model after a failed start", async ({
+  page,
+}) => {
   const modelRef = "hf://demo/SmolLM2-135M-Instruct-GGUF:Q4_K_M";
   await installMockBridge(page);
   await page.goto("/");
   await openSettings(page, "compute");
 
   const card = page.getByTestId("settings-mesh-share-compute");
-  const toggle = page.getByTestId("mesh-share-compute-toggle");
-  const model = page.getByTestId("mesh-share-compute-model");
+  const model = page.getByLabel("Or a supported model reference");
+  const start = page.getByRole("button", { name: "Start sharing" });
 
-  await expect(card).not.toContainText("Not sharing right now");
+  await expect(card).toContainText("Sharing is off");
   await expect(
     page.getByTestId("mesh-share-compute-options-motion"),
   ).toHaveCount(0);
   await expect(
     page.getByTestId("mesh-share-compute-sharing-status"),
   ).toHaveCount(0);
+  await expect(page.getByTestId("mesh-connected-host")).toHaveCount(0);
   await expect(model).toBeVisible();
-  await expect(toggle).toBeEnabled();
-  await model.click();
-  await page.getByRole("option", { name: "Custom model…" }).click();
-  await page.getByLabel("Custom model reference").fill(modelRef);
+  await expect(start).toBeDisabled();
+  await model.fill(modelRef);
 
-  await toggle.click();
-  await expect(
-    page.getByTestId("mesh-share-compute-options-motion"),
-  ).toBeVisible();
-  await expect(
-    page.getByTestId("mesh-share-compute-sharing-status"),
-  ).toBeVisible();
-  await expect(model).toBeVisible();
+  await page.evaluate(() => {
+    (window as E2eWindow).__BUZZ_E2E_SET_MESH__?.({
+      startError: "temporary sharing failure",
+    });
+  });
+  await start.click();
+  await expect(card).toContainText("Could not save");
   await expect(card).toContainText(
-    "Buzz downloads remote models when sharing starts",
+    "Your inputs are kept. Review them or retry without starting again.",
   );
-  await expect(toggle).toBeChecked();
-  await expect(
-    page.getByTestId("mesh-share-compute-sharing-status"),
-  ).toContainText("SmolLM2 135M with relay members");
+  await expect(model).toHaveValue(modelRef);
+  await expect(page.getByTestId("mesh-share-compute-state")).toContainText(
+    "Sharing is off",
+  );
+
+  await page.evaluate(() => {
+    (window as E2eWindow).__BUZZ_E2E_SET_MESH__?.({ startError: null });
+  });
+
+  await start.click();
+  await expect(page.getByTestId("mesh-share-compute-state")).toContainText(
+    "Sharing is active",
+  );
+  await expect(card).toContainText("SmolLM2 135M");
+  await expect(page.getByTestId("mesh-share-compute-stop")).toBeVisible();
+  await expect(page.getByTestId("mesh-connected-host")).toContainText(
+    "Local test host",
+  );
   await expect
     .poll(() =>
       page.evaluate(() => (window as E2eWindow).__BUZZ_E2E_COMMANDS__ ?? []),
@@ -71,21 +93,144 @@ test("Share compute chooses a model before sharing", async ({ page }) => {
       },
     });
 
-  await toggle.click();
-  await expect(toggle).not.toBeChecked();
-  await expect(card).not.toContainText("Not sharing right now");
-  await expect(
-    page.getByTestId("mesh-share-compute-options-motion"),
-  ).toHaveCount(0);
-  await expect(
-    page.getByTestId("mesh-share-compute-sharing-status"),
-  ).toHaveCount(0);
+  await page.getByTestId("mesh-share-compute-stop").click();
+  await expect(page.getByTestId("mesh-share-compute-state")).toContainText(
+    "Sharing is off",
+  );
   await expect(model).toBeVisible();
+  await expect(page.getByTestId("mesh-connected-host")).toHaveCount(0);
   await expect
     .poll(() =>
       page.evaluate(() => (window as E2eWindow).__BUZZ_E2E_COMMANDS__ ?? []),
     )
     .toContain("mesh_stop_node");
+});
+
+test("connected hosts show returned records and distinguish load failure from empty", async ({
+  page,
+}) => {
+  const modelDraft = "hf://demo/local-model:Q4_K_M";
+  await page.addInitScript((model) => {
+    window.localStorage.setItem("buzz.mesh-compute.share.model.v1", model);
+  }, modelDraft);
+  await installMockBridge(page);
+  await page.goto("/");
+  await page.waitForFunction(
+    () => typeof (window as E2eWindow).__BUZZ_E2E_SET_MESH__ === "function",
+  );
+  await page.evaluate(() => {
+    (window as E2eWindow).__BUZZ_E2E_SET_MESH__?.({
+      hostsError: "temporary host query failure",
+    });
+  });
+  await openSettings(page, "compute");
+
+  await expect(page.getByTestId("settings-mesh-unavailable")).toBeVisible();
+  await expect(page.getByTestId("settings-mesh-compute")).toHaveCount(0);
+  await expect(
+    page.getByText(
+      "A connection failure is not an empty record. Your draft is kept.",
+    ),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    (window as E2eWindow).__BUZZ_E2E_SET_MESH__?.({
+      hostsError: null,
+      hosts: [
+        {
+          id: "test-remote-host",
+          name: "Remote test workstation",
+          local: false,
+        },
+      ],
+    });
+  });
+  await page.getByRole("button", { name: "Try again" }).click();
+
+  await expect(page.getByTestId("settings-mesh-compute")).toBeVisible();
+  await expect(page.getByTestId("mesh-connected-host")).toContainText(
+    "Remote test workstation",
+  );
+  await expect(page.getByTestId("mesh-connected-host")).toContainText(
+    "Remote · Available",
+  );
+  await expect(page.getByLabel("Or a supported model reference")).toHaveValue(
+    modelDraft,
+  );
+  await expect(page.getByTestId("settings-mesh-compute")).not.toContainText(
+    "test-remote-host",
+  );
+  await expect(page.getByTestId("settings-mesh-compute")).not.toContainText(
+    "This Mac",
+  );
+});
+
+test("Mesh loading and empty results do not fabricate a host or model", async ({
+  page,
+}) => {
+  await installMockBridge(page);
+  await page.goto("/");
+  await page.waitForFunction(
+    () => typeof (window as E2eWindow).__BUZZ_E2E_SET_MESH__ === "function",
+  );
+  await page.evaluate(() => {
+    (window as E2eWindow).__BUZZ_E2E_SET_MESH__?.({
+      hostsHold: true,
+      catalogInstalled: false,
+      models: [],
+    });
+  });
+  await openSettings(page, "compute");
+
+  await expect(page.getByTestId("settings-mesh-loading")).toContainText(
+    "Loading the latest record",
+  );
+  await page.evaluate(() => {
+    (window as E2eWindow).__BUZZ_E2E_SET_MESH__?.({ hostsHold: false });
+  });
+  await expect(page.getByTestId("settings-mesh-compute")).toBeVisible();
+  await expect(page.getByText("No installed model found")).toBeVisible();
+  await expect(page.getByTestId("mesh-connected-host")).toHaveCount(0);
+  await expect(page.getByLabel("Or a supported model reference")).toHaveValue(
+    "",
+  );
+  await expect(
+    page.getByRole("button", { name: "Start sharing" }),
+  ).toBeDisabled();
+  await expect(page.getByTestId("settings-mesh-compute")).not.toContainText(
+    "This Mac",
+  );
+});
+
+test("startup hides model controls and is not shown as active", async ({
+  page,
+}) => {
+  await installMockBridge(page);
+  await page.goto("/");
+  await page.waitForFunction(
+    () => typeof (window as E2eWindow).__BUZZ_E2E_SET_MESH__ === "function",
+  );
+  await page.evaluate(() => {
+    (window as E2eWindow).__BUZZ_E2E_SET_MESH__?.({
+      nodeState: "starting",
+      nodeMode: "serve",
+    });
+  });
+  await openSettings(page, "compute");
+
+  await expect(page.getByTestId("mesh-share-compute-state")).toContainText(
+    "Starting sharing",
+  );
+  await expect(page.getByTestId("mesh-share-compute-state")).toContainText(
+    "Other people cannot use this device yet.",
+  );
+  await expect(page.getByTestId("mesh-share-compute-stop")).toHaveCount(0);
+  await expect(page.getByTestId("mesh-share-compute-catalog")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Start sharing" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("button", { name: "Cancel startup" }),
+  ).toHaveCount(0);
 });
 
 test("a consuming client can switch to sharing its saved local model", async ({

@@ -30,11 +30,14 @@ pub fn build_employee_allowance_action(
         .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
     let employee = Tag::parse(["p", action.employee_pubkey.as_str()])
         .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
+    // An employee setting its own allowance signs as the employee; keep
+    // the `p` tag the relay requires instead of letting nostr scrub it.
     Ok(EventBuilder::new(
         Kind::Custom(KIND_EMPLOYEE_AI_ALLOWANCE_ACTION as u16),
         content,
     )
-    .tags([d, employee]))
+    .tags([d, employee])
+    .allow_self_tagging())
 }
 
 /// Build a member-signed AI spend record action.
@@ -61,8 +64,41 @@ pub fn build_ai_spend_record_action(
         }) => {
             let employee = Tag::parse(["p", employee_pubkey.as_str()])
                 .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
-            Ok(builder.tag(employee))
+            Ok(builder.tag(employee).allow_self_tagging())
         }
         _ => Ok(builder),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use buzz_core::company_records::COMPANY_RECORD_SCHEMA_VERSION;
+    use buzz_core::company_spend::{AllowancePeriod, AllowanceValue};
+    use nostr::Keys;
+
+    #[test]
+    fn allowance_action_keeps_the_employee_p_tag_when_the_employee_signs() {
+        let employee = Keys::generate();
+        let employee_hex = employee.public_key().to_hex();
+        let action = EmployeeAllowanceAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            employee_pubkey: employee_hex.clone(),
+            expected_head_event_id: None,
+            allowance: AllowanceValue {
+                amount_cents: "5000".into(),
+                period: AllowancePeriod::Month,
+            },
+            temporary_allowance: None,
+            funding_order: Vec::new(),
+        };
+        let event = build_employee_allowance_action(&action)
+            .expect("build allowance action")
+            .sign_with_keys(&employee)
+            .expect("sign allowance action");
+        assert_eq!(event.tags.len(), 2);
+        assert!(event.tags.iter().any(
+            |tag| tag.kind().to_string() == "p" && tag.content() == Some(employee_hex.as_str())
+        ));
     }
 }

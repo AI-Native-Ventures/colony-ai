@@ -119,6 +119,7 @@ import {
   KIND_DUTY_HEAD,
   KIND_DM_VISIBILITY,
   KIND_EVENT_REMINDER,
+  KIND_FACTORY_RUN_ACTION,
   KIND_FACTORY_RUN_HEAD,
   KIND_GOAL_ACTION,
   KIND_GOAL_HEAD,
@@ -397,6 +398,8 @@ type E2eConfig = {
     factoryRuns?: MockFactoryRunSeed[];
     /** Signed run preview and pull request heads for focused Factory E2E coverage. */
     factoryRunRecordEvents?: RelayEvent[];
+    /** Reject successive Factory run actions in focused failure-state tests. */
+    factoryRunActionErrors?: string[];
     /** Run ids whose snapshot reads fail, exercising reconnect states. */
     factorySnapshotFailureRunIds?: string[];
     /** Local checkout paths returned by the E2E filesystem boundary. */
@@ -1833,9 +1836,16 @@ declare global {
     __BUZZ_E2E_SET_MESH__?: (mesh: {
       admitted?: boolean;
       models?: Array<{ id: string; name: string | null }>;
+      hosts?: MockMeshHost[];
+      hostsError?: string | null;
+      hostsHold?: boolean;
+      catalogInstalled?: boolean;
+      catalogError?: string | null;
+      statusError?: string | null;
+      startError?: string | null;
       denyReason?: string;
       /** Seed the runtime slot's lifecycle state (default "off"). */
-      nodeState?: "off" | "running";
+      nodeState?: "off" | "starting" | "running";
       /**
        * Seed the runtime slot's role. "client" models this machine CONSUMING a
        * peer's compute — it shares the single slot and reports state:"running",
@@ -4378,6 +4388,12 @@ type MockServingUsage = {
   peers: number;
 };
 
+type MockMeshHost = {
+  id: string;
+  name: string | null;
+  local: boolean;
+};
+
 const ZERO_SERVING_USAGE: MockServingUsage = {
   inflight: 0,
   peakInflight: 0,
@@ -4395,7 +4411,15 @@ const mockMeshState: {
   models: Array<{ id: string; name: string | null }>;
   activeModel: { id: string; name: string | null } | null;
   denyReason: string;
-  nodeState: "off" | "running";
+  hosts: MockMeshHost[];
+  hostsError: string | null;
+  hostsHold: boolean;
+  releaseHosts: (() => void) | null;
+  catalogInstalled: boolean;
+  catalogError: string | null;
+  statusError: string | null;
+  startError: string | null;
+  nodeState: "off" | "starting" | "running";
   nodeMode: "serve" | "client" | null;
   servingUsage: MockServingUsage;
 } = {
@@ -4403,6 +4427,14 @@ const mockMeshState: {
   models: [{ id: "Gemma-4-E4B-it-Q4_K_M", name: "Gemma 4 E4B" }],
   activeModel: null,
   denyReason: "not a relay member",
+  hosts: [],
+  hostsError: null,
+  hostsHold: false,
+  releaseHosts: null,
+  catalogInstalled: true,
+  catalogError: null,
+  statusError: null,
+  startError: null,
   nodeState: "off",
   nodeMode: null,
   servingUsage: { ...ZERO_SERVING_USAGE },
@@ -4413,6 +4445,14 @@ function resetMockMesh() {
   mockMeshState.models = [{ id: "Gemma-4-E4B-it-Q4_K_M", name: "Gemma 4 E4B" }];
   mockMeshState.activeModel = null;
   mockMeshState.denyReason = "not a relay member";
+  mockMeshState.hosts = [];
+  mockMeshState.hostsError = null;
+  mockMeshState.hostsHold = false;
+  mockMeshState.releaseHosts = null;
+  mockMeshState.catalogInstalled = true;
+  mockMeshState.catalogError = null;
+  mockMeshState.statusError = null;
+  mockMeshState.startError = null;
   mockMeshState.nodeState = "off";
   mockMeshState.nodeMode = null;
   mockMeshState.servingUsage = { ...ZERO_SERVING_USAGE };
@@ -11485,6 +11525,49 @@ function brokerMockCompanyWorkAction(event: RelayEvent): string | null {
         : {}),
       sourceActionEventId: event.id,
     };
+  } else if (actionKind === "set_due_date" || actionKind === "clear_due_date") {
+    if (!previous) return "conflict: company work item does not exist.";
+    const assigned = Array.isArray(previous.assignedPubkeys)
+      ? previous.assignedPubkeys
+      : [];
+    const isOwner = assigned.some(
+      (pubkey) => typeof pubkey === "string" && pubkey.toLowerCase() === signer,
+    );
+    const isRequester =
+      typeof previous.requesterPubkey === "string" &&
+      previous.requesterPubkey.toLowerCase() === signer;
+    if (!isOwner && !isRequester && !communityAdmin) {
+      return "restricted: only the work owner, requester, or a community owner or admin can edit this item.";
+    }
+    if (previous.status === "archived") {
+      return "conflict: archived company work items are read-only.";
+    }
+    if (actionKind === "set_due_date") {
+      const dueAt = action.dueAt;
+      if (
+        typeof dueAt !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(dueAt) ||
+        !Number.isFinite(Date.parse(dueAt))
+      ) {
+        return "invalid: dueAt must be valid UTC RFC 3339.";
+      }
+      if (
+        typeof previous.acceptedAt === "string" &&
+        Date.parse(dueAt) <= Date.parse(previous.acceptedAt)
+      ) {
+        return "invalid: dueAt must be later than acceptance.";
+      }
+      if (previous.dueAt === dueAt) {
+        return "conflict: company work item already has this due date.";
+      }
+      next = { ...previous, dueAt, sourceActionEventId: event.id };
+    } else {
+      if (typeof previous.dueAt !== "string") {
+        return "conflict: company work item has no due date to clear.";
+      }
+      const { dueAt: _dueAt, ...withoutDueDate } = previous;
+      next = { ...withoutDueDate, sourceActionEventId: event.id };
+    }
   } else if (actionKind === "set_status") {
     if (!previous) return "conflict: company work item does not exist.";
     const assigned = Array.isArray(previous.assignedPubkeys)
@@ -11682,6 +11765,10 @@ function brokerMockCompanyWorkTrackingAction(event: RelayEvent): string | null {
   if (!verifyEvent(event)) {
     return "invalid: company work tracking action signature is invalid.";
   }
+  const watchdogDTag = event.tags.find((tag) => tag[0] === "d")?.[1];
+  if (watchdogDTag?.startsWith("company:work-watchdog:")) {
+    return brokerMockCompanyWatchdogAction(event, watchdogDTag);
+  }
   if (
     event.tags.length !== 2 ||
     event.tags.some(
@@ -11873,6 +11960,209 @@ function brokerMockCompanyWorkTrackingAction(event: RelayEvent): string | null {
   emitMockLiveEvent(channelId, event);
   emitMockLiveEvent(channelId, nextTrackingHead);
   if (createdWorkHead) emitMockLiveEvent(channelId, createdWorkHead);
+  return null;
+}
+
+function brokerMockCompanyWatchdogAction(
+  event: RelayEvent,
+  dTag: string,
+): string | null {
+  const coordinate = /^company:work-watchdog:([0-9a-f-]{36})$/i.exec(dTag);
+  const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+  if (
+    !coordinate ||
+    !channelId ||
+    event.tags.length !== 2 ||
+    event.tags.some(
+      (tag) => tag.length !== 2 || (tag[0] !== "h" && tag[0] !== "d"),
+    )
+  ) {
+    return "invalid: watchdog configuration coordinate is malformed.";
+  }
+  const workItemId = coordinate[1].toLowerCase();
+  let action: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(event.content);
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      return "invalid: watchdog action content is not an object.";
+    }
+    action = parsed as Record<string, unknown>;
+  } catch {
+    return "invalid: watchdog action content is not JSON.";
+  }
+  if (
+    action.schemaVersion !== 1 ||
+    action.action !== "configure" ||
+    typeof action.recordId !== "string" ||
+    action.recordId.toLowerCase() !== workItemId ||
+    !action.config ||
+    typeof action.config !== "object" ||
+    Array.isArray(action.config)
+  ) {
+    return "invalid: watchdog configuration is incomplete.";
+  }
+  const config = action.config as Record<string, unknown>;
+  if (
+    (config.checkWhen !== "no_update" &&
+      config.checkWhen !== "due_date_passes" &&
+      config.checkWhen !== "worker_reports_failure") ||
+    !Number.isInteger(config.checkIntervalSeconds) ||
+    Number(config.checkIntervalSeconds) <= 0 ||
+    Number(config.checkIntervalSeconds) > 4_294_967_295 ||
+    (config.askFirstPubkey !== undefined &&
+      (typeof config.askFirstPubkey !== "string" ||
+        !/^[0-9a-f]{64}$/i.test(config.askFirstPubkey)))
+  ) {
+    return "invalid: watchdog configuration requires an explicit positive interval.";
+  }
+  const signer = event.pubkey.toLowerCase();
+  const channel = [...buildVisualChannels(getConfig()), ...mockChannels].find(
+    (candidate) => candidate.id.toLowerCase() === channelId.toLowerCase(),
+  );
+  if (
+    channel?.channel_type !== "stream" ||
+    channel.archived_at !== null ||
+    !channel.members.some((member) => member.pubkey.toLowerCase() === signer) ||
+    !mockRelayMembers.some((member) => member.pubkey.toLowerCase() === signer)
+  ) {
+    return "restricted: watchdog configuration requires a current channel member.";
+  }
+  const work = mockCompanyWorkHeadByDTag(`company:work:${workItemId}`);
+  if (
+    !work ||
+    work.tags.find((tag) => tag[0] === "h")?.[1]?.toLowerCase() !==
+      channelId.toLowerCase()
+  ) {
+    return "conflict: company work item does not exist in this channel.";
+  }
+  let workHead: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(work.content);
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      return "error: stored company work head is invalid.";
+    }
+    workHead = parsed as Record<string, unknown>;
+  } catch {
+    return "error: stored company work head is invalid.";
+  }
+  if (
+    ["archived", "done_unverified", "done_verified"].includes(
+      String(workHead.status),
+    )
+  ) {
+    return "conflict: completed or archived work cannot enable a watchdog.";
+  }
+  const configuredRole = getConfig()?.mock?.relayRole;
+  const configuredMember = getConfig()?.mock?.relayMembers?.find(
+    (member) => member.pubkey.toLowerCase() === signer,
+  );
+  const communityAdmin =
+    configuredRole === "owner" ||
+    configuredRole === "admin" ||
+    configuredMember?.role === "owner" ||
+    configuredMember?.role === "admin";
+  const isOwner =
+    Array.isArray(workHead.assignedPubkeys) &&
+    workHead.assignedPubkeys.some(
+      (pubkey) => typeof pubkey === "string" && pubkey.toLowerCase() === signer,
+    );
+  const isRequester =
+    typeof workHead.requesterPubkey === "string" &&
+    workHead.requesterPubkey.toLowerCase() === signer;
+  if (!communityAdmin && !isOwner && !isRequester) {
+    return "restricted: only the work owner, requester, or a community owner or admin can configure its watchdog.";
+  }
+  const current = mockCompanyWorkTrackingHeadByDTag(dTag);
+  if (current) {
+    if (action.expectedHeadEventId !== current.id) {
+      return "conflict: watchdog configuration changed; retry from its latest head.";
+    }
+    try {
+      const head = JSON.parse(current.content) as {
+        recordType?: string;
+        workItemId?: string;
+      };
+      if (
+        head.recordType !== "watchdog_configuration" ||
+        head.workItemId?.toLowerCase() !== workItemId
+      ) {
+        return "conflict: tracking head does not match this watchdog.";
+      }
+    } catch {
+      return "error: stored watchdog head is invalid.";
+    }
+  } else if (action.expectedHeadEventId !== undefined) {
+    return "conflict: watchdog configuration does not exist.";
+  }
+  if (
+    typeof config.askFirstPubkey === "string" &&
+    !channel.members.some(
+      (member) => member.pubkey.toLowerCase() === config.askFirstPubkey,
+    )
+  ) {
+    return "restricted: watchdog reviewer is not a member of the work channel.";
+  }
+  const privateKey = getConfig()?.mock?.companyWorkRelayPrivateKey;
+  if (!privateKey) {
+    return "error: mock company work relay signing key is not configured.";
+  }
+  let relaySecret: Uint8Array;
+  try {
+    relaySecret = hexToBytes(privateKey);
+  } catch {
+    return "error: mock company work relay key is invalid.";
+  }
+  if (
+    getPublicKey(relaySecret).toLowerCase() !==
+    getConfig()?.mock?.relaySelf?.toLowerCase()
+  ) {
+    return "error: mock company work relay key does not match relay self.";
+  }
+  const nextHead = finalizeEvent(
+    {
+      kind: KIND_COMPANY_WORK_TRACKING_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (current?.created_at ?? 0) + 1,
+      ),
+      tags: [
+        ["h", channelId],
+        ["d", dTag],
+      ],
+      content: JSON.stringify({
+        recordType: "watchdog_configuration",
+        schemaVersion: 1,
+        workItemId,
+        enabled: true,
+        config: {
+          checkWhen: config.checkWhen,
+          checkIntervalSeconds: config.checkIntervalSeconds,
+          ...(typeof config.askFirstPubkey === "string"
+            ? { askFirstPubkey: config.askFirstPubkey.toLowerCase() }
+            : {}),
+        },
+        sourceActionEventId: event.id,
+      }),
+    },
+    relaySecret,
+  );
+  const store = getMockCompanyWorkEventStore();
+  if (current) {
+    const currentIndex = store.findIndex(
+      (candidate) => candidate.id === current.id,
+    );
+    if (currentIndex >= 0) store.splice(currentIndex, 1);
+  }
+  store.push(event, nextHead);
+  persistMockCompanyWorkEventStore();
   return null;
 }
 
@@ -17117,6 +17407,13 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (event.kind === KIND_FACTORY_RUN_ACTION) {
+      const configuredErrors = getConfig()?.mock?.factoryRunActionErrors;
+      const error = configuredErrors?.length ? configuredErrors.shift() : null;
+      sendWsText(socket.handler, ["OK", event.id, error === null, error ?? ""]);
+      return;
+    }
+
     if (event.kind === KIND_TOOL_PERMISSION_ACTION) {
       acceptMockToolPermissionAction(socket, event, getConfig());
       return;
@@ -17355,7 +17652,9 @@ function sendToMockSocket(args: {
       event.kind === KIND_COMPANY_WORK_TRACKING_ACTION &&
       event.tags.some(
         (tag) =>
-          tag[0] === "d" && tag[1]?.startsWith("company:work-suggestion:"),
+          tag[0] === "d" &&
+          (tag[1]?.startsWith("company:work-suggestion:") ||
+            tag[1]?.startsWith("company:work-watchdog:")),
       )
     ) {
       const configuredError =
@@ -18141,8 +18440,12 @@ export function maybeInstallE2eTauriMocks() {
     }
     const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
     const dTag = event.tags.find((tag) => tag[0] === "d")?.[1];
-    if (!channelId || !dTag?.startsWith("company:work-suggestion:")) {
-      throw new Error("A suggestion channel and coordinate are required.");
+    if (
+      !channelId ||
+      (!dTag?.startsWith("company:work-suggestion:") &&
+        !dTag?.startsWith("company:work-watchdog:"))
+    ) {
+      throw new Error("A tracking channel and coordinate are required.");
     }
     const store = getMockCompanyWorkEventStore();
     for (let index = store.length - 1; index >= 0; index -= 1) {
@@ -18441,6 +18744,24 @@ export function maybeInstallE2eTauriMocks() {
   window.__BUZZ_E2E_SET_MESH__ = (mesh) => {
     if (mesh.admitted !== undefined) mockMeshState.admitted = mesh.admitted;
     if (mesh.models !== undefined) mockMeshState.models = mesh.models;
+    if (mesh.hosts !== undefined) mockMeshState.hosts = mesh.hosts;
+    if (mesh.hostsError !== undefined)
+      mockMeshState.hostsError = mesh.hostsError;
+    if (mesh.hostsHold !== undefined) {
+      mockMeshState.hostsHold = mesh.hostsHold;
+      if (!mesh.hostsHold) {
+        mockMeshState.releaseHosts?.();
+        mockMeshState.releaseHosts = null;
+      }
+    }
+    if (mesh.catalogInstalled !== undefined)
+      mockMeshState.catalogInstalled = mesh.catalogInstalled;
+    if (mesh.catalogError !== undefined)
+      mockMeshState.catalogError = mesh.catalogError;
+    if (mesh.statusError !== undefined)
+      mockMeshState.statusError = mesh.statusError;
+    if (mesh.startError !== undefined)
+      mockMeshState.startError = mesh.startError;
     if (mesh.denyReason !== undefined)
       mockMeshState.denyReason = mesh.denyReason;
     if (mesh.nodeState !== undefined) mockMeshState.nodeState = mesh.nodeState;
@@ -18483,7 +18804,7 @@ export function maybeInstallE2eTauriMocks() {
       .replaceAll("-", " ");
   };
   const meshNodeStatus = (
-    state: "off" | "running",
+    state: "off" | "starting" | "running",
     mode: "serve" | "client" | null,
   ) => {
     const model = mockMeshState.activeModel ?? mockMeshState.models[0] ?? null;
@@ -19135,6 +19456,8 @@ export function maybeInstallE2eTauriMocks() {
       case "mesh_installed_models":
         return mockMeshState.models;
       case "mesh_model_catalog":
+        if (mockMeshState.catalogError)
+          throw new Error(mockMeshState.catalogError);
         return {
           gpuName: "Mock Apple GPU",
           vramDisplay: "32 GB",
@@ -19147,17 +19470,28 @@ export function maybeInstallE2eTauriMocks() {
               sizeGb: 3.5,
               description: "Buzz-curated local agent model",
               fit: "comfortable",
-              installed: true,
+              installed: mockMeshState.catalogInstalled,
               recommended: true,
               curated: true,
             },
           ],
         };
       case "mesh_node_status":
+        if (mockMeshState.statusError)
+          throw new Error(mockMeshState.statusError);
         return meshNodeStatus(mockMeshState.nodeState, mockMeshState.nodeMode);
+      case "mesh_connected_hosts":
+        if (mockMeshState.hostsError) throw new Error(mockMeshState.hostsError);
+        if (mockMeshState.hostsHold) {
+          await new Promise<void>((resolve) => {
+            mockMeshState.releaseHosts = resolve;
+          });
+        }
+        return mockMeshState.hosts;
       case "mesh_serving_usage":
         return mockMeshState.servingUsage;
       case "mesh_start_node": {
+        if (mockMeshState.startError) throw new Error(mockMeshState.startError);
         const req = (
           payload as {
             request?: { mode?: "serve" | "client"; modelId?: string };
@@ -19168,6 +19502,12 @@ export function maybeInstallE2eTauriMocks() {
         mockMeshState.activeModel = req?.modelId
           ? { id: req.modelId, name: meshModelName(req.modelId) }
           : (mockMeshState.models[0] ?? null);
+        if (mockMeshState.nodeMode === "serve") {
+          mockMeshState.hosts = [
+            ...mockMeshState.hosts.filter((host) => !host.local),
+            { id: "test-local-device", name: "Local test host", local: true },
+          ];
+        }
         return meshNodeStatus(mockMeshState.nodeState, mockMeshState.nodeMode);
       }
       case "mesh_stop_node":
@@ -19182,6 +19522,7 @@ export function maybeInstallE2eTauriMocks() {
         mockMeshState.nodeState = "off";
         mockMeshState.nodeMode = null;
         mockMeshState.activeModel = null;
+        mockMeshState.hosts = mockMeshState.hosts.filter((host) => !host.local);
         return meshNodeStatus("off", null);
       /** Build a test-only signed-looking observer control event. */
       case "build_observer_control_event": {

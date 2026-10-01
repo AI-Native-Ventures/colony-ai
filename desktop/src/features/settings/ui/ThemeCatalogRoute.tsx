@@ -1,8 +1,6 @@
 import * as React from "react";
-import { Check } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
-import { Input } from "@/shared/ui/input";
 import { useTheme } from "@/shared/theme/ThemeProvider";
 import {
   LIGHT_THEMES,
@@ -18,10 +16,11 @@ import {
   withAccentPreviewVars,
 } from "@/shared/theme/useThemePreviewVars";
 import { cn } from "@/shared/lib/cn";
+import { SettingsOptionGroup } from "./SettingsOptionGroup";
+import type { ConversationDensity } from "@/shared/lib/conversationDensityPreference";
 import "./ThemeCatalogRoute.css";
 
 type ThemeCatalogRouteProps = {
-  onBack: () => void;
   onPreview: (name: SyntaxThemeName) => void;
 };
 
@@ -116,107 +115,44 @@ function ThemeCardPreview({
   return (
     <div
       aria-hidden="true"
-      className="w20-theme-card-preview h-[8.75rem] overflow-hidden rounded-[10px] border bg-background text-foreground"
+      className="w20-theme-card-preview flex h-20 items-start rounded-md border px-1 py-0.5 text-sm"
       style={themeCardStyle(vars, palette)}
     >
-      <div className="grid h-full grid-cols-[24%_minmax(0,1fr)]">
-        <div className="w20-theme-card-sidebar" />
-        <div className="flex min-w-0 flex-col gap-[13px] px-2.5 py-5">
-          <p className="truncate text-badge leading-[1.5] font-bold">
-            Campaign studio
-          </p>
-          <p className="truncate text-3xs">The designs are ready for review.</p>
-          <p className="text-3xs" style={{ color: "var(--theme-accent)" }}>
-            2 replies
-          </p>
-          <p className="truncate text-3xs">Message your team…</p>
-        </div>
-      </div>
+      Aa
     </div>
   );
 }
 
-function ThemeWorkspacePreview({ vars }: { vars: ThemePreviewVars }) {
+function ThemeWorkspacePreview({
+  displayName,
+  name,
+  vars,
+}: {
+  displayName: string;
+  name: string;
+  vars: ThemePreviewVars;
+}) {
   return (
     <section
-      aria-label="Theme preview conversation"
-      className="d17-theme-live"
+      aria-label="Theme preview content"
+      className="space-y-7 rounded-xl border border-border/70 bg-background p-6 text-foreground"
       data-testid="theme-workspace-preview"
       style={themeWorkspaceStyle(vars)}
     >
-      <aside className="text-xs">
-        <strong className="text-sm">Lerato Social</strong>
-        <span>Today</span>
-        <span>Work</span>
-        <small className="text-badge">Channels</small>
-        <b className="text-2xs"># Campaign studio</b>
-        <span># the-olive-house</span>
-        <span># ideas</span>
-        <small className="text-badge">Business</small>
-        <span>Website</span>
-        <span>Social</span>
-        <span>Library</span>
-        <footer className="text-2xs">LM · Lerato Molefe</footer>
-      </aside>
-
-      <section>
-        <header className="text-compact">
-          # Campaign studio <small className="text-badge">3 members</small>
-        </header>
-        <article>
-          <b className="text-2xs">MN</b>
-          <div>
-            <strong className="text-xs">
-              Maya Ndlovu <small className="text-badge">10:42</small>
-            </strong>
-            <p className="text-compact">
-              The September designs are ready for feedback.
-            </p>
-            <div className="d17-design-card">
-              <span className="text-xl">Autumn, softly.</span>
-              <strong className="text-xs">Olive House · Campaign v3</strong>
-              <small className="text-badge">Ready for review</small>
-            </div>
-            <small className="text-badge">2 replies</small>
-          </div>
-        </article>
-        <article>
-          <b className="text-2xs">LM</b>
-          <div>
-            <strong className="text-xs">
-              Lerato Molefe <small className="text-badge">10:44</small>
-            </strong>
-            <p className="text-compact">
-              Let&apos;s bring more warmth into the headline.
-            </p>
-          </div>
-        </article>
-        <footer className="text-2xs">
-          Message Campaign studio… <span>＋ @ ♩</span>
-        </footer>
-      </section>
+      <strong className="block text-sm">{themeLabel(name)}</strong>
+      <p className="text-sm text-muted-foreground">Preview content only</p>
+      <div className="rounded-lg border border-border/70 bg-card px-4 py-3 text-sm text-card-foreground">
+        <p data-testid="theme-preview-person">{displayName}</p>
+        <p className="mt-2 text-muted-foreground">Ready for review</p>
+      </div>
     </section>
   );
 }
 
-export function ThemeCatalogRoute({
-  onBack,
-  onPreview,
-}: ThemeCatalogRouteProps) {
+export function ThemeCatalogRoute({ onPreview }: ThemeCatalogRouteProps) {
   const theme = useTheme();
   const previewVars = useThemePreviewVars();
   const catalogPalettes = useThemeCatalogPalettes();
-  const [query, setQuery] = React.useState("");
-  const [filter, setFilter] = React.useState<"all" | "light" | "dark">("all");
-  const filtered = SYNTAX_THEMES.filter((name) => {
-    const matchesQuery = themeLabel(name)
-      .toLowerCase()
-      .includes(query.trim().toLowerCase());
-    const matchesMode =
-      filter === "all" ||
-      (filter === "light" ? LIGHT_THEMES.has(name) : !LIGHT_THEMES.has(name));
-    return matchesQuery && matchesMode;
-  });
 
   return (
     <section
@@ -228,114 +164,57 @@ export function ThemeCatalogRoute({
           : "false"
       }
     >
-      <div className="mb-[30px] flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-settings-title font-semibold">
-            Find your atmosphere.
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Named themes for your workspace. Only you see your choice.
-          </p>
+      <SettingsOptionGroup
+        description="Preview first. Applying a theme and density saves one preference."
+        title="Named themes"
+      >
+        <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+          {SYNTAX_THEMES.map((name) => {
+            const baseVars =
+              previewVars[name] ?? getThemeFallbackPreviewVars(name);
+            const vars =
+              withAccentPreviewVars(baseVars, theme.accentColor) ?? baseVars;
+            return (
+              <button
+                aria-label={`Preview ${themeLabel(name)}`}
+                className={cn(
+                  "min-w-0 rounded-xl border border-border/70 bg-background p-3 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+                  "hover:bg-muted/20",
+                )}
+                data-testid={`theme-catalog-${name}`}
+                key={name}
+                onClick={() => onPreview(name)}
+                type="button"
+              >
+                <ThemeCardPreview palette={catalogPalettes[name]} vars={vars} />
+                <span className="mt-2 block truncate text-sm font-semibold">
+                  {themeLabel(name)}
+                </span>
+                <span className="mt-1 block text-2xs text-muted-foreground">
+                  {LIGHT_THEMES.has(name) ? "Light" : "Dark"} · Preview
+                </span>
+              </button>
+            );
+          })}
         </div>
-        <Button onClick={onBack} size="sm" variant="outline">
-          Back to appearance
-        </Button>
-      </div>
-      <div className="mb-[25px] flex flex-wrap items-center gap-5">
-        <label
-          className="w-[260px] min-w-[260px] shrink-0"
-          htmlFor="theme-catalog-search"
-        >
-          <Input
-            aria-label="Search themes"
-            className="w20-theme-catalog-search h-[43.5px] rounded-[8px] border-[#eae7eb] bg-[#f8f7f8] px-[14px] py-[11px] dark:border-[#39323f] dark:bg-[#29252f]"
-            id="theme-catalog-search"
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={`Search ${SYNTAX_THEMES.length} themes`}
-            type="search"
-            value={query}
-          />
-        </label>
-        <fieldset className="flex items-center gap-[5px]">
-          <legend className="sr-only">Filter themes</legend>
-          {(["all", "light", "dark"] as const).map((value) => (
-            <button
-              aria-pressed={filter === value}
-              className={cn(
-                "rounded-[20px] px-4 py-2 text-xs font-medium",
-                filter === value
-                  ? "bg-[#e6dbed] text-[#4d3a5e]"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              key={value}
-              onClick={() => setFilter(value)}
-              type="button"
-            >
-              {value.charAt(0).toUpperCase() + value.slice(1)}
-            </button>
-          ))}
-        </fieldset>
-        <span className="ml-auto text-xs text-muted-foreground">
-          Current: {themeLabel(theme.selectedThemeName)}
-        </span>
-      </div>
-      <div className="grid grid-cols-2 gap-x-5 gap-y-6 sm:grid-cols-3 xl:grid-cols-4">
-        {filtered.map((name) => {
-          const baseVars =
-            previewVars[name] ?? getThemeFallbackPreviewVars(name);
-          const vars =
-            withAccentPreviewVars(baseVars, theme.accentColor) ?? baseVars;
-          return (
-            <button
-              aria-label={`Preview ${themeLabel(name)}`}
-              className="group min-w-0 rounded-xl text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-              data-testid={`theme-catalog-${name}`}
-              key={name}
-              onClick={() => onPreview(name)}
-              type="button"
-            >
-              <ThemeCardPreview palette={catalogPalettes[name]} vars={vars} />
-              <span className="mt-2.5 flex items-center justify-between gap-2 text-xs leading-[1.125rem] font-medium">
-                <span className="truncate">{themeLabel(name)}</span>
-                {theme.selectedThemeName === name ? (
-                  <Check
-                    aria-label="Current theme"
-                    className="size-3.5 shrink-0 text-foreground"
-                  />
-                ) : null}
-              </span>
-            </button>
-          );
-        })}
-        {filtered.length === 0 ? (
-          <div className="col-span-full py-[70px] text-center">
-            <h2 className="text-base font-semibold">No themes found</h2>
-            <p className="my-[15px] text-compact text-muted-foreground">
-              Try another name or clear the filters.
-            </p>
-            <Button
-              onClick={() => {
-                setFilter("all");
-                setQuery("");
-              }}
-              variant="outline"
-            >
-              Clear filters
-            </Button>
-          </div>
-        ) : null}
-      </div>
+      </SettingsOptionGroup>
     </section>
   );
 }
 
 export function ThemePreviewRoute({
+  density,
+  displayName,
   name,
   onBack,
+  onDensityChange,
   onApply,
 }: {
+  density: ConversationDensity;
+  displayName: string;
   name: SyntaxThemeName;
   onBack: () => void;
+  onDensityChange: (density: ConversationDensity) => void;
   onApply: () => void;
 }) {
   const theme = useTheme();
@@ -344,96 +223,76 @@ export function ThemePreviewRoute({
   const vars = withAccentPreviewVars(baseVars, theme.accentColor) ?? baseVars;
   return (
     <section className="min-w-0" data-testid="settings-theme-preview">
-      <div className="mb-7 flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-settings-title font-semibold">
-            {themeLabel(name)}
-          </h2>
-          <p className="d17-preview-intro mt-[9px] text-sm leading-[1.5]">
-            Preview only. Apply when it feels right.
-          </p>
-        </div>
-        <Button
-          className="d17-preview-back"
-          onClick={onBack}
-          size="sm"
-          variant="outline"
-        >
-          Back to themes
-        </Button>
-      </div>
-      <div className="max-w-[59.375rem]">
-        <ThemeWorkspacePreview vars={vars} />
-        <div className="d17-preview-footer text-compact">
-          <p>
-            {LIGHT_THEMES.has(name) ? "Light" : "Dark"} palette ·{" "}
-            {themeLabel(name)}
-            <br />
-            <small className="text-2xs">
-              Message density and text size stay as you set them.
-            </small>
-          </p>
-          <Button
-            className="d17-preview-button"
-            data-testid="theme-use"
-            onClick={onApply}
-            size="sm"
+      <SettingsOptionGroup title="Theme preview">
+        <div className="space-y-5 p-4">
+          <ThemeWorkspacePreview
+            displayName={displayName}
+            name={name}
+            vars={vars}
+          />
+          <label
+            className="block space-y-2 text-sm"
+            htmlFor="workspace-preview-message-density"
           >
-            Use {themeLabel(name)}
-          </Button>
+            <span>Message density</span>
+            <select
+              className="h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              data-testid="appearance-preview-density"
+              id="workspace-preview-message-density"
+              onChange={(event) =>
+                onDensityChange(
+                  event.target.value as Exclude<
+                    ConversationDensity,
+                    "spacious"
+                  >,
+                )
+              }
+              value={density === "spacious" ? "" : density}
+            >
+              <option disabled value="">
+                Choose message density
+              </option>
+              <option value="compact">Compact</option>
+              <option value="comfortable">Comfortable</option>
+            </select>
+          </label>
+          <div className="flex flex-wrap gap-3 border-t border-border/70 pt-4">
+            <Button data-testid="theme-use" onClick={onApply} size="sm">
+              Apply appearance
+            </Button>
+            <Button onClick={onBack} size="sm" variant="outline">
+              Cancel preview
+            </Button>
+          </div>
         </div>
-      </div>
+      </SettingsOptionGroup>
     </section>
   );
 }
 
 export function ThemeAppliedRoute({
+  density,
   name,
-  onBack,
   onDone,
 }: {
+  density: ConversationDensity;
   name: SyntaxThemeName;
-  onBack: () => void;
   onDone: () => void;
 }) {
-  const theme = useTheme();
-  const previewVars = useThemePreviewVars();
-  const baseVars = previewVars[name] ?? getThemeFallbackPreviewVars(name);
-  const vars = withAccentPreviewVars(baseVars, theme.accentColor) ?? baseVars;
   return (
     <section className="min-w-0" data-testid="settings-theme-applied">
-      <div className="mb-7 flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-settings-title font-semibold">Theme applied</h2>
-          <p className="d17-preview-intro mt-[9px] text-sm leading-[1.5]">
-            Your personal appearance is updated.
+      <SettingsOptionGroup title="Appearance updated">
+        <div className="space-y-4 p-4" role="status">
+          <p className="text-sm text-muted-foreground">
+            {themeLabel(name)} ·{" "}
+            {density.charAt(0).toUpperCase() + density.slice(1)}. The preference
+            is saved as one selection.
           </p>
-        </div>
-        <Button
-          className="d17-preview-back"
-          onClick={onBack}
-          size="sm"
-          variant="outline"
-        >
-          Back to themes
-        </Button>
-      </div>
-      <div className="max-w-[59.375rem]">
-        <ThemeWorkspacePreview vars={vars} />
-        <div className="d17-preview-footer text-compact">
-          <p>
-            {LIGHT_THEMES.has(name) ? "Light" : "Dark"} palette ·{" "}
-            {themeLabel(name)}
-            <br />
-            <small className="text-2xs">
-              Message density and text size stay as you set them.
-            </small>
-          </p>
-          <Button className="d17-applied-button" onClick={onDone} size="sm">
-            Done
+          <Button onClick={onDone} size="sm" variant="outline">
+            Return to Appearance
           </Button>
         </div>
-      </div>
+      </SettingsOptionGroup>
     </section>
   );
 }

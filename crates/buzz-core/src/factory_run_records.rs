@@ -62,6 +62,26 @@ pub enum FactoryPreviewStatus {
     Stopped,
 }
 
+/// A readiness condition saved with a preview configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct FactoryPreviewReadiness {
+    /// The signal the runtime would check before reporting a preview ready.
+    pub mode: FactoryPreviewReadinessMode,
+    /// A local path for an HTTP check or text expected in process output.
+    pub value: String,
+}
+
+/// Supported readiness checks for a preview configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FactoryPreviewReadinessMode {
+    /// The configured loopback endpoint returns a successful response.
+    HttpEndpoint,
+    /// The process writes the configured text to its output.
+    OutputMessage,
+}
+
 /// Per-run preview state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
@@ -74,6 +94,12 @@ pub enum FactoryPreviewState {
         command: String,
         /// The configured local preview address.
         local_url: String,
+        /// The explicitly configured port, when saved by a newer client.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        port: Option<u16>,
+        /// The explicitly configured readiness check, when saved by a newer client.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        readiness: Option<FactoryPreviewReadiness>,
     },
     /// The preview runtime is starting the saved command.
     Starting {
@@ -81,6 +107,12 @@ pub enum FactoryPreviewState {
         command: String,
         /// The configured local preview address.
         local_url: String,
+        /// The explicitly configured port, when saved by a newer client.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        port: Option<u16>,
+        /// The explicitly configured readiness check, when saved by a newer client.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        readiness: Option<FactoryPreviewReadiness>,
     },
     /// The preview runtime reports a ready process at its actual URL.
     Running {
@@ -90,6 +122,12 @@ pub enum FactoryPreviewState {
         local_url: String,
         /// The actual preview URL reported by the runtime.
         url: String,
+        /// The explicitly configured port, when saved by a newer client.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        port: Option<u16>,
+        /// The explicitly configured readiness check, when saved by a newer client.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        readiness: Option<FactoryPreviewReadiness>,
     },
     /// The preview runtime reports a startup or running failure.
     Failed {
@@ -102,6 +140,12 @@ pub enum FactoryPreviewState {
         /// Bounded process output captured by the preview runtime.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         startup_output: Option<String>,
+        /// The explicitly configured port, when saved by a newer client.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        port: Option<u16>,
+        /// The explicitly configured readiness check, when saved by a newer client.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        readiness: Option<FactoryPreviewReadiness>,
     },
     /// The preview runtime reports that the process has stopped.
     Stopped {
@@ -109,6 +153,12 @@ pub enum FactoryPreviewState {
         command: String,
         /// The configured local preview address.
         local_url: String,
+        /// The explicitly configured port, when saved by a newer client.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        port: Option<u16>,
+        /// The explicitly configured readiness check, when saved by a newer client.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        readiness: Option<FactoryPreviewReadiness>,
     },
 }
 
@@ -125,18 +175,41 @@ impl FactoryPreviewState {
         }
     }
 
-    fn configuration(&self) -> Option<(&str, &str)> {
+    fn configuration(&self) -> Option<(&str, &str, Option<u16>, Option<&FactoryPreviewReadiness>)> {
         match self {
             Self::NotConfigured => None,
-            Self::NotStarted { command, local_url }
-            | Self::Starting { command, local_url }
+            Self::NotStarted {
+                command,
+                local_url,
+                port,
+                readiness,
+            }
+            | Self::Starting {
+                command,
+                local_url,
+                port,
+                readiness,
+            }
             | Self::Running {
-                command, local_url, ..
+                command,
+                local_url,
+                port,
+                readiness,
+                ..
             }
             | Self::Failed {
-                command, local_url, ..
+                command,
+                local_url,
+                port,
+                readiness,
+                ..
             }
-            | Self::Stopped { command, local_url } => Some((command, local_url)),
+            | Self::Stopped {
+                command,
+                local_url,
+                port,
+                readiness,
+            } => Some((command, local_url, *port, readiness.as_ref())),
         }
     }
 }
@@ -260,6 +333,12 @@ pub struct FactoryRunAction {
     /// Local preview address used by `configure_preview`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local_url: Option<String>,
+    /// Explicit preview port used by `configure_preview`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    /// Explicit preview readiness check used by `configure_preview`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness: Option<FactoryPreviewReadiness>,
     /// Runtime lifecycle result used by `report_preview_state`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview: Option<FactoryPreviewState>,
@@ -370,7 +449,12 @@ pub fn apply_factory_run_action(
                 .local_url
                 .as_deref()
                 .ok_or(FactoryRunRecordError::Invalid("localUrl is required"))?;
-            validate_preview_configuration(command, local_url)?;
+            validate_preview_configuration(
+                command,
+                local_url,
+                action.port,
+                action.readiness.as_ref(),
+            )?;
             if matches!(
                 next.preview.status(),
                 FactoryPreviewStatus::Starting | FactoryPreviewStatus::Running
@@ -382,6 +466,8 @@ pub fn apply_factory_run_action(
             next.preview = FactoryPreviewState::NotStarted {
                 command: command.to_owned(),
                 local_url: local_url.to_owned(),
+                port: action.port,
+                readiness: action.readiness.clone(),
             };
         }
         FactoryRunActionKind::ReportPreviewState => {
@@ -449,11 +535,12 @@ fn validate_action_fields(
         FactoryRunActionKind::ConfigurePreview => {
             if action.command.is_none()
                 || action.local_url.is_none()
+                || action.port.is_some() != action.readiness.is_some()
                 || action.preview.is_some()
                 || action.pull_request.is_some()
             {
                 return Err(FactoryRunRecordError::Invalid(
-                    "configure_preview requires only command and localUrl",
+                    "configure_preview requires command and localUrl with paired port and readiness fields",
                 ));
             }
         }
@@ -461,6 +548,8 @@ fn validate_action_fields(
             if action.preview.is_none()
                 || action.command.is_some()
                 || action.local_url.is_some()
+                || action.port.is_some()
+                || action.readiness.is_some()
                 || action.pull_request.is_some()
                 || create
             {
@@ -473,6 +562,8 @@ fn validate_action_fields(
             if action.pull_request.is_none()
                 || action.command.is_some()
                 || action.local_url.is_some()
+                || action.port.is_some()
+                || action.readiness.is_some()
                 || action.preview.is_some()
             {
                 return Err(FactoryRunRecordError::Invalid(
@@ -483,6 +574,8 @@ fn validate_action_fields(
         FactoryRunActionKind::UnlinkPullRequest => {
             if action.command.is_some()
                 || action.local_url.is_some()
+                || action.port.is_some()
+                || action.readiness.is_some()
                 || action.preview.is_some()
                 || action.pull_request.is_some()
                 || create
@@ -545,17 +638,32 @@ fn validate_preview_transition(
 fn validate_preview_state(state: &FactoryPreviewState) -> Result<(), FactoryRunRecordError> {
     match state {
         FactoryPreviewState::NotConfigured => Ok(()),
-        FactoryPreviewState::NotStarted { command, local_url }
-        | FactoryPreviewState::Starting { command, local_url }
-        | FactoryPreviewState::Stopped { command, local_url } => {
-            validate_preview_configuration(command, local_url)
+        FactoryPreviewState::NotStarted {
+            command,
+            local_url,
+            port,
+            readiness,
         }
+        | FactoryPreviewState::Starting {
+            command,
+            local_url,
+            port,
+            readiness,
+        }
+        | FactoryPreviewState::Stopped {
+            command,
+            local_url,
+            port,
+            readiness,
+        } => validate_preview_configuration(command, local_url, *port, readiness.as_ref()),
         FactoryPreviewState::Running {
             command,
             local_url,
             url,
+            port,
+            readiness,
         } => {
-            validate_preview_configuration(command, local_url)?;
+            validate_preview_configuration(command, local_url, *port, readiness.as_ref())?;
             validate_preview_url(url)
         }
         FactoryPreviewState::Failed {
@@ -563,8 +671,10 @@ fn validate_preview_state(state: &FactoryPreviewState) -> Result<(), FactoryRunR
             local_url,
             reason,
             startup_output,
+            port,
+            readiness,
         } => {
-            validate_preview_configuration(command, local_url)?;
+            validate_preview_configuration(command, local_url, *port, readiness.as_ref())?;
             validate_non_empty(reason, MAX_FACTORY_PREVIEW_REASON_CHARS, "preview reason")?;
             if startup_output
                 .as_ref()
@@ -582,13 +692,77 @@ fn validate_preview_state(state: &FactoryPreviewState) -> Result<(), FactoryRunR
 fn validate_preview_configuration(
     command: &str,
     local_url: &str,
+    port: Option<u16>,
+    readiness: Option<&FactoryPreviewReadiness>,
 ) -> Result<(), FactoryRunRecordError> {
     validate_non_empty(
         command,
         MAX_FACTORY_PREVIEW_COMMAND_CHARS,
         "development command",
     )?;
-    validate_preview_url(local_url)
+    validate_preview_url(local_url)?;
+    if port.is_some() != readiness.is_some() {
+        return Err(FactoryRunRecordError::Invalid(
+            "preview port and readiness must be saved together",
+        ));
+    }
+    if let Some(port) = port {
+        if port == 0 {
+            return Err(FactoryRunRecordError::Invalid(
+                "preview port must be in 1..=65535",
+            ));
+        }
+        let parsed = Url::parse(local_url)
+            .map_err(|_| FactoryRunRecordError::Invalid("invalid preview URL"))?;
+        if parsed.port_or_known_default() != Some(port) {
+            return Err(FactoryRunRecordError::Invalid(
+                "preview port must match the loopback URL",
+            ));
+        }
+        if let Some(readiness) = readiness {
+            validate_preview_readiness(readiness)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_preview_readiness(
+    readiness: &FactoryPreviewReadiness,
+) -> Result<(), FactoryRunRecordError> {
+    match readiness.mode {
+        FactoryPreviewReadinessMode::HttpEndpoint => {
+            if !readiness.value.starts_with('/')
+                || readiness.value.starts_with("//")
+                || readiness.value.contains('\r')
+                || readiness.value.contains('\n')
+            {
+                return Err(FactoryRunRecordError::Invalid(
+                    "HTTP readiness value must be a local path",
+                ));
+            }
+            let local_url = format!("http://127.0.0.1{value}", value = readiness.value);
+            let parsed = Url::parse(&local_url)
+                .map_err(|_| FactoryRunRecordError::Invalid("invalid HTTP readiness path"))?;
+            if parsed.host_str() != Some("127.0.0.1") {
+                return Err(FactoryRunRecordError::Invalid(
+                    "HTTP readiness value must stay on loopback",
+                ));
+            }
+            if readiness.value.chars().count() > MAX_FACTORY_RUN_URL_CHARS {
+                return Err(FactoryRunRecordError::Invalid(
+                    "HTTP readiness path exceeds its character limit",
+                ));
+            }
+        }
+        FactoryPreviewReadinessMode::OutputMessage => {
+            validate_non_empty(
+                &readiness.value,
+                MAX_FACTORY_PREVIEW_COMMAND_CHARS,
+                "readiness message",
+            )?;
+        }
+    }
+    Ok(())
 }
 
 fn validate_preview_url(value: &str) -> Result<(), FactoryRunRecordError> {
@@ -637,6 +811,29 @@ fn validate_pull_request(pull_request: &FactoryPullRequest) -> Result<(), Factor
     }
     if let Some(handoff) = &pull_request.review_handoff {
         validate_non_empty(handoff, MAX_FACTORY_REVIEW_HANDOFF_CHARS, "review handoff")?;
+    }
+    Ok(())
+}
+
+/// Validate that an otherwise well-formed pull request uses a configured provider host.
+pub fn validate_factory_pull_request_provider(
+    pull_request: &FactoryPullRequest,
+    allowed_hosts: &[String],
+) -> Result<(), FactoryRunRecordError> {
+    validate_pull_request(pull_request)?;
+    let url = Url::parse(&pull_request.url)
+        .map_err(|_| FactoryRunRecordError::Invalid("pull request URL"))?;
+    let host = url
+        .host_str()
+        .ok_or(FactoryRunRecordError::Invalid("pull request URL"))?;
+    if url.port().is_some()
+        || !allowed_hosts
+            .iter()
+            .any(|allowed| allowed.eq_ignore_ascii_case(host))
+    {
+        return Err(FactoryRunRecordError::Invalid(
+            "pull request provider host is not configured",
+        ));
     }
     Ok(())
 }
@@ -741,6 +938,8 @@ mod tests {
             action: kind,
             command: None,
             local_url: None,
+            port: None,
+            readiness: None,
             preview: None,
             pull_request: None,
         }
@@ -764,6 +963,11 @@ mod tests {
         action.run_owner_pubkey = Some(OWNER.to_owned());
         action.command = Some("pnpm dev".to_owned());
         action.local_url = Some("http://127.0.0.1:4000".to_owned());
+        action.port = Some(4000);
+        action.readiness = Some(FactoryPreviewReadiness {
+            mode: FactoryPreviewReadinessMode::HttpEndpoint,
+            value: "/ready".to_owned(),
+        });
 
         let next = apply_factory_run_action(&action, OWNER, false, None, None, NOW)
             .expect("valid configure action");
@@ -771,6 +975,17 @@ mod tests {
         assert_eq!(next.preview.status(), FactoryPreviewStatus::NotStarted);
         assert_eq!(next.run_owner_pubkey, OWNER);
         assert!(next.pull_request.is_none());
+        assert!(matches!(
+            next.preview,
+            FactoryPreviewState::NotStarted {
+                port: Some(4000),
+                readiness: Some(FactoryPreviewReadiness {
+                    mode: FactoryPreviewReadinessMode::HttpEndpoint,
+                    value,
+                }),
+                ..
+            } if value == "/ready"
+        ));
     }
 
     #[test]
@@ -779,6 +994,8 @@ mod tests {
             preview: FactoryPreviewState::NotStarted {
                 command: "pnpm dev".to_owned(),
                 local_url: "http://localhost:4000".to_owned(),
+                port: None,
+                readiness: None,
             },
             ..head()
         };
@@ -787,6 +1004,8 @@ mod tests {
             command: "pnpm dev".to_owned(),
             local_url: "http://localhost:4000".to_owned(),
             url: "http://localhost:4000".to_owned(),
+            port: None,
+            readiness: None,
         });
         assert!(matches!(
             apply_factory_run_action(&action, OWNER, false, Some(&current), Some(HEAD_ID), NOW),
@@ -798,6 +1017,8 @@ mod tests {
         action.preview = Some(FactoryPreviewState::Starting {
             command: "pnpm dev".to_owned(),
             local_url: "http://localhost:4000".to_owned(),
+            port: None,
+            readiness: None,
         });
         let starting =
             apply_factory_run_action(&action, OWNER, false, Some(&current), Some(HEAD_ID), NOW)
@@ -886,6 +1107,60 @@ mod tests {
     }
 
     #[test]
+    fn pull_request_provider_is_exactly_configured() {
+        let pull_request = FactoryPullRequest {
+            url: "https://code.example.test/team/project/pull/42".to_owned(),
+            number: 42,
+            state: FactoryPullRequestState::Unknown,
+            check_results: Vec::new(),
+            review_handoff: None,
+        };
+        let allowed_hosts = vec!["code.example.test".to_owned()];
+        assert!(validate_factory_pull_request_provider(&pull_request, &allowed_hosts).is_ok());
+        assert!(validate_factory_pull_request_provider(&pull_request, &[]).is_err());
+
+        let alternate_host = FactoryPullRequest {
+            url: "https://other.example.test/team/project/pull/42".to_owned(),
+            ..pull_request
+        };
+        assert!(validate_factory_pull_request_provider(&alternate_host, &allowed_hosts).is_err());
+    }
+
+    #[test]
+    fn preview_readiness_is_bound_to_a_nonzero_saved_port() {
+        let readiness = FactoryPreviewReadiness {
+            mode: FactoryPreviewReadinessMode::HttpEndpoint,
+            value: "/ready".to_owned(),
+        };
+        assert!(validate_preview_configuration(
+            "pnpm dev",
+            "http://127.0.0.1:4173",
+            Some(4173),
+            Some(&readiness),
+        )
+        .is_ok());
+        assert!(validate_preview_configuration(
+            "pnpm dev",
+            "http://127.0.0.1:4173",
+            Some(4174),
+            Some(&readiness),
+        )
+        .is_err());
+        assert!(validate_preview_configuration(
+            "pnpm dev",
+            "http://127.0.0.1:4173",
+            Some(0),
+            Some(&readiness),
+        )
+        .is_err());
+        let external_path = FactoryPreviewReadiness {
+            mode: FactoryPreviewReadinessMode::HttpEndpoint,
+            value: "//remote.example.test/ready".to_owned(),
+        };
+        assert!(validate_preview_readiness(&external_path).is_err());
+    }
+
+    #[test]
     fn non_loopback_http_and_oversized_output_are_rejected() {
         assert!(validate_preview_url("http://example.com:4000").is_err());
         assert!(validate_preview_url("http://127.0.0.1:4000").is_ok());
@@ -894,6 +1169,8 @@ mod tests {
             local_url: "http://localhost:4000".to_owned(),
             reason: "process exited".to_owned(),
             startup_output: Some("x".repeat(MAX_FACTORY_PREVIEW_OUTPUT_BYTES + 1)),
+            port: None,
+            readiness: None,
         };
         assert!(validate_preview_state(&failed).is_err());
     }

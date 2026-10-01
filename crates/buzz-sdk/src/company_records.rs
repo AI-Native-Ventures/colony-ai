@@ -236,6 +236,8 @@ mod tests {
             action: buzz_core::factory_run_records::FactoryRunActionKind::ConfigurePreview,
             command: Some("pnpm dev".into()),
             local_url: Some("http://127.0.0.1:4100".into()),
+            port: None,
+            readiness: None,
             preview: None,
             pull_request: None,
         };

@@ -49,6 +49,19 @@ test("DM body falls back when the message is blank", () => {
   );
 });
 
+test("desktop notification previews keep activity copy without message text", () => {
+  assert.deepEqual(
+    formatMessageNotification({
+      source: "dm",
+      senderName: "Taylor",
+      channelName: "taylor-wes",
+      content: "private details",
+      showMessageText: false,
+    }),
+    { title: "Taylor", body: "New message" },
+  );
+});
+
 test("thread reply leads with the sender when resolved", () => {
   assert.equal(
     formatMessageNotification({

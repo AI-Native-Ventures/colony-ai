@@ -25,6 +25,7 @@ import {
   slotForFeedKind,
 } from "./lib/sound";
 import type { NotificationSettings } from "./hooks";
+import { readDevicePrivacyPreferences } from "@/features/settings/lib/devicePrivacyPreferences";
 
 const HOME_FEED_SEEN_STORAGE_KEY = "buzz-home-feed-seen.v1";
 const HOME_FEED_SEEN_MAX_ITEMS = 500;
@@ -111,7 +112,11 @@ export function useFeedDesktopNotifications(
 
   const deliverFeedNotification = React.useEffectEvent(
     async (item: FeedItem, senderName?: string) => {
-      const { title, body } = formatFeedNotification(item, senderName);
+      const { title, body } = formatFeedNotification(
+        item,
+        senderName,
+        readDevicePrivacyPreferences(pubkey).showMessageText,
+      );
       const didSend = await sendDesktopNotification({
         body,
         target: buildFeedItemNotificationTarget(item),
