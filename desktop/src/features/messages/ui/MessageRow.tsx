@@ -38,11 +38,8 @@ import {
   KIND_STREAM_MESSAGE_DIFF,
   KIND_WORK_ITEM_HEAD,
 } from "@/shared/constants/kinds";
-import { AskCard } from "@/features/company-asks/ui/AskCard";
-import {
-  askIdFromAction,
-  askThreadStartFromAction,
-} from "@/features/company-asks/askRecords";
+import { AskActionAttachment } from "@/features/messages/ui/AskActionAttachment";
+import { askIdFromAction } from "@/features/company-asks/askRecords";
 import { getConfigNudgeAuthorPubkey } from "@/features/messages/ui/configNudgeAuthPubkey";
 import { cn } from "@/shared/lib/cn";
 import { useMeasuredCssVariable } from "@/shared/layout/useMeasuredCssVariable";
@@ -78,67 +75,6 @@ import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useCompanyTeamMemberQuery } from "@/features/company-team/teamRelay";
 const DiffMessage = React.lazy(() => import("./DiffMessage"));
 const DiffMessageExpanded = React.lazy(() => import("./DiffMessageExpanded"));
-
-function AskActionAttachment({
-  askId,
-  channelId,
-  currentPubkey,
-  messageBody,
-  profiles,
-}: {
-  askId: string;
-  channelId: string | null;
-  currentPubkey?: string;
-  messageBody: string;
-  profiles?: UserProfileLookup;
-}) {
-  const rootRef = React.useRef<HTMLDivElement>(null);
-  const [nearViewport, setNearViewport] = React.useState(false);
-  const threadStart = askThreadStartFromAction(messageBody);
-
-  React.useEffect(() => {
-    const root = rootRef.current;
-    if (!root || typeof IntersectionObserver === "undefined") {
-      setNearViewport(true);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setNearViewport(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "320px" },
-    );
-    observer.observe(root);
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <div ref={rootRef}>
-      {threadStart ? (
-        <section
-          aria-label="Discussion opening"
-          className="colony-ask-create-context mb-3"
-        >
-          <strong>{threadStart.title}</strong>
-          {threadStart.openingContext ? (
-            <span>{threadStart.openingContext}</span>
-          ) : null}
-        </section>
-      ) : null}
-      <AskCard
-        askId={askId}
-        channelId={channelId}
-        currentPubkey={currentPubkey}
-        lazyQueryEnabled={nearViewport}
-        profiles={profiles}
-      />
-    </div>
-  );
-}
 
 export type ThreadDepthGuideAction = {
   active?: boolean;

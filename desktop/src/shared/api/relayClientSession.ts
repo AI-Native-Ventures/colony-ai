@@ -76,39 +76,13 @@ import {
   type RelayAuthRequest,
 } from "@/shared/api/relayAuthPolicy";
 import { createRelayInboundBuffer } from "@/shared/api/relayInboundBuffer";
+import {
+  stableSerialize,
+  subscribeSharedLiveFilter,
+  type SharedLiveSubscription,
+} from "@/shared/api/relayClientSubscriptionRegistry";
 import { buildThreadReferenceTags } from "@/features/messages/lib/threading";
 type UserStatusInput = { text: string; emoji: string; expiresAt?: number };
-
-type LiveSubscriptionConsumer = {
-  onEvent: (event: RelayEvent) => void;
-  onRetryExhausted?: () => void;
-  signalReady: (readiness: LiveSubscriptionReadiness) => void;
-  rejectReady: (error: Error) => void;
-};
-
-type SharedLiveSubscription = {
-  key: string;
-  subId: string;
-  consumers: Set<LiveSubscriptionConsumer>;
-  readiness?: LiveSubscriptionReadiness;
-  active: boolean;
-};
-
-function stableSerialize(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map(stableSerialize).join(",")}]`;
-  }
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value).sort(([left], [right]) =>
-      left.localeCompare(right),
-    );
-    return `{${entries
-      .map(([key, entry]) => `${JSON.stringify(key)}:${stableSerialize(entry)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
-
 export class RelayClient {
   private wsId: number | null = null;
   private relayUrl: string | null = null;
@@ -653,113 +627,19 @@ export class RelayClient {
     readinessTimeoutMs = 250,
     onRetryExhausted?: () => void,
   ) {
-    await this.ensureConnected();
-    const key = stableSerialize(filter);
-    let shared = this.liveSubscriptionsByFilter.get(key);
-    const createSubscription = !shared?.active;
-    if (createSubscription) {
-      shared = {
-        key,
-        subId: `live-${crypto.randomUUID()}`,
-        consumers: new Set(),
-        active: true,
-      };
-      this.liveSubscriptionsByFilter.set(key, shared);
-      const currentShared = shared;
-      this.subscriptions.set(currentShared.subId, {
-        mode: "live",
-        filter,
-        onEvent: (event) => {
-          for (const consumer of [...currentShared.consumers]) {
-            consumer.onEvent(event);
-          }
-        },
-        onRetryExhausted: () => {
-          currentShared.active = false;
-          this.liveSubscriptionsByFilter.delete(currentShared.key);
-          for (const consumer of [...currentShared.consumers]) {
-            consumer.onRetryExhausted?.();
-          }
-        },
-        resolveReady: (readiness) => {
-          currentShared.readiness = readiness;
-          for (const consumer of [...currentShared.consumers]) {
-            consumer.signalReady(readiness);
-          }
-        },
-      });
-    }
-    if (!shared) throw new Error("Relay subscription setup failed.");
-
-    let readyNotified = false;
-    let readyTimer: number | null = null;
-    let resolveReady = () => {};
-    let rejectReady = (_error: Error) => {};
-    const ready = new Promise<void>((resolve, reject) => {
-      resolveReady = resolve;
-      rejectReady = reject;
-    });
-    const signalReady = (readiness: LiveSubscriptionReadiness) => {
-      if (readyNotified) return;
-      readyNotified = true;
-      if (readyTimer !== null) window.clearTimeout(readyTimer);
-      onReady?.(readiness);
-      resolveReady();
-    };
-    const rejectBeforeReady = (error: Error) => {
-      if (readyNotified) return;
-      readyNotified = true;
-      if (readyTimer !== null) window.clearTimeout(readyTimer);
-      rejectReady(error);
-    };
-    const consumer: LiveSubscriptionConsumer = {
+    return subscribeSharedLiveFilter({
+      registry: this.liveSubscriptionsByFilter,
+      subscriptions: this.subscriptions,
+      filter,
       onEvent,
+      onReady,
+      readinessTimeoutMs,
       onRetryExhausted,
-      signalReady,
-      rejectReady: rejectBeforeReady,
-    };
-    shared.consumers.add(consumer);
-    if (shared.readiness) signalReady(shared.readiness);
-    else {
-      readyTimer = window.setTimeout(
-        () => signalReady("timeout"),
-        readinessTimeoutMs,
-      );
-    }
-
-    try {
-      if (createSubscription) {
-        await this.sendRawWithReconnectRetry(
-          ["REQ", shared.subId, filter],
-          "Failed to restore relay subscription.",
-        );
-      }
-    } catch (error) {
-      shared.active = false;
-      this.liveSubscriptionsByFilter.delete(shared.key);
-      this.subscriptions.delete(shared.subId);
-      for (const sibling of [...shared.consumers]) {
-        sibling.rejectReady(
-          error instanceof Error ? error : new Error("Relay subscribe failed."),
-        );
-      }
-      throw error;
-    }
-    await ready;
-
-    return async () => {
-      if (!shared.consumers.delete(consumer) || shared.consumers.size > 0)
-        return;
-      if (this.liveSubscriptionsByFilter.get(shared.key) === shared) {
-        this.liveSubscriptionsByFilter.delete(shared.key);
-      }
-      shared.active = false;
-      const active = this.subscriptions.get(shared.subId);
-      if (active?.mode !== "live") return;
-      this.subscriptions.delete(shared.subId);
-      clearClosedRetry(active);
-      await this.closeSubscription(shared.subId);
-    };
+      ensureConnected: () => this.ensureConnected(),
+      sendRequest: (payload, message) =>
+        this.sendRawWithReconnectRetry(payload, message),
+      closeSubscription: (subId) => this.closeSubscription(subId),
+    });
   }
 
   private async sendRaw(payload: unknown[]) {
