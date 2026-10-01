@@ -20,11 +20,12 @@ void main() {
         overrides: [creditsApiProvider.overrideWithValue(api)],
         child: MaterialApp(
           theme: AppTheme.light(),
-          home: const CreditsQuotePage(
+          home: CreditsQuotePage(
             pack: CreditsPack(
               id: _packId,
               name: 'Starter',
               chargeZarCents: 11900,
+              grantNanoUsd: BigInt.from(5000000000),
               grantUsdCents: 500,
             ),
           ),

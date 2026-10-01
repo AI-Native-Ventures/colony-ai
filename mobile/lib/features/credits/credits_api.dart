@@ -314,12 +314,14 @@ class CreditsPack {
     required this.id,
     required this.name,
     required this.chargeZarCents,
+    required this.grantNanoUsd,
     required this.grantUsdCents,
   });
 
   final String id;
   final String name;
   final int chargeZarCents;
+  final BigInt grantNanoUsd;
   final int grantUsdCents;
 
   factory CreditsPack.fromJson(Map<String, dynamic> json) {
@@ -337,6 +339,7 @@ class CreditsPack {
       id: _requiredString(json['id']),
       name: _requiredString(json['name']),
       chargeZarCents: _requiredPositiveInt(json['chargeMinorUnits']),
+      grantNanoUsd: grantNanoUsd,
       grantUsdCents: grantUsdCents,
     );
   }
@@ -545,8 +548,12 @@ class CreditsPaymentIntent {
     }
     final grant = json['grantNanousd'];
     final grantNanoUsd = grant is String ? BigInt.tryParse(grant) : null;
+    final grantUsdCents = _requiredPositiveInt(json['grantUsdCents']);
     final paidAmount = json['paidMinorUnits'];
     if (grantNanoUsd == null ||
+        grantNanoUsd <= BigInt.zero ||
+        BigInt.from(grantUsdCents) !=
+            grantNanoUsd ~/ BigInt.from(_nanoUsdPerCent) ||
         (paidAmount != null && paidAmount is! int && paidAmount is! num)) {
       throw const CreditsFailure(CreditsFailureKind.invalidResponse);
     }
@@ -559,7 +566,7 @@ class CreditsPaymentIntent {
       ),
       paidZarCents: paidAmount == null ? null : _requiredInt(paidAmount),
       grantNanoUsd: grantNanoUsd,
-      grantUsdCents: _nanoUsdToCents(grant),
+      grantUsdCents: grantUsdCents,
       status: _requiredString(json['status']),
       createdAt: _requiredDate(json['createdAt']),
     );

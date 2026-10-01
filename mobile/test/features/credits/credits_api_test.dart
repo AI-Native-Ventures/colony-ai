@@ -49,6 +49,7 @@ void main() {
       expect(catalog.sandbox, isTrue);
       expect(catalog.packs.single.id, 'starter');
       expect(catalog.packs.single.chargeZarCents, 11900);
+      expect(catalog.packs.single.grantNanoUsd, BigInt.from(5000000000));
       expect(catalog.packs.single.grantUsdCents, 500);
     },
   );
@@ -168,7 +169,8 @@ void main() {
           'chargeMinorUnits': 2510,
           'paidMinorUnits': null,
           'currency': 'ZAR',
-          'grantNanousd': '3450000000',
+          'grantNanousd': '3459999999',
+          'grantUsdCents': 345,
           'createdAt': '2026-09-30T10:00:00Z',
         }),
         200,
@@ -195,8 +197,49 @@ void main() {
     expect(intent.amountZarCents, 2510);
     expect(intent.paidZarCents, isNull);
     expect(intent.grantUsdCents, 345);
-    expect(intent.grantNanoUsd, BigInt.from(3450000000));
+    expect(intent.grantNanoUsd, BigInt.from(3459999999));
   });
+
+  test(
+    'rejects an inconsistent billing grant quote on the server intent',
+    () async {
+      final keys = nostr.Keys.generate();
+      final client = http_testing.MockClient((_) async {
+        return http.Response(
+          jsonEncode({
+            'reference': 'credit-test-20',
+            'idempotencyKey': '123e4567-e89b-42d3-a456-426614174000',
+            'packId': 'starter',
+            'status': 'pending',
+            'chargeMinorUnits': 2510,
+            'paidMinorUnits': null,
+            'currency': 'ZAR',
+            'grantNanousd': '3459999999',
+            'grantUsdCents': 346,
+            'createdAt': '2026-09-30T10:00:00Z',
+          }),
+          200,
+        );
+      });
+      final api = CreditsApi(
+        client: client,
+        baseUrl: 'https://relay.example',
+        nsec: keys.nsec,
+      );
+
+      await expectLater(
+        api.readPaymentIntent('credit-test-20'),
+        throwsA(
+          isA<CreditsFailure>().having(
+            (failure) => failure.kind,
+            'kind',
+            CreditsFailureKind.invalidResponse,
+          ),
+        ),
+      );
+      client.close();
+    },
+  );
 
   test(
     'rejects a malformed payment reference before making a request',

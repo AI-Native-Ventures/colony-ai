@@ -65,7 +65,10 @@ void main() {
               destination: MobileShellDestination.company,
               onDestinationSelected: (_) {},
               showBrandBar: false,
-              child: CreditsPaymentStatusPage(reference: _reference),
+              child: CreditsPaymentStatusPage(
+                reference: _reference,
+                isBrowserReturn: state.isBrowserReturn,
+              ),
             ),
           );
 
@@ -146,6 +149,7 @@ void main() {
 
 final _paymentStates = <_PaymentState>[
   const _PaymentState(name: 'pending', status: 'pending'),
+  const _PaymentState(name: 'return', status: 'pending', isBrowserReturn: true),
   const _PaymentState(name: 'failed', status: 'failed'),
   const _PaymentState(name: 'cancelled', status: 'cancelled'),
   const _PaymentState(name: 'paid', status: 'paid', confirmed: true),
@@ -162,12 +166,14 @@ class _PaymentState {
     required this.status,
     this.confirmed = false,
     this.unavailable = false,
+    this.isBrowserReturn = false,
   });
 
   final String name;
   final String status;
   final bool confirmed;
   final bool unavailable;
+  final bool isBrowserReturn;
 }
 
 CreditsPaymentIntent _payment(String status) => CreditsPaymentIntent(

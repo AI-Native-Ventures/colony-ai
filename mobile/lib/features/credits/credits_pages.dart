@@ -281,18 +281,25 @@ class CreditsUsagePage extends StatelessWidget {
   }
 }
 
-class CreditsPaymentStatusPage extends ConsumerWidget {
-  const CreditsPaymentStatusPage({required this.reference, super.key});
+class CreditsPaymentStatusPage extends HookConsumerWidget {
+  const CreditsPaymentStatusPage({
+    required this.reference,
+    this.isBrowserReturn = false,
+    super.key,
+  });
 
   final String reference;
+  final bool isBrowserReturn;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final showWelcomeBack = useState(isBrowserReturn);
     final community = ref.watch(activeCommunityProvider).asData?.value;
     final intent = ref.watch(creditsPaymentIntentProvider(reference));
     final overview = ref.watch(creditsOverviewProvider);
     var retryInProgress = false;
     void onRetry() {
+      showWelcomeBack.value = false;
       ref.invalidate(creditsPaymentIntentProvider(reference));
       ref.invalidate(creditsOverviewProvider);
     }
@@ -320,6 +327,7 @@ class CreditsPaymentStatusPage extends ConsumerWidget {
           : _CreditsPaymentStatusContent(
               payment: payment,
               overview: credits,
+              showWelcomeBack: showWelcomeBack.value,
               onRetry: onRetry,
               onRetryPayment: () {
                 if (retryInProgress) return;
@@ -342,6 +350,7 @@ class _CreditsPaymentStatusContent extends StatelessWidget {
   const _CreditsPaymentStatusContent({
     required this.payment,
     required this.overview,
+    required this.showWelcomeBack,
     required this.onRetry,
     required this.onRetryPayment,
     required this.onBack,
@@ -349,6 +358,7 @@ class _CreditsPaymentStatusContent extends StatelessWidget {
 
   final CreditsPaymentIntent payment;
   final CreditsOverview overview;
+  final bool showWelcomeBack;
   final VoidCallback onRetry;
   final VoidCallback onRetryPayment;
   final VoidCallback onBack;
@@ -395,7 +405,9 @@ class _CreditsPaymentStatusContent extends StatelessWidget {
       return _paymentState(
         context,
         eyebrow: 'PAYMENT CHECK',
-        title: 'Still waiting for confirmation.',
+        title: showWelcomeBack
+            ? 'Welcome back.'
+            : 'Still waiting for confirmation.',
         description: 'Your browser return is not proof of payment.',
         rows: [
           ('Credits to receive', _money(payment.grantUsdCents, 'USD')),

@@ -164,6 +164,7 @@ void main() {
     const reference = 'credit-return-18';
     const link = CreditsPaymentDeepLink(reference: reference);
     final pending = _RecordingPaymentPendingLinkNotifier(link);
+    var browserReturnReceived = false;
 
     await tester.pumpWidget(
       ProviderScope(
@@ -175,8 +176,10 @@ void main() {
         ],
         child: MaterialApp(
           home: DeepLinkDispatcher(
-            creditsPaymentPageBuilder: (value) =>
-                _CapturedPaymentStatus(reference: value),
+            creditsPaymentPageBuilder: (value, {required isBrowserReturn}) {
+              browserReturnReceived = isBrowserReturn;
+              return _CapturedPaymentStatus(reference: value);
+            },
             child: const Scaffold(body: SizedBox()),
           ),
         ),
@@ -186,6 +189,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Payment status: $reference'), findsOneWidget);
+    expect(browserReturnReceived, isTrue);
     expect(pending.consumeCalls, 1);
   });
 

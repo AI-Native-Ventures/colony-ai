@@ -111,6 +111,48 @@ void main() {
     expect(overviewReads, 2);
     expect(find.text('Still waiting for confirmation.'), findsOneWidget);
   });
+
+  testWidgets('browser return checks status before showing the pending state', (
+    tester,
+  ) async {
+    var intentReads = 0;
+    var overviewReads = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          activeCommunityProvider.overrideWith((_) async => null),
+          creditsPaymentIntentProvider(_reference).overrideWith((_) async {
+            intentReads++;
+            return _payment('pending');
+          }),
+          creditsOverviewProvider.overrideWith((_) async {
+            overviewReads++;
+            return _overview();
+          }),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const CreditsPaymentStatusPage(
+            reference: _reference,
+            isBrowserReturn: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Welcome back.'), findsOneWidget);
+    expect(find.text('Still waiting for confirmation.'), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey('credits-payment-status-check')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(intentReads, 2);
+    expect(overviewReads, 2);
+    expect(find.text('Welcome back.'), findsNothing);
+    expect(find.text('Still waiting for confirmation.'), findsOneWidget);
+  });
 }
 
 Future<void> _pump(

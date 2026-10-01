@@ -398,6 +398,7 @@ class CreditsPaymentBrowserPage extends HookConsumerWidget {
                     MaterialPageRoute<void>(
                       builder: (_) => CreditsPaymentStatusPage(
                         reference: checkout.reference,
+                        isBrowserReturn: true,
                       ),
                     ),
                   );
@@ -598,6 +599,7 @@ Future<void> _retryFailedPayment(
               id: payment.packId,
               name: payment.packId,
               chargeZarCents: payment.amountZarCents,
+              grantNanoUsd: payment.grantNanoUsd,
               grantUsdCents: payment.grantUsdCents,
             ),
           ),

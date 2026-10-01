@@ -22,7 +22,8 @@ typedef DeepLinkDestinationBuilder =
     Widget Function(Channel channel, BuzzDeepLink link);
 
 /// Builds the account-owned payment status route for a browser return.
-typedef CreditsPaymentPageBuilder = Widget Function(String reference);
+typedef CreditsPaymentPageBuilder =
+    Widget Function(String reference, {required bool isBrowserReturn});
 
 class DeepLinkDispatcher extends ConsumerStatefulWidget {
   final Widget child;
@@ -99,7 +100,9 @@ class _DeepLinkDispatcherState extends ConsumerState<DeepLinkDispatcher> {
       return;
     }
     Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => builder(link.reference)),
+      MaterialPageRoute<void>(
+        builder: (_) => builder(link.reference, isBrowserReturn: true),
+      ),
     );
     ref.read(pendingDeepLinkProvider.notifier).consume();
   }
