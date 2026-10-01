@@ -95,6 +95,9 @@ export function useAskHeadQuery(
             setLiveState(readiness === "eose" ? "live" : "unavailable");
         },
         5_000,
+        () => {
+          if (active) setLiveState("unavailable");
+        },
       )
       .then((unsubscribe) => {
         if (active) dispose = unsubscribe;

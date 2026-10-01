@@ -1,7 +1,9 @@
 # Signed-in canary UI check
 
 The `canary` Playwright project is local-only. It drives the E2E web build over
-the real canary community relay with one mail.tm account and NIP-42 signing.
+the real canary community relay with the throwaway owner account and NIP-42
+signing. An optional managed-agent fixture lets the suite inspect employee
+profile, duties, lessons, permissions, and AI spend screens.
 The Playwright project is absent unless `BUZZ_E2E_CANARY=1` is set, and refuses
 to run in CI.
 
@@ -33,31 +35,54 @@ against the derived public key and rejects non-canary community hosts.
 From the repository root:
 
 ```sh
-mkdir -m 700 -p "$HOME/.colony-canary/artifacts"
+mkdir -m 700 -p "$HOME/.colony-canary/artifacts/l-ui-current-run"
 cd desktop
 pnpm build:e2e
 BUZZ_E2E_CANARY=1 \
   BUZZ_E2E_CANARY_ACCOUNT_FILE="$HOME/.colony-canary/canary-ui.json" \
-  BUZZ_E2E_CANARY_ARTIFACT_DIR="$HOME/.colony-canary/artifacts" \
+  BUZZ_E2E_CANARY_AGENT_FILE="$HOME/.colony-canary/agents/<managed-agent-fixture>.json" \
+  BUZZ_E2E_CANARY_ARTIFACT_DIR="$HOME/.colony-canary/artifacts/l-ui-current-run" \
   pnpm exec playwright test --project=canary
 ```
 
 The E2E web build uses the relay-backed browser bridge and does not start the
 Tauri host or access the macOS keychain. Screenshots and Playwright artifacts
 are written to the configured artifact directory outside the repository.
-The test never enables Mesh sharing, issues or sends an invoice, or logs the
-account signing key or the synthetic secret input.
+The test creates synthetic canary goals, asks, work records, messages, and a
+temporary secret binding. It never enables Mesh sharing, issues or sends an
+invoice, or logs the account signing key or synthetic secret input.
 
-The one-member setup has no other ask recipient, so the UI cannot send an ask
-from the owner's own thread. The check records that limitation and uses a
-synthetic relay ask addressed to the owner to exercise approval.
+The ask-recipient check adapts to the real channel membership. It verifies that
+the signed-in owner is not offered as a recipient, and records the
+single-member recovery state only when that state is present. Ask creation,
+new-thread setup, ask-type selection, allowance drafts, and hire-proposal drafts
+are left unsent.
+The synthetic approval and decision-reason check runs only when the canary has
+an eligible human recipient that the managed-agent fixture lets the suite
+identify. The relay permits agents to receive only question or verdict asks, so
+the suite reports decision reasons as unproven when it cannot confirm a human
+recipient.
 
-The frozen company-v8 owner profile shows Overview and History only. It has no
-design for employee-specific tabs on a human owner, including an honest
-not-available state. The canary check records this as `NEEDS_DESIGN` and does
-not invent those tabs.
+The frozen company-v9 contract gives human members Overview and History only.
+The suite checks those tabs on the owner and checks employee-only tabs with the
+managed agent. The fixture must have mode `0600`; the test reads only its public
+key and never returns or logs its signing material.
 
-A fresh community has no invoice record, so the tax editor and its zero-rate
-default cannot be exercised without a draft invoice. The check opens the
-invoice list and records the unavailable tax route; it does not issue or send
-an invoice.
+The existing Tools & access grant page is separate from the frozen batch 2
+context-bound tool-consent flow. The suite checks that the generic grant starts
+with blank action, scope and expiry fields, but reports the batch 2 consent flow
+as `NEEDS_API` when the canary has no real pending tool-consent request. It does
+not synthesize that request from mockup state.
+
+The suite captures each exercised desktop state in light and dark at 1440x900
+and 1728x1117. It records console and page errors, failed requests, HTTP errors,
+requests pending longer than 15 seconds, horizontal overflow, and visible
+interactive controls without accessible names. Diagnostic URLs omit query
+strings and redact identity-shaped path values. Request headers and bodies are
+never recorded.
+
+No workflow is published, no standing permission is saved, no watchdog or Mesh
+sharing is enabled, and no invoice is issued. A canary with no real invoice or
+founder-handoff record leaves those states unproven and is reported in the
+suite output. The desktop canary project does not exercise the Flutter mobile
+runtime.

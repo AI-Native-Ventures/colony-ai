@@ -494,6 +494,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
     try {
       return await session.queryRelay(filters);
     } catch (error) {
+      if (isRelayRateLimitedError(error)) rethrow;
       debugPrint(
         '[ChannelsNotifier] batched $operation failed; '
         'using bounded websocket fallback: $error',
@@ -505,13 +506,7 @@ class ChannelsNotifier extends AsyncNotifier<List<Channel>> {
     for (var start = 0; start < filters.length; start += fallbackConcurrency) {
       final end = min(start + fallbackConcurrency, filters.length);
       final results = await Future.wait(
-        filters.sublist(start, end).map((filter) async {
-          try {
-            return await session.fetchHistory(filter);
-          } catch (_) {
-            return const <NostrEvent>[];
-          }
-        }),
+        filters.sublist(start, end).map(session.fetchHistory),
       );
       for (final result in results) {
         events.addAll(result);

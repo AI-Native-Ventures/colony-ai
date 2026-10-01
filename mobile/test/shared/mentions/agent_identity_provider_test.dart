@@ -275,6 +275,13 @@ class _MembershipRelaySessionNotifier extends RelaySessionNotifier {
   }
 
   @override
+  Future<void Function()> subscribe(
+    NostrFilter filter,
+    void Function(NostrEvent) onEvent, {
+    void Function(String message)? onClosed,
+  }) async => () {};
+
+  @override
   Future<void Function()> subscribeWithStatus(
     NostrFilter filter,
     void Function(NostrEvent) onEvent, {

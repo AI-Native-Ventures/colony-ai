@@ -74,6 +74,7 @@ type LiveSubscription = {
   mode: "live";
   filter: RelaySubscriptionFilter;
   onEvent: (event: RelayEvent) => void;
+  onRetryExhausted?: () => void;
   resolveReady?: (readiness: LiveSubscriptionReadiness) => void;
   lastSeenCreatedAt?: number;
   /**

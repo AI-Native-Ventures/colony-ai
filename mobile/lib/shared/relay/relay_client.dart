@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:http/http.dart' as http;
+
+import 'relay_closed_policy.dart';
 
 /// Lightweight HTTP context for talking to the Buzz relay.
 ///
@@ -44,4 +48,20 @@ class RelayException implements Exception {
     }
     return 'RelayException($statusCode): $trimmedBody';
   }
+}
+
+/// Returns whether a relay error represents HTTP or WebSocket back-pressure.
+bool isRelayRateLimitedError(Object error) {
+  if (error is RelayException && error.statusCode == 429) return true;
+  final body = error is RelayException ? error.body : error.toString();
+  try {
+    final decoded = jsonDecode(body);
+    if (decoded is Map<String, dynamic> && decoded['error'] is String) {
+      return classifyRelayClosed(decoded['error'] as String) ==
+          RelayClosedClass.rateLimited;
+    }
+  } on FormatException {
+    // WebSocket failures use the relay's rate-limit prefix as plain text.
+  }
+  return body.toLowerCase().contains('rate-limited:');
 }
