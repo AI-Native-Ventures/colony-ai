@@ -9,16 +9,33 @@ const MAX_QUEUED_RELAY_OPERATIONS = 256;
 type PacerState = {
   tokens: number;
   lastRefillAt: number;
-  queued: number;
-  tail: Promise<void>;
+  nextSequence: number;
+  waiters: QueuedOperation[];
+  refillTimer: number | null;
+};
+
+type RelayOperationPriority =
+  | "background"
+  | "normal"
+  | "visible"
+  | "interactive";
+
+type QueuedOperation = {
+  sequence: number;
+  priority: RelayOperationPriority;
+  isCurrent: () => boolean;
+  minimumDelayMs: () => number;
+  resolve: () => void;
+  reject: (error: Error) => void;
 };
 
 function createPacerState(): PacerState {
   return {
     tokens: RELAY_OPERATION_BURST_CAPACITY,
     lastRefillAt: Date.now(),
-    queued: 0,
-    tail: Promise.resolve(),
+    nextSequence: 0,
+    waiters: [],
+    refillTimer: null,
   };
 }
 
@@ -33,14 +50,9 @@ function isAdmissionFrame(frame: unknown[]): boolean {
 function isSyntheticE2eRelay(): boolean {
   return (
     typeof window !== "undefined" &&
-    window.__BUZZ_E2E_USES_REAL_RELAY__ === false
+    window.__BUZZ_E2E_USES_REAL_RELAY__ === false &&
+    window.__BUZZ_E2E_FORCE_RELAY_PACING__ !== true
   );
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
 }
 
 function refillTokens(state: PacerState, now: number): void {
@@ -52,22 +64,87 @@ function refillTokens(state: PacerState, now: number): void {
   state.lastRefillAt = now;
 }
 
-function acquireToken(state: PacerState): Promise<void> | null {
-  if (state !== activeState) {
-    throw new Error("Relay operation was superseded before sending.");
-  }
+const PRIORITY_RANK: Record<RelayOperationPriority, number> = {
+  background: 0,
+  normal: 1,
+  visible: 2,
+  interactive: 3,
+};
 
-  const now = Date.now();
-  refillTokens(state, now);
-  if (state.tokens >= 1) {
+function scheduleRefill(state: PacerState, minimumDelayMs = 0): void {
+  if (state.refillTimer !== null || state.waiters.length === 0) return;
+  refillTokens(state, Date.now());
+  const tokenDelayMs = Math.ceil(
+    Math.max(0, 1 - state.tokens) * RELAY_OPERATION_INTERVAL_MS,
+  );
+  const delayMs = Math.max(minimumDelayMs, tokenDelayMs);
+  state.refillTimer = window.setTimeout(
+    () => {
+      state.refillTimer = null;
+      drainQueue(state);
+    },
+    Math.max(1, delayMs),
+  );
+}
+
+function drainQueue(state: PacerState): void {
+  if (state !== activeState) return;
+  refillTokens(state, Date.now());
+  state.waiters.sort(
+    (left, right) =>
+      PRIORITY_RANK[right.priority] - PRIORITY_RANK[left.priority] ||
+      left.sequence - right.sequence,
+  );
+
+  while (state.waiters.length > 0) {
+    const current = state.waiters[0];
+    if (!current.isCurrent()) {
+      state.waiters.shift();
+      current.reject(
+        new Error("Relay operation was superseded before sending."),
+      );
+      continue;
+    }
+    const tokenDelayMs = Math.ceil(
+      Math.max(0, 1 - state.tokens) * RELAY_OPERATION_INTERVAL_MS,
+    );
+    const minimumDelayMs = Math.max(0, current.minimumDelayMs());
+    if (state.tokens < 1 || minimumDelayMs > 0) {
+      scheduleRefill(state, Math.max(tokenDelayMs, minimumDelayMs));
+      return;
+    }
+    const operation = state.waiters.shift();
+    if (!operation) break;
     state.tokens -= 1;
-    return null;
+    operation.resolve();
+  }
+}
+
+function acquireToken(
+  state: PacerState,
+  priority: RelayOperationPriority,
+  isCurrent: () => boolean,
+  minimumDelayMs: () => number,
+): Promise<void> {
+  if (state !== activeState) {
+    return Promise.reject(
+      new Error("Relay operation was superseded before sending."),
+    );
+  }
+  if (state.waiters.length >= MAX_QUEUED_RELAY_OPERATIONS) {
+    return Promise.reject(new Error("Relay outbound operation queue is full."));
   }
 
-  const delayMs = Math.ceil((1 - state.tokens) * RELAY_OPERATION_INTERVAL_MS);
-  return wait(Math.max(1, delayMs)).then(() => {
-    const retry = acquireToken(state);
-    return retry ?? undefined;
+  return new Promise((resolve, reject) => {
+    state.waiters.push({
+      sequence: state.nextSequence++,
+      priority,
+      isCurrent,
+      minimumDelayMs,
+      resolve,
+      reject,
+    });
+    drainQueue(state);
   });
 }
 
@@ -82,6 +159,8 @@ export async function sendPacedRelayOperation<T>(
   frame: unknown[],
   isCurrent: () => boolean,
   send: () => Promise<T>,
+  priority: RelayOperationPriority = "normal",
+  minimumDelayMs: () => number = () => 0,
 ): Promise<T> {
   if (isSyntheticE2eRelay() || !isAdmissionFrame(frame)) {
     if (!isCurrent()) {
@@ -91,38 +170,22 @@ export async function sendPacedRelayOperation<T>(
   }
 
   const state = activeState;
-  if (state.queued >= MAX_QUEUED_RELAY_OPERATIONS) {
-    throw new Error("Relay outbound operation queue is full.");
+  await acquireToken(state, priority, isCurrent, minimumDelayMs);
+  if (state !== activeState || !isCurrent()) {
+    throw new Error("Relay operation was superseded before sending.");
   }
-  state.queued += 1;
-
-  const operation = state.tail.then(async () => {
-    if (state !== activeState || !isCurrent()) {
-      throw new Error("Relay operation was superseded before sending.");
-    }
-
-    const tokenWait = acquireToken(state);
-    if (tokenWait) await tokenWait;
-
-    if (state !== activeState || !isCurrent()) {
-      throw new Error("Relay operation was superseded before sending.");
-    }
-
-    return send();
-  });
-  state.tail = operation.then(
-    () => undefined,
-    () => undefined,
-  );
-
-  try {
-    return await operation;
-  } finally {
-    state.queued -= 1;
-  }
+  return send();
 }
 
 /** Reset queued operations at the canonical community switch boundary. */
 export function resetRelayWebSocketOperationPacer(): void {
+  if (activeState.refillTimer !== null) {
+    window.clearTimeout(activeState.refillTimer);
+  }
+  for (const operation of activeState.waiters) {
+    operation.reject(
+      new Error("Relay operation was superseded before sending."),
+    );
+  }
   activeState = createPacerState();
 }

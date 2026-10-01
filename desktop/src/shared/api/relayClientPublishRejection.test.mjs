@@ -258,6 +258,57 @@ test("an accepted OK still resolves the pending publish", async () => {
   assert.equal(outcome.value.id, eventId);
 });
 
+test("identical live filters share one relay REQ until the last listener leaves", async () => {
+  reset();
+  const client = connectedClient();
+  client.ensureConnected = async () => client.connectionGeneration;
+  const filter = { kinds: [9], "#h": ["visible-channel"], limit: 50 };
+  const firstEvents = [];
+  const secondEvents = [];
+  const first = client.subscribeLive(filter, (event) =>
+    firstEvents.push(event),
+  );
+  const second = client.subscribeLive(
+    { limit: 50, "#h": ["visible-channel"], kinds: [9] },
+    (event) => secondEvents.push(event),
+  );
+
+  await flushUntil(() => requestFrames().length === 1);
+  assert.equal(requestFrames().length, 1);
+  const subId = JSON.parse(requestFrames()[0].message.data)[1];
+  const event = {
+    id: "a".repeat(64),
+    pubkey: "b".repeat(64),
+    created_at: 1,
+    kind: 9,
+    tags: [],
+    content: "shared update",
+    sig: "c".repeat(128),
+  };
+  await deliver(client, ["EVENT", subId, event]);
+  await deliver(client, ["EOSE", subId]);
+  assert.deepEqual(firstEvents, [event]);
+  assert.deepEqual(secondEvents, [event]);
+  const [unsubscribeFirst, unsubscribeSecond] = await Promise.all([
+    first,
+    second,
+  ]);
+
+  await unsubscribeFirst();
+  assert.equal(
+    sendAttempts.some(({ message }) => JSON.parse(message.data)[0] === "CLOSE"),
+    false,
+    "the shared wire subscription stays open while one listener remains",
+  );
+  await unsubscribeSecond();
+  assert.equal(
+    sendAttempts.filter(
+      ({ message }) => JSON.parse(message.data)[0] === "CLOSE",
+    ).length,
+    1,
+  );
+});
+
 test("a publish started during an ordinary outage reconnects once and settles", async () => {
   reset();
   const client = new RelayClient();

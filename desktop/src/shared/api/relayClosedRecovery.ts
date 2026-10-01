@@ -14,6 +14,8 @@ import type { RelayEvent } from "@/shared/api/types";
 
 const RETRY_BASE_DELAY_MS = 1_000;
 const RETRY_MAX_DELAY_MS = 30_000;
+const RETRY_MAX_ATTEMPTS = 3;
+const RETRY_JITTER_MS = 250;
 
 type LiveSubscription = Extract<RelaySubscription, { mode: "live" }>;
 
@@ -29,12 +31,14 @@ export function handleRelayClosed({
   message,
   sendReq,
   closeSubscription,
+  random = () => 0,
 }: {
   subscriptions: Map<string, RelaySubscription>;
   subId: string;
   message: string;
   sendReq: (subId: string, filter: RelaySubscriptionFilter) => Promise<void>;
   closeSubscription?: (subId: string) => Promise<void>;
+  random?: () => number;
 }) {
   const subscription = subscriptions.get(subId);
   if (!subscription) return;
@@ -60,7 +64,9 @@ export function handleRelayClosed({
           // the rate-limit window. The setTimeout delay covers this interval.
           window.clearTimeout(subscription.timeout);
           const hintMs = (hintSeconds ?? 10) * 1_000;
-          const delayMs = Math.max(rateLimitRemainingMs() || hintMs, hintMs);
+          const delayMs =
+            Math.max(rateLimitRemainingMs() || hintMs, hintMs) +
+            jitterMs(random);
           // Re-register under a new id so the old subId can be evicted cleanly.
           // Accumulated events are preserved on the subscription object.
           const newSubId = `history-${crypto.randomUUID()}`;
@@ -107,7 +113,13 @@ export function handleRelayClosed({
     subscription,
     message,
     sendReq,
+    random,
   });
+}
+
+function jitterMs(random: () => number): number {
+  const sample = Math.max(0, Math.min(0.999_999, random()));
+  return Math.floor(sample * RETRY_JITTER_MS);
 }
 
 function recoverLiveSubscriptionFromClosed({
@@ -116,12 +128,14 @@ function recoverLiveSubscriptionFromClosed({
   subscription,
   message,
   sendReq,
+  random,
 }: {
   subscriptions: Map<string, RelaySubscription>;
   subId: string;
   subscription: LiveSubscription;
   message: string;
   sendReq: (subId: string, filter: RelaySubscriptionFilter) => Promise<void>;
+  random: () => number;
 }) {
   subscription.resolveReady?.("closed");
   subscription.resolveReady = undefined;
@@ -132,18 +146,27 @@ function recoverLiveSubscriptionFromClosed({
     // Auth/access/filter failure — permanently remove the subscription so it
     // doesn't silently loop.
     subscriptions.delete(subId);
+    subscription.onRetryExhausted?.();
     return;
   }
 
   if (subscription.closedRetryTimeout !== undefined) return;
 
   const attempt = subscription.closedRetryAttempt ?? 0;
+  if (attempt >= RETRY_MAX_ATTEMPTS) {
+    clearClosedRetry(subscription);
+    subscriptions.delete(subId);
+    subscription.onRetryExhausted?.();
+    return;
+  }
   const backoffMs = Math.min(
     RETRY_BASE_DELAY_MS * 2 ** attempt,
     RETRY_MAX_DELAY_MS,
   );
 
-  let delayMs = backoffMs;
+  let delayMs =
+    Math.min(RETRY_MAX_DELAY_MS, backoffMs * (0.8 + random() * 0.4)) +
+    jitterMs(random);
 
   if (closedClass === "rate-limited") {
     // Activate the gate so concurrent operations back off too.
@@ -154,7 +177,9 @@ function recoverLiveSubscriptionFromClosed({
     // another CLOSED. The fallback covers the gate-inactive edge case
     // (hint * 1000, or 10s default when no hint).
     const fallbackMs = (hintSeconds ?? 10) * 1_000;
-    delayMs = Math.max(backoffMs, rateLimitRemainingMs() || fallbackMs);
+    delayMs =
+      Math.max(delayMs, rateLimitRemainingMs() || fallbackMs) +
+      jitterMs(random);
   }
 
   subscription.closedRetryAttempt = attempt + 1;
@@ -170,6 +195,7 @@ function recoverLiveSubscriptionFromClosed({
         subscription,
         message,
         sendReq,
+        random,
       });
     });
   }, delayMs);

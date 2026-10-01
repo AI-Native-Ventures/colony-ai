@@ -38,7 +38,10 @@ import {
 import { getChannelReconnectRepairEvents } from "@/shared/api/channelReconnectRepair";
 import { replayLiveSubscriptions } from "@/shared/api/relayReconnectReplay";
 import { publishSessionEvent } from "@/shared/api/relayEventPublisher";
-import { activateRateLimitIfSignalled } from "@/shared/api/relayRateLimitGate";
+import {
+  activateRateLimitIfSignalled,
+  rateLimitRemainingMs,
+} from "@/shared/api/relayRateLimitGate";
 import {
   fetchChunkedHistory,
   requestFirstEventGated,
@@ -75,6 +78,37 @@ import {
 import { createRelayInboundBuffer } from "@/shared/api/relayInboundBuffer";
 import { buildThreadReferenceTags } from "@/features/messages/lib/threading";
 type UserStatusInput = { text: string; emoji: string; expiresAt?: number };
+
+type LiveSubscriptionConsumer = {
+  onEvent: (event: RelayEvent) => void;
+  onRetryExhausted?: () => void;
+  signalReady: (readiness: LiveSubscriptionReadiness) => void;
+  rejectReady: (error: Error) => void;
+};
+
+type SharedLiveSubscription = {
+  key: string;
+  subId: string;
+  consumers: Set<LiveSubscriptionConsumer>;
+  readiness?: LiveSubscriptionReadiness;
+  active: boolean;
+};
+
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableSerialize).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value).sort(([left], [right]) =>
+      left.localeCompare(right),
+    );
+    return `{${entries
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableSerialize(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
 export class RelayClient {
   private wsId: number | null = null;
   private relayUrl: string | null = null;
@@ -85,6 +119,8 @@ export class RelayClient {
   private keepAliveRequested = false;
   private authRequest: RelayAuthRequest | null = null;
   private subscriptions = new Map<string, RelaySubscription>();
+  private inFlightHistoryRequests = new Map<string, Promise<RelayEvent[]>>();
+  private liveSubscriptionsByFilter = new Map<string, SharedLiveSubscription>();
   private pendingEvents = new Map<string, PendingEvent>();
   private eventBuffer: SubscriptionEventBufferItem[] = [];
   private flushTimeout: number | null = null;
@@ -141,6 +177,7 @@ export class RelayClient {
 
     this.connectPromise = null;
     this.reconnectWaiters.settle(error);
+    this.inFlightHistoryRequests.clear();
 
     if (this.authRequest) {
       window.clearTimeout(this.authRequest.timeout);
@@ -157,6 +194,11 @@ export class RelayClient {
       }
       this.subscriptions.delete(subId);
     }
+    for (const shared of this.liveSubscriptionsByFilter.values()) {
+      shared.active = false;
+      for (const consumer of shared.consumers) consumer.rejectReady(error);
+    }
+    this.liveSubscriptionsByFilter.clear();
 
     for (const [eventId, pending] of this.pendingEvents) {
       window.clearTimeout(pending.timeout);
@@ -234,7 +276,19 @@ export class RelayClient {
 
   private async fetchHistory(filter: RelaySubscriptionFilter) {
     await this.ensureConnected();
-    return this.requestHistory(filter);
+    const key = stableSerialize(filter);
+    const existing = this.inFlightHistoryRequests.get(key);
+    if (existing) return existing;
+
+    const request = this.requestHistory(filter);
+    this.inFlightHistoryRequests.set(key, request);
+    try {
+      return await request;
+    } finally {
+      if (this.inFlightHistoryRequests.get(key) === request) {
+        this.inFlightHistoryRequests.delete(key);
+      }
+    }
   }
 
   private requestHistory(
@@ -410,8 +464,15 @@ export class RelayClient {
     onEvent: (event: RelayEvent) => void,
     onReady?: (readiness: LiveSubscriptionReadiness) => void,
     readinessTimeoutMs?: number,
+    onRetryExhausted?: () => void,
   ) {
-    return this.subscribe(filter, onEvent, onReady, readinessTimeoutMs);
+    return this.subscribe(
+      filter,
+      onEvent,
+      onReady,
+      readinessTimeoutMs,
+      onRetryExhausted,
+    );
   }
   async preconnect() {
     // Explicit re-engagement (reconnect card / community switch): clears the
@@ -590,51 +651,114 @@ export class RelayClient {
     onEvent: (event: RelayEvent) => void,
     onReady?: (readiness: LiveSubscriptionReadiness) => void,
     readinessTimeoutMs = 250,
+    onRetryExhausted?: () => void,
   ) {
     await this.ensureConnected();
-
-    const subId = `live-${crypto.randomUUID()}`;
-    let resolveReady = (_readiness: LiveSubscriptionReadiness) => {};
-    const ready = new Promise<void>((resolve) => {
-      resolveReady = (readiness) => {
-        window.clearTimeout(fallbackTimeout);
-        onReady?.(readiness);
-        resolve();
+    const key = stableSerialize(filter);
+    let shared = this.liveSubscriptionsByFilter.get(key);
+    const createSubscription = !shared?.active;
+    if (createSubscription) {
+      shared = {
+        key,
+        subId: `live-${crypto.randomUUID()}`,
+        consumers: new Set(),
+        active: true,
       };
-    });
-    const fallbackTimeout = window.setTimeout(
-      () => resolveReady("timeout"),
-      readinessTimeoutMs,
-    );
+      this.liveSubscriptionsByFilter.set(key, shared);
+      const currentShared = shared;
+      this.subscriptions.set(currentShared.subId, {
+        mode: "live",
+        filter,
+        onEvent: (event) => {
+          for (const consumer of [...currentShared.consumers]) {
+            consumer.onEvent(event);
+          }
+        },
+        onRetryExhausted: () => {
+          currentShared.active = false;
+          this.liveSubscriptionsByFilter.delete(currentShared.key);
+          for (const consumer of [...currentShared.consumers]) {
+            consumer.onRetryExhausted?.();
+          }
+        },
+        resolveReady: (readiness) => {
+          currentShared.readiness = readiness;
+          for (const consumer of [...currentShared.consumers]) {
+            consumer.signalReady(readiness);
+          }
+        },
+      });
+    }
+    if (!shared) throw new Error("Relay subscription setup failed.");
 
-    this.subscriptions.set(subId, {
-      mode: "live",
-      filter,
-      onEvent,
-      resolveReady,
+    let readyNotified = false;
+    let readyTimer: number | null = null;
+    let resolveReady = () => {};
+    let rejectReady = (_error: Error) => {};
+    const ready = new Promise<void>((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
     });
+    const signalReady = (readiness: LiveSubscriptionReadiness) => {
+      if (readyNotified) return;
+      readyNotified = true;
+      if (readyTimer !== null) window.clearTimeout(readyTimer);
+      onReady?.(readiness);
+      resolveReady();
+    };
+    const rejectBeforeReady = (error: Error) => {
+      if (readyNotified) return;
+      readyNotified = true;
+      if (readyTimer !== null) window.clearTimeout(readyTimer);
+      rejectReady(error);
+    };
+    const consumer: LiveSubscriptionConsumer = {
+      onEvent,
+      onRetryExhausted,
+      signalReady,
+      rejectReady: rejectBeforeReady,
+    };
+    shared.consumers.add(consumer);
+    if (shared.readiness) signalReady(shared.readiness);
+    else {
+      readyTimer = window.setTimeout(
+        () => signalReady("timeout"),
+        readinessTimeoutMs,
+      );
+    }
 
     try {
-      await this.sendRawWithReconnectRetry(
-        ["REQ", subId, filter],
-        "Failed to restore relay subscription.",
-      );
+      if (createSubscription) {
+        await this.sendRawWithReconnectRetry(
+          ["REQ", shared.subId, filter],
+          "Failed to restore relay subscription.",
+        );
+      }
     } catch (error) {
-      window.clearTimeout(fallbackTimeout);
-      this.subscriptions.delete(subId);
+      shared.active = false;
+      this.liveSubscriptionsByFilter.delete(shared.key);
+      this.subscriptions.delete(shared.subId);
+      for (const sibling of [...shared.consumers]) {
+        sibling.rejectReady(
+          error instanceof Error ? error : new Error("Relay subscribe failed."),
+        );
+      }
       throw error;
     }
     await ready;
 
     return async () => {
-      const active = this.subscriptions.get(subId);
-      if (active?.mode !== "live") {
+      if (!shared.consumers.delete(consumer) || shared.consumers.size > 0)
         return;
+      if (this.liveSubscriptionsByFilter.get(shared.key) === shared) {
+        this.liveSubscriptionsByFilter.delete(shared.key);
       }
-
-      this.subscriptions.delete(subId);
+      shared.active = false;
+      const active = this.subscriptions.get(shared.subId);
+      if (active?.mode !== "live") return;
+      this.subscriptions.delete(shared.subId);
       clearClosedRetry(active);
-      await this.closeSubscription(subId);
+      await this.closeSubscription(shared.subId);
     };
   }
 
@@ -686,7 +810,34 @@ export class RelayClient {
           id: wsId,
           message: { type: "Text", data: JSON.stringify(payload) },
         }),
+      this.operationPriority(payload),
+      rateLimitRemainingMs,
     );
+  }
+
+  private operationPriority(
+    payload: unknown[],
+  ): "background" | "normal" | "visible" | "interactive" {
+    if (payload[0] === "EVENT") return "interactive";
+    if (payload[0] !== "REQ" || typeof payload[1] !== "string") {
+      return "normal";
+    }
+
+    const subscription = this.subscriptions.get(payload[1]);
+    const visibleChannels =
+      subscription?.mode === "live" || subscription?.mode === "history"
+        ? subscription.filter["#h"]
+        : undefined;
+    if (
+      this.visibleChannelId &&
+      visibleChannels?.includes(this.visibleChannelId)
+    ) {
+      return "visible";
+    }
+    return typeof document !== "undefined" &&
+      document.visibilityState === "hidden"
+      ? "background"
+      : "normal";
   }
 
   private normalizeRelayError(error: unknown, fallbackMessage: string) {
@@ -855,6 +1006,7 @@ export class RelayClient {
             "Failed to restore relay subscription after CLOSED.",
           ),
         closeSubscription: (subId) => this.closeSubscription(subId),
+        random: () => Math.random(),
       });
       return;
     }

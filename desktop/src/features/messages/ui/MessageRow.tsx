@@ -78,6 +78,68 @@ import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useCompanyTeamMemberQuery } from "@/features/company-team/teamRelay";
 const DiffMessage = React.lazy(() => import("./DiffMessage"));
 const DiffMessageExpanded = React.lazy(() => import("./DiffMessageExpanded"));
+
+function AskActionAttachment({
+  askId,
+  channelId,
+  currentPubkey,
+  messageBody,
+  profiles,
+}: {
+  askId: string;
+  channelId: string | null;
+  currentPubkey?: string;
+  messageBody: string;
+  profiles?: UserProfileLookup;
+}) {
+  const rootRef = React.useRef<HTMLDivElement>(null);
+  const [nearViewport, setNearViewport] = React.useState(false);
+  const threadStart = askThreadStartFromAction(messageBody);
+
+  React.useEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof IntersectionObserver === "undefined") {
+      setNearViewport(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setNearViewport(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "320px" },
+    );
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={rootRef}>
+      {threadStart ? (
+        <section
+          aria-label="Discussion opening"
+          className="colony-ask-create-context mb-3"
+        >
+          <strong>{threadStart.title}</strong>
+          {threadStart.openingContext ? (
+            <span>{threadStart.openingContext}</span>
+          ) : null}
+        </section>
+      ) : null}
+      <AskCard
+        askId={askId}
+        channelId={channelId}
+        currentPubkey={currentPubkey}
+        lazyQueryEnabled={nearViewport}
+        profiles={profiles}
+      />
+    </div>
+  );
+}
+
 export type ThreadDepthGuideAction = {
   active?: boolean;
   depth: number;
@@ -477,27 +539,14 @@ export const MessageRow = React.memo(
           );
         case KIND_ASK_ACTION: {
           const askId = askIdFromAction(message.body);
-          const threadStart = askThreadStartFromAction(message.body);
           return askId ? (
-            <div>
-              {threadStart ? (
-                <section
-                  aria-label="Discussion opening"
-                  className="colony-ask-create-context mb-3"
-                >
-                  <strong>{threadStart.title}</strong>
-                  {threadStart.openingContext ? (
-                    <span>{threadStart.openingContext}</span>
-                  ) : null}
-                </section>
-              ) : null}
-              <AskCard
-                askId={askId}
-                channelId={channelId}
-                currentPubkey={currentPubkey}
-                profiles={profiles}
-              />
-            </div>
+            <AskActionAttachment
+              askId={askId}
+              channelId={channelId}
+              currentPubkey={currentPubkey}
+              messageBody={message.body}
+              profiles={profiles}
+            />
           ) : (
             <p role="alert">This ask request could not be read.</p>
           );
