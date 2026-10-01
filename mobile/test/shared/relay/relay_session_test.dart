@@ -1585,6 +1585,7 @@ void main() {
   test('active rate-limit gate delays a new live subscribe', () async {
     var now = DateTime(2026);
     final gateTimers = <_ManualTimer>[];
+    final operationTimers = <_ManualTimer>[];
     final gate = RelayRateLimitGate(
       now: () => now,
       timerFactory: (duration, callback) {
@@ -1593,8 +1594,19 @@ void main() {
         return timer;
       },
     );
+    final scheduler = RelayOperationScheduler(
+      now: () => now,
+      timerFactory: (duration, callback) {
+        final timer = _ManualTimer(duration, callback);
+        operationTimers.add(timer);
+        return timer;
+      },
+    );
     final socket = _RecordingRelaySocket();
-    final session = RelaySessionNotifier(rateLimitGate: gate);
+    final session = RelaySessionNotifier(
+      rateLimitGate: gate,
+      operationScheduler: scheduler,
+    );
     session.debugAttachSocketForTest(socket);
     gate.activate(4);
 
@@ -1604,6 +1616,7 @@ void main() {
     expect(gateTimers.single.duration, const Duration(seconds: 4));
     now = now.add(const Duration(seconds: 4));
     gateTimers.single.fire();
+    operationTimers.single.fire();
     await Future<void>.delayed(Duration.zero);
     expect(_reqs(socket), hasLength(1));
     session.debugHandleMessage(['EOSE', 'l-1']);
@@ -1618,6 +1631,7 @@ void main() {
       var now = DateTime(2026);
       final gateTimers = <_ManualTimer>[];
       final retryTimers = <_ManualTimer>[];
+      final operationTimers = <_ManualTimer>[];
       final gate = RelayRateLimitGate(
         now: () => now,
         timerFactory: (duration, callback) {
@@ -1626,11 +1640,20 @@ void main() {
           return timer;
         },
       );
+      final scheduler = RelayOperationScheduler(
+        now: () => now,
+        timerFactory: (duration, callback) {
+          final timer = _ManualTimer(duration, callback);
+          operationTimers.add(timer);
+          return timer;
+        },
+      );
       final socket = _RecordingRelaySocket();
       final session = RelaySessionNotifier(
         now: () => now,
         random: () => 0,
         rateLimitGate: gate,
+        operationScheduler: scheduler,
         retryTimerFactory: (duration, callback) {
           final timer = _ManualTimer(duration, callback);
           retryTimers.add(timer);
@@ -1656,6 +1679,7 @@ void main() {
       now = now.add(const Duration(seconds: 4));
       gateTimers.single.fire();
       retryTimers.single.fire();
+      operationTimers.single.fire();
       await Future<void>.delayed(Duration.zero);
       expect(_reqs(socket), hasLength(3));
       for (final request in _reqs(socket).skip(1)) {
@@ -1843,9 +1867,58 @@ void main() {
   );
 
   test(
+    'rate-limited publishes stay within the bounded relay operation queue',
+    () async {
+      final now = DateTime(2026);
+      final gate = RelayRateLimitGate(
+        now: () => now,
+        timerFactory: _ManualTimer.new,
+      );
+      final scheduler = RelayOperationScheduler(
+        now: () => now,
+        timerFactory: _ManualTimer.new,
+      );
+      final socket = _RecordingRelaySocket();
+      final session = RelaySessionNotifier(
+        now: () => now,
+        rateLimitGate: gate,
+        operationScheduler: scheduler,
+      );
+      session.debugAttachSocketForTest(socket);
+      var disposed = false;
+      addTearDown(() {
+        if (!disposed) session.debugDispose();
+      });
+      gate.activate(RelayRateLimitGate.maxRetrySeconds);
+
+      final publishes = List.generate(
+        RelayOperationScheduler.maxQueuedOperations + 1,
+        (index) => session.publish(_event(id: 'event-$index')),
+      );
+      final settled = publishes
+          .map((publish) => publish.then<void>((_) {}, onError: (Object _) {}))
+          .toList();
+
+      await expectLater(
+        publishes.last.timeout(const Duration(milliseconds: 50)),
+        throwsA(isA<StateError>()),
+      );
+      expect(
+        socket.messages.where((message) => message.first == 'EVENT'),
+        isEmpty,
+      );
+
+      session.debugDispose();
+      disposed = true;
+      await Future.wait(settled);
+    },
+  );
+
+  test(
     'publish waits out the rate-limit gate before timeout registration and send',
     () async {
       final gateTimers = <_ManualTimer>[];
+      final operationTimers = <_ManualTimer>[];
       final gate = RelayRateLimitGate(
         now: () => DateTime(2026),
         timerFactory: (duration, callback) {
@@ -1854,8 +1927,19 @@ void main() {
           return timer;
         },
       );
+      final scheduler = RelayOperationScheduler(
+        now: () => DateTime(2026),
+        timerFactory: (duration, callback) {
+          final timer = _ManualTimer(duration, callback);
+          operationTimers.add(timer);
+          return timer;
+        },
+      );
       final socket = _RecordingRelaySocket();
-      final session = RelaySessionNotifier(rateLimitGate: gate);
+      final session = RelaySessionNotifier(
+        rateLimitGate: gate,
+        operationScheduler: scheduler,
+      );
       session.debugAttachSocketForTest(socket);
 
       final firstPublish = session.publish(_event(id: 'event-a'));
@@ -1888,6 +1972,7 @@ void main() {
       );
 
       gateTimers.single.fire();
+      operationTimers.single.fire();
       await Future<void>.microtask(() {});
 
       final events = socket.messages
@@ -1904,6 +1989,7 @@ void main() {
     'a gated publish is cancelled if the connection changes while waiting',
     () async {
       final gateTimers = <_ManualTimer>[];
+      final operationTimers = <_ManualTimer>[];
       final gate = RelayRateLimitGate(
         now: () => DateTime(2026),
         timerFactory: (duration, callback) {
@@ -1912,14 +1998,26 @@ void main() {
           return timer;
         },
       );
+      final scheduler = RelayOperationScheduler(
+        now: () => DateTime(2026),
+        timerFactory: (duration, callback) {
+          final timer = _ManualTimer(duration, callback);
+          operationTimers.add(timer);
+          return timer;
+        },
+      );
       final socket = _RecordingRelaySocket();
-      final session = RelaySessionNotifier(rateLimitGate: gate);
+      final session = RelaySessionNotifier(
+        rateLimitGate: gate,
+        operationScheduler: scheduler,
+      );
       session.debugAttachSocketForTest(socket);
       gate.activate(4);
 
       final publish = session.publish(_event(id: 'event-b'));
       session.debugSupersedeConnection();
       gateTimers.single.fire();
+      operationTimers.single.fire();
 
       await expectLater(publish, throwsA(isA<StateError>()));
       expect(socket.messages, isEmpty);
