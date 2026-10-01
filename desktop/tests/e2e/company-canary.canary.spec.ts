@@ -1760,6 +1760,31 @@ test.describe("signed-in canary company UI", () => {
       await page.goto(`/#/permission/new?agent=${managedAgentPubkey}`);
       await expect(page.getByTestId("permission-screen")).toBeVisible();
       const permissionForm = page.getByTestId("permission-form");
+      const authorityMessage = page.getByText(
+        "Only company owners and admins can manage standing permissions.",
+        { exact: true },
+      );
+      const unavailableMessage = page.getByText(
+        "Permission details or authority could not be verified. Try again after the relay is available.",
+        { exact: true },
+      );
+      await expect
+        .poll(
+          async () => {
+            if (await permissionForm.isVisible().catch(() => false)) {
+              return "form";
+            }
+            if (await authorityMessage.isVisible().catch(() => false)) {
+              return "authority";
+            }
+            if (await unavailableMessage.isVisible().catch(() => false)) {
+              return "unavailable";
+            }
+            return "loading";
+          },
+          { timeout: 15_000 },
+        )
+        .not.toBe("loading");
       if ((await permissionForm.count()) > 0) {
         await expect(page.locator("#permission-action")).toHaveValue("");
         await expect(page.locator("#permission-scope")).toHaveValue("");
@@ -1770,7 +1795,7 @@ test.describe("signed-in canary company UI", () => {
         ).toBeDisabled();
       } else {
         needsApi.push(
-          "The permission grant form did not resolve for the managed canary agent, so the empty-scope and empty-expiry guard could not be checked.",
+          `The managed-agent permission route settled in the ${await authorityMessage.isVisible().then((visible) => (visible ? "unauthorized" : "unavailable"))} state, so the empty-scope and empty-expiry guard could not be checked.`,
         );
       }
       await capture(page, "15-permission-unselected-scope-and-expiry");
