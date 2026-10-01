@@ -1,6 +1,6 @@
 # Colony production launch runbook
 
-This runbook prepares the manual Fly rollout for the existing production relay. It does not authorize or perform a production deploy. The deployment workflow is `fly-deploy-relay-prod.yml`; it runs only from `workflow_dispatch`, defaults to `dry_run=true`, and refuses a live run unless it is dispatched from `main` with the typed confirmation and a recorded old-data decision.
+This runbook prepares the manual Fly rollout for the existing production relay. It does not authorize or perform a production deploy. The deployment workflow is `fly-deploy-relay-prod.yml`; it runs only from `workflow_dispatch`, defaults to `dry_run=true`, and refuses a live run unless it is dispatched from the repository's current default branch with the typed confirmation and a recorded old-data decision. GitHub requires a workflow-dispatch file to exist on the default branch before the owner can dispatch it. The current default branch was `develop` when this runbook was prepared.
 
 ## Production targets
 
@@ -64,7 +64,7 @@ The live credentials may be staged while the feature remains disabled. To activa
 
 ## Before dispatch
 
-1. Confirm the intended commit is on protected `main` and its required GitHub checks are green.
+1. Confirm the intended commit is on the repository's current default branch and its required GitHub checks are green.
 2. Resolve the old-data decision above. Confirm that the selected `database_app` matches the Fly app addressed by the relay's `DATABASE_URL` secret.
 3. Confirm every Fly app secret name listed above. This command prints names only:
 
@@ -76,7 +76,7 @@ The live credentials may be staged while the feature remains disabled. To activa
 4. Confirm the selected Postgres app has the expected volume inventory and that the relay volume is `colony_relay_data`. The workflow checks these again before it snapshots or deploys.
 5. Confirm the verified production bucket is already provisioned and the configured S3 keys can access it. This rollout does not create a bucket or upload a test object.
 6. Review a `dry_run=true` workflow summary. It renders `fly.prod.toml`, prints the commit, image tag, database app, release command, and data-plan input. It does not require secrets, call Fly, create a snapshot, or deploy.
-7. For a live dispatch, choose `dry_run=false`, enter `deploy-colony-production`, select the recorded data plan, supply its evidence reference, and confirm the database app. Only dispatch from `main`.
+7. For a live dispatch, choose `dry_run=false`, enter `deploy-colony-production`, select the recorded data plan, supply its evidence reference, and confirm the database app. Dispatch only after this workflow is available on the repository's current default branch.
 
 ## DNS and TLS checks
 
