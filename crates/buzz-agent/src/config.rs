@@ -1316,6 +1316,32 @@ mod tests {
     }
 
     #[test]
+    fn provider_selection_uses_per_agent_then_llm_provider_then_deepseek() {
+        assert_eq!(
+            selected_provider_name(Some(" openrouter "), Some("anthropic")),
+            "openrouter"
+        );
+        assert_eq!(selected_provider_name(None, Some("anthropic")), "anthropic");
+        assert_eq!(selected_provider_name(None, None), "deepseek");
+    }
+
+    #[test]
+    fn deepseek_provider_requires_its_key_and_resolves_explicitly() {
+        let missing_key =
+            resolve_provider_with_keys(Some("deepseek"), None, None, None, None).unwrap_err();
+        assert!(
+            missing_key.contains("DEEPSEEK_API_KEY required"),
+            "{missing_key}"
+        );
+
+        assert_eq!(
+            resolve_provider_with_keys(Some("deepseek"), None, None, None, Some("configured"),)
+                .unwrap(),
+            Provider::DeepSeek
+        );
+    }
+
+    #[test]
     fn resolve_provider_requires_databricks_host_and_model_for_fallback() {
         // Renamed: verify the explicit databricks provider path works correctly.
         // When BUZZ_AGENT_PROVIDER=databricks, resolve_provider succeeds regardless

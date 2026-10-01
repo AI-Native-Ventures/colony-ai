@@ -2768,6 +2768,28 @@ mod tests {
             .collect()
     }
 
+    #[tokio::test]
+    async fn deepseek_provider_uses_openai_chat_completions_transport() {
+        let (base_url, captured) =
+            spawn_sequence_stub(vec![StubHttpResponse::ok(chat_response("done"))]).await;
+        let mut config = cfg(Provider::DeepSeek);
+        config.base_url = base_url;
+        let llm = Llm::new(&config).unwrap();
+
+        let response = complete_model(&llm, &config, "deepseek-flash")
+            .await
+            .unwrap();
+
+        assert_eq!(response.text, "done");
+        let requests = captured.lock().await;
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].path, "/v1/chat/completions");
+        assert_eq!(
+            requests[0].body.as_ref().unwrap()["model"],
+            "deepseek-flash"
+        );
+    }
+
     /// An explicit model is sent verbatim and never rewritten to something
     /// else. A server error is retried under the *same* model (the ordinary
     /// transport retry) and then surfaced -- there is no second model to fall
