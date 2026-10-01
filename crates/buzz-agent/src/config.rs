@@ -949,6 +949,7 @@ fn selected_provider_name(per_agent: Option<&str>, process_provider: Option<&str
         .to_string()
 }
 
+#[cfg(test)]
 fn resolve_provider(
     requested: Option<&str>,
     anthropic_key: Option<&str>,
