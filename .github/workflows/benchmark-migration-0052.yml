@@ -1,0 +1,39 @@
+name: Benchmark migration 0052
+
+on:
+  pull_request:
+    paths:
+      - "migrations/0052_company_records_fts_exclusion.sql"
+      - "scripts/bench-migration-0052.py"
+      - ".github/workflows/benchmark-migration-0052.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Run synthetic migration benchmark
+        env:
+          MIGRATION_BENCH_DATABASE_URL: postgres://postgres@127.0.0.1:5432/postgres
+        run: python3 scripts/bench-migration-0052.py
