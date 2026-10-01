@@ -12,12 +12,21 @@ async function openReferenceWorkspace(
   route: string,
   role: "owner" | "admin" | "member" = "owner",
   recordStatuses?: { clientStatus?: string; workStatus?: string },
+  rejectBusinessRecordEvents?: Array<{ kind: number; reason: string }>,
 ) {
   await installMockBridge(page, {
     referenceWorkspace: true,
     referenceWorkspaceRole: role,
     referenceWorkspaceClientStatus: recordStatuses?.clientStatus,
     referenceWorkspaceWorkStatus: recordStatuses?.workStatus,
+    // Seeded with the workspace. Setting window.__BUZZ_E2E_REJECT_... after
+    // navigation races the bridge's own seeding, which resets the list.
+    ...(rejectBusinessRecordEvents
+      ? {
+          referenceWorkspaceRejectBusinessRecordEvents:
+            rejectBusinessRecordEvents,
+        }
+      : {}),
   });
   await page.goto(route);
 }
@@ -285,21 +294,15 @@ test("a stale work update keeps retry and reload recovery available", async ({
   await openReferenceWorkspace(
     page,
     `/#/work/${OLIVE_WORK_ID}?client=${OLIVE_CLIENT_ID}`,
-  );
-  await page.evaluate(() => {
-    const testWindow = window as Window & {
-      __BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__?: Array<{
-        kind: number;
-        reason: string;
-      }>;
-    };
-    testWindow.__BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__ = [
+    "owner",
+    undefined,
+    [
       {
         kind: 47006,
         reason: "conflict: work item head changed since it was loaded",
       },
-    ];
-  });
+    ],
+  );
 
   await page.getByRole("button", { name: "Edit work" }).click();
   const dialog = page.getByRole("dialog", { name: "Edit work" });
