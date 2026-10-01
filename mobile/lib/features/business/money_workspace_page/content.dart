@@ -60,6 +60,8 @@ class _MoneyWorkspaceContent extends StatelessWidget {
     required this.records,
     required this.section,
     required this.selectedClientId,
+    required this.showDueDates,
+    required this.onOpenIssuedInvoice,
     required this.onSectionChanged,
     required this.onClientChanged,
     required this.onRecordChanged,
@@ -68,6 +70,8 @@ class _MoneyWorkspaceContent extends StatelessWidget {
   final MobileMoneyRecords records;
   final _MoneySection section;
   final String? selectedClientId;
+  final bool showDueDates;
+  final ValueChanged<MobileBusinessRecord>? onOpenIssuedInvoice;
   final ValueChanged<_MoneySection> onSectionChanged;
   final ValueChanged<String?> onClientChanged;
   final VoidCallback onRecordChanged;
@@ -147,6 +151,8 @@ class _MoneyWorkspaceContent extends StatelessWidget {
               key: ValueKey(invoice.event.id),
               invoice: invoice,
               records: records,
+              showDueDates: showDueDates,
+              onOpenIssuedInvoice: onOpenIssuedInvoice,
               onRecordChanged: onRecordChanged,
             ),
       ],
@@ -346,12 +352,16 @@ class _MoneyRecordTile extends StatelessWidget {
   const _MoneyRecordTile({
     required this.invoice,
     required this.records,
+    required this.showDueDates,
+    required this.onOpenIssuedInvoice,
     required this.onRecordChanged,
     super.key,
   });
 
   final MobileBusinessRecord invoice;
   final MobileMoneyRecords records;
+  final bool showDueDates;
+  final ValueChanged<MobileBusinessRecord>? onOpenIssuedInvoice;
   final VoidCallback onRecordChanged;
 
   @override
@@ -364,12 +374,19 @@ class _MoneyRecordTile extends StatelessWidget {
     final amount = invoice.integerValue('totalMinor') ?? 0;
     final subtitle = '$clientName · $status';
     void openDetail() {
+      final openIssuedInvoice = onOpenIssuedInvoice;
+      if (invoice.stringValue('status') == 'issued' &&
+          openIssuedInvoice != null) {
+        openIssuedInvoice(invoice);
+        return;
+      }
       unawaited(
         Navigator.of(context).push<bool>(
           MaterialPageRoute<bool>(
             builder: (_) => _MoneyInvoiceDetailPage(
               invoice: invoice,
               records: records,
+              showDueDates: showDueDates,
               onRecordChanged: onRecordChanged,
             ),
           ),

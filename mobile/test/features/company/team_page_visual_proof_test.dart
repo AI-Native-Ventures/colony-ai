@@ -63,8 +63,8 @@ void main() {
           debugDefaultTargetPlatformOverride = TargetPlatform.android;
           tester.view.devicePixelRatio = 1;
           tester.view.physicalSize = size;
-          tester.view.padding = const FakeViewPadding(top: 25, bottom: 20);
-          tester.view.viewPadding = const FakeViewPadding(top: 25, bottom: 20);
+          tester.view.padding = const FakeViewPadding(top: 44, bottom: 29);
+          tester.view.viewPadding = const FakeViewPadding(top: 44, bottom: 29);
           goldenFileComparator = _TeamCaptureComparator(
             Uri.file('$output/capture_test.dart'),
             outputDirectory.path,
@@ -473,6 +473,21 @@ class _TeamProofSystemBars extends StatelessWidget {
                 const SizedBox(width: 3),
                 Icon(Icons.battery_full, color: color, size: 16),
               ],
+            ),
+          ),
+          Positioned(
+            top: 5,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                width: 98,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1F1824),
+                  borderRadius: BorderRadius.circular(50),
+                ),
+              ),
             ),
           ),
           Positioned(

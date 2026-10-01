@@ -19,6 +19,8 @@ class MoneyWorkspacePage extends HookConsumerWidget {
     required this.onRetryChannelDirectory,
     this.title = 'Money',
     this.onBack,
+    this.showDueDates = true,
+    this.onOpenIssuedInvoice,
     super.key,
   });
 
@@ -26,6 +28,8 @@ class MoneyWorkspacePage extends HookConsumerWidget {
   final VoidCallback onRetryChannelDirectory;
   final String title;
   final VoidCallback? onBack;
+  final bool showDueDates;
+  final ValueChanged<MobileBusinessRecord>? onOpenIssuedInvoice;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -64,6 +68,8 @@ class MoneyWorkspacePage extends HookConsumerWidget {
                     records: recordsSnapshot.data!,
                     section: section.value,
                     selectedClientId: selectedClientId.value,
+                    showDueDates: showDueDates,
+                    onOpenIssuedInvoice: onOpenIssuedInvoice,
                     onSectionChanged: (value) => section.value = value,
                     onClientChanged: (value) => selectedClientId.value = value,
                     onRecordChanged: () => refreshVersion.value++,

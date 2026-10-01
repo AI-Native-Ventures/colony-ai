@@ -13,6 +13,7 @@ import '../../shared/profile/user_profile.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/utils/string_utils.dart';
 import '../goals/goal_widgets.dart';
+import 'company_team_notice.dart';
 import 'team_member_detail_page.dart';
 import 'team_reports_page.dart';
 import 'team_hero_gradient.dart';
@@ -376,45 +377,12 @@ class _TeamLoadFailure extends StatelessWidget {
         ),
       ),
       const SizedBox(height: Grid.xs),
-      Container(
-        decoration: BoxDecoration(
-          color: context.mobileTokens.paper,
-          borderRadius: BorderRadius.circular(Radii.card),
-          border: Border.all(color: context.mobileTokens.line),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(Radii.card),
-          child: Row(
-            children: [
-              Container(width: 3, color: context.mobileTokens.error),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(Grid.sm),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Connection failed',
-                        style: context.mobileTypography.goalCardTitle.copyWith(
-                          color: context.mobileTokens.ink,
-                        ),
-                      ),
-                      const SizedBox(height: Grid.xxs),
-                      Text(
-                        'Missing data is not shown as an empty team.',
-                        style: context.mobileTypography.body.copyWith(
-                          color: context.mobileTokens.muted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+      const CompanyTeamNotice(
+        title: 'Connection failed',
+        message: 'Missing data is not shown as an empty team.',
+        error: true,
       ),
-      const SizedBox(height: Grid.md),
+      const SizedBox(height: Grid.ten),
       FilledButton(onPressed: onRetry, child: const Text('Retry team')),
     ],
   );

@@ -25,8 +25,9 @@ class _BusinessHome extends StatelessWidget {
     children: [
       _BusinessHero(
         eyebrow: communityName?.trim().toUpperCase(),
-        title: 'The business behind the work.',
+        title: 'The business\nbehind the work.',
         subtitle: 'Clients, services and money, together.',
+        apricot: true,
       ),
       const SizedBox(height: 16),
       Row(
@@ -114,7 +115,7 @@ class _BusinessProposalList extends StatelessWidget {
           eyebrow: 'PROPOSALS',
           title: proposals.isEmpty
               ? 'Room for your next offer.'
-              : 'The next good working relationship.',
+              : 'The next good\nworking relationship.',
           subtitle: proposals.isEmpty ? 'Nothing has been added yet.' : null,
         ),
         if (proposals.isEmpty) ...[
@@ -161,12 +162,22 @@ class _ProposalRecordCard extends StatelessWidget {
         .map((line) => line['description'])
         .whereType<String>()
         .firstOrNull;
+    final status = switch (record.stringValue('status')) {
+      'draft' => 'Draft',
+      'in_review' => 'In review',
+      _ => null,
+    };
+    final subtitle = [
+      description,
+      status,
+    ].whereType<String>().where((value) => value.isNotEmpty).join(' · ');
     final tokens = context.mobileTokens;
     return Semantics(
       button: true,
       label: [
         name,
         if (description?.isNotEmpty == true) description!,
+        ?status,
       ].join('. '),
       onTap: onTap,
       child: ExcludeSemantics(
@@ -198,10 +209,10 @@ class _ProposalRecordCard extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        if (description?.isNotEmpty == true) ...[
+                        if (subtitle.isNotEmpty) ...[
                           const SizedBox(height: 3),
                           Text(
-                            description!,
+                            subtitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: context.textTheme.bodySmall?.copyWith(
@@ -246,6 +257,7 @@ class _BusinessProposalDetail extends StatelessWidget {
     if (version == null) return const _BusinessUnavailable();
     final lines = _businessObjectList(version.value['lines']);
     final title = _proposalClientName(version, records.discovery);
+    final serviceName = _proposalServiceName(version, records.discovery);
     final leadLine = lines
         .map((line) => line['description'])
         .whereType<String>()
@@ -262,7 +274,15 @@ class _BusinessProposalDetail extends StatelessWidget {
           eyebrow: 'DRAFT PROPOSAL',
           title: title,
           subtitle: leadLine,
+          apricot: true,
         ),
+        if (serviceName != null)
+          _BusinessDetailRow(label: 'Service', value: serviceName),
+        if (currency.trim().isNotEmpty && lines.isNotEmpty)
+          _BusinessDetailRow(
+            label: 'Fee',
+            value: _businessMoney(total, currency),
+          ),
         const SizedBox(height: 12),
         _BusinessSurface(
           child: Column(
@@ -290,11 +310,6 @@ class _BusinessProposalDetail extends StatelessWidget {
             ],
           ),
         ),
-        if (total > 0)
-          _BusinessDetailRow(
-            label: 'Fee',
-            value: _businessMoney(total, currency),
-          ),
         const SizedBox(height: 12),
         _BusinessActionButton(
           label: 'Draft a follow-up',
@@ -367,10 +382,10 @@ class _BusinessServiceList extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
       children: [
         _BusinessHero(
-          eyebrow: 'SERVICES',
+          eyebrow: services.isEmpty ? 'SERVICES' : 'YOUR SERVICES',
           title: services.isEmpty
               ? 'Room for your next offer.'
-              : 'What you offer.',
+              : 'Make the offer clear.',
           subtitle: services.isEmpty ? 'Nothing has been added yet.' : null,
         ),
         if (services.isEmpty) ...[
@@ -430,6 +445,17 @@ class _ServiceRecordCard extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
+                  Container(
+                    width: 38,
+                    height: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: tokens.soft,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: _businessSymbol(context, '✧', size: 18),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -503,9 +529,7 @@ class _BusinessServiceDetail extends StatelessWidget {
         _BusinessHero(
           eyebrow: 'SERVICE',
           title: name,
-          subtitle: description is String && description.trim().isNotEmpty
-              ? description.trim()
-              : null,
+          subtitle: 'A repeatable offer with room for each client.',
         ),
         if (description is String && description.trim().isNotEmpty) ...[
           const SizedBox(height: 16),
@@ -537,16 +561,6 @@ class _BusinessServiceDetail extends StatelessWidget {
             label: 'Pricing',
             value: _businessMoney(fee, currency),
           ),
-        if (service['postsPerMonth'] is int)
-          _BusinessDetailRow(
-            label: 'Posts per month',
-            value: service['postsPerMonth'].toString(),
-          ),
-        if (service['revisionRounds'] is int)
-          _BusinessDetailRow(
-            label: 'Revision rounds',
-            value: service['revisionRounds'].toString(),
-          ),
         if (linkedProposal != null) ...[
           const SizedBox(height: 14),
           _BusinessActionButton(
@@ -569,6 +583,7 @@ class _BusinessComingLater extends StatelessWidget {
     this.assuranceTitle,
     this.assuranceBody,
     this.onOpenChat,
+    this.rose = false,
   });
 
   final String eyebrow;
@@ -579,6 +594,7 @@ class _BusinessComingLater extends StatelessWidget {
   final String? assuranceTitle;
   final String? assuranceBody;
   final VoidCallback? onOpenChat;
+  final bool rose;
 
   @override
   Widget build(BuildContext context) {
@@ -586,7 +602,12 @@ class _BusinessComingLater extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
       children: [
-        _BusinessHero(eyebrow: eyebrow, title: headline, subtitle: subhead),
+        _BusinessHero(
+          eyebrow: eyebrow,
+          title: headline,
+          subtitle: subhead,
+          rose: rose,
+        ),
         const SizedBox(height: 16),
         _BusinessSurface(
           child: Column(
@@ -637,8 +658,9 @@ class _BusinessInvoiceEmpty extends StatelessWidget {
       children: [
         const _BusinessHero(
           eyebrow: 'MONEY',
-          title: 'Start with your first invoice.',
+          title: 'Start with your\nfirst invoice.',
           subtitle: 'Draft it, check the details, then issue when ready.',
+          apricot: true,
         ),
         const SizedBox(height: 16),
         _BusinessSurface(
@@ -675,6 +697,243 @@ class _BusinessInvoiceEmpty extends StatelessWidget {
   }
 }
 
+class _BusinessIssuedInvoiceDetail extends StatelessWidget {
+  const _BusinessIssuedInvoiceDetail({
+    required this.invoice,
+    required this.clientName,
+    required this.workspaceName,
+    required this.lines,
+    required this.taxLines,
+    required this.onBack,
+  });
+
+  final MobileBusinessRecord invoice;
+  final String clientName;
+  final String? workspaceName;
+  final List<Map<String, Object?>> lines;
+  final List<Map<String, Object?>> taxLines;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final currency = invoice.stringValue('currency')!;
+    final total = invoice.integerValue('totalMinor')!;
+    final subtotal = _businessInvoiceSubtotal(lines);
+    final tax = _businessInvoiceTaxTotal(lines, taxLines);
+    final tokens = context.mobileTokens;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+      children: [
+        const _BusinessHero(
+          eyebrow: 'ISSUED INVOICE',
+          title: 'Invoice detail',
+          subtitle: 'Review the amount and the client.',
+          apricot: true,
+        ),
+        const SizedBox(height: 16),
+        _BusinessSurface(
+          child: Padding(
+            padding: const EdgeInsets.all(3),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  workspaceName!.trim(),
+                  style: context.textTheme.titleSmall?.copyWith(
+                    color: tokens.ink,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                _BusinessDetailRow(label: 'Bill to', value: clientName),
+                for (final line in lines)
+                  _BusinessIssuedInvoiceLine(line: line, currency: currency),
+                const SizedBox(height: 4),
+                _BusinessDetailRow(
+                  label: 'Subtotal',
+                  value: _businessInvoiceMoney(subtotal, currency),
+                ),
+                _BusinessDetailRow(
+                  label: 'Tax',
+                  value: _businessInvoiceMoney(tax, currency),
+                ),
+                _BusinessIssuedInvoiceTotal(
+                  value: _businessInvoiceMoney(total, currency),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        _BusinessActionButton(
+          label: 'Back to invoices',
+          onPressed: onBack,
+          soft: true,
+        ),
+        const SizedBox(height: 16),
+        const _BusinessNotice(
+          title: 'Issue does not mean send',
+          body:
+              'This records the invoice. It sends no email and collects no payment.',
+          accentColor: Color(0xFFA893C8),
+        ),
+      ],
+    );
+  }
+}
+
+class _BusinessIssuedInvoiceLine extends StatelessWidget {
+  const _BusinessIssuedInvoiceLine({
+    required this.line,
+    required this.currency,
+  });
+
+  final Map<String, Object?> line;
+  final String currency;
+
+  @override
+  Widget build(BuildContext context) {
+    final quantity = line['quantityHundredths'] as int;
+    final unitAmount = line['unitAmountMinor'] as int;
+    final amount = _businessInvoiceLineAmount(line);
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: context.mobileTokens.line)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  line['description'] as String,
+                  style: context.textTheme.bodySmall?.copyWith(
+                    color: context.mobileTokens.ink,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  '${NumberFormat('0.##').format(quantity / 100)} × '
+                  '${_businessInvoiceMoney(unitAmount, currency)}',
+                  style: context.textTheme.labelSmall?.copyWith(
+                    color: context.mobileTokens.muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            _businessInvoiceMoney(amount, currency),
+            textAlign: TextAlign.end,
+            style: context.textTheme.bodySmall?.copyWith(
+              color: context.mobileTokens.ink,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BusinessIssuedInvoiceTotal extends StatelessWidget {
+  const _BusinessIssuedInvoiceTotal({required this.value});
+
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    decoration: BoxDecoration(
+      border: Border(bottom: BorderSide(color: context.mobileTokens.line)),
+    ),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            'Total',
+            style: context.textTheme.bodySmall?.copyWith(
+              color: context.mobileTokens.muted,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: context.textTheme.bodySmall?.copyWith(
+            color: context.mobileTokens.ink,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+List<Map<String, Object?>> _businessInvoiceLines(MobileBusinessRecord invoice) {
+  final lines = invoice.value['lines'];
+  if (lines is! List) return const [];
+  return [
+    for (final line in lines)
+      if (line is Map) line.map((key, value) => MapEntry(key as String, value)),
+  ];
+}
+
+List<Map<String, Object?>>? _businessInvoiceTaxLines(
+  MobileBusinessRecord invoice,
+) {
+  final taxLines = invoice.value['taxLines'];
+  if (taxLines == null) return const [];
+  if (taxLines is! List) return null;
+  final parsed = <Map<String, Object?>>[];
+  for (final line in taxLines) {
+    if (line is! Map || line['rateBasisPoints'] is! int) return null;
+    parsed.add(line.map((key, value) => MapEntry(key as String, value)));
+  }
+  return parsed;
+}
+
+int _businessInvoiceLineAmount(Map<String, Object?> line) {
+  final quantity = line['quantityHundredths'] as int;
+  final unitAmount = line['unitAmountMinor'] as int;
+  return (BigInt.from(quantity) * BigInt.from(unitAmount) ~/ BigInt.from(100))
+      .toInt();
+}
+
+int _businessInvoiceSubtotal(List<Map<String, Object?>> lines) =>
+    lines.fold(0, (total, line) => total + _businessInvoiceLineAmount(line));
+
+int _businessInvoiceTaxTotal(
+  List<Map<String, Object?>> lines,
+  List<Map<String, Object?>> taxLines,
+) {
+  var total = BigInt.zero;
+  for (final line in lines) {
+    final lineAmount = BigInt.from(_businessInvoiceLineAmount(line));
+    for (final tax in taxLines) {
+      final rate = tax['rateBasisPoints'] as int;
+      total +=
+          (lineAmount * BigInt.from(rate) + BigInt.from(5000)) ~/
+          BigInt.from(10000);
+    }
+  }
+  return total.toInt();
+}
+
+String _businessInvoiceMoney(int amountMinor, String currency) {
+  final decimalDigits =
+      NumberFormat.simpleCurrency(name: currency).decimalDigits ?? 2;
+  final pattern = decimalDigits == 0
+      ? '0'
+      : '0.${List.filled(decimalDigits, '0').join()}';
+  final amount = amountMinor / math.pow(10, decimalDigits);
+  return '$currency ${NumberFormat(pattern).format(amount)}';
+}
+
 String _proposalClientName(
   MobileBusinessRecord? version,
   MobileDiscoveryRecords records,
@@ -689,6 +948,25 @@ String _proposalClientName(
     }
   }
   return 'Proposal';
+}
+
+String? _proposalServiceName(
+  MobileBusinessRecord? version,
+  MobileDiscoveryRecords records,
+) {
+  final lines = _businessObjectList(version?.value['lines']);
+  final serviceId = lines
+      .map((line) => line['serviceId'])
+      .whereType<String>()
+      .firstOrNull;
+  if (serviceId == null) return null;
+  for (final record in records.services) {
+    if (record.stringValue('serviceId') != serviceId) continue;
+    final service = record.objectValue('service') ?? const {};
+    final name = service['name'];
+    if (name is String && name.trim().isNotEmpty) return name.trim();
+  }
+  return null;
 }
 
 MobileBusinessRecord? _issuedInvoiceForProposal(

@@ -4,11 +4,13 @@ class _MoneyInvoiceDetailPage extends HookConsumerWidget {
   const _MoneyInvoiceDetailPage({
     required this.invoice,
     required this.records,
+    required this.showDueDates,
     required this.onRecordChanged,
   });
 
   final MobileBusinessRecord invoice;
   final MobileMoneyRecords records;
+  final bool showDueDates;
   final VoidCallback onRecordChanged;
 
   @override
@@ -76,8 +78,9 @@ class _MoneyInvoiceDetailPage extends HookConsumerWidget {
                   value: _formatMoney(received, currency),
                 ),
                 _MoneyDetailRow(label: 'Source', value: 'Proposal'),
-                if (invoice.integerValue('dueAt') case final dueAt?)
-                  _MoneyDetailRow(label: 'Due', value: _formatDate(dueAt)),
+                if (showDueDates)
+                  if (invoice.integerValue('dueAt') case final dueAt?)
+                    _MoneyDetailRow(label: 'Due', value: _formatDate(dueAt)),
                 if (draft) ...[
                   const SizedBox(height: 18),
                   _MoneyActionButton(
@@ -87,6 +90,7 @@ class _MoneyInvoiceDetailPage extends HookConsumerWidget {
                         _MoneyEditInvoicePage(
                           invoice: invoice,
                           clientName: clientName,
+                          showDueDates: showDueDates,
                         ),
                       ),
                     ),
@@ -99,6 +103,7 @@ class _MoneyInvoiceDetailPage extends HookConsumerWidget {
                         _MoneyIssueInvoicePage(
                           invoice: invoice,
                           clientName: clientName,
+                          showDueDates: showDueDates,
                         ),
                       ),
                     ),
@@ -168,10 +173,12 @@ class _MoneyEditInvoicePage extends HookConsumerWidget {
   const _MoneyEditInvoicePage({
     required this.invoice,
     required this.clientName,
+    required this.showDueDates,
   });
 
   final MobileBusinessRecord invoice;
   final String clientName;
+  final bool showDueDates;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -200,7 +207,7 @@ class _MoneyEditInvoicePage extends HookConsumerWidget {
       [invoice.event.id],
     );
     final dueDate = useTextEditingController(
-      text: invoice.integerValue('dueAt') == null
+      text: !showDueDates || invoice.integerValue('dueAt') == null
           ? ''
           : _formatDate(invoice.integerValue('dueAt')!),
     );
@@ -271,9 +278,11 @@ class _MoneyEditInvoicePage extends HookConsumerWidget {
             'unitAmountMinor': unitAmount.toInt(),
           });
         }
-        final dueAtValue = dueDate.text.trim().isEmpty
-            ? null
-            : _dateTextToUnix(dueDate.text);
+        final dueAtValue = showDueDates
+            ? dueDate.text.trim().isEmpty
+                  ? null
+                  : _dateTextToUnix(dueDate.text)
+            : invoice.integerValue('dueAt');
         await repository.editDraftInvoice(
           invoice: invoice,
           lines: editedLines,
@@ -311,7 +320,7 @@ class _MoneyEditInvoicePage extends HookConsumerWidget {
         ],
         const SizedBox(height: 12),
         _MoneyDetailRow(label: 'Client', value: clientName),
-        _MoneyDateField(controller: dueDate),
+        if (showDueDates) _MoneyDateField(controller: dueDate),
         const SizedBox(height: 8),
         Text(
           'Record reflects your business ledger; no money is transferred.',
@@ -343,10 +352,12 @@ class _MoneyIssueInvoicePage extends HookConsumerWidget {
   const _MoneyIssueInvoicePage({
     required this.invoice,
     required this.clientName,
+    required this.showDueDates,
   });
 
   final MobileBusinessRecord invoice;
   final String clientName;
+  final bool showDueDates;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -392,8 +403,9 @@ class _MoneyIssueInvoicePage extends HookConsumerWidget {
             currency,
           ),
         ),
-        if (invoice.integerValue('dueAt') case final dueAt?)
-          _MoneyDetailRow(label: 'Due', value: _formatDate(dueAt)),
+        if (showDueDates)
+          if (invoice.integerValue('dueAt') case final dueAt?)
+            _MoneyDetailRow(label: 'Due', value: _formatDate(dueAt)),
         const SizedBox(height: 18),
         Text(
           'Issuing records this invoice as revenue. No email is sent in this preview.',

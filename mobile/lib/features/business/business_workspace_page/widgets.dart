@@ -1,44 +1,99 @@
 part of '../business_workspace_page.dart';
 
-const _businessHeroLight = LinearGradient(
+const _businessHeroStandardLight = LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
-  colors: [Color(0xFFFFE9D7), Color(0xFFF3E8EC), Color(0xFFECE5FF)],
-  stops: [0, 0.55, 1],
+  colors: [Color(0xFFECE5FF), Color(0xFFF3E8EC), Color(0xFFFFE9D7)],
+  stops: [0, 0.7, 1],
 );
 
-const _businessHeroDark = LinearGradient(
+const _businessHeroStandardDark = LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
-  colors: [Color(0xFF59493E), Color(0xFF503A48), Color(0xFF41334F)],
-  stops: [0, 0.55, 1],
+  colors: [Color(0xFF41334F), Color(0xFF503A48), Color(0xFF59493E)],
+  stops: [0, 0.7, 1],
 );
 
-Gradient _businessHeroGradient(BuildContext context) =>
-    Theme.of(context).brightness == Brightness.dark
-    ? _businessHeroDark
-    : _businessHeroLight;
+const _businessHeroApricotLight = LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [Color(0xFFF9E4CA), Color(0xFFFAEBEE), Color(0xFFEEE4FF)],
+  stops: [0, 0.62, 1],
+);
+
+const _businessHeroApricotDark = LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [Color(0xFF5E4234), Color(0xFF503847), Color(0xFF3D324A)],
+  stops: [0, 0.6, 1],
+);
+
+const _businessHeroRoseLight = LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [Color(0xFFF5DCE7), Color(0xFFF3E7F9)],
+);
+
+Gradient _businessHeroGradient(
+  BuildContext context, {
+  required bool apricot,
+  required bool rose,
+}) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  if (apricot) {
+    return dark ? _businessHeroApricotDark : _businessHeroApricotLight;
+  }
+  if (rose && !dark) return _businessHeroRoseLight;
+  return dark ? _businessHeroStandardDark : _businessHeroStandardLight;
+}
+
+Widget _businessSymbol(
+  BuildContext context,
+  String symbol, {
+  required double size,
+}) {
+  final tokens = context.mobileTokens;
+  final icon = switch (symbol) {
+    '↗' => Icons.north_east,
+    '✧' => Icons.auto_awesome_outlined,
+    '↶' || '↩' => Icons.reply,
+    '◇' => Icons.diamond_outlined,
+    _ => null,
+  };
+  if (icon != null) return Icon(icon, size: size, color: tokens.action);
+  return Text(
+    symbol,
+    style: context.textTheme.titleLarge?.copyWith(
+      color: tokens.action,
+      fontWeight: FontWeight.w400,
+    ),
+  );
+}
 
 class _BusinessHero extends StatelessWidget {
   const _BusinessHero({
     required this.eyebrow,
     required this.title,
     this.subtitle,
+    this.apricot = false,
+    this.rose = false,
   });
 
   final String? eyebrow;
   final String title;
   final String? subtitle;
+  final bool apricot;
+  final bool rose;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.mobileTokens;
     return Container(
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: _businessHeroGradient(context),
-        borderRadius: BorderRadius.circular(24),
+        gradient: _businessHeroGradient(context, apricot: apricot, rose: rose),
+        borderRadius: BorderRadius.circular(23),
       ),
+      padding: const EdgeInsets.fromLTRB(22, 23, 22, 23),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -49,15 +104,15 @@ class _BusinessHero extends StatelessWidget {
                 color: tokens.action,
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 13),
           ],
           Text(
             title,
             style: context.textTheme.headlineMedium?.copyWith(
               color: tokens.ink,
               fontWeight: FontWeight.w800,
-              height: 1.12,
-              letterSpacing: -0.8,
+              height: 1.16,
+              letterSpacing: -1,
             ),
           ),
           if (subtitle?.isNotEmpty == true) ...[
@@ -66,7 +121,7 @@ class _BusinessHero extends StatelessWidget {
               subtitle!,
               style: context.textTheme.bodyMedium?.copyWith(
                 color: tokens.ink,
-                height: 1.45,
+                height: 1.6,
               ),
             ),
           ],
@@ -116,13 +171,7 @@ class _BusinessHomeCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      icon,
-                      style: context.textTheme.titleLarge?.copyWith(
-                        color: tokens.action,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
+                    _businessSymbol(context, icon, size: 22),
                     const Spacer(),
                     Text(
                       title,
@@ -195,12 +244,7 @@ class _BusinessLaterRow extends StatelessWidget {
                       color: tokens.soft,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text(
-                      icon,
-                      style: context.textTheme.titleMedium?.copyWith(
-                        color: tokens.action,
-                      ),
-                    ),
+                    child: _businessSymbol(context, icon, size: 20),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -308,10 +352,15 @@ class _BusinessSurface extends StatelessWidget {
 }
 
 class _BusinessNotice extends StatelessWidget {
-  const _BusinessNotice({required this.title, required this.body});
+  const _BusinessNotice({
+    required this.title,
+    required this.body,
+    this.accentColor,
+  });
 
   final String title;
   final String body;
+  final Color? accentColor;
 
   @override
   Widget build(BuildContext context) {
@@ -321,7 +370,9 @@ class _BusinessNotice extends StatelessWidget {
       decoration: BoxDecoration(
         color: tokens.paper,
         borderRadius: BorderRadius.circular(16),
-        border: Border(left: BorderSide(color: tokens.action, width: 3)),
+        border: Border(
+          left: BorderSide(color: accentColor ?? tokens.action, width: 3),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -338,7 +389,7 @@ class _BusinessNotice extends StatelessWidget {
             body,
             style: context.textTheme.bodySmall?.copyWith(
               color: tokens.ink,
-              height: 1.45,
+              height: 1.6,
             ),
           ),
         ],
@@ -362,6 +413,7 @@ class _BusinessDetailRow extends StatelessWidget {
     child: Row(
       children: [
         Expanded(
+          flex: 38,
           child: Text(
             label,
             style: context.textTheme.bodySmall?.copyWith(
@@ -371,6 +423,7 @@ class _BusinessDetailRow extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Expanded(
+          flex: 62,
           child: Text(
             value,
             textAlign: TextAlign.end,
@@ -417,12 +470,14 @@ class _BusinessActionButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.secondary = false,
+    this.soft = false,
     this.semanticUnavailableReason,
   });
 
   final String label;
   final VoidCallback? onPressed;
   final bool secondary;
+  final bool soft;
   final String? semanticUnavailableReason;
 
   @override
@@ -431,7 +486,16 @@ class _BusinessActionButton extends StatelessWidget {
       width: double.infinity,
       child: secondary
           ? OutlinedButton(onPressed: onPressed, child: Text(label))
-          : FilledButton(onPressed: onPressed, child: Text(label)),
+          : FilledButton(
+              onPressed: onPressed,
+              style: soft
+                  ? FilledButton.styleFrom(
+                      backgroundColor: context.mobileTokens.soft,
+                      foregroundColor: context.mobileTokens.action,
+                    )
+                  : null,
+              child: Text(label),
+            ),
     );
     if (onPressed != null) return button;
     return Semantics(
@@ -460,8 +524,12 @@ class _BusinessLoading extends StatelessWidget {
         Container(
           height: 260,
           decoration: BoxDecoration(
-            color: tokens.soft,
-            borderRadius: BorderRadius.circular(24),
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [tokens.paper, tokens.line, tokens.paper],
+            ),
+            borderRadius: BorderRadius.circular(20),
           ),
         ),
       ],

@@ -4,14 +4,14 @@ class BusinessAdjustmentFlow extends HookConsumerWidget {
   const BusinessAdjustmentFlow({
     required this.invoice,
     required this.clientName,
-    required this.onBack,
+    this.onDenialChanged,
     required this.onSaved,
     super.key,
   });
 
   final MobileBusinessRecord invoice;
   final String clientName;
-  final VoidCallback onBack;
+  final ValueChanged<bool>? onDenialChanged;
   final VoidCallback onSaved;
 
   @override
@@ -66,9 +66,11 @@ class BusinessAdjustmentFlow extends HookConsumerWidget {
             );
         stage.value = _AdjustmentStage.saved;
       } catch (error) {
-        stage.value = _looksLikeAdjustmentDenial(error)
+        final denied = _looksLikeAdjustmentDenial(error);
+        stage.value = denied
             ? _AdjustmentStage.denied
             : _AdjustmentStage.failed;
+        onDenialChanged?.call(denied);
       } finally {
         busy.value = false;
       }
@@ -79,16 +81,17 @@ class BusinessAdjustmentFlow extends HookConsumerWidget {
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
         children: [
           _BusinessHero(
-            eyebrow: 'INVOICE',
+            eyebrow: _adjustmentInvoiceEyebrow(invoice),
             title: 'Explain the change.',
             subtitle: 'Adjust a business invoice, not Colony credits.',
           ),
           if (stage.value == _AdjustmentStage.failed) ...[
             const SizedBox(height: 16),
-            const _BusinessNotice(
+            _BusinessNotice(
               title: 'Your changes were not saved',
               body:
                   'Everything you typed is kept. Try again when the connection returns.',
+              accentColor: const Color(0xFFC86465),
             ),
           ],
           const SizedBox(height: 16),
@@ -103,9 +106,11 @@ class BusinessAdjustmentFlow extends HookConsumerWidget {
           DropdownButtonFormField<String>(
             key: ValueKey(type.value),
             initialValue: type.value,
+            style: context.textTheme.bodyMedium,
             decoration: const InputDecoration(
               filled: true,
               hintText: 'Choose adjustment type',
+              constraints: BoxConstraints(minHeight: 46),
             ),
             items: const [
               DropdownMenuItem(
@@ -132,7 +137,11 @@ class BusinessAdjustmentFlow extends HookConsumerWidget {
           TextField(
             controller: amountController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(filled: true),
+            decoration: const InputDecoration(
+              filled: true,
+              constraints: BoxConstraints(minHeight: 46),
+            ),
+            style: context.textTheme.bodyMedium,
             onChanged: (_) => entryError.value = null,
           ),
           const SizedBox(height: 16),
@@ -148,7 +157,11 @@ class BusinessAdjustmentFlow extends HookConsumerWidget {
             controller: reasonController,
             minLines: 4,
             maxLines: 5,
-            decoration: const InputDecoration(filled: true),
+            decoration: const InputDecoration(
+              filled: true,
+              constraints: BoxConstraints(minHeight: 112),
+            ),
+            style: context.textTheme.bodyMedium,
             onChanged: (_) => entryError.value = null,
           ),
           if (entryError.value != null) ...[
@@ -158,7 +171,7 @@ class BusinessAdjustmentFlow extends HookConsumerWidget {
               style: context.textTheme.bodySmall?.copyWith(color: tokens.error),
             ),
           ],
-          const SizedBox(height: 18),
+          const SizedBox(height: 28),
           _BusinessActionButton(
             label: 'Review adjustment',
             onPressed: busy.value ? null : openReview,
@@ -171,7 +184,8 @@ class BusinessAdjustmentFlow extends HookConsumerWidget {
           _BusinessHero(
             eyebrow: 'REVIEW ADJUSTMENT',
             title: _adjustmentTypeLabel(type.value),
-            subtitle: clientName,
+            subtitle: _adjustmentClientSubtitle(clientName, invoice),
+            apricot: true,
           ),
           _BusinessDetailRow(
             label: 'Amount',
@@ -212,6 +226,7 @@ class BusinessAdjustmentFlow extends HookConsumerWidget {
             title: 'Adjustment recorded',
             body:
                 'The invoice balance and history now include the reviewed adjustment. No money moved.',
+            accentColor: Color(0xFF5B9374),
           ),
           const SizedBox(height: 10),
           _BusinessActionButton(label: 'Back to proposal', onPressed: onSaved),
@@ -220,21 +235,43 @@ class BusinessAdjustmentFlow extends HookConsumerWidget {
       _AdjustmentStage.denied => ListView(
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
         children: [
-          const _BusinessNotice(
+          _BusinessNotice(
             title: 'You can view, but cannot change this',
             body:
                 'An authorized person can make the update. Your draft has been kept.',
+            accentColor: const Color(0xFFC86465),
           ),
           const SizedBox(height: 10),
           _BusinessActionButton(
             label: 'Back to the record',
-            onPressed: onBack,
-            secondary: true,
+            onPressed: () {
+              stage.value = _AdjustmentStage.entry;
+              onDenialChanged?.call(false);
+            },
+            soft: true,
           ),
         ],
       ),
     };
   }
+}
+
+String _adjustmentInvoiceEyebrow(MobileBusinessRecord invoice) {
+  final number = _adjustmentInvoiceNumber(invoice);
+  return number == null ? 'INVOICE' : 'INVOICE $number';
+}
+
+String? _adjustmentInvoiceNumber(MobileBusinessRecord invoice) {
+  final number = invoice.stringValue('invoiceNumber')?.trim();
+  return number == null || number.isEmpty ? null : number;
+}
+
+String _adjustmentClientSubtitle(
+  String clientName,
+  MobileBusinessRecord invoice,
+) {
+  final number = _adjustmentInvoiceNumber(invoice);
+  return number == null ? clientName : '$clientName · $number';
 }
 
 enum _AdjustmentStage { entry, review, saved, failed, denied }

@@ -36,6 +36,7 @@ class BusinessWorkspacePage extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final routes = useState<List<_BusinessRoute>>([_BusinessRoute.home()]);
     final refreshVersion = useState(0);
+    final adjustmentDenied = useState(false);
     final repository = ref.watch(mobileBusinessRepositoryProvider);
     final channels = channelDirectory.asData?.value ?? const [];
     final channelKey = channels.map((channel) => channel.id).join(',');
@@ -50,6 +51,7 @@ class BusinessWorkspacePage extends HookConsumerWidget {
     }
 
     void pop() {
+      adjustmentDenied.value = false;
       if (routes.value.length == 1) {
         unawaited(Navigator.of(context).maybePop());
       } else {
@@ -67,6 +69,14 @@ class BusinessWorkspacePage extends HookConsumerWidget {
           refreshVersion.value++;
           pop();
         },
+        showDueDates: false,
+        onOpenIssuedInvoice: (invoice) {
+          refreshVersion.value++;
+          final invoiceId = invoice.stringValue('invoiceId');
+          if (invoiceId != null) {
+            push(_BusinessRoute.invoiceDetail(invoiceId));
+          }
+        },
       );
     }
 
@@ -79,21 +89,26 @@ class BusinessWorkspacePage extends HookConsumerWidget {
       _BusinessRouteKind.social => 'Social',
       _BusinessRouteKind.website => 'Website',
       _BusinessRouteKind.invoiceEmpty => 'Invoices',
+      _BusinessRouteKind.invoiceDetail => 'New invoice',
       _BusinessRouteKind.adjustment => 'Revenue adjustment',
       _BusinessRouteKind.money => 'Invoices',
     };
+    final displayedHeaderTitle =
+        adjustmentDenied.value && route.kind == _BusinessRouteKind.adjustment
+        ? 'Business'
+        : headerTitle;
 
     return ColoredBox(
       color: context.mobileTokens.canvas,
       child: Column(
         children: [
           GoalPageHeader(
-            title: headerTitle,
+            title: displayedHeaderTitle,
             subtitle: communityName,
             onBack: pop,
             backLabel: route.kind == _BusinessRouteKind.home
                 ? 'Back to company'
-                : 'Back to $headerTitle',
+                : 'Back to $displayedHeaderTitle',
           ),
           Expanded(
             child: channelDirectory.hasError
@@ -110,6 +125,8 @@ class BusinessWorkspacePage extends HookConsumerWidget {
                     onPush: push,
                     onPop: pop,
                     onRefresh: () => refreshVersion.value++,
+                    onAdjustmentDenied: (denied) =>
+                        adjustmentDenied.value = denied,
                     communityName: communityName,
                     onOpenChat: onOpenChat,
                     channelDirectory: channelDirectory,
@@ -131,6 +148,7 @@ enum _BusinessRouteKind {
   social,
   website,
   invoiceEmpty,
+  invoiceDetail,
   adjustment,
   money,
 }
@@ -148,6 +166,8 @@ class _BusinessRoute {
   const _BusinessRoute.social() : this._(_BusinessRouteKind.social);
   const _BusinessRoute.website() : this._(_BusinessRouteKind.website);
   const _BusinessRoute.invoiceEmpty() : this._(_BusinessRouteKind.invoiceEmpty);
+  const _BusinessRoute.invoiceDetail(String eventId)
+    : this._(_BusinessRouteKind.invoiceDetail, recordId: eventId);
   const _BusinessRoute.adjustment(String invoiceId)
     : this._(_BusinessRouteKind.adjustment, recordId: invoiceId);
   const _BusinessRoute.money({required String title})
@@ -189,6 +209,7 @@ Widget _buildBusinessRoute({
   required ValueChanged<_BusinessRoute> onPush,
   required VoidCallback onPop,
   required VoidCallback onRefresh,
+  required ValueChanged<bool> onAdjustmentDenied,
   required String? communityName,
   required VoidCallback? onOpenChat,
   required AsyncValue<List<MobileBusinessChannelCandidate>> channelDirectory,
@@ -233,7 +254,7 @@ Widget _buildBusinessRoute({
     ),
     _BusinessRouteKind.social => _BusinessComingLater(
       eyebrow: 'COMING LATER',
-      headline: 'Your social presence, in one place.',
+      headline: 'Your social presence,\nin one place.',
       subhead: 'Publishing is not available yet.',
       progressTitle: 'Keep making progress',
       progressBody:
@@ -242,20 +263,31 @@ Widget _buildBusinessRoute({
       assuranceBody:
           'Account connections, scheduling and publishing controls will appear when the live service is available.',
       onOpenChat: onOpenChat,
+      rose: true,
     ),
-    _BusinessRouteKind.website => const _BusinessComingLater(
+    _BusinessRouteKind.website => _BusinessComingLater(
       eyebrow: 'COMING LATER',
-      headline: 'A home for your business.',
+      headline: 'A home for\nyour business.',
       subhead: 'Publishing is not available yet.',
       progressTitle: 'Keep making progress',
       progressBody:
           'Work on your site copy, structure and assets with your team in a channel.',
+      assuranceTitle: 'Nothing will publish',
+      assuranceBody:
+          'Account connections, scheduling and publishing controls will appear when the live service is available.',
+      onOpenChat: onOpenChat,
     ),
     _BusinessRouteKind.invoiceEmpty => const _BusinessInvoiceEmpty(),
+    _BusinessRouteKind.invoiceDetail => _buildInvoiceDetailRoute(
+      route: route,
+      records: records,
+      workspaceName: communityName,
+      onBack: onPop,
+    ),
     _BusinessRouteKind.adjustment => _buildAdjustmentRoute(
       route: route,
       records: records,
-      onBack: onPop,
+      onDenialChanged: onAdjustmentDenied,
       onSaved: () {
         onRefresh();
         onPop();
@@ -266,14 +298,63 @@ Widget _buildBusinessRoute({
       onRetryChannelDirectory: onRetryChannelDirectory,
       title: route.title ?? 'Invoices',
       onBack: onPop,
+      showDueDates: false,
+      onOpenIssuedInvoice: (invoice) {
+        onRefresh();
+        final invoiceId = invoice.stringValue('invoiceId');
+        if (invoiceId != null) {
+          onPush(_BusinessRoute.invoiceDetail(invoiceId));
+        }
+      },
     ),
   };
+}
+
+Widget _buildInvoiceDetailRoute({
+  required _BusinessRoute route,
+  required _BusinessRecords records,
+  required String? workspaceName,
+  required VoidCallback onBack,
+}) {
+  final invoice = records.money.invoiceHeads
+      .where((record) => record.stringValue('invoiceId') == route.recordId)
+      .firstOrNull;
+  if (invoice == null || invoice.stringValue('status') != 'issued') {
+    return const _BusinessUnavailable();
+  }
+  final currency = invoice.stringValue('currency')?.trim();
+  final total = invoice.integerValue('totalMinor');
+  final lines = _businessInvoiceLines(invoice);
+  final taxLines = _businessInvoiceTaxLines(invoice);
+  if (currency == null ||
+      currency.isEmpty ||
+      total == null ||
+      lines.isEmpty ||
+      taxLines == null ||
+      workspaceName?.trim().isNotEmpty != true) {
+    return const _BusinessUnavailable();
+  }
+  for (final line in lines) {
+    if (line['description'] is! String ||
+        line['quantityHundredths'] is! int ||
+        line['unitAmountMinor'] is! int) {
+      return const _BusinessUnavailable();
+    }
+  }
+  return _BusinessIssuedInvoiceDetail(
+    invoice: invoice,
+    clientName: _businessClientName(invoice.stringValue('clientId'), records),
+    workspaceName: workspaceName,
+    lines: lines,
+    taxLines: taxLines,
+    onBack: onBack,
+  );
 }
 
 Widget _buildAdjustmentRoute({
   required _BusinessRoute route,
   required _BusinessRecords records,
-  required VoidCallback onBack,
+  required ValueChanged<bool> onDenialChanged,
   required VoidCallback onSaved,
 }) {
   final invoiceId = route.recordId;
@@ -288,7 +369,7 @@ Widget _buildAdjustmentRoute({
   return BusinessAdjustmentFlow(
     invoice: invoice,
     clientName: _businessClientName(invoice.stringValue('clientId'), records),
-    onBack: onBack,
+    onDenialChanged: onDenialChanged,
     onSaved: onSaved,
   );
 }
