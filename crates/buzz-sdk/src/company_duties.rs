@@ -33,7 +33,13 @@ pub fn build_duty_action(
         .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
     let p_tag = Tag::parse(["p", employee_pubkey.as_str()])
         .map_err(|error| SdkError::InvalidTag(error.to_string()))?;
-    Ok(EventBuilder::new(Kind::Custom(KIND_DUTY_ACTION as u16), content).tags([d_tag, p_tag]))
+    // The assigned employee may sign its own duty commands; keep the `p` tag the
+    // relay requires instead of letting nostr scrub a same-pubkey tag.
+    Ok(
+        EventBuilder::new(Kind::Custom(KIND_DUTY_ACTION as u16), content)
+            .tags([d_tag, p_tag])
+            .allow_self_tagging(),
+    )
 }
 
 #[cfg(test)]
@@ -69,5 +75,27 @@ mod tests {
                 && tag.content() == Some(employee.public_key().to_hex().as_str())
         }));
         assert!(!event.tags.iter().any(|tag| tag.kind().to_string() == "h"));
+    }
+
+    #[test]
+    fn duty_action_keeps_the_employee_p_tag_when_the_employee_signs() {
+        let employee = Keys::generate();
+        let action = DutyAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            duty_id: Uuid::from_u128(7),
+            action: DutyActionKind::Pause,
+            expected_head_event_id: "ab".repeat(32),
+            proposal: None,
+            reason: None,
+        };
+        let event = build_duty_action(&action, &employee.public_key().to_hex())
+            .expect("build duty action")
+            .sign_with_keys(&employee)
+            .expect("sign duty action");
+        assert_eq!(event.tags.len(), 2);
+        assert!(event.tags.iter().any(|tag| {
+            tag.kind().to_string() == "p"
+                && tag.content() == Some(employee.public_key().to_hex().as_str())
+        }));
     }
 }

@@ -28,6 +28,7 @@ import {
   type MoneyInvoiceVersion as MoneyInvoiceVersionPayload,
   type MoneyWorkspaceRecords,
   formatMoneyMinor,
+  invoiceIssueMissingDetails,
   moneyAdjustmentDTag,
   moneyFollowUpDTag,
   moneyInvoiceVersionDTag,
@@ -241,7 +242,12 @@ export function IssueInvoiceDialog({
 }) {
   const submit = useSubmitBusinessRecordMutation();
   const [error, setError] = React.useState("");
+  const missingDetails = invoiceIssueMissingDetails(invoice.value);
   async function issue() {
+    if (missingDetails.length) {
+      setError(`Details missing before issue: ${missingDetails.join(", ")}.`);
+      return;
+    }
     const current = invoice.value;
     const value: MoneyInvoiceVersionPayload = {
       schemaVersion: BUSINESS_RECORD_SCHEMA_VERSION,
@@ -296,12 +302,19 @@ export function IssueInvoiceDialog({
             {error}
           </p>
         ) : null}
+        {missingDetails.length && !error ? (
+          <p className="money-form-error" role="alert">
+            Details missing before issue: {missingDetails.join(", ")}.
+          </p>
+        ) : null}
         <DialogFooter>
           <W10Button onClick={() => onOpenChange(false)} variant="secondary">
             Cancel
           </W10Button>
           <W10Button
-            disabled={!canManage || submit.isPending}
+            disabled={
+              !canManage || submit.isPending || missingDetails.length > 0
+            }
             onClick={() => void issue()}
             variant="primary"
           >

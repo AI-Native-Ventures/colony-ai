@@ -177,6 +177,7 @@ export function usePersonaActions() {
     backendIntent?: BackendIntent | null,
     targetChannel?: Pick<Channel, "id" | "name"> | null,
     options?: { publishCatalogUpdates?: boolean },
+    onSavedPersona?: (persona: AgentPersona) => void,
   ): Promise<boolean> {
     if (isPersonaSubmitPending) {
       return false;
@@ -192,6 +193,7 @@ export function usePersonaActions() {
         if (options?.publishCatalogUpdates) {
           const result =
             await updatePersonaAndPublishMutation.mutateAsync(input);
+          onSavedPersona?.(result.persona);
           if (result.publicationStatus === "queued" && result.relayMessage) {
             console.warn(
               `[updatePersonaAndPublish] relay publication queued: ${result.relayMessage}`,
@@ -201,14 +203,18 @@ export function usePersonaActions() {
             personaSaveNotice(input.displayName, result.publicationStatus),
           );
         } else {
-          await updatePersonaMutation.mutateAsync(input);
+          const savedPersona = await updatePersonaMutation.mutateAsync(input);
+          onSavedPersona?.(savedPersona);
           setPersonaNoticeMessage(personaSaveNotice(input.displayName, null));
         }
       } else {
         const runtime = availableRuntimes.find(
           (candidate) => candidate.id === input.runtime,
         );
-        if (!runtime) {
+        const rolePackDefinitionOnly =
+          Boolean(input.companyRole) &&
+          resolveCreateIntent(intent) === "definition";
+        if (!runtime && !rolePackDefinitionOnly) {
           setPersonaErrorMessage(
             "Choose an available provider for this agent.",
           );
@@ -224,17 +230,24 @@ export function usePersonaActions() {
         const avatarUrl = await resolveManagedAgentAvatarUrl(
           input.avatarUrl,
           undefined,
-          runtime.avatarUrl,
+          runtime?.avatarUrl,
         );
         const persona = await createPersonaMutation.mutateAsync({
           ...input,
           avatarUrl,
         });
+        onSavedPersona?.(persona);
 
         if (resolveCreateIntent(intent) === "definition") {
           setPersonaNoticeMessage(`Created ${persona.displayName}.`);
           setPersonaDialogState(null);
           return true;
+        }
+        if (!runtime) {
+          setPersonaErrorMessage(
+            "Choose an available provider for this agent.",
+          );
+          return false;
         }
         const agentInput = await buildInstanceInputForDefinition(
           persona,

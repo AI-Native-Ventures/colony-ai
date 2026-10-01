@@ -6,8 +6,7 @@ class ThemeCatalogPage extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final preference = ref.watch(communityThemeProvider);
-    final query = useState('');
-    final filter = useState('All');
+    final community = ref.watch(activeCommunityProvider).asData?.value;
     final orderedThemes = [...themeCatalog]
       ..sort((left, right) {
         final leftRank = switch (left.name) {
@@ -23,177 +22,52 @@ class ThemeCatalogPage extends HookConsumerWidget {
         if (leftRank != rightRank) return leftRank.compareTo(rightRank);
         return _themeDisplayName(left).compareTo(_themeDisplayName(right));
       });
-    final matches = orderedThemes.where((theme) {
-      final brightnessMatches = switch (filter.value) {
-        'Light' => !theme.isDark,
-        'Dark' => theme.isDark,
-        _ => true,
-      };
-      return brightnessMatches &&
-          _themeDisplayName(
-            theme,
-          ).toLowerCase().contains(query.value.toLowerCase());
-    }).toList();
-    final colors = context.colors;
 
     return Scaffold(
       backgroundColor: context.mobileTokens.canvas,
-      appBar: const MobileFlowAppBar(title: 'Themes'),
+      appBar: MobileFlowAppBar(
+        title: 'Named themes',
+        subtitle: community?.name,
+        compact: true,
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
           Grid.gutter,
-          Grid.scrollInset,
+          Grid.xs,
           Grid.gutter,
           Grid.gutter,
         ),
         children: [
-          Text(
-            'Find your atmosphere.',
-            style: context.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+          _ThemePreviewHero(
+            eyebrow: 'APPEARANCE',
+            title: 'Find your atmosphere.',
+            description: 'Preview with sample content before applying.',
           ),
           const SizedBox(height: Grid.xs),
-          SizedBox(
-            height: 44,
-            child: TextField(
-              onChanged: (value) => query.value = value,
-              style: context.mobileTypography.conversation.copyWith(
-                color: context.mobileTokens.ink,
-                fontSize: 13,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Search ${themeCatalog.length} themes',
-                hintStyle: context.mobileTypography.conversation.copyWith(
-                  color: context.mobileTokens.muted,
-                  fontSize: 13,
-                ),
-                filled: true,
-                fillColor: colors.surface,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(9),
-                  borderSide: BorderSide(color: context.mobileTokens.line),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(9),
-                  borderSide: BorderSide(color: colors.primary),
-                ),
-              ),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: orderedThemes.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: Grid.twelve,
+              mainAxisSpacing: Grid.twelve,
+              mainAxisExtent: 144,
             ),
-          ),
-          const SizedBox(height: Grid.xs),
-          Row(
-            children: [
-              for (final entry in const ['All', 'Light', 'Dark'].indexed)
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                      right: entry.$1 == 2 ? 0 : Grid.xxs,
-                    ),
-                    child: _ThemeFilter(
-                      label: entry.$2,
-                      selected: filter.value == entry.$2,
-                      onPressed: () => filter.value = entry.$2,
-                    ),
-                  ),
+            itemBuilder: (context, index) {
+              final theme = orderedThemes[index];
+              return _ThemeTile(
+                theme: theme,
+                selected: theme.name == preference.theme,
+                onPressed: () => MobileNavigation.push<String, Object?>(
+                  context,
+                  MobileRoutes.settingsThemePreview,
+                  theme.name,
                 ),
-            ],
+              );
+            },
           ),
-          const SizedBox(height: Grid.xs + Grid.half),
-          if (matches.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: Grid.lg),
-              child: Column(
-                children: [
-                  Text('No themes found', style: context.textTheme.titleMedium),
-                  const SizedBox(height: Grid.xxs),
-                  Text(
-                    'Try another name or clear your filters.',
-                    style: context.textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            )
-          else
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: matches.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 18,
-                mainAxisExtent: 126,
-              ),
-              itemBuilder: (context, index) {
-                final theme = matches[index];
-                return _ThemeTile(
-                  theme: theme,
-                  selected: theme.name == preference.theme,
-                  onPressed: () => MobileNavigation.push<String, Object?>(
-                    context,
-                    MobileRoutes.settingsThemePreview,
-                    theme.name,
-                  ),
-                );
-              },
-            ),
         ],
-      ),
-    );
-  }
-}
-
-class _ThemeFilter extends StatelessWidget {
-  const _ThemeFilter({
-    required this.label,
-    required this.selected,
-    required this.onPressed,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final foreground = selected
-        ? const Color(0xFF4D3A5E)
-        : context.mobileTokens.ink;
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: label,
-      onTap: onPressed,
-      child: ExcludeSemantics(
-        child: Material(
-          color: selected ? const Color(0xFFE6DBED) : Colors.transparent,
-          borderRadius: BorderRadius.circular(24),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(24),
-            onTap: onPressed,
-            child: SizedBox(
-              height: 38,
-              child: Center(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    color: foreground,
-                    fontSize: 12,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }

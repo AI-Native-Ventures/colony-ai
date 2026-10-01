@@ -1,5 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { bytesToHex } from "@noble/hashes/utils.js";
 import {
   finalizeEvent,
   generateSecretKey,
@@ -11,7 +10,7 @@ import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 const OWNER_PUBKEY = "deadbeef".repeat(8);
 
-test("Team keeps the relay-signed position after reload in the integration project", async ({
+test("Team keeps the relay-signed human position after reload in the integration project", async ({
   page,
 }) => {
   test.setTimeout(60_000);
@@ -37,7 +36,6 @@ test("Team keeps the relay-signed position after reload in the integration proje
   );
   await installMockBridge(page, {
     relaySelf,
-    companyMemberRelayPrivateKeyHex: bytesToHex(relaySecret),
     companyMemberPositionEvents: [initialPosition],
     relayMembers: [
       { pubkey: OWNER_PUBKEY, role: "owner" },
@@ -50,17 +48,18 @@ test("Team keeps the relay-signed position after reload in the integration proje
     timeout: 20_000,
   });
   await page.getByTestId(`company-team-member-${alicePubkey}`).click();
-  await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
-  await page.getByRole("button", { name: "Edit role and reporting" }).click();
-  await page.getByLabel("Title").fill("Customer Success Lead");
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByTestId("company-team-member-profile")).toContainText(
-    "Customer Success Lead",
-  );
+  const profile = page.getByTestId("company-team-member-profile");
+  const role = page.getByTestId("company-human-role");
+  await expect(profile).toBeVisible();
+  await expect(page.getByTestId("company-human-tab-overview")).toBeVisible();
+  await expect(page.getByTestId("company-human-tab-history")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Edit role and reporting" }),
+  ).toHaveCount(0);
+  await expect(role).toContainText("Account Manager");
+  const roleBeforeReload = await role.innerText();
 
   await page.reload();
-  await expect(page.getByTestId("company-team-member-profile")).toContainText(
-    "Customer Success Lead",
-    { timeout: 20_000 },
-  );
+  await expect(profile).toBeVisible({ timeout: 20_000 });
+  await expect.poll(() => role.innerText()).toBe(roleBeforeReload);
 });

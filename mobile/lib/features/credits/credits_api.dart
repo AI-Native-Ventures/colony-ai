@@ -27,6 +27,12 @@ final creditsOverviewProvider = FutureProvider.autoDispose<CreditsOverview>(
   (ref) => ref.watch(creditsApiProvider).loadOverview(),
 );
 
+final creditsPaymentIntentProvider = FutureProvider.autoDispose
+    .family<CreditsPaymentIntent, String>(
+      (ref, reference) =>
+          ref.watch(creditsApiProvider).readPaymentIntent(reference),
+    );
+
 /// Read-only account credits and payment history from the relay ledger.
 class CreditsApi {
   CreditsApi({
@@ -101,6 +107,14 @@ class CreditsApi {
             throw const CreditsFailure(CreditsFailureKind.invalidResponse),
       ],
     );
+  }
+
+  /// Reads one payment attempt by its existing server-issued reference.
+  Future<CreditsPaymentIntent> readPaymentIntent(String reference) async {
+    if (!RegExp(r'^[A-Za-z0-9._:-]{1,200}$').hasMatch(reference)) {
+      throw const CreditsFailure(CreditsFailureKind.invalidResponse);
+    }
+    return CreditsPaymentIntent.fromJson(await _get('intents/$reference'));
   }
 
   Future<Map<String, dynamic>> _get(String route) async {
@@ -229,6 +243,7 @@ class CreditsLedgerEntry {
   const CreditsLedgerEntry({
     required this.id,
     required this.type,
+    required this.amountNanoUsd,
     required this.amountUsdCents,
     required this.description,
     required this.reference,
@@ -237,6 +252,7 @@ class CreditsLedgerEntry {
 
   final String id;
   final String type;
+  final BigInt amountNanoUsd;
   final int amountUsdCents;
   final String description;
   final String? reference;
@@ -244,12 +260,14 @@ class CreditsLedgerEntry {
 
   factory CreditsLedgerEntry.fromJson(Map<String, dynamic> json) {
     final amount = json['amountNanousd'];
-    if (amount is! String) {
+    final amountNanoUsd = amount is String ? BigInt.tryParse(amount) : null;
+    if (amountNanoUsd == null) {
       throw const CreditsFailure(CreditsFailureKind.invalidResponse);
     }
     return CreditsLedgerEntry(
       id: _requiredString(json['id']),
       type: _requiredString(json['type']),
+      amountNanoUsd: amountNanoUsd,
       amountUsdCents: _nanoUsdToCents(amount),
       description: json['description'] is String
           ? json['description'] as String
@@ -265,6 +283,8 @@ class CreditsPaymentIntent {
   const CreditsPaymentIntent({
     required this.reference,
     required this.amountZarCents,
+    required this.paidZarCents,
+    required this.grantNanoUsd,
     required this.grantUsdCents,
     required this.status,
     required this.createdAt,
@@ -272,6 +292,8 @@ class CreditsPaymentIntent {
 
   final String reference;
   final int amountZarCents;
+  final int? paidZarCents;
+  final BigInt grantNanoUsd;
   final int grantUsdCents;
   final String status;
   final DateTime createdAt;
@@ -281,12 +303,19 @@ class CreditsPaymentIntent {
       throw const CreditsFailure(CreditsFailureKind.invalidResponse);
     }
     final grant = json['grantNanousd'];
-    if (grant is! String) {
+    final grantNanoUsd = grant is String ? BigInt.tryParse(grant) : null;
+    final paidAmount = json['paidMinorUnits'];
+    if (grantNanoUsd == null ||
+        (paidAmount != null && paidAmount is! int && paidAmount is! num)) {
       throw const CreditsFailure(CreditsFailureKind.invalidResponse);
     }
     return CreditsPaymentIntent(
       reference: _requiredString(json['reference']),
-      amountZarCents: _requiredInt(json['chargeMinorUnits']),
+      amountZarCents: _requiredInt(
+        json['chargeMinorUnits'] ?? json['amountMinorUnits'],
+      ),
+      paidZarCents: paidAmount == null ? null : _requiredInt(paidAmount),
+      grantNanoUsd: grantNanoUsd,
       grantUsdCents: _nanoUsdToCents(grant),
       status: _requiredString(json['status']),
       createdAt: _requiredDate(json['createdAt']),

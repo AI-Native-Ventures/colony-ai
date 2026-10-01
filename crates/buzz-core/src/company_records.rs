@@ -762,6 +762,9 @@ pub struct HireHead {
     /// Explanation when a proposal was denied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub denial_reason: Option<String>,
+    /// Explanation recorded with the community owner's sign-off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub founder_approval_reason: Option<String>,
     /// Member command that last advanced this head.
     pub source_action_event_id: String,
 }
@@ -806,7 +809,7 @@ pub struct HireAction {
     /// Introduction event id, required only for complete.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub introduction_event_id: Option<String>,
-    /// Denial reason, required only for deny.
+    /// Decision reason for denial or founder sign-off.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
@@ -956,13 +959,20 @@ pub fn validate_hire_action(action: &HireAction) -> Result<(), CompanyRecordErro
             if action.proposal.is_some()
                 || action.employee_pubkey.is_some()
                 || action.introduction_event_id.is_some()
-                || action.reason.is_some()
             {
                 return Err(CompanyRecordError::Invalid(
-                    "approve does not carry a proposal, employee or reason",
+                    "approve does not carry a proposal or employee",
                 ));
             }
-            Ok(())
+            if let Some(reason) = action.reason.as_deref() {
+                require_text(
+                    reason,
+                    MAX_REASON_CHARS,
+                    "a reason must contain 1 to 1000 characters",
+                )
+            } else {
+                Ok(())
+            }
         }
         HireActionKind::AttachEmployee => {
             let employee = action
@@ -2696,6 +2706,24 @@ mod tests {
         let mut no_provider = create.clone();
         no_provider.proposal.as_mut().expect("proposal").provider_id = None;
         assert!(validate_hire_action(&no_provider).is_ok());
+
+        let approve = HireAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            hire_id: proposal.hire_id,
+            action: HireActionKind::Approve,
+            expected_head_event_id: Some(EV.into()),
+            proposal: None,
+            employee_pubkey: None,
+            introduction_event_id: None,
+            reason: Some("The proposed scope is approved.".into()),
+        };
+        assert!(validate_hire_action(&approve).is_ok());
+        let mut blank_approval_reason = approve.clone();
+        blank_approval_reason.reason = Some("  ".into());
+        assert!(validate_hire_action(&blank_approval_reason).is_err());
+        let mut long_approval_reason = approve;
+        long_approval_reason.reason = Some("x".repeat(MAX_REASON_CHARS + 1));
+        assert!(validate_hire_action(&long_approval_reason).is_err());
 
         let mut missing_title = create.clone();
         missing_title
