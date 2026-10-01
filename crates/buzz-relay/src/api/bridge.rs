@@ -72,6 +72,19 @@ fn deserialize_bridge_filters(
         .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))
 }
 
+#[cfg(test)]
+mod filter_bound_tests {
+    use super::parse_bridge_filter_values;
+
+    #[test]
+    fn http_bridge_accepts_ten_filters_and_rejects_eleven() {
+        let body_for = |count: usize| format!("[{}]", vec!["{}"; count].join(",")).into_bytes();
+
+        assert_eq!(parse_bridge_filter_values(&body_for(10)).unwrap().len(), 10);
+        assert!(parse_bridge_filter_values(&body_for(11)).is_err());
+    }
+}
+
 /// Values retained from an already-verified bridge authentication event.
 #[derive(Debug)]
 pub(crate) struct VerifiedBridgeAuth {
@@ -2625,14 +2638,6 @@ mod postgres_tests {
         ];
 
         assert!(has_mixed_search_filters(&filters));
-    }
-
-    #[test]
-    fn http_bridge_accepts_ten_filters_and_rejects_eleven() {
-        let body_for = |count: usize| format!("[{}]", vec!["{}"; count].join(",")).into_bytes();
-
-        assert_eq!(parse_bridge_filter_values(&body_for(10)).unwrap().len(), 10);
-        assert!(parse_bridge_filter_values(&body_for(11)).is_err());
     }
 
     #[test]
