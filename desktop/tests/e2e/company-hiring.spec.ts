@@ -1,3 +1,6 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+
 import { expect, test } from "@playwright/test";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import {
@@ -9,6 +12,7 @@ import {
 import { KIND_HIRE_HEAD } from "../../src/shared/constants/kinds";
 import type { RelayEvent } from "../../src/shared/api/types";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { waitForAnimations } from "../helpers/animations";
 
 const PERSONA_ID = "company-role-hospitality-research";
 const HIRE_ASK_ID = "7245ba1a-e078-42ef-b896-00be34a94f11";
@@ -124,6 +128,14 @@ test("empty role catalog opens a blank role pack editor", async ({ page }) => {
   ).toBeVisible();
   await page.getByRole("button", { name: "Create role pack" }).click();
 
+  await expect(page.getByTestId("company-role-pack-page")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Role catalog", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Back", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByTestId("community-catalog-dialog")).toHaveCount(0);
   await expect(page.getByTestId("company-role-editor")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Edit a role pack" }),
@@ -131,16 +143,48 @@ test("empty role catalog opens a blank role pack editor", async ({ page }) => {
   await expect(page.getByLabel("Role title")).toHaveValue("");
   await expect(page.getByLabel("Job description")).toHaveValue("");
   await expect(page.getByLabel("Skills, one per line")).toHaveValue("");
-  await expect(
-    page.getByRole("group", { name: "Allowed worker model" }),
-  ).toBeVisible();
+  const toolScope = page.getByLabel("Tool scope");
+  await expect(toolScope).toBeDisabled();
+  await expect(toolScope).toHaveValue("");
+  const workerModel = page.getByLabel("Allowed worker model");
+  await expect(workerModel).toBeVisible();
+  await expect(workerModel).toHaveValue("");
   await expect(page.getByLabel("Default allowance")).toHaveCount(0);
-  const workerChoices = page
-    .getByTestId("company-role-editor")
-    .locator('input[type="checkbox"]');
-  await expect(workerChoices).not.toHaveCount(0);
-  for (const checkbox of await workerChoices.all()) {
-    await expect(checkbox).not.toBeChecked();
+  await expect(workerModel.locator("option")).toHaveText([
+    "Choose worker model",
+    "Goose",
+    "Buzz Agent",
+  ]);
+  const visualCaptureDirectory = process.env.COMPANY_ROLE_VISUAL_CAPTURE_DIR;
+  if (visualCaptureDirectory) {
+    await mkdir(visualCaptureDirectory, { recursive: true });
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 1728, height: 1117 },
+    ]) {
+      await page.setViewportSize(viewport);
+      for (const theme of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme: theme });
+        await page.waitForFunction(
+          (shouldBeDark) =>
+            document.documentElement.classList.contains("dark") ===
+            shouldBeDark,
+          theme === "dark",
+        );
+        await waitForAnimations(page);
+        await page.screenshot({
+          path: join(
+            visualCaptureDirectory,
+            `role-pack-${viewport.width}x${viewport.height}-${theme}.png`,
+          ),
+        });
+      }
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.waitForFunction(
+      () => !document.documentElement.classList.contains("dark"),
+    );
+    await page.setViewportSize({ width: 1280, height: 720 });
   }
 
   await page.getByLabel("Role title").fill("Research assistant");
@@ -148,10 +192,7 @@ test("empty role catalog opens a blank role pack editor", async ({ page }) => {
     .getByLabel("Job description")
     .fill("Research current hospitality accounts.");
   await page.getByLabel("Skills, one per line").fill("Research\nSynthesis");
-  await page.getByRole("button", { name: "Add tool" }).click();
-  await page.getByLabel("Tool name").fill("Read approved files");
-  await page.getByLabel("Risk label").selectOption("low");
-  await page.getByRole("checkbox", { name: "Goose" }).check();
+  await workerModel.selectOption("goose");
   await expect(
     page.getByRole("button", { name: "Save role pack" }),
   ).toBeEnabled();
@@ -226,9 +267,11 @@ test("role pack edits retain input after a failed save and then update the real 
   });
   await page.goto("/#/hire/roles");
   await page.getByRole("button", { name: "Edit pack" }).click();
-  await expect(
-    page.getByRole("checkbox", { name: "Buzz Agent" }),
-  ).toBeChecked();
+  await expect(page.getByTestId("company-role-pack-page")).toBeVisible();
+  await expect(page.getByTestId("community-catalog-dialog")).toHaveCount(0);
+  await expect(page.getByLabel("Allowed worker model")).toHaveValue(
+    "buzz-agent",
+  );
 
   const job = page.getByLabel("Job description");
   await job.fill("Research hospitality accounts and summarize evidence.");

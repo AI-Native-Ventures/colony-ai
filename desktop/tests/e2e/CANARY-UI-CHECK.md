@@ -77,10 +77,12 @@ with blank action, scope and expiry fields, but reports the batch 2 consent flow
 as `NEEDS_API` when the canary has no real pending tool-consent request. It does
 not synthesize that request from mockup state.
 
-Hiring inspection opens the empty role-pack editor and verifies that its title,
-job, skills, tool scope and worker menu have no preselected values. It records
-runtime recovery when the canary has no available configured runtime and never
-saves a role pack. Appearance inspection opens the named theme catalog and a
+Hiring inspection opens the full-page empty role-pack editor and verifies that
+its title, job, skills, tool scope and worker menu have no preselected values.
+Worker choices come from the live runtime catalog. Tool scope stays unavailable
+because the app has no real scope catalog API. It records runtime recovery when
+the canary has no available configured runtime and never saves a role pack.
+Appearance inspection opens the named theme catalog and a
 Buzz preview, then cancels the preview without applying a theme or density.
 
 The suite captures each exercised desktop state in light and dark at 1440x900

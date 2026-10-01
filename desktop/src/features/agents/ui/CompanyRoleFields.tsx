@@ -1,4 +1,5 @@
 import * as React from "react";
+import type { ReactNode } from "react";
 
 import type {
   AcpRuntimeCatalogEntry,
@@ -87,12 +88,13 @@ export function companyRoleMetadataFromDraft(
 }
 
 const CONTROL_CLASS =
-  "h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "h-[42px] w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function CompanyRoleFields({
   disabled,
   draft,
   displayName,
+  footer,
   saveError = false,
   onDisplayNameChange,
   onDraftChange,
@@ -110,6 +112,7 @@ export function CompanyRoleFields({
   disabled: boolean;
   draft: CompanyRoleDraft;
   displayName: string;
+  footer?: ReactNode;
   saveError?: boolean;
   onDisplayNameChange: (value: string) => void;
   onDraftChange: (next: CompanyRoleDraft) => void;
@@ -127,10 +130,28 @@ export function CompanyRoleFields({
   const availableRuntimes = runtimes.filter(
     (runtime) => runtime.availability === "available",
   );
-  const unavailableSelections = draft.workerMenu.filter(
-    (runtimeId) =>
-      !availableRuntimes.some((runtime) => runtime.id === runtimeId),
-  );
+  const preserveSavedWorkerMenu =
+    draft.workerMenu.length > 1 ||
+    (draft.workerMenu.length === 1 &&
+      !availableRuntimes.some((runtime) => runtime.id === draft.workerMenu[0]));
+  const savedWorkerMenuValue = "__saved_worker_menu__";
+  const workerMenuValue =
+    draft.workerMenu.length === 0
+      ? ""
+      : preserveSavedWorkerMenu
+        ? savedWorkerMenuValue
+        : draft.workerMenu[0];
+  const savedWorkerMenuLabel = draft.workerMenu
+    .map(
+      (runtimeId) =>
+        runtimes.find((runtime) => runtime.id === runtimeId)?.label ??
+        runtimeId,
+    )
+    .join(", ");
+  const savedToolScopeValue = "__saved_tool_scope__";
+  const savedToolScopeLabel = draft.tools
+    .map((tool) => `${tool.name} (${tool.risk})`)
+    .join(", ");
   const recoveryKind =
     availableRuntimes.length === 0
       ? "runtime"
@@ -146,20 +167,13 @@ export function CompanyRoleFields({
 
   if (recoveryKind && !suppressRecovery) return null;
 
-  const toggleRuntime = (runtimeId: string, checked: boolean) => {
-    const workerMenu = checked
-      ? [...new Set([...draft.workerMenu, runtimeId])]
-      : draft.workerMenu.filter((selected) => selected !== runtimeId);
-    onDraftChange({ ...draft, workerMenu });
-  };
-
   return (
     <section
       aria-label="Role pack editor"
-      className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.9fr)]"
+      className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,1fr)]"
       data-testid="company-role-editor"
     >
-      <div className="grid content-start gap-5 rounded-lg border border-border bg-card p-5">
+      <div className="grid content-start gap-5 rounded-lg border border-border bg-card p-6">
         {saveError ? (
           <div
             className="grid gap-1 rounded-md border border-destructive/30 bg-destructive/5 p-3"
@@ -183,6 +197,7 @@ export function CompanyRoleFields({
         >
           Role title
           <Input
+            className="h-[42px]"
             disabled={disabled}
             id="company-role-title"
             maxLength={180}
@@ -197,6 +212,7 @@ export function CompanyRoleFields({
         >
           Job description
           <Textarea
+            className="min-h-[104px]"
             disabled={disabled}
             id="company-role-job"
             maxLength={2000}
@@ -215,6 +231,7 @@ export function CompanyRoleFields({
         >
           Skills, one per line
           <Textarea
+            className="min-h-[104px]"
             disabled={disabled}
             id="company-role-skills"
             maxLength={4000}
@@ -227,146 +244,67 @@ export function CompanyRoleFields({
           />
         </label>
 
-        <fieldset className="grid gap-3">
-          <legend className="text-sm font-medium text-foreground">
-            Tool scope
-          </legend>
-          {draft.tools.map((tool, index) => (
-            <div
-              className="grid gap-3 rounded-md border border-border p-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto]"
-              key={tool.id}
-            >
-              <label
-                className="grid gap-1.5 text-sm"
-                htmlFor={`company-role-tool-${index}`}
-              >
-                Tool name
-                <Input
-                  disabled={disabled}
-                  id={`company-role-tool-${index}`}
-                  maxLength={120}
-                  onChange={(event) => {
-                    const tools = draft.tools.map((current, itemIndex) =>
-                      itemIndex === index
-                        ? { ...current, name: event.target.value }
-                        : current,
-                    );
-                    onDraftChange({ ...draft, tools });
-                  }}
-                  value={tool.name}
-                />
-              </label>
-              <label
-                className="grid gap-1.5 text-sm"
-                htmlFor={`company-role-risk-${index}`}
-              >
-                Risk label
-                <select
-                  className={CONTROL_CLASS}
-                  disabled={disabled}
-                  id={`company-role-risk-${index}`}
-                  onChange={(event) => {
-                    const risk = event.target
-                      .value as CompanyRoleToolDraft["risk"];
-                    const tools = draft.tools.map((current, itemIndex) =>
-                      itemIndex === index ? { ...current, risk } : current,
-                    );
-                    onDraftChange({ ...draft, tools });
-                  }}
-                  required
-                  value={tool.risk}
-                >
-                  <option value="">Choose risk</option>
-                  <option value="low">Read</option>
-                  <option value="medium">Changes data</option>
-                  <option value="high">External action</option>
-                </select>
-              </label>
-              <Button
-                aria-label={`Remove tool ${index + 1}`}
-                className="self-end"
-                disabled={disabled}
-                onClick={() =>
-                  onDraftChange({
-                    ...draft,
-                    tools: draft.tools.filter(
-                      (_, itemIndex) => itemIndex !== index,
-                    ),
-                  })
-                }
-                type="button"
-                variant="outline"
-              >
-                Remove
-              </Button>
-            </div>
-          ))}
-          <Button
-            className="w-fit"
-            disabled={disabled || draft.tools.length >= 64}
-            onClick={() =>
+        <label
+          className="grid gap-2 text-sm font-medium"
+          htmlFor="company-role-tool-scope"
+        >
+          Tool scope
+          <select
+            className={CONTROL_CLASS}
+            disabled
+            id="company-role-tool-scope"
+            value={draft.tools.length > 0 ? savedToolScopeValue : ""}
+          >
+            <option value="">Choose tool scope</option>
+            {draft.tools.length > 0 ? (
+              <option value={savedToolScopeValue}>
+                Saved scope: {savedToolScopeLabel}
+              </option>
+            ) : null}
+          </select>
+        </label>
+
+        <label
+          className="grid gap-2 text-sm font-medium"
+          htmlFor="company-role-worker-model"
+        >
+          Allowed worker model
+          <select
+            className={CONTROL_CLASS}
+            disabled={disabled || availableRuntimes.length === 0}
+            id="company-role-worker-model"
+            onChange={(event) =>
               onDraftChange({
                 ...draft,
-                tools: [
-                  ...draft.tools,
-                  { id: crypto.randomUUID(), name: "", risk: "" },
-                ],
+                workerMenu: event.target.value ? [event.target.value] : [],
               })
             }
-            type="button"
-            variant="outline"
+            value={workerMenuValue}
           >
-            Add tool
-          </Button>
-        </fieldset>
-
-        <fieldset className="grid gap-3">
-          <legend className="text-sm font-medium text-foreground">
-            Allowed worker model
-          </legend>
-          <div className="grid gap-2">
-            {unavailableSelections.map((runtimeId) => (
-              <label
-                className="flex items-center gap-2 text-sm text-muted-foreground"
-                key={runtimeId}
-              >
-                <input
-                  checked
-                  disabled={disabled}
-                  onChange={(event) =>
-                    toggleRuntime(runtimeId, event.target.checked)
-                  }
-                  type="checkbox"
-                />
-                {runtimes.find((runtime) => runtime.id === runtimeId)?.label ??
-                  "Unavailable configured runtime"}
-              </label>
-            ))}
+            <option value="">Choose worker model</option>
+            {preserveSavedWorkerMenu ? (
+              <option disabled value={savedWorkerMenuValue}>
+                Saved choices: {savedWorkerMenuLabel}
+              </option>
+            ) : null}
             {availableRuntimes.map((runtime) => (
-              <label
-                className="flex items-center gap-2 text-sm text-foreground"
-                key={runtime.id}
-              >
-                <input
-                  checked={draft.workerMenu.includes(runtime.id)}
-                  disabled={disabled}
-                  onChange={(event) =>
-                    toggleRuntime(runtime.id, event.target.checked)
-                  }
-                  type="checkbox"
-                />
+              <option key={runtime.id} value={runtime.id}>
                 {runtime.label}
-              </label>
+              </option>
             ))}
-          </div>
-        </fieldset>
-        <p className="border-t border-border pt-3 text-xs text-muted-foreground">
-          No model, tool or allowance is preselected. The real picker is
-          populated by configured runtimes.
+          </select>
+        </label>
+        <p className="pt-3 text-xs text-muted-foreground">
+          {draft.tools.length === 0 && draft.workerMenu.length === 0
+            ? "No model, tool or allowance is preselected. The real picker is populated by configured runtimes."
+            : "Existing role choices are retained. Available worker models come from configured runtimes."}
         </p>
+        {footer ? (
+          <div className="border-t border-border pt-4">{footer}</div>
+        ) : null}
       </div>
 
-      <aside className="grid content-start gap-4 rounded-lg border border-border bg-card p-5">
+      <aside className="grid content-start gap-4 rounded-lg border border-border bg-card p-6">
         <h2 className="text-base font-semibold text-foreground">
           Review tool risk
         </h2>
@@ -392,6 +330,7 @@ export function CompanyRoleFields({
         </dl>
         <div className="flex flex-wrap gap-2 border-t border-border pt-3">
           <Button
+            className="px-2 text-xs"
             disabled={disabled}
             onClick={onOpenRuntimeSettings}
             type="button"
@@ -400,6 +339,7 @@ export function CompanyRoleFields({
             Set up a runtime
           </Button>
           <Button
+            className="px-2 text-xs"
             disabled={disabled}
             onClick={onOpenConnections}
             type="button"
@@ -408,6 +348,7 @@ export function CompanyRoleFields({
             Connect a provider
           </Button>
           <Button
+            className="px-2 text-xs"
             disabled={disabled}
             onClick={onRefreshModels}
             type="button"

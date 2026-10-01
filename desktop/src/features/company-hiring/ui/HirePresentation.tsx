@@ -13,11 +13,18 @@ export function HirePageHeader({ title }: { title: string }) {
   );
 }
 
-export function HireBackButton({ onClick }: { onClick: () => void }) {
+export function HireBackButton({
+  disabled = false,
+  onClick,
+}: {
+  disabled?: boolean;
+  onClick: () => void;
+}) {
   return (
     <Button
       aria-label="Back"
       className="mb-4 inline-flex items-center gap-1 px-0 pt-4 text-xs text-muted-foreground hover:text-foreground"
+      disabled={disabled}
       onClick={onClick}
       type="button"
       variant="ghost"

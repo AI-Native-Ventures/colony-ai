@@ -1488,18 +1488,30 @@ test.describe("signed-in canary company UI", () => {
 
         const editor = page.getByTestId("company-role-editor");
         if ((await editor.count()) > 0) {
+          await expect(
+            page.getByTestId("company-role-pack-page"),
+          ).toBeVisible();
+          await expect(
+            page.getByTestId("community-catalog-dialog"),
+          ).toHaveCount(0);
+          await expect(
+            page.getByRole("heading", { name: "Role catalog", exact: true }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole("button", { name: "Back", exact: true }),
+          ).toBeVisible();
           await expect(page.locator("#company-role-title")).toHaveValue("");
           await expect(page.locator("#company-role-job")).toHaveValue("");
           await expect(page.locator("#company-role-skills")).toHaveValue("");
-          await expect(
-            editor.locator('input[type="checkbox"]:checked'),
-          ).toHaveCount(0);
-          await expect(
-            editor.locator('input[id^="company-role-tool-"]'),
-          ).toHaveCount(0);
-          await expect(
-            editor.locator('select[id^="company-role-risk-"]'),
-          ).toHaveCount(0);
+          const toolScope = editor.locator("#company-role-tool-scope");
+          await expect(toolScope).toBeDisabled();
+          await expect(toolScope).toHaveValue("");
+          await expect(toolScope.locator("option")).toHaveCount(1);
+          const workerModel = editor.locator("#company-role-worker-model");
+          await expect(workerModel).toHaveValue("");
+          await expect(workerModel.locator("option").first()).toHaveText(
+            "Choose worker model",
+          );
           await expect(
             editor.getByText(
               "No model, tool or allowance is preselected. The real picker is populated by configured runtimes.",
@@ -1514,6 +1526,9 @@ test.describe("signed-in canary company UI", () => {
         );
       },
       "13-hire-role-pack-draft-or-runtime-recovery",
+    );
+    needsApi.push(
+      "Role tool-scope choices have no real catalog API or records, so the designed selector stays unavailable and no scope is added.",
     );
     needsApi.push(
       "Founder handoff requires a real canary hire proposal and authorized founder-review record; none was available for this run, and no proposal was submitted to create one.",

@@ -72,6 +72,7 @@ type AgentDialogInstanceEditProps = {
 
 type AgentDialogDefinitionEditProps = {
   mode: "definition-edit";
+  embedded?: boolean;
   companyRoleMode?: boolean;
   open: boolean;
   title: string;
