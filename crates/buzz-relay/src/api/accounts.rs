@@ -128,6 +128,24 @@ struct SigninRequest {
     password: SecretString,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SigninDecision {
+    VerifyPassword,
+    InvalidCredentials,
+    EmailUnverified,
+    Authenticated,
+}
+
+fn signin_decision(email_verified: bool, password_matches: Option<bool>) -> SigninDecision {
+    match password_matches {
+        None if !email_verified => SigninDecision::EmailUnverified,
+        None => SigninDecision::VerifyPassword,
+        Some(false) => SigninDecision::InvalidCredentials,
+        Some(true) if !email_verified => SigninDecision::EmailUnverified,
+        Some(true) => SigninDecision::Authenticated,
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct GoogleRequest {
@@ -649,25 +667,39 @@ async fn signin(
             .map_err(|_| account_unavailable())?;
         return Err(invalid_credentials());
     };
-    if account.email_verified_at.is_none() {
+
+    let email_verified = account.email_verified_at.is_some();
+    if signin_decision(email_verified, None) == SigninDecision::EmailUnverified {
         ensure_mail_enabled(&state)?;
         issue_code(&state, &account, AccountCodePurpose::VerifyEmail).await?;
         return Err(json_error(StatusCode::FORBIDDEN, "email_unverified"));
     }
+
     let correct = crypto::verify_password(
         request.password.into_inner(),
         account.password_hash().map(str::to_owned),
     )
     .await
     .map_err(|_| account_unavailable())?;
-    if !correct {
-        state
-            .db
-            .account_password_signin_failure(account.id)
-            .await
-            .map_err(|error| map_db_error("signin", error))?;
-        return Err(invalid_credentials());
+
+    match signin_decision(email_verified, Some(correct)) {
+        SigninDecision::InvalidCredentials => {
+            state
+                .db
+                .account_password_signin_failure(account.id)
+                .await
+                .map_err(|error| map_db_error("signin", error))?;
+            return Err(invalid_credentials());
+        }
+        SigninDecision::EmailUnverified => {
+            ensure_mail_enabled(&state)?;
+            issue_code(&state, &account, AccountCodePurpose::VerifyEmail).await?;
+            return Err(json_error(StatusCode::FORBIDDEN, "email_unverified"));
+        }
+        SigninDecision::Authenticated => {}
+        SigninDecision::VerifyPassword => return Err(account_unavailable()),
     }
+
     let account = state
         .db
         .account_password_signin_success(account.id)
@@ -675,6 +707,24 @@ async fn signin(
         .map_err(|error| map_db_error("signin", error))?
         .ok_or_else(invalid_credentials)?;
     session(&state.config, &account)
+}
+
+#[cfg(test)]
+mod signin_policy_tests {
+    use super::{signin_decision, SigninDecision};
+
+    #[test]
+    fn unverified_signin_does_not_skip_password_verification() {
+        assert_eq!(signin_decision(false, None), SigninDecision::VerifyPassword);
+        assert_eq!(
+            signin_decision(false, Some(false)),
+            SigninDecision::InvalidCredentials
+        );
+        assert_eq!(
+            signin_decision(false, Some(true)),
+            SigninDecision::EmailUnverified
+        );
+    }
 }
 
 /// `POST /api/accounts/google` verifies a Google ID token and creates or links.
