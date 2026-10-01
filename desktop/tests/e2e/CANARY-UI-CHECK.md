@@ -3,7 +3,8 @@
 The `canary` Playwright project is local-only. It drives the E2E web build over
 the real canary community relay with the throwaway owner account and NIP-42
 signing. An optional managed-agent fixture lets the suite inspect employee
-profile, duties, lessons, permissions, and AI spend screens.
+profile, duties, lessons, permissions, and AI spend screens when the matching
+server-side records make those screens reachable.
 The Playwright project is absent unless `BUZZ_E2E_CANARY=1` is set, and refuses
 to run in CI.
 
@@ -48,31 +49,39 @@ BUZZ_E2E_CANARY=1 \
 The E2E web build uses the relay-backed browser bridge and does not start the
 Tauri host or access the macOS keychain. Screenshots and Playwright artifacts
 are written to the configured artifact directory outside the repository.
-The test creates synthetic canary goals, asks, work records, messages, and a
-temporary secret binding. It never enables Mesh sharing, issues or sends an
-invoice, or logs the account signing key or synthetic secret input.
+The test creates synthetic canary goals, work records, and messages. It does
+not create ask or secret-binding records without a real authorized recipient
+or request record. It never enables Mesh sharing, issues or sends an invoice,
+or logs the account signing key.
 
 The ask-recipient check adapts to the real channel membership. It verifies that
 the signed-in owner is not offered as a recipient, and records the
 single-member recovery state only when that state is present. Ask creation,
 new-thread setup, ask-type selection, allowance drafts, and hire-proposal drafts
-are left unsent.
-The synthetic approval and decision-reason check runs only when the canary has
-an eligible human recipient that the managed-agent fixture lets the suite
-identify. The relay permits agents to receive only question or verdict asks, so
-the suite reports decision reasons as unproven when it cannot confirm a human
-recipient.
+are left unsent. Decision reasons require a real eligible human recipient
+because the relay permits agents to receive only question or verdict asks.
+Secret binding and revocation require a real pending request authored by the
+managed agent. The suite reports both paths as `NEEDS_API` when the canary has
+no eligible records.
 
 The frozen company-v9 contract gives human members Overview and History only.
-The suite checks those tabs on the owner and checks employee-only tabs with the
-managed agent. The fixture must have mode `0600`; the test reads only its public
-key and never returns or logs its signing material.
+The suite checks those tabs on the owner and checks employee-only tabs when the
+managed-agent identity has a real employee or position record. If the identity
+is absent from the company roster, the profile, duties, and lessons are
+reported as `NEEDS_API`. The fixture must have mode `0600`; the test reads only
+its public key and never returns or logs its signing material.
 
 The existing Tools & access grant page is separate from the frozen batch 2
 context-bound tool-consent flow. The suite checks that the generic grant starts
 with blank action, scope and expiry fields, but reports the batch 2 consent flow
 as `NEEDS_API` when the canary has no real pending tool-consent request. It does
 not synthesize that request from mockup state.
+
+Hiring inspection opens the empty role-pack editor and verifies that its title,
+job, skills, tool scope and worker menu have no preselected values. It records
+runtime recovery when the canary has no available configured runtime and never
+saves a role pack. Appearance inspection opens the named theme catalog and a
+Buzz preview, then cancels the preview without applying a theme or density.
 
 The suite captures each exercised desktop state in light and dark at 1440x900
 and 1728x1117. It records console and page errors, failed requests, HTTP errors,

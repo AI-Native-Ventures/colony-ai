@@ -6,11 +6,6 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 
-import type { RelayEvent } from "../../src/shared/api/types";
-import {
-  KIND_ASK_ACTION,
-  KIND_ASK_RESPONSE,
-} from "../../src/shared/constants/kinds";
 import { waitForAnimations } from "../helpers/animations";
 import {
   installRelayBridge,
@@ -32,7 +27,6 @@ const ACCOUNT_FILE = process.env.BUZZ_E2E_CANARY_ACCOUNT_FILE ?? "";
 const MANAGED_AGENT_FILE = process.env.BUZZ_E2E_CANARY_AGENT_FILE ?? "";
 const ARTIFACT_DIR = process.env.BUZZ_E2E_CANARY_ARTIFACT_DIR ?? "";
 const AUTH_SUCCESS_KEY = "__BUZZ_E2E_NIP42_AUTH_SUCCESS_COUNT__";
-const SECRET_SENTINEL = `canary-credential-${randomUUID()}`;
 
 let account: CanaryAccount;
 let identity: CanaryIdentity;
@@ -65,7 +59,6 @@ function redactPath(rawPath: string) {
 
 function redactDiagnosticText(value: string) {
   return value
-    .replaceAll(SECRET_SENTINEL, "[REDACTED_SECRET_SENTINEL]")
     .replace(/\bnsec1[0-9a-z]+/gi, "[REDACTED_NSEC]")
     .replace(/\bnpub1[0-9a-z]+/gi, "[REDACTED_NPUB]")
     .replace(/\b[0-9a-f]{64}\b/gi, "[REDACTED_HEX64]")
@@ -581,11 +574,23 @@ async function captureReadOnlyRoute(
   }
 }
 
-async function inspectManagedAgent(page: Page, unproven: string[]) {
+async function inspectManagedAgent(page: Page, needsApi: string[]) {
   if (!managedAgentPubkey) {
-    unproven.push(
-      "Managed agent profile, duties, and lessons require BUZZ_E2E_CANARY_AGENT_FILE; no managed agent fixture was supplied.",
+    needsApi.push(
+      "Managed agent profile, duties, and lessons require a real authorized employee record; no managed agent fixture was supplied.",
     );
+    return;
+  }
+  await page.goto("/#/team");
+  await expect(page.getByTestId("company-team-screen")).toBeVisible();
+  const managedAgentRow = page.getByTestId(
+    `company-team-member-${managedAgentPubkey}`,
+  );
+  if ((await managedAgentRow.count()) === 0) {
+    needsApi.push(
+      "The managed agent identity has no real employee or position record on canary, so its profile, duties, and lessons are not reachable.",
+    );
+    await capture(page, "08-team-managed-agent-unavailable-no-employee-record");
     return;
   }
   await page.goto(`/#/team/detail/${managedAgentPubkey}`);
@@ -616,64 +621,6 @@ async function inspectManagedAgent(page: Page, unproven: string[]) {
   }
 }
 
-async function publishRelayEvent(
-  page: Page,
-  event: { kind: number; content: string; tags: string[][] },
-) {
-  const result = await page.evaluate(async (template) => {
-    const testWindow = window as Window & {
-      __BUZZ_E2E_PUBLISH_RELAY_EVENT__?: (
-        value: typeof template,
-      ) => Promise<{ accepted: boolean; event_id: string; message: string }>;
-    };
-    const publish = testWindow.__BUZZ_E2E_PUBLISH_RELAY_EVENT__;
-    if (!publish) throw new Error("The signed canary publish seam is missing.");
-    return publish(template);
-  }, event);
-  expect(result.accepted).toBe(true);
-  expect(result.event_id).toMatch(/^[0-9a-f]{64}$/);
-  return result.event_id;
-}
-
-async function publishExpectedRelayRejection(
-  page: Page,
-  event: { kind: number; content: string; tags: string[][] },
-) {
-  const result = await page.evaluate(async (template) => {
-    const testWindow = window as Window & {
-      __BUZZ_E2E_PUBLISH_RELAY_EVENT__?: (
-        value: typeof template,
-      ) => Promise<{ accepted: boolean; event_id: string; message: string }>;
-    };
-    const publish = testWindow.__BUZZ_E2E_PUBLISH_RELAY_EVENT__;
-    if (!publish) throw new Error("The signed canary publish seam is missing.");
-    try {
-      const result = await publish(template);
-      return { accepted: result.accepted, message: result.message };
-    } catch (cause) {
-      return {
-        accepted: false,
-        message: cause instanceof Error ? cause.message : "",
-      };
-    }
-  }, event);
-  expect(result.accepted).toBe(false);
-  return result.message;
-}
-
-async function queryRelay(page: Page, filters: Array<Record<string, unknown>>) {
-  return page.evaluate(async (relayFilters) => {
-    const testWindow = window as Window & {
-      __BUZZ_E2E_QUERY_RELAY__?: (
-        value: Array<Record<string, unknown>>,
-      ) => Promise<RelayEvent[]>;
-    };
-    const query = testWindow.__BUZZ_E2E_QUERY_RELAY__;
-    if (!query) throw new Error("The signed canary query seam is missing.");
-    return query(relayFilters);
-  }, filters);
-}
-
 async function createGoal(page: Page, title: string) {
   await page.goto("/#/goals/new");
   await expect(page.getByTestId("goal-form-screen")).toBeVisible();
@@ -700,14 +647,15 @@ async function createMessage(
   await page.goto(`/#/channels/${account.channel}`);
   await page.getByTestId("message-input").fill(content);
   await page.getByTestId("send-message").click();
-  const row = page
-    .locator("[data-message-id]")
+  const relayBackedRow = page
+    .locator('[data-message-id]:not([data-message-id^="optimistic-"])')
     .filter({ hasText: visibleText });
-  await expect(row).toHaveCount(1);
-  await expect
-    .poll(() => row.getAttribute("data-message-id"), { timeout: 30_000 })
-    .toMatch(/^[0-9a-f]{64}$/);
-  const id = await row.getAttribute("data-message-id");
+  await expect(relayBackedRow).toHaveCount(1);
+  await expect(relayBackedRow).toHaveAttribute(
+    "data-message-id",
+    /^[0-9a-f]{64}$/,
+  );
+  const id = await relayBackedRow.getAttribute("data-message-id");
   if (!id) throw new Error("The canary relay message omitted its event id.");
   await page.reload();
   const persistedRow = page
@@ -717,48 +665,6 @@ async function createMessage(
   await expect(persistedRow).toBeVisible();
   await expect(persistedRow).toContainText(visibleText);
   return id;
-}
-
-async function createAsk(
-  page: Page,
-  input: { askId: string; title: string; addresseePubkey: string },
-) {
-  const now = Math.floor(Date.now() / 1000);
-  const ask = {
-    schemaVersion: 1,
-    askId: input.askId,
-    type: "approval",
-    category: "general",
-    title: input.title,
-    body: "Confirm the synthetic canary checklist is complete.",
-    threadRootEventId: account.rootId,
-    addresseePubkey: input.addresseePubkey,
-    decideBy: new Date((now + 3600) * 1000).toISOString(),
-  };
-  const createAction = {
-    schemaVersion: 1,
-    askId: input.askId,
-    action: "create",
-    ask,
-  };
-  await publishRelayEvent(page, {
-    kind: KIND_ASK_ACTION,
-    content: JSON.stringify(createAction),
-    tags: [
-      ["h", account.channel],
-      ["d", `channel:${account.channel}:ask:${input.askId}`],
-      ["e", account.rootId, "", "root"],
-      ["e", account.rootId, "", "reply"],
-    ],
-  });
-}
-
-async function openCanaryAsk(page: Page, askId: string, title: string) {
-  await page.goto(`/#/asks/${account.channel}/${askId}`);
-  await expect(page.getByTestId("ask-detail-screen")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: title, exact: true }),
-  ).toBeVisible({ timeout: 30_000 });
 }
 
 test.describe("signed-in canary company UI", () => {
@@ -815,7 +721,6 @@ test.describe("signed-in canary company UI", () => {
     const unproven: string[] = [];
     const needsApi: string[] = [];
     let acceptedAuthCount = 0;
-    let relayWritesRateLimited = false;
     const observeRelaySockets = (targetPage: Page, label: string) => {
       targetPage.on("websocket", (socket) => {
         let url: URL;
@@ -955,7 +860,6 @@ test.describe("signed-in canary company UI", () => {
         return "loading";
       })
       .toMatch(/^(empty|ready)$/);
-    let decisionRecipientPubkey: string | undefined;
     if (
       (await page
         .getByText("You’re the only member here", { exact: true })
@@ -980,15 +884,7 @@ test.describe("signed-in canary company UI", () => {
         (pubkey) => pubkey.toLowerCase() !== identity.pubkey.toLowerCase(),
       );
       expect(eligibleRecipients.length).toBeGreaterThan(0);
-      decisionRecipientPubkey = managedAgentPubkey
-        ? eligibleRecipients.find(
-            (pubkey) =>
-              pubkey.toLowerCase() !== managedAgentPubkey.toLowerCase(),
-          )
-        : undefined;
-      await askRecipient.selectOption(
-        decisionRecipientPubkey ?? eligibleRecipients[0],
-      );
+      await askRecipient.selectOption(eligibleRecipients[0]);
       await expect(askRecipient).not.toHaveValue(identity.pubkey);
       await page
         .getByLabel("What needs a response?")
@@ -999,448 +895,177 @@ test.describe("signed-in canary company UI", () => {
       await capture(page, "03-asks-recipient-draft-not-sent");
     }
 
-    if (decisionRecipientPubkey) {
-      const askId = randomUUID();
-      const askTitle = `Canary approval ${askId.slice(0, 8)}`;
-      await waitForCanaryWriteWindow(page);
-      await createAsk(page, {
-        askId,
-        title: askTitle,
-        addresseePubkey: decisionRecipientPubkey,
-      });
-      const seededAskHeads = await queryRelay(page, [
-        {
-          kinds: [30643],
-          authors: [relaySelf],
-          "#h": [account.channel],
-          "#d": [`channel:${account.channel}:ask:${askId}`],
-          limit: 10,
-        },
-      ]);
-      expect(seededAskHeads.length).toBeGreaterThan(0);
-      const initialAskHeadId = seededAskHeads[0]?.id;
-      if (!initialAskHeadId) {
-        throw new Error("The new canary ask did not produce a head event.");
-      }
-      try {
-        await openCanaryAsk(page, askId, askTitle);
-      } catch (error) {
-        const trace = Object.fromEntries(relayFrameCounts);
-        throw new Error(
-          `Ask detail did not load. Canary relay frames: ${JSON.stringify(trace)}. ${error instanceof Error ? error.message : ""}`,
-        );
-      }
-      await page.getByLabel("Reason").fill("Approved for canary review.");
-      await waitForCanaryWriteWindow(page);
-      await page.getByRole("button", { name: "Record response" }).click();
-      await expect(page.getByTestId("ask-resolved")).toContainText(
-        "Approved by You",
-        { timeout: 30_000 },
-      );
-      await page.reload();
-      await expect(page.getByTestId("ask-resolved")).toContainText(
-        "Approved by You",
-        { timeout: 30_000 },
-      );
-      await capture(page, "03-asks-approved");
+    needsApi.push(
+      "Ask decision reasons need a real eligible human recipient. The canary fixture cannot verify one, and the relay rejects Approval asks addressed to agents.",
+    );
 
-      await waitForCanaryWriteWindow(page);
-      const staleDecisionMessage = await publishExpectedRelayRejection(page, {
-        kind: KIND_ASK_RESPONSE,
-        content: JSON.stringify({
-          schemaVersion: 1,
-          askId,
-          expectedHeadEventId: initialAskHeadId,
-          outcome: "approved",
-          reason: "A stale decision must fail.",
-        }),
-        tags: [
-          ["h", account.channel],
-          ["d", `channel:${account.channel}:ask:${askId}`],
-        ],
-      });
-      if (/current ask|ask is resolved/i.test(staleDecisionMessage)) {
-        console.log("CANARY_STALE_ASK_REJECTION", "stale head rejected");
-      } else if (/rate-limited/i.test(staleDecisionMessage)) {
-        relayWritesRateLimited = true;
-        canaryFindings.push(
-          "Asks stale decision: relay quota blocked the stale-head rejection check.",
-        );
-      } else {
-        throw new Error(
-          "The stale decision was rejected for a reason other than the current ask or relay quota.",
-        );
-      }
-      await expect(page.getByTestId("ask-resolved")).toContainText(
-        "Approved by You",
-        { timeout: 30_000 },
-      );
-      await expect(
-        page.getByRole("button", { name: "Record response" }),
-      ).toHaveCount(0);
-      await page.reload();
-      await expect(page.getByTestId("ask-resolved")).toContainText(
-        "Approved by You",
-        { timeout: 30_000 },
-      );
-      await capture(
-        page,
-        relayWritesRateLimited
-          ? "03-asks-current-head-after-rate-limit"
-          : "03-asks-stale-decision-refused",
-      );
-    } else {
-      unproven.push(
-        "Ask decision reasons remain unproven because the suite cannot confirm an eligible human decision recipient. The managed agent can only receive question or verdict asks.",
-      );
-    }
+    const sourceLabel = `Canary work source ${randomUUID().slice(0, 8)}`;
+    const sourceText = `${sourceLabel} buzz://goal/${goalId}`;
+    await waitForCanaryWriteWindow(page);
+    const sourceId = await createMessage(page, sourceText, sourceLabel);
+    const sourceRow = page
+      .getByTestId("message-timeline")
+      .locator(`[data-message-id="${sourceId}"]`)
+      .first();
+    await expect(sourceRow).toBeVisible();
+    await expect(
+      sourceRow.getByTestId(`create-company-work-from-message-${sourceId}`),
+    ).toBeVisible();
+    await sourceRow
+      .getByTestId(`create-company-work-from-message-${sourceId}`)
+      .click();
+    await expect(page.getByTestId("company-work-form")).toBeVisible();
+    await expect(page.getByTestId("company-work-goal")).toHaveValue(goalId);
+    const workTitle = `Canary work ${randomUUID().slice(0, 8)}`;
+    await page.getByTestId("company-work-title").fill(workTitle);
+    await page
+      .getByTestId("company-work-done-condition")
+      .fill("Canary work evidence is reviewed.");
+    await page.getByTestId("company-work-owner").selectOption(identity.pubkey);
+    await page
+      .getByTestId("company-work-requester")
+      .selectOption(identity.pubkey);
+    await page
+      .getByTestId("company-work-evidence")
+      .fill("The relay accepted this synthetic evidence.");
+    await waitForCanaryWriteWindow(page);
+    await page.getByRole("button", { name: "Create commitment" }).click();
+    await expect(page.getByTestId("company-work-detail")).toContainText(
+      workTitle,
+    );
+    const workId = page.url().match(/#\/work\/detail\/([0-9a-f-]{36})$/)?.[1];
+    if (!workId) throw new Error("The canary work route omitted its id.");
+    await page.reload();
+    await expect(page.getByTestId("company-work-detail")).toContainText(
+      workTitle,
+    );
 
-    if (relayWritesRateLimited) {
-      canaryFindings.push(
-        "Work creation, person and goal result filtering, and thread moves were not run after the relay rejected writes for quota.",
-      );
-      await page.goto(
-        `/#/channels/${account.channel}?messageId=${account.rootId}&threadRootId=${account.rootId}`,
-      );
-      await expect(
-        page.getByTestId(`create-company-work-from-message-${account.rootId}`),
-      ).toBeVisible();
-      await page
-        .getByTestId(`create-company-work-from-message-${account.rootId}`)
-        .click();
-      await expect(page.getByTestId("company-work-form")).toBeVisible();
-      await page
-        .getByTestId("company-work-title")
-        .fill("Canary work form, not submitted");
-      await page
-        .getByTestId("company-work-done-condition")
-        .fill("A synthetic canary commitment should be reviewed.");
-      await page
-        .getByTestId("company-work-owner")
-        .selectOption(identity.pubkey);
-      await page
-        .getByTestId("company-work-requester")
-        .selectOption(identity.pubkey);
-      await page.getByTestId("company-work-goal").selectOption(goalId);
-      await page
-        .getByTestId("company-work-evidence")
-        .fill("The relay write was intentionally skipped after quota refusal.");
-      await capture(page, "04-work-from-message-form-not-submitted");
+    await page.goto(`/#/work/edit/${workId}`);
+    await expect(page.getByTestId("company-work-form")).toBeVisible();
+    await expect(page.getByTestId("company-work-title")).toHaveValue(workTitle);
+    await page
+      .getByTestId("company-work-title")
+      .fill("Canary work edit draft, not saved");
+    await capture(page, "04-work-edit-draft-not-saved");
 
-      await page.goto("/#/company-work");
-      await expect(page.getByTestId("company-work-list")).toBeVisible();
-      const ownerFilter = page.getByTestId("company-work-owner-filter");
-      const goalFilter = page.getByTestId("company-work-goal-filter");
-      await ownerFilter.click();
-      const ownerSearch = page.getByRole("textbox", { name: "Search owners" });
-      await ownerSearch.fill("You");
-      await ownerSearch.press("ArrowDown");
-      await page.keyboard.press("Enter");
-      await goalFilter.click();
-      const goalSearch = page.getByRole("textbox", { name: "Search goals" });
-      await goalSearch.fill(goalTitle);
-      await goalSearch.press("ArrowDown");
-      await page.keyboard.press("Enter");
-      await expect(page.getByTestId("company-work-filter-chips")).toContainText(
-        "Owner:",
-      );
-      await expect(page.getByTestId("company-work-filter-chips")).toContainText(
-        "Goal:",
-      );
-      await capture(page, "04-work-filters-no-canary-record");
-      await page.goto("/#/team");
-      await expect(page.getByTestId("company-team-screen")).toBeVisible();
-      const ownerRow = page.getByTestId(
-        `company-team-member-${identity.pubkey}`,
-      );
-      await expect(ownerRow).toBeVisible();
-      await ownerRow.click();
-      await expect(
-        page.getByTestId("company-team-member-profile"),
-      ).toBeVisible();
-      await capture(page, "05-team-owner-profile");
-      await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
-      await expect(page.getByRole("tab", { name: "History" })).toBeVisible();
-
-      await page.goto("/#/team/org");
-      await expect(
-        page.getByRole("tree", { name: "Reporting lines" }),
-      ).toBeVisible();
-      await expect(
-        page.getByTestId(`company-team-member-${identity.pubkey}`),
-      ).toBeVisible();
-      await capture(page, "05-team-org-chart");
-
-      await page.goto(`/#/team/detail/${identity.pubkey}`);
-      await expect(
-        page.getByTestId("company-team-member-profile"),
-      ).toBeVisible();
-      await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
-      await expect(page.getByRole("tab", { name: "History" })).toBeVisible();
-      await capture(page, "08-owner-profile-overview-and-history");
-
-      await inspectManagedAgent(page, unproven);
-
-      canaryFindings.push(
-        "Secret binding and revocation were not attempted after the relay quota refusal.",
-      );
-      await page.goto("/#/secrets?state=empty");
-      await expect(page.getByTestId("secret-bindings-screen")).toBeVisible();
-      await expect(page.getByText("No secrets bound")).toBeVisible();
-      await capture(page, "06-secrets-empty-after-quota");
-    } else {
-      const sourceLabel = `Canary work source ${randomUUID().slice(0, 8)}`;
-      const sourceText = `${sourceLabel} buzz://goal/${goalId}`;
-      await waitForCanaryWriteWindow(page);
-      const sourceId = await createMessage(page, sourceText, sourceLabel);
-      const sourceRow = page
-        .getByTestId("message-timeline")
-        .locator(`[data-message-id="${sourceId}"]`)
-        .first();
-      await expect(sourceRow).toBeVisible();
-      await expect(
-        sourceRow.getByTestId(`create-company-work-from-message-${sourceId}`),
-      ).toBeVisible();
-      await sourceRow
-        .getByTestId(`create-company-work-from-message-${sourceId}`)
-        .click();
-      await expect(page.getByTestId("company-work-form")).toBeVisible();
-      await expect(page.getByTestId("company-work-goal")).toHaveValue(goalId);
-      const workTitle = `Canary work ${randomUUID().slice(0, 8)}`;
-      await page.getByTestId("company-work-title").fill(workTitle);
-      await page
-        .getByTestId("company-work-done-condition")
-        .fill("Canary work evidence is reviewed.");
-      await page
-        .getByTestId("company-work-owner")
-        .selectOption(identity.pubkey);
-      await page
-        .getByTestId("company-work-requester")
-        .selectOption(identity.pubkey);
-      await page
-        .getByTestId("company-work-evidence")
-        .fill("The relay accepted this synthetic evidence.");
-      await waitForCanaryWriteWindow(page);
-      await page.getByRole("button", { name: "Create commitment" }).click();
-      await expect(page.getByTestId("company-work-detail")).toContainText(
-        workTitle,
-      );
-      const workId = page.url().match(/#\/work\/detail\/([0-9a-f-]{36})$/)?.[1];
-      if (!workId) throw new Error("The canary work route omitted its id.");
-      await page.reload();
-      await expect(page.getByTestId("company-work-detail")).toContainText(
-        workTitle,
-      );
-
-      await page.goto(`/#/work/edit/${workId}`);
-      await expect(page.getByTestId("company-work-form")).toBeVisible();
-      await expect(page.getByTestId("company-work-title")).toHaveValue(
-        workTitle,
-      );
-      await page
-        .getByTestId("company-work-title")
-        .fill("Canary work edit draft, not saved");
-      await capture(page, "04-work-edit-draft-not-saved");
-
-      await page.goto(`/#/work/tracking/watchdog/${workId}`);
-      if (
-        (await page
-          .getByText("Watchdog settings unavailable", { exact: true })
-          .count()) > 0
-      ) {
-        needsApi.push(
-          "Work watchdog configuration is unreachable because the live canary returned no work tracking records.",
-        );
-      } else {
-        await expect(
-          page.getByText("Off until configured", { exact: true }),
-        ).toBeVisible();
-        await expect(
-          page.getByText("No interval selected", { exact: true }),
-        ).toBeVisible();
-        await expect(
-          page.getByLabel("Quiet time before a review, minutes"),
-        ).toHaveValue("");
-        await expect(
-          page.getByRole("button", { name: "Review configuration" }),
-        ).toBeDisabled();
-      }
-      await capture(page, "04-work-watchdog-off-no-interval");
-
-      await page.goto(`/#/work/tracking/due/${workId}`);
-      await expect(page.getByTestId("company-work-detail")).toBeVisible();
+    await page.goto(`/#/work/tracking/watchdog/${workId}`);
+    if (
+      (await page
+        .getByText("Watchdog settings unavailable", { exact: true })
+        .count()) > 0
+    ) {
       needsApi.push(
-        "Work due-date editing is unreachable until the server exposes the configured workspace timezone.",
+        "Work watchdog configuration is unreachable because the live canary returned no work tracking records.",
       );
-      await capture(page, "04-work-due-date-unavailable-without-timezone");
-
-      await page.goto("/#/company-work");
-      const ownerFilter = page.getByTestId("company-work-owner-filter");
-      const goalFilter = page.getByTestId("company-work-goal-filter");
-      await ownerFilter.click();
-      await page
-        .getByRole("textbox", { name: "Search owners" })
-        .fill(identity.pubkey.slice(0, 8));
-      const ownerOption = page.getByTestId(
-        `company-work-owner-filter-option-${identity.pubkey.toLowerCase()}`,
-      );
-      await expect(ownerOption).toBeVisible();
-      await ownerOption.click();
-      await goalFilter.click();
-      await page.getByRole("textbox", { name: "Search goals" }).fill(goalTitle);
-      const goalOption = page.getByTestId(
-        `company-work-goal-filter-option-${goalId}`,
-      );
-      await expect(goalOption).toBeVisible();
-      await goalOption.click();
+    } else {
       await expect(
-        page.getByTestId(`company-work-row-${workId}`),
-      ).toBeVisible();
-      await expect(page.getByTestId("company-work-filter-chips")).toContainText(
-        "Owner:",
-      );
-      await expect(page.getByTestId("company-work-filter-chips")).toContainText(
-        "Goal:",
-      );
-
-      const destinationText = `Canary destination ${randomUUID().slice(0, 8)}`;
-      await waitForCanaryWriteWindow(page);
-      const destinationRootId = await createMessage(page, destinationText);
-      await page.goto(`/#/work/detail/${workId}`);
-      await page
-        .getByRole("button", { name: "Move to another thread" })
-        .click();
-      await expect(page.getByTestId("company-work-move")).toBeVisible();
-      const destinationRoot = page.getByTestId(
-        `company-work-move-root-${destinationRootId}`,
-      );
-      await expect(destinationRoot).toBeEnabled();
-      await destinationRoot.click();
-      await page.getByRole("button", { name: "Review move" }).click();
-      await waitForCanaryWriteWindow(page);
-      await page.getByRole("button", { name: "Move work item" }).click();
-      await expect(page.getByTestId("company-work-detail")).toContainText(
-        workTitle,
-      );
-      await page.reload();
-      await expect(page.getByTestId("company-work-detail")).toContainText(
-        workTitle,
-      );
-      await page.goto(
-        `/#/channels/${account.channel}?messageId=${destinationRootId}&threadRootId=${destinationRootId}`,
-      );
-      await expect(
-        page.getByTestId(`company-work-current-card-${workId}`),
-      ).toBeVisible();
-      await capture(page, "04-work-moved-with-evidence");
-
-      await page.goto(`/#/team/detail/${identity.pubkey}`);
-      await expect(
-        page.getByTestId("company-team-member-profile"),
-      ).toBeVisible();
-      await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
-      await expect(page.getByRole("tab", { name: "History" })).toBeVisible();
-      await capture(page, "05-team-human-owner-profile");
-
-      await page.goto("/#/team/org");
-      await expect(
-        page.getByRole("tree", { name: "Reporting lines" }),
+        page.getByText("Off until configured", { exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByTestId(`company-team-member-${identity.pubkey}`),
+        page.getByText("No interval selected", { exact: true }),
       ).toBeVisible();
-      await capture(page, "05-team-org-chart");
-
-      await page.goto(`/#/team/detail/${identity.pubkey}`);
       await expect(
-        page.getByTestId("company-team-member-profile"),
-      ).toBeVisible();
-      await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
-      await expect(page.getByRole("tab", { name: "History" })).toBeVisible();
-      await capture(page, "08-owner-profile-overview-and-history");
-
-      await inspectManagedAgent(page, unproven);
-
-      const secretAskId = randomUUID();
-      const secretAsk = {
-        schemaVersion: 1,
-        askId: secretAskId,
-        action: "create",
-        ask: {
-          schemaVersion: 1,
-          askId: secretAskId,
-          type: "question",
-          category: "secret",
-          title: "Canary secure connection",
-          body: "Bind a synthetic canary credential for this UI check.",
-          threadRootEventId: account.rootId,
-          addresseePubkey: identity.pubkey,
-          secretRequest: {
-            toolName: "Canary publishing",
-            allowedUse: "Synthetic canary UI check only",
-          },
-        },
-      };
-      await waitForCanaryWriteWindow(page);
-      await publishRelayEvent(page, {
-        kind: KIND_ASK_ACTION,
-        content: JSON.stringify(secretAsk),
-        tags: [
-          ["h", account.channel],
-          ["d", `channel:${account.channel}:ask:${secretAskId}`],
-          ["e", account.rootId, "", "root"],
-          ["e", account.rootId, "", "reply"],
-        ],
-      });
-      await page.goto(
-        `/#/secrets?state=request&channelId=${account.channel}&askId=${secretAskId}`,
-      );
+        page.getByLabel("Quiet time before a review, minutes"),
+      ).toHaveValue("");
       await expect(
-        page.getByText("Bind a synthetic canary credential for this UI check."),
-      ).toBeVisible();
-      await page.getByRole("button", { name: "Enter securely" }).click();
-      await expect(page.getByTestId("secret-credential-input")).toBeVisible();
-      await page.getByLabel("Connection name").fill("Canary publishing");
-      await page.getByLabel("Credential").fill(SECRET_SENTINEL);
-      await waitForCanaryWriteWindow(page);
-      await page.getByRole("button", { name: "Bind securely" }).click();
-      await expect(page.getByText("Binding created")).toBeVisible();
-      await expect(page.getByTestId("secret-credential-input")).toHaveCount(0);
-      await page.reload();
-      await expect(page.getByText("Binding created")).toBeVisible();
-      await expect(page.getByTestId("secret-credential-input")).toHaveCount(0);
-      const secretHeads = await queryRelay(page, [
-        { kinds: [30647], authors: [relaySelf], limit: 100 },
-      ]);
-      expect(secretHeads.length).toBeGreaterThan(0);
-      expect(
-        secretHeads.some((event) => event.content.includes(SECRET_SENTINEL)),
-      ).toBe(false);
-      await capture(page, "06-secrets-bound-metadata-only");
-      await waitForCanaryWriteWindow(page);
-      await page
-        .getByRole("button", {
-          name: "Review and revoke binding Canary publishing",
-        })
-        .click();
-      await expect(
-        page.getByRole("heading", { name: "Revoke this binding?" }),
-      ).toBeVisible();
-      await page.getByRole("button", { name: "Revoke binding" }).click();
-      await expect(page.getByText("Binding revoked")).toBeVisible();
-      await page.reload();
-      await expect(page.getByText("Binding revoked")).toBeVisible();
-      await expect(page.getByTestId("secret-credential-input")).toHaveCount(0);
-      const revokedSecretHeads = await queryRelay(page, [
-        { kinds: [30647], authors: [relaySelf], limit: 100 },
-      ]);
-      expect(
-        revokedSecretHeads.some((event) =>
-          event.content.includes(SECRET_SENTINEL),
-        ),
-      ).toBe(false);
-      await capture(page, "06-secrets-revoked");
+        page.getByRole("button", { name: "Review configuration" }),
+      ).toBeDisabled();
     }
+    await capture(page, "04-work-watchdog-off-no-interval");
+
+    await page.goto(`/#/work/tracking/due/${workId}`);
+    await expect(page.getByTestId("company-work-detail")).toBeVisible();
+    needsApi.push(
+      "Work due-date editing is unreachable until the server exposes the configured workspace timezone.",
+    );
+    await capture(page, "04-work-due-date-unavailable-without-timezone");
+
+    await page.goto("/#/company-work");
+    const ownerFilter = page.getByTestId("company-work-owner-filter");
+    const goalFilter = page.getByTestId("company-work-goal-filter");
+    await ownerFilter.click();
+    await page
+      .getByRole("textbox", { name: "Search owners" })
+      .fill(identity.pubkey.slice(0, 8));
+    const ownerOption = page.getByTestId(
+      `company-work-owner-filter-option-${identity.pubkey.toLowerCase()}`,
+    );
+    await expect(ownerOption).toBeVisible();
+    await ownerOption.click();
+    await goalFilter.click();
+    await page.getByRole("textbox", { name: "Search goals" }).fill(goalTitle);
+    const goalOption = page.getByTestId(
+      `company-work-goal-filter-option-${goalId}`,
+    );
+    await expect(goalOption).toBeVisible();
+    await goalOption.click();
+    await expect(page.getByTestId(`company-work-row-${workId}`)).toBeVisible();
+    await expect(page.getByTestId("company-work-filter-chips")).toContainText(
+      "Owner:",
+    );
+    await expect(page.getByTestId("company-work-filter-chips")).toContainText(
+      "Goal:",
+    );
+
+    const destinationText = `Canary destination ${randomUUID().slice(0, 8)}`;
+    await waitForCanaryWriteWindow(page);
+    const destinationRootId = await createMessage(page, destinationText);
+    await page.goto(`/#/work/detail/${workId}`);
+    await page.getByRole("button", { name: "Move to another thread" }).click();
+    await expect(page.getByTestId("company-work-move")).toBeVisible();
+    const destinationRoot = page.getByTestId(
+      `company-work-move-root-${destinationRootId}`,
+    );
+    await expect(destinationRoot).toBeEnabled();
+    await destinationRoot.click();
+    await page.getByRole("button", { name: "Review move" }).click();
+    await waitForCanaryWriteWindow(page);
+    await page.getByRole("button", { name: "Move work item" }).click();
+    await expect(page.getByTestId("company-work-detail")).toContainText(
+      workTitle,
+    );
+    await page.reload();
+    await expect(page.getByTestId("company-work-detail")).toContainText(
+      workTitle,
+    );
+    await page.goto(
+      `/#/channels/${account.channel}?messageId=${destinationRootId}&threadRootId=${destinationRootId}`,
+    );
+    await expect(
+      page.getByTestId(`company-work-current-card-${workId}`),
+    ).toBeVisible();
+    await capture(page, "04-work-moved-with-evidence");
+
+    await page.goto(`/#/team/detail/${identity.pubkey}`);
+    await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "History" })).toBeVisible();
+    await capture(page, "05-team-human-owner-profile");
+
+    await page.goto("/#/team/org");
+    await expect(
+      page.getByRole("tree", { name: "Reporting lines" }),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId(`company-team-member-${identity.pubkey}`),
+    ).toBeVisible();
+    await capture(page, "05-team-org-chart");
+
+    await page.goto(`/#/team/detail/${identity.pubkey}`);
+    await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "History" })).toBeVisible();
+    await capture(page, "08-owner-profile-overview-and-history");
+
+    await inspectManagedAgent(page, needsApi);
+
+    needsApi.push(
+      "Secret binding and revocation need a real pending request authored by the managed agent. No such server-side record is available on canary, so the suite does not synthesize one.",
+    );
+    await page.goto("/#/secrets?state=empty");
+    await expect(page.getByTestId("secret-bindings-screen")).toBeVisible();
+    await expect(page.getByText("No secrets bound")).toBeVisible();
+    await capture(page, "06-secrets-empty-no-pending-request");
 
     await page.goto("/#/today");
     await openSettings(page, "compute");
@@ -1549,6 +1174,12 @@ test.describe("signed-in canary company UI", () => {
       "Checking the thread destination and keyboard flow only.",
     );
     await capture(page, "03-asks-new-thread-destination-not-sent");
+    await page.setViewportSize({ width: 1728, height: 1117 });
+    const askStep = await page
+      .locator(".colony-ask-context-step")
+      .boundingBox();
+    expect(askStep?.width).toBe(1140);
+    await page.setViewportSize({ width: 1440, height: 900 });
     await openingContext.press("Tab");
     const continueButton = page.getByRole("button", {
       name: "Continue to ask",
@@ -1688,6 +1319,76 @@ test.describe("signed-in canary company UI", () => {
       "company-work-list",
       "04-work-list-read-only",
     );
+    const workRows = page.locator('[data-testid^="company-work-row-"]');
+    await expect
+      .poll(
+        async () => {
+          if ((await workRows.count()) > 0) return "rows";
+          if (
+            (await page.getByTestId("company-work-empty-filtered").count()) > 0
+          )
+            return "empty";
+          if (
+            (await page
+              .getByRole("heading", { name: "Work unavailable" })
+              .count()) > 0
+          ) {
+            return "unavailable";
+          }
+          return "loading";
+        },
+        { timeout: 15_000 },
+      )
+      .not.toBe("loading");
+    if ((await workRows.count()) === 0) {
+      needsApi.push(
+        "No real canary work item is available to open its watchdog settings, so the off-by-default work-item state is unreachable.",
+      );
+      await capture(page, "04-work-watchdog-no-real-work-item");
+    } else {
+      await workRows.first().focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByTestId("company-work-detail")).toBeVisible();
+      await page.getByRole("button", { name: "Full timeline" }).click();
+      await expect(
+        page.getByTestId("company-work-full-timeline"),
+      ).toBeVisible();
+      await page
+        .getByRole("button", { name: "Watchdog settings", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: "Work watchdog" }),
+      ).toBeVisible();
+      const isUnconfigured = await page
+        .getByText("Off until configured", { exact: true })
+        .isVisible();
+      if (isUnconfigured) {
+        await expect(
+          page.getByText("No interval selected", { exact: true }),
+        ).toBeVisible();
+        await expect(
+          page.getByLabel("Quiet time before a review, minutes"),
+        ).toHaveValue("");
+        await expect(page.getByLabel("Reviewer")).toHaveValue("");
+        await expect(
+          page.getByRole("button", { name: "Review configuration" }),
+        ).toBeDisabled();
+      } else {
+        needsApi.push(
+          "The real canary work item already has watchdog configuration, so the unconfigured state cannot be checked on that record without changing its authority state.",
+        );
+      }
+      await capture(
+        page,
+        isUnconfigured
+          ? "04-work-watchdog-live-off-no-interval"
+          : "04-work-watchdog-live-configured-record-read-only",
+      );
+      await page.setViewportSize({ width: 1728, height: 1117 });
+      const watchdogPanel = await page.locator("main > section").boundingBox();
+      expect(watchdogPanel?.width).toBe(1140);
+      await page.setViewportSize({ width: 1440, height: 900 });
+    }
     await inspectRoute(
       "Team list",
       "/#/team",
@@ -1757,6 +1458,62 @@ test.describe("signed-in canary company UI", () => {
         ).toBeVisible();
       },
       "13-hire-role-catalog-read-only",
+    );
+    await captureReadOnlyRoute(
+      page,
+      findings,
+      "Role-pack draft",
+      async () => {
+        await page.goto("/#/hire/roles");
+        await page
+          .getByRole("button", { name: "Create role pack", exact: true })
+          .click();
+        await expect
+          .poll(async () => {
+            if ((await page.getByTestId("company-role-editor").count()) > 0) {
+              return "editor";
+            }
+            for (const kind of ["runtime", "provider", "model"]) {
+              if (
+                (await page
+                  .getByTestId(`company-role-${kind}-recovery`)
+                  .count()) > 0
+              ) {
+                return kind;
+              }
+            }
+            return "loading";
+          })
+          .not.toBe("loading");
+
+        const editor = page.getByTestId("company-role-editor");
+        if ((await editor.count()) > 0) {
+          await expect(page.locator("#company-role-title")).toHaveValue("");
+          await expect(page.locator("#company-role-job")).toHaveValue("");
+          await expect(page.locator("#company-role-skills")).toHaveValue("");
+          await expect(
+            editor.locator('input[type="checkbox"]:checked'),
+          ).toHaveCount(0);
+          await expect(
+            editor.locator('input[id^="company-role-tool-"]'),
+          ).toHaveCount(0);
+          await expect(
+            editor.locator('select[id^="company-role-risk-"]'),
+          ).toHaveCount(0);
+          await expect(
+            editor.getByText(
+              "No model, tool or allowance is preselected. The real picker is populated by configured runtimes.",
+              { exact: true },
+            ),
+          ).toBeVisible();
+          return;
+        }
+
+        needsApi.push(
+          "The role-pack editor is in runtime recovery on canary, so its configured worker choices are unavailable. No role pack was saved.",
+        );
+      },
+      "13-hire-role-pack-draft-or-runtime-recovery",
     );
     needsApi.push(
       "Founder handoff requires a real canary hire proposal and authorized founder-review record; none was available for this run, and no proposal was submitted to create one.",
@@ -1857,6 +1614,26 @@ test.describe("signed-in canary company UI", () => {
                 : "settings-account-security";
       await expect(page.getByTestId(marker)).toBeVisible();
       await capture(page, `16-settings-${section}-read-only`);
+      if (section === "appearance") {
+        await page.getByRole("button", { name: "Browse named themes" }).click();
+        const themeCatalog = page.getByTestId("settings-theme-catalog");
+        await expect(themeCatalog).toHaveAttribute(
+          "data-theme-catalog-ready",
+          "true",
+        );
+        await capture(page, "16-settings-appearance-named-theme-catalog");
+        await page.getByTestId("theme-catalog-buzz").click();
+        const themePreview = page.getByTestId("settings-theme-preview");
+        await expect(themePreview).toBeVisible();
+        await expect(
+          page.getByRole("button", { name: "Apply appearance" }),
+        ).toBeEnabled();
+        await expect(
+          page.getByRole("button", { name: "Cancel preview" }),
+        ).toBeEnabled();
+        await capture(page, "16-settings-appearance-buzz-preview-not-applied");
+        await page.getByRole("button", { name: "Cancel preview" }).click();
+      }
     }
 
     unproven.push(
