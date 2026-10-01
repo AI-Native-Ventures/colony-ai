@@ -56,6 +56,7 @@ import {
   type AskComposerMoneyAllowanceContext,
   type AskComposerType,
 } from "../askComposer";
+import { recipientDescription, threadLabel } from "./askThreadLabels";
 
 const ASK_TYPES: Array<{ value: AskComposerType; label: string }> = [
   { value: "approval", label: "Approval" },
@@ -65,31 +66,6 @@ const ASK_TYPES: Array<{ value: AskComposerType; label: string }> = [
   { value: "verdict", label: "Verdict" },
   { value: "hire_proposal", label: "Hire proposal" },
 ];
-
-function recipientDescription(isAgent: boolean) {
-  return isAgent ? "AI employee" : "Person";
-}
-
-function threadLabel(event: RelayEvent | undefined) {
-  if (!event) return "Discussion";
-  if (event.kind === KIND_ASK_ACTION) {
-    try {
-      const action = JSON.parse(event.content) as {
-        ask?: { title?: unknown; threadStart?: { title?: unknown } };
-      };
-      const title = action.ask?.threadStart?.title ?? action.ask?.title;
-      if (typeof title === "string" && title.trim()) return title.trim();
-    } catch {
-      return "Ask discussion";
-    }
-  }
-  const heading = event.content.match(/^\s{0,3}#{1,6}\s+([^\r\n]+)(?:\r?\n|$)/);
-  if (heading?.[1]) {
-    return heading[1].replace(/\s+#+\s*$/, "").trim();
-  }
-  const content = event.content.replace(/\s+/g, " ").trim();
-  return content.slice(0, 140) || "Discussion";
-}
 
 /** Ask creation surface for a real channel and discussion thread. */
 export function AskCreateScreen({
