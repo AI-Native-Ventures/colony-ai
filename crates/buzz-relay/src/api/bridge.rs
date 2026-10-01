@@ -55,6 +55,23 @@ pub(crate) async fn enforce_http_admission(
     }
 }
 
+/// Parse the raw HTTP filter array. Keeping this as a shared seam lets both
+/// bridge endpoints enforce request bounds before converting each filter.
+fn parse_bridge_filter_values(body: &[u8]) -> Result<Vec<Value>, (StatusCode, Json<Value>)> {
+    serde_json::from_slice(body)
+        .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))
+}
+
+fn deserialize_bridge_filters(
+    raw_filters: &[Value],
+) -> Result<Vec<nostr::Filter>, (StatusCode, Json<Value>)> {
+    raw_filters
+        .iter()
+        .map(|value| serde_json::from_value(value.clone()))
+        .collect::<Result<_, _>>()
+        .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))
+}
+
 /// Values retained from an already-verified bridge authentication event.
 #[derive(Debug)]
 pub(crate) struct VerifiedBridgeAuth {
@@ -1111,13 +1128,8 @@ async fn query_events_authed(
 
     // Two-pass parse: preserve raw JSON for custom extension fields (before_id,
     // depth_limit, feed_types) that nostr::Filter silently drops.
-    let raw_filters: Vec<Value> = serde_json::from_slice(body)
-        .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))?;
-    let filters: Vec<nostr::Filter> = raw_filters
-        .iter()
-        .map(|v| serde_json::from_value(v.clone()))
-        .collect::<Result<_, _>>()
-        .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))?;
+    let raw_filters = parse_bridge_filter_values(body)?;
+    let filters = deserialize_bridge_filters(&raw_filters)?;
     crate::handlers::req::extract_channel_ids_from_filters_limited(&filters)
         .map_err(|()| api_error(StatusCode::BAD_REQUEST, "too many explicit channels"))?;
 
@@ -1691,8 +1703,8 @@ async fn count_events_authed(
     )
     .await?;
 
-    let filters: Vec<nostr::Filter> = serde_json::from_slice(body)
-        .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))?;
+    let raw_filters = parse_bridge_filter_values(body)?;
+    let filters = deserialize_bridge_filters(&raw_filters)?;
     crate::handlers::req::extract_channel_ids_from_filters_limited(&filters)
         .map_err(|()| api_error(StatusCode::BAD_REQUEST, "too many explicit channels"))?;
 
@@ -2613,6 +2625,14 @@ mod postgres_tests {
         ];
 
         assert!(has_mixed_search_filters(&filters));
+    }
+
+    #[test]
+    fn http_bridge_accepts_ten_filters_and_rejects_eleven() {
+        let body_for = |count: usize| format!("[{}]", vec!["{}"; count].join(",")).into_bytes();
+
+        assert_eq!(parse_bridge_filter_values(&body_for(10)).unwrap().len(), 10);
+        assert!(parse_bridge_filter_values(&body_for(11)).is_err());
     }
 
     #[test]
