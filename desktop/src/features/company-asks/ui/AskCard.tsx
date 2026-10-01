@@ -551,6 +551,7 @@ export function AskCard({
   profiles,
   queryState,
   showDetailLink = true,
+  lazyQueryEnabled = true,
 }: {
   askId: string;
   channelId: string | null;
@@ -558,11 +559,12 @@ export function AskCard({
   profiles?: UserProfileLookup;
   queryState?: AskHeadQueryState;
   showDetailLink?: boolean;
+  lazyQueryEnabled?: boolean;
 }) {
   const localQueryState = useAskHeadQuery(
     channelId,
     askId,
-    queryState === undefined,
+    queryState === undefined && lazyQueryEnabled,
   );
   const { query, relaySelfQuery, liveState } = queryState ?? localQueryState;
   const channelsQuery = useChannelsQuery();

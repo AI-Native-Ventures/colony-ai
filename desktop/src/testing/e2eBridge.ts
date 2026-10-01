@@ -368,6 +368,7 @@ export type VisualFixtureSeed = {
 
 type E2eConfig = {
   mode?: "mock" | "relay";
+  forceRelayPacing?: boolean;
   relayAuthMode?: "http-header" | "nip42";
   mock?: {
     /** Tauri window label exposed to the app. Defaults to the main window. */
@@ -1609,6 +1610,10 @@ declare global {
     };
     /** The in-page relay is synthetic unless a relay-mode test opts in. */
     __BUZZ_E2E_USES_REAL_RELAY__?: boolean;
+    /** Enable production request pacing while retaining the mock transport. */
+    __BUZZ_E2E_FORCE_RELAY_PACING__?: boolean;
+    /** Timestamped outbound frames captured at the mock transport boundary. */
+    __BUZZ_E2E_RELAY_FRAMES__?: Array<{ at: number; frame: unknown[] }>;
     /** Last payload written through the native clipboard command. */
     __BUZZ_E2E_LAST_CLIPBOARD__?: { html: string | null; text: string };
     __BUZZ_E2E_COMMANDS__?: string[];
@@ -17988,6 +17993,7 @@ export function maybeInstallE2eTauriMocks() {
     seedVisualFixture(config.mock.visualFixture);
   }
   window.__BUZZ_E2E_USES_REAL_RELAY__ = isRelayMode(config);
+  window.__BUZZ_E2E_FORCE_RELAY_PACING__ = config?.forceRelayPacing === true;
   if (config.mock?.referenceWorkspace) {
     applyReferenceWorkspace(config);
   }
@@ -18247,6 +18253,7 @@ export function maybeInstallE2eTauriMocks() {
   window.__BUZZ_E2E_COMMANDS__ = [];
   window.__BUZZ_E2E_COMMAND_PAYLOADS__ = [];
   window.__BUZZ_E2E_COMMAND_LOG__ = [];
+  window.__BUZZ_E2E_RELAY_FRAMES__ = [];
   window.__BUZZ_E2E_OBSERVER_CONTROLS__ = [];
   window.__BUZZ_E2E_RUN_MODEL_SWITCH__ = async ({
     agentPubkey,
@@ -21810,6 +21817,21 @@ export function maybeInstallE2eTauriMocks() {
         mockWebsocketSendMutexWedged = false;
         return null;
       case "plugin:websocket|send":
+        try {
+          const data = (payload as { message?: { data?: unknown } }).message
+            ?.data;
+          if (typeof data === "string") {
+            const frame: unknown = JSON.parse(data);
+            if (Array.isArray(frame)) {
+              window.__BUZZ_E2E_RELAY_FRAMES__?.push({
+                at: Date.now(),
+                frame,
+              });
+            }
+          }
+        } catch {
+          // Malformed frames are still handled by the mock transport below.
+        }
         if (isRelayMode(activeConfig)) {
           return sendToRealSocket(
             payload as Parameters<typeof sendToRealSocket>[0],
