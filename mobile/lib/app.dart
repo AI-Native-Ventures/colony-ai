@@ -610,6 +610,8 @@ class App extends HookConsumerWidget {
         ),
         data: (state) => switch (state.status) {
           AuthStatus.authenticated => DeepLinkDispatcher(
+            creditsPaymentPageBuilder: (reference) =>
+                CreditsPaymentStatusPage(reference: reference),
             child: HomePage(
               routeRegistry: _mobileRouteRegistry,
               settingsPageBuilder: _buildSettingsPage,

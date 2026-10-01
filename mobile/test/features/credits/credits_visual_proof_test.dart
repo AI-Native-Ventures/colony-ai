@@ -172,6 +172,8 @@ class _PaymentState {
 
 CreditsPaymentIntent _payment(String status) => CreditsPaymentIntent(
   reference: _reference,
+  idempotencyKey: '123e4567-e89b-42d3-a456-426614174000',
+  packId: 'starter',
   amountZarCents: _chargeZarCents,
   paidZarCents: status == 'paid' ? _chargeZarCents : null,
   grantNanoUsd: BigInt.from(_grantNanoUsd),

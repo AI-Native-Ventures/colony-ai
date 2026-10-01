@@ -30,15 +30,14 @@ void main() {
     expect(find.text('ZAR 25.10'), findsOneWidget);
   });
 
-  testWidgets('failed attempt keeps the retry bound to status checks', (
+  testWidgets('failed attempt offers a retry after its terminal status', (
     tester,
   ) async {
     await _pump(tester, payment: _payment('failed'), overview: _overview());
 
     expect(find.text('Payment failed'), findsOneWidget);
     expect(find.text('Payfast'), findsOneWidget);
-    expect(find.text('Check payment status'), findsOneWidget);
-    expect(find.text('Retry this payment'), findsNothing);
+    expect(find.text('Retry this payment'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('Payment failed')).dy,
       greaterThan(tester.getTopLeft(find.text('Payfast')).dy),
@@ -140,6 +139,8 @@ Future<void> _pump(
 CreditsPaymentIntent _payment(String status, {int? paidZarCents}) =>
     CreditsPaymentIntent(
       reference: _reference,
+      idempotencyKey: '123e4567-e89b-42d3-a456-426614174000',
+      packId: 'starter',
       amountZarCents: 2510,
       paidZarCents: paidZarCents,
       grantNanoUsd: BigInt.from(_grantNanoUsd),

@@ -6,6 +6,50 @@ void main() {
   _channelTests();
   _buildMessageLinkTests();
 
+  group('parseCreditsPaymentDeepLink', () {
+    const reference = 'credit-123e4567-e89b-42d3-a456-426614174000';
+
+    test('parses the existing payment reference only', () {
+      const expected = CreditsPaymentDeepLink(reference: reference);
+      expect(
+        parseCreditsPaymentDeepLink(
+          Uri.parse('buzz://credits/payment?reference=$reference'),
+        ),
+        expected,
+      );
+      expect(
+        parseBuzzDeepLink(
+          Uri.parse('buzz://credits/payment?reference=$reference'),
+        ),
+        expected,
+      );
+    });
+
+    test(
+      'rejects extra, repeated, malformed and non-app return parameters',
+      () {
+        for (final url in [
+          'buzz://credits/payment',
+          'buzz://credits/payment?reference=',
+          'buzz://credits/payment?reference=$reference&status=paid',
+          'buzz://credits/payment?reference=$reference&reference=$reference',
+          'buzz://credits:443/payment?reference=$reference',
+          'buzz://credits/payment/$reference',
+          'https://credits/payment?reference=$reference',
+          'buzz://user@credits/payment?reference=$reference',
+          'buzz://credits/payment?reference=$reference#paid',
+          'buzz://credits/payment?reference=../checkout',
+        ]) {
+          expect(
+            parseCreditsPaymentDeepLink(Uri.parse(url)),
+            isNull,
+            reason: url,
+          );
+        }
+      },
+    );
+  });
+
   group('parseMessageDeepLink', () {
     const channel = '580ca78b-9dae-46f3-8854-bd671853ba32';
     const id =
@@ -256,7 +300,7 @@ void _inviteTests() {
     });
 
     test('rejects buzz join with dangerous relay schemes', () {
-      // The `relay=` param is an allowlist — only `ws` / `wss` are safe to
+      // The `relay=` param is an allowlist. Only `ws` / `wss` are safe to
       // hand to a Nostr relay session. Anything else must be dropped by the
       // parser so a hostile QR / share link can't smuggle a browser scheme
       // (`javascript:`, `data:`), a local resource (`file:`), or an

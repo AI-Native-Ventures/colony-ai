@@ -326,7 +326,8 @@ async fn checkout(
                     &latest.idempotency_key,
                     state.config.payments.sandbox(),
                 ))),
-                "pending" | "delayed" | "uncertain" => Err(open_intent_error(&latest)),
+                "pending" => resolve_credit_intent(&state, &provider, &account, latest).await,
+                "delayed" | "uncertain" => Err(open_intent_error(&latest)),
                 _ => Err(closed_intent_error(&latest)),
             }
         }
@@ -438,6 +439,7 @@ async fn resolve_credit_intent(
         .payments
         .notify_url()
         .ok_or_else(|| api_error(StatusCode::SERVICE_UNAVAILABLE, "payment_unavailable"))?;
+    let return_url = format!("buzz://credits/payment?reference={}", intent.reference);
     let email = normalize_email(&account.email)
         .ok_or_else(|| api_error(StatusCode::INTERNAL_SERVER_ERROR, "payment_unavailable"))?;
     let checkout_url = provider
@@ -446,6 +448,8 @@ async fn resolve_credit_intent(
             &email,
             &intent.reference,
             notify_url,
+            &return_url,
+            &return_url,
         )
         .await
         .map_err(|error| provider_error(error, "checkout"))?;
@@ -525,6 +529,7 @@ fn intent_response(
         "authorizationMethod": authorization_method,
         "authorizationFields": authorization_fields,
         "reference": intent.reference,
+        "packId": intent.pack_id,
         "status": intent.status,
         "idempotencyKey": idempotency_key,
         "amountMinorUnits": intent.charge_minor_units,
