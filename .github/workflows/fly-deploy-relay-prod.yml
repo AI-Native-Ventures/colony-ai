@@ -112,10 +112,11 @@ jobs:
           DATA_PLAN: ${{ inputs.existing_data_plan }}
           DATA_PLAN_RECORD: ${{ inputs.data_plan_record }}
           DATABASE_APP: ${{ inputs.database_app }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF_NAME" != "main" ]]; then
-            echo "Live production deploys must be dispatched from main." >&2
+          if [[ -z "$DEFAULT_BRANCH" || "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]]; then
+            echo "Live production deploys must be dispatched from the repository default branch." >&2
             exit 1
           fi
           if [[ "$CONFIRMATION" != "deploy-colony-production" ]]; then
