@@ -1,0 +1,43 @@
+# Colony production relay. Deploy only through the manual production workflow.
+app = "colony-relay"
+primary_region = "iad"
+
+[build]
+dockerfile = "Dockerfile"
+target = "runtime-prod"
+
+[env]
+BUZZ_BIND_ADDR = "0.0.0.0:3000"
+BUZZ_HEALTH_PORT = "8080"
+BUZZ_METRICS_PORT = "9102"
+BUZZ_GIT_REPO_PATH = "/data/git"
+BUZZ_AUTO_MIGRATE = "false"
+BUZZ_MEDIA_BASE_URL = "https://relay.colony.ainative.ventures/media"
+BUZZ_ADMIN_HOST = "api.colony.ainative.ventures"
+RELAY_OPERATOR_API_ORIGIN = "https://api.colony.ainative.ventures"
+BUZZ_S3_ENDPOINT = "https://fly.storage.tigris.dev"
+RELAY_URL = "wss://relay.colony.ainative.ventures"
+BUZZ_REQUIRE_RELAY_MEMBERSHIP = "true"
+BUZZ_REQUIRE_AUTH_TOKEN = "true"
+BUZZ_ALLOW_NIP_OA_AUTH = "true"
+COLONY_MAIL_FROM = "accounts@colony.ainative.ventures"
+COLONY_PAYMENTS_ENABLED = "false"
+
+[[mounts]]
+source = "colony_relay_data"
+destination = "/data"
+
+[deploy]
+release_command = "/usr/local/bin/buzz-admin migrate"
+release_command_timeout = "30m"
+
+[http_service]
+internal_port = 3000
+force_https = true
+
+[checks.readiness]
+type = "tcp"
+port = 3000
+interval = "15s"
+timeout = "5s"
+grace_period = "30s"
