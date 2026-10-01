@@ -159,7 +159,6 @@ export function CompanyWorkDetailScreen({
   const canChangeStatus = Boolean(canOwn || communityAdmin);
   const canVerify = Boolean(canRequest || communityAdmin);
   const canArchive = Boolean(canOwn || canRequest || communityAdmin);
-
   const handleSimpleAction = async (
     actionKind: Extract<CompanyWorkAction["action"], "archive" | "restore">,
   ) => {

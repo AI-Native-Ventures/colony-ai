@@ -5,6 +5,13 @@ import '../navigation/mobile_route.dart';
 /// Grouping used by the Company hub for route-backed entry cards.
 enum MobileBusinessSection { runCompany, growBusiness }
 
+@immutable
+class MobileBusinessWorkspaceArguments extends NoMobileRouteArguments {
+  const MobileBusinessWorkspaceArguments({this.onOpenChat});
+
+  final VoidCallback? onOpenChat;
+}
+
 extension MobileBusinessSectionLabel on MobileBusinessSection {
   String get label => switch (this) {
     MobileBusinessSection.runCompany => 'Run the company',
@@ -37,6 +44,11 @@ abstract final class MobileBusinessRoutes {
     'business/discovery',
   );
 
+  /// Destination for the Batch 2 business workspace.
+  static const businessWorkspace = MobileRoute<NoMobileRouteArguments>(
+    'business/workspace',
+  );
+
   /// Destination for business finances.
   static const money = MobileRoute<NoMobileRouteArguments>('business/money');
 }
@@ -56,7 +68,7 @@ class MobileBusinessEntryPoint {
   final MobileRoute<NoMobileRouteArguments> route;
 }
 
-/// Company destinations and labels from the approved mobile v5 reference.
+/// Company destinations and labels available in the mobile app.
 abstract final class MobileBusinessEntryPoints {
   static const team = MobileBusinessEntryPoint(
     label: 'Team',
@@ -82,6 +94,12 @@ abstract final class MobileBusinessEntryPoints {
     section: MobileBusinessSection.runCompany,
     route: MobileBusinessRoutes.workflows,
   );
+  static const business = MobileBusinessEntryPoint(
+    label: 'Business',
+    description: 'Proposals, services & invoices',
+    section: MobileBusinessSection.growBusiness,
+    route: MobileBusinessRoutes.businessWorkspace,
+  );
   static const discovery = MobileBusinessEntryPoint(
     label: 'Discovery',
     description: 'Find your next client',
@@ -96,7 +114,7 @@ abstract final class MobileBusinessEntryPoints {
   );
 
   static const runCompany = [team, goals, work, workflows];
-  static const growBusiness = [discovery, money];
+  static const growBusiness = [business];
   static const all = [...runCompany, ...growBusiness];
 
   static List<MobileBusinessEntryPoint> availableIn(

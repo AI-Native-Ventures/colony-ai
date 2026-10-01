@@ -405,7 +405,11 @@ async fn validate_scope_exists(
                 .await
                 .map_err(|message| invalid(format!("thread scope: {message}")))?
                 .ok_or_else(|| invalid("thread scope does not resolve to a channel thread"))?;
-                if hex::encode(meta.root_event_id) != permission.scope.id {
+                let root_event_id = meta
+                    .root_event_id
+                    .as_deref()
+                    .ok_or_else(|| invalid("thread scope has no canonical root"))?;
+                if hex::encode(root_event_id) != permission.scope.id {
                     return Err(invalid("thread scope must name the canonical thread root"));
                 }
             } else if stored.event.id.to_hex() != permission.scope.id {

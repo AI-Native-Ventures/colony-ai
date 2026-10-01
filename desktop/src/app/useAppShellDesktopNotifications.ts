@@ -22,6 +22,7 @@ import {
   shouldPlayNotificationSound,
 } from "@/features/notifications/lib/sound";
 import { useNotificationSenderName } from "@/features/notifications/useNotificationSenderName";
+import { readDevicePrivacyPreferences } from "@/features/settings/lib/devicePrivacyPreferences";
 import type { Channel, RelayEvent } from "@/shared/api/types";
 
 export function useAppShellDesktopNotifications({
@@ -83,6 +84,7 @@ export function useAppShellDesktopNotifications({
         senderName: resolveSenderName(event.pubkey),
         channelName,
         content: event.content,
+        showMessageText: readDevicePrivacyPreferences(pubkey).showMessageText,
       });
 
       void sendDesktopNotification({
@@ -126,6 +128,7 @@ export function useAppShellDesktopNotifications({
         senderName: resolveSenderName(event.pubkey),
         channelName,
         content: event.content,
+        showMessageText: readDevicePrivacyPreferences(pubkey).showMessageText,
       });
 
       void sendDesktopNotification({

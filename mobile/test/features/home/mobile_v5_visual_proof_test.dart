@@ -120,10 +120,9 @@ MobileRouteRegistry _routes() {
         (_, _) => const SizedBox.shrink(),
       )
       .register(
-        MobileBusinessRoutes.discovery,
+        MobileBusinessRoutes.businessWorkspace,
         (_, _) => const SizedBox.shrink(),
-      )
-      .register(MobileBusinessRoutes.money, (_, _) => const SizedBox.shrink());
+      );
   return routes;
 }
 

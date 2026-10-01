@@ -30,6 +30,11 @@ import {
   CompanyWorkStatusBadge,
 } from "./CompanyWorkPresentation";
 import { CompanyWorkThreadContextPanel } from "./CompanyWorkThreadContextPanel";
+import { CompanyWorkDetailScreen } from "./CompanyWorkDetailScreen";
+import {
+  CompanyWorkDueDateScreen,
+  CompanyWorkWatchdogScreen,
+} from "./CompanyWorkPolicyScreens";
 
 export type CompanyWorkTrackingScreenKind =
   | "suggestion"
@@ -38,6 +43,10 @@ export type CompanyWorkTrackingScreenKind =
   | "person"
   | "watchdog"
   | "watchdog-saved"
+  | "due"
+  | "due-clear"
+  | "due-denied"
+  | "due-saved"
   | "failed"
   | "unavailable"
   | "empty";
@@ -67,9 +76,15 @@ export function CompanyWorkTrackingScreens(
     case "suggestion":
       return <CompanyWorkSuggestionScreen suggestionId={props.resourceId} />;
     case "watchdog":
-      return <WatchdogUnavailableScreen workItemId={props.resourceId} />;
+      return <CompanyWorkWatchdogScreen workItemId={props.resourceId} />;
     case "watchdog-saved":
-      return <WatchdogSavedUnavailableScreen />;
+      return <CompanyWorkWatchdogScreen saved workItemId={props.resourceId} />;
+    case "due":
+    case "due-clear":
+    case "due-denied":
+      return <CompanyWorkDueDateScreen workItemId={props.resourceId} />;
+    case "due-saved":
+      return <CompanyWorkDetailScreen workItemId={props.resourceId} />;
     case "failed":
       return (
         <UnavailableScreen
@@ -380,12 +395,6 @@ function CompanyWorkTimelineScreen({ workItemId }: { workItemId: string }) {
                     profiles,
                     pubkey: record.head.approverPubkeys[0],
                   })}
-                />
-              ) : null}
-              {record.head.dueAt ? (
-                <ContextRow
-                  label="Due"
-                  value={formatDueAt(record.head.dueAt)}
                 />
               ) : null}
               <ContextRow
@@ -706,79 +715,6 @@ function CompanyWorkSuggestionScreen({
   );
 }
 
-function WatchdogUnavailableScreen({ workItemId }: { workItemId: string }) {
-  const headsQuery = useCompanyWorkHeadsQuery();
-  const { goCompanyWork, goCompanyWorkDetail } = useAppNavigation();
-  const record = headsQuery.data?.find(
-    (candidate) => candidate.head.workItemId === workItemId,
-  );
-  if (headsQuery.channelsQuery.isPending || headsQuery.isPending)
-    return <LoadingScreen title="Loading watchdog settings" />;
-  if (headsQuery.channelsQuery.isError || headsQuery.isError) {
-    return (
-      <UnavailableScreen
-        message={errorMessage(
-          headsQuery.channelsQuery.isError
-            ? headsQuery.channelsQuery.error
-            : headsQuery.error,
-        )}
-        onRetry={() => {
-          void headsQuery.channelsQuery.refetch();
-          void headsQuery.refetch();
-        }}
-        title="Watchdog settings unavailable"
-      />
-    );
-  }
-  if (!record) {
-    return (
-      <UnavailableScreen
-        message="This work item is not available in the current community."
-        title="Watchdog settings unavailable"
-      />
-    );
-  }
-  return (
-    <>
-      <CompanyWorkPageHeader title={record.head.title} />
-      <main className="mx-auto w-full max-w-[1230px] px-8 py-8">
-        <CompanyWorkBackButton
-          onClick={() => void goCompanyWorkDetail(workItemId)}
-        />
-        <h1 className="text-2xl font-bold tracking-tight">
-          Keep work from going quiet
-        </h1>
-        <section className="mt-7 rounded-xl border border-border p-6">
-          <p className="text-sm font-semibold">Watchdog is off</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Business settings and scheduled check-in delivery are unavailable.
-            No interval is selected or saved.
-          </p>
-          <Button className="mt-5" disabled variant="default">
-            Save changes
-          </Button>
-        </section>
-        <Button
-          className="mt-4"
-          onClick={() => void goCompanyWork()}
-          variant="link"
-        >
-          Back to work
-        </Button>
-      </main>
-    </>
-  );
-}
-
-function WatchdogSavedUnavailableScreen() {
-  return (
-    <UnavailableScreen
-      message="No watchdog settings were saved. The watchdog remains off until company-scoped settings and scheduled delivery are available."
-      title="Watchdog settings were not saved"
-    />
-  );
-}
-
 function LoadingScreen({ title }: { title: string }) {
   return (
     <>
@@ -829,19 +765,6 @@ function ContextRow({ label, value }: { label: string; value: string }) {
       <dd className="text-right">{value}</dd>
     </div>
   );
-}
-
-function formatDueAt(value: string) {
-  const date = new Date(value);
-  const weekday = new Intl.DateTimeFormat(undefined, {
-    weekday: "long",
-  }).format(date);
-  const time = new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    hourCycle: "h23",
-    minute: "2-digit",
-  }).format(date);
-  return `${weekday}, ${time}`;
 }
 
 function errorMessage(error: unknown) {

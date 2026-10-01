@@ -18,7 +18,7 @@ pub(crate) use catalog::canonical_curated_model_id;
 pub use catalog::{model_catalog, MeshModelCatalog};
 
 mod identity;
-pub use identity::ensure_owner_identity;
+pub use identity::{ensure_owner_identity, existing_owner_identity};
 
 mod progress;
 pub use progress::install_progress_sink;

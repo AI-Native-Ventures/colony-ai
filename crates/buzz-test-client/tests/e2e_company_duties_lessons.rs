@@ -286,7 +286,10 @@ async fn submit_unvalidated_ask_action(keys: &Keys, channel_id: Uuid, action: &A
     let ask = action.ask.as_ref().expect("unvalidated create ask");
     let channel = channel_id.to_string();
     let d_tag = ask_d_tag(channel_id, action.ask_id);
-    let root = ask.thread_root_event_id.as_str();
+    let root = ask
+        .thread_root_event_id
+        .as_deref()
+        .expect("duty ask thread root");
     let event = EventBuilder::new(
         Kind::Custom(KIND_ASK_ACTION as u16),
         serde_json::to_string(action).expect("serialize unvalidated ask action"),
@@ -377,7 +380,8 @@ async fn company_duty_ask_requires_owner_or_admin_and_creates_the_versioned_work
         category: AskCategory::Duty,
         title: "Review the customer report".into(),
         body: Some("Review the proposed schedule and instructions.".into()),
-        thread_root_event_id: root_event_id,
+        thread_root_event_id: Some(root_event_id),
+        thread_start: None,
         addressee_pubkey: None,
         decide_by: None,
         options: None,

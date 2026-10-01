@@ -101,8 +101,7 @@ void main() {
       'goals',
       'work',
       'workflows',
-      'business/discovery',
-      'business/money',
+      'business/workspace',
     ]);
   });
 

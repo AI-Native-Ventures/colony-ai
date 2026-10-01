@@ -25,7 +25,6 @@ import type {
   FactoryPlan,
 } from "./factoryTypes";
 import { FactoryRunToolPane, type FactoryRunTool } from "./FactoryRunTools";
-import { useFactoryRunRecordQuery } from "../lib/factoryRunRecords";
 
 export function FactoryDeskLayout({
   activeTabId,
@@ -301,7 +300,6 @@ function FactoryAgentPane({
   const [draftError, setDraftError] = React.useState<string | null>(null);
   const [activeTool, setActiveTool] = React.useState<FactoryRunTool>("agent");
   const activeToolRunId = React.useRef(run.id);
-  const runRecordQuery = useFactoryRunRecordQuery(run.id);
   const draftGeneration = React.useRef(0);
   const draftWrites = React.useRef<Promise<void>>(Promise.resolve());
   const title = runTitle(run, snapshot, agent?.name);
@@ -312,20 +310,6 @@ function FactoryAgentPane({
       setActiveTool("agent");
     }
   }, [run.id]);
-
-  const previewState = runRecordQuery.data?.head.preview.state;
-  const previewDesignMissing = ["starting", "running", "stopped"].includes(
-    previewState ?? "",
-  );
-  const reviewDesignMissing = Boolean(runRecordQuery.data?.head.pullRequest);
-  React.useEffect(() => {
-    if (
-      (activeTool === "preview" && previewDesignMissing) ||
-      (activeTool === "review" && reviewDesignMissing)
-    ) {
-      setActiveTool("agent");
-    }
-  }, [activeTool, previewDesignMissing, reviewDesignMissing]);
 
   React.useEffect(() => {
     const generation = ++draftGeneration.current;
@@ -384,28 +368,22 @@ function FactoryAgentPane({
         </span>
         <StatusLabel status={run.status} />
         <nav aria-label={`${title} tools`} className="fx-agent-tool-tabs">
-          {(["agent", "preview", "review"] as const)
-            .filter(
-              (tool) =>
-                !(tool === "preview" && previewDesignMissing) &&
-                !(tool === "review" && reviewDesignMissing),
-            )
-            .map((tool) => (
-              <button
-                aria-pressed={activeTool === tool}
-                className="fx-agent-tool-tab"
-                data-testid={`factory-run-tool-${tool}`}
-                key={tool}
-                onClick={() => setActiveTool(tool)}
-                type="button"
-              >
-                {tool === "agent"
-                  ? "Agent"
-                  : tool === "preview"
-                    ? "Preview"
-                    : "Review"}
-              </button>
-            ))}
+          {(["agent", "preview", "review"] as const).map((tool) => (
+            <button
+              aria-pressed={activeTool === tool}
+              className="fx-agent-tool-tab"
+              data-testid={`factory-run-tool-${tool}`}
+              key={tool}
+              onClick={() => setActiveTool(tool)}
+              type="button"
+            >
+              {tool === "agent"
+                ? "Agent"
+                : tool === "preview"
+                  ? "Preview"
+                  : "Review"}
+            </button>
+          ))}
         </nav>
       </div>
       {activeTool === "agent" ? (

@@ -69,8 +69,18 @@ export type MeshServingUsage = {
   peers: number;
 };
 
+export type MeshConnectedHost = {
+  id: string;
+  name: string;
+  local: boolean;
+};
+
 export async function meshServingUsage(): Promise<MeshServingUsage> {
   return await invokeTauri<MeshServingUsage>("mesh_serving_usage");
+}
+
+export async function meshConnectedHosts(): Promise<MeshConnectedHost[]> {
+  return await invokeTauri<MeshConnectedHost[]>("mesh_connected_hosts");
 }
 
 export async function meshInstalledModels(): Promise<MeshModelOption[]> {

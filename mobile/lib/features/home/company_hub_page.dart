@@ -21,6 +21,7 @@ class CompanyHubPage extends StatelessWidget {
     this.identityLabel,
     this.identityAvatarUrl,
     this.onOpenQuickActions,
+    this.onOpenChat,
     super.key,
   });
 
@@ -44,6 +45,9 @@ class CompanyHubPage extends StatelessWidget {
 
   /// Opens the existing app quick actions.
   final VoidCallback? onOpenQuickActions;
+
+  /// Opens the shell's existing Chat destination.
+  final VoidCallback? onOpenChat;
 
   @override
   Widget build(BuildContext context) {
@@ -142,11 +146,14 @@ class CompanyHubPage extends StatelessWidget {
   }
 
   void _openEntry(BuildContext context, MobileBusinessEntryPoint entry) {
+    final arguments = entry.route == MobileBusinessRoutes.businessWorkspace
+        ? MobileBusinessWorkspaceArguments(onOpenChat: onOpenChat)
+        : const NoMobileRouteArguments();
     unawaited(
       MobileNavigation.push<NoMobileRouteArguments, void>(
         context,
         entry.route,
-        const NoMobileRouteArguments(),
+        arguments,
       ).then<void>((_) {}),
     );
   }

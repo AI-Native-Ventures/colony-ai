@@ -36,7 +36,7 @@ are rejected.
 | State | Required data |
 | --- | --- |
 | `not_configured` | No saved command or local address |
-| `not_started` | Saved development command and local address |
+| `not_started` | Saved development command and local address; a configured port and readiness check are optional for older records |
 | `starting` | Saved configuration |
 | `running` | Saved configuration and the actual preview URL |
 | `failed` | Saved configuration and a non-empty failure reason; startup output is optional |
@@ -48,6 +48,12 @@ non-empty command up to 512 characters and a local address up to 2,048
 characters. Local HTTP addresses must use a loopback host; other accepted
 addresses use HTTPS and contain no credentials. The relay stores startup
 output up to 4,096 bytes and rejects larger content.
+
+Newer configure actions may also save `port` and `readiness` together. The port
+must be from 1 through 65535 and match the local address. Readiness is either
+`http_endpoint` with a loopback-relative path, or `output_message` with the
+expected process output. Existing records without both fields remain readable.
+Saving this configuration does not start a process.
 
 Allowed transitions are `not_configured` to `not_started`, `not_started` to
 `starting`, `starting` to `running`, `failed`, or `stopped`, `running` to
@@ -72,14 +78,27 @@ forge has verified them. `unknown` and absent data remain visibly unknown.
 Unlinking clears the pull request from the head. Linking never creates a forge
 pull request.
 
+The linked record currently has no pull request title field, and a record does
+not identify a reviewer or prove review delivery. The desktop does not invent a
+title or claim that a review request was sent. Those details require a future
+authorized provider integration and record fields.
+
+Before accepting a new link, the relay requires an exact host in
+`BUZZ_FACTORY_PR_HOSTS`, a comma-separated list of bare DNS hostnames. The
+default is empty, which disables pull request linking. Wildcards, URL schemes,
+and non-default ports are rejected. The desktop validates the URL shape for
+user feedback; the relay's host allowlist is authoritative. No provider lookup
+or external forge call is made when saving a link.
+
 ## Command actions
 
 Kind `47038` accepts strict JSON with `schemaVersion`, `runId`, `action`, and
 `runOwnerPubkey` when creating a head. Updates carry the exact
 `expectedHeadEventId`:
 
-- `configure_preview` supplies a command and loopback or HTTPS local address.
-  It saves configuration and leaves the state at `not_started`.
+- `configure_preview` supplies a command and loopback or HTTPS local address,
+  with optional paired port and readiness fields. It saves configuration and
+  leaves the state at `not_started`.
 - `report_preview_state` supplies `starting`, `running`, `failed`, or `stopped`
   lifecycle data. A running state must include the actual reachable URL. A
   failed state must include the actual failure reason.
@@ -96,13 +115,13 @@ optimistic concurrency checks all run before the action and head are committed.
 ## Desktop boundary
 
 The Preview and Review panes read this relay head for the selected real run.
-The four approved v8 empty or failure routes are `not_configured`,
-`not_started`, `failed`, and no linked pull request. Configuration can be saved
-because it is a real relay operation. Start and retry controls are not rendered
-until a preview process runtime can actually launch, observe readiness, capture
-bounded output, stop its process tree, and report the resulting state.
+Configuration can be saved because it is a real relay operation. This host has
+no managed preview runtime that can guarantee process-tree containment and
+cleanup, so Start, Retry, and Stop remain disabled with the runtime-unavailable
+treatment. A record in `starting`, `running`, `failed`, or `stopped` is displayed
+only from the relay-signed head and is not produced by this UI.
 
-The frozen v8 review includes the no-pull-request form but no linked pull
-request screen. This slice may store a real existing link through the CLI; it
-must not invent a populated Review pane. A future linked state needs an approved
-design before it is rendered in Factory.
+The approved batch 2 design includes the no-pull-request form and populated
+Review pane. The pane displays only the saved URL, number, state, check results,
+and review handoff. Provider-derived title, state refresh, check refresh, and
+reviewer delivery are unavailable until an authorized provider API exists.

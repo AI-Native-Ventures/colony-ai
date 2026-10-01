@@ -220,6 +220,8 @@ type MockBridgeOptions = {
   factoryRuns?: MockFactoryRunSeed[];
   /** Signed Factory run heads for Preview and Review pane coverage. */
   factoryRunRecordEvents?: RelayEvent[];
+  /** Reject successive Factory run actions in focused failure-state tests. */
+  factoryRunActionErrors?: string[];
   /** Run ids whose snapshot reads fail, exercising reconnect states. */
   factorySnapshotFailureRunIds?: string[];
   /** Local checkout paths returned by the E2E filesystem boundary. */
@@ -294,6 +296,8 @@ type MockBridgeOptions = {
   companyWorkRelayPrivateKey?: string;
   /** Reject company work action publishes in order, then accept them. */
   companyWorkActionErrors?: string[];
+  /** Reject company work tracking action publishes in order, then accept them. */
+  companyWorkTrackingActionErrors?: string[];
   /** Relay-signed company hire heads used by Company Hire E2E coverage. */
   companyHireHeads?: RelayEvent[];
   /** Synthetic relay key used to broker hire actions in focused E2E tests. */

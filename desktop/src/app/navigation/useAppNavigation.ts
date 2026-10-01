@@ -720,6 +720,10 @@ export function useAppNavigation() {
         | "person"
         | "watchdog"
         | "watchdog-saved"
+        | "due"
+        | "due-clear"
+        | "due-denied"
+        | "due-saved"
         | "failed"
         | "unavailable"
         | "empty",

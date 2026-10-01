@@ -308,7 +308,8 @@ async fn create_tool_consent_ask(
         category: AskCategory::Tool,
         title: "Tool consent".to_string(),
         body: None,
-        thread_root_event_id: thread_root.to_ascii_lowercase(),
+        thread_root_event_id: Some(thread_root.to_ascii_lowercase()),
+        thread_start: None,
         addressee_pubkey: None,
         decide_by: Some(decide_by),
         options: None,
@@ -422,7 +423,7 @@ async fn poll_tool_consent(
                 || ask_head.asker_pubkey != agent_pubkey
                 || ask_head.ask.ask_type != AskType::ToolConsent
                 || ask_head.ask.category != AskCategory::Tool
-                || ask_head.ask.thread_root_event_id != thread_root
+                || ask_head.ask.thread_root_event_id.as_deref() != Some(thread_root)
                 || ask_head.ask.addressee_pubkey.is_some()
                 || consent.action != action.permission_verb()
                 || consent.action_preview != preview

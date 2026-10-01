@@ -607,6 +607,9 @@ jobs:
         # pinned images first so it does not pull anonymously.
         uses: ./.github/actions/cached-service-images
       - name: Start relay
+        env:
+          # This lane exercises the GitHub-shaped PR URL in the Factory e2e.
+          BUZZ_FACTORY_PR_HOSTS: github.com
         run: |
           chmod +x ./target/ci/buzz-relay ./target/ci/git-credential-nostr
           ./scripts/start-relay-for-tests.sh --no-build

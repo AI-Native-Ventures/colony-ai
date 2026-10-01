@@ -58,6 +58,23 @@ async function assertDesktopNotificationsEnabled(
   await page.getByTestId("settings-back-to-app").click();
 }
 
+async function enableDesktopMessagePreviews(
+  page: import("@playwright/test").Page,
+) {
+  await openSettings(page, "privacy");
+  const messagePreviews = page.getByTestId("privacy-message-text");
+  if (!(await messagePreviews.isChecked())) {
+    await messagePreviews.check();
+    await page
+      .getByRole("button", { name: "Save privacy preferences" })
+      .click();
+    await expect(page.getByRole("status")).toContainText(
+      "Privacy preferences saved",
+    );
+  }
+  await page.getByTestId("settings-back-to-app").click();
+}
+
 async function sendChannelMessage(
   page: import("@playwright/test").Page,
   {
@@ -302,6 +319,7 @@ test("live mentions refetch the home feed without waiting for polling", async ({
 
     await targetPage.goto("/");
     await senderPage.goto("/");
+    await enableDesktopMessagePreviews(targetPage);
     await assertDesktopNotificationsEnabled(targetPage);
 
     await targetPage.getByTestId("channel-general").click();
@@ -363,6 +381,7 @@ test("live forum mentions refetch the home feed without waiting for polling", as
 
     await targetPage.goto("/");
     await senderPage.goto("/");
+    await enableDesktopMessagePreviews(targetPage);
     await assertDesktopNotificationsEnabled(targetPage);
 
     await targetPage.getByTestId("channel-general").click();

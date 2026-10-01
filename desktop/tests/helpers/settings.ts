@@ -10,6 +10,7 @@ type SettingsSection =
   | "harnesses"
   | "channel-templates"
   | "compute"
+  | "privacy"
   | "appearance"
   | "accessibility"
   | "business-profile"
@@ -44,6 +45,7 @@ const sectionRoute: Record<
     section: "channel-templates",
   },
   compute: { group: "app-devices", section: "compute" },
+  privacy: { group: "app-devices", section: "privacy" },
   appearance: { group: "appearance-group", section: "appearance" },
   accessibility: { group: "appearance-group", section: "accessibility" },
   "business-profile": { group: "business", section: "business-profile" },

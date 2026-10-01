@@ -1117,31 +1117,66 @@
 }
 
 .fx-preview-config {
-  padding: 15px 18px 18px;
-}
-
-.fx-preview-config .fx-run-tool-empty {
-  flex: none;
-  padding-top: 10px;
-}
-
-.fx-preview-fields {
-  display: grid;
+  --fx-accent: #536d9c;
   width: 100%;
-  max-width: 650px;
-  gap: 7px;
-  margin: 4px auto 0;
+  align-self: stretch;
+  gap: 12px;
+  margin: 0;
+  padding: 22px 24px;
 }
 
-.fx-preview-fields label,
-.fx-review-url-field > span {
+.fx-preview-configure-empty {
+  --fx-accent: #536d9c;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+}
+
+.fx-preview-configure-empty h2,
+.fx-preview-config h2,
+.fx-preview-state h2,
+.fx-review-attach h2,
+.fx-review-card h2 {
+  margin: 0;
+  color: var(--fx-ink);
+  @apply text-base;
+  font-weight: 600;
+}
+
+.fx-preview-configure-empty p,
+.fx-preview-state > p,
+.fx-review-card > p {
+  margin: 0;
+  color: var(--fx-muted);
+  @apply text-sm;
+  line-height: 1.5;
+}
+
+.fx-preview-config > label,
+.fx-preview-fields-row label,
+.fx-review-attach label {
   color: var(--fx-ink);
   @apply text-label;
   font-weight: 600;
 }
 
-.fx-preview-fields input,
-.fx-review-url-field input {
+.fx-preview-fields-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.fx-preview-fields-row > div {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.fx-preview-config input,
+.fx-preview-config select,
+.fx-review-attach input {
   width: 100%;
   min-width: 0;
   min-height: 42px;
@@ -1153,9 +1188,149 @@
   @apply text-field;
 }
 
-.fx-preview-fields input:focus-visible {
+.fx-preview-config input::placeholder {
+  color: var(--fx-muted);
+  opacity: 1;
+}
+
+.fx-preview-config input:focus-visible,
+.fx-preview-config select:focus-visible,
+.fx-review-attach input:focus-visible,
+.fx-run-tool-surface button:focus-visible,
+.fx-run-tool-surface a:focus-visible {
   outline: 2px solid var(--fx-accent);
   outline-offset: 1px;
+}
+
+.fx-preview-configure-empty .fx-button,
+.fx-preview-config .fx-button,
+.fx-preview-state .fx-button,
+.fx-review-attach .fx-button,
+.fx-review-card .fx-button {
+  min-height: 42px;
+  padding: 8px 14px;
+}
+
+.fx-preview-configure-empty .fx-button-primary:not(:disabled),
+.fx-preview-config .fx-button-primary:not(:disabled),
+.fx-review-attach .fx-button-primary:not(:disabled) {
+  border-color: #536d9c;
+  color: #fff;
+  background: #536d9c;
+}
+
+.fx-preview-runtime-notice,
+.fx-preview-readiness-notice,
+.fx-review-unavailable-notice {
+  display: grid;
+  gap: 4px;
+  padding: 11px 13px;
+  border: 1px solid var(--fx-line);
+  border-radius: 7px;
+  color: var(--fx-muted);
+  background: var(--fx-panel);
+  @apply text-2xs;
+  line-height: 1.5;
+}
+
+.fx-preview-readiness-notice {
+  border-left: 3px solid var(--accent, var(--fx-line));
+  @apply text-sm;
+}
+
+.fx-preview-readiness-notice strong {
+  color: var(--fx-ink);
+  font-weight: 600;
+}
+
+.fx-preview-readiness-notice span {
+  color: var(--fx-muted);
+  @apply text-xs;
+}
+
+.fx-preview-runtime-notice strong {
+  color: var(--fx-ink);
+  @apply text-xs;
+  font-weight: 600;
+}
+
+.fx-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.fx-preview-config .fx-preview-actions,
+.fx-review-attach .fx-preview-actions {
+  padding-top: 14px;
+  border-top: 1px solid var(--fx-line);
+}
+
+.fx-preview-facts {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.fx-preview-facts-two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fx-preview-facts > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding: 10px 11px;
+  border: 1px solid var(--fx-line);
+  border-radius: 7px;
+  background: var(--fx-paper);
+}
+
+.fx-preview-facts dt,
+.fx-review-check-list strong {
+  color: var(--fx-muted);
+  @apply text-badge;
+  font-weight: 600;
+}
+
+.fx-preview-facts dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--fx-ink);
+  @apply text-xs;
+}
+
+.fx-preview-state {
+  align-items: stretch;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+}
+
+.fx-preview-running-url {
+  display: grid;
+  gap: 5px;
+  padding: 12px 14px;
+  border: 1px solid var(--fx-line);
+  border-radius: 7px;
+  background: var(--fx-panel);
+}
+
+.fx-preview-running-url span,
+.fx-preview-running-url small {
+  color: var(--fx-muted);
+  @apply text-2xs;
+}
+
+.fx-preview-running-url code {
+  overflow-wrap: anywhere;
+  color: var(--fx-ink);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  @apply text-xs;
 }
 
 .fx-run-tool-error {
@@ -1169,26 +1344,46 @@
 }
 
 .fx-run-tool-error-message {
+  display: grid;
+  gap: 4px;
   margin: 3px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--fx-line);
+  border-left: 3px solid var(--fx-red);
+  border-radius: 6px;
   color: var(--fx-red);
+  background: var(--fx-panel);
   @apply text-badge;
+  line-height: 1.5;
 }
 
-.fx-preview-state {
-  align-items: center;
-  justify-content: center;
-  padding: 18px;
+.fx-run-tool-validation-message {
+  display: grid;
+  gap: 4px;
+  margin: 3px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--fx-line);
+  border-left: 3px solid var(--fx-red);
+  border-radius: 6px;
+  color: var(--fx-red);
+  background: var(--fx-panel);
+  @apply text-badge;
+  line-height: 1.5;
 }
 
-.fx-preview-state .fx-run-tool-empty {
-  flex: none;
-  padding: 0 22px 14px;
+.fx-run-tool-error-message strong,
+.fx-run-tool-validation-message strong {
+  font-weight: 600;
+}
+
+.fx-run-tool-error-message span,
+.fx-run-tool-validation-message span {
+  color: var(--fx-muted);
 }
 
 .fx-preview-output {
   width: 100%;
-  max-width: 650px;
-  margin: 0 auto;
+  margin: 0;
   color: var(--fx-ink);
   @apply text-2xs;
 }
@@ -1209,21 +1404,134 @@
   overflow-wrap: anywhere;
 }
 
-.fx-review-empty {
-  padding: 15px 18px 20px;
-}
-
-.fx-review-empty .fx-run-tool-empty {
-  flex: none;
-  padding-top: 10px;
-}
-
-.fx-review-url-field {
+.fx-review-attach {
+  --fx-accent: #536d9c;
   display: grid;
   width: 100%;
-  max-width: 650px;
+  align-content: start;
+  gap: 10px;
+  margin: 0;
+  padding: 22px 24px;
+}
+
+.fx-review-helper {
+  margin: 0;
+  color: var(--fx-muted);
+  @apply text-2xs;
+  line-height: 1.5;
+}
+
+.fx-review-pane {
+  --fx-accent: #536d9c;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr);
+  align-content: start;
+  gap: 24px;
+  padding: 22px 24px;
+}
+
+.fx-review-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.fx-review-card h2 {
+  margin-bottom: 4px;
+}
+
+.fx-review-card > a {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--fx-accent);
+  @apply text-xs;
+}
+
+.fx-review-state {
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: var(--fx-muted);
+  background: var(--fx-paper);
+  @apply text-badge;
+  text-transform: capitalize;
+}
+
+.fx-review-card .fx-preview-actions {
+  width: 100%;
+  margin-top: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--fx-line);
+}
+
+.fx-review-check-list {
+  display: grid;
+  width: 100%;
   gap: 7px;
-  margin: auto auto 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fx-review-check-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 0;
+  border: 0;
+  border-bottom: 1px solid var(--fx-line);
+  border-radius: 0;
+  background: transparent;
+  @apply text-xs;
+}
+
+.fx-review-check-list li > strong {
+  color: var(--fx-ink);
+  text-transform: capitalize;
+}
+
+.fx-review-check-list li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fx-review-check-list a {
+  color: var(--fx-accent);
+  @apply text-2xs;
+}
+
+.fx-review-handoff-record {
+  display: grid;
+  width: 100%;
+  gap: 5px;
+}
+
+.fx-review-handoff-record h3 {
+  margin: 0;
+  color: var(--fx-ink);
+  @apply text-xs;
+  font-weight: 600;
+}
+
+.fx-review-handoff-record p {
+  margin: 0;
+  color: var(--fx-muted);
+  overflow-wrap: anywhere;
+  @apply text-xs;
+  line-height: 1.5;
+}
+
+.fx-review-unavailable-notice {
+  width: 100%;
+}
+
+.fx-review-card .fx-button:disabled {
+  opacity: 0.55;
 }
 
 .fx-run-tool-loading {
@@ -2206,7 +2514,12 @@
   .fx-project-grid,
   .fx-state-grid,
   .fx-plan-layout,
-  .fx-review-layout {
+  .fx-review-layout,
+  .fx-review-pane {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fx-preview-fields-row {
     grid-template-columns: minmax(0, 1fr);
   }
 

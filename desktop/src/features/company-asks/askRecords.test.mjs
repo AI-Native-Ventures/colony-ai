@@ -173,6 +173,56 @@ test("decodeRelayAskHead accepts and validates member-position proposal asks", (
   );
 });
 
+test("decodeRelayAskHead accepts typed allowance proposals and rejects malformed values", () => {
+  const employeePubkey = "f".repeat(64);
+  const proposal = {
+    schemaVersion: 1,
+    employeePubkey,
+    expectedHeadEventId: "c".repeat(64),
+    allowance: { amountCents: "10000", period: "week" },
+    temporaryAllowance: {
+      allowance: { amountCents: "12550", period: "week" },
+      expiresAt: "2026-10-05T23:59:59.999Z",
+    },
+    fundingOrder: ["Configured source"],
+  };
+  const makeContent = (spendAllowanceProposal) =>
+    headContent({
+      ask: {
+        schemaVersion: 1,
+        askId: ASK_ID,
+        type: "approval",
+        category: "money",
+        title: "Allowance change request",
+        body: "The approved project needs a short term increase.",
+        threadRootEventId: THREAD_ROOT,
+        addresseePubkey: "e".repeat(64),
+        subject: { kind: "companyMember", id: employeePubkey },
+        spendAllowanceProposal,
+      },
+    });
+
+  const decoded = decodeRelayAskHead(
+    signHead({ content: makeContent(proposal) }),
+    RELAY_PUBKEY,
+  );
+  assert.deepEqual(
+    decoded?.head.ask.spendAllowanceProposal?.temporaryAllowance,
+    proposal.temporaryAllowance,
+  );
+
+  const malformed = structuredClone(proposal);
+  malformed.temporaryAllowance.allowance.amountCents = "9999";
+  assert.throws(
+    () =>
+      decodeRelayAskHead(
+        signHead({ content: makeContent(malformed) }),
+        RELAY_PUBKEY,
+      ),
+    /unsupported shape/i,
+  );
+});
+
 test("decodeRelayAskHead accepts a tool consent ask with an exact preview", () => {
   const value = JSON.parse(headContent());
   value.ask.type = "tool_consent";

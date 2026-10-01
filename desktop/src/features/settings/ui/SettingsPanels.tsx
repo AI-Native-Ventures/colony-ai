@@ -67,7 +67,7 @@ import {
 import { ChannelTemplatesSettingsCard } from "./ChannelTemplatesSettingsCard";
 import { ExperimentalFeaturesCard } from "./ExperimentalFeaturesCard";
 import { KeyboardShortcutsCard } from "./KeyboardShortcutsCard";
-import { MeshComputeSettingsCard } from "@/features/mesh-compute/ui/MeshComputeSettingsCard";
+import { MeshComputeWorkspace } from "@/features/mesh-compute/ui/MeshComputeWorkspace";
 import { MobilePairingCard } from "./MobilePairingCard";
 import { ModerationQueueCard } from "./ModerationQueueCard";
 import { NotificationSettingsCard } from "./NotificationSettingsCard";
@@ -83,7 +83,9 @@ import { AvatarEditorProfileContext } from "./AvatarEditorProfileContext";
 import { UpdateChecker } from "../UpdateChecker";
 import { SettingsSectionHeader } from "./SettingsSectionHeader";
 import { VoiceSettingsCard } from "./VoiceSettingsCard";
-import { AppearanceSettingsPanel } from "./AppearanceSettingsPanel";
+import { DevicePrivacySettingsPanel } from "./DevicePrivacySettingsPanel";
+import { WorkspaceAppearanceSettingsPanel } from "./WorkspaceAppearanceSettingsPanel";
+import type { ConversationDensity } from "@/shared/lib/conversationDensityPreference";
 import { AgentDefaultsSettingsCard } from "./AgentDefaultsSettingsCard";
 import {
   AccessibilitySettingsPanel,
@@ -107,6 +109,7 @@ export type SettingsSection =
   | "harnesses"
   | "channel-templates"
   | "compute"
+  | "privacy"
   | "appearance"
   | "accessibility"
   | "business-profile"
@@ -226,10 +229,11 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
     icon: Smartphone,
     sections: [
       { value: "app", label: "App preferences" },
+      { value: "privacy", label: "Privacy" },
       { value: "mobile", label: "Mobile" },
       { value: "updates", label: "Updates" },
       { value: "experimental", label: "Experiments" },
-      { value: "compute", label: "Compute & hosts" },
+      { value: "compute", label: "Compute" },
     ],
   },
   {
@@ -270,6 +274,7 @@ const SETTINGS_SECTION_VALUES: readonly SettingsSection[] = [
   "harnesses",
   "channel-templates",
   "compute",
+  "privacy",
   "appearance",
   "accessibility",
   "business-profile",
@@ -326,6 +331,14 @@ export type SettingsPanelProps = {
   onSetAllSlotAlertsEnabled: (enabled: boolean) => void;
   onSetSoundForSlot: (slot: SoundSlot, name: SoundName) => void;
   onOpenThemeCatalog?: () => void;
+  appearanceDensity?: ConversationDensity;
+  appearanceSavedTheme?: string;
+  appearanceSavedDensity?: ConversationDensity;
+  appearanceSaveFailed?: boolean;
+  appearanceSaved?: boolean;
+  onSetAppearanceDensity?: (density: ConversationDensity) => void;
+  onSaveAppearance?: () => void;
+  onReturnFromAppearanceSaved?: () => void;
   onOpenDraftRecovery?: () => void;
   onEditAvatar?: () => void;
 };
@@ -1039,12 +1052,29 @@ export function renderSettingsSection(
     case "channel-templates":
       return <ChannelTemplatesSettingsCard />;
     case "compute":
-      return <MeshComputeSettingsCard />;
+      return <MeshComputeWorkspace />;
     case "appearance":
       return (
-        <AppearanceSettingsPanel
+        <WorkspaceAppearanceSettingsPanel
+          density={props.appearanceDensity ?? "comfortable"}
+          saveFailed={props.appearanceSaveFailed ?? false}
+          saved={props.appearanceSaved ?? false}
+          savedDensity={props.appearanceSavedDensity ?? "comfortable"}
+          savedTheme={props.appearanceSavedTheme ?? "buzz"}
+          onDensityChange={props.onSetAppearanceDensity ?? (() => undefined)}
           onOpenThemeCatalog={props.onOpenThemeCatalog ?? (() => undefined)}
-          onBackToWorkspace={props.onClose}
+          onReturn={
+            props.onReturnFromAppearanceSaved ??
+            props.onClose ??
+            (() => undefined)
+          }
+          onSave={props.onSaveAppearance ?? (() => undefined)}
+        />
+      );
+    case "privacy":
+      return (
+        <DevicePrivacySettingsPanel
+          onReviewDevices={() => props.onSectionChange?.("security")}
         />
       );
     case "accessibility":

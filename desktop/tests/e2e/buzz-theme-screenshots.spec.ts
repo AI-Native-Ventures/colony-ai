@@ -6,7 +6,6 @@ import { installMockBridge } from "../helpers/bridge";
 const SHOTS = "test-results/buzz-theme";
 const THEME_STORAGE_KEY = "buzz-theme";
 const GLASS_BACKGROUND_STORAGE_KEY = "buzz-glass-background";
-const GLASS_OPACITY_STORAGE_KEY = "buzz-glass-opacity";
 const PROMINENT_ACTIVE_TAB_STORAGE_KEY = "buzz-prominent-active-tab";
 const FONT_SIZE_STORAGE_KEY = "buzz.appearance.fontSize";
 const MOCK_PUBKEY = "deadbeef".repeat(8);
@@ -21,9 +20,9 @@ const COMMUNITY_THEME_STORAGE_KEY = `buzz-community-theme.v1:${MOCK_PUBKEY}:${en
  * ThemeProvider reads it on first mount (init scripts run in registration
  * order; React reads state on mount, which the bridge triggers).
  */
-async function seedTheme(page: Page, theme: string) {
+async function seedTheme(page: Page, theme: string, followSystem = false) {
   await page.addInitScript(
-    ({ communityKey, key, value }) => {
+    ({ communityKey, key, value, followSystem }) => {
       window.localStorage.setItem(key, value);
       window.localStorage.setItem(
         communityKey,
@@ -31,7 +30,7 @@ async function seedTheme(page: Page, theme: string) {
           version: 1,
           theme: value,
           accent: "#3b82f6",
-          followSystem: false,
+          followSystem,
         }),
       );
     },
@@ -39,6 +38,7 @@ async function seedTheme(page: Page, theme: string) {
       communityKey: COMMUNITY_THEME_STORAGE_KEY,
       key: THEME_STORAGE_KEY,
       value: theme,
+      followSystem,
     },
   );
 }
@@ -600,10 +600,7 @@ test("custom section icon and name align with channel columns", async ({
   );
 });
 
-async function openAppearance(
-  page: Page,
-  mode: "system" | "light" | "dark" = "light",
-) {
+async function openAppearance(page: Page) {
   // Settings renders at the AppShell level; open it via the profile card
   // button, then select the Appearance section.
   await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -612,65 +609,58 @@ async function openAppearance(
   await page.getByTestId("settings-group-appearance-group").click();
   const panel = page.getByTestId("settings-appearance");
   await expect(panel).toBeVisible({ timeout: 10_000 });
-  await page.getByTestId(`appearance-mode-${mode}`).click();
   await waitForAnimations(page);
   return panel;
 }
 
-test("appearance shows the frozen controls in their designed sections", async ({
+test("appearance keeps the named catalog and supported workspace density choices", async ({
   page,
 }) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
-  await openAppearance(page, "light");
+  await openAppearance(page);
 
   const appearance = page.getByTestId("settings-appearance");
   await expect(
-    appearance.getByRole("heading", { name: "Make yourself at home." }),
+    appearance.getByRole("heading", { exact: true, name: "Appearance" }),
   ).toBeVisible();
-  await expect(appearance.getByText("Only you", { exact: true })).toBeVisible();
-  await expect(appearance.getByTestId("appearance-open-themes")).toBeVisible();
-  await expect(appearance.getByTestId("appearance-mode-system")).toBeVisible();
+  await expect(appearance.getByText("One home for appearance")).toBeVisible();
   await expect(
-    appearance.getByTestId("appearance-theme-default"),
-  ).toHaveAttribute("aria-pressed", "true");
-  await expect(appearance.getByTestId("appearance-accent-blue")).toBeVisible();
-  await expect(appearance.getByTestId("appearance-glass")).toBeVisible();
-  await expect(appearance.getByTestId("appearance-prominent")).toBeVisible();
-  await expect(appearance.getByTestId("appearance-message-size")).toBeVisible();
+    appearance.getByRole("button", { name: "Browse named themes" }),
+  ).toBeVisible();
   await expect(appearance.getByTestId("appearance-density")).toBeVisible();
-  await expect(appearance.getByTestId("appearance-links-rich")).toBeVisible();
   await expect(
-    appearance.getByTestId("appearance-threads-focus"),
-  ).toBeVisible();
-
-  const sectionOrder = await appearance
-    .locator(".ap-section h2")
-    .evaluateAll((headings) =>
-      headings.map((heading) => heading.firstChild?.textContent?.trim()),
-    );
-  expect(sectionOrder).toEqual(["Appearance", "Window", "Conversations"]);
+    appearance.getByTestId("appearance-density").locator("option"),
+  ).toHaveText(["Choose message density", "Compact", "Comfortable"]);
+  await expect(appearance.getByTestId("appearance-glass")).toHaveCount(0);
+  await expect(appearance.getByTestId("appearance-message-size")).toHaveCount(
+    0,
+  );
+  await expect(appearance.getByTestId("appearance-links-rich")).toHaveCount(0);
+  await expect(appearance.getByTestId("appearance-threads-focus")).toHaveCount(
+    0,
+  );
 });
 
-test("text size, message size, and density save to their own scopes", async ({
+test("workspace density and accessibility text size keep their own scopes", async ({
   page,
 }) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
-  await openAppearance(page, "light");
-
-  const readConversations = () =>
-    page.evaluate(() => {
-      const key = Object.keys(localStorage).find((candidate) =>
-        candidate.endsWith(":global-conversations"),
-      );
-      return key ? JSON.parse(localStorage.getItem(key) ?? "null") : null;
-    });
-  await page.getByTestId("appearance-message-size").selectOption("larger");
-  await page.getByTestId("appearance-density").selectOption("spacious");
+  await openAppearance(page);
+  await page.getByTestId("appearance-density").selectOption("compact");
+  await page.getByRole("button", { name: "Save appearance" }).click();
+  await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
   await expect
-    .poll(readConversations)
-    .toMatchObject({ messageSize: "larger", density: "spacious" });
+    .poll(() => businessSnapshot(page))
+    .toMatchObject({
+      theme: "buzz",
+      density: "compact",
+    });
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-conversation-density",
+    "compact",
+  );
 
   await page.getByTestId("settings-inner-accessibility").click();
   const accessibility = page.getByTestId("settings-accessibility");
@@ -690,30 +680,53 @@ test("text size, message size, and density save to their own scopes", async ({
       page.evaluate((key) => localStorage.getItem(key), FONT_SIZE_STORAGE_KEY),
     )
     .toBe("larger");
-  await expect
-    .poll(readConversations)
-    .toMatchObject({ messageSize: "larger", density: "spacious" });
 });
 
-test("appearance picker: system tab (Buzz follows OS)", async ({ page }) => {
+test("workspace appearance opens the retained named theme catalog", async ({
+  page,
+}) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
-  const panel = await openAppearance(page, "system");
-  await panel.screenshot({ path: `${SHOTS}/03-picker-system.png` });
+  const panel = await openAppearance(page);
+  await panel.getByRole("button", { name: "Browse named themes" }).click();
+  const catalog = page.getByTestId("settings-theme-catalog");
+  await expect(catalog.getByTestId("theme-catalog-buzz")).toBeVisible();
+  await expect(catalog.getByTestId("theme-catalog-buzz-dark")).toBeVisible();
+  await catalog.screenshot({ path: `${SHOTS}/03-theme-catalog.png` });
 });
 
-test("appearance picker: light tab (Buzz)", async ({ page }) => {
-  await seedTheme(page, "buzz");
-  await installMockBridge(page);
-  const panel = await openAppearance(page, "light");
-  await panel.screenshot({ path: `${SHOTS}/04-picker-light.png` });
-});
-
-test("appearance picker: dark tab (Buzz Dark)", async ({ page }) => {
+test("named theme catalog retains light and dark variants", async ({
+  page,
+}) => {
   await seedTheme(page, "buzz-dark");
   await installMockBridge(page);
-  const panel = await openAppearance(page, "dark");
-  await panel.screenshot({ path: `${SHOTS}/05-picker-dark.png` });
+  await openAppearance(page);
+  await page.getByRole("button", { name: "Browse named themes" }).click();
+  const catalog = page.getByTestId("settings-theme-catalog");
+  await expect(catalog.getByTestId("theme-catalog-github-light")).toBeVisible();
+  await expect(catalog.getByTestId("theme-catalog-github-dark")).toBeVisible();
+  await page.getByTestId("settings-view").screenshot({
+    path: `${SHOTS}/04-theme-catalog-dark.png`,
+  });
+});
+
+test("named theme preview retains the selected workspace density", async ({
+  page,
+}) => {
+  await seedTheme(page, "buzz-dark");
+  await installMockBridge(page);
+  await openAppearance(page);
+  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("theme-catalog-buzz-dark").click();
+  await page
+    .getByTestId("appearance-preview-density")
+    .selectOption("comfortable");
+  await expect(page.getByTestId("appearance-preview-density")).toHaveValue(
+    "comfortable",
+  );
+  await page.getByTestId("settings-view").screenshot({
+    path: `${SHOTS}/05-theme-preview.png`,
+  });
 });
 
 test("settings nav uses Buzz active pill + hover (light)", async ({ page }) => {
@@ -776,87 +789,23 @@ test("settings nav uses Buzz active pill + hover (dark)", async ({ page }) => {
   });
 });
 
-test("prominent active tab is opt-in and switches selection surfaces", async ({
+test("workspace appearance keeps navigation controls within the frozen design", async ({
   page,
 }) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
-  await openAppearance(page, "light");
-
+  const appearance = await openAppearance(page);
   const root = page.locator("html");
-  const toggle = page.getByTestId("appearance-prominent");
-  await expect(toggle).not.toBeChecked();
+  await expect(appearance.getByTestId("appearance-prominent")).toHaveCount(0);
+  await expect(appearance.getByTestId("appearance-accent-cyan")).toHaveCount(0);
+  await expect(appearance.getByTestId("appearance-glass")).toHaveCount(0);
   await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
-  await expect
-    .poll(() =>
-      page.evaluate(
-        (key) => window.localStorage.getItem(key),
-        PROMINENT_ACTIVE_TAB_STORAGE_KEY,
-      ),
-    )
-    .toBe("false");
 
   await page.getByTestId("settings-close").click();
   await page.getByTestId("channel-general").click();
   const activeRow = page.getByTestId("channel-general");
   const subtleSurface = "rgba(255, 255, 255, 0.56)";
-  const prominentSurface = await resolveSidebarColor(
-    page,
-    "background-color",
-    "var(--w20-appearance-accent)",
-  );
-  const prominentForeground = await resolveSidebarColor(page, "color", "#fff");
   await expect(activeRow).toHaveCSS("background-color", subtleSurface);
-  const subtleTextStyle = await activeRow.evaluate((element) => {
-    const styles = getComputedStyle(element);
-    return { color: styles.color, fontWeight: styles.fontWeight };
-  });
-
-  await openAppearance(page, "light");
-  const enabledToggle = page.getByTestId("appearance-prominent");
-
-  await enabledToggle.click();
-  await expect(enabledToggle).toBeChecked();
-  await expect(root).toHaveAttribute("data-prominent-active-tab", "");
-  await expect
-    .poll(() =>
-      page.evaluate(
-        (key) => window.localStorage.getItem(key),
-        PROMINENT_ACTIVE_TAB_STORAGE_KEY,
-      ),
-    )
-    .toBe("true");
-  await page.getByTestId("settings-close").click();
-  await page.getByTestId("channel-general").click();
-  await expect(activeRow).toHaveCSS("background-color", prominentSurface);
-  const prominentTextStyle = await activeRow.evaluate((element) => {
-    const styles = getComputedStyle(element);
-    return { color: styles.color, fontWeight: styles.fontWeight };
-  });
-  expect(prominentTextStyle).toEqual({
-    color: prominentForeground,
-    fontWeight: "700",
-  });
-
-  await openAppearance(page, "light");
-  await page.getByTestId("appearance-prominent").click();
-  await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
-  await expect
-    .poll(() =>
-      page.evaluate(
-        (key) => window.localStorage.getItem(key),
-        PROMINENT_ACTIVE_TAB_STORAGE_KEY,
-      ),
-    )
-    .toBe("false");
-  await page.getByTestId("settings-close").click();
-  await page.getByTestId("channel-general").click();
-  await expect(activeRow).toHaveCSS("background-color", subtleSurface);
-  const restoredTextStyle = await activeRow.evaluate((element) => {
-    const styles = getComputedStyle(element);
-    return { color: styles.color, fontWeight: styles.fontWeight };
-  });
-  expect(restoredTextStyle).toEqual(subtleTextStyle);
 });
 
 test("prominent channel and direct-message rows share one flat active state", async ({
@@ -1067,40 +1016,29 @@ test("settings content uses the same inset surface as the main app", async ({
   });
 });
 
-test("appearance keeps accent controls visible with the Buzz theme", async ({
+test("named theme catalog retains the saved theme choices", async ({
   page,
 }) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
-  const panel = await openAppearance(page, "light");
-  const accentIds = [
-    "violet",
-    "neutral",
-    "blue",
-    "cyan",
-    "green",
-    "orange",
-    "red",
-    "pink",
-    "lilac",
-    "purple",
-    "indigo",
-  ];
-  for (const accent of accentIds) {
-    await expect(
-      panel.getByTestId(`appearance-accent-${accent}`),
-    ).toBeVisible();
-  }
-  await expect(panel.getByTestId("appearance-accent-cyan")).toHaveAttribute(
-    "aria-pressed",
-    "false",
-  );
-  await panel.screenshot({ path: `${SHOTS}/10-appearance-accent.png` });
+  await openAppearance(page);
+  await page.getByRole("button", { name: "Browse named themes" }).click();
+  const catalog = page.getByTestId("settings-theme-catalog");
+  await expect(catalog.getByTestId("theme-catalog-buzz")).toBeVisible();
+  await expect(catalog.getByTestId("theme-catalog-buzz-dark")).toBeVisible();
+  await expect(catalog.getByTestId("theme-catalog-github-light")).toBeVisible();
+  await expect(catalog.getByTestId("theme-catalog-github-dark")).toBeVisible();
+  await page.getByTestId("settings-view").screenshot({
+    path: `${SHOTS}/10-named-themes.png`,
+  });
 });
 
-test("glass controls keep settings content solid", async ({ page }) => {
+test("saved glass preference keeps settings content solid", async ({
+  page,
+}) => {
   await seedTheme(page, "buzz");
   await page.addInitScript(() => {
+    window.localStorage.setItem("buzz-glass-background", "true");
     (window as typeof window & { isTauri?: boolean }).isTauri = true;
     Object.defineProperty(navigator, "platform", {
       configurable: true,
@@ -1108,13 +1046,9 @@ test("glass controls keep settings content solid", async ({ page }) => {
     });
   });
   await installMockBridge(page);
-  await openAppearance(page, "light");
-
-  const toggle = page.getByTestId("appearance-glass");
-  const opacitySlider = page.getByTestId("appearance-glass-opacity");
+  const appearance = await openAppearance(page);
   const root = page.locator("html");
-  await expect(toggle).toBeEnabled();
-  await expect(toggle).not.toBeChecked();
+  await expect(appearance.getByTestId("appearance-glass")).toHaveCount(0);
   await expect
     .poll(() =>
       page.evaluate(
@@ -1122,14 +1056,7 @@ test("glass controls keep settings content solid", async ({ page }) => {
         GLASS_BACKGROUND_STORAGE_KEY,
       ),
     )
-    .toBe("false");
-  await expect(opacitySlider).toHaveCount(0);
-  await expect(root).not.toHaveAttribute("data-glass-background", "");
-
-  await toggle.click();
-  await expect(toggle).toBeChecked();
-  await expect(opacitySlider).toBeVisible();
-  await expect(opacitySlider).toHaveValue("65");
+    .toBe("true");
   await expect(root).toHaveAttribute("data-glass-background", "");
   await expect(page.getByTestId("settings-view")).toHaveCSS(
     "background-color",
@@ -1147,33 +1074,10 @@ test("glass controls keep settings content solid", async ({ page }) => {
       ),
     )
     .toBe(true);
-
-  await opacitySlider.press("Home");
-  await expect(opacitySlider).toHaveValue("30");
-  await expect
-    .poll(() =>
-      page.evaluate(
-        (storageKey) => localStorage.getItem(storageKey),
-        GLASS_OPACITY_STORAGE_KEY,
-      ),
-    )
-    .toBe("30");
   await waitForAnimations(page);
   await page.getByTestId("settings-appearance").screenshot({
     path: `${SHOTS}/11-appearance-glass.png`,
   });
-
-  await toggle.click();
-  await expect(root).not.toHaveAttribute("data-glass-background", "");
-  await expect(opacitySlider).toHaveCount(0);
-  await expect
-    .poll(() =>
-      page.evaluate(
-        (storageKey) => localStorage.getItem(storageKey),
-        GLASS_BACKGROUND_STORAGE_KEY,
-      ),
-    )
-    .toBe("false");
 });
 
 test("glass controls are disabled on Linux", async ({ page }) => {
@@ -1191,12 +1095,9 @@ test("glass controls are disabled on Linux", async ({ page }) => {
     });
   }, GLASS_BACKGROUND_STORAGE_KEY);
   await installMockBridge(page);
-  const panel = await openAppearance(page, "light");
+  const panel = await openAppearance(page);
 
-  const toggle = panel.getByTestId("appearance-glass");
-  await expect(toggle).toBeVisible();
-  await expect(toggle).toBeDisabled();
-  await expect(toggle).not.toBeChecked();
+  await expect(panel.getByTestId("appearance-glass")).toHaveCount(0);
   await expect(panel.getByTestId("appearance-glass-opacity")).toHaveCount(0);
   await expect(page.locator("html")).not.toHaveAttribute(
     "data-glass-background",
@@ -1224,6 +1125,7 @@ test("glass controls are disabled on Linux", async ({ page }) => {
 test("glass keeps a non-Buzz theme sidebar tint", async ({ page }) => {
   await seedTheme(page, "rose-pine-dawn");
   await page.addInitScript(() => {
+    window.localStorage.setItem("buzz-glass-background", "true");
     (window as typeof window & { isTauri?: boolean }).isTauri = true;
     Object.defineProperty(navigator, "platform", {
       configurable: true,
@@ -1231,11 +1133,10 @@ test("glass keeps a non-Buzz theme sidebar tint", async ({ page }) => {
     });
   });
   await installMockBridge(page);
-  const panel = await openAppearance(page, "light");
+  await openAppearance(page);
 
   const root = page.locator("html");
   await expect(root).not.toHaveAttribute("data-buzz-sidebar", "");
-  await panel.getByTestId("appearance-glass").click();
   await expect(root).toHaveAttribute("data-glass-background", "");
 
   const tint = await page
@@ -1264,75 +1165,68 @@ test("glass keeps a non-Buzz theme sidebar tint", async ({ page }) => {
   expect(tint.actual).toBe(tint.expected);
 });
 
-test("accent controls remain available after applying a named theme", async ({
+test("a named theme remains applied after returning to workspace appearance", async ({
   page,
 }) => {
   await seedTheme(page, "github-light");
   await installMockBridge(page);
-  const panel = await openAppearance(page, "light");
-  await expect(panel.getByTestId("appearance-accent-neutral")).toBeVisible();
+  await openAppearance(page);
 
-  await panel.getByTestId("appearance-open-themes").click();
+  await page.getByRole("button", { name: "Browse named themes" }).click();
   await page.getByTestId("theme-catalog-buzz-dark").click();
   await expect(page.getByTestId("settings-theme-preview")).toBeVisible();
-  const themePreview = page.getByRole("region", {
-    name: "Theme preview conversation",
-  });
-  await expect(themePreview.getByText("Autumn, softly.")).toBeVisible();
-  await expect(
-    themePreview.getByText("The September designs are ready for feedback."),
-  ).toBeVisible();
+  const themePreview = page.getByTestId("theme-workspace-preview");
+  await expect(themePreview).toContainText("Preview content only");
   await page.getByTestId("theme-use").click();
   await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-  await expect(themePreview.getByText("Autumn, softly.")).toBeVisible();
-  await page.getByRole("button", { name: "Done" }).click();
+  await expectAppliedBuzzTheme(page, "buzz-dark");
+  await page.getByRole("button", { name: "Return to Appearance" }).click();
 
   const updatedAppearance = page.getByTestId("settings-appearance");
   await expect(updatedAppearance).toBeVisible();
-  for (const accent of ["neutral", "blue", "cyan", "violet"]) {
-    await expect(
-      updatedAppearance.getByTestId(`appearance-accent-${accent}`),
-    ).toBeVisible();
-  }
+  await expect(
+    updatedAppearance.getByRole("button", { name: "Browse named themes" }),
+  ).toBeVisible();
+  await expect
+    .poll(() => businessSnapshot(page))
+    .toMatchObject({ theme: "buzz-dark" });
   await waitForAnimations(page);
   await updatedAppearance.screenshot({
-    path: `${SHOTS}/12-appearance-theme-and-accents.png`,
+    path: `${SHOTS}/12-appearance-theme.png`,
   });
 });
 
-test("Buzz light and dark modes apply live without a reload", async ({
-  page,
-}) => {
+test("named Buzz themes apply live without a reload", async ({ page }) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
-  await openAppearance(page, "light");
+  await openAppearance(page);
   await expectAppliedBuzzTheme(page, "buzz");
   const lightGradient = await expectBuzzGradientPaint(page, "light");
 
-  await page.getByTestId("appearance-mode-dark").click();
+  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("theme-catalog-buzz-dark").click();
+  await page.getByTestId("theme-use").click();
   await expectAppliedBuzzTheme(page, "buzz-dark");
   const darkGradient = await expectBuzzGradientPaint(page, "dark");
   expect(darkGradient).not.toBe(lightGradient);
 
-  await page.getByTestId("appearance-mode-light").click();
+  await page.getByRole("button", { name: "Return to Appearance" }).click();
+  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("theme-catalog-buzz").click();
+  await page.getByTestId("theme-use").click();
   await expectAppliedBuzzTheme(page, "buzz");
   await expectBuzzGradientPaint(page, "light");
-
-  // Exercise the overlap that previously let a slower, stale theme load win.
-  await page.getByTestId("appearance-mode-dark").click();
-  await page.getByTestId("appearance-mode-light").click();
-  await expectAppliedBuzzTheme(page, "buzz");
 });
 
 test("Buzz follows native system theme changes without a reload", async ({
   page,
 }) => {
-  await seedTheme(page, "buzz");
+  await seedTheme(page, "buzz", true);
   await page.addInitScript(() => {
     (window as typeof window & { isTauri?: boolean }).isTauri = true;
   });
   await installMockBridge(page);
-  await openAppearance(page, "system");
+  await openAppearance(page);
 
   await emitNativeThemeChange(page, "dark");
   await expectAppliedBuzzTheme(page, "buzz-dark", "buzz");
@@ -1388,37 +1282,25 @@ test("theme catalog applies a named theme through a scoped save", async ({
   await installMockBridge(page);
   await openAppearance(page);
 
-  await page.getByTestId("appearance-open-themes").click();
+  await page.getByRole("button", { name: "Browse named themes" }).click();
   await expect(page.getByTestId("settings-theme-catalog")).toBeVisible();
-  await expect(page.getByRole("button", { name: "All" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await page.getByRole("button", { exact: true, name: "Dark" }).click();
-  const themeSearch = page.getByRole("searchbox", { name: "Search themes" });
-  await themeSearch.fill("no matching theme");
-  await expect(
-    page.getByRole("heading", { name: "No themes found" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Clear filters" }).click();
-  await expect(themeSearch).toHaveValue("");
   await expect(page.getByTestId("theme-catalog-buzz-dark")).toBeVisible();
   await page.getByTestId("theme-catalog-buzz-dark").click();
   await expect(page.getByTestId("settings-theme-preview")).toBeVisible();
-  const themePreview = page.getByRole("region", {
-    name: "Theme preview conversation",
-  });
-  await expect(themePreview.getByText("Autumn, softly.")).toBeVisible();
-  await expect(
-    themePreview.getByText("The September designs are ready for feedback."),
-  ).toBeVisible();
+  const themePreview = page.getByTestId("theme-workspace-preview");
+  await expect(themePreview).toContainText("Preview content only");
+  await page.getByTestId("appearance-preview-density").selectOption("compact");
   await page.getByTestId("theme-use").click();
   await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-  await expect(themePreview.getByText("Autumn, softly.")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Compact");
   await expectAppliedBuzzTheme(page, "buzz-dark");
   await expect
     .poll(() => businessSnapshot(page))
-    .toMatchObject({ theme: "buzz-dark", followSystem: false });
+    .toMatchObject({
+      theme: "buzz-dark",
+      followSystem: false,
+      density: "compact",
+    });
 
   await waitForAnimations(page);
   await page.getByTestId("settings-view").screenshot({
@@ -1426,89 +1308,54 @@ test("theme catalog applies a named theme through a scoped save", async ({
   });
 });
 
-test("appearance controls save business and global preferences with a live preview", async ({
+test("workspace appearance saves theme and density as one scoped preference", async ({
   page,
 }) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
   const panel = await openAppearance(page);
-  const preview = page.getByTestId("appearance-live-preview");
-
-  await expect(page.getByTestId("appearance-accent-violet")).toBeVisible();
-  await expect(page.getByTestId("appearance-density")).toBeVisible();
-  await page.getByTestId("appearance-mode-dark").click();
-  await page.getByTestId("appearance-accent-cyan").click();
-  await page.getByTestId("appearance-message-size").selectOption("larger");
-  await expect(page.locator("html")).toHaveAttribute(
-    "data-font-size",
-    "default",
-  );
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        document.documentElement.style.getPropertyValue(
-          "--conversation-message-font-size",
-        ),
-      ),
-    )
-    .toBe("calc(var(--buzz-type-rem) * 0.9375)");
-  await page.getByTestId("appearance-density").selectOption("spacious");
-  await page.getByTestId("appearance-links-rich").click();
-  await page.getByTestId("appearance-threads-focus").click();
-
-  await expect(preview.locator(".ap-demo-link")).toHaveClass(/rich/);
-  await expect(preview.locator(".ap-live-chat")).toHaveClass(/focused/);
+  await expect(panel.getByTestId("appearance-density")).toBeVisible();
+  await panel.getByTestId("appearance-density").selectOption("comfortable");
+  await page.getByRole("button", { name: "Save appearance" }).click();
+  await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
   await expect
     .poll(() => businessSnapshot(page))
-    .toMatchObject({ theme: "buzz-dark", accent: "#06B6D4" });
+    .toMatchObject({ theme: "buzz", density: "comfortable" });
   await expect
     .poll(() =>
-      page.evaluate(() => {
-        const key = Object.keys(localStorage).find((candidate) =>
-          candidate.endsWith(":global-conversations"),
-        );
-        return key ? JSON.parse(localStorage.getItem(key) ?? "null") : null;
-      }),
+      page.evaluate(
+        () =>
+          Object.keys(localStorage).filter(
+            (key) =>
+              key.startsWith("colony.appearance.v1:") &&
+              !key.endsWith(":last-business"),
+          ).length,
+      ),
     )
-    .toMatchObject({
-      messageSize: "larger",
-      density: "spacious",
-      linkPreview: "rich",
-      threadLayout: "focus",
-    });
+    .toBe(1);
 
   await waitForAnimations(page);
-  await panel.screenshot({ path: `${SHOTS}/04-appearance.png` });
+  await page.getByTestId("settings-view").screenshot({
+    path: `${SHOTS}/04-appearance-saved.png`,
+  });
 });
 
-test("prominent selection uses the chosen accent on the active settings group", async ({
+test("named appearance keeps density and theme in the same scoped snapshot", async ({
   page,
 }) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
-  await openAppearance(page);
-
-  const activeGroup = page.getByTestId("settings-group-appearance-group");
-  const toggle = page.getByTestId("appearance-prominent");
-  await expect(toggle).toHaveAttribute("aria-checked", "false");
-  await expect(page.locator("html")).not.toHaveAttribute(
-    "data-prominent-active-tab",
-    "",
+  const panel = await openAppearance(page);
+  await expect(panel.getByTestId("appearance-prominent")).toHaveCount(0);
+  await expect(panel.getByTestId("appearance-accent-cyan")).toHaveCount(0);
+  await expect(panel.getByTestId("appearance-density")).toHaveValue(
+    "comfortable",
   );
-  await page.getByTestId("appearance-accent-cyan").click();
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-checked", "true");
-  await expect(page.locator("html")).toHaveAttribute(
-    "data-prominent-active-tab",
-    "",
-  );
-  const expectedAccent = await page.evaluate(() => {
-    const probe = document.createElement("span");
-    probe.style.color = "var(--w20-appearance-accent)";
-    document.body.appendChild(probe);
-    const color = getComputedStyle(probe).color;
-    probe.remove();
-    return color;
-  });
-  await expect(activeGroup).toHaveCSS("background-color", expectedAccent);
+  await panel.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("theme-catalog-github-dark").click();
+  await page.getByTestId("appearance-preview-density").selectOption("compact");
+  await page.getByTestId("theme-use").click();
+  await expect
+    .poll(() => businessSnapshot(page))
+    .toMatchObject({ theme: "github-dark", density: "compact" });
 });
