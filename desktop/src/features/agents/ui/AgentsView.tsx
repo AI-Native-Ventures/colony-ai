@@ -56,6 +56,10 @@ import {
 } from "@/shared/ui/dropdown-menu";
 import { PageHeader } from "@/shared/ui/PageHeader";
 import { getInheritedAgentDefaults } from "./bakedEnvHelpers";
+import {
+  HireBackButton,
+  HirePageHeader,
+} from "@/features/company-hiring/ui/HirePresentation";
 
 export type AgentWorkspaceView = "directory" | "teams" | "templates";
 
@@ -309,10 +313,91 @@ export function AgentsView({
     });
   }, []);
 
+  const personaDialogState = personas.personaDialogState;
+  const rolePackEditMode = Boolean(
+    personaDialogState?.initialValues.companyRole && canCurateCompanyRoles,
+  );
+  const showRolePackPage = catalogLaunchRolePack || rolePackEditMode;
+  const personaDefinitionDialog = personaDialogState ? (
+    <AgentDialog
+      companyRoleMode={Boolean(
+        personaDialogState.initialValues.companyRole && canCurateCompanyRoles,
+      )}
+      embedded={rolePackEditMode}
+      onRoleRecovery={handleRoleRecovery}
+      suppressRoleRecovery={resumeRolePack}
+      description={
+        personaDialogState.initialValues.companyRole && canCurateCompanyRoles
+          ? "Define the job, skills, scoped tools and allowed worker menu."
+          : personaDialogState.description
+      }
+      error={
+        personas.updatePersonaMutation.error instanceof Error
+          ? personas.updatePersonaMutation.error
+          : personas.updatePersonaAndPublishMutation.error instanceof Error
+            ? personas.updatePersonaAndPublishMutation.error
+            : personas.createPersonaMutation.error instanceof Error
+              ? personas.createPersonaMutation.error
+              : null
+      }
+      initialValues={personaDialogState.initialValues}
+      isPending={personas.isPending}
+      mode="definition-edit"
+      onSavedPersona={(persona) => {
+        if (persona.companyRole) void goHireRoles(persona.id);
+      }}
+      runtimes={personas.acpRuntimesQuery.data ?? []}
+      runtimeCatalogStatus={
+        personas.acpRuntimesQuery.isLoading
+          ? "loading"
+          : personas.acpRuntimesQuery.isError
+            ? "error"
+            : "ready"
+      }
+      onOpenChange={(open) => {
+        if (!open) {
+          const isRolePack = Boolean(
+            personaDialogState.initialValues.companyRole,
+          );
+          personas.setPersonaDialogState(null);
+          if (isRolePack) void goHireRoles();
+        }
+      }}
+      onSubmit={(input, options, onSavedPersona) =>
+        personas.handleSubmit(
+          input,
+          undefined,
+          undefined,
+          undefined,
+          options,
+          onSavedPersona,
+        )
+      }
+      open
+      publishCatalogUpdatesOnSave={
+        "id" in personaDialogState.initialValues &&
+        personas.sharedCatalogPersonaIdSet.has(
+          personaDialogState.initialValues.id,
+        )
+      }
+      submitLabel={
+        personaDialogState.initialValues.companyRole && canCurateCompanyRoles
+          ? "Save role pack"
+          : personaDialogState.submitLabel
+      }
+      title={
+        personaDialogState.initialValues.companyRole && canCurateCompanyRoles
+          ? "Edit a role pack"
+          : personaDialogState.title
+      }
+    />
+  ) : null;
+
   return (
     <>
       <div
         className={`flex-1 overflow-y-auto overflow-x-hidden overscroll-contain ${selectedAgent || view === "directory" ? "" : "px-4 py-7 sm:px-6 sm:py-8"}`}
+        style={showRolePackPage ? { display: "none" } : undefined}
       >
         <div
           className={`mx-auto w-full ${selectedAgent ? "h-full min-h-0 max-w-none" : view === "directory" ? "flex h-full min-h-0 max-w-none flex-col" : "max-w-6xl space-y-8 [container-type:inline-size]"}`}
@@ -712,83 +797,29 @@ export function AgentsView({
           open={agents.agentToAddToChannel !== null}
         />
       ) : null}
-      {personas.personaDialogState ? (
-        <AgentDialog
-          companyRoleMode={Boolean(
-            personas.personaDialogState.initialValues.companyRole &&
-              canCurateCompanyRoles,
-          )}
-          onRoleRecovery={handleRoleRecovery}
-          suppressRoleRecovery={resumeRolePack}
-          description={
-            personas.personaDialogState.initialValues.companyRole &&
-            canCurateCompanyRoles
-              ? "Define the job, skills, scoped tools and allowed worker menu."
-              : personas.personaDialogState.description
-          }
-          error={
-            personas.updatePersonaMutation.error instanceof Error
-              ? personas.updatePersonaMutation.error
-              : personas.updatePersonaAndPublishMutation.error instanceof Error
-                ? personas.updatePersonaAndPublishMutation.error
-                : personas.createPersonaMutation.error instanceof Error
-                  ? personas.createPersonaMutation.error
-                  : null
-          }
-          initialValues={personas.personaDialogState.initialValues}
-          isPending={personas.isPending}
-          mode="definition-edit"
-          onSavedPersona={(persona) => {
-            if (persona.companyRole) void goHireRoles(persona.id);
-          }}
-          runtimes={personas.acpRuntimesQuery.data ?? []}
-          runtimeCatalogStatus={
-            personas.acpRuntimesQuery.isLoading
-              ? "loading"
-              : personas.acpRuntimesQuery.isError
-                ? "error"
-                : "ready"
-          }
-          onOpenChange={(open) => {
-            if (!open) {
-              const isRolePack = Boolean(
-                personas.personaDialogState?.initialValues.companyRole,
-              );
-              personas.setPersonaDialogState(null);
-              if (isRolePack) void goHireRoles();
-            }
-          }}
-          onSubmit={(input, options, onSavedPersona) =>
-            personas.handleSubmit(
-              input,
-              undefined,
-              undefined,
-              undefined,
-              options,
-              onSavedPersona,
-            )
-          }
-          open={personas.personaDialogState !== null}
-          publishCatalogUpdatesOnSave={
-            "id" in personas.personaDialogState.initialValues &&
-            personas.sharedCatalogPersonaIdSet.has(
-              personas.personaDialogState.initialValues.id,
-            )
-          }
-          submitLabel={
-            personas.personaDialogState.initialValues.companyRole &&
-            canCurateCompanyRoles
-              ? "Save role pack"
-              : personas.personaDialogState.submitLabel
-          }
-          title={
-            personas.personaDialogState.initialValues.companyRole &&
-            canCurateCompanyRoles
-              ? "Edit a role pack"
-              : personas.personaDialogState.title
-          }
-        />
-      ) : null}
+      {rolePackEditMode ? (
+        <section
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
+          data-testid="company-role-pack-page"
+        >
+          <HirePageHeader title="Role catalog" />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto w-full max-w-[74.5rem] px-12 pb-12 2xl:px-6">
+              <HireBackButton
+                disabled={personas.isPending}
+                onClick={() => {
+                  personas.setPersonaDialogState(null);
+                  void goHireRoles();
+                }}
+              />
+              <PageHeader className="mb-7" title="Role catalog" />
+              {personaDefinitionDialog}
+            </div>
+          </div>
+        </section>
+      ) : (
+        personaDefinitionDialog
+      )}
       {personas.personaToDelete ? (
         <PersonaDeleteDialog
           instanceCount={
@@ -932,7 +963,9 @@ export function AgentsView({
                     ? "error"
                     : "ready"
               }
-              submitLabel="Add agent"
+              submitLabel={
+                catalogLaunchRolePack ? "Save role pack" : "Add agent"
+              }
             />
           )}
           // Persona side

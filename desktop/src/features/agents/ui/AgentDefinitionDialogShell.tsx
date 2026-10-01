@@ -25,6 +25,14 @@ export function AgentDefinitionDialogShell({
   title,
 }: AgentDefinitionDialogShellProps) {
   if (embedded) {
+    if (rolePackMode) {
+      return (
+        <div className="min-w-0" data-testid="persona-dialog">
+          {children}
+        </div>
+      );
+    }
+
     return (
       <div
         className="relative flex min-h-0 min-w-0 flex-1 flex-col"
