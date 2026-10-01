@@ -134,8 +134,17 @@ function themeForMode(
   );
 }
 
+type CurrentAppearanceTheme = Pick<
+  ReturnType<typeof useTheme>,
+  | "accentColor"
+  | "followSystem"
+  | "glassBackground"
+  | "glassOpacity"
+  | "prominentActiveTab"
+  | "selectedThemeName"
+>;
 export function currentAppearanceSnapshot(
-  theme: ReturnType<typeof useTheme>,
+  theme: CurrentAppearanceTheme,
 ): AppearanceSnapshot {
   let density: ConversationDensity = "comfortable";
   let linkPreview: LinkPreviewStyle = "compact";

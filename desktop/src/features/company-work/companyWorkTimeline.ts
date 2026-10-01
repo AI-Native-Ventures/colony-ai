@@ -9,6 +9,7 @@ export type CompanyWorkTimelineEntry = {
   label: string;
   reason?: string;
   evidence?: string;
+  dueAt?: string;
 };
 
 export function projectCompanyWorkTimeline(
@@ -27,6 +28,7 @@ export function projectCompanyWorkTimeline(
   const entries = chronological.map((entry) => {
     const action = entry.action;
     let label: string;
+    let dueAt: string | undefined;
     if ("acceptedWorkItemId" in action) {
       label = "accepted a commitment suggestion.";
     } else {
@@ -35,6 +37,7 @@ export function projectCompanyWorkTimeline(
           label = "created this commitment.";
           previousThreadRoot = action.head?.threadRootEventId;
           previousDueAt = action.head?.dueAt;
+          dueAt = previousDueAt;
           break;
         case "update": {
           const nextThreadRoot = action.head?.threadRootEventId;
@@ -43,6 +46,10 @@ export function projectCompanyWorkTimeline(
               ? "moved this work item to a new thread."
               : "updated this work item.";
           previousThreadRoot = nextThreadRoot;
+          if (action.head?.dueAt !== previousDueAt) {
+            previousDueAt = action.head?.dueAt;
+            dueAt = previousDueAt;
+          }
           break;
         }
         case "set_status":
@@ -63,9 +70,11 @@ export function projectCompanyWorkTimeline(
         case "set_due_date":
           label = previousDueAt ? "changed the due date." : "set a due date.";
           previousDueAt = action.dueAt;
+          dueAt = action.dueAt;
           break;
         case "clear_due_date":
           label = "cleared the due date.";
+          dueAt = previousDueAt;
           previousDueAt = undefined;
           break;
       }
@@ -77,6 +86,7 @@ export function projectCompanyWorkTimeline(
       actorPubkey: entry.event.pubkey,
       channelId: entry.channelId,
       label,
+      ...(dueAt ? { dueAt } : {}),
       ...(workAction?.reason ? { reason: workAction.reason } : {}),
       ...(workAction?.verification?.reason
         ? { reason: workAction.verification.reason }

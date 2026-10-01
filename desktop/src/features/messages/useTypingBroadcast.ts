@@ -1,6 +1,8 @@
 import { useCallback, useRef } from "react";
 
 import { relayClient } from "@/shared/api/relayClient";
+import { useIdentityQuery } from "@/shared/api/hooks";
+import { readDevicePrivacyPreferences } from "@/features/settings/lib/devicePrivacyPreferences";
 
 const TYPING_SEND_INTERVAL_MS = 3_000;
 
@@ -13,6 +15,12 @@ export function useTypingBroadcast(
   parentEventId?: string | null,
   rootEventId?: string | null,
 ) {
+  const identity = useIdentityQuery();
+  const shareTyping = readDevicePrivacyPreferences(
+    identity.data?.pubkey,
+  ).shareTypingActivity;
+  const shareTypingRef = useRef(shareTyping);
+  shareTypingRef.current = shareTyping;
   const lastSentRef = useRef(0);
   const lastChannelRef = useRef(channelId);
   const channelIdRef = useRef(channelId);
@@ -23,6 +31,7 @@ export function useTypingBroadcast(
   rootEventIdRef.current = rootEventId;
 
   const notifyTyping = useCallback(() => {
+    if (!shareTypingRef.current) return;
     const id = channelIdRef.current;
     if (!id) {
       return;

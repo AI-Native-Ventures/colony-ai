@@ -321,7 +321,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
   }
 });
 
-test("appearance controls save a complete scoped snapshot and retain density", async ({
+test("workspace appearance saves the named theme and density together", async ({
   page,
 }) => {
   await installMockBridge(page);
@@ -370,16 +370,20 @@ test("appearance controls save a complete scoped snapshot and retain density", a
   });
   await expect.poll(innerTabIndicatorColor).toBe("rgb(38, 85, 160)");
 
-  await page.getByTestId("appearance-mode-dark").click();
-  await expect(page.getByTestId("appearance-mode-dark")).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("theme-catalog-buzz-dark").click();
+  await page.getByTestId("appearance-preview-density").selectOption("compact");
+  await page.getByTestId("theme-use").click();
+  await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(() => document.documentElement.classList.contains("dark")),
     )
     .toBe(true);
+  await expect(page.getByTestId("settings-inner-appearance")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect.poll(innerTabIndicatorColor).toBe("rgb(157, 193, 251)");
   await expect.poll(sharedChrome).toEqual({
     sectionLabelTracking: "-0.22px",
@@ -435,5 +439,73 @@ test("appearance controls save a complete scoped snapshot and retain density", a
     followSystem: false,
     glassBackground: false,
     prominentActiveTab: false,
+    theme: "buzz-dark",
+    density: "compact",
   });
+});
+
+test("device privacy preferences save with closed defaults", async ({
+  page,
+}) => {
+  await installMockBridge(page);
+  await page.goto("/");
+  await openSettings(page, "privacy");
+
+  const messageText = page.getByTestId("privacy-message-text");
+  const typingActivity = page.getByTestId("privacy-typing-activity");
+  await expect(messageText).not.toBeChecked();
+  await expect(typingActivity).not.toBeChecked();
+  await expect(
+    page.getByText(
+      "Turning this off hides your typing indicator; it does not hide sent messages.",
+    ),
+  ).toBeVisible();
+
+  await messageText.check();
+  await typingActivity.check();
+  await page.getByRole("button", { name: "Save privacy preferences" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "The selections apply to this device. Existing conversations are unchanged.",
+  );
+  const saved = await page.evaluate(() =>
+    Object.entries(localStorage)
+      .filter(([key]) => key.startsWith("colony.device-privacy.v1:"))
+      .map(([key, value]) => [key, JSON.parse(value)]),
+  );
+  expect(saved).toHaveLength(1);
+  expect(saved[0][0]).toMatch(/^colony\.device-privacy\.v1:[a-f0-9]+$/u);
+  expect(saved[0][1]).toEqual({
+    showMessageText: true,
+    shareTypingActivity: true,
+  });
+});
+
+test("device privacy save failure keeps both selected controls editable", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key.startsWith("colony.device-privacy.v1:")) {
+        throw new DOMException("Storage is unavailable", "QuotaExceededError");
+      }
+      originalSetItem.call(this, key, value);
+    };
+  });
+  await installMockBridge(page);
+  await page.goto("/");
+  await openSettings(page, "privacy");
+
+  const messageText = page.getByTestId("privacy-message-text");
+  const typingActivity = page.getByTestId("privacy-typing-activity");
+  await messageText.check();
+  await typingActivity.check();
+  await page.getByRole("button", { name: "Save privacy preferences" }).click();
+
+  await expect(page.getByRole("alert")).toContainText("Your inputs are kept");
+  await expect(messageText).toBeChecked();
+  await expect(typingActivity).toBeChecked();
+  await expect(
+    page.getByRole("button", { name: "Save privacy preferences" }),
+  ).toBeVisible();
 });

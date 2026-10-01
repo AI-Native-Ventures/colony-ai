@@ -296,6 +296,8 @@ type MockBridgeOptions = {
   companyWorkRelayPrivateKey?: string;
   /** Reject company work action publishes in order, then accept them. */
   companyWorkActionErrors?: string[];
+  /** Reject company work tracking action publishes in order, then accept them. */
+  companyWorkTrackingActionErrors?: string[];
   /** Relay-signed company hire heads used by Company Hire E2E coverage. */
   companyHireHeads?: RelayEvent[];
   /** Synthetic relay key used to broker hire actions in focused E2E tests. */
