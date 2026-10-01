@@ -139,7 +139,7 @@ export function CompanyWorkWatchdogScreen({
     return (
       <>
         <CompanyWorkPageHeader title={record.head.title} />
-        <main className="mx-auto w-full max-w-[1230px] px-8 py-8">
+        <main className="mx-auto w-full max-w-[1204px] px-8 py-6">
           <CompanyWorkBackButton
             onClick={() => void goCompanyWorkDetail(workItemId)}
           />
@@ -166,7 +166,7 @@ export function CompanyWorkWatchdogScreen({
     return (
       <>
         <CompanyWorkPageHeader title="Work watchdog" />
-        <main className="mx-auto w-full max-w-[1230px] px-8 py-8">
+        <main className="mx-auto w-full max-w-[1204px] px-8 py-6">
           <CompanyWorkBackButton
             onClick={() => void goCompanyWorkDetail(workItemId)}
           />
@@ -216,7 +216,7 @@ export function CompanyWorkWatchdogScreen({
   return (
     <>
       <CompanyWorkPageHeader title="Work watchdog" />
-      <main className="mx-auto w-full max-w-[1230px] px-8 py-8">
+      <main className="mx-auto w-full max-w-[1204px] px-8 py-6">
         <CompanyWorkBackButton
           onClick={() => void goCompanyWorkDetail(workItemId)}
         />

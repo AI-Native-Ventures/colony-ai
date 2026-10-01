@@ -1,5 +1,13 @@
+.colony-ask-detail-scroll--destination {
+  padding-top: 1.5rem;
+}
+
+.colony-ask-detail-scroll--destination .colony-ask-create-content > button {
+  margin-bottom: 1.75rem;
+}
+
 .colony-ask-context-step {
-  width: min(100%, 68rem);
+  width: min(100%, 1140px);
   margin: 0 auto;
 }
 
