@@ -39,8 +39,8 @@ void main() {
           (_, _) => const Text('Goals route'),
         )
         .register(
-          MobileBusinessRoutes.discovery,
-          (_, _) => const Text('Discovery route'),
+          MobileBusinessRoutes.businessWorkspace,
+          (_, _) => const Text('Business route'),
         );
 
     await tester.pumpWidget(_companyApp(routes));
@@ -53,16 +53,17 @@ void main() {
     expect(find.text('Goals'), findsOneWidget);
     expect(find.text('People & agents'), findsOneWidget);
     expect(find.text('GROW THE BUSINESS'), findsOneWidget);
-    expect(find.text('Discovery'), findsOneWidget);
+    expect(find.text('Business'), findsOneWidget);
     expect(find.text('Work'), findsNothing);
     expect(find.text('Workflows'), findsNothing);
     expect(find.text('Social'), findsNothing);
     expect(find.text('Website'), findsNothing);
+    expect(find.text('Discovery'), findsNothing);
     expect(find.text('Money'), findsNothing);
 
-    await tester.tap(find.text('Goals'));
+    await tester.tap(find.text('Business'));
     await tester.pumpAndSettle();
-    expect(find.text('Goals route'), findsOneWidget);
+    expect(find.text('Business route'), findsOneWidget);
   });
 
   testWidgets('opens a registered Team destination', (tester) async {
@@ -93,13 +94,13 @@ void main() {
     expect(find.text('Settings route'), findsOneWidget);
   });
 
-  testWidgets('keeps business money and AI credits on separate routes', (
+  testWidgets('keeps Business and AI credits on separate routes', (
     tester,
   ) async {
     final routes = MobileRouteRegistry.empty()
         .register(
-          MobileBusinessRoutes.money,
-          (_, _) => const Text('Business money route'),
+          MobileBusinessRoutes.businessWorkspace,
+          (_, _) => const Text('Business route'),
         )
         .register(
           MobileRoutes.creditsBalance,
@@ -107,13 +108,13 @@ void main() {
         );
     await tester.pumpWidget(_companyApp(routes));
 
-    expect(find.text('Money'), findsOneWidget);
+    expect(find.text('Business'), findsOneWidget);
     expect(find.text('AI spend & credits'), findsOneWidget);
 
-    await tester.tap(find.text('Money'));
+    await tester.tap(find.text('Business'));
     await tester.pumpAndSettle();
-    expect(find.text('Business money route'), findsOneWidget);
-    Navigator.of(tester.element(find.text('Business money route'))).pop();
+    expect(find.text('Business route'), findsOneWidget);
+    Navigator.of(tester.element(find.text('Business route'))).pop();
     await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.text('AI spend & credits'));

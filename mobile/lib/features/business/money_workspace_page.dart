@@ -17,11 +17,15 @@ class MoneyWorkspacePage extends HookConsumerWidget {
   const MoneyWorkspacePage({
     required this.channelDirectory,
     required this.onRetryChannelDirectory,
+    this.title = 'Money',
+    this.onBack,
     super.key,
   });
 
   final AsyncValue<List<MobileBusinessChannelCandidate>> channelDirectory;
   final VoidCallback onRetryChannelDirectory;
+  final String title;
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -43,8 +47,9 @@ class MoneyWorkspacePage extends HookConsumerWidget {
       child: Column(
         children: [
           _MoneyPageHeader(
-            title: 'Money',
-            onBack: () => unawaited(Navigator.of(context).maybePop()),
+            title: title,
+            backLabel: onBack == null ? 'Back to company' : 'Back to Business',
+            onBack: onBack ?? () => unawaited(Navigator.of(context).maybePop()),
           ),
           Expanded(
             child: channelDirectory.hasError

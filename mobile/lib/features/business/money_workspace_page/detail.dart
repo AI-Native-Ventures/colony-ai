@@ -919,11 +919,13 @@ class _MoneyPageHeader extends StatelessWidget {
     required this.title,
     required this.onBack,
     this.subtitle,
+    this.backLabel = 'Back to company',
   });
 
   final String title;
   final String? subtitle;
   final VoidCallback onBack;
+  final String backLabel;
 
   @override
   Widget build(BuildContext context) => SafeArea(
@@ -940,7 +942,7 @@ class _MoneyPageHeader extends StatelessWidget {
               children: [
                 Semantics(
                   button: true,
-                  label: 'Back to company',
+                  label: backLabel,
                   onTap: onBack,
                   child: ExcludeSemantics(
                     child: IconButton.filledTonal(
