@@ -1843,6 +1843,54 @@ void main() {
   );
 
   test(
+    'rate-limited publishes stay within the bounded relay operation queue',
+    () async {
+      final now = DateTime(2026);
+      final gate = RelayRateLimitGate(
+        now: () => now,
+        timerFactory: _ManualTimer.new,
+      );
+      final scheduler = RelayOperationScheduler(
+        now: () => now,
+        timerFactory: _ManualTimer.new,
+      );
+      final socket = _RecordingRelaySocket();
+      final session = RelaySessionNotifier(
+        now: () => now,
+        rateLimitGate: gate,
+        operationScheduler: scheduler,
+      );
+      session.debugAttachSocketForTest(socket);
+      var disposed = false;
+      addTearDown(() {
+        if (!disposed) session.debugDispose();
+      });
+      gate.activate(RelayRateLimitGate.maxRetrySeconds);
+
+      final publishes = List.generate(
+        RelayOperationScheduler.maxQueuedOperations + 1,
+        (index) => session.publish(_event(id: 'event-$index')),
+      );
+      final settled = publishes
+          .map((publish) => publish.then<void>((_) {}, onError: (Object _) {}))
+          .toList();
+
+      await expectLater(
+        publishes.last.timeout(const Duration(milliseconds: 50)),
+        throwsA(isA<StateError>()),
+      );
+      expect(
+        socket.messages.where((message) => message.first == 'EVENT'),
+        isEmpty,
+      );
+
+      session.debugDispose();
+      disposed = true;
+      await Future.wait(settled);
+    },
+  );
+
+  test(
     'publish waits out the rate-limit gate before timeout registration and send',
     () async {
       final gateTimers = <_ManualTimer>[];
