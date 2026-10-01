@@ -58,8 +58,18 @@ pub(crate) async fn enforce_http_admission(
 /// Parse the raw HTTP filter array. Keeping this as a shared seam lets both
 /// bridge endpoints enforce request bounds before converting each filter.
 fn parse_bridge_filter_values(body: &[u8]) -> Result<Vec<Value>, (StatusCode, Json<Value>)> {
-    serde_json::from_slice(body)
-        .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))
+    let raw_filters: Vec<Value> = serde_json::from_slice(body)
+        .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))?;
+    if raw_filters.len() > crate::protocol::MAX_FILTERS_PER_REQ {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            &format!(
+                "too many filters: maximum is {}",
+                crate::protocol::MAX_FILTERS_PER_REQ
+            ),
+        ));
+    }
+    Ok(raw_filters)
 }
 
 fn deserialize_bridge_filters(
@@ -74,14 +84,15 @@ fn deserialize_bridge_filters(
 
 #[cfg(test)]
 mod filter_bound_tests {
-    use super::parse_bridge_filter_values;
+    use super::{parse_bridge_filter_values, StatusCode};
 
     #[test]
     fn http_bridge_accepts_ten_filters_and_rejects_eleven() {
         let body_for = |count: usize| format!("[{}]", vec!["{}"; count].join(",")).into_bytes();
 
         assert_eq!(parse_bridge_filter_values(&body_for(10)).unwrap().len(), 10);
-        assert!(parse_bridge_filter_values(&body_for(11)).is_err());
+        let error = parse_bridge_filter_values(&body_for(11)).unwrap_err();
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
     }
 }
 
