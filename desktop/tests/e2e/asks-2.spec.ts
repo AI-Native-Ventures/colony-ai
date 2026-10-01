@@ -340,9 +340,51 @@ test("raise a typed allowance request from Power and retry the same signed ask",
     [
       { pubkey: "deadbeef".repeat(8), role: "owner" },
       { pubkey: TEST_IDENTITIES.alice.pubkey, role: "admin" },
-      { pubkey: TEST_IDENTITIES.bob.pubkey, role: "member" },
+      { pubkey: TEST_IDENTITIES.bob.pubkey, role: "admin" },
+      { pubkey: TEST_IDENTITIES.outsider.pubkey, role: "admin" },
       { pubkey: employeePubkey, role: "member" },
     ],
+  );
+  await page.waitForFunction(() => {
+    const testWindow = window as Window & {
+      __BUZZ_E2E_MUTATE_CHANNEL__?: unknown;
+      __BUZZ_E2E_QUERY_CLIENT__?: unknown;
+    };
+    return (
+      typeof testWindow.__BUZZ_E2E_MUTATE_CHANNEL__ === "function" &&
+      testWindow.__BUZZ_E2E_QUERY_CLIENT__ !== undefined
+    );
+  });
+  await page.evaluate(
+    async ({ channelId, pubkey }) => {
+      const testWindow = window as Window & {
+        __BUZZ_E2E_MUTATE_CHANNEL__?: (options: {
+          addMembers: Array<{
+            pubkey: string;
+            role: "owner" | "admin" | "member" | "guest" | "bot";
+          }>;
+          channelId: string;
+        }) => void;
+        __BUZZ_E2E_QUERY_CLIENT__?: {
+          invalidateQueries: (filters: {
+            queryKey: readonly unknown[];
+          }) => unknown;
+        };
+      };
+      const mutateChannel = testWindow.__BUZZ_E2E_MUTATE_CHANNEL__;
+      const queryClient = testWindow.__BUZZ_E2E_QUERY_CLIENT__;
+      if (!mutateChannel || !queryClient) {
+        throw new Error("The mock channel membership seam is unavailable.");
+      }
+      mutateChannel({
+        channelId,
+        addMembers: [{ pubkey, role: "member" }],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["channels", channelId, "members"],
+      });
+    },
+    { channelId: thread.channelId, pubkey: TEST_IDENTITIES.outsider.pubkey },
   );
 
   await page.goto("/#/power");
@@ -365,9 +407,17 @@ test("raise a typed allowance request from Power and retry the same signed ask",
   await page
     .getByLabel("Opening context, optional")
     .fill("The workload has changed and needs review.");
-  await page
-    .getByLabel("Recipient", { exact: true })
-    .selectOption(TEST_IDENTITIES.alice.pubkey);
+  const recipient = page.getByLabel("Recipient", { exact: true });
+  await expect(recipient).toBeEnabled();
+  await expect(recipient.locator("option")).toHaveCount(3);
+  await expect(
+    recipient.locator(`option[value="${TEST_IDENTITIES.bob.pubkey}"]`),
+  ).toBeAttached();
+  await expect(
+    recipient.locator(`option[value="${TEST_IDENTITIES.outsider.pubkey}"]`),
+  ).toBeAttached();
+  await recipient.selectOption(TEST_IDENTITIES.outsider.pubkey);
+  await expect(recipient).toHaveValue(TEST_IDENTITIES.outsider.pubkey);
   await page
     .getByLabel("Employee or budget", { exact: true })
     .selectOption(employeePubkey);
@@ -421,9 +471,9 @@ test("raise a typed allowance request from Power and retry the same signed ask",
   await expect(page.getByTestId("ask-money-allowance-proposal")).toContainText(
     "USD 8.75 / week",
   );
-  await expect(page.getByTestId("ask-card")).toContainText(
-    "The employee needs more capacity for the approved work.",
-  );
+  await expect(
+    page.getByTestId("message-thread-head").getByTestId("ask-card"),
+  ).toContainText("The employee needs more capacity for the approved work.");
   expect(thread.rootId).toMatch(/^[0-9a-f]{64}$/);
 });
 
