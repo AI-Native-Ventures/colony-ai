@@ -12,6 +12,8 @@
  * It is a no-op outside Electron (Tauri, browser, e2e mock bridge).
  */
 
+import type { UpdateStatus } from "@/shared/api/updateTypes";
+
 type DesktopMessage =
   | { type: "event"; id: number; payload: unknown }
   | { type: "channel"; id: number; sequence: number; payload: unknown }
@@ -25,6 +27,12 @@ export type ColonyDesktopBridge = {
   windowLabel?: string;
   request: (type: string, payload: unknown) => Promise<unknown>;
   subscribe: (callback: (message: DesktopMessage) => void) => () => void;
+  updater?: {
+    getStatus: () => Promise<UpdateStatus>;
+    check: () => Promise<UpdateStatus>;
+    install: () => Promise<boolean>;
+    subscribe: (callback: (status: UpdateStatus) => void) => () => void;
+  };
 };
 
 type Listener = {

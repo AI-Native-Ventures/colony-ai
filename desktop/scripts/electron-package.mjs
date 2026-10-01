@@ -24,6 +24,7 @@ import {
   parseElectronPackageArgs,
   sidecarFilenames,
 } from "./electron-package-config.mjs";
+import { build } from "esbuild";
 
 const exec = promisify(execFile);
 const desktop = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -45,9 +46,12 @@ const sourceElectronPath = path.join(desktop, "electron");
 const packageJsonPath = path.join(desktop, "package.json");
 const tauriConfigPath = path.join(desktop, "src-tauri", "tauri.conf.json");
 const packagePaths = electronPackagePaths({ desktop, platform, arch });
+const sourceTauriConfig = JSON.parse(await readFile(tauriConfigPath, "utf8"));
+const productName =
+  process.env.COLONY_ELECTRON_PRODUCT_NAME || sourceTauriConfig.productName;
 const packagerGeneratedPath = path.join(
   packagePaths.packagerOutputDir,
-  `${JSON.parse(await readFile(tauriConfigPath, "utf8")).productName}-${platform}-${arch}`,
+  `${productName}-${platform}-${arch}`,
 );
 
 async function requireFile(filePath, label) {
@@ -160,15 +164,41 @@ if (platform !== "win32") {
   }
 }
 
-const [desktopPackage, tauriConfig] = await Promise.all([
-  readFile(packageJsonPath, "utf8").then(JSON.parse),
-  readFile(tauriConfigPath, "utf8").then(JSON.parse),
-]);
+const desktopPackage = JSON.parse(await readFile(packageJsonPath, "utf8"));
+const tauriConfig = sourceTauriConfig;
 if (!tauriConfig.productName)
   throw new Error(`Missing productName in ${tauriConfigPath}`);
 const electronVersion = desktopPackage.devDependencies?.electron;
 if (!electronVersion)
   throw new Error(`Missing Electron version in ${packageJsonPath}`);
+
+const signed = process.env.COLONY_ELECTRON_SIGNED === "1";
+let osxSign;
+let osxNotarize;
+if (platform === "darwin" && signed) {
+  const appleIdentity = process.env.COLONY_APPLE_DEVELOPER_IDENTITY;
+  const appleApiKey = process.env.COLONY_APPLE_NOTARY_KEY_PATH;
+  const appleApiKeyId = process.env.COLONY_APPLE_NOTARY_KEY_ID;
+  const appleApiIssuer = process.env.COLONY_APPLE_NOTARY_ISSUER_ID;
+  if (!appleIdentity || !appleApiKey || !appleApiKeyId || !appleApiIssuer) {
+    throw new Error(
+      "Signed macOS releases require signing and notarization credentials.",
+    );
+  }
+  osxSign = {
+    identity: appleIdentity,
+    hardenedRuntime: true,
+    entitlements: path.join(sourceElectronPath, "entitlements.mac.plist"),
+    entitlementsInherit: path.join(
+      sourceElectronPath,
+      "entitlements.mac.plist",
+    ),
+    signatureFlags: "runtime",
+    timestamp: true,
+    continueOnError: false,
+  };
+  osxNotarize = { appleApiKey, appleApiKeyId, appleApiIssuer };
+}
 
 await mkdir(packagePaths.packagerOutputDir, { recursive: true });
 await rm(packagerGeneratedPath, { recursive: true, force: true });
@@ -199,9 +229,53 @@ try {
       source === sourceElectronPath ||
       (!/\.test\.mjs$/i.test(source) && path.basename(source) !== "README.md"),
   });
+  const releaseCapabilities = {
+    schemaVersion: 1,
+    release: process.env.COLONY_ELECTRON_RELEASE === "1",
+    platformKey: `${platform}-${arch}`,
+    autoUpdate: process.env.COLONY_ELECTRON_AUTO_UPDATE === "1",
+    signed: process.env.COLONY_ELECTRON_SIGNED === "1",
+    publisherName: process.env.COLONY_ELECTRON_PUBLISHER_NAME || null,
+  };
+  const stagedUpdateConfigPath = path.join(stageRoot, "app-update.yml");
+  const releaseResources = [];
+  if (process.env.COLONY_ELECTRON_RELEASE === "1") {
+    const updateConfig = [
+      "provider: generic",
+      'url: "https://github.com/AI-Native-Ventures/colony-ai/releases/latest/download/"',
+      ...(releaseCapabilities.publisherName
+        ? [
+            "publisherName:",
+            `  - ${JSON.stringify(releaseCapabilities.publisherName)}`,
+          ]
+        : []),
+      "",
+    ].join("\n");
+    await writeFile(stagedUpdateConfigPath, updateConfig);
+    releaseResources.push(stagedUpdateConfigPath);
+  }
+  await writeFile(
+    path.join(stagedElectronPath, "release-capabilities.json"),
+    `${JSON.stringify(releaseCapabilities, null, 2)}\n`,
+  );
+  await build({
+    entryPoints: [
+      path.join(sourceElectronPath, "electron-updater-runtime.mjs"),
+    ],
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    target: "node20",
+    external: ["electron"],
+    outfile: path.join(stagedElectronPath, "electron-updater-runtime.cjs"),
+    logLevel: "warning",
+  });
   await cp(distPath, stagedDistPath, { recursive: true });
   await mkdir(path.dirname(stagedTauriConfigPath), { recursive: true });
-  await copyFile(tauriConfigPath, stagedTauriConfigPath);
+  await writeFile(
+    stagedTauriConfigPath,
+    `${JSON.stringify({ ...tauriConfig, productName }, null, 2)}\n`,
+  );
   await copyFile(hostPath, stagedHostPath, fsConstants.COPYFILE_FICLONE);
   await Promise.all(
     sidecarPaths.map((sidecarPath, index) =>
@@ -225,12 +299,14 @@ try {
   const options = createPackagerOptions({
     dir: stageDir,
     out: packagePaths.packagerOutputDir,
-    productName: tauriConfig.productName,
+    productName,
     appVersion: desktopPackage.version,
     electronVersion,
     platform,
     arch,
-    extraResource: [stagedHostPath, ...stagedSidecarPaths],
+    extraResource: [stagedHostPath, ...stagedSidecarPaths, ...releaseResources],
+    osxSign,
+    osxNotarize,
   });
   const packagedPaths = await packager(options);
   if (packagedPaths.length !== 1)
@@ -243,13 +319,34 @@ try {
     platform === "darwin"
       ? path.join(
           packagePaths.outputDir,
-          `${tauriConfig.productName}.app`,
+          `${productName}.app`,
           "Contents",
           "Resources",
         )
       : path.join(packagePaths.outputDir, "resources");
   const appAsarPath = path.join(appResourcesPath, "app.asar");
   await requireFile(appAsarPath, "Packaged application archive");
+  if (process.env.COLONY_ELECTRON_RELEASE === "1") {
+    const updateConfigPath = path.join(appResourcesPath, "app-update.yml");
+    const updateConfig = await readFile(updateConfigPath, "utf8").catch(
+      () => null,
+    );
+    if (!updateConfig) {
+      throw new Error("Packaged release is missing app-update.yml.");
+    }
+    if (platform === "win32" && signed) {
+      if (
+        !releaseCapabilities.publisherName ||
+        !updateConfig.includes(
+          JSON.stringify(releaseCapabilities.publisherName),
+        )
+      ) {
+        throw new Error(
+          "Signed Windows release is missing its expected update signer.",
+        );
+      }
+    }
+  }
   const packagedTauriConfig = extractFile(
     appAsarPath,
     "src-tauri/tauri.conf.json",
