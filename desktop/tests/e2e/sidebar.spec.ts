@@ -790,17 +790,16 @@ test("reflects an install started from the header update button on the sidebar c
   await expect(page.getByTestId("sidebar-update-now")).toBeDisabled();
 });
 
-// Regression test for the Linux .deb auto-update guard (PR #1535).
-// When auto-update is not supported (e.g. Linux .deb install), the update
-// check must surface a "manual-required" card with a GitHub link and
-// AppImage hint, and must NEVER invoke the in-app download or install commands.
-test("shows manual-required update card and never auto-downloads on non-AppImage installs", async ({
+// Regression test for packages where automatic installation is unavailable.
+// The update check must show a GitHub link and must NEVER invoke the in-app
+// download or install commands.
+test("shows a manual-required update card without starting installation", async ({
   page,
 }) => {
   await page.goto("/");
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
 
-  // Override the bridge to report an update available AND auto-update not
+  // Override the bridge to report an update available AND auto-install not
   // supported. The mock is mutated after page load so the window object is
   // live (mirrors the ready-card test pattern).
   await page.evaluate(() => {
@@ -827,10 +826,10 @@ test("shows manual-required update card and never auto-downloads on non-AppImage
 
   // Settings panel shows the manual-required state, not "ready".
   await expect(page.getByTestId("settings-panel-updates")).toContainText(
-    "In-app updates aren't supported on this Linux package",
+    "Automatic installation isn't available for this build.",
   );
   await expect(page.getByTestId("settings-panel-updates")).toContainText(
-    "AppImage",
+    "Download the new version from GitHub.",
   );
 
   await page.getByTestId("settings-back-to-app").click();
@@ -838,7 +837,9 @@ test("shows manual-required update card and never auto-downloads on non-AppImage
   // Sidebar card shows the manual update card.
   const updateCard = page.getByTestId("sidebar-update-card-manual");
   await expect(updateCard).toBeVisible();
-  await expect(updateCard).toContainText("AppImage");
+  await expect(updateCard).toContainText(
+    "Download the new version from GitHub.",
+  );
 
   // In-app download and install must NEVER have been called.
   const commands = await page.evaluate(

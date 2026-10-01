@@ -1,0 +1,418 @@
+name: Deploy production relay to Fly
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Render config and print the deployment plan only"
+        required: true
+        type: boolean
+        default: true
+      confirmation:
+        description: "For live deploys, enter deploy-colony-production. Keep NO for dry runs."
+        required: true
+        type: string
+        default: "NO"
+      existing_data_plan:
+        description: "Owner-approved disposition of the old Colony production data"
+        required: true
+        type: choice
+        options:
+          - unresolved
+          - preserve-via-snapshot-archive-then-drop
+          - migrate
+          - fresh-database
+        default: unresolved
+      data_plan_record:
+        description: "Non-secret decision or rehearsal record reference, required for live deploys"
+        required: false
+        type: string
+      database_app:
+        description: "Postgres app to snapshot before the release migration"
+        required: true
+        type: string
+        default: "colony-db-iad"
+
+permissions: {}
+
+concurrency:
+  group: fly-deploy-relay-prod
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ${{ vars.GHCR_IMAGE != '' && vars.GHCR_IMAGE || 'ghcr.io/ai-native-ventures/colony-ai' }}
+  FLY_APP: colony-relay
+  PRODUCTION_BASE_URL: https://relay.colony.ainative.ventures
+  EXPECTED_RELAY_VOLUME: colony_relay_data
+  DATABASE_APP: ${{ inputs.database_app }}
+
+jobs:
+  dry-run:
+    if: inputs.dry_run
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout selected commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Parse and render local config and print plan
+        run: |
+          set -euo pipefail
+          rendered_config="$RUNNER_TEMP/fly-prod-rendered.json"
+          python3 - deploy/fly/fly.prod.toml > "$rendered_config" <<'PY'
+          import json
+          import pathlib
+          import sys
+          import tomllib
+
+          with pathlib.Path(sys.argv[1]).open("rb") as config_file:
+              config = tomllib.load(config_file)
+          print(json.dumps(config, indent=2, sort_keys=True))
+          PY
+          cat "$rendered_config"
+          version="$(awk -F'"' '/^version = / { print $2; exit }' crates/buzz-relay/Cargo.toml)"
+          tag="sha-$GITHUB_SHA"
+          {
+            echo "### Production deploy dry run"
+            echo
+            echo "- App: $FLY_APP"
+            echo "- Database app to snapshot: $DATABASE_APP"
+            echo "- Selected commit: $GITHUB_SHA"
+            echo "- Relay version: $version"
+            echo "- GHCR image: $IMAGE_NAME:$tag"
+            echo "- Docker target: runtime-prod (linux/amd64)"
+            echo "- Schema release step: /usr/local/bin/buzz-admin migrate"
+            echo "- Existing data plan: ${{ inputs.existing_data_plan }}"
+            echo "- Fly API calls, snapshots, secrets reads, and deploy operations: none"
+            echo "- Deploy action: skipped because dry_run is true"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Rendered config saved at $rendered_config"
+          echo "No Fly CLI, API calls, or deployment operations were run."
+
+  deploy:
+    if: inputs.dry_run == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout selected commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Validate the production confirmation and data decision
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          DATA_PLAN: ${{ inputs.existing_data_plan }}
+          DATA_PLAN_RECORD: ${{ inputs.data_plan_record }}
+          DATABASE_APP: ${{ inputs.database_app }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$DEFAULT_BRANCH" || "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]]; then
+            echo "Live production deploys must be dispatched from the repository default branch." >&2
+            exit 1
+          fi
+          if [[ "$CONFIRMATION" != "deploy-colony-production" ]]; then
+            echo "Type deploy-colony-production to authorize a live production workflow." >&2
+            exit 1
+          fi
+          case "$DATA_PLAN" in
+            preserve-via-snapshot-archive-then-drop|migrate|fresh-database) ;;
+            *)
+              echo "Select and record an approved old-data plan before a live deploy." >&2
+              exit 1
+              ;;
+          esac
+          if [[ -z "$DATA_PLAN_RECORD" ]]; then
+            echo "A non-secret decision or rehearsal record reference is required." >&2
+            exit 1
+          fi
+          if [[ ! "$DATA_PLAN_RECORD" =~ ^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,127}$ ]]; then
+            echo "The data-plan record must be a short, non-secret reference without spaces." >&2
+            exit 1
+          fi
+          if [[ "$DATABASE_APP" == "colony-db-iad" && "$DATA_PLAN" == "fresh-database" ]]; then
+            echo "fresh-database requires a separately provisioned database app and matching DATABASE_URL." >&2
+            exit 1
+          fi
+          {
+            echo "### Approved production data decision"
+            echo
+            echo "- Plan: $DATA_PLAN"
+            echo "- Record: $DATA_PLAN_RECORD"
+            echo "- Database app to snapshot: $DATABASE_APP"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Resolve immutable image tag and relay version
+        id: target
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "workflow ref did not resolve to a full commit SHA" >&2
+            exit 1
+          fi
+          tag="sha-$GITHUB_SHA"
+          version="$(awk -F'"' '/^version = / { print $2; exit }' crates/buzz-relay/Cargo.toml)"
+          if [[ -z "$version" ]]; then
+            echo "could not read relay version from crates/buzz-relay/Cargo.toml" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building $IMAGE_NAME:$tag for $FLY_APP"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+        with:
+          buildkitd-config-inline: |
+            [worker.oci]
+              max-parallelism = 2
+
+      - name: Build and push production image
+        id: image
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: Dockerfile
+          target: runtime-prod
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:${{ steps.target.outputs.tag }}
+          labels: |
+            org.opencontainers.image.title=Colony Relay
+            org.opencontainers.image.description=Production WebSocket relay server for Colony
+            org.opencontainers.image.licenses=Apache-2.0
+          build-args: |
+            BUZZ_SOURCE_SHA=${{ github.sha }}
+            BUZZ_BUILD_ID=github-actions:${{ github.run_id }}:${{ github.run_attempt }}
+            BUZZ_BUILD_URL=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+          cache-from: type=gha,scope=colony-relay-prod-runtime
+          cache-to: type=gha,mode=max,scope=colony-relay-prod-runtime
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@63da3ecc5e2793b98a3f2519b3d75d4f4c11cec2 # v1.5
+
+      - name: Copy the built image into Fly registry
+        id: fly-image
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          TAG: ${{ steps.target.outputs.tag }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Build did not produce a valid image digest" >&2
+            exit 1
+          fi
+          source_image="$IMAGE_NAME@$DIGEST"
+          fly_image="registry.fly.io/$FLY_APP:$TAG"
+          docker pull --platform linux/amd64 "$source_image"
+          docker tag "$source_image" "$fly_image"
+          flyctl auth docker
+          docker push "$fly_image"
+          echo "image=$fly_image" >> "$GITHUB_OUTPUT"
+
+      - name: Verify relay volume and required Fly secret names
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          relay_volumes="$(flyctl volumes list --app "$FLY_APP" --json)"
+          relay_volume_count="$(jq -r --arg name "$EXPECTED_RELAY_VOLUME" \
+            '[.[] | select((.name // .Name) == $name)] | length' <<< "$relay_volumes")"
+          if [[ "$relay_volume_count" != "1" ]]; then
+            echo "Expected one $EXPECTED_RELAY_VOLUME volume on $FLY_APP, found $relay_volume_count" >&2
+            exit 1
+          fi
+
+          secret_json="$(flyctl secrets list --app "$FLY_APP" --json)"
+          secret_names="$(jq -r '
+            (if type == "array" then .[] else (.secrets // [])[] end)
+            | (.name // .Name // .key // .Key // empty)
+          ' <<< "$secret_json" | sort -u)"
+          required_names=(
+            DATABASE_URL REDIS_URL BUZZ_RELAY_PRIVATE_KEY RELAY_OWNER_PUBKEY
+            BUZZ_S3_ACCESS_KEY BUZZ_S3_SECRET_KEY BUZZ_S3_BUCKET COLONY_ACCOUNT_KEK
+            RESEND_API_KEY COLONY_GOOGLE_CLIENT_IDS PAYFAST_MERCHANT_ID
+            PAYFAST_MERCHANT_KEY PAYFAST_PASSPHRASE
+          )
+          missing_names=()
+          for required_name in "${required_names[@]}"; do
+            if ! grep -Fxq "$required_name" <<< "$secret_names"; then
+              missing_names+=("$required_name")
+            fi
+          done
+          if (( ${#missing_names[@]} > 0 )); then
+            printf 'Missing required Fly secret names: %s\n' "${missing_names[*]}" >&2
+            exit 1
+          fi
+          echo "Relay volume and required Fly secret names are present. Secret values were not read or printed."
+
+      - name: Snapshot the Postgres volume before schema release
+        id: snapshot
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_DB_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          volume_list="$(flyctl volumes list --app "$DATABASE_APP" --json)"
+          if ! jq -e 'type == "array" and all(.[]; (.id | type) == "string" and (.id | startswith("vol_")))' \
+            <<< "$volume_list" >/dev/null; then
+            echo "Fly returned an unexpected volume list for $DATABASE_APP" >&2
+            exit 1
+          fi
+          volume_ids_json="$(jq -c '[.[].id] | unique' <<< "$volume_list")"
+          volume_count="$(jq -r 'length' <<< "$volume_ids_json")"
+          if [[ "$volume_count" != "1" ]]; then
+            echo "Expected one Postgres volume on $DATABASE_APP, found $volume_count" >&2
+            exit 1
+          fi
+
+          volume_id="$(jq -r '.[0]' <<< "$volume_ids_json")"
+          before_ids="$(flyctl volumes snapshots list "$volume_id" \
+            --app "$DATABASE_APP" --json | jq -c '[.[].id]')"
+          flyctl volumes snapshots create "$volume_id" --app "$DATABASE_APP"
+          snapshot_id=""
+          for attempt in $(seq 1 30); do
+            snapshot_id="$(flyctl volumes snapshots list "$volume_id" \
+              --app "$DATABASE_APP" --json |
+              jq -r --argjson before "$before_ids" \
+                '[.[] | select(.id as $id | $before | index($id) | not)] | sort_by(.created_at) | last | .id // ""')"
+            [[ -n "$snapshot_id" ]] && break
+            echo "Waiting for the new snapshot to appear ($attempt/30)."
+            sleep 5
+          done
+          if [[ -z "$snapshot_id" ]]; then
+            echo "The new Postgres volume snapshot never appeared" >&2
+            exit 1
+          fi
+          echo "Waiting for Postgres volume snapshot $snapshot_id to complete."
+
+          ready=0
+          snapshot_status=""
+          for attempt in $(seq 1 60); do
+            snapshots_json="$(flyctl volumes snapshots list "$volume_id" \
+              --app "$DATABASE_APP" --json)"
+            snapshot_status="$(jq -r --arg id "$snapshot_id" \
+              '[.[] | select(.id == $id) | .status] | first // "missing"' \
+              <<< "$snapshots_json")"
+            case "$snapshot_status" in
+              created)
+                ready=1
+                break
+                ;;
+              failed|error)
+                echo "Postgres volume snapshot $snapshot_id failed with status $snapshot_status" >&2
+                exit 1
+                ;;
+            esac
+            echo "Snapshot status $snapshot_status on attempt $attempt/60; retrying in 10 seconds."
+            sleep 10
+          done
+          if [[ "$ready" != "1" ]]; then
+            echo "Postgres volume snapshot $snapshot_id did not reach created status" >&2
+            exit 1
+          fi
+          echo "snapshot_id=$snapshot_id" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Pre-release production database snapshot"
+            echo
+            echo "- Postgres app: $DATABASE_APP"
+            echo "- Volume: $volume_id"
+            echo "- Snapshot: $snapshot_id"
+            echo "- Status: $snapshot_status"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Deploy the SHA-tagged image and run the schema release command
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_IMAGE: ${{ steps.fly-image.outputs.image }}
+        run: |
+          set -euo pipefail
+          flyctl deploy --config deploy/fly/fly.prod.toml \
+            --app "$FLY_APP" --image "$FLY_IMAGE" \
+            --strategy immediate --release-command-timeout 30m --yes
+
+      - name: Verify deployed image identity
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          set -euo pipefail
+          image_json="$RUNNER_TEMP/prod-image.json"
+          found=0
+          for attempt in $(seq 1 30); do
+            flyctl image show --app "$FLY_APP" --json > "$image_json"
+            if jq -e --arg tag "$TAG" '[.. | strings] | index($tag) != null' \
+              "$image_json" >/dev/null; then
+              found=1
+              break
+            fi
+            echo "Machine has not converged to $TAG on attempt $attempt/30."
+            sleep 10
+          done
+          if [[ "$found" != "1" ]]; then
+            echo "$FLY_APP did not converge to the selected image tag" >&2
+            exit 1
+          fi
+          if ! jq -e --arg app "$FLY_APP" '[.. | strings] | any(contains($app))' \
+            "$image_json" >/dev/null; then
+            echo "$FLY_APP is not running an image from its Fly registry repository" >&2
+            exit 1
+          fi
+          echo "$FLY_APP is running $TAG."
+
+      - name: Verify live health and NIP-11
+        env:
+          VERSION: ${{ steps.target.outputs.version }}
+        run: |
+          set -euo pipefail
+          health_body="$(curl --fail --silent --show-error --retry 12 \
+            --retry-all-errors --retry-delay 5 --retry-max-time 120 --max-time 20 \
+            "$PRODUCTION_BASE_URL/health")"
+          if [[ "$health_body" != "ok" ]]; then
+            echo "Production relay health endpoint returned an unexpected response" >&2
+            exit 1
+          fi
+          echo "Production relay health endpoint returned ok."
+
+          nip11_json="$(curl --fail --silent --show-error --retry 12 \
+            --retry-all-errors --retry-delay 5 --retry-max-time 120 --max-time 20 \
+            -H 'Accept: application/nostr+json' "$PRODUCTION_BASE_URL/")"
+          jq -e --arg version "$VERSION" \
+            'type == "object" and (.name | type == "string") and (.supported_nips | type == "array") and (.software | type == "string") and .version == $version' \
+            <<< "$nip11_json" >/dev/null
+          echo "NIP-11 reports relay version $VERSION."
+
+      - name: Print rollback procedure after failure
+        if: failure()
+        env:
+          SNAPSHOT_ID: ${{ steps.snapshot.outputs.snapshot_id }}
+        run: |
+          {
+            echo "### Production deployment stopped after a failure"
+            echo
+            echo "No automatic database restore was attempted. Inspect the failed step before any manual action."
+            if [[ -n "$SNAPSHOT_ID" ]]; then
+              echo "- Pre-release database snapshot: $SNAPSHOT_ID"
+              echo "- Postgres app: $DATABASE_APP"
+            else
+              echo "- No completed pre-release snapshot was recorded. Do not proceed with a schema release."
+            fi
+            echo "- Code-only rollback: deploy the previously running registry.fly.io/colony-relay:sha-<full-commit-sha> image with --skip-release-command."
+            echo "- Database rollback: restore the recorded snapshot into a new Postgres app, verify it, then reconnect the relay only after the owner approves the recovery."
+            echo "- Code rollback does not reverse schema changes or restore database contents."
+          } >> "$GITHUB_STEP_SUMMARY"

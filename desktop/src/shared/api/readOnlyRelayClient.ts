@@ -12,6 +12,7 @@ import { closeWebSocket } from "@/shared/api/relayWebSocketClose";
 import { sendPacedRelayOperation } from "@/shared/api/relayWebSocketOperationPacer";
 import {
   activateRateLimitIfSignalled,
+  rateLimitRemainingMs,
   waitForRateLimit,
 } from "@/shared/api/relayRateLimitGate";
 import {
@@ -218,6 +219,8 @@ export class ReadOnlyRelayClient {
             data: JSON.stringify(payload),
           },
         }),
+      "normal",
+      rateLimitRemainingMs,
     );
   }
 

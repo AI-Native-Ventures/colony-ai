@@ -3,23 +3,9 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { supportsNativeCapability } from "@/shared/api/nativeBridge";
 import { isAutoUpdateSupported } from "@/shared/api/tauri";
+import type { UpdateStatus } from "@/shared/api/updateTypes";
 
-export type UpdateStatus =
-  | { state: "idle" }
-  | { state: "checking" }
-  | { state: "up-to-date" }
-  | { state: "unavailable" }
-  | { state: "available"; version: string }
-  | { state: "downloading" }
-  | { state: "installing" }
-  | { state: "ready" }
-  | { state: "error"; message: string }
-  | {
-      state: "manual-required";
-      version: string;
-      /** GitHub releases page for the update. */
-      releaseUrl: string;
-    };
+export type { UpdateStatus } from "@/shared/api/updateTypes";
 
 const BACKGROUND_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const BACKGROUND_BLOCKED_STATES = new Set<UpdateStatus["state"]>([
@@ -31,7 +17,8 @@ const BACKGROUND_BLOCKED_STATES = new Set<UpdateStatus["state"]>([
   "manual-required",
 ]);
 
-const GITHUB_RELEASES_URL = "https://github.com/block/buzz/releases/latest";
+const GITHUB_RELEASES_URL =
+  "https://github.com/AI-Native-Ventures/colony-ai/releases/latest";
 
 function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -100,6 +87,21 @@ export function useUpdater() {
   }, [setStatus]);
 
   const installAndRelaunch = useCallback(async () => {
+    const electronUpdater = window.colonyDesktop?.updater;
+    if (electronUpdater) {
+      if (installInFlightRef.current) return;
+      installInFlightRef.current = true;
+      try {
+        setStatus({ state: "installing" });
+        const accepted = await electronUpdater.install();
+        if (!accepted) setStatus({ state: "unavailable" });
+      } catch (err) {
+        setStatus({ state: "error", message: toErrorMessage(err) });
+      } finally {
+        installInFlightRef.current = false;
+      }
+      return;
+    }
     if (!supportsNativeCapability("updater")) {
       setStatus({ state: "unavailable" });
       return;
@@ -128,6 +130,16 @@ export function useUpdater() {
 
   const runUpdateCheck = useCallback(
     async ({ background }: { background: boolean }) => {
+      const electronUpdater = window.colonyDesktop?.updater;
+      if (electronUpdater) {
+        if (!background) setStatus({ state: "checking" });
+        try {
+          setStatus(await electronUpdater.check());
+        } catch (err) {
+          setStatus({ state: "error", message: toErrorMessage(err) });
+        }
+        return;
+      }
       if (!supportsNativeCapability("updater")) {
         if (!background) {
           setStatus({ state: "unavailable" });
@@ -221,6 +233,31 @@ export function useUpdater() {
   }, [runUpdateCheck]);
 
   useEffect(() => {
+    const electronUpdater = window.colonyDesktop?.updater;
+    if (electronUpdater) {
+      let active = true;
+      let pushedStatuses = 0;
+      const unsubscribe = electronUpdater.subscribe((nextStatus) => {
+        pushedStatuses += 1;
+        if (active) setStatus(nextStatus);
+      });
+      const initialRevision = pushedStatuses;
+      void electronUpdater
+        .getStatus()
+        .then((nextStatus) => {
+          if (active && pushedStatuses === initialRevision)
+            setStatus(nextStatus);
+        })
+        .catch((err) => {
+          if (active)
+            setStatus({ state: "error", message: toErrorMessage(err) });
+        });
+      return () => {
+        active = false;
+        unsubscribe();
+      };
+    }
+
     if (!supportsNativeCapability("updater")) {
       return;
     }
@@ -235,7 +272,7 @@ export function useUpdater() {
       window.clearInterval(intervalId);
       closeUpdate();
     };
-  }, [checkForUpdateInBackground, closeUpdate]);
+  }, [checkForUpdateInBackground, closeUpdate, setStatus]);
 
   return {
     status,

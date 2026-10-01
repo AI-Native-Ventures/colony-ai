@@ -108,6 +108,7 @@ export default defineConfig({
         "**/exact-key-profile.spec.ts",
         "**/key-import-reveal.spec.ts",
         "**/navigation.spec.ts",
+        "**/relay-request-budget.spec.ts",
         "**/channels.spec.ts",
         "**/channel-shared-header-backdrop.spec.ts",
         "**/auxiliary-pane-close-visibility.spec.ts",

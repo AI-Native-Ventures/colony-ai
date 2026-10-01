@@ -1,6 +1,20 @@
 name: Electron package
 
 on:
+  workflow_call:
+    inputs:
+      release:
+        description: Build public Colony installers and update metadata.
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      mac_signed:
+        description: Whether the macOS release was signed and notarized.
+        value: ${{ jobs.resolve-signing.outputs.mac_signed }}
+      windows_signed:
+        description: Whether the Windows release was signed.
+        value: ${{ jobs.resolve-signing.outputs.windows_signed }}
   pull_request:
     paths:
       - "desktop/**"
@@ -20,8 +34,63 @@ env:
   CARGO_BUILD_JOBS: 4
 
 jobs:
+  resolve-signing:
+    name: Resolve optional release signing
+    runs-on: ubuntu-22.04
+    outputs:
+      mac_signed: ${{ steps.resolve.outputs.mac_signed }}
+      windows_signed: ${{ steps.resolve.outputs.windows_signed }}
+    steps:
+      - name: Check complete optional secret groups
+        id: resolve
+        shell: bash
+        env:
+          APPLE_DEVELOPER_ID_CERT_P12_B64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12_B64 }}
+          APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
+          APPLE_NOTARY_API_KEY_P8_B64: ${{ secrets.APPLE_NOTARY_API_KEY_P8_B64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          WINDOWS_SIGNING_CERT_PFX_B64: ${{ secrets.WINDOWS_SIGNING_CERT_PFX_B64 }}
+          WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mac_any=0
+          mac_all=1
+          for value in \
+            "$APPLE_DEVELOPER_ID_CERT_P12_B64" \
+            "$APPLE_DEVELOPER_ID_CERT_PASSWORD" \
+            "$APPLE_NOTARY_API_KEY_P8_B64" \
+            "$APPLE_NOTARY_KEY_ID" \
+            "$APPLE_NOTARY_ISSUER_ID"; do
+            if [ -n "$value" ]; then mac_any=1; else mac_all=0; fi
+          done
+          windows_any=0
+          windows_all=1
+          for value in "$WINDOWS_SIGNING_CERT_PFX_B64" "$WINDOWS_SIGNING_CERT_PASSWORD"; do
+            if [ -n "$value" ]; then windows_any=1; else windows_all=0; fi
+          done
+          if [ "${{ inputs.release }}" = "true" ] && [ "$mac_any" = "1" ] && [ "$mac_all" != "1" ]; then
+            echo "Apple signing requires the complete five-secret group." >&2
+            exit 1
+          fi
+          if [ "${{ inputs.release }}" = "true" ] && [ "$windows_any" = "1" ] && [ "$windows_all" != "1" ]; then
+            echo "Windows signing requires the complete two-secret group." >&2
+            exit 1
+          fi
+          if [ "${{ inputs.release }}" = "true" ] && [ "$mac_all" = "1" ]; then
+            echo "mac_signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "mac_signed=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${{ inputs.release }}" = "true" ] && [ "$windows_all" = "1" ]; then
+            echo "windows_signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "windows_signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
   package:
     name: Package Electron (${{ matrix.platform }}-${{ matrix.arch }})
+    needs: resolve-signing
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -253,8 +322,70 @@ jobs:
           appendFileSync(process.env.GITHUB_ENV, `COLONY_ELECTRON_RUNTIME=${runtimeDir}${os.EOL}`);
           NODE
 
+      - name: Prepare temporary Apple signing keychain
+        if: inputs.release && matrix.platform == 'darwin' && needs.resolve-signing.outputs.mac_signed == 'true'
+        shell: bash
+        env:
+          APPLE_DEVELOPER_ID_CERT_P12_B64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12_B64 }}
+          APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
+          APPLE_NOTARY_API_KEY_P8_B64: ${{ secrets.APPLE_NOTARY_API_KEY_P8_B64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          keychain_path="$RUNNER_TEMP/colony-release.keychain-db"
+          cert_path="$RUNNER_TEMP/colony-developer-id.p12"
+          notary_key_path="$RUNNER_TEMP/colony-notary-key.p8"
+          keychain_password="$(openssl rand -hex 24)"
+          printf '%s' "$APPLE_DEVELOPER_ID_CERT_P12_B64" | base64 --decode > "$cert_path"
+          printf '%s' "$APPLE_NOTARY_API_KEY_P8_B64" | base64 --decode > "$notary_key_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$cert_path" -k "$keychain_path" -P "$APPLE_DEVELOPER_ID_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path" >/dev/null
+          security list-keychains -d user -s "$keychain_path"
+          identity="$(security find-identity -p codesigning "$keychain_path" | awk -F '"' '/Developer ID Application:/{print $2; exit}')"
+          if [ -z "$identity" ]; then
+            echo "No Developer ID Application identity was found in the temporary keychain." >&2
+            exit 1
+          fi
+          {
+            echo "COLONY_TEMP_KEYCHAIN_PATH=$keychain_path"
+            echo "COLONY_TEMP_APPLE_CERT_PATH=$cert_path"
+            echo "COLONY_TEMP_NOTARY_KEY_PATH=$notary_key_path"
+            echo "COLONY_APPLE_DEVELOPER_IDENTITY=$identity"
+            echo "COLONY_APPLE_NOTARY_KEY_PATH=$notary_key_path"
+            echo "COLONY_APPLE_NOTARY_KEY_ID=$APPLE_NOTARY_KEY_ID"
+            echo "COLONY_APPLE_NOTARY_ISSUER_ID=$APPLE_NOTARY_ISSUER_ID"
+          } >> "$GITHUB_ENV"
+
+      - name: Prepare optional Windows signing certificate
+        if: inputs.release && matrix.platform == 'win32' && needs.resolve-signing.outputs.windows_signed == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERT_PFX_B64: ${{ secrets.WINDOWS_SIGNING_CERT_PFX_B64 }}
+          WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+        run: |
+          $certificatePath = Join-Path $env:RUNNER_TEMP "colony-code-signing.pfx"
+          [System.IO.File]::WriteAllBytes(
+            $certificatePath,
+            [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERT_PFX_B64)
+          )
+          $securePassword = ConvertTo-SecureString $env:WINDOWS_SIGNING_CERT_PASSWORD -AsPlainText -Force
+          $certificate = Get-PfxCertificate -FilePath $certificatePath -Password $securePassword
+          if (-not $certificate.Subject) { throw "Windows signing certificate has no subject." }
+          Add-Content -Path $env:GITHUB_ENV -Value "COLONY_WINDOWS_CERT_PATH=$certificatePath"
+          Add-Content -Path $env:GITHUB_ENV -Value "CSC_LINK=$certificatePath"
+          Add-Content -Path $env:GITHUB_ENV -Value "COLONY_ELECTRON_PUBLISHER_NAME=$($certificate.Subject)"
+
       - name: Package Electron app
         shell: bash
+        env:
+          COLONY_ELECTRON_RELEASE: ${{ inputs.release && '1' || '0' }}
+          COLONY_ELECTRON_PRODUCT_NAME: ${{ inputs.release && 'Colony' || '' }}
+          COLONY_ELECTRON_SIGNED: ${{ inputs.release && ((matrix.platform == 'darwin' && needs.resolve-signing.outputs.mac_signed == 'true') || (matrix.platform == 'win32' && needs.resolve-signing.outputs.windows_signed == 'true')) && '1' || '0' }}
+          COLONY_ELECTRON_AUTO_UPDATE: ${{ inputs.release && (matrix.platform != 'darwin' || needs.resolve-signing.outputs.mac_signed == 'true') && '1' || '0' }}
         run: |
           set -euo pipefail
           if [ "${{ matrix.platform }}" = "win32" ]; then
@@ -267,13 +398,51 @@ jobs:
             --arch=${{ matrix.arch }} \
             --host="$host"
 
+      - name: Build release installer and updater metadata
+        if: inputs.release
+        shell: bash
+        env:
+          COLONY_ELECTRON_SIGNED: ${{ ((matrix.platform == 'darwin' && needs.resolve-signing.outputs.mac_signed == 'true') || (matrix.platform == 'win32' && needs.resolve-signing.outputs.windows_signed == 'true')) && '1' || '0' }}
+          CSC_KEY_PASSWORD: ${{ matrix.platform == 'win32' && needs.resolve-signing.outputs.windows_signed == 'true' && secrets.WINDOWS_SIGNING_CERT_PASSWORD || '' }}
+        run: pnpm --dir desktop run electron:installer -- ${{ matrix.platform }} ${{ matrix.arch }}
+
+      - name: Remove temporary signing credentials
+        if: always() && runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${COLONY_TEMP_KEYCHAIN_PATH:-}" ]; then
+            security delete-keychain "$COLONY_TEMP_KEYCHAIN_PATH" || true
+          fi
+          for path in "${COLONY_TEMP_APPLE_CERT_PATH:-}" "${COLONY_TEMP_NOTARY_KEY_PATH:-}"; do
+            if [ -n "$path" ]; then rm -f "$path"; fi
+          done
+
+      - name: Remove temporary Windows signing certificate
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ($env:COLONY_WINDOWS_CERT_PATH) {
+            Remove-Item -LiteralPath $env:COLONY_WINDOWS_CERT_PATH -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Upload package artifact
+        if: ${{ !inputs.release }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: colony-electron-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
             desktop/dist-electron/${{ matrix.platform }}-${{ matrix.arch }}
             desktop/dist-electron/${{ matrix.platform }}-${{ matrix.arch }}.*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload release installer artifacts
+        if: inputs.release
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: colony-electron-release-${{ matrix.platform }}-${{ matrix.arch }}
+          path: desktop/dist-electron/release/*
           if-no-files-found: error
           retention-days: 7
 
@@ -288,10 +457,11 @@ jobs:
           COLONY_ELECTRON_USER_DATA: ${{ runner.temp }}/colony-electron-smoke-user-data
         run: |
           set -euo pipefail
+          package_name="${COLONY_ELECTRON_PRODUCT_NAME:-Buzz}"
           if [ "${{ matrix.platform }}" = "linux" ]; then
-            command=(xvfb-run -a "$GITHUB_WORKSPACE/desktop/dist-electron/linux-x64/Buzz")
+            command=(xvfb-run -a "$GITHUB_WORKSPACE/desktop/dist-electron/linux-x64/$package_name")
           else
-            command=("$GITHUB_WORKSPACE/desktop/dist-electron/darwin-arm64/Buzz.app/Contents/MacOS/Buzz")
+            command=("$GITHUB_WORKSPACE/desktop/dist-electron/darwin-arm64/$package_name.app/Contents/MacOS/$package_name")
           fi
           python3 - "${command[@]}" <<'PY'
           import os
@@ -324,7 +494,8 @@ jobs:
           COLONY_ELECTRON_BACKGROUND: "1"
         run: |
           $env:COLONY_ELECTRON_USER_DATA = Join-Path $env:RUNNER_TEMP "colony-electron-smoke-user-data"
-          $appPath = Join-Path $env:GITHUB_WORKSPACE "desktop/dist-electron/win32-x64/Buzz.exe"
+          $packageName = if ($env:COLONY_ELECTRON_PRODUCT_NAME) { $env:COLONY_ELECTRON_PRODUCT_NAME } else { "Buzz" }
+          $appPath = Join-Path $env:GITHUB_WORKSPACE "desktop/dist-electron/win32-x64/$packageName.exe"
           $stdoutPath = Join-Path $env:RUNNER_TEMP "electron-smoke.stdout.log"
           $stderrPath = Join-Path $env:RUNNER_TEMP "electron-smoke.stderr.log"
           $process = Start-Process -FilePath $appPath -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
