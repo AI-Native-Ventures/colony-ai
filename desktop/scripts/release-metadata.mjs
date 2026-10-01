@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import semver from "semver";
+import { parse as parseYaml } from "yaml";
 
 function parseArgs(args) {
   const values = {};
@@ -42,9 +44,47 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function hashFile(filePath, algorithm, encoding) {
+  return new Promise((resolve, reject) => {
+    const hash = createHash(algorithm);
+    const stream = createReadStream(filePath, { highWaterMark: 1024 * 1024 });
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.once("error", reject);
+    stream.once("end", () => resolve(hash.digest(encoding)));
+  });
+}
+
 async function sha256(filePath) {
-  const contents = await readFile(filePath);
-  return createHash("sha256").update(contents).digest("hex");
+  return hashFile(filePath, "sha256", "hex");
+}
+
+async function verifyUpdaterFeed({
+  assetsDir,
+  fileName,
+  version,
+  artifactName,
+}) {
+  const feed = parseYaml(
+    await readFile(path.join(assetsDir, fileName), "utf8"),
+  );
+  if (feed?.version !== version || !Array.isArray(feed.files)) {
+    throw new Error(`${fileName} has invalid version or file metadata.`);
+  }
+  const entry = feed.files.find((file) => file?.url === artifactName);
+  if (!entry || typeof entry.sha512 !== "string" || !entry.sha512) {
+    throw new Error(`${fileName} does not reference ${artifactName}.`);
+  }
+  const artifactPath = path.join(assetsDir, artifactName);
+  const [artifactStat, artifactHash] = await Promise.all([
+    stat(artifactPath),
+    hashFile(artifactPath, "sha512", "base64"),
+  ]);
+  if (entry.sha512 !== artifactHash || entry.size !== artifactStat.size) {
+    throw new Error(
+      `${fileName} checksum or size does not match ${artifactName}.`,
+    );
+  }
+  return feed;
 }
 
 export async function writeReleaseMetadata({
@@ -118,6 +158,30 @@ export async function writeReleaseMetadata({
   }
   if (!linuxAppImage.includes("UNSIGNED")) {
     throw new Error("Linux AppImage must be labelled UNSIGNED.");
+  }
+
+  const [, windowsFeed] = await Promise.all([
+    verifyUpdaterFeed({
+      assetsDir,
+      fileName: macUpdateMetadata,
+      version: normalizedVersion,
+      artifactName: macZip,
+    }),
+    verifyUpdaterFeed({
+      assetsDir,
+      fileName: windowsUpdateMetadata,
+      version: normalizedVersion,
+      artifactName: windowsInstaller,
+    }),
+    verifyUpdaterFeed({
+      assetsDir,
+      fileName: linuxUpdateMetadata,
+      version: normalizedVersion,
+      artifactName: linuxAppImage,
+    }),
+  ]);
+  if (windowsSigned && !Array.isArray(windowsFeed.publisherName)) {
+    throw new Error("Signed Windows update metadata is missing publisherName.");
   }
 
   const assets = await Promise.all(

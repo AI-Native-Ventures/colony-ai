@@ -9,7 +9,21 @@ import { writeReleaseMetadata } from "./release-metadata.mjs";
 
 async function makeAssets(directory, names) {
   for (const name of names) {
+    if (name.endsWith(".yml")) continue;
     await writeFile(path.join(directory, name), `asset:${name}`);
+  }
+  const feeds = {
+    "latest-mac.yml": "Colony-1.2.3-arm64-UNSIGNED.zip",
+    "latest.yml": "Colony-1.2.3-x64-UNSIGNED.exe",
+    "latest-linux.yml": "Colony-1.2.3-x64-UNSIGNED.AppImage",
+  };
+  for (const [feedName, artifactName] of Object.entries(feeds)) {
+    const artifact = await readFile(path.join(directory, artifactName));
+    const sha512 = createHash("sha512").update(artifact).digest("base64");
+    await writeFile(
+      path.join(directory, feedName),
+      `version: 1.2.3\nfiles:\n  - url: ${artifactName}\n    sha512: ${sha512}\n    size: ${artifact.byteLength}\n`,
+    );
   }
 }
 
@@ -97,6 +111,30 @@ test("release metadata rejects missing installer assets and mismatched signing l
         windowsSigned: false,
       }),
       /semantic versioning/,
+    );
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test("release metadata rejects updater feeds with mismatched installer hashes", async () => {
+  const temporaryDirectory = await mkdtemp(
+    path.join(os.tmpdir(), "colony-release-metadata-"),
+  );
+  try {
+    await makeAssets(temporaryDirectory, validAssets);
+    await writeFile(
+      path.join(temporaryDirectory, "latest-linux.yml"),
+      "version: 1.2.3\nfiles:\n  - url: Colony-1.2.3-x64-UNSIGNED.AppImage\n    sha512: bad-checksum\n    size: 1\n",
+    );
+    await assert.rejects(
+      writeReleaseMetadata({
+        assetsDir: temporaryDirectory,
+        version: "1.2.3",
+        macSigned: false,
+        windowsSigned: false,
+      }),
+      /checksum or size does not match/,
     );
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
