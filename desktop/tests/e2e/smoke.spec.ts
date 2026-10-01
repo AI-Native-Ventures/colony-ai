@@ -982,6 +982,9 @@ test("sends a mocked channel message", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
+  const composer = page.getByRole("textbox", { name: "Message #general…" });
+  await expect(composer).toBeVisible();
+  await expect(composer).toHaveAttribute("aria-multiline", "true");
   await page.getByTestId("message-input").fill(message);
   await page.getByTestId("send-message").click();
 
