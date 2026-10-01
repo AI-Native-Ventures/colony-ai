@@ -597,6 +597,7 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
     try {
       return await session.queryRelay(filters);
     } catch (error) {
+      if (isRelayRateLimitedError(error)) rethrow;
       debugPrint(
         '[ActivityNotifier] batched history query failed; '
         'using bounded websocket fallback: $error',
@@ -610,13 +611,7 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
           ? start + fallbackConcurrency
           : filters.length;
       final results = await Future.wait(
-        filters.sublist(start, end).map((filter) async {
-          try {
-            return await session.fetchHistory(filter);
-          } catch (_) {
-            return const <NostrEvent>[];
-          }
-        }),
+        filters.sublist(start, end).map(session.fetchHistory),
       );
       for (final result in results) {
         events.addAll(result);
@@ -658,6 +653,9 @@ class _PendingResurface {
 final activityProvider =
     AsyncNotifierProvider<ActivityNotifier, HomeFeedResponse>(
       ActivityNotifier.new,
+      retry: (retryCount, error) => isRelayRateLimitedError(error)
+          ? null
+          : ProviderContainer.defaultRetry(retryCount, error),
     );
 
 /// Conversation-grouped inbox rows derived from the raw feed. DM messages

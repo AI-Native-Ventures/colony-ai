@@ -25,6 +25,7 @@ import 'relay_socket.dart';
 export 'relay_session_types.dart';
 
 part 'relay_session_auth.dart';
+part 'relay_session_http.dart';
 part 'relay_session_support.dart';
 
 class _HistorySubscription {
@@ -50,6 +51,8 @@ class RelaySessionNotifier extends Notifier<SessionState> {
     DateTime Function()? now,
     double Function()? random,
     RelayRateLimitGate? rateLimitGate,
+    RelayRateLimitGate? httpRateLimitGate,
+    RelayOperationScheduler? operationScheduler,
     RelayTimerFactory retryTimerFactory = Timer.new,
     Future<void> Function(Duration) replayDelay = Future.delayed,
   }) : _httpQueryClient = RelayHttpQueryClient(
@@ -59,8 +62,12 @@ class RelaySessionNotifier extends Notifier<SessionState> {
        _socketFactory = socketFactory,
        _now = now ?? DateTime.now,
        _random = random ?? Random().nextDouble,
-       _operationScheduler = RelayOperationScheduler(now: now),
+       _operationScheduler =
+           operationScheduler ?? RelayOperationScheduler(now: now),
        _rateLimitGate = rateLimitGate ?? RelayRateLimitGate(),
+       _httpRateLimitGate =
+           httpRateLimitGate ??
+           RelayRateLimitGate(now: now, timerFactory: retryTimerFactory),
        _retryTimerFactory = retryTimerFactory,
        _replayDelay = replayDelay;
 
@@ -70,6 +77,7 @@ class RelaySessionNotifier extends Notifier<SessionState> {
   final double Function() _random;
   final RelayOperationScheduler _operationScheduler;
   final RelayRateLimitGate _rateLimitGate;
+  final RelayRateLimitGate _httpRateLimitGate;
   final RelayTimerFactory _retryTimerFactory;
   final Future<void> Function(Duration) _replayDelay;
 
@@ -85,6 +93,7 @@ class RelaySessionNotifier extends Notifier<SessionState> {
   RelaySocket? _socket;
   final Map<String, _HistorySubscription> _historySubscriptions = {};
   final Map<String, Future<List<NostrEvent>>> _inFlightHistoryRequests = {};
+  final Map<String, Future<List<NostrEvent>>> _inFlightHttpQueries = {};
   final Map<String, _LiveSubscription> _liveSubscriptions = {};
   final Map<String, String> _liveSubscriptionIdsByFilter = {};
   final Map<String, _ClosedRetry> _pendingClosedRetries = {};
@@ -130,75 +139,38 @@ class RelaySessionNotifier extends Notifier<SessionState> {
     return const SessionState(status: SessionStatus.disconnected);
   }
 
-  /// Execute a one-shot query via the relay's HTTP bridge (`POST /query`).
+  /// Executes a paced one-shot query via the relay HTTP bridge.
   Future<List<NostrEvent>> queryRelay(
     List<NostrFilter> filters, {
     Duration timeout = const Duration(seconds: 8),
-  }) async {
+  }) {
     if (_disposed || _ageRestricted) {
-      throw StateError('Relay session is unavailable');
+      return Future.error(StateError('Relay session is unavailable'));
     }
+    final key = jsonEncode(filters.map((filter) => filter.toJson()).toList());
+    final existing = _inFlightHttpQueries[key];
+    if (existing != null) return existing;
+
     final generation = _contextGeneration;
     final config = ref.read(relayConfigProvider);
-    final url = Uri.parse(config.baseUrl).resolve('/query').toString();
-    final bodyBytes = utf8.encode(
-      jsonEncode(filters.map((filter) => filter.toJson()).toList()),
-    );
-    // Reuse the session transport on success. A timeout rotates immediately
-    // for new queries, then closes the retired client after its peers finish.
-    final response = await _httpQueryClient.post(
-      Uri.parse(url),
-      headers: {
-        'Authorization': buildNip98AuthHeader(
-          method: 'POST',
-          url: url,
-          bodyBytes: bodyBytes,
-          nsec: config.nsec,
-        ),
-        'Content-Type': 'application/json',
-      },
-      body: bodyBytes,
-      timeout: timeout,
-    );
-    if (_disposed || _ageRestricted || generation != _contextGeneration) {
-      throw StateError('Relay query belongs to a retired session');
-    }
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      _activateRateLimitGateFromHttpError(response.body);
-      throw RelayException(response.statusCode, response.body);
-    }
-    final decoded = jsonDecode(response.body);
-    if (decoded is! List) {
-      throw const FormatException('relay returned malformed query response');
-    }
-    try {
-      return [
-        for (final eventJson in decoded)
-          if (eventJson is Map<String, dynamic>)
-            NostrEvent.fromJson(eventJson)
-          else
-            throw const FormatException('relay returned malformed query event'),
-      ];
-    } catch (error) {
-      if (error is FormatException) rethrow;
-      throw FormatException('relay returned malformed query event: $error');
-    }
-  }
-
-  void _activateRateLimitGateFromHttpError(String body) {
-    final dynamic decoded;
-    try {
-      decoded = jsonDecode(body);
-    } on FormatException {
-      return;
-    }
-    if (decoded is! Map<String, dynamic>) return;
-    final message = decoded['error'];
-    if (message is! String ||
-        classifyRelayClosed(message) != RelayClosedClass.rateLimited) {
-      return;
-    }
-    _rateLimitGate.activate(parseRateLimitRetrySeconds(message));
+    late final Future<List<NostrEvent>> request;
+    request =
+        _performRelayHttpQuery(
+          filters: filters,
+          timeout: timeout,
+          config: config,
+          isCurrent: () =>
+              !_disposed && !_ageRestricted && generation == _contextGeneration,
+          client: _httpQueryClient,
+          scheduler: _operationScheduler,
+          rateLimitGate: _httpRateLimitGate,
+        ).whenComplete(() {
+          if (identical(_inFlightHttpQueries[key], request)) {
+            _inFlightHttpQueries.remove(key);
+          }
+        });
+    _inFlightHttpQueries[key] = request;
+    return request;
   }
 
   /// Fetch historical events matching [filter]. Sends REQ, collects events
@@ -1160,6 +1132,7 @@ class RelaySessionNotifier extends Notifier<SessionState> {
     _disposed = true;
     _operationScheduler.reset();
     _inFlightHistoryRequests.clear();
+    _inFlightHttpQueries.clear();
     _contextGeneration++;
     _beforePauseCallbacks.clear();
     _connectionGeneration++;
@@ -1169,6 +1142,7 @@ class RelaySessionNotifier extends Notifier<SessionState> {
     _backgroundedAt = null;
     _cancelAllClosedRetries();
     _rateLimitGate.reset();
+    _httpRateLimitGate.reset();
     _visibleChannelsByOwner.clear();
     _socketConnected = false;
     _cancelAllHistory(null);

@@ -11,6 +11,7 @@ import 'package:buzz/features/age_gate/age_signal_provider.dart';
 import 'package:buzz/features/channels/agent_activity/observer_subscription.dart';
 import 'package:buzz/features/channels/agent_activity/observer_models.dart';
 import 'package:buzz/shared/auth/auth_provider.dart';
+import 'package:buzz/shared/relay/relay_operation_scheduler.dart';
 import 'package:buzz/shared/relay/relay.dart';
 
 void main() {
@@ -207,6 +208,32 @@ void main() {
     expect(tags.any((tag) => tag.length == 2 && tag[0] == 'nonce'), isTrue);
   });
 
+  test('queryRelay coalesces identical in-flight filter batches', () async {
+    final response = Completer<http.Response>();
+    var httpCalls = 0;
+    final harness = _queryHarness(
+      gate: RelayRateLimitGate(),
+      client: http_testing.MockClient((_) {
+        httpCalls++;
+        return response.future;
+      }),
+    );
+    addTearDown(harness.container.dispose);
+    const filters = [
+      NostrFilter(kinds: [39002]),
+    ];
+
+    final first = harness.session.queryRelay(filters);
+    final second = harness.session.queryRelay(filters);
+    expect(identical(first, second), isTrue);
+    await pumpEventQueue();
+    expect(httpCalls, 1);
+
+    response.complete(http.Response('[]', 200));
+    expect(await first, isEmpty);
+    expect(await second, isEmpty);
+  });
+
   test('queryRelay rejects malformed event arrays', () async {
     final keychain = nostr.Keys.generate();
     final session = RelaySessionNotifier(
@@ -264,7 +291,10 @@ void main() {
     );
     expect(clients.single.closed, isTrue);
 
-    final nextQuery = session.queryRelay(const []);
+    final nextQuery = session.queryRelay(const [
+      NostrFilter(kinds: [39002]),
+    ]);
+    await pumpEventQueue();
     expect(clients, hasLength(2));
     clients.last.complete(http.Response('[]', 200));
 
@@ -303,13 +333,23 @@ void main() {
         const [],
         timeout: const Duration(milliseconds: 10),
       );
-      final peerQuery = session.queryRelay(const []);
+      final timedOutExpectation = expectLater(
+        timedOutQuery,
+        throwsA(isA<TimeoutException>()),
+      );
+      final peerQuery = session.queryRelay(const [
+        NostrFilter(kinds: [39002]),
+      ]);
+      await pumpEventQueue();
       expect(clients.single.requestCount, 2);
 
-      await expectLater(timedOutQuery, throwsA(isA<TimeoutException>()));
+      await timedOutExpectation;
       expect(clients.single.closed, isFalse);
 
-      final nextQuery = session.queryRelay(const []);
+      final nextQuery = session.queryRelay(const [
+        NostrFilter(kinds: [1]),
+      ]);
+      await pumpEventQueue();
       expect(clients, hasLength(2));
       clients.first.complete(1, http.Response('[]', 200));
       expect(await peerQuery, isEmpty);
@@ -462,7 +502,7 @@ void main() {
     expect(gate.isActive, isFalse);
   });
 
-  test('queryRelay does not wait for an active rate-limit gate', () async {
+  test('queryRelay does not wait for the WebSocket rate-limit gate', () async {
     final gate = RelayRateLimitGate(
       now: () => DateTime(2026),
       timerFactory: _ManualTimer.new,
@@ -470,6 +510,7 @@ void main() {
     var requestCount = 0;
     final harness = _queryHarness(
       gate: gate,
+      websocketGate: true,
       client: http_testing.MockClient((_) async {
         requestCount++;
         return http.Response('[]', 200);
@@ -478,8 +519,7 @@ void main() {
     addTearDown(harness.container.dispose);
     // Let the provider's build/dispose churn settle before arming: reading the
     // notifier registers `ref.onDispose(_dispose)`, and `_dispose` resets the
-    // shared gate. Arming before that settles leaves the gate disarmed by the
-    // time the request runs, which makes this row pass for the wrong reason.
+    // WebSocket gate. The HTTP API quota has its own gate.
     await pumpEventQueue();
     gate.activate(4);
     expect(gate.isActive, isTrue);
@@ -491,6 +531,51 @@ void main() {
     expect(await query, isEmpty);
     // Still armed: the read must neither wait on the gate nor clear it.
     expect(gate.isActive, isTrue);
+  });
+
+  test('queryRelay waits for an active HTTP rate-limit gate', () async {
+    var now = DateTime(2026);
+    final gateTimers = <_ManualTimer>[];
+    final operationTimers = <_ManualTimer>[];
+    final gate = RelayRateLimitGate(
+      now: () => now,
+      timerFactory: (duration, callback) {
+        final timer = _ManualTimer(duration, callback);
+        gateTimers.add(timer);
+        return timer;
+      },
+    );
+    final scheduler = RelayOperationScheduler(
+      now: () => now,
+      timerFactory: (duration, callback) {
+        final timer = _ManualTimer(duration, callback);
+        operationTimers.add(timer);
+        return timer;
+      },
+    );
+    var requestCount = 0;
+    final harness = _queryHarness(
+      gate: gate,
+      scheduler: scheduler,
+      client: http_testing.MockClient((_) async {
+        requestCount++;
+        return http.Response('[]', 200);
+      }),
+    );
+    addTearDown(harness.container.dispose);
+    await pumpEventQueue();
+    gate.activate(4);
+
+    final query = harness.session.queryRelay(const []);
+    await Future<void>.delayed(Duration.zero);
+    expect(requestCount, 0);
+    expect(operationTimers.single.duration, const Duration(seconds: 4));
+
+    now = now.add(const Duration(seconds: 4));
+    gateTimers.single.fire();
+    operationTimers.single.fire();
+    expect(await query, isEmpty);
+    expect(requestCount, 1);
   });
 
   test(
@@ -1926,8 +2011,15 @@ class _QueryHarness {
 _QueryHarness _queryHarness({
   required RelayRateLimitGate gate,
   required http.Client client,
+  bool websocketGate = false,
+  RelayOperationScheduler? scheduler,
 }) {
-  final session = RelaySessionNotifier(httpClient: client, rateLimitGate: gate);
+  final session = RelaySessionNotifier(
+    httpClient: client,
+    rateLimitGate: websocketGate ? gate : null,
+    httpRateLimitGate: websocketGate ? null : gate,
+    operationScheduler: scheduler,
+  );
   final container = ProviderContainer(
     overrides: [
       authProvider.overrideWith(() => _PendingAuthNotifier()),
