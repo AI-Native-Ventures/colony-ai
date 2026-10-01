@@ -13,6 +13,7 @@ import '../../shared/profile/user_profile.dart';
 import '../../shared/relay/relay_provider.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/utils/string_utils.dart';
+import 'company_team_notice.dart';
 import 'team_hero_gradient.dart';
 import '../goals/goal_widgets.dart';
 
@@ -178,15 +179,15 @@ class TeamPositionEditPage extends HookConsumerWidget {
                     children: [
                       _PositionEditHero(),
                       if (failed.value) ...[
-                        const SizedBox(height: Grid.sm),
-                        const _PositionEditNotice(
+                        const SizedBox(height: Grid.xxs),
+                        const CompanyTeamNotice(
                           title: 'Your changes were not saved',
                           message:
                               'Everything you typed is kept. Try again when the connection returns.',
                           error: true,
                         ),
                       ],
-                      const SizedBox(height: Grid.xxs),
+                      SizedBox(height: failed.value ? Grid.xs : Grid.xxs),
                       Text(
                         'Job title',
                         style: context.mobileTypography.goalFormLabel.copyWith(
@@ -198,11 +199,23 @@ class TeamPositionEditPage extends HookConsumerWidget {
                         controller: titleController,
                         maxLength: memberPositionTitleLimit,
                         textCapitalization: TextCapitalization.sentences,
-                        decoration: const InputDecoration(counterText: ''),
+                        style: context.mobileTypography.goalFormControl
+                            .copyWith(
+                              color: context.mobileTokens.ink,
+                              fontSize: 14,
+                              height: 1.65,
+                            ),
+                        decoration: InputDecoration(
+                          counterText: '',
+                          filled: true,
+                          fillColor: context.mobileTokens.paper,
+                          constraints: const BoxConstraints(minHeight: 46),
+                          contentPadding: const EdgeInsets.all(12),
+                        ),
                         onChanged: (value) => titleValue.value = value,
                         enabled: !saving.value,
                       ),
-                      const SizedBox(height: Grid.xxs),
+                      const SizedBox(height: Grid.xs),
                       Text(
                         'Reports to',
                         style: context.mobileTypography.goalFormLabel.copyWith(
@@ -213,7 +226,18 @@ class TeamPositionEditPage extends HookConsumerWidget {
                       DropdownButtonFormField<String?>(
                         initialValue: managerSelection.value,
                         isExpanded: true,
-                        decoration: const InputDecoration(),
+                        style: context.mobileTypography.goalFormControl
+                            .copyWith(
+                              color: context.mobileTokens.ink,
+                              fontSize: 14,
+                              height: 1.65,
+                            ),
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: context.mobileTokens.paper,
+                          constraints: const BoxConstraints(minHeight: 46),
+                          contentPadding: const EdgeInsets.all(12),
+                        ),
                         items: [
                           const DropdownMenuItem<String?>(
                             value: null,
@@ -246,8 +270,8 @@ class TeamPositionEditPage extends HookConsumerWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(height: Grid.sm),
-                      const _PositionEditNotice(
+                      const SizedBox(height: Grid.xs),
+                      const CompanyTeamNotice(
                         title: 'More setup is on desktop',
                         message:
                             'Runtime, model, tools, instructions and allowances are managed there.',
@@ -318,61 +342,6 @@ class _PositionEditHero extends StatelessWidget {
   }
 }
 
-class _PositionEditNotice extends StatelessWidget {
-  const _PositionEditNotice({
-    required this.title,
-    required this.message,
-    this.error = false,
-  });
-
-  final String title;
-  final String message;
-  final bool error;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.mobileTokens;
-    return Container(
-      decoration: BoxDecoration(
-        color: tokens.paper,
-        borderRadius: BorderRadius.circular(Radii.card),
-        border: Border.all(color: tokens.line),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(Radii.card),
-        child: Row(
-          children: [
-            Container(
-              width: 3,
-              color: error
-                  ? context.appColors.warning
-                  : context.appColors.lilac,
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(Grid.gutter),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: context.mobileTypography.goalCardTitle),
-                    const SizedBox(height: Grid.xxs),
-                    Text(
-                      message,
-                      style: context.mobileTypography.body.copyWith(
-                        color: tokens.ink,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _PositionEditUnavailable extends StatelessWidget {
   const _PositionEditUnavailable({required this.onRetry});
 
@@ -415,7 +384,7 @@ class _PositionEditDenied extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const _PositionEditNotice(
+            const CompanyTeamNotice(
               title: 'You can view, but cannot change this',
               message:
                   'An authorized person can make the update. Your draft has been kept.',

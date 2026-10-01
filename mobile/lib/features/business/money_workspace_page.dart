@@ -17,11 +17,19 @@ class MoneyWorkspacePage extends HookConsumerWidget {
   const MoneyWorkspacePage({
     required this.channelDirectory,
     required this.onRetryChannelDirectory,
+    this.title = 'Money',
+    this.onBack,
+    this.showDueDates = true,
+    this.onOpenIssuedInvoice,
     super.key,
   });
 
   final AsyncValue<List<MobileBusinessChannelCandidate>> channelDirectory;
   final VoidCallback onRetryChannelDirectory;
+  final String title;
+  final VoidCallback? onBack;
+  final bool showDueDates;
+  final ValueChanged<MobileBusinessRecord>? onOpenIssuedInvoice;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -43,8 +51,9 @@ class MoneyWorkspacePage extends HookConsumerWidget {
       child: Column(
         children: [
           _MoneyPageHeader(
-            title: 'Money',
-            onBack: () => unawaited(Navigator.of(context).maybePop()),
+            title: title,
+            backLabel: onBack == null ? 'Back to company' : 'Back to Business',
+            onBack: onBack ?? () => unawaited(Navigator.of(context).maybePop()),
           ),
           Expanded(
             child: channelDirectory.hasError
@@ -59,6 +68,8 @@ class MoneyWorkspacePage extends HookConsumerWidget {
                     records: recordsSnapshot.data!,
                     section: section.value,
                     selectedClientId: selectedClientId.value,
+                    showDueDates: showDueDates,
+                    onOpenIssuedInvoice: onOpenIssuedInvoice,
                     onSectionChanged: (value) => section.value = value,
                     onClientChanged: (value) => selectedClientId.value = value,
                     onRecordChanged: () => refreshVersion.value++,

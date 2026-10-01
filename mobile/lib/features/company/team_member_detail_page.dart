@@ -16,6 +16,7 @@ import '../../shared/profile/user_profile.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/utils/string_utils.dart';
 import '../goals/goal_widgets.dart';
+import 'company_team_notice.dart';
 import 'team_position_edit_page.dart';
 import 'team_hero_gradient.dart';
 import 'team_reports_page.dart';
@@ -278,7 +279,7 @@ class _TeamActiveDetail extends ConsumerWidget {
         ),
         if (positionSaved) ...[
           const SizedBox(height: Grid.xxs),
-          const _TeamNotice(
+          const CompanyTeamNotice(
             title: 'Position updated',
             message: 'Title and manager were saved.',
             success: true,
@@ -360,7 +361,7 @@ class _TeamTerminatedDetail extends StatelessWidget {
           title: member.position?.head.title ?? 'Former employee',
         ),
         const SizedBox(height: Grid.xxs),
-        _TeamNotice(
+        CompanyTeamNotice(
           title: 'No longer active',
           message: 'Reason: ${member.position?.head.reason ?? ''}',
         ),
@@ -372,7 +373,7 @@ class _TeamTerminatedDetail extends StatelessWidget {
           const SizedBox(height: Grid.sm),
           _DirectReportsCard(count: directReportCount, onTap: onOpenReports),
         ],
-        const SizedBox(height: Grid.sm),
+        const SizedBox(height: Grid.ten),
         FilledButton.tonal(
           onPressed: onBack,
           style: FilledButton.styleFrom(
@@ -580,65 +581,6 @@ class _TeamInfoRow extends StatelessWidget {
   }
 }
 
-class _TeamNotice extends StatelessWidget {
-  const _TeamNotice({
-    required this.title,
-    required this.message,
-    this.success = false,
-    this.error = false,
-  });
-
-  final String title;
-  final String message;
-  final bool success;
-  final bool error;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.mobileTokens;
-    return Container(
-      decoration: BoxDecoration(
-        color: tokens.paper,
-        borderRadius: BorderRadius.circular(Radii.card),
-        border: Border.all(color: tokens.line),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(Radii.card),
-        child: Row(
-          children: [
-            Container(
-              width: 3,
-              color: error
-                  ? tokens.error
-                  : success
-                  ? context.appColors.success
-                  : context.appColors.lilac,
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(Grid.sm),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: context.mobileTypography.goalCardTitle),
-                    const SizedBox(height: Grid.xxs),
-                    Text(
-                      message,
-                      style: context.mobileTypography.body.copyWith(
-                        color: tokens.ink,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _TeamMemberLoading extends StatelessWidget {
   const _TeamMemberLoading({required this.name});
 
@@ -743,12 +685,12 @@ class _TeamDmFailure extends StatelessWidget {
           title: '',
         ),
         const SizedBox(height: Grid.xs),
-        const _TeamNotice(
+        const CompanyTeamNotice(
           title: 'Could not open the direct message',
           message: 'No message was sent. Retry opening the conversation.',
           error: true,
         ),
-        const SizedBox(height: Grid.sm),
+        const SizedBox(height: Grid.ten),
         SizedBox(
           width: double.infinity,
           child: FilledButton(

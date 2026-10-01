@@ -181,6 +181,36 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
       ),
     )
     .register(MobileBusinessRoutes.goals, (context, _) => const GoalsPage())
+    .register(MobileBusinessRoutes.businessWorkspace, (context, arguments) {
+      return Consumer(
+        builder: (context, ref, _) {
+          final channelsAsync = ref.watch(channelsProvider);
+          final community = ref.watch(activeCommunityProvider).value;
+          final candidatesAsync = channelsAsync.whenData(
+            (channels) => [
+              for (final channel in channels)
+                MobileBusinessChannelCandidate(
+                  id: channel.id,
+                  name: channel.name,
+                  visibility: channel.visibility,
+                  channelType: channel.channelType,
+                  isMember: channel.isMember,
+                  archived: channel.isArchived,
+                ),
+            ],
+          );
+          return BusinessWorkspacePage(
+            channelDirectory: candidatesAsync,
+            communityId: community?.id,
+            communityName: community?.name,
+            onRetryChannelDirectory: () => ref.invalidate(channelsProvider),
+            onOpenChat: arguments is MobileBusinessWorkspaceArguments
+                ? arguments.onOpenChat
+                : null,
+          );
+        },
+      );
+    })
     .register(MobileBusinessRoutes.discovery, (context, _) {
       return Consumer(
         builder: (context, ref, _) {
@@ -314,6 +344,7 @@ final MobileRouteRegistry _mobileRouteRegistry = MobileRouteRegistry.empty()
             identityInitials: profile?.initials,
             identityLabel: profile?.label,
             identityAvatarUrl: profile?.avatarUrl,
+            onOpenChat: routeContext.onOpenChat,
             onOpenQuickActions: () =>
                 ChannelQuickActionsLauncher.openFromHome(ref),
           );
