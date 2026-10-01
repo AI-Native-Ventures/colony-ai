@@ -824,10 +824,10 @@ pub(crate) struct ThreadMetadataOwned {
     pub event_id: Vec<u8>,
     pub event_created_at: chrono::DateTime<Utc>,
     pub channel_id: Uuid,
-    pub parent_event_id: Vec<u8>,
-    pub parent_event_created_at: chrono::DateTime<Utc>,
-    pub root_event_id: Vec<u8>,
-    pub root_event_created_at: chrono::DateTime<Utc>,
+    pub parent_event_id: Option<Vec<u8>>,
+    pub parent_event_created_at: Option<chrono::DateTime<Utc>>,
+    pub root_event_id: Option<Vec<u8>>,
+    pub root_event_created_at: Option<chrono::DateTime<Utc>>,
     pub depth: i32,
     pub broadcast: bool,
 }
@@ -838,10 +838,10 @@ impl ThreadMetadataOwned {
             event_id: &self.event_id,
             event_created_at: self.event_created_at,
             channel_id: self.channel_id,
-            parent_event_id: Some(&self.parent_event_id),
-            parent_event_created_at: Some(self.parent_event_created_at),
-            root_event_id: Some(&self.root_event_id),
-            root_event_created_at: Some(self.root_event_created_at),
+            parent_event_id: self.parent_event_id.as_deref(),
+            parent_event_created_at: self.parent_event_created_at,
+            root_event_id: self.root_event_id.as_deref(),
+            root_event_created_at: self.root_event_created_at,
             depth: self.depth,
             broadcast: self.broadcast,
         }
@@ -947,10 +947,10 @@ pub(crate) async fn resolve_nip10_thread_meta(
         event_id: event.id.as_bytes().to_vec(),
         event_created_at,
         channel_id,
-        parent_event_id: parent_bytes,
-        parent_event_created_at: parent_created,
-        root_event_id: final_root_bytes,
-        root_event_created_at: root_created,
+        parent_event_id: Some(parent_bytes),
+        parent_event_created_at: Some(parent_created),
+        root_event_id: Some(final_root_bytes),
+        root_event_created_at: Some(root_created),
         depth,
         broadcast,
     }))
@@ -1037,10 +1037,10 @@ impl ReplyAncestry {
             event_id: reply_event_id,
             event_created_at: reply_created_at,
             channel_id,
-            parent_event_id: self.parent_event_id,
-            parent_event_created_at: self.parent_event_created_at,
-            root_event_id: self.root_event_id,
-            root_event_created_at: self.root_event_created_at,
+            parent_event_id: Some(self.parent_event_id),
+            parent_event_created_at: Some(self.parent_event_created_at),
+            root_event_id: Some(self.root_event_id),
+            root_event_created_at: Some(self.root_event_created_at),
             depth: self.depth,
             broadcast: false,
         }
@@ -1138,7 +1138,7 @@ pub(crate) async fn resolve_relay_reply_thread_meta(
 }
 
 /// Count all `e` tags regardless of content validity.
-fn count_e_tags(event: &Event) -> usize {
+pub(super) fn count_e_tags(event: &Event) -> usize {
     event
         .tags
         .iter()
@@ -3273,12 +3273,14 @@ async fn ingest_event_inner(
     // window. Page responses recompute summaries independently, so this is
     // fan-out-only and best-effort.
     if let Some(meta) = &thread_meta {
-        crate::handlers::side_effects::emit_live_thread_summary(
-            tenant,
-            state,
-            meta.channel_id,
-            meta.root_event_id.clone(),
-        );
+        if let Some(root_event_id) = meta.root_event_id.clone() {
+            crate::handlers::side_effects::emit_live_thread_summary(
+                tenant,
+                state,
+                meta.channel_id,
+                root_event_id,
+            );
+        }
     }
 
     let pubkey_hex = auth.pubkey().to_hex();

@@ -171,7 +171,7 @@ test("Today opens an ask page and keeps a rejected answer for retry", async ({
     "Launch checklist",
   );
   await expect(page.getByTestId("ask-card")).toBeVisible();
-  const reason = page.getByLabel("Reason or requested changes");
+  const reason = page.getByLabel("Reason");
   await reason.fill("The checklist is complete.");
   const recordResponse = page.getByRole("button", { name: "Record response" });
   await recordResponse.focus();
@@ -453,9 +453,7 @@ test("Needs me opens each ask type, records a response, and returns to its threa
     }
 
     if (ask.type === "approval") {
-      await page
-        .getByLabel("Reason or requested changes")
-        .fill("The launch plan is ready.");
+      await page.getByLabel("Reason").fill("The launch plan is ready.");
     } else if (ask.type === "question") {
       await page.getByLabel("Your answer").fill("Prioritise the launch date.");
     } else if (ask.type === "choice") {
@@ -467,9 +465,7 @@ test("Needs me opens each ask type, records a response, and returns to its threa
       await page.getByLabel("Dates are confirmed").check();
       await page.getByLabel("Owner is assigned").check();
     } else {
-      await page
-        .getByLabel("Reason and evidence checked")
-        .fill("All checks passed.");
+      await page.getByLabel("Reason").fill("All checks passed.");
     }
     await page
       .getByRole("button", {

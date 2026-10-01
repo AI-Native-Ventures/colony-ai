@@ -21,6 +21,103 @@
   line-height: 1.35;
 }
 
+.colony-ask-context-step {
+  width: min(100%, 44rem);
+  margin: 0 auto;
+}
+
+.colony-ask-context-panel,
+.colony-ask-create-success {
+  display: grid;
+  gap: 0.8rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.625rem;
+  background: hsl(var(--card));
+  padding: 1.5rem;
+}
+
+.colony-ask-context-panel h2,
+.colony-ask-create-success h1 {
+  margin: 0;
+  color: hsl(var(--foreground));
+  font-size: var(--text-lg);
+  font-weight: 650;
+}
+
+.colony-ask-context-panel > p,
+.colony-ask-context-empty > span,
+.colony-ask-create-success > p {
+  margin: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.colony-ask-context-panel > p {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.colony-ask-context-panel label,
+.colony-ask-context-options legend {
+  color: hsl(var(--foreground));
+  font-size: var(--text-sm);
+  font-weight: 550;
+}
+
+.colony-ask-context-panel > select {
+  width: 100%;
+  min-height: 2.5rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.4rem;
+  background: hsl(var(--background));
+  padding: 0.55rem 0.65rem;
+  color: hsl(var(--foreground));
+  font-size: var(--text-sm);
+}
+
+.colony-ask-context-panel :is(input, textarea, select, button):focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.colony-ask-context-options,
+.colony-ask-thread-list {
+  display: grid;
+  gap: 0.55rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.45rem;
+  margin: 0;
+  padding: 0.85rem;
+}
+
+.colony-ask-context-options > label,
+.colony-ask-thread-list > label {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  cursor: pointer;
+  font-weight: 450;
+}
+
+.colony-ask-context-empty {
+  display: grid;
+  justify-items: start;
+  gap: 0.55rem;
+  border-left: 2px solid hsl(var(--primary));
+  padding: 0.25rem 0.75rem;
+}
+
+.colony-ask-context-empty > strong {
+  color: hsl(var(--foreground));
+  font-size: var(--text-sm);
+}
+
+.colony-ask-create-success {
+  width: min(100%, 44rem);
+  margin: 0 auto;
+}
+
 .colony-ask-create-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(17rem, 0.95fr);

@@ -39,7 +39,10 @@ import {
   KIND_WORK_ITEM_HEAD,
 } from "@/shared/constants/kinds";
 import { AskCard } from "@/features/company-asks/ui/AskCard";
-import { askIdFromAction } from "@/features/company-asks/askRecords";
+import {
+  askIdFromAction,
+  askThreadStartFromAction,
+} from "@/features/company-asks/askRecords";
 import { getConfigNudgeAuthorPubkey } from "@/features/messages/ui/configNudgeAuthPubkey";
 import { cn } from "@/shared/lib/cn";
 import { useMeasuredCssVariable } from "@/shared/layout/useMeasuredCssVariable";
@@ -474,13 +477,27 @@ export const MessageRow = React.memo(
           );
         case KIND_ASK_ACTION: {
           const askId = askIdFromAction(message.body);
+          const threadStart = askThreadStartFromAction(message.body);
           return askId ? (
-            <AskCard
-              askId={askId}
-              channelId={channelId}
-              currentPubkey={currentPubkey}
-              profiles={profiles}
-            />
+            <div>
+              {threadStart ? (
+                <section
+                  aria-label="Discussion opening"
+                  className="colony-ask-create-context mb-3"
+                >
+                  <strong>{threadStart.title}</strong>
+                  {threadStart.openingContext ? (
+                    <span>{threadStart.openingContext}</span>
+                  ) : null}
+                </section>
+              ) : null}
+              <AskCard
+                askId={askId}
+                channelId={channelId}
+                currentPubkey={currentPubkey}
+                profiles={profiles}
+              />
+            </div>
           ) : (
             <p role="alert">This ask request could not be read.</p>
           );

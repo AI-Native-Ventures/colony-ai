@@ -1,0 +1,303 @@
+.colony-ask-detail-scroll--money {
+  padding-top: 1.5rem;
+}
+
+.colony-ask-create-content--money {
+  width: min(100%, 71.25rem);
+}
+
+.colony-ask-create-content--money > h1 {
+  margin-bottom: 2rem;
+}
+
+.colony-ask-create-grid--money {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.colony-ask-create-grid--money .colony-ask-create-main {
+  max-width: none;
+}
+
+.colony-ask-money-choose {
+  width: min(100%, 50rem);
+  margin: 0 auto;
+}
+
+.colony-ask-money-choose > h1 {
+  margin: 0 0 2rem;
+  color: hsl(var(--foreground));
+  font-size: var(--text-2xl);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1.35;
+}
+
+.colony-ask-money-choice-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.colony-ask-money-choice {
+  display: grid;
+  min-height: 4.5rem;
+  grid-template-columns: 2rem minmax(0, 1fr) auto 1rem;
+  align-items: center;
+  gap: 1rem;
+  border: 0;
+  border-bottom: 1px solid hsl(var(--border));
+  border-radius: 0;
+  background: transparent;
+  padding: 0.95rem 0;
+  color: hsl(var(--foreground));
+  text-align: left;
+  cursor: pointer;
+}
+
+.colony-ask-money-choice:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+.colony-ask-money-choice-icon {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 0.55rem;
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.colony-ask-money-choice-copy {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.colony-ask-money-choice-copy > span {
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.colony-ask-money-choice-copy > strong {
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.colony-ask-money-choice-badge {
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.35rem;
+  padding: 0.3rem 0.5rem;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-xs);
+}
+
+.colony-ask-money-choice > svg {
+  color: hsl(var(--muted-foreground));
+}
+
+.colony-ask-money-form {
+  gap: 0.8rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.625rem;
+  background: hsl(var(--card));
+  padding: 1.5rem;
+}
+
+.colony-ask-money-form > h2 {
+  margin: 0 0 0.35rem;
+  color: hsl(var(--foreground));
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.colony-ask-money-context {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.8rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.55rem;
+  margin: 0 0 0.4rem;
+  padding: 1rem 1rem 1.25rem;
+}
+
+.colony-ask-money-context > legend {
+  padding: 0 0.35rem;
+  color: hsl(var(--foreground));
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.colony-ask-money-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.colony-ask-money-context-grid > div,
+.colony-ask-money-new-thread {
+  display: grid;
+  min-width: 0;
+  gap: 0.45rem;
+}
+
+.colony-ask-money-recipient {
+  grid-column: 1 / -1;
+}
+
+.colony-ask-money-context label,
+.colony-ask-money-form > label,
+.colony-ask-money-new-thread > label {
+  color: hsl(var(--foreground));
+  font-size: var(--text-xs);
+  font-weight: 550;
+}
+
+.colony-ask-money-context :is(input, textarea, select, button):focus-visible,
+.colony-ask-money-form :is(input, textarea, select, button):focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.colony-ask-money-context select,
+.colony-ask-money-form select,
+.colony-ask-money-form input,
+.colony-ask-money-form textarea {
+  width: 100%;
+  min-height: 2.5rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.4rem;
+  background: hsl(var(--background));
+  padding: 0.55rem 0.65rem;
+  color: hsl(var(--foreground));
+  font-size: var(--text-sm);
+}
+
+.colony-ask-money-form textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.colony-ask-money-recipient-state {
+  display: grid;
+  justify-items: start;
+  gap: 0.5rem;
+  border-left: 2px solid hsl(var(--primary));
+  padding: 0.25rem 0.75rem;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-xs);
+}
+
+.colony-ask-money-recipient-state p {
+  margin: 0;
+}
+
+.colony-ask-money-review {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.colony-ask-money-review > h2 {
+  margin: 0;
+  color: hsl(var(--foreground));
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.colony-ask-money-review > dl {
+  display: grid;
+  margin: 0;
+}
+
+.colony-ask-money-review > dl > div {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(0, 1.5fr);
+  gap: 1rem;
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 0.65rem 0;
+}
+
+.colony-ask-money-review dt {
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-xs);
+}
+
+.colony-ask-money-review dd {
+  min-width: 0;
+  margin: 0;
+  color: hsl(var(--foreground));
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.colony-ask-money-review > aside {
+  border: 1px solid hsl(var(--border));
+  border-left: 2px solid hsl(var(--primary));
+  border-radius: 0.45rem;
+  background: hsl(var(--muted) / 0.35);
+  padding: 0.8rem 1rem;
+}
+
+.colony-ask-money-review > aside > strong {
+  color: hsl(var(--foreground));
+  font-size: var(--text-xs);
+}
+
+.colony-ask-money-review > aside > p {
+  margin: 0.35rem 0 0;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-xs);
+  line-height: 1.55;
+}
+
+.colony-ask-money-proposal-details {
+  display: grid;
+  gap: 0.55rem;
+  border-left: 2px solid hsl(var(--primary));
+  margin: 0.75rem 0;
+  padding: 0.25rem 0 0.25rem 0.75rem;
+}
+
+.colony-ask-money-proposal-details > div {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.8fr) minmax(0, 1.2fr);
+  gap: 0.75rem;
+}
+
+.colony-ask-money-proposal-details dt {
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-xs);
+}
+
+.colony-ask-money-proposal-details dd {
+  min-width: 0;
+  margin: 0;
+  color: hsl(var(--foreground));
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .colony-ask-money-context-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .colony-ask-money-choice {
+    gap: 0.65rem;
+  }
+
+  .colony-ask-money-recipient {
+    grid-column: auto;
+  }
+
+  .colony-ask-money-form {
+    padding: 1rem;
+  }
+
+  .colony-ask-money-proposal-details > div {
+    grid-template-columns: minmax(5.5rem, 0.75fr) minmax(0, 1.25fr);
+    gap: 0.65rem;
+  }
+}
