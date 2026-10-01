@@ -1747,11 +1747,10 @@ test.describe("signed-in canary company UI", () => {
         label,
         async () => {
           await page.goto(route);
-          await expect(
-            page.locator(
-              '[data-testid="factory-desk-layout"], [data-testid="factory-workspace"]',
-            ),
-          ).toBeVisible();
+          await expect(page.getByTestId("factory-workspace")).toBeVisible();
+          if (label === "Factory desk") {
+            await expect(page.getByTestId("factory-desk-layout")).toBeVisible();
+          }
         },
         `14-${label.toLowerCase().replaceAll(" ", "-")}-read-only`,
       );
