@@ -26,6 +26,7 @@ void main() {
                 'chargeMinorUnits': 11900,
                 'chargeCurrency': 'ZAR',
                 'grantNanousd': '5000000000',
+                'grantUsdCents': 500,
               },
             ],
           }),
@@ -68,6 +69,7 @@ void main() {
             'amountMinorUnits': 11900,
             'currency': 'ZAR',
             'grantNanousd': '5000000000',
+            'grantUsdCents': 500,
             'sandbox': true,
             'authorizationUrl': 'https://sandbox.payfast.co.za/eng/process',
             'authorizationMethod': 'POST',
@@ -100,7 +102,9 @@ void main() {
         'idempotencyKey': '123e4567-e89b-42d3-a456-426614174000',
       });
       expect(checkout.reference, 'credit-test-18');
+      expect(checkout.packId, 'starter');
       expect(checkout.amountZarCents, 11900);
+      expect(checkout.grantNanoUsd, BigInt.from(5000000000));
       expect(checkout.grantUsdCents, 500);
       expect(checkout.authorizationMethod, 'POST');
       expect(checkout.authorizationFields.map((field) => field.name), [

@@ -325,16 +325,19 @@ class CreditsPack {
   factory CreditsPack.fromJson(Map<String, dynamic> json) {
     final grant = json['grantNanousd'];
     final grantNanoUsd = grant is String ? BigInt.tryParse(grant) : null;
+    final grantUsdCents = _requiredPositiveInt(json['grantUsdCents']);
     if (json['chargeCurrency'] != 'ZAR' ||
         grantNanoUsd == null ||
-        grantNanoUsd <= BigInt.zero) {
+        grantNanoUsd <= BigInt.zero ||
+        BigInt.from(grantUsdCents) !=
+            grantNanoUsd ~/ BigInt.from(_nanoUsdPerCent)) {
       throw const CreditsFailure(CreditsFailureKind.invalidResponse);
     }
     return CreditsPack(
       id: _requiredString(json['id']),
       name: _requiredString(json['name']),
       chargeZarCents: _requiredPositiveInt(json['chargeMinorUnits']),
-      grantUsdCents: _nanoUsdToCents(grant),
+      grantUsdCents: grantUsdCents,
     );
   }
 }
@@ -343,9 +346,11 @@ class CreditsPack {
 class CreditsCheckout {
   const CreditsCheckout({
     required this.reference,
+    required this.packId,
     required this.idempotencyKey,
     required this.status,
     required this.amountZarCents,
+    required this.grantNanoUsd,
     required this.grantUsdCents,
     required this.sandbox,
     required this.authorizationUrl,
@@ -354,9 +359,11 @@ class CreditsCheckout {
   });
 
   final String reference;
+  final String packId;
   final String idempotencyKey;
   final String status;
   final int amountZarCents;
+  final BigInt grantNanoUsd;
   final int grantUsdCents;
   final bool sandbox;
   final String? authorizationUrl;
@@ -372,10 +379,16 @@ class CreditsCheckout {
   factory CreditsCheckout.fromJson(Map<String, dynamic> json) {
     final fieldsJson = json['authorizationFields'];
     final grant = json['grantNanousd'];
+    final grantNanoUsd = grant is String ? BigInt.tryParse(grant) : null;
+    final grantUsdCents = json['grantUsdCents'] == null
+        ? null
+        : _requiredPositiveInt(json['grantUsdCents']);
     if (json['currency'] != 'ZAR' ||
-        grant is! String ||
-        BigInt.tryParse(grant) == null ||
-        BigInt.parse(grant) <= BigInt.zero ||
+        grantNanoUsd == null ||
+        grantNanoUsd <= BigInt.zero ||
+        grantUsdCents == null ||
+        BigInt.from(grantUsdCents) !=
+            grantNanoUsd ~/ BigInt.from(_nanoUsdPerCent) ||
         json['sandbox'] is! bool ||
         fieldsJson is! List ||
         fieldsJson.length > 64) {
@@ -390,12 +403,14 @@ class CreditsCheckout {
     ];
     return CreditsCheckout(
       reference: _requiredString(json['reference']),
+      packId: _requiredString(json['packId']),
       idempotencyKey: _requiredString(json['idempotencyKey']),
       status: _requiredString(json['status']),
       amountZarCents: _requiredPositiveInt(
         json['amountMinorUnits'] ?? json['chargeMinorUnits'],
       ),
-      grantUsdCents: _nanoUsdToCents(grant),
+      grantNanoUsd: grantNanoUsd,
+      grantUsdCents: grantUsdCents,
       sandbox: json['sandbox'] as bool,
       authorizationUrl: _optionalString(json['authorizationUrl']),
       authorizationMethod: _optionalString(json['authorizationMethod']),
