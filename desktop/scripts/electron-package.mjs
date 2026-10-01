@@ -264,10 +264,10 @@ try {
     ],
     bundle: true,
     platform: "node",
-    format: "esm",
+    format: "cjs",
     target: "node20",
     external: ["electron"],
-    outfile: path.join(stagedElectronPath, "electron-updater-runtime.mjs"),
+    outfile: path.join(stagedElectronPath, "electron-updater-runtime.cjs"),
     logLevel: "warning",
   });
   await cp(distPath, stagedDistPath, { recursive: true });

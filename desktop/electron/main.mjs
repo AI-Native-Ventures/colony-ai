@@ -30,11 +30,14 @@ import { NativeHost } from "./native-host.mjs";
 import { createBuzzMediaProtocolHandler } from "./protocols.mjs";
 import { revealElectronWindow } from "./window-activation.mjs";
 import { runtimePaths } from "./runtime-paths.mjs";
-import {
-  autoUpdater,
-  createElectronUpdaterService,
-  UPDATE_METADATA_URL,
-} from "./electron-updater-runtime.mjs";
+const updaterRuntimeModule = await import(
+  app.isPackaged
+    ? "./electron-updater-runtime.cjs"
+    : "./electron-updater-runtime.mjs"
+);
+const updaterRuntime = updaterRuntimeModule.default ?? updaterRuntimeModule;
+const { autoUpdater, createElectronUpdaterService, UPDATE_METADATA_URL } =
+  updaterRuntime;
 
 const desktop = fileURLToPath(new URL("..", import.meta.url));
 const smoke = process.env.COLONY_ELECTRON_SMOKE === "1";
