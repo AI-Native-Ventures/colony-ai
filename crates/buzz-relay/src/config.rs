@@ -737,6 +737,10 @@ pub struct Config {
     /// Used to authenticate internal policy endpoint requests.
     pub git_hook_hmac_secret: String,
 
+    /// Exact HTTPS hosts accepted for Factory pull request links.
+    /// Empty means no external provider host is configured.
+    pub factory_pr_allowed_hosts: Vec<String>,
+
     /// Whether NIP-PL push discovery, lease acceptance, matching, and delivery
     /// are enabled for this deployment. Defaults to false.
     pub push_enabled: bool,
@@ -826,6 +830,41 @@ fn parse_self_provision_domain(raw: &str) -> Result<Option<String>, ConfigError>
                 .to_string(),
         ))
     }
+}
+
+fn parse_factory_pr_allowed_hosts(raw: Option<&str>) -> Result<Vec<String>, ConfigError> {
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
+    };
+    if raw.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut hosts = Vec::new();
+    for value in raw.split(',') {
+        let host = value.trim().to_ascii_lowercase();
+        let valid = !host.is_empty()
+            && host.len() <= 253
+            && host.split('.').all(|label| {
+                !label.is_empty()
+                    && label.len() <= 63
+                    && label
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+                    && !label.starts_with('-')
+                    && !label.ends_with('-')
+            });
+        if !valid {
+            return Err(ConfigError::InvalidValue(
+                "BUZZ_FACTORY_PR_HOSTS must be a comma-separated list of bare DNS hostnames"
+                    .to_string(),
+            ));
+        }
+        if !hosts.contains(&host) {
+            hosts.push(host);
+        }
+    }
+    Ok(hosts)
 }
 
 fn rate_limit_config_from_env() -> Result<buzz_auth::RateLimitConfig, ConfigError> {
@@ -1425,6 +1464,15 @@ impl Config {
                 let secret: [u8; 32] = rand::random();
                 hex::encode(secret)
             });
+        let factory_pr_allowed_hosts = match std::env::var("BUZZ_FACTORY_PR_HOSTS") {
+            Ok(raw) => parse_factory_pr_allowed_hosts(Some(&raw))?,
+            Err(std::env::VarError::NotPresent) => Vec::new(),
+            Err(error) => {
+                return Err(ConfigError::InvalidValue(format!(
+                    "BUZZ_FACTORY_PR_HOSTS must be valid UTF-8: {error}"
+                )));
+            }
+        };
         let push_enabled = parse_bool("BUZZ_PUSH_ENABLED", false)?;
         let push_executor_key_id =
             std::env::var("BUZZ_PUSH_EXECUTOR_KEY_ID").unwrap_or_else(|_| "relay-v1".to_string());
@@ -1728,6 +1776,7 @@ impl Config {
             git_max_repos_per_pubkey,
             git_max_concurrent_ops,
             git_hook_hmac_secret,
+            factory_pr_allowed_hosts,
             push_enabled,
             push_executor_key_id,
             push_gateway_delivery_url,
@@ -1776,6 +1825,25 @@ mod tests {
         );
         assert!(parse_self_provision_domain("https://colony.example").is_err());
         assert!(parse_self_provision_domain("-invalid.example").is_err());
+    }
+
+    #[test]
+    fn factory_pr_hosts_are_exact_normalized_and_disabled_by_default() {
+        assert_eq!(
+            parse_factory_pr_allowed_hosts(None).expect("default"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            parse_factory_pr_allowed_hosts(Some(
+                " Code.Example.Test,code.example.test, git.example "
+            ))
+            .expect("valid provider hosts"),
+            vec!["code.example.test", "git.example"]
+        );
+        assert!(parse_factory_pr_allowed_hosts(Some("https://code.example.test")).is_err());
+        assert!(parse_factory_pr_allowed_hosts(Some("*.example.test")).is_err());
+        assert!(parse_factory_pr_allowed_hosts(Some("code.example.test.. ")).is_err());
+        assert!(parse_factory_pr_allowed_hosts(Some("code.example.test,")).is_err());
     }
 
     #[test]

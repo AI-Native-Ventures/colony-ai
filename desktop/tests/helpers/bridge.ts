@@ -220,6 +220,8 @@ type MockBridgeOptions = {
   factoryRuns?: MockFactoryRunSeed[];
   /** Signed Factory run heads for Preview and Review pane coverage. */
   factoryRunRecordEvents?: RelayEvent[];
+  /** Reject successive Factory run actions in focused failure-state tests. */
+  factoryRunActionErrors?: string[];
   /** Run ids whose snapshot reads fail, exercising reconnect states. */
   factorySnapshotFailureRunIds?: string[];
   /** Local checkout paths returned by the E2E filesystem boundary. */

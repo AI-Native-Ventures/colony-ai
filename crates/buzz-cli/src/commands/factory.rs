@@ -227,6 +227,8 @@ fn action_base(
         action,
         command: None,
         local_url: None,
+        port: None,
+        readiness: None,
         preview: None,
         pull_request: None,
     })
