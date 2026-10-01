@@ -30,6 +30,11 @@ import { NativeHost } from "./native-host.mjs";
 import { createBuzzMediaProtocolHandler } from "./protocols.mjs";
 import { revealElectronWindow } from "./window-activation.mjs";
 import { runtimePaths } from "./runtime-paths.mjs";
+import {
+  autoUpdater,
+  createElectronUpdaterService,
+  UPDATE_METADATA_URL,
+} from "./electron-updater-runtime.mjs";
 
 const desktop = fileURLToPath(new URL("..", import.meta.url));
 const smoke = process.env.COLONY_ELECTRON_SMOKE === "1";
@@ -45,10 +50,32 @@ const SHOW_WINDOW_EVENT = "electron-shell:show-window";
 const tauriConfig = JSON.parse(
   readFileSync(path.join(desktop, "src-tauri", "tauri.conf.json"), "utf8"),
 );
+const releaseCapabilities = (() => {
+  try {
+    const capabilities = JSON.parse(
+      readFileSync(
+        path.join(desktop, "electron", "release-capabilities.json"),
+        "utf8",
+      ),
+    );
+    if (
+      capabilities.schemaVersion !== 1 ||
+      typeof capabilities.release !== "boolean" ||
+      typeof capabilities.autoUpdate !== "boolean" ||
+      typeof capabilities.signed !== "boolean" ||
+      typeof capabilities.platformKey !== "string"
+    ) {
+      return null;
+    }
+    return capabilities;
+  } catch {
+    return null;
+  }
+})();
 const deepLinkSchemes = deepLinkSchemesFromConfig(tauriConfig);
 
 // Product name shown in the macOS app menu and About panel.
-app.setName("Buzz");
+app.setName(tauriConfig.productName);
 app.setPath(
   "userData",
   process.env.COLONY_ELECTRON_USER_DATA ||
@@ -90,6 +117,7 @@ protocol.registerSchemesAsPrivileged([
 let host = null;
 let quitting = false;
 let mainWindow = null;
+let updaterService = null;
 let quitApp = async () => app.quit();
 
 const deepLinks = createDeepLinkRouter({
@@ -247,11 +275,32 @@ async function boot() {
     height: 820,
     minWidth: 800,
     minHeight: 500,
-    title: "Buzz",
+    title: tauriConfig.productName,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
   });
   const window = main.window;
   mainWindow = window;
+
+  if (app.isPackaged && !smoke && releaseCapabilities?.release) {
+    updaterService = createElectronUpdaterService({
+      autoUpdater,
+      currentVersion: app.getVersion(),
+      currentBuild: releaseCapabilities,
+      platformKey: releaseCapabilities.platformKey,
+      metadataUrl: UPDATE_METADATA_URL,
+      onStatus: (status) => {
+        for (const entry of windows.values()) {
+          if (
+            !entry.window.isDestroyed() &&
+            !entry.window.webContents.isDestroyed()
+          ) {
+            entry.window.webContents.send("colony:updater-status", status);
+          }
+        }
+      },
+    });
+    void updaterService.start();
+  }
 
   host.on("disconnected", (message) => {
     if (quitting) return;
@@ -283,6 +332,22 @@ async function boot() {
         error: error instanceof Error ? error.message : error,
       };
     }
+  });
+
+  ipcMain.handle("colony:updater", async (event, action) => {
+    const entry = windows.get(event.sender.id);
+    if (
+      !entry ||
+      event.senderFrame !== entry.window.webContents.mainFrame ||
+      !trusted(event.senderFrame.url)
+    ) {
+      throw new Error("Untrusted desktop updater caller");
+    }
+    if (!updaterService) return { state: "unavailable" };
+    if (action === "status") return updaterService.snapshot();
+    if (action === "check") return updaterService.check();
+    if (action === "install") return updaterService.installAndRelaunch();
+    throw new Error("Invalid updater action");
   });
 
   ipcMain.handle("colony:browser", async (event, action, payload = {}) => {
@@ -329,6 +394,7 @@ async function boot() {
   quitApp = async () => {
     if (quitting) return;
     quitting = true;
+    updaterService?.stop();
     browserHost.disposeAll();
     await Promise.allSettled([...windows.values()].map((e) => e.dispose()));
     await shutdown();

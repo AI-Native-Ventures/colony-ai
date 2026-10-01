@@ -95,6 +95,8 @@ export function createPackagerOptions({
   platform,
   arch,
   extraResource,
+  osxSign,
+  osxNotarize,
 }) {
   assertPlatform(platform);
   assertArchitecture(arch);
@@ -121,6 +123,8 @@ export function createPackagerOptions({
           },
         }
       : {}),
+    ...(platform === "darwin" && osxSign ? { osxSign } : {}),
+    ...(platform === "darwin" && osxNotarize ? { osxNotarize } : {}),
     ...(platform === "win32"
       ? { win32metadata: { CompanyName: productName } }
       : {}),
