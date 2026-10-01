@@ -31,6 +31,7 @@ import { mapSpecializedAskCard } from "../askCardMapping";
 import { DutyAskCard } from "./DutyAskCard";
 import { HireAskCard } from "./HireAskCard";
 import { formatAskDate } from "./askCardFormatting";
+import { formatUsdCents } from "@/features/power/spendModels";
 import type {
   AskHead,
   AskHeadRecord,
@@ -116,6 +117,7 @@ function AskResponseForm({ record }: { record: AskHeadRecord }) {
             : "answered",
   );
   const [reason, setReason] = React.useState("");
+  const [reasonTouched, setReasonTouched] = React.useState(false);
   const [answer, setAnswer] = React.useState("");
   const [optionId, setOptionId] = React.useState("");
   const [checkedIds, setCheckedIds] = React.useState<string[]>([]);
@@ -127,6 +129,7 @@ function AskResponseForm({ record }: { record: AskHeadRecord }) {
   const ask = record.head.ask;
   const specializedVariant = mapSpecializedAskCard(ask);
   const currentHeadId = record.event.id;
+  const reasonInvalid = reasonTouched && reason.trim().length === 0;
   const memberProposal = ask.memberProposal;
   const needsRuntimeStop =
     outcome === "approved" &&
@@ -306,17 +309,34 @@ function AskResponseForm({ record }: { record: AskHeadRecord }) {
             <option value="revision_requested">Request revision</option>
             <option value="rejected">Reject</option>
           </select>
-          <label htmlFor={`${idPrefix}-reason`}>
-            Reason or requested changes
-          </label>
+          <label htmlFor={`${idPrefix}-reason`}>Reason</label>
           <textarea
+            aria-describedby={`${idPrefix}-reason-count${reasonInvalid ? ` ${idPrefix}-reason-error` : ""}`}
+            aria-invalid={reasonInvalid}
             id={`${idPrefix}-reason`}
             maxLength={1000}
-            onChange={(event) => updateForm(setReason, event.target.value)}
+            onBlur={() => setReasonTouched(true)}
+            onChange={(event) => {
+              setReasonTouched(true);
+              updateForm(setReason, event.target.value);
+            }}
             required
             rows={3}
             value={reason}
           />
+          <small id={`${idPrefix}-reason-count`}>
+            {Array.from(reason).length} / 1,000 characters · Required
+          </small>
+          {reasonInvalid ? (
+            <span
+              className="colony-ask-compose-error"
+              id={`${idPrefix}-reason-error`}
+              role="alert"
+            >
+              A reason is required. Use 1 to 1,000 characters. Spaces alone are
+              not a reason.
+            </span>
+          ) : null}
         </>
       ) : null}
       {ask.type === "verdict" ? (
@@ -332,17 +352,34 @@ function AskResponseForm({ record }: { record: AskHeadRecord }) {
             <option value="pass">Pass</option>
             <option value="fail">Fail</option>
           </select>
-          <label htmlFor={`${idPrefix}-reason`}>
-            Reason and evidence checked
-          </label>
+          <label htmlFor={`${idPrefix}-reason`}>Reason</label>
           <textarea
+            aria-describedby={`${idPrefix}-reason-count${reasonInvalid ? ` ${idPrefix}-reason-error` : ""}`}
+            aria-invalid={reasonInvalid}
             id={`${idPrefix}-reason`}
             maxLength={1000}
-            onChange={(event) => updateForm(setReason, event.target.value)}
+            onBlur={() => setReasonTouched(true)}
+            onChange={(event) => {
+              setReasonTouched(true);
+              updateForm(setReason, event.target.value);
+            }}
             required
             rows={3}
             value={reason}
           />
+          <small id={`${idPrefix}-reason-count`}>
+            {Array.from(reason).length} / 1,000 characters · Required
+          </small>
+          {reasonInvalid ? (
+            <span
+              className="colony-ask-compose-error"
+              id={`${idPrefix}-reason-error`}
+              role="alert"
+            >
+              A reason is required. Use 1 to 1,000 characters. Spaces alone are
+              not a reason.
+            </span>
+          ) : null}
         </>
       ) : null}
       {ask.type === "tool_consent" ? (
@@ -363,13 +400,32 @@ function AskResponseForm({ record }: { record: AskHeadRecord }) {
           </select>
           <label htmlFor={`${idPrefix}-reason`}>Reason</label>
           <textarea
+            aria-describedby={`${idPrefix}-reason-count${reasonInvalid ? ` ${idPrefix}-reason-error` : ""}`}
+            aria-invalid={reasonInvalid}
             id={`${idPrefix}-reason`}
             maxLength={1000}
-            onChange={(event) => updateForm(setReason, event.target.value)}
+            onBlur={() => setReasonTouched(true)}
+            onChange={(event) => {
+              setReasonTouched(true);
+              updateForm(setReason, event.target.value);
+            }}
             required
             rows={3}
             value={reason}
           />
+          <small id={`${idPrefix}-reason-count`}>
+            {Array.from(reason).length} / 1,000 characters · Required
+          </small>
+          {reasonInvalid ? (
+            <span
+              className="colony-ask-compose-error"
+              id={`${idPrefix}-reason-error`}
+              role="alert"
+            >
+              A reason is required. Use 1 to 1,000 characters. Spaces alone are
+              not a reason.
+            </span>
+          ) : null}
         </>
       ) : null}
       {ask.type === "question" ? (
@@ -699,6 +755,52 @@ export function AskCard({
       : head.status === "resolved"
         ? "Decision recorded"
         : "Decision withdrawn";
+  const allowanceProposal = head.ask.spendAllowanceProposal;
+  const allowanceValue =
+    allowanceProposal?.temporaryAllowance?.allowance ??
+    allowanceProposal?.allowance;
+  const allowanceProposalDetails =
+    allowanceProposal && allowanceValue ? (
+      <dl
+        className="colony-ask-money-proposal-details"
+        data-testid="ask-money-allowance-proposal"
+      >
+        <div>
+          <dt>Employee</dt>
+          <dd>
+            {resolveUserLabel({
+              pubkey: allowanceProposal.employeePubkey,
+              currentPubkey,
+              profiles,
+              preferResolvedSelfLabel: Boolean(
+                profiles?.[normalizePubkey(allowanceProposal.employeePubkey)],
+              ),
+            })}
+          </dd>
+        </div>
+        <div>
+          <dt>Requested allowance</dt>
+          <dd>
+            {formatUsdCents(allowanceValue.amountCents)} /{" "}
+            {allowanceValue.period}
+          </dd>
+        </div>
+        <div>
+          <dt>Duration</dt>
+          <dd>
+            {allowanceProposal.temporaryAllowance ? "Temporary" : "Permanent"}
+          </dd>
+        </div>
+        {allowanceProposal.temporaryAllowance ? (
+          <div>
+            <dt>End date</dt>
+            <dd>
+              {allowanceProposal.temporaryAllowance.expiresAt.slice(0, 10)}
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+    ) : null;
 
   const hireProposal = head.ask.hireProposal;
   if (
@@ -800,6 +902,7 @@ export function AskCard({
             {head.ask.body ? (
               <p className="colony-ask-special-description">{head.ask.body}</p>
             ) : null}
+            {allowanceProposalDetails}
             {head.ask.toolConsent ? (
               <p className="colony-ask-body" data-testid="tool-consent-preview">
                 {head.ask.toolConsent.actionPreview}
@@ -986,6 +1089,7 @@ export function AskCard({
           {head.ask.body ? (
             <p className="colony-ask-body">{head.ask.body}</p>
           ) : null}
+          {allowanceProposalDetails}
           {head.ask.toolConsent ? (
             <p className="colony-ask-body" data-testid="tool-consent-preview">
               {head.ask.toolConsent.actionPreview}

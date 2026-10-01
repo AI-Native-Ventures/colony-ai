@@ -1937,14 +1937,16 @@ declare global {
      */
     __BUZZ_E2E_INVALIDATE_CHANNELS__?: () => Promise<void>;
     /**
-     * Directly mutate a mock channel's properties without going through a
-     * command handler.  Use for E2E regressions that need to change
-     * channel_type or remove isMember in a single synchronous step, then
-     * follow up with __BUZZ_E2E_INVALIDATE_CHANNELS__ to flush the cache.
+     * Directly mutate mock channel state without going through a command
+     * handler. Use for focused E2E membership and channel-state fixtures.
      *
      * Only the listed fields are writeable; omitted fields are left unchanged.
      */
     __BUZZ_E2E_MUTATE_CHANNEL__?: (opts: {
+      addMembers?: Array<{
+        pubkey: string;
+        role: "owner" | "admin" | "member" | "guest" | "bot";
+      }>;
       channelId: string;
       channelType?: "stream" | "forum" | "dm";
       description?: string;
@@ -7524,17 +7526,32 @@ function acceptMockAskAction(
 
   const channelTags = event.tags.filter((tag) => tag[0] === "h");
   const coordinateTags = event.tags.filter((tag) => tag[0] === "d");
+  const eTags = event.tags.filter((tag) => tag[0] === "e");
   const channelId = channelTags.length === 1 ? channelTags[0][1] : undefined;
   const coordinate =
     coordinateTags.length === 1 ? coordinateTags[0][1] : undefined;
-  const rootEventId = action.ask.threadRootEventId;
+  const threadStart = action.ask.threadStart;
+  const startsThread = typeof threadStart === "object" && threadStart !== null;
+  const threadStartRecord = startsThread
+    ? (threadStart as { title?: unknown; openingContext?: unknown })
+    : null;
+  const validThreadStart =
+    !startsThread ||
+    (typeof threadStartRecord?.title === "string" &&
+      threadStartRecord.title.trim().length > 0 &&
+      Array.from(threadStartRecord.title).length <= 180 &&
+      (threadStartRecord.openingContext === undefined ||
+        (typeof threadStartRecord.openingContext === "string" &&
+          Array.from(threadStartRecord.openingContext).length <= 4000)));
+  const rootEventId = startsThread ? event.id : action.ask.threadRootEventId;
   if (
     !channelId ||
     typeof rootEventId !== "string" ||
     coordinate !== `channel:${channelId}:ask:${action.askId}` ||
-    !event.tags.some(
-      (tag) => tag[0] === "e" && tag[1] === rootEventId && tag[3] === "root",
-    )
+    !validThreadStart ||
+    (startsThread
+      ? eTags.length !== 0 || typeof action.ask.threadRootEventId === "string"
+      : !eTags.some((tag) => tag[1] === rootEventId && tag[3] === "root"))
   ) {
     reject(
       "restricted: ask create needs a channel, coordinate and thread root",
@@ -7543,6 +7560,7 @@ function acceptMockAskAction(
   }
 
   if (
+    !startsThread &&
     !getMockMessageStore(channelId).some(
       (message) => message.id === rootEventId,
     )
@@ -7595,7 +7613,10 @@ function acceptMockAskAction(
         status: "open",
         askerPubkey: event.pubkey,
         createdAt: new Date().toISOString(),
-        ask: action.ask,
+        ask: {
+          ...action.ask,
+          threadRootEventId: rootEventId,
+        },
         resolution: null,
         cancellation: null,
         sourceActionEventId: event.id,
@@ -18572,6 +18593,7 @@ export function maybeInstallE2eTauriMocks() {
     });
   };
   window.__BUZZ_E2E_MUTATE_CHANNEL__ = ({
+    addMembers,
     channelId,
     channelType,
     description,
@@ -18584,6 +18606,19 @@ export function maybeInstallE2eTauriMocks() {
     }
     if (description !== undefined) {
       channel.description = description;
+    }
+    if (addMembers !== undefined) {
+      for (const member of addMembers) {
+        if (
+          !channel.members.some(
+            (existing) =>
+              existing.pubkey.toLowerCase() === member.pubkey.toLowerCase(),
+          )
+        ) {
+          channel.members.push(createMockMember(member.pubkey, member.role, 0));
+        }
+      }
+      syncMockChannel(channel);
     }
     if (removeMemberPubkey !== undefined) {
       channel.members = channel.members.filter(

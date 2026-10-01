@@ -1,26 +1,45 @@
 import { expect, test } from "@playwright/test";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
+import {
+  finalizeEvent,
+  generateSecretKey,
+  getPublicKey,
+} from "nostr-tools/pure";
 
 import type { RelayEvent } from "../../src/shared/api/types";
-import { KIND_STREAM_MESSAGE } from "../../src/shared/constants/kinds";
+import {
+  KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
+  KIND_MEMBER_POSITION_HEAD,
+  KIND_STREAM_MESSAGE,
+} from "../../src/shared/constants/kinds";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 const CHANNEL_ROOTS = ["general", "buzz"] as const;
+const HIRE_PERSONA_ID = "company-role-operations";
+type MockBridgeOptions = NonNullable<Parameters<typeof installMockBridge>[1]>;
 
 async function openAskThread(
   page: import("@playwright/test").Page,
   askActionErrors: string[] = [],
   openThread = true,
+  personas?: MockBridgeOptions["personas"],
+  companyMemberPositionEvents?: MockBridgeOptions["companyMemberPositionEvents"],
+  relaySecret = generateSecretKey(),
+  employeeAllowanceHeads?: MockBridgeOptions["employeeAllowanceHeads"],
+  relayMembers?: MockBridgeOptions["relayMembers"],
 ) {
   await page.setViewportSize({ width: 1440, height: 900 });
-  const relaySecret = generateSecretKey();
   const relaySelf = getPublicKey(relaySecret);
   await installMockBridge(page, {
     relaySelf,
     companyAskRelayPrivateKeyHex: bytesToHex(relaySecret),
+    companyHireRelayPrivateKeyHex: bytesToHex(relaySecret),
     askActionErrors,
     relayRequiresMembership: true,
+    ...(personas ? { personas } : {}),
+    ...(companyMemberPositionEvents ? { companyMemberPositionEvents } : {}),
+    ...(employeeAllowanceHeads ? { employeeAllowanceHeads } : {}),
+    ...(relayMembers ? { relayMembers } : {}),
   });
   await page.goto("/#/today");
   await page.waitForFunction(() => {
@@ -69,7 +88,54 @@ async function openAskThread(
   if (openThread) {
     await expect(page.getByTestId("message-thread-panel")).toBeVisible();
   }
-  return { ...thread, relaySelf };
+  return { ...thread, relaySelf, relaySecret };
+}
+
+function employeePositionHead(input: {
+  relaySecret: Uint8Array;
+  pubkey: string;
+}) {
+  return finalizeEvent(
+    {
+      kind: KIND_MEMBER_POSITION_HEAD,
+      created_at: Math.floor(Date.now() / 1_000),
+      tags: [["d", `company:member:${input.pubkey}`]],
+      content: JSON.stringify({
+        schemaVersion: 1,
+        pubkey: input.pubkey,
+        title: "Employee",
+        kind: "employee",
+        status: "active",
+        sourceActionEventId: "b".repeat(64),
+        updatedAt: new Date().toISOString(),
+      }),
+    },
+    input.relaySecret,
+  );
+}
+
+function employeeAllowanceHead(input: {
+  relaySecret: Uint8Array;
+  pubkey: string;
+}) {
+  const relaySelf = getPublicKey(input.relaySecret);
+  return finalizeEvent(
+    {
+      kind: KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
+      created_at: Math.floor(Date.now() / 1_000),
+      tags: [["d", `company:employee-allowance:${input.pubkey}`]],
+      content: JSON.stringify({
+        schemaVersion: 1,
+        employeePubkey: input.pubkey,
+        allowance: { amountCents: "5000", period: "week" },
+        fundingOrder: [],
+        actorPubkey: relaySelf,
+        updatedAt: new Date().toISOString(),
+        sourceActionEventId: "c".repeat(64),
+      }),
+    },
+    input.relaySecret,
+  );
 }
 
 test("raise an ask from the message composer and retry the same signed action", async ({
@@ -115,15 +181,18 @@ test("raise an ask from the message composer and retry the same signed action", 
   expect(signedAskActions).toBe(1);
 
   await page.getByRole("button", { name: "Retry send" }).click();
-  await expect(page.getByTestId("ask-detail-screen")).toBeVisible();
-  await expect(page.getByTestId("ask-thread-root")).toContainText(
+  await expect(
+    page.getByRole("heading", { name: "Ask raised in its thread" }),
+  ).toBeVisible();
+  await expect(page.getByText(/Approve the launch outline/)).toBeVisible();
+  await page.getByRole("button", { name: "Open the conversation" }).click();
+  await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+  await expect(page.getByTestId("message-thread-panel")).toContainText(
     "Share the question that needs a decision.",
   );
   await expect(page.getByTestId("ask-card")).toContainText(
     "Approve the launch outline",
   );
-  await page.getByRole("link", { name: "Back to discussion" }).click();
-  await expect(page.getByTestId("message-thread-panel")).toBeVisible();
   await expect(page.getByTestId("ask-card")).toHaveCount(1);
   expect(thread.rootId).toMatch(/^[0-9a-f]{64}$/);
 });
@@ -151,13 +220,261 @@ test("raise an ask from a message action and keep the message thread root", asyn
     .getByLabel("Response from")
     .selectOption(TEST_IDENTITIES.alice.pubkey);
   await page.getByRole("button", { name: "Send ask" }).click();
-  await expect(page.getByTestId("ask-detail-screen")).toBeVisible();
-  await expect(page.getByTestId("ask-thread-root")).toContainText(
+  await expect(
+    page.getByRole("heading", { name: "Ask raised in its thread" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Open the conversation" }).click();
+  await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+  await expect(page.getByTestId("message-thread-panel")).toContainText(
     "Share the question that needs a decision.",
   );
   await expect(page.getByTestId("ask-card")).toContainText(
     "Choose the final concept",
   );
+});
+
+test("submit a typed hire proposal and retry without losing the selected scope", async ({
+  page,
+}) => {
+  const personas = [
+    {
+      id: HIRE_PERSONA_ID,
+      displayName: "Operations coordinator",
+      systemPrompt: "Coordinate company operations.",
+      isActive: true,
+      runtime: "buzz-agent",
+      provider: "openai",
+      model: "gpt-5.5",
+      companyRole: {
+        job: "Coordinate team operations",
+        skills: ["Planning"],
+        tools: [{ name: "calendar_read", risk: "low" as const }],
+        workerMenu: ["buzz-agent"],
+      },
+    },
+  ] satisfies NonNullable<MockBridgeOptions["personas"]>;
+  const thread = await openAskThread(
+    page,
+    ["Temporary relay write failure"],
+    false,
+    personas,
+  );
+  await page.getByTestId("raise-ask-from-composer").click();
+  await page.getByRole("button", { name: "Hire proposal" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Propose a hire" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Channel", { exact: true })).toHaveValue(
+    thread.channelId,
+  );
+  await expect(page.getByLabel("Thread", { exact: true })).toHaveValue(
+    thread.rootId,
+  );
+  await page.getByLabel("Recipient").selectOption(TEST_IDENTITIES.bob.pubkey);
+  await page.getByLabel("Role pack").selectOption(HIRE_PERSONA_ID);
+  await page.getByLabel("Proposed name").fill("Operations coordinator");
+  await page.getByLabel("Job title").fill("Operations Coordinator");
+  await page
+    .getByLabel("Reason")
+    .fill("The team needs support coordinating supplier work.");
+  await page.getByLabel("Requested allowance, USD").fill("12.50");
+  await page.getByLabel("Allowance period").selectOption("week");
+  await expect(page.getByLabel("Recipient")).toHaveValue(
+    TEST_IDENTITIES.bob.pubkey,
+  );
+  await page.getByRole("button", { name: "Review proposal" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Review hire proposal" }),
+  ).toBeVisible();
+  await expect(page.getByText("#general / Launch discussion")).toBeVisible();
+  await page.getByRole("button", { name: "Submit proposal" }).click();
+
+  await expect(page.getByRole("alert")).toContainText(
+    "Temporary relay write failure",
+  );
+  await expect(page.getByText("USD 12.50 / week")).toBeVisible();
+  const signedAskActions = await page.evaluate(() => {
+    const testWindow = window as Window & {
+      __BUZZ_E2E_SIGNED_EVENTS__?: Array<{ kind: number }>;
+    };
+    return (
+      testWindow.__BUZZ_E2E_SIGNED_EVENTS__?.filter(
+        (event) => event.kind === 47032,
+      ).length ?? 0
+    );
+  });
+  expect(signedAskActions).toBe(1);
+
+  await page.getByRole("button", { name: "Retry send" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Proposal raised" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("No position or agent has been created."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "View proposal" }).click();
+  await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+  await expect(page.getByTestId("ask-card")).toContainText(
+    "The team needs support coordinating supplier work.",
+  );
+  await expect(page.getByTestId("ask-card")).toHaveAttribute(
+    "data-ask-variant",
+    "hire",
+  );
+  expect(thread.rootId).toMatch(/^[0-9a-f]{64}$/);
+});
+
+test("raise a typed allowance request from Power and retry the same signed ask", async ({
+  page,
+}) => {
+  const relaySecret = generateSecretKey();
+  const employeePubkey = getPublicKey(generateSecretKey());
+  const thread = await openAskThread(
+    page,
+    ["Temporary relay write failure"],
+    false,
+    undefined,
+    [employeePositionHead({ relaySecret, pubkey: employeePubkey })],
+    relaySecret,
+    [employeeAllowanceHead({ relaySecret, pubkey: employeePubkey })],
+    [
+      { pubkey: "deadbeef".repeat(8), role: "owner" },
+      { pubkey: TEST_IDENTITIES.alice.pubkey, role: "admin" },
+      { pubkey: TEST_IDENTITIES.bob.pubkey, role: "admin" },
+      { pubkey: TEST_IDENTITIES.outsider.pubkey, role: "admin" },
+      { pubkey: employeePubkey, role: "member" },
+    ],
+  );
+  await page.waitForFunction(() => {
+    const testWindow = window as Window & {
+      __BUZZ_E2E_MUTATE_CHANNEL__?: unknown;
+      __BUZZ_E2E_QUERY_CLIENT__?: unknown;
+    };
+    return (
+      typeof testWindow.__BUZZ_E2E_MUTATE_CHANNEL__ === "function" &&
+      testWindow.__BUZZ_E2E_QUERY_CLIENT__ !== undefined
+    );
+  });
+  await page.evaluate(
+    async ({ channelId, pubkey }) => {
+      const testWindow = window as Window & {
+        __BUZZ_E2E_MUTATE_CHANNEL__?: (options: {
+          addMembers: Array<{
+            pubkey: string;
+            role: "owner" | "admin" | "member" | "guest" | "bot";
+          }>;
+          channelId: string;
+        }) => void;
+        __BUZZ_E2E_QUERY_CLIENT__?: {
+          invalidateQueries: (filters: {
+            queryKey: readonly unknown[];
+          }) => unknown;
+        };
+      };
+      const mutateChannel = testWindow.__BUZZ_E2E_MUTATE_CHANNEL__;
+      const queryClient = testWindow.__BUZZ_E2E_QUERY_CLIENT__;
+      if (!mutateChannel || !queryClient) {
+        throw new Error("The mock channel membership seam is unavailable.");
+      }
+      mutateChannel({
+        channelId,
+        addMembers: [{ pubkey, role: "member" }],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["channels", channelId, "members"],
+      });
+    },
+    { channelId: thread.channelId, pubkey: TEST_IDENTITIES.outsider.pubkey },
+  );
+
+  await page.goto("/#/power");
+  const requestAllowance = page.getByRole("link", {
+    name: "Request allowance change",
+  });
+  await expect(requestAllowance).toBeVisible();
+  await requestAllowance.click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Request an allowance or cost approval",
+    }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Adjust an allowance/ }).click();
+  await page
+    .getByLabel("Channel", { exact: true })
+    .selectOption(thread.channelId);
+  await page.getByLabel("Thread", { exact: true }).selectOption("new");
+  await page.getByLabel("New thread title").fill("Allowance discussion");
+  await page
+    .getByLabel("Opening context, optional")
+    .fill("The workload has changed and needs review.");
+  const recipient = page.getByLabel("Recipient", { exact: true });
+  await expect(recipient).toBeEnabled();
+  await expect(recipient.locator("option")).toHaveCount(3);
+  await expect(
+    recipient.locator(`option[value="${TEST_IDENTITIES.bob.pubkey}"]`),
+  ).toBeAttached();
+  await expect(
+    recipient.locator(`option[value="${TEST_IDENTITIES.outsider.pubkey}"]`),
+  ).toBeAttached();
+  await recipient.selectOption(TEST_IDENTITIES.outsider.pubkey);
+  await expect(recipient).toHaveValue(TEST_IDENTITIES.outsider.pubkey);
+  await page
+    .getByLabel("Employee or budget", { exact: true })
+    .selectOption(employeePubkey);
+  await page.getByLabel("Change duration").selectOption("permanent");
+  await page.getByLabel("Requested amount, USD").fill("8.75");
+  await page
+    .getByLabel("Reason", { exact: true })
+    .fill("The employee needs more capacity for the approved work.");
+
+  await page.getByRole("button", { name: "Review request" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Review money request" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Authority is checked on response"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Submit request" }).click();
+  await expect(page.getByRole("alert")).toContainText("Could not save");
+  await expect(page.getByRole("alert")).toContainText(
+    "Your inputs are kept. Review them or retry without starting again.",
+  );
+  await expect(
+    page.getByLabel("Employee or budget", { exact: true }),
+  ).toHaveValue(employeePubkey);
+  await expect(page.getByLabel("Reason", { exact: true })).toHaveValue(
+    "The employee needs more capacity for the approved work.",
+  );
+  const signedAskActions = await page.evaluate(() => {
+    const testWindow = window as Window & {
+      __BUZZ_E2E_SIGNED_EVENTS__?: Array<{ kind: number }>;
+    };
+    return (
+      testWindow.__BUZZ_E2E_SIGNED_EVENTS__?.filter(
+        (event) => event.kind === 47032,
+      ).length ?? 0
+    );
+  });
+  expect(signedAskActions).toBe(1);
+
+  await page.getByRole("button", { name: "Retry send" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Money request submitted" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "No balance or spending limit changes until an authorized human approves.",
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Open decision" }).click();
+  await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+  await expect(page.getByTestId("ask-money-allowance-proposal")).toContainText(
+    "USD 8.75 / week",
+  );
+  await expect(
+    page.getByTestId("message-thread-head").getByTestId("ask-card"),
+  ).toContainText("The employee needs more capacity for the approved work.");
+  expect(thread.rootId).toMatch(/^[0-9a-f]{64}$/);
 });
 
 test("busy Needs me groups the full deadline-sorted queue", async ({

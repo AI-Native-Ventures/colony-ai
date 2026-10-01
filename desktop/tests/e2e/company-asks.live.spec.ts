@@ -162,7 +162,7 @@ test.describe("company asks live relay journey", () => {
     await expect(page.getByTestId("ask-detail-screen")).toBeVisible();
     await expect(page.getByTestId("ask-thread-root")).toContainText(threadText);
     await expect(page.getByTestId("ask-card")).toBeVisible();
-    await page.getByLabel("Reason or requested changes").fill("Approved.");
+    await page.getByLabel("Reason").fill("Approved.");
     await page.getByRole("button", { name: "Record response" }).click();
     await expect(page.getByTestId("ask-resolved")).toContainText(
       "Approved by You",
