@@ -62,6 +62,10 @@ Captures and frozen-reference images are stored outside the repository. Comparis
 
 The comparison exposed a stretched tool-risk panel. The panel now aligns to its content height, with an E2E geometry assertion. The role-pack smoke spec also checks keyboard order and Cmd/Ctrl zoom in and back out.
 
+## NEEDS_DESIGN
+
+- The l-ui checklist requests a watchdog screen in Settings. Frozen company-v9 provides `b2/policy/watchdog/unselected` from a Work detail, with no global Settings watchdog route. The canary verifies the Work flow; no global screen was invented.
+
 ## Scope decisions
 
 - Tool-scope examples in the mockup are not shipped values. The current runtime catalog does not expose a tool-scope registry, so new scope selection remains unavailable and is reported as `NEEDS_API`.

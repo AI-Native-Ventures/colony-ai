@@ -92,6 +92,12 @@ interactive controls without accessible names. Diagnostic URLs omit query
 strings and redact identity-shaped path values. Request headers and bodies are
 never recorded.
 
+Frozen company-v9 places watchdog configuration on a Work detail at
+`b2/policy/watchdog/unselected`. The l-ui checklist also names watchdog under
+Settings, but the frozen reference has no global Settings watchdog screen. The
+suite verifies the Work flow and reports the global Settings request as
+`NEEDS_DESIGN` instead of adding an unapproved route.
+
 No workflow is published, no standing permission is saved, no watchdog or Mesh
 sharing is enabled, and no invoice is issued. A canary with no real invoice or
 founder-handoff record leaves those states unproven and is reported in the

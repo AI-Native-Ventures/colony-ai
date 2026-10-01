@@ -1318,6 +1318,7 @@ test.describe("signed-in canary company UI", () => {
     const findings: string[] = [];
     const unproven: string[] = [];
     const needsApi: string[] = [];
+    const needsDesign: string[] = [];
     await installCanaryPage(page);
 
     const inspectRoute = async (
@@ -1384,6 +1385,7 @@ test.describe("signed-in canary company UI", () => {
       await expect(
         page.getByTestId("company-work-full-timeline"),
       ).toBeVisible();
+      // The frozen B2 watchdog route is attached to Work, not global settings.
       await page
         .getByRole("button", { name: "Watchdog settings", exact: true })
         .click();
@@ -1697,11 +1699,14 @@ test.describe("signed-in canary company UI", () => {
     unproven.push(
       "Fresh-account onboarding is unreachable with the already-onboarded canary owner fixture; the live onboarding flow was not reset or replaced.",
       "Batch 2 Flutter screens were not exercised in the signed-in desktop canary browser; no Flutter canary runtime was available in this suite.",
-      "A global Settings watchdog route is not present. The available watchdog configuration is scoped to a real work item and is checked in the work flow.",
+    );
+    needsDesign.push(
+      "The l-ui checklist requests a watchdog screen in Settings, but frozen company-v9 designs watchdog configuration only from a Work detail at b2/policy/watchdog/unselected. No global Settings watchdog screen is designed.",
     );
     console.log(`CANARY_SURFACE_FINDINGS ${JSON.stringify(findings)}`);
     console.log(`CANARY_SURFACE_NEEDS_API ${JSON.stringify(needsApi)}`);
     console.log(`CANARY_SURFACE_UNPROVEN ${JSON.stringify(unproven)}`);
+    console.log(`CANARY_SURFACE_NEEDS_DESIGN ${JSON.stringify(needsDesign)}`);
     expect(findings, findings.join("\n")).toEqual([]);
   });
 
