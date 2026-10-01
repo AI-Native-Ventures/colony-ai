@@ -206,6 +206,44 @@ test("Today opens an ask page and keeps a rejected answer for retry", async ({
   await expect(page.getByTestId(`today-ask-${ASK_ID}`)).toHaveCount(0);
 });
 
+test("new ask thread drafts can be canceled from the destination step", async ({
+  page,
+}) => {
+  await installMockBridge(page, { relayRequiresMembership: true });
+  await page.goto("/#/asks/new");
+
+  const channel = page.getByLabel("Channel", { exact: true });
+  await expect
+    .poll(async () => channel.locator("option").count(), { timeout: 15_000 })
+    .toBeGreaterThan(1);
+  const channelId = await channel
+    .locator("option")
+    .evaluateAll(
+      (options) =>
+        options.find(
+          (option) =>
+            (option as HTMLOptionElement).value &&
+            option.textContent?.toLowerCase().includes("general"),
+        )?.value,
+    );
+  if (!channelId) {
+    throw new Error("The mock ask destination has no general channel option.");
+  }
+  await channel.selectOption(channelId);
+
+  await page.getByRole("button", { name: "Choose a thread" }).click();
+  await page.getByRole("button", { name: "Start a new thread" }).click();
+  await page
+    .getByLabel("New thread title")
+    .fill("A thread draft that will be canceled");
+  await page
+    .getByLabel("Opening context, optional")
+    .fill("This context stays local until the ask is sent.");
+
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`#\\/channels\\/${channelId}$`));
+});
+
 test("Needs me opens each ask type, records a response, and returns to its thread", async ({
   page,
 }) => {

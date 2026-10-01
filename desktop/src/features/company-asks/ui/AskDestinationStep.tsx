@@ -254,7 +254,8 @@ export function AskDestinationStep({
                   Start a new thread
                 </Button>
               ) : null}
-              {destinationMode === "channel" ? (
+              {destinationMode === "channel" ||
+              destinationMode === "new-thread" ? (
                 <Button onClick={onCancel} type="button" variant="outline">
                   Cancel
                 </Button>
