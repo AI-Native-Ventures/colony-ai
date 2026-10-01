@@ -326,13 +326,26 @@ try {
       : path.join(packagePaths.outputDir, "resources");
   const appAsarPath = path.join(appResourcesPath, "app.asar");
   await requireFile(appAsarPath, "Packaged application archive");
-  if (
-    process.env.COLONY_ELECTRON_RELEASE === "1" &&
-    !(await stat(path.join(appResourcesPath, "app-update.yml")).catch(
+  if (process.env.COLONY_ELECTRON_RELEASE === "1") {
+    const updateConfigPath = path.join(appResourcesPath, "app-update.yml");
+    const updateConfig = await readFile(updateConfigPath, "utf8").catch(
       () => null,
-    ))
-  ) {
-    throw new Error("Packaged release is missing app-update.yml.");
+    );
+    if (!updateConfig) {
+      throw new Error("Packaged release is missing app-update.yml.");
+    }
+    if (platform === "win32" && signed) {
+      if (
+        !releaseCapabilities.publisherName ||
+        !updateConfig.includes(
+          JSON.stringify(releaseCapabilities.publisherName),
+        )
+      ) {
+        throw new Error(
+          "Signed Windows release is missing its expected update signer.",
+        );
+      }
+    }
   }
   const packagedTauriConfig = extractFile(
     appAsarPath,

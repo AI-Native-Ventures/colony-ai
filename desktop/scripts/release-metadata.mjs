@@ -79,7 +79,10 @@ async function verifyUpdaterFeed({
     stat(artifactPath),
     hashFile(artifactPath, "sha512", "base64"),
   ]);
-  if (entry.sha512 !== artifactHash || entry.size !== artifactStat.size) {
+  if (
+    entry.sha512 !== artifactHash ||
+    (entry.size !== undefined && entry.size !== artifactStat.size)
+  ) {
     throw new Error(
       `${fileName} checksum or size does not match ${artifactName}.`,
     );
@@ -160,7 +163,7 @@ export async function writeReleaseMetadata({
     throw new Error("Linux AppImage must be labelled UNSIGNED.");
   }
 
-  const [, windowsFeed] = await Promise.all([
+  await Promise.all([
     verifyUpdaterFeed({
       assetsDir,
       fileName: macUpdateMetadata,
@@ -180,9 +183,6 @@ export async function writeReleaseMetadata({
       artifactName: linuxAppImage,
     }),
   ]);
-  if (windowsSigned && !Array.isArray(windowsFeed.publisherName)) {
-    throw new Error("Signed Windows update metadata is missing publisherName.");
-  }
 
   const assets = await Promise.all(
     files.map(async (name) => {

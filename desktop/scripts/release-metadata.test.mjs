@@ -22,7 +22,7 @@ async function makeAssets(directory, names) {
     const sha512 = createHash("sha512").update(artifact).digest("base64");
     await writeFile(
       path.join(directory, feedName),
-      `version: 1.2.3\nfiles:\n  - url: ${artifactName}\n    sha512: ${sha512}\n    size: ${artifact.byteLength}\n`,
+      `version: 1.2.3\nfiles:\n  - url: ${artifactName}\n    sha512: ${sha512}\n`,
     );
   }
 }
