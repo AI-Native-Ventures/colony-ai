@@ -88,9 +88,10 @@ Buzz preview, then cancels the preview without applying a theme or density.
 The suite captures each exercised desktop state in light and dark at 1440x900
 and 1728x1117. It records console and page errors, failed requests, HTTP errors,
 requests pending longer than 15 seconds, horizontal overflow, and visible
-interactive controls without accessible names. Diagnostic URLs omit query
-strings and redact identity-shaped path values. Request headers and bodies are
-never recorded.
+interactive controls without accessible names. These conditions fail the
+canary test. Browser requests cancelled by an explicit route reload are recorded
+separately from failed requests. Diagnostic URLs omit query strings and redact
+identity-shaped path values. Request headers and bodies are never recorded.
 
 Frozen company-v9 places watchdog configuration on a Work detail at
 `b2/policy/watchdog/unselected`. The l-ui checklist also names watchdog under
