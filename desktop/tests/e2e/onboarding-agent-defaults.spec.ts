@@ -70,6 +70,21 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
   await expect(
     page.getByTestId("onboarding-connect-runtime-claude").getByRole("button"),
   ).toHaveAttribute("aria-pressed", "true");
+  const subscription = page.getByTestId("onboarding-connect-runtime-claude");
+  const logo = subscription
+    .locator(".provider-top img, .provider-top svg")
+    .first();
+  const logoSize = await logo.boundingBox();
+  expect(logoSize?.width).toBeGreaterThan(0);
+  expect(logoSize?.width).toBeLessThanOrEqual(64);
+  expect(logoSize?.height).toBeLessThanOrEqual(64);
+  const selectStyle = await subscription
+    .locator(".runtime-select")
+    .evaluate((button) => {
+      const style = getComputedStyle(button);
+      return { alignment: style.textAlign, border: style.borderTopWidth };
+    });
+  expect(selectStyle).toEqual({ alignment: "left", border: "0px" });
 
   await page.getByRole("button", { name: "Bring your own key" }).click();
   await expect(
