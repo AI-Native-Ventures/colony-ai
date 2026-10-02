@@ -38,6 +38,12 @@ on:
       - "pnpm-lock.yaml"
       - ".github/workflows/electron-package.yml"
   workflow_dispatch:
+    inputs:
+      release:
+        description: Build release installers and update metadata as a rehearsal. Builds artifacts only; nothing is published.
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   # A newer push to the same pull request supersedes this run.
@@ -251,11 +257,33 @@ jobs:
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
           COLONY_GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.COLONY_GOOGLE_DESKTOP_CLIENT_ID }}
           COLONY_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET }}
-        run: >-
-          cargo build --locked --release
-          --features electron-host
-          --bin colony-native-host
-          --manifest-path desktop/src-tauri/Cargo.toml
+          RELEASE_BUILD: ${{ inputs.release && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          # Without a build-time relay the host defaults to ws://localhost:3000, so a
+          # release installer would try to sign in against the user's own machine.
+          # Release builds bake in the production relay; other builds are unchanged.
+          if [ "$RELEASE_BUILD" = "true" ]; then
+            export BUZZ_RELAY_URL="wss://relay.colony.ainative.ventures"
+          fi
+          cargo build --locked --release \
+            --features electron-host \
+            --bin colony-native-host \
+            --manifest-path desktop/src-tauri/Cargo.toml
+
+      - name: Verify the production relay is baked into the release host
+        if: inputs.release
+        shell: bash
+        run: |
+          set -euo pipefail
+          target_dir="$(node -p 'JSON.parse(require("node:child_process").execFileSync("cargo", ["metadata", "--manifest-path", "desktop/src-tauri/Cargo.toml", "--format-version", "1", "--no-deps"], { encoding: "utf8" })).target_directory')"
+          host="$target_dir/release/colony-native-host"
+          if [ ! -f "$host" ]; then host="$host.exe"; fi
+          if ! grep -a -q "wss://relay.colony.ainative.ventures" "$host"; then
+            echo "The release native host does not contain the production relay URL." >&2
+            exit 1
+          fi
+          echo "Production relay is present in the release native host."
 
       - name: Build bundled sidecars
         shell: bash

@@ -209,7 +209,7 @@ jobs:
       - name: Copy the built image into Fly registry
         id: fly-image
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_PROD }}
           TAG: ${{ steps.target.outputs.tag }}
           DIGEST: ${{ steps.image.outputs.digest }}
         run: |
@@ -228,7 +228,7 @@ jobs:
 
       - name: Verify relay volume and required Fly secret names
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_PROD }}
         run: |
           set -euo pipefail
           relay_volumes="$(flyctl volumes list --app "$FLY_APP" --json)"
@@ -265,7 +265,7 @@ jobs:
       - name: Snapshot the Postgres volume before schema release
         id: snapshot
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_DB_API_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_DB_API_TOKEN_PROD }}
         run: |
           set -euo pipefail
           volume_list="$(flyctl volumes list --app "$DATABASE_APP" --json)"
@@ -338,7 +338,7 @@ jobs:
 
       - name: Deploy the SHA-tagged image and run the schema release command
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_PROD }}
           FLY_IMAGE: ${{ steps.fly-image.outputs.image }}
         run: |
           set -euo pipefail
@@ -348,7 +348,7 @@ jobs:
 
       - name: Verify deployed image identity
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_PROD }}
           TAG: ${{ steps.target.outputs.tag }}
         run: |
           set -euo pipefail
