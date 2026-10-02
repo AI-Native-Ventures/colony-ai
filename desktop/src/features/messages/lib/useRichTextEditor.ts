@@ -38,6 +38,7 @@ import { CUSTOM_EMOJI_NODE_NAME } from "./customEmojiNode";
 import { useComposerCustomEmoji } from "./useComposerCustomEmoji";
 import { buildPlainTextProjection } from "./plainTextProjection";
 import { parseSnapshotClipboardHtml } from "./agentSnapshotClipboard";
+import { getMountedEditorDom } from "../ui/selectionFormattingTrayEditorDom";
 import { buildPreviewUpdate } from "./linkPreviewContent";
 import { createLinkInteractionExtension } from "./linkInteractionExtension";
 import { LinkPasteTrailingSpace } from "./linkPasteTrailingSpace";
@@ -586,13 +587,24 @@ export function useRichTextEditor({
   // Update placeholder text without recreating the editor.
   React.useEffect(() => {
     if (!editor) return;
-    editor.view.dom.setAttribute(
-      "aria-label",
-      placeholder ?? "Write a message",
-    );
+    // TipTap throws on `view.dom` until it mounts the view, and this effect can
+    // run first (e.g. a composer rendered while its route is still loading).
+    // The initial label comes from `editorProps.attributes`; here we only
+    // refresh it, now or once the view exists.
+    const applyLabel = () => {
+      getMountedEditorDom(editor)?.setAttribute(
+        "aria-label",
+        placeholder ?? "Write a message",
+      );
+    };
+    applyLabel();
+    editor.on("create", applyLabel);
     // Force ProseMirror to re-run decoration plugins so the Placeholder
     // extension picks up the new text from placeholderRef.
     editor.view.dispatch(editor.state.tr);
+    return () => {
+      editor.off("create", applyLabel);
+    };
   }, [editor, placeholder]);
 
   // Keep mention/channel-highlight decorations in sync with known names.
