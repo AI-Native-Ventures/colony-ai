@@ -52,7 +52,7 @@ Two limits were visible:
 - An already-expired temporary allowance was accepted. The current relay path validates timestamp syntax but does not require the submitted expiry to be in the future. The helper reported this as a note and still exited successfully.
 - A managed-agent allowance or external-cost write was rejected during tag validation because the NIP-OA attestation adds a tag before the owner/admin authority check. The operation remained refused, but the refusal reason did not reach the intended authority boundary.
 
-This run exercised real canary records through the release `buzz` CLI. It did not start `buzz-acp` or `buzz-agent`, invoke an LLM, publish a harness response to a mention, fire a workflow schedule, emit kind 44200 usage, or create an employee configuration revision. Those outcomes remain unproven.
+This record-layer-only run exercised real canary records through the release `buzz` CLI. It did not start `buzz-acp` or `buzz-agent`, invoke an LLM, publish a harness response to a mention, fire a workflow schedule, emit kind 44200 usage, or create an employee configuration revision. Later harness runs below establish scenarios 1 and 2; scenarios 3 through 6 remain unproven.
 
 ## Existing backend boundaries
 
@@ -62,11 +62,11 @@ Duty records are tied to the existing workflow scheduler and store IANA timezone
 
 ## Acceptance status
 
-- Implemented: `buzz-agent` now supports `LLM_PROVIDER` provider selection with DeepSeek as the default and explicit provider model configuration. Per-agent `BUZZ_AGENT_PROVIDER` still takes precedence. Changes are in PR #177.
-- Tested: the one authorized Sprig release build completed. Local tests were not run. Hosted CI passed on code head `27e58786b47b`; the following documentation update starts a new CI cycle.
+- Implemented: `buzz-agent` supports `LLM_PROVIDER` provider selection with DeepSeek as the default and explicit provider model configuration. Per-agent `BUZZ_AGENT_PROVIDER` still takes precedence. PR #177 is merged into `codex/phase2-integration`.
+- Tested: the one authorized Sprig release build completed. Local tests were not run. Hosted CI passed on code head `27e58786b47b` and the merged PR #180 documentation head.
 - Visually compared: not applicable; this runtime proof changes no UI.
-- Live canary: scenario 1 is proven with a correctly wired Sprig harness, a fresh owner-attested employee, and one published reply to the owner's mention. Scenarios 2 through 6 remain unproven.
-- CI: pass on the current PR code head before this report update; pending for the next pushed head.
+- Live canary: scenarios 1 and 2 are proven with fresh owner-attested employees, the correctly wired Sprig harness, and owner-side relay reads. Scenarios 3 through 6 remain unproven.
+- CI: PR #177 code checks passed and PR #180 documentation checks passed; both are merged. This report update is not pushed and has no CI result yet.
 - `NEEDS_API`: automatic allowance stop based on verified source-of-funds and next-turn estimate.
 
 ## Managed runtime attempt
@@ -75,7 +75,7 @@ A first launch omitted the release directory from `PATH`, so the agent shell cou
 
 Two OpenRouter retries were invalid because they put the Buzz binaries on `PATH` but did not set `BUZZ_ACP_AGENT_COMMAND` and `BUZZ_ACP_MCP_COMMAND`; Sprig therefore used its default command configuration. They are excluded from acceptance evidence. A minimal OpenRouter request using the configured credential returned HTTP 200. The accepted fallback was then run with a fresh owner-attested identity and all three executable paths explicitly selected. The agent joined the channel, the owner assigned its position, and the owner sent one tagged mention. The relay accepted the mention and an owner query returned one message authored by that employee after it, containing the unique proof marker. This proves scenario 1 on canary. The app default remains DeepSeek; OpenRouter and the explicit model were only process-level test settings.
 
-The correct Sprig invocation used `LLM_PROVIDER=openrouter`, `OPENROUTER_MODEL=deepseek/deepseek-v4-flash-0731`, `BUZZ_ACP_AGENT_COMMAND=<built buzz-agent personality>`, and `BUZZ_ACP_MCP_COMMAND=<built buzz-dev-mcp personality>`. It also set a 256-token output cap and disabled thinking for the short reply. No credential values, relay URLs, event IDs, public keys, or raw harness logs are included. Logs containing credential-shaped material remain outside the repository.
+The correct Sprig invocation used `LLM_PROVIDER=openrouter`, `OPENROUTER_MODEL=deepseek/deepseek-v4-flash-0731`, `BUZZ_ACP_AGENT_COMMAND=<built buzz-agent personality>`, and `BUZZ_ACP_MCP_COMMAND=<built buzz-dev-mcp personality>`. The brief acknowledgement and hidden-file shell probe used a 256-token output cap and disabled thinking. The temporary test file held a random value unknown to the model prompt; the fresh employee returned the exact value, proving that the MCP shell tool read it. The successful lesson run used a 1,024-token cap. No credential values, relay URLs, event IDs, public keys, or raw harness logs are included. Temporary identities, oracle files, and captured logs were removed after each run.
 
 Sanitized command shape:
 
@@ -88,4 +88,14 @@ buzz messages send --channel <configured canary channel> --content <non-side-eff
 buzz messages get --channel <configured canary channel> --limit 200
 ```
 
-The earlier empty read was superseded by the successful query of the accepted mention and employee reply in the correctly wired run. The next live gates are lesson proposal and approval, scheduled duty completion and catch-up, consent and revoke for a spend action, usage ingestion and allowance behavior, and employee revision history and undo.
+The earlier empty read was superseded by the successful query of the accepted mention and employee reply in the correctly wired run.
+
+## Scenario 2: lesson proposal and owner approval
+
+A second fresh owner-attested employee posted a unique evidence message. The owner-side raw event query confirmed that the message was kind 9 and authored by that employee. The owner then mentioned the employee with a `buzz lessons create` command containing a lesson about grounding its command reports in observed tool output. The record cited the employee's real evidence event and started with `unassessed` confidence.
+
+The relay showed the lesson as a candidate with the expected employee and evidence reference. The owner approved it with `moderate` confidence, and a follow-up `buzz lessons get` read showed approved status and the saved confidence. Sanitized ACP status classification confirmed a shell tool call started and completed, with an allow-once decision and no failed tool update. Stream logging was disabled; the raw log was removed.
+
+An earlier attempt with a 256-token output cap produced no candidate and no employee reply. The same flow passed with the 1,024-token cap. This was a constrained test attempt, not evidence of a product defect or missing API.
+
+The remaining live gates are approved duty scheduling and catch-up, tool consent through approval and revoke, kind 44200 usage and allowance behavior, and employee revision history and undo.
