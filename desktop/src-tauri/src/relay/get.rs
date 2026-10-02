@@ -17,18 +17,6 @@ pub async fn get_relay_json<T: DeserializeOwned>(
     get_relay_json_inner(state, path_with_query, None, None).await
 }
 
-/// Execute an authenticated GET while bounding the decoded JSON response body.
-pub(crate) async fn get_relay_json_bounded<T: DeserializeOwned>(
-    state: &AppState,
-    path_with_query: &str,
-    max_body_bytes: usize,
-) -> Result<T, String> {
-    if max_body_bytes == 0 {
-        return Err("relay response size limit must be positive".to_string());
-    }
-    get_relay_json_inner(state, path_with_query, None, Some(max_body_bytes)).await
-}
-
 /// Execute an authenticated GET with a bounded response, signing a separate
 /// NIP-98 path when the relay contract excludes query parameters from its URL
 /// tag.
