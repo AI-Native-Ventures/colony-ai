@@ -155,6 +155,48 @@ test("empty role catalog opens a blank role pack editor", async ({ page }) => {
     "Goose",
     "Buzz Agent",
   ]);
+  const roleEditor = page.getByTestId("company-role-editor");
+  const formPanel = await roleEditor
+    .locator(":scope > div")
+    .first()
+    .boundingBox();
+  const reviewPanel = await roleEditor.locator(":scope > aside").boundingBox();
+  if (!formPanel || !reviewPanel) {
+    throw new Error("Role pack panels must both be visible.");
+  }
+  expect(reviewPanel.height).toBeLessThan(formPanel.height);
+  const backButton = page.getByRole("button", { name: "Back", exact: true });
+  await backButton.focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Role title")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Job description")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Skills, one per line")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(workerModel).toBeFocused();
+  const rootFontSizeBeforeZoom = await page.evaluate(() =>
+    Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+  );
+  const zoomModifier = await page.evaluate(() =>
+    /mac|iphone|ipad|ipod/i.test(navigator.platform) ? "Meta" : "Control",
+  );
+  await page.keyboard.press(`${zoomModifier}+Equal`);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+      ),
+    )
+    .toBeGreaterThan(rootFontSizeBeforeZoom);
+  await page.keyboard.press(`${zoomModifier}+Minus`);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+      ),
+    )
+    .toBeCloseTo(rootFontSizeBeforeZoom, 0);
   const visualCaptureDirectory = process.env.COMPANY_ROLE_VISUAL_CAPTURE_DIR;
   if (visualCaptureDirectory) {
     await mkdir(visualCaptureDirectory, { recursive: true });

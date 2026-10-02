@@ -304,7 +304,7 @@ export function CompanyRoleFields({
         ) : null}
       </div>
 
-      <aside className="grid content-start gap-4 rounded-lg border border-border bg-card p-6">
+      <aside className="grid content-start gap-4 self-start rounded-lg border border-border bg-card p-6">
         <h2 className="text-base font-semibold text-foreground">
           Review tool risk
         </h2>

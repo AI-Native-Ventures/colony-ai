@@ -44,12 +44,27 @@
 - Test: `desktop/tests/e2e/company-canary.canary.spec.ts`
 
 - [x] Run the affected company-hiring Playwright spec and one focused canary role-pack check only if each finishes quickly.
-- [ ] Capture the role-pack editor at 1440x900 and 1728x1117 in light and dark, outside the repository, and compare each result with `20260930-company-v9`.
+- [x] Capture the role-pack editor at 1440x900 and 1728x1117 in light and dark, outside the repository, and compare each result with `20260930-company-v9`.
 - [x] Run `pnpm exec tsc --noEmit`, focused Biome, and `pnpm check:px-text` from `desktop/`.
 - [x] Grep E2E and unit tests for every changed label, test id, and accessible name. Scan the diff for em dashes and secrets before committing.
 - [ ] Commit the working sub-slice with `git commit -s`, push only after the current head's GitHub CI cycle completes, then hold and poll that head until its checks finish.
 
 ---
+
+## Visual measurements
+
+Captures and frozen-reference images are stored outside the repository. Comparison covers the main content pixels at x=252 and to the right. RGB mean absolute difference is measured on a 0 to 255 scale; changed pixels have any channel difference greater than 16.
+
+- 1440x900 light: MAE 3.84; changed pixels 7.80%.
+- 1728x1117 light: MAE 3.23; changed pixels 6.35%.
+- 1440x900 dark: MAE 9.27; changed pixels 7.96%.
+- 1728x1117 dark: MAE 8.73; changed pixels 6.51%.
+
+The comparison exposed a stretched tool-risk panel. The panel now aligns to its content height, with an E2E geometry assertion. The role-pack smoke spec also checks keyboard order and Cmd/Ctrl zoom in and back out.
+
+## NEEDS_DESIGN
+
+- The l-ui checklist requests a watchdog screen in Settings. Frozen company-v9 provides `b2/policy/watchdog/unselected` from a Work detail, with no global Settings watchdog route. The canary verifies the Work flow; no global screen was invented.
 
 ## Scope decisions
 
