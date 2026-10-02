@@ -63,10 +63,10 @@ Duties use the existing workflow scheduler and IANA timezone schedules. The appr
 ## Acceptance status
 
 - Implemented: `buzz-agent` supports `LLM_PROVIDER` provider selection with DeepSeek as the default and explicit provider model configuration. Per-agent `BUZZ_AGENT_PROVIDER` still takes precedence. PR #177 is merged into `codex/phase2-integration`. A separate allowance-expiry fix is implemented in PR #184 after a canary write accepted an already-expired temporary allowance; its test-first and hosted-CI state are tracked by that PR. The fix has not been deployed or live-verified.
-- Tested: the one authorized Sprig release build completed. Local Rust tests were not run. The regression-only commit in PR #184 failed its Rust unit-test job as expected; its follow-up fix commit is being checked by hosted CI. No local Rust test or clippy run completed.
+- Tested: the one authorized Sprig release build completed. Local Rust tests and clippy were not run. The regression-only commit in PR #184 failed its Rust unit-test job as expected. The follow-up fix passed hosted Rust Lint, Rust Unit Tests, Windows Rust, and the remaining applicable checks at head `5cda5b057160c4cee355839437f52e5b8da0d2bf` on run attempt 2. Desktop Smoke shards 5 and 8 failed on attempt 1 and both passed on the same-head retry.
 - Visually compared: not applicable; this runtime proof changes no UI.
 - Live canary: scenarios 1 through 3 are proven with fresh owner-attested employees, the correctly wired Sprig harness, and owner-side relay reads. Scenario 3 does not prove scheduler catch-up. Scenario 4's real spend action, scenario 5's usage-to-ledger path and budget stop, and scenario 6's configuration revision and undo remain unproven as described below.
-- CI: PR #177 code checks passed and PR #180 documentation checks passed; both are merged. The report expansion is in a follow-up docs change. PR #184 is the code fix for the expiry defect; consult its current head checks for the final CI result.
+- CI: PR #177 code checks passed and PR #180 documentation checks passed; both are merged. PR #184 passed hosted CI on head `5cda5b057160c4cee355839437f52e5b8da0d2bf`. The report expansion is in PR #185; its documentation path checks passed and unrelated suites were skipped by path filtering.
 - `NEEDS_API`: an executable spend action wired to the consent broker; verified per-turn funding source, next-turn estimate, and a supported runtime stop path for allowance enforcement.
 
 ## Managed runtime attempt
