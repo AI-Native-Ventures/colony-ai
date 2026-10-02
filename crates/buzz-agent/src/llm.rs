@@ -115,9 +115,10 @@ impl Llm {
                     .await
                     .and_then(parse_openai_with_reasoning_details)
             }
-            Provider::OpenAi | Provider::Databricks => {
+            Provider::OpenAi | Provider::DeepSeek | Provider::Databricks => {
                 let provider_str = match cfg.provider {
                     Provider::OpenAi => "openai",
+                    Provider::DeepSeek => "openai",
                     Provider::Databricks => "databricks",
                     _ => unreachable!(),
                 };
@@ -270,7 +271,7 @@ impl Llm {
                     let v = self.post_openrouter(cfg, &body).await?;
                     Ok(parse_openai(v)?.text)
                 }
-                Provider::OpenAi | Provider::Databricks => {
+                Provider::OpenAi | Provider::DeepSeek | Provider::Databricks => {
                     let r = self
                         .openai_request(cfg, effective_model, |use_responses, request_model| {
                             if use_responses {
@@ -2059,13 +2060,14 @@ pub(crate) fn databricks_pkce_config(
 ///   never read for Anthropic requests (those go through `post_anthropic` with
 ///   `x-api-key`), but Llm holds one to keep the field non-`Option`.
 /// - `Provider::OpenAi`: a static source over `OPENAI_COMPAT_API_KEY`.
+/// - `Provider::DeepSeek`: a static source over `DEEPSEEK_API_KEY`.
 /// - `Provider::Databricks`: if `DATABRICKS_TOKEN` is set, a static source.
 ///   Otherwise a `PkceOAuthTokenSource` pointed at the workspace's OIDC
 ///   discovery URL. First request without a cached token triggers a browser
 ///   flow; subsequent requests use the cache + refresh transparently.
 pub(crate) fn build_token_source(cfg: &Config) -> Result<Arc<dyn TokenSource>, AgentError> {
     match cfg.provider {
-        Provider::Anthropic | Provider::OpenAi | Provider::OpenRouter => {
+        Provider::Anthropic | Provider::OpenAi | Provider::DeepSeek | Provider::OpenRouter => {
             Ok(Arc::new(StaticTokenSource::new(cfg.api_key.clone())))
         }
         Provider::Databricks | Provider::DatabricksV2 => {
@@ -2092,9 +2094,11 @@ pub(crate) fn build_token_source(cfg: &Config) -> Result<Arc<dyn TokenSource>, A
 pub(crate) fn summary_completion_cap(provider: Provider, max_output_tokens: u32) -> u32 {
     match provider {
         Provider::OpenRouter => max_output_tokens.saturating_mul(2),
-        Provider::Anthropic | Provider::OpenAi | Provider::Databricks | Provider::DatabricksV2 => {
-            max_output_tokens
-        }
+        Provider::Anthropic
+        | Provider::OpenAi
+        | Provider::DeepSeek
+        | Provider::Databricks
+        | Provider::DatabricksV2 => max_output_tokens,
     }
 }
 
@@ -2766,6 +2770,28 @@ mod tests {
             .filter(|request| request.method == "POST")
             .filter_map(|request| request.body.as_ref()?.get("model")?.as_str())
             .collect()
+    }
+
+    #[tokio::test]
+    async fn deepseek_provider_uses_openai_chat_completions_transport() {
+        let (base_url, captured) =
+            spawn_sequence_stub(vec![StubHttpResponse::ok(chat_response("done"))]).await;
+        let mut config = cfg(Provider::DeepSeek);
+        config.base_url = base_url;
+        let llm = Llm::new(&config).unwrap();
+
+        let response = complete_model(&llm, &config, "deepseek-flash")
+            .await
+            .unwrap();
+
+        assert_eq!(response.text, "done");
+        let requests = captured.lock().await;
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].path, "/v1/chat/completions");
+        assert_eq!(
+            requests[0].body.as_ref().unwrap()["model"],
+            "deepseek-flash"
+        );
     }
 
     /// An explicit model is sent verbatim and never rewritten to something

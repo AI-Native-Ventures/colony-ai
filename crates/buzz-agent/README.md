@@ -135,7 +135,11 @@ Everything is environment variables. No flags, no config files. (We are a subpro
 
 | Variable | Default | Notes |
 |---|---|---|
-| `BUZZ_AGENT_PROVIDER` | — | Required. `anthropic`, `openai`, `openrouter`, `databricks`, or `databricks_v2`. No implicit fallback — the agent errors at startup when this is unset. |
+| `BUZZ_AGENT_PROVIDER` | Not set | Per-agent provider override. Supports `anthropic`, `openai`, `openrouter`, `deepseek`, `databricks`, or `databricks_v2`. Takes precedence over `LLM_PROVIDER`. |
+| `LLM_PROVIDER` | `deepseek` | Process-level provider used when `BUZZ_AGENT_PROVIDER` is unset. |
+| `DEEPSEEK_API_KEY` | Not set | Required when provider=deepseek. |
+| `DEEPSEEK_MODEL` | Not set | Required when provider=deepseek unless `BUZZ_AGENT_MODEL` is set. |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | Optional DeepSeek API base URL. |
 | `ANTHROPIC_API_KEY` | — | Required when provider=anthropic. |
 | `ANTHROPIC_MODEL` | — | Required when provider=anthropic. |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | |
@@ -230,12 +234,13 @@ lifecycle hook — see [MCP_DRIVEN_HOOKS.md](../../docs/MCP_DRIVEN_HOOKS.md).
 
 ## Providers
 
-`buzz-agent` speaks a few HTTP dialects. Pick with `BUZZ_AGENT_PROVIDER`.
+`buzz-agent` speaks a few HTTP dialects. A per-agent `BUZZ_AGENT_PROVIDER` overrides the process-level `LLM_PROVIDER`. When neither is set, the provider defaults to DeepSeek.
 
 | Provider | `BUZZ_AGENT_PROVIDER` | Endpoint (auto) | Tested with |
 |---|---|---|---|
 | Anthropic | `anthropic` | `POST {base}/v1/messages` | claude-sonnet-4-5, claude-opus-4 |
 | OpenAI | `openai` | `POST {base}/responses` | gpt-5, gpt-5-mini, o4-mini, gpt-4o |
+| DeepSeek | `deepseek` | `POST {base}/chat/completions` | configured model |
 | vLLM | `openai` | `POST {base}/chat/completions` | any tool-calling model |
 | llama.cpp | `openai` | `POST {base}/chat/completions` | any tool-calling GGUF |
 | Ollama | `openai` | `POST {base}/chat/completions` | llama3.1, qwen2.5-coder |
@@ -246,7 +251,7 @@ lifecycle hook — see [MCP_DRIVEN_HOOKS.md](../../docs/MCP_DRIVEN_HOOKS.md).
 
 The optional `DATABRICKS_MODEL_FILTER` applies only to model discovery. Each comma-separated entry is trimmed and matched against the complete raw ID with case-sensitive `*` (zero or more characters) and `?` (one Unicode character) semantics; patterns are OR-ed. Unset or blank preserves the full authenticated catalog. A nonblank value containing no usable patterns is rejected. This controls picker visibility only; Databricks and Unity Catalog permissions remain the authorization boundary. A filtered-empty result is authoritative and does not restore the built-in fallback models.
 
-If `BUZZ_AGENT_PROVIDER=anthropic` is selected without `ANTHROPIC_API_KEY`, `BUZZ_AGENT_PROVIDER=openai` is selected without `OPENAI_COMPAT_API_KEY`, or `BUZZ_AGENT_PROVIDER=openrouter` is selected without `OPENROUTER_API_KEY`, the agent returns an error — there is no implicit fallback to another provider.
+When an explicit provider is selected but its required key is absent, the agent returns a configuration error. An unset `BUZZ_AGENT_PROVIDER` and `LLM_PROVIDER` pair selects `deepseek` and requires `DEEPSEEK_API_KEY` plus a configured model. A missing key or model does not fall back to another provider.
 
 `provider=openai` speaks two HTTP dialects: the [Responses API](https://platform.openai.com/docs/api-reference/responses) (`/v1/responses`, required for GPT-5 / o-series tool-calling on OpenAI's own service) and the [Chat Completions API](https://platform.openai.com/docs/api-reference/chat) (`/chat/completions`, the broadly-supported OpenAI-compatible wire format).
 
