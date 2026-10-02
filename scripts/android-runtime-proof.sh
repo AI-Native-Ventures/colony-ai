@@ -17,6 +17,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 parser_path="${ANDROID_RUNTIME_PARSER:-$script_dir/android-runtime-proof-parser.py}"
 failure_label="runtime"
 launcher_anr_dismissed=0
+launcher_anr_dismissals=0
 launcher_anr_launch_retry_used=0
 
 mkdir -p "$output_dir"
@@ -68,6 +69,7 @@ capture_failure_evidence() {
     {
         echo "failure_label=$label"
         echo "launcher_anr_dismissed=$launcher_anr_dismissed"
+        echo "launcher_anr_dismissals=$launcher_anr_dismissals"
         echo "launcher_anr_launch_retry_used=$launcher_anr_launch_retry_used"
     } > "$output_dir/failure.txt"
 
@@ -220,38 +222,55 @@ foreground_is_expected() {
 wait_for_ui() {
     local label="$1"
     local screen="$2"
-    local deadline=$((SECONDS + ui_timeout_seconds))
+    local deadline
     local anr_kind
     failure_label="$label"
     rm -f "$output_dir/${label}.xml" "$output_dir/${label}-foreground.txt"
-    while ((SECONDS < deadline)); do
-        if dump_ui "$label" 2>"$output_dir/${label}-dump-error.log"; then
-            if anr_kind="$(python3 "$parser_path" system-anr-kind "$output_dir/${label}.xml" 2>/dev/null)"; then
-                echo "Detected Android system ANR kind=$anr_kind label=$label"
-                if [[ "$anr_kind" != "pixel-launcher" ]]; then
-                    echo "::error::unexpected Android system ANR during $label" >&2
-                    return 1
+    while true; do
+        deadline=$((SECONDS + ui_timeout_seconds))
+        while ((SECONDS < deadline)); do
+            if dump_ui "$label" 2>"$output_dir/${label}-dump-error.log"; then
+                if anr_kind="$(python3 "$parser_path" system-anr-kind "$output_dir/${label}.xml" 2>/dev/null)"; then
+                    echo "Detected Android system ANR kind=$anr_kind label=$label"
+                    if [[ "$anr_kind" != "pixel-launcher" ]]; then
+                        echo "::error::unexpected Android system ANR during $label" >&2
+                        return 1
+                    fi
+                    if ((launcher_anr_dismissals >= 2)); then
+                        echo "::error::Pixel Launcher ANR repeated after bounded recovery" >&2
+                        return 1
+                    fi
+                    launcher_anr_dismissed=1
+                    launcher_anr_dismissals=$((launcher_anr_dismissals + 1))
+                    if ! dismiss_launcher_anr "$label" "$output_dir/${label}.xml"; then
+                        return 1
+                    fi
+                    continue
                 fi
-                if [[ "$launcher_anr_dismissed" == "1" ]]; then
-                    echo "::error::Pixel Launcher ANR repeated after its single recovery" >&2
-                    return 1
+                if foreground_is_expected "$label" && assert_ui "$output_dir/${label}.xml" "$screen"; then
+                    echo "UI assertion passed: screen=$screen label=$label"
+                    return 0
                 fi
-                launcher_anr_dismissed=1
-                if ! dismiss_launcher_anr "$label" "$output_dir/${label}.xml"; then
-                    return 1
-                fi
-                deadline=$((SECONDS + ui_timeout_seconds))
-                continue
             fi
-            if foreground_is_expected "$label" && assert_ui "$output_dir/${label}.xml" "$screen"; then
-                echo "UI assertion passed: screen=$screen label=$label"
-                return 0
+            sleep 2
+        done
+
+        if [[ "$label" == "initial" || "$label" == "relaunch" ]] &&
+            ((launcher_anr_dismissals > 0)) &&
+            [[ "$launcher_anr_launch_retry_used" == "0" ]]; then
+            launcher_anr_launch_retry_used=1
+            echo "Same $label UI assertion stayed absent after Pixel Launcher recovery; retrying app launch once"
+            adb_target shell am force-stop "$package" >/dev/null 2>&1 || true
+            if ! launch_app "${label}-retry"; then
+                echo "::error::app did not start after the single launcher-ANR recovery retry" >&2
+                return 1
             fi
+            continue
         fi
-        sleep 2
+
+        echo "UI assertion timed out after ${ui_timeout_seconds}s: $label" >&2
+        return 1
     done
-    echo "UI assertion timed out after ${ui_timeout_seconds}s: $label" >&2
-    return 1
 }
 
 wait_for_launcher_anr_to_clear() {
@@ -288,21 +307,7 @@ dismiss_launcher_anr() {
         return 1
     fi
 
-    if [[ "$label" == "initial" || "$label" == "relaunch" ]]; then
-        if [[ "$launcher_anr_launch_retry_used" == "1" ]]; then
-            echo "::error::bounded app-launch retry was already used" >&2
-            return 1
-        fi
-        launcher_anr_launch_retry_used=1
-        echo "Retrying app launch once after the verified Pixel Launcher ANR"
-        adb_target shell am force-stop "$package" >/dev/null 2>&1 || true
-        if ! launch_app "${label}-retry"; then
-            echo "::error::app did not relaunch after the single launcher-ANR recovery" >&2
-            return 1
-        fi
-    else
-        echo "Pixel Launcher recovered; continuing the same $label UI assertion"
-    fi
+    echo "Pixel Launcher recovered; continuing the same $label UI assertion"
 }
 
 tap_app_label() {
