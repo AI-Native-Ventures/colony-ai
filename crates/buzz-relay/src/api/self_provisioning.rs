@@ -19,8 +19,10 @@
 //!   communities the requester owns on this deployment. `scope=member`
 //!   (the default is `owner`) widens the list to every non-archived
 //!   community the requester holds any `relay_members` row in, adding a
-//!   `role` field to each entry. The signed NIP-98 `u` tag always names
-//!   the bare `/api/communities/mine` path, never the query string.
+//!   `role` field to each entry. The signed NIP-98 `u` tag names the
+//!   bare `/api/communities/mine` path. A client that signs the full URL
+//!   including the query string (the NIP-98 reading) is accepted too: the
+//!   desktop app does, and rejecting it left new users stuck on sign-in.
 //!
 //! Scope is deliberately narrower than the operator surface:
 //!
@@ -54,7 +56,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::{
-    extract::{ConnectInfo, Query, State},
+    extract::{ConnectInfo, Query, RawQuery, State},
     http::{HeaderMap, StatusCode},
     response::Json,
 };
@@ -171,6 +173,18 @@ fn slug_host(slug: &str, domain: &str) -> String {
     format!("{slug}.{domain}")
 }
 
+/// True when NIP-98 verification failed only because the signed `u` tag names a
+/// different URL than the one expected.
+fn is_url_mismatch(err: &(StatusCode, Json<Value>)) -> bool {
+    err.0 == StatusCode::UNAUTHORIZED
+        && err
+            .1
+             .0
+            .get("error")
+            .and_then(Value::as_str)
+            .is_some_and(|message| message.contains("URL mismatch"))
+}
+
 /// Tenant-bound NIP-98 authentication, mirroring the invite API: the signed
 /// `u` tag must name the tenant host the request arrived on, and the event id
 /// is burned in the tenant replay scope.
@@ -179,6 +193,7 @@ async fn authenticate(
     headers: &HeaderMap,
     method: &str,
     path: &str,
+    raw_query: Option<&str>,
     body: Option<&[u8]>,
 ) -> Result<(buzz_core::TenantContext, nostr::PublicKey), (StatusCode, Json<Value>)> {
     let raw_host = headers
@@ -194,19 +209,40 @@ async fn authenticate(
             )
         })?;
 
-    let url = bridge::nip98_expected_url(&state.config.relay_url, &tenant, path);
+    let verify = |url: &str| {
+        bridge::verify_bridge_auth_with_options(
+            headers,
+            method,
+            url,
+            body,
+            true, // always NIP-98; no X-Pubkey dev fallback
+            body.is_some(),
+        )
+    };
+    let bare_url = bridge::nip98_expected_url(&state.config.relay_url, &tenant, path);
     let bridge::VerifiedBridgeAuth {
         pubkey,
         event_id_bytes,
         ..
-    } = bridge::verify_bridge_auth_with_options(
-        headers,
-        method,
-        &url,
-        body,
-        true, // always NIP-98; no X-Pubkey dev fallback
-        body.is_some(),
-    )?;
+    } = match verify(&bare_url) {
+        Ok(verified) => verified,
+        // The bare path is the documented contract. A client that signed the
+        // full URL including the query string (what NIP-98 itself describes)
+        // is accepted too, bound to exactly the query it sent. Nothing is
+        // burned in the replay scope until verification succeeds.
+        Err(err) if is_url_mismatch(&err) => match raw_query.filter(|q| !q.is_empty()) {
+            Some(query) => {
+                let full_url = bridge::nip98_expected_url(
+                    &state.config.relay_url,
+                    &tenant,
+                    &format!("{path}?{query}"),
+                );
+                verify(&full_url)?
+            }
+            None => return Err(err),
+        },
+        Err(err) => return Err(err),
+    };
     bridge::check_nip98_replay(state, &tenant, event_id_bytes).await?;
 
     Ok((tenant, pubkey))
@@ -394,8 +430,15 @@ pub async fn create_community(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let domain = provisioning_domain(&state)?.to_string();
 
-    let (tenant, pubkey) =
-        authenticate(&state, &headers, "POST", "/api/communities", Some(&body)).await?;
+    let (tenant, pubkey) = authenticate(
+        &state,
+        &headers,
+        "POST",
+        "/api/communities",
+        None,
+        Some(&body),
+    )
+    .await?;
     let pubkey_hex = pubkey.to_hex();
 
     if state.config.self_provision_public {
@@ -468,9 +511,11 @@ fn slug_from_host(host: &str, suffix: &str) -> String {
 /// The default response is byte-identical to the owner-only listing this
 /// route has always returned, so existing clients need no change. The signed
 /// NIP-98 `u` tag names the bare path, so adding the query parameter does not
-/// invalidate a signature a client already knows how to produce.
+/// invalidate a signature a client already knows how to produce; a signature
+/// over the full URL including the query is accepted as well.
 pub async fn list_my_communities(
     State(state): State<Arc<AppState>>,
+    RawQuery(raw_query): RawQuery,
     Query(query): Query<MineQuery>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
@@ -478,8 +523,15 @@ pub async fn list_my_communities(
     let scope = parse_mine_scope(query.scope.as_deref())
         .map_err(|message| api_error(StatusCode::BAD_REQUEST, &message))?;
 
-    let (_tenant, pubkey) =
-        authenticate(&state, &headers, "GET", "/api/communities/mine", None).await?;
+    let (_tenant, pubkey) = authenticate(
+        &state,
+        &headers,
+        "GET",
+        "/api/communities/mine",
+        raw_query.as_deref(),
+        None,
+    )
+    .await?;
     let pubkey_hex = pubkey.to_hex();
 
     let suffix = format!(".{domain}");
@@ -541,6 +593,22 @@ pub async fn list_my_communities(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn url_mismatch_detection_only_matches_unauthorized_url_errors() {
+        assert!(is_url_mismatch(&api_error(
+            StatusCode::UNAUTHORIZED,
+            "NIP-98 HTTP Auth verification failed: URL mismatch: event has `a`, expected `b`",
+        )));
+        assert!(!is_url_mismatch(&api_error(
+            StatusCode::UNAUTHORIZED,
+            "NIP-98 HTTP Auth verification failed: event timestamp outside window",
+        )));
+        assert!(!is_url_mismatch(&api_error(
+            StatusCode::FORBIDDEN,
+            "URL mismatch",
+        )));
+    }
 
     #[test]
     fn mine_scope_defaults_to_owner() {
