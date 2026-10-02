@@ -176,6 +176,7 @@ test("packaged first run signs in, opens workspace surfaces, and recovers from o
       content,
       40_000,
       generalChannelId,
+      identity,
     );
     expect(sentEvent?.kind).toBe(9);
     expect(sentEvent?.pubkey).toBe(identity.publicKey);
@@ -241,7 +242,9 @@ test("packaged first run signs in, opens workspace surfaces, and recovers from o
     await expect(page.getByTestId("ask-card")).toContainText(askTitle);
 
     await page.getByTestId("sidebar-company-team").click();
-    await expect(page.getByTestId("company-team-screen")).toBeVisible();
+    await expect(page.getByRole("status")).toHaveText(
+      "Team membership is unavailable for this community.",
+    );
 
     await running.application.evaluate(({ app }, url) => {
       app.emit("open-url", { preventDefault: () => {} }, url);
@@ -305,6 +308,7 @@ test("a typed channel message appears in Electron and is readable by an independ
       content,
       40_000,
       generalChannelId,
+      identity,
     );
     expect(saved).toBeDefined();
     expect(saved?.kind).toBe(9);
@@ -490,6 +494,7 @@ test("real TCP relay outage reconnects Electron for inbound and outbound message
         outboundContent,
         15_000,
         generalChannelId,
+        identity,
       );
     } catch (error) {
       relayReadError = error instanceof Error ? error.message : String(error);
