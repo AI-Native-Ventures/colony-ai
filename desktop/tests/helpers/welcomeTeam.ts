@@ -6,6 +6,20 @@ export async function invokeMockCommand<T>(
   command: string,
   payload?: Record<string, unknown>,
 ) {
+  await page.waitForFunction(
+    () => {
+      const bridgeWindow = window as Window & {
+        __BUZZ_E2E_INVOKE_MOCK_COMMAND__?: unknown;
+        __TAURI_INTERNALS__?: { invoke?: unknown };
+      };
+      return Boolean(
+        bridgeWindow.__BUZZ_E2E_INVOKE_MOCK_COMMAND__ ??
+          bridgeWindow.__TAURI_INTERNALS__?.invoke,
+      );
+    },
+    null,
+    { timeout: 10_000 },
+  );
   return page.evaluate(
     async ({ command, payload }) => {
       const bridgeWindow = window as Window & {

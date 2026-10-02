@@ -313,17 +313,19 @@ export function useRichTextEditor({
         Extension.create({
           name: "submitOnEnter",
           addKeyboardShortcuts() {
+            const submit = ({ editor: ed }: { editor: Editor }) => {
+              if (isAutocompleteOpen?.current) return false;
+              if (!onSubmitRef.current) return false;
+
+              const fenceResult = handleCodeFenceEnter(ed);
+              if (fenceResult !== undefined) return fenceResult;
+
+              onSubmitRef.current();
+              return true;
+            };
             return {
-              Enter: ({ editor: ed }) => {
-                if (isAutocompleteOpen?.current) return false;
-                if (!onSubmitRef.current) return false;
-
-                const fenceResult = handleCodeFenceEnter(ed);
-                if (fenceResult !== undefined) return fenceResult;
-
-                onSubmitRef.current();
-                return true;
-              },
+              Enter: submit,
+              "Mod-Enter": submit,
             };
           },
         }),
@@ -401,10 +403,13 @@ export function useRichTextEditor({
                 )(view, event as ClipboardEvent),
         },
         attributes: {
+          "aria-multiline": "true",
           autocapitalize: "none",
           autocorrect: "off",
           class: `${MESSAGE_MARKDOWN_CLASS} min-h-0 resize-none overflow-y-hidden border-0 bg-transparent px-0 py-0 text-message font-normal tracking-normal text-foreground shadow-none focus-visible:ring-0 caret-foreground outline-hidden max-w-none`,
+          "aria-label": placeholderRef.current ?? "Write a message",
           "data-testid": "message-input",
+          role: "textbox",
           spellcheck: "true",
         },
         // ArrowUp in an empty composer → edit your last message (Slack
@@ -579,9 +584,12 @@ export function useRichTextEditor({
   }, [editor, editable]);
 
   // Update placeholder text without recreating the editor.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: placeholder triggers the ref update
   React.useEffect(() => {
     if (!editor) return;
+    editor.view.dom.setAttribute(
+      "aria-label",
+      placeholder ?? "Write a message",
+    );
     // Force ProseMirror to re-run decoration plugins so the Placeholder
     // extension picks up the new text from placeholderRef.
     editor.view.dispatch(editor.state.tr);

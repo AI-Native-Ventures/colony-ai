@@ -4,6 +4,10 @@
 pub(crate) const INITIAL_RENDER_READY_EVENT: &str = "initial-render-ready";
 
 pub(crate) fn reveal_initial_window<R: tauri::Runtime>(window: &tauri::Window<R>) {
+    // Under Electron the Tauri window is a hidden dispatch context only.
+    if crate::electron_host::enabled() {
+        return;
+    }
     if let Err(error) = window.show() {
         eprintln!("buzz-desktop: failed to reveal main window: {error}");
         return;
@@ -15,6 +19,9 @@ pub(crate) fn reveal_initial_window<R: tauri::Runtime>(window: &tauri::Window<R>
 
 #[cfg(target_os = "macos")]
 pub(crate) fn set_initial_window_backing<R: tauri::Runtime>(window: &tauri::Window<R>) {
+    if crate::electron_host::enabled() {
+        return;
+    }
     // Both this write and the deferred clear target the Window (NSWindow)
     // backing color only; they never touch the webview canvas or the
     // NSVisualEffectView, so they are not load-bearing for glass. Glass state
@@ -32,6 +39,9 @@ pub(crate) fn set_initial_window_backing<R: tauri::Runtime>(window: &tauri::Wind
 
 #[cfg(target_os = "macos")]
 pub(crate) async fn clear_initial_window_backing<R: tauri::Runtime>(window: &tauri::Window<R>) {
+    if crate::electron_host::enabled() {
+        return;
+    }
     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     // Restore the default system window background so fast-resize gutter
     // flashes match the platform theme rather than the hardcoded dark color
@@ -46,6 +56,9 @@ pub(crate) async fn clear_initial_window_backing<R: tauri::Runtime>(window: &tau
 pub(crate) async fn wait_for_stable_initial_window_geometry<R: tauri::Runtime>(
     window: &tauri::Window<R>,
 ) {
+    if crate::electron_host::enabled() {
+        return;
+    }
     const MAX_POLLS: usize = 120;
     const REQUIRED_STABLE_POLLS: usize = 4;
 

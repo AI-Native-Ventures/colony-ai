@@ -9,31 +9,34 @@ import '../../shared/theme/theme.dart';
 import '../../shared/widgets/buzz_loading_indicator.dart';
 import '../../shared/widgets/frosted_app_bar.dart';
 import '../../shared/widgets/bee_refresh_indicator.dart';
-import '../channels/channel.dart';
-import '../channels/compose_bar.dart';
 import 'forum_models.dart';
 import 'forum_post_card.dart';
 import 'forum_provider.dart';
+import 'forum_presentation.dart';
 import 'forum_thread_page.dart';
 
-/// Main forum view — replaces the old _ForumPlaceholder.
-///
-/// Shows a list of forum posts for the channel with a FAB to open the compose
-/// bar, and navigates to [ForumThreadPage] when a post is tapped.
+/// Main forum view for a channel's recent posts.
 class ForumPostsView extends HookConsumerWidget {
-  final Channel channel;
+  final String channelId;
+  final String channelName;
   final String? currentPubkey;
+  final bool isMember;
+  final bool isArchived;
+  final ForumPresentationFactories? presentation;
 
   const ForumPostsView({
     super.key,
-    required this.channel,
+    required this.channelId,
+    required this.channelName,
     required this.currentPubkey,
+    required this.isMember,
+    required this.isArchived,
+    this.presentation,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final postsAsync = ref.watch(forumPostsProvider(channel.id));
-    final isComposing = useState(false);
+    final postsAsync = ref.watch(forumPostsProvider(channelId));
     // A queued attachment can finish after this view is popped. Capture the
     // app-level provider container instead of retaining the route's WidgetRef.
     final providerContainer = ProviderScope.containerOf(context, listen: false);
@@ -42,126 +45,102 @@ class ForumPostsView extends HookConsumerWidget {
     // Periodic refresh (every 15s, matching desktop).
     useEffect(() {
       final timer = Stream.periodic(const Duration(seconds: 15)).listen((_) {
-        ref.invalidate(forumPostsProvider(channel.id));
+        ref.invalidate(forumPostsProvider(channelId));
       });
       return timer.cancel;
-    }, [channel.id]);
+    }, [channelId]);
 
-    final canPost = channel.isMember && !channel.isArchived;
-
-    return Column(
-      children: [
-        Expanded(
-          child: Scaffold(
-            // Transparent so the parent Scaffold's background shows through.
-            backgroundColor: Colors.transparent,
-            floatingActionButton: canPost && !isComposing.value
-                ? FloatingActionButton(
-                    heroTag: 'forum-fab',
-                    onPressed: () => isComposing.value = true,
-                    tooltip: 'New post',
-                    shape: const CircleBorder(),
-                    child: const Icon(LucideIcons.plus),
-                  )
-                : null,
-            body: postsAsync.when(
-              loading: () => Padding(
-                padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
-                child: const Center(
-                  child: BuzzLoadingIndicator(
-                    size: 44,
-                    semanticLabel: 'Loading posts',
-                  ),
-                ),
-              ),
-              error: (e, _) => Padding(
-                padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
-                child: Center(
-                  child: Text(
-                    'Failed to load posts',
-                    style: context.textTheme.bodyMedium?.copyWith(
-                      color: context.colors.error,
-                    ),
-                  ),
-                ),
-              ),
-              data: (response) {
-                final posts = response.posts;
-                if (posts.isEmpty) {
-                  return _EmptyState(
-                    isMember: channel.isMember,
-                    isArchived: channel.isArchived,
-                  );
-                }
-                return BeeRefreshIndicator(
-                  onRefresh: () async {
-                    ref.invalidate(forumPostsProvider(channel.id));
-                    await ref.read(forumPostsProvider(channel.id).future);
-                  },
-                  child: ListView.separated(
-                    padding: EdgeInsets.only(
-                      top: frostedAppBarHeight(context),
-                      left: Grid.gutter,
-                      right: Grid.gutter,
-                      bottom: Grid.xs,
-                    ),
-                    itemCount: posts.length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(height: Grid.xxs),
-                    itemBuilder: (context, index) {
-                      final post = posts[index];
-                      return ForumPostCard(
-                        post: post,
-                        currentPubkey: currentPubkey,
-                        onTap: () => _openThread(context, post),
-                        onDelete: (eventId) async {
-                          await deleteForumEvent(
-                            ref,
-                            channelId: channel.id,
-                            eventId: eventId,
-                          );
-                        },
-                      );
-                    },
-                  ),
-                );
-              },
+    return Scaffold(
+      // Transparent so the parent Scaffold's background shows through.
+      backgroundColor: Colors.transparent,
+      body: postsAsync.when(
+        loading: () => Padding(
+          padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
+          child: const Center(
+            child: BuzzLoadingIndicator(
+              size: 44,
+              semanticLabel: 'Loading posts',
             ),
           ),
         ),
-        if (isComposing.value) ...[
-          Align(
-            alignment: Alignment.centerRight,
-            child: Padding(
-              padding: const EdgeInsets.only(right: Grid.xxs),
-              child: IconButton(
-                onPressed: () => isComposing.value = false,
-                icon: const Icon(LucideIcons.x, size: 18),
-                tooltip: 'Dismiss',
-                visualDensity: VisualDensity.compact,
+        error: (e, _) => Padding(
+          padding: EdgeInsets.only(top: frostedAppBarHeight(context)),
+          child: Center(
+            child: Text(
+              'Failed to load posts',
+              style: context.textTheme.bodyMedium?.copyWith(
+                color: context.colors.error,
               ),
             ),
           ),
-          ComposeBar(
-            channelId: channel.id,
-            hintText: 'Write your post\u2026',
-            onSend:
-                (
-                  content,
-                  mentionPubkeys, {
-                  mediaTags = const <List<String>>[],
-                }) async {
-                  await forumDelivery.createPost(
-                    channelId: channel.id,
-                    content: content,
-                    mentionPubkeys: mentionPubkeys,
-                    mediaTags: mediaTags,
+        ),
+        data: (response) {
+          final posts = response.posts;
+          if (posts.isEmpty) {
+            return _EmptyState(isMember: isMember, isArchived: isArchived);
+          }
+          final entries = <({String? heading, ForumPost? post})>[];
+          for (final group in _forumPostGroups(context, posts)) {
+            entries.add((heading: group.title, post: null));
+            for (final post in group.posts) {
+              entries.add((heading: null, post: post));
+            }
+          }
+          return BeeRefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(forumPostsProvider(channelId));
+              await ref.read(forumPostsProvider(channelId).future);
+            },
+            child: ListView.separated(
+              padding: EdgeInsets.only(
+                top:
+                    frostedAppBarHeight(
+                      context,
+                      titleContentHeight: MobileLayoutTokens.appBarHeight,
+                    ) -
+                    Grid.half,
+                left: Grid.xs,
+                right: Grid.xs,
+                bottom: MobileLayoutTokens.scrollBottomPadding,
+              ),
+              itemCount: entries.length,
+              separatorBuilder: (_, index) => SizedBox(
+                height: entries[index].heading == null ? Grid.xxs : Grid.xs,
+              ),
+              itemBuilder: (context, index) {
+                final entry = entries[index];
+                if (entry.heading case final heading?) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: Grid.half,
+                      vertical: Grid.half,
+                    ),
+                    child: Text(
+                      heading,
+                      style: context.mobileTypography.identityName.copyWith(
+                        color: context.mobileTokens.ink,
+                      ),
+                    ),
                   );
-                  if (context.mounted) isComposing.value = false;
-                },
-          ),
-        ],
-      ],
+                }
+                final post = entry.post!;
+                return ForumPostCard(
+                  post: post,
+                  currentPubkey: currentPubkey,
+                  presentation: presentation,
+                  onTap: () => _openThread(context, post),
+                  onDelete: (eventId) async {
+                    await forumDelivery.deleteEvent(
+                      channelId: channelId,
+                      eventId: eventId,
+                    );
+                  },
+                );
+              },
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -169,15 +148,51 @@ class ForumPostsView extends HookConsumerWidget {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ForumThreadPage(
-          channelId: channel.id,
+          channelId: channelId,
+          channelName: channelName,
           postEventId: post.eventId,
           currentPubkey: currentPubkey,
-          isMember: channel.isMember,
-          isArchived: channel.isArchived,
+          isMember: isMember,
+          isArchived: isArchived,
+          presentation: presentation,
         ),
       ),
     );
   }
+}
+
+List<({String title, List<ForumPost> posts})> _forumPostGroups(
+  BuildContext context,
+  List<ForumPost> posts,
+) {
+  DateTime weekStart(DateTime date) => DateTime(
+    date.year,
+    date.month,
+    date.day - date.weekday + DateTime.monday,
+  );
+
+  DateTime activityDate(ForumPost post) => DateTime.fromMillisecondsSinceEpoch(
+    (post.threadSummary?.lastReplyAt ?? post.createdAt) * 1000,
+    isUtc: true,
+  ).toLocal();
+
+  final currentWeek = weekStart(DateTime.now());
+  final previousWeek = currentWeek.subtract(const Duration(days: 7));
+  final grouped = <DateTime, List<ForumPost>>{};
+  for (final post in posts) {
+    grouped.putIfAbsent(weekStart(activityDate(post)), () => []).add(post);
+  }
+  return [
+    for (final entry in grouped.entries)
+      (
+        title: entry.key == currentWeek
+            ? 'This week'
+            : entry.key == previousWeek
+            ? 'Last week'
+            : MaterialLocalizations.of(context).formatMonthYear(entry.key),
+        posts: entry.value,
+      ),
+  ];
 }
 
 class _EmptyState extends StatelessWidget {

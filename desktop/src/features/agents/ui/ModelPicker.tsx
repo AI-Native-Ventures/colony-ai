@@ -28,9 +28,14 @@ import { resolveModelLabel } from "@/features/agents/lib/formatAgentModelLabel";
 export function ModelPicker({
   agent,
   onModelChanged,
+  readOnly = false,
 }: {
   agent: ManagedAgent;
-  onModelChanged?: () => void;
+  readOnly?: boolean;
+  onModelChanged?: (change: {
+    beforeModel: string | null;
+    afterModel: string | null;
+  }) => void | Promise<void>;
 }) {
   const [modelsData, setModelsData] =
     React.useState<AgentModelsResponse | null>(null);
@@ -189,11 +194,17 @@ export function ModelPicker({
           toast.info(
             "Model switch pending — applies when the current turn finishes.",
           );
-          onModelChanged?.();
+          await onModelChanged?.({
+            beforeModel: agent.model,
+            afterModel: modelId,
+          });
           return;
         }
         toast.success("Model switched for this session.");
-        onModelChanged?.();
+        await onModelChanged?.({
+          beforeModel: agent.model,
+          afterModel: modelId,
+        });
         return;
       }
 
@@ -206,7 +217,10 @@ export function ModelPicker({
       if (isRunning) {
         setNeedsRestart(true);
       }
-      onModelChanged?.();
+      await onModelChanged?.({
+        beforeModel: agent.model,
+        afterModel: modelId === modelsData?.agentDefaultModel ? null : modelId,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -220,7 +234,7 @@ export function ModelPicker({
         <DropdownMenuTrigger asChild>
           <Button
             className="h-7 max-w-full justify-start gap-1.5 rounded-full border border-border/50 bg-muted/45 px-2.5 text-xs font-medium text-foreground shadow-none hover:bg-muted/70"
-            disabled={saving}
+            disabled={saving || readOnly}
             size="sm"
             type="button"
             variant="ghost"

@@ -9,6 +9,8 @@ class _ThreadMessageList extends StatelessWidget {
   final ItemPositionsListener itemPositionsListener;
   final double bottomInset;
   final List<TimelineMessage> replies;
+  final int replyCount;
+  final DateTime dayHeadingNow;
   final AsyncValue<List<NostrEvent>> relayReplyState;
   final Map<String, DateTime> localSendAnimations;
   final Widget Function(Widget child) trackActiveScrollPosition;
@@ -35,6 +37,8 @@ class _ThreadMessageList extends StatelessWidget {
     required this.itemPositionsListener,
     required this.bottomInset,
     required this.replies,
+    required this.replyCount,
+    required this.dayHeadingNow,
     required this.relayReplyState,
     required this.localSendAnimations,
     required this.trackActiveScrollPosition,
@@ -59,10 +63,9 @@ class _ThreadMessageList extends StatelessWidget {
           ? 'Loading replies…'
           : 'Couldn’t load replies';
     }
-    final count =
-        '${replies.length} ${replies.length == 1 ? 'reply' : 'replies'}';
-    if (!relayReplyState.hasError) return count;
-    return '$count · ${relayReplyState.isLoading ? 'Retrying…' : 'Couldn’t refresh'}';
+    final count = '$replyCount ${replyCount == 1 ? 'reply' : 'replies'}';
+    if (!relayReplyState.hasError) return '$count · Following';
+    return '$count · Following · ${relayReplyState.isLoading ? 'Retrying…' : 'Couldn’t refresh'}';
   }
 
   @override
@@ -89,9 +92,9 @@ class _ThreadMessageList extends StatelessWidget {
               // the content, which jammed the head against the composer
               // whenever a thread had only a handful of replies.
               padding: EdgeInsets.only(
-                left: Grid.gutter,
-                right: Grid.gutter,
-                top: frostedAppBarHeight(context),
+                left: Grid.xs,
+                right: Grid.xs,
+                top: Grid.xxs,
                 bottom: Grid.xs + bottomInset,
               ),
               // Head + replies + a stable zero-content tail target. The
@@ -121,14 +124,17 @@ class _ThreadMessageList extends StatelessWidget {
                   return trackActiveScrollPosition(
                     Padding(
                       key: ValueKey('thread-message-group-${head.id}'),
-                      padding: const EdgeInsets.only(bottom: Grid.xs),
+                      padding: EdgeInsets.zero,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           DayDivider(
-                            label: formatDayHeading(head.createdAt),
+                            key: ValueKey('thread-head-day-divider-${head.id}'),
+                            label: formatConversationDayHeading(
+                              head.createdAt,
+                              now: dayHeadingNow,
+                            ),
                             dayTimestamp: head.createdAt,
-                            stickyDayTimestamp: stickyDayTimestamp,
                           ),
                           _ThreadMessage(
                             message: head,
@@ -144,33 +150,31 @@ class _ThreadMessageList extends StatelessWidget {
                             composerFocusNode: composerFocusNode,
                             restoreComposerFocus: restoreComposerFocus,
                           ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: Grid.xxs,
+                          Container(
+                            key: const ValueKey('thread-replies-following'),
+                            width: double.infinity,
+                            margin: const EdgeInsets.only(top: 18),
+                            padding: const EdgeInsets.fromLTRB(
+                              Grid.gutter,
+                              8,
+                              Grid.gutter,
+                              6,
                             ),
-                            child: Row(
-                              children: [
-                                Flexible(
-                                  child: Semantics(
-                                    liveRegion: true,
-                                    child: Text(
-                                      _replySummary,
-                                      style: context.textTheme.labelMedium
-                                          ?.copyWith(
-                                            color:
-                                                context.colors.onSurfaceVariant,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                    ),
-                                  ),
+                            decoration: BoxDecoration(
+                              border: Border(
+                                bottom: BorderSide(
+                                  color: context.mobileTokens.line,
                                 ),
-                                const SizedBox(width: Grid.xxs),
-                                Expanded(
-                                  child: Divider(
-                                    color: context.colors.outlineVariant,
-                                  ),
+                              ),
+                            ),
+                            child: Semantics(
+                              liveRegion: true,
+                              child: Text(
+                                _replySummary,
+                                style: conversationDateTextStyle.copyWith(
+                                  color: context.mobileTokens.muted,
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                         ],
@@ -225,7 +229,10 @@ class _ThreadMessageList extends StatelessWidget {
                         children: [
                           if (showDayDivider)
                             DayDivider(
-                              label: formatDayHeading(reply.createdAt),
+                              label: formatConversationDayHeading(
+                                reply.createdAt,
+                                now: dayHeadingNow,
+                              ),
                               dayTimestamp: reply.createdAt,
                               stickyDayTimestamp: stickyDayTimestamp,
                             ),
@@ -235,6 +242,10 @@ class _ThreadMessageList extends StatelessWidget {
                             channelId: channelId,
                             currentPubkey: currentPubkey,
                             showAuthor: showAuthor,
+                            followsDayDivider: showDayDivider,
+                            authorSpacing: previousReply == null
+                                ? Grid.eighteen
+                                : 22,
                             isHighlighted: reply.id == highlightedMessageId,
                             allMessages: allMessages,
                             isMember: isMember,

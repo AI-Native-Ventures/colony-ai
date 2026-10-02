@@ -1,0 +1,56 @@
+# Colony production relay. Deploy only through the manual production workflow.
+app = "colony-relay"
+primary_region = "iad"
+
+[build]
+dockerfile = "Dockerfile"
+target = "runtime-prod"
+
+[env]
+BUZZ_BIND_ADDR = "0.0.0.0:3000"
+BUZZ_HEALTH_PORT = "8080"
+BUZZ_METRICS_PORT = "9102"
+BUZZ_GIT_REPO_PATH = "/data/git"
+BUZZ_AUTO_MIGRATE = "false"
+BUZZ_MEDIA_BASE_URL = "https://relay.colony.ainative.ventures/media"
+BUZZ_ADMIN_HOST = "admin.colony.ainative.ventures"
+RELAY_OPERATOR_API_ORIGIN = "https://admin.colony.ainative.ventures"
+# Multi-tenant hosting: each community is <slug>.colony.ainative.ventures (the wildcard
+# certificate and DNS already exist on this app). These values match the production
+# app's deployed configuration and must not be dropped by a redeploy.
+BUZZ_DOMAIN = "relay.colony.ainative.ventures"
+BUZZ_MEDIA_SERVER_DOMAIN = "relay.colony.ainative.ventures"
+BUZZ_SELF_PROVISION_DOMAIN = "colony.ainative.ventures"
+BUZZ_SELF_PROVISION_PUBLIC = "true"
+BUZZ_SELF_PROVISION_PUBLIC_GLOBAL_LIMIT = "50"
+BUZZ_SELF_PROVISION_PUBLIC_IP_LIMIT = "3"
+BUZZ_MAX_COMMUNITIES_PER_OWNER = "10"
+BUZZ_S3_ENDPOINT = "https://fly.storage.tigris.dev"
+RELAY_URL = "wss://relay.colony.ainative.ventures"
+BUZZ_REQUIRE_RELAY_MEMBERSHIP = "true"
+BUZZ_REQUIRE_AUTH_TOKEN = "true"
+BUZZ_ALLOW_NIP_OA_AUTH = "true"
+COLONY_MAIL_FROM = "accounts@colony.ainative.ventures"
+COLONY_PAYMENTS_ENABLED = "false"
+
+[[mounts]]
+source = "colony_relay_data"
+destination = "/data"
+
+[deploy]
+release_command = "/usr/local/bin/buzz-admin migrate"
+release_command_timeout = "30m"
+
+[http_service]
+internal_port = 3000
+force_https = true
+auto_stop_machines = "off"
+auto_start_machines = true
+min_machines_running = 1
+
+[checks.readiness]
+type = "tcp"
+port = 3000
+interval = "15s"
+timeout = "5s"
+grace_period = "30s"

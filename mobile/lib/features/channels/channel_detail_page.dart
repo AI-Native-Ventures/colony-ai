@@ -14,8 +14,12 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import '../../shared/animated_avatar.dart';
 import '../../shared/emoji/emoji_burst.dart';
 import '../../shared/huddle/huddle.dart';
+import '../../shared/business/mobile_business_entry_points.dart';
 import '../../shared/mentions/agent_identity_provider.dart';
+import '../../shared/navigation/mobile_route.dart';
+import '../../shared/navigation/mobile_navigation.dart';
 import '../../shared/relay/relay.dart';
+import '../../shared/identity/presence_cache_provider.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/avatar_image.dart';
 import '../../shared/widgets/buzz_loading_indicator.dart';
@@ -26,18 +30,19 @@ import '../../shared/widgets/frosted_scaffold.dart';
 import '../../shared/widgets/flapping_bee.dart';
 import '../../shared/widgets/keyboard_dismiss_on_drag.dart';
 import '../../shared/widgets/ios_glass_navigation_button.dart';
-import '../../shared/widgets/masked_avatar_badge.dart';
 import '../../shared/widgets/message_author_meta.dart';
+import '../../shared/widgets/mobile_flow_app_bar.dart';
 import '../../shared/widgets/modal_presentation.dart';
 import '../../shared/widgets/skeleton.dart';
-import '../profile/presence_cache_provider.dart';
 import '../profile/profile_provider.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/profile/user_profile.dart';
-import '../forum/forum_posts_view.dart';
 import 'android_ime_lift.dart';
+import 'conversation_avatar.dart';
+import 'conversation_styles.dart';
 import 'channel.dart';
 import 'channel_actions_sheet.dart';
+import 'channel_forum_route.dart';
 import 'channel_link_navigation.dart';
 import 'agent_activity/working_bots_provider.dart';
 import 'channel_management_provider.dart';
@@ -65,6 +70,10 @@ import 'message_actions.dart';
 import 'message_action_backdrop_state.dart';
 import 'message_long_press_region.dart';
 import 'message_content.dart';
+import 'message_presentation.dart';
+import 'deliverable_preview_card.dart';
+import 'deliverable_business_records.dart';
+import 'goal_reference_card.dart';
 import '../../shared/read_state/deferred_read_state_update.dart';
 import '../../shared/read_state/read_state_format.dart';
 import '../../shared/read_state/read_state_provider.dart';
@@ -250,6 +259,8 @@ enum InitialThreadRouteBehavior {
 
 class ChannelDetailPage extends HookConsumerWidget {
   final Channel channel;
+  final MobileRouteRegistry? routeRegistry;
+  final VoidCallback? openQuickActions;
   final String? initialMessageId;
   final String? initialThreadRootId;
 
@@ -259,6 +270,8 @@ class ChannelDetailPage extends HookConsumerWidget {
   const ChannelDetailPage({
     super.key,
     required this.channel,
+    this.routeRegistry,
+    this.openQuickActions,
     this.initialMessageId,
     this.initialThreadRootId,
     this.initialThreadRouteBehavior = InitialThreadRouteBehavior.push,
@@ -514,10 +527,34 @@ class ChannelDetailPage extends HookConsumerWidget {
         !resolvedChannel.isForum &&
         isConnectionInProgress &&
         !messagesNotifier.hasLoadedMessages;
-    final appBarTitleContentHeight = _twoLineAppBarTitleContentHeight(
-      context,
-      isDm: resolvedChannel.isDm,
-    );
+    final appBarTitleContentHeight = _twoLineAppBarTitleContentHeight(context);
+    final mobileTokens = context.mobileTokens;
+    const composerHintText = 'Message the team...';
+    Future<void> openChannelDetails() async {
+      final shouldClose = await showChannelDetailsPage(
+        context: context,
+        channel: resolvedChannel,
+        currentPubkey: currentPubkey,
+        onMemberTap: showUserProfileSheet,
+        openQuickActions: openQuickActions,
+        sectionId: ref
+            .read(channelSectionsProvider)
+            .store
+            .assignments[resolvedChannel.id],
+      );
+      if (shouldClose == true && context.mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+
+    Future<void> openDirectMessageActions() async {
+      await showChannelActionsSheet(
+        context: context,
+        channel: resolvedChannel,
+        isUnread: false,
+      );
+    }
+
     final usesNativeIosGlassBackButton =
         Navigator.canPop(context) &&
         Theme.of(context).platform == TargetPlatform.iOS;
@@ -569,6 +606,9 @@ class ChannelDetailPage extends HookConsumerWidget {
     }, [channel.id, readState.isReady, readTimestamp]);
 
     return FrostedScaffold(
+      backgroundColor: resolvedChannel.isForum
+          ? mobileTokens.canvas
+          : conversationSurfaceColor(context),
       resizeToAvoidBottomInset:
           !usesFixedAndroidImeViewport || resolvedChannel.isForum,
       appBar: FrostedAppBar(
@@ -583,14 +623,23 @@ class ChannelDetailPage extends HookConsumerWidget {
                 nativeViewSuppressed: messageActionBackdropActive,
               )
             : null,
-        iconColor: context.colors.primary,
-        titleContentHeight: appBarTitleContentHeight,
-        titleStyle: channelTitleTextStyle,
+        iconColor: mobileTokens.ink,
+        gradient: context.appColors.companyWashGradient,
+        titleContentHeight: resolvedChannel.isForum
+            ? MobileLayoutTokens.appBarHeight
+            : appBarTitleContentHeight,
+        titleStyle: context.mobileTypography.companyHubTitle.copyWith(
+          color: mobileTokens.ink,
+        ),
+        frostedSurfaceOpacity: 0,
+        frostedBlurSigma: 0,
+        bottomDividerOpacity: 1,
+        horizontalInset: Grid.xs - Grid.half,
         title: Padding(
           padding: EdgeInsets.only(
             left: usesNativeIosGlassBackButton
                 ? iosGlassChannelHeaderTitleSpacing
-                : 0,
+                : Grid.half,
           ),
           child: resolvedChannel.isDm
               ? _DmAppBarTitle(
@@ -599,21 +648,7 @@ class ChannelDetailPage extends HookConsumerWidget {
                 )
               : _ChannelAppBarTitle(
                   channel: resolvedChannel,
-                  onTap: () async {
-                    final shouldClose = await showChannelDetailsPage(
-                      context: context,
-                      channel: resolvedChannel,
-                      currentPubkey: currentPubkey,
-                      onMemberTap: showUserProfileSheet,
-                      sectionId: ref
-                          .read(channelSectionsProvider)
-                          .store
-                          .assignments[resolvedChannel.id],
-                    );
-                    if (shouldClose == true && context.mounted) {
-                      Navigator.of(context).pop();
-                    }
-                  },
+                  onTap: openChannelDetails,
                 ),
         ),
         actions: resolvedChannel.isDm
@@ -626,33 +661,69 @@ class ChannelDetailPage extends HookConsumerWidget {
                       ...huddleLifecycle,
                     ],
                   ),
+                IconButton(
+                  key: const ValueKey('dm-conversation-actions'),
+                  tooltip: 'Conversation actions',
+                  style: IconButton.styleFrom(
+                    foregroundColor: mobileTokens.ink,
+                  ),
+                  onPressed: openDirectMessageActions,
+                  icon: const Icon(LucideIcons.ellipsis, size: 22),
+                ),
                 if (_showsMembersAction(resolvedChannel))
                   _MembersButton(
                     channelId: resolvedChannel.id,
                     channel: resolvedChannel,
                     currentPubkey: currentPubkey,
                   ),
-                IconButton(
-                  color: context.colors.primary,
-                  onPressed: () async {
-                    final shouldClose = await showChannelActionsSheet(
-                      context: context,
-                      channel: resolvedChannel,
-                      isUnread: false,
-                      sectionId: ref
-                          .read(channelSectionsProvider)
-                          .store
-                          .assignments[resolvedChannel.id],
-                    );
-                    if (shouldClose == true && context.mounted) {
-                      Navigator.of(context).pop();
-                    }
-                  },
-                  tooltip: 'Channel actions',
-                  icon: const Icon(LucideIcons.ellipsisVertical, size: 22),
-                ),
               ]
             : [
+                if (!resolvedChannel.isForum)
+                  IconButton(
+                    key: const ValueKey('channel-info-action'),
+                    tooltip: 'Channel info',
+                    style: IconButton.styleFrom(
+                      foregroundColor: mobileTokens.ink,
+                    ),
+                    onPressed: openChannelDetails,
+                    icon: const Icon(LucideIcons.ellipsis, size: 22),
+                  ),
+                if (resolvedChannel.isForum &&
+                    resolvedChannel.isMember &&
+                    !resolvedChannel.isArchived &&
+                    routeRegistry?.contains(ChannelForumRoutes.newPost) == true)
+                  IconButton(
+                    key: const ValueKey('forum-new-post-action'),
+                    tooltip: 'New forum post',
+                    onPressed: () {
+                      final arguments = ChannelForumEntryArguments(
+                        channelId: resolvedChannel.id,
+                        channelName: resolvedChannel.name,
+                        memberCount: resolvedChannel.memberCount,
+                        currentPubkey: currentPubkey,
+                        isMember: resolvedChannel.isMember,
+                        isArchived: resolvedChannel.isArchived,
+                      );
+                      Navigator.of(context, rootNavigator: true).push(
+                        MaterialPageRoute<void>(
+                          builder: (routeContext) => routeRegistry!.build(
+                            routeContext,
+                            ChannelForumRoutes.newPost,
+                            arguments,
+                          ),
+                        ),
+                      );
+                    },
+                    style: IconButton.styleFrom(
+                      backgroundColor: mobileTokens.paper,
+                      foregroundColor: context.appColors.plum,
+                      side: BorderSide(color: mobileTokens.line),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(Radii.button),
+                      ),
+                    ),
+                    icon: const Icon(LucideIcons.plus),
+                  ),
                 if (showsComposer)
                   _HuddleButton(
                     channel: resolvedChannel,
@@ -668,15 +739,41 @@ class ChannelDetailPage extends HookConsumerWidget {
         children: [
           Column(
             children: [
+              if (!resolvedChannel.isDm)
+                ChannelGoalBannerSlot(
+                  channelId: resolvedChannel.id,
+                  topPadding: frostedAppBarHeight(
+                    context,
+                    titleContentHeight: appBarTitleContentHeight,
+                  ),
+                  onOpenGoal: (goalId) => unawaited(
+                    MobileNavigation.push<String, void>(
+                      context,
+                      MobileBusinessRoutes.goalDetail,
+                      goalId,
+                    ),
+                  ),
+                ),
               Expanded(
                 child: resolvedChannel.isForum
                     ? Stack(
                         fit: StackFit.expand,
                         children: [
-                          ForumPostsView(
-                            channel: resolvedChannel,
-                            currentPubkey: currentPubkey,
-                          ),
+                          if (routeRegistry == null)
+                            const SizedBox.shrink()
+                          else
+                            routeRegistry!.build(
+                              context,
+                              ChannelForumRoutes.posts,
+                              ChannelForumEntryArguments(
+                                channelId: resolvedChannel.id,
+                                channelName: resolvedChannel.name,
+                                memberCount: resolvedChannel.memberCount,
+                                currentPubkey: currentPubkey,
+                                isMember: resolvedChannel.isMember,
+                                isArchived: resolvedChannel.isArchived,
+                              ),
+                            ),
                           if (showConnectionSkeleton.value)
                             Positioned(
                               top:
@@ -733,10 +830,32 @@ class ChannelDetailPage extends HookConsumerWidget {
                                   channelMessagesProvider(channel.id).notifier,
                                 )
                                 .threadSummaries;
-                            final entries = buildMainTimelineEntries(
-                              messages,
-                              relaySummaries: summaries,
+                            final presentationOverrides = ref.watch(
+                              channelMessagePresentationProvider,
                             );
+                            final entries =
+                                buildMainTimelineEntries(
+                                  messages,
+                                  relaySummaries: summaries,
+                                ).map((entry) {
+                                  final replyCount =
+                                      presentationOverrides[entry.message.id]
+                                          ?.threadReplyCount;
+                                  final summary = entry.summary;
+                                  if (replyCount == null || summary == null) {
+                                    return entry;
+                                  }
+                                  return MainTimelineEntry(
+                                    message: entry.message,
+                                    summary: ThreadSummary(
+                                      threadHeadId: summary.threadHeadId,
+                                      replyCount: replyCount,
+                                      participantPubkeys:
+                                          summary.participantPubkeys,
+                                      lastReplyAt: summary.lastReplyAt,
+                                    ),
+                                  );
+                                }).toList();
                             return _MessageList(
                               entries: entries,
                               allMessages: messages,
@@ -758,6 +877,8 @@ class ChannelDetailPage extends HookConsumerWidget {
                                       initialOldestOrdinaryUnreadMessageId !=
                                           null),
                               channelId: channel.id,
+                              isDirectMessage:
+                                  resolvedChannel.channelType == 'dm',
                               currentPubkey: currentPubkey,
                               isMember: resolvedChannel.isMember,
                               isArchived: resolvedChannel.isArchived,
@@ -802,44 +923,52 @@ class ChannelDetailPage extends HookConsumerWidget {
                 child: ComposerDockSizeReporter(
                   key: const ValueKey('channel-composer-dock'),
                   onHeightChanged: (height) {
-                    if ((composerDockHeight.value - height).abs() < 0.5) return;
+                    if ((composerDockHeight.value - height).abs() < 0.5) {
+                      return;
+                    }
                     composerDockHeight.value = height;
                   },
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      AnimatedSize(
-                        duration: MediaQuery.disableAnimationsOf(context)
-                            ? Duration.zero
-                            : const Duration(milliseconds: 180),
-                        curve: Curves.easeOutCubic,
-                        alignment: Alignment.bottomCenter,
-                        child: typingEntries.isEmpty
-                            ? const SizedBox.shrink()
-                            : ChannelTypingIndicator(entries: typingEntries),
-                      ),
-                      ComposeBar(
-                        channelId: channel.id,
-                        focusNode: composerFocusNode,
-                        onFocusRestorerChanged: (restoreFocus) =>
-                            restoreComposerFocus.value = restoreFocus,
-                        channelName: resolvedChannel.isDm
-                            ? ''
-                            : resolvedChannel.name,
-                        onSend:
-                            (
-                              content,
-                              mentionPubkeys, {
-                              mediaTags = const <List<String>>[],
-                            }) => sendMessage.call(
-                              channelId: channel.id,
-                              content: content,
-                              mentionPubkeys: mentionPubkeys,
-                              channel: resolvedChannel,
-                              mediaTags: mediaTags,
-                            ),
-                      ),
-                    ],
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: Grid.fourteen),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedSize(
+                          duration: MediaQuery.disableAnimationsOf(context)
+                              ? Duration.zero
+                              : const Duration(milliseconds: 180),
+                          curve: Curves.easeOutCubic,
+                          alignment: Alignment.bottomCenter,
+                          child: typingEntries.isEmpty
+                              ? const SizedBox.shrink()
+                              : ChannelTypingIndicator(entries: typingEntries),
+                        ),
+                        ComposeBar(
+                          channelId: channel.id,
+                          focusNode: composerFocusNode,
+                          surfaceColor: conversationSurfaceColor(context),
+                          fillWidth: true,
+                          onFocusRestorerChanged: (restoreFocus) =>
+                              restoreComposerFocus.value = restoreFocus,
+                          channelName: resolvedChannel.isDm
+                              ? ''
+                              : resolvedChannel.name,
+                          hintText: composerHintText,
+                          onSend:
+                              (
+                                content,
+                                mentionPubkeys, {
+                                mediaTags = const <List<String>>[],
+                              }) => sendMessage.call(
+                                channelId: channel.id,
+                                content: content,
+                                mentionPubkeys: mentionPubkeys,
+                                channel: resolvedChannel,
+                                mediaTags: mediaTags,
+                              ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

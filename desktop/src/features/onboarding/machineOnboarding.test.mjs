@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   migrateMachineOnboardingCompletion,
   readMachineOnboardingCompletion,
+  resolveMachineOnboardingStage,
 } from "./machineOnboarding.ts";
 
 // machineOnboarding.ts reads/writes window.localStorage directly, so we inject
@@ -171,4 +172,22 @@ test("migrate_already_completed_pubkey_returns_true_immediately", () => {
     // (but a redundant write is also acceptable — just verify it's still true).
     assert.equal(storage.getItem(V2_KEY), "true");
   });
+});
+
+test("a failed identity query is an explicit startup error, never ready", () => {
+  assert.equal(
+    resolveMachineOnboardingStage({
+      currentPubkey: null,
+      evaluatedPubkey: null,
+      hasCompletedCurrentPubkey: false,
+      identityLost: false,
+      identityLocked: false,
+      identityQueryFetching: false,
+      identityQueryStatus: "error",
+      identityResetFailed: false,
+      relaunchRequired: false,
+      continuingPubkey: null,
+    }),
+    "identity-error",
+  );
 });

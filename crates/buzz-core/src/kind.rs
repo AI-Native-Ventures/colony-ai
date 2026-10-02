@@ -440,6 +440,8 @@ pub const KIND_WINDOW_BOUNDS: u32 = 39006;
 
 /// Workflow definition (parameterized replaceable, d=workflow_uuid).
 pub const KIND_WORKFLOW_DEF: u32 = 30620;
+/// Workflow draft definition, kept separate from the active definition.
+pub const KIND_WORKFLOW_DRAFT: u32 = 30623;
 
 /// NIP-DV: per-viewer DM visibility snapshot (relay-signed, parameterized
 /// replaceable, d=viewer_pubkey). Carries one `h` tag per DM the viewer has
@@ -556,6 +558,8 @@ pub const KIND_FORUM_COMMENT: u32 = 45003;
 // Workflow engine (46000–46999)
 /// Trigger workflow execution.
 pub const KIND_WORKFLOW_TRIGGER: u32 = 46020;
+/// Pause or resume an active workflow without changing its definition version.
+pub const KIND_WORKFLOW_STATUS: u32 = 46021;
 /// Grant pending approval.
 pub const KIND_APPROVAL_GRANT: u32 = 46030;
 /// Deny pending approval.
@@ -632,6 +636,343 @@ pub const KIND_GIT_STATUS_DRAFT: u32 = 1633;
 /// authority over any member: push policy reads the repository's own
 /// announcement, never a project. See `docs/nips/NIP-MP.md`.
 pub const KIND_PROJECT: u32 = 30621;
+
+// Colony business-record heads use the NIP-33 parameterized-replaceable range.
+// They are relay-authored projections; member writes use the action/version
+// kinds below so the relay can enforce client scope and version preconditions.
+/// Canonical person or organization identity head.
+pub const KIND_PARTY_HEAD: u32 = 30630;
+/// Canonical client relationship head for a party.
+pub const KIND_CLIENT_HEAD: u32 = 30631;
+/// Business service definition head.
+pub const KIND_SERVICE_HEAD: u32 = 30632;
+/// Current proposal head.
+pub const KIND_PROPOSAL_HEAD: u32 = 30633;
+/// Canonical client work item head, including current deliverable version refs.
+pub const KIND_WORK_ITEM_HEAD: u32 = 30634;
+/// Current client knowledge document head.
+pub const KIND_KNOWLEDGE_DOCUMENT_HEAD: u32 = 30635;
+/// Current client knowledge fact head.
+pub const KIND_KNOWLEDGE_FACT_HEAD: u32 = 30636;
+/// Safe metadata for a connected client social account.
+pub const KIND_SOCIAL_ACCOUNT_HEAD: u32 = 30637;
+/// Current client content campaign head.
+pub const KIND_CONTENT_CAMPAIGN_HEAD: u32 = 30638;
+/// Current client social post head.
+pub const KIND_CONTENT_POST_HEAD: u32 = 30639;
+/// Current client website project head.
+pub const KIND_SITE_HEAD: u32 = 30640;
+/// Current client invoice head.
+pub const KIND_INVOICE_HEAD: u32 = 30641;
+/// Current business-level prospect head.
+pub const KIND_PROSPECT_HEAD: u32 = 30644;
+/// Current relay-signed head for an overdue client money follow-up.
+pub const KIND_MONEY_FOLLOW_UP_HEAD: u32 = 30645;
+/// Current company-scoped commitment suggestion or work watchdog configuration.
+pub const KIND_COMPANY_WORK_TRACKING_HEAD: u32 = 30652;
+/// Relay-authored canonical employee AI allowance head (community-wide).
+pub const KIND_EMPLOYEE_AI_ALLOWANCE_HEAD: u32 = 30653;
+/// Relay-authored canonical AI spend record head (community-wide).
+pub const KIND_AI_SPEND_RECORD_HEAD: u32 = 30654;
+
+// Member-authored business actions and immutable versions use the 47000 band.
+// The company-record kinds reserve 47031 through 47033; business prospect
+// actions use 47034 to keep the registries disjoint. Business events are scoped
+// to the business channel.
+/// Requested change to a canonical party identity.
+pub const KIND_PARTY_ACTION: u32 = 47000;
+/// Requested change to a client relationship.
+pub const KIND_CLIENT_ACTION: u32 = 47001;
+/// Requested change to a business service definition.
+pub const KIND_SERVICE_ACTION: u32 = 47002;
+/// Immutable proposal revision.
+pub const KIND_PROPOSAL_VERSION: u32 = 47003;
+/// Acceptance of one exact proposal version and conversion claim.
+pub const KIND_PROPOSAL_ACCEPTANCE: u32 = 47004;
+/// Relay-authored receipt for an idempotent proposal conversion.
+pub const KIND_PROPOSAL_CONVERSION_RECEIPT: u32 = 47005;
+/// Requested change to a client work item.
+pub const KIND_WORK_ITEM_ACTION: u32 = 47006;
+/// Immutable deliverable version.
+pub const KIND_DELIVERABLE_VERSION: u32 = 47007;
+/// Append-only approval or rejection of an exact deliverable version.
+pub const KIND_DELIVERABLE_APPROVAL: u32 = 47008;
+/// Immutable knowledge document revision.
+pub const KIND_KNOWLEDGE_DOCUMENT_VERSION: u32 = 47009;
+/// Immutable knowledge fact revision.
+pub const KIND_KNOWLEDGE_FACT_VERSION: u32 = 47010;
+/// Knowledge access grant or revocation.
+pub const KIND_KNOWLEDGE_ACCESS_CHANGE: u32 = 47011;
+/// Social provider authorization receipt with opaque credential reference.
+pub const KIND_SOCIAL_ACCOUNT_AUTHORIZATION: u32 = 47012;
+/// Requested change to a content campaign.
+pub const KIND_CONTENT_CAMPAIGN_ACTION: u32 = 47013;
+/// Immutable social post revision.
+pub const KIND_CONTENT_POST_VERSION: u32 = 47014;
+/// Feedback anchored to an exact post version and media location.
+pub const KIND_CONTENT_FEEDBACK: u32 = 47015;
+/// Approval or rejection of an exact social post version.
+pub const KIND_CONTENT_APPROVAL: u32 = 47016;
+/// Durable request to publish approved content.
+pub const KIND_PUBLISHING_INTENT: u32 = 47017;
+/// Provider result or reconciliation receipt for a publish intent.
+pub const KIND_PUBLISHING_RECEIPT: u32 = 47018;
+/// Social inbox assignment, reply, or resolution action.
+pub const KIND_SOCIAL_INBOX_ACTION: u32 = 47019;
+/// Sourced and freshness-stamped report snapshot.
+pub const KIND_SOURCED_REPORT_SNAPSHOT: u32 = 47020;
+/// Immutable website source revision.
+pub const KIND_SITE_VERSION: u32 = 47021;
+/// Website build result with source and artifact digests.
+pub const KIND_SITE_BUILD: u32 = 47022;
+/// Deployment intent or provider result.
+pub const KIND_SITE_DEPLOYMENT: u32 = 47023;
+/// Domain verification and DNS evidence.
+pub const KIND_SITE_DOMAIN: u32 = 47024;
+/// Sourced website enquiry.
+pub const KIND_SITE_ENQUIRY: u32 = 47025;
+/// Immutable invoice revision.
+pub const KIND_INVOICE_VERSION: u32 = 47026;
+/// Sourced payment or collection evidence.
+pub const KIND_PAYMENT: u32 = 47027;
+/// Refund, credit, fee, or other financial adjustment evidence.
+pub const KIND_MONEY_ADJUSTMENT: u32 = 47028;
+/// Reconciliation match or exception evidence.
+pub const KIND_RECONCILIATION: u32 = 47029;
+/// Follow-up draft linked to an invoice or outstanding balance.
+pub const KIND_MONEY_FOLLOW_UP: u32 = 47030;
+/// Requested change to a prospect qualification or pipeline record.
+pub const KIND_PROSPECT_ACTION: u32 = 47034;
+/// Requested change to a company work suggestion or watchdog configuration.
+pub const KIND_COMPANY_WORK_TRACKING_ACTION: u32 = 47041;
+/// Member-authored employee AI allowance update, brokered.
+pub const KIND_EMPLOYEE_AI_ALLOWANCE_ACTION: u32 = 47042;
+/// Member-authored AI spend record update, brokered.
+pub const KIND_AI_SPEND_RECORD_ACTION: u32 = 47043;
+
+// Company records (docs/company-records.md). Goals are community-wide; asks
+// live in channel threads. Heads are relay-signed like business heads.
+/// Relay-authored canonical goal head (community-wide, no `h` tag).
+pub const KIND_GOAL_HEAD: u32 = 30642;
+/// Relay-authored canonical ask head (channel-scoped).
+pub const KIND_ASK_HEAD: u32 = 30643;
+/// Relay-authored canonical member-position head (community-wide).
+pub const KIND_MEMBER_POSITION_HEAD: u32 = 30648;
+/// Relay-authored canonical employee configuration revision head (community-wide).
+pub const KIND_EMPLOYEE_REVISION_HEAD: u32 = 30651;
+/// Relay-authored canonical employee hire head (community-wide).
+pub const KIND_HIRE_HEAD: u32 = 30650;
+/// Relay-authored canonical standing tool permission head (community-wide).
+pub const KIND_TOOL_PERMISSION_HEAD: u32 = 30646;
+/// Relay-authored canonical Factory run preview and pull request head.
+pub const KIND_FACTORY_RUN_HEAD: u32 = 30649;
+/// Relay-authored canonical employee duty head (community-wide).
+pub const KIND_DUTY_HEAD: u32 = 30655;
+/// Relay-authored canonical employee lesson head (community-wide).
+pub const KIND_LESSON_HEAD: u32 = 30656;
+/// Member goal mutation, brokered.
+pub const KIND_GOAL_ACTION: u32 = 47031;
+/// Member ask create or cancel, brokered; the create is a thread item.
+pub const KIND_ASK_ACTION: u32 = 47032;
+/// Member ask resolution, brokered and append only.
+pub const KIND_ASK_RESPONSE: u32 = 47033;
+/// Relay-authored canonical secret binding head (community-wide, no `h` tag).
+pub const KIND_SECRET_BINDING_HEAD: u32 = 30647;
+/// Member secret binding create, activation, or revocation, brokered.
+pub const KIND_SECRET_BINDING_ACTION: u32 = 47036;
+/// Member position mutation, brokered and community-wide.
+pub const KIND_MEMBER_POSITION_ACTION: u32 = 47037;
+/// Member-authored employee configuration revision (brokered and append-only).
+pub const KIND_EMPLOYEE_REVISION_ACTION: u32 = 47040;
+/// Member hire proposal, approval or completion, brokered.
+pub const KIND_HIRE_ACTION: u32 = 47039;
+/// Member standing tool permission grant, update or revoke, brokered.
+pub const KIND_TOOL_PERMISSION_ACTION: u32 = 47035;
+/// Member Factory run preview or pull request action, brokered.
+pub const KIND_FACTORY_RUN_ACTION: u32 = 47038;
+/// Member duty mutation, brokered and community-wide.
+pub const KIND_DUTY_ACTION: u32 = 47044;
+/// Member lesson mutation, brokered and community-wide.
+pub const KIND_LESSON_ACTION: u32 = 47045;
+
+/// Every company-record kind, including heads.
+pub const COMPANY_RECORD_KINDS: &[u32] = &[
+    KIND_GOAL_HEAD,
+    KIND_ASK_HEAD,
+    KIND_MEMBER_POSITION_HEAD,
+    KIND_HIRE_HEAD,
+    KIND_DUTY_HEAD,
+    KIND_LESSON_HEAD,
+    KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
+    KIND_AI_SPEND_RECORD_HEAD,
+    KIND_GOAL_ACTION,
+    KIND_ASK_ACTION,
+    KIND_ASK_RESPONSE,
+    KIND_SECRET_BINDING_HEAD,
+    KIND_SECRET_BINDING_ACTION,
+    KIND_TOOL_PERMISSION_HEAD,
+    KIND_TOOL_PERMISSION_ACTION,
+    KIND_MEMBER_POSITION_ACTION,
+    KIND_FACTORY_RUN_HEAD,
+    KIND_FACTORY_RUN_ACTION,
+    KIND_EMPLOYEE_REVISION_HEAD,
+    KIND_EMPLOYEE_REVISION_ACTION,
+    KIND_HIRE_ACTION,
+    KIND_DUTY_ACTION,
+    KIND_LESSON_ACTION,
+    KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
+    KIND_AI_SPEND_RECORD_ACTION,
+];
+
+/// Returns `true` for member actions that execute through the company broker.
+pub const fn is_company_command_kind(kind: u32) -> bool {
+    matches!(
+        kind,
+        KIND_GOAL_ACTION
+            | KIND_ASK_ACTION
+            | KIND_ASK_RESPONSE
+            | KIND_SECRET_BINDING_ACTION
+            | KIND_MEMBER_POSITION_ACTION
+            | KIND_EMPLOYEE_REVISION_ACTION
+            | KIND_HIRE_ACTION
+            | KIND_TOOL_PERMISSION_ACTION
+            | KIND_FACTORY_RUN_ACTION
+            | KIND_DUTY_ACTION
+            | KIND_LESSON_ACTION
+            | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
+            | KIND_AI_SPEND_RECORD_ACTION
+    )
+}
+
+/// Returns `true` for company kinds with no channel scope (community-wide).
+pub const fn is_company_global_kind(kind: u32) -> bool {
+    matches!(
+        kind,
+        KIND_GOAL_HEAD
+            | KIND_GOAL_ACTION
+            | KIND_SECRET_BINDING_HEAD
+            | KIND_SECRET_BINDING_ACTION
+            | KIND_MEMBER_POSITION_HEAD
+            | KIND_MEMBER_POSITION_ACTION
+            | KIND_EMPLOYEE_REVISION_HEAD
+            | KIND_EMPLOYEE_REVISION_ACTION
+            | KIND_HIRE_HEAD
+            | KIND_HIRE_ACTION
+            | KIND_TOOL_PERMISSION_HEAD
+            | KIND_TOOL_PERMISSION_ACTION
+            | KIND_FACTORY_RUN_HEAD
+            | KIND_FACTORY_RUN_ACTION
+            | KIND_DUTY_HEAD
+            | KIND_DUTY_ACTION
+            | KIND_LESSON_HEAD
+            | KIND_LESSON_ACTION
+            | KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
+            | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
+            | KIND_AI_SPEND_RECORD_HEAD
+            | KIND_AI_SPEND_RECORD_ACTION
+    )
+}
+
+/// Every Phase 2 business-record kind, including heads and immutable events.
+pub const BUSINESS_RECORD_KINDS: &[u32] = &[
+    KIND_PARTY_HEAD,
+    KIND_CLIENT_HEAD,
+    KIND_SERVICE_HEAD,
+    KIND_PROPOSAL_HEAD,
+    KIND_WORK_ITEM_HEAD,
+    KIND_KNOWLEDGE_DOCUMENT_HEAD,
+    KIND_KNOWLEDGE_FACT_HEAD,
+    KIND_SOCIAL_ACCOUNT_HEAD,
+    KIND_CONTENT_CAMPAIGN_HEAD,
+    KIND_CONTENT_POST_HEAD,
+    KIND_SITE_HEAD,
+    KIND_INVOICE_HEAD,
+    KIND_PROSPECT_HEAD,
+    KIND_MONEY_FOLLOW_UP_HEAD,
+    KIND_COMPANY_WORK_TRACKING_HEAD,
+    KIND_PARTY_ACTION,
+    KIND_CLIENT_ACTION,
+    KIND_SERVICE_ACTION,
+    KIND_PROSPECT_ACTION,
+    KIND_PROPOSAL_VERSION,
+    KIND_PROPOSAL_ACCEPTANCE,
+    KIND_PROPOSAL_CONVERSION_RECEIPT,
+    KIND_WORK_ITEM_ACTION,
+    KIND_DELIVERABLE_VERSION,
+    KIND_DELIVERABLE_APPROVAL,
+    KIND_KNOWLEDGE_DOCUMENT_VERSION,
+    KIND_KNOWLEDGE_FACT_VERSION,
+    KIND_KNOWLEDGE_ACCESS_CHANGE,
+    KIND_SOCIAL_ACCOUNT_AUTHORIZATION,
+    KIND_CONTENT_CAMPAIGN_ACTION,
+    KIND_CONTENT_POST_VERSION,
+    KIND_CONTENT_FEEDBACK,
+    KIND_CONTENT_APPROVAL,
+    KIND_PUBLISHING_INTENT,
+    KIND_PUBLISHING_RECEIPT,
+    KIND_SOCIAL_INBOX_ACTION,
+    KIND_SOURCED_REPORT_SNAPSHOT,
+    KIND_SITE_VERSION,
+    KIND_SITE_BUILD,
+    KIND_SITE_DEPLOYMENT,
+    KIND_SITE_DOMAIN,
+    KIND_SITE_ENQUIRY,
+    KIND_INVOICE_VERSION,
+    KIND_PAYMENT,
+    KIND_MONEY_ADJUSTMENT,
+    KIND_RECONCILIATION,
+    KIND_MONEY_FOLLOW_UP,
+    KIND_COMPANY_WORK_TRACKING_ACTION,
+];
+
+/// Returns `true` for a kind allocated to the Phase 2 business-record contract.
+pub fn is_business_record_kind(kind: u32) -> bool {
+    BUSINESS_RECORD_KINDS.contains(&kind)
+}
+
+/// Returns `true` for relay-authored business heads and conversion receipts.
+pub const fn is_business_relay_only_kind(kind: u32) -> bool {
+    matches!(
+        kind,
+        KIND_PARTY_HEAD
+            | KIND_CLIENT_HEAD
+            | KIND_SERVICE_HEAD
+            | KIND_PROPOSAL_HEAD
+            | KIND_WORK_ITEM_HEAD
+            | KIND_KNOWLEDGE_DOCUMENT_HEAD
+            | KIND_KNOWLEDGE_FACT_HEAD
+            | KIND_SOCIAL_ACCOUNT_HEAD
+            | KIND_CONTENT_CAMPAIGN_HEAD
+            | KIND_CONTENT_POST_HEAD
+            | KIND_SITE_HEAD
+            | KIND_INVOICE_HEAD
+            | KIND_PROSPECT_HEAD
+            | KIND_MONEY_FOLLOW_UP_HEAD
+            | KIND_COMPANY_WORK_TRACKING_HEAD
+            | KIND_PROPOSAL_CONVERSION_RECEIPT
+    )
+}
+
+/// Returns `true` for member actions that execute through the business broker.
+pub const fn is_business_command_kind(kind: u32) -> bool {
+    matches!(
+        kind,
+        KIND_PARTY_ACTION
+            | KIND_CLIENT_ACTION
+            | KIND_SERVICE_ACTION
+            | KIND_PROSPECT_ACTION
+            | KIND_WORK_ITEM_ACTION
+            | KIND_PROPOSAL_VERSION
+            | KIND_PROPOSAL_ACCEPTANCE
+            | KIND_DELIVERABLE_VERSION
+            | KIND_DELIVERABLE_APPROVAL
+            | KIND_INVOICE_VERSION
+            | KIND_PAYMENT
+            | KIND_MONEY_ADJUSTMENT
+            | KIND_MONEY_FOLLOW_UP
+            | KIND_COMPANY_WORK_TRACKING_ACTION
+    )
+}
 
 /// All registered kind constants — used for duplicate detection and iteration.
 pub const ALL_KINDS: &[u32] = &[
@@ -728,6 +1069,7 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_MEMBER_REMOVED_NOTIFICATION,
     KIND_AGENT_TURN_METRIC,
     KIND_WORKFLOW_DEF,
+    KIND_WORKFLOW_DRAFT,
     KIND_LONG_FORM,
     KIND_USER_STATUS,
     KIND_READ_STATE,
@@ -735,6 +1077,7 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_FORUM_VOTE,
     KIND_FORUM_COMMENT,
     KIND_WORKFLOW_TRIGGER,
+    KIND_WORKFLOW_STATUS,
     KIND_APPROVAL_GRANT,
     KIND_APPROVAL_DENY,
     KIND_WORKFLOW_TRIGGERED,
@@ -766,6 +1109,77 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_GIT_STATUS_CLOSED,
     KIND_GIT_STATUS_DRAFT,
     KIND_PROJECT,
+    KIND_PARTY_HEAD,
+    KIND_CLIENT_HEAD,
+    KIND_SERVICE_HEAD,
+    KIND_PROPOSAL_HEAD,
+    KIND_WORK_ITEM_HEAD,
+    KIND_KNOWLEDGE_DOCUMENT_HEAD,
+    KIND_KNOWLEDGE_FACT_HEAD,
+    KIND_SOCIAL_ACCOUNT_HEAD,
+    KIND_CONTENT_CAMPAIGN_HEAD,
+    KIND_CONTENT_POST_HEAD,
+    KIND_SITE_HEAD,
+    KIND_INVOICE_HEAD,
+    KIND_PROSPECT_HEAD,
+    KIND_MONEY_FOLLOW_UP_HEAD,
+    KIND_COMPANY_WORK_TRACKING_HEAD,
+    KIND_PARTY_ACTION,
+    KIND_CLIENT_ACTION,
+    KIND_SERVICE_ACTION,
+    KIND_PROSPECT_ACTION,
+    KIND_PROPOSAL_VERSION,
+    KIND_PROPOSAL_ACCEPTANCE,
+    KIND_PROPOSAL_CONVERSION_RECEIPT,
+    KIND_WORK_ITEM_ACTION,
+    KIND_DELIVERABLE_VERSION,
+    KIND_DELIVERABLE_APPROVAL,
+    KIND_KNOWLEDGE_DOCUMENT_VERSION,
+    KIND_KNOWLEDGE_FACT_VERSION,
+    KIND_KNOWLEDGE_ACCESS_CHANGE,
+    KIND_SOCIAL_ACCOUNT_AUTHORIZATION,
+    KIND_CONTENT_CAMPAIGN_ACTION,
+    KIND_CONTENT_POST_VERSION,
+    KIND_CONTENT_FEEDBACK,
+    KIND_CONTENT_APPROVAL,
+    KIND_PUBLISHING_INTENT,
+    KIND_PUBLISHING_RECEIPT,
+    KIND_SOCIAL_INBOX_ACTION,
+    KIND_SOURCED_REPORT_SNAPSHOT,
+    KIND_SITE_VERSION,
+    KIND_SITE_BUILD,
+    KIND_SITE_DEPLOYMENT,
+    KIND_SITE_DOMAIN,
+    KIND_SITE_ENQUIRY,
+    KIND_INVOICE_VERSION,
+    KIND_PAYMENT,
+    KIND_MONEY_ADJUSTMENT,
+    KIND_RECONCILIATION,
+    KIND_MONEY_FOLLOW_UP,
+    KIND_COMPANY_WORK_TRACKING_ACTION,
+    KIND_GOAL_HEAD,
+    KIND_ASK_HEAD,
+    KIND_MEMBER_POSITION_HEAD,
+    KIND_HIRE_HEAD,
+    KIND_FACTORY_RUN_HEAD,
+    KIND_DUTY_HEAD,
+    KIND_LESSON_HEAD,
+    KIND_FACTORY_RUN_ACTION,
+    KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
+    KIND_AI_SPEND_RECORD_HEAD,
+    KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
+    KIND_AI_SPEND_RECORD_ACTION,
+    KIND_GOAL_ACTION,
+    KIND_ASK_ACTION,
+    KIND_ASK_RESPONSE,
+    KIND_TOOL_PERMISSION_HEAD,
+    KIND_TOOL_PERMISSION_ACTION,
+    KIND_MEMBER_POSITION_ACTION,
+    KIND_EMPLOYEE_REVISION_HEAD,
+    KIND_EMPLOYEE_REVISION_ACTION,
+    KIND_HIRE_ACTION,
+    KIND_DUTY_ACTION,
+    KIND_LESSON_ACTION,
 ];
 
 /// Returns `true` if `kind` is in the ephemeral range (20000–29999).
@@ -819,12 +1233,40 @@ pub const fn is_command_kind(kind: u32) -> bool {
     matches!(
         kind,
         KIND_WORKFLOW_DEF
+            | KIND_WORKFLOW_DRAFT
             | KIND_DM_OPEN
             | KIND_DM_ADD_MEMBER
             | KIND_DM_HIDE
             | KIND_WORKFLOW_TRIGGER
+            | KIND_WORKFLOW_STATUS
             | KIND_APPROVAL_GRANT
             | KIND_APPROVAL_DENY
+            | KIND_PARTY_ACTION
+            | KIND_CLIENT_ACTION
+            | KIND_SERVICE_ACTION
+            | KIND_PROSPECT_ACTION
+            | KIND_WORK_ITEM_ACTION
+            | KIND_PROPOSAL_VERSION
+            | KIND_PROPOSAL_ACCEPTANCE
+            | KIND_DELIVERABLE_VERSION
+            | KIND_DELIVERABLE_APPROVAL
+            | KIND_INVOICE_VERSION
+            | KIND_PAYMENT
+            | KIND_MONEY_ADJUSTMENT
+            | KIND_MONEY_FOLLOW_UP
+            | KIND_COMPANY_WORK_TRACKING_ACTION
+            | KIND_GOAL_ACTION
+            | KIND_ASK_ACTION
+            | KIND_ASK_RESPONSE
+            | KIND_SECRET_BINDING_ACTION
+            | KIND_TOOL_PERMISSION_ACTION
+            | KIND_MEMBER_POSITION_ACTION
+            | KIND_HIRE_ACTION
+            | KIND_FACTORY_RUN_ACTION
+            | KIND_DUTY_ACTION
+            | KIND_LESSON_ACTION
+            | KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
+            | KIND_AI_SPEND_RECORD_ACTION
     )
 }
 
@@ -839,6 +1281,34 @@ pub const fn is_relay_only_kind(kind: u32) -> bool {
             | KIND_DM_VISIBILITY
             | KIND_THREAD_SUMMARY
             | KIND_WINDOW_BOUNDS
+            | KIND_PARTY_HEAD
+            | KIND_CLIENT_HEAD
+            | KIND_SERVICE_HEAD
+            | KIND_PROPOSAL_HEAD
+            | KIND_WORK_ITEM_HEAD
+            | KIND_KNOWLEDGE_DOCUMENT_HEAD
+            | KIND_KNOWLEDGE_FACT_HEAD
+            | KIND_SOCIAL_ACCOUNT_HEAD
+            | KIND_CONTENT_CAMPAIGN_HEAD
+            | KIND_CONTENT_POST_HEAD
+            | KIND_SITE_HEAD
+            | KIND_INVOICE_HEAD
+            | KIND_PROSPECT_HEAD
+            | KIND_MONEY_FOLLOW_UP_HEAD
+            | KIND_COMPANY_WORK_TRACKING_HEAD
+            | KIND_PROPOSAL_CONVERSION_RECEIPT
+            | KIND_GOAL_HEAD
+            | KIND_ASK_HEAD
+            | KIND_SECRET_BINDING_HEAD
+            | KIND_TOOL_PERMISSION_HEAD
+            | KIND_MEMBER_POSITION_HEAD
+            | KIND_EMPLOYEE_REVISION_HEAD
+            | KIND_HIRE_HEAD
+            | KIND_FACTORY_RUN_HEAD
+            | KIND_DUTY_HEAD
+            | KIND_LESSON_HEAD
+            | KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
+            | KIND_AI_SPEND_RECORD_HEAD
     )
 }
 
@@ -862,11 +1332,28 @@ const _: () = assert!(is_parameterized_replaceable(KIND_MANAGED_AGENT)); // 3017
 const _: () = assert!(is_parameterized_replaceable(KIND_TEAM_CATALOG)); // 30178 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PRIVATE_MANAGED_AGENT)); // 30179 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_WORKFLOW_DEF)); // 30620 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_WORKFLOW_DRAFT)); // 30623 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_EVENT_REMINDER)); // 30300 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_DM_VISIBILITY)); // 30622 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_PROJECT)); // 30621 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_THREAD_SUMMARY)); // 39005 ∈ 30000–39999
 const _: () = assert!(is_parameterized_replaceable(KIND_WINDOW_BOUNDS)); // 39006 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_GOAL_HEAD)); // 30642 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_ASK_HEAD)); // 30643 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_MEMBER_POSITION_HEAD)); // 30648 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_HIRE_HEAD)); // 30650 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_FACTORY_RUN_HEAD)); // 30649 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(
+    KIND_COMPANY_WORK_TRACKING_HEAD
+)); // 30652 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_EMPLOYEE_REVISION_HEAD)); // 30651 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(
+    KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
+)); // 30653 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_AI_SPEND_RECORD_HEAD)); // 30654 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_TOOL_PERMISSION_HEAD)); // 30646 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_PROSPECT_HEAD)); // 30644 ∈ 30000–39999
+const _: () = assert!(is_parameterized_replaceable(KIND_MONEY_FOLLOW_UP_HEAD)); // 30645 ∈ 30000–39999
 
 // Compile-time: NIP-34 parameterized replaceable kinds are in the correct range.
 const _: () = assert!(
@@ -914,6 +1401,64 @@ mod tests {
     fn nip43_membership_snapshot_is_relay_only() {
         assert!(is_relay_only_kind(KIND_NIP43_MEMBERSHIP_LIST));
         assert!(!is_relay_only_kind(KIND_NIP43_LEAVE_REQUEST));
+    }
+
+    #[test]
+    fn money_kinds_are_registered_with_write_authority() {
+        for kind in [
+            KIND_INVOICE_VERSION,
+            KIND_PAYMENT,
+            KIND_MONEY_ADJUSTMENT,
+            KIND_MONEY_FOLLOW_UP,
+        ] {
+            assert!(is_business_record_kind(kind));
+            assert!(is_business_command_kind(kind));
+            assert!(!is_relay_only_kind(kind));
+        }
+        assert!(is_business_record_kind(KIND_MONEY_FOLLOW_UP_HEAD));
+        assert!(is_business_relay_only_kind(KIND_MONEY_FOLLOW_UP_HEAD));
+        assert!(is_relay_only_kind(KIND_MONEY_FOLLOW_UP_HEAD));
+    }
+
+    #[test]
+    fn company_work_tracking_kinds_have_expected_write_authority() {
+        assert!(is_business_record_kind(KIND_COMPANY_WORK_TRACKING_HEAD));
+        assert!(is_business_relay_only_kind(KIND_COMPANY_WORK_TRACKING_HEAD));
+        assert!(is_relay_only_kind(KIND_COMPANY_WORK_TRACKING_HEAD));
+        assert!(is_business_record_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
+        assert!(is_business_command_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
+        assert!(is_command_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
+        assert!(!is_relay_only_kind(KIND_COMPANY_WORK_TRACKING_ACTION));
+    }
+
+    #[test]
+    fn duty_and_lesson_kinds_have_expected_write_authority() {
+        for (head, action) in [
+            (KIND_DUTY_HEAD, KIND_DUTY_ACTION),
+            (KIND_LESSON_HEAD, KIND_LESSON_ACTION),
+        ] {
+            assert!(COMPANY_RECORD_KINDS.contains(&head));
+            assert!(COMPANY_RECORD_KINDS.contains(&action));
+            assert!(is_company_global_kind(head));
+            assert!(is_company_global_kind(action));
+            assert!(is_relay_only_kind(head));
+            assert!(is_company_command_kind(action));
+            assert!(is_command_kind(action));
+            assert!(!is_relay_only_kind(action));
+        }
+    }
+
+    #[test]
+    fn employee_spend_actions_are_transactional_company_commands() {
+        for kind in [
+            KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
+            KIND_AI_SPEND_RECORD_ACTION,
+        ] {
+            assert!(is_company_command_kind(kind));
+            assert!(is_command_kind(kind));
+            assert!(is_company_global_kind(kind));
+            assert!(!is_relay_only_kind(kind));
+        }
     }
 
     #[test]

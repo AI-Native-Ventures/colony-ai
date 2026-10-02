@@ -105,6 +105,7 @@ fn record() -> ManagedAgentRecord {
 
 fn persona(id: &str, runtime: Option<&str>, prompt: &str) -> AgentDefinition {
     AgentDefinition {
+        company_role: None,
         session_policy: Default::default(),
         description: None,
         id: id.into(),

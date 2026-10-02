@@ -1,5 +1,7 @@
 //! Domain-owned persistence implementations.
 
+/// Deployment-global email and Google account persistence.
+pub mod accounts;
 /// Explicit deployment-global admin report reads.
 pub mod admin_moderation;
 /// Community-scoped authentication allowlist persistence.
@@ -8,12 +10,16 @@ pub mod allowlist;
 pub mod api_token;
 /// Relay-scoped archived identity persistence (NIP-IA).
 pub mod archived_identities;
+/// Client-scoped business-record conversion claims.
+pub mod business_records;
 /// Channel lifecycle and metadata persistence.
 pub mod channel;
 /// Channel membership and roster persistence.
 pub mod channel_members;
 /// Community lifecycle and host-map persistence.
 pub mod community;
+/// Durable company work watchdog schedule and delivery journal.
+pub mod company_work_watchdog;
 /// Durable whole-community deletion lifecycle and PostgreSQL adapter.
 pub mod deletion;
 /// Direct message channel persistence.
@@ -28,6 +34,8 @@ pub mod git_repo;
 pub mod moderation;
 /// Monthly table partition management.
 pub mod partition;
+/// Deployment-global payment intents, credit ledger, and subscriptions.
+pub mod payments;
 /// Buzz product-feedback sidecar persistence.
 pub mod product_feedback;
 /// Community-scoped push lease and durable wake-outbox persistence.

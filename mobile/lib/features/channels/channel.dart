@@ -20,6 +20,10 @@ class Channel {
   final DateTime createdAt;
   final int memberCount;
   final DateTime? lastMessageAt;
+  final String? lastMessageContent;
+  final String? lastMessagePubkey;
+  final String? lastMessageEventId;
+  final int? lastMessageCreatedAt;
   final DateTime? archivedAt;
   final List<String> participants;
   final List<String> participantPubkeys;
@@ -39,6 +43,10 @@ class Channel {
     this.topic,
     this.purpose,
     this.lastMessageAt,
+    this.lastMessageContent,
+    this.lastMessagePubkey,
+    this.lastMessageEventId,
+    this.lastMessageCreatedAt,
     this.archivedAt,
     this.participants = const [],
     this.participantPubkeys = const [],
@@ -61,6 +69,10 @@ class Channel {
     lastMessageAt: json['last_message_at'] != null
         ? DateTime.parse(json['last_message_at'] as String)
         : null,
+    lastMessageContent: json['last_message_content'] as String?,
+    lastMessagePubkey: json['last_message_pubkey'] as String?,
+    lastMessageEventId: json['last_message_event_id'] as String?,
+    lastMessageCreatedAt: json['last_message_created_at'] as int?,
     archivedAt: json['archived_at'] != null
         ? DateTime.parse(json['archived_at'] as String)
         : null,
@@ -133,6 +145,10 @@ class Channel {
     createdAt: details.createdAt,
     memberCount: memberCount,
     lastMessageAt: lastMessageAt,
+    lastMessageContent: lastMessageContent,
+    lastMessagePubkey: lastMessagePubkey,
+    lastMessageEventId: lastMessageEventId,
+    lastMessageCreatedAt: lastMessageCreatedAt,
     archivedAt: details.archivedAt,
     participants: participants,
     participantPubkeys: participantPubkeys,
@@ -145,6 +161,10 @@ class Channel {
     String? name,
     String? description,
     Object? lastMessageAt = _sentinel,
+    Object? lastMessageContent = _sentinel,
+    Object? lastMessagePubkey = _sentinel,
+    Object? lastMessageEventId = _sentinel,
+    Object? lastMessageCreatedAt = _sentinel,
     Object? archivedAt = _sentinel,
     int? memberCount,
     bool? isMember,
@@ -162,6 +182,18 @@ class Channel {
     lastMessageAt: identical(lastMessageAt, _sentinel)
         ? this.lastMessageAt
         : lastMessageAt as DateTime?,
+    lastMessageContent: identical(lastMessageContent, _sentinel)
+        ? this.lastMessageContent
+        : lastMessageContent as String?,
+    lastMessagePubkey: identical(lastMessagePubkey, _sentinel)
+        ? this.lastMessagePubkey
+        : lastMessagePubkey as String?,
+    lastMessageEventId: identical(lastMessageEventId, _sentinel)
+        ? this.lastMessageEventId
+        : lastMessageEventId as String?,
+    lastMessageCreatedAt: identical(lastMessageCreatedAt, _sentinel)
+        ? this.lastMessageCreatedAt
+        : lastMessageCreatedAt as int?,
     archivedAt: identical(archivedAt, _sentinel)
         ? this.archivedAt
         : archivedAt as DateTime?,

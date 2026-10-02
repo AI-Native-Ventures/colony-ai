@@ -383,6 +383,10 @@ class _ChannelSection extends StatelessWidget {
   final String emptyLabel;
   final ChannelSortMode? sortMode;
   final ValueChanged<ChannelSortMode>? onSortModeChange;
+  final bool simpleStyle;
+  final double simpleHeaderTopPadding;
+  final double expandedTrailingPadding;
+  final VoidCallback? onAdd;
   final Future<void> Function(Channel channel) onSelectChannel;
 
   const _ChannelSection({
@@ -398,6 +402,10 @@ class _ChannelSection extends StatelessWidget {
     required this.emptyLabel,
     this.sortMode,
     this.onSortModeChange,
+    this.simpleStyle = false,
+    this.simpleHeaderTopPadding = 15,
+    this.expandedTrailingPadding = _kExpandedSectionTrailingPadding,
+    this.onAdd,
     required this.onSelectChannel,
   });
 
@@ -414,6 +422,9 @@ class _ChannelSection extends StatelessWidget {
           onToggle: onToggle,
           sortMode: sortMode,
           onSortModeChange: onSortModeChange,
+          simpleStyle: simpleStyle,
+          simpleHeaderTopPadding: simpleHeaderTopPadding,
+          onAdd: onAdd,
         ),
         _AnimatedSectionBody(
           expanded: expanded,
@@ -446,7 +457,7 @@ class _ChannelSection extends StatelessWidget {
                     onMarkRead: null,
                     sectionId: null,
                   ),
-              const SizedBox(height: _kExpandedSectionTrailingPadding),
+              SizedBox(height: expandedTrailingPadding),
             ],
           ),
         ),
@@ -475,7 +486,7 @@ class _EmptyState extends StatelessWidget {
             Text(
               'No conversations yet',
               style: context.textTheme.bodyLarge?.copyWith(
-                color: context.colors.onSurfaceVariant,
+                color: _chatMuted(context),
               ),
             ),
           ],
@@ -510,6 +521,9 @@ class _SectionHeader extends StatelessWidget {
   final VoidCallback onToggle;
   final ChannelSortMode? sortMode;
   final ValueChanged<ChannelSortMode>? onSortModeChange;
+  final bool simpleStyle;
+  final double simpleHeaderTopPadding;
+  final VoidCallback? onAdd;
 
   const _SectionHeader({
     required this.label,
@@ -518,10 +532,61 @@ class _SectionHeader extends StatelessWidget {
     required this.onToggle,
     this.sortMode,
     this.onSortModeChange,
+    this.simpleStyle = false,
+    this.simpleHeaderTopPadding = 15,
+    this.onAdd,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (simpleStyle) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(20, simpleHeaderTopPadding, 20, 5),
+        child: Row(
+          children: [
+            Expanded(
+              child: Semantics(
+                button: true,
+                label: '$label section',
+                expanded: expanded,
+                child: GestureDetector(
+                  onTap: onToggle,
+                  behavior: HitTestBehavior.opaque,
+                  child: SizedBox(
+                    height: 26,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        label.toUpperCase(),
+                        style: context.textTheme.labelSmall?.copyWith(
+                          color: _chatMuted(context),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (onAdd != null)
+              IconButton(
+                key: const ValueKey('channel-quick-actions-trigger'),
+                tooltip: 'Create or start conversation',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  LucideIcons.plus,
+                  size: 18,
+                  color: _chatMuted(context),
+                ),
+                onPressed: onAdd,
+              ),
+          ],
+        ),
+      );
+    }
+
     final sectionColor = navigationSectionForeground(context);
 
     return GestureDetector(

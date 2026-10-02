@@ -17,6 +17,12 @@ async function seedCustomSection(page: Page) {
   );
 }
 
+async function openChannelBrowserFromSidebarMenu(page: Page) {
+  await page.getByTestId("section-actions-channels").click();
+  await page.getByRole("menuitem", { name: /^Browse channels/ }).click();
+  await expect(page.getByTestId("channel-browser-dialog")).toBeVisible();
+}
+
 test.beforeEach(async ({ page }, testInfo) => {
   await installMockBridge(
     page,
@@ -216,13 +222,13 @@ test("channel browser ranks the best match first", async ({ page }) => {
   );
 });
 
-test("sidebar add-channel button creates without treating the click as a callback", async ({
+test("sidebar Channels menu browses and creates a channel", async ({
   page,
 }) => {
   await page.goto("/");
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
 
-  await page.getByTestId("section-actions-channels-quick-create").click();
+  await openChannelBrowserFromSidebarMenu(page);
 
   await expect(page.getByTestId("channel-browser-dialog")).toBeVisible();
   const channelName = `sidebar-created-${Date.now()}`;
@@ -234,7 +240,7 @@ test("sidebar add-channel button creates without treating the click as a callbac
   await expect(page.getByTestId("stream-list")).toContainText(channelName);
 });
 
-test("custom section add button creates directly into that section", async ({
+test("custom section add action stays out of the pointer header and creates by keyboard", async ({
   page,
 }) => {
   await seedCustomSection(page);
@@ -244,7 +250,10 @@ test("custom section add button creates directly into that section", async ({
     `section-actions-${CUSTOM_SECTION.id}-quick-create`,
   );
   await expect(addButton).toHaveAccessibleName("Add channel to Projects");
-  await addButton.click();
+  await page.getByTestId(`section-title-${CUSTOM_SECTION.id}`).hover();
+  await expect(addButton).toHaveCSS("opacity", "0");
+  await addButton.focus();
+  await page.keyboard.press("Enter");
   await expect(page.getByTestId("channel-browser-dialog")).toBeVisible();
 
   const channelName = `section-created-${Date.now()}`;
@@ -266,9 +275,12 @@ test("canceling section create does not affect the next global create", async ({
   await seedCustomSection(page);
   await page.goto("/");
 
-  await page
-    .getByTestId(`section-actions-${CUSTOM_SECTION.id}-quick-create`)
-    .click();
+  const sectionCreate = page.getByTestId(
+    `section-actions-${CUSTOM_SECTION.id}-quick-create`,
+  );
+  await sectionCreate.focus();
+  await expect(sectionCreate).toBeFocused();
+  await page.keyboard.press("Enter");
   // Gate on the dialog mounting before dismissing it. Escape sent before mount
   // is dropped (no handler yet), and not.toBeVisible() then passes vacuously
   // against a dialog that hasn't rendered — so the dialog opens *after* the
@@ -280,7 +292,7 @@ test("canceling section create does not affect the next global create", async ({
   // detach so it can't intercept the next click.
   await expect(page.getByTestId("dialog-overlay")).toHaveCount(0);
 
-  await page.getByTestId("section-actions-channels-quick-create").click();
+  await openChannelBrowserFromSidebarMenu(page);
   const channelName = `global-after-cancel-${Date.now()}`;
   await page.getByTestId("channel-browser-search").fill(channelName);
   await page.getByTestId("channel-browser-create-row").click();
@@ -295,9 +307,12 @@ test("failed section create retry still assigns to the section", async ({
   await seedCustomSection(page);
   await page.goto("/");
 
-  await page
-    .getByTestId(`section-actions-${CUSTOM_SECTION.id}-quick-create`)
-    .click();
+  const sectionCreate = page.getByTestId(
+    `section-actions-${CUSTOM_SECTION.id}-quick-create`,
+  );
+  await sectionCreate.focus();
+  await expect(sectionCreate).toBeFocused();
+  await page.keyboard.press("Enter");
   const channelName = `section-retry-${Date.now()}`;
   await page.getByTestId("channel-browser-search").fill(channelName);
   await page.getByTestId("channel-browser-create-row").click();

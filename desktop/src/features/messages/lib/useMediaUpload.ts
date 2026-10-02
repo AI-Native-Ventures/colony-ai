@@ -665,6 +665,12 @@ export function useMediaUpload({
     uploadFiles,
   ]);
 
+  const handleImagePicker = React.useCallback(() => {
+    openFilePicker({ accept: "image/*", multiple: true }, (files) => {
+      uploadFiles(files.filter((file) => file.type.startsWith("image/")));
+    });
+  }, [openFilePicker, uploadFiles]);
+
   const handleDrop = React.useCallback(
     async (event: React.DragEvent<HTMLElement>) => {
       event.preventDefault();
@@ -917,6 +923,7 @@ export function useMediaUpload({
       handleDragLeave,
       handleDragOver,
       handleDrop,
+      handleImagePicker,
       handlePaperclip,
       handlePaste,
       isDragOver,
@@ -947,6 +954,7 @@ export function useMediaUpload({
       handleDragLeave,
       handleDragOver,
       handleDrop,
+      handleImagePicker,
       handlePaperclip,
       handlePaste,
       isDragOver,

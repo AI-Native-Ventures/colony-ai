@@ -7,6 +7,7 @@ export type ThreadPanelLayoutProps = {
   columnMaxWidthPx?: number;
   enterMotion?: boolean;
   headerLeading?: React.ReactNode;
+  headerTitleSuffix?: string;
   /** Replaces the default "Thread" label. Channel threads leave this unset. */
   headerTitle?: string;
   headerTitleAriaLabel?: string;
@@ -24,6 +25,7 @@ export type ThreadPanelLayoutProps = {
 
 type ThreadPanelLayoutOptions = {
   headerLeading?: React.ReactNode;
+  headerTitleSuffix?: string;
   isFocusDrawer: boolean;
   isSinglePanelView: boolean;
   useSplitAuxiliaryPane: boolean;
@@ -32,6 +34,7 @@ type ThreadPanelLayoutOptions = {
 /** Maps channel presentation into the shared thread-panel layout contract. */
 export function getThreadPanelLayout({
   headerLeading,
+  headerTitleSuffix,
   isFocusDrawer,
   isSinglePanelView,
   useSplitAuxiliaryPane,
@@ -40,6 +43,7 @@ export function getThreadPanelLayout({
     ? {
         columnMaxWidthPx: THREAD_FOCUS_COLUMN_MAX_WIDTH_PX,
         headerLeading,
+        headerTitleSuffix,
         isFocusMode: true,
         isSinglePanelView: true,
         layout: "standalone",
@@ -48,6 +52,7 @@ export function getThreadPanelLayout({
     : {
         columnMaxWidthPx: undefined,
         headerLeading,
+        headerTitleSuffix,
         isFocusMode: false,
         isSinglePanelView: useSplitAuxiliaryPane ? false : isSinglePanelView,
         layout: useSplitAuxiliaryPane ? "split" : "standalone",

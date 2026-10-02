@@ -4,6 +4,7 @@ import { isMacPlatform } from "@/shared/lib/platform";
 
 import { relayClient } from "@/shared/api/relayClient";
 import { resetRateLimitGate } from "@/shared/api/relayRateLimitGate";
+import { resetRelayWebSocketOperationPacer } from "@/shared/api/relayWebSocketOperationPacer";
 import {
   autoConnectDefaultRelayEnabled,
   getDefaultRelayUrl,
@@ -38,10 +39,12 @@ import {
   restoreActiveAgentTurnsForCommunity,
 } from "@/features/agents/activeAgentTurnsStore";
 import { resetAgentWorkingSignal } from "@/features/agents/agentWorkingSignal";
+import { resetCompanyRoleDraftStore } from "@/features/agents/companyRoleDraftStore";
 import { resetAgentObserverStore } from "@/features/agents/observerRelayStore";
 import { resetAvatarPresentations } from "@/features/profile/avatarPresentationStore";
 import { resetAvatarProfileSync } from "@/features/profile/avatarProfileSync";
 import { resetSidebarRelayConnectionCardState } from "@/features/sidebar/ui/useSidebarRelayConnectionCard";
+import { resetFactorySessionRequests } from "@/features/factory/lib/factorySessionRequest";
 import { clearMarkdownNodeCache } from "@/shared/ui/markdown/nodeCache";
 import { resetMessageLinkMetadataCache } from "@/shared/ui/markdown/useMessageLinkMetadata";
 import { resetVideoPlayerState } from "@/shared/ui/videoPlayerState";
@@ -66,12 +69,14 @@ async function resetCommunityState({
   resetAvatarState: boolean;
 }): Promise<void> {
   relayClient.disconnect();
+  resetRelayWebSocketOperationPacer();
   await resetNavigationDeepLinkDrain();
   resetRateLimitGate();
   clearAllDrafts();
   resetAgentObserverStore();
   resetActiveAgentTurnsStore();
   resetAgentWorkingSignal();
+  resetCompanyRoleDraftStore();
   if (isTauri() && isMacPlatform()) {
     void clearTrayAgentActivity();
   }
@@ -80,6 +85,7 @@ async function resetCommunityState({
     resetAvatarPresentations();
   }
   resetSidebarRelayConnectionCardState();
+  resetFactorySessionRequests();
   resetMediaCaches();
   resetLinkPreviewMetadataCache();
   resetVideoPlayerState();
@@ -350,6 +356,8 @@ export function useCommunityInit(
           activeCommunity.token,
           activeCommunity.reposDir,
           getOverrides().agentManagedProfiles === true,
+          activeCommunity.businessCommunityId,
+          activeCommunity.clientChannelId,
         );
       } catch (error) {
         // A bad `repos_dir` no longer reaches here — `apply_workspace` treats

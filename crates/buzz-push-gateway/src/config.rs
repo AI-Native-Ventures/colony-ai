@@ -290,7 +290,7 @@ mod tests {
             ),
             (
                 "BUZZ_PUSH_DOGFOOD_APP_ATTEST_APP_ID".into(),
-                "TEAM.xyz.block.buzz.dogfood.mobile".into(),
+                "TEAM.ventures.ainative.colony.dogfood".into(),
             ),
             (
                 "BUZZ_PUSH_APP_ATTEST_ROOT_CERT_PATH".into(),
@@ -302,7 +302,7 @@ mod tests {
             ),
             (
                 "BUZZ_PUSH_DOGFOOD_APNS_TOPIC".into(),
-                "xyz.block.buzz.dogfood.mobile".into(),
+                "ventures.ainative.colony.dogfood".into(),
             ),
             (
                 "BUZZ_PUSH_DOGFOOD_APNS_ENVIRONMENT".into(),
@@ -320,7 +320,10 @@ mod tests {
             config.profile.apns_cert_path,
             PathBuf::from("/dogfood-identity.pem")
         );
-        assert_eq!(config.profile.apns_topic, "xyz.block.buzz.dogfood.mobile");
+        assert_eq!(
+            config.profile.apns_topic,
+            "ventures.ainative.colony.dogfood"
+        );
 
         for variable in [
             "BUZZ_PUSH_DOGFOOD_APNS_CERT_PATH",

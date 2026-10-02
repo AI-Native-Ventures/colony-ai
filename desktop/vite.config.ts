@@ -12,6 +12,20 @@ export default defineConfig(async ({ mode }) => {
     (process.env.VITE_BUZZ_BESTIE ?? modeEnv.VITE_BUZZ_BESTIE) === "1";
 
   return {
+    build:
+      mode === "e2e"
+        ? {
+            rollupOptions: {
+              input: {
+                app: path.resolve(__dirname, "index.html"),
+                onboardingVisual: path.resolve(
+                  __dirname,
+                  "tests/visual/onboarding.html",
+                ),
+              },
+            },
+          }
+        : undefined,
     plugins: [
       tanstackRouter({
         target: "react",
@@ -26,6 +40,13 @@ export default defineConfig(async ({ mode }) => {
       }),
       react(),
     ],
+    define: {
+      "import.meta.env.COLONY_GOOGLE_DESKTOP_CLIENT_ID": JSON.stringify(
+        process.env.COLONY_GOOGLE_DESKTOP_CLIENT_ID ??
+          modeEnv.COLONY_GOOGLE_DESKTOP_CLIENT_ID ??
+          "",
+      ),
+    },
     resolve: {
       alias: {
         "@": "/src",

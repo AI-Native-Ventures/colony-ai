@@ -222,6 +222,30 @@ spec:
                   name: {{ include "buzz.envSecretName" . }}
                   key: BUZZ_KLIPY_API_KEY
                   optional: true
+            - name: COLONY_ACCOUNT_KEK
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "buzz.envSecretName" . }}
+                  key: COLONY_ACCOUNT_KEK
+                  optional: true
+            - name: RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "buzz.envSecretName" . }}
+                  key: RESEND_API_KEY
+                  optional: true
+            - name: COLONY_MAIL_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "buzz.envSecretName" . }}
+                  key: COLONY_MAIL_FROM
+                  optional: true
+            - name: COLONY_GOOGLE_CLIENT_IDS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "buzz.envSecretName" . }}
+                  key: COLONY_GOOGLE_CLIENT_IDS
+                  optional: true
 
             - name: BUZZ_HUDDLE_AUDIO_AVAILABLE
               value: {{ include "buzz.huddleAudioAvailable" . | quote }}

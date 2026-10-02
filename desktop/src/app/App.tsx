@@ -26,6 +26,8 @@ import { KnownAgentPubkeysProvider } from "@/features/agents/useKnownAgentPubkey
 import { huddleWindowChannelId } from "@/features/huddle/lib/huddleWindow";
 import { useAppOnboardingState } from "@/features/onboarding/hooks";
 import { useMachineOnboardingState } from "@/features/onboarding/machineOnboarding";
+import { AccountClaimPrompt } from "@/features/account/AccountClaimPrompt";
+import { getAccountAuthClient } from "@/features/onboarding/accountAuthAdapter";
 import {
   type FirstCommunityPage,
   useCommunityOnboarding,
@@ -38,6 +40,7 @@ import {
   MachineOnboardingFlow,
   type MachineOnboardingPage,
 } from "@/features/onboarding/ui/MachineOnboardingFlow";
+import { NativeUnavailableScreen } from "@/features/onboarding/ui/NativeUnavailableScreen";
 import { OnboardingFlow } from "@/features/onboarding/ui/OnboardingFlow";
 import { PendingInviteGate } from "@/features/onboarding/ui/PendingInviteGate";
 import { KeyringLockedScreen } from "@/features/onboarding/ui/KeyringLockedScreen";
@@ -61,11 +64,13 @@ import { CommunityApplyErrorScreen } from "@/features/communities/ui/CommunityAp
 import { CommunityChangeOverlay } from "@/features/communities/ui/CommunityChangeOverlay";
 import { setAvatarProfileSyncQueryClient } from "@/features/profile/avatarProfileSync";
 import { seedProjectSnapshot } from "@/features/projects/projectSnapshot";
-import { EncryptedBackupProvider } from "@/features/settings/EncryptedBackupProvider";
 import { createBuzzQueryClient } from "@/shared/api/queryClient";
 import { hydrateChannelHeads } from "@/features/messages/lib/channelHeadCache";
 import { useIdentityQuery } from "@/shared/api/hooks";
-import { isSharedIdentity as isSharedIdentityCmd } from "@/shared/api/tauri";
+import {
+  getSharedIdentity,
+  supportsNativeCapability,
+} from "@/shared/api/nativeBridge";
 import { getProfile } from "@/shared/api/tauriProfiles";
 import {
   type AddCommunityDeepLinkPayload,
@@ -307,6 +312,7 @@ function AppReady({
   isCommunitySwitch: boolean;
 }) {
   const onboarding = useAppOnboardingState(isSharedIdentity);
+  const authClient = getAccountAuthClient();
 
   if (onboarding.stage === "reset-failed") {
     return <ResetFailedScreen />;
@@ -342,18 +348,12 @@ function AppReady({
   }
 
   return (
-    <EncryptedBackupProvider
-      onOpenSettings={() =>
-        void router.navigate({
-          to: "/settings",
-          search: { section: "profile" },
-        })
-      }
-    >
-      <KnownAgentPubkeysProvider>
-        <RouterProvider router={router} />
-      </KnownAgentPubkeysProvider>
-    </EncryptedBackupProvider>
+    <KnownAgentPubkeysProvider>
+      <RouterProvider router={router} />
+      {huddleWindowChannelId() === null ? (
+        <AccountClaimPrompt authClient={authClient} />
+      ) : null}
+    </KnownAgentPubkeysProvider>
   );
 }
 
@@ -480,6 +480,8 @@ function CommunityApp({
       relayUrl: transaction.relayUrl,
       token: transaction.token,
       reposDir: transaction.reposDir,
+      businessCommunityId: transaction.businessCommunityId,
+      clientChannelId: transaction.clientChannelId,
       pubkey: currentPubkey ?? undefined,
       addedAt: new Date().toISOString(),
     });
@@ -705,6 +707,7 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
   const [machineInitialPage, setMachineInitialPage] =
     useState<MachineOnboardingPage>();
   const [continueOnboarding, setContinueOnboarding] = useState(false);
+  const authClient = getAccountAuthClient();
 
   const reopenMachineConfig = useCallback(() => {
     setContinueOnboarding(false);
@@ -739,6 +742,7 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
   const acceptsCommunityDeepLinks = huddleWindowChannelId() === null;
   useEffect(() => {
     if (!acceptsCommunityDeepLinks) return;
+    if (!supportsNativeCapability("deep-links")) return;
 
     const unlisten = listenForDeepLinks({
       startCommunityOnboarding: communityOnboarding.start,
@@ -753,8 +757,31 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
   if (machine.stage === "reset-failed") return <ResetFailedScreen />;
   if (machine.stage === "keyring-locked") return <KeyringLockedScreen />;
   if (machine.stage === "relaunch-required") return <RelaunchRequiredScreen />;
+  if (machine.stage === "identity-error") {
+    return (
+      <NativeUnavailableScreen
+        body="Buzz could not read the startup identity through its native bridge. Nothing was sent to the relay, and no fallback identity was created. Check the desktop host and try again."
+        onRetry={() => window.location.reload()}
+        title="Buzz could not start"
+        testId="machine-identity-error"
+      />
+    );
+  }
   if (machine.stage === "blocking") return <AppLoadingGate />;
   if (machine.stage === "ready") {
+    if (!supportsNativeCapability("workspace-events")) {
+      return (
+        <MachineOnboardingFlow
+          complete={completeMachineOnboarding}
+          continueWithIdentity={machine.continueWithIdentity}
+          continueWithRecoveredIdentity={machine.continueWithRecoveredIdentity}
+          identityLost={machine.identityLost}
+          initialPage={undefined}
+          queryClient={machine.queryClient}
+          authClient={authClient}
+        />
+      );
+    }
     return (
       <CommunityApp
         continueOnboarding={continueOnboarding}
@@ -783,6 +810,7 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
         identityLost={machine.identityLost}
         initialPage={machineInitialPage}
         queryClient={machine.queryClient}
+        authClient={authClient}
       />
       {shouldAcknowledgeDeepLink ? <PendingInviteGate /> : null}
     </>
@@ -794,16 +822,29 @@ export function App() {
   useCloseWindowShortcut();
   useInitialRenderReady();
   const [sharedIdentity, setSharedIdentity] = useState<boolean | null>(null);
+  const [startupError, setStartupError] = useState(false);
   const [queryClient] = useState(createBuzzQueryClient);
 
   useEffect(() => {
-    isSharedIdentityCmd()
+    getSharedIdentity()
       .then(setSharedIdentity)
-      .catch((err) => {
-        console.warn("is_shared_identity command failed:", err);
-        setSharedIdentity(false);
+      .catch(() => {
+        // The shell must fail closed. A bridge failure is not proof of a
+        // non-shared identity and must never unlock the workspace path.
+        setStartupError(true);
       });
   }, []);
+
+  if (startupError) {
+    return (
+      <NativeUnavailableScreen
+        body="Buzz could not connect to the native startup bridge. Nothing was sent to the relay, and no fallback identity was created. Check the desktop host and try again."
+        onRetry={() => window.location.reload()}
+        title="Buzz could not start"
+        testId="native-startup-error"
+      />
+    );
+  }
 
   if (sharedIdentity === null) return <AppLoadingGate />;
 

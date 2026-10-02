@@ -2,6 +2,8 @@
 pub mod admin_action_worker;
 pub mod admin_outbox_worker;
 pub mod auth;
+/// Nostr-first broker for business-record contracts.
+pub mod business_records;
 /// Pure NIP-29 channel membership-authority decisions (kinds 9000/9001/9022).
 pub mod channel_authz;
 /// Subscription close (CLOSE) handler.
@@ -10,6 +12,28 @@ pub mod close;
 pub mod command_executor;
 /// Relay-operator community provisioning HTTP support.
 pub mod community_provisioning;
+/// Nostr-first broker for channel-scoped company asks.
+pub mod company_asks;
+pub mod company_duties;
+/// Nostr-first broker for community-wide employee configuration history.
+pub mod company_employee_history;
+/// Nostr-first broker for Software Factory run metadata.
+pub mod company_factory;
+pub mod company_hires;
+pub mod company_lessons;
+/// Nostr-first broker for community-wide company member positions.
+pub mod company_member_records;
+/// Nostr-first broker for community-wide standing tool permissions.
+pub mod company_permissions;
+/// Nostr-first broker for company records (goals and asks).
+pub mod company_records;
+/// Nostr-first broker for device-backed secret binding records.
+pub mod company_secrets;
+pub mod company_spend;
+/// Nostr-first broker for company work suggestions and watchdog settings.
+pub mod company_work_tracking;
+/// Durable company work watchdog check-in scheduler and delivery worker.
+pub mod company_work_watchdog_worker;
 /// NIP-45 COUNT handler.
 pub mod count;
 /// EVENT handler — WS dispatcher → ingest pipeline → fan-out.

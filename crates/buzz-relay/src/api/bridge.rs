@@ -55,6 +55,47 @@ pub(crate) async fn enforce_http_admission(
     }
 }
 
+/// Parse the raw HTTP filter array. Keeping this as a shared seam lets both
+/// bridge endpoints enforce request bounds before converting each filter.
+fn parse_bridge_filter_values(body: &[u8]) -> Result<Vec<Value>, (StatusCode, Json<Value>)> {
+    let raw_filters: Vec<Value> = serde_json::from_slice(body)
+        .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))?;
+    if raw_filters.len() > crate::protocol::MAX_FILTERS_PER_REQ {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            &format!(
+                "too many filters: maximum is {}",
+                crate::protocol::MAX_FILTERS_PER_REQ
+            ),
+        ));
+    }
+    Ok(raw_filters)
+}
+
+fn deserialize_bridge_filters(
+    raw_filters: &[Value],
+) -> Result<Vec<nostr::Filter>, (StatusCode, Json<Value>)> {
+    raw_filters
+        .iter()
+        .map(|value| serde_json::from_value(value.clone()))
+        .collect::<Result<_, _>>()
+        .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))
+}
+
+#[cfg(test)]
+mod filter_bound_tests {
+    use super::{parse_bridge_filter_values, StatusCode};
+
+    #[test]
+    fn http_bridge_accepts_ten_filters_and_rejects_eleven() {
+        let body_for = |count: usize| format!("[{}]", vec!["{}"; count].join(",")).into_bytes();
+
+        assert_eq!(parse_bridge_filter_values(&body_for(10)).unwrap().len(), 10);
+        let error = parse_bridge_filter_values(&body_for(11)).unwrap_err();
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+    }
+}
+
 /// Values retained from an already-verified bridge authentication event.
 #[derive(Debug)]
 pub(crate) struct VerifiedBridgeAuth {
@@ -1111,13 +1152,8 @@ async fn query_events_authed(
 
     // Two-pass parse: preserve raw JSON for custom extension fields (before_id,
     // depth_limit, feed_types) that nostr::Filter silently drops.
-    let raw_filters: Vec<Value> = serde_json::from_slice(body)
-        .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))?;
-    let filters: Vec<nostr::Filter> = raw_filters
-        .iter()
-        .map(|v| serde_json::from_value(v.clone()))
-        .collect::<Result<_, _>>()
-        .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))?;
+    let raw_filters = parse_bridge_filter_values(body)?;
+    let filters = deserialize_bridge_filters(&raw_filters)?;
     crate::handlers::req::extract_channel_ids_from_filters_limited(&filters)
         .map_err(|()| api_error(StatusCode::BAD_REQUEST, "too many explicit channels"))?;
 
@@ -1156,6 +1192,27 @@ async fn query_events_authed(
         &mut accessible_channels,
     )
     .await?;
+    let relay_pubkey = state.relay_keypair.public_key();
+    let requested_tool_consent_inbox = filters
+        .iter()
+        .any(|filter| crate::handlers::req::is_tool_consent_inbox_filter(filter, &relay_pubkey));
+    let company_role = if requested_tool_consent_inbox {
+        state
+            .db
+            .get_relay_member(tenant.community(), &authed_pubkey_hex)
+            .await
+            .map_err(|error| internal_error(&format!("company inbox role lookup: {error}")))?
+            .map(|member| member.role)
+    } else {
+        None
+    };
+    let tool_consent_inbox_authorized = filters.iter().any(|filter| {
+        crate::handlers::req::can_read_tool_consent_inbox(
+            filter,
+            &relay_pubkey,
+            company_role.as_deref(),
+        )
+    });
 
     if filters.iter().any(|f| f.search.is_some()) {
         if has_mixed_search_filters(&filters) {
@@ -1413,6 +1470,8 @@ async fn query_events_authed(
             }
         }
 
+        let is_company_tool_consent_inbox = tool_consent_inbox_authorized
+            && crate::handlers::req::is_tool_consent_inbox_filter(filter, &relay_pubkey);
         let mut query = crate::handlers::req::build_event_query_from_filter(
             filter,
             &pubkey_bytes,
@@ -1420,14 +1479,17 @@ async fn query_events_authed(
             tenant.community(),
         )
         .await;
-        crate::handlers::req::apply_channel_scope_to_query(
+        crate::handlers::req::apply_reader_channel_scope(
             &mut query,
             filter,
             extract_channel_from_filter(filter),
             &accessible_channels,
+            is_company_tool_consent_inbox,
         );
-        if let Some(channel) = extract_buzz_channel(raw) {
-            query.custom_tag = Some(("buzz-channel".into(), channel.into()));
+        if !is_company_tool_consent_inbox {
+            if let Some(channel) = extract_buzz_channel(raw) {
+                query.custom_tag = Some(("buzz-channel".into(), channel.into()));
+            }
         }
         // Shared-gated visibility pushdown: must mirror WS REQ so that a page of
         // newer private events does not starve older shared ones off the page.
@@ -1486,7 +1548,22 @@ async fn query_events_authed(
         match filter_events {
             Ok(stored_events) => {
                 for se in stored_events {
-                    if !event_in_accessible_channel(&se, &accessible_channels) {
+                    let is_company_tool_consent_inbox = tool_consent_inbox_authorized
+                        && crate::handlers::req::is_tool_consent_inbox_filter(
+                            filter,
+                            &relay_pubkey,
+                        );
+                    if !is_company_tool_consent_inbox
+                        && !event_in_accessible_channel(&se, &accessible_channels)
+                    {
+                        continue;
+                    }
+                    if is_company_tool_consent_inbox
+                        && !crate::handlers::req::is_tool_consent_head_event(
+                            &se.event,
+                            &relay_pubkey,
+                        )
+                    {
                         continue;
                     }
                     if !buzz_core::filter::filters_match(std::slice::from_ref(filter), &se) {
@@ -1650,8 +1727,8 @@ async fn count_events_authed(
     )
     .await?;
 
-    let filters: Vec<nostr::Filter> = serde_json::from_slice(body)
-        .map_err(|e| api_error(StatusCode::BAD_REQUEST, &format!("invalid filters: {e}")))?;
+    let raw_filters = parse_bridge_filter_values(body)?;
+    let filters = deserialize_bridge_filters(&raw_filters)?;
     crate::handlers::req::extract_channel_ids_from_filters_limited(&filters)
         .map_err(|()| api_error(StatusCode::BAD_REQUEST, "too many explicit channels"))?;
 
@@ -2180,7 +2257,14 @@ pub async fn workflow_webhook(
 
     let run_id = state
         .db
-        .create_workflow_run(community_id, id, None, trigger_ctx_json.as_ref())
+        .create_workflow_run_versioned(
+            community_id,
+            id,
+            None,
+            trigger_ctx_json.as_ref(),
+            &workflow.definition_hash,
+            &workflow.definition,
+        )
         .await
         .map_err(|e| super::internal_error(&format!("db error: {e}")))?;
 
@@ -2565,6 +2649,54 @@ mod postgres_tests {
         ];
 
         assert!(has_mixed_search_filters(&filters));
+    }
+
+    #[test]
+    fn tool_consent_inbox_requires_a_relay_only_filter_and_company_authority() {
+        let relay = nostr::Keys::generate().public_key();
+        let t_tag = nostr::SingleLetterTag::lowercase(nostr::Alphabet::T);
+        let filter = nostr::Filter::new()
+            .kind(nostr::Kind::Custom(buzz_core::kind::KIND_ASK_HEAD as u16))
+            .author(relay)
+            .custom_tags(t_tag, ["tool_consent"]);
+        assert!(crate::handlers::req::can_read_tool_consent_inbox(
+            &filter,
+            &relay,
+            Some("owner")
+        ));
+        assert!(crate::handlers::req::can_read_tool_consent_inbox(
+            &filter,
+            &relay,
+            Some("admin")
+        ));
+        assert!(!crate::handlers::req::can_read_tool_consent_inbox(
+            &filter,
+            &relay,
+            Some("member")
+        ));
+        assert!(!crate::handlers::req::can_read_tool_consent_inbox(
+            &filter, &relay, None
+        ));
+
+        let detail_filter = filter.clone().custom_tags(
+            nostr::SingleLetterTag::lowercase(nostr::Alphabet::D),
+            ["channel:9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50:ask:7245ba1a-e078-42ef-b896-00be34a94f11"],
+        );
+        assert!(crate::handlers::req::can_read_tool_consent_inbox(
+            &detail_filter,
+            &relay,
+            Some("owner")
+        ));
+
+        let mismatched_detail_filter = filter.clone().custom_tags(
+            nostr::SingleLetterTag::lowercase(nostr::Alphabet::H),
+            [uuid::Uuid::new_v4().to_string()],
+        );
+        assert!(!crate::handlers::req::can_read_tool_consent_inbox(
+            &mismatched_detail_filter,
+            &relay,
+            Some("owner")
+        ));
     }
 
     #[test]

@@ -33,7 +33,7 @@ export function buildProjectDetailCrumbs({
       }
     : issue
       ? {
-          category: "Tasks",
+          category: PROJECT_TAB_CRUMB_LABELS.issues,
           clear: () => setSelectedIssueId(null),
           title: issue.title,
         }

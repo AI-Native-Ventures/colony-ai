@@ -1,13 +1,14 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
+import { selectSettingsSection } from "../helpers/settings";
 
 async function openLocalArchiveSettings(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
-  await page.getByTestId("settings-nav-local-archive").click();
+  await selectSettingsSection(page, "storage");
   const card = page.getByTestId("settings-local-archive");
   await expect(card).toBeVisible({ timeout: 10_000 });
   return card;

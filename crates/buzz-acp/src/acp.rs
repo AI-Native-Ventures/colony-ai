@@ -14,6 +14,7 @@ use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio_util::codec::{FramedRead, LinesCodec, LinesCodecError};
 
 use crate::observer::{ObserverContext, ObserverHandle};
+use crate::tool_permissions::{ToolPermissionContext, ToolPermissionDecision};
 use crate::usage::{
     PromptResponseUsage, StandardAdapterKind, StandardUsageTracker, TurnUsage, UsageTracker,
 };
@@ -67,6 +68,8 @@ impl StopReason {
     ///
     /// Matching is case-insensitive so agents that send `"END_TURN"` or
     /// `"Cancelled"` are handled correctly without a protocol error.
+    // Keep the Option-returning API for existing ACP callers.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_ascii_lowercase().as_str() {
             "end_turn" => Some(Self::EndTurn),
@@ -163,6 +166,9 @@ pub struct AcpClient {
     /// Guards against double-response if a timeout fires after the allow_once
     /// response was written but before `pending_permission_id` was cleared.
     permission_responded: bool,
+    /// Relay-backed consent coordinates for the prompt currently being served.
+    /// Cleared before heartbeat tasks and replaced for every channel turn.
+    tool_permission_context: Option<ToolPermissionContext>,
     /// The JSON-RPC id of the most recently sent `session/prompt` request.
     /// Used by [`cancel_with_cleanup`] to drain the correct response.
     /// Set in [`session_prompt_with_idle_timeout`]; consumed in [`cancel_with_cleanup`].
@@ -564,6 +570,7 @@ impl AcpClient {
             next_id: 0,
             pending_permission_id: None,
             permission_responded: false,
+            tool_permission_context: None,
             last_prompt_id: None,
             current_hard_deadline: None,
             observer: None,
@@ -582,6 +589,11 @@ impl AcpClient {
     pub fn set_observer(&mut self, observer: Option<ObserverHandle>, agent_index: usize) {
         self.observer = observer;
         self.observer_agent_index = Some(agent_index);
+    }
+
+    /// Set the current turn's relay and thread coordinates for permission checks.
+    pub(crate) fn set_tool_permission_context(&mut self, context: Option<ToolPermissionContext>) {
+        self.tool_permission_context = context;
     }
 
     /// Update metadata that will be attached to subsequent raw wire events.
@@ -1232,7 +1244,7 @@ impl AcpClient {
             }
 
             // Only log and reset idle after we have a valid non-empty line.
-            tracing::debug!(target: "acp::wire", "← {trimmed}");
+            tracing::debug!(target: "acp::wire", line_bytes = trimmed.len(), "← ACP frame");
 
             let msg: serde_json::Value = match serde_json::from_str(trimmed) {
                 Ok(v) => v,
@@ -1240,7 +1252,7 @@ impl AcpClient {
                     self.observe(
                         "acp_parse_error",
                         serde_json::json!({
-                            "line": trimmed,
+                            "lineBytes": trimmed.len(),
                             "error": e.to_string(),
                         }),
                     );
@@ -1251,7 +1263,10 @@ impl AcpClient {
                     continue;
                 }
             };
-            self.observe("acp_read", msg.clone());
+            self.observe(
+                "acp_read",
+                crate::tool_permissions::observer_safe_message(&msg),
+            );
 
             // Check if this is a response to our expected request (has matching id
             // AND no `method` field — a `method` field means it's an agent-initiated
@@ -1555,7 +1570,7 @@ impl AcpClient {
                         continue;
                     }
 
-                    tracing::debug!(target: "acp::wire", "← {trimmed}");
+                    tracing::debug!(target: "acp::wire", line_bytes = trimmed.len(), "← ACP frame");
 
                     let msg: serde_json::Value = match serde_json::from_str(trimmed) {
                         Ok(v) => v,
@@ -1563,7 +1578,7 @@ impl AcpClient {
                             self.observe(
                                 "acp_parse_error",
                                 serde_json::json!({
-                                    "line": trimmed,
+                                    "lineBytes": trimmed.len(),
                                     "error": e.to_string(),
                                 }),
                             );
@@ -1574,7 +1589,10 @@ impl AcpClient {
                             continue;
                         }
                     };
-                    self.observe("acp_read", msg.clone());
+                    self.observe(
+                        "acp_read",
+                        crate::tool_permissions::observer_safe_message(&msg),
+                    );
 
                     let activity_now = Instant::now();
                     idle_deadline = activity_now + idle_timeout;
@@ -1939,10 +1957,11 @@ impl AcpClient {
         }
     }
 
-    /// Auto-approve a `session/request_permission` request from the agent.
+    /// Authorize a `session/request_permission` request from the agent.
     ///
-    /// Finds the option with `kind == "allow_once"` and responds with its `optionId`.
-    /// If no `allow_once` option exists, falls back to `reject_once`.
+    /// Sensitive actions require a current relay permission or a resolved
+    /// owner/admin consent ask. Unclassified requests retain the existing
+    /// allow-once behaviour.
     ///
     /// **Critical:** Never hardcode `optionId` — always find it dynamically by `kind`.
     ///
@@ -1970,38 +1989,86 @@ impl AcpClient {
             options.len()
         );
 
-        // Find allow_once by kind — NEVER hardcode optionId.
+        let decision = crate::tool_permissions::authorize_tool_call(
+            msg,
+            self.tool_permission_context.as_ref(),
+        )
+        .await;
+
+        // Find option IDs by kind. ACP IDs are adapter supplied and must not
+        // be synthesized by the harness.
         let allow_once = options
             .iter()
             .find(|opt| opt.get("kind").and_then(|k| k.as_str()) == Some("allow_once"));
+        let reject_once = options
+            .iter()
+            .find(|opt| opt.get("kind").and_then(|k| k.as_str()) == Some("reject_once"));
 
-        let response = if let Some(opt) = allow_once {
-            let option_id = opt["optionId"]
-                .as_str()
-                .ok_or_else(|| AcpError::Protocol("allow_once option missing optionId".into()))?;
-            tracing::info!(
-                target: "acp::permission",
-                "auto-approving permission id={id} with allow_once optionId={option_id:?}"
-            );
-            permission_response_selected(&id, option_id)
-        } else {
-            // No allow_once — fall back to reject_once.
-            tracing::warn!(
-                target: "acp::permission",
-                "no allow_once option found in permission request id={id}, falling back to reject_once"
-            );
-            let reject = options
-                .iter()
-                .find(|opt| opt.get("kind").and_then(|k| k.as_str()) == Some("reject_once"));
-
-            if let Some(opt) = reject {
-                let option_id = opt["optionId"].as_str().unwrap_or("reject");
-                permission_response_selected(&id, option_id)
-            } else {
-                return Err(AcpError::Protocol(
-                    "no suitable permission option found (neither allow_once nor reject_once)"
-                        .into(),
-                ));
+        let response = match decision {
+            ToolPermissionDecision::Unclassified => {
+                tracing::debug!(
+                    target: "acp::permission",
+                    "permission request did not match a sensitive action; preserving default allow behaviour"
+                );
+                if let Some(opt) = allow_once {
+                    let option_id = opt["optionId"].as_str().ok_or_else(|| {
+                        AcpError::Protocol("allow_once option missing optionId".into())
+                    })?;
+                    tracing::info!(
+                        target: "acp::permission",
+                        "allowing permission id={id} with allow_once optionId={option_id:?}"
+                    );
+                    permission_response_selected(&id, option_id)
+                } else if let Some(opt) = reject_once {
+                    tracing::warn!(
+                        target: "acp::permission",
+                        "no allow_once option found for permission id={id}, falling back to reject_once"
+                    );
+                    permission_response_selected(&id, opt["optionId"].as_str().unwrap_or("reject"))
+                } else {
+                    return Err(AcpError::Protocol(
+                        "no suitable permission option found (neither allow_once nor reject_once)"
+                            .into(),
+                    ));
+                }
+            }
+            ToolPermissionDecision::Allowed => {
+                if let Some(opt) = allow_once {
+                    let option_id = opt["optionId"].as_str().ok_or_else(|| {
+                        AcpError::Protocol("allow_once option missing optionId".into())
+                    })?;
+                    tracing::info!(
+                        target: "acp::permission",
+                        "allowing permission id={id} with allow_once optionId={option_id:?}"
+                    );
+                    permission_response_selected(&id, option_id)
+                } else if let Some(opt) = reject_once {
+                    tracing::warn!(
+                        target: "acp::permission",
+                        "no allow_once option found for permission id={id}, falling back to reject_once"
+                    );
+                    permission_response_selected(&id, opt["optionId"].as_str().unwrap_or("reject"))
+                } else {
+                    return Err(AcpError::Protocol(
+                        "no suitable permission option found (neither allow_once nor reject_once)"
+                            .into(),
+                    ));
+                }
+            }
+            ToolPermissionDecision::Refused(reason) => {
+                if let Some(opt) = reject_once {
+                    permission_response_selected_with_message(
+                        &id,
+                        opt["optionId"].as_str().unwrap_or("reject"),
+                        reason,
+                    )
+                } else {
+                    // Cancellation is terminal when the adapter offers no
+                    // reject option. Preserve the refusal reason so the agent
+                    // still receives a clear tool error instead of a generic
+                    // cancellation.
+                    permission_response_cancelled_with_message(&id, reason)
+                }
             }
         };
 
@@ -2128,12 +2195,41 @@ fn permission_response_selected(id: &serde_json::Value, option_id: &str) -> serd
     })
 }
 
+/// Build a rejected permission response with a model-visible refusal reason.
+fn permission_response_selected_with_message(
+    id: &serde_json::Value,
+    option_id: &str,
+    message: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": { "outcome": {
+            "outcome": "selected",
+            "optionId": option_id,
+            "message": message,
+        } }
+    })
+}
+
 /// Build a JSON-RPC permission response with `outcome: "cancelled"`.
 fn permission_response_cancelled(id: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({
         "jsonrpc": "2.0",
         "id": id,
         "result": { "outcome": { "outcome": "cancelled" } }
+    })
+}
+
+/// Build a terminal cancelled response with a bounded, model-visible reason.
+fn permission_response_cancelled_with_message(
+    id: &serde_json::Value,
+    message: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": { "outcome": { "outcome": "cancelled", "message": message } }
     })
 }
 
@@ -2656,6 +2752,22 @@ mod tests {
         );
         // cancelled outcome has no optionId
         assert!(response["result"]["outcome"].get("optionId").is_none());
+    }
+
+    #[test]
+    fn cancelled_permission_refusal_keeps_its_model_visible_message() {
+        let response = permission_response_cancelled_with_message(
+            &serde_json::json!(5),
+            "tool consent expired; the action was refused",
+        );
+        assert_eq!(
+            response["result"]["outcome"]["outcome"].as_str(),
+            Some("cancelled")
+        );
+        assert_eq!(
+            response["result"]["outcome"]["message"].as_str(),
+            Some("tool consent expired; the action was refused")
+        );
     }
 
     #[test]

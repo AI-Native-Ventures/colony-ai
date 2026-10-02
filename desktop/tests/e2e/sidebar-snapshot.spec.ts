@@ -7,7 +7,14 @@ const OTHER_RELAY_URL = "ws://localhost:3001";
 const OWNER_PUBKEY = "deadbeef".repeat(8);
 const STALE_COMMUNITY_PUBKEY = "cafebabe".repeat(8);
 const MATCHING_HASH = "mock-hash";
-const READ_DELAY_MS = 600;
+// The mock channels read is held for READ_DELAY_MS so a spec can observe the
+// boot frame (snapshot rows, or the loading state) before the live list lands.
+// Those observations must fall inside that window, so they wait up to
+// PRE_READ_TIMEOUT_MS, which stays below the delay. Budgets are measured from
+// page.goto, which includes app boot; slower CI hosts spent the old 500ms of a
+// 600ms window before the first frame painted.
+const READ_DELAY_MS = 2_500;
+const PRE_READ_TIMEOUT_MS = 2_000;
 const SNAPSHOT_FRAME_DELAY_MS = 3_000;
 
 function snapshotKey(relayUrl: string, ownerPubkey = OWNER_PUBKEY) {
@@ -302,7 +309,7 @@ test("matching not-modified preserves display mutations without persisting them"
 
   await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(
     FULL_SNAPSHOT.length,
-    { timeout: 500 },
+    { timeout: PRE_READ_TIMEOUT_MS },
   );
   await mutateDisplayedChannels(page, optimisticName);
   await expect(
@@ -330,10 +337,11 @@ test("first-ever boot without a snapshot sends null and shows loading", async ({
   page,
 }) => {
   await installMockBridge(page, { channelsReadDelayMs: READ_DELAY_MS });
+  await trackSnapshotRows(page);
   await page.goto("/");
 
   await expect(page.getByTestId("sidebar-loading")).toBeVisible({
-    timeout: 500,
+    timeout: PRE_READ_TIMEOUT_MS,
   });
   await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(0);
   await expect
@@ -354,6 +362,9 @@ test("first-ever boot without a snapshot sends null and shows loading", async ({
       measure: expect.any(Number),
     });
   expect((await getFullSidebarMeasure(page)).markCount).toBeGreaterThan(0);
+  // Negative observer control: with no seeded snapshot nothing may ever
+  // be recorded, even though the live list paints afterwards.
+  await expect.poll(() => getTrackedSnapshotRows(page)).toEqual([]);
 });
 
 test("a different identity's snapshot is ignored", async ({ page }) => {
@@ -363,10 +374,11 @@ test("a different identity's snapshot is ignored", async ({ page }) => {
     ownerPubkey: STALE_COMMUNITY_PUBKEY,
   });
   await installMockBridge(page, { channelsReadDelayMs: READ_DELAY_MS });
+  await trackSnapshotRows(page);
   await page.goto("/");
 
   await expect(page.getByTestId("sidebar-loading")).toBeVisible({
-    timeout: 500,
+    timeout: PRE_READ_TIMEOUT_MS,
   });
   await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(0);
   await expect
@@ -379,6 +391,33 @@ test("a different identity's snapshot is ignored", async ({ page }) => {
       presence: "invalid",
     });
   await expect(page.getByTestId("channel-general")).toBeVisible();
+  // Negative observer control: the foreign snapshot must never paint,
+  // so the tracker records nothing even after the live list settles.
+  await expect.poll(() => getTrackedSnapshotRows(page)).toEqual([]);
+});
+
+test("tracker observes rows removed in the same task", async ({ page }) => {
+  // Browser control for the tracker's detached-node semantics, without
+  // app scheduling: append a subtree with known snapshot ids and remove
+  // it synchronously in the same evaluate callback. MutationObserver
+  // callbacks run as a microtask afterwards, so the addedNodes records
+  // still carry the inserted subtree even though the current DOM count
+  // is already 0.
+  await trackSnapshotRows(page);
+  await page.goto("/");
+  const ids = ["snapshot-00", "snapshot-01", "snapshot-02"];
+  await page.evaluate((rowIds) => {
+    const parent = document.createElement("div");
+    for (const id of rowIds) {
+      const row = document.createElement("div");
+      row.setAttribute("data-channel-id", id);
+      parent.appendChild(row);
+    }
+    document.body.appendChild(parent);
+    parent.remove();
+  }, ids);
+  await expect.poll(() => getTrackedSnapshotRows(page)).toEqual(ids);
+  await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(0);
 });
 
 test("display-only community pubkey cannot expose another identity's snapshot", async ({
@@ -424,7 +463,7 @@ test("partial hash/list write fails toward a full fetch", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByTestId("sidebar-loading")).toBeVisible({
-    timeout: 500,
+    timeout: PRE_READ_TIMEOUT_MS,
   });
   await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(0);
   await expect
@@ -466,7 +505,7 @@ test("mismatched not-modified hash falls back to a full list", async ({
 
   const snapshotRows = page.locator('[data-channel-id^="snapshot-"]');
   await expect(snapshotRows).toHaveCount(FULL_SNAPSHOT.length, {
-    timeout: 500,
+    timeout: PRE_READ_TIMEOUT_MS,
   });
   await expect
     .poll(() => getChannelsPayloads(page))
@@ -507,12 +546,31 @@ test("hash mismatch replaces the snapshot with the full live list", async ({
     channelsReadDelayMs: READ_DELAY_MS,
     honorChannelsKnownHash: true,
   });
+  await trackSnapshotRows(page);
   await page.goto("/");
 
-  await expect(page.locator('[data-channel-id^="snapshot-"]')).toHaveCount(
-    FULL_SNAPSHOT.length,
-    { timeout: 500 },
-  );
+  // The boot frame must paint the seeded snapshot before revalidation
+  // replaces it: assert the rows were observed at least once via the
+  // mutation observer, not only at one polling instant. A later
+  // row-count of zero is the expected post-replacement state, so an
+  // instant count cannot distinguish "never painted" from "replaced".
+  // The observer is registered before navigation (addInitScript runs
+  // before any app render) and records only rows actually inserted
+  // into the DOM; all 14 seeded ids must appear.
+  await expect
+    .poll(() => getTrackedSnapshotRows(page), { timeout: 5_000 })
+    .toEqual(FULL_SNAPSHOT.map((channel) => channel.id));
+  // The live revalidation still sends the stale hash first: the
+  // replacement path is unchanged, only the boot-frame observation is
+  // race-free.
+  //
+  // Fast-replacement control: the seeded rows are inserted and later
+  // removed, so the current-DOM locator below reads 0 while the
+  // observer above records all 14 inserted ids. That is exactly the
+  // schedule the old instant count could miss: it proves the tracker
+  // observes detached added nodes (MutationObserver addedNodes are
+  // delivered with the inserted subtree even after removal) rather
+  // than querying the current document.
   await expect
     .poll(() => getChannelsPayloads(page))
     .toEqual([{ knownHash: "stale-hash" }]);
@@ -568,7 +626,7 @@ test("community switch validates a stale relay snapshot and replaces it", async 
   await page.getByTestId("community-rail-button-community-b").click();
   const switchedRows = page.locator('[data-channel-id^="switched-"]');
   await expect(switchedRows).toHaveCount(switchedSnapshot.length, {
-    timeout: 500,
+    timeout: PRE_READ_TIMEOUT_MS,
   });
   await expect
     .poll(async () =>

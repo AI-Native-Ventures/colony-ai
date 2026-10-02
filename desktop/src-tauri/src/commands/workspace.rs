@@ -169,6 +169,8 @@ pub async fn apply_workspace(
     nsec: Option<String>,
     repos_dir: Option<String>,
     agent_managed_profiles: Option<bool>,
+    business_community_id: Option<String>,
+    client_channel_id: Option<String>,
     app: AppHandle,
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
@@ -223,6 +225,12 @@ pub async fn apply_workspace(
         // generation before making its first mutation. Normal queued applies
         // cannot advance it until this transaction releases the guard.
         assert_current_apply_generation(&state.workspace_apply_generation, apply_generation)?;
+
+        // A previous workspace's Factory context and renderer subscriptions
+        // must stop before the active relay or identity changes. Runs continue
+        // under their native workers and will be visible again only after the
+        // new workspace is validated and bound below.
+        crate::factory_runtime::clear_workspace_scope(&app)?;
 
         // ── Apply all state changes (nothing below can fail) ──────────────────
         {
@@ -327,6 +335,14 @@ pub async fn apply_workspace(
             ));
         }
     }
+
+    crate::factory_runtime::bind_workspace_scope(
+        &restore_app,
+        &profile_reconcile_relay,
+        business_community_id,
+        client_channel_id,
+    )
+    .await?;
 
     let restore_pending = state
         .managed_agent_restore_pending

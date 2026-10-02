@@ -75,17 +75,17 @@ case "$android_slug" in
     [0-9]*) android_slug="w_$android_slug" ;;
 esac
 
-ios_bundle_id="xyz.block.buzz.dogfood.mobile.${ios_slug}"
+ios_bundle_id="ventures.ainative.colony.dogfood.${ios_slug}"
 android_app_name="${BUZZ_ANDROID_DEBUG_APP_NAME:-Buzz (${label})}"
-android_suffix="${BUZZ_ANDROID_DEBUG_ID_SUFFIX:-.${android_slug}}"
+android_suffix="${BUZZ_ANDROID_DEBUG_ID_SUFFIX:-.dogfood.${android_slug}}"
 
 if [[ "$android_app_name" == *$'\n'* || "$android_app_name" == *$'\r'* ]] || \
     ! printf '%s\n' "$android_app_name" | LC_ALL=C grep -Eq '^[A-Za-z0-9._() -]+$'; then
     echo "BUZZ_ANDROID_DEBUG_APP_NAME must contain only letters, numbers, spaces, ., _, -, or parentheses" >&2
     exit 2
 fi
-if [[ ! "$android_suffix" =~ ^\.[a-z][a-z0-9_]*$ ]]; then
-    echo "BUZZ_ANDROID_DEBUG_ID_SUFFIX must match \\.[a-z][a-z0-9_]* (for example .huddles_829c)" >&2
+if [[ ! "$android_suffix" =~ ^(\.[a-z][a-z0-9_]*)+$ ]]; then
+    echo "BUZZ_ANDROID_DEBUG_ID_SUFFIX must contain valid dotted segments (for example .dogfood.huddles_829c)" >&2
     exit 2
 fi
 
@@ -107,4 +107,4 @@ PROPERTIES
 
 # The printed identifiers are the generated defaults; on iOS a developer's
 # AppOverrides.xcconfig may override them per variable.
-echo "📱 Worktree ${worktree_name}: iOS label \"${label}\" (${ios_bundle_id}); Android label \"${android_app_name}\" (xyz.block.buzz.mobile${android_suffix})"
+echo "📱 Worktree ${worktree_name}: iOS label \"${label}\" (${ios_bundle_id}); Android label \"${android_app_name}\" (ventures.ainative.colony${android_suffix})"

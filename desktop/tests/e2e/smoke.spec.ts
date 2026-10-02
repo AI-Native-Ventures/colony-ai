@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge, openCreateChannelDialog } from "../helpers/bridge";
+import { openAgentsDirectoryView } from "../helpers/agentWorkspace";
 
 async function getTimelineMetrics(page: import("@playwright/test").Page) {
   return page.getByTestId("message-timeline").evaluate((element) => {
@@ -88,6 +89,15 @@ test("loads the app shell with mocked channels", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as Window & { __BUZZ_E2E_COMMANDS__?: string[] })
+            .__BUZZ_E2E_COMMANDS__ ?? [],
+      ),
+    )
+    .toContain("is_shared_identity");
   await expect(page.getByTestId("stream-list")).toContainText("general");
   await expect(page.getByTestId("forum-list")).toContainText("watercooler");
   await expect(page.getByTestId("dm-list")).toContainText("alice-tyler");
@@ -136,8 +146,8 @@ test("Buzz shared compute explains automatic model selection", async ({
       }
     ).__BUZZ_E2E_SET_MESH__?.({ models: [] });
   });
-  await page.getByTestId("open-agents-view").click();
-  await page.getByTestId("new-agent-card").click();
+  await openAgentsDirectoryView(page);
+  await page.getByTestId("agent-add-button").click();
   await chooseSharedComputeProvider(page);
 
   await expect
@@ -164,8 +174,8 @@ test("create agent persists Buzz shared compute with auto model", async ({
   const agentName = `Shared compute agent ${Date.now()}`;
 
   await page.goto("/");
-  await page.getByTestId("open-agents-view").click();
-  await page.getByTestId("new-agent-card").click();
+  await openAgentsDirectoryView(page);
+  await page.getByTestId("agent-add-button").click();
   await page.locator("#persona-display-name").fill(agentName);
 
   await chooseSharedComputeProvider(page);
@@ -208,15 +218,14 @@ test("create agent supports parallelism and system prompt overrides", async ({
   page,
 }) => {
   const agentName = `Parallel agent ${Date.now()}`;
+  const systemPrompt = "You are concise and parallelize independent work.";
 
   await page.goto("/");
-  await page.getByTestId("open-agents-view").click();
-  await page.getByTestId("new-agent-card").click();
+  await openAgentsDirectoryView(page);
+  await page.getByTestId("agent-add-button").click();
 
   await page.locator("#persona-display-name").fill(agentName);
-  await page
-    .locator("#persona-system-prompt")
-    .fill("You are concise and parallelize independent work.");
+  await page.locator("#persona-system-prompt").fill(systemPrompt);
 
   // The buzz-agent runtime auto-selects once the ACP runtime catalog loads;
   // Customize reveals the per-agent LLM provider and model fields.
@@ -284,24 +293,23 @@ test("create agent supports parallelism and system prompt overrides", async ({
   });
   expect(createPersonaPayload?.input?.behavior?.sessionPolicy).toBe("thread");
 
-  await expect(page.getByTestId("agents-library-personas")).toContainText(
-    agentName,
+  const createdAgent = page.getByRole("button", {
+    name: `Open ${agentName} profile`,
+  });
+  await expect(createdAgent).toBeVisible({ timeout: 10_000 });
+  await createdAgent.click();
+  await expect(page.getByTestId("agent-profile")).toBeVisible();
+
+  await page.getByRole("button", { name: "Instructions", exact: true }).click();
+  await expect(page.getByTestId("agent-instructions")).toContainText(
+    systemPrompt,
   );
 
-  // Logs now live in the profile sidebar (PR #1274), not an inline panel.
-  // Open the new agent's card to reveal the profile panel, then read the
-  // harness log from the diagnostics view.
-  await page
-    .getByRole("button", { name: `${agentName} agent profile` })
-    .click();
-  await expect(page.getByTestId("user-profile-panel")).toBeVisible();
-
-  await page.getByTestId("user-profile-tab-runtime").click();
-  await page.getByTestId("user-profile-diagnostics-ingress").click();
-
-  const log = page.getByTestId("managed-agent-log-content");
-  await expect(log).toContainText("parallelism=3");
-  await expect(log).toContainText("system prompt override configured");
+  await page.getByRole("button", { name: "Advanced", exact: true }).click();
+  const parallelism = page
+    .getByTestId("agent-profile-content")
+    .getByText("Parallelism", { exact: true });
+  await expect(parallelism.locator("..")).toContainText("3");
 });
 
 test("opens a mocked channel from the inbox feed", async ({ page }) => {
@@ -974,6 +982,9 @@ test("sends a mocked channel message", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
+  const composer = page.getByRole("textbox", { name: "Message #general…" });
+  await expect(composer).toBeVisible();
+  await expect(composer).toHaveAttribute("aria-multiline", "true");
   await page.getByTestId("message-input").fill(message);
   await page.getByTestId("send-message").click();
 

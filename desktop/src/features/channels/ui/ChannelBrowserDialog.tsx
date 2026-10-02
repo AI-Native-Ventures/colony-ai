@@ -213,19 +213,27 @@ export function ChannelBrowserDialog({
         ? joinedChannels
         : matchingChannels;
 
+  // The directory historically enters this dialog in alphabetical order.
+  // Keep that as the tie order for Recent and relevance sorting even though
+  // channel queries now preserve their authored order for sidebar groups.
+  const alphabetizedVisibleChannels = React.useMemo(
+    () => sortChannelsForSidebar(visibleChannels, "alpha"),
+    [visibleChannels],
+  );
+
   const isSearching = deferredQuery.length > 0;
 
   const orderedVisibleChannels = React.useMemo(() => {
     const sorted =
       sort === "members"
-        ? [...visibleChannels].sort(
+        ? [...alphabetizedVisibleChannels].sort(
             (a, b) =>
               b.memberCount - a.memberCount ||
               a.name.localeCompare(b.name, undefined, {
                 sensitivity: "base",
               }),
           )
-        : sortChannelsForSidebar(visibleChannels, sort);
+        : sortChannelsForSidebar(alphabetizedVisibleChannels, sort);
 
     if (!isSearching) return sorted;
 
@@ -234,7 +242,7 @@ export function ChannelBrowserDialog({
         (matchScoreById.get(a.id) ?? Number.POSITIVE_INFINITY) -
         (matchScoreById.get(b.id) ?? Number.POSITIVE_INFINITY),
     );
-  }, [isSearching, matchScoreById, sort, visibleChannels]);
+  }, [alphabetizedVisibleChannels, isSearching, matchScoreById, sort]);
 
   const selectedSortLabel =
     CHANNEL_SORT_OPTIONS.find((option) => option.value === sort)?.label ??
@@ -386,12 +394,6 @@ export function ChannelBrowserDialog({
     });
   }
 
-  // Map the flat nav index back to a channel, accounting for the create row
-  // occupying index 0 when present.
-  const selectedItem =
-    selectedIndex !== null && !isCreateRowSelected
-      ? orderedVisibleChannels[selectedIndex - channelNavOffset]
-      : undefined;
   const emptyTitle =
     deferredQuery.length > 0
       ? `No ${entityLabel}s match your search`
@@ -487,22 +489,104 @@ export function ChannelBrowserDialog({
                         event.key === "Enter" &&
                         !event.nativeEvent.isComposing
                       ) {
+                        const currentQuery = canonicalChannelName(
+                          event.currentTarget.value,
+                        );
+                        const currentNormalizedQuery =
+                          currentQuery.toLowerCase();
+                        const currentCreateRowAvailable =
+                          canCreate &&
+                          !channels.some(
+                            (channel) =>
+                              channel.channelType !== "dm" &&
+                              channelNamesMatch(
+                                channel.name,
+                                currentNormalizedQuery,
+                              ) &&
+                              (channelTypeFilter
+                                ? channel.channelType === channelTypeFilter
+                                : true),
+                          );
+                        const currentQueryChannels = channels.filter(
+                          (channel) =>
+                            channel.channelType !== "dm" &&
+                            (channel.archivedAt
+                              ? channel.isMember
+                              : channel.visibility === "open" ||
+                                channel.isMember) &&
+                            (channelTypeFilter
+                              ? channel.channelType === channelTypeFilter
+                              : true) &&
+                            (activeTab === "archived"
+                              ? channel.archivedAt !== null
+                              : activeTab === "joined"
+                                ? channel.archivedAt === null &&
+                                  channel.isMember
+                                : true) &&
+                            (currentNormalizedQuery.length === 0 ||
+                              scoreChannelMatch(
+                                channel,
+                                currentNormalizedQuery,
+                              ) !== null),
+                        );
+                        const alphabetizedCurrentQueryChannels =
+                          sortChannelsForSidebar(currentQueryChannels, "alpha");
+                        const sortedCurrentQueryChannels =
+                          sort === "members"
+                            ? alphabetizedCurrentQueryChannels.sort(
+                                (a, b) =>
+                                  b.memberCount - a.memberCount ||
+                                  a.name.localeCompare(b.name, undefined, {
+                                    sensitivity: "base",
+                                  }),
+                              )
+                            : sortChannelsForSidebar(
+                                alphabetizedCurrentQueryChannels,
+                                sort,
+                              );
+                        if (currentNormalizedQuery.length > 0) {
+                          sortedCurrentQueryChannels.sort(
+                            (a, b) =>
+                              (scoreChannelMatch(a, currentNormalizedQuery) ??
+                                Number.POSITIVE_INFINITY) -
+                              (scoreChannelMatch(b, currentNormalizedQuery) ??
+                                Number.POSITIVE_INFINITY),
+                          );
+                        }
+                        const selectedIndexIsCurrent =
+                          currentQuery === trimmedQuery;
+                        const currentSelectedIndex = selectedIndexIsCurrent
+                          ? selectedIndex
+                          : null;
+                        const currentChannelNavOffset =
+                          currentCreateRowAvailable ? 1 : 0;
+                        const currentCreateRowIsSelected =
+                          currentCreateRowAvailable &&
+                          currentSelectedIndex === 0;
+
                         // If the create row is highlighted — or it's the only
                         // actionable item (no channel matches) — Enter creates.
                         if (
-                          showCreateRow &&
-                          (isCreateRowSelected ||
-                            orderedVisibleChannels.length === 0)
+                          currentCreateRowAvailable &&
+                          (currentCreateRowIsSelected ||
+                            sortedCurrentQueryChannels.length === 0)
                         ) {
                           event.preventDefault();
-                          enterCreateMode(trimmedQuery);
+                          enterCreateMode(currentQuery);
                           return;
                         }
 
-                        if (orderedVisibleChannels.length > 0) {
+                        if (sortedCurrentQueryChannels.length > 0) {
                           event.preventDefault();
+                          const selectedChannel =
+                            currentSelectedIndex !== null &&
+                            !currentCreateRowIsSelected
+                              ? sortedCurrentQueryChannels[
+                                  currentSelectedIndex - currentChannelNavOffset
+                                ]
+                              : undefined;
                           handleSelect(
-                            selectedItem ?? orderedVisibleChannels[0],
+                            selectedChannel ?? sortedCurrentQueryChannels[0],
                           );
                         }
                       }

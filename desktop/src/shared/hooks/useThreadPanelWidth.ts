@@ -1,12 +1,12 @@
 import * as React from "react";
 
 import {
-  AUXILIARY_PANEL_DEFAULT_WIDTH_PX,
   AUXILIARY_PANEL_MIN_WIDTH_PX,
   getAuxiliaryPanelMaxWidth,
 } from "@/shared/layout/AuxiliaryPanel";
 
 const THREAD_PANEL_WIDTH_SESSION_KEY = "buzz.desktop.thread-panel-width";
+const THREAD_PANEL_DEFAULT_WIDTH_PX = 520;
 
 type ThreadPanelWidthOptions = {
   defaultWidthPx?: number;
@@ -64,7 +64,7 @@ export function useThreadPanelWidth(
   options: ThreadPanelWidthOptions = {},
 ) {
   const defaultWidthPx =
-    options.defaultWidthPx ?? AUXILIARY_PANEL_DEFAULT_WIDTH_PX;
+    options.defaultWidthPx ?? THREAD_PANEL_DEFAULT_WIDTH_PX;
   const minWidthPx = options.minWidthPx ?? AUXILIARY_PANEL_MIN_WIDTH_PX;
   const sessionKey = options.sessionKey ?? THREAD_PANEL_WIDTH_SESSION_KEY;
   const getAvailableWidth = React.useCallback(

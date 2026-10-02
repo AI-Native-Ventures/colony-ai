@@ -3,11 +3,13 @@ part of '../compose_bar.dart';
 class _ComposerDockFrame extends HookWidget {
   final Animation<double> expansionAnimation;
   final bool forceFullWidth;
+  final bool fillWidth;
   final Widget child;
 
   const _ComposerDockFrame({
     required this.expansionAnimation,
     required this.forceFullWidth,
+    required this.fillWidth,
     required this.child,
   });
 
@@ -96,7 +98,7 @@ class _ComposerDockFrame extends HookWidget {
                     ),
                     child: FractionallySizedBox(
                       key: const ValueKey('composer-width-transition'),
-                      widthFactor: 0.85 + 0.15 * widthProgress,
+                      widthFactor: fillWidth ? 1 : 0.85 + 0.15 * widthProgress,
                       child: child,
                     ),
                   ),

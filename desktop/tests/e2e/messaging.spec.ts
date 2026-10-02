@@ -4,8 +4,9 @@ import { expect, test, type Locator } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { waitForCompanyWorkThreadContextRead } from "../helpers/companyWork";
 import { expectCornerRadiusPx, expectSmoothCorners } from "../helpers/css";
-import { openSettings } from "../helpers/settings";
+import { openAvatarProfileContext, openSettings } from "../helpers/settings";
 
 const LINK_PREVIEW_IMAGE = readFileSync(
   new URL("../fixtures/github-pr-5629-og.png", import.meta.url),
@@ -161,7 +162,7 @@ test.beforeEach(async ({ page }, testInfo) => {
           }
         : testInfo.title.includes("fragment link previews")
           ? {
-              // Metadata is keyed by the canonical, fragment-less URL — the
+              // Metadata is keyed by the canonical, fragment-less URL - the
               // shape a real OpenGraph/HTML fetch resolves against. A resolver
               // that fetches with the raw `#fragment` attached would miss these
               // keys and drop the card, which is exactly the bug under test.
@@ -182,7 +183,8 @@ test.beforeEach(async ({ page }, testInfo) => {
                 },
               },
             }
-          : testInfo.title.includes("mixed link preview image outcomes")
+          : testInfo.title.includes("mixed") &&
+              testInfo.title.includes("link preview image outcomes")
             ? {
                 linkPreviewMetadataByHref: {
                   "https://github.com/block/buzz/pull/4001": {
@@ -319,7 +321,7 @@ test.beforeEach(async ({ page }, testInfo) => {
                             ],
                           }
                         : testInfo.title.includes(
-                              "sent link preview media uses",
+                              "link preview media uses the authenticated proxy",
                             )
                           ? {
                               mediaProxyInitiallyUnavailable: true,
@@ -366,6 +368,9 @@ test.beforeEach(async ({ page }, testInfo) => {
                                               "style defaults",
                                             ) ||
                                             testInfo.title.includes(
+                                              "style unfurls descriptions",
+                                            ) ||
+                                            testInfo.title.includes(
                                               "attachment-sized",
                                             )
                                           ? 1_500
@@ -389,20 +394,25 @@ test.beforeEach(async ({ page }, testInfo) => {
   await installMockBridge(page, mock);
 });
 
-test("agent avatars use the one normalized SVG clip path", async ({ page }) => {
+test("message agent avatar uses square initials and preserves its profile shortcut", async ({
+  page,
+}) => {
   await page.goto("/");
   await page.getByTestId("channel-general").click();
 
   const agentMessage = page
     .getByTestId("message-row")
-    .filter({ hasText: "Hey team — checking in." });
+    .filter({ hasText: "Hey team - checking in." });
   const avatar = agentMessage.getByTestId("message-avatar");
-  await expect(avatar).toHaveClass(/rounded-squircle/);
-  await expect(avatar).toHaveCSS("border-radius", "0px");
-  await expect(avatar).toHaveCSS("clip-path", /rounded-squircle-clip/);
-  await expect(page.locator("#rounded-squircle-clip")).toHaveCount(1);
+  await expect(avatar).toHaveClass(/rounded-md/);
+  await expect(avatar).not.toHaveClass(/rounded-squircle/);
 
-  const avatarButton = avatar.locator("xpath=ancestor::button[1]");
+  const avatarButton = agentMessage.getByRole("button", {
+    name: /^Open profile for .+$/,
+  });
+  await expect(avatarButton).toHaveCount(1);
+  await expect(avatarButton.locator('button, [role="button"]')).toHaveCount(0);
+  await expect(avatar.locator("xpath=ancestor::button[1]")).toHaveCount(0);
   await page.keyboard.press("Tab");
   await avatarButton.focus();
   await expect(avatarButton).toBeFocused();
@@ -421,12 +431,13 @@ test("agent avatars use the one normalized SVG clip path", async ({ page }) => {
   expect(avatarBox.height).toBeGreaterThanOrEqual(24);
   expect(Math.abs(avatarBox.width - avatarBox.height)).toBeLessThanOrEqual(1);
 
-  await agentMessage.getByRole("button", { name: "A" }).first().click();
+  await avatarButton.click();
   const profileAvatar = page
     .getByTestId("user-profile-panel")
     .locator(".rounded-squircle")
     .first();
   await expect(profileAvatar).toBeVisible();
+  await expect(page.locator("#rounded-squircle-clip")).toHaveCount(1);
   await expect(profileAvatar).toHaveCSS("border-radius", "0px");
   await expect(profileAvatar).toHaveCSS("clip-path", /rounded-squircle-clip/);
   await expect
@@ -445,7 +456,7 @@ test("agent owner label identifies the agent and owner", async ({ page }) => {
 
   const aliceMessage = page
     .getByTestId("message-row")
-    .filter({ hasText: "Hey team — checking in." });
+    .filter({ hasText: "Hey team - checking in." });
   const ownerTreatment = aliceMessage.getByTestId("message-agent-owner");
 
   await expect(ownerTreatment.locator("svg")).toBeVisible();
@@ -579,7 +590,7 @@ test("markdown tables wrap long prose and fill the message when narrow", async (
     .toBeLessThanOrEqual(1);
 });
 
-test("sent link preview media uses the authenticated proxy in compact and rich cards", async ({
+test("sent compact link preview media uses the authenticated proxy", async ({
   page,
 }) => {
   const previewUrl = "https://github.com/block/buzz/pull/3246?proxy=1";
@@ -634,32 +645,55 @@ test("sent link preview media uses the authenticated proxy in compact and rich c
   await expectCornerRadiusPx(compactPreview, 16);
   await expectCornerRadiusPx(compactThumbnailFrame, 16);
   await expectSmoothCorners(compactThumbnailFrame);
+});
 
-  await openSettings(page, "appearance");
-  await page.getByTestId("link-preview-style-rich").click();
-  await expect(page.getByTestId("link-preview-style-rich")).toHaveAttribute(
-    "aria-pressed",
-    "true",
+test("sent rich link preview media uses the authenticated proxy", async ({
+  page,
+}) => {
+  const previewUrl = "https://github.com/block/buzz/pull/3246?proxy=rich";
+  const fallbackMediaPattern =
+    /^buzz-media:\/\/localhost\/media\/[\da-f]{64}\.png$/;
+  const proxyMediaPattern =
+    /^http:\/\/127\.0\.0\.1:54321\/media\/[\da-f]{64}\.png$/;
+  await page.addInitScript(() =>
+    localStorage.setItem("buzz.appearance.linkPreviewStyle", "rich"),
   );
-  await page.getByTestId("settings-back-to-app").click();
+  await page.route("http://127.0.0.1:54321/media/**", (route) =>
+    route.fulfill({
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="#22c55e"/></svg>',
+      contentType: "image/svg+xml",
+    }),
+  );
 
-  const richPreview = row.locator(
-    '[data-link-preview="github-pull-request"][data-link-preview-inline]',
-  );
-  const richThumbnail = richPreview
+  await page.goto("/");
+  await page.getByTestId("channel-general").click();
+  await page.getByTestId("message-input").fill(previewUrl);
+  await waitForReadyComposerSnapshots(page);
+  await page.getByTestId("send-message").click();
+
+  const preview = page
+    .getByTestId("message-row")
+    .last()
+    .locator(
+      '[data-link-preview="github-pull-request"][data-link-preview-inline]',
+    );
+  const thumbnail = preview
     .locator("[data-link-preview-thumbnail] img")
     .first();
-  const richFavicon = richPreview.locator("img[data-link-preview-favicon]");
-  await expect(richThumbnail).toHaveAttribute("src", proxyMediaPattern);
-  await expect(richFavicon).toHaveAttribute("src", proxyMediaPattern);
+  const favicon = preview.locator("img[data-link-preview-favicon]");
+  await expect(thumbnail).toHaveAttribute("src", fallbackMediaPattern);
+  await expect(favicon).toHaveAttribute("src", fallbackMediaPattern);
+  expect(
+    await page.evaluate(() => window.__BUZZ_E2E_RELEASE_MEDIA_PROXY__?.()),
+  ).toBe(54321);
+  await expect(thumbnail).toHaveAttribute("src", proxyMediaPattern);
+  await expect(favicon).toHaveAttribute("src", proxyMediaPattern);
   await expect
-    .poll(() => richThumbnail.evaluate((image) => image.naturalWidth))
+    .poll(() => thumbnail.evaluate((image) => image.naturalWidth))
     .toBe(40);
 });
 
-test("link preview style defaults to compact and Rich unfurls descriptions", async ({
-  page,
-}) => {
+test("link preview style defaults to compact", async ({ page }) => {
   const previewUrl = "https://github.com/block/buzz/pull/3246?inline=1";
   await page.setViewportSize({ width: 800, height: 900 });
   await page.goto("/");
@@ -701,25 +735,33 @@ test("link preview style defaults to compact and Rich unfurls descriptions", asy
     });
   }
 
-  await openSettings(page, "appearance");
-  await expect(page.getByTestId("link-preview-style-compact")).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await page.getByTestId("link-preview-style-rich").click();
-  await expect(page.getByTestId("link-preview-style-rich")).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
   await expect
     .poll(() =>
       page.evaluate(() =>
         localStorage.getItem("buzz.appearance.linkPreviewStyle"),
       ),
     )
-    .toBe("rich");
+    .toBeNull();
+});
 
-  await page.getByTestId("settings-back-to-app").click();
+test("rich link preview style unfurls descriptions", async ({ page }) => {
+  const previewUrl = "https://github.com/block/buzz/pull/3246?inline=rich";
+  await page.addInitScript(() =>
+    localStorage.setItem("buzz.appearance.linkPreviewStyle", "rich"),
+  );
+  await page.setViewportSize({ width: 800, height: 900 });
+  await page.goto("/");
+  await page.getByTestId("channel-general").click();
+  await page.getByTestId("message-input").fill(previewUrl);
+  const composerPreview = page
+    .locator("[data-composer-link-previews]")
+    .locator('[data-link-preview="github-pull-request"]');
+  await expect(composerPreview).toHaveAttribute("data-image-state", "pending");
+  await waitForReadyComposerSnapshots(page);
+  await expect(composerPreview).toHaveAttribute("data-image-state", "none");
+  await page.getByTestId("send-message").click();
+
+  const row = page.getByTestId("message-row").last();
   const richPreview = row.locator(
     '[data-link-preview="github-pull-request"][data-link-preview-inline]',
   );
@@ -727,45 +769,13 @@ test("link preview style defaults to compact and Rich unfurls descriptions", asy
   const richHostname = richPreview.locator("[data-link-preview-hostname]");
   await expect(richHostname).toHaveText("github.com");
   await expect(richHostname).toHaveAttribute("href", previewUrl);
-  if (process.env.BUZZ_LINK_PREVIEW_SCREENSHOTS_DIR) {
-    await waitForAnimations(page);
-    await page.screenshot({
-      animations: "disabled",
-      path: `${process.env.BUZZ_LINK_PREVIEW_SCREENSHOTS_DIR}/recipient-rich.png`,
-    });
-    const richComposerUrl = `${previewUrl}&composer=rich`;
-    await page.getByTestId("message-input").fill(richComposerUrl);
-    const richComposerPreview = page
-      .locator("[data-composer-link-previews]")
-      .locator('[data-link-preview="github-pull-request"]');
-    await expect(richComposerPreview).toHaveAttribute(
-      "data-image-state",
-      "pending",
-    );
-    await waitForAnimations(page);
-    await page.screenshot({
-      animations: "disabled",
-      path: `${process.env.BUZZ_LINK_PREVIEW_SCREENSHOTS_DIR}/rich-composer-loading.png`,
-    });
-    await waitForReadyComposerSnapshots(page);
-    await expect(richComposerPreview).toHaveAttribute(
-      "data-image-state",
-      "none",
-    );
-    await waitForAnimations(page);
-    await page.screenshot({
-      animations: "disabled",
-      path: `${process.env.BUZZ_LINK_PREVIEW_SCREENSHOTS_DIR}/rich-composer-ready.png`,
-    });
-    await page.getByTestId("message-input").fill("");
-  }
-
-  await openSettings(page, "appearance");
-  await page.getByTestId("link-preview-style-compact").click();
-  await expect(page.getByTestId("link-preview-style-compact")).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        localStorage.getItem("buzz.appearance.linkPreviewStyle"),
+      ),
+    )
+    .toBe("rich");
 });
 
 for (const [pasteShape, wrapUrl] of [
@@ -1264,7 +1274,7 @@ test("draft auto-send promotes link preview preparation and sends exactly once",
 
   // Drive the real Drafts-panel "Send message" confirm flow. This does an
   // in-app client navigation to the channel with ?autoSend=<draftKey>, arming
-  // the main composer's auto-submit effect — the exact production path.
+  // the main composer's auto-submit effect - the exact production path.
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.getByTestId("home-inbox")).toBeVisible({ timeout: 10_000 });
   await page.getByTestId("inbox-filter-trigger").click();
@@ -1314,7 +1324,7 @@ test("rapid Enter presses on a ready link preview send exactly once", async ({
   await input.fill(previewUrl);
 
   // Wait until the snapshot is fully ready and Send is enabled, so the only
-  // thing under test is the composer-local send lock — not preview settling.
+  // thing under test is the composer-local send lock - not preview settling.
   await waitForReadyComposerSnapshots(page);
   await expect(page.getByTestId("send-message")).toBeEnabled();
 
@@ -1414,7 +1424,7 @@ test("editing a message excludes link previews entirely", async ({ page }) => {
   await expect(page.getByTestId("edit-target")).toBeVisible();
 
   // Adding a link while editing must NOT resolve, upload, gate Save, or render a
-  // composer preview card — edit mode does not persist snapshots (decision A).
+  // composer preview card - edit mode does not persist snapshots (decision A).
   await input.fill(`${message} ${previewUrl}`);
   await expect(page.locator("[data-composer-link-previews]")).toHaveCount(0);
   // No snapshot upload was attempted for the edited link.
@@ -1602,7 +1612,7 @@ test("composer no-image link embeds keep the attachment footprint", async ({
   await expect(card).toHaveCSS("height", "55px");
 });
 
-test("mixed link preview image outcomes keep Compact and Rich fallbacks stable", async ({
+test("mixed compact link preview image outcomes keep fallbacks stable", async ({
   page,
 }) => {
   const loadedUrl = "https://github.com/block/buzz/pull/4001";
@@ -1629,15 +1639,25 @@ test("mixed link preview image outcomes keep Compact and Rich fallbacks stable",
   await expect(
     compactCards.nth(1).locator("[data-link-preview-image-fallback]"),
   ).toHaveCount(0);
+});
 
-  await openSettings(page, "appearance");
-  await page.getByTestId("link-preview-style-rich").click();
-  await expect(page.getByTestId("link-preview-style-rich")).toHaveAttribute(
-    "aria-pressed",
-    "true",
+test("mixed rich link preview image outcomes keep fallbacks stable", async ({
+  page,
+}) => {
+  const loadedUrl = "https://github.com/block/buzz/pull/4001";
+  const rateLimitedUrl = "https://github.com/block/buzz/pull/4002";
+  await page.addInitScript(() =>
+    localStorage.setItem("buzz.appearance.linkPreviewStyle", "rich"),
   );
-  await page.getByTestId("settings-back-to-app").click();
+  await page.goto("/");
+  await page.getByTestId("channel-general").click();
+  await page
+    .getByTestId("message-input")
+    .fill(`${loadedUrl}\n${rateLimitedUrl}`);
+  await waitForReadyComposerSnapshots(page, 2);
+  await page.getByTestId("send-message").click();
 
+  const row = page.getByTestId("message-row").last();
   const richCards = row.locator(
     '[data-link-preview="github-pull-request"][data-link-preview-inline]',
   );
@@ -1652,7 +1672,7 @@ test("fragment link previews render a card per canonical URL", async ({
 }) => {
   // Two links into the SAME page differing only by `#fragment`, plus a link
   // to a second page. The fragment variants collapse to one card (the preview
-  // is of the page, not the anchor); the second page adds a second card — two
+  // is of the page, not the anchor); the second page adds a second card - two
   // cards total. A resolver that keys previews on the raw fragment-bearing URL
   // drops the fragment cards entirely (the reported bug).
   const fragmentUrlA =
@@ -1679,7 +1699,7 @@ test("fragment link previews render a card per canonical URL", async ({
   await expect(
     row.locator('[data-link-preview="github-pull-request"]'),
   ).toHaveCount(2);
-  // Both original fragment-bearing prose links survive intact and clickable —
+  // Both original fragment-bearing prose links survive intact and clickable -
   // the fragment is a navigation anchor, only the preview is normalized.
   await expect(row.locator(`a[href="${fragmentUrlA}"]`)).toBeVisible();
   await expect(row.locator(`a[href="${fragmentUrlB}"]`)).toBeVisible();
@@ -1702,15 +1722,23 @@ test("link preview browser image errors render a fallback", async ({
   await expect(
     compactCard.locator("[data-link-preview-image-fallback]"),
   ).toHaveCount(0);
+});
 
-  await openSettings(page, "appearance");
-  await page.getByTestId("link-preview-style-rich").click();
-  await expect(page.getByTestId("link-preview-style-rich")).toHaveAttribute(
-    "aria-pressed",
-    "true",
+test("rich link preview browser image errors keep the rich fallback absent", async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    localStorage.setItem("buzz.appearance.linkPreviewStyle", "rich"),
   );
-  await page.getByTestId("settings-back-to-app").click();
+  await page.goto("/");
+  await page.getByTestId("channel-general").click();
+  await page
+    .getByTestId("message-input")
+    .fill("https://github.com/block/buzz/pull/4003");
+  await waitForReadyComposerSnapshots(page);
+  await page.getByTestId("send-message").click();
 
+  const row = page.getByTestId("message-row").last();
   const richCard = row.locator(
     '[data-link-preview="github-pull-request"][data-link-preview-inline]',
   );
@@ -1928,7 +1956,7 @@ test("emoji picker inserts emoji into the draft and keeps focus in the composer"
 
   await page.getByTestId("composer-emoji-button").click();
 
-  // emoji-mart renders inside a Shadow DOM web component — use the search
+  // emoji-mart renders inside a Shadow DOM web component - use the search
   // input to find the rocket emoji, then click it.
   const pickerEl = page.locator("em-emoji-picker");
   const searchInput = pickerEl.locator("input[type='search']");
@@ -2384,12 +2412,12 @@ test("draft is preserved when switching channels", async ({ page }) => {
   await input.fill(draft);
   await expect(input).toHaveText(draft);
 
-  // Switch to another channel — composer should be empty
+  // Switch to another channel - composer should be empty
   await page.getByTestId("channel-random").click();
   await expect(page.getByTestId("chat-title")).toHaveText("random");
   await expect(input).toHaveText("");
 
-  // Switch back — the draft should still be there
+  // Switch back - the draft should still be there
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await expect(input).toHaveText(draft);
@@ -2408,7 +2436,7 @@ test("sending a message clears the draft", async ({ page }) => {
   await page.getByTestId("send-message").click();
   await expect(page.getByTestId("message-timeline")).toContainText(message);
 
-  // Switch away and back — composer should be empty, not restored from draft
+  // Switch away and back - composer should be empty, not restored from draft
   await page.getByTestId("channel-random").click();
   await expect(page.getByTestId("chat-title")).toHaveText("random");
   await page.getByTestId("channel-general").click();
@@ -2781,14 +2809,45 @@ test("shows your avatar on your own message when profile avatar is set", async (
   page,
 }) => {
   const message = `Avatar message ${Date.now()}`;
-  const avatarUrl =
-    'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"%3E%3Crect width="16" height="16" rx="4" fill="%2300a36c"/%3E%3C/svg%3E';
+  const avatarUrl = "https://mock.relay/media/avatar-message.png";
+  const avatarImage = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6okAAAAASUVORK5CYII=",
+    "base64",
+  );
 
+  await installMockBridge(page, {
+    uploadDescriptors: [
+      {
+        filename: "avatar-message.png",
+        sha256: "c".repeat(64),
+        size: 553432,
+        type: "image/png",
+        uploaded: 1_779_900_000,
+        url: avatarUrl,
+      },
+    ],
+  });
+  await page.route("**/media/avatar-message.png", (route) =>
+    route.fulfill({ body: avatarImage, contentType: "image/png" }),
+  );
   await page.goto("/");
   await openSettings(page, "profile");
+  await openAvatarProfileContext(page);
   await page.getByTestId("profile-avatar-edit").click();
-  await page.getByTestId("profile-avatar-url").fill(avatarUrl);
-  await page.getByTestId("profile-avatar-done").click();
+  await page.getByTestId("avatar-upload-open").click();
+  await page.getByTestId("avatar-file-input").setInputFiles({
+    buffer: avatarImage,
+    mimeType: "image/png",
+    name: "avatar-message.png",
+  });
+  await expect(page.getByTestId("avatar-crop-preview")).toBeVisible();
+  await page.getByTestId("avatar-save").click();
+  await expect(page.getByTestId("profile-avatar-saved")).toHaveText(
+    "Profile photo updated",
+  );
+  await expect(
+    page.getByTestId("account-profile-avatar-image"),
+  ).toHaveAttribute("src", avatarUrl);
   await page.getByTestId("settings-back-to-app").click();
 
   await page.getByTestId("channel-general").click();
@@ -3165,8 +3224,8 @@ test("opens a single-level thread panel with inline expansion", async ({
 test("thread panel width uses session storage and reset handle", async ({
   page,
 }) => {
-  const customWidthPx = 520;
-  const defaultWidthPx = 380;
+  const customWidthPx = 600;
+  const defaultWidthPx = 520;
 
   await page.addInitScript((width) => {
     window.sessionStorage.setItem(
@@ -3227,7 +3286,7 @@ test("thread panel width uses session storage and reset handle", async ({
     .toBe(defaultWidthPx);
 });
 
-test("narrow thread view collapses channel header actions into a menu", async ({
+test("narrow thread view keeps the reference channel actions visible", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 980, height: 720 });
@@ -3237,6 +3296,8 @@ test("narrow thread view collapses channel header actions into a menu", async ({
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await expect(page.getByTestId("channel-add-bot-trigger")).toHaveCount(0);
   await expect(page.getByTestId("channel-actions-menu-trigger")).toHaveCount(0);
+  await expect(page.getByTestId("channel-start-huddle-trigger")).toBeVisible();
+  await expect(page.getByTestId("channel-management-trigger")).toBeVisible();
 
   const rootMessage = page.locator('[data-message-id="mock-general-alice"]');
   const threadPanel = page.getByTestId("message-thread-panel");
@@ -3245,33 +3306,10 @@ test("narrow thread view collapses channel header actions into a menu", async ({
   await page.getByTestId("reply-message-mock-general-alice").click();
   await expect(threadPanel).toBeVisible();
   await expect(threadPanel.getByTestId("message-thread-back")).toHaveCount(0);
-
-  const menuTrigger = page.getByTestId("channel-actions-menu-trigger");
-  await expect(menuTrigger).toBeVisible();
-  await expect(page.getByTestId("channel-add-bot-trigger")).toHaveCount(0);
-  await expect(page.getByTestId("channel-members-trigger")).toBeHidden();
-  await expect(page.getByTestId("channel-management-trigger")).toBeHidden();
-
-  const menuBox = await menuTrigger.boundingBox();
-  const threadPanelBox = await threadPanel.boundingBox();
-  if (!menuBox || !threadPanelBox) {
-    throw new Error("Expected header action menu and thread panel bounds");
-  }
-  const menuGap = threadPanelBox.x - (menuBox.x + menuBox.width);
-  const headerPaddingInlineEnd = await page
-    .getByTestId("chat-header")
-    .evaluate((header) =>
-      Number.parseFloat(window.getComputedStyle(header).paddingRight),
-    );
-  expect(menuGap).toBeGreaterThanOrEqual(0);
-  expect(menuGap).toBeLessThanOrEqual(headerPaddingInlineEnd + menuBox.width);
-
-  await menuTrigger.click();
-
-  await expect(page.getByTestId("channel-add-bot-trigger")).toHaveCount(0);
-  await expect(page.getByTestId("channel-members-trigger")).toBeVisible();
   await expect(page.getByTestId("channel-start-huddle-trigger")).toBeVisible();
   await expect(page.getByTestId("channel-management-trigger")).toBeVisible();
+  await expect(page.getByTestId("channel-add-bot-trigger")).toHaveCount(0);
+  await expect(page.getByTestId("channel-members-trigger")).toBeHidden();
 });
 
 test("single-panel thread view hides channel actions", async ({ page }) => {
@@ -3478,7 +3516,7 @@ test("thread composer keeps focus after sending a thread reply", async ({
   // Wait for the send to settle.
   await expect(threadPanel).toContainText(reply);
 
-  // The thread input should still be focused — not the main composer.
+  // The thread input should still be focused - not the main composer.
   // Both composers expose the same `message-input` data-testid, so we
   // verify directly that `document.activeElement` lives inside the thread
   // panel rather than the main pane.
@@ -3642,6 +3680,67 @@ test("thread composer switches directly between visible reply edits", async ({
   await expect(page.getByText("Finish or cancel your edit first.")).toHaveCount(
     0,
   );
+});
+
+test("thread summary keeps its height while participant avatars resolve", async ({
+  page,
+}) => {
+  const root = `Thread summary height root ${Date.now()}`;
+
+  await page.goto("/");
+  await page.waitForFunction(
+    () => typeof window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__ === "function",
+  );
+  const rootId = await page.evaluate((rootContent) => {
+    const emit = window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__;
+    if (!emit) throw new Error("Mock message emitter is unavailable.");
+    const rootEvent = emit({ channelName: "general", content: rootContent });
+    for (const content of ["summary reply one", "summary reply two"]) {
+      emit({ channelName: "general", content, parentEventId: rootEvent.id });
+    }
+    return rootEvent.id;
+  }, root);
+
+  // Sample the summary line every frame from the moment it mounts until its
+  // avatar fallback (shown after a 200ms delay) has rendered. A height change
+  // here shifts the bottom-pinned timeline and drops the reader's hover.
+  const heightsPromise = page.evaluate(
+    (id) =>
+      new Promise<number[]>((resolve, reject) => {
+        const heights: number[] = [];
+        const deadline = performance.now() + 5_000;
+        let framesAfterFallback = -1;
+        const tick = () => {
+          const summary = document.querySelector<HTMLElement>(
+            `[data-testid="message-timeline"] [data-thread-head-id="${id}"][data-testid="message-thread-summary"]`,
+          );
+          if (summary?.parentElement) {
+            heights.push(summary.parentElement.getBoundingClientRect().height);
+            if (
+              framesAfterFallback < 0 &&
+              summary.querySelector(
+                '[data-testid="message-thread-summary-avatar-0-fallback"]',
+              )
+            ) {
+              framesAfterFallback = 0;
+            }
+          }
+          if (framesAfterFallback >= 0) framesAfterFallback += 1;
+          if (framesAfterFallback > 5) return resolve(heights);
+          if (performance.now() > deadline) {
+            return reject(new Error(`summary never settled: ${heights}`));
+          }
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+    rootId,
+  );
+  await page.getByTestId("channel-general").click();
+  const heights = await heightsPromise;
+
+  expect(heights.length).toBeGreaterThan(1);
+  expect(new Set(heights.map((height) => Math.round(height))).size).toBe(1);
 });
 
 test("editing a broadcast reply from a thread returns to the main composer", async ({
@@ -4485,6 +4584,7 @@ for (const targetKind of ["reply", "root"] as const) {
     await source.getByRole("button", { name: "Reply" }).click();
 
     const threadPanel = page.getByTestId("message-thread-panel");
+    await waitForCompanyWorkThreadContextRead(page);
     const threadInput = threadPanel.getByTestId("message-input");
     const reply = threadPanel.locator(`[data-message-id="${sourceReplyId}"]`);
     await reply.hover();
@@ -4630,7 +4730,7 @@ test("a refused channel switch preserves the reply edit and retries after cancel
 });
 
 for (const backInput of ["button", "keyboard"] as const) {
-  test(`a refused ${backInput} Back preserves the reply edit and retries after cancel`, async ({
+  test(`a refused ${backInput} leave action preserves the reply edit`, async ({
     page,
   }) => {
     const sourceRoot = `History guard root ${backInput} ${Date.now()}`;
@@ -4685,7 +4785,7 @@ for (const backInput of ["button", "keyboard"] as const) {
     );
     const invokeBack = async () => {
       if (backInput === "button") {
-        await page.getByTestId("global-back").click();
+        await threadPanel.getByTestId("auxiliary-panel-close").click();
         return;
       }
       await page.keyboard.press(
@@ -4718,9 +4818,13 @@ for (const backInput of ["button", "keyboard"] as const) {
 
     await threadInput.press("Escape");
     await expect(threadPanel.getByTestId("edit-target")).toHaveCount(0);
-    await expect(page.getByTestId("global-back")).toBeEnabled();
     await invokeBack();
-    await expect(page).not.toHaveURL(navigationBefore.url);
+    if (backInput === "button") {
+      await expect(threadPanel).toBeHidden();
+      await expect(page).not.toHaveURL(navigationBefore.url);
+    } else {
+      await expect(page).not.toHaveURL(navigationBefore.url);
+    }
   });
 }
 
@@ -4742,7 +4846,7 @@ test("ArrowUp in an empty composer edits your last message right after sending",
   await input.press("Enter");
   await expect(page.getByTestId("message-timeline")).toContainText(message);
 
-  // Composer stays focused after send — no click, just press ↑.
+  // Composer stays focused after send - no click, just press ↑.
   await expect(input).toBeFocused();
   await page.keyboard.press("ArrowUp");
 
@@ -4811,7 +4915,7 @@ test("ArrowUp edits your last thread reply right after sending it", async ({
   await page.keyboard.press("Enter");
   await expect(threadPanel).toContainText(reply);
 
-  // No click — press ↑ in the still-focused thread composer.
+  // No click - press ↑ in the still-focused thread composer.
   await page.keyboard.press("ArrowUp");
 
   const editBanner = threadPanel.getByTestId("edit-target");

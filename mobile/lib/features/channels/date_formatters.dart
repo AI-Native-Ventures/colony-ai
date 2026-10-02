@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
 // Re-export shortPubkey so existing callers continue to compile.
@@ -7,8 +8,13 @@ export '../../shared/utils/string_utils.dart' show shortPubkey;
 final _weekdayFormat = DateFormat('EEEE');
 final _weekdayMonthDayFormat = DateFormat('EEEE, MMMM d');
 final _monthDayYearFormat = DateFormat('MMMM d, y');
+final _todayMonthDayFormat = DateFormat('d MMMM');
 final _shortMonthDayFormat = DateFormat('MMM d');
-final _messageTimeFormat = DateFormat('h:mm a', 'en_US');
+final _messageTimeFormat = DateFormat('HH:mm', 'en_US');
+
+final conversationDayHeadingNowProvider = Provider<DateTime>(
+  (ref) => DateTime.now(),
+);
 
 /// Days in a week, past which the weekday name stops being unambiguous.
 const _weekdayBandDays = 7;
@@ -56,6 +62,19 @@ String formatDayHeading(int unixSeconds, {@visibleForTesting DateTime? now}) {
   return date.year == now.year
       ? _weekdayMonthDayFormat.format(date)
       : _monthDayYearFormat.format(date);
+}
+
+/// Conversation divider label, with the full day shown when it is today.
+String formatConversationDayHeading(int unixSeconds, {DateTime? now}) {
+  final date = DateTime.fromMillisecondsSinceEpoch(
+    unixSeconds * 1000,
+    isUtc: true,
+  ).toLocal();
+  now ??= DateTime.now();
+  if (_calendarDaysBetween(now, date) == 0) {
+    return 'Today · ${_todayMonthDayFormat.format(date)}';
+  }
+  return formatDayHeading(unixSeconds, now: now);
 }
 
 /// Whole calendar days from [date] to [now], in local time. Rounded rather than
@@ -122,13 +141,7 @@ String formatThreadSummaryLastReplyTime(
 String _formatAgo(int value, String unit) =>
     '$value $unit${value == 1 ? '' : 's'} ago';
 
-/// Desktop-parity message clock time, e.g. "2:34 PM".
-///
-/// Deliberately clock-only at every band, unlike desktop's message header,
-/// which reads "Yesterday at 2:34 PM". Mobile timestamps sit inside a chat
-/// bubble on a narrow screen with the day divider a short scroll away, so this
-/// is the compact side of that split — not an oversight. Change it only
-/// alongside a layout that has room for a date.
+/// Compact 24-hour message clock time, e.g. "14:34".
 String formatMessageTime(int unixSeconds) {
   final date = DateTime.fromMillisecondsSinceEpoch(
     unixSeconds * 1000,

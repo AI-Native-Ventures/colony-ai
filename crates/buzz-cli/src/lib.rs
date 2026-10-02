@@ -240,6 +240,39 @@ enum Cmd {
     /// Create, trigger, and manage workflows
     #[command(subcommand)]
     Workflows(WorkflowsCmd),
+    /// Create, cancel, answer, and list company asks
+    #[command(subcommand)]
+    Asks(AsksCmd),
+    /// Create and manage company goals
+    #[command(subcommand)]
+    Goals(GoalsCmd),
+    /// Read and update company member positions
+    #[command(subcommand)]
+    Team(TeamCmd),
+    /// Propose and manage employee duties
+    #[command(subcommand)]
+    Duties(DutiesCmd),
+    /// Propose and manage structured employee lessons
+    #[command(subcommand)]
+    Lessons(LessonsCmd),
+    /// Read and record employee AI allowances and AI spend evidence
+    #[command(subcommand)]
+    Spend(SpendCmd),
+    /// List, bind and revoke company secret metadata
+    #[command(subcommand)]
+    Secrets(SecretsCmd),
+    /// Create and manage company work items
+    #[command(subcommand)]
+    Work(WorkCmd),
+    /// Read and update Software Factory run records
+    #[command(subcommand)]
+    Factory(FactoryCmd),
+    /// Review client invoices and record money evidence
+    #[command(subcommand)]
+    Money(MoneyCmd),
+    /// List, grant, and revoke standing tool permissions
+    #[command(subcommand)]
+    Permissions(PermissionsCmd),
     /// Read the activity feed
     #[command(subcommand)]
     Feed(FeedCmd),
@@ -270,6 +303,9 @@ enum Cmd {
     /// Upload files to the relay's Blossom store
     #[command(subcommand)]
     Upload(UploadCmd),
+    /// Read and purchase account credits
+    #[command(subcommand)]
+    Credits(CreditsCmd),
     /// Agent engram management — persistent memory per NIP-AE
     #[command(subcommand)]
     Mem(MemCmd),
@@ -404,6 +440,21 @@ Examples:\n  \
 buzz agents archived"
     )]
     Archived,
+    /// Read the append-only configuration history for a company employee.
+    History {
+        /// Employee public key in lowercase hexadecimal form.
+        #[arg(long)]
+        employee_pubkey: String,
+    },
+    /// Append a new revision restoring an earlier employee configuration.
+    Undo {
+        /// Employee public key in lowercase hexadecimal form.
+        #[arg(long)]
+        employee_pubkey: String,
+        /// Immutable revision event to undo to its before snapshot.
+        #[arg(long)]
+        revision_event_id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1035,6 +1086,820 @@ pub enum WorkflowsCmd {
         /// Optional note to include with the approval/denial
         #[arg(long)]
         note: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum AsksCmd {
+    /// List current ask heads in a channel
+    List {
+        /// Channel UUID
+        #[arg(long)]
+        channel: String,
+    },
+    /// Create an ask from an AskRecord JSON object, or read it from stdin with '-'
+    Create {
+        /// Channel UUID containing the thread
+        #[arg(long)]
+        channel: String,
+        /// AskRecord JSON with askId and threadRootEventId, or '-' for stdin
+        #[arg(long)]
+        ask: String,
+    },
+    /// Propose a typed employee hire in an existing channel thread
+    ProposeHire {
+        /// Channel UUID containing the thread
+        #[arg(long)]
+        channel: String,
+        /// Existing thread root event ID
+        #[arg(long)]
+        thread_root: String,
+        /// HireProposal JSON with the selected real role and runtime values, or '-' for stdin
+        #[arg(long)]
+        proposal: String,
+    },
+    /// Cancel an open ask at its exact current head
+    Cancel {
+        /// Channel UUID containing the ask
+        #[arg(long)]
+        channel: String,
+        /// Ask UUID
+        #[arg(long)]
+        ask: String,
+        /// Current kind 30643 event ID
+        #[arg(long)]
+        expected_head_event_id: String,
+        /// Reason for cancelling, or '-' to read from stdin
+        #[arg(long)]
+        reason: String,
+    },
+    /// Respond to an open ask at its exact current head
+    Respond {
+        /// Channel UUID containing the ask
+        #[arg(long)]
+        channel: String,
+        /// Ask UUID
+        #[arg(long)]
+        ask: String,
+        /// Current kind 30643 event ID
+        #[arg(long)]
+        expected_head_event_id: String,
+        /// Ask outcome: approved, rejected, revision_requested, answered, chosen, confirmed, pass, fail
+        #[arg(long, value_parser = ["approved", "rejected", "revision_requested", "answered", "chosen", "confirmed", "pass", "fail"])]
+        outcome: String,
+        /// Decision reason, or '-' to read from stdin
+        #[arg(long)]
+        reason: Option<String>,
+        /// Question answer, or '-' to read from stdin
+        #[arg(long)]
+        answer: Option<String>,
+        /// Selected choice option ID
+        #[arg(long)]
+        option_id: Option<String>,
+        /// JSON array of checklist item IDs, or '-' to read from stdin
+        #[arg(long)]
+        checked_item_ids: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum GoalsCmd {
+    /// Create a company goal from a JSON GoalRecord
+    Create {
+        /// GoalRecord JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Update the editable fields of a goal
+    Update {
+        /// Goal UUID
+        #[arg(long)]
+        goal: String,
+        /// Updated GoalRecord JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Record progress with evidence
+    Progress {
+        /// Goal UUID
+        #[arg(long)]
+        goal: String,
+        /// GoalProgress JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        progress: String,
+        /// Optional explicit status to save with this progress update
+        #[arg(long)]
+        status: Option<String>,
+    },
+    /// Explicitly set a goal to active, off_pace, or achieved
+    Status {
+        /// Goal UUID
+        #[arg(long)]
+        goal: String,
+        /// One of: active, off_pace, achieved
+        #[arg(long)]
+        status: String,
+        /// Why the status changed
+        #[arg(long)]
+        reason: String,
+    },
+    /// Archive a goal
+    Archive {
+        /// Goal UUID
+        #[arg(long)]
+        goal: String,
+        /// Optional reason for the archive
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Restore an archived goal to active
+    Restore {
+        /// Goal UUID
+        #[arg(long)]
+        goal: String,
+    },
+    /// Delete a goal when it has no non-deleted sub-goals
+    Delete {
+        /// Goal UUID
+        #[arg(long)]
+        goal: String,
+        /// Optional reason for the deletion
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// List current company goal heads
+    List {
+        /// Maximum current goal heads to return, at most 10000
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Get one current goal head
+    Get {
+        /// Goal UUID
+        #[arg(long)]
+        goal: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum TeamCmd {
+    /// List current relay-signed member position heads
+    List {
+        /// Maximum current position heads to return, at most 10000
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Get one member position by member public key
+    Get {
+        /// Member public key in 64-character hex
+        #[arg(long)]
+        member: String,
+    },
+    /// Create or update a member title and reporting line
+    SetPosition {
+        /// Member public key in 64-character hex
+        #[arg(long)]
+        member: String,
+        /// New title
+        #[arg(long)]
+        title: Option<String>,
+        /// Manager public key in 64-character hex
+        #[arg(long, conflicts_with = "clear_manager")]
+        manager: Option<String>,
+        /// Clear the manager and report directly to the company owner
+        #[arg(long, conflicts_with = "manager")]
+        clear_manager: bool,
+    },
+    /// Set a member title at the exact current head
+    SetTitle {
+        /// Member public key in 64-character hex
+        #[arg(long)]
+        member: String,
+        /// New title
+        #[arg(long)]
+        title: String,
+    },
+    /// Set or clear the manager at the exact current head
+    SetManager {
+        /// Member public key in 64-character hex
+        #[arg(long)]
+        member: String,
+        /// Manager public key in 64-character hex
+        #[arg(long, conflicts_with = "clear_manager")]
+        manager: Option<String>,
+        /// Clear the manager and report directly to the company owner
+        #[arg(long, conflicts_with = "manager")]
+        clear_manager: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum DutiesCmd {
+    /// Propose a scheduled duty in an existing channel conversation
+    Propose {
+        /// Channel UUID containing the conversation thread
+        #[arg(long)]
+        channel: String,
+        /// Existing NIP-10 thread root event id
+        #[arg(long)]
+        thread_root: String,
+        /// DutyProposal JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        proposal: String,
+    },
+    /// List current duty heads, optionally for one employee
+    List {
+        /// Employee public key in 64-character hex
+        #[arg(long)]
+        employee: Option<String>,
+        /// Maximum number of records to return, at most 10000
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Get one duty and its real workflow run history
+    Get {
+        /// Duty UUID
+        #[arg(long)]
+        duty: String,
+        /// Maximum number of workflow runs to include
+        #[arg(long)]
+        runs: Option<u32>,
+    },
+    /// Update a duty's schedule, channel or instructions
+    Update {
+        /// Duty UUID
+        #[arg(long)]
+        duty: String,
+        /// Replacement DutyProposal JSON or a path to JSON; use - for stdin
+        #[arg(long)]
+        proposal: String,
+    },
+    /// Pause a duty schedule
+    Pause {
+        /// Duty UUID
+        #[arg(long)]
+        duty: String,
+    },
+    /// Resume a paused duty schedule
+    Resume {
+        /// Duty UUID
+        #[arg(long)]
+        duty: String,
+    },
+    /// Delete a duty while retaining its run history
+    Delete {
+        /// Duty UUID
+        #[arg(long)]
+        duty: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum LessonsCmd {
+    /// Propose a structured lesson with explicit evidence references
+    Create {
+        /// Employee public key in 64-character hex
+        #[arg(long)]
+        employee: String,
+        /// LessonSnapshot JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// List current lesson heads, optionally for one employee
+    List {
+        /// Employee public key in 64-character hex
+        #[arg(long)]
+        employee: Option<String>,
+        /// Maximum number of records to return, at most 10000
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Get one current lesson head
+    Get {
+        /// Lesson UUID
+        #[arg(long)]
+        lesson: String,
+    },
+    /// Edit a lesson and return it to candidate state
+    Update {
+        /// Lesson UUID
+        #[arg(long)]
+        lesson: String,
+        /// Replacement LessonSnapshot JSON or a path to JSON; use - to stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Approve a candidate lesson with explicit confidence
+    Approve {
+        /// Lesson UUID
+        #[arg(long)]
+        lesson: String,
+        /// Explicit confidence: low, moderate, or high
+        #[arg(long, value_enum)]
+        confidence: LessonConfidenceArg,
+    },
+    /// Deprecate a lesson from current guidance
+    Deprecate {
+        /// Lesson UUID
+        #[arg(long)]
+        lesson: String,
+    },
+    /// Restore a deprecated lesson as a candidate
+    Restore {
+        /// Lesson UUID
+        #[arg(long)]
+        lesson: String,
+    },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum LessonConfidenceArg {
+    #[value(name = "low")]
+    Low,
+    #[value(name = "moderate")]
+    Moderate,
+    #[value(name = "high")]
+    High,
+}
+
+#[derive(Subcommand)]
+pub enum SpendCmd {
+    /// Read and update employee AI allowances
+    #[command(subcommand)]
+    Allowance(SpendAllowanceCmd),
+    /// Read and record AI spend evidence
+    #[command(subcommand)]
+    Records(SpendRecordsCmd),
+}
+
+#[derive(Subcommand)]
+pub enum SpendAllowanceCmd {
+    /// List current relay-signed employee allowance heads
+    List,
+    /// Submit a typed EmployeeAllowanceAction JSON object or path; use - for stdin
+    Set {
+        #[arg(long)]
+        action: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SpendRecordsCmd {
+    /// List current relay-signed AI spend record heads
+    List,
+    /// Submit a typed AiSpendRecordAction JSON object or path; use - for stdin
+    Set {
+        #[arg(long)]
+        action: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SecretsCmd {
+    /// List secret binding names and statuses
+    List {
+        /// Maximum number of results to return
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Create a pending binding from metadata JSON or stdin; no value is accepted
+    Bind {
+        /// SecretBindingSpec JSON or '-' to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Revoke a binding by its UUID
+    Revoke {
+        /// Secret binding UUID
+        #[arg(long)]
+        binding_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WorkCmd {
+    /// Create a company work item in a conversation channel
+    Create {
+        /// Channel UUID where the commitment lives
+        #[arg(long)]
+        channel: String,
+        /// CompanyWorkItemInput JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Update the editable fields of a company work item
+    Update {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+        /// CompanyWorkItemInput JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Change status to active, paused, blocked, or done_unverified
+    Status {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+        /// Target status
+        #[arg(long)]
+        status: String,
+        /// Why the status changed
+        #[arg(long)]
+        reason: String,
+    },
+    /// Verify submitted work with a verdict and evidence
+    Verify {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+        /// One of: pass, revision_requested
+        #[arg(long)]
+        verdict: String,
+        /// Why the reviewer chose this verdict
+        #[arg(long)]
+        reason: String,
+        /// Evidence checked by the reviewer
+        #[arg(long)]
+        evidence: String,
+    },
+    /// Archive a company work item
+    Archive {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+    },
+    /// Restore an archived company work item
+    Restore {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+    },
+    /// List current company work heads
+    List {
+        /// Restrict results to one conversation channel
+        #[arg(long)]
+        channel: Option<String>,
+        /// Maximum current work heads to return, at most 10000
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Get one current company work head
+    Get {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+    },
+    /// Set a company work due date using an RFC 3339 UTC timestamp
+    DueDate {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+        /// Due date ending in Z
+        #[arg(long)]
+        date: String,
+    },
+    /// Clear a company work due date
+    ClearDueDate {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+    },
+    /// Propose a persisted commitment suggestion from a source message
+    Suggest {
+        /// Source conversation channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Stable suggestion UUID
+        #[arg(long)]
+        suggestion: String,
+        /// CompanyWorkSuggestionInput JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Accept a persisted suggestion and create the named work item
+    AcceptSuggestion {
+        /// Suggestion UUID
+        #[arg(long)]
+        suggestion: String,
+        /// New work-item UUID
+        #[arg(long)]
+        work: String,
+    },
+    /// Dismiss a persisted commitment suggestion
+    DismissSuggestion {
+        /// Suggestion UUID
+        #[arg(long)]
+        suggestion: String,
+    },
+    /// Explicitly expire a persisted suggestion after its saved expiry
+    ExpireSuggestion {
+        /// Suggestion UUID
+        #[arg(long)]
+        suggestion: String,
+    },
+    /// Enable or update watchdog settings from an explicit config JSON value
+    Watchdog {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+        /// CompanyWorkWatchdogConfig JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Turn off saved watchdog settings for a work item
+    WatchdogOff {
+        /// Work-item UUID
+        #[arg(long)]
+        work: String,
+    },
+}
+
+/// Commands for relay-backed Software Factory run records.
+#[derive(Subcommand)]
+pub enum FactoryCmd {
+    /// List current Factory run records
+    List,
+    /// Read one Factory run record
+    Get {
+        /// Native Factory run UUID
+        #[arg(long)]
+        run: String,
+    },
+    /// Read and update preview metadata
+    #[command(subcommand)]
+    Preview(FactoryPreviewCmd),
+    /// Link and update metadata for an existing pull request
+    #[command(subcommand)]
+    PullRequest(FactoryPullRequestCmd),
+}
+
+/// Preview metadata operations. These commands do not start a process.
+#[derive(Subcommand)]
+pub enum FactoryPreviewCmd {
+    /// Save the command and local address for a future preview runtime
+    Configure {
+        /// Native Factory run UUID
+        #[arg(long)]
+        run: String,
+        /// Development command to save, such as a project-specific script
+        #[arg(long)]
+        command: String,
+        /// Actual local address the future preview runtime will bind
+        #[arg(long)]
+        url: String,
+        /// Run owner pubkey when an administrator creates the first record
+        #[arg(long)]
+        owner_pubkey: Option<String>,
+    },
+    /// Record a preview state emitted by an external preview runtime
+    Report {
+        /// Native Factory run UUID
+        #[arg(long)]
+        run: String,
+        /// FactoryPreviewState JSON, a JSON file path, or - for stdin
+        #[arg(long)]
+        record: String,
+    },
+}
+
+/// Pull request metadata operations.
+#[derive(Subcommand)]
+pub enum FactoryPullRequestCmd {
+    /// Link an existing pull request by supplying its metadata record
+    Link {
+        /// Native Factory run UUID
+        #[arg(long)]
+        run: String,
+        /// FactoryPullRequest JSON, a JSON file path, or - for stdin
+        #[arg(long)]
+        record: String,
+        /// Run owner pubkey when an administrator creates the first record
+        #[arg(long)]
+        owner_pubkey: Option<String>,
+    },
+    /// Refresh metadata for an already linked pull request
+    Update {
+        /// Native Factory run UUID
+        #[arg(long)]
+        run: String,
+        /// FactoryPullRequest JSON, a JSON file path, or - for stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Remove the pull request link from a Factory run record
+    Unlink {
+        /// Native Factory run UUID
+        #[arg(long)]
+        run: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum MoneyCmd {
+    /// List and transition client invoices
+    #[command(subcommand)]
+    Invoices(MoneyInvoicesCmd),
+    /// Record evidence for a payment already received outside Colony
+    #[command(subcommand)]
+    Payments(MoneyPaymentsCmd),
+    /// Record a credit note, external refund, or write-off
+    #[command(subcommand)]
+    Adjustments(MoneyAdjustmentsCmd),
+    /// Draft, review, or approve a follow-up intent without sending it
+    #[command(subcommand)]
+    FollowUps(MoneyFollowUpsCmd),
+}
+
+#[derive(Subcommand)]
+pub enum MoneyInvoicesCmd {
+    /// List invoice heads in one authorized client channel
+    List {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+    },
+    /// Show an invoice and its recorded versions, payments, and adjustments
+    Show {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Invoice UUID
+        #[arg(long)]
+        invoice: String,
+    },
+    /// Issue the current draft invoice
+    Issue {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Invoice UUID
+        #[arg(long)]
+        invoice: String,
+    },
+    /// Void a draft or unpaid issued invoice with a reason
+    Void {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Invoice UUID
+        #[arg(long)]
+        invoice: String,
+        /// Required reason for voiding
+        #[arg(long)]
+        reason: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum MoneyPaymentsCmd {
+    /// Record evidence for a payment already received outside Colony
+    Record {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Invoice UUID
+        #[arg(long)]
+        invoice: String,
+        /// Positive integer amount in minor currency units
+        #[arg(long)]
+        amount_minor: i64,
+        /// Evidence source, such as manual or a named provider
+        #[arg(long, default_value = "manual")]
+        provider: String,
+        /// Provider transaction reference, required for named providers
+        #[arg(long)]
+        provider_reference: Option<String>,
+        /// Payment currency, defaults to the invoice currency
+        #[arg(long)]
+        currency: Option<String>,
+        /// Unix seconds when payment was received, defaults to now
+        #[arg(long)]
+        occurred_at: Option<i64>,
+        /// Non-secret evidence reference
+        #[arg(long)]
+        evidence_ref: String,
+    },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum MoneyAdjustmentArg {
+    #[value(name = "credit-note")]
+    CreditNote,
+    Refund,
+    #[value(name = "write-off")]
+    WriteOff,
+}
+
+impl MoneyAdjustmentArg {
+    pub(crate) fn to_wire(self) -> buzz_core::business_records::MoneyAdjustmentType {
+        match self {
+            Self::CreditNote => buzz_core::business_records::MoneyAdjustmentType::CreditNote,
+            Self::Refund => buzz_core::business_records::MoneyAdjustmentType::Refund,
+            Self::WriteOff => buzz_core::business_records::MoneyAdjustmentType::WriteOff,
+        }
+    }
+}
+
+#[derive(Subcommand)]
+pub enum MoneyAdjustmentsCmd {
+    /// Record evidence for an adjustment already agreed or made outside Colony
+    Create {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Invoice UUID
+        #[arg(long)]
+        invoice: String,
+        /// Adjustment kind
+        #[arg(long, value_enum)]
+        adjustment_type: MoneyAdjustmentArg,
+        /// Positive integer amount in minor currency units
+        #[arg(long)]
+        amount_minor: i64,
+        /// Date the adjustment took effect in Unix seconds, defaults to now
+        #[arg(long)]
+        occurred_at: Option<i64>,
+        /// Required explanation
+        #[arg(long)]
+        reason: String,
+        /// Non-secret evidence reference
+        #[arg(long)]
+        evidence_ref: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum MoneyFollowUpsCmd {
+    /// Draft a follow-up intent for an overdue invoice
+    Draft {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Invoice UUID
+        #[arg(long)]
+        invoice: String,
+        /// Follow-up text to review, not send
+        #[arg(long)]
+        content: String,
+        /// Intended follow-up time in Unix seconds
+        #[arg(long)]
+        due_at: Option<i64>,
+        /// Follow-up UUID; generated when omitted
+        #[arg(long)]
+        follow_up: Option<String>,
+    },
+    /// Move a follow-up draft into review
+    Review {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Invoice UUID
+        #[arg(long)]
+        invoice: String,
+        /// Follow-up UUID
+        #[arg(long)]
+        follow_up: String,
+    },
+    /// Approve follow-up intent without sending email or a reminder
+    Approve {
+        /// Client channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Invoice UUID
+        #[arg(long)]
+        invoice: String,
+        /// Follow-up UUID
+        #[arg(long)]
+        follow_up: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum PermissionsCmd {
+    /// List current relay-signed standing permission heads
+    List {
+        /// Filter to one managed agent public key
+        #[arg(long)]
+        agent: Option<String>,
+    },
+    /// Grant a standing permission from a ToolPermissionRecord JSON object
+    Grant {
+        /// ToolPermissionRecord JSON or a path to JSON; use - to read stdin
+        #[arg(long)]
+        record: String,
+    },
+    /// Revoke an open permission at its exact current head
+    Revoke {
+        /// Permission UUID
+        #[arg(long)]
+        permission: String,
+        /// Current kind 30645 event ID
+        #[arg(long)]
+        expected_head_event_id: String,
+        /// Reason for revoking, or '-' to read from stdin
+        #[arg(long)]
+        reason: String,
     },
 }
 
@@ -1975,6 +2840,35 @@ pub enum MemCmd {
     },
 }
 
+/// Subcommands for `buzz credits`.
+#[derive(Subcommand)]
+pub enum CreditsCmd {
+    /// Show the account's available credit balance.
+    Balance,
+    /// Show account credit usage recorded by the server ledger.
+    Usage,
+    /// Show confirmed account credit transactions.
+    History,
+    /// List server-priced PayFast credit packs.
+    Packs,
+    /// Create a hosted PayFast checkout for one pack.
+    Pay {
+        /// Pack identifier from `buzz credits packs`.
+        pack_id: String,
+        /// Email address sent to the checkout provider.
+        #[arg(long)]
+        email: String,
+        /// Reuse this key to safely recover a checkout after an unknown result.
+        #[arg(long)]
+        idempotency_key: Option<String>,
+    },
+    /// Read one checkout intent by its reference.
+    Verify {
+        /// Reference returned by `buzz credits pay`.
+        reference: String,
+    },
+}
+
 /// Subcommands for `buzz pack`.
 #[derive(Subcommand)]
 pub enum PackCmd {
@@ -2180,6 +3074,17 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Dms(sub) => commands::dms::dispatch(sub, &client).await,
         Cmd::Users(sub) => commands::users::dispatch(sub, &client, &cli.format).await,
         Cmd::Workflows(sub) => commands::workflows::dispatch(sub, &client).await,
+        Cmd::Asks(sub) => commands::asks::dispatch(sub, &client).await,
+        Cmd::Goals(sub) => commands::goals::dispatch(sub, &client).await,
+        Cmd::Team(sub) => commands::team::dispatch(sub, &client).await,
+        Cmd::Duties(sub) => commands::company_duties_lessons::dispatch_duties(sub, &client).await,
+        Cmd::Lessons(sub) => commands::company_duties_lessons::dispatch_lessons(sub, &client).await,
+        Cmd::Spend(sub) => commands::spend::dispatch(sub, &client).await,
+        Cmd::Secrets(sub) => commands::secrets::dispatch(sub, &client).await,
+        Cmd::Work(sub) => commands::work::dispatch(sub, &client).await,
+        Cmd::Factory(sub) => commands::factory::dispatch(sub, &client).await,
+        Cmd::Money(sub) => commands::money::dispatch(sub, &client).await,
+        Cmd::Permissions(sub) => commands::permissions::dispatch(sub, &client).await,
         Cmd::Feed(sub) => commands::feed::dispatch(sub, &client, &cli.format).await,
         Cmd::Social(sub) => commands::social::dispatch(sub, &client).await,
         Cmd::Notes(sub) => commands::notes::dispatch(sub, &client).await,
@@ -2190,6 +3095,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Pr(sub) => commands::pr::dispatch(sub, &client).await,
         Cmd::Media(sub) => commands::upload::dispatch_media(sub, &client).await,
         Cmd::Upload(sub) => commands::upload::dispatch(sub, &client).await,
+        Cmd::Credits(sub) => commands::credits::dispatch(sub, &client).await,
         Cmd::Mem(sub) => commands::mem::dispatch(sub, &client).await,
         Cmd::Moderation(sub) => commands::moderation::dispatch(sub, &client, &cli.format).await,
         Cmd::Pack(_) => unreachable!("handled above"),
@@ -2250,6 +3156,28 @@ mod tests {
     #[test]
     fn cli_definition_is_valid() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn credits_checkout_accepts_a_stable_idempotency_key() {
+        let cli = parse_args([
+            "buzz",
+            "credits",
+            "pay",
+            "starter",
+            "--email",
+            "founder@example.com",
+            "--idempotency-key",
+            "12a5736a-5297-4acd-8475-706652df92dc",
+        ])
+        .expect("credits command parses");
+        assert!(matches!(
+            cli.command,
+            Cmd::Credits(CreditsCmd::Pay {
+                idempotency_key: Some(_),
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -2321,27 +3249,39 @@ mod tests {
     fn command_inventory_is_stable() {
         let expected_groups: Vec<&str> = vec![
             "agents",
+            "asks",
             "canvas",
             "channels",
+            "credits",
             "dms",
+            "duties",
             "emoji",
+            "factory",
             "feed",
             "gifs",
+            "goals",
             "issues",
+            "lessons",
             "media",
             "mem",
             "messages",
             "moderation",
+            "money",
             "notes",
             "pack",
             "patches",
+            "permissions",
             "pr",
             "projects",
             "reactions",
             "repos",
+            "secrets",
             "social",
+            "spend",
+            "team",
             "upload",
             "users",
+            "work",
             "workflows",
         ];
 
@@ -2368,6 +3308,54 @@ mod tests {
     }
 
     #[test]
+    fn factory_configuration_command_requires_explicit_values() {
+        let run = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+        assert!(Cli::try_parse_from([
+            "buzz",
+            "factory",
+            "preview",
+            "configure",
+            "--run",
+            run,
+            "--command",
+            "pnpm dev",
+            "--url",
+            "http://127.0.0.1:4000",
+        ])
+        .is_ok());
+        assert!(Cli::try_parse_from([
+            "buzz",
+            "factory",
+            "preview",
+            "configure",
+            "--run",
+            run,
+            "--command",
+            "pnpm dev",
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn secret_binding_cli_does_not_accept_a_value_argument_or_echo_it() {
+        let sentinel = format!("credential-{}", Uuid::new_v4());
+        let result = Cli::try_parse_from([
+            "buzz",
+            "secrets",
+            "bind",
+            "--record",
+            "{}",
+            "--value",
+            sentinel.as_str(),
+        ]);
+        let error = match result {
+            Ok(_) => panic!("the secret binding CLI has no credential value argument"),
+            Err(error) => error,
+        };
+        assert!(!error.to_string().contains(&sentinel));
+    }
+
+    #[test]
     fn subcommand_names_are_stable() {
         fn names(cmd: &clap::Command, group: &str) -> Vec<String> {
             let group_cmd = cmd
@@ -2391,8 +3379,14 @@ mod tests {
                 "archived",
                 "draft-create",
                 "draft-update",
-                "unarchive"
+                "history",
+                "unarchive",
+                "undo"
             ]
+        );
+        assert_eq!(
+            names(&cmd, "asks"),
+            vec!["cancel", "create", "list", "propose-hire", "respond"]
         );
         assert_eq!(
             names(&cmd, "messages"),
@@ -2429,7 +3423,12 @@ mod tests {
             ]
         );
         assert_eq!(names(&cmd, "canvas"), vec!["get", "set"]);
+        assert_eq!(
+            names(&cmd, "credits"),
+            vec!["balance", "history", "packs", "pay", "usage", "verify"]
+        );
         assert_eq!(names(&cmd, "reactions"), vec!["add", "get", "remove"]);
+        assert_eq!(names(&cmd, "secrets"), vec!["bind", "list", "revoke"]);
         assert_eq!(
             names(&cmd, "emoji"),
             vec!["export", "import", "list", "rm", "set"]
@@ -2451,6 +3450,38 @@ mod tests {
         assert_eq!(
             names(&cmd, "workflows"),
             vec!["approve", "create", "delete", "get", "list", "runs", "trigger", "update"]
+        );
+        assert_eq!(
+            names(&cmd, "work"),
+            vec![
+                "accept-suggestion",
+                "archive",
+                "clear-due-date",
+                "create",
+                "dismiss-suggestion",
+                "due-date",
+                "expire-suggestion",
+                "get",
+                "list",
+                "restore",
+                "status",
+                "suggest",
+                "update",
+                "verify",
+                "watchdog",
+                "watchdog-off"
+            ]
+        );
+        assert_eq!(
+            names(&cmd, "goals"),
+            vec![
+                "archive", "create", "delete", "get", "list", "progress", "restore", "status",
+                "update"
+            ]
+        );
+        assert_eq!(
+            names(&cmd, "team"),
+            vec!["get", "list", "set-manager", "set-position", "set-title"]
         );
         assert_eq!(names(&cmd, "feed"), vec!["get"]);
         assert_eq!(
@@ -2531,17 +3562,22 @@ mod tests {
     #[test]
     fn subcommand_counts_are_stable() {
         let expected: Vec<(&str, usize)> = vec![
-            ("agents", 5),
+            ("agents", 7),
+            ("asks", 5),
             ("canvas", 2),
             ("channels", 16),
             ("dms", 4),
             ("emoji", 5),
+            ("factory", 4),
             ("feed", 1),
+            ("goals", 9),
             ("issues", 6),
             ("media", 1),
             ("messages", 8),
+            ("money", 4),
             ("pack", 2),
             ("patches", 4),
+            ("permissions", 3),
             ("pr", 5),
             ("projects", 8),
             ("reactions", 3),
@@ -2549,6 +3585,7 @@ mod tests {
             ("social", 7),
             ("upload", 1),
             ("users", 5),
+            ("work", 16),
             ("workflows", 8),
         ];
 
@@ -2736,5 +3773,108 @@ mod tests {
             .is_err(),
             "--visibility chartreuse on update must be rejected at parse time"
         );
+    }
+
+    #[test]
+    fn money_command_tree_accepts_requested_operations() {
+        let channel = "11111111-1111-4111-8111-111111111111";
+        let invoice = "22222222-2222-4222-8222-222222222222";
+        let commands: &[&[&str]] = &[
+            &["buzz", "money", "invoices", "list", "--channel", channel],
+            &[
+                "buzz",
+                "money",
+                "invoices",
+                "show",
+                "--channel",
+                channel,
+                "--invoice",
+                invoice,
+            ],
+            &[
+                "buzz",
+                "money",
+                "invoices",
+                "issue",
+                "--channel",
+                channel,
+                "--invoice",
+                invoice,
+            ],
+            &[
+                "buzz",
+                "money",
+                "invoices",
+                "void",
+                "--channel",
+                channel,
+                "--invoice",
+                invoice,
+                "--reason",
+                "duplicate draft",
+            ],
+            &[
+                "buzz",
+                "money",
+                "payments",
+                "record",
+                "--channel",
+                channel,
+                "--invoice",
+                invoice,
+                "--amount-minor",
+                "1234",
+                "--evidence-ref",
+                "receipt-1",
+            ],
+            &[
+                "buzz",
+                "money",
+                "adjustments",
+                "create",
+                "--channel",
+                channel,
+                "--invoice",
+                invoice,
+                "--adjustment-type",
+                "credit-note",
+                "--amount-minor",
+                "100",
+                "--reason",
+                "scope reduced",
+                "--evidence-ref",
+                "credit-note-1",
+            ],
+            &[
+                "buzz",
+                "money",
+                "follow-ups",
+                "draft",
+                "--channel",
+                channel,
+                "--invoice",
+                invoice,
+                "--content",
+                "Review this balance",
+            ],
+            &[
+                "buzz",
+                "money",
+                "follow-ups",
+                "approve",
+                "--channel",
+                channel,
+                "--invoice",
+                invoice,
+                "--follow-up",
+                "33333333-3333-4333-8333-333333333333",
+            ],
+        ];
+        for args in commands {
+            assert!(
+                Cli::try_parse_from(*args).is_ok(),
+                "failed to parse {args:?}"
+            );
+        }
     }
 }

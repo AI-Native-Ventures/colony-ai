@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../shared/clipboard_utils.dart';
+import '../../shared/company/goals/goal_records.dart';
 import '../../shared/mentions/mention_bindings.dart';
 import '../../shared/mentions/mention_tags.dart';
 import '../../shared/deeplink/deep_link.dart';
@@ -28,10 +29,12 @@ import '../../shared/custom_emoji/custom_emoji_render.dart';
 import '../../shared/emoji/emoji_data_provider.dart';
 import '../../shared/emoji/emoji_only.dart';
 import 'channels_provider.dart';
+import 'goal_reference_card.dart';
 import 'media_viewer_page.dart';
 import 'message_content/link_normalizer.dart';
 import 'message_media.dart';
 import 'voice_note_attachment.dart';
+import 'conversation_styles.dart';
 
 part 'message_content/media_carousel.dart';
 part 'message_content/inline_components.dart';
@@ -270,10 +273,11 @@ class MessageContent extends HookConsumerWidget {
             segment,
             mentionBindings.keys,
           ).reversed) {
+            final originalMention = segment.substring(range.start, range.end);
             segment = segment.replaceRange(
               range.start,
               range.end,
-              '@${_markdownMentionName(range.label)}',
+              '@${_markdownMentionName(originalMention.substring(1))}',
             );
           }
           mentionBuf.write(segment);
@@ -422,6 +426,8 @@ class MessageContent extends HookConsumerWidget {
       return _buildMedia(context, url, imeta);
     }
     final uri = Uri.tryParse(url);
+    final goalId = uri == null ? null : parseGoalReferenceUri(uri);
+    if (goalId != null) return GoalReferenceCard(goalId: goalId);
     final buzzLink = uri?.scheme == 'buzz'
         ? parseBuzzDeepLink(uri!) ?? parseEntityDeepLink(uri)
         : null;
@@ -896,23 +902,73 @@ class _MentionMd extends InlineMd {
     final isAgent =
         pubkey != null && agentMentionPubkeys.contains(pubkey.toLowerCase());
     final fullLabel = displayName ?? raw.substring(1);
-    final visibleLabel = fullLabel.replaceAllMapped(
-      RegExp(r'\(([0-9a-f]{64})\)'),
-      (m) => '(${m[1]!.substring(0, 8)}…${m[1]!.substring(60)})',
-    );
-    final pill = _MentionPill(
-      label: visibleLabel,
-      semanticsLabel: fullLabel,
-      isAgent: isAgent,
-      textStyle: config.style,
-    );
+    final visibleLabel = isAgent
+        ? fullLabel.replaceAllMapped(
+            RegExp(r'\(([0-9a-f]{64})\)'),
+            (m) => '(${m[1]!.substring(0, 8)}…${m[1]!.substring(60)})',
+          )
+        : raw.substring(1);
+    final mention = isAgent
+        ? _MentionPill(
+            label: visibleLabel,
+            semanticsLabel: fullLabel,
+            isAgent: true,
+            textStyle: config.style,
+          )
+        : _InlineMention(
+            label: '@$visibleLabel',
+            semanticsLabel: fullLabel,
+            pubkey: pubkey,
+            textStyle: config.style,
+            onTap: pubkey == null || onMentionTap == null
+                ? null
+                : () => onMentionTap!(pubkey),
+          );
 
     return WidgetSpan(
       alignment: PlaceholderAlignment.baseline,
       baseline: TextBaseline.alphabetic,
-      child: pubkey != null && onMentionTap != null
-          ? GestureDetector(onTap: () => onMentionTap!(pubkey), child: pill)
-          : pill,
+      child: mention,
+    );
+  }
+}
+
+class _InlineMention extends StatelessWidget {
+  final String label;
+  final String semanticsLabel;
+  final String? pubkey;
+  final TextStyle? textStyle;
+  final VoidCallback? onTap;
+
+  const _InlineMention({
+    required this.label,
+    required this.semanticsLabel,
+    required this.pubkey,
+    required this.textStyle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Text(
+      label,
+      style: (textStyle ?? context.textTheme.bodyMedium)?.copyWith(
+        color: conversationAccentColor(context),
+        backgroundColor: null,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+    if (onTap == null) {
+      return Semantics(label: 'Mention $semanticsLabel', child: text);
+    }
+    return Semantics(
+      key: pubkey == null ? null : ValueKey('message-mention-$pubkey'),
+      button: true,
+      label: 'Mention $semanticsLabel',
+      child: GestureDetector(
+        onTap: onTap,
+        child: ExcludeSemantics(child: text),
+      ),
     );
   }
 }

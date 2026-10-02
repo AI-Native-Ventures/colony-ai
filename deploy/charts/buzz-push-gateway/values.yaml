@@ -25,8 +25,8 @@ maxGrantLifetimeSeconds: 2592000
 profiles:
   dogfood:
     # Production MUST override this with the exact Apple TEAMID.bundle-id.
-    appAttestAppId: TEAMID.xyz.block.buzz.dogfood.mobile
-    apnsTopic: xyz.block.buzz.dogfood.mobile
+    appAttestAppId: TEAMID.ventures.ainative.colony.dogfood
+    apnsTopic: ventures.ainative.colony.dogfood
     apnsEnvironment: production
     apnsCert:
       secretName: buzz-push-gateway

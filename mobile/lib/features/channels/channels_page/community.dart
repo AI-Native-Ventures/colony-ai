@@ -421,53 +421,43 @@ Future<void> _confirmRemoveCommunity(
   }
 }
 
-class _CommunityIndicator extends ConsumerWidget {
-  final VoidCallback onTap;
+class _BusinessSwitchButton extends ConsumerWidget {
+  const _BusinessSwitchButton({
+    super.key,
+    required this.onTap,
+    required this.onLongPress,
+  });
 
-  const _CommunityIndicator({required this.onTap});
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final activeAsync = ref.watch(activeCommunityProvider);
-
-    final activeCommunity = activeAsync.value;
-
-    return GestureDetector(
+    final profile = ref.watch(profileProvider).value;
+    final initials = profile == null
+        ? '?'
+        : _chatInitials(profile.displayName, fallback: profile.initial);
+    return Semantics(
+      button: true,
+      label: 'Switch business',
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: _CommunityAvatar(
-        name: activeCommunity?.name,
-        relayUrl: activeCommunity?.relayUrl,
-      ),
-    );
-  }
-}
-
-class _CommunityHeaderTitle extends ConsumerWidget {
-  final TextStyle? style;
-  final VoidCallback onTap;
-
-  const _CommunityHeaderTitle({required this.onTap, this.style});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final name = ref.watch(activeCommunityProvider).value?.name;
-    final title = name?.trim();
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox.expand(
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Padding(
-            padding: const EdgeInsets.only(left: Grid.xxs),
-            child: Text(
-              title == null || title.isEmpty ? 'Community' : title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: style,
-            ),
-          ),
+      customSemanticsActions: {
+        CustomSemanticsAction(label: 'Open Settings'): onLongPress,
+      },
+      child: GestureDetector(
+        key: const ValueKey('switch-business-button'),
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: IdentityAvatar(
+          initials: initials,
+          kind: profile?.isAgent == true
+              ? IdentityKind.agent
+              : IdentityKind.person,
+          imageUrl: profile?.avatarUrl,
+          size: MobileLayoutTokens.companyHeaderAvatarSize,
+          semanticLabel: 'Switch business',
+          excludeSemantics: true,
         ),
       ),
     );
@@ -488,10 +478,7 @@ class _CommunityAvatar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final trimmedName = name?.trim();
-    final initial = trimmedName != null && trimmedName.isNotEmpty
-        ? trimmedName.substring(0, 1).toUpperCase()
-        : '?';
+    final initials = _chatInitials(name);
     final relay = relayUrl;
     final iconUrl = relay == null
         ? null
@@ -502,7 +489,7 @@ class _CommunityAvatar extends ConsumerWidget {
       radius: size / 2,
       backgroundColor: context.colors.primaryContainer,
       fallback: Text(
-        initial,
+        initials,
         style: context.textTheme.labelMedium?.copyWith(
           color: context.colors.onPrimaryContainer,
           fontWeight: FontWeight.w600,

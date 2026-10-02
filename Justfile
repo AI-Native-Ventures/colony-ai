@@ -225,7 +225,8 @@ desktop-tauri-check: _ensure-sidecar-stubs
 
 # Run desktop Tauri Rust unit tests
 desktop-tauri-test: _ensure-sidecar-stubs
-    cd desktop/src-tauri && cargo test --workspace
+    cd desktop/src-tauri && cargo test --workspace --exclude buzz-desktop
+    cd desktop/src-tauri && cargo test -p buzz-desktop --no-default-features --features electron-host
 
 # Run the native terminal latency gate explicitly on a known-idle host.
 # This is intentionally excluded from shared CI: scheduler contention makes a
@@ -233,46 +234,75 @@ desktop-tauri-test: _ensure-sidecar-stubs
 desktop-terminal-performance-test:
     cargo test --manifest-path desktop/src-tauri/crates/buzz-terminal/Cargo.toml --release --test latency g3_renderer_acquire_stays_within_frame_budget -- --ignored --exact --nocapture
 
-# Verify compiled-flag behavior under both compile states (clean + capability set).
-# Runs the auto-connect and owner-only access focused tests twice with
-# independently supplied expected values; build.rs rerun-if-env-changed
-# triggers recompilation.
+# Verify the default, internal feature, and demo slug compile-time behavior.
+# The CI workflow runs each state in a separate job so the expensive builds
+# overlap without sharing a Cargo target directory.
 desktop-tauri-test-compiled-flags: _ensure-sidecar-stubs
+    just desktop-tauri-test-compiled-flags-state default
+    just desktop-tauri-test-compiled-flags-state auto-connect
+    just desktop-tauri-test-compiled-flags-state owner-only
+    just desktop-tauri-test-compiled-flags-state demo-slug
+
+desktop-tauri-test-compiled-flags-state state: _ensure-sidecar-stubs
     #!/usr/bin/env bash
     set -euo pipefail
     cd desktop/src-tauri
-    echo "=== Clean build (no flag) → expect false ==="
-    env -u BUZZ_BUILD_AUTO_CONNECT_DEFAULT_RELAY \
-      BUZZ_TEST_EXPECTED_AUTO_CONNECT_DEFAULT_RELAY=false \
-      cargo test compiled_flag_matches_expected -- --ignored --nocapture
-    env -u BUZZ_BUILD_AGENT_ACCESS_OWNER_ONLY \
-      BUZZ_TEST_EXPECTED_AGENT_ACCESS_OWNER_ONLY=false \
-      cargo test --lib
-    env -u BUZZ_BUILD_AGENT_ACCESS_OWNER_ONLY \
-      BUZZ_TEST_EXPECTED_AGENT_ACCESS_OWNER_ONLY=false \
-      cargo test compiled_policy_matches_expected -- --ignored --nocapture
-    echo "=== Internal build (flags set) → expect true ==="
-    BUZZ_BUILD_AUTO_CONNECT_DEFAULT_RELAY=1 \
-      BUZZ_TEST_EXPECTED_AUTO_CONNECT_DEFAULT_RELAY=true \
-      cargo test compiled_flag_matches_expected -- --ignored --nocapture
-    BUZZ_BUILD_AGENT_ACCESS_OWNER_ONLY=1 \
-      BUZZ_TEST_EXPECTED_AGENT_ACCESS_OWNER_ONLY=true \
-      cargo test --lib
-    BUZZ_BUILD_AGENT_ACCESS_OWNER_ONLY=1 \
-      BUZZ_TEST_EXPECTED_AGENT_ACCESS_OWNER_ONLY=true \
-      cargo test compiled_policy_matches_expected -- --ignored --nocapture
-    echo "=== Maximum accepted demo name reaches Rust build validation ==="
-    DEMO_CONFIG="$(node ../scripts/demo-build-config.mjs "$(printf 'x%.0s' {1..31})" /dev/null 1234567812345678)"
-    DEMO_SLUG="$(node -e 'console.log(JSON.parse(process.argv[1]).slug)' "$DEMO_CONFIG")"
-    BUZZ_BUILD_DEMO_SLUG="$DEMO_SLUG" \
-      BUZZ_TEST_EXPECTED_DEMO_SLUG="$DEMO_SLUG" \
-      cargo test compiled_demo_slug_matches_expected -- --ignored --nocapture
-    BUZZ_BUILD_DEMO_SLUG="$DEMO_SLUG" cargo test --workspace
-    if node ../scripts/demo-build-config.mjs "$(printf 'x%.0s' {1..32})" /dev/null 1234567812345678; then
-      echo "A 32-character demo name unexpectedly passed JavaScript validation" >&2
-      exit 1
-    fi
-    echo "Both compiled states and the accepted/rejected demo-name boundary verified."
+    case "{{state}}" in
+      default)
+        echo "=== Default build: internal flags unset ==="
+        env -u BUZZ_BUILD_AUTO_CONNECT_DEFAULT_RELAY \
+          -u BUZZ_BUILD_AGENT_ACCESS_OWNER_ONLY \
+          BUZZ_TEST_EXPECTED_AUTO_CONNECT_DEFAULT_RELAY=false \
+          cargo test compiled_flag_matches_expected -- --ignored --nocapture
+        env -u BUZZ_BUILD_AUTO_CONNECT_DEFAULT_RELAY \
+          -u BUZZ_BUILD_AGENT_ACCESS_OWNER_ONLY \
+          BUZZ_TEST_EXPECTED_AGENT_ACCESS_OWNER_ONLY=false \
+          cargo test --lib
+        env -u BUZZ_BUILD_AUTO_CONNECT_DEFAULT_RELAY \
+          -u BUZZ_BUILD_AGENT_ACCESS_OWNER_ONLY \
+          BUZZ_TEST_EXPECTED_AGENT_ACCESS_OWNER_ONLY=false \
+          cargo test compiled_policy_matches_expected -- --ignored --nocapture
+        ;;
+      auto-connect)
+        echo "=== Auto-connect internal build flag enabled ==="
+        env -u BUZZ_BUILD_AGENT_ACCESS_OWNER_ONLY \
+          BUZZ_BUILD_AUTO_CONNECT_DEFAULT_RELAY=1 \
+          BUZZ_TEST_EXPECTED_AUTO_CONNECT_DEFAULT_RELAY=true \
+          cargo test compiled_flag_matches_expected -- --ignored --nocapture
+        ;;
+      owner-only)
+        echo "=== Owner-only internal build flag enabled ==="
+        env -u BUZZ_BUILD_AUTO_CONNECT_DEFAULT_RELAY \
+          BUZZ_BUILD_AGENT_ACCESS_OWNER_ONLY=1 \
+          BUZZ_TEST_EXPECTED_AGENT_ACCESS_OWNER_ONLY=true \
+          cargo test --lib
+        env -u BUZZ_BUILD_AUTO_CONNECT_DEFAULT_RELAY \
+          BUZZ_BUILD_AGENT_ACCESS_OWNER_ONLY=1 \
+          BUZZ_TEST_EXPECTED_AGENT_ACCESS_OWNER_ONLY=true \
+          cargo test compiled_policy_matches_expected -- --ignored --nocapture
+        ;;
+      demo-slug)
+        echo "=== Maximum accepted demo name reaches Rust build validation ==="
+        DEMO_CONFIG="$(node ../scripts/demo-build-config.mjs "$(printf 'x%.0s' {1..31})" /dev/null 1234567812345678)"
+        DEMO_SLUG="$(node -e 'console.log(JSON.parse(process.argv[1]).slug)' "$DEMO_CONFIG")"
+        env -u BUZZ_BUILD_AUTO_CONNECT_DEFAULT_RELAY \
+          -u BUZZ_BUILD_AGENT_ACCESS_OWNER_ONLY \
+          BUZZ_BUILD_DEMO_SLUG="$DEMO_SLUG" \
+          BUZZ_TEST_EXPECTED_DEMO_SLUG="$DEMO_SLUG" \
+          cargo test compiled_demo_slug_matches_expected -- --ignored --nocapture
+        env -u BUZZ_BUILD_AUTO_CONNECT_DEFAULT_RELAY \
+          -u BUZZ_BUILD_AGENT_ACCESS_OWNER_ONLY \
+          BUZZ_BUILD_DEMO_SLUG="$DEMO_SLUG" cargo test --workspace
+        if node ../scripts/demo-build-config.mjs "$(printf 'x%.0s' {1..32})" /dev/null 1234567812345678; then
+          echo "A 32-character demo name unexpectedly passed JavaScript validation" >&2
+          exit 1
+        fi
+        ;;
+      *)
+        echo "unknown compiled-flag state: {{state}}" >&2
+        exit 2
+        ;;
+    esac
 
 # Build the full desktop Tauri app locally (unsigned, for testing)
 # Sidecar binary list must stay in sync with _ensure-sidecar-stubs above.
@@ -443,7 +473,12 @@ test-unit:
         # disabled_mode_regression_pin_unauthenticated_request_is_served on the
         # DB-free /probe route, and its Host/Origin gating is covered here by
         # disabled_mode_still_requires_the_correct_host / _a_matching_origin.
-        # The second clause adds the relay's pure authorization-decision tests:
+        # The second clause adds the HTTP bridge filter bound regression and the
+        # account signin policy test. The first is infra-free and protects the
+        # production parser seam from request work amplification; the second
+        # protects the production decision seam that orders password
+        # verification and the unverified-email response.
+        # The third clause adds the relay's pure authorization-decision tests:
         # the NIP-29 channel membership grid (handlers::channel_authz), the
         # moderation capability grid (handlers::moderation_authz), and the pure
         # helpers in handlers::side_effects. They ran in NO lane before —
@@ -457,7 +492,7 @@ test-unit:
         # the ~30s sqlx acquire timeout, so they do not belong in the infra-free
         # unit job either.
         cargo nextest run -p buzz-relay --lib \
-            -E '(test(/^api::admin::/) - test(=api::admin::tests::disabled_mode_allows_unauthenticated_requests_on_the_admin_host) - test(=api::admin::tests::nip98_mode_unrostered_signer_does_not_consume_a_replay_slot)) + test(/^handlers::channel_authz::/) + test(/^handlers::moderation_authz::/) + test(/^handlers::side_effects::tests::/) + test(/^storage_sweep::tests::/)'
+            -E '(test(/^api::admin::/) - test(=api::admin::tests::disabled_mode_allows_unauthenticated_requests_on_the_admin_host) - test(=api::admin::tests::nip98_mode_unrostered_signer_does_not_consume_a_replay_slot)) + test(=api::bridge::filter_bound_tests::http_bridge_accepts_ten_filters_and_rejects_eleven) + test(=api::accounts::signin_policy_tests::unverified_signin_does_not_skip_password_verification) + test(/^handlers::channel_authz::/) + test(/^handlers::moderation_authz::/) + test(/^handlers::side_effects::tests::/) + test(/^storage_sweep::tests::/)'
         # ACP author-gate and queue tests protect the trust boundary between
         # relay events and agent prompts. They are infra-free; ignored lifecycle
         # tests remain excluded and run in their dedicated integration lanes.
@@ -844,7 +879,7 @@ mobile-test:
 mobile-emoji-data:
     node {{mobile_dir}}/scripts/generate-emoji-data.mjs
 
-# Compile an unsigned Android debug APK (worktree-aware debug identity)
+# Compile an Android debug APK (worktree-aware debug identity)
 mobile-build-android:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -852,6 +887,10 @@ mobile-build-android:
     set -- build apk --debug --no-pub
     if [[ -n "${BUZZ_PUSH_GATEWAY_URL:-}" ]]; then
         set -- "$@" --dart-define="BUZZ_PUSH_GATEWAY_URL=${BUZZ_PUSH_GATEWAY_URL}"
+    fi
+    server_client_id="${COLONY_GOOGLE_SERVER_CLIENT_ID:-${COLONY_GOOGLE_WEB_CLIENT_ID:-}}"
+    if [[ -n "$server_client_id" ]]; then
+        set -- "$@" --dart-define="COLONY_GOOGLE_SERVER_CLIENT_ID=${server_client_id}"
     fi
     unset GIT_DIR GIT_WORK_TREE
     cd {{mobile_dir}}
@@ -866,6 +905,10 @@ mobile-dev:
         sleep 3
     fi
     ./scripts/mobile-worktree-overrides.sh
+    if [[ -n "${COLONY_GOOGLE_IOS_DOGFOOD_URL_SCHEME:-}" ]]; then
+        COLONY_GOOGLE_REVERSED_CLIENT_ID="$COLONY_GOOGLE_IOS_DOGFOOD_URL_SCHEME" \
+            ./scripts/mobile-google-auth-xcconfig.sh dogfood
+    fi
     gateway_url="${BUZZ_PUSH_GATEWAY_URL:-}"
     overrides_file="{{mobile_dir}}/ios/Flutter/AppOverrides.xcconfig"
     if [[ -z "$gateway_url" && -f "$overrides_file" ]]; then
@@ -874,6 +917,13 @@ mobile-dev:
     set -- run
     if [[ -n "$gateway_url" ]]; then
         set -- "$@" --dart-define="BUZZ_PUSH_GATEWAY_URL=${gateway_url}"
+    fi
+    if [[ -n "${COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID:-}" ]]; then
+        set -- "$@" --dart-define="COLONY_GOOGLE_IOS_CLIENT_ID=${COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID}"
+    fi
+    server_client_id="${COLONY_GOOGLE_SERVER_CLIENT_ID:-${COLONY_GOOGLE_WEB_CLIENT_ID:-}}"
+    if [[ -n "$server_client_id" ]]; then
+        set -- "$@" --dart-define="COLONY_GOOGLE_SERVER_CLIENT_ID=${server_client_id}"
     fi
     cd {{mobile_dir}}
     unset GIT_DIR GIT_WORK_TREE

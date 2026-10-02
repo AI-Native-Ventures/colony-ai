@@ -57,7 +57,7 @@ void main() {
     expect(find.byTooltip('Close settings'), findsOneWidget);
     metadata.complete({
       'appName': 'Buzz',
-      'packageName': 'xyz.block.buzz',
+      'packageName': 'ventures.ainative.colony',
       'version': '0.16.0',
       'buildNumber': '432',
       'buildSignature': '',

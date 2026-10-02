@@ -8,7 +8,8 @@ use crate::{
     app_state::AppState,
     managed_agents::{
         apply_persona_behavior, load_personas, save_personas, try_regenerate_nest,
-        validate_agent_definition_text, AgentDefinition, CatalogSource, CreatePersonaRequest,
+        validate_agent_definition_text, validate_company_role_metadata, AgentDefinition,
+        CatalogSource, CreatePersonaRequest,
     },
     util::now_iso,
 };
@@ -30,6 +31,13 @@ pub async fn create_persona(
         let system_prompt = input.system_prompt.clone();
         validate_agent_definition_text(&display_name, &system_prompt)?;
         let description = normalize_description(input.description)?;
+        let company_role = input
+            .company_role
+            .map(|role| {
+                validate_company_role_metadata(&role)?;
+                Ok::<_, String>(role)
+            })
+            .transpose()?;
         let avatar_url = trim_optional(input.avatar_url);
         let runtime = trim_optional(input.runtime);
         let model = trim_optional(input.model);
@@ -56,6 +64,7 @@ pub async fn create_persona(
             .collect();
         crate::managed_agents::validate_user_env_keys(&input.env_vars)?;
         let mut persona = AgentDefinition {
+            company_role,
             id: Uuid::new_v4().to_string(),
             display_name,
             avatar_url,

@@ -19,13 +19,20 @@ enum CommunityMemberRole {
 @immutable
 class CommunityMember {
   /// Creates a community member.
-  const CommunityMember({required this.pubkey, required this.role});
+  const CommunityMember({
+    required this.pubkey,
+    required this.role,
+    this.isBot = false,
+  });
 
   /// The member's normalized hexadecimal public key.
   final String pubkey;
 
   /// The member's role in the community.
   final CommunityMemberRole role;
+
+  /// Whether the authoritative membership snapshot marks this identity as a bot.
+  final bool isBot;
 }
 
 /// The latest membership list published by the active community.
@@ -92,7 +99,11 @@ CommunityMembershipSnapshot communityMembershipFromEvents(
         ? (tag.length >= 3 ? tag[2] : null)
         : (tag.length >= 4 ? tag[3] : null);
     members.add(
-      CommunityMember(pubkey: pubkey, role: _communityMemberRole(role)),
+      CommunityMember(
+        pubkey: pubkey,
+        role: _communityMemberRole(role),
+        isBot: role == 'bot',
+      ),
     );
   }
 

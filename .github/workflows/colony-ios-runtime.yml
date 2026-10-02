@@ -1,0 +1,66 @@
+name: Colony iOS runtime proof
+
+on:
+  pull_request:
+    branches:
+      - feat/phase3-auth
+      - develop
+      # Phase 2 lane PRs land here first; catch native/mobile drift per slice.
+      - codex/phase2-integration
+    paths:
+      - ".github/workflows/colony-ios-runtime.yml"
+      - "mobile/ios/**"
+      - "mobile/lib/**"
+      - "mobile/pubspec.yaml"
+      - "mobile/pubspec.lock"
+      - "scripts/ios-runtime-proof.sh"
+      - "scripts/ios-runtime-proof-runner.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: colony-ios-runtime-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios-runtime:
+    name: iOS simulator landing and relaunch
+    runs-on: macos-latest
+    timeout-minutes: 55
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Activate the pinned toolchain
+        uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+
+      - name: Verify bounded iOS test runner
+        run: python3 scripts/ios-runtime-proof-runner.py --self-test
+
+      - name: Run the fresh-simulator proof
+        shell: bash
+        env:
+          COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID: ${{ vars.COLONY_GOOGLE_IOS_DOGFOOD_CLIENT_ID }}
+          COLONY_GOOGLE_SERVER_CLIENT_ID: ${{ vars.COLONY_GOOGLE_WEB_CLIENT_ID }}
+          COLONY_GOOGLE_REVERSED_CLIENT_ID: ${{ vars.COLONY_GOOGLE_IOS_DOGFOOD_URL_SCHEME }}
+          IOS_RUNTIME_TEST_TIMEOUT_SECONDS: "240"
+        run: /bin/bash scripts/ios-runtime-proof.sh
+
+      - name: Upload bounded iOS runtime evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ios-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/buzz-ios-runtime-proof-${{ github.run_id }}-${{ github.run_attempt }}/ios-runtime-manifest.json
+            ${{ runner.temp }}/buzz-ios-runtime-proof-${{ github.run_id }}-${{ github.run_attempt }}/xcresult-summary.json
+            ${{ runner.temp }}/buzz-ios-runtime-proof-${{ github.run_id }}-${{ github.run_attempt }}/xcresult-tests.json
+            ${{ runner.temp }}/buzz-ios-runtime-proof-${{ github.run_id }}-${{ github.run_attempt }}/attachments/*.png
+            ${{ runner.temp }}/buzz-ios-runtime-proof-${{ github.run_id }}-${{ github.run_attempt }}/attachments/*.txt
+            ${{ runner.temp }}/buzz-ios-runtime-proof-${{ github.run_id }}-${{ github.run_attempt }}/attachments/manifest.json

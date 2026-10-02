@@ -29,6 +29,172 @@ abstract final class EventKind {
   static const eventReminder = 30300;
   static const userStatus = 30315;
   static const dmVisibility = 30622;
+  static const workflowDefinition = 30620;
+  static const workflowDraft = 30623;
+  static const workflowTrigger = 46020;
+  static const workflowStatus = 46021;
+  static const partyHead = 30630;
+  static const clientHead = 30631;
+  static const serviceHead = 30632;
+  static const proposalHead = 30633;
+  static const workItemHead = 30634;
+  static const knowledgeDocumentHead = 30635;
+  static const knowledgeFactHead = 30636;
+  static const socialAccountHead = 30637;
+  static const contentCampaignHead = 30638;
+  static const contentPostHead = 30639;
+  static const siteHead = 30640;
+  static const invoiceHead = 30641;
+  static const moneyFollowUpHead = 30645;
+  static const companyWorkTrackingHead = 30652;
+  static const partyAction = 47000;
+  static const clientAction = 47001;
+  static const serviceAction = 47002;
+  static const proposalVersion = 47003;
+  static const proposalAcceptance = 47004;
+  static const proposalConversionReceipt = 47005;
+  static const workItemAction = 47006;
+  static const deliverableVersion = 47007;
+  static const deliverableApproval = 47008;
+  static const knowledgeDocumentVersion = 47009;
+  static const knowledgeFactVersion = 47010;
+  static const knowledgeAccessChange = 47011;
+  static const socialAccountAuthorization = 47012;
+  static const contentCampaignAction = 47013;
+  static const contentPostVersion = 47014;
+  static const contentFeedback = 47015;
+  static const contentApproval = 47016;
+  static const publishingIntent = 47017;
+  static const publishingReceipt = 47018;
+  static const socialInboxAction = 47019;
+  static const sourcedReportSnapshot = 47020;
+  static const siteVersion = 47021;
+  static const siteBuild = 47022;
+  static const siteDeployment = 47023;
+  static const siteDomain = 47024;
+  static const siteEnquiry = 47025;
+  static const invoiceVersion = 47026;
+  static const payment = 47027;
+  static const moneyAdjustment = 47028;
+  static const reconciliation = 47029;
+  static const moneyFollowUp = 47030;
+  static const prospectHead = 30644;
+  static const prospectAction = 47034;
+  static const companyWorkTrackingAction = 47041;
+
+  /// Company records (docs/company-records.md): relay-signed goal and ask
+  /// heads plus the member commands that produce them.
+  static const goalHead = 30642;
+  static const askHead = 30643;
+  static const memberPositionHead = 30648;
+  static const employeeRevisionHead = 30651;
+  static const hireHead = 30650;
+  static const employeeAiAllowanceHead = 30653;
+  static const aiSpendRecordHead = 30654;
+  static const toolPermissionHead = 30646;
+  static const goalAction = 47031;
+  static const askAction = 47032;
+  static const askResponse = 47033;
+  static const secretBindingHead = 30647;
+  static const secretBindingAction = 47036;
+  static const memberPositionAction = 47037;
+  static const employeeRevisionAction = 47040;
+  static const hireAction = 47039;
+  static const employeeAiAllowanceAction = 47042;
+  static const aiSpendRecordAction = 47043;
+  static const toolPermissionAction = 47035;
+  static const factoryRunHead = 30649;
+  static const factoryRunAction = 47038;
+  static const dutyHead = 30655;
+  static const dutyAction = 47044;
+  static const lessonHead = 30656;
+  static const lessonAction = 47045;
+
+  /// Company-record event kinds, outside the chat timeline until ask cards
+  /// render in threads.
+  static const companyRecordKinds = [
+    goalHead,
+    askHead,
+    memberPositionHead,
+    employeeRevisionHead,
+    hireHead,
+    employeeAiAllowanceHead,
+    aiSpendRecordHead,
+    goalAction,
+    askAction,
+    askResponse,
+    secretBindingHead,
+    secretBindingAction,
+    memberPositionAction,
+    employeeRevisionAction,
+    hireAction,
+    employeeAiAllowanceAction,
+    aiSpendRecordAction,
+    toolPermissionHead,
+    toolPermissionAction,
+    factoryRunHead,
+    factoryRunAction,
+    dutyHead,
+    dutyAction,
+    lessonHead,
+    lessonAction,
+    employeeAiAllowanceHead,
+    employeeAiAllowanceAction,
+    aiSpendRecordHead,
+    aiSpendRecordAction,
+  ];
+
+  /// Phase 2 business-record event kinds, outside the chat timeline.
+  static const businessRecordKinds = [
+    partyHead,
+    clientHead,
+    serviceHead,
+    proposalHead,
+    workItemHead,
+    knowledgeDocumentHead,
+    knowledgeFactHead,
+    socialAccountHead,
+    contentCampaignHead,
+    contentPostHead,
+    siteHead,
+    invoiceHead,
+    moneyFollowUpHead,
+    companyWorkTrackingHead,
+    partyAction,
+    clientAction,
+    serviceAction,
+    proposalVersion,
+    proposalAcceptance,
+    proposalConversionReceipt,
+    workItemAction,
+    deliverableVersion,
+    deliverableApproval,
+    knowledgeDocumentVersion,
+    knowledgeFactVersion,
+    knowledgeAccessChange,
+    socialAccountAuthorization,
+    contentCampaignAction,
+    contentPostVersion,
+    contentFeedback,
+    contentApproval,
+    publishingIntent,
+    publishingReceipt,
+    socialInboxAction,
+    sourcedReportSnapshot,
+    siteVersion,
+    siteBuild,
+    siteDeployment,
+    siteDomain,
+    siteEnquiry,
+    invoiceVersion,
+    payment,
+    moneyAdjustment,
+    reconciliation,
+    moneyFollowUp,
+    prospectHead,
+    prospectAction,
+    companyWorkTrackingAction,
+  ];
   static const streamMessageV2 = 40002;
   static const channelThreadSummary = 39005;
   static const channelWindowBounds = 39006;

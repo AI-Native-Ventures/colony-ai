@@ -12,6 +12,7 @@ import {
   PAGE_REPLAY_MAX_ATTEMPTS,
   replayLiveSubscriptions,
   REPLAY_BATCH_SIZE,
+  REPLAY_INTER_BATCH_DELAY_MS,
   shouldPageReconnectReplay,
 } from "./relayReconnectReplay.ts";
 import { buildChannelFilter } from "./relayChannelFilters.ts";
@@ -323,6 +324,53 @@ test("replay splits subscriptions into batches of REPLAY_BATCH_SIZE", async () =
   assert.equal(sentIds.length, subCount, "all subs sent");
   // The delay fired after the first batch (REPLAY_BATCH_SIZE subs sent).
   assert.equal(batchBreakpoints[0], REPLAY_BATCH_SIZE);
+});
+
+test("default reconnect replay stays below the relay WebSocket admission budget", async () => {
+  resetGate();
+  let now = 0;
+  const sentAt = [];
+  const subscriptions = new Map(
+    Array.from({ length: 80 }, (_, i) => [
+      `sub-${i}`,
+      {
+        mode: "live",
+        filter: { kinds: [9], "#h": [`ch-${i}`], limit: 50 },
+        onEvent: () => {},
+        lastSeenCreatedAt: undefined,
+      },
+    ]),
+  );
+
+  await replayLiveSubscriptions({
+    subscriptions,
+    sendRaw: async () => sentAt.push(now),
+    requestRepair: async () => [],
+    setTimeoutFn: (fn, delayMs) => {
+      now += delayMs;
+      fn();
+      return 0;
+    },
+  });
+
+  assert.ok(
+    (REPLAY_BATCH_SIZE * 1_000) / REPLAY_INTER_BATCH_DELAY_MS <= 10,
+    "average replay rate must stay at or below the relay's 10-per-second default",
+  );
+  for (const start of sentAt) {
+    const inFiveSecondWindow = sentAt.filter(
+      (timestamp) => timestamp >= start && timestamp < start + 5_000,
+    ).length;
+    assert.ok(
+      inFiveSecondWindow <= 40,
+      `replay emitted ${inFiveSecondWindow} REQs in a five-second window starting at ${start}`,
+    );
+  }
+  const requestsPerBatch = new Map();
+  for (const timestamp of sentAt) {
+    requestsPerBatch.set(timestamp, (requestsPerBatch.get(timestamp) ?? 0) + 1);
+  }
+  assert.equal(Math.max(...requestsPerBatch.values()), REPLAY_BATCH_SIZE);
 });
 
 test("inter-batch disposal cannot resurrect a closed subscription", async () => {

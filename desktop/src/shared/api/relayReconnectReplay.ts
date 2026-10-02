@@ -48,18 +48,19 @@ export const PAGE_REPLAY_MAX_ATTEMPTS = 3;
 /**
  * Maximum live subscriptions sent per relay REQ burst during reconnect.
  *
- * Capping the initial blast prevents admission-control bursts on degraded
- * networks where the relay is already near its per-pubkey quota.
+ * The relay's default human WebSocket budget is 10 operations per second,
+ * enforced as 50 operations in a five-second window. Keep each burst small so
+ * the visible channel can recover first without consuming the whole window.
  */
-export const REPLAY_BATCH_SIZE = 8;
+export const REPLAY_BATCH_SIZE = 4;
 
 /**
  * Delay between consecutive replay batches (milliseconds).
  *
- * Spreads the REQ storm across time so the relay's sliding quota window
- * can absorb each batch without triggering rate-limiting on the next.
+ * Four REQs every 500 ms stays below the relay's 10-per-second default while
+ * reserving capacity for presence and user sends during recovery.
  */
-export const REPLAY_INTER_BATCH_DELAY_MS = 50;
+export const REPLAY_INTER_BATCH_DELAY_MS = 500;
 
 async function runWithConcurrency<T>(
   items: T[],

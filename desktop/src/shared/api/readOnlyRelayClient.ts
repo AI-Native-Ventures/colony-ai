@@ -9,8 +9,10 @@ import {
   type RelaySubscriptionFilter,
 } from "@/shared/api/relayClientShared";
 import { closeWebSocket } from "@/shared/api/relayWebSocketClose";
+import { sendPacedRelayOperation } from "@/shared/api/relayWebSocketOperationPacer";
 import {
   activateRateLimitIfSignalled,
+  rateLimitRemainingMs,
   waitForRateLimit,
 } from "@/shared/api/relayRateLimitGate";
 import {
@@ -203,14 +205,23 @@ export class ReadOnlyRelayClient {
     if (this.wsId === null) {
       throw new Error("Read-only relay socket is not connected.");
     }
+    const wsId = this.wsId;
+    const generation = this.generation;
 
-    await invoke("plugin:websocket|send", {
-      id: this.wsId,
-      message: {
-        type: "Text",
-        data: JSON.stringify(payload),
-      },
-    });
+    await sendPacedRelayOperation(
+      payload,
+      () => this.wsId === wsId && this.generation === generation,
+      () =>
+        invoke("plugin:websocket|send", {
+          id: wsId,
+          message: {
+            type: "Text",
+            data: JSON.stringify(payload),
+          },
+        }),
+      "normal",
+      rateLimitRemainingMs,
+    );
   }
 
   private async handleWsMessage(

@@ -1,4 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isTauri } from "@tauri-apps/api/core";
 import * as React from "react";
 
 import { performTitleBarDoubleClickAction } from "@/shared/lib/titleBarActions";
@@ -21,6 +22,10 @@ function isWindowDragHandleEvent(event: MouseEvent | PointerEvent) {
 
 export function StartupWindowDragRegion() {
   React.useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
     function handlePointerDown(event: PointerEvent) {
       if (event.button !== 0 || event.detail > 1) {
         return;

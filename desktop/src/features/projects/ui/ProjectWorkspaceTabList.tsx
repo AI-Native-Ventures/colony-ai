@@ -44,7 +44,7 @@ export function ProjectTabsList({
           <ProjectTabLabel>Commits</ProjectTabLabel>
         </TabsTrigger>
         <TabsTrigger className={PROJECT_TAB_TRIGGER_CLASS} value="issues">
-          <ProjectTabLabel>Tasks</ProjectTabLabel>
+          <ProjectTabLabel>Issues</ProjectTabLabel>
         </TabsTrigger>
         <TabsTrigger
           aria-current={prsActive ? "page" : undefined}

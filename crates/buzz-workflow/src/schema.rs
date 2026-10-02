@@ -9,6 +9,21 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::WorkflowError;
 
+/// Default maximum time an assigned agent has to reply to a workflow task.
+pub const DEFAULT_AGENT_TIMEOUT_SECS: u64 = 15 * 60;
+
+/// Hard upper bound for an agent workflow task wait.
+pub const MAX_AGENT_TIMEOUT_SECS: u64 = 60 * 60;
+
+/// Default timeout for a human approval request.
+pub const DEFAULT_APPROVAL_TIMEOUT_SECS: u64 = 24 * 60 * 60;
+
+/// Maximum timeout for a human approval request.
+pub const MAX_APPROVAL_TIMEOUT_SECS: u64 = 30 * 24 * 60 * 60;
+
+/// Maximum number of steps in one workflow definition.
+pub const MAX_WORKFLOW_STEPS: usize = 100;
+
 /// Top-level workflow definition, authored in YAML and stored as canonical JSON.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowDef {
@@ -57,14 +72,20 @@ pub enum TriggerDef {
         #[serde(default)]
         filter: Option<String>,
     },
+    /// Starts only when an owner manually triggers the workflow.
+    Manual,
     /// Fires on a cron schedule.
     Schedule {
-        /// Cron expression (UTC). Mutually exclusive with `interval`.
+        /// Cron expression. It uses `timezone` when present and UTC otherwise.
+        /// Mutually exclusive with `interval`.
         #[serde(default)]
         cron: Option<String>,
         /// Simple interval string (e.g. "1h", "30m"). Mutually exclusive with `cron`.
         #[serde(default)]
         interval: Option<String>,
+        /// IANA timezone for calendar cron expressions.
+        #[serde(default)]
+        timezone: Option<String>,
     },
     /// Fires when HTTP POST arrives at `/hooks/{id}`.
     Webhook,
@@ -147,6 +168,18 @@ pub enum ActionDef {
         #[serde(default)]
         timeout: Option<String>,
     },
+    /// Ask one named channel agent to complete work in a new thread and wait
+    /// for that agent to reply. The assignee is an explicit pubkey so a
+    /// display-name collision can never route the request to the wrong agent.
+    AskAgent {
+        /// Agent pubkey as 64-character hex.
+        agent_pubkey: String,
+        /// Work instructions sent to the agent in the request thread.
+        instruction: String,
+        /// Optional description of what the agent should report back with.
+        #[serde(default)]
+        expected_result: Option<String>,
+    },
     /// Pause execution for a duration (e.g. `"5m"`, `"1h"`).
     Delay {
         /// Duration string (e.g. `"5m"`, `"1h"`).
@@ -182,6 +215,11 @@ impl WorkflowDef {
                 "at least one step is required".into(),
             ));
         }
+        if self.steps.len() > MAX_WORKFLOW_STEPS {
+            return Err(WorkflowError::InvalidDefinition(format!(
+                "a workflow may contain at most {MAX_WORKFLOW_STEPS} steps"
+            )));
+        }
 
         // Validate step IDs are safe for use in evalexpr variable names.
         // Step IDs become variable names like `steps_{id}_output_{field}`,
@@ -210,6 +248,36 @@ impl WorkflowDef {
                     "duplicate step id: {}",
                     step.id
                 )));
+            }
+
+            if let ActionDef::AskAgent { agent_pubkey, .. } = &step.action {
+                nostr::PublicKey::from_hex(agent_pubkey).map_err(|_| {
+                    WorkflowError::InvalidDefinition(format!(
+                        "step '{}': agent_pubkey must be a valid 64-character hex pubkey",
+                        step.id
+                    ))
+                })?;
+                let timeout_secs = step.timeout_secs.unwrap_or(DEFAULT_AGENT_TIMEOUT_SECS);
+                if timeout_secs == 0 || timeout_secs > MAX_AGENT_TIMEOUT_SECS {
+                    return Err(WorkflowError::InvalidDefinition(format!(
+                        "step '{}': agent timeout must be between 1 and {} seconds",
+                        step.id, MAX_AGENT_TIMEOUT_SECS
+                    )));
+                }
+            }
+
+            if let ActionDef::RequestApproval { timeout, .. } = &step.action {
+                let timeout_secs = timeout
+                    .as_deref()
+                    .map(crate::executor::parse_duration_secs)
+                    .transpose()?
+                    .unwrap_or(DEFAULT_APPROVAL_TIMEOUT_SECS);
+                if timeout_secs == 0 || timeout_secs > MAX_APPROVAL_TIMEOUT_SECS {
+                    return Err(WorkflowError::InvalidDefinition(format!(
+                        "step '{}': approval timeout must be between 1 and {} seconds",
+                        step.id, MAX_APPROVAL_TIMEOUT_SECS
+                    )));
+                }
             }
         }
 
@@ -241,7 +309,12 @@ impl WorkflowDef {
             }
         }
 
-        if let TriggerDef::Schedule { cron, interval } = &self.trigger {
+        if let TriggerDef::Schedule {
+            cron,
+            interval,
+            timezone,
+        } = &self.trigger
+        {
             if cron.is_none() && interval.is_none() {
                 return Err(WorkflowError::InvalidDefinition(
                     "schedule trigger requires either 'cron' or 'interval'".into(),
@@ -256,6 +329,18 @@ impl WorkflowDef {
 
             if let Some(expr) = cron {
                 validate_cron(expr)?;
+            }
+            if let Some(timezone) = timezone {
+                if cron.is_none() {
+                    return Err(WorkflowError::InvalidDefinition(
+                        "timezone can only be used with a cron schedule".into(),
+                    ));
+                }
+                timezone.parse::<chrono_tz::Tz>().map_err(|_| {
+                    WorkflowError::InvalidDefinition(format!(
+                        "invalid schedule timezone '{timezone}'"
+                    ))
+                })?;
             }
 
             if let Some(dur) = interval {
@@ -622,7 +707,7 @@ mod tests {
         let yaml = "name: Interval Schedule\ntrigger:\n  on: schedule\n  interval: 30m\nsteps:\n  - id: s1\n    action: send_message\n    text: tick\n";
         let (def, _) = parse_yaml(yaml).expect("parse failed");
         match &def.trigger {
-            TriggerDef::Schedule { cron, interval } => {
+            TriggerDef::Schedule { cron, interval, .. } => {
                 assert!(cron.is_none());
                 assert_eq!(interval.as_deref(), Some("30m"));
             }
@@ -996,6 +1081,80 @@ mod tests {
         assert!(matches!(
             trigger,
             TriggerDef::DiffPosted { filter: Some(_) }
+        ));
+    }
+
+    #[test]
+    fn manual_trigger_and_agent_task_roundtrip() {
+        let agent = nostr::Keys::generate().public_key().to_hex();
+        let yaml = format!(
+            "name: Research\ntrigger:\n  on: manual\nsteps:\n  - id: research\n    action: ask_agent\n    agent_pubkey: {agent}\n    instruction: Find the latest report\n    expected_result: A short summary with source links\n    timeout_secs: 90\n"
+        );
+
+        let (def, json) = parse_yaml(&yaml).expect("manual workflow parses");
+        assert!(matches!(def.trigger, TriggerDef::Manual));
+        assert!(matches!(
+            &def.steps[0].action,
+            ActionDef::AskAgent {
+                agent_pubkey,
+                instruction,
+                expected_result: Some(expected_result),
+            } if agent_pubkey == &agent
+                && instruction == "Find the latest report"
+                && expected_result == "A short summary with source links"
+        ));
+
+        let reparsed: WorkflowDef = serde_json::from_str(&json).expect("JSON round-trip");
+        assert!(matches!(reparsed.trigger, TriggerDef::Manual));
+        assert_eq!(reparsed.steps[0].timeout_secs, Some(90));
+    }
+
+    #[test]
+    fn agent_task_requires_a_valid_pubkey_and_bounded_timeout() {
+        let invalid_key = concat!(
+            "name: Research\ntrigger:\n  on: manual\nsteps:\n",
+            "  - id: work\n    action: ask_agent\n",
+            "    agent_pubkey: not-a-pubkey\n    instruction: Research\n",
+        );
+        assert!(matches!(
+            parse_yaml(invalid_key),
+            Err(WorkflowError::InvalidDefinition(_))
+        ));
+
+        for timeout in ["0", "3601"] {
+            let yaml = format!(
+                "name: Research\ntrigger:\n  on: manual\nsteps:\n  - id: work\n    action: ask_agent\n    agent_pubkey: {}\n    instruction: Research\n    timeout_secs: {timeout}\n",
+                nostr::Keys::generate().public_key().to_hex()
+            );
+            assert!(matches!(
+                parse_yaml(&yaml),
+                Err(WorkflowError::InvalidDefinition(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn approval_timeout_is_bounded() {
+        for timeout in ["0s", "31d"] {
+            let yaml = format!(
+                "name: Review\ntrigger:\n  on: manual\nsteps:\n  - id: review\n    action: request_approval\n    from: owner_or_admin\n    message: Review\n    timeout: {timeout}\n"
+            );
+            assert!(matches!(
+                parse_yaml(&yaml),
+                Err(WorkflowError::InvalidDefinition(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn workflow_step_count_is_bounded() {
+        let steps = (0..=MAX_WORKFLOW_STEPS)
+            .map(|index| format!("  - id: s{index}\n    action: send_message\n    text: hello\n"))
+            .collect::<String>();
+        let yaml = format!("name: Many\ntrigger:\n  on: manual\nsteps:\n{steps}");
+        assert!(matches!(
+            parse_yaml(&yaml),
+            Err(WorkflowError::InvalidDefinition(_))
         ));
     }
 }

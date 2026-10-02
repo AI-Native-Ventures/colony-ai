@@ -351,6 +351,21 @@ test.describe("community rail", () => {
     if (!openTriggerBox || !menuBox) {
       throw new Error("Community actions geometry unavailable");
     }
+    // Time the bridge from the trigger's mouseleave to the menu's mouseenter
+    // inside the page. Reading performance.now() in a later evaluate also
+    // counted that evaluate's round trip, which on loaded hosts pushed the
+    // measured bridge past the budget while the pointer was already inside.
+    await menu.evaluate((element) => {
+      element.addEventListener(
+        "mouseenter",
+        () => {
+          (element as HTMLElement).dataset.enteredAt = String(
+            performance.now(),
+          );
+        },
+        { once: true },
+      );
+    });
     const triggerExitX = openTriggerBox.x + openTriggerBox.width - 1;
     const triggerExitY = Math.min(
       openTriggerBox.y + openTriggerBox.height - 4,
@@ -360,15 +375,19 @@ test.describe("community rail", () => {
     await page.mouse.move(menuBox.x + 8, menuBox.y - 8);
     await page.waitForTimeout(80);
     await page.mouse.move(menuBox.x + 8, menuBox.y + 8);
-    const bridgeDurationMs = await communityTrigger.evaluate((trigger) => {
-      const leftAt = Number(trigger.dataset.leftAt);
-      if (!Number.isFinite(leftAt)) {
-        throw new Error(
-          "Community actions trigger exit timing was not recorded",
-        );
-      }
-      return performance.now() - leftAt;
-    });
+    await expect
+      .poll(() => menu.evaluate((element) => element.dataset.enteredAt ?? ""))
+      .not.toBe("");
+    const enteredAt = Number(
+      await menu.evaluate((element) => element.dataset.enteredAt),
+    );
+    const leftAt = Number(
+      await communityTrigger.evaluate((trigger) => trigger.dataset.leftAt),
+    );
+    if (!Number.isFinite(leftAt) || !Number.isFinite(enteredAt)) {
+      throw new Error("Community actions bridge timing was not recorded");
+    }
+    const bridgeDurationMs = enteredAt - leftAt;
     expect(bridgeDurationMs).toBeGreaterThanOrEqual(60);
     expect(bridgeDurationMs).toBeLessThan(140);
     await page.waitForTimeout(180);
@@ -401,6 +420,37 @@ test.describe("community rail", () => {
 
     await menu.getByRole("menuitem", { name: "Invite to community" }).click();
     await expect(page).toHaveURL(/#\/settings\?section=community-members$/);
+  });
+
+  test("clicking a hover-opened community actions menu keeps it open", async ({
+    page,
+  }) => {
+    await installMockBridge(
+      page,
+      {
+        relayRequiresMembership: true,
+        relayRole: "member",
+      },
+      { skipCommunitySeed: true },
+    );
+    await seedCommunities(page, [COMMUNITY_A, COMMUNITY_B], COMMUNITY_A.id);
+    await page.goto("/");
+
+    await page.getByTestId("sidebar-profile-avatar-button").click();
+    const communityTrigger = page.getByTestId("community-switcher");
+    const menu = page.getByRole("menu", { name: "Community actions" });
+    // Most pointer paths dwell on the trigger longer than the hover-open
+    // delay before clicking, so the click lands on an already open menu.
+    await communityTrigger.hover();
+    await expect(communityTrigger).toHaveAttribute("aria-expanded", "true");
+    await communityTrigger.click();
+    await page.waitForTimeout(250);
+    await expect(communityTrigger).toHaveAttribute("aria-expanded", "true");
+    await expect(menu).toBeVisible();
+
+    // Escape still dismisses it.
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
   });
 
   test("keeps profile community actions available to members without invite access", async ({
@@ -688,7 +738,10 @@ test.describe("community rail", () => {
     await page.getByTestId(`community-rail-button-${COMMUNITY_B.id}`).click();
     await expect(page).toHaveURL(randomUrl);
 
-    await page.getByRole("button", { name: "Inbox" }).click();
+    await page
+      .getByTestId("sidebar-primary-menu")
+      .getByRole("button", { name: "Activity", exact: true })
+      .click();
     await expect(page).toHaveURL(/#\/$/);
     await page.getByTestId(`community-rail-button-${COMMUNITY_A.id}`).click();
     await expect(page).toHaveURL(generalUrl);
@@ -743,18 +796,20 @@ test.describe("community rail", () => {
       }
       testWindow.__BUZZ_E2E__.mock = {
         ...testWindow.__BUZZ_E2E__.mock,
-        channelsReadDelayMs: 800,
+        channelsReadDelayMs: 2_500,
       };
     });
     await page.getByTestId(`community-rail-button-${COMMUNITY_B.id}`).click();
 
+    // The channel list read is held for 2.5s; entering the remembered channel
+    // well inside that window proves it did not wait for live validation.
     await expect(page).toHaveURL(
       new RegExp(`#/channels/${rememberedChannelId}$`),
-      { timeout: 700 },
+      { timeout: 2_000 },
     );
-    await expect(page.getByTestId("message-timeline")).toBeVisible({
-      timeout: 700,
-    });
+    await expect(
+      page.getByRole("region", { name: "Channel messages and composer" }),
+    ).toBeVisible({ timeout: 2_000 });
   });
 
   test("clears a remembered channel that is unavailable after switching", async ({
@@ -1380,17 +1435,15 @@ test.describe("community rail", () => {
     expect(Math.abs(leftInset - rightInset)).toBeLessThan(0.5);
     const visibleRightGap =
       (searchBox?.x ?? 0) - ((buttonBox?.x ?? 0) + (buttonBox?.width ?? 0));
-    expect(Math.abs(leftInset - visibleRightGap)).toBeLessThan(0.5);
+    expect(Math.abs(visibleRightGap - 14)).toBeLessThan(0.5);
 
-    // With the rail visible, the top-chrome controls (sidebar toggle, back/
-    // forward) sit just past the traffic lights near the rail edge — not
+    // With the rail visible, the top-chrome history controls sit just past
+    // the traffic lights near the rail edge, not
     // shifted far right by a redundant traffic-light offset.
-    const toggle = page
-      .locator('[data-testid="app-top-chrome"] button')
-      .first();
-    const toggleBox = await toggle.boundingBox();
-    expect(toggleBox).not.toBeNull();
-    expect(toggleBox?.x ?? 0).toBeLessThan(120);
+    const back = page.getByTestId("global-back");
+    const backBox = await back.boundingBox();
+    expect(backBox).not.toBeNull();
+    expect(backBox?.x ?? 0).toBeLessThan(120);
   });
 
   test("drag-to-reorder updates the stored community order and survives reload", async ({
@@ -1445,7 +1498,7 @@ test.describe("community rail", () => {
       )
       .toEqual([COMMUNITY_B.id, COMMUNITY_A.id]);
 
-    // Verify the new order is also reflected in the rendered DOM — B button
+    // Verify the new order is also reflected in the rendered DOM - B button
     // must appear above A button.
     const newBoxA = await buttonA.boundingBox();
     const newBoxB = await buttonB.boundingBox();
@@ -1490,7 +1543,7 @@ test.describe("community rail", () => {
 
     // Focus B (the second/lower item) and use keyboard to move it above A.
     // Note: page.keyboard.press("Space") fires the button's native click on this
-    // Chromium build even when React's onKeyDown calls preventDefault — a CDP
+    // Chromium build even when React's onKeyDown calls preventDefault - a CDP
     // input-injection quirk. The synthetic dispatch below goes directly through
     // React's event system where preventDefault correctly suppresses the click,
     // while still exercising the real KeyboardSensor path (Thufir verified the
@@ -1508,9 +1561,17 @@ test.describe("community rail", () => {
         }),
       );
     }, `community-rail-button-${COMMUNITY_B.id}`);
-    // ArrowUp moves the active item one slot up.
+    // The KeyboardSensor activates after it measures, so wait for the pick
+    // up before moving: an ArrowUp sent earlier was ignored on slower hosts
+    // and the drop left the order unchanged.
+    await expect(buttonB).toHaveAttribute("aria-pressed", "true");
+    // ArrowUp moves the active item one slot up; wait for dnd-kit to
+    // announce the move before dropping.
     await page.keyboard.press("ArrowUp");
-    // Space drops the item — same synthetic dispatch for consistency.
+    await expect(
+      page.locator('[id^="DndLiveRegion-"]', { hasText: "was moved over" }),
+    ).toHaveCount(1);
+    // Space drops the item - same synthetic dispatch for consistency.
     await page.evaluate((testId) => {
       const el = document.querySelector(`[data-testid="${testId}"]`);
       if (!el) throw new Error(`button not found: ${testId}`);

@@ -144,7 +144,7 @@ function buildSuggestions(projects: readonly Project[]) {
         : "Are we safe to cut a release this week?",
     },
     {
-      label: "Tasks",
+      label: "Issues",
       prompt: "Summarize the open tasks and flag anything urgent.",
     },
     {

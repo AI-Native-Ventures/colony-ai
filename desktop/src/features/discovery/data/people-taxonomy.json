@@ -1,0 +1,224 @@
+[
+  {
+    "id": "engineering",
+    "name": "Engineering",
+    "imageKey": "field.engineering",
+    "roles": [
+      "Frontend Engineer",
+      "Backend Engineer",
+      "Full Stack Engineer",
+      "Mobile Engineer",
+      "DevOps Engineer",
+      "Security Engineer",
+      "Engineering Manager",
+      "Chief Technology Officer"
+    ]
+  },
+  {
+    "id": "marketing",
+    "name": "Marketing",
+    "imageKey": "field.marketing",
+    "roles": [
+      "Marketing Director",
+      "Growth Marketer",
+      "Content Strategist",
+      "Brand Manager",
+      "Demand Generation Manager",
+      "Social Media Manager",
+      "Chief Marketing Officer"
+    ]
+  },
+  {
+    "id": "medicine",
+    "name": "Medicine",
+    "imageKey": "field.medicine",
+    "roles": [
+      "General Practitioner",
+      "Medical Specialist",
+      "Nurse Practitioner",
+      "Practice Manager",
+      "Clinical Director",
+      "Hospital Administrator"
+    ]
+  },
+  {
+    "id": "law",
+    "name": "Law",
+    "imageKey": "field.law",
+    "roles": [
+      "Attorney",
+      "Legal Counsel",
+      "Managing Partner",
+      "Compliance Officer",
+      "Paralegal"
+    ]
+  },
+  {
+    "id": "finance",
+    "name": "Finance",
+    "imageKey": "field.finance",
+    "roles": [
+      "Financial Analyst",
+      "Investment Manager",
+      "Finance Director",
+      "Treasury Manager",
+      "Controller",
+      "Chief Financial Officer"
+    ]
+  },
+  {
+    "id": "sales",
+    "name": "Sales",
+    "imageKey": "field.sales",
+    "roles": [
+      "Account Executive",
+      "Sales Development Representative",
+      "Sales Manager",
+      "Regional Sales Director",
+      "Partnerships Manager",
+      "Revenue Operations Manager",
+      "Chief Revenue Officer"
+    ]
+  },
+  {
+    "id": "human-resources",
+    "name": "Human Resources",
+    "imageKey": "field.human-resources",
+    "roles": [
+      "Recruiter",
+      "People Operations Manager",
+      "HR Business Partner",
+      "Talent Director",
+      "Chief People Officer"
+    ]
+  },
+  {
+    "id": "accounting",
+    "name": "Accounting",
+    "imageKey": "field.accounting",
+    "roles": [
+      "Accountant",
+      "Auditor",
+      "Tax Manager",
+      "Accounting Manager",
+      "Audit Partner"
+    ]
+  },
+  {
+    "id": "agriculture",
+    "name": "Agriculture",
+    "imageKey": "field.agriculture",
+    "roles": [
+      "Agronomist",
+      "Farm Manager",
+      "Agricultural Engineer",
+      "Food Production Manager"
+    ]
+  },
+  {
+    "id": "politics",
+    "name": "Politics",
+    "imageKey": "field.politics",
+    "roles": [
+      "Policy Advisor",
+      "Public Affairs Director",
+      "Campaign Manager",
+      "Government Relations Manager"
+    ]
+  },
+  {
+    "id": "education",
+    "name": "Education",
+    "imageKey": "field.education",
+    "roles": [
+      "Teacher",
+      "Lecturer",
+      "School Principal",
+      "Academic Director",
+      "Education Consultant"
+    ]
+  },
+  {
+    "id": "design",
+    "name": "Design",
+    "imageKey": "field.design",
+    "roles": [
+      "Product Designer",
+      "UX Designer",
+      "Creative Director",
+      "Graphic Designer",
+      "Design Lead"
+    ]
+  },
+  {
+    "id": "research",
+    "name": "Research",
+    "imageKey": "field.research",
+    "roles": [
+      "Research Scientist",
+      "Market Researcher",
+      "Research Director",
+      "Laboratory Manager"
+    ]
+  },
+  {
+    "id": "consulting",
+    "name": "Consulting",
+    "imageKey": "field.consulting",
+    "roles": [
+      "Management Consultant",
+      "Strategy Consultant",
+      "Principal Consultant",
+      "Consulting Partner",
+      "Transformation Director"
+    ]
+  },
+  {
+    "id": "operations",
+    "name": "Operations",
+    "imageKey": "field.operations",
+    "roles": [
+      "Operations Manager",
+      "Supply Chain Manager",
+      "Logistics Director",
+      "Procurement Manager",
+      "General Manager",
+      "Chief Operating Officer"
+    ]
+  },
+  {
+    "id": "product-management",
+    "name": "Product Management",
+    "imageKey": "field.product-management",
+    "roles": [
+      "Product Manager",
+      "Senior Product Manager",
+      "Product Director",
+      "Head of Product",
+      "Chief Product Officer"
+    ]
+  },
+  {
+    "id": "customer-success",
+    "name": "Customer Success",
+    "imageKey": "field.customer-success",
+    "roles": [
+      "Customer Success Manager",
+      "Implementation Manager",
+      "Customer Experience Director",
+      "Support Manager",
+      "VP Customer Success"
+    ]
+  },
+  {
+    "id": "data-science",
+    "name": "Data Science",
+    "imageKey": "field.data-science",
+    "roles": [
+      "Data Scientist",
+      "Machine Learning Engineer",
+      "Analytics Director",
+      "Head of Data"
+    ]
+  }
+]

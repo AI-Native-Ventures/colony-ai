@@ -320,7 +320,7 @@ test("automatically mentions multiple agents from the mention picker", async ({
   ).toBeVisible();
 });
 
-test("keeps the composer and global automatic mention settings synchronized", async ({
+test("keeps automatic mention preferences in the composer across the R19 settings route", async ({
   page,
 }) => {
   await installAudienceFixtures(page);
@@ -360,11 +360,15 @@ test("keeps the composer and global automatic mention settings synchronized", as
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
-  await page.getByTestId("settings-nav-agents").click();
-  const settingsToggle = page
-    .getByTestId("settings-automatic-agent-mentions")
-    .getByRole("switch", { name: "Automatically mention agents" });
-  await expect(settingsToggle).toHaveAttribute("data-state", "unchecked");
+  await page.getByTestId("settings-group-agents-group").click();
+  await expect(
+    page.getByTestId("settings-inner-agent-defaults"),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page
+      .getByTestId("settings-view")
+      .getByTestId("settings-automatic-agent-mentions"),
+  ).toHaveCount(0);
 
   await page.getByTestId("settings-back-to-app").click();
   await expect(
@@ -598,18 +602,36 @@ test("the mention button opens settings and can undo an address", async ({
     })
     .click();
   await expect(input).toHaveText("@Morgarita draft text");
-  await expect(
-    composer.getByRole("button", { name: "Mention someone" }),
-  ).toBeVisible();
-  await input.fill("");
+  const mentionSomeone = composer.getByRole("button", {
+    name: "Mention someone",
+  });
+  await expect(mentionSomeone).toBeVisible();
+  // Clear through the keyboard: a programmatic fill can race ProseMirror's
+  // DOM observer around the mention node and leave the draft in place.
+  await input.focus();
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.press("Backspace");
+  await expect(input).toHaveText("");
+  // Editing without an @ query closes the button-opened picker once the
+  // mention debounce settles. Wait for that, then reopen it from the button
+  // instead of racing the debounce with a click on the closing menu.
+  await expect(menu).toHaveCount(0);
+  await mentionSomeone.click();
+  await expect(menu).toBeVisible();
 
-  await menu
-    .getByRole("button", { name: "Mention Morgarita", exact: true })
-    .click();
+  const manualMention = menu.getByRole("button", {
+    name: "Mention Morgarita",
+    exact: true,
+  });
+  await expect(manualMention).toBeVisible();
+  await manualMention.click();
   await expect(input).toHaveText("@Morgarita ");
+  // After "Don't automatically mention", a plain mention is one-off: this
+  // message mentions the agent, but the agent is not pinned again. The chip
+  // that was just removed can still be fading out here, so wait for it to go.
   await expect(
     composer.getByTestId(`composer-address-lock-${AGENT_A}`),
-  ).toBeVisible();
+  ).toHaveCount(0);
 
   await input.type("later");
   await input.press("Enter");
@@ -783,8 +805,8 @@ test("pressing a mention overlay's own container keeps it open", async ({
   await expect(list).toBeVisible();
   await expect(input).toBeFocused();
 
-  // A mousedown landing on the list container itself — its padding ring here,
-  // a native scrollbar on platforms that render one — steals focus from the
+  // A mousedown landing on the list container itself - its padding ring here,
+  // a native scrollbar on platforms that render one - steals focus from the
   // editor unless the default is prevented, and the focus gate would then
   // unmount the menu mid-press.
   const listBox = await list.boundingBox();
@@ -821,7 +843,7 @@ test("the mention setting is reachable and operable by keyboard", async ({
   await expect(list).toBeVisible();
   await expect(mainInput).toBeFocused();
 
-  // Trip a flag if the overlay ever unmounts from here on — "operable while
+  // Trip a flag if the overlay ever unmounts from here on - "operable while
   // the surface stays mounted" has to hold through every focus handoff below,
   // not just at the polled assertion boundaries.
   await mainComposer.evaluate((element) => {
@@ -866,7 +888,7 @@ test("the mention setting is reachable and operable by keyboard", async ({
 
   // Ownership is still per-composer: focus moving to a sibling composer hides
   // this composer's menu, which is what stops a background composer from
-  // resurrecting a stale one. Programmatic focus, not a click — a pointerdown
+  // resurrecting a stale one. Programmatic focus, not a click - a pointerdown
   // would dismiss the menu through its outside-press handler and mask the gate
   // under test.
   await mainInput.fill("@Mor");
@@ -933,7 +955,7 @@ test("a manual mention persists when automatic mentions are enabled", async ({
   await expect(autoPinConfirmation).not.toContainText(
     "Future messages in this channel will include this agent.",
   );
-  await expect(autoPinConfirmation).toHaveAttribute("data-side", "left");
+  await expect(autoPinConfirmation).toHaveAttribute("data-side", "right");
   await expect(autoPinConfirmation.locator("span")).toHaveCSS(
     "white-space",
     "nowrap",
@@ -953,8 +975,8 @@ test("a manual mention persists when automatic mentions are enabled", async ({
   if (!addressControlBox || !confirmationBox) {
     throw new Error("Automatic mention confirmation is not laid out");
   }
-  expect(confirmationBox.x + confirmationBox.width).toBeLessThanOrEqual(
-    addressControlBox.x,
+  expect(confirmationBox.x).toBeGreaterThanOrEqual(
+    addressControlBox.x + addressControlBox.width,
   );
   const turnOffAction = autoPinConfirmation.getByRole("button", {
     name: "Turn off",
@@ -966,6 +988,24 @@ test("a manual mention persists when automatic mentions are enabled", async ({
   await expect(autoPinConfirmation).toHaveCount(0);
 
   await input.type("hello");
+  // The thread composer is disabled while a send is in flight, and the lock
+  // engages a few hundred ms after Enter (the send starts after async
+  // preflight). Record the lock cycle from before Enter so the follow-up is
+  // typed only after the send has finished, not in the gap before the lock.
+  await input.evaluate((element) => {
+    const cycle = { locked: false, unlocked: false };
+    (
+      window as unknown as { __threadComposerLock?: typeof cycle }
+    ).__threadComposerLock = cycle;
+    new MutationObserver(() => {
+      const editable = element.getAttribute("contenteditable");
+      if (editable === "false") cycle.locked = true;
+      if (editable === "true" && cycle.locked) cycle.unlocked = true;
+    }).observe(element, {
+      attributeFilter: ["contenteditable"],
+      attributes: true,
+    });
+  });
   await input.press("Enter");
 
   await expect(input).toHaveText("@Morgarita ", { timeout: 2_500 });
@@ -979,9 +1019,26 @@ test("a manual mention persists when automatic mentions are enabled", async ({
     .poll(() => readOutgoingMentionPubkeys(page, "@Morgarita hello"))
     .toContain(AGENT_A);
 
-  await expect(input).toHaveAttribute("contenteditable", "true", {
-    timeout: 2_500,
-  });
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            (
+              window as unknown as {
+                __threadComposerLock?: { unlocked: boolean };
+              }
+            ).__threadComposerLock?.unlocked ?? false,
+        ),
+      { timeout: 5_000 },
+    )
+    .toBe(true);
+  await expect(composer.getByTestId("message-composer")).toHaveAttribute(
+    "data-submit-locked",
+    "false",
+    { timeout: 2_500 },
+  );
+  await expect(input).toHaveAttribute("contenteditable", "true");
   await input.fill("follow up");
   await expect(
     composer.getByTestId(`composer-address-lock-${AGENT_A}`),

@@ -45,6 +45,155 @@ pub struct TriggerContext {
     pub webhook_fields: HashMap<String, String>,
 }
 
+/// A pure preview of workflow behavior. Preview calls never have access to an
+/// action sink or database handle, so they cannot produce workflow effects.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WorkflowPreview {
+    /// Always true so clients cannot mistake this for a real run.
+    pub preview: bool,
+    /// Always false because previews do not dispatch actions.
+    pub side_effects: bool,
+    /// Ordered, labelled step plans.
+    pub steps: Vec<WorkflowPreviewStep>,
+}
+
+/// One step in a pure workflow preview.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WorkflowPreviewStep {
+    /// Stable step identifier.
+    pub step_id: String,
+    /// Whether the condition can be evaluated with the supplied context.
+    pub outcome: String,
+    /// Human-readable description of the action the engine would dispatch.
+    pub action: String,
+    /// Resolved action definition. Unavailable values remain as written.
+    pub definition: Option<serde_json::Value>,
+    /// Branch labels applicable to the action.
+    pub paths: Vec<String>,
+    /// Why the step could not be resolved, if applicable.
+    pub note: Option<String>,
+}
+
+/// Build a dry preview without a `WorkflowEngine`, database, or action sink.
+pub async fn preview_workflow(
+    def: &WorkflowDef,
+    trigger_ctx: &TriggerContext,
+) -> Result<WorkflowPreview, WorkflowError> {
+    def.validate()?;
+    let step_outputs = HashMap::new();
+    let mut steps = Vec::with_capacity(def.steps.len());
+    for step in &def.steps {
+        let (outcome, condition_note) = match step.if_expr.as_deref() {
+            Some(expr) => match evaluate_condition(expr, trigger_ctx, &step_outputs).await {
+                Ok(true) => ("would_run", None),
+                Ok(false) => ("would_skip", None),
+                Err(error) => ("needs_input", Some(error.to_string())),
+            },
+            None => ("would_run", None),
+        };
+        if outcome == "would_skip" {
+            steps.push(WorkflowPreviewStep {
+                step_id: step.id.clone(),
+                outcome: outcome.to_owned(),
+                action: preview_action_name(&step.action).to_owned(),
+                definition: None,
+                paths: Vec::new(),
+                note: None,
+            });
+            continue;
+        }
+        if outcome == "needs_input" {
+            steps.push(WorkflowPreviewStep {
+                step_id: step.id.clone(),
+                outcome: outcome.to_owned(),
+                action: preview_action_name(&step.action).to_owned(),
+                definition: Some(
+                    serde_json::to_value(&step.action)
+                        .map_err(|error| WorkflowError::InvalidDefinition(error.to_string()))?,
+                ),
+                paths: preview_paths(&step.action),
+                note: condition_note,
+            });
+            continue;
+        }
+        match resolve_step_templates(step, trigger_ctx, &step_outputs) {
+            Ok(action) if has_unresolved_preview_template(&action) => {
+                steps.push(WorkflowPreviewStep {
+                    step_id: step.id.clone(),
+                    outcome: "needs_input".to_owned(),
+                    action: preview_action_name(&step.action).to_owned(),
+                    definition: Some(
+                        serde_json::to_value(&step.action)
+                            .map_err(|error| WorkflowError::InvalidDefinition(error.to_string()))?,
+                    ),
+                    paths: preview_paths(&step.action),
+                    note: Some("template values require unavailable step output".to_owned()),
+                })
+            }
+            Ok(action) => steps.push(WorkflowPreviewStep {
+                step_id: step.id.clone(),
+                outcome: outcome.to_owned(),
+                action: preview_action_name(&action).to_owned(),
+                definition: Some(
+                    serde_json::to_value(&action)
+                        .map_err(|error| WorkflowError::InvalidDefinition(error.to_string()))?,
+                ),
+                paths: preview_paths(&action),
+                note: None,
+            }),
+            Err(error) => steps.push(WorkflowPreviewStep {
+                step_id: step.id.clone(),
+                outcome: "needs_input".to_owned(),
+                action: preview_action_name(&step.action).to_owned(),
+                definition: Some(serde_json::to_value(&step.action).map_err(
+                    |serialize_error| WorkflowError::InvalidDefinition(serialize_error.to_string()),
+                )?),
+                paths: preview_paths(&step.action),
+                note: Some(error.to_string()),
+            }),
+        }
+    }
+    Ok(WorkflowPreview {
+        preview: true,
+        side_effects: false,
+        steps,
+    })
+}
+
+fn has_unresolved_preview_template(action: &ActionDef) -> bool {
+    serde_json::to_string(action).is_ok_and(|serialized| serialized.contains("{{"))
+}
+
+fn preview_action_name(action: &ActionDef) -> &'static str {
+    match action {
+        ActionDef::SendMessage { .. } => "Would send a channel message",
+        ActionDef::SendDm { .. } => "Would send a direct message",
+        ActionDef::SetChannelTopic { .. } => "Would update the channel topic",
+        ActionDef::AddReaction { .. } => "Would add a reaction",
+        ActionDef::CallWebhook { .. } => "Would call a webhook",
+        ActionDef::RequestApproval { .. } => "Would request approval",
+        ActionDef::AskAgent { .. } => "Would ask an agent and wait for a reply",
+        ActionDef::Delay { .. } => "Would pause for a duration",
+    }
+}
+
+fn preview_paths(action: &ActionDef) -> Vec<String> {
+    match action {
+        ActionDef::RequestApproval { .. } => vec![
+            "Approved: continue to the next step".to_owned(),
+            "Denied: stop the run".to_owned(),
+            "Changes requested: no revision action is currently supported".to_owned(),
+            "Step failure: stop the run as failed".to_owned(),
+        ],
+        ActionDef::AskAgent { .. } => vec![
+            "Reply in the request thread: continue to the next step".to_owned(),
+            "No reply before timeout: stop the run as timed out".to_owned(),
+            "Step failure: stop the run as failed".to_owned(),
+        ],
+        _ => vec!["Step failure: stop the run as failed".to_owned()],
+    }
+}
+
 impl TriggerContext {
     /// Look up a trigger field by name.
     ///
@@ -463,6 +612,15 @@ pub fn resolve_step_templates(
             message: t(message)?,
             timeout: timeout.clone(),
         }),
+        AskAgent {
+            agent_pubkey,
+            instruction,
+            expected_result,
+        } => Ok(AskAgent {
+            agent_pubkey: agent_pubkey.clone(),
+            instruction: t(instruction)?,
+            expected_result: t_opt(expected_result)?,
+        }),
         Delay { duration } => Ok(Delay {
             duration: duration.clone(),
         }),
@@ -478,6 +636,13 @@ pub enum StepResult {
     Suspended {
         /// Token used to resume or reject this approval gate.
         approval_token: String,
+    },
+    /// Execution is suspended until the named agent replies to its request thread.
+    AgentWaiting {
+        /// Assigned agent pubkey, in canonical hex form.
+        agent_pubkey: String,
+        /// Request thread root event id, in canonical hex form.
+        request_event_id: String,
     },
     /// Step was skipped due to `if:` condition being false.
     Skipped,
@@ -527,21 +692,43 @@ fn resolve_send_message_channel(
     Ok(trigger_channel.trim().to_string())
 }
 
+/// Inputs for dispatching one resolved workflow action.
+pub struct ActionDispatchParams<'a> {
+    /// Workflow step being dispatched.
+    pub step: &'a Step,
+    /// Zero-based step index.
+    pub step_index: usize,
+    /// Completed execution trace before this step.
+    pub prior_trace: &'a [JsonValue],
+    /// Resolved action definition.
+    pub action: &'a ActionDef,
+    /// Workflow engine used to access persistence and the action sink.
+    pub engine: &'a WorkflowEngine,
+    /// Community that owns the workflow run.
+    pub community_id: CommunityId,
+    /// Workflow run being executed.
+    pub run_id: Uuid,
+    /// Trigger context captured when the run started.
+    pub trigger_ctx: &'a TriggerContext,
+}
+
 /// Dispatch a resolved action and return its output.
 ///
-/// For MVP, most actions log their intent and return a success output.
-/// Real event emission is wired in WF-07/08 (relay integration).
-///
-/// `RequestApproval` returns `StepResult::Suspended` — the caller must
-/// persist state and stop the execution loop.
+/// `RequestApproval` and `AskAgent` return suspended results. The caller must
+/// persist the corresponding wait and stop the execution loop.
 pub async fn dispatch_action(
-    step: &Step,
-    action: &ActionDef,
-    engine: &WorkflowEngine,
-    community_id: CommunityId,
-    run_id: Uuid,
-    trigger_ctx: &TriggerContext,
+    params: ActionDispatchParams<'_>,
 ) -> Result<StepResult, WorkflowError> {
+    let ActionDispatchParams {
+        step,
+        step_index,
+        prior_trace,
+        action,
+        engine,
+        community_id,
+        run_id,
+        trigger_ctx,
+    } = params;
     use ActionDef::*;
 
     let step_id = &step.id;
@@ -597,7 +784,7 @@ pub async fn dispatch_action(
                     let channel_id = resolve_send_message_channel(
                         channel.as_deref(),
                         &trigger_ctx.channel_id,
-                        workflow.channel_id,
+                        wf_run.workflow_channel_id.or(workflow.channel_id),
                     )?;
                     let owner_pubkey_hex = hex::encode(&workflow.owner_pubkey);
 
@@ -733,13 +920,69 @@ pub async fn dispatch_action(
                         "RequestApproval from={from} timeout={timeout_str}: {message}"
                     );
 
+                    let timeout_secs = parse_duration_secs(timeout_str)?;
                     let token = generate_approval_token(run_id, step_id);
-
-                    // TODO (WF-08): create approval record in DB, emit kind:46010.
-                    // For now, return Suspended with the token so the caller can persist state.
+                    engine
+                        .action_sink()?
+                        .request_approval(
+                            crate::action_sink::ApprovalRequestParams {
+                                community_id,
+                                run_id,
+                                step_id,
+                                step_index,
+                                approver_spec: from,
+                                message,
+                                timeout_secs,
+                                prior_trace: &serde_json::Value::Array(prior_trace.to_vec()),
+                                approval_token: &token,
+                            },
+                        )
+                        .await?;
 
                     Ok(StepResult::Suspended {
                         approval_token: token,
+                    })
+                }
+
+                AskAgent {
+                    agent_pubkey,
+                    instruction,
+                    expected_result,
+                } => {
+                    let timeout_secs = step
+                        .timeout_secs
+                        .unwrap_or(crate::schema::DEFAULT_AGENT_TIMEOUT_SECS);
+                    let workflow_run = engine
+                        .db
+                        .get_workflow_run(community_id, run_id)
+                        .await
+                        .map_err(WorkflowError::from)?;
+                    let workflow = engine
+                        .db
+                        .get_workflow(community_id, workflow_run.workflow_id)
+                        .await
+                        .map_err(WorkflowError::from)?;
+                    let owner_pubkey = hex::encode(&workflow.owner_pubkey);
+                    let event_id = engine
+                        .action_sink()?
+                        .ask_agent(
+                            crate::action_sink::AgentTaskParams {
+                                community_id,
+                                run_id,
+                                step_id,
+                                step_index,
+                                agent_pubkey,
+                                instruction,
+                                expected_result: expected_result.as_deref(),
+                                timeout_secs,
+                                owner_pubkey: &owner_pubkey,
+                                prior_trace: &serde_json::Value::Array(prior_trace.to_vec()),
+                            },
+                        )
+                        .await?;
+                    Ok(StepResult::AgentWaiting {
+                        agent_pubkey: agent_pubkey.clone(),
+                        request_event_id: event_id,
                     })
                 }
 
@@ -1036,6 +1279,8 @@ pub struct ExecutionResult {
     /// Set when execution suspended at a `RequestApproval` step.
     /// `None` means the run completed normally.
     pub approval_token: Option<String>,
+    /// Set when a named-agent task has durably suspended the run.
+    pub agent_wait: Option<JsonValue>,
     /// Index of the step that suspended (or the total step count on completion).
     pub step_index: usize,
     /// Accumulated step outputs at the point of suspension or completion.
@@ -1231,14 +1476,16 @@ async fn execute_steps(
             .unwrap_or(engine.config.default_timeout_secs);
         let dispatch_result = tokio::time::timeout(
             std::time::Duration::from_secs(timeout_secs),
-            dispatch_action(
+            dispatch_action(ActionDispatchParams {
                 step,
-                &resolved_action,
+                step_index: i,
+                prior_trace: &trace,
+                action: &resolved_action,
                 engine,
                 community_id,
                 run_id,
                 trigger_ctx,
-            ),
+            }),
         )
         .await;
 
@@ -1285,6 +1532,22 @@ async fn execute_steps(
                 // approval record and update the run's execution trace.
                 return Ok(ExecutionResult {
                     approval_token: Some(approval_token),
+                    agent_wait: None,
+                    step_index: i,
+                    step_outputs,
+                    trace,
+                });
+            }
+            StepResult::AgentWaiting {
+                agent_pubkey,
+                request_event_id,
+            } => {
+                return Ok(ExecutionResult {
+                    approval_token: None,
+                    agent_wait: Some(serde_json::json!({
+                        "agent_pubkey": agent_pubkey,
+                        "request_event_id": request_event_id,
+                    })),
                     step_index: i,
                     step_outputs,
                     trace,
@@ -1303,6 +1566,7 @@ async fn execute_steps(
     info!(run_id = %run_id, "Workflow run completed");
     Ok(ExecutionResult {
         approval_token: None,
+        agent_wait: None,
         step_index: def.steps.len(),
         step_outputs,
         trace,
@@ -1440,6 +1704,58 @@ mod tests {
                 .await
                 .unwrap();
         assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn preview_is_marked_and_never_dispatches_approval_or_agent_actions() {
+        let agent = nostr::Keys::generate().public_key().to_hex();
+        let (definition, _) = crate::WorkflowEngine::parse_yaml(&format!(
+            "name: Review\ntrigger:\n  on: manual\nsteps:\n  - id: work\n    action: ask_agent\n    agent_pubkey: {agent}\n    instruction: Prepare the report\n    timeout_secs: 90\n  - id: review\n    action: request_approval\n    from: owner_or_admin\n    message: Review the report\n"
+        ))
+        .unwrap();
+
+        let preview = preview_workflow(&definition, &TriggerContext::default())
+            .await
+            .unwrap();
+
+        assert!(preview.preview);
+        assert!(!preview.side_effects);
+        assert_eq!(preview.steps.len(), 2);
+        assert_eq!(
+            preview.steps[0].action,
+            "Would ask an agent and wait for a reply"
+        );
+        assert_eq!(preview.steps[1].action, "Would request approval");
+        assert!(preview.steps[1]
+            .paths
+            .iter()
+            .any(|path| path.starts_with("Changes requested:")));
+        assert!(preview.steps[0]
+            .paths
+            .iter()
+            .any(|path| path.starts_with("Step failure:")));
+        assert!(preview.steps[1]
+            .paths
+            .iter()
+            .any(|path| path.starts_with("Step failure:")));
+    }
+
+    #[tokio::test]
+    async fn preview_does_not_treat_missing_prior_step_output_as_a_result() {
+        let (definition, _) = crate::WorkflowEngine::parse_yaml(
+            "name: Follow-up\ntrigger:\n  on: manual\nsteps:\n  - id: post\n    action: send_message\n    text: '{{steps.research.output.summary}}'\n",
+        )
+        .unwrap();
+
+        let preview = preview_workflow(&definition, &TriggerContext::default())
+            .await
+            .unwrap();
+
+        assert_eq!(preview.steps[0].outcome, "needs_input");
+        assert_eq!(
+            preview.steps[0].note.as_deref(),
+            Some("template values require unavailable step output")
+        );
     }
 
     #[tokio::test]

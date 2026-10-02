@@ -1,0 +1,149 @@
+.colony-ask-detail-scroll--destination {
+  padding-top: 1.5rem;
+}
+
+.colony-ask-detail-scroll--destination .colony-ask-create-content > button {
+  margin-bottom: 1.75rem;
+}
+
+.colony-ask-context-step {
+  width: min(100%, 1140px);
+  margin: 0 auto;
+}
+
+.colony-ask-context-step > h1 {
+  margin: 0 0 1.5rem;
+  color: hsl(var(--foreground));
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.2;
+}
+
+.colony-ask-context-panel {
+  display: grid;
+  gap: 1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.625rem;
+  background: hsl(var(--card));
+  padding: 1.5rem;
+}
+
+.colony-ask-context-panel h2 {
+  margin: 0;
+  color: hsl(var(--foreground));
+  font-size: var(--text-lg);
+  font-weight: 650;
+}
+
+.colony-ask-context-field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.colony-ask-context-field-label--spaced {
+  margin-top: 0.75rem;
+}
+
+.colony-ask-context-panel > p {
+  display: grid;
+  gap: 0.35rem;
+  border-left: 2px solid hsl(var(--primary));
+  border-radius: 0.4rem;
+  background: hsl(var(--muted) / 0.45);
+  padding: 1rem 1.25rem;
+}
+
+.colony-ask-context-panel > p strong {
+  color: hsl(var(--foreground));
+  font-weight: 650;
+}
+
+.colony-ask-context-panel label {
+  color: hsl(var(--foreground));
+  font-size: var(--text-sm);
+  font-weight: 550;
+}
+
+.colony-ask-context-field > select,
+.colony-ask-context-field > input,
+.colony-ask-context-field > textarea {
+  width: 100%;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.4rem;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-size: var(--text-sm);
+}
+
+.colony-ask-context-field > select,
+.colony-ask-context-field > input {
+  min-height: 2.6rem;
+  padding: 0.55rem 0.65rem;
+}
+
+.colony-ask-context-field > textarea {
+  min-height: 6.5rem;
+  padding: 0.65rem;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.colony-ask-context-panel .colony-ask-compose-actions {
+  border-top: 1px solid hsl(var(--border));
+  margin-top: 0.2rem;
+  padding-top: 1.25rem;
+}
+
+.colony-ask-context-panel .colony-ask-compose-actions button {
+  min-height: 2.5rem;
+}
+
+@media (max-width: 640px) {
+  .colony-ask-context-step {
+    width: 100%;
+  }
+
+  .colony-ask-context-panel {
+    padding: 1rem;
+  }
+}
+
+.colony-ask-context-empty {
+  display: grid;
+  justify-items: center;
+  gap: 0.65rem;
+  padding: 3.4rem 1.25rem;
+  text-align: center;
+}
+
+.colony-ask-context-empty-icon {
+  display: grid;
+  width: 3.6rem;
+  height: 3.6rem;
+  place-items: center;
+  border-radius: 0.9rem;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+
+.colony-ask-context-empty-icon svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  stroke-width: 1.6;
+}
+
+.colony-ask-context-empty h2 {
+  margin: 0;
+  color: hsl(var(--foreground));
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.colony-ask-context-empty p {
+  max-width: 28rem;
+  margin: 0 0 0.4rem;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}

@@ -176,8 +176,8 @@ pub fn normalize_effort_for_anthropic_route(effort: ThinkingEffort) -> Option<Th
 /// corrections (e.g. `databricks-gpt-5-4-mini` → `[low, medium, high]`) are enforced in
 /// production because they live on the resolved `supported_efforts` axis.
 ///
-/// This is the single production authority for `Provider::OpenAi` and `Provider::Databricks`
-/// effort normalization.
+/// This is the single production authority for OpenAI-compatible provider
+/// effort normalization and legacy Databricks.
 pub fn normalize_effort_for_provider(
     provider: &str,
     raw_model: &str,
@@ -418,6 +418,8 @@ const DEFAULT_SYSTEM_PROMPT: &str =
 pub enum Provider {
     Anthropic,
     OpenAi,
+    /// DeepSeek's OpenAI-compatible Chat Completions API.
+    DeepSeek,
     /// Databricks model serving. Routes to `{base_url}/serving-endpoints/{model}/invocations`
     /// with a dynamically-acquired bearer (OAuth 2.0 PKCE, or static `DATABRICKS_TOKEN`).
     /// Wire format is OpenAI-chat-compatible — reuses the same body builder and parser.
@@ -632,17 +634,22 @@ impl Config {
     pub fn from_env() -> Result<Self, String> {
         let databricks_host = env("DATABRICKS_HOST");
         let databricks_model = env("DATABRICKS_MODEL");
-        let provider = resolve_provider(
+        let provider_name = selected_provider_name(
             env("BUZZ_AGENT_PROVIDER").as_deref(),
+            env("LLM_PROVIDER").as_deref(),
+        );
+        let provider = resolve_provider_with_keys(
+            Some(provider_name.as_str()),
             env("ANTHROPIC_API_KEY").as_deref(),
             env("OPENAI_COMPAT_API_KEY").as_deref(),
             env("OPENROUTER_API_KEY").as_deref(),
+            env("DEEPSEEK_API_KEY").as_deref(),
         )?;
 
         // Universal model override — takes priority over provider-specific model
-        // env vars (ANTHROPIC_MODEL, OPENAI_COMPAT_MODEL, DATABRICKS_MODEL) when
-        // present. Set by the desktop from the persona/record to express explicit
-        // user intent; provider-specific vars serve as defaults for CLI/standalone use.
+        // env vars when present. Set by the desktop from the persona/record to
+        // express explicit user intent; provider-specific vars serve as defaults
+        // for CLI/standalone use.
         let buzz_agent_model = env("BUZZ_AGENT_MODEL");
 
         // OPENAI_COMPAT_API is only read when provider=openai, so a stray
@@ -671,6 +678,16 @@ impl Config {
                 .ok_or_else(|| "config: OPENAI_COMPAT_MODEL required".to_string())?,
                 env_or("OPENAI_COMPAT_BASE_URL", "https://api.openai.com/v1"),
                 parse_openai_api(env("OPENAI_COMPAT_API").as_deref())?,
+            ),
+            Provider::DeepSeek => (
+                req("DEEPSEEK_API_KEY")?,
+                resolve_model(
+                    buzz_agent_model.as_deref(),
+                    env("DEEPSEEK_MODEL").as_deref(),
+                )
+                .ok_or_else(|| "config: DEEPSEEK_MODEL required".to_string())?,
+                env_or("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+                OpenAiApi::Chat,
             ),
             Provider::Databricks | Provider::DatabricksV2 => (
                 env("DATABRICKS_TOKEN").unwrap_or_default(),
@@ -919,11 +936,35 @@ fn present_nonempty(v: Option<&str>) -> bool {
     v.map(str::trim).is_some_and(|s| !s.is_empty())
 }
 
+fn selected_provider_name(per_agent: Option<&str>, process_provider: Option<&str>) -> String {
+    per_agent
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            process_provider
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or("deepseek")
+        .to_string()
+}
+
+#[cfg(test)]
 fn resolve_provider(
     requested: Option<&str>,
     anthropic_key: Option<&str>,
     openai_key: Option<&str>,
     openrouter_key: Option<&str>,
+) -> Result<Provider, String> {
+    resolve_provider_with_keys(requested, anthropic_key, openai_key, openrouter_key, None)
+}
+
+fn resolve_provider_with_keys(
+    requested: Option<&str>,
+    anthropic_key: Option<&str>,
+    openai_key: Option<&str>,
+    openrouter_key: Option<&str>,
+    deepseek_key: Option<&str>,
 ) -> Result<Provider, String> {
     match requested.map(str::trim).filter(|s| !s.is_empty()) {
         Some(raw) => {
@@ -941,6 +982,8 @@ fn resolve_provider(
                 "databricks_v2" | "databricks-v2" => Ok(Provider::DatabricksV2),
                 "openrouter" if present_nonempty(openrouter_key) => Ok(Provider::OpenRouter),
                 "openrouter" => Err("config: OPENROUTER_API_KEY required".into()),
+                "deepseek" if present_nonempty(deepseek_key) => Ok(Provider::DeepSeek),
+                "deepseek" => Err("config: DEEPSEEK_API_KEY required".into()),
                 _ => Err(format!(
                     "config: BUZZ_AGENT_PROVIDER={raw} not supported"
                 )),
@@ -1313,6 +1356,32 @@ mod tests {
         // No implicit inference — absent BUZZ_AGENT_PROVIDER is an error.
         let err = resolve_provider(None, None, None, None).unwrap_err();
         assert!(err.contains("BUZZ_AGENT_PROVIDER is required"), "{err}");
+    }
+
+    #[test]
+    fn provider_selection_uses_per_agent_then_llm_provider_then_deepseek() {
+        assert_eq!(
+            selected_provider_name(Some(" openrouter "), Some("anthropic")),
+            "openrouter"
+        );
+        assert_eq!(selected_provider_name(None, Some("anthropic")), "anthropic");
+        assert_eq!(selected_provider_name(None, None), "deepseek");
+    }
+
+    #[test]
+    fn deepseek_provider_requires_its_key_and_resolves_explicitly() {
+        let missing_key =
+            resolve_provider_with_keys(Some("deepseek"), None, None, None, None).unwrap_err();
+        assert!(
+            missing_key.contains("DEEPSEEK_API_KEY required"),
+            "{missing_key}"
+        );
+
+        assert_eq!(
+            resolve_provider_with_keys(Some("deepseek"), None, None, None, Some("configured"),)
+                .unwrap(),
+            Provider::DeepSeek
+        );
     }
 
     #[test]

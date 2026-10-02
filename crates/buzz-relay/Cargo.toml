@@ -73,7 +73,12 @@ sha2            = { workspace = true }
 hmac            = { workspace = true }
 subtle          = { workspace = true }
 rand            = { workspace = true }
+aes-gcm          = "0.10"
+argon2           = { version = "0.5", features = ["rand"] }
+jsonwebtoken     = { workspace = true }
+zeroize          = { workspace = true }
 hex             = { workspace = true }
+md-5            = "0.10"
 url             = { workspace = true }
 moka            = { workspace = true }
 metrics         = { workspace = true }

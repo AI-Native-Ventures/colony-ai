@@ -4,10 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AgentSessionThreadPanel } from "@/features/channels/ui/AgentSessionThreadPanel";
 import { CommunitiesProvider } from "@/features/communities/useCommunities";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 import { emit, listen } from "@tauri-apps/api/event";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { decode, npubEncode, nsecEncode } from "nostr-tools/nip19";
-import { finalizeEvent, getPublicKey } from "nostr-tools/pure";
+import { finalizeEvent, getPublicKey, verifyEvent } from "nostr-tools/pure";
 import { parse as yamlParse } from "yaml";
 import {
   mergeMockCustomHarnesses,
@@ -31,13 +32,62 @@ import {
 } from "@/features/agents/observerRelayStore";
 import { switchManagedAgentModel } from "@/shared/api/agentControl";
 import { mockSearchHitMatches } from "./e2eBridgeSearch.ts";
+import {
+  businessDTag,
+  KIND_PARTY_HEAD,
+  KIND_PROPOSAL_ACCEPTANCE,
+  KIND_PROPOSAL_CONVERSION_RECEIPT,
+  KIND_PROPOSAL_HEAD,
+  KIND_PROPOSAL_VERSION,
+  KIND_PROSPECT_ACTION,
+  KIND_PROSPECT_HEAD,
+  KIND_SERVICE_ACTION,
+  KIND_SERVICE_HEAD,
+} from "@/features/discovery/businessRecordContract";
+import {
+  REFERENCE_AGENTS,
+  REFERENCE_CHANNEL_IDS,
+  REFERENCE_HOME_VISUAL_FIXTURE,
+  REFERENCE_SALES_UNREAD_REPLY_ID,
+  REFERENCE_SALES_UNREAD_ROOT_ID,
+  REFERENCE_SALES_WINDOW_START_DAY_LABEL,
+  REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY,
+  REFERENCE_SELF_NAME,
+  referenceChannelLastMessageAt,
+  referenceChannelSeeds,
+  referenceHomeInboxItems,
+  referenceSalesLastMessageAt,
+  referenceBusinessRecordEvents,
+  referenceCommunityId,
+  referenceSalesMessages,
+  referenceSidebarChannelSeeds,
+  referenceSidebarUnreadMessages,
+  referenceOliveHouseMessages,
+  referenceSalesRecordEvents,
+  seedReferenceSidebarStorage,
+} from "./e2eReferenceWorkspace.ts";
+import { installReferenceDiscoveryProvider } from "./e2eReferenceDiscovery.ts";
 export { mockSearchHitMatches };
 import type { ConnectionState } from "@/shared/api/relayClientShared";
 import type {
   ChannelTemplate,
   FeedItemCategory,
+  HomeFeedVisualFixture,
   RelayEvent,
 } from "@/shared/api/types";
+import type { VoiceRegistryEntry } from "@/features/settings/ui/voiceSettingsLogic";
+import type {
+  FactoryRun,
+  FactoryRunDraft,
+  FactoryRunEvent,
+  FactoryRunSnapshot,
+  FactoryScope,
+} from "@/shared/api/factoryRuntime";
+import type {
+  AccountAuthClient,
+  AccountAuthRecord,
+} from "@/features/onboarding/accountAuthClient";
+import type { AccountAuthTestCall } from "@/features/onboarding/accountAuthAdapter";
 import { getMarkdownParseCount } from "@/shared/ui/markdown/nodeCache";
 import { syncAgentTurnsFromEvents } from "@/features/agents/activeAgentTurnsStore";
 import { recordTimeoutFromRejection } from "@/features/moderation/lib/timeoutStore";
@@ -51,10 +101,34 @@ import {
 } from "@/shared/api/customEmoji";
 import {
   KIND_AGENT_OBSERVER_FRAME,
+  KIND_ASK_ACTION,
+  KIND_ASK_HEAD,
+  KIND_ASK_RESPONSE,
+  KIND_SECRET_BINDING_ACTION,
+  KIND_SECRET_BINDING_HEAD,
+  KIND_TOOL_PERMISSION_ACTION,
+  KIND_TOOL_PERMISSION_HEAD,
   KIND_CHANNEL_THREAD_SUMMARY,
   KIND_CHANNEL_WINDOW_BOUNDS,
+  KIND_CLIENT_ACTION,
+  KIND_COMPANY_WORK_TRACKING_ACTION,
+  KIND_COMPANY_WORK_TRACKING_HEAD,
+  KIND_DELIVERABLE_APPROVAL,
+  KIND_DELIVERABLE_VERSION,
+  KIND_DUTY_ACTION,
+  KIND_DUTY_HEAD,
   KIND_DM_VISIBILITY,
   KIND_EVENT_REMINDER,
+  KIND_FACTORY_RUN_ACTION,
+  KIND_FACTORY_RUN_HEAD,
+  KIND_GOAL_ACTION,
+  KIND_GOAL_HEAD,
+  KIND_HIRE_ACTION,
+  KIND_HIRE_HEAD,
+  KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
+  KIND_EMPLOYEE_AI_ALLOWANCE_HEAD,
+  KIND_AI_SPEND_RECORD_ACTION,
+  KIND_AI_SPEND_RECORD_HEAD,
   KIND_GIT_ISSUE,
   KIND_GIT_PATCH,
   KIND_GIT_PR_UPDATE,
@@ -64,17 +138,33 @@ import {
   KIND_GIT_STATUS_MERGED,
   KIND_GIT_STATUS_OPEN,
   KIND_HUDDLE_STARTED,
+  KIND_INVOICE_HEAD,
+  KIND_INVOICE_VERSION,
+  KIND_MONEY_ADJUSTMENT,
+  KIND_MONEY_FOLLOW_UP,
   KIND_MEMBER_ADDED_NOTIFICATION,
+  KIND_MEMBER_POSITION_ACTION,
+  KIND_MEMBER_POSITION_HEAD,
+  KIND_EMPLOYEE_REVISION_ACTION,
+  KIND_EMPLOYEE_REVISION_HEAD,
   KIND_MEMBER_REMOVED_NOTIFICATION,
+  KIND_LESSON_ACTION,
+  KIND_LESSON_HEAD,
+  KIND_PAYMENT,
   KIND_PERSONA,
+  KIND_PRODUCT_FEEDBACK,
   KIND_PROJECT_ANNOUNCEMENT,
   KIND_REPO_ANNOUNCEMENT,
   KIND_REPO_STATE,
+  KIND_STREAM_MESSAGE,
   KIND_STREAM_MESSAGE_EDIT,
+  KIND_STREAM_MESSAGE_V2,
   KIND_SYSTEM_MESSAGE,
   KIND_TEXT_NOTE,
   KIND_TEAM_CATALOG,
   KIND_USER_STATUS,
+  KIND_WORK_ITEM_ACTION,
+  KIND_WORK_ITEM_HEAD,
 } from "@/shared/constants/kinds";
 import type {
   RawAcpAuthMethodsResult,
@@ -110,11 +200,17 @@ type MockCommandAvailability = {
 export type MockManagedAgentSeed = {
   pubkey: string;
   name: string;
+  about?: string | null;
   avatarUrl?: string | null;
   personaId?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  modelSource?: RawManagedAgent["model_source"];
+  systemPrompt?: string | null;
   /** Harness/runtime id pin; `null` = inherit from persona (native default). */
   runtime?: string | null;
   status?: RawManagedAgent["status"];
+  lastStartedAt?: string | null;
   channelNames?: string[];
   channelIds?: string[];
   backend?: RawManagedAgent["backend"];
@@ -127,6 +223,22 @@ export type MockManagedAgentSeed = {
   respondToAllowlist?: string[];
   /** Per-agent env vars seeded into the mock store. */
   envVars?: Record<string, string>;
+};
+
+export type MockFactoryProjectSeed = {
+  dtag: string;
+  name: string;
+  description: string;
+  repositoryDtag: string;
+  repositoryName: string;
+  cloneUrl: string;
+};
+
+export type MockFactoryRunSeed = {
+  run: FactoryRun;
+  events?: FactoryRunEvent[];
+  draft?: string | null;
+  hasMore?: boolean;
 };
 
 type MockManagedAgentRuntimeSeed = {
@@ -152,6 +264,7 @@ type MockPersonaSeed = {
   id?: string;
   displayName: string;
   avatarUrl?: string | null;
+  description?: string | null;
   systemPrompt: string;
   updatedAt?: string;
   isActive?: boolean;
@@ -161,6 +274,13 @@ type MockPersonaSeed = {
   runtime?: string | null;
   model?: string | null;
   provider?: string | null;
+  companyRole?: {
+    job: string;
+    skills: string[];
+    tools: Array<{ name: string; risk: "low" | "medium" | "high" }>;
+    workerMenu: string[];
+    defaultAllowance?: string | null;
+  } | null;
   namePool?: string[];
   respondTo?: "owner-only" | "allowlist" | "anyone";
   respondToAllowlist?: string[];
@@ -200,8 +320,56 @@ type MockHuddleSeed = {
   isCreator?: boolean;
 };
 
+/** Exact records used only by the visual comparison mock bridge. */
+export type VisualFixtureSeed = {
+  id: string;
+  businessName: string;
+  identity: { pubkey: string; displayName: string };
+  profiles: Array<{
+    pubkey: string;
+    displayName: string;
+    isAgent: boolean;
+    avatarUrl?: string | null;
+  }>;
+  channels: Array<{
+    id: string;
+    name: string;
+    description: string;
+    channelType?: "stream" | "forum" | "dm";
+    lastMessageAt?: number;
+    members: Array<{
+      pubkey: string;
+      displayName: string;
+      role: RawChannelMember["role"];
+      isAgent: boolean;
+    }>;
+  }>;
+  messages: Array<{
+    channelId: string;
+    id: string;
+    pubkey: string;
+    createdAt: number;
+    kind: number;
+    tags: string[][];
+    content: string;
+    /** Keep a context-only thread root queryable without adding it to channel history. */
+    timelineVisibility?: "channel" | "thread-only";
+  }>;
+  followedPubkeys?: string[];
+  todayUpdates?: Array<{
+    id: string;
+    pubkey: string;
+    createdAt: number;
+    content: string;
+    tags: string[][];
+  }>;
+  today: HomeFeedVisualFixture;
+};
+
 type E2eConfig = {
   mode?: "mock" | "relay";
+  forceRelayPacing?: boolean;
+  relayAuthMode?: "http-header" | "nip42";
   mock?: {
     /** Tauri window label exposed to the app. Defaults to the main window. */
     windowLabel?: string;
@@ -210,10 +378,33 @@ type E2eConfig = {
       agentTextToSpeech: boolean;
       voicePreferences: string[];
     };
+    /** Audio output records returned only by the mocked desktop host. */
+    audioOutputDevices?: Array<{ name: string; is_default: boolean }>;
+    /** Selected output device returned only by the mocked desktop host. */
+    selectedAudioOutputDevice?: string;
+    /** Optional NIP-30 records for visual fixture routes. */
+    customEmojiSets?: Array<{
+      owner: "self" | "community";
+      emojis: Array<{ shortcode: string; url: string }>;
+    }>;
     /** Native picker boundary result for Pocket voice import tests. */
     pocketVoiceImportResult?: "success" | "cancel" | "invalid";
+    /** Local voice files returned by the native registry in visual fixtures. */
+    importedPocketVoices?: VoiceRegistryEntry[];
     /** Advertised HEAD for the first mock project without adding that branch. */
     projectHeadBranch?: string;
+    /** Project announcements used only by Factory E2E fixtures. */
+    factoryProjects?: MockFactoryProjectSeed[];
+    /** Host Factory records used only by Factory E2E fixtures. */
+    factoryRuns?: MockFactoryRunSeed[];
+    /** Signed run preview and pull request heads for focused Factory E2E coverage. */
+    factoryRunRecordEvents?: RelayEvent[];
+    /** Reject successive Factory run actions in focused failure-state tests. */
+    factoryRunActionErrors?: string[];
+    /** Run ids whose snapshot reads fail, exercising reconnect states. */
+    factorySnapshotFailureRunIds?: string[];
+    /** Local checkout paths returned by the E2E filesystem boundary. */
+    factoryLocalRepositories?: Array<{ name: string; path: string }>;
     /** Override the repository access channel for project authorization states. */
     projectAccessChannelId?: string;
     /** Make remote project snapshots fail with this git-facing message. */
@@ -226,6 +417,30 @@ type E2eConfig = {
       name?: string;
       expiresAt: string;
     } | null;
+    /** Account state returned by the mocked account API. Defaults to linked. */
+    accountLinked?: boolean;
+    /** Linked account address returned by the mocked account API. */
+    accountEmail?: string;
+    /** Current user status event returned by the mocked relay. */
+    userStatus?: string;
+    /** Visual harness: reproduce the reference "Lerato Social" workspace. */
+    referenceWorkspace?: boolean;
+    /** Match only the row data shown in the approved C1 shell snapshot. */
+    referenceSidebarShell?: boolean;
+    /** Override the current member role in reference client channels. */
+    referenceWorkspaceRole?: "owner" | "admin" | "member";
+    /** Override record statuses to exercise reference workspace boundaries. */
+    referenceWorkspaceClientStatus?: string;
+    referenceWorkspaceWorkStatus?: string;
+    /** Exclude the existing invoice/payment records to exercise unavailable source data. */
+    referenceWorkspaceMoneyRecords?: boolean;
+    /** Reject the listed business record writes once in reference workspace tests. */
+    referenceWorkspaceRejectBusinessRecordEvents?: Array<{
+      kind: number;
+      reason: string;
+    }>;
+    /** Seed the r19 work-reference card in The Olive House client channel. */
+    referenceWorkspaceWorkShare?: boolean;
     /** Optional policy returned by the native join-policy discovery command. */
     joinPolicy?: {
       terms_markdown?: string;
@@ -263,13 +478,19 @@ type E2eConfig = {
     /** Catalog responses for successive discovery calls. The final response repeats. */
     acpRuntimesCatalogSequence?: RawAcpRuntimeCatalogEntry[][];
     acpRuntimesDelayMs?: number;
-    /** When true, the catalog discovery call throws — simulates a failed query. */
+    /** When true, the catalog discovery call throws to simulate a failed query. */
     acpRuntimesError?: boolean;
+    /** Reject successive product feedback events, then accept when exhausted. */
+    feedbackPublishErrors?: Array<string | null>;
+    /** Delay product feedback acknowledgements so the pending UI can be captured. */
+    feedbackPublishDelayMs?: number;
     acpAuthMethods?: Record<string, RawAcpAuthMethodsResult>;
     acpAuthMethodsErrors?: Record<string, string>;
     acpAuthMethodsError?: string;
     /** When set, workflow updates fail with this message. */
     workflowUpdateError?: string;
+    /** When set, workflow status changes fail with this message. */
+    workflowStatusError?: string;
     /** When set, workflow deletion fails with this message. */
     workflowDeleteError?: string;
     /** Reject workflow run creation with this message. */
@@ -307,6 +528,9 @@ type E2eConfig = {
       mcp?: MockCommandAvailability;
     };
     managedAgents?: MockManagedAgentSeed[];
+    /** Channel records used only to reproduce frozen visual reference data. */
+    visualChannels?: VisualChannelSeed[];
+    agentUsageSeries?: import("@/shared/api/tauriArchive").AgentUsageSeries;
     /** Result returned by the mocked `add_agent_to_huddle` command. */
     addAgentToHuddleResult?: {
       ephemeral_added: boolean;
@@ -335,6 +559,8 @@ type E2eConfig = {
     /** Outcomes for successive explicit persona share publications. */
     personaSharePublicationStatuses?: Array<"published" | "queued">;
     teams?: MockTeamSeed[];
+    /** Use only the explicitly supplied teams instead of the generic mock teams. */
+    replaceDefaultTeams?: boolean;
     /** Community team-catalog (kind:30178) heads returned by relay queries. */
     teamCatalogEvents?: RelayEvent[];
     /** Outcomes for successive explicit team share publications. */
@@ -354,6 +580,10 @@ type E2eConfig = {
     channelMembersReadDelayMs?: number;
     createManagedAgentDelayMs?: number;
     channelTemplates?: ChannelTemplate[];
+    /** Override display names for visual fixtures without changing channel IDs. */
+    channelNamesById?: Record<string, string>;
+    /** Reject the mock delete_message command before changing its message store. */
+    deleteMessageError?: string;
     channelsReadError?: string;
     /** Reject successive mock `get_channels` calls, then resume. */
     channelsReadErrors?: (string | null)[];
@@ -371,6 +601,8 @@ type E2eConfig = {
     /** Number of seeded rows in the deep-history fixture. Defaults to 600. */
     deepHistoryMessageCount?: number;
     feedReadError?: string;
+    /** Reference records for the visual comparison harness only. */
+    visualFixture?: VisualFixtureSeed;
     canvasReadError?: string;
     /** Delay (ms) for `apply_workspace` so e2e tests can observe the
      *  community-switch gate. 0/undefined = instant. */
@@ -425,6 +657,7 @@ type E2eConfig = {
     profileHasEvent?: boolean;
     profileUpdateError?: string;
     profileUpdateErrors?: string[];
+    profileUpdateDelayMs?: number;
     linkPreviewMetadata?: {
       title: string;
       siteName: string | null;
@@ -495,12 +728,97 @@ type E2eConfig = {
     // equals this is treated as a moderation DM (composer disabled). Absent →
     // fail open (no mod-DM detection), matching the Rust command's contract.
     relaySelf?: string | null;
+    /** Relay-signed company goal events for goals UI E2E coverage. */
+    goalEvents?: RelayEvent[];
+    /** Synthetic relay key used only to broker goal actions in focused E2E tests. */
+    goalRelayPrivateKey?: string;
+    /** Relay-signed company hire heads used by Company Hire E2E coverage. */
+    companyHireHeads?: RelayEvent[];
+    /** Synthetic relay key used to broker hire actions in focused E2E tests. */
+    companyHireRelayPrivateKeyHex?: string;
+    /** Reject successive hire action publishes in order, then accept them. */
+    companyHireActionErrors?: string[];
+    /** Relay-signed member-position heads for Company Team E2E coverage. */
+    companyMemberPositionEvents?: RelayEvent[];
+    /** Relay-signed member-position actions for Company Team history coverage. */
+    companyMemberPositionActions?: RelayEvent[];
+    /** Synthetic relay key used only to broker member-position actions in focused E2E tests. */
+    companyMemberRelayPrivateKeyHex?: string;
+    /** Reject successive member-position writes in order, then accept them. */
+    companyMemberActionErrors?: string[];
+    /** Relay-signed employee configuration actions for history E2E coverage. */
+    companyEmployeeRevisionActions?: RelayEvent[];
+    /** Relay-signed current employee history heads for history E2E coverage. */
+    companyEmployeeRevisionHeads?: RelayEvent[];
+    /** Reject employee history action publishes in order, then accept them. */
+    companyEmployeeRevisionActionErrors?: string[];
+    /** Relay-signed duty heads used by employee profile E2E coverage. */
+    companyDutyHeads?: RelayEvent[];
+    /** Synthetic relay key used to broker duty actions in focused E2E tests. */
+    companyDutyRelayPrivateKeyHex?: string;
+    /** Relay-signed lesson heads used by employee profile E2E coverage. */
+    companyLessonHeads?: RelayEvent[];
+    /** Synthetic relay key used to broker lesson actions in focused E2E tests. */
+    companyLessonRelayPrivateKeyHex?: string;
+    /** Reject successive duty or lesson action publishes in order, then accept. */
+    companyDutyLessonActionErrors?: string[];
+    /** Relay-signed employee allowance heads for AI spend E2E coverage. */
+    employeeAllowanceHeads?: RelayEvent[];
+    /** Relay-signed AI spend record heads for AI spend E2E coverage. */
+    aiSpendRecordHeads?: RelayEvent[];
+    /** Decrypted local archive rows returned by read_archived_events. */
+    archivedEvents?: RelayEvent[];
+    /** Relay-signed company work events for company work UI E2E coverage. */
+    companyWorkEvents?: RelayEvent[];
+    /** Reject successive company work head reads in order, then accept them. */
+    companyWorkReadErrors?: string[];
+    /** Synthetic relay key used to broker company work actions in focused E2E tests. */
+    companyWorkRelayPrivateKey?: string;
+    /** Reject company work action publishes in order, then accept them. */
+    companyWorkActionErrors?: string[];
+    /** Reject company work tracking action publishes in order, then accept them. */
+    companyWorkTrackingActionErrors?: string[];
     oaOwnerIsMe?: boolean;
     /** Whether the mock relay advertises NIP-43 membership support. Defaults to false. */
     relayRequiresMembership?: boolean;
     /** Delay EOSE for membership snapshots after delivering the event. */
     relayMembershipEoseDelayMs?: number;
     relayRole?: "owner" | "admin" | "member" | null;
+    /** Exact NIP-43 membership snapshot for visual-reference fixtures. */
+    relayMembers?: Array<{
+      pubkey: string;
+      role: "owner" | "admin" | "member";
+    }>;
+    /** Verified relay-signed ask heads used by company ask E2E coverage. */
+    companyAskHeads?: RelayEvent[];
+    /** Ephemeral test key used to model relay-signed head updates after responses. */
+    companyAskRelayPrivateKeyHex?: string;
+    /** Verified relay-signed secret binding heads used by secure-entry E2E coverage. */
+    companySecretBindingHeads?: RelayEvent[];
+    /** Fail the native secret-store boundary with a generic error. */
+    companySecretStoreError?: boolean;
+    /** Reject secret-binding activation publishes in order. */
+    companySecretActivationErrors?: string[];
+    /** Relay-signed standing permission heads used by company permission E2E. */
+    companyToolPermissionHeads?: RelayEvent[];
+    /** Reject these ask response publishes in order, then accept them. */
+    askResponseErrors?: string[];
+    /** Reject these ask create publishes in order, then accept them. */
+    askActionErrors?: string[];
+    /** Pending workflow approval rows used by Today E2E coverage. */
+    workflowApprovals?: Array<{
+      workflowId: string;
+      workflowName: string;
+      channelName: string;
+      runId: string;
+      approvalRef: string;
+      stepId: string;
+      stepIndex: number;
+      approverSpec: string;
+      approverPubkey?: string | null | "current";
+      expiresAt: string;
+      createdAt: number;
+    }>;
     // Descriptors returned by the mocked `pick_and_upload_media` /
     // `upload_media_bytes` commands. Lets a spec drive the attachment flow
     // (e.g. a generic PDF) without a real upload pipeline. See
@@ -667,6 +985,8 @@ type E2eConfig = {
      * returning a catalog.
      */
     discoverAgentModelsError?: string;
+    /** Reject successive local persona creates or updates in order. */
+    personaWriteErrors?: string[];
     // Backend provider mocks for the create-agent "Run on" section. See
     // tests/helpers/bridge.ts:MockBridgeOptions for semantics.
     backendProviders?: Array<{ id: string; binaryPath: string }>;
@@ -808,6 +1128,11 @@ type MockChannel = Omit<RawChannelDetail, "member_pubkeys"> & {
   members: RawChannelMember[];
 };
 
+type VisualChannelSeed = {
+  id: string;
+  name: string;
+};
+
 type RawFeedItem = {
   id: string;
   kind: number;
@@ -835,6 +1160,7 @@ type RawHomeFeedResponse = {
     total: number;
     generated_at: number;
   };
+  visual_fixture?: HomeFeedVisualFixture;
 };
 
 type RawThreadSummary = {
@@ -956,6 +1282,7 @@ type RawManagedAgent = {
   system_prompt: string | null;
   avatar_url: string | null;
   model: string | null;
+  model_source?: "definition" | "global" | "instance_legacy" | null;
   provider?: string | null;
   env_vars?: Record<string, string>;
   status: "running" | "stopped" | "deployed" | "not_deployed";
@@ -1027,6 +1354,13 @@ type RawPersona = {
   runtime?: string | null;
   model?: string | null;
   provider?: string | null;
+  company_role?: {
+    job: string;
+    skills: string[];
+    tools: Array<{ name: string; risk: "low" | "medium" | "high" }>;
+    workerMenu: string[];
+    defaultAllowance?: string | null;
+  } | null;
   name_pool?: string[];
   is_builtin: boolean;
   is_active: boolean;
@@ -1100,7 +1434,9 @@ type MockFilter = {
   "#e"?: string[];
   "#h"?: string[];
   "#p"?: string[];
+  "#t"?: string[];
   authors?: string[];
+  before_id?: string;
   ids?: string[];
   kinds?: number[];
   limit?: number;
@@ -1112,6 +1448,17 @@ type MockSocket = {
   handler: WsHandler;
   subscriptions: Map<string, MockSubscription>;
 };
+
+const REFERENCE_BUSINESS_COMMAND_KINDS = new Set([
+  KIND_CLIENT_ACTION,
+  KIND_WORK_ITEM_ACTION,
+  KIND_DELIVERABLE_VERSION,
+  KIND_DELIVERABLE_APPROVAL,
+  KIND_INVOICE_VERSION,
+  KIND_PAYMENT,
+  KIND_MONEY_ADJUSTMENT,
+  KIND_MONEY_FOLLOW_UP,
+]);
 
 function createMockRelayMembershipEvent(): RelayEvent {
   return createMockEvent(
@@ -1133,6 +1480,21 @@ function createMockRelayMembershipEvent(): RelayEvent {
  * `:bufo_joy:` prove a second member's distinct emoji unions in.
  */
 function createMockCustomEmojiSetEvents(): RelayEvent[] {
+  const configuredSets = getConfig()?.mock?.customEmojiSets;
+  if (configuredSets !== undefined) {
+    return configuredSets.map((set) =>
+      createMockEvent(
+        KIND_EMOJI_SET,
+        "",
+        [
+          ["d", CUSTOM_EMOJI_SET_D_TAG],
+          ...set.emojis.map(({ shortcode, url }) => ["emoji", shortcode, url]),
+        ],
+        set.owner === "self" ? MOCK_IDENTITY_PUBKEY : "c".repeat(64),
+      ),
+    );
+  }
+
   return [
     createMockEvent(
       KIND_EMOJI_SET,
@@ -1242,6 +1604,16 @@ async function writeClipboardFlavors({
 declare global {
   interface Window {
     __BUZZ_E2E__?: E2eConfig;
+    __BUZZ_E2E_REFERENCE_WORKSPACE_WINDOW_LABEL__?: {
+      channelId: string;
+      label: string;
+    };
+    /** The in-page relay is synthetic unless a relay-mode test opts in. */
+    __BUZZ_E2E_USES_REAL_RELAY__?: boolean;
+    /** Enable production request pacing while retaining the mock transport. */
+    __BUZZ_E2E_FORCE_RELAY_PACING__?: boolean;
+    /** Timestamped outbound frames captured at the mock transport boundary. */
+    __BUZZ_E2E_RELAY_FRAMES__?: Array<{ at: number; frame: unknown[] }>;
     /** Last payload written through the native clipboard command. */
     __BUZZ_E2E_LAST_CLIPBOARD__?: { html: string | null; text: string };
     __BUZZ_E2E_COMMANDS__?: string[];
@@ -1305,6 +1677,18 @@ declare global {
       /** 64-hex id required for the event to be a valid reaction target. */
       id?: string;
     }) => RelayEvent;
+    /** Seed and live-publish one signed company work tracking head. */
+    __BUZZ_E2E_SEED_COMPANY_WORK_TRACKING_HEAD__?: (event: RelayEvent) => void;
+    /** Sign and publish a mock relay ask head with the per-test relay key. */
+    __BUZZ_E2E_PUBLISH_MOCK_ASK_HEAD__?: (input: {
+      channelId: string;
+      askId: string;
+      threadRootEventId: string;
+      content: string;
+      createdAt?: number;
+    }) => RelayEvent;
+    __BUZZ_E2E_COMPANY_SECRET_HEADS__?: () => RelayEvent[];
+    __BUZZ_E2E_COMPANY_ASK_HEADS__?: () => RelayEvent[];
     /** Prepend `count` synthetic older messages to a channel's mock store so
      *  an older-history fetch has something to paginate. Mirrors how the real
      *  relay backfills history. Returns the created events. */
@@ -1364,12 +1748,23 @@ declare global {
       kind: number;
       tags: string[][];
     }>;
+    __BUZZ_E2E_ACCEPTED_TOOL_PERMISSION_ACTIONS__?: Array<{
+      action: string;
+      permissionId: string;
+    }>;
     /** Project event kinds rejected once, in order, to exercise retry flows. */
     __BUZZ_E2E_REJECT_PROJECT_EVENT_KINDS__?: number[];
+    /** Goal action kinds rejected once to exercise goal retry states. */
+    __BUZZ_E2E_REJECT_GOAL_ACTIONS__?: string[];
     /** Makes the mock relay reject project announcements as an unknown kind. */
     __BUZZ_E2E_UNSUPPORTED_PROJECT_ANNOUNCEMENTS__?: boolean;
     /** Project event kinds accepted once but reported as failed to test lost acknowledgements. */
     __BUZZ_E2E_FAIL_PROJECT_EVENT_ACK_KINDS__?: number[];
+    /** Reject business commands once to exercise conflict and permission UI. */
+    __BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__?: Array<{
+      kind: number;
+      reason: string;
+    }>;
     /**
      * Extra project events appended to the mock store on first access.
      * Use to seed standalone repositories (kind 30617) or other project-scoped
@@ -1446,9 +1841,16 @@ declare global {
     __BUZZ_E2E_SET_MESH__?: (mesh: {
       admitted?: boolean;
       models?: Array<{ id: string; name: string | null }>;
+      hosts?: MockMeshHost[];
+      hostsError?: string | null;
+      hostsHold?: boolean;
+      catalogInstalled?: boolean;
+      catalogError?: string | null;
+      statusError?: string | null;
+      startError?: string | null;
       denyReason?: string;
       /** Seed the runtime slot's lifecycle state (default "off"). */
-      nodeState?: "off" | "running";
+      nodeState?: "off" | "starting" | "running";
       /**
        * Seed the runtime slot's role. "client" models this machine CONSUMING a
        * peer's compute — it shares the single slot and reports state:"running",
@@ -1540,14 +1942,16 @@ declare global {
      */
     __BUZZ_E2E_INVALIDATE_CHANNELS__?: () => Promise<void>;
     /**
-     * Directly mutate a mock channel's properties without going through a
-     * command handler.  Use for E2E regressions that need to change
-     * channel_type or remove isMember in a single synchronous step, then
-     * follow up with __BUZZ_E2E_INVALIDATE_CHANNELS__ to flush the cache.
+     * Directly mutate mock channel state without going through a command
+     * handler. Use for focused E2E membership and channel-state fixtures.
      *
      * Only the listed fields are writeable; omitted fields are left unchanged.
      */
     __BUZZ_E2E_MUTATE_CHANNEL__?: (opts: {
+      addMembers?: Array<{
+        pubkey: string;
+        role: "owner" | "admin" | "member" | "guest" | "bot";
+      }>;
       channelId: string;
       channelType?: "stream" | "forum" | "dm";
       description?: string;
@@ -1796,7 +2200,7 @@ function toRawChannel(
 
   return {
     id: channel.id,
-    name: channel.name,
+    name: config?.mock?.channelNamesById?.[channel.id] ?? channel.name,
     channel_type: channel.channel_type,
     visibility: channel.visibility,
     description: channel.description,
@@ -1896,6 +2300,67 @@ function syncMockChannel(channel: MockChannel) {
   channel.participants = channel.members.map(
     (member) => member.display_name ?? member.pubkey.slice(0, 8),
   );
+}
+
+const MOCK_CHANNEL_MEMBERSHIP_STORAGE_KEY = "buzz-e2e-channel-members-v1";
+
+function mockChannelMembershipStorageKey(channelId: string): string {
+  const communityId =
+    window.localStorage.getItem("buzz-active-community-id") ?? "default";
+  return `${MOCK_CHANNEL_MEMBERSHIP_STORAGE_KEY}:${encodeURIComponent(communityId)}:${channelId}`;
+}
+
+function persistedMockChannelMembers(
+  channelId: string,
+): RawChannelMember[] | null {
+  const value = window.localStorage.getItem(
+    mockChannelMembershipStorageKey(channelId),
+  );
+  if (value === null) return null;
+
+  const parsed: unknown = JSON.parse(value);
+  if (
+    !Array.isArray(parsed) ||
+    parsed.some(
+      (member) =>
+        member === null ||
+        typeof member !== "object" ||
+        typeof (member as RawChannelMember).pubkey !== "string" ||
+        typeof (member as RawChannelMember).joined_at !== "string" ||
+        !["owner", "admin", "member", "guest", "bot"].includes(
+          (member as RawChannelMember).role,
+        ) ||
+        !(
+          (member as RawChannelMember).display_name === null ||
+          typeof (member as RawChannelMember).display_name === "string"
+        ),
+    )
+  ) {
+    throw new Error(
+      `Stored mock channel members are invalid for ${channelId}.`,
+    );
+  }
+
+  return parsed.map((member) => ({ ...member })) as RawChannelMember[];
+}
+
+function restoreMockChannelMembers(channel: MockChannel): MockChannel {
+  const members = persistedMockChannelMembers(channel.id);
+  if (members === null) return channel;
+  channel.members = cloneMembers(members);
+  syncMockChannel(channel);
+  return channel;
+}
+
+function persistMockChannelMembers(channel: MockChannel): void {
+  window.localStorage.setItem(
+    mockChannelMembershipStorageKey(channel.id),
+    JSON.stringify(channel.members),
+  );
+}
+
+function clearPersistedMockChannelMembers(channelId: string): void {
+  window.localStorage.removeItem(mockChannelMembershipStorageKey(channelId));
 }
 
 function touchMockChannel(channel: MockChannel) {
@@ -2012,6 +2477,16 @@ function cloneAgentMemoryListing(
 
 function resetMockRelayMembers(config: E2eConfig | undefined) {
   const pubkey = getMockMemberPubkey(config);
+  const seededMembers = config?.mock?.relayMembers;
+  if (seededMembers) {
+    mockRelayMembers = seededMembers.map((member, index) => ({
+      pubkey: member.pubkey.toLowerCase(),
+      role: member.role,
+      added_by: index === 0 ? null : pubkey,
+      created_at: isoMinutesAgo(120 - index * 15),
+    }));
+    return;
+  }
   // Drive the active identity's role from `mock.relayRole` so the e2e harness
   // can exercise the NIP-IA admin gate (owner/admin → true, member/null →
   // false). Default stays `owner` to preserve existing test behavior.
@@ -2525,15 +3000,17 @@ function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
     idle_timeout_seconds: null,
     max_turn_duration_seconds: null,
     parallelism: 1,
-    system_prompt: null,
+    system_prompt: seed.systemPrompt ?? null,
     avatar_url: seed.avatarUrl ?? null,
-    model: null,
+    model: seed.model ?? null,
+    model_source: seed.modelSource ?? (seed.model ? "definition" : null),
+    provider: seed.provider ?? null,
     env_vars: { ...(seed.envVars ?? {}) },
     status,
     pid: status === "running" ? 42000 + mockManagedAgents.length : null,
     created_at: now,
     updated_at: now,
-    last_started_at: status === "running" ? now : null,
+    last_started_at: seed.lastStartedAt ?? (status === "running" ? now : null),
     last_stopped_at: status === "stopped" ? now : null,
     last_exit_code: null,
     last_error: seed.lastError ?? null,
@@ -2609,7 +3086,7 @@ function resetMockManagedAgents(config?: E2eConfig) {
       pubkey: seed.pubkey,
       display_name: seed.name,
       avatar_url: null,
-      about: null,
+      about: seed.about ?? null,
       nip05_handle: null,
       owner_pubkey: MOCK_IDENTITY_PUBKEY,
       is_agent: true,
@@ -2687,10 +3164,20 @@ function resetMockPersonas(config?: E2eConfig) {
       id: persona.id ?? crypto.randomUUID(),
       display_name: persona.displayName,
       avatar_url: persona.avatarUrl ?? null,
+      description: persona.description ?? null,
       system_prompt: persona.systemPrompt,
       runtime: persona.runtime ?? null,
       model: persona.model ?? null,
       provider: persona.provider ?? null,
+      company_role: persona.companyRole
+        ? {
+            job: persona.companyRole.job,
+            skills: [...persona.companyRole.skills],
+            tools: persona.companyRole.tools.map((tool) => ({ ...tool })),
+            workerMenu: [...persona.companyRole.workerMenu],
+            defaultAllowance: persona.companyRole.defaultAllowance ?? null,
+          }
+        : null,
       name_pool: persona.namePool ?? [],
       respond_to: persona.respondTo ?? null,
       respond_to_allowlist:
@@ -2711,47 +3198,49 @@ function resetMockPersonas(config?: E2eConfig) {
 
 function resetMockTeams(config?: E2eConfig) {
   const now = new Date().toISOString();
-  mockTeams = [
-    {
-      id: "team-engineering-001",
-      name: "Engineering",
-      description: "Core engineering personas",
-      persona_ids: [],
-      is_builtin: false,
-      source_dir: null,
-      is_symlink: false,
-      symlink_target: null,
-      version: null,
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: "team-research-002",
-      name: "Research Agents",
-      description: "Directory-backed research team",
-      persona_ids: [],
-      is_builtin: false,
-      source_dir: "/Users/dev/agents/research",
-      is_symlink: false,
-      symlink_target: null,
-      version: "1.2.0",
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: "team-platform-003",
-      name: "Platform Tools",
-      description: "Symlinked platform team",
-      persona_ids: [],
-      is_builtin: false,
-      source_dir: "/Users/dev/agents/platform",
-      is_symlink: true,
-      symlink_target: "/opt/shared-teams/platform",
-      version: "2.0.1",
-      created_at: now,
-      updated_at: now,
-    },
-  ];
+  mockTeams = config?.mock?.replaceDefaultTeams
+    ? []
+    : [
+        {
+          id: "team-engineering-001",
+          name: "Engineering",
+          description: "Core engineering personas",
+          persona_ids: [],
+          is_builtin: false,
+          source_dir: null,
+          is_symlink: false,
+          symlink_target: null,
+          version: null,
+          created_at: now,
+          updated_at: now,
+        },
+        {
+          id: "team-research-002",
+          name: "Research Agents",
+          description: "Directory-backed research team",
+          persona_ids: [],
+          is_builtin: false,
+          source_dir: "/Users/dev/agents/research",
+          is_symlink: false,
+          symlink_target: null,
+          version: "1.2.0",
+          created_at: now,
+          updated_at: now,
+        },
+        {
+          id: "team-platform-003",
+          name: "Platform Tools",
+          description: "Symlinked platform team",
+          persona_ids: [],
+          is_builtin: false,
+          source_dir: "/Users/dev/agents/platform",
+          is_symlink: true,
+          symlink_target: "/opt/shared-teams/platform",
+          version: "2.0.1",
+          created_at: now,
+          updated_at: now,
+        },
+      ];
 
   for (const team of config?.mock?.teams ?? []) {
     mockTeams.push({
@@ -2828,16 +3317,64 @@ function listMockProfiles(): RawProfile[] {
 }
 
 function listMockChannels(config?: E2eConfig): RawChannelWithMembership[] {
-  return mockChannels.map((channel) => toRawChannel(channel, config));
+  const visualChannels = buildVisualChannels(config);
+  const visualIds = new Set(visualChannels.map((channel) => channel.id));
+  return [
+    ...mockChannels.filter((channel) => !visualIds.has(channel.id)),
+    ...visualChannels,
+  ].map((channel) => toRawChannel(restoreMockChannelMembers(channel), config));
+}
+
+function buildVisualChannels(config?: E2eConfig): MockChannel[] {
+  return (config?.mock?.visualChannels ?? []).map((seed) => {
+    const agentMembers = (config?.mock?.managedAgents ?? [])
+      .filter(
+        (agent) =>
+          agent.channelIds?.includes(seed.id) ||
+          agent.channelNames?.includes(seed.name),
+      )
+      .map((agent) => createMockMember(agent.pubkey, "bot", 900));
+    const members = [
+      createMockMember(getMockMemberPubkey(config), "owner", 1440),
+      ...agentMembers,
+    ];
+
+    return restoreMockChannelMembers(
+      createMockChannel({
+        id: seed.id,
+        name: seed.name,
+        channel_type: "stream",
+        visibility: "open",
+        description: "",
+        topic: null,
+        purpose: null,
+        last_message_at: null,
+        archived_at: null,
+        created_by: getMockMemberPubkey(config),
+        topic_set_by: null,
+        topic_set_at: null,
+        purpose_set_by: null,
+        purpose_set_at: null,
+        topic_required: false,
+        max_members: null,
+        nip29_group_id: null,
+        created_minutes_ago: 1440,
+        updated_minutes_ago: 1440,
+        members,
+      }),
+    );
+  });
 }
 
 function getMockChannel(channelId: string): MockChannel {
-  const channel = mockChannels.find((candidate) => candidate.id === channelId);
+  const channel = [...buildVisualChannels(getConfig()), ...mockChannels].find(
+    (candidate) => candidate.id === channelId,
+  );
   if (!channel) {
     throw new Error(`Channel ${channelId} not found.`);
   }
 
-  return channel;
+  return restoreMockChannelMembers(channel);
 }
 
 function getMockMemberPubkey(config: E2eConfig | undefined): string {
@@ -2845,7 +3382,11 @@ function getMockMemberPubkey(config: E2eConfig | undefined): string {
 }
 
 function getMockMemberDisplayName(config: E2eConfig | undefined): string {
-  return getActiveIdentity(config)?.username ?? getMockIdentity().displayName;
+  return (
+    config?.mock?.visualFixture?.identity.displayName ??
+    getActiveIdentity(config)?.username ??
+    getMockIdentity().displayName
+  );
 }
 
 function createCurrentMember(
@@ -3321,6 +3862,131 @@ const mockChannels: MockChannel[] = [
 ];
 
 const mockMessages = new Map<string, RelayEvent[]>();
+const mockBusinessRecordEvents = new Map<string, RelayEvent[]>();
+const mockVisualThreadOnlyMessageIds = new Set<string>();
+const mockVisualContactLists = new Map<string, string[]>();
+
+function seedVisualFixture(fixture: VisualFixtureSeed) {
+  mockVisualThreadOnlyMessageIds.clear();
+  mockVisualContactLists.clear();
+  mockVisualContactLists.set(
+    fixture.identity.pubkey.toLowerCase(),
+    (fixture.followedPubkeys ?? []).map((pubkey) => pubkey.toLowerCase()),
+  );
+  DEFAULT_MOCK_IDENTITY.display_name = fixture.identity.displayName;
+  mockDisplayNames.set(fixture.identity.pubkey, fixture.identity.displayName);
+  mockProfiles.set(fixture.identity.pubkey, {
+    pubkey: fixture.identity.pubkey,
+    display_name: fixture.identity.displayName,
+    name: fixture.identity.displayName,
+    avatar_url: null,
+    about: null,
+    nip05_handle: null,
+    owner_pubkey: null,
+    is_agent: false,
+    has_profile_event: true,
+  });
+
+  for (const profile of fixture.profiles) {
+    mockDisplayNames.set(profile.pubkey, profile.displayName);
+    if (profile.isAgent) mockAgentPubkeys.add(profile.pubkey);
+    mockProfiles.set(profile.pubkey, {
+      pubkey: profile.pubkey,
+      display_name: profile.displayName,
+      name: profile.displayName,
+      avatar_url: profile.avatarUrl ?? null,
+      about: null,
+      nip05_handle: null,
+      owner_pubkey: null,
+      is_agent: profile.isAgent,
+      has_profile_event: true,
+    });
+  }
+
+  const messagesByChannel = new Map<string, RelayEvent[]>();
+  for (const message of fixture.messages) {
+    if (message.timelineVisibility === "thread-only") {
+      mockVisualThreadOnlyMessageIds.add(message.id);
+    }
+    const events = messagesByChannel.get(message.channelId) ?? [];
+    events.push({
+      id: message.id,
+      pubkey: message.pubkey,
+      created_at: message.createdAt,
+      kind: message.kind,
+      tags: message.tags.map((tag) => [...tag]),
+      content: message.content,
+      sig: "mocksig".repeat(20).slice(0, 128),
+    });
+    messagesByChannel.set(message.channelId, events);
+  }
+
+  mockChannels.splice(
+    0,
+    mockChannels.length,
+    ...fixture.channels.map((channel) => {
+      const lastMessageAt = Math.max(
+        channel.lastMessageAt ?? 0,
+        ...(messagesByChannel.get(channel.id) ?? []).map(
+          (message) => message.created_at,
+        ),
+      );
+      const ageMinutes = lastMessageAt
+        ? Math.max(0, Math.floor((Date.now() / 1000 - lastMessageAt) / 60))
+        : 1440;
+      const members: RawChannelMember[] = channel.members.map((member) => ({
+        pubkey: member.pubkey,
+        role: member.role,
+        is_agent: member.isAgent,
+        joined_at: new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString(),
+        display_name: member.displayName,
+      }));
+      return createMockChannel({
+        id: channel.id,
+        name: channel.name,
+        channel_type: channel.channelType ?? "stream",
+        visibility: channel.channelType === "dm" ? "private" : "open",
+        description: channel.description,
+        topic: null,
+        purpose: null,
+        last_message_at: lastMessageAt
+          ? new Date(lastMessageAt * 1000).toISOString()
+          : null,
+        archived_at: null,
+        created_by: fixture.identity.pubkey,
+        topic_set_by: null,
+        topic_set_at: null,
+        purpose_set_by: null,
+        purpose_set_at: null,
+        topic_required: false,
+        max_members:
+          channel.channelType === "dm" ? channel.members.length : null,
+        nip29_group_id: null,
+        created_minutes_ago: ageMinutes + 30,
+        updated_minutes_ago: ageMinutes,
+        participant_pubkeys:
+          channel.channelType === "dm"
+            ? members.map((member) => member.pubkey)
+            : [],
+        participants:
+          channel.channelType === "dm"
+            ? members.map(
+                (member) => member.display_name ?? member.pubkey.slice(0, 8),
+              )
+            : [],
+        members,
+      });
+    }),
+  );
+
+  mockMessages.clear();
+  for (const [channelId, events] of messagesByChannel) {
+    mockMessages.set(
+      channelId,
+      events.sort((first, second) => first.created_at - second.created_at),
+    );
+  }
+}
 const deferredSendMessageLiveEchoes: Array<{
   channelId: string;
   event: RelayEvent;
@@ -3329,6 +3995,37 @@ const mockUserStatuses: RelayEvent[] = [];
 const mockReminderEvents: RelayEvent[] = [];
 const mockPersonaEvents: RelayEvent[] = [];
 const mockTeamCatalogEvents: RelayEvent[] = [];
+const mockCompanyAskHeads: RelayEvent[] = [];
+const mockCompanyHireHeads: RelayEvent[] = [];
+const mockCompanyMemberPositionEvents: RelayEvent[] = [];
+const MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY =
+  "buzz-e2e-company-member-position-events-v1";
+const mockCompanyMemberPositionActions: RelayEvent[] = [];
+const MOCK_COMPANY_MEMBER_POSITION_ACTIONS_STORAGE_KEY =
+  "buzz-e2e-company-member-position-actions-v1";
+const mockCompanyEmployeeRevisionActions: RelayEvent[] = [];
+const MOCK_COMPANY_EMPLOYEE_REVISION_ACTIONS_STORAGE_KEY =
+  "buzz-e2e-company-employee-revision-actions-v1";
+const mockCompanyEmployeeRevisionHeads: RelayEvent[] = [];
+const MOCK_COMPANY_EMPLOYEE_REVISION_HEADS_STORAGE_KEY =
+  "buzz-e2e-company-employee-revision-heads-v1";
+const mockCompanyDutyHeads: RelayEvent[] = [];
+const MOCK_COMPANY_DUTY_HEADS_STORAGE_KEY = "buzz-e2e-company-duty-heads-v1";
+const mockCompanyLessonHeads: RelayEvent[] = [];
+const MOCK_COMPANY_LESSON_HEADS_STORAGE_KEY =
+  "buzz-e2e-company-lesson-heads-v1";
+const mockCompanyDutyActions: RelayEvent[] = [];
+const mockCompanyLessonActions: RelayEvent[] = [];
+const mockCompanyToolPermissionHeads: RelayEvent[] = [];
+const mockEmployeeAllowanceHeads: RelayEvent[] = [];
+const MOCK_EMPLOYEE_ALLOWANCE_HEADS_STORAGE_KEY =
+  "buzz-e2e-employee-ai-allowance-heads-v1";
+const mockAiSpendRecordHeads: RelayEvent[] = [];
+const MOCK_AI_SPEND_RECORD_HEADS_STORAGE_KEY =
+  "buzz-e2e-ai-spend-record-heads-v1";
+const mockAskActionIds = new Set<string>();
+const mockCompanySecretBindingHeads: RelayEvent[] = [];
+const mockSecretBindingActionIds = new Set<string>();
 let mockRelayMembers: RawRelayMember[] = [];
 const mockSockets = new Map<number, MockSocket>();
 const mockAuthResponses: Array<{ success: boolean; message: string }> = [];
@@ -3698,6 +4395,12 @@ type MockServingUsage = {
   peers: number;
 };
 
+type MockMeshHost = {
+  id: string;
+  name: string | null;
+  local: boolean;
+};
+
 const ZERO_SERVING_USAGE: MockServingUsage = {
   inflight: 0,
   peakInflight: 0,
@@ -3715,7 +4418,15 @@ const mockMeshState: {
   models: Array<{ id: string; name: string | null }>;
   activeModel: { id: string; name: string | null } | null;
   denyReason: string;
-  nodeState: "off" | "running";
+  hosts: MockMeshHost[];
+  hostsError: string | null;
+  hostsHold: boolean;
+  releaseHosts: (() => void) | null;
+  catalogInstalled: boolean;
+  catalogError: string | null;
+  statusError: string | null;
+  startError: string | null;
+  nodeState: "off" | "starting" | "running";
   nodeMode: "serve" | "client" | null;
   servingUsage: MockServingUsage;
 } = {
@@ -3723,6 +4434,14 @@ const mockMeshState: {
   models: [{ id: "Gemma-4-E4B-it-Q4_K_M", name: "Gemma 4 E4B" }],
   activeModel: null,
   denyReason: "not a relay member",
+  hosts: [],
+  hostsError: null,
+  hostsHold: false,
+  releaseHosts: null,
+  catalogInstalled: true,
+  catalogError: null,
+  statusError: null,
+  startError: null,
   nodeState: "off",
   nodeMode: null,
   servingUsage: { ...ZERO_SERVING_USAGE },
@@ -3733,6 +4452,14 @@ function resetMockMesh() {
   mockMeshState.models = [{ id: "Gemma-4-E4B-it-Q4_K_M", name: "Gemma 4 E4B" }];
   mockMeshState.activeModel = null;
   mockMeshState.denyReason = "not a relay member";
+  mockMeshState.hosts = [];
+  mockMeshState.hostsError = null;
+  mockMeshState.hostsHold = false;
+  mockMeshState.releaseHosts = null;
+  mockMeshState.catalogInstalled = true;
+  mockMeshState.catalogError = null;
+  mockMeshState.statusError = null;
+  mockMeshState.startError = null;
   mockMeshState.nodeState = "off";
   mockMeshState.nodeMode = null;
   mockMeshState.servingUsage = { ...ZERO_SERVING_USAGE };
@@ -3950,6 +4677,16 @@ type MockWorkflow = {
   updated_at: number;
 };
 
+type MockWorkflowDraft = {
+  id: string;
+  revision: string;
+  name: string;
+  owner_pubkey: string;
+  channel_id: string;
+  definition: Record<string, unknown>;
+  updated_at: number;
+};
+
 type RawWorkflowTraceEntry = {
   step_id: string;
   status: string;
@@ -3978,14 +4715,88 @@ type RawWorkflowRun = {
   created_at: number;
 };
 
-const mockWorkflows: MockWorkflow[] = [];
-let mockWorkflowRuns: RawWorkflowRun[] = [];
-let mockWorkflowIdCounter = 0;
+type MockWorkflowApproval = {
+  approval_ref: string;
+  workflow_id: string;
+  run_id: string;
+  step_id: string;
+  step_index: number;
+  approver_spec: string;
+  status: "pending" | "granted" | "denied" | "expired";
+  approver_pubkey: string | null;
+  note: string | null;
+  expires_at: string;
+  created_at: number;
+};
 
-function resetMockWorkflows() {
+const mockWorkflows: MockWorkflow[] = [];
+const mockWorkflowDrafts: MockWorkflowDraft[] = [];
+let mockWorkflowRuns: RawWorkflowRun[] = [];
+const mockWorkflowApprovals: MockWorkflowApproval[] = [];
+let mockWorkflowIdCounter = 0;
+let mockWorkflowRevisionCounter = 0;
+
+function resetMockWorkflows(config: E2eConfig | null) {
   mockWorkflows.length = 0;
+  mockWorkflowDrafts.length = 0;
   mockWorkflowRuns = [];
+  mockWorkflowApprovals.length = 0;
   mockWorkflowIdCounter = 0;
+  mockWorkflowRevisionCounter = 0;
+  const activePubkey = getMockMemberPubkey(config ?? undefined);
+  for (const seed of config?.mock?.workflowApprovals ?? []) {
+    const channelId = mockChannels.find(
+      (channel) => channel.name === seed.channelName,
+    )?.id;
+    if (!channelId) {
+      throw new Error(
+        `Mock workflow channel ${seed.channelName} was not found.`,
+      );
+    }
+    const createdAt = seed.createdAt;
+    const approverPubkey =
+      seed.approverPubkey === "current"
+        ? activePubkey
+        : (seed.approverPubkey ?? null);
+    const approverSpec =
+      seed.approverSpec === "current" ? activePubkey : seed.approverSpec;
+    mockWorkflows.push({
+      id: seed.workflowId,
+      revision: `mock-revision-${seed.workflowId}`,
+      name: seed.workflowName,
+      owner_pubkey: activePubkey,
+      channel_id: channelId,
+      definition: { name: seed.workflowName },
+      status: "active",
+      created_at: createdAt,
+      updated_at: createdAt,
+    });
+    mockWorkflowRuns.push({
+      id: seed.runId,
+      workflow_id: seed.workflowId,
+      status: "waiting_approval",
+      current_step: seed.stepIndex,
+      execution_trace: [],
+      started_at: createdAt,
+      completed_at: null,
+      error_code: null,
+      error_message: null,
+      created_at: createdAt,
+    });
+    mockWorkflowApprovals.push({
+      approval_ref: seed.approvalRef,
+      workflow_id: seed.workflowId,
+      run_id: seed.runId,
+      step_id: seed.stepId,
+      step_index: seed.stepIndex,
+      approver_spec: approverSpec,
+      status: "pending",
+      approver_pubkey: approverPubkey,
+      note: null,
+      expires_at: seed.expiresAt,
+      created_at: createdAt,
+    });
+  }
 }
 
 function parseWorkflowDefinition(
@@ -4013,6 +4824,161 @@ function handleGetWorkflow(args: { workflowId: string }) {
   const workflow = mockWorkflows.find((w) => w.id === args.workflowId);
   if (!workflow) throw new Error(`Workflow ${args.workflowId} not found`);
   return workflow;
+}
+
+function handleGetWorkflowDraft(args: { workflowId: string }) {
+  return (
+    mockWorkflowDrafts.find((draft) => draft.id === args.workflowId) ?? null
+  );
+}
+
+function handleSaveWorkflowDraft(args: {
+  workflowId: string;
+  channelId: string;
+  yamlDefinition: string;
+  expectedRevision: string | null;
+}) {
+  const active = mockWorkflows.find(
+    (workflow) => workflow.id === args.workflowId,
+  );
+  if (active && active.owner_pubkey !== MOCK_IDENTITY_PUBKEY) {
+    throw new Error("only the workflow owner can edit its draft");
+  }
+  const current = mockWorkflowDrafts.find(
+    (draft) => draft.id === args.workflowId,
+  );
+  if (
+    (current && current.revision !== args.expectedRevision) ||
+    (!current && args.expectedRevision !== null)
+  ) {
+    throw new Error(
+      "workflow draft changed since it was loaded; refresh and try again",
+    );
+  }
+  const definition = parseWorkflowDefinition(args.yamlDefinition);
+  const now = Math.floor(Date.now() / 1000);
+  mockWorkflowRevisionCounter += 1;
+  const draft: MockWorkflowDraft = {
+    id: args.workflowId,
+    revision: `mock-draft-${args.workflowId}-${now}-${mockWorkflowRevisionCounter}`,
+    name:
+      typeof definition.name === "string" ? definition.name : args.workflowId,
+    owner_pubkey: MOCK_IDENTITY_PUBKEY,
+    channel_id: args.channelId,
+    definition,
+    updated_at: now,
+  };
+  if (current) {
+    Object.assign(current, draft);
+    return current;
+  }
+  mockWorkflowDrafts.push(draft);
+  return draft;
+}
+
+function handlePublishWorkflowDraft(args: {
+  workflowId: string;
+  draftRevision: string;
+  expectedActiveRevision?: string | null;
+}) {
+  const draft = mockWorkflowDrafts.find(
+    (value) => value.id === args.workflowId,
+  );
+  if (!draft || draft.revision !== args.draftRevision) {
+    throw new Error(
+      "workflow draft changed since it was loaded; refresh and try again",
+    );
+  }
+  const active = mockWorkflows.find(
+    (workflow) => workflow.id === args.workflowId,
+  );
+  if (
+    (active && active.revision !== args.expectedActiveRevision) ||
+    (!active && args.expectedActiveRevision != null)
+  ) {
+    throw new Error(
+      "active workflow changed since it was loaded; refresh and try again",
+    );
+  }
+  const now = Math.floor(Date.now() / 1000);
+  mockWorkflowRevisionCounter += 1;
+  const workflow: MockWorkflow = active
+    ? {
+        ...active,
+        revision: `mock-active-${args.workflowId}-${now}-${mockWorkflowRevisionCounter}`,
+        name: draft.name,
+        channel_id: draft.channel_id,
+        definition: structuredClone(draft.definition),
+        status: "active",
+        updated_at: now,
+      }
+    : {
+        id: args.workflowId,
+        revision: `mock-active-${args.workflowId}-${now}-${mockWorkflowRevisionCounter}`,
+        name: draft.name,
+        owner_pubkey: draft.owner_pubkey,
+        channel_id: draft.channel_id,
+        definition: structuredClone(draft.definition),
+        status: "active",
+        created_at: now,
+        updated_at: now,
+      };
+  if (active) Object.assign(active, workflow);
+  else mockWorkflows.push(workflow);
+  return { ...workflow, webhook_secret: null };
+}
+
+function handleSetWorkflowStatus(args: {
+  workflowId: string;
+  status: "active" | "paused";
+}) {
+  const configuredError = window.__BUZZ_E2E__?.mock?.workflowStatusError;
+  if (configuredError) throw new Error(configuredError);
+  const workflow = mockWorkflows.find((value) => value.id === args.workflowId);
+  if (!workflow) throw new Error(`Workflow ${args.workflowId} not found`);
+  workflow.status = args.status === "paused" ? "disabled" : "active";
+  return args.status;
+}
+
+function handlePreviewWorkflow(args: { yamlDefinition: string }) {
+  const definition = parseWorkflowDefinition(args.yamlDefinition);
+  const steps = Array.isArray(definition.steps) ? definition.steps : [];
+  return {
+    preview: true,
+    side_effects: false,
+    steps: steps.map((value) => {
+      const step = value as Record<string, unknown>;
+      const action =
+        step.action === "request_approval"
+          ? "Would request approval"
+          : step.action === "ask_agent"
+            ? "Would ask an agent and wait for a reply"
+            : "Would run the step";
+      const paths =
+        step.action === "request_approval"
+          ? [
+              "Approved: continue to the next step",
+              "Denied: stop the run",
+              "Changes requested: no revision action is currently supported",
+              "Step failure: stop the run as failed",
+            ]
+          : step.action === "ask_agent"
+            ? [
+                "Reply in the request thread: continue to the next step",
+                "No reply before timeout: stop the run as timed out",
+                "Step failure: stop the run as failed",
+              ]
+            : ["Step failure: stop the run as failed"];
+      return {
+        step_id: String(step.id ?? ""),
+        outcome: "would_run",
+        action,
+        definition: step,
+        paths,
+        note: null,
+      };
+    }),
+  };
 }
 
 function handleCreateWorkflow(args: {
@@ -4172,14 +5138,74 @@ function handleGetWorkflowRuns(args: {
   const runs = mockWorkflowRuns.filter(
     (run) => run.workflow_id === args.workflowId,
   );
+  const dutyEvent = mockCompanyDutyHeads.find((event) =>
+    event.tags.some(
+      (tag) => tag[0] === "d" && tag[1] === `company:duty:${args.workflowId}`,
+    ),
+  );
+  let dutyHead: Record<string, unknown> | null = null;
+  try {
+    dutyHead = dutyEvent
+      ? (JSON.parse(dutyEvent.content) as Record<string, unknown>)
+      : null;
+  } catch {
+    dutyHead = null;
+  }
+  const dutyProposal = dutyHead?.proposal as
+    | Record<string, unknown>
+    | undefined;
   return {
     runs: args.limit ? runs.slice(0, args.limit) : runs,
     next: null,
+    ...(dutyHead && dutyProposal
+      ? {
+          next_scheduled_at: null,
+          workflow_definition_hash: dutyHead.workflowDefinitionHash,
+          workflow_channel_id: dutyProposal.channelId,
+          workflow_enabled: dutyHead.status === "active",
+        }
+      : {}),
   };
 }
 
-function handleGetRunApprovals(_args: { workflowId: string; runId: string }) {
-  return { approvals: [] };
+function handleGetRunApprovals(args: { workflowId: string; runId: string }) {
+  return {
+    approvals: mockWorkflowApprovals
+      .filter(
+        (approval) =>
+          approval.workflow_id === args.workflowId &&
+          approval.run_id === args.runId,
+      )
+      .map((approval) => ({ ...approval })),
+  };
+}
+
+function handleWorkflowApprovalAction(
+  args: { token: string; note?: string | null },
+  status: "granted" | "denied",
+) {
+  const approval = mockWorkflowApprovals.find(
+    (candidate) => candidate.approval_ref === args.token,
+  );
+  if (!approval) throw new Error("Workflow approval was not found.");
+  if (approval.status !== "pending") {
+    throw new Error(`Workflow approval is already ${approval.status}.`);
+  }
+  approval.status = status;
+  approval.note = args.note ?? null;
+  const run = mockWorkflowRuns.find(
+    (candidate) => candidate.id === approval.run_id,
+  );
+  if (run) {
+    run.status = status === "granted" ? "completed" : "failed";
+    run.completed_at = Math.floor(Date.now() / 1_000);
+  }
+  return {
+    token: args.token,
+    status,
+    run_id: approval.run_id,
+    workflow_id: approval.workflow_id,
+  };
 }
 
 const mockProfiles = new Map<string, RawProfile>([
@@ -4247,24 +5273,181 @@ const mockFeedOverrides: RawHomeFeedResponse["feed"] = {
 };
 
 let installed = false;
+let referenceWorkspaceActive = false;
+
+/**
+ * Replaces the default mock community with the reference workspace used by
+ * the visual comparison harness (see e2eReferenceWorkspace.ts).
+ */
+function applyReferenceWorkspace(config: E2eConfig): void {
+  referenceWorkspaceActive = true;
+  const sidebarShell = config.mock?.referenceSidebarShell === true;
+  window.__BUZZ_E2E_REFERENCE_WORKSPACE_WINDOW_LABEL__ = {
+    channelId: REFERENCE_CHANNEL_IDS.sales,
+    label: REFERENCE_SALES_WINDOW_START_DAY_LABEL,
+  };
+  installReferenceDiscoveryProvider();
+  const self = getMockMemberPubkey(config);
+  const selfRole = config.mock?.referenceWorkspaceRole ?? "owner";
+  mockDisplayNames.set(self, REFERENCE_SELF_NAME);
+  const selfProfile = mockProfiles.get(self);
+  if (selfProfile) {
+    mockProfiles.set(self, {
+      ...selfProfile,
+      display_name: REFERENCE_SELF_NAME,
+    });
+  }
+  for (const agent of Object.values(REFERENCE_AGENTS)) {
+    mockDisplayNames.set(agent.pubkey, agent.name);
+    mockAgentPubkeys.add(agent.pubkey);
+    mockProfiles.set(agent.pubkey, {
+      pubkey: agent.pubkey,
+      display_name: agent.name,
+      name: agent.name,
+      avatar_url: null,
+      about: null,
+      nip05_handle: null,
+      owner_pubkey: null,
+      is_agent: true,
+      has_profile_event: true,
+    });
+  }
+  const channelSeeds = sidebarShell
+    ? referenceSidebarChannelSeeds()
+    : referenceChannelSeeds();
+  const channels = channelSeeds.map((seed) =>
+    createMockChannel({
+      id: seed.id,
+      name: seed.name,
+      channel_type: seed.channelType ?? "stream",
+      visibility:
+        seed.visibility ??
+        (seed.id === REFERENCE_CHANNEL_IDS.oliveHouse ||
+        seed.id === REFERENCE_CHANNEL_IDS.cedarCafe ||
+        seed.id === REFERENCE_CHANNEL_IDS.northline
+          ? "private"
+          : "open"),
+      description: seed.description,
+      topic: null,
+      purpose: null,
+      last_message_at: sidebarShell
+        ? seed.id === REFERENCE_CHANNEL_IDS.oliveStudio
+          ? referenceSalesLastMessageAt()
+          : seed.id === REFERENCE_CHANNEL_IDS.marketing
+            ? referenceChannelLastMessageAt(10)
+            : seed.id === REFERENCE_CHANNEL_IDS.sales
+              ? referenceChannelLastMessageAt(20)
+              : seed.id === REFERENCE_CHANNEL_IDS.minaDm
+                ? referenceSalesLastMessageAt()
+                : seed.id === REFERENCE_CHANNEL_IDS.ayaDm
+                  ? referenceChannelLastMessageAt(5)
+                  : seed.id === REFERENCE_CHANNEL_IDS.companyForum
+                    ? referenceChannelLastMessageAt(5)
+                    : null
+        : seed.id === REFERENCE_CHANNEL_IDS.sales
+          ? referenceSalesLastMessageAt()
+          : null,
+      archived_at: null,
+      created_by: self,
+      topic_set_by: null,
+      topic_set_at: null,
+      purpose_set_by: null,
+      purpose_set_at: null,
+      topic_required: false,
+      max_members: null,
+      nip29_group_id: null,
+      created_minutes_ago: 1440,
+      updated_minutes_ago: 30,
+      members: [
+        createMockMember(self, selfRole, 1440),
+        ...seed.agentMembers.map((pubkey) =>
+          createMockMember(pubkey, "member", 1200),
+        ),
+      ],
+      ...(seed.channelType === "dm"
+        ? {
+            participant_pubkeys: [self, ...seed.agentMembers],
+            participants: [
+              REFERENCE_SELF_NAME,
+              ...seed.agentMembers.map(
+                (pubkey) =>
+                  Object.values(REFERENCE_AGENTS).find(
+                    (agent) => agent.pubkey === pubkey,
+                  )?.name ?? "",
+              ),
+            ],
+          }
+        : {}),
+    }),
+  );
+  mockChannels.splice(0, mockChannels.length, ...channels);
+  window.__BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__ = [
+    ...(config.mock?.referenceWorkspaceRejectBusinessRecordEvents ?? []),
+  ];
+  if (sidebarShell) {
+    for (const [channelId, events] of Object.entries(
+      referenceSidebarUnreadMessages(self),
+    )) {
+      mockMessages.set(channelId, events);
+    }
+    setMockPresenceStatus(REFERENCE_AGENTS.mina.pubkey, "online");
+  }
+  for (const event of referenceBusinessRecordEvents(self, {
+    clientStatus: config.mock?.referenceWorkspaceClientStatus,
+    workStatus: config.mock?.referenceWorkspaceWorkStatus,
+    workShare: config.mock?.referenceWorkspaceWorkShare,
+    moneyRecordsAvailable: config.mock?.referenceWorkspaceMoneyRecords,
+  })) {
+    const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+    if (!channelId) continue;
+    const store = mockMessages.get(channelId) ?? [];
+    store.push(event);
+    mockMessages.set(channelId, store);
+  }
+  for (const event of referenceOliveHouseMessages(self)) {
+    const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+    if (!channelId) continue;
+    const store = mockMessages.get(channelId) ?? [];
+    store.push(event);
+    mockMessages.set(channelId, store);
+  }
+  seedReferenceSidebarStorage(self, { sidebarShell });
+  mockBusinessRecordEvents.clear();
+  const communityId = referenceCommunityId();
+  if (communityId) {
+    for (const event of referenceSalesRecordEvents(self, communityId)) {
+      const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+      if (!channelId) continue;
+      const store = mockBusinessRecordEvents.get(channelId) ?? [];
+      store.push(event);
+      mockBusinessRecordEvents.set(channelId, store);
+    }
+  }
+}
 let directPanelRoot: Root | null = null;
 let directPanelContainer: HTMLDivElement | null = null;
 let directPanelQueryClient: QueryClient | null = null;
 let nextSocketId = 1;
 
 function syncMockRelayAgentsFromManagedAgents() {
+  const config = getConfig();
+  const relayAgentsByPubkey = new Map(
+    mockRelayAgents.map((relayAgent) => [relayAgent.pubkey, relayAgent]),
+  );
   const baseAgents = mockRelayAgents.filter(
     (agent) =>
       !mockManagedAgents.some((managed) => managed.pubkey === agent.pubkey),
   );
   const managedAgentsAsRelay: RawRelayAgent[] = mockManagedAgents.map(
     (agent) => {
-      const memberships = getManagedAgentRelayMembership(agent.pubkey);
+      const memberships = getManagedAgentRelayMembership(agent.pubkey, config);
+      const relayAgent = relayAgentsByPubkey.get(agent.pubkey);
 
       return {
         pubkey: agent.pubkey,
+        owner_pubkey: relayAgent?.owner_pubkey ?? null,
         name: agent.name,
-        agent_type: agent.agent_command,
+        agent_type: relayAgent?.agent_type ?? agent.agent_command,
         channels: memberships.channels,
         channel_ids: memberships.channelIds,
         capabilities: ["messages", "channels", "mcp"],
@@ -4282,21 +5465,36 @@ function syncMockRelayAgentsFromManagedAgents() {
   // actual roster, including additions and newly created DMs.
   for (const agent of baseAgents) {
     if (agent.owner_pubkey !== MOCK_IDENTITY_PUBKEY) continue;
-    const membership = getManagedAgentRelayMembership(agent.pubkey);
+    const membership = getManagedAgentRelayMembership(agent.pubkey, config);
     agent.channel_ids = membership.channelIds;
     agent.channels = membership.channels;
   }
   mockRelayAgents = [...baseAgents, ...managedAgentsAsRelay];
 }
 
-function getManagedAgentRelayMembership(pubkey: string) {
+function getManagedAgentRelayMembership(pubkey: string, config = getConfig()) {
   const memberships = mockChannels.filter((channel) =>
     channel.members.some((member) => member.pubkey === pubkey),
   );
+  const configuredAgent = [
+    ...(config?.mock?.managedAgents ?? []),
+    ...(config?.mock?.relayAgents ?? []),
+  ].find((agent) => agent.pubkey === pubkey);
+  const visualMemberships = (config?.mock?.visualChannels ?? []).filter(
+    (channel) =>
+      configuredAgent?.channelIds?.includes(channel.id) ||
+      configuredAgent?.channelNames?.includes(channel.name),
+  );
 
   return {
-    channelIds: memberships.map((channel) => channel.id),
-    channels: memberships.map((channel) => channel.name),
+    channelIds: [
+      ...memberships.map((channel) => channel.id),
+      ...visualMemberships.map((channel) => channel.id),
+    ],
+    channels: [
+      ...memberships.map((channel) => channel.name),
+      ...visualMemberships.map((channel) => channel.name),
+    ],
   };
 }
 
@@ -4381,12 +5579,43 @@ function isRelayMode(config: E2eConfig | undefined): boolean {
   return config?.mode === "relay";
 }
 
+function getRelayCommunityUrl(config: E2eConfig | undefined): string | null {
+  if (!isRelayMode(config)) return null;
+  try {
+    const activeId = window.localStorage.getItem("buzz-active-community-id");
+    const communities = JSON.parse(
+      window.localStorage.getItem("buzz-communities") ?? "[]",
+    ) as Array<{ id?: unknown; relayUrl?: unknown }>;
+    const relayUrl = communities.find(
+      (community) => community.id === activeId,
+    )?.relayUrl;
+    return typeof relayUrl === "string" && relayUrl.trim()
+      ? relayUrl.trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+let appliedRelayWsUrl: string | null = null;
+
 function getRelayHttpUrl(config: E2eConfig | undefined): string {
+  const activeRelayWsUrl = appliedRelayWsUrl ?? getRelayCommunityUrl(config);
+  if (activeRelayWsUrl) {
+    return activeRelayWsUrl
+      .replace(/^wss:/i, "https:")
+      .replace(/^ws:/i, "http:");
+  }
   return config?.relayHttpUrl ?? DEFAULT_RELAY_HTTP_URL;
 }
 
 function getRelayWsUrl(config: E2eConfig | undefined): string {
-  return config?.relayWsUrl ?? DEFAULT_RELAY_WS_URL;
+  return (
+    appliedRelayWsUrl ??
+    getRelayCommunityUrl(config) ??
+    config?.relayWsUrl ??
+    DEFAULT_RELAY_WS_URL
+  );
 }
 
 /**
@@ -4604,6 +5833,7 @@ function isMockBroadcastReply(tags: string[][]): boolean {
  * depth-1 replies the real relay serves.
  */
 function isMockTopLevelRow(event: RelayEvent): boolean {
+  if (mockVisualThreadOnlyMessageIds.has(event.id)) return false;
   const { parentEventId, rootEventId } = getThreadReferenceFromTags(event.tags);
   if (rootEventId === null) {
     return true;
@@ -4669,6 +5899,17 @@ function getMockMessageStore(channelId: string): RelayEvent[] {
   if (existing) {
     return existing;
   }
+  if (referenceWorkspaceActive) {
+    const referenceSeeded =
+      channelId === REFERENCE_CHANNEL_IDS.sales
+        ? referenceSalesMessages(getMockMemberPubkey(getConfig()))
+        : [];
+    if (channelId === REFERENCE_CHANNEL_IDS.sales) {
+      mockVisualThreadOnlyMessageIds.add(REFERENCE_SALES_UNREAD_ROOT_ID);
+    }
+    mockMessages.set(channelId, referenceSeeded);
+    return referenceSeeded;
+  }
 
   const seeded: RelayEvent[] =
     channelId === "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50"
@@ -4695,7 +5936,7 @@ function getMockMessageStore(channelId: string): RelayEvent[] {
             created_at: Math.floor(Date.now() / 1000) - 60,
             kind: 9,
             tags: [["h", channelId]],
-            content: "Hey team — checking in.",
+            content: "Hey team - checking in.",
             sig: "mocksig".repeat(20).slice(0, 128),
           },
           // Reaction-target seed for the custom-emoji reaction guard. Real
@@ -4918,6 +6159,2097 @@ function prependMockHistory(input: {
   return events;
 }
 
+function filterMockCompanyAskHeads(filter: MockFilter) {
+  const channelIds = filter["#h"];
+  const dTags = filter["#d"];
+  const tTags = filter["#t"];
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const ids = filter.ids;
+
+  return mockCompanyAskHeads
+    .filter((event) => {
+      if (
+        channelIds &&
+        !event.tags.some((tag) => tag[0] === "h" && channelIds.includes(tag[1]))
+      ) {
+        return false;
+      }
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      if (
+        tTags &&
+        !tTags.some((value) =>
+          event.tags.some((tag) => tag[0] === "t" && tag[1] === value),
+        )
+      ) {
+        return false;
+      }
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (ids && !ids.includes(event.id)) return false;
+      if (filter.since !== undefined && event.created_at < filter.since)
+        return false;
+      if (filter.before_id) {
+        const cursorTime = filter.until;
+        if (cursorTime === undefined) return false;
+        if (
+          event.created_at > cursorTime ||
+          (event.created_at === cursorTime &&
+            event.id.localeCompare(filter.before_id) <= 0)
+        ) {
+          return false;
+        }
+      } else if (
+        filter.until !== undefined &&
+        event.created_at > filter.until
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 50);
+}
+
+function filterMockCompanyHireHeads(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return mockCompanyHireHeads
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      if (filter.ids && !filter.ids.includes(event.id)) return false;
+      if (filter.since !== undefined && event.created_at < filter.since)
+        return false;
+      if (filter.until !== undefined && event.created_at > filter.until)
+        return false;
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 50);
+}
+
+function filterMockCompanyMemberPositions(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return mockCompanyMemberPositionEvents
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
+function filterMockCompanyMemberPositionActions(
+  filter: MockFilter,
+): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  return mockCompanyMemberPositionActions
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
+function filterMockCompanySpendHeads(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const kinds = filter.kinds ?? [];
+  const events = [
+    ...(kinds.includes(KIND_EMPLOYEE_AI_ALLOWANCE_HEAD)
+      ? mockEmployeeAllowanceHeads
+      : []),
+    ...(kinds.includes(KIND_AI_SPEND_RECORD_HEAD)
+      ? mockAiSpendRecordHeads
+      : []),
+  ];
+  const dTags = filter["#d"];
+  return events
+    .filter((event) => {
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
+function filterMockEmployeeRevisionEvents(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  const pTags = filter["#p"];
+  const events = [
+    ...mockCompanyEmployeeRevisionActions,
+    ...mockCompanyEmployeeRevisionHeads,
+  ];
+  return events
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      if (
+        pTags &&
+        !event.tags.some((tag) => tag[0] === "p" && pTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 1_000);
+}
+
+function filterMockDutyLessonEvents(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const dTags = filter["#d"];
+  const pTags = filter["#p"];
+  return [...mockCompanyDutyHeads, ...mockCompanyLessonHeads]
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      if (
+        pTags &&
+        !event.tags.some(
+          (tag) => tag[0] === "p" && pTags.includes(tag[1]?.toLowerCase()),
+        )
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 1_000);
+}
+
+function acceptMockDutyAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) =>
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  const accept = () => sendWsText(socket.handler, ["OK", event.id, true, ""]);
+  const configuredError = config?.mock?.companyDutyLessonActionErrors?.shift();
+  if (configuredError) return reject(configuredError);
+  if (event.kind !== KIND_DUTY_ACTION || !verifyEvent(event)) {
+    return reject("invalid: duty action signature or kind is invalid.");
+  }
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  const pTags = event.tags.filter((tag) => tag[0] === "p");
+  let action: {
+    schemaVersion?: number;
+    dutyId?: string;
+    action?: string;
+    expectedHeadEventId?: string;
+    proposal?: Record<string, unknown>;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    return reject("invalid: duty action is not JSON.");
+  }
+  const employeePubkey = pTags[0]?.[1]?.toLowerCase();
+  const dTag = action.dutyId ? `company:duty:${action.dutyId}` : "";
+  if (
+    event.tags.length !== 2 ||
+    dTags.length !== 1 ||
+    pTags.length !== 1 ||
+    action.schemaVersion !== 1 ||
+    !employeePubkey ||
+    dTags[0]?.[1] !== dTag ||
+    !/^[0-9a-f]{64}$/.test(employeePubkey)
+  ) {
+    return reject("invalid: duty action coordinates are invalid.");
+  }
+  const actor = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  );
+  if (actor?.role !== "owner" && actor?.role !== "admin") {
+    return reject("restricted: only an owner or admin can manage duties.");
+  }
+  const current = mockCompanyDutyHeads.find((head) =>
+    head.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+  if (!current || current.id !== action.expectedHeadEventId) {
+    return reject("conflict: duty changed; refresh and retry.");
+  }
+  let head: Record<string, unknown>;
+  try {
+    head = JSON.parse(current.content);
+  } catch {
+    return reject("error: stored duty head is invalid.");
+  }
+  if (
+    !head.proposal ||
+    typeof head.proposal !== "object" ||
+    (head.proposal as Record<string, unknown>).employeePubkey !== employeePubkey
+  ) {
+    return reject("invalid: duty owner does not match the head.");
+  }
+  if (
+    action.action === "update" &&
+    action.proposal &&
+    action.proposal.employeePubkey === employeePubkey
+  ) {
+    head.proposal = action.proposal;
+  } else if (action.action === "pause" && head.status === "active") {
+    head.status = "paused";
+  } else if (action.action === "resume" && head.status === "paused") {
+    head.status = "active";
+  } else if (action.action === "delete" && head.status !== "deleted") {
+    head.status = "deleted";
+  } else {
+    return reject("invalid: duty lifecycle transition is not supported.");
+  }
+  const privateKeyHex = config?.mock?.companyDutyRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    return reject("error: mock relay signer is not configured for duties.");
+  }
+  const relaySecret = hexToBytes(privateKeyHex);
+  if (
+    getPublicKey(relaySecret).toLowerCase() !==
+    config?.mock?.relaySelf?.toLowerCase()
+  ) {
+    return reject("error: mock duty signer does not match relay self.");
+  }
+  const next = finalizeEvent(
+    {
+      kind: KIND_DUTY_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        current.created_at + 1,
+      ),
+      tags: [
+        ["d", dTag],
+        ["p", employeePubkey],
+      ],
+      content: JSON.stringify({
+        ...head,
+        updatedAt: new Date().toISOString(),
+        sourceActionEventId: event.id,
+      }),
+    },
+    relaySecret,
+  );
+  const index = mockCompanyDutyHeads.findIndex(
+    (candidate) => candidate.id === current.id,
+  );
+  if (index >= 0) mockCompanyDutyHeads.splice(index, 1);
+  mockCompanyDutyHeads.push(next);
+  mockCompanyDutyActions.push(event);
+  window.localStorage.setItem(
+    MOCK_COMPANY_DUTY_HEADS_STORAGE_KEY,
+    JSON.stringify(mockCompanyDutyHeads),
+  );
+  emitMockGlobalEvent(next);
+  accept();
+}
+
+function acceptMockLessonAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) =>
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  const accept = () => sendWsText(socket.handler, ["OK", event.id, true, ""]);
+  const configuredError = config?.mock?.companyDutyLessonActionErrors?.shift();
+  if (configuredError) return reject(configuredError);
+  if (event.kind !== KIND_LESSON_ACTION || !verifyEvent(event)) {
+    return reject("invalid: lesson action signature or kind is invalid.");
+  }
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  const pTags = event.tags.filter((tag) => tag[0] === "p");
+  let action: {
+    schemaVersion?: number;
+    lessonId?: string;
+    action?: string;
+    expectedHeadEventId?: string;
+    snapshot?: Record<string, unknown>;
+    confidence?: string;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    return reject("invalid: lesson action is not JSON.");
+  }
+  const employeePubkey = pTags[0]?.[1]?.toLowerCase();
+  const dTag = action.lessonId ? `company:lesson:${action.lessonId}` : "";
+  if (
+    event.tags.length !== 2 ||
+    dTags.length !== 1 ||
+    pTags.length !== 1 ||
+    action.schemaVersion !== 1 ||
+    !employeePubkey ||
+    dTags[0]?.[1] !== dTag ||
+    !/^[0-9a-f]{64}$/.test(employeePubkey)
+  ) {
+    return reject("invalid: lesson action coordinates are invalid.");
+  }
+  const actor = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  );
+  const current = mockCompanyLessonHeads.find((head) =>
+    head.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+  if (
+    action.action === "create"
+      ? current !== undefined
+      : current?.id !== action.expectedHeadEventId
+  ) {
+    return reject("conflict: lesson changed; refresh and retry.");
+  }
+  const actorIsAdmin = actor?.role === "owner" || actor?.role === "admin";
+  if (
+    action.action !== "create" &&
+    action.action !== "update" &&
+    action.action !== "deprecate" &&
+    action.action !== "restore_candidate"
+  ) {
+    return reject("invalid: unsupported lesson action.");
+  }
+  if (
+    !actor &&
+    !mockRelayAgents.some(
+      (agent) => agent.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+    )
+  ) {
+    return reject("restricted: actor is not a member or managed employee.");
+  }
+  let currentHead: Record<string, unknown> | null = null;
+  if (current) {
+    try {
+      currentHead = JSON.parse(current.content);
+    } catch {
+      return reject("error: stored lesson head is invalid.");
+    }
+  }
+  if (
+    action.action === "update" &&
+    currentHead?.proposedByPubkey !== event.pubkey &&
+    !actorIsAdmin
+  ) {
+    return reject(
+      "restricted: only the proposer or an owner or admin can edit.",
+    );
+  }
+  if (
+    (action.action === "deprecate" || action.action === "restore_candidate") &&
+    !actorIsAdmin
+  ) {
+    return reject("restricted: only an owner or admin can manage lessons.");
+  }
+  const snapshot =
+    action.snapshot ??
+    (currentHead?.snapshot as Record<string, unknown> | undefined);
+  const snapshotEmployee =
+    snapshot && typeof snapshot.employeePubkey === "string"
+      ? snapshot.employeePubkey.toLowerCase()
+      : null;
+  if (snapshotEmployee !== employeePubkey) {
+    return reject("invalid: lesson employee does not match its p tag.");
+  }
+  const employeePosition = mockCompanyMemberPositionEvents.find((candidate) =>
+    candidate.tags.some(
+      (tag) => tag[0] === "d" && tag[1] === `company:member:${employeePubkey}`,
+    ),
+  );
+  if (!employeePosition) {
+    return reject("invalid: lesson employee does not exist.");
+  }
+  if (
+    (action.action === "create" || action.action === "update") &&
+    (snapshot?.schemaVersion !== 1 ||
+      snapshot.lessonId !== action.lessonId ||
+      typeof snapshot.lesson !== "string" ||
+      !snapshot.lesson.trim() ||
+      !Array.isArray(snapshot.evidence) ||
+      snapshot.evidence.length === 0 ||
+      snapshot.evidence.length > 100 ||
+      snapshot.confidence !== "unassessed")
+  ) {
+    return reject("invalid: lesson snapshot is incomplete.");
+  }
+  if (
+    snapshot &&
+    (!Array.isArray(snapshot.evidence) ||
+      snapshot.evidence.some(
+        (ref) =>
+          !ref ||
+          typeof ref !== "object" ||
+          !/^[0-9a-f]{64}$/.test(
+            String((ref as { eventId?: unknown }).eventId),
+          ),
+      ))
+  ) {
+    return reject("invalid: lesson evidence needs 64-character event IDs.");
+  }
+  if (
+    snapshot &&
+    Array.isArray(snapshot.evidence) &&
+    new Set(
+      snapshot.evidence.map((ref) => (ref as { eventId: string }).eventId),
+    ).size !== snapshot.evidence.length
+  ) {
+    return reject("invalid: lesson evidence references must be unique.");
+  }
+  const privateKeyHex = config?.mock?.companyLessonRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    return reject("error: mock relay signer is not configured for lessons.");
+  }
+  const relaySecret = hexToBytes(privateKeyHex);
+  if (
+    getPublicKey(relaySecret).toLowerCase() !==
+    config?.mock?.relaySelf?.toLowerCase()
+  ) {
+    return reject("error: mock lesson signer does not match relay self.");
+  }
+  const now = new Date().toISOString();
+  const status = action.action === "deprecate" ? "deprecated" : "candidate";
+  const nextHead = {
+    schemaVersion: 1,
+    lessonId: action.lessonId,
+    snapshot: {
+      ...snapshot,
+      confidence:
+        action.action === "update" || action.action === "restore_candidate"
+          ? "unassessed"
+          : snapshot?.confidence,
+    },
+    status,
+    proposedByPubkey: currentHead?.proposedByPubkey ?? event.pubkey,
+    ...(action.action === "deprecate" && currentHead?.approval
+      ? { approval: currentHead.approval }
+      : {}),
+    createdAt: currentHead?.createdAt ?? now,
+    updatedAt: now,
+    sourceActionEventId: event.id,
+  };
+  const next = finalizeEvent(
+    {
+      kind: KIND_LESSON_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (current?.created_at ?? 0) + 1,
+      ),
+      tags: [
+        ["d", dTag],
+        ["p", employeePubkey],
+      ],
+      content: JSON.stringify(nextHead),
+    },
+    relaySecret,
+  );
+  if (current) {
+    const index = mockCompanyLessonHeads.findIndex(
+      (candidate) => candidate.id === current.id,
+    );
+    if (index >= 0) mockCompanyLessonHeads.splice(index, 1);
+  }
+  mockCompanyLessonHeads.push(next);
+  mockCompanyLessonActions.push(event);
+  window.localStorage.setItem(
+    MOCK_COMPANY_LESSON_HEADS_STORAGE_KEY,
+    JSON.stringify(mockCompanyLessonHeads),
+  );
+  emitMockGlobalEvent(next);
+  accept();
+}
+
+function acceptMockEmployeeRevisionAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  const configuredError =
+    config?.mock?.companyEmployeeRevisionActionErrors?.shift();
+  if (configuredError) {
+    reject(configuredError);
+    return;
+  }
+  if (event.kind !== KIND_EMPLOYEE_REVISION_ACTION || !verifyEvent(event)) {
+    reject("invalid: employee revision signature or kind is invalid.");
+    return;
+  }
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  const pTags = event.tags.filter((tag) => tag[0] === "p");
+  if (event.tags.length !== 2 || dTags.length !== 1 || pTags.length !== 1) {
+    reject("invalid: employee revision needs one d tag and one p tag.");
+    return;
+  }
+  let action: {
+    schemaVersion?: number;
+    employeePubkey?: string;
+    action?: string;
+    expectedHeadEventId?: string;
+    previousRevisionEventId?: string;
+    before?: Record<string, unknown>;
+    after?: Record<string, unknown>;
+    undoOfEventId?: string;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    reject("invalid: employee revision action is not JSON.");
+    return;
+  }
+  const employeePubkey = action.employeePubkey?.toLowerCase();
+  const dTag = dTags[0]?.[1];
+  if (
+    action.schemaVersion !== 1 ||
+    !employeePubkey ||
+    dTag !== `company:employee-history:${employeePubkey}` ||
+    pTags[0]?.[1]?.toLowerCase() !== employeePubkey ||
+    !/^[0-9a-f]{64}$/.test(employeePubkey) ||
+    !action.before ||
+    !action.after ||
+    JSON.stringify(action.before) === JSON.stringify(action.after)
+  ) {
+    reject("invalid: employee revision action does not match its tags.");
+    return;
+  }
+  const employeePosition = mockCompanyMemberPositionEvents.find((candidate) =>
+    candidate.tags.some(
+      (tag) => tag[0] === "d" && tag[1] === `company:member:${employeePubkey}`,
+    ),
+  );
+  let employee: Record<string, unknown> | null = null;
+  try {
+    employee = employeePosition
+      ? (JSON.parse(employeePosition.content) as Record<string, unknown>)
+      : null;
+  } catch {
+    reject("error: stored mock employee position is invalid.");
+    return;
+  }
+  if (employee?.kind !== "employee") {
+    reject("invalid: target is not a company employee.");
+    return;
+  }
+  const actor = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  );
+  const actorPositionEvent = mockCompanyMemberPositionEvents.find((candidate) =>
+    candidate.tags.some(
+      (tag) => tag[0] === "d" && tag[1] === `company:member:${event.pubkey}`,
+    ),
+  );
+  let actorPosition: Record<string, unknown> | null = null;
+  try {
+    actorPosition = actorPositionEvent
+      ? (JSON.parse(actorPositionEvent.content) as Record<string, unknown>)
+      : null;
+  } catch {
+    reject("error: stored mock manager position is invalid.");
+    return;
+  }
+  const isOwnerOrAdmin = actor?.role === "owner" || actor?.role === "admin";
+  const isDirectManager =
+    actorPosition?.kind === "human" &&
+    actorPosition.status === "active" &&
+    typeof employee.managerPubkey === "string" &&
+    employee.managerPubkey.toLowerCase() === event.pubkey.toLowerCase();
+  if (!isOwnerOrAdmin && !isDirectManager) {
+    reject("restricted: actor cannot change employee history.");
+    return;
+  }
+  const currentHead = mockCompanyEmployeeRevisionHeads.find((candidate) =>
+    candidate.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+  let parsedHead: Record<string, unknown> | null = null;
+  try {
+    parsedHead = currentHead
+      ? (JSON.parse(currentHead.content) as Record<string, unknown>)
+      : null;
+  } catch {
+    reject("error: stored mock employee history head is invalid.");
+    return;
+  }
+  if (
+    currentHead?.id !== action.expectedHeadEventId ||
+    (parsedHead?.revisionEventId ?? undefined) !==
+      action.previousRevisionEventId ||
+    (currentHead !== undefined &&
+      JSON.stringify(parsedHead?.snapshot ?? {}) !==
+        JSON.stringify(action.before))
+  ) {
+    reject("conflict: employee history changed; refresh and retry.");
+    return;
+  }
+  if (action.action === "undo") {
+    const target = mockCompanyEmployeeRevisionActions.find(
+      (candidate) => candidate.id === action.undoOfEventId,
+    );
+    let targetAction: { before?: Record<string, unknown> } | null = null;
+    try {
+      targetAction = target
+        ? (JSON.parse(target.content) as { before?: Record<string, unknown> })
+        : null;
+    } catch {
+      reject("error: stored mock employee revision is invalid.");
+      return;
+    }
+    if (
+      !targetAction ||
+      JSON.stringify(targetAction.before ?? {}) !== JSON.stringify(action.after)
+    ) {
+      reject(
+        "invalid: undo must restore the selected revision's prior values.",
+      );
+      return;
+    }
+  } else if (action.action !== "record" || action.undoOfEventId !== undefined) {
+    reject("invalid: unsupported employee revision action.");
+    return;
+  }
+  const privateKeyHex = config?.mock?.companyMemberRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    reject("error: mock relay signer is not configured for employee history.");
+    return;
+  }
+  const relaySecret = hexToBytes(privateKeyHex);
+  const relayPubkey = getPublicKey(relaySecret);
+  if (relayPubkey.toLowerCase() !== config?.mock?.relaySelf?.toLowerCase()) {
+    reject("error: mock employee history signer does not match relay self.");
+    return;
+  }
+  const headContent = {
+    schemaVersion: 1,
+    employeePubkey,
+    revisionEventId: event.id,
+    ...(action.previousRevisionEventId
+      ? { previousRevisionEventId: action.previousRevisionEventId }
+      : {}),
+    snapshot: action.after,
+    actorPubkey: event.pubkey,
+    updatedAt: new Date().toISOString(),
+    sourceActionEventId: event.id,
+  };
+  const headEvent = finalizeEvent(
+    {
+      kind: KIND_EMPLOYEE_REVISION_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (currentHead?.created_at ?? 0) + 1,
+      ),
+      tags: [["d", dTag ?? ""]],
+      content: JSON.stringify(headContent),
+    },
+    relaySecret,
+  );
+  mockCompanyEmployeeRevisionActions.push(event);
+  if (currentHead) {
+    const index = mockCompanyEmployeeRevisionHeads.findIndex(
+      (candidate) => candidate.id === currentHead.id,
+    );
+    if (index >= 0) mockCompanyEmployeeRevisionHeads.splice(index, 1);
+  }
+  mockCompanyEmployeeRevisionHeads.push(headEvent);
+  window.localStorage.setItem(
+    MOCK_COMPANY_EMPLOYEE_REVISION_ACTIONS_STORAGE_KEY,
+    JSON.stringify(mockCompanyEmployeeRevisionActions),
+  );
+  window.localStorage.setItem(
+    MOCK_COMPANY_EMPLOYEE_REVISION_HEADS_STORAGE_KEY,
+    JSON.stringify(mockCompanyEmployeeRevisionHeads),
+  );
+  emitMockGlobalEvent(headEvent);
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
+function acceptMockMemberPositionAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  const configuredError = config?.mock?.companyMemberActionErrors?.shift();
+  if (configuredError) {
+    reject(configuredError);
+    return;
+  }
+
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  if (dTags.length !== 1 || event.tags.length !== 1) {
+    reject(
+      "invalid: member position action needs one d tag and no other tags.",
+    );
+    return;
+  }
+  let action: {
+    schemaVersion?: number;
+    pubkey?: string;
+    action?: string;
+    expectedHeadEventId?: string;
+    title?: string;
+    managerPubkey?: string | null;
+    reason?: string;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    reject("invalid: member position action is not JSON.");
+    return;
+  }
+  const memberPubkey = action.pubkey?.toLowerCase();
+  const dTag = dTags[0]?.[1];
+  if (
+    action.schemaVersion !== 1 ||
+    !memberPubkey ||
+    dTag !== `company:member:${memberPubkey}` ||
+    !/^[0-9a-f]{64}$/.test(memberPubkey)
+  ) {
+    reject("invalid: member position action does not match its d tag.");
+    return;
+  }
+  const actor = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  );
+  if (!actor || (actor.role !== "owner" && actor.role !== "admin")) {
+    reject(
+      "restricted: only a company owner or admin can change member positions.",
+    );
+    return;
+  }
+  const currentEvent = mockCompanyMemberPositionEvents.find((candidate) =>
+    candidate.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+  if (currentEvent?.id !== action.expectedHeadEventId) {
+    reject(
+      `conflict: member position changed; current head is ${currentEvent?.id ?? "missing"}`,
+    );
+    return;
+  }
+  let current: Record<string, unknown> | null = null;
+  if (currentEvent) {
+    try {
+      current = JSON.parse(currentEvent.content) as Record<string, unknown>;
+    } catch {
+      reject("error: stored mock member position head is invalid.");
+      return;
+    }
+  }
+  const relayAgent = mockRelayAgents.find(
+    (candidate) => candidate.pubkey.toLowerCase() === memberPubkey,
+  );
+  const managedAgent = mockManagedAgents.find(
+    (candidate) => candidate.pubkey.toLowerCase() === memberPubkey,
+  );
+  const isWorker = relayAgent?.agent_type.toLowerCase() === "worker";
+  if (isWorker) {
+    reject("invalid: runtime workers do not have company member positions.");
+    return;
+  }
+  const isEmployee = Boolean(
+    managedAgent || (relayAgent?.owner_pubkey && !isWorker),
+  );
+  if (
+    !isEmployee &&
+    !mockRelayMembers.some(
+      (member) => member.pubkey.toLowerCase() === memberPubkey,
+    )
+  ) {
+    reject("invalid: target is not a community member or managed employee.");
+    return;
+  }
+  if (current?.kind === "employee" && !isEmployee) {
+    reject("invalid: managed employees must exist in the agent directory.");
+    return;
+  }
+
+  let title = typeof current?.title === "string" ? current.title : "";
+  let managerPubkey =
+    typeof current?.managerPubkey === "string"
+      ? current.managerPubkey
+      : undefined;
+  let status = typeof current?.status === "string" ? current.status : "active";
+  let reason = typeof current?.reason === "string" ? current.reason : undefined;
+  switch (action.action) {
+    case "set_title":
+      if (!action.title?.trim()) {
+        reject("invalid: title is required.");
+        return;
+      }
+      title = action.title.trim();
+      break;
+    case "set_manager":
+      if (action.managerPubkey === undefined) {
+        reject("invalid: managerPubkey is required.");
+        return;
+      }
+      managerPubkey = action.managerPubkey?.toLowerCase() || undefined;
+      break;
+    case "set_position":
+      if (action.title !== undefined) title = action.title.trim();
+      if (action.managerPubkey !== undefined) {
+        managerPubkey = action.managerPubkey?.toLowerCase() || undefined;
+      }
+      if (!current && !title) {
+        reject("invalid: initial member positions need a title.");
+        return;
+      }
+      break;
+    case "pause":
+    case "terminate":
+      if (!isEmployee || !action.reason?.trim()) {
+        reject("invalid: lifecycle changes need an employee and reason.");
+        return;
+      }
+      status = action.action === "pause" ? "paused" : "terminated";
+      reason = action.reason.trim();
+      break;
+    case "rehire":
+      if (!isEmployee || status !== "terminated") {
+        reject("conflict: only a terminated employee can be rehired.");
+        return;
+      }
+      status = "active";
+      reason = undefined;
+      break;
+    default:
+      reject("invalid: unsupported member position action.");
+      return;
+  }
+  if (!title) {
+    reject("invalid: member title is required.");
+    return;
+  }
+  if (managerPubkey) {
+    const managerIsMember = mockRelayMembers.some(
+      (member) => member.pubkey.toLowerCase() === managerPubkey,
+    );
+    const managerAgent = mockRelayAgents.find(
+      (candidate) => candidate.pubkey.toLowerCase() === managerPubkey,
+    );
+    const managerIsWorker = managerAgent?.agent_type.toLowerCase() === "worker";
+    const managerIsEmployee = Boolean(
+      mockManagedAgents.some(
+        (candidate) => candidate.pubkey.toLowerCase() === managerPubkey,
+      ) ||
+        (managerAgent?.owner_pubkey && managerAgent.agent_type !== "worker"),
+    );
+    if (
+      managerPubkey === memberPubkey ||
+      managerIsWorker ||
+      (!managerIsMember && !managerIsEmployee)
+    ) {
+      reject("invalid: manager must be another community member or employee.");
+      return;
+    }
+    const byPubkey = new Map(
+      mockCompanyMemberPositionEvents.map((headEvent) => {
+        const content = JSON.parse(headEvent.content) as {
+          pubkey: string;
+          managerPubkey?: string;
+        };
+        return [
+          content.pubkey.toLowerCase(),
+          content.managerPubkey?.toLowerCase(),
+        ];
+      }),
+    );
+    byPubkey.set(memberPubkey, managerPubkey);
+    let currentManager: string | undefined = managerPubkey;
+    const visited = new Set<string>();
+    for (let depth = 0; currentManager && depth < 128; depth += 1) {
+      if (currentManager === memberPubkey || visited.has(currentManager)) {
+        reject("invalid: reporting lines cannot contain a cycle.");
+        return;
+      }
+      visited.add(currentManager);
+      currentManager = byPubkey.get(currentManager);
+    }
+    if (currentManager) {
+      reject("invalid: reporting line exceeds the supported depth.");
+      return;
+    }
+  }
+
+  const privateKeyHex = config?.mock?.companyMemberRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    reject("error: mock relay signer is not configured for member positions.");
+    return;
+  }
+  const relaySecret = hexToBytes(privateKeyHex);
+  const relayPubkey = getPublicKey(relaySecret);
+  if (relayPubkey.toLowerCase() !== config?.mock?.relaySelf?.toLowerCase()) {
+    reject("error: mock member-position signer does not match relay self.");
+    return;
+  }
+  const head = {
+    schemaVersion: 1,
+    pubkey: memberPubkey,
+    title,
+    ...(managerPubkey ? { managerPubkey } : {}),
+    kind: isEmployee ? "employee" : "human",
+    status,
+    ...(reason ? { reason } : {}),
+    sourceActionEventId: event.id,
+    updatedAt: new Date().toISOString(),
+  };
+  const nextEvent = finalizeEvent(
+    {
+      kind: KIND_MEMBER_POSITION_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (currentEvent?.created_at ?? 0) + 1,
+      ),
+      tags: [["d", dTag]],
+      content: JSON.stringify(head),
+    },
+    relaySecret,
+  );
+  if (currentEvent) {
+    const index = mockCompanyMemberPositionEvents.findIndex(
+      (candidate) => candidate.id === currentEvent.id,
+    );
+    if (index >= 0) mockCompanyMemberPositionEvents.splice(index, 1);
+  }
+  mockCompanyMemberPositionEvents.push(nextEvent);
+  window.localStorage.setItem(
+    MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY,
+    JSON.stringify(mockCompanyMemberPositionEvents),
+  );
+  mockCompanyMemberPositionActions.push(event);
+  window.localStorage.setItem(
+    MOCK_COMPANY_MEMBER_POSITION_ACTIONS_STORAGE_KEY,
+    JSON.stringify(mockCompanyMemberPositionActions),
+  );
+  emitMockGlobalEvent(nextEvent);
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
+function acceptMockCompanySpendAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  if (!verifyEvent(event)) {
+    reject("invalid: AI spend action signature is invalid.");
+    return;
+  }
+  const relaySecretHex = config?.mock?.companyMemberRelayPrivateKeyHex;
+  if (!relaySecretHex || !/^[0-9a-f]{64}$/i.test(relaySecretHex)) {
+    reject("error: mock relay signer is not configured for AI spend.");
+    return;
+  }
+  const relaySecret = hexToBytes(relaySecretHex);
+  if (
+    getPublicKey(relaySecret).toLowerCase() !==
+    config?.mock?.relaySelf?.toLowerCase()
+  ) {
+    reject("error: mock AI spend signer does not match relay self.");
+    return;
+  }
+  const actor = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  );
+  if (!actor || (actor.role !== "owner" && actor.role !== "admin")) {
+    reject("restricted: only a company owner or admin can change AI spend.");
+    return;
+  }
+  let action: Record<string, unknown>;
+  try {
+    action = JSON.parse(event.content) as Record<string, unknown>;
+  } catch {
+    reject("invalid: AI spend action is not JSON.");
+    return;
+  }
+  if (action.schemaVersion !== 1) {
+    reject("invalid: AI spend action schema version is unsupported.");
+    return;
+  }
+  const allowanceAction = event.kind === KIND_EMPLOYEE_AI_ALLOWANCE_ACTION;
+  const recordId = typeof action.recordId === "string" ? action.recordId : "";
+  const subject = allowanceAction
+    ? typeof action.employeePubkey === "string"
+      ? action.employeePubkey.toLowerCase()
+      : ""
+    : "";
+  const dTag = allowanceAction
+    ? `company:employee-allowance:${subject}`
+    : `company:ai-spend:${recordId}`;
+  const matchingTags = event.tags.filter((tag) => tag[0] === "d");
+  const employeeTag = event.tags.filter((tag) => tag[0] === "p");
+  const record = action.record as
+    | { recordType?: string; employeePubkey?: string }
+    | undefined;
+  const recordEmployee =
+    record?.recordType === "agent_turn"
+      ? (record.employeePubkey?.toLowerCase() ?? "")
+      : "";
+  if (
+    matchingTags.length !== 1 ||
+    matchingTags[0]?.[1] !== dTag ||
+    event.tags.length !== (allowanceAction || recordEmployee ? 2 : 1) ||
+    (allowanceAction &&
+      (subject.length !== 64 ||
+        employeeTag.length !== 1 ||
+        employeeTag[0]?.[1] !== subject)) ||
+    (!allowanceAction &&
+      (event.kind !== KIND_AI_SPEND_RECORD_ACTION ||
+        (recordEmployee &&
+          (employeeTag.length !== 1 ||
+            employeeTag[0]?.[1] !== recordEmployee)) ||
+        (!recordEmployee && employeeTag.length > 0)))
+  ) {
+    reject("invalid: AI spend action tags do not match its subject.");
+    return;
+  }
+  const heads = allowanceAction
+    ? mockEmployeeAllowanceHeads
+    : mockAiSpendRecordHeads;
+  const currentEvent = heads.find((candidate) =>
+    candidate.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+  const expected = action.expectedHeadEventId;
+  if ((currentEvent?.id ?? undefined) !== expected) {
+    reject(
+      `conflict: AI spend record changed; current head is ${currentEvent?.id ?? "missing"}`,
+    );
+    return;
+  }
+
+  let content: Record<string, unknown>;
+  if (allowanceAction) {
+    const position = mockCompanyMemberPositionEvents.find((candidate) => {
+      try {
+        const parsed = JSON.parse(candidate.content) as {
+          pubkey?: string;
+          kind?: string;
+          status?: string;
+        };
+        return (
+          parsed.pubkey?.toLowerCase() === subject &&
+          parsed.kind === "employee" &&
+          parsed.status === "active"
+        );
+      } catch {
+        return false;
+      }
+    });
+    if (!position) {
+      reject("invalid: allowance target is not an active employee.");
+      return;
+    }
+    content = {
+      schemaVersion: 1,
+      employeePubkey: subject,
+      allowance: action.allowance,
+      ...(action.temporaryAllowance
+        ? { temporaryAllowance: action.temporaryAllowance }
+        : {}),
+      fundingOrder: action.fundingOrder,
+      actorPubkey: event.pubkey,
+      updatedAt: new Date().toISOString(),
+      sourceActionEventId: event.id,
+    };
+  } else {
+    let storedRecord = record;
+    let status: "active" | "removed" = "active";
+    if (action.action === "remove") {
+      if (!currentEvent) {
+        reject("conflict: AI spend record does not exist.");
+        return;
+      }
+      const previous = JSON.parse(currentEvent.content) as {
+        record?: unknown;
+      };
+      storedRecord = previous.record as typeof record;
+      status = "removed";
+    }
+    if (!storedRecord || typeof storedRecord !== "object") {
+      reject("invalid: AI spend action requires a record.");
+      return;
+    }
+    content = {
+      schemaVersion: 1,
+      recordId,
+      record: storedRecord,
+      status,
+      actorPubkey: event.pubkey,
+      updatedAt: new Date().toISOString(),
+      sourceActionEventId: event.id,
+    };
+  }
+  const nextEvent = finalizeEvent(
+    {
+      kind: allowanceAction
+        ? KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
+        : KIND_AI_SPEND_RECORD_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (currentEvent?.created_at ?? 0) + 1,
+      ),
+      tags: [["d", dTag]],
+      content: JSON.stringify(content),
+    },
+    relaySecret,
+  );
+  if (currentEvent) {
+    const index = heads.findIndex(
+      (candidate) => candidate.id === currentEvent.id,
+    );
+    if (index >= 0) heads.splice(index, 1);
+  }
+  heads.push(nextEvent);
+  window.localStorage.setItem(
+    allowanceAction
+      ? MOCK_EMPLOYEE_ALLOWANCE_HEADS_STORAGE_KEY
+      : MOCK_AI_SPEND_RECORD_HEADS_STORAGE_KEY,
+    JSON.stringify(heads),
+  );
+  emitMockGlobalEvent(nextEvent);
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
+function filterMockCompanySecretBindingHeads(filter: MockFilter) {
+  const dTags = filter["#d"];
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const ids = filter.ids;
+  return mockCompanySecretBindingHeads
+    .filter((event) => {
+      if (
+        dTags &&
+        !event.tags.some((tag) => tag[0] === "d" && dTags.includes(tag[1]))
+      ) {
+        return false;
+      }
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (ids && !ids.includes(event.id)) return false;
+      if (filter.since !== undefined && event.created_at < filter.since) {
+        return false;
+      }
+      if (filter.until !== undefined && event.created_at > filter.until) {
+        return false;
+      }
+      if (filter.before_id) {
+        const cursorTime = filter.until;
+        if (cursorTime === undefined) return false;
+        if (
+          event.created_at > cursorTime ||
+          (event.created_at === cursorTime &&
+            event.id.localeCompare(filter.before_id) <= 0)
+        ) {
+          return false;
+        }
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 50);
+}
+
+function filterMockCompanyToolPermissionHeads(filter: MockFilter) {
+  const dTags = filter["#d"];
+  const pTags = filter["#p"];
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const ids = filter.ids;
+  return mockCompanyToolPermissionHeads
+    .filter((event) => {
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (ids && !ids.includes(event.id)) return false;
+      if (
+        dTags &&
+        !dTags.some((value) =>
+          event.tags.some((tag) => tag[0] === "d" && tag[1] === value),
+        )
+      ) {
+        return false;
+      }
+      if (
+        pTags &&
+        !pTags.some((value) =>
+          event.tags.some(
+            (tag) =>
+              tag[0] === "p" && tag[1].toLowerCase() === value.toLowerCase(),
+          ),
+        )
+      ) {
+        return false;
+      }
+      if (filter.since !== undefined && event.created_at < filter.since) {
+        return false;
+      }
+      if (filter.until !== undefined && event.created_at > filter.until) {
+        return false;
+      }
+      if (filter.before_id) {
+        const cursorTime = filter.until;
+        if (cursorTime === undefined) return false;
+        if (
+          event.created_at > cursorTime ||
+          (event.created_at === cursorTime &&
+            event.id.localeCompare(filter.before_id) <= 0)
+        ) {
+          return false;
+        }
+      }
+      return true;
+    })
+    .sort(
+      (first, second) =>
+        second.created_at - first.created_at ||
+        first.id.localeCompare(second.id),
+    )
+    .slice(0, filter.limit ?? 50);
+}
+
+function acceptMockAskAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const accept = () => sendWsText(socket.handler, ["OK", event.id, true, ""]);
+  const reject = (message: string) =>
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  if (mockAskActionIds.has(event.id)) {
+    accept();
+    return;
+  }
+
+  const configuredError = config?.mock?.askActionErrors?.shift();
+  if (configuredError) {
+    reject(configuredError);
+    return;
+  }
+
+  let action: {
+    action?: string;
+    askId?: string;
+    ask?: Record<string, unknown>;
+    schemaVersion?: number;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    reject("invalid: ask action is not valid JSON");
+    return;
+  }
+  if (
+    action.action !== "create" ||
+    action.schemaVersion !== 1 ||
+    !action.ask ||
+    typeof action.askId !== "string" ||
+    action.ask.askId !== action.askId ||
+    action.ask.schemaVersion !== 1
+  ) {
+    reject("invalid: ask create action has an unsupported shape");
+    return;
+  }
+
+  const channelTags = event.tags.filter((tag) => tag[0] === "h");
+  const coordinateTags = event.tags.filter((tag) => tag[0] === "d");
+  const eTags = event.tags.filter((tag) => tag[0] === "e");
+  const channelId = channelTags.length === 1 ? channelTags[0][1] : undefined;
+  const coordinate =
+    coordinateTags.length === 1 ? coordinateTags[0][1] : undefined;
+  const threadStart = action.ask.threadStart;
+  const startsThread = typeof threadStart === "object" && threadStart !== null;
+  const threadStartRecord = startsThread
+    ? (threadStart as { title?: unknown; openingContext?: unknown })
+    : null;
+  const validThreadStart =
+    !startsThread ||
+    (typeof threadStartRecord?.title === "string" &&
+      threadStartRecord.title.trim().length > 0 &&
+      Array.from(threadStartRecord.title).length <= 180 &&
+      (threadStartRecord.openingContext === undefined ||
+        (typeof threadStartRecord.openingContext === "string" &&
+          Array.from(threadStartRecord.openingContext).length <= 4000)));
+  const rootEventId = startsThread ? event.id : action.ask.threadRootEventId;
+  if (
+    !channelId ||
+    typeof rootEventId !== "string" ||
+    coordinate !== `channel:${channelId}:ask:${action.askId}` ||
+    !validThreadStart ||
+    (startsThread
+      ? eTags.length !== 0 || typeof action.ask.threadRootEventId === "string"
+      : !eTags.some((tag) => tag[1] === rootEventId && tag[3] === "root"))
+  ) {
+    reject(
+      "restricted: ask create needs a channel, coordinate and thread root",
+    );
+    return;
+  }
+
+  if (
+    !startsThread &&
+    !getMockMessageStore(channelId).some(
+      (message) => message.id === rootEventId,
+    )
+  ) {
+    reject("conflict: the discussion thread could not be found");
+    return;
+  }
+
+  const existingHead = filterMockCompanyAskHeads({
+    kinds: [KIND_ASK_HEAD],
+    "#h": [channelId],
+    "#d": [coordinate],
+    limit: 10,
+  })[0];
+  if (existingHead) {
+    reject("conflict: an ask already exists at this coordinate");
+    return;
+  }
+
+  const privateKeyHex = config?.mock?.companyAskRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    reject("mock relay signer is not configured for ask creates");
+    return;
+  }
+  let relaySecret: Uint8Array;
+  try {
+    relaySecret = hexToBytes(privateKeyHex);
+  } catch {
+    reject("mock relay signer key is invalid");
+    return;
+  }
+  const relayPubkey = getPublicKey(relaySecret);
+  if (relayPubkey.toLowerCase() !== config?.mock?.relaySelf?.toLowerCase()) {
+    reject("mock relay signer does not match relaySelf");
+    return;
+  }
+
+  const head = finalizeEvent(
+    {
+      kind: KIND_ASK_HEAD,
+      created_at: Math.floor(Date.now() / 1_000),
+      tags: [
+        ["h", channelId],
+        ["d", coordinate],
+        ["e", rootEventId],
+      ],
+      content: JSON.stringify({
+        schemaVersion: 1,
+        askId: action.askId,
+        status: "open",
+        askerPubkey: event.pubkey,
+        createdAt: new Date().toISOString(),
+        ask: {
+          ...action.ask,
+          threadRootEventId: rootEventId,
+        },
+        resolution: null,
+        cancellation: null,
+        sourceActionEventId: event.id,
+      }),
+    },
+    relaySecret,
+  );
+
+  recordMockMessage(channelId, event);
+  mockCompanyAskHeads.push(head);
+  mockAskActionIds.add(event.id);
+  emitMockLiveEvent(channelId, event);
+  emitMockLiveEvent(channelId, head);
+  accept();
+}
+
+function acceptMockAskResponse(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  const configuredError = config?.mock?.askResponseErrors?.shift();
+  if (configuredError) {
+    reject(configuredError);
+    return;
+  }
+
+  const channelTags = event.tags.filter((tag) => tag[0] === "h");
+  const coordinateTags = event.tags.filter((tag) => tag[0] === "d");
+  const channelId = channelTags.length === 1 ? channelTags[0][1] : undefined;
+  const coordinate =
+    coordinateTags.length === 1 ? coordinateTags[0][1] : undefined;
+  if (!channelId || !coordinate) {
+    reject("restricted: ask response needs one channel and ask coordinate");
+    return;
+  }
+
+  const headEvent = filterMockCompanyAskHeads({
+    kinds: [KIND_ASK_HEAD],
+    "#h": [channelId],
+    "#d": [coordinate],
+    limit: 10,
+  })[0];
+  if (!headEvent) {
+    reject("conflict: ask does not exist; current head is missing");
+    return;
+  }
+
+  let head: Record<string, unknown>;
+  let response: Record<string, unknown>;
+  try {
+    head = JSON.parse(headEvent.content);
+    response = JSON.parse(event.content);
+  } catch {
+    reject("invalid: ask response is not valid JSON");
+    return;
+  }
+  if (
+    response.askId !== head.askId ||
+    response.expectedHeadEventId !== headEvent.id
+  ) {
+    reject(`conflict: ask head changed; current head is ${headEvent.id}`);
+    return;
+  }
+  if (head.status !== "open") {
+    reject(
+      `conflict: ask is ${String(head.status)}; current head is ${headEvent.id}`,
+    );
+    return;
+  }
+
+  const privateKeyHex = config?.mock?.companyAskRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    reject("mock relay signer is not configured for ask responses");
+    return;
+  }
+
+  let relaySecret: Uint8Array;
+  try {
+    relaySecret = hexToBytes(privateKeyHex);
+  } catch {
+    reject("mock relay signer key is invalid");
+    return;
+  }
+  const relayPubkey = getPublicKey(relaySecret);
+  if (
+    relayPubkey.toLowerCase() !== config?.mock?.relaySelf?.toLowerCase() ||
+    headEvent.pubkey.toLowerCase() !== relayPubkey.toLowerCase()
+  ) {
+    reject("mock relay signer does not match the ask head signer");
+    return;
+  }
+
+  head.status = "resolved";
+  head.resolution = {
+    outcome: response.outcome,
+    ...(typeof response.reason === "string" ? { reason: response.reason } : {}),
+    ...(typeof response.answer === "string" ? { answer: response.answer } : {}),
+    ...(typeof response.optionId === "string"
+      ? { optionId: response.optionId }
+      : {}),
+    ...(Array.isArray(response.checkedItemIds)
+      ? { checkedItemIds: response.checkedItemIds }
+      : {}),
+    resolvedByPubkey: event.pubkey,
+    resolvedAt: new Date().toISOString(),
+    responseEventId: event.id,
+  };
+  head.cancellation = null;
+  head.sourceActionEventId = event.id;
+  const resolvedHead = finalizeEvent(
+    {
+      kind: KIND_ASK_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        headEvent.created_at + 1,
+      ),
+      tags: headEvent.tags,
+      content: JSON.stringify(head),
+    },
+    relaySecret,
+  );
+  let resolvedHireHead: RelayEvent | undefined;
+  const hireProposal = (
+    head.ask as { hireProposal?: { hireId?: unknown } } | undefined
+  )?.hireProposal;
+  if (
+    hireProposal &&
+    (response.outcome === "approved" || response.outcome === "rejected")
+  ) {
+    const actor = mockRelayMembers.find(
+      (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+    );
+    if (!actor || (actor.role !== "owner" && actor.role !== "admin")) {
+      reject(
+        "restricted: only a community owner or admin can resolve a hire ask",
+      );
+      return;
+    }
+    if (
+      typeof response.reason !== "string" ||
+      response.reason.trim().length === 0 ||
+      response.reason.length > 1000
+    ) {
+      reject("invalid: hire decisions need a reason");
+      return;
+    }
+    const hireId = hireProposal.hireId;
+    if (typeof hireId !== "string") {
+      reject("invalid: hire ask is missing its hire coordinate");
+      return;
+    }
+    const hireDTag = `company:hire:${hireId.toLowerCase()}`;
+    const currentHireEvent = filterMockCompanyHireHeads({
+      kinds: [KIND_HIRE_HEAD],
+      "#d": [hireDTag],
+      limit: 2,
+    })[0];
+    if (!currentHireEvent) {
+      reject("conflict: linked hire does not exist");
+      return;
+    }
+    const hirePrivateKeyHex = config?.mock?.companyHireRelayPrivateKeyHex;
+    if (
+      !hirePrivateKeyHex ||
+      !/^[0-9a-f]{64}$/i.test(hirePrivateKeyHex) ||
+      getPublicKey(hexToBytes(hirePrivateKeyHex)).toLowerCase() !==
+        relayPubkey.toLowerCase()
+    ) {
+      reject("mock relay signer is not configured for linked hires");
+      return;
+    }
+    let hireHead: Record<string, unknown>;
+    try {
+      hireHead = JSON.parse(currentHireEvent.content) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      reject("invalid: linked hire head is malformed");
+      return;
+    }
+    if (
+      hireHead.status !== "proposed" ||
+      hireHead.sourceAskId !== response.askId ||
+      hireHead.sourceAskChannelId !== channelId
+    ) {
+      reject("conflict: linked hire changed");
+      return;
+    }
+    if (response.outcome === "approved" && actor.role === "owner") {
+      hireHead.status = "approved";
+      hireHead.founderPubkey = event.pubkey;
+      hireHead.founderApprovalReason = response.reason;
+    } else if (response.outcome === "approved") {
+      hireHead.status = "awaiting_founder";
+    } else {
+      hireHead.status = "denied";
+      hireHead.denialReason = response.reason;
+    }
+    hireHead.sourceActionEventId = event.id;
+    resolvedHireHead = finalizeEvent(
+      {
+        kind: KIND_HIRE_HEAD,
+        created_at: Math.max(
+          Math.floor(Date.now() / 1_000),
+          currentHireEvent.created_at + 1,
+        ),
+        tags: currentHireEvent.tags,
+        content: JSON.stringify(hireHead),
+      },
+      hexToBytes(hirePrivateKeyHex),
+    );
+  }
+  for (let index = mockCompanyAskHeads.length - 1; index >= 0; index -= 1) {
+    const candidate = mockCompanyAskHeads[index];
+    if (
+      candidate.tags.some((tag) => tag[0] === "h" && tag[1] === channelId) &&
+      candidate.tags.some((tag) => tag[0] === "d" && tag[1] === coordinate)
+    ) {
+      mockCompanyAskHeads.splice(index, 1);
+    }
+  }
+  mockCompanyAskHeads.push(resolvedHead);
+  if (resolvedHireHead) {
+    const hireDTag = resolvedHireHead.tags.find((tag) => tag[0] === "d")?.[1];
+    if (hireDTag) {
+      for (
+        let index = mockCompanyHireHeads.length - 1;
+        index >= 0;
+        index -= 1
+      ) {
+        if (
+          mockCompanyHireHeads[index]?.tags.some(
+            (tag) => tag[0] === "d" && tag[1] === hireDTag,
+          )
+        ) {
+          mockCompanyHireHeads.splice(index, 1);
+        }
+      }
+      mockCompanyHireHeads.push(resolvedHireHead);
+      emitMockGlobalEvent(resolvedHireHead);
+    }
+  }
+  emitMockLiveEvent(channelId, resolvedHead);
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
+function acceptMockHireAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  const configuredError = config?.mock?.companyHireActionErrors?.shift();
+  if (configuredError) {
+    reject(configuredError);
+    return;
+  }
+
+  let action: Record<string, unknown>;
+  try {
+    action = JSON.parse(event.content) as Record<string, unknown>;
+  } catch {
+    reject("invalid: hire action is not valid JSON");
+    return;
+  }
+  const hireId = typeof action.hireId === "string" ? action.hireId : "";
+  const dTag = `company:hire:${hireId.toLowerCase()}`;
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  if (
+    action.schemaVersion !== 1 ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      hireId,
+    ) ||
+    dTags.length !== 1 ||
+    dTags[0]?.[1] !== dTag
+  ) {
+    reject("invalid: hire action coordinates are invalid");
+    return;
+  }
+
+  const actor = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  );
+  if (!actor || (actor.role !== "owner" && actor.role !== "admin")) {
+    reject("restricted: only a community owner or admin can hire");
+    return;
+  }
+  if (
+    action.action === "approve" ||
+    action.action === "attach_employee" ||
+    action.action === "complete"
+  ) {
+    if (actor.role !== "owner") {
+      reject("restricted: only the community owner can approve a hire");
+      return;
+    }
+  }
+
+  const currentEvent = filterMockCompanyHireHeads({
+    kinds: [KIND_HIRE_HEAD],
+    "#d": [dTag],
+    limit: 2,
+  })[0];
+  if (action.action === "create" ? Boolean(currentEvent) : !currentEvent) {
+    reject("conflict: hire already exists or its current head is missing");
+    return;
+  }
+
+  let head: Record<string, unknown>;
+  if (action.action === "create") {
+    if (!action.proposal || typeof action.proposal !== "object") {
+      reject("invalid: create needs a hire proposal");
+      return;
+    }
+    head = {
+      schemaVersion: 1,
+      proposal: action.proposal,
+      status: "proposed",
+      proposedByPubkey: event.pubkey,
+      sourceActionEventId: event.id,
+    };
+  } else {
+    if (!currentEvent || action.expectedHeadEventId !== currentEvent.id) {
+      reject("conflict: hire head changed");
+      return;
+    }
+    try {
+      head = JSON.parse(currentEvent.content) as Record<string, unknown>;
+    } catch {
+      reject("invalid: current hire head is malformed");
+      return;
+    }
+    const status = head.status;
+    if (action.action === "update") {
+      if (status !== "proposed" || !action.proposal) {
+        reject("conflict: only a proposed hire can be updated");
+        return;
+      }
+      head.proposal = action.proposal;
+    } else if (action.action === "approve") {
+      if (status !== "proposed" && status !== "awaiting_founder") {
+        reject("conflict: hire is not awaiting founder sign-off");
+        return;
+      }
+      if (status === "awaiting_founder") {
+        if (
+          typeof action.reason !== "string" ||
+          action.reason.trim().length === 0 ||
+          action.reason.length > 1000
+        ) {
+          reject("invalid: founder sign-off needs a reason");
+          return;
+        }
+        head.founderApprovalReason = action.reason;
+      }
+      head.status = "approved";
+      head.founderPubkey = event.pubkey;
+    } else if (action.action === "attach_employee") {
+      if (
+        status !== "approved" ||
+        typeof action.employeePubkey !== "string" ||
+        head.employeePubkey !== undefined
+      ) {
+        reject("conflict: employee cannot be attached to this hire");
+        return;
+      }
+      head.employeePubkey = action.employeePubkey;
+    } else if (action.action === "complete") {
+      if (
+        status !== "approved" ||
+        typeof action.employeePubkey !== "string" ||
+        head.employeePubkey !== action.employeePubkey ||
+        typeof action.introductionEventId !== "string"
+      ) {
+        reject(
+          "conflict: hire completion does not match the approved employee",
+        );
+        return;
+      }
+      head.status = "hired";
+      head.introductionEventId = action.introductionEventId;
+    } else if (action.action === "deny") {
+      if (status !== "proposed" && status !== "awaiting_founder") {
+        reject("conflict: hire cannot be denied in its current state");
+        return;
+      }
+      head.status = "denied";
+      if (typeof action.reason === "string") head.denialReason = action.reason;
+      delete head.founderApprovalReason;
+    } else {
+      reject("invalid: hire action type is unsupported");
+      return;
+    }
+    head.sourceActionEventId = event.id;
+  }
+
+  const privateKeyHex = config?.mock?.companyHireRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    reject("mock relay signer is not configured for company hires");
+    return;
+  }
+  let relaySecret: Uint8Array;
+  try {
+    relaySecret = hexToBytes(privateKeyHex);
+  } catch {
+    reject("mock relay signer key is invalid");
+    return;
+  }
+  const relayPubkey = getPublicKey(relaySecret);
+  if (relayPubkey.toLowerCase() !== config?.mock?.relaySelf?.toLowerCase()) {
+    reject("mock relay signer does not match relaySelf");
+    return;
+  }
+
+  const nextHead = finalizeEvent(
+    {
+      kind: KIND_HIRE_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (currentEvent?.created_at ?? 0) + 1,
+      ),
+      tags: [["d", dTag]],
+      content: JSON.stringify(head),
+    },
+    relaySecret,
+  );
+  for (let index = mockCompanyHireHeads.length - 1; index >= 0; index -= 1) {
+    if (
+      mockCompanyHireHeads[index]?.tags.some(
+        (tag) => tag[0] === "d" && tag[1] === dTag,
+      )
+    ) {
+      mockCompanyHireHeads.splice(index, 1);
+    }
+  }
+  mockCompanyHireHeads.push(nextHead);
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
+function acceptMockToolPermissionAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  };
+  if (
+    event.pubkey.toLowerCase() !== getMockMemberPubkey(config).toLowerCase()
+  ) {
+    reject(
+      "restricted: only the authenticated company member can manage permissions",
+    );
+    return;
+  }
+  const role = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  )?.role;
+  if (role !== "owner" && role !== "admin") {
+    reject("restricted: only a company owner or admin can manage permissions");
+    return;
+  }
+
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  if (dTags.length !== 1) {
+    reject("invalid: tool permission action needs one coordinate");
+    return;
+  }
+  let action: Record<string, unknown>;
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    reject("invalid: tool permission action is not valid JSON");
+    return;
+  }
+  if (
+    action.schemaVersion !== 1 ||
+    typeof action.permissionId !== "string" ||
+    dTags[0][1] !== `company:permission:${action.permissionId.toLowerCase()}` ||
+    !["grant", "update", "revoke"].includes(String(action.action))
+  ) {
+    reject("invalid: tool permission action coordinates are invalid");
+    return;
+  }
+  const currentEvent = mockCompanyToolPermissionHeads.find((candidate) =>
+    candidate.tags.some((tag) => tag[0] === "d" && tag[1] === dTags[0][1]),
+  );
+  if (action.action === "grant" ? Boolean(currentEvent) : !currentEvent) {
+    reject(
+      "conflict: permission already exists or its current head is missing",
+    );
+    return;
+  }
+
+  let currentHead: Record<string, unknown> | null = null;
+  if (currentEvent) {
+    try {
+      currentHead = JSON.parse(currentEvent.content);
+    } catch {
+      reject("invalid: current permission head is malformed");
+      return;
+    }
+    if (action.expectedHeadEventId !== currentEvent.id) {
+      reject(
+        `conflict: permission changed; current head is ${currentEvent.id}`,
+      );
+      return;
+    }
+    if (!currentHead) {
+      reject("invalid: current permission head is unavailable");
+      return;
+    }
+    if (currentHead.status !== "active") {
+      reject("conflict: permission is no longer active");
+      return;
+    }
+  }
+
+  let permission: Record<string, unknown>;
+  if (action.action === "revoke") {
+    const currentPermission = currentHead?.permission;
+    if (
+      typeof currentPermission !== "object" ||
+      currentPermission === null ||
+      Array.isArray(currentPermission)
+    ) {
+      reject("invalid: current permission fields are malformed");
+      return;
+    }
+    permission = currentPermission as Record<string, unknown>;
+  } else {
+    const supplied = action.permission;
+    if (
+      typeof supplied !== "object" ||
+      supplied === null ||
+      Array.isArray(supplied)
+    ) {
+      reject("invalid: grant or update needs permission fields");
+      return;
+    }
+    permission = supplied as Record<string, unknown>;
+    if (permission.permissionId !== action.permissionId) {
+      reject("invalid: permission id does not match its action");
+      return;
+    }
+    if (currentHead) {
+      const prior = currentHead.permission as Record<string, unknown>;
+      if (
+        permission.agentPubkey !== prior.agentPubkey ||
+        permission.action !== prior.action
+      ) {
+        reject(
+          "invalid: an update can change only permission scope and expiry",
+        );
+        return;
+      }
+    }
+  }
+
+  const privateKeyHex = config?.mock?.companyAskRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    reject("mock relay signer is not configured for company permissions");
+    return;
+  }
+  let relaySecret: Uint8Array;
+  try {
+    relaySecret = hexToBytes(privateKeyHex);
+  } catch {
+    reject("mock relay signer key is invalid");
+    return;
+  }
+  const relayPubkey = getPublicKey(relaySecret);
+  if (relayPubkey.toLowerCase() !== config?.mock?.relaySelf?.toLowerCase()) {
+    reject("mock relay signer does not match relaySelf");
+    return;
+  }
+
+  const status = action.action === "revoke" ? "revoked" : "active";
+  const head = {
+    schemaVersion: 1,
+    permissionId: action.permissionId,
+    status,
+    permission,
+    grantedByPubkey:
+      typeof currentHead?.grantedByPubkey === "string"
+        ? currentHead.grantedByPubkey
+        : event.pubkey,
+    changedByPubkey: event.pubkey,
+    updatedAt: new Date().toISOString(),
+    sourceActionEventId: event.id,
+  };
+  const headEvent = finalizeEvent(
+    {
+      kind: KIND_TOOL_PERMISSION_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (currentEvent?.created_at ?? 0) + 1,
+      ),
+      tags: [
+        ["d", dTags[0][1]],
+        ["p", String(permission.agentPubkey)],
+      ],
+      content: JSON.stringify(head),
+    },
+    relaySecret,
+  );
+  if (currentEvent) {
+    const index = mockCompanyToolPermissionHeads.indexOf(currentEvent);
+    if (index >= 0) mockCompanyToolPermissionHeads.splice(index, 1);
+  }
+  mockCompanyToolPermissionHeads.push(headEvent);
+  window.__BUZZ_E2E_ACCEPTED_TOOL_PERMISSION_ACTIONS__ ??= [];
+  window.__BUZZ_E2E_ACCEPTED_TOOL_PERMISSION_ACTIONS__.push({
+    action: String(action.action),
+    permissionId: String(action.permissionId),
+  });
+  emitMockGlobalEvent(event);
+  emitMockGlobalEvent(headEvent);
+  sendWsText(socket.handler, ["OK", event.id, true, ""]);
+}
+
 function emitMockHistory(
   socket: MockSocket,
   subId: string,
@@ -4925,9 +8257,35 @@ function emitMockHistory(
   filter: MockFilter,
 ) {
   const events = channelIds
-    .flatMap((channelId) => getMockMessageStore(channelId))
+    .flatMap((channelId) => [
+      ...getMockMessageStore(channelId),
+      ...(referenceWorkspaceActive
+        ? (mockBusinessRecordEvents.get(channelId) ?? [])
+        : []),
+    ])
     .filter((event) => {
+      if (filter.ids && !filter.ids.includes(event.id)) {
+        return false;
+      }
       if (filter.kinds && !filter.kinds.includes(event.kind)) {
+        return false;
+      }
+      const dTags = filter["#d"];
+      if (
+        dTags &&
+        !dTags.some((dTag) =>
+          event.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+        )
+      ) {
+        return false;
+      }
+      const addressTags = filter["#a"];
+      if (
+        addressTags &&
+        !addressTags.some((addressTag) =>
+          event.tags.some((tag) => tag[0] === "a" && tag[1] === addressTag),
+        )
+      ) {
         return false;
       }
       if (filter.since !== undefined && event.created_at < filter.since) {
@@ -4965,6 +8323,280 @@ function emitMockHistory(
   emit();
 }
 
+function acceptMockSecretBindingAction(
+  socket: MockSocket,
+  event: RelayEvent,
+  config: E2eConfig | undefined,
+) {
+  const reject = (message: string) =>
+    sendWsText(socket.handler, ["OK", event.id, false, message]);
+  const accept = () => sendWsText(socket.handler, ["OK", event.id, true, ""]);
+  if (mockSecretBindingActionIds.has(event.id)) {
+    accept();
+    return;
+  }
+  let action: {
+    schemaVersion?: number;
+    bindingId?: string;
+    action?: string;
+    expectedHeadEventId?: string;
+    binding?: Record<string, unknown>;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    reject("invalid: secret binding action is not valid JSON");
+    return;
+  }
+  if (
+    action.action === "activate" &&
+    config?.mock?.companySecretActivationErrors?.length
+  ) {
+    reject(
+      config.mock.companySecretActivationErrors.shift() ??
+        "error: secret activation failed",
+    );
+    return;
+  }
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  const bindingId = action.bindingId;
+  const dTag =
+    typeof bindingId === "string" ? `company:secret:${bindingId}` : "";
+  if (
+    action.schemaVersion !== 1 ||
+    !bindingId ||
+    dTags.length !== 1 ||
+    dTags[0]?.[1] !== dTag ||
+    event.tags.some((tag) => tag[0] !== "d")
+  ) {
+    reject("invalid: secret binding command coordinates are invalid");
+    return;
+  }
+  const actor = mockRelayMembers.find(
+    (member) => member.pubkey.toLowerCase() === event.pubkey.toLowerCase(),
+  );
+  if (!actor || (actor.role !== "owner" && actor.role !== "admin")) {
+    reject(
+      "restricted: only a community owner or admin can change secret bindings",
+    );
+    return;
+  }
+  const privateKeyHex = config?.mock?.companyAskRelayPrivateKeyHex;
+  if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+    reject("mock relay signer is not configured for secret bindings");
+    return;
+  }
+  let relaySecret: Uint8Array;
+  try {
+    relaySecret = hexToBytes(privateKeyHex);
+  } catch {
+    reject("mock relay signer key is invalid");
+    return;
+  }
+  const relayPubkey = getPublicKey(relaySecret);
+  if (relayPubkey.toLowerCase() !== config?.mock?.relaySelf?.toLowerCase()) {
+    reject("mock relay signer does not match relaySelf");
+    return;
+  }
+
+  const current = filterMockCompanySecretBindingHeads({
+    kinds: [KIND_SECRET_BINDING_HEAD],
+    authors: [relayPubkey],
+    "#d": [dTag],
+    limit: 2,
+  });
+  if (current.length > 1) {
+    reject("error: duplicate secret binding head");
+    return;
+  }
+  const currentHead = current[0];
+  let binding: Record<string, unknown>;
+  let status: "pending" | "active" | "revoked";
+  if (action.action === "create") {
+    const allowedFields = new Set([
+      "schemaVersion",
+      "bindingId",
+      "name",
+      "employeePubkey",
+      "toolName",
+      "allowedUse",
+      "storage",
+      "sourceAsk",
+    ]);
+    if (
+      currentHead ||
+      !action.binding ||
+      Object.keys(action.binding).some((key) => !allowedFields.has(key)) ||
+      action.binding.schemaVersion !== 1 ||
+      action.binding.bindingId !== bindingId ||
+      action.binding.storage !== "device" ||
+      typeof action.binding.name !== "string" ||
+      typeof action.binding.employeePubkey !== "string" ||
+      typeof action.binding.toolName !== "string" ||
+      typeof action.binding.allowedUse !== "string"
+    ) {
+      reject("invalid: secret binding metadata is unsupported");
+      return;
+    }
+    binding = action.binding;
+    status = "pending";
+  } else if (action.action === "activate" || action.action === "revoke") {
+    if (!currentHead || currentHead.id !== action.expectedHeadEventId) {
+      reject("conflict: secret binding changed; current head is unavailable");
+      return;
+    }
+    let previous: { binding?: Record<string, unknown>; status?: string };
+    try {
+      previous = JSON.parse(currentHead.content);
+    } catch {
+      reject("error: secret binding head is invalid");
+      return;
+    }
+    if (action.action === "activate" && previous.status !== "pending") {
+      reject("conflict: only a pending secret binding can be activated");
+      return;
+    }
+    if (action.action === "revoke" && previous.status === "revoked") {
+      reject("conflict: secret binding is already revoked");
+      return;
+    }
+    if (!previous.binding) {
+      reject("error: secret binding head has no metadata");
+      return;
+    }
+    binding = previous.binding;
+    status = action.action === "activate" ? "active" : "revoked";
+  } else {
+    reject("invalid: secret binding action is unsupported");
+    return;
+  }
+
+  const nextHead = finalizeEvent(
+    {
+      kind: KIND_SECRET_BINDING_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (currentHead?.created_at ?? 0) + 1,
+      ),
+      tags: [["d", dTag]],
+      content: JSON.stringify({
+        schemaVersion: 1,
+        binding,
+        status,
+        sourceActionEventId: event.id,
+      }),
+    },
+    relaySecret,
+  );
+  let resolvedAsk: RelayEvent | null = null;
+  if (action.action === "activate") {
+    const sourceAskValue = binding.sourceAsk;
+    if (!sourceAskValue || typeof sourceAskValue !== "object") {
+      reject("invalid: activation needs a linked secret ask");
+      return;
+    }
+    const sourceAsk = sourceAskValue as Record<string, unknown>;
+    if (
+      typeof sourceAsk.channelId !== "string" ||
+      typeof sourceAsk.askId !== "string"
+    ) {
+      reject("invalid: activation needs a linked secret ask");
+      return;
+    }
+    const sourceChannelId = sourceAsk.channelId;
+    const sourceAskId = sourceAsk.askId;
+    const askCoordinate = `channel:${sourceChannelId}:ask:${sourceAskId}`;
+    const askEvent = filterMockCompanyAskHeads({
+      kinds: [KIND_ASK_HEAD],
+      "#h": [sourceChannelId],
+      "#d": [askCoordinate],
+      limit: 2,
+    })[0];
+    if (!askEvent) {
+      reject("conflict: linked secret ask is unavailable");
+      return;
+    }
+    let askHead: Record<string, unknown>;
+    try {
+      askHead = JSON.parse(askEvent.content);
+    } catch {
+      reject("error: linked secret ask is invalid");
+      return;
+    }
+    const ask = askHead.ask as
+      | {
+          category?: unknown;
+          secretRequest?: { toolName?: unknown; allowedUse?: unknown };
+        }
+      | undefined;
+    if (
+      askHead.status !== "open" ||
+      ask?.category !== "secret" ||
+      askHead.askerPubkey !== binding.employeePubkey ||
+      ask.secretRequest?.toolName !== binding.toolName ||
+      ask.secretRequest?.allowedUse !== binding.allowedUse
+    ) {
+      reject("conflict: secret binding does not match its open secret ask");
+      return;
+    }
+    askHead.status = "resolved";
+    askHead.resolution = {
+      outcome: "secret_bound",
+      secretBindingId: bindingId,
+      resolvedByPubkey: event.pubkey,
+      resolvedAt: new Date().toISOString(),
+      responseEventId: event.id,
+    };
+    askHead.cancellation = null;
+    askHead.sourceActionEventId = event.id;
+    resolvedAsk = finalizeEvent(
+      {
+        kind: KIND_ASK_HEAD,
+        created_at: Math.max(
+          Math.floor(Date.now() / 1_000),
+          askEvent.created_at + 1,
+        ),
+        tags: askEvent.tags,
+        content: JSON.stringify(askHead),
+      },
+      relaySecret,
+    );
+    for (let index = mockCompanyAskHeads.length - 1; index >= 0; index -= 1) {
+      const candidate = mockCompanyAskHeads[index];
+      if (
+        candidate.tags.some(
+          (tag) => tag[0] === "h" && tag[1] === sourceChannelId,
+        ) &&
+        candidate.tags.some((tag) => tag[0] === "d" && tag[1] === askCoordinate)
+      ) {
+        mockCompanyAskHeads.splice(index, 1);
+      }
+    }
+    mockCompanyAskHeads.push(resolvedAsk);
+  }
+  for (
+    let index = mockCompanySecretBindingHeads.length - 1;
+    index >= 0;
+    index -= 1
+  ) {
+    if (
+      mockCompanySecretBindingHeads[index]?.tags.some(
+        (tag) => tag[0] === "d" && tag[1] === dTag,
+      )
+    ) {
+      mockCompanySecretBindingHeads.splice(index, 1);
+    }
+  }
+  mockCompanySecretBindingHeads.push(nextHead);
+  mockSecretBindingActionIds.add(event.id);
+  emitMockLiveEvent(GLOBAL_MOCK_SUBSCRIPTION, nextHead);
+  if (resolvedAsk) {
+    const askChannelId = resolvedAsk.tags.find((tag) => tag[0] === "h")?.[1];
+    if (askChannelId) emitMockLiveEvent(askChannelId, resolvedAsk);
+  }
+  accept();
+}
+
 function emitMockLiveEvent(channelId: string, event: RelayEvent) {
   for (const socket of mockSockets.values()) {
     for (const [subId, subscription] of socket.subscriptions) {
@@ -4977,6 +8609,753 @@ function emitMockLiveEvent(channelId: string, event: RelayEvent) {
       }
     }
   }
+}
+
+function referenceBusinessStore(channelId: string): RelayEvent[] {
+  const current = mockBusinessRecordEvents.get(channelId);
+  if (current) return current;
+  const next: RelayEvent[] = [];
+  mockBusinessRecordEvents.set(channelId, next);
+  return next;
+}
+
+function businessDTagOf(event: RelayEvent): string | null {
+  return event.tags.find((tag) => tag[0] === "d")?.[1] ?? null;
+}
+
+function referenceBusinessRecord(
+  channelId: string,
+  kind: number,
+  dTag: string,
+): RelayEvent | null {
+  return (
+    referenceBusinessStore(channelId).find(
+      (event) => event.kind === kind && businessDTagOf(event) === dTag,
+    ) ?? null
+  );
+}
+
+function storeReferenceBusinessEvent(
+  channelId: string,
+  event: RelayEvent,
+  replaceCoordinate: boolean,
+  emitLive = true,
+): void {
+  const events = referenceBusinessStore(channelId);
+  const dTag = businessDTagOf(event);
+  if (replaceCoordinate && dTag) {
+    const index = events.findIndex(
+      (candidate) =>
+        candidate.kind === event.kind && businessDTagOf(candidate) === dTag,
+    );
+    if (index >= 0) events[index] = event;
+    else events.push(event);
+  } else if (!events.some((candidate) => candidate.id === event.id)) {
+    events.push(event);
+  }
+  if (emitLive) emitMockLiveEvent(channelId, event);
+}
+
+function referenceCommunityRecordId(): string {
+  return referenceCommunityId() ?? REFERENCE_CHANNEL_IDS.sales;
+}
+
+function referenceRecordEvent(
+  kind: number,
+  channelId: string,
+  dTag: string,
+  content: unknown,
+  source: RelayEvent,
+): RelayEvent {
+  return createMockEvent(
+    kind,
+    JSON.stringify(content),
+    [
+      ["h", channelId],
+      ["d", dTag],
+    ],
+    source.pubkey,
+    source.created_at,
+    mockEventId(),
+  );
+}
+
+type ReferenceServiceAction = {
+  schemaVersion: number;
+  serviceId: string;
+  action: "create" | "update" | "archive" | "restore";
+  expectedHeadEventId: string | null;
+  service: {
+    serviceId: string;
+    name: string;
+    description: string;
+    currency: string;
+    monthlyFeeMinor: number;
+    postsPerMonth: number;
+    revisionRounds: number;
+  };
+};
+
+type ReferenceProspectAction = {
+  schemaVersion: number;
+  prospectId: string;
+  action: "create" | "update" | "archive" | "restore";
+  expectedHeadEventId: string | null;
+  prospect: {
+    prospectId: string;
+    party: {
+      partyId: string;
+      partyType: string;
+      displayName: string;
+      externalIds: string[];
+    };
+    stage: string;
+    lostReason: string | null;
+    [key: string]: unknown;
+  };
+  activity: {
+    activityId: string;
+    activityKind: "note" | "contact";
+    content: string;
+    proposalId?: string | null;
+    proposalVersionEventId?: string | null;
+  } | null;
+};
+
+type ReferenceProposalVersion = {
+  schemaVersion: number;
+  proposalId: string;
+  prospectPartyId: string;
+  namedAcceptorPubkey: string;
+  revision: number;
+  previousVersionEventId: string | null;
+  expiresAt: number | null;
+  currency: string;
+  lines: Array<{
+    serviceId: string | null;
+    description: string;
+    quantityHundredths: number;
+    unitAmountMinor: number;
+  }>;
+  terms: string;
+};
+
+type ReferenceProposalAcceptance = {
+  schemaVersion: number;
+  proposalId: string;
+  proposalVersionEventId: string;
+  proposalVersionDigest: string;
+  conversionId: string;
+  clientId: string;
+  workItemId: string;
+  draftInvoiceId: string;
+  evidence: {
+    acceptedByName: string;
+    acceptedAt: number;
+    evidenceReference: string;
+    exactTermsConfirmed: boolean;
+  };
+};
+
+function parseMockBusinessContent<T>(event: RelayEvent): T | null {
+  try {
+    return JSON.parse(event.content) as T;
+  } catch {
+    return null;
+  }
+}
+
+function publishReferenceBusinessCommand(
+  event: RelayEvent,
+  socket: MockSocket,
+): boolean {
+  if (!referenceWorkspaceActive) return false;
+  const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+  const dTag = businessDTagOf(event);
+  if (!channelId || !dTag) {
+    sendWsText(socket.handler, [
+      "OK",
+      event.id,
+      false,
+      "invalid: W10 business command requires h and d tags",
+    ]);
+    return true;
+  }
+  const communityId = referenceCommunityRecordId();
+  const commandTime = event.created_at;
+  const shouldLoseAcceptanceAck =
+    event.kind === KIND_PROPOSAL_ACCEPTANCE &&
+    Boolean(
+      (
+        window as unknown as {
+          __BUZZ_E2E_W10_FAIL_ACCEPTANCE_ACK_ONCE__?: boolean;
+        }
+      ).__BUZZ_E2E_W10_FAIL_ACCEPTANCE_ACK_ONCE__,
+    );
+  if (shouldLoseAcceptanceAck) {
+    (
+      window as unknown as {
+        __BUZZ_E2E_W10_FAIL_ACCEPTANCE_ACK_ONCE__?: boolean;
+      }
+    ).__BUZZ_E2E_W10_FAIL_ACCEPTANCE_ACK_ONCE__ = false;
+  }
+  const fail = (reason: string) => {
+    sendWsText(socket.handler, ["OK", event.id, false, `invalid: ${reason}`]);
+  };
+  const record = <T>(kind: number, tag: string): T | null => {
+    const prior = referenceBusinessRecord(channelId, kind, tag);
+    return prior ? parseMockBusinessContent<T>(prior) : null;
+  };
+
+  if (event.kind === KIND_INVOICE_VERSION) {
+    const version = parseMockBusinessContent<{
+      clientId?: string;
+      invoiceId?: string;
+      version?: number;
+      previousVersionEventId?: string | null;
+      expectedHeadEventId?: string | null;
+      action?: string;
+      currency?: string;
+      lines?: Array<{
+        quantityHundredths: number;
+        unitAmountMinor: number;
+      }>;
+      taxLines?: Array<{
+        label?: string | null;
+        rateBasisPoints: number;
+      }>;
+      sellerTaxNumber?: string | null;
+      customerTaxNumber?: string | null;
+      totalMinor?: number;
+      status?: string;
+      dueAt?: number | null;
+    }>(event);
+    const invoiceDTag =
+      version?.clientId && version.invoiceId
+        ? `client:${version.clientId}:invoice:${version.invoiceId}`
+        : null;
+    const store = getMockMessageStore(channelId);
+    const headIndex = invoiceDTag
+      ? store.findIndex(
+          (candidate) =>
+            candidate.kind === KIND_INVOICE_HEAD &&
+            businessDTagOf(candidate) === invoiceDTag,
+        )
+      : -1;
+    const priorHeadEvent = headIndex >= 0 ? store[headIndex] : null;
+    const priorHead = priorHeadEvent
+      ? parseMockBusinessContent<{
+          clientId: string;
+          invoiceId: string;
+          currency: string;
+          lines: Array<{
+            quantityHundredths: number;
+            unitAmountMinor: number;
+          }>;
+          taxLines?: Array<{ label: string | null; rateBasisPoints: number }>;
+          sellerTaxNumber?: string | null;
+          customerTaxNumber?: string | null;
+          totalMinor: number;
+          collectedMinor: number;
+          outstandingMinor: number;
+          paymentEvidenceCount: number;
+          version: number;
+          currentVersionEventId: string;
+          status: string;
+          dueAt: number | null;
+          issuedAt: number | null;
+          [key: string]: unknown;
+        }>(priorHeadEvent)
+      : null;
+    const taxNumberValid = (value: unknown) =>
+      value === null ||
+      (typeof value === "string" &&
+        value.trim().length > 0 &&
+        new TextEncoder().encode(value).length <= 128);
+    if (!version || !priorHead || !priorHeadEvent || !invoiceDTag) {
+      fail("invoice version must edit the exact current draft head");
+      return true;
+    }
+    const lines = version.lines;
+    const taxLines = version.taxLines;
+    if (taxLines === undefined) {
+      version.taxLines = [];
+    }
+    const configuredTaxLines = version.taxLines;
+    if (
+      version.clientId !== channelId ||
+      dTag !== `${invoiceDTag}:version:${version.version}` ||
+      version.action !== "draft_edit" ||
+      version.status !== "draft" ||
+      version.currency !== priorHead.currency ||
+      version.invoiceId !== priorHead.invoiceId ||
+      version.version !== priorHead.version + 1 ||
+      version.previousVersionEventId !== priorHead.currentVersionEventId ||
+      version.expectedHeadEventId !== priorHeadEvent.id ||
+      priorHead.status !== "draft" ||
+      !Array.isArray(lines) ||
+      lines.length === 0 ||
+      lines.length > 100 ||
+      !lines.every(
+        (line) =>
+          Number.isSafeInteger(line.quantityHundredths) &&
+          line.quantityHundredths > 0 &&
+          Number.isSafeInteger(line.unitAmountMinor) &&
+          line.unitAmountMinor > 0,
+      ) ||
+      !Array.isArray(configuredTaxLines) ||
+      configuredTaxLines.length > 100 ||
+      !configuredTaxLines.every(
+        (line) =>
+          (line.label === null ||
+            line.label === undefined ||
+            (typeof line.label === "string" &&
+              line.label.trim().length > 0 &&
+              new TextEncoder().encode(line.label).length <= 200)) &&
+          Number.isInteger(line.rateBasisPoints) &&
+          line.rateBasisPoints >= 0 &&
+          line.rateBasisPoints <= 0xffff_ffff,
+      ) ||
+      !taxNumberValid(version.sellerTaxNumber) ||
+      !taxNumberValid(version.customerTaxNumber)
+    ) {
+      fail("invoice version must edit the exact current draft head");
+      return true;
+    }
+    const lineAmounts = lines.map(
+      (line) =>
+        (BigInt(line.quantityHundredths) * BigInt(line.unitAmountMinor)) / 100n,
+    );
+    const subtotal = lineAmounts.reduce((sum, amount) => sum + amount, 0n);
+    const taxTotal = lineAmounts.reduce(
+      (sum, lineAmount) =>
+        sum +
+        configuredTaxLines.reduce(
+          (lineTax, taxLine) =>
+            lineTax +
+            (lineAmount * BigInt(taxLine.rateBasisPoints) + 5_000n) / 10_000n,
+          0n,
+        ),
+      0n,
+    );
+    const total = subtotal + taxTotal;
+    if (
+      total > BigInt(Number.MAX_SAFE_INTEGER) ||
+      version.totalMinor !== Number(total)
+    ) {
+      fail("invoice total does not match its integer line and tax amounts");
+      return true;
+    }
+
+    storeReferenceBusinessEvent(channelId, event, false, false);
+    const nextHead = referenceRecordEvent(
+      KIND_INVOICE_HEAD,
+      channelId,
+      invoiceDTag,
+      {
+        ...priorHead,
+        taxLines: configuredTaxLines,
+        sellerTaxNumber: version.sellerTaxNumber,
+        customerTaxNumber: version.customerTaxNumber,
+        totalMinor: Number(total),
+        outstandingMinor: Number(total) - priorHead.collectedMinor,
+        version: version.version,
+        currentVersionEventId: event.id,
+        sourceEventId: event.id,
+      },
+      event,
+    );
+    store[headIndex] = nextHead;
+    emitMockLiveEvent(channelId, event);
+    emitMockLiveEvent(channelId, nextHead);
+  } else if (event.kind === KIND_SERVICE_ACTION) {
+    const action = parseMockBusinessContent<ReferenceServiceAction>(event);
+    if (!action || action.serviceId !== action.service.serviceId) {
+      fail("service action is invalid");
+      return true;
+    }
+    const status = action.action === "archive" ? "archived" : "active";
+    const head = referenceRecordEvent(
+      KIND_SERVICE_HEAD,
+      channelId,
+      businessDTag(communityId, "service", action.serviceId),
+      {
+        schemaVersion: action.schemaVersion,
+        serviceId: action.serviceId,
+        status,
+        service: action.service,
+        sourceActionEventId: event.id,
+      },
+      event,
+    );
+    storeReferenceBusinessEvent(channelId, head, true);
+  } else if (event.kind === KIND_PROSPECT_ACTION) {
+    const action = parseMockBusinessContent<ReferenceProspectAction>(event);
+    if (
+      !action ||
+      action.prospectId !== action.prospect.prospectId ||
+      action.prospect.party.partyId !== action.prospectId
+    ) {
+      fail("prospect action is invalid");
+      return true;
+    }
+    const prospectDTag = businessDTag(
+      communityId,
+      "prospect",
+      action.prospectId,
+    );
+    const prior = record<{
+      activities: Array<Record<string, unknown>>;
+    }>(KIND_PROSPECT_HEAD, prospectDTag);
+    const activities = [...(prior?.activities ?? [])];
+    if (
+      action.activity &&
+      !activities.some(
+        (activity) => activity.activityId === action.activity?.activityId,
+      )
+    ) {
+      activities.push({
+        ...action.activity,
+        authorPubkey: event.pubkey,
+        createdAt: commandTime,
+      });
+    }
+    const partyDTag = businessDTag(
+      communityId,
+      "party",
+      action.prospect.party.partyId,
+    );
+    storeReferenceBusinessEvent(
+      channelId,
+      referenceRecordEvent(
+        KIND_PARTY_HEAD,
+        channelId,
+        partyDTag,
+        {
+          schemaVersion: action.schemaVersion,
+          partyId: action.prospect.party.partyId,
+          status: "active",
+          party: action.prospect.party,
+          sourceActionEventId: event.id,
+        },
+        event,
+      ),
+      true,
+    );
+    storeReferenceBusinessEvent(
+      channelId,
+      referenceRecordEvent(
+        KIND_PROSPECT_HEAD,
+        channelId,
+        prospectDTag,
+        {
+          schemaVersion: action.schemaVersion,
+          prospectId: action.prospectId,
+          status: action.action === "archive" ? "archived" : "active",
+          prospect: action.prospect,
+          activities,
+          sourceActionEventId: event.id,
+        },
+        event,
+      ),
+      true,
+    );
+  } else if (event.kind === KIND_PROPOSAL_VERSION) {
+    const version = parseMockBusinessContent<ReferenceProposalVersion>(event);
+    if (!version || version.revision < 1 || version.lines.length === 0) {
+      fail("proposal version is invalid");
+      return true;
+    }
+    storeReferenceBusinessEvent(channelId, event, false);
+    const headDTag = businessDTag(communityId, "proposal", version.proposalId);
+    storeReferenceBusinessEvent(
+      channelId,
+      referenceRecordEvent(
+        KIND_PROPOSAL_HEAD,
+        channelId,
+        headDTag,
+        {
+          schemaVersion: version.schemaVersion,
+          proposalId: version.proposalId,
+          currentVersionEventId: event.id,
+          currentVersionDigest: bytesToHex(
+            sha256(new TextEncoder().encode(event.content)),
+          ),
+          revision: version.revision,
+          sourceEventId: event.id,
+        },
+        event,
+      ),
+      true,
+    );
+  } else if (event.kind === KIND_PROPOSAL_ACCEPTANCE) {
+    const acceptance =
+      parseMockBusinessContent<ReferenceProposalAcceptance>(event);
+    if (!acceptance?.evidence?.exactTermsConfirmed) {
+      fail("acceptance evidence is required");
+      return true;
+    }
+    const proposalHead = record<{
+      currentVersionEventId: string;
+      currentVersionDigest: string;
+    }>(
+      KIND_PROPOSAL_HEAD,
+      businessDTag(communityId, "proposal", acceptance.proposalId),
+    );
+    const versionEvent = referenceBusinessStore(channelId).find(
+      (candidate) =>
+        candidate.kind === KIND_PROPOSAL_VERSION &&
+        candidate.id === acceptance.proposalVersionEventId,
+    );
+    const version = versionEvent
+      ? parseMockBusinessContent<ReferenceProposalVersion>(versionEvent)
+      : null;
+    if (
+      !proposalHead ||
+      !version ||
+      proposalHead.currentVersionEventId !==
+        acceptance.proposalVersionEventId ||
+      proposalHead.currentVersionDigest !== acceptance.proposalVersionDigest ||
+      version.namedAcceptorPubkey.toLowerCase() !== event.pubkey.toLowerCase()
+    ) {
+      fail(
+        "acceptance must target the current proposal version and named signer",
+      );
+      return true;
+    }
+    storeReferenceBusinessEvent(
+      channelId,
+      event,
+      false,
+      !shouldLoseAcceptanceAck,
+    );
+    const prospectEntry = referenceBusinessStore(channelId).find(
+      (candidate) => {
+        if (candidate.kind !== KIND_PROSPECT_HEAD) return false;
+        const content = parseMockBusinessContent<{
+          prospect?: { party?: { partyId?: string } };
+        }>(candidate);
+        return content?.prospect?.party?.partyId === version.prospectPartyId;
+      },
+    );
+    if (prospectEntry) {
+      const content = parseMockBusinessContent<{
+        schemaVersion: number;
+        prospectId: string;
+        status: string;
+        prospect: Record<string, unknown>;
+        activities: Array<Record<string, unknown>>;
+      }>(prospectEntry);
+      if (content) {
+        storeReferenceBusinessEvent(
+          channelId,
+          referenceRecordEvent(
+            KIND_PROSPECT_HEAD,
+            channelId,
+            businessDTag(communityId, "prospect", content.prospectId),
+            {
+              ...content,
+              prospect: {
+                ...content.prospect,
+                stage: "won",
+                lostReason: null,
+              },
+              sourceActionEventId: event.id,
+            },
+            event,
+          ),
+          true,
+          !shouldLoseAcceptanceAck,
+        );
+      }
+    }
+    const partyEvent = referenceBusinessStore(channelId).find((candidate) => {
+      if (candidate.kind !== KIND_PARTY_HEAD) return false;
+      const content = parseMockBusinessContent<{ partyId?: string }>(candidate);
+      return content?.partyId === version.prospectPartyId;
+    });
+    const party = partyEvent
+      ? parseMockBusinessContent<{
+          party?: { displayName?: string };
+          partyId?: string;
+        }>(partyEvent)
+      : null;
+    const conversionDTag = businessDTag(
+      communityId,
+      "conversion",
+      acceptance.conversionId,
+    );
+    const receipt = referenceRecordEvent(
+      KIND_PROPOSAL_CONVERSION_RECEIPT,
+      channelId,
+      conversionDTag,
+      {
+        schemaVersion: 1,
+        conversionId: acceptance.conversionId,
+        proposalId: acceptance.proposalId,
+        proposalVersionEventId: acceptance.proposalVersionEventId,
+        clientId: acceptance.clientId,
+        workItemId: acceptance.workItemId,
+        draftInvoiceId: acceptance.draftInvoiceId,
+        acceptanceEventId: event.id,
+      },
+      event,
+    );
+    storeReferenceBusinessEvent(
+      channelId,
+      receipt,
+      true,
+      !shouldLoseAcceptanceAck,
+    );
+
+    const clientId = acceptance.clientId;
+    const clientDTag = `client:${clientId}:client:${clientId}`;
+    const workDTag = `client:${clientId}:work:${acceptance.workItemId}`;
+    const invoiceDTag = `client:${clientId}:invoice:${acceptance.draftInvoiceId}`;
+    const channelIndex = mockChannels.findIndex(
+      (candidate) => candidate.id === clientId,
+    );
+    if (channelIndex < 0) {
+      mockChannels.push(
+        createMockChannel({
+          id: clientId,
+          name: party?.party?.displayName ?? "New client",
+          channel_type: "stream",
+          visibility: "private",
+          description: "Service, production and review.",
+          topic: null,
+          purpose: null,
+          last_message_at: null,
+          archived_at: null,
+          created_by: event.pubkey,
+          topic_set_by: null,
+          topic_set_at: null,
+          purpose_set_by: null,
+          purpose_set_at: null,
+          topic_required: false,
+          max_members: null,
+          nip29_group_id: null,
+          created_minutes_ago: 0,
+          updated_minutes_ago: 0,
+          members: [createMockMember(event.pubkey, "owner", 0)],
+        }),
+      );
+    }
+    const clientHead = createMockEvent(
+      30631,
+      JSON.stringify({
+        schemaVersion: 1,
+        clientId,
+        partyId: version.prospectPartyId,
+        displayName: party?.party?.displayName ?? "New client",
+        approverPubkeys: [event.pubkey],
+        status: "active",
+        sourceActionEventId: event.id,
+      }),
+      [
+        ["h", clientId],
+        ["d", clientDTag],
+      ],
+      event.pubkey,
+      event.created_at,
+    );
+    const workItemHead = createMockEvent(
+      30634,
+      JSON.stringify({
+        schemaVersion: 1,
+        clientId,
+        workItemId: acceptance.workItemId,
+        title: `Proposal ${acceptance.proposalId}`,
+        status: "open",
+        assignedPubkeys: [],
+        approverPubkeys: [event.pubkey],
+        deliverables: [],
+        sourceEventId: event.id,
+      }),
+      [
+        ["h", clientId],
+        ["d", workDTag],
+      ],
+      event.pubkey,
+      event.created_at,
+    );
+    const invoiceTotal = version.lines.reduce(
+      (total, line) =>
+        total +
+        Math.floor((line.quantityHundredths * line.unitAmountMinor) / 100),
+      0,
+    );
+    const invoiceHead = createMockEvent(
+      30641,
+      JSON.stringify({
+        schemaVersion: 1,
+        clientId,
+        invoiceId: acceptance.draftInvoiceId,
+        proposalId: acceptance.proposalId,
+        proposalVersionEventId: acceptance.proposalVersionEventId,
+        currency: version.currency,
+        lines: version.lines,
+        totalMinor: invoiceTotal,
+        status: "draft",
+        sourceEventId: event.id,
+      }),
+      [
+        ["h", clientId],
+        ["d", invoiceDTag],
+      ],
+      event.pubkey,
+      event.created_at,
+    );
+    for (const head of [clientHead, workItemHead, invoiceHead]) {
+      const store = getMockMessageStore(clientId);
+      const index = store.findIndex(
+        (candidate) =>
+          candidate.kind === head.kind &&
+          businessDTagOf(candidate) === businessDTagOf(head),
+      );
+      if (index >= 0) store[index] = head;
+      else store.push(head);
+    }
+    (
+      window as unknown as {
+        __BUZZ_E2E_W10_CONVERSION_COUNTS__?: Record<string, number>;
+      }
+    ).__BUZZ_E2E_W10_CONVERSION_COUNTS__ = {
+      receipts: referenceBusinessStore(channelId).filter(
+        (candidate) =>
+          candidate.kind === KIND_PROPOSAL_CONVERSION_RECEIPT &&
+          businessDTagOf(candidate) === conversionDTag,
+      ).length,
+      clients: getMockMessageStore(clientId).filter(
+        (candidate) => candidate.kind === 30631,
+      ).length,
+      workItems: getMockMessageStore(clientId).filter(
+        (candidate) => candidate.kind === 30634,
+      ).length,
+      draftInvoices: getMockMessageStore(clientId).filter(
+        (candidate) => candidate.kind === 30641,
+      ).length,
+    };
+  } else {
+    return false;
+  }
+
+  if (shouldLoseAcceptanceAck) {
+    (
+      window as unknown as {
+        __BUZZ_E2E_W10_ACCEPTANCE_ACK_LOST__?: boolean;
+      }
+    ).__BUZZ_E2E_W10_ACCEPTANCE_ACK_LOST__ = true;
+    sendWsText(socket.handler, [
+      "OK",
+      event.id,
+      false,
+      "mock acceptance acknowledgement lost after commit",
+    ]);
+  } else {
+    sendWsText(socket.handler, ["OK", event.id, true, ""]);
+  }
+  return true;
 }
 
 let mockObserverControlSeq = 0;
@@ -5118,8 +9497,18 @@ function recordMockMessage(channelId: string, event: RelayEvent) {
   touchMockChannel(channel);
 }
 
-function resetMockUserStatuses() {
+function resetMockUserStatuses(config: E2eConfig | undefined) {
   mockUserStatuses.length = 0;
+  const text = config?.mock?.userStatus?.trim();
+  if (!text) return;
+  mockUserStatuses.push(
+    createMockEvent(
+      KIND_USER_STATUS,
+      text,
+      [["d", "general"]],
+      getMockMemberPubkey(config),
+    ),
+  );
 }
 
 // Mocked Rust-side pending deep-link queue (see desktop/src-tauri/src/deep_link.rs).
@@ -5564,6 +9953,7 @@ const TIMELINE_KINDS = new Set([
   43004,
   43005,
   43006,
+  KIND_ASK_ACTION,
   KIND_HUDDLE_STARTED,
 ]);
 
@@ -5835,8 +10225,8 @@ async function handleGetChannelReconnectRepair(
   config: E2eConfig | undefined,
 ): Promise<RelayEvent[]> {
   const kinds = new Set([
-    5, 7, 9, 9005, 40001, 40002, 40003, 40008, 40099, 45001, 45003, 48100,
-    48101, 48102, 48103,
+    5, 7, 9, 9005, 40001, 40002, 40003, 40008, 40099, 45001, 45003, 47032,
+    48100, 48101, 48102, 48103,
   ]);
   const filter: Record<string, unknown> = {
     "#h": [args.channelId],
@@ -5909,7 +10299,13 @@ async function handleGetChannelWindow(
       // Exhaustion probe mirrors the relay's limit+1: more rows past the cursor
       // than the page cap means another page exists. next_cursor is the last
       // retained row.
-      const hasMore = afterCursor.length > cap;
+      const referenceViewportHasOlderHistory =
+        referenceWorkspaceActive &&
+        args.cursor == null &&
+        args.channelId === REFERENCE_CHANNEL_IDS.sales &&
+        REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY;
+      const hasMore =
+        afterCursor.length > cap || referenceViewportHasOlderHistory;
       const lastRow = rows[rows.length - 1];
       const nextCursor =
         hasMore && lastRow
@@ -6083,6 +10479,22 @@ async function handleGetGlobalNotes(
   args: { limit?: number | null; before?: number | null } | null,
   config: E2eConfig | undefined,
 ): Promise<RawUserNotesResponse> {
+  const visualFixture = config?.mock?.visualFixture;
+  if (!isRelayMode(config) && visualFixture?.todayUpdates) {
+    const notes = visualFixture.todayUpdates
+      .filter((note) => (args?.before ? note.createdAt < args.before : true))
+      .sort((left, right) => right.createdAt - left.createdAt)
+      .slice(0, args?.limit ?? 50)
+      .map((note) => ({
+        id: note.id,
+        pubkey: note.pubkey,
+        content: note.content,
+        created_at: note.createdAt,
+        tags: note.tags.map((tag) => [...tag]),
+      }));
+    return { notes, next_cursor: null };
+  }
+
   const notes = [
     ...getMockUserNotes(DEFAULT_MOCK_IDENTITY.pubkey),
     ...getMockUserNotes(ALICE_PUBKEY),
@@ -6221,7 +10633,82 @@ function mulberry32(seed: number) {
 }
 
 let mockProjectEventStore: RelayEvent[] | null = null;
+let mockGoalEventStore: RelayEvent[] | null = null;
+let mockCompanyWorkEventStore: RelayEvent[] | null = null;
 const MOCK_PROJECT_BRANCHES_KEY = "buzz-e2e-project-branches";
+let mockFactoryRuns: FactoryRun[] = [];
+let mockFactorySnapshots = new Map<string, FactoryRunSnapshot>();
+let mockFactoryDrafts = new Map<string, FactoryRunDraft>();
+
+function filterMockFactoryRunRecordEvents(filter: MockFilter): RelayEvent[] {
+  const configured = getConfig()?.mock?.factoryRunRecordEvents ?? [];
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  return configured
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (
+        filter["#d"] &&
+        !filter["#d"].some((dTag) =>
+          event.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+        )
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .slice(0, filter.limit ?? 500)
+    .map((event) => structuredClone(event));
+}
+
+function resetMockFactoryRuntime(config?: E2eConfig) {
+  const seeds = config?.mock?.factoryRuns ?? [];
+  mockFactoryRuns = seeds.map((seed) => structuredClone(seed.run));
+  mockFactorySnapshots = new Map(
+    seeds.map((seed) => [
+      seed.run.id,
+      {
+        run: structuredClone(seed.run),
+        events: structuredClone(seed.events ?? []),
+        draft: seed.draft ?? null,
+        hasMore: seed.hasMore ?? false,
+      },
+    ]),
+  );
+  mockFactoryDrafts = new Map(
+    seeds
+      .filter(
+        (seed): seed is MockFactoryRunSeed & { draft: string } =>
+          typeof seed.draft === "string",
+      )
+      .map((seed) => [
+        seed.run.id,
+        {
+          runId: seed.run.id,
+          draft: seed.draft,
+          updatedAt: seed.run.updatedAt,
+        },
+      ]),
+  );
+}
+
+function getMockFactorySnapshot(
+  runId: string,
+  afterSequence = 0,
+): FactoryRunSnapshot {
+  const run = mockFactoryRuns.find((item) => item.id === runId);
+  if (!run) throw new Error("Factory run is not available in this scope.");
+  const stored = mockFactorySnapshots.get(runId);
+  return {
+    run: structuredClone(run),
+    events: structuredClone(
+      stored?.events.filter((event) => event.sequence > afterSequence) ?? [],
+    ),
+    draft: mockFactoryDrafts.get(runId)?.draft ?? stored?.draft ?? null,
+    hasMore: stored?.hasMore ?? false,
+  };
+}
 
 function readMockProjectBranches(): Record<string, Record<string, string>> {
   try {
@@ -6253,6 +10740,47 @@ function writeMockProjectBranch(
 }
 
 function buildMockProjectEvents(): RelayEvent[] {
+  const factoryProjects = getConfig()?.mock?.factoryProjects;
+  if (factoryProjects) {
+    const config = getConfig();
+    const owner = getMockMemberPubkey(config);
+    const now = Math.floor(Date.now() / 1000);
+    return factoryProjects.flatMap((project, index) => {
+      const repositoryAddress = `${KIND_REPO_ANNOUNCEMENT}:${owner}:${project.repositoryDtag}`;
+      return [
+        createMockEvent(
+          KIND_REPO_ANNOUNCEMENT,
+          project.description,
+          [
+            ["d", project.repositoryDtag],
+            ["name", project.repositoryName],
+            ["description", project.description],
+            ["default-branch", "main"],
+            ["clone", project.cloneUrl],
+            ["buzz-channel", STARTER_PROJECT_HOME_CHANNEL_ID],
+          ],
+          owner,
+          now - index,
+          mockEventId(),
+        ),
+        createMockEvent(
+          KIND_PROJECT_ANNOUNCEMENT,
+          "",
+          [
+            ["d", project.dtag],
+            ["name", project.name],
+            ["description", project.description],
+            ["a", repositoryAddress],
+            ["buzz-channel", STARTER_PROJECT_HOME_CHANNEL_ID],
+          ],
+          owner,
+          now - index,
+          mockEventId(),
+        ),
+      ];
+    });
+  }
+
   if (window.__BUZZ_E2E_EMPTY_PROJECTS__) {
     return [];
   }
@@ -6404,8 +10932,1306 @@ function getMockProjectEventStore(): RelayEvent[] {
   return mockProjectEventStore;
 }
 
+function getMockGoalEventStore(): RelayEvent[] {
+  if (!mockGoalEventStore) {
+    const persisted = window.localStorage.getItem("buzz-e2e-goal-events-v1");
+    if (persisted) {
+      try {
+        const value: unknown = JSON.parse(persisted);
+        mockGoalEventStore = Array.isArray(value)
+          ? (value as RelayEvent[])
+          : structuredClone(getConfig()?.mock?.goalEvents ?? []);
+      } catch {
+        mockGoalEventStore = structuredClone(
+          getConfig()?.mock?.goalEvents ?? [],
+        );
+      }
+    } else {
+      mockGoalEventStore = structuredClone(getConfig()?.mock?.goalEvents ?? []);
+    }
+  }
+  return mockGoalEventStore;
+}
+
+function persistMockGoalEventStore(): void {
+  window.localStorage.setItem(
+    "buzz-e2e-goal-events-v1",
+    JSON.stringify(getMockGoalEventStore()),
+  );
+}
+
+function mockGoalHeadByDTag(dTag: string): RelayEvent | undefined {
+  return getMockGoalEventStore().find(
+    (event) =>
+      event.kind === KIND_GOAL_HEAD &&
+      event.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+}
+
+function brokerMockGoalAction(event: RelayEvent): string | null {
+  if (!verifyEvent(event)) return "invalid: goal action signature is invalid.";
+  if (event.tags.length !== 1 || event.tags[0]?.[0] !== "d") {
+    return "invalid: company goal action must have one d tag.";
+  }
+  const dTag = event.tags[0][1];
+  const coordinate = /^company:goal:([0-9a-f-]{36})$/i.exec(dTag ?? "");
+  if (!coordinate) return "invalid: company goal d tag is malformed.";
+
+  let action: {
+    schemaVersion?: number;
+    goalId?: string;
+    action?: string;
+    expectedHeadEventId?: string;
+    goal?: Record<string, unknown>;
+    progress?: Record<string, unknown>;
+    status?: string;
+    reason?: string;
+  };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    return "invalid: goal action content is not JSON.";
+  }
+  if (
+    action.schemaVersion !== 1 ||
+    action.goalId?.toLowerCase() !== coordinate[1].toLowerCase()
+  ) {
+    return "invalid: goal action does not match its d tag.";
+  }
+  const rejectedActionIndex =
+    window.__BUZZ_E2E_REJECT_GOAL_ACTIONS__?.indexOf(action.action ?? "") ?? -1;
+  if (rejectedActionIndex >= 0) {
+    window.__BUZZ_E2E_REJECT_GOAL_ACTIONS__?.splice(rejectedActionIndex, 1);
+    return "conflict: mock goal action rejected.";
+  }
+
+  const existingEvent = mockGoalHeadByDTag(dTag);
+  let existing: Record<string, unknown> | null = null;
+  if (existingEvent) {
+    try {
+      existing = JSON.parse(existingEvent.content);
+    } catch {
+      return "error: stored mock goal head is invalid.";
+    }
+  }
+  if (action.action === "create") {
+    if (existingEvent) return "conflict: goal already exists.";
+    if (!action.goal) return "invalid: goal fields are required.";
+  } else {
+    if (!existingEvent || !existing) return "conflict: goal does not exist.";
+    if (action.expectedHeadEventId !== existingEvent.id) {
+      return `conflict: goal changed; current head is ${existingEvent.id}`;
+    }
+  }
+
+  const currentGoal = existing?.goal as Record<string, unknown> | undefined;
+  const currentStatus =
+    typeof existing?.status === "string" ? existing.status : "active";
+  let nextGoal = currentGoal;
+  let nextProgress = existing?.progress;
+  let nextStatus = currentStatus;
+  switch (action.action) {
+    case "create":
+    case "update":
+      nextGoal = action.goal;
+      break;
+    case "progress":
+      if (!action.progress || typeof action.progress.evidence !== "string") {
+        return "invalid: progress evidence is required.";
+      }
+      if (
+        action.status !== undefined &&
+        !["active", "off_pace", "achieved"].includes(action.status)
+      ) {
+        return "invalid: progress status is not supported.";
+      }
+      nextProgress = {
+        ...action.progress,
+        recordedByPubkey: event.pubkey,
+        recordedAt: new Date().toISOString(),
+      };
+      if (action.status) nextStatus = action.status;
+      break;
+    case "set_status":
+      if (!action.status || !action.reason) {
+        return "invalid: status and reason are required.";
+      }
+      nextStatus = action.status;
+      break;
+    case "archive":
+      if (action.reason !== undefined && !action.reason.trim()) {
+        return "invalid: reason must not be empty.";
+      }
+      nextStatus = "archived";
+      break;
+    case "restore":
+      nextStatus = "active";
+      break;
+    case "delete":
+      if (action.reason !== undefined && !action.reason.trim()) {
+        return "invalid: reason must not be empty.";
+      }
+      if (
+        getMockGoalEventStore().some((candidate) => {
+          if (candidate.kind !== KIND_GOAL_HEAD) return false;
+          try {
+            const candidateContent = JSON.parse(candidate.content) as {
+              status?: string;
+              goal?: { parentGoalId?: string };
+            };
+            return (
+              candidateContent.status !== "deleted" &&
+              candidateContent.goal?.parentGoalId === action.goalId
+            );
+          } catch {
+            return false;
+          }
+        })
+      ) {
+        return "conflict: goal has non-deleted sub-goals.";
+      }
+      if (
+        getMockCompanyWorkEventStore().some((candidate) => {
+          if (candidate.kind !== KIND_WORK_ITEM_HEAD) return false;
+          try {
+            const candidateContent = JSON.parse(candidate.content) as {
+              goalId?: string;
+            };
+            return candidateContent.goalId === action.goalId;
+          } catch {
+            return false;
+          }
+        })
+      ) {
+        return "conflict: goal has linked company work items.";
+      }
+      nextGoal = undefined;
+      nextProgress = undefined;
+      nextStatus = "deleted";
+      break;
+    default:
+      return "invalid: unsupported goal action.";
+  }
+
+  const privateKey = getConfig()?.mock?.goalRelayPrivateKey;
+  if (!privateKey)
+    return "error: mock goal relay signing key is not configured.";
+  const relayPubkey = getPublicKey(hexToBytes(privateKey));
+  const configuredRelayPubkey = getConfig()?.mock?.relaySelf;
+  if (
+    configuredRelayPubkey &&
+    configuredRelayPubkey.toLowerCase() !== relayPubkey.toLowerCase()
+  ) {
+    return "error: mock goal relay key does not match relay self.";
+  }
+
+  const content = {
+    schemaVersion: 1,
+    goalId: action.goalId,
+    status: nextStatus,
+    title:
+      typeof nextGoal?.title === "string"
+        ? nextGoal.title
+        : typeof existing?.title === "string"
+          ? existing.title
+          : "",
+    ...(nextGoal ? { goal: nextGoal } : {}),
+    ...(nextProgress ? { progress: nextProgress } : {}),
+    sourceActionEventId: event.id,
+  };
+  const head = finalizeEvent(
+    {
+      kind: KIND_GOAL_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (existingEvent?.created_at ?? 0) + 1,
+      ),
+      tags: [["d", dTag]],
+      content: JSON.stringify(content),
+    },
+    hexToBytes(privateKey),
+  );
+  const store = getMockGoalEventStore();
+  store.push(event);
+  if (existingEvent) {
+    const index = store.findIndex(
+      (candidate) => candidate.id === existingEvent.id,
+    );
+    if (index >= 0) store.splice(index, 1);
+  }
+  store.push(head);
+  persistMockGoalEventStore();
+  return null;
+}
+
+function filterMockGoalEvents(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const ids = filter.ids ? new Set(filter.ids) : null;
+  return getMockGoalEventStore()
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (ids && !ids.has(event.id)) return false;
+      if (
+        filter["#d"] &&
+        !event.tags.some(
+          (tag) => tag[0] === "d" && filter["#d"]?.includes(tag[1]),
+        )
+      ) {
+        return false;
+      }
+      if (filter.since !== undefined && event.created_at < filter.since) {
+        return false;
+      }
+      if (filter.until !== undefined && event.created_at > filter.until) {
+        return false;
+      }
+      return true;
+    })
+    .sort(
+      (left, right) =>
+        right.created_at - left.created_at || left.id.localeCompare(right.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
+type MockCompanyWorkInput = {
+  schemaVersion: number;
+  workItemId: string;
+  title: string;
+  status: string;
+  assignedPubkeys: string[];
+  approverPubkeys: string[];
+  deliverables: unknown[];
+  requesterPubkey: string;
+  doneCondition: string;
+  goalId?: string;
+  sourceEventId?: string;
+  threadRootEventId?: string;
+  evidence?: string;
+};
+
+function findMockCompanyWorkMessage(eventId: string) {
+  for (const [channelId, events] of mockMessages) {
+    const event = events.find(
+      (candidate) =>
+        candidate.id === eventId &&
+        [KIND_STREAM_MESSAGE, KIND_STREAM_MESSAGE_V2].includes(candidate.kind),
+    );
+    if (event) return { channelId, event };
+  }
+  return null;
+}
+
+function mockCompanyWorkGoalIsLive(goalId: string): boolean {
+  const goalEvent = mockGoalHeadByDTag(`company:goal:${goalId}`);
+  if (!goalEvent) return false;
+  try {
+    const content: unknown = JSON.parse(goalEvent.content);
+    if (content === null || typeof content !== "object") return false;
+    const status = (content as { status?: unknown }).status;
+    return status !== "archived" && status !== "deleted";
+  } catch {
+    return false;
+  }
+}
+
+function brokerMockCompanyWorkAction(event: RelayEvent): string | null {
+  if (!verifyEvent(event))
+    return "invalid: company work action signature is invalid.";
+  if (
+    event.tags.length !== 2 ||
+    event.tags.some(
+      (tag) => tag.length !== 2 || (tag[0] !== "h" && tag[0] !== "d"),
+    )
+  ) {
+    return "invalid: company work action must have one h tag and one d tag.";
+  }
+  const channelTags = event.tags.filter((tag) => tag[0] === "h");
+  const dTags = event.tags.filter((tag) => tag[0] === "d");
+  const channelId = channelTags[0]?.[1];
+  const dTag = dTags[0]?.[1];
+  const coordinate = /^company:work:([0-9a-f-]{36})$/i.exec(dTag ?? "");
+  if (
+    channelTags.length !== 1 ||
+    dTags.length !== 1 ||
+    !channelId ||
+    !coordinate
+  ) {
+    return "invalid: company work coordinate is malformed.";
+  }
+  const signer = event.pubkey.toLowerCase();
+  const channel = [...buildVisualChannels(getConfig()), ...mockChannels].find(
+    (candidate) => candidate.id.toLowerCase() === channelId.toLowerCase(),
+  );
+  if (channel?.channel_type !== "stream" || channel.archived_at !== null) {
+    return "restricted: company work requires an active stream conversation.";
+  }
+  if (
+    !channel.members.some((member) => member.pubkey.toLowerCase() === signer)
+  ) {
+    return "restricted: actor is not a member of the work channel.";
+  }
+  if (
+    !mockRelayMembers.some((member) => member.pubkey.toLowerCase() === signer)
+  ) {
+    return "restricted: actor is not a member of this community.";
+  }
+
+  let action: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(event.content);
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      return "invalid: company work action content is not an object.";
+    }
+    action = parsed as Record<string, unknown>;
+  } catch {
+    return "invalid: company work action content is not JSON.";
+  }
+  const workItemId = action.workItemId;
+  const actionKind = action.action;
+  if (
+    action.schemaVersion !== 1 ||
+    typeof workItemId !== "string" ||
+    workItemId.toLowerCase() !== coordinate[1].toLowerCase() ||
+    typeof actionKind !== "string"
+  ) {
+    return "invalid: company work action does not match its coordinate.";
+  }
+
+  const store = getMockCompanyWorkEventStore();
+  const existingEvent = mockCompanyWorkHeadByDTag(dTag);
+  if (
+    existingEvent &&
+    (
+      existingEvent.tags.find((tag) => tag[0] === "h")?.[1] ?? ""
+    ).toLowerCase() !== channelId.toLowerCase()
+  ) {
+    return "conflict: company work item belongs to another channel.";
+  }
+  let previous: Record<string, unknown> | null = null;
+  if (existingEvent) {
+    try {
+      const parsed: unknown = JSON.parse(existingEvent.content);
+      if (
+        parsed === null ||
+        typeof parsed !== "object" ||
+        Array.isArray(parsed)
+      ) {
+        return "error: stored company work head is invalid.";
+      }
+      previous = parsed as Record<string, unknown>;
+    } catch {
+      return "error: stored company work head is invalid.";
+    }
+  }
+
+  const configuredRole = getConfig()?.mock?.relayRole;
+  const configuredMember = getConfig()?.mock?.relayMembers?.find(
+    (member) => member.pubkey.toLowerCase() === signer,
+  );
+  const communityAdmin =
+    configuredRole === "owner" ||
+    configuredRole === "admin" ||
+    configuredMember?.role === "owner" ||
+    configuredMember?.role === "admin";
+  const expectedHeadEventId = action.expectedHeadEventId;
+  if (actionKind === "create") {
+    if (existingEvent) return "conflict: company work item already exists.";
+    if (expectedHeadEventId !== undefined) {
+      return "invalid: create must not include an expected head.";
+    }
+  } else {
+    if (!existingEvent || !previous) {
+      return "conflict: company work item does not exist.";
+    }
+    if (expectedHeadEventId !== existingEvent.id) {
+      return "conflict: company work item changed; retry from its latest head.";
+    }
+  }
+
+  let next: Record<string, unknown>;
+  let nextChannelId = channelId;
+  if (actionKind === "create" || actionKind === "update") {
+    const input = action.head;
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      return "invalid: company work head is required.";
+    }
+    const head = input as unknown as MockCompanyWorkInput;
+    if (
+      head.schemaVersion !== 1 ||
+      typeof head.workItemId !== "string" ||
+      head.workItemId.toLowerCase() !== coordinate[1].toLowerCase() ||
+      typeof head.title !== "string" ||
+      !head.title.trim() ||
+      typeof head.doneCondition !== "string" ||
+      !head.doneCondition.trim() ||
+      !Array.isArray(head.assignedPubkeys) ||
+      head.assignedPubkeys.length !== 1 ||
+      !head.assignedPubkeys.every(
+        (pubkey) =>
+          typeof pubkey === "string" && /^[0-9a-f]{64}$/i.test(pubkey),
+      ) ||
+      !Array.isArray(head.approverPubkeys) ||
+      !Array.isArray(head.deliverables) ||
+      typeof head.requesterPubkey !== "string" ||
+      !/^[0-9a-f]{64}$/i.test(head.requesterPubkey)
+    ) {
+      return "invalid: company work item fields are incomplete.";
+    }
+    if (actionKind === "create" && head.status !== "active") {
+      return "invalid: new company work items must start active.";
+    }
+    if (
+      actionKind === "update" &&
+      (!previous ||
+        head.status !== previous.status ||
+        JSON.stringify(head.deliverables) !==
+          JSON.stringify(previous.deliverables) ||
+        head.sourceEventId !== previous.sourceEventId)
+    ) {
+      return "invalid: work status, deliverables, or source message changed in an edit.";
+    }
+    const priorOwner = Array.isArray(previous?.assignedPubkeys)
+      ? previous.assignedPubkeys.some(
+          (pubkey) =>
+            typeof pubkey === "string" && pubkey.toLowerCase() === signer,
+        )
+      : false;
+    const priorRequester = previous?.requesterPubkey === signer;
+    if (
+      actionKind === "update" &&
+      !priorOwner &&
+      !priorRequester &&
+      !communityAdmin
+    ) {
+      return "restricted: only the work owner, requester, or a community owner or admin can edit.";
+    }
+    if (
+      typeof head.goalId === "string" &&
+      (actionKind === "create" || head.goalId !== previous?.goalId) &&
+      !mockCompanyWorkGoalIsLive(head.goalId)
+    ) {
+      return "conflict: linked company goal is unavailable.";
+    }
+    const hasSourceEventId = head.sourceEventId !== undefined;
+    const hasThreadRootEventId = head.threadRootEventId !== undefined;
+    if (
+      (actionKind === "create" && hasSourceEventId !== hasThreadRootEventId) ||
+      (actionKind === "update" &&
+        Boolean(previous?.threadRootEventId) &&
+        !hasThreadRootEventId) ||
+      (hasSourceEventId &&
+        (typeof head.sourceEventId !== "string" ||
+          !/^[0-9a-f]{64}$/i.test(head.sourceEventId))) ||
+      (hasThreadRootEventId &&
+        (typeof head.threadRootEventId !== "string" ||
+          !/^[0-9a-f]{64}$/i.test(head.threadRootEventId))) ||
+      (hasSourceEventId && !hasThreadRootEventId)
+    ) {
+      return "invalid: source message and thread root must be provided together.";
+    }
+    const source = hasSourceEventId
+      ? findMockCompanyWorkMessage(head.sourceEventId as string)
+      : null;
+    const threadRoot = hasThreadRootEventId
+      ? findMockCompanyWorkMessage(head.threadRootEventId as string)
+      : null;
+    if (hasSourceEventId && !source) {
+      return "invalid: source message is unavailable.";
+    }
+    if (hasThreadRootEventId && !threadRoot) {
+      return "invalid: destination thread is unavailable.";
+    }
+    if (
+      actionKind === "create" &&
+      ((source && source.channelId.toLowerCase() !== channelId.toLowerCase()) ||
+        (threadRoot &&
+          threadRoot.channelId.toLowerCase() !== channelId.toLowerCase()))
+    ) {
+      return "invalid: source message or thread root is outside the work channel.";
+    }
+    if (
+      actionKind === "update" &&
+      hasThreadRootEventId &&
+      head.threadRootEventId !== previous?.threadRootEventId
+    ) {
+      if (!threadRoot) {
+        return "invalid: destination thread is unavailable.";
+      }
+      const destinationChannelId = threadRoot.channelId;
+      const destinationChannel = [
+        ...buildVisualChannels(getConfig()),
+        ...mockChannels,
+      ].find(
+        (candidate) =>
+          candidate.id.toLowerCase() === destinationChannelId.toLowerCase(),
+      );
+      if (
+        destinationChannel?.channel_type !== "stream" ||
+        destinationChannel.archived_at !== null
+      ) {
+        return "restricted: destination must be an active stream conversation.";
+      }
+      if (getThreadReferenceFromTags(threadRoot.event.tags).parentEventId) {
+        return "invalid: work can only move to a conversation thread root.";
+      }
+      const sourceChannel = [
+        ...buildVisualChannels(getConfig()),
+        ...mockChannels,
+      ].find(
+        (candidate) => candidate.id.toLowerCase() === channelId.toLowerCase(),
+      );
+      if (!sourceChannel) {
+        return "restricted: source conversation is unavailable.";
+      }
+      const roleSet = (candidate: MockChannel) =>
+        candidate.members
+          .map((member) => `${member.pubkey.toLowerCase()}:${member.role}`)
+          .sort();
+      const sourceRoles = roleSet(sourceChannel);
+      const destinationRoles = roleSet(destinationChannel);
+      if (
+        sourceChannel.visibility !== destinationChannel.visibility ||
+        sourceRoles.length !== destinationRoles.length ||
+        !sourceRoles.every((role, index) => role === destinationRoles[index])
+      ) {
+        return "restricted: moving work would change conversation membership or permissions.";
+      }
+      const destinationMembers = new Set(
+        destinationChannel.members.map((member) => member.pubkey.toLowerCase()),
+      );
+      if (
+        !destinationMembers.has(signer) ||
+        !destinationMembers.has(head.requesterPubkey.toLowerCase()) ||
+        !head.assignedPubkeys.every((pubkey) =>
+          destinationMembers.has(pubkey.toLowerCase()),
+        )
+      ) {
+        return "restricted: the work owner, requester, and actor must remain conversation members.";
+      }
+      nextChannelId = destinationChannelId;
+    } else if (
+      actionKind === "update" &&
+      threadRoot &&
+      threadRoot.channelId.toLowerCase() !== channelId.toLowerCase()
+    ) {
+      return "invalid: the thread root does not match the work channel.";
+    }
+    next = {
+      schemaVersion: 1,
+      workItemId: coordinate[1].toLowerCase(),
+      title: head.title,
+      status: actionKind === "create" ? "active" : previous?.status,
+      assignedPubkeys: head.assignedPubkeys.map((pubkey) =>
+        pubkey.toLowerCase(),
+      ),
+      approverPubkeys: head.approverPubkeys,
+      deliverables: head.deliverables,
+      requesterPubkey: head.requesterPubkey.toLowerCase(),
+      doneCondition: head.doneCondition,
+      ...(head.goalId ? { goalId: head.goalId.toLowerCase() } : {}),
+      ...(head.sourceEventId
+        ? { sourceEventId: head.sourceEventId.toLowerCase() }
+        : {}),
+      ...(head.threadRootEventId
+        ? { threadRootEventId: head.threadRootEventId.toLowerCase() }
+        : {}),
+      ...(head.evidence ? { evidence: head.evidence } : {}),
+      ...(typeof previous?.statusReason === "string"
+        ? { statusReason: previous.statusReason }
+        : {}),
+      ...(previous?.verification
+        ? { verification: previous.verification }
+        : {}),
+      sourceActionEventId: event.id,
+    };
+  } else if (actionKind === "set_due_date" || actionKind === "clear_due_date") {
+    if (!previous) return "conflict: company work item does not exist.";
+    const assigned = Array.isArray(previous.assignedPubkeys)
+      ? previous.assignedPubkeys
+      : [];
+    const isOwner = assigned.some(
+      (pubkey) => typeof pubkey === "string" && pubkey.toLowerCase() === signer,
+    );
+    const isRequester =
+      typeof previous.requesterPubkey === "string" &&
+      previous.requesterPubkey.toLowerCase() === signer;
+    if (!isOwner && !isRequester && !communityAdmin) {
+      return "restricted: only the work owner, requester, or a community owner or admin can edit this item.";
+    }
+    if (previous.status === "archived") {
+      return "conflict: archived company work items are read-only.";
+    }
+    if (actionKind === "set_due_date") {
+      const dueAt = action.dueAt;
+      if (
+        typeof dueAt !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(dueAt) ||
+        !Number.isFinite(Date.parse(dueAt))
+      ) {
+        return "invalid: dueAt must be valid UTC RFC 3339.";
+      }
+      if (
+        typeof previous.acceptedAt === "string" &&
+        Date.parse(dueAt) <= Date.parse(previous.acceptedAt)
+      ) {
+        return "invalid: dueAt must be later than acceptance.";
+      }
+      if (previous.dueAt === dueAt) {
+        return "conflict: company work item already has this due date.";
+      }
+      next = { ...previous, dueAt, sourceActionEventId: event.id };
+    } else {
+      if (typeof previous.dueAt !== "string") {
+        return "conflict: company work item has no due date to clear.";
+      }
+      const { dueAt: _dueAt, ...withoutDueDate } = previous;
+      next = { ...withoutDueDate, sourceActionEventId: event.id };
+    }
+  } else if (actionKind === "set_status") {
+    if (!previous) return "conflict: company work item does not exist.";
+    const assigned = Array.isArray(previous.assignedPubkeys)
+      ? previous.assignedPubkeys
+      : [];
+    const isOwner = assigned.some(
+      (pubkey) => typeof pubkey === "string" && pubkey.toLowerCase() === signer,
+    );
+    const allowedStatuses = ["active", "paused", "blocked", "done_unverified"];
+    if (
+      !allowedStatuses.includes(String(action.status)) ||
+      typeof action.reason !== "string" ||
+      !action.reason.trim()
+    ) {
+      return "invalid: status and reason are required.";
+    }
+    if (!isOwner && !communityAdmin) {
+      return "restricted: only the work owner or a community owner or admin can change status.";
+    }
+    if (action.status === "done_unverified" && !isOwner) {
+      return "restricted: only the work owner can submit work for verification.";
+    }
+    if (["archived", "done_verified"].includes(String(previous.status))) {
+      return "conflict: this company work status cannot be changed.";
+    }
+    next = {
+      ...previous,
+      status: action.status,
+      statusReason: action.reason,
+      sourceActionEventId: event.id,
+    };
+  } else if (actionKind === "verify") {
+    if (previous?.status !== "done_unverified") {
+      return "conflict: company work item is not awaiting verification.";
+    }
+    const isRequester =
+      typeof previous.requesterPubkey === "string" &&
+      previous.requesterPubkey.toLowerCase() === signer;
+    const verification = action.verification;
+    if (!communityAdmin && !isRequester) {
+      return "restricted: only a community owner, admin, or requester can verify.";
+    }
+    if (
+      verification === null ||
+      typeof verification !== "object" ||
+      Array.isArray(verification)
+    ) {
+      return "invalid: company work verification is required.";
+    }
+    const input = verification as Record<string, unknown>;
+    if (
+      (input.verdict !== "pass" && input.verdict !== "revision_requested") ||
+      typeof input.reason !== "string" ||
+      !input.reason.trim() ||
+      typeof input.evidence !== "string" ||
+      !input.evidence.trim()
+    ) {
+      return "invalid: verification reason and evidence are required.";
+    }
+    next = {
+      ...previous,
+      status: input.verdict === "pass" ? "done_verified" : "active",
+      statusReason: input.reason,
+      verification: {
+        verdict: input.verdict,
+        reason: input.reason,
+        evidence: input.evidence,
+        reviewerPubkey: signer,
+        reviewedAt: new Date().toISOString(),
+        sourceActionEventId: event.id,
+      },
+      sourceActionEventId: event.id,
+    };
+  } else if (actionKind === "archive" || actionKind === "restore") {
+    if (!previous) return "conflict: company work item does not exist.";
+    const assigned = Array.isArray(previous.assignedPubkeys)
+      ? previous.assignedPubkeys
+      : [];
+    const isOwner = assigned.some(
+      (pubkey) => typeof pubkey === "string" && pubkey.toLowerCase() === signer,
+    );
+    const isRequester =
+      typeof previous.requesterPubkey === "string" &&
+      previous.requesterPubkey.toLowerCase() === signer;
+    if (!isOwner && !isRequester && !communityAdmin) {
+      return "restricted: only the work owner, requester, or a community owner or admin can archive or restore.";
+    }
+    if (actionKind === "restore" && previous.status !== "archived") {
+      return "conflict: only archived work can be restored.";
+    }
+    next = {
+      ...previous,
+      status: actionKind === "archive" ? "archived" : "active",
+      sourceActionEventId: event.id,
+    };
+  } else {
+    return "invalid: unsupported company work action.";
+  }
+
+  const privateKey = getConfig()?.mock?.companyWorkRelayPrivateKey;
+  if (!privateKey)
+    return "error: mock company work relay signing key is not configured.";
+  let relaySecret: Uint8Array;
+  try {
+    relaySecret = hexToBytes(privateKey);
+  } catch {
+    return "error: mock company work relay key is invalid.";
+  }
+  const relayPubkey = getPublicKey(relaySecret);
+  if (
+    relayPubkey.toLowerCase() !== getConfig()?.mock?.relaySelf?.toLowerCase()
+  ) {
+    return "error: mock company work relay key does not match relay self.";
+  }
+
+  const headEvent = finalizeEvent(
+    {
+      kind: KIND_WORK_ITEM_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (existingEvent?.created_at ?? 0) + 1,
+      ),
+      tags: [
+        ["h", nextChannelId],
+        ["d", dTag],
+      ],
+      content: JSON.stringify(next),
+    },
+    relaySecret,
+  );
+  store.push(event);
+  if (existingEvent) {
+    const index = store.findIndex(
+      (candidate) => candidate.id === existingEvent.id,
+    );
+    if (index >= 0) store.splice(index, 1);
+  }
+  store.push(headEvent);
+  persistMockCompanyWorkEventStore();
+  emitMockLiveEvent(nextChannelId, headEvent);
+  return null;
+}
+
+function getMockCompanyWorkEventStore(): RelayEvent[] {
+  if (!mockCompanyWorkEventStore) {
+    const persisted = window.localStorage.getItem(
+      "buzz-e2e-company-work-events-v1",
+    );
+    if (persisted) {
+      try {
+        const value: unknown = JSON.parse(persisted);
+        mockCompanyWorkEventStore = Array.isArray(value)
+          ? (value as RelayEvent[])
+          : structuredClone(getConfig()?.mock?.companyWorkEvents ?? []);
+      } catch {
+        mockCompanyWorkEventStore = structuredClone(
+          getConfig()?.mock?.companyWorkEvents ?? [],
+        );
+      }
+    } else {
+      mockCompanyWorkEventStore = structuredClone(
+        getConfig()?.mock?.companyWorkEvents ?? [],
+      );
+    }
+  }
+  return mockCompanyWorkEventStore;
+}
+
+function persistMockCompanyWorkEventStore(): void {
+  window.localStorage.setItem(
+    "buzz-e2e-company-work-events-v1",
+    JSON.stringify(getMockCompanyWorkEventStore()),
+  );
+}
+
+function mockCompanyWorkHeadByDTag(dTag: string): RelayEvent | undefined {
+  return getMockCompanyWorkEventStore().find(
+    (event) =>
+      event.kind === KIND_WORK_ITEM_HEAD &&
+      event.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+}
+
+function mockCompanyWorkTrackingHeadByDTag(
+  dTag: string,
+): RelayEvent | undefined {
+  return getMockCompanyWorkEventStore().find(
+    (event) =>
+      event.kind === KIND_COMPANY_WORK_TRACKING_HEAD &&
+      event.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+  );
+}
+
+function brokerMockCompanyWorkTrackingAction(event: RelayEvent): string | null {
+  if (!verifyEvent(event)) {
+    return "invalid: company work tracking action signature is invalid.";
+  }
+  const watchdogDTag = event.tags.find((tag) => tag[0] === "d")?.[1];
+  if (watchdogDTag?.startsWith("company:work-watchdog:")) {
+    return brokerMockCompanyWatchdogAction(event, watchdogDTag);
+  }
+  if (
+    event.tags.length !== 2 ||
+    event.tags.some(
+      (tag) => tag.length !== 2 || (tag[0] !== "h" && tag[0] !== "d"),
+    )
+  ) {
+    return "invalid: company work tracking action must have one h tag and one d tag.";
+  }
+  const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+  const dTag = event.tags.find((tag) => tag[0] === "d")?.[1];
+  const match = /^company:work-suggestion:([0-9a-f-]{36})$/i.exec(dTag ?? "");
+  if (!channelId || !dTag || !match) {
+    return "invalid: company work tracking coordinate is malformed.";
+  }
+  const signer = event.pubkey.toLowerCase();
+  const channel = [...buildVisualChannels(getConfig()), ...mockChannels].find(
+    (candidate) => candidate.id.toLowerCase() === channelId.toLowerCase(),
+  );
+  if (channel?.channel_type !== "stream" || channel.archived_at !== null) {
+    return "restricted: company work tracking requires an active stream conversation.";
+  }
+  if (
+    !channel.members.some((member) => member.pubkey.toLowerCase() === signer) ||
+    !mockRelayMembers.some((member) => member.pubkey.toLowerCase() === signer)
+  ) {
+    return "restricted: actor is not a member of the suggestion channel.";
+  }
+
+  let action: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(event.content);
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      return "invalid: company work tracking action content is not an object.";
+    }
+    action = parsed as Record<string, unknown>;
+  } catch {
+    return "invalid: company work tracking action content is not JSON.";
+  }
+  const suggestionId = action.recordId;
+  if (
+    action.schemaVersion !== 1 ||
+    typeof suggestionId !== "string" ||
+    suggestionId.toLowerCase() !== match[1].toLowerCase() ||
+    (action.action !== "accept" && action.action !== "dismiss")
+  ) {
+    return "invalid: unsupported company work tracking action.";
+  }
+  const current = mockCompanyWorkTrackingHeadByDTag(dTag);
+  if (
+    !current ||
+    current.tags.find((tag) => tag[0] === "h")?.[1] !== channelId
+  ) {
+    return "conflict: commitment suggestion does not exist in this channel.";
+  }
+  if (action.expectedHeadEventId !== current.id) {
+    return "conflict: commitment suggestion changed; retry from its latest head.";
+  }
+  let head: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(current.content);
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed) ||
+      (parsed as { recordType?: unknown }).recordType !==
+        "commitment_suggestion" ||
+      (parsed as { status?: unknown }).status !== "pending"
+    ) {
+      return "conflict: commitment suggestion is not pending.";
+    }
+    head = parsed as Record<string, unknown>;
+  } catch {
+    return "error: stored commitment suggestion is invalid.";
+  }
+
+  let relaySecret: Uint8Array;
+  const privateKey = getConfig()?.mock?.companyWorkRelayPrivateKey;
+  if (!privateKey) {
+    return "error: mock company work relay signing key is not configured.";
+  }
+  try {
+    relaySecret = hexToBytes(privateKey);
+  } catch {
+    return "error: mock company work relay key is invalid.";
+  }
+  const relayPubkey = getPublicKey(relaySecret);
+  if (
+    relayPubkey.toLowerCase() !== getConfig()?.mock?.relaySelf?.toLowerCase()
+  ) {
+    return "error: mock company work relay key does not match relay self.";
+  }
+
+  const createdAt = Math.max(
+    Math.floor(Date.now() / 1_000),
+    current.created_at + 1,
+  );
+  const store = getMockCompanyWorkEventStore();
+  let createdWorkHead: RelayEvent | null = null;
+  if (action.action === "accept") {
+    const acceptedWorkItemId = action.acceptedWorkItemId;
+    if (
+      typeof acceptedWorkItemId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        acceptedWorkItemId,
+      )
+    ) {
+      return "invalid: acceptedWorkItemId must be a UUID.";
+    }
+    const workDTag = `company:work:${acceptedWorkItemId.toLowerCase()}`;
+    if (mockCompanyWorkHeadByDTag(workDTag)) {
+      return "conflict: accepted work item id already exists.";
+    }
+    const sourceEventId = head.sourceEventId;
+    const source =
+      typeof sourceEventId === "string"
+        ? findMockCompanyWorkMessage(sourceEventId)
+        : null;
+    if (!source || source.channelId.toLowerCase() !== channelId.toLowerCase()) {
+      return "invalid: suggestion source message is unavailable.";
+    }
+    if (
+      typeof head.expiresAt === "string" &&
+      Date.parse(head.expiresAt) <= Date.now()
+    ) {
+      return "conflict: commitment suggestion has expired.";
+    }
+    const input = head.workItem;
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      return "error: stored commitment suggestion work item is invalid.";
+    }
+    const workItem = input as Record<string, unknown>;
+    const acceptedAt = new Date().toISOString();
+    if (
+      typeof workItem.dueAt === "string" &&
+      Date.parse(workItem.dueAt) <= Date.parse(acceptedAt)
+    ) {
+      return "invalid: dueAt must be later than acceptance.";
+    }
+    const nextWorkItem = {
+      ...workItem,
+      workItemId: acceptedWorkItemId.toLowerCase(),
+      sourceEventId: source.event.id,
+      threadRootEventId:
+        typeof workItem.threadRootEventId === "string"
+          ? workItem.threadRootEventId
+          : source.event.id,
+      acceptedAt,
+      sourceActionEventId: event.id,
+    };
+    createdWorkHead = finalizeEvent(
+      {
+        kind: KIND_WORK_ITEM_HEAD,
+        created_at: createdAt,
+        tags: [
+          ["h", channelId],
+          ["d", workDTag],
+        ],
+        content: JSON.stringify(nextWorkItem),
+      },
+      relaySecret,
+    );
+    head.status = "accepted";
+    head.acceptedWorkItemId = acceptedWorkItemId.toLowerCase();
+  } else {
+    head.status = "dismissed";
+  }
+  head.sourceActionEventId = event.id;
+  const nextTrackingHead = finalizeEvent(
+    {
+      kind: KIND_COMPANY_WORK_TRACKING_HEAD,
+      created_at: createdAt,
+      tags: [
+        ["h", channelId],
+        ["d", dTag],
+      ],
+      content: JSON.stringify(head),
+    },
+    relaySecret,
+  );
+  const index = store.findIndex((candidate) => candidate.id === current.id);
+  if (index >= 0) store.splice(index, 1);
+  store.push(event, nextTrackingHead);
+  if (createdWorkHead) store.push(createdWorkHead);
+  persistMockCompanyWorkEventStore();
+  emitMockLiveEvent(channelId, event);
+  emitMockLiveEvent(channelId, nextTrackingHead);
+  if (createdWorkHead) emitMockLiveEvent(channelId, createdWorkHead);
+  return null;
+}
+
+function brokerMockCompanyWatchdogAction(
+  event: RelayEvent,
+  dTag: string,
+): string | null {
+  const coordinate = /^company:work-watchdog:([0-9a-f-]{36})$/i.exec(dTag);
+  const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+  if (
+    !coordinate ||
+    !channelId ||
+    event.tags.length !== 2 ||
+    event.tags.some(
+      (tag) => tag.length !== 2 || (tag[0] !== "h" && tag[0] !== "d"),
+    )
+  ) {
+    return "invalid: watchdog configuration coordinate is malformed.";
+  }
+  const workItemId = coordinate[1].toLowerCase();
+  let action: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(event.content);
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      return "invalid: watchdog action content is not an object.";
+    }
+    action = parsed as Record<string, unknown>;
+  } catch {
+    return "invalid: watchdog action content is not JSON.";
+  }
+  if (
+    action.schemaVersion !== 1 ||
+    action.action !== "configure" ||
+    typeof action.recordId !== "string" ||
+    action.recordId.toLowerCase() !== workItemId ||
+    !action.config ||
+    typeof action.config !== "object" ||
+    Array.isArray(action.config)
+  ) {
+    return "invalid: watchdog configuration is incomplete.";
+  }
+  const config = action.config as Record<string, unknown>;
+  if (
+    (config.checkWhen !== "no_update" &&
+      config.checkWhen !== "due_date_passes" &&
+      config.checkWhen !== "worker_reports_failure") ||
+    !Number.isInteger(config.checkIntervalSeconds) ||
+    Number(config.checkIntervalSeconds) <= 0 ||
+    Number(config.checkIntervalSeconds) > 4_294_967_295 ||
+    (config.askFirstPubkey !== undefined &&
+      (typeof config.askFirstPubkey !== "string" ||
+        !/^[0-9a-f]{64}$/i.test(config.askFirstPubkey)))
+  ) {
+    return "invalid: watchdog configuration requires an explicit positive interval.";
+  }
+  const signer = event.pubkey.toLowerCase();
+  const channel = [...buildVisualChannels(getConfig()), ...mockChannels].find(
+    (candidate) => candidate.id.toLowerCase() === channelId.toLowerCase(),
+  );
+  if (
+    channel?.channel_type !== "stream" ||
+    channel.archived_at !== null ||
+    !channel.members.some((member) => member.pubkey.toLowerCase() === signer) ||
+    !mockRelayMembers.some((member) => member.pubkey.toLowerCase() === signer)
+  ) {
+    return "restricted: watchdog configuration requires a current channel member.";
+  }
+  const work = mockCompanyWorkHeadByDTag(`company:work:${workItemId}`);
+  if (
+    !work ||
+    work.tags.find((tag) => tag[0] === "h")?.[1]?.toLowerCase() !==
+      channelId.toLowerCase()
+  ) {
+    return "conflict: company work item does not exist in this channel.";
+  }
+  let workHead: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(work.content);
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      return "error: stored company work head is invalid.";
+    }
+    workHead = parsed as Record<string, unknown>;
+  } catch {
+    return "error: stored company work head is invalid.";
+  }
+  if (
+    ["archived", "done_unverified", "done_verified"].includes(
+      String(workHead.status),
+    )
+  ) {
+    return "conflict: completed or archived work cannot enable a watchdog.";
+  }
+  const configuredRole = getConfig()?.mock?.relayRole;
+  const configuredMember = getConfig()?.mock?.relayMembers?.find(
+    (member) => member.pubkey.toLowerCase() === signer,
+  );
+  const communityAdmin =
+    configuredRole === "owner" ||
+    configuredRole === "admin" ||
+    configuredMember?.role === "owner" ||
+    configuredMember?.role === "admin";
+  const isOwner =
+    Array.isArray(workHead.assignedPubkeys) &&
+    workHead.assignedPubkeys.some(
+      (pubkey) => typeof pubkey === "string" && pubkey.toLowerCase() === signer,
+    );
+  const isRequester =
+    typeof workHead.requesterPubkey === "string" &&
+    workHead.requesterPubkey.toLowerCase() === signer;
+  if (!communityAdmin && !isOwner && !isRequester) {
+    return "restricted: only the work owner, requester, or a community owner or admin can configure its watchdog.";
+  }
+  const current = mockCompanyWorkTrackingHeadByDTag(dTag);
+  if (current) {
+    if (action.expectedHeadEventId !== current.id) {
+      return "conflict: watchdog configuration changed; retry from its latest head.";
+    }
+    try {
+      const head = JSON.parse(current.content) as {
+        recordType?: string;
+        workItemId?: string;
+      };
+      if (
+        head.recordType !== "watchdog_configuration" ||
+        head.workItemId?.toLowerCase() !== workItemId
+      ) {
+        return "conflict: tracking head does not match this watchdog.";
+      }
+    } catch {
+      return "error: stored watchdog head is invalid.";
+    }
+  } else if (action.expectedHeadEventId !== undefined) {
+    return "conflict: watchdog configuration does not exist.";
+  }
+  if (
+    typeof config.askFirstPubkey === "string" &&
+    !channel.members.some(
+      (member) => member.pubkey.toLowerCase() === config.askFirstPubkey,
+    )
+  ) {
+    return "restricted: watchdog reviewer is not a member of the work channel.";
+  }
+  const privateKey = getConfig()?.mock?.companyWorkRelayPrivateKey;
+  if (!privateKey) {
+    return "error: mock company work relay signing key is not configured.";
+  }
+  let relaySecret: Uint8Array;
+  try {
+    relaySecret = hexToBytes(privateKey);
+  } catch {
+    return "error: mock company work relay key is invalid.";
+  }
+  if (
+    getPublicKey(relaySecret).toLowerCase() !==
+    getConfig()?.mock?.relaySelf?.toLowerCase()
+  ) {
+    return "error: mock company work relay key does not match relay self.";
+  }
+  const nextHead = finalizeEvent(
+    {
+      kind: KIND_COMPANY_WORK_TRACKING_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (current?.created_at ?? 0) + 1,
+      ),
+      tags: [
+        ["h", channelId],
+        ["d", dTag],
+      ],
+      content: JSON.stringify({
+        recordType: "watchdog_configuration",
+        schemaVersion: 1,
+        workItemId,
+        enabled: true,
+        config: {
+          checkWhen: config.checkWhen,
+          checkIntervalSeconds: config.checkIntervalSeconds,
+          ...(typeof config.askFirstPubkey === "string"
+            ? { askFirstPubkey: config.askFirstPubkey.toLowerCase() }
+            : {}),
+        },
+        sourceActionEventId: event.id,
+      }),
+    },
+    relaySecret,
+  );
+  const store = getMockCompanyWorkEventStore();
+  if (current) {
+    const currentIndex = store.findIndex(
+      (candidate) => candidate.id === current.id,
+    );
+    if (currentIndex >= 0) store.splice(currentIndex, 1);
+  }
+  store.push(event, nextHead);
+  persistMockCompanyWorkEventStore();
+  return null;
+}
+
+function filterMockCompanyWorkEvents(filter: MockFilter): RelayEvent[] {
+  const authors = filter.authors?.map((author) => author.toLowerCase());
+  const ids = filter.ids ? new Set(filter.ids) : null;
+  return getMockCompanyWorkEventStore()
+    .filter((event) => {
+      if (filter.kinds && !filter.kinds.includes(event.kind)) return false;
+      if (authors && !authors.includes(event.pubkey.toLowerCase()))
+        return false;
+      if (ids && !ids.has(event.id)) return false;
+      if (
+        filter["#d"] &&
+        !event.tags.some(
+          (tag) => tag[0] === "d" && filter["#d"]?.includes(tag[1]),
+        )
+      ) {
+        return false;
+      }
+      if (
+        filter["#h"] &&
+        !event.tags.some(
+          (tag) => tag[0] === "h" && filter["#h"]?.includes(tag[1]),
+        )
+      ) {
+        return false;
+      }
+      if (filter.since !== undefined && event.created_at < filter.since)
+        return false;
+      if (filter.until !== undefined && event.created_at > filter.until)
+        return false;
+      return true;
+    })
+    .sort(
+      (left, right) =>
+        right.created_at - left.created_at || left.id.localeCompare(right.id),
+    )
+    .slice(0, filter.limit ?? 500);
+}
+
 /** Project-scoped publishes (PR/issue comments, NIP-34 status events) carry
- * a repo-address `a` tag instead of a channel `h` tag — store them with the
+ * a repo-address `a` tag instead of a channel `h` tag. Store them with the
  * seeded project events so refetches see them. */
 function isMockProjectScopedEvent(event: RelayEvent): boolean {
   const hasRepoAddressTag = event.tags.some(
@@ -6568,6 +12394,13 @@ async function relayQuery(
     throw new Error(P_GATED_REJECTION_MESSAGE);
   }
 
+  if (config?.relayAuthMode === "nip42") {
+    if (filters.some((filter) => filter.top_level === true)) {
+      return nip98RelayQuery(config, filters);
+    }
+    return nip42RelayRequest(config, { type: "query", filters });
+  }
+
   const response = await fetch(`${getRelayHttpUrl(config)}/query`, {
     method: "POST",
     headers: {
@@ -6580,12 +12413,247 @@ async function relayQuery(
   return response.json() as Promise<RelayEvent[]>;
 }
 
+/**
+ * Channel-window extensions are implemented by the relay's HTTP `/query`
+ * bridge. The desktop host also uses signed NIP-98 HTTP queries, so relay-mode
+ * E2E must preserve the extension by using that same transport instead of
+ * sending a plain NIP-01 REQ over WebSocket.
+ */
+async function nip98RelayQuery(
+  config: E2eConfig | undefined,
+  filters: Array<Record<string, unknown>>,
+): Promise<RelayEvent[]> {
+  const identity = getRelayIdentity(config);
+  const url = `${getRelayHttpUrl(config).replace(/\/+$/, "")}/query`;
+  const body = JSON.stringify(filters);
+  const authEvent = await signWithIdentity(identity, {
+    kind: 27235,
+    content: "",
+    tags: [
+      ["u", url],
+      ["method", "POST"],
+      ["payload", bytesToHex(sha256(new TextEncoder().encode(body)))],
+      ["nonce", crypto.randomUUID()],
+    ],
+  });
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Nostr ${btoa(JSON.stringify(authEvent))}`,
+      "Content-Type": "application/json",
+    },
+    body,
+    signal: AbortSignal.timeout(NIP98_QUERY_TIMEOUT_MS),
+  });
+  await assertOk(response);
+  return response.json() as Promise<RelayEvent[]>;
+}
+
+const NIP98_QUERY_TIMEOUT_MS = 30_000;
+const NIP42_REQUEST_TIMEOUT_MS = 25_000;
+const NIP42_MAX_RESPONSE_BYTES = 8_000_000;
+const NIP42_MAX_QUERY_EVENTS = 2_000;
+
+type Nip42RelayRequest =
+  | { type: "query"; filters: Array<Record<string, unknown>> }
+  | { type: "publish"; event: RelayEvent };
+
+async function nip42RelayRequest<T>(
+  config: E2eConfig | undefined,
+  request: Nip42RelayRequest,
+): Promise<T> {
+  const identity = getRelayIdentity(config);
+  const relayUrl = getRelayWsUrl(config);
+
+  return new Promise<T>((resolve, reject) => {
+    let socket: WebSocket;
+    try {
+      socket = new WebSocket(relayUrl);
+    } catch {
+      reject(new Error("Could not open the authenticated canary relay."));
+      return;
+    }
+
+    const requestId = `e2e-${crypto.randomUUID()}`;
+    const events: RelayEvent[] = [];
+    let responseBytes = 0;
+    let authEventId: string | null = null;
+    let requestSent = false;
+    let settled = false;
+    const timeout = window.setTimeout(() => {
+      finish(new Error("The authenticated canary relay request timed out."));
+    }, NIP42_REQUEST_TIMEOUT_MS);
+
+    const finish = (error?: Error, result?: T) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      if (socket.readyState === WebSocket.OPEN) {
+        if (request.type === "query" && requestSent) {
+          socket.send(JSON.stringify(["CLOSE", requestId]));
+        }
+        socket.close();
+      }
+      if (error) reject(error);
+      else resolve(result as T);
+    };
+
+    socket.onmessage = (message) => {
+      void (async () => {
+        if (typeof message.data !== "string") {
+          finish(new Error("The canary relay returned a non-text frame."));
+          return;
+        }
+
+        let frame: unknown;
+        try {
+          frame = JSON.parse(message.data);
+        } catch {
+          finish(new Error("The canary relay returned an invalid frame."));
+          return;
+        }
+        if (!Array.isArray(frame) || typeof frame[0] !== "string") return;
+
+        if (frame[0] === "AUTH") {
+          const challenge = frame[1];
+          if (typeof challenge !== "string" || !challenge || authEventId) {
+            finish(
+              new Error("The canary relay sent an invalid auth challenge."),
+            );
+            return;
+          }
+
+          const authEvent = await signWithIdentity(identity, {
+            kind: 22242,
+            content: "",
+            tags: [
+              ["relay", relayUrl],
+              ["challenge", challenge],
+            ],
+          });
+          authEventId = authEvent.id;
+          socket.send(JSON.stringify(["AUTH", authEvent]));
+          return;
+        }
+
+        if (
+          frame[0] === "OK" &&
+          typeof frame[1] === "string" &&
+          frame[1] === authEventId
+        ) {
+          if (frame[2] !== true) {
+            finish(
+              new Error("The canary relay rejected NIP-42 authentication."),
+            );
+            return;
+          }
+
+          const testWindow = window as Window & {
+            __BUZZ_E2E_NIP42_AUTH_SUCCESS_COUNT__?: number;
+          };
+          testWindow.__BUZZ_E2E_NIP42_AUTH_SUCCESS_COUNT__ =
+            (testWindow.__BUZZ_E2E_NIP42_AUTH_SUCCESS_COUNT__ ?? 0) + 1;
+
+          if (requestSent) return;
+          requestSent = true;
+          if (request.type === "query") {
+            socket.send(JSON.stringify(["REQ", requestId, ...request.filters]));
+          } else {
+            socket.send(JSON.stringify(["EVENT", request.event]));
+          }
+          return;
+        }
+
+        if (
+          request.type === "query" &&
+          frame[0] === "EVENT" &&
+          frame[1] === requestId
+        ) {
+          const encoded = JSON.stringify(frame[2]);
+          responseBytes += new TextEncoder().encode(encoded).byteLength;
+          if (
+            responseBytes > NIP42_MAX_RESPONSE_BYTES ||
+            events.length >= NIP42_MAX_QUERY_EVENTS
+          ) {
+            finish(
+              new Error("The canary relay query exceeded its response limit."),
+            );
+            return;
+          }
+          events.push(frame[2] as RelayEvent);
+          return;
+        }
+
+        if (
+          request.type === "query" &&
+          frame[0] === "EOSE" &&
+          frame[1] === requestId
+        ) {
+          finish(undefined, events as T);
+          return;
+        }
+
+        if (
+          request.type === "publish" &&
+          frame[0] === "OK" &&
+          frame[1] === request.event.id
+        ) {
+          if (frame[2] !== true) {
+            const reason =
+              typeof frame[3] === "string" ? frame[3].slice(0, 160) : "";
+            finish(
+              new Error(
+                reason
+                  ? `The canary relay rejected the signed event: ${reason}`
+                  : "The canary relay rejected the signed event.",
+              ),
+            );
+            return;
+          }
+          finish(undefined, {
+            event_id: request.event.id,
+            accepted: true,
+            message: typeof frame[3] === "string" ? frame[3] : "",
+          } as T);
+          return;
+        }
+
+        if (frame[0] === "CLOSED" || frame[0] === "NOTICE") {
+          const reason =
+            typeof frame[2] === "string" ? frame[2].slice(0, 160) : "";
+          finish(
+            new Error(
+              reason
+                ? `The canary relay closed the request: ${reason}`
+                : "The canary relay closed the request.",
+            ),
+          );
+        }
+      })().catch(() => {
+        finish(new Error("The NIP-42 relay request failed."));
+      });
+    };
+
+    socket.onerror = () => {
+      finish(new Error("The authenticated canary relay connection failed."));
+    };
+    socket.onclose = () => {
+      finish(
+        new Error("The authenticated canary relay connection closed early."),
+      );
+    };
+  });
+}
+
 async function submitSignedEvent(
   config: E2eConfig | undefined,
   template: { kind: number; content: string; tags: string[][] },
 ): Promise<{ event_id: string; accepted: boolean; message: string }> {
   const identity = getRelayIdentity(config);
   const signed = await signWithIdentity(identity, template);
+  if (config?.relayAuthMode === "nip42") {
+    return nip42RelayRequest(config, { type: "publish", event: signed });
+  }
   return relayJsonRequest(config, "/events", {
     method: "POST",
     body: JSON.stringify(signed),
@@ -6838,6 +12906,10 @@ async function handleUpdateProfile(
   },
   config: E2eConfig | undefined,
 ) {
+  const delayMs = config?.mock?.profileUpdateDelayMs ?? 0;
+  if (delayMs > 0) {
+    await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+  }
   const identity = getIdentity(config);
   if (!identity) {
     const profileUpdateError = config?.mock?.profileUpdateError;
@@ -6932,6 +13004,16 @@ async function handleGetUserProfile(
   }
 
   const targetPubkey = args.pubkey ?? identity.pubkey;
+  const hasSeededManagedAgentProfile = config?.mock?.managedAgents?.some(
+    (agent) => agent.pubkey.toLowerCase() === targetPubkey.toLowerCase(),
+  );
+  if (hasSeededManagedAgentProfile) {
+    const seededProfile = getMockProfileByPubkey(targetPubkey);
+    if (seededProfile) {
+      return cloneProfile(seededProfile);
+    }
+  }
+
   const events = await relayQuery(config, [
     { kinds: [0], authors: [targetPubkey], limit: 1 },
   ]);
@@ -7802,6 +13884,7 @@ async function handleDeleteChannel(
 
     mockChannels.splice(index, 1);
     mockMessages.delete(args.channelId);
+    clearPersistedMockChannelMembers(args.channelId);
     return;
   }
 
@@ -7914,6 +13997,7 @@ async function handleAddChannelMembers(
 
     syncMockChannel(targetChannel);
     touchMockChannel(targetChannel);
+    persistMockChannelMembers(targetChannel);
     syncMockRelayAgentsFromManagedAgents();
     return {
       added,
@@ -7956,6 +14040,7 @@ async function handleRemoveChannelMember(
     );
     syncMockChannel(channel);
     touchMockChannel(channel);
+    persistMockChannelMembers(channel);
     syncMockRelayAgentsFromManagedAgents();
     return;
   }
@@ -7993,6 +14078,7 @@ async function handleJoinChannel(
     channel.members.push(createCurrentMember(config, "member"));
     syncMockChannel(channel);
     touchMockChannel(channel);
+    persistMockChannelMembers(channel);
     return;
   }
 
@@ -8019,6 +14105,7 @@ async function handleLeaveChannel(
     );
     syncMockChannel(channel);
     touchMockChannel(channel);
+    persistMockChannelMembers(channel);
     return;
   }
 
@@ -8040,6 +14127,47 @@ async function handleGetFeed(
   const feedReadError = config?.mock?.feedReadError;
   if (feedReadError) {
     throw new Error(feedReadError);
+  }
+
+  const visualFixture = config?.mock?.visualFixture;
+  if (!isRelayMode(config) && visualFixture) {
+    const now = Math.floor(Date.now() / 1000);
+    return {
+      feed: {
+        mentions: [],
+        needs_action: [],
+        activity: [],
+        agent_activity: [],
+      },
+      meta: {
+        since: args.since ?? now - 7 * 24 * 60 * 60,
+        total: 0,
+        generated_at: now,
+      },
+      visual_fixture: visualFixture.today,
+    };
+  }
+
+  if (!isRelayMode(config) && referenceWorkspaceActive) {
+    const now = Math.floor(Date.now() / 1000);
+    const unreadItems =
+      config?.mock?.referenceSidebarShell === true
+        ? []
+        : referenceHomeInboxItems();
+    return {
+      feed: {
+        mentions: [],
+        needs_action: unreadItems,
+        activity: [],
+        agent_activity: [],
+      },
+      meta: {
+        since: args.since ?? now - 7 * 24 * 60 * 60,
+        total: unreadItems.length,
+        generated_at: now,
+      },
+      visual_fixture: REFERENCE_HOME_VISUAL_FIXTURE,
+    };
   }
 
   const identity = getIdentity(config);
@@ -8913,6 +15041,7 @@ async function handleCreatePersona(args: {
     displayName: string;
     avatarUrl?: string;
     description?: string | null;
+    companyRole?: NonNullable<RawPersona["company_role"]> | null;
     systemPrompt: string;
     runtime?: string;
     model?: string;
@@ -8928,6 +15057,15 @@ async function handleCreatePersona(args: {
     display_name: args.input.displayName.trim(),
     avatar_url: args.input.avatarUrl?.trim() || null,
     description: args.input.description?.trim() || null,
+    company_role: args.input.companyRole
+      ? {
+          job: args.input.companyRole.job,
+          skills: [...args.input.companyRole.skills],
+          tools: args.input.companyRole.tools.map((tool) => ({ ...tool })),
+          workerMenu: [...args.input.companyRole.workerMenu],
+          defaultAllowance: args.input.companyRole.defaultAllowance ?? null,
+        }
+      : null,
     system_prompt: args.input.systemPrompt.trim(),
     runtime: args.input.runtime?.trim() || null,
     model: args.input.model?.trim() || null,
@@ -8962,6 +15100,7 @@ type MockUpdatePersonaInput = {
   displayName: string;
   avatarUrl?: string;
   description?: string | null;
+  companyRole?: NonNullable<RawPersona["company_role"]> | null;
   systemPrompt: string;
   runtime?: string;
   model?: string;
@@ -8996,6 +15135,17 @@ async function applyMockPersonaUpdate(
   persona.display_name = input.displayName.trim();
   persona.avatar_url = input.avatarUrl?.trim() || null;
   persona.description = input.description?.trim() || null;
+  if (input.companyRole !== undefined) {
+    persona.company_role = input.companyRole
+      ? {
+          job: input.companyRole.job,
+          skills: [...input.companyRole.skills],
+          tools: input.companyRole.tools.map((tool) => ({ ...tool })),
+          workerMenu: [...input.companyRole.workerMenu],
+          defaultAllowance: input.companyRole.defaultAllowance ?? null,
+        }
+      : null;
+  }
   persona.system_prompt = input.systemPrompt.trim();
   persona.runtime = input.runtime?.trim() || null;
   persona.model = input.model?.trim() || null;
@@ -10466,6 +16616,9 @@ function handleDeleteMessage(
   },
   config: E2eConfig | undefined,
 ): void {
+  const error = config?.mock?.deleteMessageError;
+  if (error) throw new Error(error);
+
   const history = mockMessages.get(args.channelId);
   if (history) {
     const index = history.findIndex((ev) => ev.id === args.eventId);
@@ -10976,6 +17129,63 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (
+      filter.kinds?.some(
+        (kind) => kind === KIND_GOAL_ACTION || kind === KIND_GOAL_HEAD,
+      )
+    ) {
+      for (const event of filterMockGoalEvents(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    const relaySelf = getConfig()?.mock?.relaySelf?.toLowerCase();
+    const companyWorkHeadQuery = Boolean(
+      filter.kinds?.includes(KIND_WORK_ITEM_HEAD) &&
+        relaySelf &&
+        filter.authors?.some((author) => author.toLowerCase() === relaySelf),
+    );
+    const companyWorkHistoryQuery = Boolean(
+      filter.kinds?.includes(KIND_WORK_ITEM_ACTION) &&
+        filter["#d"]?.some((dTag) => dTag.startsWith("company:work:")),
+    );
+    const companyWorkMoveHistoryQuery = Boolean(
+      filter.kinds?.includes(KIND_WORK_ITEM_ACTION) &&
+        filter["#h"]?.length &&
+        !filter["#d"],
+    );
+    const companyWorkTrackingHeadQuery = Boolean(
+      filter.kinds?.includes(KIND_COMPANY_WORK_TRACKING_HEAD) &&
+        relaySelf &&
+        filter.authors?.some((author) => author.toLowerCase() === relaySelf),
+    );
+    const companyWorkTrackingActionQuery = Boolean(
+      filter.kinds?.includes(KIND_COMPANY_WORK_TRACKING_ACTION) &&
+        filter["#h"]?.length,
+    );
+    if (
+      companyWorkHeadQuery ||
+      companyWorkHistoryQuery ||
+      companyWorkMoveHistoryQuery ||
+      companyWorkTrackingHeadQuery ||
+      companyWorkTrackingActionQuery
+    ) {
+      const readError = companyWorkHeadQuery
+        ? getConfig()?.mock?.companyWorkReadErrors?.shift()
+        : undefined;
+      if (readError) {
+        sendWsText(socket.handler, ["CLOSED", subId, readError]);
+        return;
+      }
+      for (const event of filterMockCompanyWorkEvents(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     if (filter.kinds?.includes(KIND_PERSONA)) {
       const authors = filter.authors?.map((author) => author.toLowerCase());
       const sourceIds = filter["#d"];
@@ -11054,6 +17264,95 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_ASK_HEAD)) {
+      for (const event of filterMockCompanyAskHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_HIRE_HEAD)) {
+      for (const event of filterMockCompanyHireHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_MEMBER_POSITION_HEAD)) {
+      for (const event of filterMockCompanyMemberPositions(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_MEMBER_POSITION_ACTION)) {
+      for (const event of filterMockCompanyMemberPositionActions(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (
+      filter.kinds?.includes(KIND_EMPLOYEE_AI_ALLOWANCE_HEAD) ||
+      filter.kinds?.includes(KIND_AI_SPEND_RECORD_HEAD)
+    ) {
+      for (const event of filterMockCompanySpendHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (
+      filter.kinds?.includes(KIND_EMPLOYEE_REVISION_ACTION) ||
+      filter.kinds?.includes(KIND_EMPLOYEE_REVISION_HEAD)
+    ) {
+      for (const event of filterMockEmployeeRevisionEvents(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (
+      filter.kinds?.includes(KIND_DUTY_HEAD) ||
+      filter.kinds?.includes(KIND_LESSON_HEAD)
+    ) {
+      for (const event of filterMockDutyLessonEvents(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_SECRET_BINDING_HEAD)) {
+      for (const event of filterMockCompanySecretBindingHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_TOOL_PERMISSION_HEAD)) {
+      for (const event of filterMockCompanyToolPermissionHeads(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
+    if (filter.kinds?.includes(KIND_FACTORY_RUN_HEAD)) {
+      for (const event of filterMockFactoryRunRecordEvents(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     const channelIds = filter["#h"] ?? [];
     if (channelIds.length > 0 && subId.startsWith("history-")) {
       const closeReason = mockChannelHistoryCloses.shift();
@@ -11099,6 +17398,116 @@ function sendToMockSocket(args: {
 
   if (type === "EVENT") {
     const event = rest[0] as RelayEvent;
+    if (
+      referenceWorkspaceActive &&
+      REFERENCE_BUSINESS_COMMAND_KINDS.has(event.kind)
+    ) {
+      const rejections =
+        window.__BUZZ_E2E_REJECT_BUSINESS_RECORD_EVENTS__ ?? [];
+      const rejectionIndex = rejections.findIndex(
+        (candidate) => candidate.kind === event.kind,
+      );
+      if (rejectionIndex >= 0) {
+        const [rejection] = rejections.splice(rejectionIndex, 1);
+        sendWsText(socket.handler, ["OK", event.id, false, rejection.reason]);
+        return;
+      }
+    }
+
+    if (event.kind === KIND_PRODUCT_FEEDBACK) {
+      const configuredErrors = getConfig()?.mock?.feedbackPublishErrors;
+      const error = configuredErrors?.length ? configuredErrors.shift() : null;
+      const acknowledge = () =>
+        sendWsText(socket.handler, [
+          "OK",
+          event.id,
+          error === null,
+          error ?? "",
+        ]);
+      const delayMs = getConfig()?.mock?.feedbackPublishDelayMs ?? 0;
+      if (delayMs > 0) {
+        window.setTimeout(acknowledge, delayMs);
+      } else {
+        acknowledge();
+      }
+      return;
+    }
+
+    if (event.kind === KIND_FACTORY_RUN_ACTION) {
+      const configuredErrors = getConfig()?.mock?.factoryRunActionErrors;
+      const error = configuredErrors?.length ? configuredErrors.shift() : null;
+      sendWsText(socket.handler, ["OK", event.id, error === null, error ?? ""]);
+      return;
+    }
+
+    if (event.kind === KIND_TOOL_PERMISSION_ACTION) {
+      acceptMockToolPermissionAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_ASK_ACTION) {
+      let actionType: unknown;
+      try {
+        actionType = (JSON.parse(event.content) as { action?: unknown }).action;
+      } catch {
+        actionType = null;
+      }
+      if (actionType === "create") {
+        acceptMockAskAction(socket, event, getConfig());
+        return;
+      }
+    }
+
+    if (event.kind === KIND_ASK_RESPONSE) {
+      acceptMockAskResponse(socket, event, getConfig());
+      return;
+    }
+
+    if (event.kind === KIND_HIRE_ACTION) {
+      acceptMockHireAction(socket, event, getConfig());
+      return;
+    }
+
+    if (event.kind === KIND_MEMBER_POSITION_ACTION) {
+      acceptMockMemberPositionAction(socket, event, getConfig());
+      return;
+    }
+    if (
+      event.kind === KIND_EMPLOYEE_AI_ALLOWANCE_ACTION ||
+      event.kind === KIND_AI_SPEND_RECORD_ACTION
+    ) {
+      acceptMockCompanySpendAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_EMPLOYEE_REVISION_ACTION) {
+      acceptMockEmployeeRevisionAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_DUTY_ACTION) {
+      acceptMockDutyAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_LESSON_ACTION) {
+      acceptMockLessonAction(socket, event, getConfig());
+      return;
+    }
+    if (event.kind === KIND_SECRET_BINDING_ACTION) {
+      acceptMockSecretBindingAction(socket, event, getConfig());
+      return;
+    }
+
+    if (
+      referenceWorkspaceActive &&
+      [
+        KIND_INVOICE_VERSION,
+        KIND_SERVICE_ACTION,
+        KIND_PROSPECT_ACTION,
+        KIND_PROPOSAL_VERSION,
+        KIND_PROPOSAL_ACCEPTANCE,
+      ].includes(event.kind)
+    ) {
+      publishReferenceBusinessCommand(event, socket);
+      return;
+    }
 
     if (event.kind === KIND_AGENT_OBSERVER_FRAME) {
       const frame = event.tags.find((tag) => tag[0] === "frame")?.[1];
@@ -11247,6 +17656,97 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (event.kind === KIND_GOAL_ACTION) {
+      const error = brokerMockGoalAction(event);
+      if (error) {
+        sendWsText(socket.handler, ["OK", event.id, false, error]);
+        return;
+      }
+      const goalEvents = getMockGoalEventStore();
+      const actionEvent = goalEvents.find(
+        (candidate) => candidate.id === event.id,
+      );
+      const dTag = event.tags.find((tag) => tag[0] === "d")?.[1];
+      const headEvent = dTag ? mockGoalHeadByDTag(dTag) : undefined;
+      if (actionEvent) emitMockGlobalEvent(actionEvent);
+      if (headEvent) emitMockGlobalEvent(headEvent);
+      sendWsText(socket.handler, ["OK", event.id, true, ""]);
+      return;
+    }
+
+    if (
+      event.kind === KIND_COMPANY_WORK_TRACKING_ACTION &&
+      event.tags.some(
+        (tag) =>
+          tag[0] === "d" &&
+          (tag[1]?.startsWith("company:work-suggestion:") ||
+            tag[1]?.startsWith("company:work-watchdog:")),
+      )
+    ) {
+      const configuredError =
+        getConfig()?.mock?.companyWorkTrackingActionErrors?.shift();
+      if (configuredError) {
+        sendWsText(socket.handler, ["OK", event.id, false, configuredError]);
+        return;
+      }
+      const error = brokerMockCompanyWorkTrackingAction(event);
+      if (error) {
+        sendWsText(socket.handler, ["OK", event.id, false, error]);
+        return;
+      }
+      const dTag = event.tags.find((tag) => tag[0] === "d")?.[1];
+      const channelId = getChannelIdFromTags(event.tags);
+      const trackingHead = dTag
+        ? mockCompanyWorkTrackingHeadByDTag(dTag)
+        : undefined;
+      let acceptedWorkHead: RelayEvent | undefined;
+      try {
+        const action = JSON.parse(event.content) as {
+          acceptedWorkItemId?: string;
+        };
+        if (action.acceptedWorkItemId) {
+          acceptedWorkHead = mockCompanyWorkHeadByDTag(
+            `company:work:${action.acceptedWorkItemId}`,
+          );
+        }
+      } catch {
+        acceptedWorkHead = undefined;
+      }
+      if (channelId) {
+        emitMockLiveEvent(channelId, event);
+        if (trackingHead) emitMockLiveEvent(channelId, trackingHead);
+        if (acceptedWorkHead) emitMockLiveEvent(channelId, acceptedWorkHead);
+      }
+      sendWsText(socket.handler, ["OK", event.id, true, ""]);
+      return;
+    }
+
+    if (
+      event.kind === KIND_WORK_ITEM_ACTION &&
+      event.tags.some(
+        (tag) => tag[0] === "d" && tag[1]?.startsWith("company:work:"),
+      )
+    ) {
+      const configuredError =
+        getConfig()?.mock?.companyWorkActionErrors?.shift();
+      if (configuredError) {
+        sendWsText(socket.handler, ["OK", event.id, false, configuredError]);
+        return;
+      }
+      const error = brokerMockCompanyWorkAction(event);
+      if (error) {
+        sendWsText(socket.handler, ["OK", event.id, false, error]);
+        return;
+      }
+      const dTag = event.tags.find((tag) => tag[0] === "d")?.[1];
+      const channelId = getChannelIdFromTags(event.tags);
+      const headEvent = dTag ? mockCompanyWorkHeadByDTag(dTag) : undefined;
+      if (channelId && headEvent) emitMockLiveEvent(channelId, headEvent);
+      emitMockGlobalEvent(event);
+      sendWsText(socket.handler, ["OK", event.id, true, ""]);
+      return;
+    }
+
     if (isMockProjectScopedEvent(event)) {
       if (event.pubkey !== DEFAULT_MOCK_IDENTITY.pubkey) {
         sendWsText(socket.handler, [
@@ -11357,6 +17857,314 @@ export function maybeInstallE2eTauriMocks() {
   if (!config) {
     return;
   }
+  mockCompanyAskHeads.splice(
+    0,
+    mockCompanyAskHeads.length,
+    ...(config.mock?.companyAskHeads ?? []),
+  );
+  mockCompanyHireHeads.splice(
+    0,
+    mockCompanyHireHeads.length,
+    ...(config.mock?.companyHireHeads ?? []),
+  );
+  const storedMemberPositionEvents = window.localStorage.getItem(
+    MOCK_COMPANY_MEMBER_POSITION_EVENTS_STORAGE_KEY,
+  );
+  const memberPositionEvents = storedMemberPositionEvents
+    ? (JSON.parse(storedMemberPositionEvents) as RelayEvent[])
+    : (config.mock?.companyMemberPositionEvents ?? []);
+  if (!Array.isArray(memberPositionEvents)) {
+    throw new Error("Stored mock member position events must be an array.");
+  }
+  mockCompanyMemberPositionEvents.splice(
+    0,
+    mockCompanyMemberPositionEvents.length,
+    ...memberPositionEvents,
+  );
+  const storedMemberPositionActions = window.localStorage.getItem(
+    MOCK_COMPANY_MEMBER_POSITION_ACTIONS_STORAGE_KEY,
+  );
+  const memberPositionActions = storedMemberPositionActions
+    ? (JSON.parse(storedMemberPositionActions) as RelayEvent[])
+    : (config.mock?.companyMemberPositionActions ?? []);
+  if (!Array.isArray(memberPositionActions)) {
+    throw new Error("Stored mock member position actions must be an array.");
+  }
+  mockCompanyMemberPositionActions.splice(
+    0,
+    mockCompanyMemberPositionActions.length,
+    ...memberPositionActions,
+  );
+  const storedAllowanceHeads = window.localStorage.getItem(
+    MOCK_EMPLOYEE_ALLOWANCE_HEADS_STORAGE_KEY,
+  );
+  const allowanceHeads = storedAllowanceHeads
+    ? (JSON.parse(storedAllowanceHeads) as RelayEvent[])
+    : (config.mock?.employeeAllowanceHeads ?? []);
+  if (!Array.isArray(allowanceHeads)) {
+    throw new Error("Stored mock employee allowance heads must be an array.");
+  }
+  mockEmployeeAllowanceHeads.splice(
+    0,
+    mockEmployeeAllowanceHeads.length,
+    ...allowanceHeads,
+  );
+  const storedAiSpendHeads = window.localStorage.getItem(
+    MOCK_AI_SPEND_RECORD_HEADS_STORAGE_KEY,
+  );
+  const aiSpendHeads = storedAiSpendHeads
+    ? (JSON.parse(storedAiSpendHeads) as RelayEvent[])
+    : (config.mock?.aiSpendRecordHeads ?? []);
+  if (!Array.isArray(aiSpendHeads)) {
+    throw new Error("Stored mock AI spend record heads must be an array.");
+  }
+  mockAiSpendRecordHeads.splice(
+    0,
+    mockAiSpendRecordHeads.length,
+    ...aiSpendHeads,
+  );
+  const storedEmployeeRevisionActions = window.localStorage.getItem(
+    MOCK_COMPANY_EMPLOYEE_REVISION_ACTIONS_STORAGE_KEY,
+  );
+  const employeeRevisionActions = storedEmployeeRevisionActions
+    ? (JSON.parse(storedEmployeeRevisionActions) as RelayEvent[])
+    : (config.mock?.companyEmployeeRevisionActions ?? []);
+  if (!Array.isArray(employeeRevisionActions)) {
+    throw new Error("Stored mock employee revision actions must be an array.");
+  }
+  mockCompanyEmployeeRevisionActions.splice(
+    0,
+    mockCompanyEmployeeRevisionActions.length,
+    ...employeeRevisionActions,
+  );
+  const storedEmployeeRevisionHeads = window.localStorage.getItem(
+    MOCK_COMPANY_EMPLOYEE_REVISION_HEADS_STORAGE_KEY,
+  );
+  const employeeRevisionHeads = storedEmployeeRevisionHeads
+    ? (JSON.parse(storedEmployeeRevisionHeads) as RelayEvent[])
+    : (config.mock?.companyEmployeeRevisionHeads ?? []);
+  if (!Array.isArray(employeeRevisionHeads)) {
+    throw new Error("Stored mock employee revision heads must be an array.");
+  }
+  mockCompanyEmployeeRevisionHeads.splice(
+    0,
+    mockCompanyEmployeeRevisionHeads.length,
+    ...employeeRevisionHeads,
+  );
+  const storedDutyHeads = window.localStorage.getItem(
+    MOCK_COMPANY_DUTY_HEADS_STORAGE_KEY,
+  );
+  const dutyHeads = storedDutyHeads
+    ? (JSON.parse(storedDutyHeads) as RelayEvent[])
+    : (config.mock?.companyDutyHeads ?? []);
+  if (!Array.isArray(dutyHeads)) {
+    throw new Error("Stored mock duty heads must be an array.");
+  }
+  mockCompanyDutyHeads.splice(0, mockCompanyDutyHeads.length, ...dutyHeads);
+  const storedLessonHeads = window.localStorage.getItem(
+    MOCK_COMPANY_LESSON_HEADS_STORAGE_KEY,
+  );
+  const lessonHeads = storedLessonHeads
+    ? (JSON.parse(storedLessonHeads) as RelayEvent[])
+    : (config.mock?.companyLessonHeads ?? []);
+  if (!Array.isArray(lessonHeads)) {
+    throw new Error("Stored mock lesson heads must be an array.");
+  }
+  mockCompanyLessonHeads.splice(
+    0,
+    mockCompanyLessonHeads.length,
+    ...lessonHeads,
+  );
+  mockCompanyDutyActions.splice(0, mockCompanyDutyActions.length);
+  mockCompanyLessonActions.splice(0, mockCompanyLessonActions.length);
+  mockCompanyToolPermissionHeads.splice(
+    0,
+    mockCompanyToolPermissionHeads.length,
+    ...(config.mock?.companyToolPermissionHeads ?? []),
+  );
+  mockAskActionIds.clear();
+  mockCompanySecretBindingHeads.splice(
+    0,
+    mockCompanySecretBindingHeads.length,
+    ...(config.mock?.companySecretBindingHeads ?? []),
+  );
+  mockSecretBindingActionIds.clear();
+  if (!isRelayMode(config) && config.mock?.visualFixture) {
+    seedVisualFixture(config.mock.visualFixture);
+  }
+  window.__BUZZ_E2E_USES_REAL_RELAY__ = isRelayMode(config);
+  window.__BUZZ_E2E_FORCE_RELAY_PACING__ = config?.forceRelayPacing === true;
+  if (config.mock?.referenceWorkspace) {
+    applyReferenceWorkspace(config);
+  }
+
+  let mockAccountLinked = config.mock?.accountLinked ?? true;
+  let mockAccountEmail = config.mock?.accountEmail ?? "person@example.com";
+  const accountAuthCalls: AccountAuthTestCall[] = [];
+  const queuedAccountAuthErrors: Array<{
+    method: keyof AccountAuthClient;
+    error: Record<string, unknown>;
+  }> = [];
+  const accountRecord = (email = mockAccountEmail): AccountAuthRecord => ({
+    id: "e2e-account",
+    email,
+    pubkey: DEFAULT_MOCK_IDENTITY.pubkey,
+    hasPassword: true,
+    googleLinked: false,
+  });
+  const verificationSent = () => ({ status: "verification_sent" as const });
+  const accountAuthCall = async <T>(
+    method: keyof AccountAuthClient,
+    route: string,
+    email: string | undefined,
+    purpose: "verify" | "reset" | undefined,
+    result: () => T,
+    displayName?: string,
+  ): Promise<T> => {
+    accountAuthCalls.push({
+      method,
+      route,
+      ...(email ? { email } : {}),
+      ...(displayName ? { displayName } : {}),
+      ...(purpose ? { purpose } : {}),
+    });
+    const errorIndex = queuedAccountAuthErrors.findIndex(
+      (entry) => entry.method === method,
+    );
+    if (errorIndex >= 0) {
+      const [{ error }] = queuedAccountAuthErrors.splice(errorIndex, 1);
+      throw Object.assign(
+        new Error(
+          typeof error.error === "string"
+            ? error.error
+            : "Mock account request failed",
+        ),
+        error,
+      );
+    }
+    return result();
+  };
+  window.__BUZZ_E2E_ACCOUNT_AUTH_CALLS__ = accountAuthCalls;
+  window.__BUZZ_E2E_QUEUE_ACCOUNT_AUTH_ERROR__ = (method, error) => {
+    queuedAccountAuthErrors.push({ method, error });
+  };
+  window.__BUZZ_E2E_SET_ACCOUNT_LINKED__ = (linked, email) => {
+    mockAccountLinked = linked;
+    if (email) mockAccountEmail = email;
+  };
+  window.__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__ = {
+    signUp: (email, _password, displayName) =>
+      accountAuthCall(
+        "signUp",
+        "POST /api/accounts/signup",
+        email,
+        undefined,
+        () => {
+          mockAccountEmail = email;
+          return verificationSent();
+        },
+        displayName,
+      ),
+    verifyEmail: (email) =>
+      accountAuthCall(
+        "verifyEmail",
+        "POST /api/accounts/verify",
+        email,
+        undefined,
+        () => {
+          mockAccountEmail = email;
+          mockAccountLinked = true;
+          return accountRecord(email);
+        },
+      ),
+    resendCode: (email, purpose) =>
+      accountAuthCall(
+        "resendCode",
+        "POST /api/accounts/resend-code",
+        email,
+        purpose,
+        () => verificationSent(),
+      ),
+    signIn: (email) =>
+      accountAuthCall(
+        "signIn",
+        "POST /api/accounts/signin",
+        email,
+        undefined,
+        () => {
+          mockAccountEmail = email;
+          mockAccountLinked = true;
+          return accountRecord(email);
+        },
+      ),
+    signInWithGoogle: () =>
+      accountAuthCall(
+        "signInWithGoogle",
+        "POST /api/accounts/google",
+        undefined,
+        undefined,
+        () => {
+          mockAccountEmail = "google@example.com";
+          mockAccountLinked = true;
+          return accountRecord(mockAccountEmail);
+        },
+      ),
+    requestReset: (email) =>
+      accountAuthCall(
+        "requestReset",
+        "POST /api/accounts/reset/request",
+        email,
+        undefined,
+        () => verificationSent(),
+      ),
+    checkResetCode: (email) =>
+      accountAuthCall(
+        "checkResetCode",
+        "POST /api/accounts/reset/check",
+        email,
+        undefined,
+        () => undefined,
+      ),
+    confirmReset: (email) =>
+      accountAuthCall(
+        "confirmReset",
+        "POST /api/accounts/reset/confirm",
+        email,
+        undefined,
+        () => {
+          mockAccountEmail = email;
+          mockAccountLinked = true;
+          return accountRecord(email);
+        },
+      ),
+    claimAccount: (email) =>
+      accountAuthCall(
+        "claimAccount",
+        "POST /api/accounts/claim",
+        email,
+        undefined,
+        () => {
+          mockAccountEmail = email;
+          return verificationSent();
+        },
+      ),
+    changePassword: () =>
+      accountAuthCall(
+        "changePassword",
+        "POST /api/accounts/password",
+        undefined,
+        undefined,
+        () => undefined,
+      ),
+    getAccount: () =>
+      accountAuthCall(
+        "getAccount",
+        "GET /api/accounts/me",
+        undefined,
+        undefined,
+        () => (mockAccountLinked ? accountRecord() : null),
+      ),
+  };
 
   mockClosedChannelLiveSubscription = false;
   mockWebsocketUnavailable = false;
@@ -11422,12 +18230,13 @@ export function maybeInstallE2eTauriMocks() {
   resetMockRelayMembers(config);
   resetMockRelayAgents(config);
   resetMockManagedAgents(config);
+  resetMockFactoryRuntime(config);
   resetMockPersonas(config);
   resetMockTeams(config);
   seedMockSearchProfiles(config);
-  resetMockWorkflows();
+  resetMockWorkflows(config);
   resetMockMesh();
-  resetMockUserStatuses();
+  resetMockUserStatuses(config);
   resetMockPersonaCatalogEvents(config);
   resetMockObservedUnread();
   resetMockTeamCatalogEvents(config);
@@ -11444,6 +18253,7 @@ export function maybeInstallE2eTauriMocks() {
   window.__BUZZ_E2E_COMMANDS__ = [];
   window.__BUZZ_E2E_COMMAND_PAYLOADS__ = [];
   window.__BUZZ_E2E_COMMAND_LOG__ = [];
+  window.__BUZZ_E2E_RELAY_FRAMES__ = [];
   window.__BUZZ_E2E_OBSERVER_CONTROLS__ = [];
   window.__BUZZ_E2E_RUN_MODEL_SWITCH__ = async ({
     agentPubkey,
@@ -11562,6 +18372,64 @@ export function maybeInstallE2eTauriMocks() {
     persistMockHuddle();
     await emitMockHuddleState();
   };
+  window.__BUZZ_E2E_PUBLISH_MOCK_ASK_HEAD__ = ({
+    channelId,
+    askId,
+    threadRootEventId,
+    content,
+    createdAt,
+  }) => {
+    const privateKeyHex = config.mock?.companyAskRelayPrivateKeyHex;
+    if (!privateKeyHex || !/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+      throw new Error("The mock relay signer is unavailable.");
+    }
+    const relaySecret = hexToBytes(privateKeyHex);
+    const relayPubkey = getPublicKey(relaySecret);
+    if (relayPubkey.toLowerCase() !== config.mock?.relaySelf?.toLowerCase()) {
+      throw new Error("The mock relay signer does not match relaySelf.");
+    }
+    const coordinate = `channel:${channelId}:ask:${askId}`;
+    let isToolConsent = false;
+    try {
+      const head = JSON.parse(content) as {
+        ask?: { category?: string; type?: string };
+      };
+      isToolConsent =
+        head.ask?.type === "tool_consent" && head.ask.category === "tool";
+    } catch {
+      throw new Error("The mock ask head content is invalid JSON.");
+    }
+    const event = finalizeEvent(
+      {
+        kind: KIND_ASK_HEAD,
+        created_at: createdAt ?? Math.floor(Date.now() / 1_000),
+        tags: [
+          ["h", channelId],
+          ["d", coordinate],
+          ["e", threadRootEventId],
+          ...(isToolConsent ? [["t", "tool_consent"]] : []),
+        ],
+        content,
+      },
+      relaySecret,
+    );
+    for (let index = mockCompanyAskHeads.length - 1; index >= 0; index -= 1) {
+      const candidate = mockCompanyAskHeads[index];
+      if (
+        candidate.tags.some((tag) => tag[0] === "h" && tag[1] === channelId) &&
+        candidate.tags.some((tag) => tag[0] === "d" && tag[1] === coordinate)
+      ) {
+        mockCompanyAskHeads.splice(index, 1);
+      }
+    }
+    mockCompanyAskHeads.push(event);
+    emitMockLiveEvent(channelId, event);
+    return event;
+  };
+  window.__BUZZ_E2E_COMPANY_SECRET_HEADS__ = () =>
+    structuredClone(mockCompanySecretBindingHeads);
+  window.__BUZZ_E2E_COMPANY_ASK_HEADS__ = () =>
+    structuredClone(mockCompanyAskHeads);
   window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__ = ({
     channelName,
     content,
@@ -11593,6 +18461,33 @@ export function maybeInstallE2eTauriMocks() {
       pending,
       id,
     );
+  };
+  window.__BUZZ_E2E_SEED_COMPANY_WORK_TRACKING_HEAD__ = (event) => {
+    if (!verifyEvent(event) || event.kind !== KIND_COMPANY_WORK_TRACKING_HEAD) {
+      throw new Error("A signed company work tracking head is required.");
+    }
+    const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+    const dTag = event.tags.find((tag) => tag[0] === "d")?.[1];
+    if (
+      !channelId ||
+      (!dTag?.startsWith("company:work-suggestion:") &&
+        !dTag?.startsWith("company:work-watchdog:"))
+    ) {
+      throw new Error("A tracking channel and coordinate are required.");
+    }
+    const store = getMockCompanyWorkEventStore();
+    for (let index = store.length - 1; index >= 0; index -= 1) {
+      const candidate = store[index];
+      if (
+        candidate.kind === KIND_COMPANY_WORK_TRACKING_HEAD &&
+        candidate.tags.some((tag) => tag[0] === "d" && tag[1] === dTag)
+      ) {
+        store.splice(index, 1);
+      }
+    }
+    store.push(event);
+    persistMockCompanyWorkEventStore();
+    emitMockLiveEvent(channelId, event);
   };
   window.__BUZZ_E2E_SET_MOCK_USER_STATUS__ = ({
     text,
@@ -11705,6 +18600,7 @@ export function maybeInstallE2eTauriMocks() {
     });
   };
   window.__BUZZ_E2E_MUTATE_CHANNEL__ = ({
+    addMembers,
     channelId,
     channelType,
     description,
@@ -11717,6 +18613,19 @@ export function maybeInstallE2eTauriMocks() {
     }
     if (description !== undefined) {
       channel.description = description;
+    }
+    if (addMembers !== undefined) {
+      for (const member of addMembers) {
+        if (
+          !channel.members.some(
+            (existing) =>
+              existing.pubkey.toLowerCase() === member.pubkey.toLowerCase(),
+          )
+        ) {
+          channel.members.push(createMockMember(member.pubkey, member.role, 0));
+        }
+      }
+      syncMockChannel(channel);
     }
     if (removeMemberPubkey !== undefined) {
       channel.members = channel.members.filter(
@@ -11877,6 +18786,24 @@ export function maybeInstallE2eTauriMocks() {
   window.__BUZZ_E2E_SET_MESH__ = (mesh) => {
     if (mesh.admitted !== undefined) mockMeshState.admitted = mesh.admitted;
     if (mesh.models !== undefined) mockMeshState.models = mesh.models;
+    if (mesh.hosts !== undefined) mockMeshState.hosts = mesh.hosts;
+    if (mesh.hostsError !== undefined)
+      mockMeshState.hostsError = mesh.hostsError;
+    if (mesh.hostsHold !== undefined) {
+      mockMeshState.hostsHold = mesh.hostsHold;
+      if (!mesh.hostsHold) {
+        mockMeshState.releaseHosts?.();
+        mockMeshState.releaseHosts = null;
+      }
+    }
+    if (mesh.catalogInstalled !== undefined)
+      mockMeshState.catalogInstalled = mesh.catalogInstalled;
+    if (mesh.catalogError !== undefined)
+      mockMeshState.catalogError = mesh.catalogError;
+    if (mesh.statusError !== undefined)
+      mockMeshState.statusError = mesh.statusError;
+    if (mesh.startError !== undefined)
+      mockMeshState.startError = mesh.startError;
     if (mesh.denyReason !== undefined)
       mockMeshState.denyReason = mesh.denyReason;
     if (mesh.nodeState !== undefined) mockMeshState.nodeState = mesh.nodeState;
@@ -11919,7 +18846,7 @@ export function maybeInstallE2eTauriMocks() {
       .replaceAll("-", " ");
   };
   const meshNodeStatus = (
-    state: "off" | "running",
+    state: "off" | "starting" | "running",
     mode: "serve" | "client" | null,
   ) => {
     const model = mockMeshState.activeModel ?? mockMeshState.models[0] ?? null;
@@ -11937,27 +18864,47 @@ export function maybeInstallE2eTauriMocks() {
       deviceName: state === "running" ? "Mock desktop" : null,
     };
   };
-  let mockImportedVoices: Array<{
-    key: string;
-    displayName: string;
-    backend: string;
-    backendName: string;
-    availability: "installed";
-    fallbackKey: string;
-    referenceFile: string;
-    provenance: {
-      source: string;
-      contentHash: string;
-      license: null;
-      sourceUrl: null;
-    };
-  }> = [];
+  let mockImportedVoices: VoiceRegistryEntry[] =
+    getConfig()?.mock?.importedPocketVoices ?? [];
   const handleMockCommand = async (
     command: string,
     payload: unknown,
   ): Promise<unknown> => {
     const activeConfig = getConfig();
     const identity = getActiveIdentity(activeConfig);
+    if (
+      command === "store_company_secret" ||
+      command === "delete_company_secret"
+    ) {
+      const args =
+        typeof payload === "object" && payload !== null
+          ? (payload as Record<string, unknown>)
+          : {};
+      const safePayload = {
+        relayPubkey:
+          typeof args.relayPubkey === "string" ? args.relayPubkey : null,
+        bindingId: typeof args.bindingId === "string" ? args.bindingId : null,
+        ...(command === "store_company_secret"
+          ? { secretValueProvided: typeof args.secretValue === "string" }
+          : {}),
+      };
+      window.__BUZZ_E2E_COMMANDS__?.push(command);
+      window.__BUZZ_E2E_COMMAND_PAYLOADS__?.push({
+        command,
+        payload: safePayload,
+      });
+      window.__BUZZ_E2E_COMMAND_LOG__?.push({
+        command,
+        payload: safePayload,
+      });
+      if (
+        command === "store_company_secret" &&
+        activeConfig?.mock?.companySecretStoreError
+      ) {
+        throw new Error("Device secure storage is unavailable.");
+      }
+      return null;
+    }
     window.__BUZZ_E2E_COMMANDS__?.push(command);
     const loggedPayload = (() => {
       if (payload instanceof Uint8Array) {
@@ -12250,6 +19197,17 @@ export function maybeInstallE2eTauriMocks() {
         await emitMockHuddleState();
         return;
       }
+      case "list_audio_output_devices":
+        return activeConfig?.mock?.audioOutputDevices ?? [];
+      case "get_audio_output_device":
+        return activeConfig?.mock?.selectedAudioOutputDevice ?? "";
+      case "set_audio_output_device": {
+        const { name } = payload as { name: string };
+        if (activeConfig?.mock) {
+          activeConfig.mock.selectedAudioOutputDevice = name;
+        }
+        return null;
+      }
       case "get_model_status":
         return { stt: "ready", tts: "ready" };
       case "get_tts_settings":
@@ -12420,7 +19378,7 @@ export function maybeInstallE2eTauriMocks() {
           throw new Error("Voice WAV must contain PCM or 32-bit float audio");
         }
         const contentHash = "1".repeat(64);
-        const imported = {
+        const imported: VoiceRegistryEntry = {
           key: `pocket:imported:${contentHash}`,
           displayName: "My voice",
           backend: "pocket",
@@ -12435,7 +19393,7 @@ export function maybeInstallE2eTauriMocks() {
             sourceUrl: null,
           },
         };
-        mockImportedVoices = [imported];
+        mockImportedVoices = [...mockImportedVoices, imported];
         const current = activeConfig?.mock?.ttsSettings ?? {
           version: 1,
           agentTextToSpeech: true,
@@ -12540,6 +19498,8 @@ export function maybeInstallE2eTauriMocks() {
       case "mesh_installed_models":
         return mockMeshState.models;
       case "mesh_model_catalog":
+        if (mockMeshState.catalogError)
+          throw new Error(mockMeshState.catalogError);
         return {
           gpuName: "Mock Apple GPU",
           vramDisplay: "32 GB",
@@ -12552,17 +19512,28 @@ export function maybeInstallE2eTauriMocks() {
               sizeGb: 3.5,
               description: "Buzz-curated local agent model",
               fit: "comfortable",
-              installed: true,
+              installed: mockMeshState.catalogInstalled,
               recommended: true,
               curated: true,
             },
           ],
         };
       case "mesh_node_status":
+        if (mockMeshState.statusError)
+          throw new Error(mockMeshState.statusError);
         return meshNodeStatus(mockMeshState.nodeState, mockMeshState.nodeMode);
+      case "mesh_connected_hosts":
+        if (mockMeshState.hostsError) throw new Error(mockMeshState.hostsError);
+        if (mockMeshState.hostsHold) {
+          await new Promise<void>((resolve) => {
+            mockMeshState.releaseHosts = resolve;
+          });
+        }
+        return mockMeshState.hosts;
       case "mesh_serving_usage":
         return mockMeshState.servingUsage;
       case "mesh_start_node": {
+        if (mockMeshState.startError) throw new Error(mockMeshState.startError);
         const req = (
           payload as {
             request?: { mode?: "serve" | "client"; modelId?: string };
@@ -12573,6 +19544,12 @@ export function maybeInstallE2eTauriMocks() {
         mockMeshState.activeModel = req?.modelId
           ? { id: req.modelId, name: meshModelName(req.modelId) }
           : (mockMeshState.models[0] ?? null);
+        if (mockMeshState.nodeMode === "serve") {
+          mockMeshState.hosts = [
+            ...mockMeshState.hosts.filter((host) => !host.local),
+            { id: "test-local-device", name: "Local test host", local: true },
+          ];
+        }
         return meshNodeStatus(mockMeshState.nodeState, mockMeshState.nodeMode);
       }
       case "mesh_stop_node":
@@ -12587,6 +19564,7 @@ export function maybeInstallE2eTauriMocks() {
         mockMeshState.nodeState = "off";
         mockMeshState.nodeMode = null;
         mockMeshState.activeModel = null;
+        mockMeshState.hosts = mockMeshState.hosts.filter((host) => !host.local);
         return meshNodeStatus("off", null);
       /** Build a test-only signed-looking observer control event. */
       case "build_observer_control_event": {
@@ -12641,6 +19619,10 @@ export function maybeInstallE2eTauriMocks() {
 
         return { ...DEFAULT_MOCK_IDENTITY, lost: isLost, locked: isLocked };
       }
+      case "is_shared_identity":
+        // Match the default Rust command: the E2E identity is local to the
+        // mocked desktop and is not sourced from BUZZ_SHARE_IDENTITY.
+        return false;
       case "sign_nostr_identity_binding": {
         const request = payload as {
           challengeId: string;
@@ -12822,9 +19804,17 @@ export function maybeInstallE2eTauriMocks() {
       case "apply_workspace": {
         const applyDelayMs = activeConfig?.mock?.applyCommunityDelayMs ?? 0;
         if (applyDelayMs > 0) {
-          return new Promise((resolve) =>
+          await new Promise((resolve) =>
             window.setTimeout(resolve, applyDelayMs),
           );
+        }
+        const relayUrl = (payload as { relayUrl?: unknown }).relayUrl;
+        if (
+          isRelayMode(activeConfig) &&
+          typeof relayUrl === "string" &&
+          relayUrl.trim().length > 0
+        ) {
+          appliedRelayWsUrl = relayUrl;
         }
         return;
       }
@@ -12863,6 +19853,33 @@ export function maybeInstallE2eTauriMocks() {
           payload as Parameters<typeof handleGetUserNotes>[0],
           activeConfig,
         );
+      case "get_contact_list": {
+        const { pubkey } = payload as { pubkey: string };
+        const normalizedPubkey = pubkey.toLowerCase();
+        const contacts = mockVisualContactLists.get(normalizedPubkey) ?? [];
+        return {
+          id: `mock-contact-list-${normalizedPubkey}`,
+          pubkey,
+          created_at: Math.floor(Date.now() / 1000),
+          tags: contacts.map((contactPubkey) => ["p", contactPubkey]),
+          content: "{}",
+        };
+      }
+      case "set_contact_list": {
+        const { contacts } = payload as {
+          contacts: Array<{ pubkey: string }>;
+        };
+        const pubkey = getMockMemberPubkey(activeConfig).toLowerCase();
+        mockVisualContactLists.set(
+          pubkey,
+          contacts.map((contact) => contact.pubkey.toLowerCase()),
+        );
+        return {
+          event_id: `mock-contact-list-${Math.floor(Date.now() / 1000)}`,
+          accepted: true,
+          message: "Contact list updated",
+        };
+      }
       case "get_global_notes":
         return handleGetGlobalNotes(
           payload as Parameters<typeof handleGetGlobalNotes>[0],
@@ -13086,7 +20103,7 @@ export function maybeInstallE2eTauriMocks() {
           }
         );
       case "list_project_local_repositories":
-        return [];
+        return activeConfig?.mock?.factoryLocalRepositories ?? [];
       case "open_project_repository_folder":
         return null;
       case "push_project_local_repository": {
@@ -13617,14 +20634,20 @@ export function maybeInstallE2eTauriMocks() {
       }
       case "list_personas":
         return handleListPersonas();
-      case "create_persona":
+      case "create_persona": {
+        const writeError = activeConfig?.mock?.personaWriteErrors?.shift();
+        if (writeError) throw new Error(writeError);
         return handleCreatePersona(
           payload as Parameters<typeof handleCreatePersona>[0],
         );
-      case "update_persona":
+      }
+      case "update_persona": {
+        const writeError = activeConfig?.mock?.personaWriteErrors?.shift();
+        if (writeError) throw new Error(writeError);
         return handleUpdatePersona(
           payload as Parameters<typeof handleUpdatePersona>[0],
         );
+      }
       case "update_persona_and_publish":
         return handleUpdatePersonaAndPublish(
           payload as Parameters<typeof handleUpdatePersonaAndPublish>[0],
@@ -13972,6 +20995,129 @@ export function maybeInstallE2eTauriMocks() {
             },
           ],
         };
+      }
+      case "factory_run_list":
+        return mockFactoryRuns.map((run) => structuredClone(run));
+      case "factory_run_snapshot":
+      case "factory_run_reattach": {
+        const { runId, afterSequence = 0 } = payload as {
+          runId: string;
+          afterSequence?: number;
+        };
+        if (activeConfig?.mock?.factorySnapshotFailureRunIds?.includes(runId)) {
+          throw new Error("Factory session is reconnecting.");
+        }
+        return getMockFactorySnapshot(runId, afterSequence);
+      }
+      case "factory_run_detach":
+        return true;
+      case "factory_run_cancel": {
+        const { runId } = payload as { runId: string };
+        const run = mockFactoryRuns.find((item) => item.id === runId);
+        if (!run)
+          throw new Error("Factory run is not available in this scope.");
+        run.status = "cancelled";
+        run.updatedAt = new Date().toISOString();
+        const snapshot = mockFactorySnapshots.get(runId);
+        if (snapshot) snapshot.run = structuredClone(run);
+        return structuredClone(run);
+      }
+      case "factory_run_create": {
+        const { input } = payload as {
+          input: {
+            projectId?: string | null;
+            repositoryId?: string | null;
+            checkoutPath: string;
+            agentId: string;
+            parentRunId?: string | null;
+            operationKey: string;
+            prompt: string;
+          };
+        };
+        const now = new Date().toISOString();
+        const communities = JSON.parse(
+          window.localStorage.getItem("buzz-communities") ?? "[]",
+        ) as Array<{
+          id: string;
+          relayUrl?: string;
+          businessCommunityId?: string;
+          clientChannelId?: string | null;
+        }>;
+        const activeCommunityId = window.localStorage.getItem(
+          "buzz-active-community-id",
+        );
+        const community = communities.find(
+          (item) => item.id === activeCommunityId,
+        );
+        const scope: FactoryScope = {
+          relayUrl: community?.relayUrl ?? getRelayWsUrl(activeConfig),
+          identityPubkey: getMockMemberPubkey(activeConfig),
+          businessCommunityId:
+            community?.businessCommunityId ?? community?.id ?? "e2e-business",
+          clientChannelId: community?.clientChannelId ?? null,
+        };
+        const run: FactoryRun = {
+          id: `e2e-factory-run-${crypto.randomUUID()}`,
+          scope,
+          projectId: input.projectId ?? null,
+          repositoryId: input.repositoryId ?? null,
+          checkoutPath: input.checkoutPath,
+          agentId: input.agentId,
+          harnessId:
+            activeConfig?.mock?.managedAgents?.find(
+              (agent) => agent.pubkey === input.agentId,
+            )?.runtime ?? "local",
+          parentRunId: input.parentRunId ?? null,
+          status: "queued",
+          createdAt: now,
+          updatedAt: now,
+          acpSessionId: null,
+          error: null,
+        };
+        mockFactoryRuns.unshift(run);
+        const promptEvent: FactoryRunEvent = {
+          sequence: 1,
+          runId: run.id,
+          createdAt: now,
+          kind: "user_prompt",
+          payload: { text: input.prompt },
+          scope,
+        };
+        mockFactorySnapshots.set(run.id, {
+          run: structuredClone(run),
+          events: [promptEvent],
+          draft: null,
+          hasMore: false,
+        });
+        return structuredClone(run);
+      }
+      case "factory_run_get_draft": {
+        const { runId } = payload as { runId: string };
+        return structuredClone(mockFactoryDrafts.get(runId) ?? null);
+      }
+      case "factory_run_set_draft": {
+        const { input } = payload as {
+          input: { runId: string; draft: string };
+        };
+        if (!mockFactoryRuns.some((run) => run.id === input.runId)) {
+          throw new Error("Factory run is not available in this scope.");
+        }
+        const draft = {
+          runId: input.runId,
+          draft: input.draft,
+          updatedAt: new Date().toISOString(),
+        };
+        mockFactoryDrafts.set(input.runId, draft);
+        const snapshot = mockFactorySnapshots.get(input.runId);
+        if (snapshot) snapshot.draft = input.draft;
+        return structuredClone(draft);
+      }
+      case "factory_run_delete": {
+        const { runId } = payload as { runId: string };
+        mockFactoryRuns = mockFactoryRuns.filter((run) => run.id !== runId);
+        mockFactorySnapshots.delete(runId);
+        mockFactoryDrafts.delete(runId);
+        return undefined;
       }
       case "list_managed_agents":
         return handleListManagedAgents(activeConfig);
@@ -14671,6 +21817,21 @@ export function maybeInstallE2eTauriMocks() {
         mockWebsocketSendMutexWedged = false;
         return null;
       case "plugin:websocket|send":
+        try {
+          const data = (payload as { message?: { data?: unknown } }).message
+            ?.data;
+          if (typeof data === "string") {
+            const frame: unknown = JSON.parse(data);
+            if (Array.isArray(frame)) {
+              window.__BUZZ_E2E_RELAY_FRAMES__?.push({
+                at: Date.now(),
+                frame,
+              });
+            }
+          }
+        } catch {
+          // Malformed frames are still handled by the mock transport below.
+        }
         if (isRelayMode(activeConfig)) {
           return sendToRealSocket(
             payload as Parameters<typeof sendToRealSocket>[0],
@@ -14727,9 +21888,29 @@ export function maybeInstallE2eTauriMocks() {
         return handleGetWorkflow(
           payload as Parameters<typeof handleGetWorkflow>[0],
         );
+      case "get_workflow_draft":
+        return handleGetWorkflowDraft(
+          payload as Parameters<typeof handleGetWorkflowDraft>[0],
+        );
       case "create_workflow":
         return handleCreateWorkflow(
           payload as Parameters<typeof handleCreateWorkflow>[0],
+        );
+      case "save_workflow_draft":
+        return handleSaveWorkflowDraft(
+          payload as Parameters<typeof handleSaveWorkflowDraft>[0],
+        );
+      case "publish_workflow_draft":
+        return handlePublishWorkflowDraft(
+          payload as Parameters<typeof handlePublishWorkflowDraft>[0],
+        );
+      case "set_workflow_status":
+        return handleSetWorkflowStatus(
+          payload as Parameters<typeof handleSetWorkflowStatus>[0],
+        );
+      case "preview_workflow":
+        return handlePreviewWorkflow(
+          payload as Parameters<typeof handlePreviewWorkflow>[0],
         );
       case "update_workflow":
         return handleUpdateWorkflow(
@@ -14750,6 +21931,16 @@ export function maybeInstallE2eTauriMocks() {
       case "get_run_approvals":
         return handleGetRunApprovals(
           payload as Parameters<typeof handleGetRunApprovals>[0],
+        );
+      case "grant_approval":
+        return handleWorkflowApprovalAction(
+          payload as Parameters<typeof handleWorkflowApprovalAction>[0],
+          "granted",
+        );
+      case "deny_approval":
+        return handleWorkflowApprovalAction(
+          payload as Parameters<typeof handleWorkflowApprovalAction>[0],
+          "denied",
         );
       case "plugin:webview|set_webview_zoom":
         window.__BUZZ_E2E_WEBVIEW_ZOOM__ = (payload as { value: number }).value;
@@ -14880,6 +22071,47 @@ export function maybeInstallE2eTauriMocks() {
       case "archive_events":
         // Returns the ArchiveBatchResult shape the UI expects.
         return { persisted: 0, dropped: 0 };
+      case "read_archived_events": {
+        const request = payload as {
+          scopeType: string;
+          scopeValue: string;
+          kinds?: number[] | null;
+          beforeCreatedAt?: number | null;
+          beforeId?: string | null;
+          limit?: number | null;
+        };
+        return (activeConfig?.mock?.archivedEvents ?? [])
+          .filter((event) => {
+            if (request.kinds && !request.kinds.includes(event.kind)) {
+              return false;
+            }
+            if (request.scopeType === "owner_p") {
+              return event.tags.some(
+                (tag) =>
+                  tag[0] === "p" &&
+                  tag[1]?.toLowerCase() === request.scopeValue.toLowerCase(),
+              );
+            }
+            return true;
+          })
+          .filter((event) => {
+            if (request.beforeCreatedAt == null || request.beforeId == null) {
+              return true;
+            }
+            return (
+              event.created_at < request.beforeCreatedAt ||
+              (event.created_at === request.beforeCreatedAt &&
+                event.id.localeCompare(request.beforeId) < 0)
+            );
+          })
+          .sort(
+            (left, right) =>
+              right.created_at - left.created_at ||
+              right.id.localeCompare(left.id),
+          )
+          .slice(0, request.limit ?? 50)
+          .map((event) => JSON.stringify(event));
+      }
       // Archive sync runs natively; the bridge has no relay-backed backend to
       // drive, so these are accepted no-ops. Without them every AppShell mount
       // logs an unknown-command warning once the gate opens.
@@ -15093,29 +22325,84 @@ export function maybeInstallE2eTauriMocks() {
           };
         };
         const results: UnreadCatchUpChannelResult[] =
-          request.request.channels.map((channel) => ({
-            status: "success",
-            channelId: channel.id,
-            observedEvents: [],
-            maxTrigger: 0,
-            activityRows: [],
-            discovered: {
-              participated: [],
-              authored: getMockMessageStore(channel.id)
-                .filter(
-                  (event) =>
-                    event.pubkey === request.request.selfPubkey &&
-                    getThreadReferenceFromTags(event.tags).parentEventId ===
-                      null,
-                )
-                .map((event) => event.id),
-              mentioned: [],
-            },
-          }));
+          request.request.channels.map((channel) => {
+            const events = getMockMessageStore(channel.id);
+            const unreadReplies =
+              referenceWorkspaceActive &&
+              channel.id === REFERENCE_CHANNEL_IDS.sales
+                ? events.filter(
+                    (event) =>
+                      event.id === REFERENCE_SALES_UNREAD_REPLY_ID &&
+                      getThreadReferenceFromTags(event.tags).parentEventId !==
+                        null,
+                  )
+                : [];
+            const sidebarFixtureEvents = referenceWorkspaceActive
+              ? events.filter((event) => event.id.startsWith("c1-"))
+              : [];
+            const observedEvents = [
+              ...unreadReplies,
+              ...sidebarFixtureEvents,
+            ].map((event) => ({
+              id: event.id,
+              createdAt: event.created_at,
+              rootId: getThreadReferenceFromTags(event.tags).rootEventId,
+              highPriority: unreadReplies.includes(event),
+              countsTowardBadge: true,
+              countsTowardAppBadge: false,
+            }));
+            const activityRows = unreadReplies.map((event) => ({
+              id: event.id,
+              kind: event.kind,
+              pubkey: event.pubkey,
+              content: event.content,
+              createdAt: event.created_at,
+              channelId: channel.id,
+              channelName: "Sales",
+              tags: [...event.tags],
+            }));
+            return {
+              status: "success",
+              channelId: channel.id,
+              observedEvents,
+              maxTrigger: 0,
+              activityRows,
+              discovered: {
+                participated: [],
+                authored: events
+                  .filter(
+                    (event) =>
+                      event.pubkey === request.request.selfPubkey &&
+                      getThreadReferenceFromTags(event.tags).parentEventId ===
+                        null,
+                  )
+                  .map((event) => event.id),
+                mentioned: [],
+              },
+            };
+          });
         // Keep this mock aligned with the complete Rust serde shape pinned by
         // `serialized_response_matches_the_typescript_contract`.
         return { channels: results };
       }
+      case "get_agent_usage_series":
+        return (
+          config?.mock?.agentUsageSeries ?? {
+            collectionEnabled: true,
+            buckets: [],
+            agents: [],
+            coverage: {
+              firstArchivedAt: null,
+              lastArchivedAt: null,
+              firstReportedAt: null,
+              lastReportedAt: null,
+              reportCount: 0,
+              invalidReportCount: 0,
+              hasUnknownUsage: false,
+            },
+            hasArchivedEvidence: null,
+          }
+        );
       case "agent_metric_archive_default_enabled":
         return activeConfig?.mock?.agentMetricArchiveDefaultEnabled ?? true;
       case "set_prevent_sleep_active":
@@ -15179,6 +22466,21 @@ export function maybeInstallE2eTauriMocks() {
   };
   window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__ = (command, payload) =>
     handleMockCommand(command, payload ?? null);
+  const canaryTestWindow = window as typeof window & {
+    __BUZZ_E2E_PUBLISH_RELAY_EVENT__?: (template: {
+      kind: number;
+      content: string;
+      tags: string[][];
+      createdAt?: number;
+    }) => Promise<{ accepted: boolean; event_id: string; message: string }>;
+    __BUZZ_E2E_QUERY_RELAY__?: (
+      filters: Array<Record<string, unknown>>,
+    ) => Promise<RelayEvent[]>;
+  };
+  canaryTestWindow.__BUZZ_E2E_PUBLISH_RELAY_EVENT__ = (template) =>
+    submitSignedEvent(getConfig(), template);
+  canaryTestWindow.__BUZZ_E2E_QUERY_RELAY__ = (filters) =>
+    relayQuery(getConfig(), filters);
   window.__BUZZ_E2E_EMIT_TAURI_EVENT__ = (event, payload) =>
     emit(event, payload);
   mockIPC(handleMockCommand, { shouldMockEvents: true });

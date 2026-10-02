@@ -44,7 +44,6 @@ jobs:
         run: just desktop-tauri-fmt-check
       - name: Clippy
         run: just clippy
-
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest

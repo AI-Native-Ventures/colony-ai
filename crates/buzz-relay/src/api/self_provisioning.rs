@@ -1,0 +1,700 @@
+//! Member self-serve community provisioning.
+//!
+//! The operator API (`/operator/communities`) is deployment-root authority:
+//! its NIP-98 signers come from `RELAY_OPERATOR_PUBKEYS` and it can create
+//! arbitrary hosts and rotate owners. This surface is the member-facing
+//! counterpart for deployments that let their existing users create
+//! communities directly, without a separate provisioning service holding an
+//! operator key:
+//!
+//! - `GET /api/communities/config`: whether this relay provisions at all,
+//!   and on which domain. No auth; always `200` so a client can render the
+//!   disabled state instead of hardcoding a domain suffix.
+//! - `GET /api/communities/availability?name=<slug>`: name check, no auth.
+//! - `POST /api/communities` `{ "name": "<slug>" }`: NIP-98 signed by the
+//!   requester's own key; the requester must already be a relay member of
+//!   the tenant community the request arrives on, and becomes the owner of
+//!   the created community.
+//! - `GET /api/communities/mine[?scope=owner|member]`: NIP-98; lists
+//!   communities the requester owns on this deployment. `scope=member`
+//!   (the default is `owner`) widens the list to every non-archived
+//!   community the requester holds any `relay_members` row in, adding a
+//!   `role` field to each entry. The signed NIP-98 `u` tag always names
+//!   the bare `/api/communities/mine` path, never the query string.
+//!
+//! Scope is deliberately narrower than the operator surface:
+//!
+//! - Hosts are always `<slug>.<BUZZ_SELF_PROVISION_DOMAIN>`, so a caller can
+//!   never create an arbitrary host.
+//! - Creation is create-only ([`create_community_for_owner`]): an existing
+//!   community's owner can never be rotated from here.
+//! - The per-owner cap (`BUZZ_MAX_COMMUNITIES_PER_OWNER`) is enforced
+//!   atomically in the database.
+//! - `BUZZ_SELF_PROVISION_DOMAIN` unset (the default) disables every route
+//!   here; fail closed, matching the operator allowlist default.
+//!
+//! ## Member mode vs public mode
+//!
+//! By default the requester must already be a relay member of the community
+//! the request arrives on. That gate is what makes the per-owner cap
+//! meaningful: an abuser cannot simply mint keys, because each key must first
+//! have been admitted to some community.
+//!
+//! `BUZZ_SELF_PROVISION_PUBLIC=true` removes that gate so anyone can create
+//! their first community. NIP-98 still proves key control, but keys are free
+//! to generate, so the per-owner cap no longer bounds an attacker. Public mode
+//! therefore substitutes limits keyed on scarcer resources: attempts per
+//! client IP per hour, and attempts deployment-wide per hour. The global
+//! limit is the one an attacker cannot evade by changing source address; it
+//! bounds cost, at the price of a noisy attacker being able to exhaust the
+//! hour's allowance for everyone. Raise it if that trade lands wrong.
+
+use std::net::IpAddr;
+use std::sync::Arc;
+use std::time::Duration;
+
+use axum::{
+    extract::{ConnectInfo, Query, State},
+    http::{HeaderMap, StatusCode},
+    response::Json,
+};
+use serde::Deserialize;
+use serde_json::Value;
+
+use crate::handlers::community_provisioning::create_community_for_owner;
+use crate::state::AppState;
+
+use super::{api_error, bridge, internal_error};
+
+/// Fixed-window size for both public-mode creation limiters.
+pub(crate) const CREATE_RATE_WINDOW: Duration = Duration::from_secs(60 * 60);
+
+/// Maximum slug length. DNS caps labels at 63 octets; the full host must
+/// also fit `communities.host VARCHAR(255)`, which every slug under this cap
+/// does for any sane provisioning domain.
+const MAX_SLUG_LEN: usize = 63;
+
+/// Names that would collide with or impersonate infrastructure under the
+/// provisioning domain. The relay's own primary host is protected by the
+/// create-only conflict check; these are denied even while unclaimed.
+const RESERVED_SLUGS: &[&str] = &[
+    "admin", "api", "app", "assets", "help", "imap", "mail", "media", "mx", "ns1", "ns2", "relay",
+    "smtp", "static", "status", "support", "www",
+];
+
+/// Query parameters for `GET /api/communities/availability`.
+#[derive(Debug, Deserialize)]
+pub struct AvailabilityQuery {
+    name: String,
+}
+
+/// Query parameters for `GET /api/communities/mine`.
+#[derive(Debug, Deserialize)]
+pub struct MineQuery {
+    /// `owner` (default) or `member`. Unknown values are rejected with 400.
+    scope: Option<String>,
+}
+
+/// Which memberships `GET /api/communities/mine` reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MineScope {
+    /// Only communities the requester owns. The historical behaviour.
+    Owner,
+    /// Every non-archived community the requester belongs to, at any role.
+    Member,
+}
+
+/// Parse the `scope` query parameter, defaulting to [`MineScope::Owner`].
+fn parse_mine_scope(raw: Option<&str>) -> Result<MineScope, String> {
+    match raw.map(str::trim) {
+        None | Some("") | Some("owner") => Ok(MineScope::Owner),
+        Some("member") => Ok(MineScope::Member),
+        Some(other) => Err(format!(
+            "unknown scope {other:?}: expected \"owner\" or \"member\""
+        )),
+    }
+}
+
+/// JSON body for `POST /api/communities`.
+#[derive(Debug, Deserialize)]
+pub struct CreateCommunityRequest {
+    name: String,
+}
+
+/// Validate a community slug: lowercase letters, digits, and single hyphens
+/// between alphanumeric runs (`acme`, `acme-labs`); never leading, trailing,
+/// or consecutive hyphens. Matches the desktop client's name rule.
+fn validate_slug(raw: &str) -> Result<String, String> {
+    let slug = raw.trim().to_lowercase();
+    if slug.is_empty() {
+        return Err("name is empty".to_string());
+    }
+    if slug.len() > MAX_SLUG_LEN {
+        return Err(format!(
+            "name too long: {} chars (max {MAX_SLUG_LEN})",
+            slug.len()
+        ));
+    }
+    let valid = slug
+        .bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && !slug.starts_with('-')
+        && !slug.ends_with('-')
+        && !slug.contains("--");
+    if !valid {
+        return Err(
+            "name must use lowercase letters, numbers, and single hyphens (e.g. acme-labs)"
+                .to_string(),
+        );
+    }
+    if RESERVED_SLUGS.contains(&slug.as_str()) {
+        return Err(format!("name {slug:?} is reserved"));
+    }
+    Ok(slug)
+}
+
+/// The configured provisioning domain, or the fail-closed disabled error.
+fn provisioning_domain(state: &AppState) -> Result<&str, (StatusCode, Json<Value>)> {
+    state
+        .config
+        .self_provision_domain
+        .as_deref()
+        .ok_or_else(|| {
+            api_error(
+                StatusCode::NOT_FOUND,
+                "self-serve community creation is not enabled on this relay",
+            )
+        })
+}
+
+fn slug_host(slug: &str, domain: &str) -> String {
+    format!("{slug}.{domain}")
+}
+
+/// Tenant-bound NIP-98 authentication, mirroring the invite API: the signed
+/// `u` tag must name the tenant host the request arrived on, and the event id
+/// is burned in the tenant replay scope.
+async fn authenticate(
+    state: &Arc<AppState>,
+    headers: &HeaderMap,
+    method: &str,
+    path: &str,
+    body: Option<&[u8]>,
+) -> Result<(buzz_core::TenantContext, nostr::PublicKey), (StatusCode, Json<Value>)> {
+    let raw_host = headers
+        .get(axum::http::header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let tenant = crate::tenant::bind_community(&state.db, raw_host)
+        .await
+        .map_err(|_| {
+            api_error(
+                StatusCode::NOT_FOUND,
+                "relay: no community is configured for this host",
+            )
+        })?;
+
+    let url = bridge::nip98_expected_url(&state.config.relay_url, &tenant, path);
+    let bridge::VerifiedBridgeAuth {
+        pubkey,
+        event_id_bytes,
+        ..
+    } = bridge::verify_bridge_auth_with_options(
+        headers,
+        method,
+        &url,
+        body,
+        true, // always NIP-98; no X-Pubkey dev fallback
+        body.is_some(),
+    )?;
+    bridge::check_nip98_replay(state, &tenant, event_id_bytes).await?;
+
+    Ok((tenant, pubkey))
+}
+
+/// The requester must already be a relay member of the tenant community the
+/// request arrived on. Any role qualifies: membership is the customer gate,
+/// ownership of the new community is what the request grants.
+///
+/// Skipped entirely in public mode, where the IP and deployment-wide rate
+/// limits are the abuse controls instead.
+async fn require_tenant_membership(
+    state: &AppState,
+    tenant: &buzz_core::TenantContext,
+    pubkey_hex: &str,
+) -> Result<(), (StatusCode, Json<Value>)> {
+    let member = state
+        .db
+        .get_relay_member(tenant.community(), pubkey_hex)
+        .await
+        .map_err(|e| internal_error(&format!("self-provision membership lookup: {e}")))?;
+    if member.is_none() {
+        return Err(api_error(
+            StatusCode::FORBIDDEN,
+            "only members of this community can create new communities",
+        ));
+    }
+    Ok(())
+}
+
+/// Resolve the client address for rate limiting.
+///
+/// Behind Fly's proxy the socket peer is the proxy, so `Fly-Client-IP` (which
+/// the proxy sets itself, overwriting any client-supplied value) carries the
+/// real source. A relay exposed directly would see a spoofable header here;
+/// that is why the deployment-wide limit exists as an unspoofable backstop
+/// and why this address is used only for rate limiting, never for authz.
+fn client_ip(headers: &HeaderMap, extensions: &axum::http::Extensions) -> Option<IpAddr> {
+    headers
+        .get("fly-client-ip")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse::<IpAddr>().ok())
+        .or_else(|| {
+            extensions
+                .get::<ConnectInfo<std::net::SocketAddr>>()
+                .map(|info| info.0.ip())
+        })
+}
+
+const PUBLIC_RATE_COUNTER_SCRIPT: &str = r#"
+local count = redis.call('INCR', KEYS[1])
+local ttl = redis.call('TTL', KEYS[1])
+if count == 1 or ttl < 0 then
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return count
+"#;
+
+async fn increment_public_create_counter(state: &AppState, key: &str) -> Result<u64, ()> {
+    let mut connection = state.redis_pool.get().await.map_err(|error| {
+        tracing::error!(error = %error, "self-serve community rate limiter Redis pool unavailable");
+    })?;
+    let count: u64 = redis::cmd("EVAL")
+        .arg(PUBLIC_RATE_COUNTER_SCRIPT)
+        .arg(1)
+        .arg(key)
+        .arg(CREATE_RATE_WINDOW.as_secs())
+        .query_async(&mut *connection)
+        .await
+        .map_err(|error| {
+            tracing::error!(error = %error, "self-serve community rate limiter Redis command failed");
+        })?;
+    Ok(count)
+}
+
+/// Public-mode abuse controls. The deployment counter advances on every
+/// attempt. Once it is exhausted, requests do not create new per-IP keys, so
+/// source-address sprays cannot grow Redis state without bound. Redis makes
+/// the limits apply across relay processes; failure to reach Redis fails
+/// closed.
+async fn public_create_rate_limited(
+    state: &AppState,
+    domain: &str,
+    client_ip: Option<IpAddr>,
+) -> Result<Option<&'static str>, ()> {
+    use sha2::{Digest as _, Sha256};
+
+    let namespace = format!("colony:self-provision:{domain}");
+    let global_count =
+        increment_public_create_counter(state, &format!("{namespace}:global")).await?;
+    if global_count > u64::from(state.config.self_provision_public_global_limit) {
+        return Ok(Some(
+            "this relay has reached its hourly limit for new communities; try again later",
+        ));
+    }
+
+    // Unknown source addresses share one bucket rather than bypassing the
+    // per-IP limit. Hash the value to avoid storing raw client addresses in
+    // Redis keys.
+    let ip = client_ip.unwrap_or(IpAddr::from([0, 0, 0, 0]));
+    let ip_digest = hex::encode(Sha256::digest(ip.to_string().as_bytes()));
+    let ip_count =
+        increment_public_create_counter(state, &format!("{namespace}:ip:{ip_digest}")).await?;
+
+    if ip_count > u64::from(state.config.self_provision_public_ip_limit) {
+        return Ok(Some(
+            "too many communities created from this network; try again later",
+        ));
+    }
+    Ok(None)
+}
+
+/// `GET /api/communities/config` is the public description of this relay's
+/// self-serve provisioning surface.
+///
+/// Unauthenticated and always `200`, including when provisioning is disabled:
+/// a client needs to render the disabled state, and the fields here reveal
+/// nothing the routes below do not already leak (the domain appears in every
+/// availability response, and the cap in every limit-reached error).
+///
+/// Exists because clients otherwise have to hardcode the domain suffix, which
+/// makes the create form print a production address on every relay it is
+/// pointed at, including a local dev relay that cannot provision at all.
+pub async fn provisioning_config(State(state): State<Arc<AppState>>) -> Json<Value> {
+    Json(provisioning_config_body(
+        state.config.self_provision_domain.as_deref(),
+        state.config.self_provision_public,
+        buzz_db::relay_members::max_communities_per_owner(),
+    ))
+}
+
+/// Body of [`provisioning_config`], split out so the shape is unit-testable
+/// without standing up an [`AppState`].
+fn provisioning_config_body(domain: Option<&str>, public: bool, max_per_owner: i64) -> Value {
+    serde_json::json!({
+        "self_serve": domain.is_some(),
+        "domain": domain,
+        "public": public,
+        "max_per_owner": max_per_owner,
+    })
+}
+
+/// `GET /api/communities/availability?name=<slug>` is the public name check.
+///
+/// Unauthenticated by design (it reveals only whether a host row exists,
+/// the same signal as connecting to the host), so the create dialog can
+/// check as the user types without a signing round-trip per keystroke.
+pub async fn community_availability(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<AvailabilityQuery>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let domain = provisioning_domain(&state)?;
+
+    let slug = match validate_slug(&query.name) {
+        Ok(slug) => slug,
+        Err(message) => {
+            return Ok(Json(serde_json::json!({
+                "name": query.name,
+                "available": false,
+                "reason": message,
+            })));
+        }
+    };
+    let host = slug_host(&slug, domain);
+
+    let existing = state
+        .db
+        .lookup_community_by_host_for_management(&host)
+        .await
+        .map_err(|e| internal_error(&format!("self-provision availability: {e}")))?;
+
+    Ok(Json(serde_json::json!({
+        "name": slug,
+        "normalized_host": host,
+        "available": existing.is_none(),
+    })))
+}
+
+/// `POST /api/communities` creates `<name>.<domain>` owned by the signer.
+pub async fn create_community(
+    State(state): State<Arc<AppState>>,
+    extensions: axum::http::Extensions,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let domain = provisioning_domain(&state)?.to_string();
+
+    let (tenant, pubkey) =
+        authenticate(&state, &headers, "POST", "/api/communities", Some(&body)).await?;
+    let pubkey_hex = pubkey.to_hex();
+
+    if state.config.self_provision_public {
+        match public_create_rate_limited(&state, &domain, client_ip(&headers, &extensions)).await {
+            Ok(Some(message)) => return Err(api_error(StatusCode::TOO_MANY_REQUESTS, message)),
+            Ok(None) => {}
+            Err(()) => {
+                return Err(api_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "community creation is temporarily unavailable",
+                ));
+            }
+        }
+    } else {
+        require_tenant_membership(&state, &tenant, &pubkey_hex).await?;
+    }
+
+    let request: CreateCommunityRequest = serde_json::from_slice(&body).map_err(|e| {
+        api_error(
+            StatusCode::BAD_REQUEST,
+            &format!("invalid create-community JSON: {e}"),
+        )
+    })?;
+    let slug =
+        validate_slug(&request.name).map_err(|msg| api_error(StatusCode::BAD_REQUEST, &msg))?;
+    let host = slug_host(&slug, &domain);
+
+    match create_community_for_owner(&state, &host, &pubkey_hex, &pubkey_hex).await {
+        Ok(record) => Ok(Json(serde_json::json!({
+            "community": {
+                "id": record.id.to_string(),
+                "name": slug,
+                "slug": slug,
+                "normalized_host": record.host,
+                "owner_pubkey": pubkey_hex,
+            }
+        }))),
+        Err(msg) if msg == "community already exists" => Err(api_error(
+            StatusCode::CONFLICT,
+            "taken: that community name is already in use",
+        )),
+        Err(msg) if msg.starts_with("limit_reached:") => Err(api_error(StatusCode::CONFLICT, &msg)),
+        Err(msg) if msg.starts_with("failed to create community:") => {
+            tracing::error!(error = %msg, "self-serve community persistence failed");
+            Err(internal_error("community persistence failed"))
+        }
+        Err(msg) if msg.starts_with("community created but") => {
+            tracing::error!(error = %msg, "self-serve community setup needs retry");
+            Err(api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "community_created_retryable",
+            ))
+        }
+        Err(msg) => {
+            tracing::error!(error = %msg, "unexpected self-serve community provisioning failure");
+            Err(internal_error("community provisioning failed"))
+        }
+    }
+}
+
+/// Strip the provisioning-domain suffix from a host to recover its slug,
+/// leaving hosts outside the provisioning domain untouched.
+fn slug_from_host(host: &str, suffix: &str) -> String {
+    host.strip_suffix(suffix).unwrap_or(host).to_string()
+}
+
+/// `GET /api/communities/mine[?scope=owner|member]`: communities the signer
+/// owns here, or (with `scope=member`) every community the signer belongs to.
+///
+/// The default response is byte-identical to the owner-only listing this
+/// route has always returned, so existing clients need no change. The signed
+/// NIP-98 `u` tag names the bare path, so adding the query parameter does not
+/// invalidate a signature a client already knows how to produce.
+pub async fn list_my_communities(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<MineQuery>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let domain = provisioning_domain(&state)?.to_string();
+    let scope = parse_mine_scope(query.scope.as_deref())
+        .map_err(|message| api_error(StatusCode::BAD_REQUEST, &message))?;
+
+    let (_tenant, pubkey) =
+        authenticate(&state, &headers, "GET", "/api/communities/mine", None).await?;
+    let pubkey_hex = pubkey.to_hex();
+
+    let suffix = format!(".{domain}");
+    let communities = match scope {
+        MineScope::Owner => {
+            let rows = state
+                .db
+                .list_communities_owned_by(&pubkey_hex)
+                .await
+                .map_err(|e| internal_error(&format!("self-provision list: {e}")))?;
+            rows.into_iter()
+                .map(|row| {
+                    let slug = slug_from_host(&row.host, &suffix);
+                    serde_json::json!({
+                        "id": row.id.to_string(),
+                        "name": slug,
+                        "slug": slug,
+                        "normalized_host": row.host,
+                        "owner_pubkey": pubkey_hex,
+                        "created_at": row.created_at,
+                        "archived_at": row.archived_at,
+                    })
+                })
+                .collect::<Vec<_>>()
+        }
+        MineScope::Member => {
+            let rows = state
+                .db
+                .list_communities_for_member(&pubkey_hex)
+                .await
+                .map_err(|e| internal_error(&format!("self-provision member list: {e}")))?;
+            rows.into_iter()
+                .map(|row| {
+                    let slug = slug_from_host(&row.host, &suffix);
+                    serde_json::json!({
+                        "id": row.id.to_string(),
+                        "name": slug,
+                        "slug": slug,
+                        "normalized_host": row.host,
+                        "owner_pubkey": row.owner_pubkey,
+                        "role": row.role,
+                        "created_at": row.created_at,
+                        // Member scope lists only active communities, so this
+                        // is always null; it is carried so both scopes return
+                        // the same entry shape.
+                        "archived_at": Value::Null,
+                    })
+                })
+                .collect::<Vec<_>>()
+        }
+    };
+
+    Ok(Json(serde_json::json!({
+        "owner_pubkey": pubkey_hex,
+        "communities": communities,
+    })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mine_scope_defaults_to_owner() {
+        assert_eq!(parse_mine_scope(None).unwrap(), MineScope::Owner);
+        assert_eq!(parse_mine_scope(Some("")).unwrap(), MineScope::Owner);
+        assert_eq!(parse_mine_scope(Some("owner")).unwrap(), MineScope::Owner);
+    }
+
+    #[test]
+    fn mine_scope_accepts_member() {
+        assert_eq!(parse_mine_scope(Some("member")).unwrap(), MineScope::Member);
+        assert_eq!(
+            parse_mine_scope(Some(" member ")).unwrap(),
+            MineScope::Member
+        );
+    }
+
+    #[test]
+    fn mine_scope_rejects_unknown_values() {
+        let message = parse_mine_scope(Some("bogus")).unwrap_err();
+        assert!(message.contains("bogus"), "message names the bad value");
+        assert!(message.contains("member"), "message names the valid values");
+        // Case is not normalized: only the two documented spellings pass.
+        assert!(parse_mine_scope(Some("Owner")).is_err());
+    }
+
+    #[test]
+    fn slug_is_the_host_without_the_provisioning_suffix() {
+        assert_eq!(
+            slug_from_host("acme.colony.ainative.ventures", ".colony.ainative.ventures"),
+            "acme"
+        );
+        // A host outside the provisioning domain keeps its full name.
+        assert_eq!(
+            slug_from_host("relay.example.test", ".colony.ainative.ventures"),
+            "relay.example.test"
+        );
+    }
+
+    #[test]
+    fn config_names_the_domain_when_provisioning_is_enabled() {
+        let body = provisioning_config_body(Some("colony.ainative.ventures"), false, 3);
+        assert_eq!(body["self_serve"], serde_json::json!(true));
+        assert_eq!(
+            body["domain"],
+            serde_json::json!("colony.ainative.ventures")
+        );
+        assert_eq!(body["public"], serde_json::json!(false));
+        assert_eq!(body["max_per_owner"], serde_json::json!(3));
+    }
+
+    #[test]
+    fn config_reports_disabled_without_a_domain() {
+        // The client must be able to tell "no self-serve here" apart from a
+        // transport failure, so this is a 200 with a null domain rather than
+        // the 404 the create routes return.
+        let body = provisioning_config_body(None, false, 3);
+        assert_eq!(body["self_serve"], serde_json::json!(false));
+        assert_eq!(body["domain"], Value::Null);
+    }
+
+    #[test]
+    fn config_reports_the_operator_raised_cap() {
+        let body = provisioning_config_body(Some("example.test"), true, 25);
+        assert_eq!(body["max_per_owner"], serde_json::json!(25));
+        assert_eq!(body["public"], serde_json::json!(true));
+    }
+
+    #[test]
+    fn accepts_simple_and_hyphenated_slugs() {
+        assert_eq!(validate_slug("acme").unwrap(), "acme");
+        assert_eq!(validate_slug("acme-labs-2").unwrap(), "acme-labs-2");
+        assert_eq!(validate_slug("  Acme  ").unwrap(), "acme");
+    }
+
+    #[test]
+    fn rejects_malformed_slugs() {
+        for bad in [
+            "",
+            "-acme",
+            "acme-",
+            "ac--me",
+            "ac me",
+            "acme.example",
+            "ACME!",
+            "acme_labs",
+            "café",
+        ] {
+            assert!(validate_slug(bad).is_err(), "expected rejection: {bad:?}");
+        }
+        let too_long = "a".repeat(MAX_SLUG_LEN + 1);
+        assert!(validate_slug(&too_long).is_err());
+    }
+
+    #[test]
+    fn rejects_reserved_slugs() {
+        for reserved in ["relay", "www", "admin", "api"] {
+            assert!(
+                validate_slug(reserved).is_err(),
+                "expected reserved rejection: {reserved:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn slug_host_joins_with_domain() {
+        assert_eq!(
+            slug_host("acme", "colony.example.com"),
+            "acme.colony.example.com"
+        );
+    }
+
+    #[test]
+    fn client_ip_prefers_the_fly_proxy_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("fly-client-ip", "198.51.100.4".parse().unwrap());
+        let mut extensions = axum::http::Extensions::new();
+        extensions.insert(ConnectInfo(std::net::SocketAddr::from((
+            [10, 0, 0, 1],
+            4000,
+        ))));
+
+        assert_eq!(
+            client_ip(&headers, &extensions),
+            Some("198.51.100.4".parse::<IpAddr>().unwrap()),
+            "the proxy's client header must win over the socket peer"
+        );
+    }
+
+    #[test]
+    fn client_ip_falls_back_to_socket_peer() {
+        let headers = HeaderMap::new();
+        let mut extensions = axum::http::Extensions::new();
+        extensions.insert(ConnectInfo(std::net::SocketAddr::from((
+            [10, 0, 0, 1],
+            4000,
+        ))));
+
+        assert_eq!(
+            client_ip(&headers, &extensions),
+            Some("10.0.0.1".parse::<IpAddr>().unwrap())
+        );
+    }
+
+    #[test]
+    fn client_ip_ignores_a_malformed_proxy_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("fly-client-ip", "not-an-ip".parse().unwrap());
+        let extensions = axum::http::Extensions::new();
+
+        assert_eq!(client_ip(&headers, &extensions), None);
+    }
+}
+
+#[cfg(test)]
+#[path = "self_provisioning/postgres_tests.rs"]
+mod postgres_tests;

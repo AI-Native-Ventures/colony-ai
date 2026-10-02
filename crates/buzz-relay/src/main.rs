@@ -829,6 +829,23 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
         info!("Admin outbox delivery worker started");
     }
 
+    // Company work watchdogs use only explicitly saved per-work intervals.
+    {
+        let watchdog_state = Arc::clone(&state);
+        tokio::spawn(async move {
+            buzz_relay::handlers::company_work_watchdog_worker::run(watchdog_state).await
+        });
+        info!("Company work watchdog worker started");
+    }
+
+    if state.config.accounts.has_mail_delivery() {
+        let account_outbox_state = Arc::clone(&state);
+        tokio::spawn(async move {
+            buzz_relay::api::accounts::run_mail_outbox_worker(account_outbox_state).await
+        });
+        info!("Account mail outbox worker started");
+    }
+
     // Action recovery worker: re-drives stranded relay_admin_actions rows whose
     // action lease expired before the enforcement state machine completed.
     // Crash safety: a process that died between claim and finalization leaves

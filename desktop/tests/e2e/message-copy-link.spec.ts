@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { KIND_HUDDLE_STARTED } from "../../src/shared/constants/kinds";
 import { installMockBridge } from "../helpers/bridge";
+import { waitForCompanyWorkThreadContextRead } from "../helpers/companyWork";
 
 const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 
@@ -74,6 +75,7 @@ test("message action rail copies the same canonical thread link as More", async 
     )
     .click();
   const threadPanel = page.getByTestId("message-thread-panel");
+  await waitForCompanyWorkThreadContextRead(page);
   const replyRow = threadPanel.locator(`[data-message-id="${replyId}"]`);
   await expect(replyRow).toContainText("Copy-link regression reply");
   await replyRow.hover();

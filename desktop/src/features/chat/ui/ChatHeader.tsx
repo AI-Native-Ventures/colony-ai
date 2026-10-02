@@ -26,6 +26,7 @@ type ChatHeaderProps = {
   /** Ref to the outer chrome wrapper when `belowSystemChrome` is true. */
   chromeWrapperRef?: React.Ref<HTMLDivElement>;
   title: string;
+  titleClassName?: string;
   description?: string;
   channelType?: ChannelType;
   visibility?: ChannelVisibility;
@@ -33,6 +34,7 @@ type ChatHeaderProps = {
   mode?: "home" | "channel" | "agents" | "workflows" | "pulse" | "projects";
   overlaysContent?: boolean;
   statusBadge?: React.ReactNode;
+  showDescription?: boolean;
   /** Identity adornment rendered exactly 4px after a DM title. */
   titleAdornment?: React.ReactNode;
   /** Render the chrome wrapper without an individual backdrop when a parent supplies shared blur. */
@@ -91,6 +93,7 @@ export function ChatHeader({
   belowSystemChrome = false,
   chromeWrapperRef,
   title,
+  titleClassName,
   description,
   channelType,
   visibility,
@@ -98,6 +101,7 @@ export function ChatHeader({
   mode = "channel",
   overlaysContent = false,
   statusBadge,
+  showDescription = false,
   titleAdornment,
   transparentChrome = false,
 }: ChatHeaderProps) {
@@ -136,16 +140,24 @@ export function ChatHeader({
                 />
               )}
             </div>
-            <h1
-              className={cn(
-                "min-w-0 truncate text-base font-semibold leading-6 tracking-tight",
-                channelType !== "dm" && "translate-y-px",
-              )}
-              data-testid="chat-title"
-              title={trimmedDescription || undefined}
-            >
-              {title}
-            </h1>
+            <div className={cn("min-w-0", showDescription && "flex-1")}>
+              <h1
+                className={cn(
+                  "min-w-0 truncate text-base font-semibold leading-6 tracking-tight",
+                  channelType !== "dm" && "translate-y-px",
+                  titleClassName,
+                )}
+                data-testid="chat-title"
+                title={trimmedDescription || undefined}
+              >
+                {title}
+              </h1>
+              {showDescription && trimmedDescription ? (
+                <p className="colony-channel-description text-2xs text-muted-foreground">
+                  {trimmedDescription}
+                </p>
+              ) : null}
+            </div>
             {titleAdornment}
             <Button
               aria-label={`Copy channel name: ${title}`}

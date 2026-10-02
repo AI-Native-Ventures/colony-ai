@@ -8,6 +8,150 @@ import { installMockBridge } from "../helpers/bridge";
 const OWN_MESSAGE_ID = "mock-general-welcome";
 const RENDERED_ORIGINAL_CONTENT = "Welcome to general";
 
+type EmptyEditDiagnostic = {
+  events: Array<{
+    kind: "armed" | "mutation" | "keydown";
+    alertDialogCount: number;
+    editTargetCount: number;
+    inputEmpty: boolean | null;
+    inputTextLength: number | null;
+    activeTestId: string | null;
+    activeRole: string | null;
+    key?: string;
+    defaultPrevented?: boolean;
+    isComposing?: boolean;
+  }>;
+  commandNames: string[];
+};
+
+// Test-only and bounded: observe the actual keyboard/DOM seam without adding
+// production logging or changing the action sequence. Text is represented only
+// by length and emptiness.
+async function armEmptyEditDiagnostic(page: import("@playwright/test").Page) {
+  await page.evaluate(() => {
+    type TraceState = {
+      events: EmptyEditDiagnostic["events"];
+      cleanup: () => void;
+    };
+    type DiagnosticWindow = Window & {
+      __PR13_EMPTY_EDIT_DIAGNOSTIC__?: TraceState;
+    };
+    const diagnosticWindow = window as DiagnosticWindow;
+    diagnosticWindow.__PR13_EMPTY_EDIT_DIAGNOSTIC__?.cleanup();
+    const events: EmptyEditDiagnostic["events"] = [];
+    const snapshot = (
+      kind: "armed" | "mutation" | "keydown",
+      event?: KeyboardEvent,
+    ) => {
+      if (events.length >= 48) return;
+      const input = document.querySelector<HTMLElement>(
+        '[data-testid="message-input"]',
+      );
+      const active = document.activeElement as HTMLElement | null;
+      const inputText = input?.textContent ?? null;
+      const eventRecord: EmptyEditDiagnostic["events"][number] = {
+        kind,
+        alertDialogCount: document.querySelectorAll('[role="alertdialog"]')
+          .length,
+        editTargetCount: document.querySelectorAll(
+          '[data-testid="edit-target"]',
+        ).length,
+        inputEmpty: inputText === null ? null : inputText.length === 0,
+        inputTextLength: inputText?.length ?? null,
+        activeTestId: active?.dataset.testid ?? null,
+        activeRole: active?.getAttribute("role") ?? null,
+      };
+      if (event) {
+        eventRecord.key = event.key;
+        eventRecord.defaultPrevented = event.defaultPrevented;
+        eventRecord.isComposing = event.isComposing;
+      }
+      events.push(eventRecord);
+    };
+    const input = document.querySelector<HTMLElement>(
+      '[data-testid="message-input"]',
+    );
+    if (!input) throw new Error("empty-edit diagnostic input not found");
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Enter") snapshot("keydown", event);
+    };
+    input.addEventListener("keydown", onKeyDown);
+    let lastMutationSignature: string | null = null;
+    const observer = new MutationObserver(() => {
+      const currentInput = document.querySelector<HTMLElement>(
+        '[data-testid="message-input"]',
+      );
+      const inputText = currentInput?.textContent ?? null;
+      const signature = [
+        document.querySelectorAll('[role="alertdialog"]').length,
+        document.querySelectorAll('[data-testid="edit-target"]').length,
+        inputText?.length ?? -1,
+        document.activeElement instanceof HTMLElement
+          ? (document.activeElement.dataset.testid ?? "")
+          : "",
+      ].join(":");
+      if (signature === lastMutationSignature) return;
+      lastMutationSignature = signature;
+      snapshot("mutation");
+    });
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["aria-hidden", "data-state", "data-testid", "role"],
+      childList: true,
+      subtree: true,
+    });
+    diagnosticWindow.__PR13_EMPTY_EDIT_DIAGNOSTIC__ = {
+      events,
+      cleanup: () => {
+        input.removeEventListener("keydown", onKeyDown);
+        observer.disconnect();
+      },
+    };
+    snapshot("armed");
+  });
+}
+
+async function readEmptyEditDiagnostic(
+  page: import("@playwright/test").Page,
+): Promise<EmptyEditDiagnostic> {
+  return page.evaluate(() => {
+    type DiagnosticWindow = Window & {
+      __PR13_EMPTY_EDIT_DIAGNOSTIC__?: {
+        events: EmptyEditDiagnostic["events"];
+        cleanup: () => void;
+      };
+    };
+    const diagnosticWindow = window as DiagnosticWindow;
+    const diagnostic = diagnosticWindow.__PR13_EMPTY_EDIT_DIAGNOSTIC__;
+    diagnostic?.cleanup();
+    const commands = (window as Window & { __BUZZ_E2E_COMMANDS__?: string[] })
+      .__BUZZ_E2E_COMMANDS__;
+    return {
+      events: diagnostic?.events ?? [],
+      commandNames: (commands ?? []).slice(-24),
+    };
+  });
+}
+
+async function expectEmptyEditDialog(
+  page: import("@playwright/test").Page,
+  testInfo: import("@playwright/test").TestInfo,
+) {
+  const dialog = page.getByRole("alertdialog");
+  try {
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+  } catch (error) {
+    const diagnostic = await readEmptyEditDiagnostic(page);
+    await testInfo.attach("empty-edit-delete-diagnostic", {
+      body: Buffer.from(JSON.stringify(diagnostic, null, 2), "utf8"),
+      contentType: "application/json",
+    });
+    throw error;
+  }
+  await readEmptyEditDiagnostic(page);
+  return dialog;
+}
+
 // Open the more-actions menu for a message row and wait for the menu to mount.
 async function openMoreActionsMenu(
   page: import("@playwright/test").Page,
@@ -38,6 +182,7 @@ async function submitEmptyEdit(
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.press("Backspace");
   await expect(input).toBeEmpty();
+  await armEmptyEditDiagnostic(page);
   await page.keyboard.press("Enter");
 }
 
@@ -50,7 +195,7 @@ test.beforeEach(async ({ page }) => {
 
 test("clearing an edit to empty prompts to delete, then deletes on confirm", async ({
   page,
-}) => {
+}, testInfo) => {
   const row = page.locator(`[data-message-id="${OWN_MESSAGE_ID}"]`);
   await expect(row).toBeVisible({ timeout: 10_000 });
 
@@ -58,8 +203,7 @@ test("clearing an edit to empty prompts to delete, then deletes on confirm", asy
 
   // The same "Delete message?" confirmation the Delete menu action shows — an
   // empty edit is routed through it, not silently deleted.
-  const dialog = page.getByRole("alertdialog");
-  await expect(dialog).toBeVisible({ timeout: 10_000 });
+  const dialog = await expectEmptyEditDialog(page, testInfo);
   await expect(dialog).toContainText("Delete message?");
   // Edit mode stays active while the dialog is open — it exits only on confirm.
   await expect(page.getByTestId("edit-target")).toBeVisible();
@@ -71,14 +215,15 @@ test("clearing an edit to empty prompts to delete, then deletes on confirm", asy
   await expect(row).toBeHidden({ timeout: 5_000 });
 });
 
-test("cancelling the empty-edit delete keeps the message", async ({ page }) => {
+test("cancelling the empty-edit delete keeps the message", async ({
+  page,
+}, testInfo) => {
   const row = page.locator(`[data-message-id="${OWN_MESSAGE_ID}"]`);
   await expect(row).toBeVisible({ timeout: 10_000 });
 
   await submitEmptyEdit(page, OWN_MESSAGE_ID);
 
-  const dialog = page.getByRole("alertdialog");
-  await expect(dialog).toBeVisible({ timeout: 10_000 });
+  const dialog = await expectEmptyEditDialog(page, testInfo);
 
   // Cancel → nothing is deleted, the original message survives, and the user is
   // left in edit mode (the editing session is preserved, not discarded).

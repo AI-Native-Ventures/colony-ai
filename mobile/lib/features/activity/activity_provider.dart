@@ -508,7 +508,8 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
     );
 
     const mentionKinds = {9, 40002, 1, 45001, 45003};
-    const needsActionKinds = {46010, 46011, 46012};
+    const needsActionKinds = {46010};
+    const approvalResultKinds = {46011, 46012};
     const agentActivityKinds = {43001, 43002, 43003, 43004, 43005, 43006};
     final dmChannelIdSet = dmChannelIds.toSet();
 
@@ -552,6 +553,13 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
     add(
       events.where(
         (event) =>
+            approvalResultKinds.contains(event.kind) && isAddressedToMe(event),
+      ),
+      'activity',
+    );
+    add(
+      events.where(
+        (event) =>
             event.kind == 9 &&
             dmChannelIdSet.contains(event.channelId) &&
             isFromOther(event),
@@ -589,6 +597,7 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
     try {
       return await session.queryRelay(filters);
     } catch (error) {
+      if (isRelayRateLimitedError(error)) rethrow;
       debugPrint(
         '[ActivityNotifier] batched history query failed; '
         'using bounded websocket fallback: $error',
@@ -602,13 +611,7 @@ class ActivityNotifier extends AsyncNotifier<HomeFeedResponse> {
           ? start + fallbackConcurrency
           : filters.length;
       final results = await Future.wait(
-        filters.sublist(start, end).map((filter) async {
-          try {
-            return await session.fetchHistory(filter);
-          } catch (_) {
-            return const <NostrEvent>[];
-          }
-        }),
+        filters.sublist(start, end).map(session.fetchHistory),
       );
       for (final result in results) {
         events.addAll(result);
@@ -650,6 +653,9 @@ class _PendingResurface {
 final activityProvider =
     AsyncNotifierProvider<ActivityNotifier, HomeFeedResponse>(
       ActivityNotifier.new,
+      retry: (retryCount, error) => isRelayRateLimitedError(error)
+          ? null
+          : ProviderContainer.defaultRetry(retryCount, error),
     );
 
 /// Conversation-grouped inbox rows derived from the raw feed. DM messages

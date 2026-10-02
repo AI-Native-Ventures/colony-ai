@@ -18,6 +18,7 @@ class _RecordingSessionNotifier extends RelaySessionNotifier {
   Completer<void>? mentionFetchGate;
   bool failNextMentionFetch = false;
   bool failNextQueryRelay = false;
+  bool failNextRateLimitedQuery = false;
   int mentionFetchCount = 0;
   int activeMentionFetches = 0;
   int maxActiveMentionFetches = 0;
@@ -67,6 +68,13 @@ class _RecordingSessionNotifier extends RelaySessionNotifier {
     Duration timeout = const Duration(seconds: 8),
   }) async {
     queryFilterCounts.add(filters.length);
+    if (failNextRateLimitedQuery) {
+      failNextRateLimitedQuery = false;
+      throw RelayException(
+        429,
+        '{"error":"rate-limited: quota exceeded; retry in 1s"}',
+      );
+    }
     if (failNextQueryRelay) {
       failNextQueryRelay = false;
       throw StateError('transient HTTP query failure');
@@ -302,6 +310,99 @@ void main() {
     expect(session.queryFilterCounts, [3]);
     expect(session.mentionFetchCount, 1);
     expect(feed.mentions.map((item) => item.id), ['fallback-mention']);
+  });
+
+  test('surfaces HTTP rate limits without another history attempt', () async {
+    final session = _RecordingSessionNotifier()
+      ..failNextRateLimitedQuery = true;
+    final container = ProviderContainer(
+      overrides: [
+        relayConfigProvider.overrideWith(_FixedRelayConfigNotifier.new),
+        myPubkeyProvider.overrideWithValue('me_pk'),
+        relaySessionProvider.overrideWith(() => session),
+        channelsProvider.overrideWith(
+          () => _FixedChannelsNotifier(const <Channel>[]),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(channelsProvider.future);
+    await expectLater(
+      container.read(activityProvider.future),
+      throwsA(
+        isA<RelayException>().having(
+          (error) => error.statusCode,
+          'statusCode',
+          429,
+        ),
+      ),
+    );
+
+    expect(session.mentionFetchCount, 0);
+  });
+
+  test('only pending workflow approval requests need action', () async {
+    final session = _RecordingSessionNotifier()
+      ..seed(
+        const NostrEvent(
+          id: 'approval-open',
+          pubkey: 'workflow_pk',
+          createdAt: 1_700_000_001,
+          kind: 46010,
+          tags: [
+            ['p', 'me_pk'],
+          ],
+          content: 'Review the draft',
+          sig: '',
+        ),
+      )
+      ..seed(
+        const NostrEvent(
+          id: 'approval-granted',
+          pubkey: 'workflow_pk',
+          createdAt: 1_700_000_002,
+          kind: 46011,
+          tags: [
+            ['p', 'me_pk'],
+          ],
+          content: 'Review approved',
+          sig: '',
+        ),
+      )
+      ..seed(
+        const NostrEvent(
+          id: 'approval-denied',
+          pubkey: 'workflow_pk',
+          createdAt: 1_700_000_003,
+          kind: 46012,
+          tags: [
+            ['p', 'me_pk'],
+          ],
+          content: 'Changes requested',
+          sig: '',
+        ),
+      );
+    final container = ProviderContainer(
+      overrides: [
+        relayConfigProvider.overrideWith(_FixedRelayConfigNotifier.new),
+        myPubkeyProvider.overrideWithValue('me_pk'),
+        relaySessionProvider.overrideWith(() => session),
+        channelsProvider.overrideWith(
+          () => _FixedChannelsNotifier(const <Channel>[]),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(channelsProvider.future);
+    final feed = await container.read(activityProvider.future);
+
+    expect(feed.needsAction.map((item) => item.id), ['approval-open']);
+    expect(feed.activity.map((item) => item.id), [
+      'approval-denied',
+      'approval-granted',
+    ]);
   });
 
   test(

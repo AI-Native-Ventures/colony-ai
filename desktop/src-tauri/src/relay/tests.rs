@@ -3,7 +3,8 @@
 
 use super::{
     build_authenticated_relay_request, build_profile_event, classify_intercepted_response,
-    effective_agent_relay_url, extract_retry_in_hint, parse_command_response, relay_http_base_url,
+    effective_agent_relay_url, extract_retry_in_hint, parse_command_response,
+    parse_json_response_bounded, relay_error_message_bounded, relay_http_base_url,
     MALFORMED_RESPONSE_MESSAGE,
 };
 use serde::Deserialize;
@@ -791,4 +792,67 @@ fn profile_event_rejects_invalid_auth_tag() {
         result.unwrap_err().contains("verification failed"),
         "error message should mention verification failure"
     );
+}
+
+#[tokio::test]
+async fn factory_membership_response_parser_rejects_oversized_chunked_body() {
+    use std::io::{Read as _, Write as _};
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let body = format!("{{\"communities\":\"{}\"}}", "x".repeat(512));
+    let handle = std::thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            let mut request = [0u8; 2048];
+            let _ = stream.read(&mut request);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:x}\r\n{}\r\n0\r\n\r\n",
+                body.len(),
+                body
+            );
+            let _ = stream.write_all(response.as_bytes());
+        }
+    });
+
+    let response = reqwest::Client::new()
+        .get(format!("http://{addr}/communities/mine"))
+        .send()
+        .await
+        .unwrap();
+    let error = parse_json_response_bounded::<serde_json::Value>(response, 64)
+        .await
+        .unwrap_err();
+    assert_eq!(error, "relay response exceeded the configured size limit");
+    handle.join().unwrap();
+}
+
+#[tokio::test]
+async fn factory_membership_error_response_parser_rejects_oversized_chunked_body() {
+    use std::io::{Read as _, Write as _};
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let body = format!("{{\"message\":\"{}\"}}", "x".repeat(512));
+    let handle = std::thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            let mut request = [0u8; 2048];
+            let _ = stream.read(&mut request);
+            let response = format!(
+                "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:x}\r\n{}\r\n0\r\n\r\n",
+                body.len(),
+                body
+            );
+            let _ = stream.write_all(response.as_bytes());
+        }
+    });
+
+    let response = reqwest::Client::new()
+        .get(format!("http://{addr}/communities/mine"))
+        .send()
+        .await
+        .unwrap();
+    let error = relay_error_message_bounded(response, 64).await;
+    assert!(error.starts_with("relay returned 500"));
+    assert!(!error.contains(&"x".repeat(64)));
+    handle.join().unwrap();
 }

@@ -55,6 +55,10 @@ jobs:
               - 'deny.toml'
               - '.github/workflows/ci.yml'
               - '.github/workflows/_ci-*.yml'
+              # Relay jobs start their services from docker-compose.yml
+              # through the cached-service-images action.
+              - 'docker-compose.yml'
+              - '.github/actions/cached-service-images/**'
               - 'scripts/run-tests.sh'
               - 'scripts/model-capabilities.json'
               - 'scripts/normative-corpus.json'
@@ -71,6 +75,10 @@ jobs:
               - 'pnpm-lock.yaml'
             mobile:
               - 'mobile/**'
+              - 'scripts/mobile-google-auth-xcconfig.sh'
+              - 'scripts/test-mobile-gateway-recipes.sh'
+              - 'scripts/ios-runtime-proof.sh'
+              - 'scripts/interop/desktop-mobile-canary.sh'
               - 'scripts/mobile-release.sh'
               - 'scripts/mobile-worktree-overrides.sh'
               - 'scripts/mobile-worktree-clean.sh'

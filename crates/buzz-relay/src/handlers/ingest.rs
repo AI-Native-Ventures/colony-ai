@@ -15,24 +15,27 @@ use buzz_core::kind::{
     is_relay_admin_kind, KIND_AGENT_ENGRAM, KIND_AGENT_PROFILE, KIND_AGENT_TURN_METRIC,
     KIND_APPROVAL_DENY, KIND_APPROVAL_GRANT, KIND_AUTH, KIND_BOOKMARK_LIST, KIND_BOOKMARK_SET,
     KIND_CANVAS, KIND_CONTACT_LIST, KIND_DELETION, KIND_DM_ADD_MEMBER, KIND_DM_HIDE, KIND_DM_OPEN,
-    KIND_EMOJI_LIST, KIND_EMOJI_SET, KIND_EVENT_REMINDER, KIND_FOLLOW_SET, KIND_FORUM_COMMENT,
+    KIND_DUTY_ACTION, KIND_DUTY_HEAD, KIND_EMOJI_LIST, KIND_EMOJI_SET, KIND_EVENT_REMINDER,
+    KIND_FACTORY_RUN_ACTION, KIND_FACTORY_RUN_HEAD, KIND_FOLLOW_SET, KIND_FORUM_COMMENT,
     KIND_FORUM_POST, KIND_FORUM_VOTE, KIND_GIFT_WRAP, KIND_GIT_ISSUE, KIND_GIT_PATCH,
     KIND_GIT_PR_UPDATE, KIND_GIT_PULL_REQUEST, KIND_GIT_REPO_ANNOUNCEMENT, KIND_GIT_REPO_STATE,
     KIND_GIT_STATUS_CLOSED, KIND_GIT_STATUS_DRAFT, KIND_GIT_STATUS_MERGED, KIND_GIT_STATUS_OPEN,
-    KIND_HUDDLE_ENDED, KIND_HUDDLE_GUIDELINES, KIND_HUDDLE_PARTICIPANT_JOINED,
-    KIND_HUDDLE_PARTICIPANT_LEFT, KIND_HUDDLE_STARTED, KIND_IA_ARCHIVE_REQUEST,
-    KIND_IA_UNARCHIVE_REQUEST, KIND_LONG_FORM, KIND_MANAGED_AGENT, KIND_MEMBER_ADDED_NOTIFICATION,
-    KIND_MEMBER_REMOVED_NOTIFICATION, KIND_MODERATION_BAN, KIND_MODERATION_RESOLVE_REPORT,
-    KIND_MODERATION_TIMEOUT, KIND_MODERATION_UNBAN, KIND_MODERATION_UNTIMEOUT, KIND_MUTE_LIST,
-    KIND_NIP29_CREATE_GROUP, KIND_NIP29_DELETE_EVENT, KIND_NIP29_DELETE_GROUP,
-    KIND_NIP29_EDIT_METADATA, KIND_NIP29_JOIN_REQUEST, KIND_NIP29_LEAVE_REQUEST,
-    KIND_NIP29_PUT_USER, KIND_NIP29_REMOVE_USER, KIND_NIP43_LEAVE_REQUEST,
-    KIND_NIP65_RELAY_LIST_METADATA, KIND_PERSONA, KIND_PIN_LIST, KIND_PRESENCE_UPDATE,
-    KIND_PRIVATE_MANAGED_AGENT, KIND_PRODUCT_FEEDBACK, KIND_PROFILE, KIND_PROJECT, KIND_REACTION,
-    KIND_READ_STATE, KIND_REPORT, KIND_STREAM_MESSAGE, KIND_STREAM_MESSAGE_BOOKMARKED,
-    KIND_STREAM_MESSAGE_DIFF, KIND_STREAM_MESSAGE_EDIT, KIND_STREAM_MESSAGE_PINNED,
-    KIND_STREAM_MESSAGE_SCHEDULED, KIND_STREAM_MESSAGE_V2, KIND_STREAM_REMINDER, KIND_TEAM,
-    KIND_TEAM_CATALOG, KIND_TEXT_NOTE, KIND_USER_STATUS, KIND_WORKFLOW_DEF, KIND_WORKFLOW_TRIGGER,
+    KIND_GOAL_ACTION, KIND_GOAL_HEAD, KIND_HUDDLE_ENDED, KIND_HUDDLE_GUIDELINES,
+    KIND_HUDDLE_PARTICIPANT_JOINED, KIND_HUDDLE_PARTICIPANT_LEFT, KIND_HUDDLE_STARTED,
+    KIND_IA_ARCHIVE_REQUEST, KIND_IA_UNARCHIVE_REQUEST, KIND_LESSON_ACTION, KIND_LESSON_HEAD,
+    KIND_LONG_FORM, KIND_MANAGED_AGENT, KIND_MEMBER_ADDED_NOTIFICATION,
+    KIND_MEMBER_POSITION_ACTION, KIND_MEMBER_POSITION_HEAD, KIND_MEMBER_REMOVED_NOTIFICATION,
+    KIND_MODERATION_BAN, KIND_MODERATION_RESOLVE_REPORT, KIND_MODERATION_TIMEOUT,
+    KIND_MODERATION_UNBAN, KIND_MODERATION_UNTIMEOUT, KIND_MUTE_LIST, KIND_NIP29_CREATE_GROUP,
+    KIND_NIP29_DELETE_EVENT, KIND_NIP29_DELETE_GROUP, KIND_NIP29_EDIT_METADATA,
+    KIND_NIP29_JOIN_REQUEST, KIND_NIP29_LEAVE_REQUEST, KIND_NIP29_PUT_USER, KIND_NIP29_REMOVE_USER,
+    KIND_NIP43_LEAVE_REQUEST, KIND_NIP65_RELAY_LIST_METADATA, KIND_PERSONA, KIND_PIN_LIST,
+    KIND_PRESENCE_UPDATE, KIND_PRIVATE_MANAGED_AGENT, KIND_PRODUCT_FEEDBACK, KIND_PROFILE,
+    KIND_PROJECT, KIND_REACTION, KIND_READ_STATE, KIND_REPORT, KIND_STREAM_MESSAGE,
+    KIND_STREAM_MESSAGE_BOOKMARKED, KIND_STREAM_MESSAGE_DIFF, KIND_STREAM_MESSAGE_EDIT,
+    KIND_STREAM_MESSAGE_PINNED, KIND_STREAM_MESSAGE_SCHEDULED, KIND_STREAM_MESSAGE_V2,
+    KIND_STREAM_REMINDER, KIND_TEAM, KIND_TEAM_CATALOG, KIND_TEXT_NOTE, KIND_USER_STATUS,
+    KIND_WORKFLOW_DEF, KIND_WORKFLOW_DRAFT, KIND_WORKFLOW_STATUS, KIND_WORKFLOW_TRIGGER,
     RELAY_ADMIN_ADD_MEMBER, RELAY_ADMIN_CHANGE_ROLE, RELAY_ADMIN_REMOVE_MEMBER,
     RELAY_ADMIN_SET_WORKSPACE_PROFILE,
 };
@@ -449,6 +452,9 @@ fn required_scope_for_kind(kind: u32, event: &Event) -> Result<Scope, &'static s
         // Ingest persists them to `moderation_reports` and suppresses public
         // storage/fanout; reports are signals, never enforcement triggers.
         KIND_REPORT | KIND_PRODUCT_FEEDBACK => Ok(Scope::MessagesWrite),
+        k if buzz_core::kind::is_business_record_kind(k) => Ok(Scope::MessagesWrite),
+        // Company records (goals and asks): member commands; the broker owns authority.
+        k if buzz_core::kind::COMPANY_RECORD_KINDS.contains(&k) => Ok(Scope::MessagesWrite),
         // Community moderation commands are direct, mod-authz-gated writes.
         // Scope only proves the transport can submit message writes; the
         // command handler owns role/capability authorization.
@@ -540,7 +546,9 @@ fn required_scope_for_kind(kind: u32, event: &Event) -> Result<Scope, &'static s
         | KIND_GIT_STATUS_DRAFT => Ok(Scope::MessagesWrite),
         // Command kinds — DM management, workflows, approvals
         KIND_DM_OPEN | KIND_DM_ADD_MEMBER | KIND_DM_HIDE => Ok(Scope::MessagesWrite),
-        KIND_WORKFLOW_DEF | KIND_WORKFLOW_TRIGGER => Ok(Scope::MessagesWrite),
+        KIND_WORKFLOW_DEF | KIND_WORKFLOW_DRAFT | KIND_WORKFLOW_TRIGGER | KIND_WORKFLOW_STATUS => {
+            Ok(Scope::MessagesWrite)
+        }
         KIND_APPROVAL_GRANT | KIND_APPROVAL_DENY => Ok(Scope::MessagesWrite),
         _ => Err("restricted: unknown event kind"),
     }
@@ -658,6 +666,33 @@ pub(crate) fn is_global_only_kind(kind: u32) -> bool {
             | KIND_MANAGED_AGENT
             | KIND_PRIVATE_MANAGED_AGENT
             | KIND_TEAM_CATALOG
+            // Company goals are community-wide; the broker stores them without `h`.
+            | KIND_GOAL_HEAD
+            | KIND_GOAL_ACTION
+            // Member positions and secret bindings are community-wide; their brokers store them without `h`.
+            | buzz_core::kind::KIND_SECRET_BINDING_HEAD
+            | buzz_core::kind::KIND_SECRET_BINDING_ACTION
+            // Standing tool permissions are community-wide relay heads/actions.
+            | buzz_core::kind::KIND_TOOL_PERMISSION_HEAD
+            | buzz_core::kind::KIND_TOOL_PERMISSION_ACTION
+            | KIND_MEMBER_POSITION_HEAD
+            | KIND_MEMBER_POSITION_ACTION
+            | buzz_core::kind::KIND_EMPLOYEE_REVISION_HEAD
+            | buzz_core::kind::KIND_EMPLOYEE_REVISION_ACTION
+            | buzz_core::kind::KIND_HIRE_HEAD
+            | buzz_core::kind::KIND_HIRE_ACTION
+            | buzz_core::kind::KIND_EMPLOYEE_AI_ALLOWANCE_HEAD
+            | buzz_core::kind::KIND_EMPLOYEE_AI_ALLOWANCE_ACTION
+            | buzz_core::kind::KIND_AI_SPEND_RECORD_HEAD
+            | buzz_core::kind::KIND_AI_SPEND_RECORD_ACTION
+            // Factory run heads and actions are community-wide records.
+            | KIND_FACTORY_RUN_HEAD
+            | KIND_FACTORY_RUN_ACTION
+            // Duties and lessons are community-wide company records.
+            | KIND_DUTY_HEAD
+            | KIND_DUTY_ACTION
+            | KIND_LESSON_HEAD
+            | KIND_LESSON_ACTION
             // NIP-34: git events use `a` tags (repo reference), not `h` tags (channel scope).
             // Parameterized replaceable kinds are keyed by (pubkey, kind, d_tag).
             | KIND_GIT_REPO_ANNOUNCEMENT
@@ -705,9 +740,10 @@ pub(crate) fn is_global_only_kind(kind: u32) -> bool {
 
 /// Kinds that require an `h` tag for channel scoping.
 pub(crate) fn requires_h_channel_scope(kind: u32) -> bool {
-    matches!(
-        kind,
-        KIND_STREAM_MESSAGE
+    buzz_core::kind::is_business_record_kind(kind)
+        || matches!(
+            kind,
+            KIND_STREAM_MESSAGE
             | KIND_STREAM_MESSAGE_V2
             | KIND_STREAM_MESSAGE_EDIT
             | KIND_STREAM_MESSAGE_PINNED
@@ -732,7 +768,7 @@ pub(crate) fn requires_h_channel_scope(kind: u32) -> bool {
             | KIND_HUDDLE_PARTICIPANT_LEFT
             | KIND_HUDDLE_ENDED
             | KIND_HUDDLE_GUIDELINES
-    )
+        )
 }
 
 /// Check channel membership: member OR open-visibility channel.
@@ -788,10 +824,10 @@ pub(crate) struct ThreadMetadataOwned {
     pub event_id: Vec<u8>,
     pub event_created_at: chrono::DateTime<Utc>,
     pub channel_id: Uuid,
-    pub parent_event_id: Vec<u8>,
-    pub parent_event_created_at: chrono::DateTime<Utc>,
-    pub root_event_id: Vec<u8>,
-    pub root_event_created_at: chrono::DateTime<Utc>,
+    pub parent_event_id: Option<Vec<u8>>,
+    pub parent_event_created_at: Option<chrono::DateTime<Utc>>,
+    pub root_event_id: Option<Vec<u8>>,
+    pub root_event_created_at: Option<chrono::DateTime<Utc>>,
     pub depth: i32,
     pub broadcast: bool,
 }
@@ -802,10 +838,10 @@ impl ThreadMetadataOwned {
             event_id: &self.event_id,
             event_created_at: self.event_created_at,
             channel_id: self.channel_id,
-            parent_event_id: Some(&self.parent_event_id),
-            parent_event_created_at: Some(self.parent_event_created_at),
-            root_event_id: Some(&self.root_event_id),
-            root_event_created_at: Some(self.root_event_created_at),
+            parent_event_id: self.parent_event_id.as_deref(),
+            parent_event_created_at: self.parent_event_created_at,
+            root_event_id: self.root_event_id.as_deref(),
+            root_event_created_at: self.root_event_created_at,
             depth: self.depth,
             broadcast: self.broadcast,
         }
@@ -911,10 +947,10 @@ pub(crate) async fn resolve_nip10_thread_meta(
         event_id: event.id.as_bytes().to_vec(),
         event_created_at,
         channel_id,
-        parent_event_id: parent_bytes,
-        parent_event_created_at: parent_created,
-        root_event_id: final_root_bytes,
-        root_event_created_at: root_created,
+        parent_event_id: Some(parent_bytes),
+        parent_event_created_at: Some(parent_created),
+        root_event_id: Some(final_root_bytes),
+        root_event_created_at: Some(root_created),
         depth,
         broadcast,
     }))
@@ -1001,10 +1037,10 @@ impl ReplyAncestry {
             event_id: reply_event_id,
             event_created_at: reply_created_at,
             channel_id,
-            parent_event_id: self.parent_event_id,
-            parent_event_created_at: self.parent_event_created_at,
-            root_event_id: self.root_event_id,
-            root_event_created_at: self.root_event_created_at,
+            parent_event_id: Some(self.parent_event_id),
+            parent_event_created_at: Some(self.parent_event_created_at),
+            root_event_id: Some(self.root_event_id),
+            root_event_created_at: Some(self.root_event_created_at),
             depth: self.depth,
             broadcast: false,
         }
@@ -1102,7 +1138,7 @@ pub(crate) async fn resolve_relay_reply_thread_meta(
 }
 
 /// Count all `e` tags regardless of content validity.
-fn count_e_tags(event: &Event) -> usize {
+pub(super) fn count_e_tags(event: &Event) -> usize {
     event
         .tags
         .iter()
@@ -2289,6 +2325,12 @@ async fn ingest_event_inner(
         return super::command_executor::handle_command(tenant, state, event, auth).await;
     }
 
+    if buzz_core::kind::is_business_record_kind(kind_u32) {
+        return Err(IngestError::Rejected(
+            "unsupported: this business record kind has no write handler yet".into(),
+        ));
+    }
+
     // Product feedback is sidecarred directly into its private deployment table.
     // It never enters ordinary event storage or subscription fan-out.
     if kind_u32 == KIND_PRODUCT_FEEDBACK {
@@ -3231,12 +3273,14 @@ async fn ingest_event_inner(
     // window. Page responses recompute summaries independently, so this is
     // fan-out-only and best-effort.
     if let Some(meta) = &thread_meta {
-        crate::handlers::side_effects::emit_live_thread_summary(
-            tenant,
-            state,
-            meta.channel_id,
-            meta.root_event_id.clone(),
-        );
+        if let Some(root_event_id) = meta.root_event_id.clone() {
+            crate::handlers::side_effects::emit_live_thread_summary(
+                tenant,
+                state,
+                meta.channel_id,
+                root_event_id,
+            );
+        }
     }
 
     let pubkey_hex = auth.pubkey().to_hex();
@@ -3688,6 +3732,24 @@ mod postgres_tests {
     }
 
     #[test]
+    fn business_record_kinds_require_channel_scope_and_message_write() {
+        for &kind in buzz_core::kind::BUSINESS_RECORD_KINDS {
+            let event = EventBuilder::new(Kind::Custom(kind as u16), "{}")
+                .sign_with_keys(&nostr::Keys::generate())
+                .expect("signed business event");
+            assert!(
+                requires_h_channel_scope(kind),
+                "business kind {kind} must use an h channel scope"
+            );
+            assert_eq!(
+                required_scope_for_kind(kind, &event),
+                Ok(Scope::MessagesWrite),
+                "business kind {kind} must require message write scope"
+            );
+        }
+    }
+
+    #[test]
     fn nip29_admin_kinds_require_h_tags() {
         for kind in [
             KIND_NIP29_PUT_USER,
@@ -3801,6 +3863,45 @@ mod postgres_tests {
             KIND_MODERATION_UNTIMEOUT,
             KIND_MODERATION_RESOLVE_REPORT,
         ] {
+            assert!(is_global_only_kind(kind), "kind {kind} must be global-only");
+            assert!(
+                !requires_h_channel_scope(kind),
+                "kind {kind} must not require an h tag"
+            );
+        }
+    }
+
+    #[test]
+    fn factory_run_record_kinds_are_global_only_message_writes() {
+        let event = make_dummy_event();
+        for kind in [KIND_FACTORY_RUN_HEAD, KIND_FACTORY_RUN_ACTION] {
+            assert_eq!(
+                required_scope_for_kind(kind, &event),
+                Ok(Scope::MessagesWrite),
+                "kind {kind} should require MessagesWrite scope"
+            );
+            assert!(is_global_only_kind(kind), "kind {kind} must be global-only");
+            assert!(
+                !requires_h_channel_scope(kind),
+                "kind {kind} must not require an h tag"
+            );
+        }
+    }
+
+    #[test]
+    fn duty_and_lesson_record_kinds_are_global_only_message_writes() {
+        let event = make_dummy_event();
+        for kind in [
+            KIND_DUTY_HEAD,
+            KIND_DUTY_ACTION,
+            KIND_LESSON_HEAD,
+            KIND_LESSON_ACTION,
+        ] {
+            assert_eq!(
+                required_scope_for_kind(kind, &event),
+                Ok(Scope::MessagesWrite),
+                "kind {kind} should require MessagesWrite scope"
+            );
             assert!(is_global_only_kind(kind), "kind {kind} must be global-only");
             assert!(
                 !requires_h_channel_scope(kind),

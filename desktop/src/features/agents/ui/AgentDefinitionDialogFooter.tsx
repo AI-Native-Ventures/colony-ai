@@ -6,6 +6,7 @@ type AgentDefinitionDialogFooterProps = {
   isPending: boolean;
   onCancel: () => void;
   publishesCatalogUpdates: boolean;
+  rolePackPage?: boolean;
   submitLabel: string;
 };
 
@@ -15,11 +16,16 @@ export function AgentDefinitionDialogFooter({
   isPending,
   onCancel,
   publishesCatalogUpdates,
+  rolePackPage = false,
   submitLabel,
 }: AgentDefinitionDialogFooterProps) {
   return (
-    <div className="flex w-full flex-wrap items-center justify-between gap-3">
-      <div className="flex min-h-9 min-w-0 flex-wrap items-center gap-3">
+    <div
+      className={`flex w-full flex-wrap items-center gap-3 ${rolePackPage ? "justify-start" : "justify-between"}`}
+    >
+      <div
+        className={`flex min-h-9 min-w-0 flex-wrap items-center gap-3 ${rolePackPage && !publishesCatalogUpdates ? "hidden" : ""}`}
+      >
         {publishesCatalogUpdates ? (
           <p
             className="max-w-sm text-xs text-muted-foreground"
@@ -30,8 +36,9 @@ export function AgentDefinitionDialogFooter({
           </p>
         ) : null}
       </div>
-
-      <div className="flex items-center gap-2">
+      <div
+        className={`flex items-center gap-2 ${rolePackPage ? "" : "ml-auto"}`}
+      >
         <Button
           disabled={isPending || isAvatarUploadPending}
           onClick={onCancel}

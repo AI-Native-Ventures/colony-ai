@@ -112,6 +112,135 @@ Run each command, verify exit code 0 and check output. Most commands
 return JSON (pipe through `jq .` to validate). Commands are ordered so
 earlier ones create resources that later ones need.
 
+### 6.0 Company asks
+
+Create commands take a typed `AskRecord` JSON object. The record includes its
+own ask UUID and thread root event ID. Use `-` to read JSON from stdin:
+
+```bash
+ASK_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+jq -n --arg ask_id "$ASK_ID" --arg root_id "$EVENT_ID" '{
+  schemaVersion: 1,
+  askId: $ask_id,
+  type: "question",
+  category: "general",
+  title: "Should we ship this change?",
+  threadRootEventId: $root_id
+}' | buzz asks create --channel "$CHANNEL_ID" --ask - | jq .
+
+# Use the ask UUID and current head event ID returned by `buzz asks list`.
+buzz asks list --channel "$CHANNEL_ID" | jq .
+buzz asks respond --channel "$CHANNEL_ID" --ask "$ASK_ID" \
+  --expected-head-event-id "$ASK_HEAD_EVENT_ID" --outcome answered \
+  --answer "Ship after the review is complete." | jq .
+
+# Cancel an open ask at its current head.
+buzz asks cancel --channel "$CHANNEL_ID" --ask "$ASK_ID" \
+  --expected-head-event-id "$ASK_HEAD_EVENT_ID" --reason "The decision changed." | jq .
+```
+
+Approval and verdict responses require `--reason`. Choice responses use
+`--option-id`. Checklist responses use `--checked-item-ids` with a JSON array
+containing every item ID. Ask command failures print the relay rejection
+message so the agent can refresh the current head and retry with new context.
+
+### 6.0.1 Company work items
+
+The owner and requester must be members of the selected conversation. The CLI
+adds the shared kind tags and `company:work:<uuid>` coordinate for you. Use a
+member pubkey from `buzz channels members` for both people:
+
+```bash
+WORK_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+OWNER_PUBKEY="<conversation-member-pubkey>"
+REQUESTER_PUBKEY="<requester-pubkey>"
+
+jq -n --arg id "$WORK_ID" --arg owner "$OWNER_PUBKEY" \
+  --arg requester "$REQUESTER_PUBKEY" '{
+    schemaVersion: 1,
+    workItemId: $id,
+    title: "Review the launch brief",
+    status: "active",
+    assignedPubkeys: [$owner],
+    approverPubkeys: [],
+    deliverables: [],
+    requesterPubkey: $requester,
+    doneCondition: "The requester accepts the reviewed brief.",
+    evidence: "The first draft is ready for review."
+  }' | buzz work create --channel "$CHANNEL_ID" --record - | jq .
+
+buzz work list --channel "$CHANNEL_ID" | jq .
+buzz work get --work "$WORK_ID" | jq .
+
+# Set or clear the due date without rewriting other work fields.
+buzz work due-date --work "$WORK_ID" --date "2099-10-15T17:00:00Z" | jq .
+buzz work clear-due-date --work "$WORK_ID" | jq .
+
+# Supply a full replacement CompanyWorkItemInput with the same workItemId.
+jq -n --arg id "$WORK_ID" --arg owner "$OWNER_PUBKEY" \
+  --arg requester "$REQUESTER_PUBKEY" '{
+    schemaVersion: 1,
+    workItemId: $id,
+    title: "Review the final launch brief",
+    status: "active",
+    assignedPubkeys: [$owner],
+    approverPubkeys: [],
+    deliverables: [],
+    requesterPubkey: $requester,
+    doneCondition: "The requester accepts the reviewed brief.",
+    evidence: "The final draft is ready for review."
+  }' | buzz work update --work "$WORK_ID" --record - | jq .
+
+# Only the assigned owner can submit work for verification.
+buzz work status --work "$WORK_ID" --status done_unverified \
+  --reason "The final brief is ready." | jq .
+
+# The requester or a community owner or admin can verify the evidence.
+buzz work verify --work "$WORK_ID" --verdict pass \
+  --reason "The brief meets the done condition." \
+  --evidence "Reviewed the final draft and confirmed the requested sections." | jq .
+
+buzz work archive --work "$WORK_ID" | jq .
+buzz work restore --work "$WORK_ID" | jq .
+```
+
+`revision_requested` returns the item to `active`. Every update uses the latest
+relay-signed head as its expected version. If another action wins the race,
+refresh with `buzz work get` before retrying. Client work continues to use
+`buzz clients` and the existing client-scoped `buzz work` UI flows; this CLI
+command group addresses company work coordinates only.
+
+### 6.0.2 Standing tool permissions
+
+Only community owners and admins can grant or revoke a permission. Use the
+agent public key, exact scope and an RFC 3339 UTC expiry in the record. Reads
+show relay-signed heads:
+
+```bash
+buzz permissions list | jq .
+buzz permissions list --agent "$AGENT_PUBKEY" | jq .
+buzz permissions grant --record "$PERMISSION_RECORD_PATH" | jq .
+buzz permissions revoke --permission "$PERMISSION_ID" \
+  --expected-head-event-id "$PERMISSION_HEAD_EVENT_ID" \
+  --reason "The approved action is no longer needed." | jq .
+```
+
+### 6.0.3 Secret bindings
+
+Secret commands accept binding metadata only. Entering a credential is handled
+by the desktop secure-entry flow, never by the CLI. `bind` creates a pending
+device binding; the CLI lists names and statuses and can revoke a binding:
+
+```bash
+buzz secrets list | jq .
+buzz secrets bind --record "$SECRET_BINDING_METADATA_PATH" | jq .
+buzz secrets revoke --binding-id "$SECRET_BINDING_ID" | jq .
+```
+
+The `team`, `secrets`, `permissions`, `work`, `duties`, `lessons` and
+`spend` command groups are included in the stable command inventory test in
+`crates/buzz-cli/src/lib.rs`.
+
 ### 6.1 Channels
 
 ```bash

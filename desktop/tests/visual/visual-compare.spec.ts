@@ -1,0 +1,1794 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { expect, test } from "@playwright/test";
+import UPNG from "upng-js";
+
+import { waitForAnimations } from "../helpers/animations";
+import { installMockBridge } from "../helpers/bridge";
+import { compareImages } from "../../scripts/visualComparison.mjs";
+import type { VisualFixtureSeed } from "../../src/testing/e2eBridge";
+
+type StorageSeed = {
+  localStorage?: Record<string, unknown>;
+  sessionStorage?: Record<string, unknown>;
+  cookies?: Record<string, string>;
+};
+
+type VisualAction = {
+  type:
+    | "click"
+    | "hover"
+    | "select"
+    | "selectOption"
+    | "fill"
+    | "setInputFiles"
+    | "waitFor";
+  target?: "reference" | "app" | "both";
+  selector: string;
+  value?: string;
+  timeoutMs?: number;
+  options?: Record<string, unknown>;
+};
+
+type VisualCase = {
+  id: string;
+  referenceUrl: string;
+  referencePrefs: StorageSeed;
+  referenceInventoryRoute?: string;
+  referenceIgnoreSelectors?: string[];
+  appRoute: string;
+  appPrefs: StorageSeed;
+  appMockData?: Record<string, unknown>;
+  appActiveTurns?: Array<{
+    agentPubkey: string;
+    channelId: string;
+    turnId: string;
+  }>;
+  fixtureVariant?: "reviews-empty";
+  viewport: "1728x1117" | "1440x900";
+  theme: "light" | "dark";
+  actions: VisualAction[];
+  clip?:
+    | string
+    | { x: number; y: number; width: number; height: number }
+    | { selector: string }
+    | {
+        referenceSelector: string;
+        appSelector?: string;
+        width?: number;
+        height?: number;
+        normalizeAppRootToReference?: boolean;
+      };
+  referenceReadySelector?: string;
+  referenceCanvas?: boolean;
+  appReadySelector?: string;
+  appPreActionsReadySelector?: string;
+};
+
+type VisualManifest = {
+  fixture?: string;
+  matrix?: {
+    viewports: VisualCase["viewport"][];
+    themes: VisualCase["theme"][];
+  };
+  defaults?: Partial<VisualCase>;
+  routes?: Array<
+    Partial<VisualCase> & Pick<VisualCase, "id" | "referenceUrl" | "appRoute">
+  >;
+  cases?: Array<
+    Partial<VisualCase> &
+      Pick<
+        VisualCase,
+        "id" | "referenceUrl" | "appRoute" | "viewport" | "theme"
+      >
+  >;
+  entries?: Array<
+    Partial<VisualCase> &
+      Pick<
+        VisualCase,
+        "id" | "referenceUrl" | "appRoute" | "viewport" | "theme"
+      >
+  >;
+};
+
+type VisualFixture = {
+  appMockData?: Record<string, unknown>;
+  activeTurns?: VisualCase["appActiveTurns"];
+};
+
+const manifestPath = process.env.VISUAL_COMPARE_MANIFEST;
+const outputRoot = process.env.VISUAL_COMPARE_OUTPUT_DIR;
+const appBaseUrl = process.env.VISUAL_COMPARE_APP_BASE_URL;
+const referenceBaseUrl = process.env.VISUAL_COMPARE_REFERENCE_BASE_URL;
+
+if (!manifestPath || !outputRoot || !appBaseUrl || !referenceBaseUrl) {
+  throw new Error("Run this spec through pnpm visual:compare.");
+}
+
+const manifest = JSON.parse(
+  await readFile(manifestPath, "utf8"),
+) as VisualManifest;
+const manifestFixture = manifest.fixture
+  ? (JSON.parse(
+      await readFile(
+        path.resolve(path.dirname(manifestPath), manifest.fixture),
+        "utf8",
+      ),
+    ) as VisualFixture)
+  : null;
+const r17Fixture = JSON.parse(
+  await readFile(new URL("./fixtures/g1-r17.json", import.meta.url), "utf8"),
+) as VisualFixtureSeed;
+const r17VoiceNoteWav = await readFile(
+  new URL("./fixtures/sample-note.wav", import.meta.url),
+);
+const manropeFont = await readFile(
+  new URL(
+    "../../node_modules/@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2",
+    import.meta.url,
+  ),
+);
+const defaults = manifest.defaults ?? {};
+const templates = manifest.routes ?? manifest.cases ?? manifest.entries ?? [];
+const matrix = manifest.matrix;
+const variants = matrix
+  ? matrix.themes.flatMap((theme) =>
+      matrix.viewports.map((viewport) => ({ theme, viewport })),
+    )
+  : [null];
+const cases = templates.flatMap((entry) =>
+  variants.map((variant) => ({
+    ...defaults,
+    ...entry,
+    ...(variant ?? {}),
+    ...(variant
+      ? { id: `${entry.id}-${variant.theme}-${variant.viewport}` }
+      : {}),
+    referencePrefs: mergeStorageSeed(
+      defaults.referencePrefs,
+      entry.referencePrefs,
+    ),
+    appPrefs: mergeStorageSeed(defaults.appPrefs, entry.appPrefs),
+    appMockData: {
+      ...(defaults.appMockData ?? {}),
+      ...(entry.appMockData ?? {}),
+    },
+    actions: entry.actions ?? defaults.actions ?? [],
+  })),
+) as VisualCase[];
+
+function mergeStorageSeed(base: StorageSeed = {}, override: StorageSeed = {}) {
+  return {
+    ...base,
+    ...override,
+    localStorage: { ...base.localStorage, ...override.localStorage },
+    sessionStorage: { ...base.sessionStorage, ...override.sessionStorage },
+    cookies: { ...base.cookies, ...override.cookies },
+  };
+}
+
+test.describe("visual comparison captures", () => {
+  for (const entry of cases) {
+    test(`${entry.id} ${entry.viewport}`, async ({ browser }) => {
+      const { width, height } = parseViewport(entry.viewport);
+      const contextOptions = {
+        viewport: { width, height },
+        deviceScaleFactor: 1,
+        colorScheme: entry.theme,
+        timezoneId: "Africa/Johannesburg",
+        // The reference is a South African business and renders 24-hour
+        // times; match its locale so time formatting is not a false diff.
+        locale: "en-ZA",
+      } as const;
+      const referenceContext = await browser.newContext(contextOptions);
+      const appContext = await browser.newContext(contextOptions);
+
+      try {
+        const referencePage = await referenceContext.newPage();
+        await referencePage.clock.install({
+          time: new Date("2026-09-23T12:00:00+02:00"),
+        });
+        // Keep the frozen reference files untouched while applying the owner
+        // typeface decision in memory. The reference font request is served
+        // with its Manrope file and its family alias is normalized here.
+        await referencePage.route(/\.css(?:\?.*)?$/, async (route) => {
+          const requestedUrl = new URL(route.request().url());
+          const r19TypographyRequest = requestedUrl.pathname.endsWith(
+            "/20260927-company-v7/20260926-r19/typography.css",
+          );
+          const response = await route.fetch({
+            timeout: 30_000,
+            ...(r19TypographyRequest
+              ? {
+                  url: new URL(
+                    "/20260926-r19/typography.css",
+                    requestedUrl,
+                  ).toString(),
+                }
+              : {}),
+          });
+          const stylesheet = await response.text();
+          const correctedTypography = r19TypographyRequest
+            ? stylesheet.replace(
+                /url\((["']?)assets\//g,
+                `url($1${new URL("/20260926-r19/assets/", requestedUrl)}`,
+              )
+            : stylesheet;
+          const ignoredShellStyles = (entry.referenceIgnoreSelectors ?? [])
+            .map((selector) => `${selector} { display: none !important; }`)
+            .join("\n");
+          await route.fulfill({
+            response,
+            body: `${correctedTypography.replace(/\bSatoshi\b/g, "Manrope")}\n${ignoredShellStyles}`,
+          });
+        });
+        await referencePage.route(
+          /satoshi-variable\.woff2(?:\?.*)?$/,
+          async (route) => {
+            await route.fulfill({
+              status: 200,
+              contentType: "font/woff2",
+              body: manropeFont,
+            });
+          },
+        );
+        const ignoredShellStyles = (entry.referenceIgnoreSelectors ?? [])
+          .map((selector) => `${selector} { display: none !important; }`)
+          .join("\n");
+        await seedStorage(
+          referencePage,
+          entry.referencePrefs,
+          new URL(entry.referenceUrl).origin,
+        );
+        if (entry.referenceInventoryRoute === "onboarding/testing") {
+          await referencePage.addInitScript(() => {
+            const nativeSetTimeout = window.setTimeout.bind(window);
+            window.setTimeout = ((handler, timeout, ...args) => {
+              if (
+                window.location.hash === "#testing" &&
+                (timeout === 1050 || timeout === 2550)
+              ) {
+                return 0;
+              }
+              return nativeSetTimeout(handler, timeout, ...args);
+            }) as typeof window.setTimeout;
+          });
+        }
+        await referencePage.goto(entry.referenceUrl, {
+          waitUntil: "domcontentloaded",
+        });
+        await referencePage.waitForLoadState("load");
+        if (ignoredShellStyles) {
+          await referencePage.addStyleTag({ content: ignoredShellStyles });
+        }
+        if (entry.referenceCanvas && entry.theme === "dark") {
+          await referencePage.locator("#dark").click();
+          await expect(referencePage.locator("#canvas")).toHaveClass(
+            /\bdark\b/,
+          );
+        }
+        if (
+          entry.referenceInventoryRoute === "channel/sales" &&
+          entry.appRoute.includes("?thread=")
+        ) {
+          const voiceNote = referencePage
+            .locator(".message")
+            .filter({ hasText: "09:50" });
+          await voiceNote
+            .getByRole("button", { name: "Reply in thread" })
+            .click({ force: true });
+          const referenceThread = referencePage.locator(".thread-pane");
+          await expect(referenceThread).toBeVisible();
+          await expect(referenceThread).toContainText("09:50");
+          await expect(referenceThread).toContainText("Voice note");
+        }
+        if (entry.referenceCanvas) {
+          await fitReferenceCanvas(referencePage, width, height);
+        }
+
+        const appPage = await appContext.newPage();
+        await appPage.route(
+          "https://example.invalid/voice-note-r17.wav",
+          (route) =>
+            route.fulfill({
+              status: 200,
+              contentType: "audio/x-wav",
+              body: r17VoiceNoteWav,
+            }),
+        );
+        const moderationReports = entry.appMockData?.moderationReports;
+        if (Array.isArray(moderationReports)) {
+          await appPage.route("**/moderation/reports**", (route) =>
+            route.fulfill({ json: moderationReports }),
+          );
+          await appPage.route("**/moderation/audit**", (route) =>
+            route.fulfill({ json: [] }),
+          );
+        }
+        await appPage.clock.install({
+          time: new Date("2026-09-23T12:00:00+02:00"),
+        });
+        const appUrl = new URL(entry.appRoute, appBaseUrl).toString();
+        await seedStorage(appPage, entry.appPrefs, new URL(appUrl).origin);
+        const usesReferenceWorkspace =
+          entry.appMockData?.referenceWorkspace === true;
+        if (manifestFixture) {
+          // Manifests with their own fixture seed only that data.
+          await installMockBridge(
+            appPage,
+            entry.appMockData ?? manifestFixture.appMockData,
+          );
+        } else {
+          if (!usesReferenceWorkspace) {
+            await appPage.addInitScript(
+              ({ pubkey }) => {
+                localStorage.setItem(
+                  `buzz-channel-sort.v1:${pubkey}:ws%3A%2F%2Flocalhost%3A3000`,
+                  JSON.stringify({
+                    version: 1,
+                    groups: {
+                      dms: "recent",
+                      starred: "recent",
+                      "section:client-work": "recent",
+                    },
+                  }),
+                );
+              },
+              { pubkey: r17Fixture.identity.pubkey },
+            );
+          }
+          const visualFixture = {
+            ...r17Fixture,
+            today: {
+              ...r17Fixture.today,
+              ...(entry.fixtureVariant === "reviews-empty"
+                ? { businessReviews: [], reviewsEmpty: true }
+                : {}),
+            },
+          };
+          await installMockBridge(
+            appPage,
+            usesReferenceWorkspace
+              ? (entry.appMockData ?? {})
+              : { ...(entry.appMockData ?? {}), visualFixture },
+          );
+        }
+        if (entry.referenceInventoryRoute === "navigation/history") {
+          const channelUrl = new URL(
+            "/#/channels/c6f3a9b2-4d55-5a23-bf78-5b9e2a3c5d6f",
+            appBaseUrl,
+          ).toString();
+          await appPage.goto(channelUrl, { waitUntil: "domcontentloaded" });
+          await appPage.goto(
+            new URL("/#/navigation/history", appBaseUrl).toString(),
+            { waitUntil: "domcontentloaded" },
+          );
+          await appPage.goto(new URL("/#/workflows", appBaseUrl).toString(), {
+            waitUntil: "domcontentloaded",
+          });
+          await appPage.goBack({ waitUntil: "domcontentloaded" });
+        } else {
+          await appPage.goto(appUrl, {
+            waitUntil: "domcontentloaded",
+          });
+        }
+        await appPage.waitForLoadState("load");
+
+        await waitForCaptureReady(
+          referencePage,
+          "Manrope",
+          entry.referenceReadySelector,
+        );
+        await waitForCaptureReady(
+          appPage,
+          "Manrope Variable",
+          entry.appPreActionsReadySelector ?? entry.appReadySelector,
+        );
+        if (entry.appMockData?.referenceSidebarShell === true) {
+          for (const [channelName, count] of [
+            ["olive-studio", 2],
+            ["sales", 3],
+            ["Company forum", 1],
+            ["Aya", 1],
+          ] as const) {
+            await expect(
+              appPage.getByTestId(`channel-unread-${channelName}`),
+            ).toHaveText(
+              `${count} unread notification${count === 1 ? "" : "s"}`,
+            );
+          }
+        }
+        const activeTurns =
+          entry.appActiveTurns ?? manifestFixture?.activeTurns ?? [];
+        if (activeTurns.length > 0) {
+          await appPage.waitForFunction(
+            () =>
+              typeof (
+                window as Window & {
+                  __BUZZ_E2E_SEED_ACTIVE_TURNS__?: unknown;
+                }
+              ).__BUZZ_E2E_SEED_ACTIVE_TURNS__ === "function",
+            null,
+            { timeout: 10_000 },
+          );
+          await appPage.evaluate((turns) => {
+            const seed = (
+              window as Window & {
+                __BUZZ_E2E_SEED_ACTIVE_TURNS__?: (turn: {
+                  agentPubkey: string;
+                  channelId: string;
+                  turnId: string;
+                }) => void;
+              }
+            ).__BUZZ_E2E_SEED_ACTIVE_TURNS__;
+            for (const turn of turns) seed?.(turn);
+          }, activeTurns);
+        }
+        if (entry.referenceInventoryRoute === "today/updates") {
+          const contactList = await appPage.evaluate(async () => {
+            const invoke = window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__;
+            if (!invoke) throw new Error("The visual mock bridge is missing.");
+            const identity = (await invoke("get_identity")) as {
+              pubkey: string;
+            };
+            const result = (await invoke("get_contact_list", {
+              pubkey: identity.pubkey,
+            })) as { tags: string[][] };
+            return { pubkey: identity.pubkey, tags: result.tags };
+          });
+          expect(contactList).toEqual({
+            pubkey: r17Fixture.identity.pubkey,
+            tags: r17Fixture.followedPubkeys?.map((pubkey) => ["p", pubkey]),
+          });
+          const followButtons = appPage.locator(".colony-update-follow");
+          await expect(followButtons).toHaveCount(2);
+          await expect
+            .poll(() => followButtons.allTextContents())
+            .toEqual(["Following", "Following"]);
+        }
+        if (
+          usesReferenceWorkspace &&
+          entry.referenceInventoryRoute === "today"
+        ) {
+          await expect(appPage.locator('[data-sidebar="content"]')).toHaveCSS(
+            "scrollbar-gutter",
+            "auto",
+          );
+          await expect(appPage.locator(".r17-today-page h1")).toHaveText(
+            "Today",
+          );
+          await expect(appPage.getByTestId("open-search")).toContainText(
+            "Find anything",
+          );
+          await expect(appPage.getByTestId("sidebar-profile-name")).toHaveText(
+            "Lerato Molefe",
+          );
+          await expect(
+            appPage.getByTestId("sidebar-profile-user-status"),
+          ).toHaveText("Set a status");
+          await expect(appPage.locator(".r17-today-page")).toContainText(
+            "Wednesday, 23 September",
+          );
+          await expect(appPage.getByTestId("sidebar-home-count")).toHaveText(
+            "2",
+          );
+          await expect(
+            appPage.getByText("Open design review map", { exact: true }),
+          ).toHaveCount(0);
+          await expect(
+            appPage.locator(".r17-today-left .r17-today-attention-row"),
+          ).toHaveCount(4);
+          await expect(
+            appPage.locator(".r17-today-left .r17-today-review-row"),
+          ).toHaveCount(6);
+        }
+        if (
+          entry.referenceInventoryRoute === "channel/sales" &&
+          usesReferenceWorkspace
+        ) {
+          const workspaceTopBar = appPage.locator(".colony-channel-topbar");
+          await expect(appPage.locator('[data-sidebar="content"]')).toHaveCSS(
+            "scrollbar-gutter",
+            "auto",
+          );
+          await expect(
+            workspaceTopBar.getByTestId("channel-work-area-trigger"),
+          ).toHaveText("Work area");
+          await expect(workspaceTopBar.locator("svg.lucide-globe")).toHaveCount(
+            1,
+          );
+          for (const unavailableDestination of ["Website", "Social", "Money"]) {
+            await expect(
+              appPage.getByText(unavailableDestination, { exact: true }),
+            ).toHaveCount(0);
+          }
+          await expect(
+            appPage.getByTestId("sidebar-nav-business-toggle"),
+          ).toHaveAttribute("aria-expanded", "false");
+          await expect(
+            appPage.getByTestId("sidebar-nav-library-toggle"),
+          ).toHaveAttribute("aria-expanded", "false");
+          const channelActions = appPage.getByTestId(
+            "section-actions-channels",
+          );
+          await channelActions.click();
+          await expect(
+            appPage.getByRole("menuitem", { name: /^Browse channels/ }),
+          ).toBeVisible();
+          await appPage.keyboard.press("Escape");
+          const channelTabs = appPage.getByTestId("channel-view-tabs");
+          await expect(
+            appPage.getByText("Open design review map", { exact: true }),
+          ).toHaveCount(0);
+          await expect(channelTabs).toHaveText(
+            "DiscussionWorkKnowledgeCanvasFiles",
+          );
+          await expect(channelTabs).toHaveCSS("height", "45px");
+          const huddleButton = appPage.getByTestId(
+            "channel-start-huddle-trigger",
+          );
+          await expect(huddleButton).toHaveText("Huddle");
+          await expect(huddleButton.locator("svg")).toHaveCount(0);
+          const activeTabUnderline = await channelTabs
+            .locator('[aria-current="page"]')
+            .evaluate(
+              (element) => getComputedStyle(element, "::after").backgroundColor,
+            );
+          expect(activeTabUnderline).toBe(
+            entry.theme === "dark" ? "rgb(157, 193, 251)" : "rgb(38, 85, 160)",
+          );
+          if (!entry.appRoute.includes("?thread=")) {
+            await expect(
+              appPage.locator(".colony-channel-description"),
+            ).toHaveText("From first hello to lasting partnerships.");
+          }
+          const salesTimeline = appPage.getByTestId("message-timeline");
+          await expect(
+            salesTimeline.getByTestId("message-timeline-day-divider"),
+          ).toHaveText("Today");
+          const salesDayGroup = salesTimeline.getByTestId(
+            "message-timeline-day-group",
+          );
+          await expect(salesDayGroup).toHaveAttribute(
+            "data-day-label",
+            "Today",
+          );
+          expect(
+            await salesDayGroup.evaluate(
+              (element) => getComputedStyle(element, "::before").height,
+            ),
+          ).toBe("1px");
+          await expect(
+            salesTimeline.locator(
+              '[data-message-id="reference-sales-lerato-0914"]',
+            ),
+          ).toBeVisible();
+          await expect(
+            salesTimeline.locator(
+              '[data-message-id="reference-sales-aya-0942"]',
+            ),
+          ).toBeVisible();
+          await expect(
+            salesTimeline.locator(
+              '[data-message-id="reference-sales-lerato-0950"]',
+            ),
+          ).toBeVisible();
+          const inboxCount = appPage.getByTestId("sidebar-home-count");
+          await expect(inboxCount).toHaveText("2");
+          await expect(inboxCount).toHaveCSS(
+            "background-color",
+            "rgba(0, 0, 0, 0)",
+          );
+          const salesUnreadDot = appPage.getByTestId(
+            "channel-unread-dot-Sales",
+          );
+          await expect(salesUnreadDot).toBeVisible();
+          await expect(salesUnreadDot).toHaveCSS("width", "5px");
+          await expect(salesUnreadDot).toHaveCSS(
+            "background-color",
+            "rgb(173, 127, 167)",
+          );
+          const clientChannelTops = await Promise.all(
+            ["The Olive House", "Cedar Café", "Northline Interiors"].map(
+              (name) =>
+                appPage
+                  .getByTestId(`channel-${name}`)
+                  .evaluate((element) => element.getBoundingClientRect().top),
+            ),
+          );
+          expect(clientChannelTops[0]).toBeLessThan(clientChannelTops[1]);
+          expect(clientChannelTops[1]).toBeLessThan(clientChannelTops[2]);
+          const leratoMessage = appPage.locator(
+            '[data-message-id="reference-sales-lerato-0914"]',
+          );
+          const isThreadScene = entry.appRoute.includes("?thread=");
+          const timelineAvatarSize = isThreadScene ? "26px" : "31px";
+          await expect(
+            leratoMessage.getByTestId("message-timestamp"),
+          ).toHaveText("09:14");
+          await expect(leratoMessage.getByTestId("message-avatar")).toHaveClass(
+            /rounded-md/,
+          );
+          const leratoAvatar = leratoMessage.getByTestId("message-avatar");
+          await expect(leratoAvatar).toHaveClass(
+            /colony-workspace-human-message-avatar/,
+          );
+          await expect(leratoAvatar).toHaveCSS("width", timelineAvatarSize);
+          await expect(leratoAvatar).toHaveCSS("height", timelineAvatarSize);
+          await expect(
+            leratoMessage.getByTestId("message-avatar-fallback"),
+          ).toHaveCSS(
+            "background-color",
+            entry.theme === "dark" ? "rgb(69, 58, 74)" : "rgb(236, 229, 237)",
+          );
+          await expect(leratoMessage).toContainText("@Aya,");
+          const ayaMessage = appPage.locator(
+            '[data-message-id="reference-sales-aya-0942"]',
+          );
+          await expect(
+            ayaMessage.getByTestId("message-agent-owner"),
+          ).toContainText("Agent");
+          const ayaAvatar = ayaMessage.getByTestId("message-avatar");
+          await expect(ayaAvatar).toHaveClass(
+            /colony-workspace-agent-message-avatar/,
+          );
+          await expect(ayaAvatar).toHaveCSS("width", timelineAvatarSize);
+          await expect(
+            ayaMessage.getByTestId("message-avatar-fallback"),
+          ).toHaveCSS(
+            "background-color",
+            entry.theme === "dark" ? "rgb(41, 57, 77)" : "rgb(227, 235, 244)",
+          );
+          await expect(ayaMessage).not.toContainText("owner unavailable");
+          await expect(ayaMessage).toContainText(
+            "Independent brands needing social support",
+          );
+          await expect(
+            ayaMessage.locator("[data-link-preview-row-symbol]").locator("svg"),
+          ).toHaveClass(/lucide-compass/);
+          const channelComposerToolbar = appPage
+            .getByTestId("message-composer-toolbar")
+            .first();
+          await expect(channelComposerToolbar).toHaveCSS(
+            "padding-left",
+            "11px",
+          );
+          await expect(channelComposerToolbar).toHaveCSS(
+            "padding-right",
+            "11px",
+          );
+          await expect(
+            appPage.locator('[data-testid="message-unread-divider"]'),
+          ).toHaveCount(0);
+          await expect(
+            appPage.locator('[data-testid="message-unread-pill"]'),
+          ).toHaveCount(0);
+          if (entry.appRoute.includes("?thread=")) {
+            const threadPanel = appPage.getByTestId("message-thread-panel");
+            await expect(threadPanel).toBeVisible();
+            const threadRootMessage = threadPanel.locator(
+              '[data-message-id="reference-sales-lerato-0950"]',
+            );
+            await expect(
+              threadRootMessage.getByTestId("message-avatar"),
+            ).toHaveCSS("width", "25px");
+            const threadComposerToolbar = threadPanel.getByTestId(
+              "message-composer-toolbar",
+            );
+            await expect(threadComposerToolbar).toHaveCSS(
+              "padding-left",
+              "11px",
+            );
+            await expect(threadComposerToolbar).toHaveCSS(
+              "padding-right",
+              "11px",
+            );
+            const activeThreadRoot = appPage.locator(
+              '[data-active-thread-root="true"] [data-testid="message-row"]',
+            );
+            await expect(activeThreadRoot).toHaveAttribute(
+              "data-message-id",
+              "reference-sales-lerato-0950",
+            );
+            expect(
+              await activeThreadRoot.evaluate(
+                (element) => getComputedStyle(element).boxShadow,
+              ),
+            ).not.toBe("none");
+            await expect(
+              threadPanel.getByTestId("message-thread-replies-empty-divider"),
+            ).toBeVisible();
+            await expect(
+              threadPanel.locator(
+                '[data-message-id="reference-sales-lerato-0950"]',
+              ),
+            ).toBeVisible();
+            await expect(threadPanel).toContainText("Voice note");
+            await expect(
+              threadPanel.getByRole("checkbox", {
+                name: "Also send to #Sales",
+              }),
+            ).not.toBeChecked();
+            await expect(
+              threadPanel.locator('[data-testid="message-row"]'),
+            ).toHaveCount(1);
+          } else {
+            await expect(
+              appPage.locator('[data-testid="message-thread-panel"]'),
+            ).toHaveCount(0);
+            await expect(
+              appPage.locator('[data-testid="message-channel-intro"]'),
+            ).toHaveCount(0);
+          }
+        } else if (entry.referenceInventoryRoute === "channel/sales") {
+          const crossPostControl = appPage.getByRole("checkbox", {
+            name: "Also send to #Sales",
+          });
+          await expect(crossPostControl).toBeVisible();
+          await expect(crossPostControl).not.toBeChecked();
+          const previewMessage = appPage.locator(
+            '[data-message-id="r17-sales-aya"]',
+          );
+          await expect(
+            previewMessage.locator(
+              '.message-markdown > p > a[href="https://example.com/independent-brands"]',
+            ),
+          ).toHaveCount(0);
+          await expect(
+            previewMessage.locator(
+              ".message-markdown [data-link-preview-list]",
+            ),
+          ).toHaveCount(1);
+          const threadPanel = appPage.locator(
+            '[data-testid="message-thread-panel"]',
+          );
+          await expect(
+            threadPanel.locator('[data-testid="message-author"]'),
+          ).toHaveCount(2);
+          await expect(
+            appPage.locator('[data-testid="voice-note-playback-waveform"]'),
+          ).toHaveAttribute("data-waveform-state", "ready");
+        }
+        await performActions(entry.actions, referencePage, appPage);
+        await waitForCaptureReady(
+          referencePage,
+          "Manrope",
+          entry.referenceReadySelector,
+        );
+        await waitForCaptureReady(
+          appPage,
+          "Manrope Variable",
+          entry.appReadySelector,
+        );
+        await referencePage.mouse.move(width - 1, height - 1);
+        await appPage.mouse.move(width - 1, height - 1);
+        await referencePage.evaluate(() => {
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
+        });
+        await appPage.evaluate(() => {
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
+        });
+        if (
+          usesReferenceWorkspace &&
+          entry.referenceInventoryRoute === "channel/sales"
+        ) {
+          await expect(
+            appPage.getByTestId(
+              "section-actions-reference-client-work-quick-create",
+            ),
+          ).toHaveCSS("opacity", "0");
+        }
+        await waitForAnimations(referencePage);
+        await waitForAnimations(appPage);
+        const referenceGeometry = await inspectPageGeometry(
+          referencePage,
+          width,
+          height,
+        );
+        const appGeometry = await inspectPageGeometry(appPage, width, height);
+
+        const clip = await resolveClip(entry.clip, referencePage, appPage);
+        const caseDir = path.join(outputRoot, entry.id);
+        await mkdir(caseDir, { recursive: true });
+        const referenceBuffer = await referencePage.screenshot({
+          path: path.join(caseDir, "reference.png"),
+          ...(clip ? { clip: clip.reference } : {}),
+        });
+        const appBuffer = await appPage.screenshot({
+          path: path.join(caseDir, "app.png"),
+          ...(clip ? { clip: clip.app } : {}),
+        });
+
+        const reference = decodePng(referenceBuffer);
+        const app = decodePng(appBuffer);
+        if (reference.width !== app.width || reference.height !== app.height) {
+          throw new Error(
+            `${entry.id} dimension mismatch: reference ${reference.width}x${reference.height}, app ${app.width}x${app.height}.`,
+          );
+        }
+        const comparison = compareImages(reference, app);
+        await writePng(
+          path.join(caseDir, "side-by-side.png"),
+          comparison.sideBySide,
+        );
+        await writePng(path.join(caseDir, "overlay.png"), comparison.overlay);
+        await writePng(
+          path.join(caseDir, "diff-heatmap.png"),
+          comparison.heatmap,
+        );
+        await writeFile(
+          path.join(caseDir, "metrics.json"),
+          `${JSON.stringify(
+            {
+              id: entry.id,
+              referenceInventoryRoute: entry.referenceInventoryRoute ?? null,
+              referenceUrl: entry.referenceUrl,
+              appRoute: entry.appRoute,
+              viewport: entry.viewport,
+              theme: entry.theme,
+              captureRegion: entry.clip ?? null,
+              captureRegionBounds: clip
+                ? { reference: clip.reference, app: clip.app }
+                : null,
+              deviceScaleFactor: 1,
+              referenceGeometry,
+              appGeometry,
+              comparison: "exact-rgb-no-mask-no-threshold",
+              width: reference.width,
+              height: reference.height,
+              changedPixels: comparison.changedPixels,
+              totalPixels: comparison.totalPixels,
+              changedPixelRatio: comparison.changedPixelRatio,
+              meanAbsoluteChannelDelta: comparison.meanAbsoluteChannelDelta,
+              diffComponentCount: comparison.diffComponentCount,
+              largestDiffRegions: comparison.largestDiffRegions,
+            },
+            null,
+            2,
+          )}\n`,
+        );
+      } finally {
+        await Promise.all([referenceContext.close(), appContext.close()]);
+      }
+    });
+  }
+});
+
+async function seedStorage(
+  page: import("@playwright/test").Page,
+  seed: StorageSeed,
+  origin: string,
+) {
+  const cookies = Object.entries(seed.cookies ?? {});
+  if (cookies.length > 0) {
+    await page
+      .context()
+      .addCookies(
+        cookies.map(([name, value]) => ({ name, value, url: origin })),
+      );
+  }
+  await page.addInitScript((storage) => {
+    const setValues = (
+      target: Storage,
+      values: Record<string, unknown> | undefined,
+    ) => {
+      target.clear();
+      for (const [key, value] of Object.entries(values ?? {})) {
+        target.setItem(
+          key,
+          typeof value === "string" ? value : JSON.stringify(value),
+        );
+      }
+    };
+    setValues(window.localStorage, storage.localStorage);
+    setValues(window.sessionStorage, storage.sessionStorage);
+  }, seed);
+}
+
+async function waitForCaptureReady(
+  page: import("@playwright/test").Page,
+  expectedFont: string,
+  readySelector?: string,
+) {
+  if (readySelector) {
+    try {
+      await page
+        .locator(readySelector)
+        .first()
+        .waitFor({ state: "visible", timeout: 60_000 });
+    } catch (error) {
+      console.log("Visual page was not capture-ready", {
+        url: page.url(),
+        readySelector,
+        text: (
+          await page
+            .locator("body")
+            .innerText()
+            .catch(() => "")
+        ).slice(0, 1_000),
+        testIds: await page
+          .locator("[data-testid]")
+          .evaluateAll((elements) =>
+            elements
+              .slice(0, 24)
+              .map((element) => element.getAttribute("data-testid")),
+          )
+          .catch(() => []),
+      });
+      throw error;
+    }
+  }
+  await page.evaluate(async (family) => {
+    // Faces load lazily on first use; request the expected face explicitly.
+    await document.fonts.load(`400 14px "${family}"`);
+    await document.fonts.ready;
+    const backgroundUrls = new Set(
+      Array.from(
+        document.querySelectorAll<HTMLElement>(
+          ".app-frame, .buzz-huddle-shell, .buzz-theme-gradient-underlay, .buzz-theme-gradient-layer-light, .buzz-theme-gradient-layer-dark",
+        ),
+      ).flatMap((element) => {
+        const backgroundImage = getComputedStyle(element).backgroundImage;
+        return Array.from(
+          backgroundImage.matchAll(/url\(["']?([^"')]+)["']?\)/g),
+          (match) => match[1],
+        );
+      }),
+    );
+    await Promise.all(
+      Array.from(backgroundUrls, async (url) => {
+        const image = new Image();
+        image.src = new URL(url, window.location.href).toString();
+        await image.decode();
+      }),
+    );
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+  }, expectedFont);
+  await waitForAnimations(page);
+  const fontState = await page.evaluate(
+    ({ family, selector }) => {
+      const fontTarget =
+        (selector ? document.querySelector(selector) : null) ?? document.body;
+      const computed = getComputedStyle(fontTarget).fontFamily;
+      const available = Array.from(document.fonts).some((face) => {
+        const name = face.family.replaceAll('"', "").replaceAll("'", "").trim();
+        const weight = face.weight.trim();
+        const supports400 =
+          weight === "normal" ||
+          weight === "400" ||
+          (/^\d+\s+\d+$/.test(weight) &&
+            Number(weight.split(/\s+/)[0]) <= 400 &&
+            Number(weight.split(/\s+/)[1]) >= 400);
+        return name === family && face.status === "loaded" && supports400;
+      });
+      return {
+        computed,
+        available,
+        check: document.fonts.check(`400 14px "${family}"`),
+      };
+    },
+    { family: expectedFont, selector: readySelector },
+  );
+  if (
+    !fontState.computed.includes(expectedFont) ||
+    !fontState.available ||
+    !fontState.check
+  ) {
+    throw new Error(
+      `Expected ${expectedFont} 400 to be loaded; computed=${fontState.computed}, faceLoaded=${fontState.available}, check=${fontState.check}.`,
+    );
+  }
+}
+
+async function fitReferenceCanvas(
+  page: import("@playwright/test").Page,
+  width: number,
+  height: number,
+) {
+  await page.evaluate(
+    ({ width, height }) => {
+      const setStyle = (selector: string, values: Record<string, string>) => {
+        const element = document.querySelector<HTMLElement>(selector);
+        if (!element) return;
+        for (const [property, value] of Object.entries(values)) {
+          element.style.setProperty(property, value, "important");
+        }
+      };
+
+      setStyle(".reviewbar", { display: "none" });
+      setStyle(".reviewfoot", { display: "none" });
+      setStyle("body", { height: `${height}px` });
+      setStyle("#review-canvas", {
+        width: `${width}px`,
+        height: `${height}px`,
+        padding: "0",
+        overflow: "hidden",
+      });
+      setStyle("#scale-space", {
+        width: `${width}px`,
+        height: `${height}px`,
+        margin: "0",
+      });
+      setStyle("#canvas", {
+        width: `${width}px`,
+        height: `${height}px`,
+        transform: "none",
+        borderRadius: "0",
+        boxShadow: "none",
+      });
+    },
+    { width, height },
+  );
+}
+
+async function inspectPageGeometry(
+  page: import("@playwright/test").Page,
+  expectedWidth: number,
+  expectedHeight: number,
+) {
+  const geometry = await page.evaluate(() => {
+    const bounds = (element: Element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+      };
+    };
+    return {
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      devicePixelRatio: window.devicePixelRatio,
+      rootFontSize: getComputedStyle(document.documentElement).fontSize,
+      bodyFontSize: getComputedStyle(document.body).fontSize,
+      document: {
+        bounds: bounds(document.documentElement),
+        scrollWidth: document.documentElement.scrollWidth,
+        scrollHeight: document.documentElement.scrollHeight,
+      },
+      body: {
+        bounds: bounds(document.body),
+        scrollWidth: document.body.scrollWidth,
+        scrollHeight: document.body.scrollHeight,
+      },
+      visualElements: [
+        "#topbar",
+        "#sidebar",
+        "#sidebar .sidebar-head",
+        "#sidebar .sidebar-collapse",
+        "#sidebar .business-switch",
+        "#sidebar .business-mark",
+        "#sidebar .business-mark > span",
+        "#sidebar .business-switch strong",
+        "#sidebar .sidebar-search",
+        "#sidebar .sidebar-search span",
+        "#sidebar .sidebar-search kbd",
+        "#sidebar .nav-item",
+        "#sidebar .nav-label",
+        "#sidebar .section-heading",
+        "#sidebar .section-toggle",
+        "#sidebar .section-heading:nth-of-type(2) .section-toggle",
+        "#sidebar .section-toggle > span:not(.icon)",
+        "#sidebar .section-heading > button:not(.section-toggle)",
+        "#sidebar .profile-row",
+        "#sidebar .profile-row > .avatar",
+        "#sidebar .profile-row strong",
+        "#sidebar .px-status-button",
+        ".full-sidebar",
+        ".company-switch",
+        ".business-mark",
+        ".business-mark > span",
+        ".nav-search",
+        ".nav-search span",
+        ".nav-search kbd",
+        ".full-sidebar .nav-item",
+        ".full-sidebar nav",
+        ".full-sidebar nav > .nav-link",
+        ".full-sidebar .group-toggle",
+        ".full-sidebar .conversation-list",
+        ".full-sidebar .conversation-heading",
+        ".full-sidebar .conversation-heading > button:first-child",
+        ".full-sidebar .conversation-browse",
+        ".full-sidebar .conversation-link",
+        ".full-sidebar .nav-utility",
+        ".full-sidebar .sidebar-bottom",
+        ".full-sidebar .section-heading",
+        ".full-sidebar .section-toggle",
+        ".full-sidebar .section-heading > button:not(.section-toggle)",
+        ".full-sidebar .profile-row",
+        ".full-sidebar .profile-row > .avatar",
+        ".full-sidebar .profile-row strong",
+        ".full-sidebar .px-status-button",
+        "#surface",
+        ".w20-settings-sidebar",
+        ".w20-settings-topbar",
+        ".w20-settings-surface",
+        ".ap-heading h1",
+        ".text-settings-title",
+        ".ap-heading",
+        ".ap-appearance-grid",
+        ".ap-controls-scroll",
+        ".ap-preview-column",
+        "#ap-live-preview",
+        ".ap-foot",
+        ".w20-inner-tabs",
+        ".w20-inner-tab",
+        ".studio-page",
+        ".studio-heading",
+        ".today-studio-grid",
+        ".cx-agent-attention",
+        ".cx-agent-attention .cx-row",
+        ".agency-attention-row",
+        ".agency-attention-row h3",
+        ".agency-attention-row p",
+        ".agency-attention-row small",
+        ".attention-art",
+        ".studio-section",
+        ".studio-section > h2",
+        ".studio-section-heading",
+        ".studio-section-heading h2",
+        ".studio-section-heading > span",
+        ".waiting-record",
+        ".waiting-record strong",
+        ".waiting-record p",
+        ".waiting-record small",
+        ".coverage-entry",
+        ".r17-today-page",
+        ".r17-today-heading",
+        ".r17-today-grid",
+        ".r17-today-left",
+        ".r17-today-attention-row",
+        ".r17-today-attention-copy strong",
+        ".r17-today-attention-copy small",
+        ".r17-today-business-heading",
+        ".r17-today-business-heading h2",
+        ".r17-today-review-row",
+        ".r17-today-review-copy small",
+        ".r17-today-review-copy strong",
+        ".r17-today-art",
+        ".r17-today-art-frame",
+        ".r17-today-right",
+        ".r17-today-section",
+        ".r17-today-section-heading h2",
+        ".r17-today-section-heading > span",
+        ".r17-today-waiting-record",
+        ".r17-today-waiting-record strong",
+        ".r17-today-waiting-record p",
+        ".r17-today-waiting-record small",
+        ".r17-today-money-record",
+        ".r17-today-money-record small",
+        ".colony-workspace-topbar",
+        ".studio-page",
+        ".studio-heading",
+        ".studio-actions > a",
+        ".studio-scroll",
+        ".studio-empty",
+        ".studio-empty > svg",
+        ".studio-empty h2",
+        ".studio-empty p",
+        ".colony-channel-pins-screen",
+        ".colony-channel-pins-content",
+        ".colony-channel-pins-heading",
+        ".colony-channel-pins-heading h1",
+        ".colony-channel-pins-heading button",
+        ".colony-channel-pins-empty",
+        ".colony-channel-pins-empty > svg",
+        ".colony-channel-pins-empty h2",
+        ".colony-channel-pins-empty p",
+        ".colony-channel-route-content",
+        "header[data-testid=chat-header] > div",
+        "header[data-testid=chat-header] > div > div:first-child",
+        "header[data-testid=chat-header] > div > div:last-child",
+        ".colony-channel-header-actions",
+        ".colony-channel-header-actions > button",
+        ".colony-channel-header-actions [data-testid=channel-pins-trigger]",
+        ".colony-channel-header-actions [data-testid=channel-start-huddle-trigger]",
+        ".colony-channel-header-actions [data-testid=channel-management-trigger]",
+        ".channel-pane",
+        ".thread-pane",
+        ".channel-header",
+        ".channel-header > div:first-child",
+        ".heading-actions",
+        ".heading-actions > a",
+        ".tabs",
+        ".agency-tabs",
+        ".agency-tabs > a",
+        ".message-list",
+        ".day-divider",
+        ".day-divider p",
+        ".voice-player",
+        ".message",
+        ".message-meta",
+        ".message-meta strong",
+        ".message-body",
+        ".message-body p",
+        ".message-author",
+        ".message-avatar",
+        ".channel-composer",
+        ".channel-composer .composer",
+        ".channel-composer .composer textarea",
+        ".channel-composer .composer-footer",
+        ".thread-pane .channel-composer",
+        ".thread-pane .channel-composer .composer",
+        ".thread-pane .channel-composer .composer textarea",
+        ".thread-pane .channel-composer .composer-footer",
+        "[data-testid=app-sidebar]",
+        "[data-testid=sidebar-pinned-header]",
+        ".colony-sidebar-brand",
+        "[data-testid=sidebar-business-switcher]",
+        ".colony-sidebar-brand-mark",
+        "[data-testid=sidebar-business-switcher] > span:nth-child(2)",
+        "[data-testid=sidebar-pinned-header] [data-sidebar=trigger]",
+        "[data-testid=open-search]",
+        "[data-testid=sidebar-primary-menu]",
+        "[data-testid=sidebar-primary-menu] [data-sidebar=menu-button]",
+        "[data-testid=sidebar-activity-button]",
+        ".sidebar-navigation-group-toggle",
+        ".sidebar-navigation-group-content",
+        "[data-testid=sidebar-scroll-content]",
+        "[data-testid=sidebar-nav-conversations]",
+        "[data-testid=sidebar-nav-conversations] .sidebar-navigation-group-toggle",
+        "[data-testid=stream-list-section-label]",
+        "[data-testid=stream-list] [data-sidebar=menu-button]",
+        "[data-testid=forum-list-section-label]",
+        "[data-testid=forum-list] [data-sidebar=menu-button]",
+        "[data-testid=dm-list-section-label]",
+        "[data-testid=dm-list] [data-sidebar=menu-button]",
+        "[data-testid=sidebar-nav-company]",
+        "[data-testid=sidebar-nav-company] [data-sidebar=menu-button]",
+        "[data-testid=sidebar-nav-company] .sidebar-navigation-group-toggle",
+        "[data-testid=sidebar-nav-business]",
+        "[data-testid=sidebar-nav-business] .sidebar-navigation-group-toggle",
+        "[data-testid=sidebar-software-factory-group] [data-sidebar=menu-button]",
+        "[data-testid=sidebar-nav-library]",
+        "[data-testid=sidebar-nav-library] .sidebar-navigation-group-toggle",
+        "[data-sidebar=footer] [data-sidebar=menu-button]",
+        "[data-testid=app-sidebar] [data-sidebar-section-title]",
+        "[data-testid=stream-list-section-label]",
+        "[data-testid=stream-list-section-label] [data-sidebar-section-title]",
+        "[data-testid=stream-list-section-label] + div",
+        "[data-testid=section-actions-channels-quick-create]",
+        "[data-testid=section-actions-channels]",
+        "[data-testid=section-title-client-work]",
+        "[data-testid=section-title-client-work] + div",
+        "[data-testid=section-actions-client-work-quick-create]",
+        "[data-testid=section-actions-client-work]",
+        "[data-testid=starred-list-section-label]",
+        "[data-testid=starred-list-section-label] > span[aria-hidden=true]",
+        "[data-testid=forum-list-section-label]",
+        "[data-testid=dm-list-section-label]",
+        "[data-testid=sidebar-team-section]",
+        "[data-testid=sidebar-team-section] [data-sidebar=menu-button]",
+        "[data-testid=sidebar-profile-card]",
+        "[data-testid=sidebar-profile-user-status]",
+        ".colony-sidebar-profile-row",
+        "[data-testid=sidebar-profile-avatar-button]",
+        "[data-testid=sidebar-theme-toggle]",
+        "[data-testid=settings-theme-preview] > div",
+        "[data-testid=settings-theme-preview] h2",
+        "[data-testid=settings-theme-preview] p",
+        "[data-testid=settings-theme-preview] > div > button",
+        "[data-testid=settings-theme-applied] > div",
+        "[data-testid=settings-theme-applied] h2",
+        "[data-testid=settings-theme-applied] p",
+        "[data-testid=settings-theme-applied] > div > button",
+        ".d17-theme-live",
+        ".d17-theme-live > aside",
+        ".d17-theme-live > aside > strong",
+        ".d17-theme-live > aside > small",
+        ".d17-theme-live > aside > b",
+        ".d17-theme-live > aside > footer",
+        ".d17-theme-live > section",
+        ".d17-theme-live > section > header",
+        ".d17-theme-live article",
+        ".d17-theme-live article > b",
+        ".d17-theme-live article strong",
+        ".d17-theme-live article p",
+        ".d17-design-card",
+        ".d17-design-card > span",
+        ".d17-design-card > strong",
+        ".d17-design-card > small",
+        ".d17-theme-live > section > footer",
+        ".d17-preview-footer",
+        ".d17-preview-footer > p",
+        ".d17-preview-footer > p > small",
+        ".d17-preview-page > .ap-heading > .secondary",
+        ".d17-preview-footer > .secondary",
+        ".d17-preview-footer > .primary",
+        ".d17-preview-button",
+        ".d17-applied-button",
+        "[data-testid=app-top-chrome]",
+        "[data-buzz-content-surface]",
+        "[data-testid=chat-header]",
+        "[data-testid=chat-title]",
+        "[data-testid=channel-drop-zone]",
+        "[data-testid=channel-composer-overlay]",
+        "[data-testid=thread-composer-overlay]",
+        "[data-testid=thread-composer-overlay] > div",
+        "[data-testid=thread-composer-overlay] .composer-dock",
+        "[data-testid=message-composer]",
+        "[data-testid=thread-composer-overlay] [data-testid=message-composer]",
+        "[data-testid=thread-composer-overlay] .colony-message-composer-footer-content",
+        "[data-testid=thread-composer-overlay] [data-testid=message-input-scroll]",
+        "[data-testid=thread-composer-overlay] [data-testid=message-composer-toolbar]",
+        "[data-testid=thread-composer-overlay] [data-testid=send-message]",
+        "[data-testid=message-input-scroll]",
+        "[data-testid=message-composer-toolbar]",
+        "[data-testid=message-row]",
+        "[data-testid=message-header]",
+        "[data-testid=message-author]",
+        "[data-testid=message-timestamp]",
+        "[data-testid=message-body]",
+        "[data-testid=message-avatar]",
+        "[data-testid=system-message-row]",
+        "[data-testid=message-agent-owner]",
+        "[data-testid=channel-view-tabs]",
+        "[data-testid=channel-view-tabs] > span:nth-child(1)",
+        "[data-testid=channel-view-tabs] > span:nth-child(2)",
+        "[data-testid=channel-view-tabs] > span:nth-child(3)",
+        "[data-testid=channel-view-tabs] > span:nth-child(4)",
+        "[data-testid=channel-view-tabs] > span:nth-child(5)",
+        "[data-testid=open-search] > span:first-of-type",
+        "[data-testid=open-search] > kbd",
+        "[data-testid=sidebar-profile-name]",
+        "[data-testid=sidebar-profile-user-status]",
+        ".colony-composer-submit-hint",
+        "[data-testid=message-timeline]",
+        "[data-testid=message-timeline-day-group]",
+        "[data-testid=message-timeline-day-divider]",
+        "[data-testid=message-timeline-day-divider] p",
+        "[data-testid=message-timeline-sticky-day-divider]",
+        "[data-testid=message-timeline-sticky-day-divider-content]",
+        "[data-testid=message-timeline-sticky-day-divider-content] p",
+        "[data-testid=audio-message-attachment]",
+        ".colony-voice-note-card",
+        ".colony-voice-note-waveform-bar",
+        ".colony-voice-note-waveform-active",
+        "[data-testid=message-thread-panel]",
+        ".colony-channel-topbar",
+        ".colony-channel-header",
+        ".colony-thread-panel-title",
+        "[data-testid=message-thread-panel] [data-testid=message-thread-title]",
+        "[data-testid=thread-composer-overlay] .colony-thread-crosspost",
+        ".colony-composer-submit-hint",
+      ].map((selector) => {
+        const element = document.querySelector(selector);
+        if (!element) return { selector, count: 0 };
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          selector,
+          count: document.querySelectorAll(selector).length,
+          bounds: {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+          },
+          display: style.display,
+          text: element.textContent?.trim() ?? "",
+          color: style.color,
+          backgroundColor: style.backgroundColor,
+          fontFamily: style.fontFamily,
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          fontStyle: style.fontStyle,
+          fontStretch: style.fontStretch,
+          fontSynthesis: style.fontSynthesis,
+          fontKerning: style.fontKerning,
+          fontOpticalSizing: style.fontOpticalSizing,
+          fontVariant: style.fontVariant,
+          letterSpacing: style.letterSpacing,
+          textRendering: style.textRendering,
+          textShadow: style.textShadow,
+          webkitFontSmoothing: style.getPropertyValue("-webkit-font-smoothing"),
+          fontFeatureSettings: style.fontFeatureSettings,
+          lineHeight: style.lineHeight,
+          width: style.width,
+          height: style.height,
+          padding: style.padding,
+          boxSizing: style.boxSizing,
+          transform: style.transform,
+          zoom: style.zoom,
+          opacity: style.opacity,
+          visibility: style.visibility,
+          webkitTextFillColor: style.getPropertyValue(
+            "-webkit-text-fill-color",
+          ),
+          zIndex: style.zIndex,
+          position: style.position,
+          overflowY: style.overflowY,
+          scrollHeight: element.scrollHeight,
+          scrollWidth: element.scrollWidth,
+        };
+      }),
+      timelineRows: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="message-row"], article.message',
+        ),
+      ).map((element) => {
+        const rect = bounds(element);
+        const body = element.querySelector<HTMLElement>(
+          '[data-testid="message-body"], .message-body',
+        );
+        const meta = element.querySelector<HTMLElement>(
+          '[data-testid="message-meta"], .message-meta',
+        );
+        return {
+          bounds: rect,
+          text:
+            element.textContent?.trim().replace(/\s+/g, " ").slice(0, 140) ??
+            "",
+          bodyBounds: body ? bounds(body) : null,
+          metaBounds: meta ? bounds(meta) : null,
+          children: Array.from(element.querySelectorAll<HTMLElement>("*"))
+            .filter(
+              (child) =>
+                child.parentElement === element ||
+                child.matches(
+                  "[data-testid], [class*='preview'], [class*='thread']",
+                ),
+            )
+            .slice(0, 16)
+            .map((child) => ({
+              tag: child.tagName,
+              className: child.className?.toString() ?? "",
+              testId: child.dataset.testid ?? null,
+              text:
+                child.textContent?.trim().replace(/\s+/g, " ").slice(0, 90) ??
+                "",
+              bounds: bounds(child),
+            })),
+          bodyChildren: body
+            ? Array.from(body.querySelectorAll<HTMLElement>("*"))
+                .filter(
+                  (child) =>
+                    child.children.length === 0 || child.dataset.testid,
+                )
+                .slice(0, 20)
+                .map((child) => ({
+                  tag: child.tagName,
+                  className: child.className?.toString() ?? "",
+                  testId: child.dataset.testid ?? null,
+                  text:
+                    child.textContent
+                      ?.trim()
+                      .replace(/\s+/g, " ")
+                      .slice(0, 90) ?? "",
+                  bounds: bounds(child),
+                }))
+            : [],
+        };
+      }),
+      sidebarChildren: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="sidebar-scroll-content"] > *',
+        ),
+      ).map((element) => ({
+        testId: element.dataset.testid ?? null,
+        text:
+          element.textContent?.trim().replace(/\s+/g, " ").slice(0, 60) ?? "",
+        order: getComputedStyle(element).order,
+      })),
+      sidebarRows: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          [
+            ".full-sidebar .nav-link",
+            ".full-sidebar .group-toggle",
+            ".full-sidebar .conversation-heading",
+            ".full-sidebar .conversation-link",
+            ".full-sidebar .nav-utility",
+            ".full-sidebar .sidebar-bottom",
+            ".app-sidebar-full-shell .sidebar-navigation-group-toggle",
+            '.app-sidebar-full-shell [data-testid$="-section-label"]',
+            '.app-sidebar-full-shell [data-sidebar="menu-button"]',
+            '.app-sidebar-full-shell [data-testid="sidebar-profile-card"]',
+            '.app-sidebar-full-shell [data-sidebar="footer"]',
+          ].join(","),
+        ),
+      )
+        .filter(
+          (element) =>
+            element.getClientRects().length > 0 &&
+            getComputedStyle(element).display !== "none",
+        )
+        .map((element) => {
+          const style = getComputedStyle(element);
+          return {
+            className: element.className.toString(),
+            testId: element.dataset.testid ?? null,
+            text:
+              element.textContent?.trim().replace(/\s+/g, " ").slice(0, 60) ??
+              "",
+            bounds: bounds(element),
+            fontSize: style.fontSize,
+            fontWeight: style.fontWeight,
+            lineHeight: style.lineHeight,
+            color: style.color,
+            backgroundColor: style.backgroundColor,
+            padding: style.padding,
+            margin: style.margin,
+          };
+        }),
+      channelTabPaint: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="channel-view-tabs"] > span',
+        ),
+      ).map((element) => {
+        const style = getComputedStyle(element);
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const textRect = range.getBoundingClientRect();
+        const ancestors: Array<Record<string, string>> = [];
+        let ancestor: HTMLElement | null = element;
+        while (ancestor && ancestors.length < 5) {
+          const ancestorStyle = getComputedStyle(ancestor);
+          ancestors.push({
+            tag: ancestor.tagName,
+            className: ancestor.className.toString(),
+            color: ancestorStyle.color,
+            opacity: ancestorStyle.opacity,
+            visibility: ancestorStyle.visibility,
+            display: ancestorStyle.display,
+            textIndent: ancestorStyle.textIndent,
+            overflow: ancestorStyle.overflow,
+            clipPath: ancestorStyle.clipPath,
+            filter: ancestorStyle.filter,
+            mixBlendMode: ancestorStyle.mixBlendMode,
+            textShadow: ancestorStyle.textShadow,
+            webkitTextFillColor: ancestorStyle.getPropertyValue(
+              "-webkit-text-fill-color",
+            ),
+          });
+          ancestor = ancestor.parentElement;
+        }
+        const hitStack = document
+          .elementsFromPoint(
+            textRect.x + textRect.width / 2,
+            textRect.y + textRect.height / 2,
+          )
+          .map((hit) => `${hit.tagName}.${(hit as HTMLElement).className}`);
+        return {
+          text: element.textContent?.trim() ?? "",
+          textRect: {
+            x: textRect.x,
+            y: textRect.y,
+            width: textRect.width,
+            height: textRect.height,
+          },
+          fontFamily: style.fontFamily,
+          fontSize: style.fontSize,
+          fontWeight: style.fontWeight,
+          lineHeight: style.lineHeight,
+          color: style.color,
+          webkitTextFillColor: style.getPropertyValue(
+            "-webkit-text-fill-color",
+          ),
+          textStroke: style.getPropertyValue("-webkit-text-stroke-color"),
+          textShadow: style.textShadow,
+          textIndent: style.textIndent,
+          clipPath: style.clipPath,
+          filter: style.filter,
+          mixBlendMode: style.mixBlendMode,
+          animations: element
+            .getAnimations()
+            .map((animation) => animation.playState),
+          ancestors,
+          hitStack,
+        };
+      }),
+      messageTimelineRows: Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-testid="message-timeline"] [data-testid="message-row"]',
+        ),
+      ).map((element) => ({
+        id: element.dataset.messageId ?? null,
+        text:
+          element.textContent?.trim().replace(/\s+/g, " ").slice(0, 180) ?? "",
+      })),
+    };
+  });
+  if (
+    geometry.viewport.width !== expectedWidth ||
+    geometry.viewport.height !== expectedHeight ||
+    geometry.devicePixelRatio !== 1
+  ) {
+    throw new Error(
+      `Unexpected viewport geometry: ${JSON.stringify(geometry.viewport)}, DPR ${geometry.devicePixelRatio}.`,
+    );
+  }
+  return geometry;
+}
+
+async function performActions(
+  actions: VisualAction[],
+  referencePage: import("@playwright/test").Page,
+  appPage: import("@playwright/test").Page,
+) {
+  for (const action of actions) {
+    if (!action.selector)
+      throw new Error("Every visual action needs a selector.");
+    const target = action.target ?? "both";
+    const runOnPage = async (page: import("@playwright/test").Page) => {
+      const locator = page.locator(action.selector).first();
+      const options = {
+        timeout: action.timeoutMs ?? 10_000,
+        ...(action.options ?? {}),
+      };
+      if (action.type === "click") {
+        await locator.click(options);
+      } else if (action.type === "hover") {
+        await locator.hover(options);
+      } else if (action.type === "select" || action.type === "selectOption") {
+        if (action.value === undefined) {
+          throw new Error("Select visual actions need a value.");
+        }
+        await locator.selectOption(action.value);
+      } else if (action.type === "fill") {
+        if (action.value === undefined) {
+          throw new Error("Fill visual actions need a value.");
+        }
+        await locator.fill(action.value, options);
+      } else if (action.type === "setInputFiles") {
+        if (action.value === undefined) {
+          throw new Error("File visual actions need a fixture name.");
+        }
+        await locator.setInputFiles(await visualInputFile(action.value), {
+          timeout: options.timeout,
+        });
+      } else if (action.type === "waitFor") {
+        await locator.waitFor({ state: "visible", timeout: options.timeout });
+      } else {
+        throw new Error(`Unsupported action type: ${String(action.type)}`);
+      }
+    };
+    if (target === "reference" || target === "both")
+      await runOnPage(referencePage);
+    if (target === "app" || target === "both") await runOnPage(appPage);
+  }
+}
+
+async function visualInputFile(name: string) {
+  if (name === "avatar.png") {
+    const buffer = await readFile(
+      new URL("./fixtures/w20-avatar.png", import.meta.url),
+    );
+    return { name, mimeType: "image/png", buffer };
+  }
+  if (name === "unsupported.txt") {
+    return {
+      name,
+      mimeType: "text/plain",
+      buffer: Buffer.from("unsupported avatar file"),
+    };
+  }
+  throw new Error(`Unknown visual input fixture: ${name}`);
+}
+
+async function resolveClip(
+  clip: VisualCase["clip"],
+  referencePage: import("@playwright/test").Page,
+  appPage: import("@playwright/test").Page,
+) {
+  if (!clip) return null;
+  if (typeof clip === "object" && "x" in clip) {
+    const box = {
+      x: clip.x,
+      y: clip.y,
+      width: clip.width,
+      height: clip.height,
+    };
+    assertClipBox(box);
+    return { reference: box, app: box };
+  }
+  if (typeof clip === "object" && "referenceSelector" in clip) {
+    const referenceBox = await locatorBox(
+      referencePage,
+      clip.referenceSelector,
+    );
+    if (clip.normalizeAppRootToReference && clip.appSelector) {
+      await appPage
+        .locator(clip.appSelector)
+        .first()
+        .evaluate(
+          (element, bounds) => {
+            const root = element as HTMLElement;
+            root.style.width = `${bounds.width}px`;
+            root.style.minWidth = `${bounds.width}px`;
+            root.style.maxWidth = `${bounds.width}px`;
+            root.style.height = `${bounds.height}px`;
+            root.style.minHeight = "0";
+            root.style.maxHeight = `${bounds.height}px`;
+            root.style.flex = "none";
+          },
+          { width: referenceBox.width, height: referenceBox.height },
+        );
+    }
+    const appBox = clip.appSelector
+      ? await locatorBox(appPage, clip.appSelector)
+      : referenceBox;
+    const width = clip.width ?? Math.min(referenceBox.width, appBox.width);
+    const height = clip.height ?? Math.min(referenceBox.height, appBox.height);
+    const reference = { ...referenceBox, width, height };
+    const app = { ...appBox, width, height };
+    assertClipBox(reference);
+    assertClipBox(app);
+    return { reference, app };
+  }
+  const selector = typeof clip === "string" ? clip : clip.selector;
+  return {
+    reference: await locatorBox(referencePage, selector),
+    app: await locatorBox(appPage, selector),
+  };
+}
+
+async function locatorBox(
+  page: import("@playwright/test").Page,
+  selector: string,
+) {
+  const box = await page.locator(selector).first().boundingBox();
+  if (!box) throw new Error(`Clip selector was not visible: ${selector}`);
+  const rounded = {
+    x: Math.floor(box.x),
+    y: Math.floor(box.y),
+    width: Math.ceil(box.width),
+    height: Math.ceil(box.height),
+  };
+  assertClipBox(rounded);
+  return rounded;
+}
+
+function assertClipBox(box: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}) {
+  if (
+    !Object.values(box).every(Number.isFinite) ||
+    box.x < 0 ||
+    box.y < 0 ||
+    box.width <= 0 ||
+    box.height <= 0
+  ) {
+    throw new Error(`Invalid screenshot clip: ${JSON.stringify(box)}`);
+  }
+}
+
+function parseViewport(value: VisualCase["viewport"]) {
+  const [width, height] = value.split("x").map(Number);
+  return { width, height };
+}
+
+function decodePng(buffer: Buffer) {
+  const pngBuffer = buffer.buffer.slice(
+    buffer.byteOffset,
+    buffer.byteOffset + buffer.byteLength,
+  );
+  const decoded = UPNG.decode(pngBuffer);
+  const frame = UPNG.toRGBA8(decoded)[0];
+  return {
+    width: decoded.width,
+    height: decoded.height,
+    pixels: new Uint8Array(frame),
+  };
+}
+
+async function writePng(
+  filePath: string,
+  image: { width: number; height: number; pixels: Uint8Array },
+) {
+  const encoded = UPNG.encode(
+    [image.pixels.buffer],
+    image.width,
+    image.height,
+    0,
+  );
+  await writeFile(filePath, Buffer.from(encoded));
+}

@@ -69,6 +69,10 @@ fn parse_entity_deep_link_accepts_every_share_link_shape() {
         golden["eventId"].as_str().unwrap()
     );
     assert!(parse_entity_deep_link(&Url::parse(&commit_link).unwrap()).is_some());
+    assert!(parse_entity_deep_link(
+        &Url::parse("buzz://goal/123e4567-e89b-12d3-a456-426614174000").unwrap()
+    )
+    .is_some());
     let expected_tabs = golden["tabs"]
         .as_array()
         .unwrap()
@@ -106,6 +110,10 @@ fn parse_entity_deep_link_rejects_malformed_and_non_canonical_links() {
         format!("buzz://repo?owner={owner}&d=buzz-world#top"),
         // Not an entity host.
         format!("buzz://message?owner={owner}&d=buzz-world"),
+        "buzz://goal/not-a-uuid".to_owned(),
+        "buzz://goal/123e4567-e89b-12d3-a456-426614174000?tab=history".to_owned(),
+        "buzz://goal/123e4567-e89b-12d3-a456-426614174000/extra".to_owned(),
+        "buzz://goal:443/123e4567-e89b-12d3-a456-426614174000".to_owned(),
     ] {
         assert!(
             parse_entity_deep_link(&Url::parse(&raw).unwrap()).is_none(),

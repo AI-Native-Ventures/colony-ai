@@ -92,11 +92,16 @@ enum Plan {
 ///
 /// `Err` carries a user-facing diagnostic; the caller reports it and exits.
 pub fn apply() -> Result<(), String> {
-    match plan(
-        std::env::args_os(),
-        &|key| std::env::var_os(key),
-        Path::new(DRM_ROOT),
-    ) {
+    let args = std::env::args_os();
+    let env: EnvLookup<'_> = &|key: &str| std::env::var_os(key);
+    let drm_root = Path::new(DRM_ROOT);
+    let plan = if crate::electron_host::enabled() {
+        plan_for_host(args, env, drm_root, true)
+    } else {
+        plan(args, env, drm_root)
+    };
+
+    match plan {
         Plan::Apply { vars, why } => {
             for var in vars {
                 // Safe here and only here — see the doc comment above.
@@ -121,6 +126,21 @@ fn plan(
     env: EnvLookup<'_>,
     drm_root: &Path,
 ) -> Plan {
+    plan_for_host(args, env, drm_root, false)
+}
+
+fn plan_for_host(
+    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
+    env: EnvLookup<'_>,
+    drm_root: &Path,
+    electron_host: bool,
+) -> Plan {
+    if electron_host {
+        return Plan::Leave {
+            why: "Electron renders the visible UI and does not use WebKit".to_string(),
+        };
+    }
+
     let safe_rendering = args
         .into_iter()
         .any(|arg| arg.as_ref() == OsStr::new(SAFE_RENDERING));

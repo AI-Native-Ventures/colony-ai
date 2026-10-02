@@ -1,0 +1,16 @@
+[package]
+name = "colony-identity-kernel"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88.0"
+license = "Apache-2.0"
+publish = false
+
+[workspace]
+
+[dependencies]
+atomic-write-file = "=0.3.0"
+nostr = { version = "=0.44.7", features = ["nip44", "nip49"] }
+
+[dev-dependencies]
+tempfile = "3"

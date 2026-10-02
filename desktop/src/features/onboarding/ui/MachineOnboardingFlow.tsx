@@ -7,9 +7,18 @@ import {
   importIdentity,
   persistCurrentIdentity,
 } from "@/shared/api/tauriIdentity";
+import {
+  type NativeCapability,
+  supportsNativeCapability,
+} from "@/shared/api/nativeBridge";
 import type { IdentityStorage } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
 import { StartupWindowDragRegion } from "@/shared/ui/StartupWindowDragRegion";
+import type {
+  AccountAuthClient,
+  AccountAuthRecord,
+} from "../accountAuthClient";
+import { AccountAuthFlow } from "./AccountAuthFlow";
 import { BackupStep } from "./BackupStep";
 import { DefaultConfigStep } from "./DefaultConfigStep";
 import { DownloadKeyStep } from "./DownloadKeyStep";
@@ -35,24 +44,54 @@ import {
 } from "./OnboardingChrome";
 import { OnboardingCard } from "./OnboardingCard";
 import { OnboardingFooterProvider } from "./OnboardingFooter";
+import { NativeUnavailableScreen } from "./NativeUnavailableScreen";
 import {
   type OnboardingTransitionDirection,
   OnboardingSlideTransition,
 } from "./OnboardingSlideTransition";
 import { SetupStep } from "./SetupStep";
 import type { HarnessConnectionMethod } from "./harnessConnectionOptions";
+import {
+  resolveInitialMachineOnboardingState,
+  type MachineOnboardingPage,
+} from "./machineOnboardingStartup";
 import type { DefaultConfigDraft } from "./types";
+import { useCommunityOnboarding } from "../communityOnboarding";
+import {
+  BusinessSetupStep,
+  businessCommunityRelayUrl,
+  readOnboardingBusinessProfile,
+  type OnboardingBusinessProfile,
+} from "./BusinessSetupStep";
+import { ConnectSetupStep } from "./ConnectSetupStep";
+import type { SelfServeCommunity } from "@/features/communities/selfProvisioningApi";
+import {
+  getSelfProvisioningHttpBase,
+  listMyCommunities,
+} from "@/features/communities/selfProvisioningApi";
+import {
+  OnboardingScenePresentation,
+  type OnboardingBusinessChoice,
+} from "./OnboardingScenePresentation";
 
-export type MachineOnboardingPage =
-  | "identity"
-  | "identity-key-intro"
-  | "identity-key-help"
-  | "key-import"
-  | "backup"
-  | "setup"
-  | "config";
+export type { MachineOnboardingPage } from "./machineOnboardingStartup";
 
 type BackupSubview = "created" | "password";
+
+function unavailableBody(capability: NativeCapability): string {
+  switch (capability) {
+    case "identity-backup":
+      return "Identity backup and private-key export are not available in this Electron build yet. Your key has not been exported or replaced.";
+    case "identity-import":
+      return "Importing an existing identity is not available in this Electron build yet. No identity data was read or changed.";
+    case "identity-recovery":
+      return "Identity recovery is not available in this Electron build yet. Unlock or recover the identity in a supported Buzz desktop build.";
+    case "identity-create":
+      return "Creating or replacing an identity is not available in this Electron build yet.";
+    default:
+      return "This native identity operation is not available in this Electron build yet.";
+  }
+}
 
 export function MachineOnboardingFlow({
   complete,
@@ -61,6 +100,7 @@ export function MachineOnboardingFlow({
   identityLost,
   initialPage,
   queryClient,
+  authClient,
 }: {
   complete: (
     pubkey?: string,
@@ -71,15 +111,40 @@ export function MachineOnboardingFlow({
   identityLost: boolean;
   initialPage?: MachineOnboardingPage;
   queryClient: QueryClient;
+  authClient: AccountAuthClient;
 }) {
+  const initialState = resolveInitialMachineOnboardingState({
+    identityLost,
+    initialPage,
+    supportsCapability: supportsNativeCapability,
+  });
   const [page, setPage] = React.useState<MachineOnboardingPage>(
-    identityLost ? "key-import" : (initialPage ?? "identity"),
+    () => initialState.page,
   );
   const [transitionDirection, setTransitionDirection] =
     React.useState<OnboardingTransitionDirection>("forward");
   const [error, setError] = React.useState<string | null>(null);
+  const [unsupportedCapability, setUnsupportedCapability] =
+    React.useState<NativeCapability | null>(
+      () => initialState.unsupportedCapability,
+    );
   const [isPending, setIsPending] = React.useState(false);
   const [identityWasImported, setIdentityWasImported] = React.useState(false);
+  const [accountAuthenticated, setAccountAuthenticated] = React.useState(false);
+  const communityOnboarding = useCommunityOnboarding();
+  const [createdCommunity, setCreatedCommunity] =
+    React.useState<SelfServeCommunity | null>(null);
+  const [businessProfile, setBusinessProfile] =
+    React.useState<OnboardingBusinessProfile | null>(null);
+  const [ownedCommunities, setOwnedCommunities] = React.useState<
+    SelfServeCommunity[]
+  >([]);
+  const [businessListError, setBusinessListError] = React.useState<
+    string | null
+  >(null);
+  const [businessBackPage, setBusinessBackPage] = React.useState<
+    "account-auth" | "businesses"
+  >("account-auth");
   const [keyImportStage, setKeyImportStage] =
     React.useState<NostrKeyImportStage>("key-entry");
   const [isKeyImporting, setIsKeyImporting] = React.useState(false);
@@ -123,6 +188,11 @@ export function MachineOnboardingFlow({
   const backupSession = useEncryptedBackupSession();
   const reduceMotion = useReducedMotion() ?? false;
   const setupSelectionHandoffRef = React.useRef(false);
+  const showUnsupported = React.useCallback((capability: NativeCapability) => {
+    setUnsupportedCapability(capability);
+    setError(null);
+    setPage("unsupported");
+  }, []);
   const handleReadyRuntimeIdsChange = React.useCallback(
     (runtimeIds: readonly string[]) => {
       if (setupSelectionHandoffRef.current) return;
@@ -151,6 +221,10 @@ export function MachineOnboardingFlow({
       queryClient.setQueryData(["identity"], identity);
       setSelectedPubkey(identity.pubkey);
       setIdentityStorage(identity.storage);
+      if (!supportsNativeCapability("identity-backup")) {
+        showUnsupported("identity-backup");
+        return;
+      }
       setBackupDirection("forward");
       setTransitionDirection("forward");
       setReturningFromSecurity(false);
@@ -163,9 +237,13 @@ export function MachineOnboardingFlow({
     } finally {
       setIsPending(false);
     }
-  }, [queryClient]);
+  }, [queryClient, showUnsupported]);
 
   const loadRecoveredIdentity = React.useCallback(async () => {
+    if (!supportsNativeCapability("identity-recovery")) {
+      showUnsupported("identity-recovery");
+      return;
+    }
     setIsPending(true);
     setError(null);
     try {
@@ -184,9 +262,13 @@ export function MachineOnboardingFlow({
     } finally {
       setIsPending(false);
     }
-  }, [continueWithRecoveredIdentity, queryClient]);
+  }, [continueWithRecoveredIdentity, queryClient, showUnsupported]);
 
   const replaceLostIdentity = React.useCallback(async () => {
+    if (!supportsNativeCapability("identity-create")) {
+      showUnsupported("identity-create");
+      return;
+    }
     const confirmed = window.confirm(
       "This will create a new identity and abandon your previous key. This cannot be undone. Continue?",
     );
@@ -211,10 +293,14 @@ export function MachineOnboardingFlow({
     } finally {
       setIsPending(false);
     }
-  }, [queryClient]);
+  }, [queryClient, showUnsupported]);
 
   const importExistingIdentity = React.useCallback(
     async (nsec: string, password?: string) => {
+      if (!supportsNativeCapability("identity-import")) {
+        showUnsupported("identity-import");
+        return;
+      }
       const identity = await importIdentity(nsec, password);
       continueWithIdentity(identity.pubkey);
       queryClient.setQueryData(["identity"], identity);
@@ -223,7 +309,59 @@ export function MachineOnboardingFlow({
       setTransitionDirection("forward");
       setPage("setup");
     },
-    [continueWithIdentity, queryClient],
+    [continueWithIdentity, queryClient, showUnsupported],
+  );
+
+  const installAccount = React.useCallback(
+    async (account: AccountAuthRecord) => {
+      if (!supportsNativeCapability("identity-import")) {
+        showUnsupported("identity-import");
+        throw new Error(unavailableBody("identity-import"));
+      }
+      const identity = await getIdentity();
+      if (identity.pubkey.toLowerCase() !== account.pubkey.toLowerCase()) {
+        throw new Error(
+          "The signed-in identity could not be loaded. Try again.",
+        );
+      }
+      continueWithIdentity(identity.pubkey);
+      queryClient.setQueryData(["identity"], identity);
+      setIdentityWasImported(true);
+      setAccountAuthenticated(true);
+      setSelectedPubkey(identity.pubkey);
+      setIdentityStorage(identity.storage);
+      setBusinessListError(null);
+      try {
+        const httpBase = await getSelfProvisioningHttpBase();
+        const mine = await listMyCommunities(httpBase);
+        if (mine.owner_pubkey.toLowerCase() !== account.pubkey.toLowerCase()) {
+          throw new Error("business_owner_mismatch");
+        }
+        const owned = mine.communities
+          .filter(
+            (community) =>
+              community.owner_pubkey.toLowerCase() ===
+              account.pubkey.toLowerCase(),
+          )
+          .map((community) => {
+            const profile = readOnboardingBusinessProfile(community.id);
+            return profile ? { ...community, name: profile.name } : community;
+          });
+        setOwnedCommunities(owned);
+        setBusinessBackPage(owned.length > 0 ? "businesses" : "account-auth");
+        setTransitionDirection("forward");
+        setPage(owned.length > 0 ? "businesses" : "business");
+      } catch {
+        setOwnedCommunities([]);
+        setBusinessListError(
+          "Could not load your businesses. Start a new business or try again later.",
+        );
+        setBusinessBackPage("businesses");
+        setTransitionDirection("forward");
+        setPage("businesses");
+      }
+    },
+    [continueWithIdentity, queryClient, showUnsupported],
   );
 
   const backFromKeyImport = React.useCallback(() => {
@@ -255,6 +393,11 @@ export function MachineOnboardingFlow({
   }, [backupSession]);
 
   const backFromSetup = React.useCallback(() => {
+    if (accountAuthenticated) {
+      setTransitionDirection("backward");
+      setPage("account-auth");
+      return;
+    }
     if (identityWasImported) {
       setKeyImportFormKey((current) => current + 1);
       setKeyImportStage("key-entry");
@@ -269,7 +412,7 @@ export function MachineOnboardingFlow({
     setTransitionDirection("backward");
     setReturningFromSecurity(false);
     setPage("backup");
-  }, [backupSession, backupSubview, identityWasImported]);
+  }, [accountAuthenticated, backupSession, backupSubview, identityWasImported]);
 
   const backFromConfig = React.useCallback(() => {
     setupSelectionHandoffRef.current = false;
@@ -325,6 +468,21 @@ export function MachineOnboardingFlow({
                     }
                   : undefined;
 
+  if (page === "account-auth") {
+    return (
+      <AccountAuthFlow
+        authClient={authClient}
+        onAdvanced={() => {
+          setAccountAuthenticated(false);
+          setTransitionDirection("forward");
+          setPage("identity");
+        }}
+        onAuthenticated={installAccount}
+        standalone
+      />
+    );
+  }
+
   if (page === "identity") {
     return (
       <div
@@ -346,7 +504,8 @@ export function MachineOnboardingFlow({
                 src="/landing/buzz-wordmark.png"
               />
               <p className="mt-2 max-w-[560px] text-center text-2xl font-normal leading-none text-foreground">
-                Your people, your agents, your projects —<br />
+                Your people, your agents, your projects,
+                <br />
                 all in one place.
               </p>
               {error ? (
@@ -357,6 +516,13 @@ export function MachineOnboardingFlow({
                   className={ONBOARDING_LANDING_CTA_CLASS}
                   disabled={isPending}
                   onClick={() => {
+                    if (
+                      selectedPubkey &&
+                      !supportsNativeCapability("identity-read")
+                    ) {
+                      showUnsupported("identity-read");
+                      return;
+                    }
                     if (selectedPubkey) {
                       void loadFreshIdentity();
                       return;
@@ -376,6 +542,10 @@ export function MachineOnboardingFlow({
                   className={`${ONBOARDING_SECONDARY_CTA_CLASS} px-5`}
                   disabled={isPending}
                   onClick={() => {
+                    if (!supportsNativeCapability("identity-import")) {
+                      showUnsupported("identity-import");
+                      return;
+                    }
                     setKeyImportDialog(null);
                     setKeyImportStage("key-entry");
                     setTransitionDirection("forward");
@@ -396,10 +566,169 @@ export function MachineOnboardingFlow({
                   setPage("identity-key-help");
                 }}
               />
+              <button
+                className="mt-2 rounded-sm px-2 py-1 text-sm text-muted-foreground underline decoration-muted-foreground/50 underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                data-testid="account-auth-back-from-advanced"
+                onClick={() => {
+                  setTransitionDirection("backward");
+                  setPage("account-auth");
+                }}
+                type="button"
+              >
+                Back to account options
+              </button>
             </OnboardingSlideTransition>
           </div>
         </OnboardingFooterProvider>
       </div>
+    );
+  }
+
+  if (page === "businesses") {
+    const choices: OnboardingBusinessChoice[] = ownedCommunities.map(
+      (community) => ({
+        id: community.id,
+        name: community.name || community.slug,
+        role: "Owner",
+      }),
+    );
+    return (
+      <OnboardingScenePresentation
+        businessChoices={choices}
+        data={{
+          name: "",
+          email: "",
+          business: choices[0]?.name ?? "",
+          website: "",
+          description: "",
+        }}
+        error={businessListError}
+        onCreateBusiness={() => {
+          setBusinessBackPage("businesses");
+          setTransitionDirection("forward");
+          setPage("business");
+        }}
+        onSelectBusiness={(id) => {
+          const selected = ownedCommunities.find(
+            (community) => community.id === id,
+          );
+          if (!selected || !selectedPubkey) {
+            setBusinessListError("That business is no longer available.");
+            return;
+          }
+          const started = communityOnboarding.start({
+            source: "first-community",
+            firstCommunityPage: "owned",
+            relayUrl: businessCommunityRelayUrl(selected),
+            businessCommunityId: selected.id,
+            communityName:
+              readOnboardingBusinessProfile(selected.id)?.name ||
+              selected.name ||
+              selected.slug,
+          });
+          if (!started) {
+            setBusinessListError(
+              "Finish the community setup already in progress before opening this business.",
+            );
+            return;
+          }
+          complete(selectedPubkey);
+        }}
+        scene="businesses"
+      />
+    );
+  }
+
+  if (page === "business") {
+    return (
+      <BusinessSetupStep
+        additional={businessBackPage === "businesses"}
+        onBack={() => {
+          setError(null);
+          setTransitionDirection("backward");
+          setPage(businessBackPage);
+        }}
+        onCreated={(community, profile) => {
+          setCreatedCommunity(community);
+          setBusinessProfile(profile);
+          setError(null);
+          setTransitionDirection("forward");
+          setPage("connect");
+        }}
+        pubkey={selectedPubkey ?? ""}
+      />
+    );
+  }
+
+  if (page === "connect") {
+    if (!createdCommunity || !businessProfile || !selectedPubkey) {
+      return (
+        <NativeUnavailableScreen
+          body="Business setup is incomplete. Return to business details and retry before connecting."
+          onBack={() => setPage("business")}
+          title="Business not ready"
+          testId="onboarding-business-not-ready"
+        />
+      );
+    }
+    return (
+      <ConnectSetupStep
+        business={businessProfile}
+        communityId={createdCommunity.id}
+        error={error}
+        onBack={() => {
+          setError(null);
+          setTransitionDirection("backward");
+          setPage("business");
+        }}
+        onContinue={() => {
+          const started = communityOnboarding.start({
+            source: "first-community",
+            firstCommunityPage: "create",
+            relayUrl: businessCommunityRelayUrl(createdCommunity),
+            businessCommunityId: createdCommunity.id,
+            communityName:
+              businessProfile.name ||
+              createdCommunity.name ||
+              createdCommunity.slug,
+          });
+          if (!started) {
+            setError(
+              "Finish the community setup already in progress before opening this business.",
+            );
+            return;
+          }
+          setError(null);
+          complete(selectedPubkey);
+        }}
+      />
+    );
+  }
+
+  if (page === "unsupported") {
+    return (
+      <NativeUnavailableScreen
+        body={unavailableBody(unsupportedCapability ?? "identity-recovery")}
+        onBack={() => {
+          setUnsupportedCapability(null);
+          setTransitionDirection("backward");
+          setPage("identity");
+        }}
+        testId="machine-onboarding-native-unavailable"
+      />
+    );
+  }
+
+  if (page === "backup" && !supportsNativeCapability("identity-backup")) {
+    return (
+      <NativeUnavailableScreen
+        body={unavailableBody("identity-backup")}
+        onBack={() => {
+          setTransitionDirection("backward");
+          setPage("identity-key-intro");
+        }}
+        testId="machine-onboarding-native-unavailable"
+      />
     );
   }
 
@@ -600,7 +929,7 @@ export function MachineOnboardingFlow({
               setupSelectionHandoffRef.current = ids.length > 0;
               setReadyRuntimeIds(ids);
               // Harness install can fail (Windows/PATH/network). Don't soft-lock
-              // onboarding — users can finish setup later in Settings → Agents.
+              // onboarding, users can finish setup later in Settings → Agents.
               if (ids.length === 0) {
                 complete(selectedPubkey ?? undefined, {
                   continueToProfile: !identityWasImported,

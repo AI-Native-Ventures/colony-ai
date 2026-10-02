@@ -6,7 +6,7 @@ import { openSettings } from "../helpers/settings";
 const SHOTS = "test-results/byoh-after";
 
 /**
- * AFTER screenshots for the consolidated Harnesses surface — same catalog
+ * AFTER screenshots for the consolidated Harnesses surface - same catalog
  * fixture as byoh-before-screenshots.spec.ts so the before/after pair is a
  * true apples-to-apples comparison.
  */
@@ -141,18 +141,18 @@ test("after: consolidated harnesses panel + catalog dialog", async ({
   await page.setViewportSize({ width: 1280, height: 2400 });
   await installMockBridge(page, { acpRuntimesCatalog: CATALOG });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await openSettings(page, "agents");
+  await openSettings(page, "harnesses");
   await expect(page.getByTestId("settings-harnesses")).toBeVisible({
     timeout: 10_000,
   });
   await page.waitForTimeout(700);
 
-  // 1. The consolidated panel — ready rows only, no inert controls.
+  // 1. The consolidated panel - ready rows only, no inert controls.
   await page.getByTestId("settings-harnesses").screenshot({
     path: `${SHOTS}/after-harnesses-panel.png`,
   });
 
-  // 2. Add-harnesses catalog — needs-setup entry auto-selected in detail.
+  // 2. Add-harnesses catalog - needs-setup entry auto-selected in detail.
   await page.getByTestId("harness-add-button").click();
   await expect(page.getByTestId("harness-catalog-dialog")).toBeVisible();
   await page.waitForTimeout(500);
@@ -161,7 +161,7 @@ test("after: consolidated harnesses panel + catalog dialog", async ({
   });
 
   // 3. Ready entry detail (Ready state, no install action). Ready entries
-  // sit in the "Installed" accordion, collapsed by default — expand it.
+  // sit in the "Installed" accordion, collapsed by default - expand it.
   await page.getByTestId("harness-catalog-section-installed").click();
   await page.getByTestId("harness-catalog-list-item-claude").click();
   await page.waitForTimeout(300);
@@ -169,7 +169,7 @@ test("after: consolidated harnesses panel + catalog dialog", async ({
     path: `${SHOTS}/after-catalog-ready-detail.png`,
   });
 
-  // 4. Custom harness form — all fields inline.
+  // 4. Custom harness form - all fields inline.
   await page.getByTestId("harness-catalog-list-item-custom").click();
   await expect(page.getByTestId("custom-harness-form")).toBeVisible();
   await page.waitForTimeout(300);

@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../shared/identity/identity_components.dart';
 import '../../shared/mentions/agent_identity_provider.dart';
 import '../../shared/theme/theme.dart';
-import '../../shared/widgets/avatar_image.dart';
 import '../../shared/widgets/modal_presentation.dart';
-import '../channels/message_content.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/utils/string_utils.dart';
-import '../profile/user_profile_sheet.dart';
 import '../../shared/profile/user_profile.dart';
 import 'forum_models.dart';
+import 'forum_post_content.dart';
+import 'forum_presentation.dart';
 
 /// Card displaying a forum post preview in the posts list.
 ///
@@ -24,6 +25,7 @@ class ForumPostCard extends HookConsumerWidget {
   final String? currentPubkey;
   final VoidCallback onTap;
   final void Function(String eventId)? onDelete;
+  final ForumPresentationFactories? presentation;
 
   const ForumPostCard({
     super.key,
@@ -31,6 +33,7 @@ class ForumPostCard extends HookConsumerWidget {
     required this.currentPubkey,
     required this.onTap,
     this.onDelete,
+    this.presentation,
   });
 
   @override
@@ -55,9 +58,6 @@ class ForumPostCard extends HookConsumerWidget {
         ref.watch(userCacheProvider.select((cache) => cache[pk])) ??
         ref.read(userCacheProvider.notifier).get(pk);
     final displayName = profile?.label ?? shortPubkey(post.pubkey);
-    final isAgent =
-        ref.watch(agentMentionPubkeysProvider(post.channelId)).contains(pk) ||
-        profile?.ownerPubkey != null;
     final profileMentionNames = ref.watch(
       userCacheProvider.select(
         (cache) => _buildMentionNames(post.mentionPubkeys, cache),
@@ -89,146 +89,177 @@ class ForumPostCard extends HookConsumerWidget {
       directoryDisplayNames: ref.watch(agentDirectoryDisplayNamesProvider),
       agentMentionPubkeys: agentMentionPubkeys,
     );
-    final preview = post.content.length > 200
-        ? '${post.content.substring(0, 200)}...'
-        : post.content;
+    final isAgent =
+        profile?.isAgent == true || agentMentionPubkeys.contains(pk);
     final summary = post.threadSummary;
+    final contentParts = parseForumPostContent(post.content);
+    final contentSpec = ForumMessageContentSpec(
+      content: contentParts.body,
+      mentionNames: mentionNames,
+      agentMentionPubkeys: agentMentionPubkeys,
+      tags: post.tags,
+      maxLines: 3,
+      baseStyle: context.mobileTypography.metadata.copyWith(
+        color: context.mobileTokens.muted,
+      ),
+      onMentionTap: presentation == null
+          ? null
+          : (pubkey) => presentation!.openProfile(context, pubkey),
+    );
 
-    return GestureDetector(
-      onTap: onTap,
-      onLongPress: () => _showActions(context),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(Grid.twelve),
-        decoration: BoxDecoration(
-          color: context.colors.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(Radii.lg),
-          border: Border.all(
-            color: context.colors.outlineVariant.withValues(alpha: 0.5),
+    return Semantics(
+      customSemanticsActions: {
+        CustomSemanticsAction(label: 'Message actions'): () =>
+            _showActions(context),
+      },
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: () => _showActions(context),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(Grid.xs),
+          decoration: BoxDecoration(
+            color: context.mobileTokens.paper,
+            borderRadius: BorderRadius.circular(Radii.companyCard),
+            border: Border.all(color: context.mobileTokens.line),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Author row
-            Row(
-              children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => showUserProfileSheet(context, post.pubkey),
-                  child: _PostAvatar(
-                    profile: profile,
-                    pubkey: post.pubkey,
-                    isAgent: isAgent,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  IdentityAvatar(
+                    initials:
+                        profile?.initials ??
+                        (post.pubkey.isNotEmpty
+                            ? post.pubkey[0].toUpperCase()
+                            : '?'),
+                    kind:
+                        profile?.isAgent == true ||
+                            agentMentionPubkeys.contains(pk)
+                        ? IdentityKind.agent
+                        : IdentityKind.person,
+                    imageUrl: profile?.avatarUrl,
+                    size: Grid.xs + Grid.twelve,
+                    excludeSemantics: true,
                   ),
-                ),
-                const SizedBox(width: Grid.xxs),
-                Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => showUserProfileSheet(context, post.pubkey),
+                  const SizedBox(width: Grid.xxs),
+                  Expanded(
                     child: Text(
                       displayName,
                       maxLines: 1,
-                      style: messageUsernameTextStyle,
                       overflow: TextOverflow.ellipsis,
+                      style: context.mobileTypography.identityName.copyWith(
+                        color: context.mobileTokens.ink,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: Grid.xxs),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: Grid.xxl),
-                  child: Text(
+                  if (isAgent) ...[
+                    const SizedBox(width: Grid.half),
+                    const IdentityAgentBadge(),
+                  ],
+                  Text(
                     formatRelativeTime(post.createdAt),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: messageTimestampTextStyle.copyWith(
-                      color: context.colors.onSurfaceVariant,
+                    style: context.mobileTypography.identityStatus.copyWith(
+                      color: context.mobileTokens.muted,
                     ),
                   ),
-                ),
-                const SizedBox(width: Grid.half),
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: IconButton(
-                    onPressed: () => _showActions(context),
-                    icon: Icon(
-                      LucideIcons.ellipsis,
-                      size: 16,
-                      color: context.colors.onSurfaceVariant,
-                    ),
-                    padding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
+                ],
+              ),
+              if (contentParts.title.isNotEmpty) ...[
+                const SizedBox(height: Grid.xxs),
+                Text(
+                  contentParts.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.mobileTypography.conversation.copyWith(
+                    color: context.mobileTokens.ink,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: Grid.xxs),
-
-            ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.white, Colors.white, Colors.transparent],
-                stops: [0.0, 0.75, 1.0],
-              ).createShader(bounds),
-              blendMode: BlendMode.dstIn,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 120),
-                child: IgnorePointer(
-                  child: MessageContent(
-                    content: preview,
-                    mentionNames: mentionNames,
-                    agentMentionPubkeys: agentMentionPubkeys,
-                    tags: post.tags,
-                    baseStyle: messageBodyTextStyle.copyWith(
-                      color: context.colors.onSurface,
-                    ),
+              if (contentParts.body.isNotEmpty) ...[
+                const SizedBox(height: Grid.half),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: Grid.xxl),
+                  child: IgnorePointer(
+                    child:
+                        presentation?.messageContentBuilder(
+                          context,
+                          contentSpec,
+                        ) ??
+                        Text(
+                          contentParts.body,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: contentSpec.baseStyle,
+                        ),
                   ),
                 ),
-              ),
-            ),
-
-            // Thread summary
-            if (summary != null && summary.replyCount > 0) ...[
+              ],
               const SizedBox(height: Grid.xxs),
-              Row(
-                children: [
-                  Icon(
-                    LucideIcons.messageSquare,
-                    size: 14,
-                    color: context.colors.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: Grid.half),
-                  Text(
-                    '${summary.replyCount} ${summary.replyCount == 1 ? 'reply' : 'replies'}',
-                    style: context.textTheme.labelSmall?.copyWith(
-                      color: context.colors.onSurfaceVariant,
-                    ),
-                  ),
-                  if (summary.lastReplyAt != null) ...[
-                    const SizedBox(width: Grid.half),
-                    Text(
-                      '\u00b7',
-                      style: context.textTheme.labelSmall?.copyWith(
-                        color: context.colors.onSurfaceVariant.withValues(
-                          alpha: 0.5,
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final replySummary = Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          '${summary?.replyCount ?? 0} ${summary?.replyCount == 1 ? 'reply' : 'replies'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.mobileTypography.metadata.copyWith(
+                            color: context.mobileTokens.muted,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: Grid.half),
-                    Text(
-                      'last ${formatRelativeTime(summary.lastReplyAt!)}',
-                      style: context.textTheme.labelSmall?.copyWith(
-                        color: context.colors.onSurfaceVariant,
+                    ],
+                  );
+                  final openNote = Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          'Open note',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: context.mobileTypography.identityName.copyWith(
+                            color: context.appColors.plum,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
-                ],
+                      const SizedBox(width: Grid.half),
+                      Icon(
+                        LucideIcons.arrowUpRight,
+                        size: Grid.xs,
+                        color: context.appColors.plum,
+                      ),
+                    ],
+                  );
+                  if (constraints.maxWidth < Grid.xxl * 4) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        replySummary,
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: openNote,
+                        ),
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: replySummary),
+                      const SizedBox(width: Grid.xs),
+                      openNote,
+                    ],
+                  );
+                },
               ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -309,39 +340,6 @@ class ForumPostCard extends HookConsumerWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _PostAvatar extends StatelessWidget {
-  final UserProfile? profile;
-  final String pubkey;
-  final bool isAgent;
-
-  const _PostAvatar({
-    required this.profile,
-    required this.pubkey,
-    required this.isAgent,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final initial =
-        profile?.initial ?? (pubkey.isNotEmpty ? pubkey[0].toUpperCase() : '?');
-    final avatarUrl = profile?.avatarUrl;
-
-    return AvatarImage(
-      imageUrl: avatarUrl,
-      radius: 14,
-      backgroundColor: context.colors.primaryContainer,
-      fallback: Text(
-        initial,
-        style: context.textTheme.labelSmall?.copyWith(
-          color: context.colors.onPrimaryContainer,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      isAgent: isAgent,
     );
   }
 }

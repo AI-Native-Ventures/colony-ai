@@ -50,6 +50,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     let git_router = api::git::git_router(state.clone());
 
     let git_policy_router = api::git::git_policy_router(state.clone());
+    let accounts_router = Router::new().nest("/api/accounts", api::accounts::router(state.clone()));
+    let payments_router = Router::new().nest("/api/payments", api::payments::router(state.clone()));
 
     let admin_enabled = state.config.admin.is_some();
     let admin_web_dir = state
@@ -73,6 +75,23 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/events", post(api::bridge::submit_event))
         .route("/query", post(api::bridge::query_events))
         .route("/count", post(api::bridge::count_events))
+        // Member self-serve community creation.
+        .route(
+            "/api/communities/config",
+            get(api::self_provisioning::provisioning_config),
+        )
+        .route(
+            "/api/communities/availability",
+            get(api::self_provisioning::community_availability),
+        )
+        .route(
+            "/api/communities",
+            post(api::self_provisioning::create_community),
+        )
+        .route(
+            "/api/communities/mine",
+            get(api::self_provisioning::list_my_communities),
+        )
         // Relay-owned third-party GIF metadata proxy (NIP-98 auth).
         .route(api::gifs::SEARCH_PATH, post(api::gifs::search))
         .route(api::gifs::SHARE_PATH, post(api::gifs::share))
@@ -146,6 +165,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     // Merge — each sub-router carries its own body limit.
     // Metrics → Trace → CORS applied once over the combined router.
     let mut merged = api_router
+        .merge(accounts_router)
+        .merge(payments_router)
         .merge(media_router)
         .merge(git_router)
         .merge(git_policy_router);

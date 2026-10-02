@@ -61,6 +61,10 @@ fn is_trusted_media_origin(uri: &str) -> bool {
 /// unconditionally from shared startup code.
 #[cfg(target_os = "linux")]
 pub fn enable_media_capture<R: tauri::Runtime>(webview: &tauri::Webview<R>) {
+    if crate::electron_host::enabled() {
+        return;
+    }
+
     use webkit2gtk::{
         glib::prelude::Cast, PermissionRequestExt, SettingsExt, UserMediaPermissionRequest,
         UserMediaPermissionRequestExt, WebViewExt,

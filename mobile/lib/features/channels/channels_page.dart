@@ -5,6 +5,7 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter/physics.dart';
@@ -13,6 +14,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../shared/auth/auth.dart';
 import '../../shared/community/community_icon_provider.dart';
+import '../../shared/identity/identity_components.dart';
+import '../../shared/identity/presence_cache_provider.dart';
+import '../../shared/navigation/mobile_route.dart';
 import '../../shared/relay/relay.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/avatar_image.dart';
@@ -27,9 +31,7 @@ import '../../shared/widgets/skeleton.dart';
 import '../../shared/custom_emoji/custom_emoji.dart';
 import '../../shared/custom_emoji/custom_emoji_provider.dart';
 import '../../shared/custom_emoji/custom_emoji_render.dart';
-import '../profile/profile_avatar.dart';
 import '../profile/profile_provider.dart';
-import '../profile/presence_cache_provider.dart';
 import '../../shared/profile/user_cache_provider.dart';
 import '../pairing/pairing_page.dart';
 import '../pairing/pairing_provider.dart';
@@ -65,6 +67,37 @@ part 'channels_page/quick_actions_launcher.dart';
 
 enum _QuickAction { createChannel, newDm, browseChannels }
 
+enum _ChatFilter { all, unread, channels, forums, direct }
+
+final _channelQuickActionsOpenProvider =
+    NotifierProvider<_ChannelQuickActionsOpen, bool>(
+      _ChannelQuickActionsOpen.new,
+    );
+
+class _ChannelQuickActionsOpen extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void open() => state = true;
+
+  void close() => state = false;
+}
+
+Color _chatInk(BuildContext context) => context.mobileTokens.ink;
+
+Color _chatMuted(BuildContext context) => context.mobileTokens.muted;
+
+Color _chatPaper(BuildContext context) => context.mobileTokens.canvas;
+
+String _chatInitials(String? displayName, {String fallback = '?'}) {
+  final words = (displayName ?? '')
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((word) => word.isNotEmpty);
+  final initials = words.take(2).map((word) => word[0].toUpperCase()).join();
+  return initials.isEmpty ? fallback : initials;
+}
+
 const double _kChannelSectionInset = Grid.gutter;
 const double _kChannelLeadingWidth = 22.0;
 const double _kChannelIconSize = 18.0;
@@ -85,10 +118,7 @@ const double _kChannelLabelInset =
 /// glyph leaves 4dp of slack inside the same 22dp leading column. Sizing them to
 /// the glyph's ink width keeps the icon-to-label distance identical across both
 /// sections while the labels stay on [_kChannelLabelInset].
-const double _kDmAvatarSize = _kChannelIconSize;
-
 const double _kTopSectionCommunityAvatarSize = 40.0;
-const double _kTopSectionProfileAvatarSize = 36.0;
 const double _kTopSectionBottomPadding = Grid.xxs;
 
 /// The top section's avatars are 40dp circles, which fill their box edge to
@@ -102,13 +132,12 @@ const Duration _kSectionCollapseDuration = Duration(milliseconds: 170);
 const Curve _kSectionExpandCurve = Cubic(0.23, 1, 0.32, 1);
 const Curve _kSectionCollapseCurve = Curves.easeInCubic;
 const double _kSectionCollapsedScaleY = 0.98;
-const double _kHeaderFrostScrollDistance = Grid.xxl;
-const double _kHeaderFrostMaxBlurSigma = 23.12;
 
 class _UnreadChannelState {
   final Set<String> ids;
+  final Map<String, int> counts;
 
-  const _UnreadChannelState({required this.ids});
+  const _UnreadChannelState({required this.ids, required this.counts});
 }
 
 _UnreadChannelState _computeUnreadChannelState({
@@ -117,17 +146,19 @@ _UnreadChannelState _computeUnreadChannelState({
   required ChannelsNotifier channelsNotifier,
 }) {
   if (!readState.isReady) {
-    return const _UnreadChannelState(ids: {});
+    return const _UnreadChannelState(ids: {}, counts: {});
   }
 
   final latestObservedByChannel = channelsNotifier.latestObservedByChannel;
   final observedEventsByChannel =
       channelsNotifier.observedUnreadEventsByChannel;
   final ids = <String>{};
+  final counts = <String, int>{};
 
   for (final channel in channels) {
     if (readState.locallyForcedChannelIds.contains(channel.id)) {
       ids.add(channel.id);
+      counts[channel.id] = 1;
       continue;
     }
 
@@ -153,20 +184,23 @@ _UnreadChannelState _computeUnreadChannelState({
     if (unreadCount == 0) continue;
 
     ids.add(channel.id);
+    counts[channel.id] = unreadCount;
   }
 
-  return _UnreadChannelState(ids: ids);
+  return _UnreadChannelState(ids: ids, counts: counts);
 }
 
 class ChannelsPage extends HookConsumerWidget {
   const ChannelsPage({
     required this.settingsPageBuilder,
     required this.onSettingsTransitionProgress,
+    this.routeRegistry,
     this.tabReselection,
     super.key,
   });
 
   final WidgetBuilder settingsPageBuilder;
+  final MobileRouteRegistry? routeRegistry;
 
   /// Reports Settings route progress so its foreground and Home's background
   /// render from the same timeline.
@@ -183,35 +217,25 @@ class ChannelsPage extends HookConsumerWidget {
         .watch(profileProvider)
         .whenData((value) => value?.pubkey)
         .value;
-    final headerTitleStyle = context.textTheme.titleMedium?.copyWith(
-      fontSize: 22,
-      fontWeight: FontWeight.w600,
-      color: navigationPrimaryForeground(context),
+    final headerTitleStyle = context.mobileTypography.companyHubTitle.copyWith(
+      color: _chatInk(context),
     );
+    final headerSubtitleStyle = context.mobileTypography.companyHubSubtitle
+        .copyWith(color: _chatMuted(context));
+    final textScaler = MediaQuery.textScalerOf(context);
+    final communityTitleHeight =
+        textScaler.scale(headerTitleStyle.fontSize ?? 14) *
+            (headerTitleStyle.height ?? 1.2) +
+        textScaler.scale(headerSubtitleStyle.fontSize ?? 11) *
+            (headerSubtitleStyle.height ?? 1.2);
     final topSectionHeight = frostedAppBarHeight(
       context,
       titleStyle: headerTitleStyle,
+      titleContentHeight: communityTitleHeight,
       bottomHeight: _kTopSectionBottomPadding,
     );
     final channelsScrollController = useScrollController();
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
-    final headerFrostProgress = useState(0.0);
-    useEffect(() {
-      void updateHeaderTreatment() {
-        final nextProgress = !channelsScrollController.hasClients
-            ? 0.0
-            : (channelsScrollController.offset / _kHeaderFrostScrollDistance)
-                  .clamp(0.0, 1.0)
-                  .toDouble();
-        if ((headerFrostProgress.value - nextProgress).abs() > 0.001) {
-          headerFrostProgress.value = nextProgress;
-        }
-      }
-
-      channelsScrollController.addListener(updateHeaderTreatment);
-      return () =>
-          channelsScrollController.removeListener(updateHeaderTreatment);
-    }, [channelsScrollController]);
     useEffect(() {
       final tabReselection = this.tabReselection;
       if (tabReselection == null) return null;
@@ -259,7 +283,12 @@ class ChannelsPage extends HookConsumerWidget {
       if (!context.mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => ChannelDetailPage(channel: channel),
+          builder: (_) => ChannelDetailPage(
+            channel: channel,
+            routeRegistry: routeRegistry,
+            openQuickActions: () =>
+                ChannelQuickActionsLauncher.openFromHome(ref),
+          ),
         ),
       );
     }
@@ -313,52 +342,60 @@ class ChannelsPage extends HookConsumerWidget {
       );
     }
 
-    final topSectionGradient = context.appColors.topSectionGradient;
-    final usesPinnedGradient = topSectionGradient != null;
+    void openSettings() {
+      unawaited(HapticFeedback.lightImpact());
+      final route = _SettingsPageRoute(
+        builder: settingsPageBuilder,
+        onTransitionProgress: onSettingsTransitionProgress,
+      );
+      Navigator.of(context).push(route);
+    }
+
+    void openQuickActions() {
+      ref.read(_channelQuickActionsOpenProvider.notifier).open();
+    }
 
     return FrostedScaffold(
-      backgroundColor: usesPinnedGradient
-          ? Colors.transparent
-          : context.colors.surface,
-      backgroundGradient: topSectionGradient,
+      backgroundColor: _chatPaper(context),
       appBar: FrostedAppBar(
         horizontalInset: _kTopSectionInset,
-        // Let the full Buzz gradient show at rest. Once the list begins to
-        // move beneath this row, build up blur over the first 64dp of scroll
-        // without adding the usual white frosted wash. The Buzz list is
-        // transparent, so the blurred pixels remain a continuation of the
-        // pinned gradient instead of turning into a white header.
-        frosted: !usesPinnedGradient || headerFrostProgress.value > 0,
-        frostedSurfaceOpacity: usesPinnedGradient ? 0 : 0.5,
-        frostedBlurSigma: usesPinnedGradient
-            ? _kHeaderFrostMaxBlurSigma * headerFrostProgress.value
-            : 20,
-        showBottomDivider: false,
-        leading: _CommunityIndicator(onTap: openCommunitySwitcher),
+        gradient: context.appColors.companyWashGradient,
+        frosted: false,
+        showBottomDivider: true,
+        leading: _BusinessSwitchButton(
+          key: const ValueKey('conversation-community-switcher'),
+          onTap: openCommunitySwitcher,
+          onLongPress: openSettings,
+        ),
         centerTitle: false,
         titleStyle: headerTitleStyle,
-        title: _CommunityHeaderTitle(
-          style: headerTitleStyle,
-          onTap: openCommunitySwitcher,
+        titleContentHeight: communityTitleHeight,
+        title: Padding(
+          padding: const EdgeInsets.only(left: Grid.xxs),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Conversations', style: headerTitleStyle),
+              Text(
+                'Where your company comes together',
+                style: headerSubtitleStyle,
+              ),
+            ],
+          ),
         ),
         actions: [
-          SizedBox(
-            width: Grid.xl,
-            height: Grid.xl,
-            child: Center(
-              child: ProfileAvatar(
-                size: _kTopSectionProfileAvatarSize,
-                showPresence: false,
-                onTap: () {
-                  unawaited(HapticFeedback.lightImpact());
-                  final route = _SettingsPageRoute(
-                    builder: settingsPageBuilder,
-                    onTransitionProgress: onSettingsTransitionProgress,
-                  );
-                  Navigator.of(context).push(route);
-                },
-              ),
+          IconButton(
+            key: const ValueKey('channels-quick-actions'),
+            tooltip: 'Quick actions',
+            onPressed: openQuickActions,
+            style: IconButton.styleFrom(
+              foregroundColor: context.appColors.plum,
+              backgroundColor: context.mobileTokens.paper,
+              side: BorderSide(color: context.mobileTokens.line),
+              shape: const CircleBorder(),
             ),
+            icon: const Icon(LucideIcons.plus),
           ),
         ],
         bottomHeight: _kTopSectionBottomPadding,
@@ -372,10 +409,11 @@ class ChannelsPage extends HookConsumerWidget {
         showConnectionSkeleton: showConnectionSkeleton.value,
         currentPubkey: currentPubkey,
         topSectionHeight: topSectionHeight,
-        usesPinnedGradient: usesPinnedGradient,
         scrollController: channelsScrollController,
         onRefresh: () => ref.read(channelsProvider.notifier).refresh(),
         onSelectChannel: openChannel,
+        onOpenQuickActions: openQuickActions,
+        routeRegistry: routeRegistry,
       ),
     );
   }

@@ -562,13 +562,14 @@ mod tests {
         );
     }
 
-    /// Anthropic/OpenAI/Databricks summary bodies request exactly the caller's
-    /// budget, so their input reservation is unchanged.
+    /// Anthropic/OpenAI/DeepSeek/Databricks summary bodies request exactly the
+    /// caller's budget, so their input reservation is unchanged.
     #[test]
     fn non_openrouter_completion_cap_is_the_callers_budget() {
         for provider in [
             Provider::Anthropic,
             Provider::OpenAi,
+            Provider::DeepSeek,
             Provider::Databricks,
             Provider::DatabricksV2,
         ] {

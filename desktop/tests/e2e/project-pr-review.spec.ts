@@ -1,5 +1,7 @@
 import { expect, type Locator, test } from "@playwright/test";
 
+import { openLegacyProjectsView } from "./helpers/openLegacyProjects";
+
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
@@ -23,7 +25,7 @@ async function expectSinglePrimaryTextColumn(row: Locator) {
   expect(secondaryColors.every((color) => color !== primaryColor)).toBe(true);
 }
 
-// The projects surface is a preview feature — opt in before the app mounts.
+// The projects surface is a preview feature; opt in before the app mounts.
 // Must run before installMockBridge so React reads the override on mount.
 async function enableProjectsFeature(page: import("@playwright/test").Page) {
   await page.addInitScript(() => {
@@ -53,7 +55,7 @@ async function waitForMockLiveSubscription(
 
 async function openBuzzProject(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await page.getByTestId("projects-section-projects").click();
   const projectEntry = page
     .locator(
@@ -69,6 +71,7 @@ async function addProjectToSidebar(
   page: import("@playwright/test").Page,
   dtag: string,
 ) {
+  await openLegacyProjectsView(page);
   await page.getByTestId("sidebar-projects-section-label").hover();
   await page.getByTestId("sidebar-projects-create").click();
   const browser = page.getByTestId("project-browser-dialog");
@@ -910,7 +913,7 @@ test("project pull requests preserve partial results from batched queries", asyn
   });
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await page.getByRole("button", { name: "Reviews", exact: true }).click();
 
   await expect(
@@ -963,7 +966,7 @@ test("project pull request author rollover stays identity-only", async ({
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await page.getByRole("button", { name: "Reviews", exact: true }).click();
   await page.getByRole("button", { name: "List layout" }).click();
 
@@ -996,8 +999,8 @@ test("project issue author rollover matches pull requests", async ({
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await openLegacyProjectsView(page);
+  await page.getByRole("button", { name: "Issues", exact: true }).click();
   await page.getByRole("button", { name: "List layout" }).click();
 
   const row = page.locator('[data-testid^="projects-issue-row-"]').first();
@@ -1032,7 +1035,7 @@ test("project pull requests report aggregate root query failures", async ({
   });
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await page.getByRole("button", { name: "Reviews", exact: true }).click();
 
   await expect(page.getByText("Could not load reviews")).toBeVisible();
@@ -1058,8 +1061,8 @@ test("project issues preserve partial results from aggregate queries", async ({
   });
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await openLegacyProjectsView(page);
+  await page.getByRole("button", { name: "Issues", exact: true }).click();
 
   await expect(
     page.getByRole("button", { name: /^View / }).first(),
@@ -1090,7 +1093,7 @@ test("project overview reports aggregate work-item failures", async ({
   });
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
 
   await expect(
     page.getByText("Could not load project activity."),
@@ -1112,7 +1115,7 @@ test("projects breadcrumb is centered in the window chrome", async ({
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
 
   const breadcrumbMetrics = await page
     .getByRole("navigation", { name: "Projects breadcrumb" })
@@ -1131,28 +1134,41 @@ test("projects breadcrumb is centered in the window chrome", async ({
   ).toBeLessThanOrEqual(1);
 });
 
-test("sidebar distinguishes the Projects overview from an open project", async ({
+test("Factory navigation stays separate from legacy project browsing", async ({
   page,
 }) => {
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  const projectsOverview = page.getByTestId("open-projects-view");
-  await projectsOverview.click();
-  await expect(projectsOverview).toHaveAttribute("data-active", "true");
+  const factoryEntry = page.getByTestId("open-factory-view");
+  await expect(factoryEntry).toContainText("Software Factory");
+  await factoryEntry.click();
+  await expect(page).toHaveURL(/\/factory$/);
+  await expect(
+    page
+      .getByRole("navigation", { name: "Factory views" })
+      .getByRole("button", { name: "Workbench" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("factory-return-to-workspace")).toBeVisible();
+  await page.getByTestId("factory-return-to-workspace").click();
+  await expect(page).toHaveURL(/\/today$/);
+  await expect(factoryEntry).toHaveAttribute("data-active", "false");
+  await openLegacyProjectsView(page);
+  await expect(factoryEntry).toHaveAttribute("data-active", "false");
 
   await addProjectToSidebar(page, "buzz");
   const sidebarProject = page.getByTestId("sidebar-project-buzz");
-  await expect(projectsOverview).toHaveAttribute("data-active", "false");
+  await expect(factoryEntry).toHaveAttribute("data-active", "false");
   await expect(sidebarProject).toHaveAttribute("data-active", "true");
   await expect(sidebarProject).toHaveCSS(
     "background-color",
     "rgba(0, 0, 0, 0)",
   );
 
-  await projectsOverview.click();
-  await expect(projectsOverview).toHaveAttribute("data-active", "true");
+  await openLegacyProjectsView(page);
+  await expect(page).toHaveURL(/\/projects$/);
+  await expect(factoryEntry).toHaveAttribute("data-active", "false");
   await expect(sidebarProject).toHaveAttribute("data-active", "false");
   await expect(sidebarProject.getByTestId("project-channel-icon")).toHaveCSS(
     "opacity",
@@ -1160,11 +1176,12 @@ test("sidebar distinguishes the Projects overview from an open project", async (
   );
   await expect(sidebarProject.locator('[data-sidebar="menu-label"]')).toHaveCSS(
     "opacity",
-    "0.8",
+    "1",
   );
 
   await sidebarProject.click();
-  await expect(projectsOverview).toHaveAttribute("data-active", "false");
+  await expect(page.getByTestId("projects-overview-layout")).toHaveCount(0);
+  await expect(page.getByTestId("project-channel-home")).toBeVisible();
   await expect(sidebarProject).toHaveAttribute("data-active", "true");
 });
 
@@ -1174,7 +1191,7 @@ test("collapsed sidebar leaves a balanced Projects surface gutter", async ({
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
 
   const layout = page.getByTestId("projects-overview-layout");
   await expect(layout).toHaveCSS("padding-left", "0px");
@@ -1188,7 +1205,7 @@ test("project channels are grouped by project", async ({ page }) => {
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await expect(page.getByTestId("projects-section-all")).toBeVisible();
   expect(
     await page
@@ -1200,7 +1217,7 @@ test("project channels are grouped by project", async ({ page }) => {
     "Activity",
     "Projects",
     "Repositories",
-    "Tasks",
+    "Issues",
     "Reviews",
     "Channels",
   ]);
@@ -1301,7 +1318,7 @@ test("overview tasks and reviews are grouped and selectable by project", async (
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
 
   for (const section of [
     {
@@ -1380,12 +1397,12 @@ test("project section icons lead their titles", async ({ page }) => {
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await page.getByTestId("projects-section-issues").click();
   await expectIconBeforeTitle("projects-page-header");
 
   await openBuzzProject(page);
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
   await expectIconBeforeTitle("project-section-header");
 });
 
@@ -1397,7 +1414,7 @@ test("project detail lists follow overview header geometry", async ({
   await openBuzzProject(page);
 
   for (const [tab, title] of [
-    ["Tasks", "Tasks"],
+    ["Issues", "Issues"],
     ["Review", "Reviews"],
   ] as const) {
     await page.getByRole("tab", { name: tab, exact: true }).click();
@@ -1405,7 +1422,7 @@ test("project detail lists follow overview header geometry", async ({
     const group = page.getByTestId("project-work-item-group-header").first();
     const firstRow = page
       .getByTestId(
-        tab === "Tasks" ? "project-issue-row" : "project-pull-request-row",
+        tab === "Issues" ? "project-issue-row" : "project-pull-request-row",
       )
       .first();
     const [headerBox, titleBox, groupBox, groupLabelBox, rowTitleBox] =
@@ -1538,7 +1555,7 @@ test("channels tab opens the latest matching conversation without leaving the pr
     },
   );
 
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await page.getByTestId("projects-section-projects").click();
   const projectEntry = page
     .locator(
@@ -1662,7 +1679,12 @@ test("channels tab opens the latest matching conversation without leaving the pr
   await expect(discussedAgent).toBeFocused();
   await expect(discussedAgent).toHaveCSS("clip-path", "none");
 
-  await channelRow.click();
+  // Click the row's title area; the row centre can land on the participant
+  // avatars, which open profiles instead of the conversation.
+  const channelRowBox = await channelRow.boundingBox();
+  await channelRow.click({
+    position: { x: 96, y: (channelRowBox?.height ?? 36) / 2 },
+  });
 
   const panel = page.getByTestId("project-conversation-panel");
   await expect(panel).toBeVisible();
@@ -1680,7 +1702,7 @@ test("overview list titles share a row with controls and task groups align", asy
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
 
   const rowSelectors = {
     issues: '[data-testid^="projects-issue-row-"]',
@@ -1809,7 +1831,7 @@ test("project overview presents collapsible context beside grouped activity", as
     ],
   });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
 
   await expect(page.getByTestId("projects-overview-panel")).toHaveCSS(
     "background-color",
@@ -2059,7 +2081,7 @@ test("project overview presents collapsible context beside grouped activity", as
   await expect(page.getByTestId("projects-overview-activity")).toHaveCount(0);
   await page.getByTestId("projects-section-issues").click();
   await expect(page.getByTestId("projects-overview-context-title")).toHaveText(
-    "Tasks",
+    "Issues",
   );
   await expect(
     page.getByTestId("projects-overview-create-issue"),
@@ -2111,7 +2133,7 @@ test("project overview chrome toggles a detached resizable agent chat", async ({
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await page.getByTestId("projects-section-prs").click();
   await page.getByRole("button", { name: "List layout" }).click();
   await expect(
@@ -2256,7 +2278,7 @@ test("project overview drawer control animates the context rail", async ({
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
 
   const toggle = page.getByTestId("projects-overview-context-toggle");
   const rail = page.getByTestId("projects-overview-context-rail");
@@ -2312,7 +2334,7 @@ test("Projects search replaces and restores the section tabs", async ({
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await page.getByTestId("projects-section-projects").click();
 
   await expect(
@@ -2348,8 +2370,8 @@ test("selecting overview list rows switches the context pod to the cluster", asy
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await openLegacyProjectsView(page);
+  await page.getByRole("button", { name: "Issues", exact: true }).click();
   await page.getByRole("button", { name: "List layout" }).click();
 
   const rows = page.locator('[data-testid^="projects-issue-row-"]');
@@ -2428,7 +2450,7 @@ test("selecting overview list rows switches the context pod to the cluster", asy
   );
   await page.getByRole("button", { name: "Close agent chat" }).click();
   await expect(page.getByTestId("projects-overview-context-title")).toHaveText(
-    "Tasks",
+    "Issues",
   );
   await expect(page.getByTestId("projects-overview-context-rail")).toHaveCSS(
     "width",
@@ -2442,8 +2464,8 @@ test("selection restores a previously collapsed Projects context drawer", async 
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
-  await page.getByRole("button", { name: "Tasks", exact: true }).click();
+  await openLegacyProjectsView(page);
+  await page.getByRole("button", { name: "Issues", exact: true }).click();
   await page.getByRole("button", { name: "List layout" }).click();
 
   const toggle = page.getByTestId("projects-overview-context-toggle");
@@ -2470,7 +2492,7 @@ test("repository changes discard captured selection context before agent sends",
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await addProjectToSidebar(page, "buzz");
   await page.getByTestId("project-home-context-repo-buzz").click();
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
 
   const selectedRow = page.getByTestId("project-issue-row").first();
   const selectedTitle = (
@@ -2541,7 +2563,7 @@ test("overview lists position identifying and generic icons consistently", async
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
 
   await page.getByTestId("projects-section-projects").click();
   await page.getByRole("button", { name: "List layout" }).click();
@@ -2720,7 +2742,7 @@ test("selecting repository workspace rows switches the context pod to the cluste
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await page.getByTestId("projects-section-projects").click();
   await page
     .locator(
@@ -2763,7 +2785,7 @@ test("selecting repository workspace rows switches the context pod to the cluste
     0,
   );
 
-  await page.getByRole("tab", { name: "Tasks" }).click();
+  await page.getByRole("tab", { name: "Issues" }).click();
   const issueRows = page.getByTestId("project-issue-row");
   await expect(issueRows.first()).toBeVisible();
   await expectSinglePrimaryTextColumn(issueRows.first());
@@ -2908,7 +2930,7 @@ test("repository rows identify their git host", async ({ page }) => {
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
   await page.getByRole("button", { name: "Repositories", exact: true }).click();
   await page.getByRole("button", { name: "List layout" }).click();
 
@@ -2932,9 +2954,9 @@ test("project subsections do not paint backgrounds behind list or grid items", a
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
 
-  for (const section of ["Repositories", "Reviews", "Tasks"] as const) {
+  for (const section of ["Repositories", "Reviews", "Issues"] as const) {
     await page.getByRole("button", { name: section, exact: true }).click();
     await page.getByRole("button", { name: "List layout" }).click();
 
@@ -2976,7 +2998,7 @@ test("all project grid cards cap body copy at two lines", async ({ page }) => {
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
 
   for (const section of [
     "projects",
@@ -3065,7 +3087,7 @@ test("project detail content areas do not paint background fills", async ({
     "Overview",
     "Files",
     "Commits",
-    "Tasks",
+    "Issues",
     "Review",
     "Contributors",
   ]) {
@@ -3517,17 +3539,17 @@ test("pushed local branch can open a pull request", async ({ page }) => {
   ]);
 });
 
-test("project task can be created with a category from the tasks header", async ({
+test("project issue can be created with a category from the Issues header", async ({
   page,
 }) => {
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await openBuzzProject(page);
 
-  await page.getByRole("tab", { name: "Tasks", exact: true }).click();
+  await page.getByRole("tab", { name: "Issues", exact: true }).click();
   await page
     .getByTestId("project-section-header")
-    .getByRole("button", { name: "Create task" })
+    .getByRole("button", { name: "New issue" })
     .click();
   await page
     .getByTestId("create-issue-category")
@@ -3539,7 +3561,7 @@ test("project task can be created with a category from the tasks header", async 
     .getByTestId("create-issue-body")
     .fill("The project workflow needs a clear repair path.");
   await page.getByTestId("create-issue-submit").click();
-  await expect(page.getByText("Task created.")).toBeVisible();
+  await expect(page.getByText("Issue created.")).toBeVisible();
 
   const createdEvent = await page.evaluate(() =>
     window.__BUZZ_E2E_SIGNED_EVENTS__?.find((event) => event.kind === 1621),
@@ -3558,7 +3580,7 @@ test("narrow layouts keep section context reachable through a sheet", async ({
   await enableProjectsFeature(page);
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
 
   // Below the detached breakpoint the retained docked rail stays collapsed,
   // while the context toggle remains available.
@@ -3576,14 +3598,16 @@ test("narrow layouts keep section context reachable through a sheet", async ({
 
   // Keyboard journey into the Tasks section: open the sheet from the toggle.
   await page.getByTestId("projects-section-issues").click();
-  await expect(page.getByTestId("projects-page-header")).toContainText("Tasks");
+  await expect(page.getByTestId("projects-page-header")).toContainText(
+    "Issues",
+  );
   await contextToggle.focus();
   await page.keyboard.press("Enter");
   const contextSheet = page.getByTestId("projects-overview-context-sheet");
   await expect(contextSheet).toBeVisible();
   await expect(
     contextSheet.getByTestId("projects-overview-context-title"),
-  ).toHaveText("Tasks");
+  ).toHaveText("Issues");
   await expect(contextToggle).toHaveAttribute("aria-pressed", "true");
 
   // Escape dismisses the sheet and returns focus to the toggle.
@@ -3614,8 +3638,10 @@ test("narrow layouts keep section context reachable through a sheet", async ({
   await expect(contextSheet).toBeVisible();
   await contextSheet
     .getByTestId("projects-overview-stat")
-    .filter({ hasText: "Tasks" })
+    .filter({ hasText: "Issues" })
     .click();
   await expect(contextSheet).toBeHidden();
-  await expect(page.getByTestId("projects-page-header")).toContainText("Tasks");
+  await expect(page.getByTestId("projects-page-header")).toContainText(
+    "Issues",
+  );
 });

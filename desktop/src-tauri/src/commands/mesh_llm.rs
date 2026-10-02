@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use sha2::{Digest, Sha256};
@@ -221,6 +222,68 @@ async fn query_mesh_discovery_events_at(
 
 async fn query_mesh_discovery_events(state: &AppState) -> Result<Vec<nostr::Event>, String> {
     query_mesh_discovery_events_at(state, &relay::relay_ws_url_with_override(state)).await
+}
+
+/// Safe host summary for the Compute settings list.
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MeshConnectedHost {
+    id: String,
+    name: String,
+    local: bool,
+}
+
+fn connected_hosts_from_targets(
+    targets: Vec<mesh_llm::MeshServeTarget>,
+    local_owner_id: Option<&str>,
+) -> Vec<MeshConnectedHost> {
+    let mut hosts = BTreeMap::<(String, String), MeshConnectedHost>::new();
+    for target in targets {
+        let Some(owner_id) = target.owner_id.filter(|value| !value.is_empty()) else {
+            continue;
+        };
+        let Some(device_id) = target
+            .device_id
+            .or(target.endpoint_id)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        let name = target
+            .device_name
+            .or(target.node_name)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let Some(name) = name else {
+            continue;
+        };
+        let key = (owner_id.clone(), device_id.clone());
+        let id = hex::encode(Sha256::digest(
+            format!("{owner_id}\0{device_id}").as_bytes(),
+        ));
+        hosts.entry(key).or_insert_with(|| MeshConnectedHost {
+            id,
+            name,
+            local: local_owner_id == Some(owner_id.as_str()),
+        });
+    }
+    hosts.into_values().collect()
+}
+
+/// Return only fresh, membership-validated Mesh serving hosts for this relay.
+/// Join tokens, endpoint addresses, member keys, and Mesh owner identities are
+/// intentionally excluded from the command response.
+#[tauri::command]
+pub async fn mesh_connected_hosts(state: State<'_, AppState>) -> CmdResult<Vec<MeshConnectedHost>> {
+    let events = query_mesh_discovery_events(&state).await?;
+    let targets = mesh_llm::availability_from_events(events).serve_targets;
+    let local_owner_id = mesh_llm::existing_owner_identity()
+        .map_err(|error| format!("failed to load mesh owner identity: {error}"))?
+        .map(|identity| identity.owner_id);
+    Ok(connected_hosts_from_targets(
+        targets,
+        local_owner_id.as_deref(),
+    ))
 }
 
 /// Resolve the admission roster by intersecting member-signed mesh status

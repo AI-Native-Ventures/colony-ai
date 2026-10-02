@@ -40,6 +40,9 @@ class _SystemMessageRow extends HookConsumerWidget {
     final usesMessageStyleLayout =
         groupedMembership != null ||
         (messageStyleActor != null && messageStyleActor.isNotEmpty);
+    final isHuddleEvent =
+        systemEvent.type == SystemEventType.huddleStarted ||
+        systemEvent.type == SystemEventType.huddleEnded;
 
     String resolveLabel(String? pubkey) {
       if (pubkey == null) return 'Someone';
@@ -117,8 +120,16 @@ class _SystemMessageRow extends HookConsumerWidget {
         highlightColor: context.colors.primary.withValues(alpha: 0.1),
         child: Padding(
           padding: EdgeInsets.only(
-            top: usesMessageStyleLayout ? Grid.xs : Grid.xxs,
-            bottom: usesMessageStyleLayout ? 0 : Grid.xxs,
+            top: isHuddleEvent
+                ? conversationSystemMessageTopPadding
+                : usesMessageStyleLayout
+                ? Grid.sm
+                : Grid.xxs,
+            bottom: isHuddleEvent
+                ? Grid.fourteen
+                : usesMessageStyleLayout
+                ? 0
+                : Grid.xxs,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -382,48 +393,43 @@ class _MessageStyleSystemMessageContent extends StatelessWidget {
           child: _UserAvatar(
             profile: userCache[displayPubkey.toLowerCase()],
             pubkey: displayPubkey,
-            isAgent:
-                userCache[displayPubkey.toLowerCase()]?.ownerPubkey != null,
             size: messageAvatarSize,
           ),
         ),
         const SizedBox(width: messageAvatarContentGap),
         Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(top: Grid.half),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(bottom: Grid.quarter),
-                  child: MessageAuthorMeta(
-                    displayName: resolveLabel(displayPubkey),
-                    username: messageUsernameLabel(
-                      userCache[displayPubkey.toLowerCase()],
-                    ),
-                    timestamp: formatMessageTime(createdAt),
-                    nameColor: context.colors.onSurface,
-                    metadataColor: context.colors.onSurfaceVariant,
-                    nameStyle: systemMessageHeadingTextStyle,
-                    displayNameKey: ValueKey(
-                      'system-message-author-$displayPubkey',
-                    ),
-                    usernameKey: ValueKey(
-                      'system-message-username-$displayPubkey',
-                    ),
-                    timestampKey: ValueKey(
-                      'system-message-timestamp-$displayPubkey',
-                    ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 5),
+                child: MessageAuthorMeta(
+                  displayName: resolveLabel(displayPubkey),
+                  username: messageUsernameLabel(
+                    userCache[displayPubkey.toLowerCase()],
+                  ),
+                  timestamp: formatMessageTime(createdAt),
+                  nameColor: context.colors.onSurface,
+                  metadataColor: context.colors.onSurfaceVariant,
+                  nameStyle: systemMessageHeadingTextStyle,
+                  displayNameKey: ValueKey(
+                    'system-message-author-$displayPubkey',
+                  ),
+                  usernameKey: ValueKey(
+                    'system-message-username-$displayPubkey',
+                  ),
+                  timestampKey: ValueKey(
+                    'system-message-timestamp-$displayPubkey',
                   ),
                 ),
-                Text.rich(
-                  TextSpan(
-                    style: _systemActionTextStyle(context),
-                    children: actionSpans,
-                  ),
+              ),
+              Text.rich(
+                TextSpan(
+                  style: _systemActionTextStyle(context),
+                  children: actionSpans,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ],
@@ -563,86 +569,122 @@ class _ThreadSummaryRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final userCache = ref.watch(userCacheProvider);
+    final knownAgents = ref.watch(agentMentionPubkeysProvider(channelId));
+    final participants = summary.participantPubkeys.take(2).toList();
+    final replyLabel =
+        '${summary.replyCount} ${summary.replyCount == 1 ? 'reply' : 'replies'}';
 
-    return GestureDetector(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => ThreadDetailPage(
-              threadHead: message,
-              allMessages: allMessages,
-              channelId: channelId,
-              currentPubkey: currentPubkey,
-              isMember: isMember,
-              isArchived: isArchived,
-            ),
-          ),
-        );
-      },
-      child: Padding(
-        key: ValueKey('thread-summary-${message.id}'),
-        padding: const EdgeInsets.only(
-          left: messageAvatarSize + messageAvatarContentGap,
-          top: Grid.half,
-          bottom: Grid.xs,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Stacked participant avatars.
-            SizedBox(
-              width: 32.0 + (summary.participantPubkeys.length - 1) * 20.0,
-              height: 32,
-              child: Stack(
-                children: [
-                  for (var i = 0; i < summary.participantPubkeys.length; i++)
-                    Positioned(
-                      left: i * 20.0,
-                      child: SmallAvatar(
-                        pubkey: summary.participantPubkeys[i],
-                        userCache: userCache,
-                        size: 32,
-                      ),
-                    ),
-                ],
+    return Semantics(
+      button: true,
+      label: 'Open thread: $replyLabel',
+      child: ExcludeSemantics(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(Radii.compactCard),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ThreadDetailPage(
+                    threadHead: message,
+                    allMessages: allMessages,
+                    channelId: channelId,
+                    currentPubkey: currentPubkey,
+                    isMember: isMember,
+                    isArchived: isArchived,
+                    initialMessageId: message.id,
+                    highlightInitialMessage: false,
+                  ),
+                ),
+              );
+            },
+            child: Padding(
+              key: ValueKey('thread-summary-${message.id}'),
+              padding: const EdgeInsets.only(
+                left: conversationReplyIndent,
+                top: Grid.half,
+                bottom: Grid.half,
               ),
-            ),
-            const SizedBox(width: Grid.xxs),
-            Flexible(
-              child: Text.rich(
-                TextSpan(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Grid.xxs,
+                  vertical: Grid.half,
+                ),
+                decoration: BoxDecoration(
+                  color: context.mobileTokens.actionSoft,
+                  borderRadius: BorderRadius.circular(Radii.compactCard),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.max,
                   children: [
-                    TextSpan(
-                      text:
-                          '${summary.replyCount} ${summary.replyCount == 1 ? 'reply' : 'replies'}',
-                      style: replyPreviewTextStyle.copyWith(
-                        color: context.colors.primary,
+                    SizedBox(
+                      width: participants.isEmpty
+                          ? 0
+                          : participants.length * conversationMiniAvatarSize +
+                                (participants.length - 1) * Grid.half,
+                      height: conversationMiniAvatarSize,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (
+                            var index = 0;
+                            index < participants.length;
+                            index++
+                          ) ...[
+                            if (index > 0) const SizedBox(width: Grid.half),
+                            ConversationAvatar(
+                              profile:
+                                  userCache[participants[index].toLowerCase()],
+                              pubkey: participants[index],
+                              size: conversationMiniAvatarSize,
+                              tint: conversationAvatarTint(
+                                profile:
+                                    userCache[participants[index]
+                                        .toLowerCase()],
+                                isAgent:
+                                    knownAgents.contains(
+                                      participants[index].toLowerCase(),
+                                    ) ||
+                                    userCache[participants[index].toLowerCase()]
+                                            ?.ownerPubkey !=
+                                        null,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    if (summary.lastReplyAt case final lastReplyAt?) ...[
-                      TextSpan(
-                        text: ' · ',
-                        style: replyPreviewTextStyle.copyWith(
-                          color: context.colors.onSurfaceVariant.withValues(
-                            alpha: 0.5,
-                          ),
+                    if (participants.isNotEmpty)
+                      const SizedBox(width: Grid.half),
+                    Expanded(
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: replyLabel,
+                              style: context.mobileTypography.metadata.copyWith(
+                                color: context.mobileTokens.onActionSoft,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      TextSpan(
-                        text:
-                            'last reply ${formatThreadSummaryLastReplyTime(lastReplyAt)}',
-                        style: replyPreviewTextStyle.copyWith(
-                          color: context.colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                    ),
+                    const SizedBox(width: Grid.half),
+                    Icon(
+                      LucideIcons.arrowUpRight,
+                      key: const ValueKey('thread-summary-open-arrow'),
+                      size: Grid.xs,
+                      color: context.mobileTokens.onActionSoft,
+                    ),
                   ],
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
             ),
-          ],
+          ),
         ),
       ),
     );

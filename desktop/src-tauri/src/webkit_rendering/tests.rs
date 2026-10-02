@@ -41,6 +41,17 @@ fn applied(plan: &Plan) -> Option<&[&str]> {
     }
 }
 
+#[test]
+fn electron_host_skips_webkit_rendering_changes() {
+    let drm = drm(&["0x10de"]);
+    let plan = plan_for_host(NO_ARGS, &env_from(&[]), drm.path(), true);
+
+    let Plan::Leave { why } = plan else {
+        panic!("Electron host must not configure WebKit: {plan:?}");
+    };
+    assert!(why.contains("Electron"), "{why}");
+}
+
 // ── Detection ───────────────────────────────────────────────────────────────
 
 #[test]

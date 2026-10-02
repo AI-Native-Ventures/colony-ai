@@ -219,3 +219,38 @@ fn cheap_path_resolves_workspace_sidecar_without_cache() {
 
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// Electron packages `colony-native-host` and its sidecars beside each other
+/// in `Contents/Resources`. A bare configured command must therefore resolve
+/// from the running host's executable directory without relying on PATH.
+#[cfg(unix)]
+#[test]
+fn cheap_path_resolves_packaged_sidecar_sibling_by_name() {
+    use crate::managed_agents::discovery::resolve_command_cached;
+    use std::os::unix::fs::PermissionsExt;
+
+    struct RemoveOnDrop(std::path::PathBuf);
+    impl Drop for RemoveOnDrop {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    let exe_dir = std::env::current_exe()
+        .expect("test executable path")
+        .parent()
+        .expect("test executable parent")
+        .to_path_buf();
+    let command = format!("buzz-electron-resource-sidecar-{}", uuid::Uuid::new_v4());
+    let sidecar = exe_dir.join(&command);
+    std::fs::write(&sidecar, "#!/bin/sh\n").expect("write sidecar sibling");
+    let _cleanup = RemoveOnDrop(sidecar.clone());
+    std::fs::set_permissions(&sidecar, std::fs::Permissions::from_mode(0o755))
+        .expect("make sidecar executable");
+
+    assert_eq!(
+        resolve_command_cached(&command),
+        Some(sidecar),
+        "cold lookup must find a packaged sidecar beside the native host by bare command"
+    );
+}

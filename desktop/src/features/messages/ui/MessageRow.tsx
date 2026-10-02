@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { AlertTriangle } from "lucide-react";
 import {
   depthGuideActionsEqual,
@@ -10,6 +11,7 @@ import {
   assertCanSendMessageToChannel,
   canSendMessageToChannel,
 } from "@/features/messages/lib/canSendToChannel";
+import { getThreadReference } from "@/features/messages/lib/threading";
 import type { TimelineMessage } from "@/features/messages/types";
 import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
 import { HuddleAttachment } from "@/features/huddle/components/HuddleAttachment";
@@ -29,9 +31,15 @@ import {
   THREAD_REPLY_LINE_WIDTH_REM,
 } from "@/features/messages/lib/threadTreeLayout";
 import {
+  KIND_ASK_ACTION,
   KIND_HUDDLE_STARTED,
+  KIND_STREAM_MESSAGE,
+  KIND_STREAM_MESSAGE_V2,
   KIND_STREAM_MESSAGE_DIFF,
+  KIND_WORK_ITEM_HEAD,
 } from "@/shared/constants/kinds";
+import { AskActionAttachment } from "@/features/messages/ui/AskActionAttachment";
+import { askIdFromAction } from "@/features/company-asks/askRecords";
 import { getConfigNudgeAuthorPubkey } from "@/features/messages/ui/configNudgeAuthPubkey";
 import { cn } from "@/shared/lib/cn";
 import { useMeasuredCssVariable } from "@/shared/layout/useMeasuredCssVariable";
@@ -58,10 +66,16 @@ import {
 import { MessageTimestamp } from "./MessageTimestamp";
 import { SentFromThreadLine } from "./SentFromThreadLine";
 import { WaveMessageAttachment } from "./WaveMessageAttachment";
+import { WorkItemReferenceCard } from "@/features/clients/ui/WorkItemReferenceCard";
+import { CompanyWorkMessageProvider } from "@/features/company-work/companyWorkMessageContext";
+import { CompanyWorkSuggestionMessageCard } from "@/features/company-work/ui/CompanyWorkSuggestionMessageCard";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useMessageAgentAddressPrefix } from "./MessageAgentAddressPrefix";
+import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { useCompanyTeamMemberQuery } from "@/features/company-team/teamRelay";
 const DiffMessage = React.lazy(() => import("./DiffMessage"));
 const DiffMessageExpanded = React.lazy(() => import("./DiffMessageExpanded"));
+
 export type ThreadDepthGuideAction = {
   active?: boolean;
   depth: number;
@@ -162,6 +176,7 @@ export const MessageRow = React.memo(
     videoReviewCommentRootId?: string;
     videoReviewContext?: VideoReviewContext;
   }) {
+    const navigate = useNavigate();
     // Keep the transient send state with its timestamp rather than collapsing
     // it into a grouped message row with no header.
     const isDisplayedAsContinuation = isContinuation && !message.pending;
@@ -251,6 +266,18 @@ export const MessageRow = React.memo(
       },
       [currentPubkey, onSendToChannel, profiles],
     );
+    const handleRaiseAsk = React.useCallback(
+      (target: TimelineMessage) => {
+        if (!channelId) return;
+        const threadRootEventId =
+          getThreadReference(target.tags ?? []).rootId ?? target.id;
+        void navigate({
+          to: "/asks/new",
+          search: { channelId, threadRootEventId },
+        });
+      },
+      [channelId, navigate],
+    );
     const { mentionNames, mentionPubkeysByName } = React.useMemo(
       () => resolveMentionProps(message.tags, profiles, message.body),
       [profiles, message.tags, message.body],
@@ -275,8 +302,22 @@ export const MessageRow = React.memo(
       (message.pubkey && isKnownAgentPubkey(message.pubkey))
         ? "bot"
         : message.role;
-    const isAuthorAgent =
-      message.isAgent === true || profilePopoverRole === "bot";
+    const { goTeamMemberHistory } = useAppNavigation();
+    const memberQuery = useCompanyTeamMemberQuery(
+      message.pubkey ?? "",
+      Boolean(
+        message.pubkey && !message.pending && profilePopoverRole === "bot",
+      ),
+    );
+    const employeeStatus =
+      memberQuery.data?.kind === "employee" &&
+      (memberQuery.data.position?.head.status === "paused" ||
+        memberQuery.data.position?.head.status === "terminated")
+        ? memberQuery.data.position.head.status
+        : null;
+    const employeeStatusLabel =
+      employeeStatus === "paused" ? "Paused" : "Terminated";
+    const employeeReason = memberQuery.data?.position?.head.reason;
     const agentMentionPubkeysByName = React.useMemo(() => {
       if (!mentionPubkeysByName) {
         return undefined;
@@ -382,6 +423,24 @@ export const MessageRow = React.memo(
       message.tags?.find((tag) => tag[0] === name)?.[1];
 
     const renderBody = () => {
+      const hasWorkItemReference = message.tags?.some(
+        (tag) =>
+          tag[0] === "a" && tag[1]?.startsWith(`${KIND_WORK_ITEM_HEAD}:`),
+      );
+      if (
+        message.kind === KIND_STREAM_MESSAGE &&
+        message.body.trim() === "" &&
+        hasWorkItemReference
+      ) {
+        return (
+          <WorkItemReferenceCard
+            channelId={channelId}
+            message={message}
+            profiles={profiles}
+          />
+        );
+      }
+
       switch (message.kind) {
         case KIND_STREAM_MESSAGE_DIFF:
           return (
@@ -414,6 +473,20 @@ export const MessageRow = React.memo(
               message={message}
             />
           );
+        case KIND_ASK_ACTION: {
+          const askId = askIdFromAction(message.body);
+          return askId ? (
+            <AskActionAttachment
+              askId={askId}
+              channelId={channelId}
+              currentPubkey={currentPubkey}
+              messageBody={message.body}
+              profiles={profiles}
+            />
+          ) : (
+            <p role="alert">This ask request could not be read.</p>
+          );
+        }
         default: {
           const waveMessage = parseWaveMessageContent(message.body);
           if (waveMessage) {
@@ -467,9 +540,6 @@ export const MessageRow = React.memo(
 
     const isThreadReplyLayout = layoutVariant === "thread-reply";
     const guideBleedRem = isThreadReplyLayout ? 0.25 : 0;
-    const avatarButtonRadiusClass = isAuthorAgent
-      ? "rounded-[30%]"
-      : "rounded-full";
 
     const showRespondToIndicator =
       message.respondTo === "anyone" || message.respondTo === "allowlist";
@@ -479,9 +549,15 @@ export const MessageRow = React.memo(
         <UserAvatar
           accent={message.accent}
           avatarUrl={message.avatarUrl ?? null}
-          className="shrink-0"
+          className={cn(
+            "h-7 w-7 shrink-0 rounded-md text-2xs",
+            message.isAgent
+              ? "colony-workspace-agent-message-avatar"
+              : "colony-workspace-human-message-avatar",
+          )}
           displayName={message.author}
-          shape={isAuthorAgent ? "squircle" : "circle"}
+          fallbackVariant="muted"
+          shape="square"
           testId="message-avatar"
         />
         {showRespondToIndicator &&
@@ -539,23 +615,24 @@ export const MessageRow = React.memo(
         pubkey={message.pubkey}
         role={profilePopoverRole}
         botIdenticonValue={message.author}
+        triggerAriaLabel={`Open profile for ${message.author}`}
+        triggerClassName="rounded-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <button
-          className={cn(
-            "flex shrink-0 items-start focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-            avatarButtonRadiusClass,
-          )}
-          type="button"
-        >
+        <div aria-hidden="true" className="flex shrink-0 items-start">
           {avatarNode}
-        </button>
+        </div>
       </UserProfilePopover>
     ) : (
       <div className="flex shrink-0 items-start">{avatarNode}</div>
     );
 
     const authorNode = message.pubkey ? (
-      <MessageAuthorText hoverUnderline>{message.author}</MessageAuthorText>
+      <MessageAuthorText
+        className={message.isAgent ? "colony-agent-message-author" : undefined}
+        hoverUnderline
+      >
+        {message.author}
+      </MessageAuthorText>
     ) : (
       <MessageAuthorText as="h3">{message.author}</MessageAuthorText>
     );
@@ -595,6 +672,14 @@ export const MessageRow = React.memo(
             canToggleReactions ? handleReactionSelect : undefined
           }
           onRemindLater={handleRemindLater}
+          onRaiseAsk={
+            channelId &&
+            !message.pending &&
+            (message.kind === KIND_STREAM_MESSAGE ||
+              message.kind === KIND_STREAM_MESSAGE_V2)
+              ? handleRaiseAsk
+              : undefined
+          }
           onReply={onReply}
           onSendToChannel={
             onSendToChannel && sendToChannelAllowed
@@ -669,6 +754,11 @@ export const MessageRow = React.memo(
         ) : (
           authorNode
         )}
+        {employeeStatus ? (
+          <span className="rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
+            {employeeStatusLabel}
+          </span>
+        ) : null}
         {/* Author is not a segment: "Alice 9:53 AM" needs no divider. */}
         <MessageMetaSegments
           segments={[
@@ -685,8 +775,48 @@ export const MessageRow = React.memo(
 
     const messageBodyNode = (
       <>
+        {employeeStatus && isDisplayedAsContinuation ? (
+          <span className="mb-1 inline-flex rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
+            {employeeStatusLabel}
+          </span>
+        ) : null}
+        {employeeStatus && employeeReason ? (
+          <p
+            className="mb-1 text-xs text-muted-foreground"
+            data-testid={`employee-message-status-${employeeStatus}`}
+          >
+            {employeeStatus === "paused" ? "Paused by manager" : "Terminated"}:{" "}
+            {employeeReason}
+          </p>
+        ) : null}
         <SentFromThreadLine channelId={channelId} tags={message.tags} />
-        {renderBody()}
+        {channelId && message.pubkey && !message.pending ? (
+          <CompanyWorkMessageProvider
+            value={{
+              channelId,
+              sourceEventId: message.id,
+              threadRootEventId:
+                getThreadReference(message.tags ?? []).rootId ?? message.id,
+            }}
+          >
+            {renderBody()}
+            <CompanyWorkSuggestionMessageCard />
+          </CompanyWorkMessageProvider>
+        ) : (
+          renderBody()
+        )}
+        {employeeStatus && !isDisplayedAsContinuation ? (
+          <button
+            className="mt-1 inline-flex min-h-8 items-center rounded-md border border-border bg-background px-3 py-1 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            data-testid="open-employee-history"
+            onClick={() =>
+              void goTeamMemberHistory(memberQuery.data?.pubkey ?? "")
+            }
+            type="button"
+          >
+            Open employee history
+          </button>
+        ) : null}
         {continuationMetadataNode}
         <MessageReactions
           messageId={message.id}

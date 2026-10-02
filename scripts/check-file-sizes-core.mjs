@@ -38,7 +38,10 @@ export function evaluateFileSize({ baseLines, candidateLines, maxLines }) {
 }
 
 function findRule(rules, relativePath) {
-  return rules.find((rule) => relativePath.startsWith(`${rule.root}/`));
+  return rules.find(
+    (rule) =>
+      relativePath === rule.root || relativePath.startsWith(`${rule.root}/`),
+  );
 }
 
 export function resolveBaseRef(repoRoot, env = process.env) {

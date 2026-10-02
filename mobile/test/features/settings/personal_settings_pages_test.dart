@@ -1,0 +1,361 @@
+import 'package:buzz/features/channels/channel.dart';
+import 'package:buzz/features/channels/channels_provider.dart';
+import 'package:buzz/features/settings/personal_settings_home_page.dart';
+import 'package:buzz/features/settings/appearance_settings_pages.dart'
+    show PersonalPreferencesPage;
+import 'package:buzz/features/settings/profile_settings_page.dart';
+import 'package:buzz/features/settings/settings_devices_page.dart';
+import 'package:buzz/features/settings/settings_clear_cache_page.dart';
+import 'package:buzz/features/settings/settings_export_failed_page.dart';
+import 'package:buzz/features/settings/settings_export_page.dart';
+import 'package:buzz/features/settings/settings_feedback_page.dart';
+import 'package:buzz/features/settings/settings_feedback_sent_page.dart';
+import 'package:buzz/features/settings/settings_privacy_page.dart';
+import 'package:buzz/features/settings/settings_save_failed_page.dart';
+import 'package:buzz/shared/navigation/mobile_route.dart';
+import 'package:buzz/shared/navigation/mobile_route_scope.dart';
+import 'package:buzz/shared/navigation/mobile_routes.dart';
+import 'package:buzz/shared/community/community_provider.dart';
+import 'package:buzz/shared/theme/theme.dart';
+import 'package:buzz/shared/widgets/avatar_image.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  testWidgets('shows business entry and opens account from personal settings', (
+    tester,
+  ) async {
+    final prefs = await _prefs();
+    var businessOpened = false;
+    await tester.pumpWidget(
+      _testApp(
+        prefs: prefs,
+        registry: MobileRouteRegistry.empty().register(
+          MobileRoutes.settingsProfile,
+          (context, _) => const Scaffold(body: Text('Profile route opened')),
+        ),
+        child: PersonalSettingsHomePage(
+          displayName: 'Lerato Molefe',
+          email: 'lerato@example.com',
+          avatarUrl: null,
+          communityName: 'Lerato Social',
+          onOpenBusiness: () => businessOpened = true,
+          onOpenAgents: _noop,
+        ),
+      ),
+    );
+
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('A little more you.'), findsOneWidget);
+    expect(find.text('Appearance'), findsOneWidget);
+    expect(find.text('Preferences'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Business'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Business'), findsOneWidget);
+    await tester.tap(find.text('Business'));
+    expect(businessOpened, isTrue);
+    await tester.scrollUntilVisible(
+      find.text('Account'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final editButton = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, 'Edit'),
+    );
+    expect(
+      editButton.style?.foregroundColor?.resolve({}),
+      MobileDesignTokens.light.action,
+    );
+    final avatar = tester.widget<AvatarImage>(find.byType(AvatarImage));
+    expect(avatar.isAgent, isFalse);
+    expect(avatar.borderRadius, BorderRadius.circular(14.4));
+    expect(
+      find.descendant(
+        of: find.byType(AvatarImage),
+        matching: find.byType(ClipRRect),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Account').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Profile route opened'), findsOneWidget);
+  });
+
+  testWidgets('keeps the profile edit when the live update fails', (
+    tester,
+  ) async {
+    final prefs = await _prefs();
+    await tester.pumpWidget(
+      _testApp(
+        prefs: prefs,
+        registry: MobileRouteRegistry.empty().register(
+          MobileRoutes.settingsSaveFailed,
+          (context, _) => const SettingsSaveFailedPage(),
+        ),
+        child: ProfileSettingsPage(
+          displayName: 'Lerato Molefe',
+          avatarUrl: null,
+          email: 'lerato@example.com',
+          statusLabel: 'Set a status',
+          onSaveDisplayName: (_) async => throw StateError('relay unavailable'),
+        ),
+      ),
+    );
+
+    final avatar = tester.widget<AvatarImage>(find.byType(AvatarImage));
+    expect(avatar.isAgent, isFalse);
+    expect(avatar.borderRadius, BorderRadius.circular(10.2));
+    expect(
+      find.descendant(
+        of: find.byType(AvatarImage),
+        matching: find.byType(ClipRRect),
+      ),
+      findsOneWidget,
+    );
+    final editAvatarButton = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, 'Edit avatar'),
+    );
+    final retryPreviewButton = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, 'Preview save error'),
+    );
+    expect(
+      editAvatarButton.style?.foregroundColor?.resolve({}),
+      MobileDesignTokens.light.action,
+    );
+    expect(
+      retryPreviewButton.style?.foregroundColor?.resolve({}),
+      MobileDesignTokens.light.action,
+    );
+    await tester.enterText(find.byType(TextField), 'Lerato M.');
+    await tester.tap(find.text('Save profile'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsSaveFailedPage), findsOneWidget);
+    expect(find.text('Your edits are kept'), findsOneWidget);
+    expect(prefs.getString('buzz-profile-settings-name-draft.v1'), 'Lerato M.');
+    await tester.tap(find.text('Return to my edits'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'Lerato M.',
+    );
+  });
+
+  testWidgets('shows the current device and retains the pairing entry', (
+    tester,
+  ) async {
+    var linkedAnotherDevice = false;
+    var openedDeviceDetails = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: SettingsDevicesPage(
+          currentDeviceName: 'This iPhone',
+          onOpenCurrentDevice: () => openedDeviceDetails = true,
+          onLinkAnotherDevice: () => linkedAnotherDevice = true,
+        ),
+      ),
+    );
+    expect(find.text('Devices'), findsOneWidget);
+    expect(find.text('This iPhone'), findsOneWidget);
+    expect(find.text('Active now'), findsOneWidget);
+    expect(find.text('Lerato’s Mac'), findsNothing);
+    await tester.tap(find.text('This iPhone'));
+    expect(openedDeviceDetails, isTrue);
+    await tester.tap(find.text('Link another device'));
+    expect(linkedAnotherDevice, isTrue);
+  });
+
+  testWidgets('does not offer to clear an untracked downloaded-file cache', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: const SettingsClearCachePage(),
+      ),
+    );
+
+    expect(find.text('Clear downloads'), findsOneWidget);
+    expect(find.textContaining('128 MB'), findsNothing);
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Clear downloads'),
+    );
+    expect(button.onPressed, isNull);
+  });
+
+  testWidgets('keeps feedback on device and labels the result as a preview', (
+    tester,
+  ) async {
+    final prefs = await _prefs();
+    await tester.pumpWidget(
+      _testApp(
+        prefs: prefs,
+        registry: MobileRouteRegistry.empty().register(
+          MobileRoutes.settingsFeedbackSent,
+          (context, _) => const SettingsFeedbackSentPage(),
+        ),
+        child: const SettingsFeedbackPage(),
+      ),
+    );
+
+    expect(find.text('Help us make it better.'), findsNothing);
+    expect(find.text('Topic'), findsOneWidget);
+    expect(find.text('Feedback'), findsOneWidget);
+    expect(find.text('Design feedback'), findsOneWidget);
+    final feedbackButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Send feedback preview'),
+    );
+    expect(feedbackButton.onPressed, isNotNull);
+    await tester.enterText(find.byType(TextField), 'A calmer theme catalog.');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Send feedback preview'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsFeedbackSentPage), findsOneWidget);
+    expect(
+      find.text(
+        'Your feedback submission is shown here as a preview. No report was sent.',
+      ),
+      findsOneWidget,
+    );
+    expect(prefs.getString('buzz-settings-feedback-preview.v1'), isNotNull);
+  });
+
+  testWidgets('uses checkboxes for phone accessibility preferences', (
+    tester,
+  ) async {
+    final prefs = await _prefs();
+    await tester.pumpWidget(
+      _testApp(
+        prefs: prefs,
+        registry: MobileRouteRegistry.empty(),
+        child: const PersonalPreferencesPage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Push notifications for this community'), findsOneWidget);
+    expect(find.byType(Checkbox), findsNWidgets(2));
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Apply preferences'));
+    await tester.pumpAndSettle();
+
+    expect(
+      prefs.getString('buzz-appearance-display.v1'),
+      contains('"reduceMotion":true'),
+    );
+  });
+
+  testWidgets('saves notification privacy as an on-device preview', (
+    tester,
+  ) async {
+    final prefs = await _prefs();
+    await tester.pumpWidget(
+      _testApp(
+        prefs: prefs,
+        registry: MobileRouteRegistry.empty().register(
+          MobileRoutes.settingsPrivacy,
+          (context, _) => const SettingsPrivacyPage(),
+        ),
+        child: const PersonalPreferencesPage(),
+      ),
+    );
+
+    await tester.tap(find.text('Preview privacy'));
+    await tester.pumpAndSettle();
+    expect(find.text('Show message previews'), findsOneWidget);
+    expect(find.text('Consider your lock screen'), findsOneWidget);
+    expect(find.text('A real workspace update.'), findsNothing);
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
+    await tester.tap(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+    await tester.tap(find.text('Save preference'));
+    await tester.pumpAndSettle();
+
+    expect(
+      prefs.getString('buzz-notification-privacy-preview.v1'),
+      'Show message previews',
+    );
+    expect(find.text('Preferences'), findsOneWidget);
+    expect(find.text('Notification preference saved'), findsOneWidget);
+    expect(find.text('A real workspace update.'), findsNothing);
+  });
+
+  testWidgets(
+    'labels export actions as previews and exposes the designed retry',
+    (tester) async {
+      final prefs = await _prefs();
+      await tester.pumpWidget(
+        _testApp(
+          prefs: prefs,
+          registry: MobileRouteRegistry.empty().register(
+            MobileRoutes.settingsExportFailed,
+            (context, _) => const SettingsExportFailedPage(),
+          ),
+          child: const SettingsExportPage(),
+        ),
+      );
+
+      await tester.tap(find.text('Prepare export preview'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Export prepared in this preview. No file downloaded.'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Preview export failure'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsExportFailedPage), findsOneWidget);
+      expect(find.text('Your export could not be prepared'), findsOneWidget);
+    },
+  );
+}
+
+Future<SharedPreferences> _prefs() async {
+  SharedPreferences.setMockInitialValues({});
+  return SharedPreferences.getInstance();
+}
+
+Widget _testApp({
+  required SharedPreferences prefs,
+  required MobileRouteRegistry registry,
+  required Widget child,
+}) => ProviderScope(
+  overrides: [
+    savedPrefsProvider.overrideWithValue(prefs),
+    channelsProvider.overrideWith(_TestChannelsNotifier.new),
+    activeCommunityProvider.overrideWith((_) async => null),
+  ],
+  child: MaterialApp(
+    theme: AppTheme.light(),
+    home: MobileRouteScope(registry: registry, child: child),
+  ),
+);
+
+class _TestChannelsNotifier extends ChannelsNotifier {
+  @override
+  Future<List<Channel>> build() async => [
+    Channel(
+      id: 'test-channel',
+      name: 'Launch notes',
+      channelType: 'stream',
+      visibility: 'open',
+      description: '',
+      createdBy: 'a' * 64,
+      createdAt: DateTime.utc(2026, 9, 29),
+      memberCount: 1,
+      lastMessageContent: 'A real workspace update.',
+      lastMessagePubkey: 'a' * 64,
+      lastMessageCreatedAt: 1790700000,
+    ),
+  ];
+}
+
+void _noop() {}

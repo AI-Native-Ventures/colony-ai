@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -11,23 +12,32 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
+import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nostr/nostr.dart' as nostr;
 import 'package:pointycastle/digests/sha256.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:buzz/features/channels/channel.dart';
 import 'package:buzz/features/channels/channel_detail_page.dart';
+import 'package:buzz/features/channels/channel_forum_route.dart';
+import 'package:buzz/features/channels/conversation_avatar.dart';
+import 'package:buzz/features/channels/conversation_styles.dart';
+import 'package:buzz/features/channels/compose_bar.dart';
+import 'package:buzz/features/channels/message_content.dart';
+import 'package:buzz/features/channels/message_presentation.dart';
 import 'package:buzz/features/channels/channel_management_provider.dart';
 import 'package:buzz/features/channels/channel_messages_provider.dart';
 import 'package:buzz/features/channels/channel_mutes/channel_mutes_provider.dart';
 import 'package:buzz/features/channels/channel_mutes/channel_mutes_storage.dart';
 import 'package:buzz/features/channels/channel_stars/channel_stars_provider.dart';
 import 'package:buzz/features/channels/channel_stars/channel_stars_storage.dart';
+import 'package:buzz/features/channels/channels_page.dart';
 import 'package:buzz/features/channels/channel_typing_provider.dart';
 import 'package:buzz/features/channels/members_sheet.dart';
 import 'package:buzz/features/channels/composer_dock_size_reporter.dart';
 import 'package:buzz/features/channels/date_formatters.dart';
 import 'package:buzz/features/channels/day_divider.dart';
+import 'package:buzz/features/channels/deliverable_preview_card.dart';
 import 'package:buzz/features/channels/emoji_picker.dart';
 import 'package:buzz/features/channels/ime_metrics_settle_observer.dart';
 import 'package:buzz/features/channels/local_message_send_animation_provider.dart';
@@ -40,12 +50,22 @@ import 'package:buzz/features/channels/thread_replies_provider.dart';
 import 'package:buzz/features/channels/timeline_message.dart';
 import 'package:buzz/features/channels/channels_provider.dart';
 import 'package:buzz/shared/read_state/read_state_provider.dart';
+import 'package:buzz/shared/company/goals/goal_repository.dart';
+import 'package:buzz/shared/company/goals/goal_records.dart';
 import 'package:buzz/features/channels/unread_badge/observed_unread_event.dart';
 import 'package:buzz/features/channels/small_avatar.dart';
 import 'package:buzz/features/profile/profile_provider.dart';
+import 'package:buzz/shared/identity/presence_cache_provider.dart';
 import 'package:buzz/shared/profile/user_cache_provider.dart';
 import 'package:buzz/shared/profile/user_profile.dart';
+import 'package:buzz/shared/identity/identity_components.dart';
 import 'package:buzz/features/profile/user_profile_sheet.dart';
+import 'package:buzz/features/forum/forum_models.dart';
+import 'package:buzz/features/forum/forum_new_post_page.dart';
+import 'package:buzz/features/forum/forum_posts_view.dart';
+import 'package:buzz/features/forum/forum_presentation.dart';
+import 'package:buzz/features/forum/forum_provider.dart';
+import 'package:buzz/features/forum/forum_published_note_page.dart';
 import 'package:buzz/shared/community/community_provider.dart';
 import 'package:buzz/shared/emoji/emoji_burst.dart';
 import 'package:buzz/shared/mentions/agent_identity_provider.dart';
@@ -58,18 +78,24 @@ import 'package:buzz/shared/widgets/frosted_app_bar.dart';
 import 'package:buzz/shared/widgets/frosted_scaffold.dart';
 import 'package:buzz/shared/widgets/flapping_bee.dart';
 import 'package:buzz/shared/widgets/keyboard_dismiss_on_drag.dart';
+import 'package:buzz/shared/navigation/mobile_route.dart';
+import 'package:buzz/shared/navigation/mobile_routes.dart';
+import 'package:buzz/features/home/home_page.dart';
 import 'package:buzz/shared/widgets/ios_glass_navigation_button.dart';
 import 'package:buzz/shared/widgets/lucide_star_icon.dart';
-import 'package:buzz/shared/widgets/masked_avatar_badge.dart';
 import 'package:buzz/shared/widgets/skeleton.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 part 'thread_reply_refresh_cases.dart';
+part 'mobile_huddle_visual_proof.dart';
 
 const _channelId = '11111111-2222-4333-8444-555555555555';
 const _huddleChannelId = '8d764100-fd8f-44cf-9c98-6d8fbd739b8c';
 const _otherChannelId = '22222222-3333-4444-8555-666666666666';
 const _otherHuddleChannelId = '9e875211-ae90-45df-8da9-7e9ace84ca9d';
+const _goalBannerCaptureId = '423e4567-e89b-12d3-a456-426614174000';
+const _goalBannerCaptureSecret =
+    '2222222222222222222222222222222222222222222222222222222222222222';
 
 final _mutableHuddleMembersProvider =
     NotifierProvider<_MutableHuddleMembersNotifier, List<ChannelMember>>(
@@ -203,6 +229,7 @@ Widget _buildTestable({
   required List<NostrEvent> messages,
   List<TypingEntry> typing = const [],
   Map<String, UserProfile> users = const {},
+  Map<String, String> presence = const {},
   Set<String>? knownAgentPubkeys,
   Future<Set<String>> Function()? loadChannelBotPubkeys,
   bool watchChannelMembershipUpdates = false,
@@ -213,6 +240,7 @@ Widget _buildTestable({
   List<ChannelMember> huddleMembers = const [],
   _MutableHuddleMembersNotifier? huddleMembersNotifier,
   Channel? channel,
+  VoidCallback? openQuickActions,
   List<Channel>? channels,
   _FakeChannelsNotifier? channelsNotifier,
   List<NavigatorObserver> navigatorObservers = const [],
@@ -223,6 +251,12 @@ Widget _buildTestable({
   _FakeMessagesNotifier? messagesNotifier,
   _FakeTypingNotifier? typingNotifier,
   _FakeTypingNotifier? huddleTypingNotifier,
+  MobileRouteRegistry? routeRegistry,
+  ForumPostsResponse? forumPostsResponse,
+  ForumThreadResponse? forumThreadResponse,
+  Map<String, ChannelMessagePresentation> messagePresentations = const {},
+  DateTime? conversationDayNow,
+  MediaUploadService? mediaUploadService,
   String? canvasContent,
   String? initialMessageId,
   String? initialThreadRootId,
@@ -244,11 +278,28 @@ Widget _buildTestable({
   HuddleHumanCountLoader? huddleHumanCountLoader,
   List<NostrEvent> huddleLifecycle = const [],
   String? huddleCurrentPubkey,
+  List<GoalHeadRecord> goalRecords = const [],
   http.Client? mediaClient,
   Widget? home,
+  Brightness? brightness,
+  Key? captureKey,
+  bool routeInNavigationStack = false,
+  String profileDisplayName = 'Self',
+  bool showCaptureSystemBars = false,
+  bool debugShowCheckedModeBanner = true,
 }) {
   final resolvedChannel = channel ?? _testChannel;
   final navigatorKey = GlobalKey<NavigatorState>();
+  final detailPage =
+      home ??
+      ChannelDetailPage(
+        channel: resolvedChannel,
+        routeRegistry: routeRegistry,
+        openQuickActions: openQuickActions,
+        initialMessageId: initialMessageId,
+        initialThreadRootId: initialThreadRootId,
+        initialThreadRouteBehavior: initialThreadRouteBehavior,
+      );
   final fakeChannelsNotifier =
       channelsNotifier ?? _FakeChannelsNotifier(channels ?? [resolvedChannel]);
   final fakeMessagesNotifier =
@@ -270,7 +321,12 @@ Widget _buildTestable({
       userCacheProvider.overrideWith(
         () => userCacheNotifier ?? _FakeUserCacheNotifier(users),
       ),
-      profileProvider.overrideWith(() => _FakeProfileNotifier()),
+      profileProvider.overrideWith(
+        () => _FakeProfileNotifier(displayName: profileDisplayName),
+      ),
+      presenceCacheProvider.overrideWith(
+        () => _FakePresenceCacheNotifier(presence),
+      ),
       channelsProvider.overrideWith(() => fakeChannelsNotifier),
       channelStarsProvider.overrideWith(_FakeChannelStarsNotifier.new),
       channelMutesProvider.overrideWith(_FakeChannelMutesNotifier.new),
@@ -292,6 +348,18 @@ Widget _buildTestable({
             ? huddleMembers
             : ref.watch(_mutableHuddleMembersProvider),
       ),
+      goalHeadsProvider.overrideWith((ref) async => goalRecords),
+      if (forumPostsResponse != null)
+        forumPostsProvider(
+          _channelId,
+        ).overrideWith((ref) async => forumPostsResponse),
+      if (forumThreadResponse case final threadResponse?)
+        forumThreadProvider((
+          channelId: _channelId,
+          eventId: threadResponse.post.eventId,
+        )).overrideWith((ref) async => threadResponse),
+      if (mediaUploadService != null)
+        mediaUploadServiceProvider.overrideWithValue(mediaUploadService),
       if (huddleMembersNotifier != null)
         _mutableHuddleMembersProvider.overrideWith(() => huddleMembersNotifier),
       if (!watchChannelMembershipUpdates)
@@ -371,30 +439,161 @@ Widget _buildTestable({
       if (huddleCurrentPubkey != null)
         currentPubkeyProvider.overrideWith((ref) => huddleCurrentPubkey),
       appLifecycleProvider.overrideWith(_TestAppLifecycleNotifier.new),
+      channelMessagePresentationProvider.overrideWithValue(
+        messagePresentations,
+      ),
+      conversationDayHeadingNowProvider.overrideWithValue(
+        conversationDayNow ?? DateTime(2026, 9, 24, 12),
+      ),
       // Compose bar drafts persist through SharedPreferences.
       savedPrefsProvider.overrideWithValue(_testPrefs),
     ],
     child: MaterialApp(
+      debugShowCheckedModeBanner: debugShowCheckedModeBanner,
       navigatorKey: navigatorKey,
-      theme: AppTheme.light(),
+      initialRoute: routeInNavigationStack ? '/capture/detail' : null,
+      routes: routeInNavigationStack
+          ? {
+              '/': (_) => const SizedBox.shrink(),
+              '/capture': (_) => const SizedBox.shrink(),
+              '/capture/detail': (_) => detailPage,
+            }
+          : const {},
+      theme: switch (brightness) {
+        Brightness.light => AppTheme.light(
+          mobileTokens: MobileDesignTokens.light,
+        ),
+        Brightness.dark => AppTheme.dark(mobileTokens: MobileDesignTokens.dark),
+        null => AppTheme.light(),
+      },
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(
           textScaler: textScaler,
           disableAnimations: disableAnimations,
         ),
-        child: MobileHuddleShell(navigatorKey: navigatorKey, child: child!),
+        child: RepaintBoundary(
+          key: captureKey,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              MobileHuddleShell(navigatorKey: navigatorKey, child: child!),
+              if (showCaptureSystemBars)
+                _DetailCaptureSystemBars(brightness ?? Brightness.light),
+            ],
+          ),
+        ),
       ),
       navigatorObservers: navigatorObservers,
-      home:
-          home ??
-          ChannelDetailPage(
-            channel: resolvedChannel,
-            initialMessageId: initialMessageId,
-            initialThreadRootId: initialThreadRootId,
-            initialThreadRouteBehavior: initialThreadRouteBehavior,
-          ),
+      home: routeInNavigationStack ? null : detailPage,
     ),
   );
+}
+
+ForumPresentationFactories _forumCapturePresentation() =>
+    ForumPresentationFactories(
+      composeBarBuilder:
+          ({
+            required channelId,
+            required channelName,
+            required hintText,
+            required onSend,
+            draftKeyOverride,
+            postEditorMode = false,
+
+            allowEmptySend = false,
+            enabled = true,
+            submitController,
+            onBodyChanged,
+            onAttachmentCountChanged,
+            onSubmissionChanged,
+            onFailure,
+          }) => ComposeBar(
+            channelId: channelId,
+            channelName: channelName,
+            hintText: hintText,
+            onSend: onSend,
+            draftKeyOverride: draftKeyOverride,
+            postEditorMode: postEditorMode,
+            allowEmptySend: allowEmptySend,
+            enabled: enabled,
+            submitController: submitController,
+            onBodyChanged: onBodyChanged,
+            onAttachmentCountChanged: onAttachmentCountChanged,
+            onSubmissionChanged: onSubmissionChanged,
+            onFailure: onFailure,
+          ),
+      messageContentBuilder: (context, content) => MessageContent(
+        content: content.content,
+        mentionNames: content.mentionNames,
+        agentMentionPubkeys: content.agentMentionPubkeys,
+        tags: content.tags,
+        baseStyle: content.baseStyle,
+        maxLines: content.maxLines,
+        onMentionTap: content.onMentionTap,
+      ),
+      openProfile: (context, pubkey) {},
+      currentUserName: (_) => 'Lerato Molefe',
+      openQuickActions: (_) {},
+    );
+
+MobileRouteRegistry _forumCaptureRoutes() {
+  final presentation = _forumCapturePresentation();
+  return MobileRouteRegistry.empty()
+      .register(ChannelForumRoutes.posts, (context, arguments) {
+        return ForumPostsView(
+          channelId: arguments.channelId,
+          channelName: arguments.channelName,
+          currentPubkey: arguments.currentPubkey,
+          isMember: arguments.isMember,
+          isArchived: arguments.isArchived,
+          presentation: presentation,
+        );
+      })
+      .register(ChannelForumRoutes.newPost, (context, arguments) {
+        return ForumNewPostPage(
+          channelId: arguments.channelId,
+          channelName: arguments.channelName,
+          memberCount: arguments.memberCount,
+          presentation: presentation,
+        );
+      });
+}
+
+MobileRouteRegistry _forumRootCaptureRoutes() {
+  final presentation = _forumCapturePresentation();
+  late MobileRouteRegistry routes;
+  routes = MobileRouteRegistry.empty()
+      .register(MobileRoutes.today, (_, _) => const SizedBox.shrink())
+      .register(MobileRoutes.chats, (_, routeContext) {
+        return ChannelsPage(
+          settingsPageBuilder: routeContext.settingsPageBuilder,
+          tabReselection: routeContext.tabReselection,
+          onSettingsTransitionProgress:
+              routeContext.onSettingsTransitionProgress,
+          routeRegistry: routes,
+        );
+      })
+      .register(MobileRoutes.activity, (_, _) => const SizedBox.shrink())
+      .register(MobileRoutes.business, (_, _) => const SizedBox.shrink())
+      .register(ChannelForumRoutes.posts, (context, arguments) {
+        return ForumPostsView(
+          channelId: arguments.channelId,
+          channelName: arguments.channelName,
+          currentPubkey: arguments.currentPubkey,
+          isMember: arguments.isMember,
+          isArchived: arguments.isArchived,
+          presentation: presentation,
+        );
+      })
+      .register(ChannelForumRoutes.newPost, (_, arguments) {
+        return ForumNewPostPage(
+          channelId: arguments.channelId,
+          channelName: arguments.channelName,
+          memberCount: arguments.memberCount,
+          presentation: presentation,
+        );
+      });
+  return routes;
 }
 
 Widget _buildNavigationTestable({
@@ -429,6 +628,7 @@ Widget _buildNavigationTestable({
       channelMembersProvider(
         channelB.id,
       ).overrideWith((ref) async => const <ChannelMember>[]),
+      goalHeadsProvider.overrideWith((ref) async => const []),
       userCacheProvider.overrideWith(() => _FakeUserCacheNotifier({})),
       profileProvider.overrideWith(() => _FakeProfileNotifier()),
       channelsProvider.overrideWith(
@@ -474,6 +674,7 @@ double? effectiveFontSizeForText(
 
 void main() {
   threadReplyRefreshTests();
+  huddleVisualProofTests();
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _testPrefs = await SharedPreferences.getInstance();
@@ -485,8 +686,10 @@ void main() {
         tester,
       ) async {
         final first = 'a' * 64, second = 'b' * 64, sibling = 'c' * 64;
-        Future<void> tapProfile(String label, String key) async {
-          await tester.tap(find.text(label));
+        Future<void> tapProfile(String key) async {
+          final mention = find.byKey(ValueKey('message-mention-$key'));
+          expect(mention.hitTestable(), findsOneWidget);
+          await tester.tap(mention.hitTestable());
           await tester.pumpAndSettle();
           expect(
             tester
@@ -533,12 +736,12 @@ void main() {
                 ),
               );
               await tester.pumpAndSettle();
-              await tapProfile('Scout (bbbbbbbb…bbbb)', second);
+              await tapProfile(second);
               expect(find.text('Scout'), findsNothing);
               expect(find.text('Bob'), findsNothing);
               if (firstName != null) expect(find.text(firstName), findsNothing);
               expect(find.text('Other (eeeeeeee…eeee)'), findsNothing);
-              await tapProfile('Alice', sibling);
+              await tapProfile(sibling);
               expect(tester.takeException(), isNull);
               await tester.pumpWidget(const SizedBox.shrink());
               await tester.pumpAndSettle();
@@ -550,8 +753,792 @@ void main() {
   }
 
   group('ChannelDetailPage', () {
+    testWidgets('channel info uses the shared title and hero wash tokens', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildTestable(
+          messages: const [],
+          channel: _testChannel,
+          brightness: Brightness.dark,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('channel-info-action')));
+      await tester.pumpAndSettle();
+
+      final titleFinder = find.byKey(const ValueKey('channel-details-name'));
+      final title = tester.widget<Text>(titleFinder);
+      final context = tester.element(titleFinder);
+      expect(
+        title.style,
+        context.mobileTypography.companyHubTitle.copyWith(
+          color: context.appColors.channelInfoHeroForeground,
+        ),
+      );
+      final hero = tester.widget<Container>(
+        find.byKey(const ValueKey('channel-details-hero')),
+      );
+      expect(
+        (hero.decoration! as BoxDecoration).gradient,
+        context.appColors.channelInfoHeroGradient,
+      );
+    });
+
     testWidgets(
-      'bot-role author avatars stay squircles in channel and thread',
+      'captures the v5 channel goal banner at both sizes and themes',
+      (tester) async {
+        const captureScreenshots = bool.fromEnvironment('CAPTURE_M3B_GOALS');
+        if (!captureScreenshots) return;
+
+        final fontLoader = FontLoader('Manrope')
+          ..addFont(rootBundle.load('assets/fonts/Manrope-Variable.ttf'));
+        await fontLoader.load();
+        final iconFontLoader =
+            FontLoader('packages/lucide_icons_flutter/Lucide')..addFont(
+              rootBundle.load(
+                'packages/lucide_icons_flutter/assets/lucide.ttf',
+              ),
+            );
+        await iconFontLoader.load();
+
+        const captureSizes = {
+          '390x844': Size(390, 844),
+          '412x915': Size(412, 915),
+        };
+        const captureKey = ValueKey('m3b-channel-goal-banner-capture');
+        final goal = _goalBannerCaptureRecord();
+
+        for (final size in captureSizes.entries) {
+          tester.view.physicalSize = size.value;
+          tester.view.devicePixelRatio = 1;
+          tester.view.padding = const FakeViewPadding(top: 46, bottom: 20);
+          tester.view.viewPadding = const FakeViewPadding(top: 46, bottom: 20);
+          for (final brightness in [Brightness.light, Brightness.dark]) {
+            final mode = brightness == Brightness.light ? 'light' : 'dark';
+            final output = Directory(
+              '/tmp/m3b-goals-visual-sheets/${size.key}/$mode',
+            );
+            output.createSync(recursive: true);
+            final previousComparator = goldenFileComparator;
+            goldenFileComparator = _CaptureFileComparator(
+              Uri.file('${output.path}/capture_test.dart'),
+              output.path,
+            );
+
+            await tester.pumpWidget(
+              _buildTestable(
+                messages: const [],
+                goalRecords: [goal],
+                channel: _testChannel,
+                brightness: brightness,
+                disableAnimations: true,
+                captureKey: captureKey,
+                showCaptureSystemBars: true,
+              ),
+            );
+            await tester.pumpAndSettle();
+
+            expect(
+              find.byKey(ValueKey('channel-shared-goal:${goal.head.goalId}')),
+              findsOneWidget,
+            );
+            expect(
+              find.text('A client-approved October campaign'),
+              findsOneWidget,
+            );
+            final banner = tester.getRect(
+              find.byKey(ValueKey('channel-shared-goal:${goal.head.goalId}')),
+            );
+            debugPrint(
+              'VISUAL_CHANNEL_GOAL_BANNER ${size.key} $mode rect=$banner',
+            );
+            expect(banner.left, 21);
+            expect(banner.width, size.value.width - 42);
+            expect(banner.height, closeTo(57.6, 1));
+            await expectLater(
+              find.byKey(captureKey),
+              matchesGoldenFile('channel-goal-banner.png'),
+            );
+            await tester.pumpWidget(const SizedBox.shrink());
+            await tester.pumpAndSettle();
+            goldenFileComparator = previousComparator;
+          }
+        }
+        tester.view.resetPadding();
+        tester.view.resetViewPadding();
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      },
+    );
+
+    testWidgets('captures v5 conversation routes at both sizes and themes', (
+      tester,
+    ) async {
+      const captureScreenshots = bool.fromEnvironment('CAPTURE_M2B_DETAILS');
+      if (!captureScreenshots) return;
+
+      final fontLoader = FontLoader('Manrope')
+        ..addFont(rootBundle.load('assets/fonts/Manrope-Variable.ttf'));
+      await fontLoader.load();
+      final iconFontLoader = FontLoader('packages/lucide_icons_flutter/Lucide')
+        ..addFont(
+          rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
+        );
+      await iconFontLoader.load();
+
+      final now = DateTime(2026, 9, 28, 12);
+      int timestamp(int hour, int minute) =>
+          DateTime(
+            now.year,
+            now.month,
+            now.day,
+            hour,
+            minute,
+          ).millisecondsSinceEpoch ~/
+          1000;
+
+      final engagement = _textMsg(
+        id: 'v5-olive-engagement',
+        pubkey: 'self',
+        content: 'Engagement has dipped. What could we change for October?',
+        createdAt: timestamp(9, 23),
+      );
+      final campaignRoot = _textMsg(
+        id: 'v5-campaign-direction',
+        pubkey: 'mina',
+        content:
+            'I’m exploring a more personal direction with Noluthando. '
+            'We have three concepts ready to discuss.',
+        createdAt: timestamp(9, 23),
+      );
+      final threadRoot = _textMsg(
+        id: 'v5-thread-root',
+        pubkey: 'mina',
+        content:
+            'Customer stories feel like the right direction. Here’s the first '
+            'concept, with a quieter, more personal tone.',
+        createdAt: timestamp(9, 23),
+      );
+      final campaignSummaryReplyOne = _textMsg(
+        id: 'v5-campaign-summary-reply-one',
+        pubkey: 'noluthando',
+        content:
+            'This is much closer to the client’s voice. Let’s keep the '
+            'captions warm and straightforward.',
+        createdAt: timestamp(9, 23),
+        extraTags: const [
+          ['e', 'v5-campaign-direction', '', 'reply'],
+          ['p', 'mina'],
+        ],
+      );
+      final campaignSummaryReplyTwo = _textMsg(
+        id: 'v5-campaign-summary-reply-two',
+        pubkey: 'mina',
+        content: 'Lerato, would you take a look before we schedule anything?',
+        createdAt: timestamp(9, 23),
+        extraTags: const [
+          ['e', 'v5-campaign-direction', '', 'reply'],
+          ['p', 'self'],
+        ],
+      );
+      final threadReplyOne = _textMsg(
+        id: 'v5-thread-reply-one',
+        pubkey: 'noluthando',
+        content:
+            'This is much closer to the client’s voice. Let’s keep the '
+            'captions warm and straightforward.',
+        createdAt: timestamp(9, 23),
+        extraTags: const [
+          ['e', 'v5-thread-root', '', 'reply'],
+          ['p', 'mina'],
+        ],
+      );
+      final threadReplyTwo = _textMsg(
+        id: 'v5-thread-reply-two',
+        pubkey: 'mina',
+        content: 'Lerato, would you take a look before we schedule anything?',
+        createdAt: timestamp(9, 23),
+        extraTags: const [
+          ['e', 'v5-thread-root', '', 'reply'],
+          ['p', 'self'],
+        ],
+      );
+      final creativeMessage = _textMsg(
+        id: 'v5-olive-creative',
+        pubkey: 'sam',
+        content:
+            'The first visual is ready. It feels softer, with more space for '
+            'the story.',
+        createdAt: timestamp(9, 23),
+      );
+      final marketingMessage = _textMsg(
+        id: 'v5-marketing-message',
+        pubkey: 'sam',
+        content:
+            'The launch artwork is ready for review. Let’s keep the message '
+            'focused on the customer story.',
+        createdAt: timestamp(9, 23),
+      );
+      final salesMessage = _textMsg(
+        id: 'v5-sales-message',
+        pubkey: 'aya',
+        content:
+            'I’m comparing three hospitality leads against our ideal client '
+            'profile. I’ll bring back the evidence before suggesting outreach.',
+        createdAt: timestamp(9, 23),
+      );
+      final minaMessage = _textMsg(
+        id: 'v5-mina-message',
+        pubkey: 'mina',
+        content:
+            'Let’s work through it together. What would you like to focus on?',
+        createdAt: timestamp(9, 23),
+      );
+      final ayaMessage = _textMsg(
+        id: 'v5-aya-message',
+        pubkey: 'aya',
+        content:
+            'Let’s work through it together. What would you like to focus on?',
+        createdAt: timestamp(9, 23),
+      );
+
+      Channel conversation({
+        required String name,
+        String type = 'stream',
+        String description = '',
+        List<String> participants = const [],
+        List<String> participantPubkeys = const [],
+      }) => Channel(
+        id: _channelId,
+        name: name,
+        channelType: type,
+        visibility: type == 'dm' ? 'private' : 'open',
+        description: description,
+        createdBy: 'self',
+        createdAt: DateTime(2026),
+        memberCount: type == 'dm' ? 2 : 6,
+        participants: participants,
+        participantPubkeys: participantPubkeys,
+        isMember: true,
+      );
+
+      final olive = conversation(
+        name: 'olive-studio',
+        description: 'Campaigns, feedback and the work between.',
+      );
+      final marketing = conversation(name: 'marketing');
+      final sales = conversation(name: 'sales');
+      final minaDm = conversation(
+        name: 'Mina',
+        type: 'dm',
+        participants: const ['Lerato Molefe', 'Mina'],
+        participantPubkeys: const ['self', 'mina'],
+      );
+      final ayaDm = conversation(
+        name: 'Aya',
+        type: 'dm',
+        participants: const ['Lerato Molefe', 'Aya'],
+        participantPubkeys: const ['self', 'aya'],
+      );
+      final members = [
+        for (final member in [
+          ('mina', 'bot', 'Mina'),
+          ('noluthando', 'member', 'Noluthando'),
+          ('sam', 'member', 'Sam Patel'),
+          ('self', 'owner', 'Lerato'),
+          ('aya', 'bot', 'Aya'),
+          ('thabo', 'member', 'Thabo'),
+        ])
+          ChannelMember(
+            pubkey: member.$1,
+            role: member.$2,
+            joinedAt: DateTime(2026),
+            displayName: member.$3,
+          ),
+      ];
+      final users = const {
+        'self': UserProfile(pubkey: 'self', displayName: 'Lerato'),
+        'mina': UserProfile(
+          pubkey: 'mina',
+          displayName: 'Mina',
+          ownerPubkey: 'self',
+        ),
+        'aya': UserProfile(
+          pubkey: 'aya',
+          displayName: 'Aya',
+          ownerPubkey: 'self',
+        ),
+        'noluthando': UserProfile(
+          pubkey: 'noluthando',
+          displayName: 'Noluthando',
+        ),
+        'sam': UserProfile(pubkey: 'sam', displayName: 'Sam Patel'),
+        'thabo': UserProfile(pubkey: 'thabo', displayName: 'Thabo'),
+      };
+      const creativePreview = DeliverablePreviewData(
+        title: 'Olive Studio · October plan',
+        detail: 'Open the concepts and leave feedback',
+        brand: 'OLIVE STUDIO',
+        coverTitle: 'A slower\nkind of morning.',
+        coverFooter: '',
+        reviewStatus: '',
+        versionLabel: '',
+      );
+      const threadPreview = DeliverablePreviewData(
+        title: 'October content plan · v2',
+        detail: '3 concepts · Ready for review',
+        brand: 'OLIVE STUDIO',
+        coverTitle: 'A slower\nkind of morning.',
+        coverFooter: '',
+        reviewStatus: '',
+        versionLabel: '',
+      );
+
+      final routes =
+          <
+            ({
+              String name,
+              Channel channel,
+              List<NostrEvent> messages,
+              Map<String, ChannelMessagePresentation> presentations,
+              String? threadRootId,
+            })
+          >[
+            (
+              name: 'channel',
+              channel: olive,
+              messages: [
+                engagement,
+                campaignRoot,
+                campaignSummaryReplyOne,
+                campaignSummaryReplyTwo,
+                creativeMessage,
+              ],
+              presentations: const {
+                'v5-campaign-direction': ChannelMessagePresentation(
+                  threadReplyCount: 4,
+                ),
+                'v5-olive-creative': ChannelMessagePresentation(
+                  deliverable: creativePreview,
+                ),
+              },
+              threadRootId: null,
+            ),
+            (
+              name: 'thread',
+              channel: olive,
+              messages: [threadRoot, threadReplyOne, threadReplyTwo],
+              presentations: const {
+                'v5-thread-root': ChannelMessagePresentation(
+                  deliverable: threadPreview,
+                  threadReplyCount: 4,
+                ),
+              },
+              threadRootId: 'v5-thread-root',
+            ),
+            (
+              name: 'conversation-marketing',
+              channel: marketing,
+              messages: [marketingMessage],
+              presentations: const {},
+              threadRootId: null,
+            ),
+            (
+              name: 'conversation-sales',
+              channel: sales,
+              messages: [salesMessage],
+              presentations: const {},
+              threadRootId: null,
+            ),
+            (
+              name: 'dm-mina',
+              channel: minaDm,
+              messages: [minaMessage],
+              presentations: const {},
+              threadRootId: null,
+            ),
+            (
+              name: 'dm-aya',
+              channel: ayaDm,
+              messages: [ayaMessage],
+              presentations: const {},
+              threadRootId: null,
+            ),
+          ];
+      const captureSizes = {
+        '390x844': Size(390, 844),
+        '412x915': Size(412, 915),
+      };
+
+      for (final size in captureSizes.entries) {
+        for (final brightness in [Brightness.light, Brightness.dark]) {
+          final mode = brightness == Brightness.light ? 'light' : 'dark';
+          tester.view.physicalSize = size.value;
+          tester.view.devicePixelRatio = 1;
+          tester.view.padding = const FakeViewPadding(top: 46, bottom: 20);
+          tester.view.viewPadding = const FakeViewPadding(top: 46, bottom: 20);
+
+          for (final route in routes) {
+            final output = Directory(
+              '/tmp/m2b-visual-sheets/${size.key}/$mode',
+            );
+            output.createSync(recursive: true);
+            final previousComparator = goldenFileComparator;
+            goldenFileComparator = _CaptureFileComparator(
+              Uri.file('${output.path}/capture_test.dart'),
+              output.path,
+            );
+            await tester.pumpWidget(
+              _buildTestable(
+                messages: route.messages,
+                users: users,
+                openQuickActions: () {},
+                members: route.channel.isDm ? const [] : members,
+                knownAgentPubkeys: const {'mina', 'aya'},
+                threadReplies: route.threadRootId == null
+                    ? const {}
+                    : {
+                        route.threadRootId!: [threadReplyOne, threadReplyTwo],
+                      },
+                channel: route.channel,
+                initialThreadRootId: route.threadRootId,
+                messagePresentations: route.presentations,
+                conversationDayNow: now,
+                brightness: brightness,
+                captureKey: const ValueKey('m2b-detail-fullscreen-capture'),
+                routeInNavigationStack: true,
+                profileDisplayName: 'Lerato Molefe',
+                disableAnimations: true,
+                showCaptureSystemBars: true,
+                presence: const {
+                  'self': 'online',
+                  'mina': 'online',
+                  'sam': 'online',
+                  'noluthando': 'online',
+                },
+              ),
+            );
+            await tester.pumpAndSettle();
+
+            final headerTitle = switch (route.name) {
+              'channel' || 'conversation-marketing' || 'conversation-sales' =>
+                find.text('# ${route.channel.name}').first,
+              'thread' => find.byKey(const ValueKey('thread-app-bar-title')),
+              _ => find.byKey(const ValueKey('dm-header-name')),
+            };
+            debugPrint(
+              'VISUAL_LAYOUT ${route.name} ${size.key} $mode '
+              'header=${tester.getRect(headerTitle)} '
+              'date=${tester.getRect(find.text('Today · 28 September').first)} '
+              'firstMessage=${tester.getRect(find.text(route.messages.first.content).first)} '
+              'composer=${tester.getRect(find.byKey(const ValueKey('composer-surface')))}',
+            );
+
+            if (route.name == 'channel') {
+              expect(find.text('# olive-studio'), findsOneWidget);
+              expect(find.text('6 members · 2 agents'), findsOneWidget);
+              expect(
+                find.text(
+                  'Engagement has dipped. What could we change for October?',
+                ),
+                findsOneWidget,
+              );
+              expect(find.byType(DeliverablePreviewCard), findsOneWidget);
+              expect(find.text('Olive Studio · October plan'), findsOneWidget);
+              expect(find.text('Today · 28 September'), findsWidgets);
+              expect(find.text('Message the team...'), findsOneWidget);
+            } else if (route.name == 'thread') {
+              expect(find.text('Thread in #olive-studio'), findsOneWidget);
+              expect(find.byType(DeliverablePreviewCard), findsOneWidget);
+              expect(find.text('October content plan · v2'), findsOneWidget);
+              expect(
+                find.text(
+                  'Customer stories feel like the right direction. Here’s the first concept, with a quieter, more personal tone.',
+                ),
+                findsOneWidget,
+              );
+              expect(
+                find.byKey(const ValueKey('thread-app-bar-title')),
+                findsOneWidget,
+              );
+              expect(
+                tester
+                    .widget<Text>(
+                      find.byKey(const ValueKey('thread-app-bar-title')),
+                    )
+                    .data,
+                'Thread',
+              );
+              expect(find.text('Today · 28 September'), findsOneWidget);
+              expect(find.text('Reply to the thread...'), findsOneWidget);
+            } else if (route.name == 'conversation-marketing') {
+              expect(find.text('# marketing'), findsOneWidget);
+              expect(find.text('6 members · 2 agents'), findsOneWidget);
+              expect(
+                find.text(
+                  'The launch artwork is ready for review. Let’s keep the message focused on the customer story.',
+                ),
+                findsOneWidget,
+              );
+              expect(find.text('Message the team...'), findsOneWidget);
+            } else if (route.name == 'conversation-sales') {
+              expect(find.text('# sales'), findsOneWidget);
+              expect(find.text('6 members · 2 agents'), findsOneWidget);
+              expect(
+                find.text(
+                  'I’m comparing three hospitality leads against our ideal client profile. I’ll bring back the evidence before suggesting outreach.',
+                ),
+                findsOneWidget,
+              );
+              expect(find.text('Message the team...'), findsOneWidget);
+            } else if (route.name == 'dm-mina') {
+              expect(find.text('Mina'), findsNWidgets(2));
+              expect(
+                find.byKey(const ValueKey('dm-header-name')),
+                findsOneWidget,
+              );
+              expect(find.text('Direct message · AI agent'), findsOneWidget);
+              expect(
+                find.text(
+                  'Let’s work through it together. What would you like to focus on?',
+                ),
+                findsOneWidget,
+              );
+              expect(find.text('Message the team...'), findsOneWidget);
+              expect(find.byTooltip('View members'), findsNothing);
+            } else {
+              expect(find.text('Aya'), findsNWidgets(2));
+              expect(
+                find.byKey(const ValueKey('dm-header-name')),
+                findsOneWidget,
+              );
+              expect(find.text('Direct message · AI agent'), findsOneWidget);
+              expect(
+                find.text(
+                  'Let’s work through it together. What would you like to focus on?',
+                ),
+                findsOneWidget,
+              );
+              expect(find.text('Message the team...'), findsOneWidget);
+              expect(find.byTooltip('View members'), findsNothing);
+            }
+
+            await expectLater(
+              find.byKey(const ValueKey('m2b-detail-fullscreen-capture')),
+              matchesGoldenFile('${route.name}.png'),
+            );
+
+            if (route.name == 'channel') {
+              await tester.tap(
+                find.byKey(const ValueKey('channel-info-action')),
+              );
+              await tester.pumpAndSettle();
+              debugPrint(
+                'VISUAL_LAYOUT channel-info ${size.key} $mode '
+                'header=${tester.getRect(find.text('Olive Studio').first)} '
+                'hero=${tester.getRect(find.byKey(const ValueKey('channel-details-hero')))} '
+                'members=${tester.getRect(find.byKey(const ValueKey('channel-details-members-card')))} '
+                'list=${tester.getRect(find.byKey(const ValueKey('channel-details-page-list')))} '
+                'safeTop=${MediaQuery.paddingOf(tester.element(find.byKey(const ValueKey('channel-details-page-list')))).top}',
+              );
+              expect(find.text('Olive Studio'), findsOneWidget);
+              expect(find.text('Client channel'), findsOneWidget);
+              expect(find.text('In this conversation'), findsOneWidget);
+              expect(find.text('October campaign'), findsNothing);
+              await expectLater(
+                find.byKey(const ValueKey('m2b-detail-fullscreen-capture')),
+                matchesGoldenFile('channel-info.png'),
+              );
+            }
+
+            goldenFileComparator = previousComparator;
+            await tester.pumpWidget(const SizedBox.shrink());
+            await tester.pumpAndSettle();
+          }
+        }
+      }
+      tester.view.resetPadding();
+      tester.view.resetViewPadding();
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    testWidgets('captures v5 forum and note routes at both sizes and themes', (
+      tester,
+    ) async {
+      const captureScreenshots = bool.fromEnvironment('CAPTURE_M2B_FORUM');
+      if (!captureScreenshots) return;
+
+      final fontLoader = FontLoader('Manrope')
+        ..addFont(rootBundle.load('assets/fonts/Manrope-Variable.ttf'));
+      await fontLoader.load();
+      final iconFontLoader = FontLoader('packages/lucide_icons_flutter/Lucide')
+        ..addFont(
+          rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
+        );
+      await iconFontLoader.load();
+
+      final today = DateTime.now();
+      int timestamp(int hour, int minute) =>
+          DateTime(
+            today.year,
+            today.month,
+            today.day,
+            hour,
+            minute,
+          ).millisecondsSinceEpoch ~/
+          1000;
+      final summary = ForumThreadSummary(
+        replyCount: 4,
+        descendantCount: 4,
+        lastReplyAt: timestamp(9, 23),
+        participants: const ['mina'],
+      );
+      ForumPost notePost({required int createdAt}) => ForumPost(
+        eventId: 'v5-team-update-note',
+        pubkey: 'noluthando',
+        content:
+            'September wins, and what we learned\n\n'
+            'Two client renewals, a sharper creative direction and much less '
+            'chasing for feedback.\n\n'
+            'The biggest change: keeping the discussion beside the work. '
+            'Let’s carry that into October.',
+        kind: EventKind.forumPost,
+        createdAt: createdAt,
+        channelId: _channelId,
+        tags: const [
+          ['h', _channelId],
+        ],
+        threadSummary: summary,
+      );
+      final post = notePost(
+        createdAt:
+            DateTime.now()
+                .subtract(const Duration(hours: 1))
+                .millisecondsSinceEpoch ~/
+            1000,
+      );
+      final reply = ThreadReply(
+        eventId: 'v5-team-update-note-reply',
+        pubkey: 'mina',
+        content:
+            'I’ll include a clear done condition on every brief. It made this '
+            'week’s review much easier.',
+        kind: EventKind.forumComment,
+        createdAt: timestamp(9, 23),
+        channelId: _channelId,
+        tags: const [
+          ['h', _channelId],
+          ['e', 'v5-team-update-note', '', 'root'],
+          ['e', 'v5-team-update-note', '', 'reply'],
+        ],
+        parentEventId: post.eventId,
+        rootEventId: post.eventId,
+        depth: 0,
+      );
+      final thread = ForumThreadResponse(
+        post: notePost(createdAt: timestamp(8, 30)),
+        replies: [reply],
+        totalReplies: 4,
+      );
+      final forumChannel = Channel(
+        id: _channelId,
+        name: 'Team updates',
+        channelType: 'forum',
+        visibility: 'open',
+        description: 'Team updates',
+        createdBy: 'self',
+        createdAt: DateTime(2026),
+        memberCount: 8,
+        isMember: true,
+      );
+      const captureSizes = {
+        '390x844': Size(390, 844),
+        '412x915': Size(412, 915),
+      };
+      const captureKey = ValueKey('m2b-forum-fullscreen-capture');
+
+      for (final size in captureSizes.entries) {
+        tester.view.physicalSize = size.value;
+        tester.view.devicePixelRatio = 1;
+        tester.view.padding = const FakeViewPadding(top: 46, bottom: 20);
+        tester.view.viewPadding = const FakeViewPadding(top: 46, bottom: 20);
+        for (final brightness in [Brightness.light, Brightness.dark]) {
+          final mode = brightness == Brightness.light ? 'light' : 'dark';
+          final output = Directory('/tmp/m2b-visual-sheets/${size.key}/$mode');
+          output.createSync(recursive: true);
+          final previousComparator = goldenFileComparator;
+          goldenFileComparator = LocalFileComparator(
+            Uri.file('${output.path}/capture_test.dart'),
+          );
+          await tester.pumpWidget(
+            _buildTestable(
+              messages: const [],
+              users: const {
+                'noluthando': UserProfile(
+                  pubkey: 'noluthando',
+                  displayName: 'Noluthando',
+                ),
+                'mina': UserProfile(
+                  pubkey: 'mina',
+                  displayName: 'Mina',
+                  ownerPubkey: 'self',
+                ),
+              },
+              knownAgentPubkeys: const {'mina'},
+              channel: forumChannel,
+              routeRegistry: _forumCaptureRoutes(),
+              forumPostsResponse: ForumPostsResponse(posts: [post]),
+              forumThreadResponse: thread,
+              brightness: brightness,
+              captureKey: captureKey,
+              routeInNavigationStack: true,
+              profileDisplayName: 'Lerato Molefe',
+              disableAnimations: true,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.text('Team updates'), findsOneWidget);
+          expect(find.text('Forum · Company-wide'), findsOneWidget);
+          expect(
+            find.text('September wins, and what we learned'),
+            findsOneWidget,
+          );
+          expect(find.text('4 replies'), findsOneWidget);
+          await expectLater(
+            find.byKey(captureKey),
+            matchesGoldenFile('forum.png'),
+          );
+
+          await tester.tap(find.text('September wins, and what we learned'));
+          await tester.pumpAndSettle();
+          expect(find.text('Team note'), findsOneWidget);
+          expect(find.text('Today, 08:30'), findsOneWidget);
+          expect(find.text('Discussion'), findsOneWidget);
+          expect(
+            find.textContaining('I’ll include a clear done condition'),
+            findsOneWidget,
+          );
+          await expectLater(
+            find.byKey(captureKey),
+            matchesGoldenFile('note.png'),
+          );
+
+          goldenFileComparator = previousComparator;
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+        }
+      }
+      tester.view.resetPadding();
+      tester.view.resetViewPadding();
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    testWidgets(
+      'message avatars use shared agent identity in channel and thread',
       (tester) async {
         final message = _textMsg(
           id: 'bot-message',
@@ -570,14 +1557,24 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        AvatarImage avatarIn(Finder row) => tester.widget<AvatarImage>(
-          find.descendant(of: row, matching: find.byType(AvatarImage)),
+        final avatarKey = const ValueKey('message-avatar-rounded-square-bot');
+        IdentityAvatar avatarIn(Finder row) => tester.widget<IdentityAvatar>(
+          find.descendant(of: row, matching: find.byType(IdentityAvatar)).first,
+        );
+        final channelRow = find.byKey(
+          const ValueKey('message-row-bot-message'),
+        );
+        expect(avatarIn(channelRow).kind, IdentityKind.agent);
+        expect(avatarIn(channelRow).size, 28);
+        expect(
+          tester.getSize(
+            find.descendant(of: channelRow, matching: find.byKey(avatarKey)),
+          ),
+          const Size(28, 28),
         );
         expect(
-          avatarIn(
-            find.byKey(const ValueKey('message-row-bot-message')),
-          ).isAgent,
-          isTrue,
+          find.descendant(of: channelRow, matching: find.text('B')),
+          findsOneWidget,
         );
 
         await tester.tap(find.byKey(const ValueKey('message-row-bot-message')));
@@ -585,13 +1582,13 @@ void main() {
         expect(
           avatarIn(
             find.byKey(const ValueKey('thread-message-row-bot-message')),
-          ).isAgent,
-          isTrue,
+          ).kind,
+          IdentityKind.agent,
         );
       },
     );
 
-    testWidgets('uses the shared 32px masked presence avatar in DM headers', (
+    testWidgets('shows the v5 DM identity subtitle in its header', (
       tester,
     ) async {
       final dmChannel = Channel(
@@ -615,47 +1612,41 @@ void main() {
           users: const {
             'alice': UserProfile(pubkey: 'alice', displayName: 'Alice'),
           },
+          presence: const {'alice': 'online'},
         ),
       );
       await tester.pumpAndSettle();
 
-      final avatarFinder = find.byKey(const ValueKey('dm-header-avatar'));
-      final avatar = tester.widget<MaskedAvatarBadge>(avatarFinder);
-      expect(tester.getSize(avatarFinder), const Size.square(32));
-      expect(avatar.geometry, AvatarBadgeMaskGeometry.presenceDot);
-      expect(avatar.badge, isNotNull);
-      expect(
-        tester
-            .widget<ClipRRect>(
-              find.descendant(
-                of: avatarFinder,
-                matching: find.byType(ClipRRect),
-              ),
-            )
-            .borderRadius,
-        BorderRadius.circular(16),
-      );
-      expect(
-        find.descendant(of: avatarFinder, matching: find.byType(ClipPath)),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('dm-header-avatar')), findsNothing);
       final name = tester.widget<Text>(
         find.byKey(const ValueKey('dm-header-name')),
       );
-      final presence = tester.widget<Text>(
-        find.byKey(const ValueKey('dm-header-presence')),
+      final subtitle = tester.widget<Text>(
+        find.byKey(const ValueKey('dm-header-subtitle')),
       );
-      expect(name.style?.fontSize, 16);
-      expect(name.style?.fontWeight, FontWeight.w500);
-      expect(presence.style?.fontSize, 14);
-      expect(presence.style?.fontWeight, FontWeight.w400);
-      // Named counterpart: the avatar initial comes from the authored name.
-      expect(_dmHeaderAvatarInitial(tester), 'A');
+      expect(
+        name.style?.fontSize,
+        MobileTypographyTokens.v5.companyHubTitle.fontSize,
+      );
+      expect(
+        name.style?.fontWeight,
+        MobileTypographyTokens.v5.companyHubTitle.fontWeight,
+      );
+      expect(
+        subtitle.style?.fontSize,
+        MobileTypographyTokens.v5.identityDetails.fontSize,
+      );
+      expect(
+        subtitle.style?.fontWeight,
+        MobileTypographyTokens.v5.identityDetails.fontWeight,
+      );
+      expect(subtitle.data, 'Direct message');
       expect(find.byTooltip('View members'), findsNothing);
       expect(find.byTooltip('Start Huddle'), findsOneWidget);
+      expect(find.byTooltip('Conversation actions'), findsOneWidget);
     });
 
-    testWidgets('keys unnamed DM header avatars to the hex participant key', (
+    testWidgets('shows the counterpart key when an unnamed DM has no avatar', (
       tester,
     ) async {
       // A valid unnamed counterpart: the compact-npub label would render `N`
@@ -686,13 +1677,10 @@ void main() {
         tester.widget<Text>(find.byKey(const ValueKey('dm-header-name'))).data,
         shortPubkey(a11ce),
       );
-      // The named counterpart in the test above keeps its authored initial
-      // ('A' from 'Alice'); this unnamed one gets the hex-key-derived 'A',
-      // not the `N` its npub label starts with.
-      expect(_dmHeaderAvatarInitial(tester), 'A');
+      expect(find.byKey(const ValueKey('dm-header-avatar')), findsNothing);
     });
 
-    testWidgets('keys DM header fallback avatars to the non-self counterpart', (
+    testWidgets('names the non-self counterpart in a DM header', (
       tester,
     ) async {
       // Member order does not guarantee the counterpart is listed first:
@@ -727,10 +1715,10 @@ void main() {
         tester.widget<Text>(find.byKey(const ValueKey('dm-header-name'))).data,
         shortPubkey(b0b),
       );
-      expect(_dmHeaderAvatarInitial(tester), 'B');
+      expect(find.byKey(const ValueKey('dm-header-avatar')), findsNothing);
     });
 
-    testWidgets('uses a fallback squircle for bot-role DM participants', (
+    testWidgets('keeps bot DM identity in the title without a header avatar', (
       tester,
     ) async {
       final dmChannel = Channel(
@@ -756,33 +1744,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final avatarFinder = find.byKey(const ValueKey('dm-header-avatar'));
-      expect(
-        tester
-            .widget<ClipRRect>(
-              find.descendant(
-                of: avatarFinder,
-                matching: find.byType(ClipRRect),
-              ),
-            )
-            .borderRadius,
-        BorderRadius.circular(9.6),
-      );
-      expect(
-        tester
-            .widget<AvatarImageContent>(
-              find.descendant(
-                of: avatarFinder,
-                matching: find.byType(AvatarImageContent),
-              ),
-            )
-            .imageUrl,
-        isNull,
-      );
-      expect(
-        find.descendant(of: avatarFinder, matching: find.byType(ClipPath)),
-        findsOneWidget,
-      );
+      expect(find.text('Bot DM'), findsOneWidget);
+      expect(find.byKey(const ValueKey('dm-header-avatar')), findsNothing);
     });
 
     testWidgets('hides the Huddle action in a one-to-one agent DM', (
@@ -817,18 +1780,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final avatarFinder = find.byKey(const ValueKey('dm-header-avatar'));
-      expect(
-        tester
-            .widget<ClipRRect>(
-              find.descendant(
-                of: avatarFinder,
-                matching: find.byType(ClipRRect),
-              ),
-            )
-            .borderRadius,
-        BorderRadius.circular(9.6),
-      );
+      expect(find.byKey(const ValueKey('dm-header-avatar')), findsNothing);
       expect(find.byKey(const ValueKey('channel-huddle-button')), findsNothing);
       expect(find.byTooltip('Start Huddle'), findsNothing);
     });
@@ -2061,6 +3013,465 @@ void main() {
       expect(scaffold.resizeToAvoidBottomInset, isTrue);
     });
 
+    testWidgets('opens the registered New post route from a forum header', (
+      tester,
+    ) async {
+      final forumChannel = Channel(
+        id: _channelId,
+        name: 'Team updates',
+        channelType: 'forum',
+        visibility: 'open',
+        description: 'Team updates',
+        createdBy: 'self',
+        createdAt: DateTime(2026),
+        memberCount: 8,
+        isMember: true,
+      );
+      await tester.pumpWidget(
+        _buildTestable(
+          messages: const [],
+          channel: forumChannel,
+          members: [
+            for (var index = 0; index < 8; index++)
+              ChannelMember(
+                pubkey: 'forum-member-$index',
+                role: index == 0 ? 'owner' : 'member',
+                joinedAt: DateTime(2026),
+                displayName: index == 0 ? 'Lerato Molefe' : 'Member $index',
+              ),
+          ],
+          routeRegistry: _forumCaptureRoutes(),
+          forumPostsResponse: const ForumPostsResponse(posts: []),
+          disableAnimations: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Forum · Company-wide'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('forum-new-post-action')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('forum-new-post-action')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ForumNewPostPage), findsOneWidget);
+      expect(find.byKey(const ValueKey('forum-post-title')), findsOneWidget);
+      expect(find.byKey(const ValueKey('forum-post-body')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('reaches the forum composer through the root shell', (
+      tester,
+    ) async {
+      final forumChannel = Channel(
+        id: _channelId,
+        name: 'Team updates',
+        channelType: 'forum',
+        visibility: 'open',
+        description: 'Team updates',
+        createdBy: 'self',
+        createdAt: DateTime(2026),
+        memberCount: 8,
+        isMember: true,
+      );
+      await tester.pumpWidget(
+        _buildTestable(
+          messages: const [],
+          channel: forumChannel,
+          members: [
+            for (var index = 0; index < 8; index++)
+              ChannelMember(
+                pubkey: 'forum-member-$index',
+                role: index == 0 ? 'owner' : 'member',
+                joinedAt: DateTime(2026),
+                displayName: index == 0 ? 'Lerato Molefe' : 'Member $index',
+              ),
+          ],
+          home: HomePage(
+            routeRegistry: _forumRootCaptureRoutes(),
+            settingsPageBuilder: (_) => const SizedBox.shrink(),
+            hasUnreadInbox: false,
+          ),
+          disableAnimations: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('mobile-bottom-navigation')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('mobile-nav-chat')));
+      await tester.pumpAndSettle();
+      expect(find.text('Team updates'), findsOneWidget);
+      await tester.tap(find.text('Team updates'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Forum · Company-wide'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('mobile-bottom-navigation')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('forum-new-post-action')));
+      await tester.pumpAndSettle();
+      expect(find.byType(ForumNewPostPage), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('mobile-bottom-navigation')),
+        findsNothing,
+      );
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ForumNewPostPage), findsNothing);
+      expect(find.byType(ForumPostsView), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('mobile-bottom-navigation')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('mobile-brand-bar')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('captures R19 forum and new post routes', (tester) async {
+      const captureScreenshots = bool.fromEnvironment('CAPTURE_W23_FORUM');
+      if (!captureScreenshots) return;
+
+      final fontLoader = FontLoader('Manrope')
+        ..addFont(rootBundle.load('assets/fonts/Manrope-Variable.ttf'));
+      await fontLoader.load();
+      final iconFontLoader = FontLoader('packages/lucide_icons_flutter/Lucide')
+        ..addFont(
+          rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
+        );
+      await iconFontLoader.load();
+
+      final now = DateTime.now();
+      int timestamp(DateTime value) => value.millisecondsSinceEpoch ~/ 1000;
+      final firstPost = _forumCapturePost(
+        id: 'forum-this-week',
+        pubkey: 'self',
+        content:
+            'This week at Lerato\n\nThe work that matters this week: Olive Studio, Cedar’s launch, and client reports.',
+        createdAt: timestamp(now),
+        tags: const [
+          ['h', _channelId],
+        ],
+      );
+      final secondPost = _forumCapturePost(
+        id: 'forum-september-learning',
+        pubkey: 'maya',
+        content:
+            'What we learned in September\n\nSave the useful things. What should we repeat next month?',
+        createdAt: timestamp(now.subtract(const Duration(days: 1))),
+        tags: const [
+          ['h', _channelId],
+        ],
+      );
+      final firstSummary = _forumCapturePost(
+        id: 'forum-this-week-summary',
+        kind: EventKind.channelThreadSummary,
+        pubkey: 'relay',
+        content: jsonEncode({
+          'reply_count': 3,
+          'descendant_count': 3,
+          'last_reply_at': timestamp(now),
+          'participants': ['maya'],
+        }),
+        createdAt: timestamp(now),
+        tags: const [
+          ['h', _channelId],
+          ['e', 'forum-this-week'],
+        ],
+      );
+      final secondSummary = _forumCapturePost(
+        id: 'forum-september-summary',
+        kind: EventKind.channelThreadSummary,
+        pubkey: 'relay',
+        content: jsonEncode({
+          'reply_count': 8,
+          'descendant_count': 8,
+          'last_reply_at': timestamp(now.subtract(const Duration(days: 1))),
+          'participants': ['self'],
+        }),
+        createdAt: timestamp(now.subtract(const Duration(days: 1))),
+        tags: const [
+          ['h', _channelId],
+          ['e', 'forum-september-learning'],
+        ],
+      );
+      final forumFixtureEvents = [
+        firstPost,
+        secondPost,
+        firstSummary,
+        secondSummary,
+      ];
+      final forumChannel = Channel(
+        id: _channelId,
+        name: 'Team updates',
+        channelType: 'forum',
+        visibility: 'open',
+        description: 'Team updates',
+        createdBy: 'self',
+        createdAt: DateTime(2026),
+        memberCount: 8,
+        isMember: true,
+      );
+      final forumMembers = [
+        for (var index = 0; index < 8; index++)
+          ChannelMember(
+            pubkey: 'forum-member-$index',
+            role: index == 0 ? 'owner' : 'member',
+            joinedAt: DateTime(2026),
+            displayName: index == 0 ? 'Lerato Molefe' : 'Member $index',
+          ),
+      ];
+      final attachment = XFile.fromData(
+        Uint8List(254000),
+        path: '/test/October campaign brief.pdf',
+        mimeType: 'application/pdf',
+        length: 254000,
+      );
+      final mediaUploadService = _R19ForumCaptureMediaUploadService(attachment);
+      const captureKey = ValueKey('w23-forum-fullscreen-capture');
+      const captureSizes = {
+        '390x844': Size(390, 844),
+        '412x915': Size(412, 915),
+      };
+      for (final size in captureSizes.entries) {
+        tester.view.physicalSize = size.value;
+        tester.view.devicePixelRatio = 1;
+        tester.view.padding = const FakeViewPadding(top: 46, bottom: 20);
+        tester.view.viewPadding = const FakeViewPadding(top: 46, bottom: 20);
+        for (final brightness in [Brightness.light, Brightness.dark]) {
+          final mode = brightness == Brightness.light ? 'light' : 'dark';
+          final forumRelay = _R19ForumCaptureRelay(forumFixtureEvents);
+          Future<void> mountForum(_R19ForumCaptureRelay relay) async {
+            await _testPrefs.clear();
+            await tester.pumpWidget(
+              _buildTestable(
+                messages: const [],
+                channel: forumChannel,
+                users: const {
+                  'self': UserProfile(pubkey: 'self', displayName: 'Lerato'),
+                  'maya': UserProfile(pubkey: 'maya', displayName: 'Maya'),
+                },
+                members: forumMembers,
+                routeRegistry: _forumCaptureRoutes(),
+                mediaUploadService: mediaUploadService,
+                relaySessionNotifier: relay,
+                relayConfigNotifier: _R19ForumCaptureConfig(),
+                home: HomePage(
+                  routeRegistry: _forumRootCaptureRoutes(),
+                  settingsPageBuilder: (_) => const SizedBox.shrink(),
+                  hasUnreadInbox: false,
+                ),
+                brightness: brightness,
+                captureKey: captureKey,
+                profileDisplayName: 'Lerato Molefe',
+                disableAnimations: true,
+              ),
+            );
+            await tester.pumpAndSettle();
+            await tester.tap(find.byKey(const ValueKey('mobile-nav-chat')));
+            await tester.pumpAndSettle();
+            await tester.tap(find.text('Team updates'));
+            await tester.pumpAndSettle();
+          }
+
+          Future<void> capture(String route) async {
+            FocusManager.instance.primaryFocus?.unfocus();
+            await tester.pumpAndSettle();
+            if (route == 'forum' || route == 'forum-posted-first') {
+              expect(
+                find.byKey(const ValueKey('mobile-bottom-navigation')),
+                findsOneWidget,
+              );
+            } else if (route.startsWith('forum-new')) {
+              expect(
+                find.byKey(const ValueKey('mobile-bottom-navigation')),
+                findsNothing,
+              );
+            }
+            final output = Directory('/tmp/w23-mobile-forum/${size.key}/$mode');
+            output.createSync(recursive: true);
+            final previousComparator = goldenFileComparator;
+            goldenFileComparator = LocalFileComparator(
+              Uri.file('${output.path}/capture_test.dart'),
+            );
+            try {
+              await expectLater(
+                find.byKey(captureKey),
+                matchesGoldenFile('$route.png'),
+              );
+            } finally {
+              goldenFileComparator = previousComparator;
+            }
+          }
+
+          const capturePostTitle = 'A clear plan for October';
+          const capturePostBody =
+              'Let’s keep three priorities in focus this week.\n\n'
+              '• Finish the Olive Studio campaign review.\n'
+              '• Share Cedar’s launch brief by Thursday.\n'
+              '• Bring one useful learning to Friday’s team catch-up.\n\n'
+              'What needs your attention first?';
+
+          Future<void> addSampleAttachment() async {
+            await tester.tap(find.text('Add attachments'));
+            await tester.pump(const Duration(milliseconds: 300));
+            await tester.pump();
+            await tester.tap(find.text('Files'));
+            await tester.pumpAndSettle();
+            expect(find.text('October campaign brief.pdf'), findsOneWidget);
+          }
+
+          final postingRelay = _R19ForumCaptureRelay(forumFixtureEvents);
+          await mountForum(postingRelay);
+          await tester.tap(find.byKey(const ValueKey('forum-new-post-action')));
+          await tester.pumpAndSettle();
+          await tester.enterText(
+            find.byKey(const ValueKey('forum-post-title')),
+            capturePostTitle,
+          );
+          await tester.enterText(
+            find.byKey(const ValueKey('forum-post-body')),
+            capturePostBody,
+          );
+          await addSampleAttachment();
+          final postingPreview = postingRelay.holdNextPublish();
+          await tester.tap(find.widgetWithText(FilledButton, 'Post'));
+          await tester.pump();
+          await tester.pump();
+          await postingPreview.started.future;
+          await tester.pump();
+          expect(find.text('October campaign brief.pdf'), findsOneWidget);
+          await capture('forum-new-posting');
+          postingPreview.result.completeError(StateError('Relay unavailable'));
+          await tester.pumpAndSettle();
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+
+          await mountForum(forumRelay);
+          await capture('forum');
+          await tester.tap(find.byKey(const ValueKey('forum-new-post-action')));
+          await tester.pumpAndSettle();
+          await capture('forum-new');
+          await tester.enterText(
+            find.byKey(const ValueKey('forum-post-title')),
+            capturePostTitle,
+          );
+          await tester.enterText(
+            find.byKey(const ValueKey('forum-post-body')),
+            capturePostBody,
+          );
+          await tester.pumpAndSettle();
+          await capture('forum-new-draft');
+
+          await addSampleAttachment();
+          await capture('forum-new-attachments');
+          await tester.tap(find.byTooltip('Remove attachment'));
+          await tester.pumpAndSettle();
+          expect(find.text('October campaign brief.pdf'), findsNothing);
+
+          await tester.tap(find.text('Cancel'));
+          await tester.pumpAndSettle();
+          await capture('forum-new-discard');
+          await tester.tap(find.text('Keep editing'));
+          await tester.pumpAndSettle();
+          await addSampleAttachment();
+          final pendingPost = forumRelay.holdNextPublish();
+          await tester.tap(find.widgetWithText(FilledButton, 'Post'));
+          await tester.pump();
+          await tester.pump();
+          final pendingEvent = await pendingPost.started.future;
+          expect(
+            pendingEvent.tags.any((tag) => tag.firstOrNull == 'imeta'),
+            isTrue,
+          );
+          await tester.pump();
+          pendingPost.result.completeError(StateError('Relay unavailable'));
+          await pendingPost.failed.future;
+          await tester.pumpAndSettle();
+          expect(find.text('Your post wasn’t sent.'), findsOneWidget);
+          expect(find.text('October campaign brief.pdf'), findsOneWidget);
+          await capture('forum-new-failed');
+          await tester.tap(find.widgetWithText(FilledButton, 'Retry post'));
+          await tester.pumpAndSettle();
+          expect(find.byType(ForumPublishedNotePage), findsOneWidget);
+          expect(
+            forumRelay.published.last.tags.any(
+              (tag) => tag.firstOrNull == 'imeta',
+            ),
+            isTrue,
+          );
+          expect(
+            forumRelay.published.last.content,
+            '$capturePostTitle\n\n'
+            '$capturePostBody\n'
+            '[October campaign brief.pdf](https://media.example/october-brief)',
+          );
+          final postedEvent = forumRelay.published.last;
+          await tester.pumpWidget(
+            _buildTestable(
+              messages: const [],
+              channel: forumChannel,
+              users: const {
+                'self': UserProfile(pubkey: 'self', displayName: 'Lerato'),
+                'maya': UserProfile(pubkey: 'maya', displayName: 'Maya'),
+              },
+              members: forumMembers,
+              routeRegistry: _forumCaptureRoutes(),
+              mediaUploadService: mediaUploadService,
+              relaySessionNotifier: forumRelay,
+              relayConfigNotifier: _R19ForumCaptureConfig(),
+              home: ForumPublishedNotePage(
+                channelId: _channelId,
+                channelName: 'Team updates',
+                memberCount: 8,
+                title: capturePostTitle,
+                body: capturePostBody,
+                postEventId: postedEvent.id,
+                mentionPubkeys: const [],
+                eventTags: postedEvent.tags,
+                presentation: _forumCapturePresentation(),
+              ),
+              brightness: brightness,
+              captureKey: captureKey,
+              profileDisplayName: 'Lerato Molefe',
+              disableAnimations: true,
+            ),
+          );
+          await tester.pumpAndSettle();
+          await capture('forum-new-posted');
+
+          await mountForum(forumRelay);
+          expect(find.byType(ForumPostsView), findsOneWidget);
+          final forumCardTitles = tester.widgetList<Text>(
+            find.descendant(
+              of: find.byType(ForumPostsView),
+              matching: find.byWidgetPredicate(
+                (widget) =>
+                    widget is Text &&
+                    (widget.data == 'A clear plan for October' ||
+                        widget.data == 'This week at Lerato' ||
+                        widget.data == 'What we learned in September'),
+              ),
+            ),
+          );
+          expect(forumCardTitles.first.data, 'A clear plan for October');
+          await capture('forum-posted-first');
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+        }
+      }
+      tester.view.resetPadding();
+      tester.view.resetViewPadding();
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+      mediaUploadService.dispose();
+    });
+
     testWidgets('renders video attachments from imeta tags in the timeline', (
       tester,
     ) async {
@@ -2123,7 +3534,7 @@ void main() {
                 pubkey: 'agent',
                 role: 'bot',
                 joinedAt: DateTime(2025),
-                displayName: 'Agent',
+                displayName: 'Scout',
               ),
             ],
           ),
@@ -2134,54 +3545,57 @@ void main() {
           find.byKey(const ValueKey('channel-header-settings-trigger')),
         );
         await tester.pumpAndSettle();
-        expect(find.text('3 members'), findsOneWidget);
-        expect(find.text('You · Owner', findRichText: true), findsOneWidget);
-        expect(find.text('Alice · Member', findRichText: true), findsOneWidget);
-        expect(find.text('Agent · Agent', findRichText: true), findsOneWidget);
-        expect(find.text('Member'), findsNothing);
-        expect(find.text('Owner'), findsNothing);
-        expect(find.text('People · 2'), findsNothing);
-        expect(find.text('Agents · 1'), findsNothing);
-        expect(find.text('PEOPLE — 2'), findsNothing);
-        expect(find.text('BOTS — 1'), findsNothing);
+        expect(find.byType(IdentityRow), findsNWidgets(3));
+        expect(find.text('In this conversation'), findsOneWidget);
+        for (final (pubkey, name, details) in [
+          ('self', 'You', 'Owner'),
+          ('alice', 'Alice', 'Member'),
+          ('agent', 'Scout', 'Agent'),
+        ]) {
+          final row = find.byKey(ValueKey('channel-details-member-$pubkey'));
+          expect(
+            find.descendant(of: row, matching: find.text(name)),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(of: row, matching: find.text(details)),
+            findsOneWidget,
+          );
+        }
+        final agentRow = find.byKey(
+          const ValueKey('channel-details-member-agent'),
+        );
+        expect(
+          tester
+              .widget<IdentityAvatar>(
+                find.descendant(
+                  of: agentRow,
+                  matching: find.byType(IdentityAvatar),
+                ),
+              )
+              .kind,
+          IdentityKind.agent,
+        );
+        expect(find.text('People'), findsNothing);
+        expect(find.text('Agents'), findsNothing);
 
         final aliceRow = find.byKey(
           const ValueKey('channel-details-member-alice'),
         );
-        final aliceText = tester.widget<Text>(
-          find.descendant(
-            of: aliceRow,
-            matching: find.byWidgetPredicate(
-              (widget) =>
-                  widget is Text &&
-                  widget.textSpan?.toPlainText() == 'Alice · Member',
-            ),
-          ),
+        final aliceIdentity = tester.widget<IdentityAvatar>(
+          find.descendant(of: aliceRow, matching: find.byType(IdentityAvatar)),
         );
-        final aliceSpans = (aliceText.textSpan! as TextSpan).children!;
-        expect(
-          aliceSpans.last.style?.fontSize,
-          AppTheme.light().textTheme.bodySmall?.fontSize,
-        );
-        expect(
-          tester
-              .widget<AvatarImage>(
-                find.descendant(
-                  of: aliceRow,
-                  matching: find.byType(AvatarImage),
-                ),
-              )
-              .radius,
-          20,
-        );
+        expect(aliceIdentity.initials, 'A');
+        expect(aliceIdentity.kind, IdentityKind.person);
+        expect(aliceIdentity.size, 39);
         expect(
           find.descendant(
             of: aliceRow,
-            matching: find.byIcon(LucideIcons.chevronRight),
+            matching: find.byIcon(Icons.chevron_right),
           ),
-          findsOneWidget,
+          findsNothing,
         );
-        expect(tester.getSize(aliceRow).height, 40 + (Grid.xxs * 2));
+        expect(tester.getSize(aliceRow).height, 39 + 28);
 
         await tester.tap(aliceRow);
         await tester.pumpAndSettle();
@@ -2288,11 +3702,12 @@ void main() {
       );
       expect(
         tester.getTopLeft(addRow).dy,
-        lessThan(tester.getTopLeft(memberRow).dy),
+        greaterThan(tester.getBottomLeft(memberRow).dy),
       );
 
-      await tester.ensureVisible(seeAllRow);
+      await Scrollable.ensureVisible(tester.element(seeAllRow), alignment: 0.4);
       await tester.pumpAndSettle();
+      expect(seeAllRow.hitTestable(), findsOneWidget);
       await tester.tap(seeAllRow);
       await tester.pumpAndSettle();
       expect(find.byType(MembersSheet), findsOneWidget);
@@ -2423,6 +3838,14 @@ void main() {
       final editAction = find.byKey(
         const ValueKey('channel-details-edit-action'),
       );
+      await tester.scrollUntilVisible(
+        starAction,
+        160,
+        scrollable: find.descendant(
+          of: find.byKey(const ValueKey('channel-details-page-list')),
+          matching: find.byType(Scrollable),
+        ),
+      );
       expect(find.text('Star'), findsOneWidget);
       expect(find.text('Mute'), findsOneWidget);
       expect(find.text('Edit'), findsOneWidget);
@@ -2438,7 +3861,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('previews five members before an icon-free See all row', (
+    testWidgets('previews three members with See all in the section heading', (
       tester,
     ) async {
       // Valid fixture keys whose npub encodings were verified against the
@@ -2496,7 +3919,7 @@ void main() {
         return key is ValueKey<String> &&
             key.value.startsWith('channel-details-member-');
       });
-      expect(previews, findsNWidgets(5));
+      expect(previews, findsNWidgets(3));
       expect(find.text('See all'), findsOneWidget);
       final seeAllRow = find.byKey(
         const ValueKey('channel-details-members-row'),
@@ -2504,7 +3927,7 @@ void main() {
       expect(seeAllRow, findsOneWidget);
       expect(
         tester.widget<Text>(find.text('See all')).style,
-        Theme.of(tester.element(seeAllRow)).textTheme.bodyLarge,
+        MobileTypographyTokens.v5.identityDetails,
       );
       expect(
         find.descendant(of: seeAllRow, matching: find.text('7 members')),
@@ -2517,18 +3940,11 @@ void main() {
         ),
         findsNothing,
       );
-      final firstMemberRow = previews.first;
-      final firstMemberTitle = find.descendant(
-        of: firstMemberRow,
-        matching: find.byWidgetPredicate(
-          (widget) => widget is Text && widget.textSpan != null,
-        ),
-      );
       expect(
         tester.getTopLeft(find.text('See all')).dx,
-        closeTo(tester.getTopLeft(firstMemberTitle).dx, 0.1),
+        greaterThan(tester.getTopLeft(find.text('In this conversation')).dx),
       );
-      expect(tester.getSize(seeAllRow).height, 40 + (Grid.xxs * 2));
+      expect(tester.getSize(seeAllRow).height, lessThan(36));
 
       // Identity display in the preview rows: unnamed members keep distinct
       // hex-keyed avatar initials (the compact-npub label would render `N`
@@ -2555,7 +3971,7 @@ void main() {
       );
       expect(_previewRowAvatarInitial(tester, 'self'), 'Y');
 
-      await tester.ensureVisible(seeAllRow);
+      await Scrollable.ensureVisible(tester.element(seeAllRow), alignment: 0.5);
       await tester.pumpAndSettle();
       await tester.tap(seeAllRow);
       await tester.pumpAndSettle();
@@ -2883,7 +4299,7 @@ void main() {
         findsNothing,
       );
 
-      expect(find.text('Message #general'), findsOneWidget);
+      expect(find.text('Message the team...'), findsOneWidget);
     });
 
     testWidgets('Leave lives on the detail page instead of Manage', (
@@ -2947,9 +4363,14 @@ void main() {
         find.byKey(const ValueKey('channel-header-settings-trigger')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey('channel-details-edit-action')),
+      final editAction = find.byKey(
+        const ValueKey('channel-details-edit-action'),
       );
+      await Scrollable.ensureVisible(
+        tester.element(editAction),
+        alignment: 0.4,
+      );
+      await tester.tap(editAction);
       await tester.pumpAndSettle();
 
       final sheet = find.byType(BottomSheet).last;
@@ -2969,6 +4390,11 @@ void main() {
     testWidgets('Edit updates name and description without legacy fields', (
       tester,
     ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       String? updatedName;
       String? updatedDescription;
       await tester.pumpWidget(
@@ -2996,16 +4422,25 @@ void main() {
         find.byKey(const ValueKey('channel-header-settings-trigger')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey('channel-details-edit-action')),
+      final editAction = find.byKey(
+        const ValueKey('channel-details-edit-action'),
       );
+      await tester.tap(editAction);
       await tester.pumpAndSettle();
 
+      final manageSheetScrollable = find.byType(Scrollable).last;
+      await tester.scrollUntilVisible(
+        find.text('Canvas'),
+        160,
+        scrollable: manageSheetScrollable,
+      );
       expect(find.text('Mute'), findsOneWidget);
-      expect(find.text('Leave channel'), findsNothing);
+      expect(find.text('Leave channel'), findsOneWidget);
       expect(find.text('Topic'), findsNothing);
       expect(find.text('Purpose'), findsNothing);
       expect(find.text('Canvas'), findsOneWidget);
+      await tester.drag(manageSheetScrollable, const Offset(0, 600));
+      await tester.pumpAndSettle();
 
       final nameField = tester.widget<TextField>(
         find.byKey(const ValueKey('manage-channel-name')),
@@ -3043,7 +4478,7 @@ void main() {
 
       expect(updatedName, 'renamed');
       expect(updatedDescription, 'A new description');
-      expect(find.text('renamed'), findsOneWidget);
+      expect(find.text('Renamed'), findsOneWidget);
       expect(find.text('A new description'), findsOneWidget);
     });
 
@@ -3093,19 +4528,22 @@ void main() {
       expect(find.text('Alice'), findsOneWidget);
       expect(find.text('alice@example.com'), findsOneWidget);
       expect(find.text('Bob'), findsOneWidget);
-      final messageAvatars = find.byType(CircleAvatar);
+      final messageAvatars = find.byType(ConversationAvatar);
       expect(messageAvatars, findsNWidgets(2));
       for (final avatar in messageAvatars.evaluate()) {
         expect(
           tester.getSize(find.byWidget(avatar.widget)),
-          const Size.square(messageAvatarSize),
+          const Size.square(conversationAvatarSize),
         );
       }
       final aliceName = find.text('Alice');
       final aliceText = tester.widget<Text>(aliceName);
-      expect(aliceText.style?.fontSize, messageUsernameTextStyle.fontSize);
-      expect(aliceText.style?.fontWeight, messageUsernameTextStyle.fontWeight);
-      expect(aliceText.style?.height, messageUsernameTextStyle.height);
+      expect(aliceText.style?.fontSize, conversationAuthorTextStyle.fontSize);
+      expect(
+        aliceText.style?.fontWeight,
+        conversationAuthorTextStyle.fontWeight,
+      );
+      expect(aliceText.style?.height, conversationAuthorTextStyle.height);
       final aliceUsername = tester.widget<Text>(
         find.byKey(const ValueKey('message-username-msg1')),
       );
@@ -3117,9 +4555,12 @@ void main() {
       expect(aliceUsername.style?.height, messageMetadataTextStyle.height);
       expect(
         aliceTimestamp.style?.fontSize,
-        messageTimestampTextStyle.fontSize,
+        conversationTimestampTextStyle.fontSize,
       );
-      expect(aliceTimestamp.style?.fontWeight, FontWeight.w400);
+      expect(
+        aliceTimestamp.style?.fontWeight,
+        conversationTimestampTextStyle.fontWeight,
+      );
       expect(
         aliceTimestamp.style?.fontSize,
         lessThan(aliceText.style!.fontSize!),
@@ -3135,7 +4576,7 @@ void main() {
       final helloText = tester.widget<RichText>(helloContent);
       expect(
         effectiveFontSizeForText(helloText.text, 'Hello world!'),
-        messageBodyTextStyle.fontSize,
+        conversationBodyTextStyle.fontSize,
       );
       final messageList = tester.widget<ScrollablePositionedList>(
         find.byKey(const ValueKey('channel-message-list')),
@@ -3160,7 +4601,7 @@ void main() {
         find.byKey(const ValueKey('channel-jump-to-latest')),
         findsNothing,
       );
-      await tester.tap(find.text('Message #general'));
+      await tester.tap(find.text('Message the team...'));
       await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey('channel-jump-to-latest')),
@@ -3197,10 +4638,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        tester.widget<CircleAvatar>(find.byType(CircleAvatar)).backgroundColor,
-        Colors.transparent,
+      final animatedAvatar = tester.widget<IdentityAvatar>(
+        find.byType(IdentityAvatar),
       );
+      expect(animatedAvatar.kind, IdentityKind.person);
+      expect(animatedAvatar.imageUrl, posterUrl);
       expect(tester.widget<MediaImage>(find.byType(MediaImage)).url, posterUrl);
       expect(
         find.byKey(const ValueKey('progressive-animated-avatar-animation')),
@@ -3695,7 +5137,7 @@ void main() {
       },
     );
 
-    testWidgets('uses larger participant avatars in reply summaries', (
+    testWidgets('reply summaries use counts without inferring a thread title', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -3730,20 +5172,18 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        findRichText(
-          '2 replies · last reply '
-          '${formatThreadSummaryLastReplyTime(1200)}',
-        ),
-        findsOneWidget,
-      );
+      expect(findRichText('2 replies'), findsOneWidget);
+      expect(findRichText('Thread head · 2 replies'), findsNothing);
       expect(find.byIcon(LucideIcons.chevronRight), findsNothing);
-      final replyAvatars = find.byType(SmallAvatar);
+      final replyAvatars = find.descendant(
+        of: find.byKey(const ValueKey('thread-summary-root')),
+        matching: find.byType(ConversationAvatar),
+      );
       expect(replyAvatars, findsNWidgets(2));
       for (final avatar in replyAvatars.evaluate()) {
         expect(
           tester.getSize(find.byWidget(avatar.widget)),
-          const Size.square(32),
+          const Size.square(conversationMiniAvatarSize),
         );
       }
       final summaryPadding = tester.widget<Padding>(
@@ -3752,9 +5192,9 @@ void main() {
       expect(
         summaryPadding.padding,
         const EdgeInsets.only(
-          left: messageAvatarSize + messageAvatarContentGap,
+          left: conversationReplyIndent,
           top: Grid.half,
-          bottom: Grid.xs,
+          bottom: Grid.half,
         ),
       );
     });
@@ -3796,7 +5236,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final summaryText = tester.widget<RichText>(findRichText('3 replies'));
-      expect(summaryText.maxLines, 2);
+      expect(summaryText.maxLines, 1);
       expect(summaryText.overflow, TextOverflow.ellipsis);
       expect(tester.takeException(), isNull);
     });
@@ -4442,7 +5882,7 @@ void main() {
           closeTo(tester.getTopLeft(composerDock).dy, 1),
         );
 
-        await tester.tap(find.text('Message #general'));
+        await tester.tap(find.text('Message the team...'));
         for (var frame = 0; frame < 15; frame += 1) {
           await tester.pump(const Duration(milliseconds: 16));
           expect(
@@ -4589,7 +6029,7 @@ void main() {
       );
       final composerDock = find.byKey(const ValueKey('channel-composer-dock'));
 
-      await tester.tap(find.text('Message #general'));
+      await tester.tap(find.text('Message the team...'));
       await tester.pumpAndSettle();
 
       expect(
@@ -4944,7 +6384,7 @@ void main() {
           );
           await tester.pumpAndSettle();
 
-          await tester.tap(find.text('Message #general'));
+          await tester.tap(find.text('Message the team...'));
           await tester.pump();
           tester.view.viewInsets = const FakeViewPadding(bottom: 300);
           await tester.pump();
@@ -5073,7 +6513,7 @@ void main() {
           final collapsedGap = latestGap();
           expect(collapsedGap, closeTo(Grid.xs, 0.5));
 
-          await tester.tap(find.text('Message #general'));
+          await tester.tap(find.text('Message the team...'));
           await tester.pump();
           await tester.pump();
           tester.view.viewInsets = const FakeViewPadding(bottom: 300);
@@ -5128,20 +6568,16 @@ void main() {
         final stickyHeader = find.byKey(
           const ValueKey('channel-sticky-date-header'),
         );
-        final stickySurface = find.byKey(
-          const ValueKey('channel-sticky-date-header-surface'),
-        );
         expect(stickyHeader, findsOneWidget);
-        expect(stickySurface, findsOneWidget);
         expect(
           find.descendant(
             of: stickyHeader,
-            matching: find.text(formatDayHeading(firstDay + 86400)),
+            matching: find.text(formatConversationDayHeading(firstDay + 86400)),
           ),
           findsOneWidget,
         );
         expect(
-          tester.getTopLeft(stickySurface).dy,
+          tester.getTopLeft(stickyHeader).dy,
           closeTo(
             frostedAppBarHeight(
                   tester.element(stickyHeader),
@@ -5149,7 +6585,7 @@ void main() {
                       .widget<FrostedAppBar>(find.byType(FrostedAppBar).first)
                       .titleContentHeight,
                 ) +
-                Grid.twelve,
+                Grid.gutter,
             1,
           ),
         );
@@ -5158,7 +6594,7 @@ void main() {
             of: stickyHeader,
             matching: find.byType(BackdropFilter),
           ),
-          findsOneWidget,
+          findsNothing,
         );
       },
     );
@@ -5525,7 +6961,7 @@ void main() {
       final createdAction = findRichText('created this channel');
       expect(createdAction, findsOneWidget);
       expect(
-        tester.getSize(find.byType(CircleAvatar)),
+        tester.getSize(find.byType(AvatarImageContent)),
         const Size.square(messageAvatarSize),
       );
       final nameRect = tester.getRect(find.text('Alice'));
@@ -5566,7 +7002,7 @@ void main() {
       expect(find.text('Alice'), findsOneWidget);
       expect(findRichText('started a huddle'), findsOneWidget);
       expect(
-        tester.getSize(find.byType(CircleAvatar)),
+        tester.getSize(find.byType(AvatarImageContent)),
         const Size.square(messageAvatarSize),
       );
       expect(
@@ -5613,6 +7049,7 @@ void main() {
           users: {
             'alice': const UserProfile(pubkey: 'alice', displayName: 'Alice'),
           },
+          relayConfigNotifier: _HuddleRelayConfigNotifier(),
         ),
       );
       await tester.pumpAndSettle();
@@ -5622,12 +7059,20 @@ void main() {
         find.widgetWithText(FilledButton, 'Join'),
       );
       expect(join.onPressed, isNotNull);
+      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await tester.pumpAndSettle();
+      expect(find.text('A quick conversation.'), findsOneWidget);
+      expect(find.byKey(const ValueKey('huddle-join-muted')), findsOneWidget);
     });
 
     testWidgets('disables a different Huddle card during an active call', (
       tester,
     ) async {
-      const otherHuddleChannelId = 'other-huddle-channel';
+      const otherHuddleChannelId = _otherHuddleChannelId;
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       await tester.pumpWidget(
         _buildTestable(
@@ -5658,16 +7103,33 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const ValueKey('huddle-Join-$_huddleChannelId')),
+      final currentJoinFinder = find.byKey(
+        const ValueKey('huddle-Join-$_huddleChannelId'),
       );
+      final messageList = tester.widget<ScrollablePositionedList>(
+        find.byKey(const ValueKey('channel-message-list')),
+      );
+      for (final index in [0, 1]) {
+        if (currentJoinFinder.evaluate().isNotEmpty) break;
+        messageList.itemScrollController!.jumpTo(index: index);
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(currentJoinFinder);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('huddle-join-muted')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('huddle-minimize')));
       await tester.pumpAndSettle();
 
-      final otherJoin = tester.widget<FilledButton>(
-        find.byKey(const ValueKey('huddle-Join-$otherHuddleChannelId')),
+      final otherJoinFinder = find.byKey(
+        const ValueKey('huddle-Join-$otherHuddleChannelId'),
       );
+      for (final index in [0, 1]) {
+        if (otherJoinFinder.evaluate().isNotEmpty) break;
+        messageList.itemScrollController!.jumpTo(index: index);
+        await tester.pumpAndSettle();
+      }
+      final otherJoin = tester.widget<FilledButton>(otherJoinFinder);
       expect(otherJoin.onPressed, isNull);
     });
 
@@ -5737,7 +7199,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         expect(
@@ -5798,7 +7260,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         // A denied microphone must NOT surface the generic "Try again" that
@@ -5851,7 +7313,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await _tapHuddleJoin(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('huddle-minimize')));
       await tester.pumpAndSettle();
@@ -5902,7 +7364,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await _tapHuddleJoin(tester);
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const ValueKey('huddle-leave')));
@@ -5940,7 +7402,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await _tapHuddleJoin(tester, waitForConnected: false);
       await tester.pump();
       await tester.pump();
 
@@ -6018,7 +7480,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await _tapHuddleJoin(tester, waitForConnected: false);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pump(const Duration(milliseconds: 200));
@@ -6151,7 +7613,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester, waitForConnected: false);
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 500));
         await tester.pump(const Duration(milliseconds: 200));
@@ -6205,7 +7667,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await _tapHuddleJoin(tester);
       await tester.pumpAndSettle();
 
       transport.emitRemoteAudio(peerIndex: 2);
@@ -6278,7 +7740,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await _tapHuddleJoin(tester);
       await tester.pumpAndSettle();
 
       // Turn 1: audio speaks, then late same-turn typing must stay suppressed.
@@ -6376,7 +7838,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final baseline = relaySession.profileSubscriptions;
@@ -6463,7 +7925,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         expect(navigator.pushedRoutes.last, isA<PageRouteBuilder<void>>());
@@ -6802,7 +8264,7 @@ void main() {
         expect(
           find.descendant(
             of: find.byKey(const ValueKey('huddle-mute-toggle')),
-            matching: find.byIcon(LucideIcons.mic),
+            matching: find.byIcon(LucideIcons.micOff),
           ),
           findsOneWidget,
         );
@@ -6811,11 +8273,25 @@ void main() {
               .widget<Icon>(
                 find.descendant(
                   of: find.byKey(const ValueKey('huddle-mute-toggle')),
-                  matching: find.byIcon(LucideIcons.mic),
+                  matching: find.byIcon(LucideIcons.micOff),
                 ),
               )
               .size,
           28,
+        );
+        expect(
+          tester
+              .widget<Semantics>(
+                find
+                    .descendant(
+                      of: find.byKey(const ValueKey('huddle-mute-toggle')),
+                      matching: find.byType(Semantics),
+                    )
+                    .first,
+              )
+              .properties
+              .toggled,
+          isTrue,
         );
         await tester.tap(find.byKey(const ValueKey('huddle-mute-toggle')));
         await tester.pump();
@@ -6824,7 +8300,7 @@ void main() {
         expect(
           find.descendant(
             of: find.byKey(const ValueKey('huddle-mute-toggle')),
-            matching: find.byIcon(LucideIcons.micOff),
+            matching: find.byIcon(LucideIcons.mic),
           ),
           findsOneWidget,
         );
@@ -6840,7 +8316,7 @@ void main() {
               )
               .properties
               .toggled,
-          isTrue,
+          isFalse,
         );
 
         final emojiIcon = find.descendant(
@@ -6924,11 +8400,11 @@ void main() {
         expect(
           find.descendant(
             of: find.byKey(const ValueKey('huddle-drawer-mute-toggle')),
-            matching: find.byIcon(LucideIcons.micOff),
+            matching: find.byIcon(LucideIcons.mic),
           ),
           findsOneWidget,
         );
-        expect(find.bySemanticsLabel('Unmute'), findsOneWidget);
+        expect(find.bySemanticsLabel('Mute'), findsOneWidget);
 
         await tester.tap(
           find.byKey(const ValueKey('huddle-drawer-speaker-toggle')),
@@ -6943,6 +8419,14 @@ void main() {
         await tester.pump();
         expect(hapticCalls, hasLength(6));
         expect(hapticCalls.last.arguments, 'HapticFeedbackType.selectionClick');
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('huddle-drawer-mute-toggle')),
+            matching: find.byIcon(LucideIcons.micOff),
+          ),
+          findsOneWidget,
+        );
+        expect(find.bySemanticsLabel('Unmute'), findsOneWidget);
         expect(
           tester
               .widget<AnimatedPositioned>(
@@ -7095,7 +8579,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final remoteRegion = find.byKey(
@@ -7224,7 +8708,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
         for (
           var attempt = 0;
@@ -7295,7 +8779,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final stage = find.byKey(const ValueKey('huddle-participant-stage'));
@@ -7363,7 +8847,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final desktopAvatar = find.byKey(
@@ -7511,7 +8995,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         membersNotifier.replace([
@@ -7585,7 +9069,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await _tapHuddleJoin(tester);
       await tester.pumpAndSettle();
       final hangup = find.byKey(const ValueKey('huddle-leave'));
       expect(
@@ -7664,7 +9148,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+      await _tapHuddleJoin(tester);
       await tester.pumpAndSettle();
       relaySession.connect();
       await tester.pump();
@@ -7725,7 +9209,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('huddle-leave')));
         final huddleContainer = ProviderScope.containerOf(
@@ -7790,7 +9274,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final controller = ProviderScope.containerOf(
@@ -7896,7 +9380,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final container = ProviderScope.containerOf(
@@ -7969,7 +9453,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         media.emitFailure();
@@ -8032,7 +9516,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         media.emitFailure();
@@ -8100,7 +9584,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final container = ProviderScope.containerOf(
@@ -8175,7 +9659,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final container = ProviderScope.containerOf(
@@ -8250,7 +9734,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final container = ProviderScope.containerOf(
@@ -8322,7 +9806,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+        await _tapHuddleJoin(tester);
         await tester.pumpAndSettle();
 
         final container = ProviderScope.containerOf(
@@ -8425,12 +9909,18 @@ void main() {
           );
           final regularAvatar = tester.getRect(
             find
-                .descendant(of: regularRow, matching: find.byType(CircleAvatar))
+                .descendant(
+                  of: regularRow,
+                  matching: find.byType(AvatarImageContent),
+                )
                 .first,
           );
           final huddleAvatar = tester.getRect(
             find
-                .descendant(of: huddleRow, matching: find.byType(CircleAvatar))
+                .descendant(
+                  of: huddleRow,
+                  matching: find.byType(AvatarImageContent),
+                )
                 .first,
           );
           final regularAuthor = tester.getRect(
@@ -8506,7 +9996,7 @@ void main() {
           find
               .descendant(
                 of: find.byKey(ValueKey(rowKey)),
-                matching: find.byType(CircleAvatar),
+                matching: find.byType(AvatarImageContent),
               )
               .first,
         );
@@ -8551,7 +10041,7 @@ void main() {
       expect(find.text('Bob'), findsOneWidget);
       expect(findRichText('joined the channel'), findsOneWidget);
       expect(
-        tester.getSize(find.byType(CircleAvatar)),
+        tester.getSize(find.byType(AvatarImageContent)),
         const Size.square(messageAvatarSize),
       );
     });
@@ -8618,7 +10108,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(CircleAvatar));
+      await tester.tap(find.byType(AvatarImageContent));
       await tester.pumpAndSettle();
 
       expect(find.text('Copy public key'), findsOneWidget);
@@ -8663,7 +10153,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(CircleAvatar));
+      await tester.tap(find.byType(AvatarImageContent));
       await tester.pumpAndSettle();
 
       expect(find.text('Copy public key'), findsOneWidget);
@@ -8753,7 +10243,7 @@ void main() {
           );
           await tester.pumpAndSettle();
 
-          await tester.tap(find.byType(CircleAvatar));
+          await tester.tap(find.byType(AvatarImageContent));
           await tester.pumpAndSettle();
 
           expect(find.byType(UserProfileSheet), findsOneWidget);
@@ -8801,7 +10291,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(CircleAvatar));
+      await tester.tap(find.byType(AvatarImageContent));
       await tester.pumpAndSettle();
 
       expect(find.text('Copy public key'), findsOneWidget);
@@ -8844,7 +10334,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byType(CircleAvatar));
+        await tester.tap(find.byType(AvatarImageContent));
         await tester.pumpAndSettle();
 
         expect(find.byType(UserProfileSheet), findsOneWidget);
@@ -8932,7 +10422,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(CircleAvatar).first);
+      await tester.tap(find.byType(AvatarImageContent).first);
       await tester.pumpAndSettle();
 
       expect(find.text('Copy public key'), findsOneWidget);
@@ -8965,7 +10455,7 @@ void main() {
       expect(addedAction, findsOneWidget);
       expect(find.text('Alice added Bob to the channel'), findsNothing);
       expect(
-        tester.getSize(find.byType(CircleAvatar)),
+        tester.getSize(find.byType(AvatarImageContent)),
         const Size.square(messageAvatarSize),
       );
       final nameRect = tester.getRect(find.text('Bob'));
@@ -9089,7 +10579,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final avatarRect = tester.getRect(find.byType(CircleAvatar));
+      final avatarRect = tester.getRect(find.byType(AvatarImageContent));
       final reactionRect = tester.getRect(find.byType(ReactionRow));
       expect(
         reactionRect.left,
@@ -9097,11 +10587,9 @@ void main() {
       );
     });
 
-    testWidgets('a reacted message offers the + picker in the timeline', (
+    testWidgets('a reacted message keeps the timeline reaction row compact', (
       tester,
     ) async {
-      // Desktop puts the picker trigger beside existing reactions on every row,
-      // so reacting doesn't require discovering the long-press sheet.
       await tester.pumpWidget(
         _buildTestable(
           messages: [
@@ -9115,14 +10603,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('add-reaction-pill')), findsOneWidget);
-
-      await tester.tap(find.byKey(const ValueKey('add-reaction-pill')));
-      // Not pumpAndSettle: with no dataset asset in a widget test the sheet
-      // shows its loading spinner, which animates forever.
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      expect(find.byType(EmojiPickerSheet), findsOneWidget);
+      expect(find.byKey(const ValueKey('reaction-pill-👍')), findsOneWidget);
+      expect(find.byKey(const ValueKey('add-reaction-pill')), findsNothing);
     });
 
     testWidgets('an unreacted message keeps the timeline free of chrome', (
@@ -9605,20 +11087,20 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(TextField), findsNothing);
-      expect(find.byIcon(LucideIcons.arrowUp).hitTestable(), findsOneWidget);
+      expect(find.byIcon(LucideIcons.mic).hitTestable(), findsOneWidget);
 
-      await tester.tap(find.text('Message #general'));
+      await tester.tap(find.text('Message the team...'));
       await tester.pumpAndSettle();
 
       expect(find.byType(TextField), findsOneWidget);
-      expect(find.byIcon(LucideIcons.arrowUp).hitTestable(), findsOneWidget);
+      expect(find.byIcon(LucideIcons.mic).hitTestable(), findsOneWidget);
     });
 
     testWidgets('shows hint text', (tester) async {
       await tester.pumpWidget(_buildTestable(messages: []));
       await tester.pumpAndSettle();
 
-      expect(find.text('Message #general'), findsOneWidget);
+      expect(find.text('Message the team...'), findsOneWidget);
     });
   });
 
@@ -9852,16 +11334,16 @@ void main() {
           find.byKey(const ValueKey('channel-ios-glass-back')),
         );
         expect(backButtonRect.width, 58);
-        final channelIconRect = tester.getRect(
-          find.byKey(const ValueKey('channel-header-avatar')),
+        final channelTitleStackRect = tester.getRect(
+          find.byKey(const ValueKey('channel-header-text-stack')),
         );
         expect(
-          channelIconRect.left - backButtonRect.right,
-          moreOrLessEquals(Grid.xs),
+          channelTitleStackRect.left,
+          greaterThanOrEqualTo(backButtonRect.right),
         );
         expect(
           backButtonRect.center.dy,
-          moreOrLessEquals(channelIconRect.center.dy),
+          moreOrLessEquals(channelTitleStackRect.center.dy),
         );
         expect(tester.takeException(), isNull);
         debugDefaultTargetPlatformOverride = null;
@@ -9912,23 +11394,22 @@ void main() {
                   find.byKey(const ValueKey('channel-ios-glass-back')),
                 )
               : tester.getRect(find.byTooltip('Back'));
-          final avatarRect = tester.getRect(
-            find.byKey(const ValueKey('channel-header-avatar')),
+          final titleRect = tester.getRect(
+            find.byKey(const ValueKey('channel-header-text-stack')),
           );
-          final titleSpacing = avatarRect.left - backRect.right;
+          final titleNameRect = tester.getRect(
+            find.byKey(const ValueKey('channel-header-name')),
+          );
           final title = tester.renderObject<RenderParagraph>(
             find.byKey(const ValueKey('channel-header-name')),
           );
           final titleDidExceedMaxLines = title.didExceedMaxLines;
           debugDefaultTargetPlatformOverride = previousPlatform;
 
+          expect(titleNameRect.left, greaterThanOrEqualTo(backRect.right));
           expect(
-            titleSpacing,
-            moreOrLessEquals(
-              platform == TargetPlatform.iOS
-                  ? iosGlassChannelHeaderTitleSpacing
-                  : 0,
-            ),
+            titleRect.center.dy,
+            moreOrLessEquals(backRect.center.dy, epsilon: 1),
           );
           expect(titleDidExceedMaxLines, isTrue);
           expect(tester.takeException(), isNull);
@@ -9936,12 +11417,14 @@ void main() {
       );
     }
 
-    testWidgets('shows a tappable channel name and collective member count', (
+    testWidgets('opens v5 channel information from the channel header', (
       tester,
     ) async {
+      var quickActionsOpened = false;
       await tester.pumpWidget(
         _buildTestable(
           messages: [],
+          openQuickActions: () => quickActionsOpened = true,
           members: List.generate(
             5,
             (index) => ChannelMember(
@@ -9954,74 +11437,21 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('general'), findsOneWidget);
+      expect(find.text('# general'), findsOneWidget);
       expect(find.text('5 members'), findsOneWidget);
-      // The hash icon appears in the app bar and in the compose bar toolbar.
-      expect(find.byIcon(LucideIcons.hash), findsAtLeastNWidgets(1));
-      expect(
-        tester.getSize(find.byKey(const ValueKey('channel-header-avatar'))),
-        const Size.square(40),
-      );
-      final channelHeaderAvatarRect = tester.getRect(
-        find.byKey(const ValueKey('channel-header-avatar')),
-      );
-      final channelHeaderTextStackRect = tester.getRect(
-        find.byKey(const ValueKey('channel-header-text-stack')),
-      );
-      expect(channelHeaderTextStackRect.height, 40);
-      expect(
-        channelHeaderTextStackRect.center.dy,
-        moreOrLessEquals(channelHeaderAvatarRect.center.dy),
-      );
       expect(
         tester
             .widget<Text>(find.byKey(const ValueKey('channel-header-name')))
             .style
             ?.fontSize,
-        AppTheme.light().textTheme.titleSmall?.fontSize,
+        MobileTypographyTokens.v5.companyHubTitle.fontSize,
       );
       expect(
         tester
             .widget<Text>(find.byKey(const ValueKey('channel-header-name')))
             .style
             ?.fontWeight,
-        FontWeight.w600,
-      );
-      final channelHeaderAvatar = tester.widget<Container>(
-        find.byKey(const ValueKey('channel-header-avatar')),
-      );
-      expect(
-        (channelHeaderAvatar.decoration as BoxDecoration).color,
-        AppTheme.light().colorScheme.surface,
-      );
-      final channelHeaderAvatarBorder =
-          (channelHeaderAvatar.decoration as BoxDecoration).border! as Border;
-      expect(
-        channelHeaderAvatarBorder.top.color,
-        AppTheme.light().colorScheme.inverseSurface.withValues(alpha: 0.07),
-      );
-      expect(channelHeaderAvatarBorder.top.width, 1);
-      expect(
-        channelHeaderAvatarBorder.top.strokeAlign,
-        BorderSide.strokeAlignOutside,
-      );
-      expect(
-        tester
-            .widget<Icon>(
-              find.descendant(
-                of: find.byKey(const ValueKey('channel-header-avatar')),
-                matching: find.byIcon(LucideIcons.hash),
-              ),
-            )
-            .color,
-        AppTheme.light().colorScheme.primary,
-      );
-      expect(
-        tester.getRect(find.byKey(const ValueKey('channel-header-name'))).left -
-            tester
-                .getRect(find.byKey(const ValueKey('channel-header-avatar')))
-                .right,
-        moreOrLessEquals(Grid.twelve),
+        MobileTypographyTokens.v5.companyHubTitle.fontWeight,
       );
       expect(
         tester
@@ -10030,7 +11460,7 @@ void main() {
             )
             .style
             ?.fontSize,
-        AppTheme.light().textTheme.bodySmall?.fontSize,
+        MobileTypographyTokens.v5.identityDetails.fontSize,
       );
       expect(
         tester
@@ -10039,93 +11469,57 @@ void main() {
             )
             .style
             ?.color,
-        AppTheme.light().colorScheme.onSurface.withValues(alpha: 0.65),
+        MobileDesignTokens.light.muted,
       );
-      expect(find.byTooltip('View members'), findsNothing);
-      expect(find.byTooltip('Channel actions'), findsNothing);
+      expect(find.text('See all'), findsNothing);
+      expect(find.byTooltip('Channel info'), findsOneWidget);
 
       await tester.tap(
         find.byKey(const ValueKey('channel-header-settings-trigger')),
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Channel settings'), findsNothing);
+      expect(find.text('General'), findsOneWidget);
+      expect(find.text('Client channel'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('channel-details-collapsed-title')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const ValueKey('channel-details-avatar')),
         findsOneWidget,
       );
       expect(
         find.byKey(const ValueKey('channel-details-name')),
         findsOneWidget,
       );
+      expect(find.text('# general'), findsOneWidget);
       expect(find.text('General discussion'), findsOneWidget);
-      expect(find.text('5 members'), findsOneWidget);
-      expect(find.text('Preferences'), findsNothing);
-      expect(find.text('Star'), findsOneWidget);
-      expect(find.text('Mute'), findsOneWidget);
-      expect(find.text('Edit'), findsOneWidget);
-      expect(find.text('Actions'), findsNothing);
+      expect(find.text('In this conversation'), findsOneWidget);
+      expect(find.text('See all'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('channel-details-members-card')),
+          matching: find.byType(AppListCard),
+        ),
+        findsNothing,
+      );
       expect(find.byTooltip('Back'), findsOneWidget);
+      expect(find.byTooltip('Quick actions'), findsOneWidget);
 
       var detailsAppBar = tester.widget<FrostedAppBar>(
         find.byType(FrostedAppBar).last,
       );
       expect(detailsAppBar.frosted, isFalse);
-      expect(detailsAppBar.frostedSurfaceOpacity, 0);
-      expect(detailsAppBar.frostedBlurSigma, 0);
-      expect(detailsAppBar.showBottomDivider, isFalse);
-      expect(detailsAppBar.centerTitle, isTrue);
+      expect(detailsAppBar.showBottomDivider, isTrue);
+      expect(detailsAppBar.centerTitle, isFalse);
 
-      final descriptionBottom = tester
-          .getRect(find.byKey(const ValueKey('channel-details-description')))
-          .bottom;
-      final firstActionTop = tester
-          .getRect(find.byKey(const ValueKey('channel-details-star-action')))
-          .top;
-      expect(firstActionTop - descriptionBottom, closeTo(Grid.sm, 0.5));
-      expect(
-        tester
-            .getSize(find.byKey(const ValueKey('channel-details-star-action')))
-            .height,
-        68 + (Grid.xxs * 2),
-      );
-
-      final firstActionBottom = tester
-          .getRect(find.byKey(const ValueKey('channel-details-star-action')))
-          .bottom;
-      final membersLabelTop = tester.getRect(find.text('5 members')).top;
-      expect(membersLabelTop - firstActionBottom, closeTo(Grid.sm, 0.5));
-      expect(
-        tester
-            .widget<AppListCard>(
-              find.byKey(const ValueKey('channel-details-members-card')),
-            )
-            .verticalPadding,
-        Grid.twelve,
-      );
-      expect(find.text('Channel'), findsNothing);
+      await tester.tap(find.byTooltip('Quick actions'));
+      await tester.pumpAndSettle();
+      expect(quickActionsOpened, isTrue);
 
       await tester.drag(
         find.byKey(const ValueKey('channel-details-page-list')),
         const Offset(0, -300),
       );
       await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('channel-details-collapsed-title')),
-        findsOneWidget,
-      );
-      final collapsedTitle = find.byKey(
-        const ValueKey('channel-details-collapsed-title'),
-      );
-      expect(
-        tester.getCenter(collapsedTitle).dx,
-        closeTo(tester.getCenter(find.byType(FrostedAppBar).last).dx, 0.5),
-      );
-      expect(find.text('Channel'), findsNothing);
+      expect(find.text('General'), findsOneWidget);
       detailsAppBar = tester.widget<FrostedAppBar>(
         find.byType(FrostedAppBar).last,
       );
@@ -10133,15 +11527,17 @@ void main() {
       expect(detailsAppBar.frostedSurfaceOpacity, 0.5);
       expect(detailsAppBar.frostedBlurSigma, 20);
       expect(detailsAppBar.showBottomDivider, isTrue);
-      expect(detailsAppBar.bottomDividerOpacity, 0.07);
-      expect(
-        tester
-            .widget<AppListCard>(
-              find.byKey(const ValueKey('channel-details-channel-card')),
-            )
-            .verticalPadding,
-        Grid.twelve,
+      expect(detailsAppBar.bottomDividerOpacity, 1);
+      await Scrollable.ensureVisible(
+        tester.element(
+          find.byKey(const ValueKey('channel-details-star-action')),
+        ),
+        alignment: 0.5,
       );
+      await tester.pumpAndSettle();
+      expect(find.text('Star'), findsOneWidget);
+      expect(find.text('Mute'), findsOneWidget);
+      expect(find.text('Edit'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();
@@ -10169,7 +11565,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('secret'), findsOneWidget);
+      expect(find.text('# secret'), findsOneWidget);
       expect(find.byIcon(LucideIcons.lock), findsOneWidget);
     });
   });
@@ -10189,6 +11585,7 @@ void main() {
             channelsProvider.overrideWith(
               () => _FakeChannelsNotifier([_testChannel]),
             ),
+            goalHeadsProvider.overrideWith((ref) async => const []),
             relayClientProvider.overrideWithValue(
               RelayClient(baseUrl: 'http://localhost:3000'),
             ),
@@ -11014,16 +12411,13 @@ void main() {
       expect(find.byType(DayDivider), findsNWidgets(2));
       expect(
         find.descendant(
-          of: find.byType(DayDivider),
-          matching: find.text(formatDayHeading(rootCreatedAt)),
+          of: find.byType(DayDivider).first,
+          matching: find.text(formatConversationDayHeading(rootCreatedAt)),
         ),
         findsOneWidget,
       );
       expect(
-        find.descendant(
-          of: find.byType(DayDivider),
-          matching: find.text(formatDayHeading(nextDayCreatedAt)),
-        ),
+        find.text(formatConversationDayHeading(nextDayCreatedAt)),
         findsOneWidget,
       );
       // The list runs top-down (head first), so tail spacing lives on the list
@@ -11065,7 +12459,7 @@ void main() {
       );
       expect(
         threadTimestamp.style?.fontSize,
-        messageTimestampTextStyle.fontSize,
+        conversationTimestampTextStyle.fontSize,
       );
       expect(
         find.descendant(
@@ -11144,7 +12538,9 @@ void main() {
       expect(
         find.descendant(
           of: stickyHeader,
-          matching: find.text(formatDayHeading(timestampForDay(2, 0))),
+          matching: find.text(
+            formatConversationDayHeading(timestampForDay(2, 0)),
+          ),
         ),
         findsOneWidget,
       );
@@ -11153,7 +12549,7 @@ void main() {
           of: stickyHeader,
           matching: find.byType(BackdropFilter),
         ),
-        findsOneWidget,
+        findsNothing,
       );
 
       list.itemScrollController!.jumpTo(index: 70);
@@ -11161,7 +12557,9 @@ void main() {
       expect(
         find.descendant(
           of: stickyHeader,
-          matching: find.text(formatDayHeading(timestampForDay(3, 0))),
+          matching: find.text(
+            formatConversationDayHeading(timestampForDay(3, 0)),
+          ),
         ),
         findsOneWidget,
       );
@@ -11234,7 +12632,7 @@ void main() {
         lessThanOrEqualTo(tester.getTopLeft(composerSurface).dy),
       );
 
-      await tester.tap(find.text('Reply in thread…').hitTestable());
+      await tester.tap(find.text('Reply to the thread...').hitTestable());
       await tester.pumpAndSettle();
 
       expect(tester.getSize(dock).height, greaterThan(compactDockHeight));
@@ -11321,7 +12719,7 @@ void main() {
       final initialHeadY = tester.getTopLeft(head).dy;
       expect(initialHeadY, lessThan(300));
 
-      await tester.tap(find.text('Reply in thread…').hitTestable());
+      await tester.tap(find.text('Reply to the thread...').hitTestable());
       await tester.pumpAndSettle();
       tester.view.viewInsets = const FakeViewPadding(bottom: 300);
       await tester.pump();
@@ -11395,7 +12793,7 @@ void main() {
             findsNothing,
           );
 
-          await tester.tap(find.text('Reply in thread…').hitTestable());
+          await tester.tap(find.text('Reply to the thread...').hitTestable());
           for (var frame = 0; frame < 15; frame += 1) {
             await tester.pump(const Duration(milliseconds: 16));
             expect(
@@ -11528,7 +12926,7 @@ void main() {
               id: 'reply-$i',
               pubkey: 'bob',
               content: i == 29
-                  ? List.filled(33, 'Tall latest reply').join('\n')
+                  ? List.filled(29, 'Tall latest reply').join('\n')
                   : 'Reply $i',
               createdAt: 1100 + i,
               extraTags: const [
@@ -11894,7 +13292,7 @@ void main() {
               id: 'reply-$i',
               pubkey: 'bob',
               content: i == 29
-                  ? List.filled(15, 'Tall latest reply').join('\n')
+                  ? List.filled(14, 'Tall latest reply').join('\n')
                   : 'Reply $i',
               createdAt: 1100 + i,
               extraTags: const [
@@ -11931,7 +13329,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Reply in thread…').hitTestable());
+        await tester.tap(find.text('Reply to the thread...').hitTestable());
         await tester.pumpAndSettle();
         tester.view.viewInsets = const FakeViewPadding(bottom: 300);
         await tester.pumpAndSettle();
@@ -11939,9 +13337,10 @@ void main() {
         final list = find.byKey(const ValueKey('thread-message-list'));
         final listHeight = tester.getSize(list).height;
         final mediaQueryHeight = MediaQuery.sizeOf(tester.element(list)).height;
+        final appBarHeight = frostedAppBarHeight(tester.element(list));
         expect(
           listHeight,
-          closeTo(mediaQueryHeight, 0.5),
+          closeTo(mediaQueryHeight - appBarHeight, 0.5),
           reason: 'Android keeps the thread viewport fixed behind the IME.',
         );
 
@@ -12831,7 +14230,7 @@ void main() {
         );
         expect(tester.getTopLeft(anchor).dy, closeTo(detachedTop, 0.5));
 
-        await tester.tap(find.text('Reply in thread…').hitTestable());
+        await tester.tap(find.text('Reply to the thread...').hitTestable());
         await tester.pumpAndSettle();
         expect(tester.getTopLeft(anchor).dy, closeTo(detachedTop, 0.5));
 
@@ -13198,7 +14597,7 @@ void main() {
 
         expect(target, findsOneWidget);
 
-        await tester.tap(find.text('Reply in thread…').hitTestable());
+        await tester.tap(find.text('Reply to the thread...').hitTestable());
         await tester.pumpAndSettle();
 
         expect(
@@ -13269,7 +14668,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Reply in thread…').hitTestable());
+      await tester.tap(find.text('Reply to the thread...').hitTestable());
       await tester.pumpAndSettle();
       tester.view.viewInsets = const FakeViewPadding(bottom: 300);
       await tester.pumpAndSettle();
@@ -13397,7 +14796,7 @@ void main() {
             findsOneWidget,
           );
 
-          await tester.tap(find.text('Reply in thread…').hitTestable());
+          await tester.tap(find.text('Reply to the thread...').hitTestable());
           await tester.pump();
           tester.view.viewInsets = const FakeViewPadding(bottom: 300);
           await tester.pump();
@@ -13481,7 +14880,7 @@ void main() {
         const latestButton = ValueKey('thread-jump-to-latest');
         expect(find.byKey(latestButton), findsOneWidget);
 
-        await tester.tap(find.text('Reply in thread…').hitTestable());
+        await tester.tap(find.text('Reply to the thread...').hitTestable());
         await tester.pump();
         for (var frame = 0; frame < 10; frame++) {
           await tester.pump();
@@ -14228,6 +15627,12 @@ void main() {
 
       expect(find.text('Thread root'), findsNothing);
       expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('thread-app-bar-title')))
+            .data,
+        'Thread',
+      );
+      expect(
         find.byKey(const ValueKey('thread-message-deleted')),
         findsOneWidget,
       );
@@ -14294,15 +15699,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The head keeps a standing +; the bare reply gets none, so a thread
-      // reads as quietly as the channel does. Two + pills, not three: the head
-      // and the reacted reply.
-      expect(find.byKey(const ValueKey('add-reaction-pill')), findsNWidgets(2));
+      // The root follows the frozen thread design without a + control. Replies
+      // keep the picker after a reaction is present.
+      expect(find.byKey(const ValueKey('add-reaction-pill')), findsOneWidget);
       final headRow = find.descendant(
         of: find.byKey(const ValueKey('thread-message-group-thread-root')),
         matching: find.byKey(const ValueKey('add-reaction-pill')),
       );
-      expect(headRow, findsOneWidget);
+      expect(headRow, findsNothing);
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('thread-message-group-reply-bare')),
@@ -14727,9 +16131,22 @@ class _SynchronousReadStateNotifier extends ReadStateNotifier {
 }
 
 class _FakeProfileNotifier extends ProfileNotifier {
+  _FakeProfileNotifier({this.displayName = 'Self'});
+
+  final String displayName;
+
   @override
   Future<UserProfile?> build() async =>
-      const UserProfile(pubkey: 'self', displayName: 'Self');
+      UserProfile(pubkey: 'self', displayName: displayName);
+}
+
+class _FakePresenceCacheNotifier extends PresenceCacheNotifier {
+  _FakePresenceCacheNotifier(this._initial);
+
+  final Map<String, String> _initial;
+
+  @override
+  Map<String, String> build() => _initial;
 }
 
 class _FakeChannelStarsNotifier extends ChannelStarsNotifier {
@@ -15262,16 +16679,6 @@ class _TestNavigatorObserver extends NavigatorObserver {
   }
 }
 
-/// Avatar fallback initial in the DM header — asserts at the production
-/// seam (the masked `dm-header-avatar` badge), not the label helper.
-String _dmHeaderAvatarInitial(WidgetTester tester) {
-  final avatar = find.byKey(const ValueKey('dm-header-avatar'));
-  final initial = tester.widget<Text>(
-    find.descendant(of: avatar, matching: find.byType(Text)),
-  );
-  return initial.data!;
-}
-
 /// Avatar fallback initial in the channel-details member preview row keyed
 /// to [pubkey] — asserts at the production seam (the rendered
 /// `_ChannelMemberPreviewRow`), not the label helper.
@@ -15282,4 +16689,246 @@ String _previewRowAvatarInitial(WidgetTester tester, String pubkey) {
     find.descendant(of: avatar, matching: find.byType(Text)),
   );
   return initial.data!;
+}
+
+const _r19ForumCaptureSecretHex =
+    '0000000000000000000000000000000000000000000000000000000000000001';
+final _r19ForumCaptureNsec = nostr.Nip19.encode(
+  prefix: nostr.Nip19Prefix.nsec,
+  data: _r19ForumCaptureSecretHex,
+);
+
+NostrEvent _forumCapturePost({
+  required String id,
+  required String pubkey,
+  required String content,
+  required int createdAt,
+  int kind = EventKind.forumPost,
+  List<List<String>> tags = const [],
+}) => NostrEvent(
+  id: id,
+  pubkey: pubkey,
+  createdAt: createdAt,
+  kind: kind,
+  tags: tags,
+  content: content,
+  sig: '',
+);
+
+class _R19ForumCaptureConfig extends RelayConfigNotifier {
+  @override
+  RelayConfig build() =>
+      RelayConfig(baseUrl: 'http://localhost:3000', nsec: _r19ForumCaptureNsec);
+}
+
+class _R19ForumCaptureRelay extends RelaySessionNotifier {
+  final List<NostrEvent> _fixtureEvents;
+  final List<NostrEvent> published = [];
+  _R19ForumPendingPublish? _pendingPublish;
+
+  _R19ForumCaptureRelay(this._fixtureEvents);
+
+  @override
+  SessionState build() => const SessionState(status: SessionStatus.connected);
+
+  _R19ForumPendingPublish holdNextPublish() {
+    final pending = _R19ForumPendingPublish();
+    _pendingPublish = pending;
+    return pending;
+  }
+
+  @override
+  Future<NostrEvent> publish(
+    NostrEvent event, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    final pending = _pendingPublish;
+    if (pending != null) {
+      _pendingPublish = null;
+      pending.started.complete(event);
+      try {
+        final acknowledged = await pending.result.future;
+        published.add(acknowledged);
+        return acknowledged;
+      } catch (_) {
+        pending.failed.complete();
+        rethrow;
+      }
+    }
+    published.add(event);
+    return event;
+  }
+
+  @override
+  Future<List<NostrEvent>> fetchHistory(
+    NostrFilter filter, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    final ids = filter.ids;
+    if (ids == null) return const [];
+    return [
+      for (final event in [..._fixtureEvents, ...published])
+        if (ids.contains(event.id)) event,
+    ];
+  }
+
+  @override
+  Future<List<NostrEvent>> queryRelay(
+    List<NostrFilter> filters, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async => [..._fixtureEvents, ...published];
+}
+
+class _R19ForumPendingPublish {
+  final started = Completer<NostrEvent>();
+  final result = Completer<NostrEvent>();
+  final failed = Completer<void>();
+}
+
+class _R19ForumCaptureMediaUploadService extends MediaUploadService {
+  _R19ForumCaptureMediaUploadService(XFile attachment)
+    : super(
+        baseUrl: 'https://media.example',
+        nsec: _r19ForumCaptureNsec,
+        pickGalleryImage: () async => null,
+        pickGalleryVideo: () async => null,
+        pickAttachmentFile: () async => attachment,
+      );
+
+  @override
+  Future<BlobDescriptor> uploadFile(
+    XFile pickedFile, {
+    ValueChanged<double>? onProgress,
+    UploadCancellationToken? cancellationToken,
+  }) async => BlobDescriptor(
+    url: 'https://media.example/october-brief',
+    sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    size: 254000,
+    type: 'application/pdf',
+    uploaded: DateTime.utc(2026, 9, 26).millisecondsSinceEpoch ~/ 1000,
+    filename: pickedFile.name,
+  );
+}
+
+GoalHeadRecord _goalBannerCaptureRecord() {
+  const title = 'A client-approved October campaign';
+  final dueDate = DateTime.now().add(const Duration(days: 2));
+  final dueDateValue =
+      '${dueDate.year.toString().padLeft(4, '0')}-'
+      '${dueDate.month.toString().padLeft(2, '0')}-'
+      '${dueDate.day.toString().padLeft(2, '0')}';
+  final content = jsonEncode({
+    'schemaVersion': 1,
+    'goalId': _goalBannerCaptureId,
+    'status': 'active',
+    'title': title,
+    'goal': {
+      'schemaVersion': 1,
+      'goalId': _goalBannerCaptureId,
+      'title': title,
+      'ownerPubkey':
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'doneCondition': 'Every campaign has an owner and approved direction.',
+      'linkedChannelIds': [_channelId],
+      'dueDate': dueDateValue,
+    },
+    'sourceActionEventId': List.filled(64, 'f').join(),
+  });
+  final signed = nostr.Event.from(
+    kind: EventKind.goalHead,
+    content: content,
+    tags: [
+      ['d', goalDTag(_goalBannerCaptureId)],
+    ],
+    secretKey: _goalBannerCaptureSecret,
+    createdAt: 1791800000,
+    verify: false,
+  );
+  final event = NostrEvent.fromJson(signed.toMap());
+  return parseGoalHeadEvent(event, event.pubkey)!;
+}
+
+Future<void> _tapHuddleJoin(
+  WidgetTester tester, {
+  bool waitForConnected = true,
+}) async {
+  await tester.tap(find.widgetWithText(FilledButton, 'Join').first);
+  await tester.pumpAndSettle();
+  final lobbyButton = find.byKey(const ValueKey('huddle-join-muted'));
+  if (lobbyButton.evaluate().isEmpty) return;
+  await tester.tap(lobbyButton);
+  await tester.pump();
+  if (waitForConnected) await tester.pumpAndSettle();
+}
+
+class _CaptureFileComparator extends LocalFileComparator {
+  _CaptureFileComparator(super.testFile, this.outputPath);
+
+  final String outputPath;
+
+  @override
+  Future<bool> compare(Uint8List imageBytes, Uri golden) async {
+    final file = File('$outputPath/${golden.pathSegments.last}');
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(imageBytes);
+    return true;
+  }
+}
+
+class _DetailCaptureSystemBars extends StatelessWidget {
+  const _DetailCaptureSystemBars(this.brightness);
+
+  final Brightness brightness;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = brightness == Brightness.dark
+        ? const Color(0xFFF2E9F6)
+        : const Color(0xFF34263C);
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          Positioned(
+            top: 8,
+            left: 25,
+            child: Text(
+              '9:41',
+              style: TextStyle(
+                color: color,
+                fontFamily: 'Manrope',
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 25,
+            child: Row(
+              children: [
+                Icon(Icons.signal_cellular_alt, color: color, size: 14),
+                const SizedBox(width: 3),
+                Icon(Icons.battery_full, color: color, size: 16),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 7,
+            child: Center(
+              child: Container(
+                width: 108,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(Radii.full),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

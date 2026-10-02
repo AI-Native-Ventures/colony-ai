@@ -25,6 +25,7 @@ type ComposerEmojiPickerProps = {
   onOpenChange: (open: boolean) => void;
   onTriggerMouseDown: () => void;
   open: boolean;
+  triggerIcon?: React.ReactNode;
 };
 
 type ComposerPickerTab = "emoji" | "gifs";
@@ -41,6 +42,7 @@ export const ComposerEmojiPicker = React.memo(function ComposerEmojiPicker({
   onOpenChange,
   onTriggerMouseDown,
   open,
+  triggerIcon,
 }: ComposerEmojiPickerProps) {
   const [pickerTab, setPickerTab] = React.useState<ComposerPickerTab>("emoji");
   const shouldReduceMotion = useReducedMotion();
@@ -99,7 +101,7 @@ export const ComposerEmojiPicker = React.memo(function ComposerEmojiPicker({
               type="button"
               variant="ghost"
             >
-              <SmilePlus />
+              {triggerIcon ?? <SmilePlus />}
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>

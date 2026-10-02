@@ -29,8 +29,9 @@ CREATE TYPE channel_type AS ENUM ('stream', 'forum', 'dm', 'workflow');
 CREATE TYPE channel_visibility AS ENUM ('open', 'private');
 CREATE TYPE member_role AS ENUM ('owner', 'admin', 'member', 'guest', 'bot');
 CREATE TYPE workflow_status AS ENUM ('active', 'disabled', 'archived');
-CREATE TYPE run_status AS ENUM ('pending', 'running', 'waiting_approval', 'completed', 'failed', 'cancelled');
+CREATE TYPE run_status AS ENUM ('pending', 'running', 'waiting_approval', 'waiting_agent', 'completed', 'failed', 'cancelled', 'timed_out');
 CREATE TYPE approval_status AS ENUM ('pending', 'granted', 'denied', 'expired');
+CREATE TYPE workflow_agent_wait_status AS ENUM ('pending', 'completed', 'timed_out', 'failed');
 CREATE TYPE delivery_method AS ENUM ('webhook', 'websocket');
 CREATE TYPE subscription_status AS ENUM ('active', 'paused', 'deleted');
 CREATE TYPE pause_reason AS ENUM ('user', 'system', 'rate_limit');
@@ -54,6 +55,7 @@ CREATE TABLE communities (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     host            VARCHAR(255) NOT NULL,
     signing_key     BYTEA,
+    business_channel_id UUID,
     -- Per-community workspace icon (NIP-11 `icon`), set via kind:9033.
     -- Added by migration 0003; kept here so desired-state applies match.
     icon            TEXT,
@@ -121,6 +123,48 @@ CREATE INDEX idx_channels_ttl_expiry ON channels (ttl_deadline)
 -- Not UNIQUE — the same channel id may exist under more than one community.
 CREATE INDEX idx_channels_id_live ON channels (id) INCLUDE (community_id)
     WHERE deleted_at IS NULL;
+
+ALTER TABLE communities
+    ADD CONSTRAINT communities_business_channel_fk
+    FOREIGN KEY (id, business_channel_id)
+    REFERENCES channels (community_id, id);
+
+-- One accepted proposal version may reserve only one conversion result.
+CREATE TABLE business_proposal_conversion_claims (
+    community_id UUID NOT NULL REFERENCES communities(id),
+    business_channel_id UUID NOT NULL,
+    conversion_id UUID NOT NULL,
+    proposal_id UUID NOT NULL,
+    proposal_version_event_id BYTEA NOT NULL
+        CHECK (octet_length(proposal_version_event_id) = 32),
+    proposal_version_digest BYTEA NOT NULL
+        CHECK (octet_length(proposal_version_digest) = 32),
+    acceptance_event_id BYTEA NOT NULL
+        CHECK (octet_length(acceptance_event_id) = 32),
+    receipt_event_id BYTEA NOT NULL
+        CHECK (octet_length(receipt_event_id) = 32),
+    accepted_by_pubkey BYTEA NOT NULL
+        CHECK (octet_length(accepted_by_pubkey) = 32),
+    client_id UUID NOT NULL,
+    work_item_id UUID NOT NULL,
+    draft_invoice_id UUID NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT transaction_timestamp(),
+    PRIMARY KEY (community_id, conversion_id),
+    FOREIGN KEY (community_id, business_channel_id)
+        REFERENCES channels (community_id, id),
+    UNIQUE (community_id, proposal_version_event_id),
+    UNIQUE (community_id, work_item_id),
+    UNIQUE (community_id, draft_invoice_id),
+    UNIQUE (community_id, acceptance_event_id),
+    CHECK (client_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+    CHECK (conversion_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+    CHECK (proposal_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+    CHECK (work_item_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+    CHECK (draft_invoice_id <> '00000000-0000-0000-0000-000000000000'::uuid)
+);
+
+CREATE INDEX business_proposal_conversion_claims_client_idx
+    ON business_proposal_conversion_claims (community_id, client_id, created_at DESC);
 
 -- channels.community_id is immutable: a channel can never be re-tenanted.
 -- (Conformance: "Migration lint forbids channel re-tenanting except through an
@@ -219,9 +263,9 @@ CREATE TABLE events (
     -- Privacy: encrypted/private routing wrappers and p-gated membership notices
     -- must never be discoverable through NIP-50 full-text search. NULL tsvector
     -- never matches `@@`.
-    -- Keep in sync with migrations (final state: 0001 + 0005 + 0014 + 0033).
+    -- Keep in sync with migrations (final state: 0001 + 0005 + 0014 + 0033 + 0052).
     search_tsv  TSVECTOR GENERATED ALWAYS AS (
-        CASE WHEN kind IN (1059, 30179, 30300, 30350, 30622, 44100, 44101, 44200) THEN NULL::tsvector
+        CASE WHEN kind IN (1059, 30179, 30300, 30350, 30622, 30642, 30643, 30646, 30647, 30648, 44100, 44101, 44200, 47031, 47032, 47033, 47035, 47036, 47037) THEN NULL::tsvector
              ELSE to_tsvector('simple', content)
         END
     ) STORED,
@@ -388,6 +432,9 @@ CREATE TABLE workflow_runs (
     community_id        UUID NOT NULL REFERENCES communities(id),
     id                  UUID NOT NULL DEFAULT gen_random_uuid(),
     workflow_id         UUID NOT NULL,
+    workflow_channel_id UUID,
+    definition_version  BYTEA CHECK (definition_version IS NULL OR octet_length(definition_version) = 32),
+    definition_snapshot JSONB,
     status              run_status NOT NULL DEFAULT 'pending',
     trigger_event_id    BYTEA,
     current_step        INT NOT NULL DEFAULT 0,
@@ -436,6 +483,38 @@ CREATE INDEX idx_workflow_approvals_workflow ON workflow_approvals (community_id
 CREATE INDEX idx_workflow_approvals_run ON workflow_approvals (community_id, run_id);
 CREATE INDEX idx_workflow_approvals_status ON workflow_approvals (community_id, status);
 
+-- ── Workflow agent waits ─────────────────────────────────────────────────────
+
+CREATE TABLE workflow_agent_waits (
+    community_id UUID NOT NULL REFERENCES communities(id),
+    workflow_id UUID NOT NULL,
+    run_id UUID NOT NULL,
+    step_id VARCHAR(64) NOT NULL,
+    step_index INT NOT NULL,
+    channel_id UUID NOT NULL,
+    agent_pubkey BYTEA NOT NULL CHECK (octet_length(agent_pubkey) = 32),
+    request_event_id BYTEA NOT NULL CHECK (octet_length(request_event_id) = 32),
+    status workflow_agent_wait_status NOT NULL DEFAULT 'pending',
+    reply_event_id BYTEA CHECK (reply_event_id IS NULL OR octet_length(reply_event_id) = 32),
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (community_id, run_id, step_id),
+    UNIQUE (community_id, request_event_id),
+    FOREIGN KEY (community_id, workflow_id)
+        REFERENCES workflows (community_id, id) ON DELETE CASCADE,
+    FOREIGN KEY (community_id, run_id)
+        REFERENCES workflow_runs (community_id, id) ON DELETE CASCADE,
+    FOREIGN KEY (community_id, channel_id)
+        REFERENCES channels (community_id, id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_workflow_agent_waits_pending_expiry
+    ON workflow_agent_waits (expires_at, community_id) WHERE status = 'pending';
+CREATE INDEX idx_workflow_agent_waits_request
+    ON workflow_agent_waits (community_id, request_event_id, agent_pubkey)
+    WHERE status = 'pending';
+
 -- ── Scheduled workflow fires (cron claim) ─────────────────────────────────────
 -- Plan §5: the at-most-once cron fire claim. UNIQUE (community_id, workflow_id,
 -- scheduled_for) — only the pod that wins the claim insert creates the run.
@@ -466,6 +545,57 @@ CREATE TABLE scheduled_workflow_fires (
 -- The interval anchor reads MAX(scheduled_for) per workflow; the janitor prunes
 -- by claimed_at globally (operator concern). See plan §5 retention coupling.
 CREATE INDEX idx_scheduled_fires_claimed_at ON scheduled_workflow_fires (claimed_at);
+
+-- ── Company work watchdog delivery journal ───────────────────────────────────
+-- Durable retry state for explicit company work watchdog check-ins. Timing
+-- remains entirely in the signed configuration event; this table records only
+-- scheduled occurrences and bounded delivery attempts.
+
+CREATE TABLE company_work_watchdog_deliveries (
+    community_id UUID NOT NULL REFERENCES communities(id),
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
+    work_item_id UUID NOT NULL,
+    config_event_id BYTEA NOT NULL CHECK (octet_length(config_event_id) = 32),
+    channel_id UUID NOT NULL,
+    thread_root_event_id BYTEA NOT NULL CHECK (octet_length(thread_root_event_id) = 32),
+    scheduled_for TIMESTAMPTZ NOT NULL,
+    next_attempt_at TIMESTAMPTZ NOT NULL,
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+    state TEXT NOT NULL DEFAULT 'pending'
+        CHECK (state IN ('pending', 'sending', 'delivered', 'cancelled', 'failed')),
+    lease_owner TEXT,
+    lease_token UUID,
+    lease_until TIMESTAMPTZ,
+    message_event_id BYTEA CHECK (
+        message_event_id IS NULL OR octet_length(message_event_id) = 32
+    ),
+    last_error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (community_id, id),
+    FOREIGN KEY (community_id, channel_id)
+        REFERENCES channels (community_id, id),
+    UNIQUE (community_id, work_item_id, config_event_id, scheduled_for),
+    CHECK (
+        (state = 'sending' AND lease_owner IS NOT NULL AND lease_token IS NOT NULL
+            AND lease_until IS NOT NULL)
+        OR (state <> 'sending' AND lease_owner IS NULL AND lease_token IS NULL
+            AND lease_until IS NULL)
+    ),
+    CHECK (
+        (state = 'delivered' AND message_event_id IS NOT NULL)
+        OR (state <> 'delivered' AND message_event_id IS NULL)
+    )
+);
+
+CREATE INDEX company_work_watchdog_deliveries_due
+    ON company_work_watchdog_deliveries (next_attempt_at, scheduled_for)
+    WHERE state = 'pending';
+CREATE INDEX company_work_watchdog_deliveries_recovery
+    ON company_work_watchdog_deliveries (lease_until)
+    WHERE state = 'sending';
+CREATE INDEX company_work_watchdog_deliveries_work
+    ON company_work_watchdog_deliveries (community_id, work_item_id, scheduled_for DESC);
 
 -- ── API tokens ────────────────────────────────────────────────────────────────
 -- Conformance: "API tokens and NIP-98 replay". token_hash uniqueness scoped to
@@ -1731,6 +1861,8 @@ $$;
 SELECT attach_community_write_fence('api_tokens');
 SELECT attach_community_write_fence('archived_identities');
 SELECT attach_community_write_fence('audit_log');
+SELECT attach_community_write_fence('business_proposal_conversion_claims');
+SELECT attach_community_write_fence('company_work_watchdog_deliveries');
 SELECT attach_community_write_fence('channel_members');
 SELECT attach_community_write_fence('channels');
 SELECT attach_community_write_fence('community_bans');
@@ -1754,6 +1886,7 @@ SELECT attach_community_write_fence('subscriptions');
 SELECT attach_community_write_fence('thread_metadata');
 SELECT attach_community_write_fence('users');
 SELECT attach_community_write_fence('workflow_approvals');
+SELECT attach_community_write_fence('workflow_agent_waits');
 SELECT attach_community_write_fence('workflow_runs');
 SELECT attach_community_write_fence('workflows');
 
@@ -1910,3 +2043,198 @@ CREATE TABLE storage_accounting_snapshots (
 
 INSERT INTO _operator_global_tables (table_name, reason) VALUES
     ('storage_accounting_snapshots', 'deployment-global completed media accounting handoff');
+
+-- ── Deployment-global account identities and mail delivery ──────────────────
+-- Account identities and server-held key custody span every community on the
+-- relay deployment. Email codes and queued mail are likewise not tenant data.
+
+CREATE TABLE accounts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT NOT NULL CHECK (email = lower(btrim(email)) AND length(email) <= 254),
+    email_verified_at TIMESTAMPTZ,
+    pubkey TEXT NOT NULL UNIQUE CHECK (pubkey ~ '^[0-9a-f]{64}$'),
+    password_hash TEXT,
+    wrapped_dek BYTEA NOT NULL CHECK (octet_length(wrapped_dek) >= 28),
+    kek_id TEXT NOT NULL CHECK (length(kek_id) BETWEEN 1 AND 64),
+    sealed_nsec BYTEA NOT NULL CHECK (octet_length(sealed_nsec) >= 16),
+    nonce BYTEA NOT NULL CHECK (octet_length(nonce) = 12),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_signin_at TIMESTAMPTZ,
+    failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
+    locked_until TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX accounts_email_lower_key ON accounts (lower(email));
+
+CREATE TABLE account_google_identities (
+    sub TEXT PRIMARY KEY CHECK (length(sub) BETWEEN 1 AND 255),
+    account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    email TEXT NOT NULL CHECK (email = lower(btrim(email)) AND length(email) <= 254),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX account_google_identities_account_idx ON account_google_identities (account_id);
+
+CREATE TABLE account_codes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    purpose TEXT NOT NULL CHECK (purpose IN ('verify_email', 'reset_password')),
+    code_hash BYTEA NOT NULL CHECK (octet_length(code_hash) = 32),
+    expires_at TIMESTAMPTZ NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 5),
+    consumed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX account_codes_one_active_purpose
+    ON account_codes (account_id, purpose) WHERE consumed_at IS NULL;
+CREATE INDEX account_codes_expiry_idx ON account_codes (expires_at);
+
+CREATE TABLE account_mail_outbox (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    code_id UUID NOT NULL UNIQUE REFERENCES account_codes(id) ON DELETE CASCADE,
+    recipient TEXT NOT NULL CHECK (length(recipient) <= 254),
+    purpose TEXT NOT NULL CHECK (purpose IN ('verify_email', 'reset_password')),
+    code_ciphertext BYTEA NOT NULL CHECK (octet_length(code_ciphertext) >= 16),
+    nonce BYTEA NOT NULL CHECK (octet_length(nonce) = 12),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    lease_until TIMESTAMPTZ,
+    attempts BIGINT NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    claim_token UUID,
+    delivered_at TIMESTAMPTZ,
+    last_error_code TEXT CHECK (last_error_code IS NULL OR length(last_error_code) <= 64)
+);
+CREATE INDEX account_mail_outbox_due_idx
+    ON account_mail_outbox (next_attempt_at, created_at)
+    WHERE delivered_at IS NULL;
+
+-- Used only by COLONY_MAIL_SINK=log in development and CI. Production mail
+-- delivery never writes plaintext verification codes to this table.
+CREATE TABLE account_test_mail (
+    outbox_id UUID PRIMARY KEY REFERENCES account_mail_outbox(id) ON DELETE CASCADE,
+    account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    recipient TEXT NOT NULL CHECK (length(recipient) <= 254),
+    purpose TEXT NOT NULL CHECK (purpose IN ('verify_email', 'reset_password')),
+    code TEXT NOT NULL CHECK (code ~ '^[0-9]{6}$'),
+    delivered_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+INSERT INTO _operator_global_tables (table_name, reason) VALUES
+    ('accounts', 'deployment-global identities and server-held signing-key custody'),
+    ('account_google_identities', 'deployment-global provider links to account identities'),
+    ('account_codes', 'deployment-global one-time account recovery and verification codes'),
+    ('account_mail_outbox', 'deployment-global durable account email delivery retry queue'),
+    ('account_test_mail', 'development and CI account mail sink; not tenant-visible');
+
+-- Deployment-global PayFast checkout, settlement, and account credit records.
+CREATE TABLE account_credit_ledger (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
+    entry_type TEXT NOT NULL CHECK (entry_type IN ('purchase', 'usage', 'refund', 'adjustment')),
+    amount_nanousd BIGINT NOT NULL CHECK (amount_nanousd <> 0),
+    source_id TEXT NOT NULL CHECK (length(source_id) BETWEEN 1 AND 200),
+    reference TEXT CHECK (reference IS NULL OR length(reference) <= 200),
+    description TEXT NOT NULL CHECK (length(description) BETWEEN 1 AND 256),
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(metadata) = 'object'),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (account_id, source_id)
+);
+CREATE INDEX account_credit_ledger_history_idx
+    ON account_credit_ledger (account_id, created_at DESC, id DESC);
+CREATE INDEX account_credit_ledger_usage_idx
+    ON account_credit_ledger (account_id, created_at DESC)
+    WHERE entry_type = 'usage' AND amount_nanousd < 0;
+
+CREATE TABLE account_payment_intents (
+    reference TEXT PRIMARY KEY CHECK (length(reference) BETWEEN 1 AND 200),
+    account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
+    idempotency_key UUID NOT NULL,
+    provider TEXT NOT NULL CHECK (provider = 'payfast'),
+    pack_id TEXT NOT NULL CHECK (length(pack_id) BETWEEN 1 AND 64),
+    charge_minor_units BIGINT NOT NULL CHECK (charge_minor_units > 0),
+    charge_currency TEXT NOT NULL CHECK (charge_currency = 'ZAR'),
+    grant_nanousd BIGINT NOT NULL CHECK (grant_nanousd > 0),
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'paid', 'delayed', 'failed', 'cancelled', 'uncertain')),
+    provider_payment_id TEXT UNIQUE CHECK (
+        provider_payment_id IS NULL OR provider_payment_id ~ '^[0-9]{1,32}$'
+    ),
+    provider_status TEXT CHECK (provider_status IS NULL OR length(provider_status) <= 64),
+    paid_minor_units BIGINT CHECK (paid_minor_units IS NULL OR paid_minor_units >= 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (account_id, idempotency_key)
+);
+CREATE UNIQUE INDEX account_payment_intents_one_open_idx
+    ON account_payment_intents (account_id)
+    WHERE status IN ('pending', 'delayed', 'uncertain');
+CREATE INDEX account_payment_intents_history_idx
+    ON account_payment_intents (account_id, created_at DESC, reference DESC);
+
+CREATE TABLE account_site_subscriptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
+    site_id TEXT NOT NULL CHECK (length(site_id) BETWEEN 1 AND 128),
+    reference TEXT NOT NULL UNIQUE CHECK (length(reference) BETWEEN 1 AND 200),
+    idempotency_key UUID NOT NULL,
+    provider TEXT NOT NULL CHECK (provider = 'payfast'),
+    provider_token TEXT UNIQUE CHECK (
+        provider_token IS NULL OR provider_token ~ '^[A-Za-z0-9-]{1,36}$'
+    ),
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'active', 'delayed', 'failed', 'cancelled', 'uncertain')),
+    monthly_usd_cents INTEGER NOT NULL DEFAULT 1000 CHECK (monthly_usd_cents = 1000),
+    monthly_zar_cents BIGINT NOT NULL CHECK (monthly_zar_cents >= 500),
+    provider_status TEXT CHECK (provider_status IS NULL OR length(provider_status) <= 64),
+    last_provider_payment_id TEXT CHECK (
+        last_provider_payment_id IS NULL OR last_provider_payment_id ~ '^[0-9]{1,32}$'
+    ),
+    provider_cycles_complete INTEGER NOT NULL DEFAULT 0 CHECK (provider_cycles_complete >= 0),
+    last_provider_payment_cycle INTEGER NOT NULL DEFAULT 0 CHECK (last_provider_payment_cycle >= 0),
+    cancel_requested_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (account_id, idempotency_key)
+);
+CREATE UNIQUE INDEX account_site_subscriptions_one_current_idx
+    ON account_site_subscriptions (account_id, site_id)
+    WHERE status IN ('pending', 'active', 'delayed', 'failed', 'uncertain');
+CREATE INDEX account_site_subscriptions_history_idx
+    ON account_site_subscriptions (account_id, created_at DESC, id DESC);
+
+CREATE TABLE account_site_subscription_payments (
+    provider_payment_id TEXT PRIMARY KEY CHECK (provider_payment_id ~ '^[0-9]{1,32}$'),
+    subscription_id UUID NOT NULL REFERENCES account_site_subscriptions(id) ON DELETE RESTRICT,
+    provider_status TEXT NOT NULL CHECK (length(provider_status) BETWEEN 1 AND 64),
+    status TEXT NOT NULL CHECK (status IN ('paid', 'delayed', 'failed', 'cancelled', 'uncertain')),
+    amount_zar_cents BIGINT CHECK (amount_zar_cents IS NULL OR amount_zar_cents >= 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX account_site_subscription_payments_history_idx
+    ON account_site_subscription_payments (subscription_id, created_at DESC, provider_payment_id DESC);
+
+CREATE TABLE account_payment_notifications (
+    event_id TEXT PRIMARY KEY CHECK (event_id ~ '^[0-9a-f]{64}$'),
+    reference TEXT CHECK (reference IS NULL OR length(reference) <= 200),
+    provider_payment_id TEXT CHECK (
+        provider_payment_id IS NULL OR provider_payment_id ~ '^[0-9]{1,32}$'
+    ),
+    provider_status TEXT NOT NULL CHECK (length(provider_status) <= 64),
+    amount_zar_cents BIGINT CHECK (amount_zar_cents IS NULL OR amount_zar_cents >= 0),
+    result TEXT NOT NULL CHECK (result IN (
+        'processing', 'applied', 'already_applied', 'unmatched', 'uncertain', 'duplicate_payment'
+    )),
+    received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    processed_at TIMESTAMPTZ
+);
+CREATE INDEX account_payment_notifications_reference_idx
+    ON account_payment_notifications (reference, received_at DESC)
+    WHERE reference IS NOT NULL;
+
+INSERT INTO _operator_global_tables (table_name, reason) VALUES
+    ('account_credit_ledger', 'deployment-global account credit balance and server-confirmed usage'),
+    ('account_payment_intents', 'deployment-global PayFast credit checkout and settlement state'),
+    ('account_site_subscriptions', 'deployment-global PayFast website hosting subscriptions'),
+    ('account_site_subscription_payments', 'deployment-global PayFast subscription payment history'),
+    ('account_payment_notifications', 'deployment-global idempotent PayFast ITN processing journal');

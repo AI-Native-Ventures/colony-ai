@@ -1,24 +1,42 @@
 /*
- * Buzz motion system
- *
- * Keep shared timing, easing, distance, and semantic motion primitives here.
- * Features decide when motion runs; this layer defines how Buzz moves.
+ * Shared timing, easing, distance, and semantic motion primitives live here.
+ * Features decide when motion runs; this layer defines how the app moves.
  */
 
 :root {
-  /* Durations: feedback → state change → composed arrival. */
-  --motion-duration-instant: 120ms;
-  --motion-duration-fast: 180ms;
-  --motion-duration-standard: 240ms;
-  --motion-duration-arrival: 500ms;
+  /* Reference durations, named by the interaction they serve. */
+  --colony-motion-navigation: 140ms;
+  --colony-motion-section: 150ms;
+  --colony-motion-button: 130ms;
+  --colony-motion-button-color: 150ms;
+  --colony-motion-action: 120ms;
+  --colony-motion-dialog: 180ms;
+  --colony-motion-drawer: 220ms;
+  --colony-motion-toast: 180ms;
+  --colony-motion-skeleton: 1.4s;
+  --colony-motion-onboarding-spinner: 900ms;
 
-  /* Easing: direct for feedback, confident deceleration for entrances. */
-  --motion-ease-standard: cubic-bezier(0.25, 1, 0.5, 1);
-  --motion-ease-arrival: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Reference easing shared by controls, dialogs, drawers, and toasts. */
+  --colony-ease-standard: ease;
+  --colony-ease-skeleton: ease-in-out;
+  --colony-ease-linear: linear;
+  --colony-ease-emphasized: cubic-bezier(0.22, 1, 0.36, 1);
+  --colony-ease-drawer-transform: cubic-bezier(0.25, 1, 0.5, 1);
+  --colony-dialog-offset: 0.3125rem;
+  --colony-dialog-scale: 0.985;
+  --colony-toast-offset: 0.375rem;
 
-  /* Distances stay restrained so motion supports hierarchy without spectacle. */
-  --motion-distance-arrival: 0.75rem;
-  --motion-blur-arrival: 2px;
+  /* Preserve the established motion variable names for current consumers. */
+  --motion-duration-instant: var(--colony-motion-action);
+  --motion-duration-fast: var(--colony-motion-button-color);
+  --motion-duration-standard: var(--colony-motion-dialog);
+  --motion-duration-arrival: var(--colony-motion-toast);
+  --motion-ease-standard: var(--colony-ease-standard);
+  --motion-ease-arrival: var(--colony-ease-emphasized);
+
+  /* Existing arrival effects now use the reference's restrained travel. */
+  --motion-distance-arrival: var(--colony-dialog-offset);
+  --motion-blur-arrival: 0px;
 }
 
 /* A newly-created conversational object settling into the timeline. */
@@ -42,6 +60,24 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  :root {
+    --colony-motion-navigation: 1ms;
+    --colony-motion-section: 1ms;
+    --colony-motion-button: 1ms;
+    --colony-motion-button-color: 1ms;
+    --colony-motion-action: 1ms;
+    --colony-motion-dialog: 1ms;
+    --colony-motion-drawer: 1ms;
+    --colony-motion-toast: 1ms;
+    --colony-motion-skeleton: 1ms;
+    --colony-motion-onboarding-spinner: 1ms;
+    --motion-duration-instant: 1ms;
+    --motion-duration-fast: 1ms;
+    --motion-duration-standard: 1ms;
+    --motion-duration-arrival: 1ms;
+    --motion-distance-arrival: 0;
+  }
+
   .motion-enter-conversation {
     animation-duration: 1ms;
   }

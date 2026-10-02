@@ -82,6 +82,26 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goSavedForLater = React.useCallback(
+    () =>
+      commitNavigation({
+        to: "/",
+        search: { filter: "reminders" },
+      }),
+    [commitNavigation],
+  );
+
+  const goToday = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/today",
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goAgents = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -93,11 +113,59 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goAgentRolePack = React.useCallback(
+    (resumeDraft = false) =>
+      commitNavigation({
+        to: "/agents",
+        search: {
+          rolePack: "create",
+          resumeRolePack: resumeDraft ? "1" : undefined,
+        },
+      }),
+    [commitNavigation],
+  );
+
+  const goAgentRolePackEdit = React.useCallback(
+    (personaId: string, resumeDraft = false) =>
+      commitNavigation({
+        to: "/agents",
+        search: {
+          editRolePack: personaId,
+          resumeRolePack: resumeDraft ? "1" : undefined,
+        },
+      }),
+    [commitNavigation],
+  );
+
+  const goAgentProfile = React.useCallback(
+    (agentPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/agents",
+          search: { agent: agentPubkey },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goSupervision = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/supervision" }, behavior),
+    [commitNavigation],
+  );
+
+  const goPower = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/power" }, behavior),
+    [commitNavigation],
+  );
+
   const goPulse = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
         {
-          to: "/pulse",
+          to: "/today/updates",
         },
         behavior,
       ),
@@ -121,6 +189,302 @@ export function useAppNavigation() {
       commitNavigation(
         {
           to: "/projects",
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goGoals = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/goals" }, behavior),
+    [commitNavigation],
+  );
+
+  const goTeam = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/team" }, behavior),
+    [commitNavigation],
+  );
+
+  const goTeamOrg = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/team/org" }, behavior),
+    [commitNavigation],
+  );
+
+  const goTeamMember = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        { to: "/team/detail/$memberPubkey", params: { memberPubkey } },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goTeamMemberHistory = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/team/detail/$memberPubkey",
+          params: { memberPubkey },
+          search: { tab: "history" },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goTeamMemberSalary = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/team/detail/$memberPubkey",
+          params: { memberPubkey },
+          search: { panel: "salary" },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goTeamSalaryEdit = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/team/detail/$memberPubkey",
+          params: { memberPubkey },
+          search: { panel: "salary-edit" },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goTeamEdit = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        { to: "/team/edit/$memberPubkey", params: { memberPubkey } },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goTeamPause = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        { to: "/team/pause/$memberPubkey", params: { memberPubkey } },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goTeamArchive = React.useCallback(
+    (memberPubkey: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        { to: "/team/archive/$memberPubkey", params: { memberPubkey } },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goHireRoles = React.useCallback(
+    (savedRolePackId?: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/hire/roles",
+          search: { savedRolePack: savedRolePackId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goHireRoleRecovery = React.useCallback(
+    (kind: "runtime" | "provider" | "model", draftPersonaId: string) =>
+      commitNavigation({
+        to: "/hire/roles",
+        search: {
+          roleRecovery: `${kind}-empty`,
+          rolePersonaId: draftPersonaId,
+        },
+      }),
+    [commitNavigation],
+  );
+
+  const goHireConfigure = React.useCallback(
+    (
+      personaId: string,
+      hireId: string,
+      source?: { channelId?: string; askId?: string; nameTaken?: boolean },
+      behavior?: NavigationBehavior,
+    ) =>
+      commitNavigation(
+        {
+          to: "/hire/configure",
+          search: {
+            personaId,
+            hireId,
+            channelId: source?.channelId,
+            askId: source?.askId,
+            nameTaken: source?.nameTaken ? "true" : undefined,
+          },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goHireReview = React.useCallback(
+    (
+      hireId: string,
+      source?: { channelId?: string; askId?: string },
+      behavior?: NavigationBehavior,
+    ) =>
+      commitNavigation(
+        {
+          to: "/hire/review",
+          search: {
+            hireId,
+            channelId: source?.channelId,
+            askId: source?.askId,
+          },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goHireSuccess = React.useCallback(
+    (hireId: string, behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/hire/success", search: { hireId } }, behavior),
+    [commitNavigation],
+  );
+
+  const goGoal = React.useCallback(
+    (
+      goalId: string,
+      behavior?: NavigationBehavior & { entityNavigationId?: string },
+    ) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId",
+          params: { goalId },
+          state: behavior?.entityNavigationId
+            ? { entityNavigationId: behavior.entityNavigationId }
+            : undefined,
+        },
+        {
+          ...behavior,
+          force: Boolean(behavior?.entityNavigationId),
+        },
+      ),
+    [commitNavigation],
+  );
+
+  const goGoalWorkLink = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/link/$goalId",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goNewGoal = React.useCallback(
+    (parentGoalId?: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId",
+          params: { goalId: "new" },
+          search: { parent: parentGoalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goEditGoal = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId/edit",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goGoalProgress = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId/progress",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goGoalArchive = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId/archive",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goGoalDelete = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId/delete",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goShareGoal = React.useCallback(
+    (goalId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/goals/$goalId/share",
+          params: { goalId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goGoalReference = React.useCallback(
+    (returnTo: {
+      pathname: string;
+      search: Record<string, unknown>;
+      state: Record<string, unknown>;
+    }) =>
+      commitNavigation({
+        to: "/goals/reference",
+        state: { goalReferenceReturnTo: returnTo },
+      }),
+    [commitNavigation],
+  );
+
+  const goFactory = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/factory",
         },
         behavior,
       ),
@@ -186,6 +550,198 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goClients = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/clients" }, behavior),
+    [commitNavigation],
+  );
+
+  const goClient = React.useCallback(
+    (clientId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/clients/$clientId",
+          params: { clientId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goWork = React.useCallback(
+    (clientId?: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/$workSurface",
+          params: { workSurface: "work" },
+          search: clientId ? { client: clientId } : {},
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goWorkItem = React.useCallback(
+    (workItemId: string, clientId?: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$workId",
+          params: { workId: workItemId },
+          search: clientId ? { client: clientId } : {},
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWork = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/$workSurface",
+          params: { workSurface: "company-work" },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goNewCompanyWork = React.useCallback(
+    (
+      search: { channel?: string; goal?: string } = {},
+      behavior?: NavigationBehavior,
+    ) =>
+      commitNavigation(
+        {
+          to: "/work/$workId",
+          params: { workId: "new" },
+          search,
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkFromChat = React.useCallback(
+    (
+      messageId: string,
+      search: { channel: string; threadRoot: string; goal?: string },
+      behavior?: NavigationBehavior,
+    ) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "from-chat", resourceId: messageId },
+          search,
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkDetail = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "detail", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkEdit = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "edit", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkStatus = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "status", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkVerify = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "verify", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkArchive = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "archive", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkMove = React.useCallback(
+    (workItemId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/work/$screen/$resourceId",
+          params: { screen: "move", resourceId: workItemId },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goCompanyWorkTracking = React.useCallback(
+    (
+      screen:
+        | "suggestion"
+        | "timeline"
+        | "panel"
+        | "person"
+        | "watchdog"
+        | "watchdog-saved"
+        | "due"
+        | "due-clear"
+        | "due-denied"
+        | "due-saved"
+        | "failed"
+        | "unavailable"
+        | "empty",
+      resourceId: string,
+      search: { channel?: string; threadRoot?: string } = {},
+      behavior?: NavigationBehavior,
+    ) =>
+      commitNavigation(
+        {
+          to: "/work/tracking/$screen/$resourceId",
+          params: { screen, resourceId },
+          search,
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goWorkflow = React.useCallback(
     (workflowId: string, behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -199,6 +755,30 @@ export function useAppNavigation() {
         },
         behavior,
       ),
+    [commitNavigation],
+  );
+
+  const goAdvancedWorkflow = React.useCallback(
+    (workflowId: string, behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/workflows/$workflowId",
+          params: { workflowId },
+          search: { pane: "trigger", view: "advanced" },
+          state: { workflowEditorHasOrigin: true },
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
+  const goNewPlainWorkflow = React.useCallback(
+    (starting: "blank" | "example" = "blank") =>
+      commitNavigation({
+        to: "/workflows",
+        search: { starting, view: "plain-new" },
+        state: { workflowEditorHasOrigin: true },
+      }),
     [commitNavigation],
   );
 
@@ -222,8 +802,7 @@ export function useAppNavigation() {
           to: "/workflows",
           search: {
             channel: channelId,
-            pane: "trigger",
-            view: "create",
+            view: "plain-new",
           },
           state: { workflowEditorHasOrigin: true },
         },
@@ -238,7 +817,7 @@ export function useAppNavigation() {
         {
           to: "/workflows/$workflowId",
           params: { workflowId },
-          search: { pane: "trigger", view: "edit" },
+          search: { pane: "trigger", view: "plain-edit" },
           state: { workflowEditorHasOrigin: true },
         },
         behavior,
@@ -327,6 +906,26 @@ export function useAppNavigation() {
           : undefined,
       );
     },
+    [commitNavigation],
+  );
+
+  const goAskDetail = React.useCallback(
+    (
+      channelId: string,
+      askId: string,
+      companyToolConsentInbox = false,
+      behavior?: NavigationBehavior,
+    ) =>
+      commitNavigation(
+        {
+          to: "/asks/$channelId/$askId",
+          params: { channelId, askId },
+          ...(companyToolConsentInbox
+            ? { search: { companyToolConsentInbox: "1" } }
+            : {}),
+        },
+        behavior,
+      ),
     [commitNavigation],
   );
 
@@ -459,21 +1058,70 @@ export function useAppNavigation() {
     closeSettings,
     closeWorkflowDetail,
     goAgents,
+    goAgentRolePack,
+    goAgentRolePackEdit,
+    goAgentProfile,
+    goAskDetail,
     goChannel,
+    goClient,
+    goClients,
     goDuplicateWorkflow,
+    goAdvancedWorkflow,
     goEditWorkflow,
     goForumPost,
     goHome,
+    goGoal,
+    goGoalArchive,
+    goGoalDelete,
+    goGoalProgress,
+    goGoalReference,
+    goGoalWorkLink,
+    goGoals,
+    goTeam,
+    goTeamOrg,
+    goTeamMember,
+    goTeamMemberHistory,
+    goTeamMemberSalary,
+    goTeamSalaryEdit,
+    goTeamEdit,
+    goTeamPause,
+    goTeamArchive,
+    goHireRoles,
+    goHireRoleRecovery,
+    goHireConfigure,
+    goHireReview,
+    goHireSuccess,
+    goNewGoal,
+    goEditGoal,
+    goShareGoal,
+    goSavedForLater,
+    goPower,
+    goToday,
     goNewMessage,
     goNewWorkflow,
+    goNewPlainWorkflow,
     goNewWorkflowForChannel,
     goProject,
     goProjects,
+    goFactory,
     goPulse,
     goProfile,
+    goSupervision,
     goSettings,
     goWorkflow,
     goWorkflows,
+    goWork,
+    goWorkItem,
+    goCompanyWork,
+    goNewCompanyWork,
+    goCompanyWorkFromChat,
+    goCompanyWorkDetail,
+    goCompanyWorkEdit,
+    goCompanyWorkStatus,
+    goCompanyWorkVerify,
+    goCompanyWorkArchive,
+    goCompanyWorkMove,
+    goCompanyWorkTracking,
     openSearchHit,
   };
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:buzz/features/activity/activity_page.dart';
+import 'package:buzz/features/activity/activity_home_page.dart';
 import 'package:buzz/features/activity/activity_provider.dart';
 import 'package:buzz/features/activity/compose_drafts_provider.dart';
 import 'package:buzz/features/activity/feed_item.dart';
@@ -188,22 +189,62 @@ void main() {
     expect(find.text('No activity yet'), findsOneWidget);
   });
 
-  testWidgets('does not imply a back button for the top-level Activity tab', (
-    tester,
-  ) async {
-    await tester.pumpWidget(await buildTestable());
+  testWidgets('Activity home matches the v6 empty state', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          inboxItemsProvider.overrideWithValue(const <InboxItem>[]),
+          activityProvider.overrideWith(
+            () => _FakeActivityNotifier(
+              HomeFeedResponse(
+                mentions: const [],
+                needsAction: const [],
+                activity: const [],
+                agentActivity: const [],
+              ),
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(body: ActivityHomePage(onOpenItem: (_) {})),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
 
-    final appBar = tester.widget<FrostedAppBar>(
-      find.byType(FrostedAppBar).last,
+    expect(find.text('Activity'), findsOneWidget);
+    expect(find.text('A quieter\nmoment.'), findsOneWidget);
+    expect(find.text('No recent activity'), findsOneWidget);
+    expect(find.text('Open conversations'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('activity-back-to-today')),
+      findsOneWidget,
     );
-    expect(appBar.automaticallyImplyLeading, isFalse);
-    expect(appBar.gradient, isNull);
-    expect(appBar.frosted, isTrue);
-    expect(appBar.showBottomDivider, isTrue);
-    expect(appBar.bottomHeight, Grid.xxs);
-    expect(appBar.centerTitle, isFalse);
-    expect(find.byTooltip('Back'), findsNothing);
+    expect(find.byType(FrostedAppBar), findsNothing);
+    expect(find.text('No recent activity'), findsOneWidget);
+  });
+
+  testWidgets('Activity home reports unavailable data and offers retry', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          inboxItemsProvider.overrideWithValue(const <InboxItem>[]),
+          activityProvider.overrideWith(_ErrorActivityNotifier.new),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(body: ActivityHomePage(onOpenItem: (_) {})),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Could not load activity'), findsOneWidget);
+    expect(find.text('Retry connection'), findsOneWidget);
+    expect(find.text('No recent activity'), findsNothing);
   });
 
   testWidgets('sizes the Activity app bar for its custom title style', (
@@ -546,7 +587,7 @@ void main() {
     // whitespace-only) unchanged, so the sender must resolve through the
     // shared nonblank-name label contract: the row shows the compact npub
     // of the a11ce key instead of a blank author label. Binds the production
-    // seam — the sender resolves through the user cache exactly as the live
+    // seam: the sender resolves through the user cache exactly as the live
     // page does. Keyed remounts keep each ProviderScope (and its user-cache
     // override) fresh between scenarios, so each iteration actually
     // consumes its own blank-name fixture.

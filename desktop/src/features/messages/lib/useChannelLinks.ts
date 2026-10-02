@@ -122,6 +122,22 @@ export function useChannelLinks() {
 
       if (debounceTimerRef.current !== null) {
         clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+
+      // Close immediately when the caret has left a `#` query. Only opening
+      // is debounced; a stale open list would otherwise capture Enter and
+      // insert a channel instead of submitting fast edits.
+      if (
+        !detectPrefixQuery(
+          "#",
+          value,
+          cursorPosition,
+          knownNamesLowerRef.current,
+        )
+      ) {
+        setChannelQuery(null);
+        return;
       }
 
       debounceTimerRef.current = setTimeout(() => {

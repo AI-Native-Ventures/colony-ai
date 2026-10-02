@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.7
 #
-# Public Buzz relay image — published as ghcr.io/block/buzz:<tag>.
+# Public Buzz relay image, published as ghcr.io/block/buzz:<tag>.
 #
 # Builds the `buzz-relay` binary (Rust 1.95) and the `buzz-web` static bundle
 # (pnpm + vite), then assembles them into a small debian-slim runtime with
 # `git` available (the relay shells out to git for repo hydrate / receive-pack
-# / upload-pack — see crates/buzz-relay/src/api/git).
+# / upload-pack; see crates/buzz-relay/src/api/git).
 #
 # Multi-arch is handled by running this same Dockerfile on native amd64 and
 # native arm64 runners (see .github/workflows/docker.yml). The Dockerfile
@@ -63,7 +63,7 @@ RUN apt-get update \
 # locations. The normal runtime strips it below; runtime-debug retains it.
 ENV CARGO_PROFILE_RELEASE_DEBUG=line-tables-only
 COPY --from=planner /build/recipe.json recipe.json
-# Cook the full workspace recipe — relay deps include workspace siblings, so
+# Cook the full workspace recipe. Relay deps include workspace siblings, so
 # scoping to -p buzz-relay misses transitive deps and re-builds them later.
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
@@ -110,7 +110,7 @@ ENV COREPACK_NPM_REGISTRY=${NPM_REGISTRY}
 # When using a mirror, disable corepack's npmjs signature check: the mirror
 # republishes tarballs without the public registry's provenance signatures, so
 # strict verification fails ("No compatible signature found"). Only relaxed on
-# the mirror path — public builds (NPM_REGISTRY unset) keep strict verification.
+# the mirror path. Public builds (NPM_REGISTRY unset) keep strict verification.
 RUN if [ -n "${NPM_REGISTRY}" ]; then \
         echo "registry=${NPM_REGISTRY}" > /build/.npmrc \
         && echo "COREPACK_INTEGRITY_KEYS=0" >> /etc/environment; \
@@ -131,7 +131,7 @@ FROM debian:${DEBIAN_VERSION}-slim AS runtime-base
 
 # OCI annotations: required for GHCR to auto-link the image to this repo and
 # inherit its visibility. org.opencontainers.image.source is the load-bearing
-# one — without it GHCR keeps the image private even when the repo is public.
+# one. Without it GHCR keeps the image private even when the repo is public.
 LABEL org.opencontainers.image.title="Buzz" \
       org.opencontainers.image.description="WebSocket relay server for the Buzz communications platform" \
       org.opencontainers.image.source="https://github.com/block/buzz" \
@@ -184,3 +184,36 @@ FROM runtime-base AS runtime
 COPY --from=stripped-binaries /build/target/release/buzz-relay /usr/local/bin/buzz-relay
 COPY --from=stripped-binaries /build/target/release/buzz-admin /usr/local/bin/buzz-admin
 COPY --from=stripped-binaries /build/target/release/buzz-pair-relay /usr/local/bin/buzz-pair-relay
+
+# Resolve the repository-pinned pgschema package once at build time. Only the
+# canary target below receives this binary; the normal public relay image stays
+# small and does not need a schema planner.
+FROM builder AS pgschema-tool
+RUN ./bin/pgschema help >/dev/null \
+    && pgschema="$(find /root/.cache/hermit/pkg -type f -name pgschema -print -quit)" \
+    && test -n "${pgschema}" \
+    && install -D -m 0555 "${pgschema}" /out/pgschema
+
+# Fly release commands preserve Docker ENTRYPOINT and replace CMD. This
+# canary-only image adds the desired-state schema tools and a small entrypoint
+# that dispatches Fly's one-off release command without starting the relay.
+FROM runtime AS runtime-canary
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client python3-minimal \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=pgschema-tool /out/pgschema /usr/local/bin/pgschema
+COPY scripts/fly-apply-schema.py /usr/local/bin/fly-apply-schema.py
+COPY scripts/fly-entrypoint.sh /usr/local/bin/fly-entrypoint
+COPY schema/schema.sql /opt/buzz/schema/schema.sql
+COPY scripts/reconcile-schema-after-pgschema.sql /opt/buzz/schema/reconcile-schema-after-pgschema.sql
+RUN chmod 0555 /usr/local/bin/fly-apply-schema.py /usr/local/bin/fly-entrypoint
+USER buzz:buzz
+ENTRYPOINT ["/usr/local/bin/fly-entrypoint"]
+
+# Production uses the existing SQLx migration command in a Fly release
+# machine. The entrypoint dispatches RELEASE_COMMAND=1 to buzz-admin while
+# ordinary machines continue to start the relay.
+FROM runtime AS runtime-prod
+COPY --chmod=0555 scripts/fly-entrypoint.sh /usr/local/bin/fly-entrypoint
+ENTRYPOINT ["/usr/local/bin/fly-entrypoint"]

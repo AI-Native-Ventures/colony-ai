@@ -1,5 +1,10 @@
 import { invokeTauri } from "@/shared/api/tauri";
 import type { Identity, IdentityStorage } from "@/shared/api/types";
+import {
+  getNativeIdentity,
+  requireNativeCapability,
+  fromTauriIdentity,
+} from "@/shared/api/nativeBridge";
 
 type RawIdentity = {
   pubkey: string;
@@ -10,22 +15,12 @@ type RawIdentity = {
   reset_failed?: boolean;
 };
 
-function fromRawIdentity(raw: RawIdentity): Identity {
-  return {
-    pubkey: raw.pubkey,
-    displayName: raw.display_name,
-    storage: raw.storage,
-    lost: raw.lost === true,
-    locked: raw.locked === true,
-    resetFailed: raw.reset_failed === true,
-  };
-}
-
 export async function getIdentity(): Promise<Identity> {
-  return fromRawIdentity(await invokeTauri<RawIdentity>("get_identity"));
+  return getNativeIdentity();
 }
 
 export async function getNsec(): Promise<string> {
+  requireNativeCapability("identity-export");
   return invokeTauri<string>("get_nsec");
 }
 
@@ -33,13 +28,15 @@ export async function importIdentity(
   nsec: string,
   password?: string,
 ): Promise<Identity> {
-  return fromRawIdentity(
+  requireNativeCapability("identity-import");
+  return fromTauriIdentity(
     await invokeTauri<RawIdentity>("import_identity", { nsec, password }),
   );
 }
 
 export async function persistCurrentIdentity(): Promise<Identity> {
-  return fromRawIdentity(
+  requireNativeCapability("identity-create");
+  return fromTauriIdentity(
     await invokeTauri<RawIdentity>("persist_current_identity"),
   );
 }
@@ -52,6 +49,7 @@ export async function persistCurrentIdentity(): Promise<Identity> {
  * state until the process exits and only handle errors (e.g. display a toast).
  */
 export async function signOut(): Promise<void> {
+  requireNativeCapability("identity-recovery");
   await invokeTauri("sign_out");
 }
 
@@ -66,6 +64,7 @@ export type GeneratePassphraseOptions = {
 export async function generateBackupPassphrase(
   options?: GeneratePassphraseOptions,
 ): Promise<string> {
+  requireNativeCapability("identity-backup");
   return invokeTauri<string>("generate_backup_passphrase", {
     words: options?.words,
     separator: options?.separator,
@@ -74,6 +73,7 @@ export async function generateBackupPassphrase(
 
 /** Encrypt the current identity as an in-memory NIP-49 backup for native save. */
 export async function createNcryptsecBackup(password: string): Promise<string> {
+  requireNativeCapability("identity-backup");
   return invokeTauri<string>("create_ncryptsec_backup", { password });
 }
 
@@ -81,6 +81,7 @@ export async function createNcryptsecBackup(password: string): Promise<string> {
 export async function saveNcryptsecCopy(
   ncryptsec: string,
 ): Promise<string | null> {
+  requireNativeCapability("identity-backup");
   return (
     (await invokeTauri<string | null>("save_ncryptsec_copy", { ncryptsec })) ??
     null
@@ -98,6 +99,7 @@ export async function verifyNcryptsecBackup(
   ncryptsec: string,
   password: string,
 ): Promise<BackupVerification> {
+  requireNativeCapability("identity-backup");
   return invokeTauri<BackupVerification>("verify_ncryptsec_backup", {
     ncryptsec,
     password,

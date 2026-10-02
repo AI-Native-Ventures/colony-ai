@@ -18,7 +18,7 @@ void main() {
   setUp(() {
     PackageInfo.setMockInitialValues(
       appName: 'Buzz',
-      packageName: 'xyz.block.buzz',
+      packageName: 'ventures.ainative.colony',
       version: '0.16.0',
       buildNumber: '432',
       buildSignature: '',
@@ -35,7 +35,7 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       PackageInfo.setMockInitialValues(
         appName: 'Buzz',
-        packageName: 'xyz.block.buzz',
+        packageName: 'ventures.ainative.colony',
         version: '0.16.0',
         buildNumber: buildNumber,
         buildSignature: '',

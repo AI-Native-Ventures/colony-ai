@@ -7,55 +7,20 @@ import {
   TEST_IDENTITIES,
 } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
-import { expectEmojiMartStylesInstalled } from "../helpers/css";
-import { openProfileMenu, openSettings } from "../helpers/settings";
+import {
+  openAvatarProfileContext,
+  openProfileMenu,
+  openSettings,
+  selectSettingsSection,
+} from "../helpers/settings";
+import { openAgentTemplatesView } from "../helpers/agentWorkspace";
 
 async function expectHomeView(page: import("@playwright/test").Page) {
   await expect(page.getByTestId("home-inbox-list")).toBeVisible();
 }
 
-async function expandIdentity(page: import("@playwright/test").Page) {
-  const identity = page.getByTestId("profile-identity-card");
-  const isOpen = await identity.evaluate(
-    (element) => element instanceof HTMLDetailsElement && element.open,
-  );
-  if (!isOpen) {
-    await page.getByTestId("profile-identity-toggle").click();
-  }
-}
-
-async function selectFirstEmojiFromPicker(page: Page) {
-  const picker = page.locator("em-emoji-picker");
-  await expect(picker).toBeVisible();
-  await expect
-    .poll(() =>
-      picker.evaluate((element) =>
-        Boolean(element.shadowRoot?.querySelector(".scroll button")),
-      ),
-    )
-    .toBe(true);
-  await picker.evaluate((element) => {
-    const button = element.shadowRoot?.querySelector(".scroll button");
-    if (!(button instanceof HTMLElement)) {
-      throw new Error("Emoji picker did not render an emoji button.");
-    }
-    button.click();
-  });
-}
-
 async function waitForAvatarEditorToClose(page: Page) {
-  await expect(page.getByTestId("profile-avatar-editor-shell")).toHaveCount(0);
-}
-
-async function waitForReactEffects(page: Page) {
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => resolve());
-        });
-      }),
-  );
+  await expect(page.getByTestId("profile-avatar-dialog")).toHaveCount(0);
 }
 
 function getHashSearchParam(page: Page, name: string) {
@@ -367,7 +332,7 @@ test("owned agent profile stays in parity between Agents and its DM", async ({
     "Keep every profile entry point in sync.",
   );
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page
     .getByRole("button", { name: `${agentName} agent profile` })
     .click();
@@ -408,7 +373,7 @@ test("owned agent profile stays in parity between Agents and its DM", async ({
     { dmChannelId, pubkey: agentPubkey },
   );
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page
     .getByRole("button", { name: `${agentName} agent profile` })
     .click();
@@ -428,7 +393,7 @@ test("owned agent profile stays in parity between Agents and its DM", async ({
   expect(dmSurface).toEqual(agentsSurface);
 });
 
-test("keeps the saved profile description after a community round trip", async ({
+test("keeps the saved display name after a community round trip", async ({
   page,
 }) => {
   const communities = [
@@ -451,12 +416,12 @@ test("keeps the saved profile description after a community round trip", async (
   }, communities);
   await page.goto("/");
 
-  const description = "Description that should survive switching";
+  const displayName = "Name that should survive switching";
   await openSettings(page, "profile");
-  await page.getByTestId("profile-metadata-edit").click();
-  await page.getByTestId("profile-about").fill(description);
-  await page.getByTestId("profile-metadata-edit").click();
-  await expect(page.getByTestId("profile-about-value")).toHaveText(description);
+  const nameInput = page.getByTestId("profile-display-name");
+  await nameInput.fill(displayName);
+  await nameInput.press("Enter");
+  await expect(nameInput).toHaveValue(displayName);
   await page.getByTestId("settings-back-to-app").click();
 
   const communityA = page.getByTestId(
@@ -471,305 +436,172 @@ test("keeps the saved profile description after a community round trip", async (
   await expect(communityA).toHaveAttribute("aria-current", "true");
 
   await openSettings(page, "profile");
-  await expect(page.getByTestId("profile-about-value")).toHaveText(description);
+  await expect(page.getByTestId("profile-display-name")).toHaveValue(
+    displayName,
+  );
 });
 
 test("updates the relay-backed profile from settings", async ({ page }) => {
   const stamp = Date.now();
   const displayName = `Tyler QA ${stamp}`;
-  const avatarUrl = `https://example.com/avatar-${stamp}.png`;
-  const about = `Coordinating relay profile setup ${stamp}`;
   await page.goto("/");
 
   await openSettings(page, "profile");
   await expect(
     page.getByTestId("settings-profile").getByRole("heading", {
       exact: true,
-      name: "Profile",
+      name: "Your account",
     }),
   ).toBeVisible();
-
-  await expect(page.getByTestId("profile-identity-details")).toBeHidden();
-  await expandIdentity(page);
-  // The mock identity pubkey is "deadbeef" repeated 8×; its canonical npub
-  // is npub1m6kmam774…zuz0, so the identity row shows the npub, not the hex.
-  await expect(page.getByTestId("profile-pubkey")).toContainText(
-    npubEncode("deadbeef".repeat(8)).slice(0, 8),
+  const nameInput = page.getByTestId("profile-display-name");
+  await nameInput.fill(displayName);
+  await nameInput.press("Enter");
+  await expect(nameInput).toHaveValue(displayName);
+  await expect(page.getByTestId("account-profile-email")).toHaveAttribute(
+    "readonly",
+    "",
   );
-  await expect(page.getByTestId("profile-pubkey")).not.toContainText(
-    "deadbeefdeadbeef",
-  );
-  await expect(page.getByTestId("profile-nip05")).toContainText("Not set");
 
-  await page.getByTestId("profile-metadata-edit").click();
-  await expect(page.getByTestId("profile-metadata-edit")).toHaveText("Done");
-  await expect(page.getByTestId("profile-about")).toBeVisible();
-  await page.getByTestId("profile-display-name").fill(displayName);
-  await page.getByTestId("profile-about").fill(about);
-  await page.getByTestId("profile-metadata-edit").click();
-
-  await expect(page.getByTestId("profile-display-name-value")).toHaveText(
-    displayName,
-  );
-  await expect(page.getByTestId("profile-about-value")).toHaveText(about);
-
+  await openAvatarProfileContext(page);
   await page.getByTestId("profile-avatar-edit").click();
-  await page.getByTestId("profile-avatar-url").fill(avatarUrl);
-  await page.getByTestId("profile-avatar-done").click();
+  await expect(page.getByTestId("profile-avatar-dialog")).toBeVisible();
+  await page.getByTestId("avatar-option-star").click();
   await waitForAvatarEditorToClose(page);
-
-  await expect(page.getByTestId("profile-display-name-value")).toHaveText(
-    displayName,
+  await expect(page.getByTestId("profile-avatar-saved")).toHaveText(
+    "Profile photo updated",
   );
-  await expect(page.getByTestId("profile-nip05")).toContainText("Not set");
-  await page.getByTestId("profile-avatar-edit").click();
-  await expect(page.getByTestId("profile-avatar-url")).toHaveValue("");
-  await page.getByTestId("profile-avatar-done").click();
-  await expandIdentity(page);
 
   await page.getByTestId("settings-back-to-app").click();
   await expectHomeView(page);
   await expect(page.getByTestId("open-settings")).toBeVisible();
 
   await openSettings(page, "profile");
-  await expect(page.getByTestId("profile-display-name-value")).toHaveText(
+  await expect(page.getByTestId("profile-display-name")).toHaveValue(
     displayName,
   );
-  await expandIdentity(page);
-  await expect(page.getByTestId("profile-nip05")).toContainText("Not set");
-  await page.getByTestId("profile-avatar-edit").click();
-  await expect(page.getByTestId("profile-avatar-url")).toHaveValue("");
-  await expect(page.getByTestId("profile-about-value")).toHaveText(about);
+  await expect(
+    page.getByTestId("settings-profile-avatar-image"),
+  ).toHaveAttribute("src", /^data:image\/svg\+xml/);
 });
 
-test("saves profile metadata from the block Done button", async ({ page }) => {
+test("saves the display name when its field is submitted", async ({ page }) => {
   await page.goto("/");
 
   await openSettings(page, "profile");
-  await expect(page.getByTestId("profile-display-name-value")).toHaveText(
-    "npub1mock...",
+  const nameInput = page.getByTestId("profile-display-name");
+  await expect(nameInput).toBeVisible();
+  await expect(page.getByTestId("account-profile-email")).toHaveAttribute(
+    "readonly",
+    "",
   );
-  await expect(page.getByTestId("profile-save")).toHaveCount(0);
 
-  await page.getByTestId("profile-metadata-edit").click();
-  await expect(page.getByTestId("profile-metadata-edit")).toHaveText("Done");
-  await expect(page.getByTestId("profile-about")).toBeVisible();
-  await page.getByTestId("profile-display-name").fill("Save Button QA");
-  await page.getByTestId("profile-about").fill("Temporary profile note");
-  await expect(page.getByTestId("profile-save")).toHaveCount(0);
+  await nameInput.fill("Save Button QA");
+  await nameInput.press("Enter");
+  await expect(nameInput).toHaveValue("Save Button QA");
 
-  await page.getByTestId("profile-metadata-edit").click();
-  await waitForReactEffects(page);
-  await expect(page.getByTestId("profile-display-name")).toHaveCount(0);
-  await expect(page.getByTestId("profile-display-name-value")).toHaveText(
+  await nameInput.fill("");
+  await nameInput.press("Enter");
+  await page.getByTestId("settings-back-to-app").click();
+  await openSettings(page, "profile");
+  await expect(page.getByTestId("profile-display-name")).toHaveValue(
     "Save Button QA",
   );
-  await expect(page.getByTestId("profile-about-value")).toHaveText(
-    "Temporary profile note",
-  );
-  await expect(page.getByTestId("profile-metadata-edit")).toHaveText("Edit");
-  await expect(page.getByTestId("profile-save")).toHaveCount(0);
-
-  await page.getByTestId("profile-metadata-edit").click();
-  await page.getByTestId("profile-about").fill("");
-  await page.getByTestId("profile-metadata-edit").click();
-  await waitForReactEffects(page);
-  await expect(page.getByTestId("profile-about-value")).toHaveText("Not set");
-  await expect(page.getByTestId("profile-save")).toHaveCount(0);
-
-  await page.getByTestId("profile-metadata-edit").click();
-  await page.getByTestId("profile-display-name").fill("");
-  await expect(
-    page.getByText("Clearing existing profile fields is not supported yet."),
-  ).toBeVisible();
-  await page.getByTestId("profile-metadata-edit").click();
-  await waitForReactEffects(page);
-  await expect(page.getByTestId("profile-display-name")).toHaveCount(0);
-  await expect(page.getByTestId("profile-display-name-value")).toHaveText(
-    "Save Button QA",
-  );
-  await expect(page.getByTestId("profile-metadata-edit")).toHaveText("Edit");
-
-  await page.getByTestId("profile-metadata-edit").click();
-  await page.getByTestId("profile-display-name").fill("npub1mock...");
-  await page.getByTestId("profile-metadata-edit").click();
-  await expect(page.getByTestId("profile-save")).toHaveCount(0);
 });
 
-test("shows profile save feedback as a toast", async ({ page }) => {
-  await page.goto("/");
-
-  await openSettings(page, "profile");
-  await page.getByTestId("profile-metadata-edit").click();
-  await page.getByTestId("profile-display-name").fill("Toast QA");
-  await page.getByTestId("profile-metadata-edit").click();
-
-  await expect(
-    page.locator("[data-sonner-toast]").filter({ hasText: "Profile saved" }),
-  ).toBeVisible();
-  await expect(page.getByText("Profile saved.", { exact: true })).toHaveCount(
-    0,
-  );
-});
-
-test("nests the avatar edit button in a clipped notch", async ({ page }) => {
-  // Under the Buzz default theme the settings nav overrides `--sidebar-active`
-  // (white pill on the gradient) while the avatar edit button deliberately
-  // keeps the root accent-driven token, so the shared-token comparison below
-  // only holds outside the Buzz theme.
-  await page.addInitScript(() => {
-    window.localStorage.setItem("buzz-theme", "github-light");
-  });
-  await page.goto("/");
-
-  await openSettings(page, "profile");
-
-  await expect(page.getByTestId("profile-avatar-preview-clip")).toHaveCSS(
-    "clip-path",
-    /polygon/,
-  );
-  const editShell = page.getByTestId("profile-avatar-edit-shell");
-  await expect(editShell).toHaveCSS("height", "54px");
-  await expect(editShell).toHaveCSS("width", "54px");
-
-  const editButton = page.getByTestId("profile-avatar-edit");
-  await expect(editButton).toHaveCSS("opacity", "1");
-
-  await expect(editButton).toHaveCSS(
-    "background-color",
-    await page
-      .getByTestId("settings-nav-profile")
-      .evaluate((element) => getComputedStyle(element).backgroundColor),
-  );
-  const transitionProperty = await editButton.evaluate(
-    (element) => getComputedStyle(element).transitionProperty,
-  );
-  expect(transitionProperty).toContain("opacity");
-  expect(transitionProperty).toContain("scale");
-});
-
-test("swaps the avatar preview and mode tabs while editing", async ({
+test("shows the designed status after a profile photo update", async ({
   page,
 }) => {
   await page.goto("/");
 
   await openSettings(page, "profile");
-
-  const previewFrame = page.getByTestId("profile-avatar-clip-frame");
-  const closedPreviewBox = await previewFrame.boundingBox();
-  if (!closedPreviewBox) {
-    throw new Error("Profile avatar preview did not render bounds.");
-  }
-
+  await openAvatarProfileContext(page);
   await page.getByTestId("profile-avatar-edit").click();
-  const tabList = page.getByRole("tablist", { name: "Avatar type" });
-  await expect(tabList).toBeVisible();
-  await expect(page.getByTestId("profile-avatar-mode-tabs-slot")).toBeVisible();
-  await page.waitForTimeout(350);
-
-  const openPreviewBox = await previewFrame.boundingBox();
-  const tabListBox = await tabList.boundingBox();
-  if (!openPreviewBox || !tabListBox) {
-    throw new Error("Profile avatar edit layout did not render bounds.");
-  }
-
-  const closedPreviewCenterY = closedPreviewBox.y + closedPreviewBox.height / 2;
-  const tabListCenterY = tabListBox.y + tabListBox.height / 2;
-  expect(Math.abs(tabListCenterY - closedPreviewCenterY)).toBeLessThan(16);
-  const tabListBottomY = tabListBox.y + tabListBox.height;
-  const segmentToPreviewGap = openPreviewBox.y - tabListBottomY;
-  expect(segmentToPreviewGap).toBeGreaterThan(48);
-  expect(segmentToPreviewGap).toBeLessThan(72);
-  expect(openPreviewBox.y).toBeGreaterThan(closedPreviewCenterY + 72);
-
-  await page.getByTestId("profile-avatar-done").click();
+  await page.getByTestId("avatar-option-flower").click();
   await waitForAvatarEditorToClose(page);
-  await expect(tabList).toHaveCount(0);
-
-  const restoredPreviewBox = await previewFrame.boundingBox();
-  if (!restoredPreviewBox) {
-    throw new Error("Profile avatar preview did not restore bounds.");
-  }
-  expect(Math.abs(restoredPreviewBox.y - closedPreviewBox.y)).toBeLessThan(8);
+  await expect(page.getByTestId("profile-avatar-saved")).toHaveText(
+    "Profile photo updated",
+  );
 });
 
-test("highlights the avatar drop target while dragging an image", async ({
+test("shows the account photo row and its avatar action", async ({ page }) => {
+  await page.goto("/");
+  await openSettings(page, "profile");
+  await openAvatarProfileContext(page);
+
+  const details = page.getByTestId("settings-account-profile-card");
+  await expect(
+    details.getByRole("heading", { name: "Personal details" }),
+  ).toBeVisible();
+  await expect(
+    details.getByText("Profile photo", { exact: true }),
+  ).toBeVisible();
+  await expect(details).toContainText("Shown to people in your businesses.");
+
+  await details.getByRole("button", { name: "Edit avatar" }).click();
+  await expect(page.getByTestId("profile-avatar-dialog")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Edit avatar" }),
+  ).toBeVisible();
+  await page.getByTestId("avatar-cancel").click();
+  await waitForAvatarEditorToClose(page);
+});
+
+test("offers the frozen avatar presets, upload, and camera choices", async ({
   page,
 }) => {
   await page.goto("/");
-
   await openSettings(page, "profile");
+  await openAvatarProfileContext(page);
   await page.getByTestId("profile-avatar-edit").click();
 
-  const uploadTarget = page.getByTestId("profile-avatar-upload");
-  await uploadTarget.evaluate((element) => {
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(
-      new File(["avatar"], "avatar.png", { type: "image/png" }),
-    );
-
-    element.dispatchEvent(
-      new DragEvent("dragenter", {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer,
-      }),
-    );
-  });
-
-  await expect(uploadTarget).toHaveAttribute("data-dragging", "true");
-  await expect(uploadTarget).toContainText("Drop image here");
-
-  await uploadTarget.evaluate((element) => {
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(
-      new File(["avatar"], "avatar.png", { type: "image/png" }),
-    );
-
-    element.dispatchEvent(
-      new DragEvent("dragleave", {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer,
-      }),
-    );
-  });
-
-  await expect(uploadTarget).not.toHaveAttribute("data-dragging", "true");
-
-  await uploadTarget.evaluate((element) => {
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(
-      new File(["avatar"], "avatar.png", { type: "image/png" }),
-    );
-
-    element.dispatchEvent(
-      new DragEvent("dragenter", {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer,
-      }),
-    );
-  });
-
-  await expect(uploadTarget).toHaveAttribute("data-dragging", "true");
-
-  await page.evaluate(() => {
-    window.dispatchEvent(
-      new DragEvent("dragleave", {
-        bubbles: true,
-        cancelable: true,
-        clientX: -1,
-        clientY: 40,
-      }),
-    );
-  });
-
-  await expect(uploadTarget).not.toHaveAttribute("data-dragging", "true");
+  const options = page.getByTestId("avatar-options");
+  await expect(options.getByTestId("avatar-option-initials")).toBeVisible();
+  for (const preset of ["star", "leaf", "diamond", "sun", "flower"]) {
+    await expect(options.getByTestId(`avatar-option-${preset}`)).toBeVisible();
+  }
+  await expect(options.getByRole("button")).toHaveCount(6);
+  await expect(page.getByTestId("avatar-upload-open")).toBeVisible();
+  await page.getByTestId("avatar-camera-open").click();
+  await expect(page.getByTestId("avatar-camera-preview")).toBeVisible();
+  await expect(
+    page.getByText(/Use your camera to take a profile photo/),
+  ).toBeVisible();
+  await expect(page.getByTestId("avatar-camera-capture")).toBeDisabled();
+  await page.getByTestId("avatar-cancel").click();
+  await waitForAvatarEditorToClose(page);
 });
 
-test("uploads local profile avatar files before saving", async ({ page }) => {
+test("validates image types in the designed avatar upload state", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await openSettings(page, "profile");
+  await openAvatarProfileContext(page);
+  await page.getByTestId("profile-avatar-edit").click();
+  await page.getByTestId("avatar-upload-open").click();
+
+  const input = page.getByTestId("avatar-file-input");
+  await expect(input).toHaveAttribute(
+    "accept",
+    "image/jpeg,image/png,image/webp",
+  );
+  await input.setInputFiles({
+    buffer: Buffer.from("not an image"),
+    mimeType: "image/svg+xml",
+    name: "avatar.svg",
+  });
+  const invalid = page.getByTestId("avatar-invalid");
+  await expect(invalid).toContainText("Choose a smaller supported image");
+  await expect(invalid).toContainText("Use JPEG, PNG or WebP, up to 5 MB.");
+  await expect(page.getByTestId("avatar-crop-preview")).toHaveCount(0);
+});
+
+test("uploads, crops, and saves a local profile avatar", async ({ page }) => {
   const uploadedAvatarUrl = "https://mock.relay/media/avatar-profile.png";
+  const uploadedAvatarImage = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6okAAAAASUVORK5CYII=",
+    "base64",
+  );
   await installMockBridge(page, {
     uploadDescriptors: [
       {
@@ -781,43 +613,35 @@ test("uploads local profile avatar files before saving", async ({ page }) => {
         url: uploadedAvatarUrl,
       },
     ],
+    uploadDelayMs: 500,
   });
+  await page.route("**/media/avatar-profile.png", (route) =>
+    route.fulfill({ body: uploadedAvatarImage, contentType: "image/png" }),
+  );
   await page.goto("/");
 
   await openSettings(page, "profile");
+  await openAvatarProfileContext(page);
   await page.getByTestId("profile-avatar-edit").click();
-  await page.getByTestId("profile-avatar-input").setInputFiles({
-    buffer: Buffer.from("large-avatar-bytes"),
+  await page.getByTestId("avatar-upload-open").click();
+  await page.getByTestId("avatar-file-input").setInputFiles({
+    buffer: uploadedAvatarImage,
     mimeType: "image/png",
     name: "avatar-profile.png",
   });
 
-  await expect(page.getByTestId("profile-avatar-url")).toHaveValue("");
-  await page.getByTestId("profile-avatar-done").click();
+  const crop = page.getByTestId("avatar-crop-preview");
+  await expect(crop).toBeVisible();
+  await expect(page.getByTestId("avatar-crop-zoom")).toBeVisible();
+  await expect(crop).toHaveAttribute("aria-valuenow", "50");
+  await crop.press("ArrowRight");
+  await expect(crop).toHaveAttribute("aria-valuenow", "54");
+  await page.getByTestId("avatar-save").click();
+  await expect(page.getByTestId("avatar-saving")).toBeVisible();
   await waitForAvatarEditorToClose(page);
-  await page.getByTestId("profile-avatar-edit").click();
-  await expect(page.getByTestId("profile-avatar-url")).toHaveValue("");
-
-  const pastedAvatarUrl = await page.evaluate(
-    () => new URL("/buzz.svg", window.location.href).href,
+  await expect(page.getByTestId("profile-avatar-saved")).toHaveText(
+    "Profile photo updated",
   );
-  await page.getByTestId("profile-avatar-url").click();
-  await page.keyboard.insertText(pastedAvatarUrl);
-  await expect(page.getByTestId("profile-avatar-url")).toHaveValue(
-    pastedAvatarUrl,
-  );
-  await page.getByTestId("profile-avatar-done").click();
-  await waitForAvatarEditorToClose(page);
-  await page.getByTestId("profile-avatar-edit").click();
-  await expect(page.getByTestId("profile-avatar-url")).toHaveValue("");
-  await page.getByTestId("profile-avatar-url").fill("");
-  await page.getByTestId("profile-avatar-done").click();
-  await expect(
-    page.getByTestId("profile-avatar-preview").locator("img"),
-  ).toHaveCount(1);
-  await waitForAvatarEditorToClose(page);
-  await page.getByTestId("profile-avatar-edit").click();
-  await expect(page.getByTestId("profile-avatar-url")).toHaveValue("");
 
   await expect
     .poll(() =>
@@ -827,279 +651,73 @@ test("uploads local profile avatar files before saving", async ({ page }) => {
             .__BUZZ_E2E_COMMANDS__ ?? [],
       ),
     )
-    .toEqual(expect.arrayContaining(["upload_media_bytes", "update_profile"]));
-});
-
-test("renders emoji avatars with a static background layer", async ({
-  page,
-}) => {
-  await page.goto("/");
-
-  await openSettings(page, "profile");
-  await page.getByTestId("profile-avatar-edit").click();
-  await page.getByRole("tab", { name: "Emoji" }).click();
-  await selectFirstEmojiFromPicker(page);
-  await page.getByRole("button", { name: "Use #FFE75C background" }).click();
-
-  const avatarPreview = page.getByTestId("profile-avatar-preview");
-  await expect(avatarPreview).toHaveCSS(
-    "background-color",
-    "rgb(255, 231, 92)",
-  );
-  await expect(avatarPreview).not.toHaveClass(/buzz-avatar-squish/);
-  await expect(page.getByTestId("profile-avatar-preview-emoji")).toHaveText(
-    "😀",
-  );
-  await expect(page.getByTestId("profile-avatar-preview-emoji")).toHaveCSS(
-    "font-size",
-    "96px",
-  );
-});
-
-test("offers emoji search and skin-tone controls for profile avatars", async ({
-  page,
-}) => {
-  await page.goto("/");
-
-  await openSettings(page, "profile");
-  await page.getByTestId("profile-avatar-edit").click();
-  await page.getByRole("tab", { name: "Emoji" }).click();
-
-  const picker = page.locator("em-emoji-picker");
-  const searchInput = picker.locator("input[type='search']");
-  await expect(searchInput).toBeVisible();
-  await expectEmojiMartStylesInstalled(picker);
-  await expect(page.getByTestId("profile-avatar-emoji-picker")).toHaveCSS(
-    "height",
-    "384px",
-  );
-
-  const hasSkinToneControl = await picker.evaluate((element) => {
-    const controls = element.shadowRoot?.querySelectorAll("button") ?? [];
-    return Array.from(controls).some((button) =>
-      /skin tone/i.test(button.getAttribute("aria-label") ?? ""),
+    .toEqual(
+      expect.arrayContaining(["upload_media_bytes_raw", "update_profile"]),
     );
-  });
-  expect(hasSkinToneControl).toBe(true);
-
-  const controlColors = await picker.evaluate((element) => {
-    const root = element.shadowRoot?.querySelector<HTMLElement>("#root");
-    const input = element.shadowRoot?.querySelector<HTMLInputElement>(
-      'input[type="search"]',
-    );
-    const toneControl =
-      element.shadowRoot?.querySelector<HTMLElement>(".search + .flex");
-    if (!root || !input || !toneControl) {
-      throw new Error("Profile emoji picker controls did not render.");
-    }
-    return {
-      input: getComputedStyle(input).backgroundColor,
-      picker: getComputedStyle(root).backgroundColor,
-      tone: getComputedStyle(toneControl).backgroundColor,
-    };
-  });
-  expect(controlColors.input).not.toBe(controlColors.picker);
-  expect(controlColors.tone).not.toBe(controlColors.picker);
-
-  const controlHeights = await picker.evaluate((element) => {
-    const input = element.shadowRoot?.querySelector<HTMLInputElement>(
-      'input[type="search"]',
-    );
-    const toneControl =
-      element.shadowRoot?.querySelector<HTMLElement>(".search + .flex");
-    const toneButton =
-      element.shadowRoot?.querySelector<HTMLElement>(".skin-tone-button");
-    if (!input || !toneControl || !toneButton) {
-      throw new Error("Profile emoji picker controls did not render.");
-    }
-    input.focus();
-    return {
-      inputHeight: input.getBoundingClientRect().height,
-      inputShadow: getComputedStyle(input).boxShadow,
-      toneButtonBorder: getComputedStyle(toneButton).borderTopWidth,
-      toneButtonShadow: getComputedStyle(toneButton).boxShadow,
-      toneHeight: toneControl.getBoundingClientRect().height,
-    };
-  });
-  expect(controlHeights.inputHeight).toBe(48);
-  expect(controlHeights.toneHeight).toBe(48);
-  expect(controlHeights.inputShadow).toMatch(/inset$/);
-  expect(controlHeights.toneButtonBorder).toBe("0px");
-  expect(controlHeights.toneButtonShadow).toBe("none");
-});
-
-test("reveals emoji background colors only after choosing an emoji", async ({
-  page,
-}) => {
-  const imageAvatarUrl = `https://example.com/avatar-color-controls-${Date.now()}.png`;
-  await page.goto("/");
-
-  await openSettings(page, "profile");
-  await page.getByTestId("profile-avatar-edit").click();
-  await page.getByTestId("profile-avatar-url").fill(imageAvatarUrl);
-  await page.getByTestId("profile-avatar-done").click();
-  await waitForAvatarEditorToClose(page);
-
-  await page.getByTestId("profile-avatar-edit").click();
-  await expect(page.getByTestId("profile-avatar-url")).toHaveValue("");
-  await page.getByRole("tab", { name: "Emoji" }).click();
-
-  const colorGridShell = page.getByTestId("profile-avatar-color-grid-shell");
-  const doneButton = page.getByTestId("profile-avatar-done");
-  await expect(colorGridShell).toHaveAttribute("aria-hidden", "true");
-
-  const doneBeforeEmoji = await doneButton.boundingBox();
-  if (!doneBeforeEmoji) {
-    throw new Error("Avatar Done button did not render bounds.");
-  }
-
-  await selectFirstEmojiFromPicker(page);
-
-  await expect(colorGridShell).toHaveAttribute("aria-hidden", "false");
-  await expect(page.getByTestId("profile-avatar-color-grid")).toBeVisible();
-  await colorGridShell.evaluate((element) =>
-    Promise.all(
-      element
-        .getAnimations()
-        .map((animation) => animation.finished.catch(() => undefined)),
-    ),
-  );
-
-  const doneAfterEmoji = await doneButton.boundingBox();
-  if (!doneAfterEmoji) {
-    throw new Error("Avatar Done button did not render bounds.");
-  }
-  expect(doneAfterEmoji.y).toBeGreaterThan(doneBeforeEmoji.y + 8);
-});
-
-test("snaps custom avatar colors to the dot grid", async ({ page }) => {
-  await page.goto("/");
-
-  await openSettings(page, "profile");
-  await page.getByTestId("profile-avatar-edit").click();
-  await page.getByRole("tab", { name: "Emoji" }).click();
-  await selectFirstEmojiFromPicker(page);
-
-  const customColorSwatch = page.getByTestId("profile-avatar-custom-color");
-  await customColorSwatch.click();
-
-  const spectrum = page.getByTestId("profile-avatar-custom-color-spectrum");
-  await expect(spectrum).toBeVisible();
-  await expect(page.getByTestId("profile-avatar-done")).toHaveCount(0);
   await expect(
-    page.getByTestId("profile-avatar-custom-color-done"),
-  ).toBeVisible();
-
-  const hueSlider = page.getByTestId("profile-avatar-custom-color-hue");
-  await hueSlider.press("Home");
-  await expect(hueSlider).toHaveAttribute("aria-valuenow", "0");
-
-  const spectrumBox = await spectrum.boundingBox();
-  if (!spectrumBox) {
-    throw new Error("Custom color spectrum did not render bounds.");
-  }
-
-  await spectrum.click({
-    position: {
-      x: 24 + (spectrumBox.width - 48) * 0.33,
-      y: 24 + (spectrumBox.height - 48) * 0.44,
-    },
-  });
-  await expect(page.getByTestId("profile-avatar-preview")).toHaveCSS(
-    "background-color",
-    "rgb(145, 93, 93)",
-  );
-  await page.getByTestId("profile-avatar-custom-color-done").click();
-
-  await expect(customColorSwatch).toHaveAttribute("aria-pressed", "true");
-  await expect(customColorSwatch).toHaveCSS(
-    "background-color",
-    "rgb(145, 93, 93)",
-  );
-  await expect(page.getByTestId("profile-avatar-done")).toBeVisible();
+    page.getByTestId("account-profile-avatar-image"),
+  ).toHaveAttribute("src", uploadedAvatarUrl);
 });
 
 test("opens Send feedback from the profile menu", async ({ page }) => {
   await page.goto("/");
   await openProfileMenu(page);
   await page.getByTestId("profile-popover-send-feedback").click();
-  await expect(page.getByTestId("send-feedback-dialog")).toBeVisible();
-  await expect(page.getByTestId("feedback-privacy-disclosure")).toContainText(
-    "not posted to a channel",
+
+  const dialog = page.getByTestId("send-feedback-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId("send-feedback-title")).toHaveText(
+    "Send feedback",
   );
+  await expect(dialog.getByTestId("feedback-type")).toHaveValue("suggestion");
+  await expect(dialog.getByTestId("feedback-message")).toBeVisible();
+  await expect(dialog.getByTestId("feedback-include-logs")).not.toBeChecked();
+
+  await dialog.getByTestId("feedback-diagnostics-toggle").click();
+  await expect(
+    dialog.getByTestId("feedback-diagnostics-details"),
+  ).toBeVisible();
+  await dialog.getByTestId("feedback-include-logs").check();
+  await expect(dialog.getByTestId("feedback-include-logs")).toBeChecked();
 });
 
-test("keeps Send disabled when a stale attachment attempt finishes", async ({
+test("cancel closes the feedback form without submitting it", async ({
   page,
 }) => {
-  await installMockBridge(page, {
-    uploadDelayMs: 1_200,
-    uploadDescriptors: [
-      {
-        url: `https://mock.relay/media/${"b".repeat(64)}.png`,
-        sha256: "b".repeat(64),
-        size: 42,
-        type: "image/png",
-        uploaded: 42,
-      },
-    ],
-  });
   await page.goto("/");
-
   await openProfileMenu(page);
   await page.getByTestId("profile-popover-send-feedback").click();
-  await page.getByTestId("feedback-message").fill("Attachment race");
-  await page.getByTestId("feedback-attach-image").click();
-  await expect(page.getByTestId("feedback-attach-image")).toContainText(
-    "Attaching…",
-  );
 
-  await page.waitForTimeout(450);
-  await page.getByRole("button", { name: "Cancel" }).click();
-  await openProfileMenu(page);
-  await page.getByTestId("profile-popover-send-feedback").click();
-  await page.getByTestId("feedback-message").fill("Second attachment");
-  await page.getByTestId("feedback-attach-image").click();
-
-  const submit = page.getByTestId("feedback-submit");
-  await expect(submit).toBeDisabled();
-  await page.waitForTimeout(900);
-  await expect(page.getByTestId("feedback-attach-image")).toContainText(
-    "Attaching…",
-  );
-  await expect(submit).toBeDisabled();
-
-  await expect(page.getByTestId("feedback-attachment-thumb")).toBeVisible();
-  await expect(submit).toBeEnabled();
+  const dialog = page.getByTestId("send-feedback-dialog");
+  const message = dialog.getByTestId("feedback-message");
+  await message.fill("Cancel this feedback draft.");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId("feedback-sent")).toHaveCount(0);
 });
 
-test("proxies feedback attachment previews", async ({ page }) => {
-  const sha256 = "c".repeat(64);
-  const proxyUrl = `http://127.0.0.1:54321/media/${sha256}.png`;
-  await installMockBridge(page, {
-    uploadDescriptors: [
-      {
-        url: `http://localhost:3000/media/${sha256}.png`,
-        sha256,
-        size: 42,
-        type: "image/png",
-        uploaded: 42,
-      },
-    ],
-  });
+test("feedback form follows the frozen fields and consent controls", async ({
+  page,
+}) => {
   await page.goto("/");
-
   await openProfileMenu(page);
   await page.getByTestId("profile-popover-send-feedback").click();
-  await page.getByTestId("feedback-attach-image").click();
 
-  const thumbnail = page.getByTestId("feedback-attachment-thumb");
-  await expect(thumbnail.locator("img")).toHaveAttribute("src", proxyUrl);
-  await thumbnail.click();
-
-  const preview = page.getByTestId("feedback-attachment-preview");
-  await expect(preview).toBeVisible();
-  await expect(preview.locator("img")).toHaveAttribute("src", proxyUrl);
+  const dialog = page.getByTestId("send-feedback-dialog");
+  await expect(dialog.locator('input[type="file"]')).toHaveCount(0);
+  await expect(dialog.getByText("Attach image", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Send feedback" }),
+  ).toBeDisabled();
+  await dialog
+    .getByTestId("feedback-message")
+    .fill("A note from the settings menu.");
+  await expect(
+    dialog.getByRole("button", { name: "Send feedback" }),
+  ).toBeEnabled();
+  await expect(dialog.getByTestId("feedback-include-logs")).not.toBeChecked();
 });
 
 test("updates presence from the profile menu", async ({ page }) => {
@@ -1128,6 +746,7 @@ test("updates presence from the profile menu", async ({ page }) => {
 test("renders agent profile ingress subviews from the Playwright mock bridge", async ({
   page,
 }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await installMockBridge(page, {
     agentMemory: createMockAgentMemoryListing(),
     // The viewer is the agent's verified NIP-OA owner, so archiveActions
@@ -1916,7 +1535,7 @@ test("an older agent message stays exact while persona navigation selects the li
   });
   await page.goto("/");
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page.getByTestId(`persona-agent-row-${personaId}`).click();
   await expect(
     page.getByTestId("user-profile-agent-primary-action"),
@@ -1993,7 +1612,7 @@ test("restored Inbox deep link hides the back arrow", async ({ page }) => {
 
   // A reload keeps the `agentSession` URL param but drops the in-memory
   // return target, so the restored panel hides the back arrow and close is
-  // the only affordance — never a blind history pop.
+  // the only affordance - never a blind history pop.
   await page.reload();
   await expect(page.getByTestId("agent-session-thread-panel")).toBeVisible();
   await expect(page.getByTestId("agent-session-back")).toHaveCount(0);
@@ -2089,7 +1708,7 @@ test("declared owner sees runtime tab without a relay-agent record", async ({
   ).toHaveCount(0);
   await expect(panel.getByText("Harness log", { exact: true })).toHaveCount(0);
 
-  // No relay/managed runtime record means no write or management affordance —
+  // No relay/managed runtime record means no write or management affordance -
   // only the truthful NIP-OA profile signal is rendered in Runtime.
   await expect(panel.getByText("Model")).toHaveCount(0);
   await expect(
@@ -2140,7 +1759,7 @@ test("owned agent absent from relay/managed lists still renders agent framing", 
     "16aaadcf39011edbd887e4abefe5837170621db277e234f3f6c220d38ba75ecf";
   await installMockBridge(page, {
     // Seeded as an agent (kind:0 NIP-OA owner) but NOT as a managed agent and
-    // NOT in the relay-agents registry — exactly the bug scenario.
+    // NOT in the relay-agents registry - exactly the bug scenario.
     searchProfiles: [
       { pubkey: ednaPubkey, displayName: "Edna", isAgent: true },
     ],
@@ -2177,53 +1796,58 @@ test("owned agent absent from relay/managed lists still renders agent framing", 
   await messageRow.locator("button").first().click();
 
   await expect(page.getByTestId("user-profile-panel")).toBeVisible();
-  // The bot indicator only renders when isBot resolves true — the assertion
+  // The bot indicator only renders when isBot resolves true - the assertion
   // that the OA-owner signal now drives agent framing.
   await expect(page.getByTestId("profile-bot-indicator")).toBeVisible();
 });
 
-test("renders settings in the app shell with a back button", async ({
+test("renders the nine settings groups with one internal account bar", async ({
   page,
 }) => {
   await page.goto("/");
 
   const inboxNavButton = page
     .getByTestId("app-sidebar")
-    .getByRole("button", { name: "Inbox" });
+    .getByRole("button", { name: "Activity", exact: true });
   await expect(inboxNavButton).toBeVisible();
 
   await openSettings(page);
   await expect(page.getByTestId("settings-sidebar")).toBeVisible();
   await expect(page.getByTestId("settings-back-to-app")).toBeVisible();
-  await expect(page.getByPlaceholder("Search everything")).toHaveCount(0);
-  await expect(page.getByText("Personal", { exact: true })).toBeVisible();
-  const personalGroup = page
-    .getByTestId("settings-nav-channel-templates")
-    .locator("xpath=ancestor::*[@data-sidebar='group']");
-  await expect(personalGroup).toContainText("Personal");
-  await expect(
-    page.getByTestId("settings-nav-channel-templates"),
-  ).toContainText("Channel templates");
-  await expect(page.getByTestId("settings-nav-profile")).toHaveAttribute(
+  await expect(page.getByTestId("settings-search")).toBeVisible();
+  await expect(page.locator('[data-testid^="settings-group-"]')).toHaveCount(9);
+  await expect(page.getByRole("tablist")).toHaveCount(1);
+  await expect(page.getByTestId("settings-group-account")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  await expect(page.getByText("Communities", { exact: true })).toBeVisible();
   await expect(
-    page.getByTestId("settings-nav-channel-templates"),
+    page.getByRole("heading", { name: "Your account" }),
   ).toBeVisible();
-  await expect(page.getByText("App", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("settings-nav-agents")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Profile" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+
+  for (const group of [
+    "settings-group-appearance-group",
+    "settings-group-preferences",
+    "settings-group-business",
+    "settings-group-agents-group",
+    "settings-group-blocks-templates",
+    "settings-group-administration",
+    "settings-group-app-devices",
+    "settings-group-storage-group",
+  ]) {
+    await expect(page.getByTestId(group)).toBeVisible();
+  }
+
+  await page.getByTestId("settings-group-appearance-group").click();
+  await expect(page.getByTestId("settings-appearance")).toBeVisible();
   await expect(
-    page.getByTestId("settings-profile").getByRole("heading", {
-      exact: true,
-      name: "Profile",
-    }),
-  ).toBeVisible();
-  await page.getByTestId("settings-nav-appearance").click();
-  await expect(
-    page.getByTestId("settings-theme").getByRole("heading", {
+    page.getByTestId("settings-appearance").getByRole("heading", {
       name: "Appearance",
+      exact: true,
     }),
   ).toBeVisible();
   await expect(inboxNavButton).toHaveCount(0);
@@ -2249,8 +1873,22 @@ test("notification settings drive the Inbox badge and desktop alerts", async ({
   await page.goto("/");
   await expect(page.getByTestId("sidebar-home-count")).toHaveCount(0);
 
-  await openSettings(page, "notifications");
+  await openSettings(page, "privacy");
+  const messagePreviews = page.getByTestId("privacy-message-text");
+  await expect(messagePreviews).not.toBeChecked();
+  await messagePreviews.check();
+  await page.getByRole("button", { name: "Save privacy preferences" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "Privacy preferences saved",
+  );
+  await selectSettingsSection(page, "notifications");
   await expect(page.getByTestId("settings-notifications")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Notifications & sounds" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Choose what deserves your attention.", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByTestId("notifications-desktop-state")).toContainText(
     "On",
   );
@@ -2364,7 +2002,7 @@ test("notification settings drive the Inbox badge and desktop alerts", async ({
 
   await page
     .getByTestId("app-sidebar")
-    .getByRole("button", { name: "Inbox" })
+    .getByRole("button", { name: "Activity", exact: true })
     .click();
   await expectHomeView(page);
   await expect(page.getByTestId("sidebar-home-count")).toHaveCount(0);
@@ -2445,7 +2083,7 @@ test("desktop notification clicks open the matching forum thread", async ({
   ).toBeVisible();
 });
 
-test("opens settings with the keyboard shortcut and updates theme", async ({
+test("opens settings with the keyboard shortcut and applies a named theme", async ({
   page,
 }) => {
   await page.goto("/");
@@ -2456,34 +2094,14 @@ test("opens settings with the keyboard shortcut and updates theme", async ({
   );
 
   await expect(page.getByTestId("settings-view")).toBeVisible();
-  await expect(page.getByTestId("settings-nav-profile")).toHaveAttribute(
+  await expect(page.getByTestId("settings-group-account")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
   await expect(
-    page.getByTestId("settings-profile").getByRole("heading", {
-      exact: true,
-      name: "Profile",
-    }),
+    page.getByRole("heading", { name: "Your account" }),
   ).toBeVisible();
-  await page.getByTestId("settings-nav-appearance").click();
-
-  // Default is Buzz in System mode; Playwright's default color scheme is
-  // light, so the app boots with the light Buzz theme.
-  await expect
-    .poll(() =>
-      page.evaluate(() => document.documentElement.classList.contains("light")),
-    )
-    .toBe(true);
-
-  // Switch to Light mode tab to reveal light themes. Target the testid — in
-  // the default System mode the "Light" paired-theme tile shares the same
-  // accessible name as the mode button.
-  await page.getByTestId("appearance-mode-light").click();
-
-  // Switch to a light theme — verifies dark→light transition
-  await page.getByTestId("theme-style-trigger").click();
-  await page.getByTestId("theme-option-github-light").click();
+  await page.getByTestId("settings-group-appearance-group").click();
 
   await expect
     .poll(() =>
@@ -2491,43 +2109,25 @@ test("opens settings with the keyboard shortcut and updates theme", async ({
     )
     .toBe(true);
 
-  await expect
-    .poll(() =>
-      page.evaluate(() => document.documentElement.classList.contains("dark")),
-    )
-    .toBe(false);
+  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await expect(page.getByTestId("settings-theme-catalog")).toBeVisible();
+  await page.getByTestId("theme-catalog-github-light").click();
+  await expect(page.getByTestId("settings-theme-preview")).toBeVisible();
+  const themePreview = page.getByTestId("theme-workspace-preview");
+  const signedInName = await page.locator(".w20-nav-person strong").innerText();
+  await expect(themePreview).toContainText("Preview content only");
+  await expect(themePreview.getByTestId("theme-preview-person")).toHaveText(
+    signedInName,
+  );
+  await page.getByTestId("appearance-preview-density").selectOption("compact");
+  await page.getByTestId("theme-use").click();
+  await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Compact");
 
-  // CSS variables are set on the root element (the real theming mechanism)
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        document.documentElement.style.getPropertyValue("--background").trim(),
-      ),
-    )
-    .toBeTruthy();
-
-  // Theme name persists in localStorage
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
     .toBe("github-light");
 
-  // Switch to Dark mode tab to reveal dark themes
-  await page.getByTestId("appearance-mode-dark").click();
-
-  // Switch back to a dark theme — verifies light→dark transition
-  await page.getByTestId("theme-option-dracula").click();
-
-  await expect
-    .poll(() =>
-      page.evaluate(() => document.documentElement.classList.contains("dark")),
-    )
-    .toBe(true);
-
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
-    .toBe("dracula");
-
-  // Close settings with keyboard shortcut
   await page.keyboard.press(
     process.platform === "darwin" ? "Meta+," : "Control+,",
   );
@@ -2609,7 +2209,11 @@ test("storage clear resets composed font size and keyboard zoom across windows",
 }) => {
   await page.goto("/");
   await openSettings(page, "appearance");
-  await page.getByTestId("font-size-larger").click();
+  await page.getByTestId("settings-inner-accessibility").click();
+  await page
+    .getByRole("group", { name: "Text size" })
+    .getByRole("button", { name: "Larger", exact: true })
+    .click();
 
   const dispatchZoomIn = () =>
     page.evaluate(() => {
@@ -2683,56 +2287,43 @@ test("storage clear resets composed font size and keyboard zoom across windows",
   await peerPage.close();
 });
 
-test("shows agent runtimes in agent settings", async ({ page }) => {
+test("maps agent defaults, harnesses and local behavior to their sections", async ({
+  page,
+}) => {
   await page.goto("/");
 
-  await openSettings(page, "agents");
+  await openSettings(page, "agent-defaults");
 
-  const agentsPage = page.getByTestId("settings-agents");
+  const defaults = page.getByTestId("settings-global-agent-config");
+  await expect(defaults).toBeVisible();
   await expect(
-    agentsPage.getByRole("heading", { name: "Agents", exact: true }),
+    defaults.getByRole("heading", { name: "Agent defaults" }),
+  ).toBeVisible();
+  await expect(
+    defaults.locator('[data-slot="settings-section-card"]'),
+  ).toHaveCSS("border-radius", "12px");
+
+  await page.getByTestId("settings-inner-harnesses").click();
+  const harnesses = page.getByTestId("settings-harnesses");
+  await expect(harnesses).toBeVisible();
+  await expect(
+    harnesses.getByRole("heading", { name: "Available harnesses" }),
   ).toBeVisible();
 
-  for (const testId of [
-    "agents-preferences-card",
-    "settings-harnesses",
-    "settings-global-agent-config",
-  ]) {
-    const section = agentsPage
-      .getByTestId(testId)
-      .locator('[data-slot="settings-section-card"]');
-    await expect(section).toBeVisible();
-    await expect(section).toHaveCSS("border-radius", "12px");
-    await expect(section).toHaveCSS("border-top-width", "1px");
-  }
-
+  await page.getByTestId("settings-group-app-devices").click();
+  await page.getByTestId("settings-inner-app").click();
+  const appPreferences = page.getByTestId("settings-app-preferences");
+  const addressedAgents = appPreferences.getByTestId(
+    "settings-keep-addressed-agents",
+  );
   await expect(
-    agentsPage.getByRole("heading", {
-      name: "Agent runtimes",
-      exact: true,
+    addressedAgents.getByRole("switch", {
+      name: "Keep addressed agents selected",
     }),
   ).toBeVisible();
   await expect(
-    agentsPage.getByRole("heading", {
-      name: "Agent defaults",
-      exact: true,
-    }),
+    appPreferences.getByTestId("agents-preferences-card"),
   ).toBeVisible();
-  const runtimeRow = page.getByTestId("doctor-runtime-goose");
-  await expect(runtimeRow).toContainText("Goose");
-  await expect(runtimeRow).toHaveCSS("border-radius", "0px");
-  await expect(runtimeRow).toHaveCSS("border-top-width", "0px");
-
-  const agentsSecondaryColor = await agentsPage
-    .getByTestId("settings-automatic-agent-mentions")
-    .locator("[data-settings-subcopy]")
-    .evaluate((element) => getComputedStyle(element).color);
-  await page.getByTestId("settings-nav-appearance").click();
-  const appearanceSecondaryColor = await page
-    .getByTestId("link-preview-style-group")
-    .locator("[data-settings-subcopy]")
-    .evaluate((element) => getComputedStyle(element).color);
-  expect(agentsSecondaryColor).toBe(appearanceSecondaryColor);
 });
 
 test("settings subtitles share the Appearance secondary color", async ({
@@ -2741,10 +2332,10 @@ test("settings subtitles share the Appearance secondary color", async ({
   await page.goto("/");
   await openSettings(page, "appearance");
 
-  const appearancePanel = page.getByTestId("settings-panel-appearance");
+  const settingsView = page.getByTestId("settings-view");
+  const appearancePanel = page.getByTestId("settings-appearance");
   const secondaryColor = await appearancePanel
-    .locator("[data-settings-subcopy]")
-    .first()
+    .locator("[data-settings-subcopy]:visible")
     .evaluate((element) => getComputedStyle(element).color);
 
   for (const section of [
@@ -2756,18 +2347,27 @@ test("settings subtitles share the Appearance secondary color", async ({
     "custom-emoji",
     "local-archive",
     "channel-templates",
-    "hosted-communities",
     "agents",
-    "compute",
     "experimental",
     "mobile",
     "updates",
   ]) {
-    await page.getByTestId(`settings-nav-${section}`).click();
-    const subtitles = page
-      .getByTestId(`settings-panel-${section}`)
-      .locator("[data-settings-subcopy]");
-    await expect(subtitles.first()).toBeVisible();
+    await selectSettingsSection(page, section);
+    if (section === "profile") {
+      const accountProfile = page.getByTestId("settings-profile");
+      await expect(
+        accountProfile.getByRole("heading", {
+          name: "Your account",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        accountProfile.locator("[data-settings-subcopy]:visible"),
+      ).toHaveCount(0);
+      continue;
+    }
+    const subtitles = settingsView.locator("[data-settings-subcopy]:visible");
+    await expect(subtitles.first(), `${section} subtitle`).toBeVisible();
     const colors = await subtitles.evaluateAll((elements) =>
       elements.map((element) => getComputedStyle(element).color),
     );
@@ -2775,4 +2375,22 @@ test("settings subtitles share the Appearance secondary color", async ({
       new Set([secondaryColor]),
     );
   }
+
+  await page.goto("/");
+  await page.getByTestId("sidebar-nav-library-toggle").click();
+  const blocksAndTemplates = page.getByTestId("sidebar-blocks-templates");
+  await expect(blocksAndTemplates).toBeVisible();
+  await expect(blocksAndTemplates).toHaveCount(1);
+  await blocksAndTemplates.click();
+  const templatePanel = page.getByTestId("settings-panel-channel-templates");
+  await expect(templatePanel).toBeVisible();
+  const templateSubtitles = templatePanel.locator("[data-settings-subcopy]");
+  await expect(templateSubtitles.first()).toBeVisible();
+  await expect
+    .poll(async () =>
+      templateSubtitles.evaluateAll((elements) => [
+        ...new Set(elements.map((element) => getComputedStyle(element).color)),
+      ]),
+    )
+    .toEqual([secondaryColor]);
 });

@@ -16,7 +16,11 @@ import {
 import { installFakeCamera } from "../helpers/fakeCamera";
 import {
   E2E_IDENTITY_OVERRIDE_STORAGE_KEY,
+  completeR17BusinessSetup,
+  openR17BusinessSetup,
+  R17_BUSINESS_PROFILE_KEY,
   seedActiveIdentity,
+  startR17AccountAuth,
 } from "../helpers/onboarding";
 
 type RelayConnectionState =
@@ -26,6 +30,11 @@ type RelayConnectionState =
   | "idle"
   | "reconnecting"
   | "stalled";
+
+async function openOwnedCommunityReconnect(page: Page) {
+  await page.getByTestId("community-choice-existing").click();
+  await page.getByTestId("existing-choice-owner").click();
+}
 
 /**
  * Drive the mock relay connection state via the E2E bridge seam.
@@ -89,6 +98,19 @@ const FIRST_RUN_ALICE = {
   ...TEST_IDENTITIES.alice,
   username: "",
 };
+
+async function commandCount(page: Page, command: string) {
+  return page.evaluate((commandName) => {
+    const bridgeWindow = window as Window & {
+      __BUZZ_E2E_COMMAND_PAYLOADS__?: Array<{ command: string }>;
+    };
+    return (
+      bridgeWindow.__BUZZ_E2E_COMMAND_PAYLOADS__?.filter(
+        (entry) => entry.command === commandName,
+      ).length ?? 0
+    );
+  }, command);
+}
 
 async function seedOnboardingCompletion(page: Page, pubkey: string) {
   await page.addInitScript(
@@ -715,494 +737,170 @@ test("completed users skip the loading gate while profile is still settling", as
   await expectHomeView(page);
 });
 
-test("fresh existing-identity path leads with private-key recovery", async ({
-  page,
-}) => {
-  await installMockBridge(page, undefined, {
-    skipCommunitySeed: true,
-    skipOnboardingSeed: true,
-  });
-  await page.goto("/");
-
-  await page.getByRole("button", { name: "Use an existing key" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Enter your private key" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Paste your private key to sign in to Buzz."),
-  ).toBeVisible();
-  await expect(page.getByTestId("onboarding-content-card")).toBeVisible();
-  await expect(page.getByTestId("nostr-import-file-button")).toHaveText(
-    "backup file",
-  );
-  await expect(page.getByTestId("nostr-import-phone-link")).toHaveText(
-    "recover from your phone",
-  );
-  await expect(page.getByTestId("identity-recovery-pairing")).toHaveCount(0);
-
-  await page.getByTestId("nostr-import-file-button").click();
-  const backupDialog = page.getByTestId("backup-recovery-dialog");
-  await expect(backupDialog).toBeVisible();
-  await expect(
-    backupDialog.getByRole("heading", { name: "Restore from a backup file" }),
-  ).toBeVisible();
-  await expect(
-    backupDialog.getByTestId("nostr-import-backup-picker"),
-  ).toBeVisible();
-  const unlockPreview = backupDialog.getByTestId("backup-file-unlock-preview");
-  await expect(unlockPreview).toBeVisible();
-  await expect(unlockPreview.locator("span")).toHaveCount(17);
-  await expect(
-    unlockPreview.getByTestId("backup-file-key-dots").locator("span"),
-  ).toHaveCount(9);
-  await expect(
-    unlockPreview.getByTestId("backup-file-unlock-preview-icon"),
-  ).toBeVisible();
-  await expect(
-    backupDialog.getByTestId("nostr-import-backup-drop"),
-  ).toHaveCount(0);
-  await backupDialog
-    .getByTestId("nostr-import-backup-picker")
-    .evaluate((element) => {
-      const dataTransfer = new DataTransfer();
-      dataTransfer.items.add(
-        new File(["backup"], "identity.ncryptsec", { type: "text/plain" }),
-      );
-      element.dispatchEvent(
-        new DragEvent("dragenter", {
-          bubbles: true,
-          cancelable: true,
-          dataTransfer,
-        }),
-      );
-    });
-  const backupDrop = backupDialog.getByTestId("nostr-import-backup-drop");
-  await expect(backupDrop).toHaveAttribute("data-dragging", "true");
-  await expect(backupDrop).toContainText("Drop your backup file here");
-  const [backupDropBox, backupFileSectionBox] = await Promise.all([
-    backupDrop.boundingBox(),
-    unlockPreview.boundingBox(),
-  ]);
-  expect(backupDropBox?.width).toBeGreaterThan(
-    backupFileSectionBox?.width ?? 0,
+test("signed-out R17 entry offers email account access", async ({ page }) => {
+  await startR17AccountAuth(page);
+  await expect(page.getByRole("form", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByLabel("Email address")).toBeVisible();
+  await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute(
+    "type",
+    "password",
   );
   await expect(
-    backupDialog.getByTestId("nostr-import-backup-picker"),
+    page.getByRole("button", { name: "Forgot password?" }),
   ).toBeVisible();
-  await backupDrop.evaluate((element) => {
-    element.dispatchEvent(
-      new DragEvent("dragleave", { bubbles: true, cancelable: true }),
-    );
-  });
-  await expect(backupDrop).toHaveCount(0);
-  await expect(page.getByTestId("onboarding-content-card")).toBeVisible();
-  await page.getByRole("button", { name: "Back", exact: true }).click();
-
-  await page.getByTestId("nostr-import-phone-link").click();
-  const phoneDialog = page.getByTestId("phone-recovery-dialog");
-  await expect(phoneDialog).toBeVisible();
   await expect(
-    phoneDialog.getByRole("heading", { name: "Scan to sign in" }),
+    page.getByRole("button", { name: "Create an account" }),
   ).toBeVisible();
-  await expect(phoneDialog.getByTestId("identity-recovery-qr")).toBeVisible();
-  await expect(page.getByTestId("onboarding-content-card")).toBeVisible();
-});
-
-test("first-launch key import continues to machine setup", async ({ page }) => {
-  await installMockBridge(page, undefined, {
-    skipCommunitySeed: true,
-    skipOnboardingSeed: true,
-  });
-  await page.goto("/");
-
-  await page.getByRole("button", { name: "Use an existing key" }).click();
-  const importedNsec = nsecEncode(hexToBytes(TEST_IDENTITIES.alice.privateKey));
-  await page.getByTestId("nostr-import-nsec-input").fill(importedNsec);
-  await page.getByTestId("nostr-import-submit").click();
-
-  await expect(page.getByTestId("onboarding-page-2")).toBeVisible();
-  await expect(page.getByTestId("machine-onboarding-gate")).toBeVisible();
-  await expect(page.getByTestId("app-loading-gate")).toHaveCount(0);
-});
-
-test("key import locks host navigation and ignores rapid duplicate submits", async ({
-  page,
-}) => {
-  await installMockBridge(
-    page,
-    { identityImportDelayMs: 500 },
-    {
-      skipCommunitySeed: true,
-      skipOnboardingSeed: true,
-    },
+  await expect(page.locator("body")).not.toContainText(
+    /\bkey\b|nsec1|backup file|pairing code/i,
   );
-  await page.goto("/");
-
-  await page.getByRole("button", { name: "Use an existing key" }).click();
-  const importedNsec = nsecEncode(hexToBytes(TEST_IDENTITIES.alice.privateKey));
-  await page.getByTestId("nostr-import-nsec-input").fill(importedNsec);
-  const submit = page.getByTestId("nostr-import-submit");
-  await submit.dblclick({ delay: 0 });
-
-  await expect(submit).toBeDisabled();
-  await expect(page.getByTestId("onboarding-back")).toBeDisabled();
-  await expect.poll(() => commandCount(page, "import_identity")).toBe(1);
-  await expect(page.getByTestId("onboarding-page-2")).toBeVisible();
-});
-
-test("key import keeps alternate recovery methods disabled while submitting", async ({
-  page,
-}) => {
-  await installMockBridge(
-    page,
-    { identityImportDelayMs: 500 },
-    { skipCommunitySeed: true, skipOnboardingSeed: true },
-  );
-  await page.goto("/");
-
-  await page.getByRole("button", { name: "Use an existing key" }).click();
-  const importedNsec = nsecEncode(hexToBytes(TEST_IDENTITIES.alice.privateKey));
-  await page.getByTestId("nostr-import-nsec-input").fill(importedNsec);
-  await page.getByTestId("nostr-import-submit").click();
-
-  await expect(page.getByTestId("nostr-import-file-button")).toBeDisabled();
-  await expect(page.getByTestId("nostr-import-phone-link")).toBeDisabled();
-  await page.getByTestId("nostr-import-file-button").click({ force: true });
-  await page.getByTestId("nostr-import-phone-link").click({ force: true });
-  await expect(page.getByTestId("nostr-import-nsec-input")).toBeVisible();
-  await expect(page.getByTestId("backup-recovery-dialog")).toHaveCount(0);
-  await expect(page.getByTestId("phone-recovery-dialog")).toHaveCount(0);
-  await expect(page.getByTestId("onboarding-page-2")).toBeVisible();
-});
-
-test("imported-key users can skip out of harness setup", async ({ page }) => {
-  // Regression: importing an existing key sets the onboarding state machine's
-  // "continuing" marker, which pinned the stage to onboarding even after
-  // complete() ran — so Skip/Next silently did nothing. The fresh-key skip
-  // tests never exercised the import path, so this gap shipped. Prove an
-  // imported-key user actually leaves onboarding on Skip.
-  await installMockBridge(page, undefined, {
-    skipCommunitySeed: true,
-    skipOnboardingSeed: true,
-  });
-  await page.goto("/");
-
-  await page.getByRole("button", { name: "Use an existing key" }).click();
-  const importedNsec = nsecEncode(hexToBytes(TEST_IDENTITIES.alice.privateKey));
-  await page.getByTestId("nostr-import-nsec-input").fill(importedNsec);
-  await page.getByTestId("nostr-import-submit").click();
-
-  await expect(page.getByTestId("onboarding-page-2")).toBeVisible();
-  await page.getByTestId("onboarding-setup-skip").click();
-
-  // Reaching community onboarding proves machine onboarding completed rather
-  // than staying pinned on the setup step.
-  await expect(page.getByText("Join or create a community")).toBeVisible();
-  await expect(page.getByTestId("onboarding-page-2")).toHaveCount(0);
-});
-
-test("fresh-key harness completion continues directly into profile onboarding", async ({
-  page,
-}) => {
-  await page.addInitScript(() => {
-    const communityId = "e2e-existing-community";
-    window.localStorage.setItem(
-      "buzz-communities",
-      JSON.stringify([
-        {
-          id: communityId,
-          name: "E2E Test",
-          relayUrl: "ws://localhost:3000",
-          addedAt: new Date().toISOString(),
-        },
-      ]),
-    );
-    window.localStorage.setItem("buzz-active-community-id", communityId);
-  });
-  await installMockBridge(
-    page,
-    {
-      profileHasEvent: false,
-      deferProfileReads: true,
-    },
-    { skipCommunitySeed: true, skipOnboardingSeed: true },
-  );
-  await page.addInitScript(() => {
-    const testWindow = window as Window & {
-      __BUZZ_E2E__?: { bootSplashHoldMs?: number };
-    };
-    testWindow.__BUZZ_E2E__ = {
-      ...(testWindow.__BUZZ_E2E__ ?? {}),
-      bootSplashHoldMs: 2_000,
-    };
-  });
-  await page.goto("/");
-
-  await page.getByRole("button", { name: "Create a new identity key" }).click();
-  await page.getByRole("button", { name: "Create my private key" }).click();
-  await page.getByTestId("onboarding-next").click();
-  await expect(
-    page.getByRole("heading", { name: "Connect your AI provider" }),
-  ).toBeVisible();
-
-  await page.evaluate(() => {
-    const testWindow = window as Window & {
-      __BUZZ_E2E_ONBOARDING_LOADING_GATES__?: string[];
-    };
-    testWindow.__BUZZ_E2E_ONBOARDING_LOADING_GATES__ = [];
-    new MutationObserver(() => {
-      for (const testId of ["app-loading-gate", "boot-splash-overlay"]) {
-        if (document.querySelector(`[data-testid="${testId}"]`)) {
-          testWindow.__BUZZ_E2E_ONBOARDING_LOADING_GATES__?.push(testId);
-        }
-      }
-    }).observe(document.body, { childList: true, subtree: true });
-  });
-
-  await page.getByTestId("onboarding-setup-skip").click();
-
-  await expect(page.getByTestId("onboarding-page-1")).toBeVisible();
-  await expect(
-    page.getByTestId("onboarding-step-dots").locator("span"),
-  ).toHaveCount(7);
-  await expect(
-    page.getByTestId("onboarding-step-dots").locator("span").nth(4),
-  ).toHaveClass(/w-7/);
-  const profileSubmit = page.getByTestId("onboarding-next");
-  await page.getByTestId("onboarding-display-name").fill("Delayed Profile");
-  await expect(profileSubmit).toBeDisabled();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (
-            window as Window & {
-              __BUZZ_E2E_PROFILE_READS_PENDING__?: () => number;
-            }
-          ).__BUZZ_E2E_PROFILE_READS_PENDING__?.() ?? 0,
-      ),
-    )
-    .toBeGreaterThanOrEqual(1);
-  await page.getByTestId("onboarding-display-name").press("Enter");
-  await profileSubmit.evaluate((element) => {
-    const reactPropsKey = Object.keys(element).find((key) =>
-      key.startsWith("__reactProps$"),
-    );
-    if (!reactPropsKey) {
-      throw new Error("React props were not attached to the profile button");
-    }
-    const reactProps = (
-      element as unknown as Record<
-        string,
-        { onClick?: (event: MouseEvent) => void }
-      >
-    )[reactPropsKey];
-    reactProps.onClick?.(new MouseEvent("click"));
-  });
-  await expect(page.getByTestId("onboarding-display-name")).toBeEnabled();
-  expect(await commandCount(page, "update_profile")).toBe(0);
-  await expect(page.getByTestId("onboarding-page-avatar")).toHaveCount(0);
-
-  expect(
-    await page.evaluate(
-      () =>
-        (
-          window as Window & {
-            __BUZZ_E2E_RELEASE_PROFILE_READS__?: () => number;
-          }
-        ).__BUZZ_E2E_RELEASE_PROFILE_READS__?.() ?? 0,
-    ),
-  ).toBeGreaterThanOrEqual(1);
-  await expect(profileSubmit).toBeEnabled();
-  await profileSubmit.click();
-  await expect(page.getByTestId("onboarding-page-avatar")).toBeVisible();
-  await page.getByTestId("onboarding-skip").click();
-  await expectWelcomeView(page);
-
-  await expect(page.getByTestId("app-loading-gate")).toHaveCount(0);
-  await expect(page.getByTestId("boot-splash-overlay")).toHaveCount(0);
-  expect(
-    await page.evaluate(
-      () =>
-        (
-          window as Window & {
-            __BUZZ_E2E_ONBOARDING_LOADING_GATES__?: string[];
-          }
-        ).__BUZZ_E2E_ONBOARDING_LOADING_GATES__ ?? [],
-    ),
-  ).toEqual([]);
-});
-
-test("first-launch encrypted backup import asks for a passphrase and continues", async ({
-  page,
-}) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await installMockBridge(page, undefined, {
-    skipCommunitySeed: true,
-    skipOnboardingSeed: true,
-  });
-  await page.goto("/");
-
-  await page.getByRole("button", { name: "Use an existing key" }).click();
-  // Spec-vector blob the mock bridge accepts with the mock passphrase.
-  const mockNcryptsec =
-    "ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p";
-  await page
-    .getByTestId("nostr-import-nsec-input")
-    .fill(mockNcryptsec.slice(0, -1));
-  await expect(
-    page.getByRole("heading", { name: "Enter your private key" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("nostr-import-passphrase")).toHaveCount(0);
-
-  await page
-    .getByTestId("nostr-import-nsec-input")
-    .pressSequentially(mockNcryptsec.slice(-1));
-
-  // A complete, checksummed NIP-49 value advances immediately without
-  // submitting. The password stage updates its copy, illustration, and focus.
-  await expect(
-    page.getByRole("heading", { name: "Unlock your account" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("backup-password-timeline")).toBeVisible();
-  await expect(page.getByTestId("restore-ncryptsec-affordance")).toBeVisible();
-  await expect(page.getByTestId("restore-unlock-icon")).toBeVisible();
-  await expect(page.getByTestId("nostr-import-card")).toHaveCount(0);
   await expect(page.getByTestId("nostr-import-file-button")).toHaveCount(0);
-  await expect(page.getByTestId("nostr-import-passphrase")).toBeFocused();
-  await expect(page.getByTestId("nostr-import-submit")).toBeDisabled();
-
-  // Wrong passphrase surfaces the decrypt error and stays on the form.
-  await page.getByTestId("nostr-import-passphrase").fill("wrong passphrase");
-  await page.getByTestId("nostr-import-submit").click();
-  await expect(page.getByTestId("nostr-import-feedback")).toContainText(
-    /wrong backup password/i,
-  );
-
-  await page
-    .getByTestId("nostr-import-passphrase")
-    .fill("mock horse battery staple lake orbit");
-  await page.getByTestId("nostr-import-submit").click();
-
-  await expect(page.getByTestId("onboarding-page-2")).toBeVisible();
-  await expect(page.getByTestId("machine-onboarding-gate")).toBeVisible();
+  await expect(page.getByTestId("identity-recovery-pairing")).toHaveCount(0);
 });
-
-test("first-launch import accepts an .ncryptsec backup file", async ({
+test("R17 signup continues to six-digit email verification", async ({
   page,
 }) => {
-  await installMockBridge(page, undefined, {
-    skipCommunitySeed: true,
-    skipOnboardingSeed: true,
-  });
-  await page.goto("/");
+  await startR17AccountAuth(page);
+  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByLabel("Your name").fill("Lerato Molefe");
+  await page.getByLabel("Email address").fill("signup@example.com");
+  await page
+    .getByRole("textbox", { name: "Password" })
+    .fill("correct-horse-12");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
 
-  await page.getByRole("button", { name: "Use an existing key" }).click();
-
-  // The spotlight variant must expose a file path: a wiped user returns with
-  // exactly the identity.ncryptsec our own save dialog produced. The accept
-  // attribute is asserted explicitly because setInputFiles bypasses it — the
-  // OS picker is what filters on it in real use.
-  await page.getByTestId("nostr-import-file-button").click();
-  const fileInput = page
-    .getByTestId("backup-recovery-dialog")
-    .getByTestId("nostr-import-file-input");
-  await expect(fileInput).toHaveAttribute(
-    "accept",
-    ".key,.ncryptsec,text/plain",
-  );
-
-  await fileInput.setInputFiles({
-    buffer: Buffer.alloc(1_025, "x"),
-    mimeType: "text/plain",
-    name: "not-a-backup.txt",
-  });
-  await expect(
-    page
-      .getByTestId("backup-recovery-dialog")
-      .getByTestId("nostr-import-feedback"),
-  ).toContainText(/too large to be a key backup/i);
-
-  // Spec-vector blob the mock bridge accepts with the mock passphrase.
-  const mockNcryptsec =
-    "ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p";
-  // File contents advance to the password stage inside the same sheet.
-  const backupDialog = page.getByTestId("backup-recovery-dialog");
-  const backupFileSection = backupDialog.getByTestId(
-    "nostr-import-backup-file-section",
-  );
-  const backupFileSectionHeight = await backupFileSection.evaluate((element) =>
-    Number.parseFloat(getComputedStyle(element).height),
-  );
-  expect(backupFileSectionHeight).toBe(312);
-  const backupPicker = backupDialog.getByTestId("nostr-import-backup-picker");
-  await backupPicker.evaluate((element) => {
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(
-      new File(["backup"], "identity.ncryptsec", { type: "text/plain" }),
-    );
-    element.dispatchEvent(
-      new DragEvent("dragenter", {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer,
-      }),
-    );
-  });
-  const backupDrop = backupDialog.getByTestId("nostr-import-backup-drop");
-  await expect(backupDrop).toBeVisible();
-  await backupDrop.evaluate((element, contents) => {
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(
-      new File([contents], "identity.ncryptsec", { type: "text/plain" }),
-    );
-    element.dispatchEvent(
-      new DragEvent("drop", {
-        bubbles: true,
-        cancelable: true,
-        dataTransfer,
-      }),
-    );
-  }, `${mockNcryptsec}\n`);
-
-  await expect(
-    backupDialog.getByTestId("backup-password-timeline"),
-  ).toBeVisible();
-  const passphraseSection = backupDialog.getByTestId(
-    "nostr-import-passphrase-section",
-  );
-  await expect(passphraseSection).toBeVisible();
-  const passphraseSectionHeight = await passphraseSection.evaluate((element) =>
-    Number.parseFloat(getComputedStyle(element).height),
-  );
-  expect(passphraseSectionHeight).toBe(backupFileSectionHeight);
-  await expect(
-    backupDialog.getByTestId("nostr-import-passphrase"),
-  ).toBeFocused();
-
-  // Back first returns to backup-file selection instead of leaving the sheet.
-  await page.getByRole("button", { name: "Back", exact: true }).click();
-  await expect(
-    backupDialog.getByRole("heading", { name: "Restore from a backup file" }),
-  ).toBeVisible();
-  await expect(
-    backupDialog.getByTestId("nostr-import-backup-picker"),
-  ).toBeVisible();
-
-  await fileInput.setInputFiles({
-    buffer: Buffer.from(`${mockNcryptsec}\n`),
-    mimeType: "text/plain",
-    name: "identity.ncryptsec",
-  });
-  await backupDialog
-    .getByTestId("nostr-import-passphrase")
-    .fill("mock horse battery staple lake orbit");
-  await page.getByRole("button", { name: "Next" }).click();
-
-  await expect(page.getByTestId("onboarding-page-2")).toBeVisible();
-  await expect(page.getByTestId("machine-onboarding-gate")).toBeVisible();
+  await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
+  for (let index = 1; index <= 6; index += 1) {
+    await expect(page.getByLabel(`Digit ${index} of 6`)).toBeVisible();
+  }
+  await expect(page.getByTestId("otp-continue")).toBeDisabled();
+  await expect(page.locator("body")).not.toContainText(/\bkey\b|nsec1/i);
 });
+test("R17 signup blocks passwords shorter than the designed minimum", async ({
+  page,
+}) => {
+  await startR17AccountAuth(page);
+  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByLabel("Your name").fill("Lerato Molefe");
+  await page.getByLabel("Email address").fill("short-password@example.com");
+  const password = page.getByRole("textbox", { name: "Password" });
+  await password.fill("shortpass");
 
+  await expect(password).toHaveAttribute("minlength", "10");
+  expect(
+    await password.evaluate(
+      (input) => (input as HTMLInputElement).validity.tooShort,
+    ),
+  ).toBe(true);
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Create your account" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Digit 1 of 6")).toHaveCount(0);
+});
+test("R17 password recovery uses the six-digit email code", async ({
+  page,
+}) => {
+  await startR17AccountAuth(page);
+  await page.getByRole("button", { name: "Forgot password?" }).click();
+  await expect(
+    page.getByTestId("account-auth-screen-reset-request"),
+  ).toBeVisible();
+  await page.getByLabel("Email address").fill("reset@example.com");
+  await page.getByRole("button", { name: "Send code" }).click();
+
+  await expect(
+    page.getByTestId("account-auth-screen-reset-confirm"),
+  ).toBeVisible();
+  for (let index = 1; index <= 6; index += 1) {
+    await expect(page.getByLabel(`Digit ${index} of 6`)).toBeVisible();
+  }
+  await expect(
+    page.getByRole("button", { name: "Resend code in 60s" }),
+  ).toBeDisabled();
+  await expect(page.locator("body")).not.toContainText(
+    /backup file|pairing code|nsec1/i,
+  );
+});
+test("returning R17 accounts continue into business setup", async ({
+  page,
+}) => {
+  await openR17BusinessSetup(page);
+  await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
+  await expect(page.getByLabel("Business name")).toBeVisible();
+  await expect(page.getByTestId("onboarding-page-avatar")).toHaveCount(0);
+  await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
+});
+test("R17 verified signup continues through business and provider setup", async ({
+  page,
+}) => {
+  await startR17AccountAuth(page);
+  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByLabel("Your name").fill("Lerato Molefe");
+  await page.getByLabel("Email address").fill("verified@example.com");
+  await page
+    .getByRole("textbox", { name: "Password" })
+    .fill("correct-horse-12");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
+  for (let index = 1; index <= 6; index += 1) {
+    await page.getByLabel(`Digit ${index} of 6`).fill(String(index));
+  }
+  await page.getByTestId("otp-continue").click();
+
+  await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
+  await completeR17BusinessSetup(page);
+  await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open my Colony" }),
+  ).toBeEnabled();
+  await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
+});
+test("R17 password recovery returns to sign in without backup import", async ({
+  page,
+}) => {
+  await startR17AccountAuth(page);
+  await page.getByRole("button", { name: "Forgot password?" }).click();
+  await expect(
+    page.getByTestId("account-auth-screen-reset-request"),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Back to sign in", exact: true })
+    .click();
+
+  await expect(
+    page.getByRole("heading", { name: "Welcome back" }),
+  ).toBeVisible();
+  await expect(page.getByRole("form", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByTestId("nostr-import-passphrase")).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(
+    /ncryptsec|backup password/i,
+  );
+});
+test("R17 business details save before the provider connection step", async ({
+  page,
+}) => {
+  await openR17BusinessSetup(page);
+  await completeR17BusinessSetup(page);
+
+  const savedBusiness = await page.evaluate((key) => {
+    return JSON.parse(window.localStorage.getItem(key) ?? "null");
+  }, R17_BUSINESS_PROFILE_KEY);
+  expect(savedBusiness).toMatchObject({
+    name: "North Star",
+    website: "northstar.example",
+    description: "An independent design studio.",
+  });
+  expect(savedBusiness.logoDataUrl).toMatch(/^data:image\/svg\+xml;base64,/);
+  await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
+  await expect(page.getByTestId("onboarding-page-avatar")).toHaveCount(0);
+});
 test("non-local runtime override keeps community selection without release flag", async ({
   page,
 }) => {
@@ -1373,7 +1071,7 @@ test("first-community owner can connect an existing hosted community", async ({
   );
   await page.goto("/");
 
-  await page.getByTestId("community-choice-create").click();
+  await openOwnedCommunityReconnect(page);
   await expect(page.getByText("North Star")).toBeVisible();
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(
@@ -1410,7 +1108,7 @@ test("first-community owner can connect an existing hosted community", async ({
     .toBeNull();
 });
 
-test("first-community owner can create and connect a hosted community", async ({
+test("first-community owner reconnect path does not expose Builderlab creation", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
@@ -1431,161 +1129,18 @@ test("first-community owner can create and connect a hosted community", async ({
   );
   await page.goto("/");
 
-  await page.getByTestId("community-choice-create").click();
+  await openOwnedCommunityReconnect(page);
   await page.getByRole("button", { name: "Sign in to continue" }).click();
   await expect(
     page.getByRole("heading", { name: "Finish connecting Buzz" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Connect and continue" }).click();
-  const createSurface = page.getByTestId("hosted-community-create-surface");
-  const surfaceBoxBeforeFeedback = await createSurface.boundingBox();
-  const communityNameInput = page.getByTestId("hosted-community-address-input");
-  await communityNameInput.fill("bee-lab");
-  await expect(communityNameInput).toHaveAttribute("style", /width: 7ch;/);
-  const availabilityFeedback = page.getByText("That address is available.");
-  await expect(availabilityFeedback).toBeVisible();
-  const [feedbackBox, surfaceBox, inputBox, suffixBox] = await Promise.all([
-    availabilityFeedback.boundingBox(),
-    createSurface.boundingBox(),
-    page.getByTestId("hosted-community-address-input").boundingBox(),
-    page.locator("#hosted-community-suffix").boundingBox(),
-  ]);
-  if (
-    !surfaceBoxBeforeFeedback ||
-    !feedbackBox ||
-    !surfaceBox ||
-    !inputBox ||
-    !suffixBox
-  ) {
-    throw new Error("Could not measure hosted community creation layout");
-  }
-  expect(surfaceBox.y).toBe(surfaceBoxBeforeFeedback.y);
-  expect(surfaceBox.height).toBe(surfaceBoxBeforeFeedback.height);
-  const addressLeft = inputBox.x;
-  const addressRight = suffixBox.x + suffixBox.width;
-  expect(
-    Math.abs(
-      (addressLeft + addressRight) / 2 - (surfaceBox.x + surfaceBox.width / 2),
-    ),
-  ).toBeLessThanOrEqual(1);
-  expect(feedbackBox.y).toBeGreaterThanOrEqual(
-    surfaceBox.y + surfaceBox.height,
-  );
-  await page.getByRole("button", { name: "Next" }).click();
   await expect(
-    page.getByRole("heading", { name: "Build your profile" }),
+    page.getByRole("heading", { name: "No communities to connect" }),
   ).toBeVisible();
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        window.localStorage.getItem("buzz-community-onboarding-transaction.v1"),
-      ),
-    )
-    .toContain("wss://bee-lab.communities.buzz.xyz");
-});
-
-test("hosted community address line stays within the card for a long name", async ({
-  page,
-}) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await page.addInitScript((pubkey) => {
-    window.localStorage.setItem(
-      `buzz-machine-onboarding-complete.v2:${pubkey}`,
-      "true",
-    );
-  }, BLANK_TYLER_IDENTITY.pubkey);
-  await installMockBridge(
-    page,
-    {},
-    {
-      relayWsUrl: "ws://localhost:3000",
-      skipOnboardingSeed: true,
-      skipCommunitySeed: true,
-    },
-  );
-  // The 800px app minimum is the worst case for the full-width address line.
-  await page.setViewportSize({ width: 800, height: 720 });
-  await page.goto("/");
-
-  await page.getByTestId("community-choice-create").click();
-  await page.getByRole("button", { name: "Sign in to continue" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Finish connecting Buzz" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Connect and continue" }).click();
-
-  const createSurface = page.getByTestId("hosted-community-create-surface");
-  const communityNameInput = page.getByTestId("hosted-community-address-input");
-  // A maximum-length (63 char) valid name — the overflow case Wes flagged; the
-  // 7-char check above cannot catch it.
-  const longName = "a".repeat(63);
-  await communityNameInput.fill(longName);
-  await expect(communityNameInput).toHaveValue(longName);
-
-  const [surfaceBox, inputBox, suffixBox] = await Promise.all([
-    createSurface.boundingBox(),
-    communityNameInput.boundingBox(),
-    page.locator("#hosted-community-suffix").boundingBox(),
-  ]);
-  if (!surfaceBox || !inputBox || !suffixBox) {
-    throw new Error("Could not measure hosted community creation layout");
-  }
-  const addressLeft = inputBox.x;
-  const addressRight = suffixBox.x + suffixBox.width;
-  // The composed `<name>.<suffix>` line must stay within the card — no
-  // horizontal overflow past the surface or the 800px window.
-  expect(addressLeft).toBeGreaterThanOrEqual(surfaceBox.x);
-  expect(addressRight).toBeLessThanOrEqual(surfaceBox.x + surfaceBox.width);
-  expect(addressRight).toBeLessThanOrEqual(800);
-  // …and it stays centered within the card.
-  expect(
-    Math.abs(
-      (addressLeft + addressRight) / 2 - (surfaceBox.x + surfaceBox.width / 2),
-    ),
-  ).toBeLessThanOrEqual(2);
-});
-
-test("first-community reports a created community without a relay address", async ({
-  page,
-}) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await page.addInitScript((pubkey) => {
-    window.localStorage.setItem(
-      `buzz-machine-onboarding-complete.v2:${pubkey}`,
-      "true",
-    );
-  }, BLANK_TYLER_IDENTITY.pubkey);
-  await installMockBridge(
-    page,
-    {
-      builderlabAuth: {
-        email: "owner@example.com",
-        expiresAt: "2099-01-01T00:00:00Z",
-      },
-      builderlabIdentity: { pubkey_hex: BLANK_TYLER_IDENTITY.pubkey },
-      builderlabCreatedCommunity: {
-        id: "hosted-bee-lab",
-        name: "bee-lab",
-      },
-    },
-    {
-      relayWsUrl: "ws://localhost:3000",
-      skipOnboardingSeed: true,
-      skipCommunitySeed: true,
-    },
-  );
-  await page.goto("/");
-
-  await page.getByTestId("community-choice-create").click();
-  await page.getByRole("textbox", { name: "Community name" }).fill("bee-lab");
-  await expect(page.getByText("That address is available.")).toBeVisible();
-  await page.getByRole("button", { name: "Next" }).click();
-  await expect(page.getByRole("alert")).toContainText(
-    "The community was created, but Builderlab did not return its relay address.",
-  );
-  await expect(
-    page.getByRole("heading", { name: "Build your profile" }),
-  ).toHaveCount(0);
+  await expect(page.getByTestId("hosted-community-empty-state")).toBeVisible();
+  await expect(page.getByTestId("hosted-community-create-form")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Next" })).toHaveCount(0);
 });
 
 test("first-community X cancels a pending sign-in", async ({ page }) => {
@@ -1607,7 +1162,7 @@ test("first-community X cancels a pending sign-in", async ({ page }) => {
   );
   await page.goto("/");
 
-  await page.getByTestId("community-choice-create").click();
+  await openOwnedCommunityReconnect(page);
   await page.getByRole("button", { name: "Sign in to continue" }).click();
   await expect(page.getByText("Waiting for your browser…")).toBeVisible();
   await expect(
@@ -1654,7 +1209,7 @@ test("first-community owner can replace a mismatched account identity", async ({
   );
   await page.goto("/");
 
-  await page.getByTestId("community-choice-create").click();
+  await openOwnedCommunityReconnect(page);
   await expect(
     page.getByRole("heading", {
       name: "This account uses a different Buzz identity",
@@ -1676,9 +1231,6 @@ test("first-community owner can replace a mismatched account identity", async ({
   await page
     .getByRole("button", { name: "Use this device's identity" })
     .click();
-  await expect(
-    page.getByRole("textbox", { name: "Community name" }),
-  ).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => window.__BUZZ_E2E_COMMANDS__ ?? []))
     .toEqual(
@@ -1687,6 +1239,13 @@ test("first-community owner can replace a mismatched account identity", async ({
         "bind_builderlab_nostr_identity",
       ]),
     );
+  await expect(
+    page.getByRole("heading", { name: "No communities to connect" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("hosted-community-empty-state")).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { name: "Community name" }),
+  ).toHaveCount(0);
 });
 
 test("first-community owner recovers from an npub-only account identity", async ({
@@ -1727,7 +1286,7 @@ test("first-community owner recovers from an npub-only account identity", async 
   );
   await page.goto("/");
 
-  await page.getByTestId("community-choice-create").click();
+  await openOwnedCommunityReconnect(page);
   // Presence of the identity object must not read as a linked, ready
   // account: the mismatch recovery modal drives the flow instead.
   await expect(
@@ -1812,7 +1371,7 @@ test("first-community owner never rebinds over a same-key spelling in the hex fi
   );
   await page.goto("/");
 
-  await page.getByTestId("community-choice-create").click();
+  await openOwnedCommunityReconnect(page);
   await expect(
     page.getByRole("heading", {
       name: "This account uses a different Buzz identity",
@@ -1862,15 +1421,19 @@ test("first-community owner with a padded same-key hex is ready, not mismatched"
   );
   await page.goto("/");
 
-  await page.getByTestId("community-choice-create").click();
+  await openOwnedCommunityReconnect(page);
   await expect(
     page.getByRole("heading", {
       name: "This account uses a different Buzz identity",
     }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("textbox", { name: "Community name" }),
+    page.getByRole("heading", { name: "No communities to connect" }),
   ).toBeVisible();
+  await expect(page.getByTestId("hosted-community-empty-state")).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { name: "Community name" }),
+  ).toHaveCount(0);
 });
 
 test("first-community explains when the local identity belongs to another account", async ({
@@ -1901,7 +1464,7 @@ test("first-community explains when the local identity belongs to another accoun
   );
   await page.goto("/");
 
-  await page.getByTestId("community-choice-create").click();
+  await openOwnedCommunityReconnect(page);
   await page
     .getByRole("button", { name: "Use this device's identity" })
     .click();
@@ -1942,9 +1505,9 @@ test("back clears Builderlab auth before returning to first-community choices", 
   );
   await page.goto("/");
 
-  await page.getByTestId("community-choice-create").click();
+  await openOwnedCommunityReconnect(page);
   await page.getByRole("button", { name: "Back" }).click();
-  await page.getByTestId("community-choice-create").click();
+  await openOwnedCommunityReconnect(page);
   await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
 });
 
@@ -3379,66 +2942,40 @@ test("avatar step reveals preset backgrounds after the first emoji pick", async 
   );
 });
 
-test("avatar step accepts an avatar URL before completing onboarding", async ({
+test("R17 business logo upload is retained on the connection screen", async ({
   page,
 }) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await installMockBridge(page, undefined, { skipOnboardingSeed: true });
-  await page.goto("/");
+  await openR17BusinessSetup(page);
+  await completeR17BusinessSetup(page);
 
-  await page.getByTestId("onboarding-display-name").fill("Morty QA");
-  await page.getByTestId("onboarding-next").click();
-  await expect(page.getByTestId("onboarding-page-avatar")).toBeVisible();
-  await page
-    .getByTestId("onboarding-avatar-url")
-    .fill("https://example.com/morty.png");
-
-  const preview = page.getByTestId("onboarding-avatar-preview");
-  await expect(preview).toBeVisible();
-  const box = await preview.boundingBox();
-  expect(box?.width).toBeCloseTo(192, 0);
-  expect(box?.height).toBeCloseTo(192, 0);
-
-  await page.getByTestId("onboarding-next").click();
-  await expect(page.getByTestId("onboarding-gate")).toHaveCount(0);
-  await expectWelcomeView(page);
+  const savedBusiness = await page.evaluate((key) => {
+    return JSON.parse(window.localStorage.getItem(key) ?? "null");
+  }, R17_BUSINESS_PROFILE_KEY);
+  expect(savedBusiness.logoDataUrl).toMatch(/^data:image\/svg\+xml;base64,/);
+  await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
 });
-
-test("failed avatar saves can continue without saving the avatar", async ({
+test("R17 provider discovery failure keeps workspace entry available", async ({
   page,
 }) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await installMockBridge(page, {}, { skipOnboardingSeed: true });
-  await page.goto("/");
-
-  await page.getByTestId("onboarding-display-name").fill("Morty QA");
-  await page.getByTestId("onboarding-next").click();
-  await expect(page.getByTestId("onboarding-page-avatar")).toBeVisible();
+  await startR17AccountAuth(page, { discoveryError: true });
+  await page.getByLabel("Email address").fill("setup@example.com");
   await page
-    .getByTestId("onboarding-avatar-url")
-    .fill("https://example.com/morty.png");
-  await page.evaluate(() => {
-    const testWindow = window as Window & {
-      __BUZZ_E2E__?: { mock?: { profileUpdateError?: string } };
-    };
-    if (testWindow.__BUZZ_E2E__?.mock) {
-      testWindow.__BUZZ_E2E__.mock.profileUpdateError =
-        "Temporary avatar sync failure.";
-    }
-  });
+    .getByRole("textbox", { name: "Password" })
+    .fill("correct-horse-12");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
+  await completeR17BusinessSetup(page);
 
-  await page.getByTestId("onboarding-next").click();
-
-  await expect(page.getByText("Temporary avatar sync failure.")).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText(
+    "We couldn’t check this computer.",
+  );
   await expect(
-    page.getByTestId("onboarding-next-without-saving"),
-  ).toBeVisible();
-  await page.getByTestId("onboarding-next-without-saving").click();
-
-  await expect(page.getByTestId("onboarding-gate")).toHaveCount(0);
-  await expectWelcomeView(page);
+    page.getByRole("button", { name: "Open my Colony" }),
+  ).toBeEnabled();
+  await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
+  await page.getByRole("button", { name: "Open my Colony" }).click();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });
-
 test("avatar upload rejects a file whose server-detected MIME is not an image", async ({
   page,
 }) => {
@@ -3519,35 +3056,23 @@ test("avatar upload accepts a file whose server-detected MIME is an image", asyn
   await expect(page.getByTestId("onboarding-avatar-error")).toHaveCount(0);
 });
 
-test("first-run onboarding keeps the shell hidden and lands on private Welcome after profile setup", async ({
+test("R17 keeps the workspace shell hidden until account setup is opened", async ({
   page,
 }) => {
-  await seedActiveIdentity(page, FIRST_RUN_ALICE);
-  await installMockBridge(page, undefined, { skipOnboardingSeed: true });
-  await page.goto("/");
-
-  await expect(page.getByTestId("onboarding-gate")).toBeVisible();
-  await expect(page.getByTestId("onboarding-page-1")).toBeVisible();
-  await expect(page.getByTestId("onboarding-display-name")).toHaveValue("");
-  await expectNoHomeSeenEntries(page);
-
-  await page.getByTestId("onboarding-display-name").fill("Alice");
-  await completeProfileOnboarding(page);
-  await expect(page.getByTestId("onboarding-gate")).toHaveCount(0);
-  await expectWelcomeView(page);
-  await expectStarterChannels(page);
-  await expectWelcomeGuideIntro(page);
+  await startR17AccountAuth(page);
+  await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
+  await page.getByLabel("Email address").fill("setup@example.com");
+  await page
+    .getByRole("textbox", { name: "Password" })
+    .fill("correct-horse-12");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
+  await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
+  await completeR17BusinessSetup(page);
+  await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
+  await page.getByRole("button", { name: "Open my Colony" }).click();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });
-
-async function commandCount(page: Page, command: string) {
-  return page.evaluate(
-    (target) =>
-      window.__BUZZ_E2E_COMMANDS__?.filter((entry) => entry === target)
-        .length ?? 0,
-    command,
-  );
-}
-
 test("failed public starter channel setup does not show a retry toast", async ({
   page,
 }) => {
@@ -3698,23 +3223,21 @@ test("completed onboarding backfills missing starter channels", async ({
   await expectWelcomeGuideIntro(page, { expectVisible: false });
 });
 
-test("finishing onboarding creates starter channels and focuses welcome-everyone for a new member", async ({
+test("R17 connection setup opens the designed workspace route", async ({
   page,
 }) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await installMockBridge(page, undefined, { skipOnboardingSeed: true });
-  await page.goto("/");
-
-  await page.getByTestId("onboarding-display-name").fill("Morty QA");
-  await completeProfileOnboarding(page);
-
-  await expectWelcomeView(page);
-  await expect(page.getByTestId("channel-general")).toBeVisible();
-  await expectStarterChannels(page);
-  await expectWelcomeGuideIntro(page);
-  await expectWelcomeComposerBannerCompletesAfterPersonaMention(page);
+  await openR17BusinessSetup(page);
+  await completeR17BusinessSetup(page);
+  await expect(
+    page.getByRole("heading", { name: "Connect your AI." }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Bring your own key" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "OpenRouter" })).toBeVisible();
+  await page.getByRole("button", { name: "Open my Colony" }).click();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });
-
 test("welcome-everywhere banner: X dismiss removes the guidance surface", async ({
   page,
 }) => {

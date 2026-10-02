@@ -1,0 +1,35 @@
+/* r16 onboarding tokens remain scoped because shared shell globals do not
+   define these roles. */
+.colony-onboarding-root,
+.colony-google-account-root {
+  --onboarding-font-weight-semibold: 600;
+  --onboarding-font-weight-bold: 700;
+  --onboarding-font-weight-heavy: 800;
+  --onboarding-tracking-heading: -0.035em;
+  --onboarding-tracking-subheading: -0.02em;
+  --onboarding-tracking-display: -0.035em;
+  --onboarding-line-heading: 1.22;
+  --onboarding-line-display: 1.1;
+  --onboarding-tracking-body: 0em;
+}
+
+.colony-onboarding-root {
+  letter-spacing: var(--onboarding-tracking-body);
+}
+
+.colony-onboarding-root .story h1,
+.colony-onboarding-root .arrival h1,
+.colony-onboarding-root .power-setup .story h1 {
+  letter-spacing: var(--onboarding-tracking-display);
+  line-height: var(--onboarding-line-display);
+}
+
+.colony-onboarding-root .form-content h2,
+.colony-onboarding-root .modal h2 {
+  letter-spacing: var(--onboarding-tracking-heading);
+  line-height: var(--onboarding-line-heading);
+}
+
+.colony-onboarding-root h3 {
+  letter-spacing: var(--onboarding-tracking-subheading);
+}

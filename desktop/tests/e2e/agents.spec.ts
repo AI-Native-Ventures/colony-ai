@@ -9,6 +9,10 @@ import { emojiAvatarDataUrl } from "@/features/profile/ui/ProfileAvatarEditor.ut
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { seedActiveIdentity } from "../helpers/onboarding";
+import {
+  openAgentTemplatesView,
+  openAgentsDirectoryView,
+} from "../helpers/agentWorkspace";
 
 function createCatalogEvent(input: {
   eventId?: string;
@@ -69,7 +73,7 @@ async function gotoApp(page: import("@playwright/test").Page) {
     await waitForInvokeBridge(page);
 
     try {
-      await expect(page.getByTestId("open-agents-view")).toBeVisible({
+      await expect(page.getByTestId("sidebar-primary-menu")).toBeVisible({
         timeout: 10_000,
       });
       return;
@@ -238,7 +242,7 @@ test("catalog hides built-ins and shows the shared-agent empty state", async ({
     activePersonaIds: ["builtin:fizz", "builtin:honey", "builtin:bumble"],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
 
   await expect(page.getByTestId("agents-library-personas")).toBeVisible();
   for (const personaName of ["Fizz", "Honey", "Pollen"]) {
@@ -281,7 +285,7 @@ test("catalog empty state remains available after reopening", async ({
   page,
 }) => {
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await openPersonaCatalog(page);
   await expect(page.getByTestId("community-catalog-empty-state")).toBeVisible();
 
@@ -306,7 +310,7 @@ test("built-in persona edits persist", async ({ page }) => {
     },
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
 
   await page.getByLabel("Open actions for Fizz").click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
@@ -347,7 +351,7 @@ test("searches agent avatar emoji with focus on open", async ({ page }) => {
     window.localStorage.setItem("buzz-accent-color", "#c0a2f1");
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page.getByTestId("new-agent-card").click();
 
   await expect(page.getByTestId("persona-dialog")).toBeVisible();
@@ -419,7 +423,7 @@ test("agent avatar emoji picker scrolls inside its popover", async ({
   page,
 }) => {
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page.getByTestId("new-agent-card").click();
 
   await expect(page.getByTestId("persona-dialog")).toBeVisible();
@@ -476,7 +480,7 @@ test("the new agent card opens unified create, catalog, and import flows", async
     ],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
 
   const newAgentCard = page.getByTestId("new-agent-card");
   await expect(newAgentCard).toHaveText("");
@@ -487,7 +491,7 @@ test("the new agent card opens unified create, catalog, and import flows", async
   );
   await expect(agentCards.first()).toBeVisible();
   const headerBox = await page
-    .getByRole("heading", { level: 1, name: "Agents" })
+    .getByRole("heading", { level: 1, name: "Templates & snapshots" })
     .locator("../..")
     .boundingBox();
   const cardBoxes = await agentCards.evaluateAll((cards) =>
@@ -548,7 +552,7 @@ test("embedded create keeps its draft when discard is cancelled", async ({
   page,
 }) => {
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page.getByTestId("new-agent-card").click();
 
   const dialog = page.getByTestId("persona-dialog");
@@ -571,7 +575,7 @@ test("embedded create keeps its draft when discard is cancelled", async ({
 
 test("the new team card offers create and import", async ({ page }) => {
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
 
   const newTeamCard = page.getByTestId("new-team-card");
   await expect(newTeamCard).toHaveText("");
@@ -606,7 +610,7 @@ test("team cards follow the agents grid alignment at compact widths", async ({
     ],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
 
   const agentsContent = page.getByTestId("agents-page-content");
   const firstAgentCard = page.getByTestId(
@@ -674,7 +678,7 @@ test("team cards use the thread-style overlapping avatar stack", async ({
     ],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
 
   const stack = page.getByLabel("Product crew member avatars");
   const avatars = stack.locator('[data-team-member-avatar="avatar"]');
@@ -702,22 +706,30 @@ test("team cards use the thread-style overlapping avatar stack", async ({
       };
     }),
   );
+  const cardSurface = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.className = "bg-card";
+    document.body.append(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
   expect(overlapStyles).toEqual([
     {
       maskImage: "none",
-      outlineBackground: "rgb(255, 255, 255)",
+      outlineBackground: cardSurface,
       outlineClipPath: 'url("#rounded-squircle-clip")',
       outlineInset: "-2px",
     },
     {
       maskImage: "none",
-      outlineBackground: "rgb(255, 255, 255)",
+      outlineBackground: cardSurface,
       outlineClipPath: 'url("#rounded-squircle-clip")',
       outlineInset: "-2px",
     },
     {
       maskImage: "none",
-      outlineBackground: "rgb(255, 255, 255)",
+      outlineBackground: cardSurface,
       outlineClipPath: 'url("#rounded-squircle-clip")',
       outlineInset: "-2px",
     },
@@ -759,7 +771,7 @@ test("empty team cards draw a squircle-shaped placeholder outline", async ({
     ],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
 
   const placeholder = page.locator('[data-team-empty-avatar="avatar"]').first();
   const outline = placeholder.locator("xpath=..");
@@ -814,7 +826,8 @@ test("agent defaults stays in the header without an actions menu", async ({
     },
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  // Agent defaults, Invite a person, and Add agent remain on the directory route.
+  await openAgentsDirectoryView(page);
 
   await expect(page.getByTestId("agent-header-actions-button")).toHaveCount(0);
   await expect(
@@ -844,14 +857,14 @@ test("agent defaults stays in the header without an actions menu", async ({
 
 test("unconfigured agent defaults use the setup label", async ({ page }) => {
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentsDirectoryView(page);
 
   await expect(page.getByTestId("agent-defaults-button")).toHaveText(
     "Set agent defaults",
   );
 });
 
-test("moves agent actions into an overflow menu in a narrow view", async ({
+test("templates header keeps agent actions in the actions menu", async ({
   page,
 }) => {
   await installMockBridge(page, {
@@ -873,22 +886,11 @@ test("moves agent actions into an overflow menu in a narrow view", async ({
     ],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
-  await page.getByTestId("agents-page-content").evaluate((element) => {
-    (element as HTMLElement).style.width = "650px";
-  });
+  await openAgentTemplatesView(page);
 
-  await expect(page.getByTestId("agent-defaults-button")).toBeVisible();
-  // The app-wide default renders text-base at 16px with Tailwind's 1.5
-  // line-height ratio, producing a 24px one-line scroll height.
-  await expect(
-    page.getByText("Set up and manage your agents.", { exact: true }),
-  ).toHaveJSProperty("scrollHeight", 24);
-
-  await page.getByTestId("agents-page-content").evaluate((element) => {
-    (element as HTMLElement).style.width = "600px";
-  });
-  await expect(page.getByTestId("agent-defaults-button")).toBeHidden();
+  // r19 Templates & snapshots header: Invite a person, Add agent, and the
+  // "Agent actions" menu at every width (no inline defaults button there).
+  await expect(page.getByTestId("agent-defaults-button")).toHaveCount(0);
   await page.getByTestId("agent-actions-menu-trigger").click();
   await expect(
     page.getByRole("menuitem", { name: "Set agent defaults" }),
@@ -899,14 +901,9 @@ test("moves agent actions into an overflow menu in a narrow view", async ({
 
   await page.getByRole("menuitem", { name: "Set agent defaults" }).click();
   await expect(page.getByTestId("agent-ai-defaults-dialog")).toBeVisible();
-
-  await page.getByTestId("agents-page-content").evaluate((element) => {
-    (element as HTMLElement).style.width = "650px";
-  });
-  await expect(page.getByTestId("agent-defaults-button")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("agent-ai-defaults-dialog")).toHaveCount(0);
-  await expect(page.getByTestId("agent-defaults-button")).toBeFocused();
+  await expect(page.getByTestId("agent-actions-menu-trigger")).toBeFocused();
 });
 
 test("agent catalog chooser order stays stable when selection changes", async ({
@@ -928,7 +925,7 @@ test("agent catalog chooser order stays stable when selection changes", async ({
     ],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await sharePersonaToCatalog(page, "Builder");
   await sharePersonaToCatalog(page, "Reviewer");
   await openPersonaCatalog(page);
@@ -956,7 +953,7 @@ test("catalog detail pane shows the full persona details before Add agent", asyn
     ],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await openPersonaCatalog(page);
 
   const catalogRow = page.getByTestId(
@@ -1043,7 +1040,7 @@ async function openSafetyShareDialog(
     ...options,
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page.getByLabel("Open actions for Safety Auditor").click();
   await page.getByRole("menuitem", { name: "Share" }).click();
   await expect(page.getByTestId("persona-share-dialog")).toBeVisible();
@@ -1113,7 +1110,7 @@ test("custom personas share with people and keep export separate", async ({
   });
   await gotoApp(page);
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await expect(page.getByTestId("agents-library-personas")).toContainText(
     "Animation Auditor",
   );
@@ -1422,7 +1419,7 @@ test("custom personas share with people and keep export separate", async ({
   await expect(pastedAgentCard).toBeVisible();
   await expect(pastedAgentCard).toContainText("Animation Auditor");
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await actionsButton.click();
   await page.getByRole("menuitem", { name: "Share" }).click();
   await expect(shareDialog).toBeVisible();
@@ -1657,7 +1654,7 @@ This deliberately long fenced-code example must not establish the minimum width 
     document.documentElement.style.fontSize = "24px";
   });
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await openPersonaCatalog(page);
   await expect(
     page.getByTestId(`community-catalog-agent-${personaId}`),
@@ -1817,7 +1814,7 @@ test("a queued catalog share is not presented as relay-published", async ({
     personaSharePublicationStatuses: ["queued"],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
 
   await page.getByLabel("Open actions for Queued Catalog Agent").click();
   await page.getByRole("menuitem", { name: "Share" }).click();
@@ -1857,7 +1854,7 @@ test("a foreign reader does not receive an unshared kind 30175 persona", async (
     ],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await openPersonaCatalog(page);
 
   await expect(
@@ -1910,7 +1907,7 @@ test("catalog exposes exact instructions and rejects hidden Unicode controls", a
     ],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await openPersonaCatalog(page);
 
   const visibleCatalogId = `catalog:${TEST_IDENTITIES.alice.pubkey}:${visiblePersonaId}`;
@@ -1950,7 +1947,7 @@ test("a catalog entry keeps the owner's emoji avatar", async ({ page }) => {
   const personaId = "emoji-reviewer";
   const remoteCatalogId = `catalog:${TEST_IDENTITIES.alice.pubkey}:${personaId}`;
   // Emoji avatars persist as inline percent-encoded SVG rather than a hosted
-  // URL, so build the value with the same producer the editor uses — a
+  // URL, so build the value with the same producer the editor uses - a
   // hand-rolled data URL would pass even if the real shape stopped matching.
   const avatarUrl = emojiAvatarDataUrl("🐝", "#FFCC00");
   await installMockBridge(page, {
@@ -1965,10 +1962,10 @@ test("a catalog entry keeps the owner's emoji avatar", async ({ page }) => {
     ],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await openPersonaCatalog(page);
 
-  // An `<img>` carrying the avatar — not the initials fallback — in both the
+  // An `<img>` carrying the avatar - not the initials fallback - in both the
   // list row and the detail header is what proves the projection kept it.
   const remoteEntry = page.getByTestId(
     `community-catalog-agent-${remoteCatalogId}`,
@@ -1997,7 +1994,7 @@ test("a community member can discover and add another member's catalog agent", a
     ],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await openPersonaCatalog(page);
 
   const remoteEntry = page.getByTestId(
@@ -2042,7 +2039,7 @@ test("a community member can discover and add another member's catalog agent", a
   });
 
   // Reopening must offer the entry as already added rather than minting a
-  // second copy — the copy has a fresh local id, so only the stored
+  // second copy - the copy has a fresh local id, so only the stored
   // coordinate can link it back to Alice's publication.
   await page.keyboard.press("Escape");
   await openPersonaCatalog(page);
@@ -2079,7 +2076,7 @@ test("catalog defaults an unknown session policy without dropping the agent", as
     ],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await openPersonaCatalog(page);
 
   await page
@@ -2106,7 +2103,7 @@ test("catalog defaults an unknown session policy without dropping the agent", as
 test("catalog detail shows Community member when the publisher profile cannot be resolved", async ({
   page,
 }) => {
-  // A pubkey that is not in the mock profile registry — profile resolution
+  // A pubkey that is not in the mock profile registry - profile resolution
   // will fail and the detail pane must fall back gracefully.
   const unknownPrivateKey = "1".repeat(64);
   const unknownPubkey = getPublicKey(hexToBytes(unknownPrivateKey));
@@ -2123,7 +2120,7 @@ test("catalog detail shows Community member when the publisher profile cannot be
     ],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await openPersonaCatalog(page);
 
   await page
@@ -2197,7 +2194,7 @@ test("one share level selector drives both the link and send paths", async ({
   });
   await gotoApp(page);
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page.getByLabel("Open actions for Animation Auditor").click();
   await page.getByRole("menuitem", { name: "Share" }).click();
 
@@ -2247,7 +2244,7 @@ test("one share level selector drives both the link and send paths", async ({
   expect(catalogAccessBox?.y ?? 0).toBeGreaterThanOrEqual(
     (copyLinkButtonBox?.y ?? 0) + (copyLinkButtonBox?.height ?? 0),
   );
-  // The memory choice is stated once, governing both delivery actions —
+  // The memory choice is stated once, governing both delivery actions -
   // neither the recipients row nor the link row carries its own copy.
   await expect(
     shareDialog.getByTestId("persona-share-recipient-access"),
@@ -2380,7 +2377,7 @@ test("one share level selector drives both the link and send paths", async ({
   await expect(memoryConfirmation).toBeVisible();
   await expect(memoryConfirmation).toContainText("plaintext all memories");
   await expect(memoryConfirmation).toContainText(
-    "Charlie—and anyone with the file link—can view it.",
+    /Charlie\p{P}and anyone with the file link\p{P}can view it/u,
   );
   const encodeLevelsBeforeSendConfirmation = await page.evaluate(() =>
     (
@@ -2618,7 +2615,7 @@ test("export from share aligns selections and animates memory details", async ({
   });
   await gotoApp(page);
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page.getByLabel("Open actions for Animation Auditor").click();
   await page.getByRole("menuitem", { name: "Share" }).click();
   await page.getByTestId("persona-share-export").click();
@@ -2634,27 +2631,49 @@ test("export from share aligns selections and animates memory details", async ({
     (element) => element.getBoundingClientRect().height,
   );
   await memoryTrigger.click();
+  // Sample from before the selection so the whole height transition is
+  // observed. Starting after the click raced the animation: on a busy page
+  // the click round-trip could outlast most of it, leaving two heights.
+  await exportDialog.evaluate((element) => {
+    const w = window as typeof window & {
+      __exportHeightSamples?: { done: boolean; heights: number[] };
+    };
+    const record = { done: false, heights: [] as number[] };
+    w.__exportHeightSamples = record;
+    const start = performance.now();
+    const sample = (now: number) => {
+      record.heights.push(element.getBoundingClientRect().height);
+      if (now - start >= 1_500) {
+        record.done = true;
+        return;
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
   await page
     .getByRole("menuitemradio", { name: "Agent + core memory" })
     .click();
-  const heightSamples = await exportDialog.evaluate(async (element) => {
-    const samples: number[] = [];
-    const start = performance.now();
-
-    await new Promise<void>((resolve) => {
-      const sample = (now: number) => {
-        samples.push(element.getBoundingClientRect().height);
-        if (now - start >= 280) {
-          resolve();
-          return;
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              __exportHeightSamples?: { done: boolean };
+            }
+          ).__exportHeightSamples?.done ?? false,
+      ),
+    )
+    .toBe(true);
+  const heightSamples = await page.evaluate(
+    () =>
+      (
+        window as typeof window & {
+          __exportHeightSamples?: { heights: number[] };
         }
-        requestAnimationFrame(sample);
-      };
-      requestAnimationFrame(sample);
-    });
-
-    return samples;
-  });
+      ).__exportHeightSamples?.heights ?? [],
+  );
 
   await expect(
     exportDialog.getByTestId("agent-snapshot-memory-warning"),
@@ -2680,7 +2699,7 @@ test("team-managed personas do not expose editable actions", async ({
   });
   await gotoApp(page);
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page.getByLabel("Open actions for Team Analyst").click();
 
   await expect(page.getByRole("menuitem")).toHaveText([
@@ -2711,7 +2730,7 @@ test("built-in removal failures show up from My Agents", async ({ page }) => {
   });
   await gotoApp(page);
 
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await invokeTauri(page, "create_team", {
     input: {
       name: "Honeys",
@@ -2781,7 +2800,7 @@ test("start pill morphs into the running dot without remounting the avatar", asy
     ],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
 
   const card = page.getByTestId(`persona-agent-row-${personaId}`);
   const startButton = page.getByTestId(`agent-runtime-start-${pubkey}`);
@@ -2910,7 +2929,7 @@ test("duplicate instances move from the agents gallery into the agent profile", 
     ],
   });
   await gotoApp(page);
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
 
   await expect(page.getByText("Additional running agents")).toHaveCount(0);
   await expect(

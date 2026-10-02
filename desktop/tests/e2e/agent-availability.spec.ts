@@ -18,7 +18,7 @@ test("saved deployment with offline presence is not shown as online", async ({
       },
     ],
   });
-  await page.goto("/#/agents");
+  await page.goto("/#/agents?view=templates");
   const dot = page.getByTestId(`agent-runtime-active-${LOCAL}`);
   await expect(dot).toHaveAttribute(
     "aria-label",
@@ -120,7 +120,7 @@ test("missing snapshot is offline but failed reads cannot reuse cached online", 
       },
     ],
   });
-  await page.goto("/#/agents");
+  await page.goto("/#/agents?view=templates");
   const dot = page.getByTestId(`agent-runtime-active-${LOCAL}`);
   await expect(dot).toHaveAttribute("aria-label", "Snapshot agent: Offline");
   await page
@@ -203,7 +203,7 @@ test("stopped local with authored presence has a dot, not an invokable Start", a
       },
     ],
   });
-  await page.goto("/#/agents");
+  await page.goto("/#/agents?view=templates");
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -362,7 +362,7 @@ for (const surface of ["agents", "members"] as const) {
         channelNames: ["agents"],
       })),
     });
-    await page.goto(surface === "agents" ? "/#/agents" : "/");
+    await page.goto(surface === "agents" ? "/#/agents?view=templates" : "/");
     if (surface === "members") {
       await page.getByTestId("channel-agents").click();
       await page.getByTestId("channel-members-trigger").click();
@@ -613,7 +613,7 @@ for (const scenario of [
         },
       ],
     });
-    await page.goto("/#/agents");
+    await page.goto("/#/agents?view=templates");
     await expect(
       page.getByRole("button", { name: "Deletion fixture agent profile" }),
     ).toBeVisible();

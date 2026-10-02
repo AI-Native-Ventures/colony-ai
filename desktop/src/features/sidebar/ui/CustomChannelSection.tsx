@@ -359,6 +359,7 @@ export function ChannelGroupSection({
   actionsTestId,
   title,
   unreadChannelIds,
+  unreadChannelCounts,
   sections,
   assignments,
   onAssignChannel,
@@ -406,6 +407,7 @@ export function ChannelGroupSection({
   actionsTestId?: string;
   title: string;
   unreadChannelIds: ReadonlySet<string>;
+  unreadChannelCounts?: ReadonlyMap<string, number>;
   hasUnread?: boolean;
   onMarkAllRead?: () => void;
   sections?: ChannelSection[];
@@ -438,6 +440,7 @@ export function ChannelGroupSection({
                       channel={channel}
                       activeWorking={activeWorkingByChannelId?.get(channel.id)}
                       hasUnread={unreadChannelIds.has(channel.id)}
+                      unreadCount={unreadChannelCounts?.get(channel.id) ?? 0}
                       isMuted={mutedChannelIds?.has(channel.id)}
                       isActive={
                         isActiveChannel && selectedChannelId === channel.id
@@ -450,6 +453,7 @@ export function ChannelGroupSection({
                     channel={channel}
                     activeWorking={activeWorkingByChannelId?.get(channel.id)}
                     hasUnread={unreadChannelIds.has(channel.id)}
+                    unreadCount={unreadChannelCounts?.get(channel.id) ?? 0}
                     isMuted={mutedChannelIds?.has(channel.id)}
                     isActive={
                       isActiveChannel && selectedChannelId === channel.id
@@ -681,6 +685,7 @@ export function CustomChannelSection({
                       label={`Add channel to ${section.name}`}
                       onClick={onCreateChannel}
                       testId={`section-actions-${section.id}-quick-create`}
+                      visibilityClassName="pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100"
                     />
                     <SectionActionsMenu
                       sectionLabel={section.name}

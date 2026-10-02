@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { openLegacyProjectsView } from "./helpers/openLegacyProjects";
+
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 
@@ -18,6 +20,7 @@ async function addProjectToSidebar(
   page: import("@playwright/test").Page,
   dtag: string,
 ) {
+  await openLegacyProjectsView(page);
   await page.getByTestId("sidebar-projects-section-label").hover();
   await page.getByTestId("sidebar-projects-create").click();
   const browser = page.getByTestId("project-browser-dialog");
@@ -36,7 +39,7 @@ test("first-time project empty state opens project creation", async ({
   });
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-projects-view").click();
+  await openLegacyProjectsView(page);
 
   await expect(
     page.getByRole("main").getByText("No projects yet"),

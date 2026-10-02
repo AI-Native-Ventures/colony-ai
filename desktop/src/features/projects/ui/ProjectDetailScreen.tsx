@@ -586,7 +586,7 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
   const handleCreateIssue = React.useCallback(
     async (input: CreateIssueDialogInput) => {
       const issueId = await createIssueMutation.mutateAsync(input);
-      toast.success("Task created.");
+      toast.success("Issue created.");
       await issuesQuery.refetch();
       setSelectedIssueId(issueId);
     },

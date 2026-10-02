@@ -1,0 +1,281 @@
+.money-tax-heading {
+  align-items: flex-end;
+}
+
+.money-tax-breadcrumb {
+  margin: 0 0 0.55rem;
+  color: var(--w10-muted);
+  font-size: 0.72rem;
+}
+
+.money-tax-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(18rem, 0.82fr);
+  align-items: start;
+  gap: 1.25rem;
+}
+
+.money-tax-panel,
+.money-tax-preview,
+.money-tax-state-card {
+  min-width: 0;
+  border: 1px solid var(--w10-line);
+  border-radius: 0.68rem;
+  padding: 1.4rem;
+  background: var(--w10-paper);
+  color: var(--w10-ink);
+}
+
+.money-tax-panel > h2 {
+  margin: 0 0 1.2rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.money-tax-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.money-tax-field {
+  display: grid;
+  min-width: 0;
+  gap: 0.4rem;
+  color: var(--w10-ink);
+  font-size: 0.75rem;
+}
+
+.money-tax-field > span {
+  color: var(--w10-ink);
+}
+
+.money-tax-field input {
+  width: 100%;
+  min-height: 2.45rem;
+  border: 1px solid var(--w10-line);
+  border-radius: 0.42rem;
+  padding: 0.55rem 0.7rem;
+  background: var(--w10-paper);
+  color: var(--w10-ink);
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.money-tax-field input:disabled,
+.money-tax-field input[readonly] {
+  background: var(--w10-panel);
+  color: var(--w10-muted);
+}
+
+.money-tax-fields-inline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.money-tax-line-list {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--w10-line);
+  border-radius: 0.42rem;
+}
+
+.money-tax-line {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--w10-line);
+  padding: 0.65rem 0.75rem;
+  color: var(--w10-muted);
+  font-size: 0.75rem;
+}
+
+.money-tax-line:last-child {
+  border-bottom: 0;
+}
+
+.money-tax-line > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.money-tax-line strong {
+  flex: 0 0 auto;
+  color: var(--w10-ink);
+  font-weight: 550;
+}
+
+.money-tax-line-subtotal {
+  color: var(--w10-ink);
+  font-weight: 600;
+}
+
+.money-tax-note {
+  display: grid;
+  gap: 0.35rem;
+  border-left: 0.2rem solid var(--w10-accent);
+  border-radius: 0.45rem;
+  padding: 0.9rem 1rem;
+  background: var(--w10-panel);
+  color: var(--w10-muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.money-tax-note strong {
+  color: var(--w10-ink);
+  font-size: 0.76rem;
+}
+
+.money-tax-banner {
+  display: grid;
+  gap: 0.3rem;
+  border-left: 0.2rem solid var(--w10-success, #557b69);
+  border-radius: 0.45rem;
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--w10-panel);
+  color: var(--w10-muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.money-tax-banner strong {
+  color: var(--w10-ink);
+  font-size: 0.76rem;
+}
+
+.money-tax-banner-failed {
+  border-left-color: var(--w10-danger, #a35e69);
+}
+
+.money-tax-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  border-top: 1px solid var(--w10-line);
+  padding-top: 1rem;
+}
+
+.money-tax-summary > h2 {
+  margin: 0 0 1.2rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.money-tax-facts,
+.money-tax-preview-facts {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+  margin: 0 0 1rem;
+}
+
+.money-tax-facts dt,
+.money-tax-facts dd,
+.money-tax-preview-facts dt,
+.money-tax-preview-facts dd {
+  border-bottom: 1px solid var(--w10-line);
+  margin: 0;
+  padding: 0.75rem 0;
+  font-size: 0.74rem;
+}
+
+.money-tax-facts dt,
+.money-tax-preview-facts dt {
+  color: var(--w10-muted);
+}
+
+.money-tax-facts dd,
+.money-tax-preview-facts dd {
+  color: var(--w10-ink);
+  overflow-wrap: anywhere;
+}
+
+.money-tax-total-note {
+  margin: 0.8rem 0 0;
+  color: var(--w10-muted);
+  font-size: 0.72rem;
+}
+
+.money-tax-state-card {
+  display: grid;
+  justify-items: start;
+  gap: 0.7rem;
+  max-width: 44rem;
+  color: var(--w10-muted);
+  font-size: 0.82rem;
+}
+
+.money-tax-state-card p {
+  margin: 0;
+}
+
+.money-tax-preview {
+  display: grid;
+  gap: 1rem;
+}
+
+.money-tax-preview > header,
+.money-tax-preview-row,
+.money-tax-preview-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.money-tax-preview > header {
+  padding-bottom: 1rem;
+}
+
+.money-tax-preview > header strong {
+  font-size: 1rem;
+}
+
+.money-tax-preview > header span {
+  border: 1px solid var(--w10-line);
+  border-radius: 999px;
+  padding: 0.3rem 0.55rem;
+  color: var(--w10-muted);
+  font-size: 0.68rem;
+}
+
+.money-tax-preview-facts {
+  margin-bottom: 0;
+}
+
+.money-tax-preview-lines {
+  display: grid;
+}
+
+.money-tax-preview-row {
+  border-bottom: 1px solid var(--w10-line);
+  padding: 0.8rem 0;
+  color: var(--w10-muted);
+  font-size: 0.78rem;
+}
+
+.money-tax-preview-row strong {
+  flex: 0 0 auto;
+  color: var(--w10-ink);
+}
+
+.money-tax-preview-total {
+  border-bottom: 1px solid var(--w10-line);
+  padding: 0.85rem 0;
+  color: var(--w10-ink);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+@media (max-width: 56rem) {
+  .money-tax-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 38rem) {
+  .money-tax-fields-inline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

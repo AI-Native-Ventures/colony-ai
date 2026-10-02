@@ -24,10 +24,9 @@ jobs:
   desktop-core:
     name: Desktop Core
     runs-on: ubuntu-latest
-    # The compiled-flag verification step rebuilds the workspace for each
-    # BUZZ_BUILD_* state and runs the full suite under all three compile
-    # states; the complete recipe needs ~46m, so budget 60m.
-    timeout-minutes: 60
+    # The compiled-flag states run in parallel in desktop-compiled-flags.
+    # Keep headroom for cold caches and the full workspace test step.
+    timeout-minutes: 75
     if: github.event_name == 'push' || inputs.desktop || inputs.desktop_rust || inputs.rust
     permissions:
       contents: read
@@ -99,10 +98,6 @@ jobs:
         run: cargo test --manifest-path desktop/src-tauri/Cargo.toml --features mesh-llm --lib
         env:
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
-      - name: Desktop Tauri compiled-flag verification
-        run: just desktop-tauri-test-compiled-flags
-        env:
-          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
       - name: Upload desktop e2e artifacts
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -119,15 +114,64 @@ jobs:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
 
-  desktop-smoke-e2e:
-    name: Desktop Smoke E2E (${{ matrix.shard }})
+  desktop-compiled-flags:
+    name: Desktop Tauri compiled flags (${{ matrix.state }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     if: github.event_name == 'push' || inputs.desktop || inputs.desktop_rust || inputs.rust
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        state: [default, auto-connect, owner-only, demo-slug]
+    permissions:
+      contents: read
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          workspaces: desktop/src-tauri
+          save-if: "false"
+      - name: Install Tauri dependencies (Linux)
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30
+          sudo apt-get install -y --no-install-recommends \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30 \
+            -o DPkg::Lock::Timeout=120 \
+            build-essential \
+            curl \
+            file \
+            libasound2-dev \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            wget
+      - name: Run compiled-flag state verification
+        run: just desktop-tauri-test-compiled-flags-state "${{ matrix.state }}"
+
+  desktop-smoke-e2e:
+    name: Desktop Smoke E2E (${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.event_name == 'push' || inputs.desktop || inputs.desktop_rust || inputs.rust
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     permissions:
       contents: read
     steps:
@@ -167,7 +211,7 @@ jobs:
       - name: Desktop E2E build
         run: pnpm -C desktop build:e2e
       - name: Desktop smoke e2e
-        run: cd desktop && pnpm exec playwright test --project=smoke --shard=${{ matrix.shard }}/4
+        run: cd desktop && pnpm exec playwright test --project=smoke --shard=${{ matrix.shard }}/8
       - name: Summarize flaky tests
         if: ${{ !cancelled() }}
         run: node scripts/summarize-flaky-tests.mjs playwright-report.json "Desktop Smoke E2E (${{ matrix.shard }})"
@@ -188,7 +232,7 @@ jobs:
     name: Desktop
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [desktop-core, desktop-smoke-e2e, desktop-windows-build]
+    needs: [desktop-core, desktop-smoke-e2e, desktop-windows-build, desktop-compiled-flags]
     if: always() && (github.event_name == 'push' || inputs.desktop || inputs.desktop_rust || inputs.rust)
     permissions:
       contents: read
@@ -205,6 +249,10 @@ jobs:
           fi
           if [ "${{ needs.desktop-windows-build.result }}" != "success" ]; then
             echo "Desktop Windows Build finished with: ${{ needs.desktop-windows-build.result }}"
+            exit 1
+          fi
+          if [ "${{ needs.desktop-compiled-flags.result }}" != "success" ]; then
+            echo "Desktop Tauri compiled-flag checks finished with: ${{ needs.desktop-compiled-flags.result }}"
             exit 1
           fi
           echo "Desktop jobs passed"

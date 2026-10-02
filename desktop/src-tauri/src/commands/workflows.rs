@@ -22,10 +22,9 @@ use crate::{
 /// - `name` from `definition.name`,
 /// - `owner_pubkey` / timestamps from the event itself.
 ///
-/// `status` is always `"active"` here: the relay's disable/archive lifecycle is
-/// not reflected back into the kind:30620 event, and the UI derives a
-/// "disabled" display state from `definition.enabled` on its own
-/// (`getWorkflowDisplayStatus`).
+/// The initial status comes from `definition.enabled`. Channel-scoped status
+/// events override it on reads so pause and resume do not rewrite the active
+/// definition.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct WorkflowWire {
     pub id: String,
@@ -49,6 +48,18 @@ pub struct WorkflowSaveWire {
     pub workflow: WorkflowWire,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub webhook_secret: Option<String>,
+}
+
+/// An unpublished workflow draft stored as kind:30623.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct WorkflowDraftWire {
+    pub id: String,
+    pub revision: String,
+    pub name: String,
+    pub owner_pubkey: String,
+    pub channel_id: String,
+    pub definition: Value,
+    pub updated_at: i64,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, Serialize, PartialEq)]
@@ -102,13 +113,108 @@ pub async fn get_channel_workflows(
     )
     .await?;
 
-    Ok(events.iter().map(workflow_from_event).collect())
+    let mut workflows = events.iter().map(workflow_from_event).collect::<Vec<_>>();
+    apply_workflow_statuses(&state, &mut workflows).await?;
+    Ok(workflows)
 }
 
 // Keep this aligned with the relay's aggregate explicit-`#h` request bound.
 // Each filter below carries exactly one explicit value so old relays retain the
 // known-compatible shape while current relays cannot reject large memberships.
 const WORKFLOW_QUERY_CHANNEL_BATCH_SIZE: usize = 128;
+const WORKFLOW_STATUS_QUERY_BATCH_SIZE: usize = 128;
+
+async fn query_workflow_event(
+    state: &AppState,
+    kind: u32,
+    workflow_id: &str,
+    author: Option<&str>,
+) -> Result<Option<nostr::Event>, String> {
+    let mut filter = serde_json::json!({
+        "kinds": [kind],
+        "#d": [workflow_id],
+        "limit": 1,
+    });
+    if let Some(author) = author {
+        filter["authors"] = serde_json::json!([author]);
+    }
+    Ok(query_relay(state, &[filter]).await?.into_iter().next())
+}
+
+fn workflow_status_from_event(event: &nostr::Event) -> Option<&'static str> {
+    let content: Value = serde_json::from_str(&event.content).ok()?;
+    match content.get("status")?.as_str()? {
+        "active" => Some("active"),
+        "paused" => Some("disabled"),
+        _ => None,
+    }
+}
+
+async fn apply_workflow_statuses(
+    state: &AppState,
+    workflows: &mut [WorkflowWire],
+) -> Result<(), String> {
+    let filters = workflows
+        .iter()
+        .filter_map(|workflow| {
+            let channel_id = workflow.channel_id.as_deref()?;
+            Some(serde_json::json!({
+                "kinds": [46021],
+                "#workflow": [workflow.id],
+                "#h": [channel_id],
+                "limit": 1,
+            }))
+        })
+        .collect::<Vec<_>>();
+    let mut latest_status = std::collections::HashMap::<String, (u64, &'static str)>::new();
+    for batch in filters.chunks(WORKFLOW_STATUS_QUERY_BATCH_SIZE) {
+        for event in query_relay(state, batch).await? {
+            let Some(workflow_id) = tag_value(&event, "workflow") else {
+                continue;
+            };
+            let Some(status) = workflow_status_from_event(&event) else {
+                continue;
+            };
+            let created_at = event.created_at.as_secs();
+            let should_replace = latest_status
+                .get(&workflow_id)
+                .is_none_or(|(previous_at, _)| created_at >= *previous_at);
+            if should_replace {
+                latest_status.insert(workflow_id, (created_at, status));
+            }
+        }
+    }
+    for workflow in workflows {
+        if let Some((_, status)) = latest_status.get(&workflow.id) {
+            workflow.status = (*status).to_string();
+        }
+    }
+    Ok(())
+}
+
+fn workflow_draft_from_event(event: &nostr::Event) -> Result<WorkflowDraftWire, String> {
+    let id = tag_value(event, "d").ok_or_else(|| "workflow draft missing id".to_string())?;
+    let channel_id =
+        tag_value(event, "h").ok_or_else(|| "workflow draft missing channel".to_string())?;
+    let record = workflow_record(
+        id.clone(),
+        event.id.to_hex(),
+        Some(channel_id.clone()),
+        event.pubkey.to_hex(),
+        &event.content,
+        event.created_at.as_secs() as i64,
+        event.created_at.as_secs() as i64,
+    );
+    Ok(WorkflowDraftWire {
+        id: record.id,
+        revision: record.revision,
+        name: record.name,
+        owner_pubkey: record.owner_pubkey,
+        channel_id,
+        definition: record.definition,
+        updated_at: record.updated_at,
+    })
+}
 
 /// Fetch workflows across many channels using bounded relay round-trips.
 ///
@@ -136,6 +242,7 @@ pub async fn get_channels_workflows(
         append_unique_workflows(&mut workflows, &mut seen_event_ids, &events);
     }
 
+    apply_workflow_statuses(&state, &mut workflows).await?;
     Ok(workflows)
 }
 
@@ -189,26 +296,56 @@ pub async fn get_workflow(
     )
     .await?;
 
-    events
+    let mut workflow = events
         .first()
         .map(workflow_from_event)
-        .ok_or_else(|| "workflow not found".to_string())
+        .ok_or_else(|| "workflow not found".to_string())?;
+    apply_workflow_statuses(&state, std::slice::from_mut(&mut workflow)).await?;
+    Ok(workflow)
+}
+
+#[tauri::command]
+pub async fn get_workflow_draft(
+    workflow_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<WorkflowDraftWire>, String> {
+    let workflow_id =
+        uuid::Uuid::parse_str(&workflow_id).map_err(|_| "invalid workflow id".to_string())?;
+    let author = current_pubkey_hex(&state)?;
+    let event =
+        query_workflow_event(&state, 30623, &workflow_id.to_string(), Some(&author)).await?;
+    event
+        .map(|event| workflow_draft_from_event(&event))
+        .transpose()
 }
 
 #[tauri::command]
 pub async fn get_workflow_runs(
     workflow_id: String,
     limit: Option<u32>,
+    before: Option<String>,
+    before_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<WorkflowRunsWire, String> {
     let workflow_id =
         uuid::Uuid::parse_str(&workflow_id).map_err(|_| "invalid workflow id".to_string())?;
     let limit = limit.unwrap_or(20).clamp(1, 100);
-    get_relay_json(
-        &state,
-        &format!("/workflows/{workflow_id}/runs?limit={limit}"),
-    )
-    .await
+    if before.is_some() != before_id.is_some() {
+        return Err("before and beforeId must be supplied together".to_string());
+    }
+    let query = {
+        let mut query = url::form_urlencoded::Serializer::new(String::new());
+        query.append_pair("limit", &limit.to_string());
+        if let (Some(before), Some(before_id)) = (before, before_id) {
+            uuid::Uuid::parse_str(&before_id)
+                .map_err(|_| "invalid workflow run cursor id".to_string())?;
+            query
+                .append_pair("before", &before)
+                .append_pair("before_id", &before_id);
+        }
+        query.finish()
+    };
+    get_relay_json(&state, &format!("/workflows/{workflow_id}/runs?{query}")).await
 }
 
 // ── Writes ───────────────────────────────────────────────────────────────────
@@ -251,6 +388,188 @@ pub async fn create_workflow(
         workflow,
         webhook_secret,
     })
+}
+
+#[tauri::command]
+pub async fn save_workflow_draft(
+    workflow_id: String,
+    channel_id: String,
+    yaml_definition: String,
+    expected_revision: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<WorkflowDraftWire, String> {
+    let workflow_id = uuid::Uuid::parse_str(&workflow_id)
+        .map_err(|_| "invalid workflow id".to_string())?
+        .to_string();
+    let channel_id = uuid::Uuid::parse_str(&channel_id)
+        .map_err(|_| "invalid channel id".to_string())?
+        .to_string();
+    validate_workflow_draft_yaml(&yaml_definition)?;
+
+    let author = current_pubkey_hex(&state)?;
+    if let Some(active_event) = query_workflow_event(&state, 30620, &workflow_id, None).await? {
+        if active_event.pubkey.to_hex() != author {
+            return Err("only the workflow owner can edit its draft".to_string());
+        }
+        if tag_value(&active_event, "h").as_deref() != Some(channel_id.as_str()) {
+            return Err("workflow belongs to a different channel".to_string());
+        }
+    }
+
+    let current_draft = query_workflow_event(&state, 30623, &workflow_id, Some(&author)).await?;
+    let expected_revision = match (current_draft.as_ref(), expected_revision.as_deref()) {
+        (Some(event), Some(expected)) if event.id.to_hex() == expected => Some(expected),
+        (None, None) => None,
+        (Some(_), _) | (None, Some(_)) => {
+            return Err("workflow draft changed since it was loaded; refresh and try again".into());
+        }
+    };
+    if current_draft
+        .as_ref()
+        .and_then(|event| tag_value(event, "h"))
+        .is_some_and(|prior_channel| prior_channel != channel_id)
+    {
+        return Err("workflow draft belongs to a different channel".to_string());
+    }
+
+    let builder = events::build_workflow_draft(
+        &workflow_id,
+        &channel_id,
+        &yaml_definition,
+        expected_revision,
+    )?;
+    let result = submit_event(builder, &state).await?;
+    let now = now_secs();
+    let record = workflow_record(
+        workflow_id,
+        result.event_id,
+        Some(channel_id.clone()),
+        author,
+        &yaml_definition,
+        current_draft
+            .as_ref()
+            .map(|event| event.created_at.as_secs() as i64)
+            .unwrap_or(now),
+        now,
+    );
+    Ok(WorkflowDraftWire {
+        id: record.id,
+        revision: record.revision,
+        name: record.name,
+        owner_pubkey: record.owner_pubkey,
+        channel_id,
+        definition: record.definition,
+        updated_at: record.updated_at,
+    })
+}
+
+#[tauri::command]
+pub async fn publish_workflow_draft(
+    workflow_id: String,
+    draft_revision: String,
+    expected_active_revision: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<WorkflowSaveWire, String> {
+    let workflow_id = uuid::Uuid::parse_str(&workflow_id)
+        .map_err(|_| "invalid workflow id".to_string())?
+        .to_string();
+    let author = current_pubkey_hex(&state)?;
+    let draft = query_workflow_event(&state, 30623, &workflow_id, Some(&author))
+        .await?
+        .ok_or_else(|| "workflow draft not found".to_string())?;
+    if draft.id.to_hex() != draft_revision {
+        return Err("workflow draft changed since it was loaded; refresh and try again".into());
+    }
+    let channel_id =
+        tag_value(&draft, "h").ok_or_else(|| "workflow draft missing channel".to_string())?;
+    buzz_workflow_pkg::WorkflowEngine::parse_yaml(&draft.content)
+        .map_err(|error| format!("invalid workflow definition: {error}"))?;
+
+    let active = query_workflow_event(&state, 30620, &workflow_id, None).await?;
+    let expected_revision = match (active.as_ref(), expected_active_revision.as_deref()) {
+        (Some(event), Some(expected))
+            if event.id.to_hex() == expected && event.pubkey.to_hex() == author =>
+        {
+            Some(expected)
+        }
+        (None, None) => None,
+        (Some(_), _) => {
+            return Err(
+                "active workflow changed since it was loaded; refresh and try again".into(),
+            );
+        }
+        (None, Some(_)) => {
+            return Err("active workflow no longer exists; refresh and try again".into());
+        }
+    };
+    if active
+        .as_ref()
+        .and_then(|event| tag_value(event, "h"))
+        .is_some_and(|active_channel| active_channel != channel_id)
+    {
+        return Err("workflow draft and active version belong to different channels".into());
+    }
+
+    let builder = events::build_workflow_definition(
+        &workflow_id,
+        &channel_id,
+        &draft.content,
+        expected_revision,
+    )?;
+    let result = submit_event(builder, &state).await?;
+    let now = now_secs();
+    let workflow = workflow_record(
+        workflow_id,
+        result.event_id,
+        Some(channel_id),
+        author,
+        &draft.content,
+        active
+            .as_ref()
+            .map(|event| event.created_at.as_secs() as i64)
+            .unwrap_or(now),
+        now,
+    );
+    Ok(WorkflowSaveWire {
+        workflow,
+        webhook_secret: None,
+    })
+}
+
+#[tauri::command]
+pub async fn set_workflow_status(
+    workflow_id: String,
+    status: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let workflow_id = uuid::Uuid::parse_str(&workflow_id)
+        .map_err(|_| "invalid workflow id".to_string())?
+        .to_string();
+    if !matches!(status.as_str(), "active" | "paused") {
+        return Err("workflow status must be active or paused".to_string());
+    }
+    let active = query_workflow_event(&state, 30620, &workflow_id, None)
+        .await?
+        .ok_or_else(|| "workflow not found".to_string())?;
+    let channel_id =
+        tag_value(&active, "h").ok_or_else(|| "workflow missing channel".to_string())?;
+    let builder = events::build_workflow_status(&workflow_id, &channel_id, &status)?;
+    submit_event(builder, &state).await?;
+    Ok(status)
+}
+
+#[tauri::command]
+pub async fn preview_workflow(
+    yaml_definition: String,
+) -> Result<buzz_workflow_pkg::executor::WorkflowPreview, String> {
+    let (definition, _) = buzz_workflow_pkg::WorkflowEngine::parse_yaml(&yaml_definition)
+        .map_err(|error| format!("invalid workflow definition: {error}"))?;
+    buzz_workflow_pkg::executor::preview_workflow(
+        &definition,
+        &buzz_workflow_pkg::executor::TriggerContext::default(),
+    )
+    .await
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -391,6 +710,15 @@ fn current_pubkey_hex(state: &AppState) -> Result<String, String> {
     Ok(keys.public_key().to_hex())
 }
 
+fn validate_workflow_draft_yaml(yaml: &str) -> Result<(), String> {
+    let value: serde_yaml::Value = serde_yaml::from_str(yaml)
+        .map_err(|error| format!("invalid workflow draft YAML: {error}"))?;
+    if !matches!(value, serde_yaml::Value::Mapping(_)) {
+        return Err("workflow draft must be a YAML object".to_string());
+    }
+    Ok(())
+}
+
 fn now_secs() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -437,6 +765,11 @@ fn workflow_record(
         .map(str::to_string)
         .unwrap_or_else(|| id.clone());
 
+    let status = if definition.get("enabled").and_then(Value::as_bool) == Some(false) {
+        "disabled"
+    } else {
+        "active"
+    };
     WorkflowWire {
         id,
         revision,
@@ -444,7 +777,7 @@ fn workflow_record(
         owner_pubkey,
         channel_id,
         definition,
-        status: "active".to_string(),
+        status: status.to_string(),
         created_at,
         updated_at,
     }

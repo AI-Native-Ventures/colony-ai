@@ -61,6 +61,8 @@ const MODAL_BACK_ACTION_CLASS =
 
 type HostedCommunityOnboardingProps = {
   onBack: () => void;
+  /** Hide Builderlab provisioning when this surface is only for reconnecting. */
+  allowCreate?: boolean;
   /**
    * Fires once the account is signed in with a linked identity — the parent
    * uses this to reveal the stage page only after the sign-in modal has
@@ -78,6 +80,7 @@ export function HostedCommunityOnboarding({
   onBack,
   onReady,
   stageHidden = false,
+  allowCreate = true,
 }: HostedCommunityOnboardingProps) {
   const onboarding = useCommunityOnboarding();
   const shouldReduceMotion = useReducedMotion();
@@ -514,9 +517,9 @@ export function HostedCommunityOnboarding({
                 Set up your community
               </DialogTitle>
               <DialogDescription className="mt-2 text-sm leading-6 text-foreground">
-                Sign in to connect a community you already own or create a new
-                one. We’ll open Builderlab in your browser, then bring you back
-                to Buzz.
+                {allowCreate
+                  ? "Sign in to connect a community you already own or create a new one. We’ll open Builderlab in your browser, then bring you back to Buzz."
+                  : "Sign in to connect a community you already own. We’ll open Builderlab in your browser, then bring you back to Buzz."}
               </DialogDescription>
               {errorBox ? <div className="mt-5 w-full">{errorBox}</div> : null}
               {action === "Signing in…" ? (
@@ -613,12 +616,20 @@ export function HostedCommunityOnboarding({
   return (
     <div className="flex min-h-[calc(100dvh-15.625rem)] w-full max-w-[920px] flex-col items-center text-center">
       <h1 className="max-w-[620px] text-title font-normal leading-[1.18] tracking-[-0.025em]">
-        {hasCommunities ? "Choose a community" : "Create a community"}
+        {hasCommunities
+          ? "Choose a community"
+          : allowCreate
+            ? "Create a community"
+            : "No communities to connect"}
       </h1>
       <p className="mx-auto mt-2 max-w-[560px] text-sm leading-6 text-foreground">
         {hasCommunities
-          ? "Connect one you own, or start something new."
-          : "Claim a Buzz address to get started."}
+          ? allowCreate
+            ? "Connect one you own, or start something new."
+            : "Connect a community you already own."
+          : allowCreate
+            ? "Claim a Buzz address to get started."
+            : "We couldn’t find a community for this account."}
       </p>
 
       <div className="flex w-full flex-1 flex-col justify-center text-left">
@@ -675,78 +686,88 @@ export function HostedCommunityOnboarding({
                         </li>
                       ))}
                     </ul>
-                    <AnimatePresence initial={false} mode="wait">
-                      {!showCreate ? (
-                        <motion.div
-                          animate={{ opacity: 1, transform: "translateX(0px)" }}
-                          className={COMMUNITY_ROW_CLASS}
-                          exit={
-                            shouldReduceMotion
-                              ? { opacity: 0 }
-                              : {
-                                  opacity: 0,
-                                  transform: "translateX(-12px)",
-                                }
-                          }
-                          initial={false}
-                          key="add-community-action"
-                          transition={{
-                            duration: shouldReduceMotion ? 0 : 0.18,
-                            ease: "easeOut",
-                          }}
-                        >
-                          <p className="text-sm">
-                            Want to create a new community?
-                          </p>
-                          <Button
-                            className={COMMUNITY_ACTION_CLASS}
-                            disabled={busy || atCommunityLimit}
-                            onClick={() => setShowCreate(true)}
-                            size="sm"
-                            type="button"
-                            variant="ghost"
+                    {allowCreate ? (
+                      <AnimatePresence initial={false} mode="wait">
+                        {!showCreate ? (
+                          <motion.div
+                            animate={{
+                              opacity: 1,
+                              transform: "translateX(0px)",
+                            }}
+                            className={COMMUNITY_ROW_CLASS}
+                            exit={
+                              shouldReduceMotion
+                                ? { opacity: 0 }
+                                : {
+                                    opacity: 0,
+                                    transform: "translateX(-12px)",
+                                  }
+                            }
+                            initial={false}
+                            key="add-community-action"
+                            transition={{
+                              duration: shouldReduceMotion ? 0 : 0.18,
+                              ease: "easeOut",
+                            }}
                           >
-                            + Add new
-                          </Button>
-                        </motion.div>
-                      ) : (
-                        <motion.div
-                          animate={{ opacity: 1, transform: "translateX(0px)" }}
-                          initial={
-                            shouldReduceMotion
-                              ? { opacity: 1 }
-                              : {
-                                  opacity: 0,
-                                  transform: "translateX(12px)",
-                                }
-                          }
-                          key="add-community-input"
-                          transition={{
-                            duration: shouldReduceMotion ? 0 : 0.22,
-                            ease: "easeOut",
-                          }}
-                        >
-                          {renderCreationForm(true)}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                            <p className="text-sm">
+                              Want to create a new community?
+                            </p>
+                            <Button
+                              className={COMMUNITY_ACTION_CLASS}
+                              disabled={busy || atCommunityLimit}
+                              onClick={() => setShowCreate(true)}
+                              size="sm"
+                              type="button"
+                              variant="ghost"
+                            >
+                              + Add new
+                            </Button>
+                          </motion.div>
+                        ) : (
+                          <motion.div
+                            animate={{
+                              opacity: 1,
+                              transform: "translateX(0px)",
+                            }}
+                            initial={
+                              shouldReduceMotion
+                                ? { opacity: 1 }
+                                : {
+                                    opacity: 0,
+                                    transform: "translateX(12px)",
+                                  }
+                            }
+                            key="add-community-input"
+                            transition={{
+                              duration: shouldReduceMotion ? 0 : 0.22,
+                              ease: "easeOut",
+                            }}
+                          >
+                            {renderCreationForm(true)}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    ) : null}
                   </section>
                 </Card>
-                <p
-                  aria-live="polite"
-                  className={`relative z-10 mt-3 min-h-5 text-center text-sm ${
-                    creationFeedback ? "visible" : "invisible"
-                  } ${
-                    availability === false || (name && !validName)
-                      ? "text-destructive"
-                      : "text-[color:var(--buzz-onboarding-backup-ink)]"
-                  }`}
-                  id="hosted-community-feedback"
-                >
-                  {creationFeedback ?? "Community address status"}
-                </p>
+                {allowCreate ? (
+                  <p
+                    aria-live="polite"
+                    className={`relative z-10 mt-3 min-h-5 text-center text-sm ${
+                      creationFeedback ? "visible" : "invisible"
+                    } ${
+                      availability === false || (name && !validName)
+                        ? "text-destructive"
+                        : "text-[color:var(--buzz-onboarding-backup-ink)]"
+                    }`}
+                    id="hosted-community-feedback"
+                  >
+                    {creationFeedback ?? "Community address status"}
+                  </p>
+                ) : null}
               </>
-            ) : (
+            ) : allowCreate ? (
               <>
                 {renderCreationForm(false)}
                 <p
@@ -763,6 +784,16 @@ export function HostedCommunityOnboarding({
                   {creationFeedback ?? "Community address status"}
                 </p>
               </>
+            ) : (
+              <Card
+                className={`${FUZZY_SURFACE_CLASS} !max-w-[760px]`}
+                data-testid="hosted-community-empty-state"
+                variant="textured"
+              >
+                <p className="text-center text-sm">
+                  There are no communities available to reconnect.
+                </p>
+              </Card>
             )}
           </>
         ) : (
@@ -776,21 +807,23 @@ export function HostedCommunityOnboarding({
 
       {!modalOpen ? (
         <OnboardingFooter>
-          <Button
-            className={PAGE_CTA_CLASS}
-            disabled={
-              !validName ||
-              availability === false ||
-              checkingName ||
-              busy ||
-              atCommunityLimit
-            }
-            form="hosted-community-create-form"
-            type="submit"
-          >
-            {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-            {action ?? "Next"}
-          </Button>
+          {allowCreate ? (
+            <Button
+              className={PAGE_CTA_CLASS}
+              disabled={
+                !validName ||
+                availability === false ||
+                checkingName ||
+                busy ||
+                atCommunityLimit
+              }
+              form="hosted-community-create-form"
+              type="submit"
+            >
+              {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+              {action ?? "Next"}
+            </Button>
+          ) : null}
           <Button
             className={PAGE_BACK_CLASS}
             disabled={busy}

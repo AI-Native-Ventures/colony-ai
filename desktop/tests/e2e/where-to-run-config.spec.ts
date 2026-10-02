@@ -4,7 +4,7 @@
  * Pins the fix for the "Typewriter Eraser": WhereToRunSection's probe effect
  * used to depend on the whole draft, so every keystroke re-probed the
  * provider and every probe resolution reset providerConfig to schema
- * defaults — typing into a defaultless field (the k8s "Kubeconfig context")
+ * defaults  -  typing into a defaultless field (the k8s "Kubeconfig context")
  * looked completely dead, and the provider binary respawned in a loop.
  *
  * Covers:
@@ -25,6 +25,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
+import { openAgentTemplatesView } from "../helpers/agentWorkspace";
 
 type Page = import("@playwright/test").Page;
 
@@ -90,7 +91,7 @@ async function selectRunOnOption(
 /** Open Advanced in the create-agent dialog and select the mocked provider. */
 async function openCreateDialogOnProvider(page: Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("open-agents-view").click();
+  await openAgentTemplatesView(page);
   await page.getByTestId("new-agent-card").click();
   const dialog = page.getByTestId("persona-dialog");
   await expect(dialog).toBeVisible({ timeout: 10_000 });
@@ -133,7 +134,7 @@ test("typing into a defaultless provider field sticks and probes only once", asy
   await contextField.fill("prod-us-west");
   await expect(contextField).toHaveValue("prod-us-west");
 
-  // One selection, one probe — keystrokes and Advanced disclosure toggles
+  // One selection, one probe  -  keystrokes and Advanced disclosure toggles
   // must not refire executable provider discovery after it has completed.
   expect(await probeInvocations(page)).toBe(1);
   const advanced = dialog.getByRole("button", {
@@ -155,7 +156,7 @@ test("config fields render only after a slow probe resolves, with defaults", asy
   page,
 }) => {
   // The fields are gated on the probe result (draft.probedProvider), which is
-  // what makes mid-flight typing unreachable through the UI — the stale-probe
+  // what makes mid-flight typing unreachable through the UI  -  the stale-probe
   // merge seam (applyProbeResult) is pinned at the unit level instead. This
   // spec holds the gate: no half-rendered form before the probe lands, and
   // defaults appear exactly once when it does.

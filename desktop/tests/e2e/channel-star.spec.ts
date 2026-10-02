@@ -26,9 +26,11 @@ function seedStarState(
 }
 
 test.describe("channel starring", () => {
-  test("01 — context menu shows Star channel", async ({ page }) => {
+  test("01 - context menu shows Star channel", async ({ page }) => {
     await installMockBridge(page);
     await page.goto("/");
+    const conversations = page.getByTestId("sidebar-nav-conversations");
+    await expect(conversations.getByTestId("stream-list")).toBeVisible();
     await page.getByTestId("channel-general").click();
     await expect(page.getByTestId("chat-title")).toHaveText("general");
 
@@ -45,30 +47,32 @@ test.describe("channel starring", () => {
     );
   });
 
-  test("02 — starred channel appears in Starred section", async ({ page }) => {
+  test("02 - starred channel appears in Starred section", async ({ page }) => {
     await seedStarState(page, ENGINEERING_CHANNEL_ID);
     await installMockBridge(page);
 
     await page.goto("/");
+    const conversations = page.getByTestId("sidebar-nav-conversations");
     await page.getByTestId("channel-general").click();
     await expect(page.getByTestId("chat-title")).toHaveText("general");
 
-    const starredList = page.getByTestId("starred-list");
+    const starredList = conversations.getByTestId("starred-list");
     await expect(starredList).toBeVisible();
     await expect(starredList.getByTestId("channel-engineering")).toBeVisible();
   });
 
-  test("03 — context menu shows Unstar channel when starred", async ({
+  test("03 - context menu shows Unstar channel when starred", async ({
     page,
   }) => {
     await seedStarState(page, ENGINEERING_CHANNEL_ID);
     await installMockBridge(page);
 
     await page.goto("/");
+    const conversations = page.getByTestId("sidebar-nav-conversations");
     await page.getByTestId("channel-general").click();
     await expect(page.getByTestId("chat-title")).toHaveText("general");
 
-    await page
+    await conversations
       .getByTestId("starred-list")
       .getByTestId("channel-engineering")
       .click({ button: "right" });
@@ -84,23 +88,28 @@ test.describe("channel starring", () => {
     );
   });
 
-  test("04 — starred channel is removed from the Channels group", async ({
+  test("04 - starred channel is removed from the Channels group", async ({
     page,
   }) => {
     await seedStarState(page, ENGINEERING_CHANNEL_ID);
     await installMockBridge(page);
 
     await page.goto("/");
+    const conversations = page.getByTestId("sidebar-nav-conversations");
     await page.getByTestId("channel-general").click();
     await expect(page.getByTestId("chat-title")).toHaveText("general");
 
     // Exclusive behavior (Slack-style): the starred channel lives only in the
     // Starred section and no longer appears in the default Channels group.
     await expect(
-      page.getByTestId("starred-list").getByTestId("channel-engineering"),
+      conversations
+        .getByTestId("starred-list")
+        .getByTestId("channel-engineering"),
     ).toBeVisible();
     await expect(
-      page.getByTestId("stream-list").getByTestId("channel-engineering"),
+      conversations
+        .getByTestId("stream-list")
+        .getByTestId("channel-engineering"),
     ).toHaveCount(0);
   });
 });

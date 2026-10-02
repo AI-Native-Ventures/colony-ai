@@ -1,201 +1,143 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 
-const SHOTS = "test-results/appearance-previews";
-const THEME_STORAGE_KEY = "buzz-theme";
-const LINK_PREVIEW_STYLE_STORAGE_KEY = "buzz.appearance.linkPreviewStyle";
-const THREAD_VIEW_MODE_STORAGE_KEY = "buzz.channels.threadViewMode";
-
-async function openAppearance(
-  page: Page,
-  {
-    linkStyle = "compact",
-    theme = "buzz",
-    threadMode = "split",
-  }: {
-    linkStyle?: "compact" | "rich";
-    theme?: "buzz" | "buzz-dark";
-    threadMode?: "focus" | "split";
-  } = {},
-) {
-  await page.addInitScript(
-    ({ linkKey, linkStyle, theme, themeKey, threadKey, threadMode }) => {
-      window.localStorage.setItem(themeKey, theme);
-      window.localStorage.setItem(linkKey, linkStyle);
-      window.localStorage.setItem(threadKey, threadMode);
-    },
-    {
-      linkKey: LINK_PREVIEW_STYLE_STORAGE_KEY,
-      linkStyle,
-      theme,
-      themeKey: THEME_STORAGE_KEY,
-      threadKey: THREAD_VIEW_MODE_STORAGE_KEY,
-      threadMode,
-    },
-  );
+async function openAppearance(page: Page) {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("buzz-theme", "buzz");
+  });
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-nav-appearance").click();
-  await expect(page.getByTestId("settings-theme")).toBeVisible({
+  await page.getByTestId("settings-group-appearance-group").click();
+  await expect(page.getByTestId("settings-appearance")).toBeVisible({
     timeout: 10_000,
   });
   await waitForAnimations(page);
 }
 
-async function scrubTo(control: Locator, option: Locator) {
-  await control.scrollIntoViewIfNeeded();
-  const controlBox = await control.boundingBox();
-  const optionBox = await option.boundingBox();
-  if (!controlBox || !optionBox) throw new Error("Segment geometry is missing");
-
-  const selectedOption = control.locator('button[aria-pressed="true"]');
-  const selectedOptionBox = await selectedOption.boundingBox();
-  if (!selectedOptionBox)
-    throw new Error("Starting segment geometry is missing");
-
-  await control
-    .page()
-    .mouse.move(
-      selectedOptionBox.x + selectedOptionBox.width / 2,
-      controlBox.y + controlBox.height / 2,
+function appearanceSnapshot(page: Page) {
+  return page.evaluate(() => {
+    const key = Object.keys(localStorage).find(
+      (candidate) =>
+        candidate.startsWith("colony.appearance.v1:") &&
+        !candidate.endsWith(":last-business"),
     );
-  await control.page().mouse.down();
-  await control
-    .page()
-    .mouse.move(
-      optionBox.x + optionBox.width / 2,
-      controlBox.y + controlBox.height / 2,
-      { steps: 5 },
-    );
+    return key ? JSON.parse(localStorage.getItem(key) ?? "null") : null;
+  });
 }
 
-test("appearance samples preview locally and commit only on selection", async ({
+test("named theme and message density save as one workspace preference", async ({
   page,
 }) => {
   await openAppearance(page);
 
-  const linkControl = page.getByTestId("link-preview-style-control");
-  const richOption = page.getByTestId("link-preview-style-rich");
-  const linkSample = page.getByTestId("link-preview-sample");
-  await expect(linkSample.locator("[data-link-preview-inline]")).toHaveCount(0);
-  await expect(page.getByTestId("link-preview-sample-surface")).toHaveAttribute(
-    "inert",
-    "",
-  );
-  const sampleLink = linkSample.locator("a").first();
-  await sampleLink.evaluate((element) => element.focus());
-  await expect(sampleLink).not.toBeFocused();
-  await scrubTo(linkControl, richOption);
-  await expect(linkSample.locator("[data-link-preview-inline]")).toBeVisible();
-  await expect(linkSample.getByText("Show less")).toHaveCount(0);
+  const appearance = page.getByTestId("settings-appearance");
   await expect(
-    page.getByText("Large previews with images and descriptions"),
+    appearance.getByRole("heading", { exact: true, name: "Appearance" }),
   ).toBeVisible();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        (key) => window.localStorage.getItem(key),
-        LINK_PREVIEW_STYLE_STORAGE_KEY,
-      ),
-    )
-    .toBe("compact");
-  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
-  await expect(linkSample.locator("[data-link-preview-inline]")).toHaveCount(0);
-  await expect(page.getByTestId("link-preview-style-compact")).toHaveAttribute(
-    "aria-pressed",
-    "true",
+  await expect(appearance.getByText("One home for appearance")).toBeVisible();
+  await expect(appearance.getByTestId("appearance-density")).toHaveValue(
+    "comfortable",
+  );
+  await expect(
+    appearance.getByTestId("appearance-density").locator("option"),
+  ).toHaveText(["Choose message density", "Compact", "Comfortable"]);
+  await expect(appearance.getByTestId("appearance-message-size")).toHaveCount(
+    0,
+  );
+  await expect(appearance.getByTestId("appearance-links-rich")).toHaveCount(0);
+  await expect(appearance.getByTestId("appearance-threads-focus")).toHaveCount(
+    0,
   );
 
-  await richOption.click();
-  await expect(linkSample.locator("[data-link-preview-inline]")).toBeVisible();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        (key) => window.localStorage.getItem(key),
-        LINK_PREVIEW_STYLE_STORAGE_KEY,
-      ),
-    )
-    .toBe("rich");
+  await appearance.getByRole("button", { name: "Browse named themes" }).click();
+  await expect(page.getByTestId("settings-theme-catalog")).toBeVisible();
+  await page.getByTestId("theme-catalog-github-light").click();
+  await expect(page.getByTestId("settings-theme-preview")).toBeVisible();
+  await page.getByTestId("appearance-preview-density").selectOption("compact");
+  await expect(page.getByTestId("appearance-preview-density")).toHaveValue(
+    "compact",
+  );
 
-  const threadControl = page.getByTestId("thread-layout-control");
-  const focusOption = page.getByTestId("thread-layout-focus");
-  await expect(page.getByTestId("thread-layout-diagram-split")).toBeVisible();
-  await scrubTo(threadControl, focusOption);
-  await expect(page.getByTestId("thread-layout-diagram-focus")).toBeVisible();
-  await expect(page.getByText("Threads open over the channel")).toBeVisible();
+  await page.getByTestId("theme-use").click();
+  await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
   await expect
-    .poll(() =>
-      page.evaluate(
-        (key) => window.localStorage.getItem(key),
-        THREAD_VIEW_MODE_STORAGE_KEY,
-      ),
-    )
-    .toBe("split");
-  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
-  await expect(page.getByTestId("thread-layout-diagram-split")).toBeVisible();
-
-  await focusOption.click();
-  await expect(page.getByTestId("thread-layout-diagram-focus")).toBeVisible();
+    .poll(() => appearanceSnapshot(page))
+    .toMatchObject({ theme: "github-light", density: "compact" });
   await expect
-    .poll(() =>
-      page.evaluate(
-        (key) => window.localStorage.getItem(key),
-        THREAD_VIEW_MODE_STORAGE_KEY,
-      ),
-    )
-    .toBe("focus");
+    .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
+    .toBe("github-light");
 });
 
-test("appearance previews stay grouped and responsive", async ({ page }) => {
-  await page.setViewportSize({ width: 840, height: 900 });
-  await openAppearance(page, {
-    linkStyle: "rich",
-    theme: "buzz-dark",
-    threadMode: "focus",
-  });
-
-  const preferencesCard = page.getByTestId("appearance-preferences-card");
-  const linkGroup = page.getByTestId("link-preview-style-group");
-  const threadGroup = page.getByTestId("thread-layout-group");
-  const linkControl = page.getByTestId("link-preview-style-control");
-  const threadControl = page.getByTestId("thread-layout-control");
-
-  await expect(linkGroup.getByText("Preview", { exact: true })).toBeVisible();
-  await expect(threadGroup.getByText("Preview", { exact: true })).toBeVisible();
-
-  const [cardBox, linkControlBox, threadControlBox] = await Promise.all([
-    preferencesCard.boundingBox(),
-    linkControl.boundingBox(),
-    threadControl.boundingBox(),
-  ]);
-  if (!cardBox || !linkControlBox || !threadControlBox) {
-    throw new Error("Responsive Appearance geometry is missing");
-  }
-  expect(linkControlBox.width).toBeGreaterThan(cardBox.width - 40);
-  expect(threadControlBox.width).toBeGreaterThan(cardBox.width - 40);
-
-  await waitForAnimations(page);
-  await linkGroup.screenshot({
-    path: `${SHOTS}/01-link-preview-rich-dark-narrow.png`,
-  });
-  await threadGroup.screenshot({
-    path: `${SHOTS}/02-thread-focus-dark-narrow.png`,
-  });
-});
-
-test("appearance previews render compact and split samples at wide width", async ({
+test("theme preview shows the signed-in profile and cancel leaves preferences unchanged", async ({
   page,
 }) => {
   await openAppearance(page);
-  await waitForAnimations(page);
-  await page.getByTestId("link-preview-style-group").screenshot({
-    path: `${SHOTS}/03-link-preview-compact-light-wide.png`,
+  const profileName = await page.locator(".w20-nav-person strong").innerText();
+
+  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("theme-catalog-buzz-dark").click();
+  const preview = page.getByTestId("theme-workspace-preview");
+  await expect(preview).toContainText("Preview content only");
+  await expect(preview.getByTestId("theme-preview-person")).toHaveText(
+    profileName,
+  );
+  await expect(page.getByTestId("theme-use")).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
+    .toBe("buzz");
+
+  await page.getByRole("button", { name: "Cancel preview" }).click();
+  await expect(page.getByTestId("settings-theme-catalog")).toBeVisible();
+  await expect.poll(() => appearanceSnapshot(page)).toBeNull();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
+    .toBe("buzz");
+});
+
+test("failed workspace appearance save keeps the selected density", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key.startsWith("colony.appearance.v1:")) {
+        throw new DOMException("Storage is unavailable", "QuotaExceededError");
+      }
+      originalSetItem.call(this, key, value);
+    };
   });
-  await page.getByTestId("thread-layout-group").screenshot({
-    path: `${SHOTS}/04-thread-split-light-wide.png`,
-  });
+  await installMockBridge(page);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("open-settings").click();
+  await page.getByTestId("profile-popover-settings").click();
+  await page.getByTestId("settings-group-appearance-group").click();
+
+  const density = page.getByTestId("appearance-density");
+  await expect(density).toBeVisible();
+  await density.selectOption("compact");
+  await page.getByRole("button", { name: "Save appearance" }).click();
+
+  await expect(page.getByRole("alert")).toContainText("Your inputs are kept");
+  await expect(density).toHaveValue("compact");
+  await expect(
+    page.getByRole("button", { name: "Save appearance" }),
+  ).toBeVisible();
+});
+
+test("appearance choices remain usable at a narrow desktop width", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 840, height: 900 });
+  await openAppearance(page);
+
+  const density = page.getByTestId("appearance-density");
+  await expect(density).toBeVisible();
+  await density.selectOption("compact");
+  await expect(density).toHaveValue("compact");
+  await page.getByRole("button", { name: "Save appearance" }).click();
+  await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
 });

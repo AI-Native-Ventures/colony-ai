@@ -11,15 +11,11 @@ export function SendFeedbackController({
   const sendFeedback = useSendFeedback();
   return (
     <SendFeedbackDialog
-      attachedImageUrl={sendFeedback.attachedImage?.url ?? null}
-      isAttaching={sendFeedback.isAttaching}
       isPending={sendFeedback.isPending}
-      onAttachImage={sendFeedback.attachImage}
       onOpenChange={(nextOpen) => {
         onOpenChange(nextOpen);
         if (!nextOpen) sendFeedback.reset();
       }}
-      onRemoveImage={sendFeedback.removeImage}
       onSubmit={sendFeedback.submit}
       open={open}
     />

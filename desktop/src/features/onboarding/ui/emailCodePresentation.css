@@ -1,0 +1,252 @@
+.colony-onboarding-root .otp-content {
+  --otp-accent: #49679d;
+  --otp-line: #dcd8e1;
+  --otp-soft: #f6f4f7;
+  --otp-ink: #302c38;
+  --otp-muted: #817987;
+  color: var(--otp-ink);
+}
+
+.colony-onboarding-root .form-content:has(.otp-content) {
+  max-width: 26.25rem;
+}
+
+.colony-onboarding-root .otp-content h2 {
+  margin-bottom: 1rem;
+}
+
+.colony-onboarding-root .otp-lede {
+  margin: 0 0 1.5rem;
+  color: var(--otp-muted);
+  font-size: 0.9375rem;
+  line-height: 1.65;
+}
+
+.colony-onboarding-root .otp-address {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0 0 1.5rem;
+}
+
+.colony-onboarding-root .otp-address strong {
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+}
+
+.colony-onboarding-root .otp-button {
+  min-height: 2.75rem;
+  padding: 0.75rem 1rem;
+  border: 0;
+  border-radius: 0.6rem;
+  background: var(--otp-soft);
+  color: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition:
+    background 140ms,
+    opacity 140ms;
+}
+
+.colony-onboarding-root .otp-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.colony-onboarding-root .otp-text {
+  padding: 0.4rem 0;
+  background: transparent;
+  color: #52699b;
+  font-weight: 600;
+}
+
+.colony-onboarding-root .otp-primary {
+  width: 100%;
+  background: #49679d;
+  color: #fff;
+  font-weight: 600;
+}
+
+.colony-onboarding-root .otp-actions {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.colony-onboarding-root .otp-actions > .otp-text {
+  justify-self: center;
+}
+
+.colony-onboarding-root .otp-fields {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.5rem;
+  min-width: 0;
+  margin: 1.5rem 0 0.65rem;
+  padding: 0;
+  border: 0;
+}
+
+.colony-onboarding-root .otp-fields input {
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  max-height: 4rem;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid var(--otp-line);
+  border-radius: 0.65rem;
+  background: var(--otp-soft);
+  color: var(--otp-ink);
+  font:
+    600 1.5rem / 1 "Manrope Variable",
+    sans-serif;
+  text-align: center;
+  caret-color: var(--otp-accent);
+  transition:
+    border-color 140ms,
+    box-shadow 140ms;
+}
+
+.colony-onboarding-root .otp-fields input:focus {
+  outline: none;
+  border-color: var(--otp-accent);
+  box-shadow: 0 0 0 3px #49679d22;
+}
+
+.colony-onboarding-root .otp-fields input[aria-invalid="true"] {
+  border-color: #b77068;
+  background: #fff8f5;
+}
+
+.colony-onboarding-root .otp-help {
+  margin: 0.5rem 0;
+  color: var(--otp-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.colony-onboarding-root .otp-resend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1.3rem 0 1.8rem;
+  color: var(--otp-muted);
+  font-size: 0.75rem;
+}
+
+.colony-onboarding-root .otp-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 1rem 0;
+  padding: 0.9rem;
+  border-radius: 0.6rem;
+  background: #eeedf4;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.colony-onboarding-root .otp-status-error {
+  background: #fbefeb;
+  color: #975649;
+}
+
+.colony-onboarding-root .otp-status-sent {
+  background: #edf4ed;
+  color: #507456;
+}
+
+.colony-onboarding-root .otp-status strong {
+  font-weight: 600;
+}
+
+.colony-onboarding-root .otp-status span {
+  font-size: 0.75rem;
+}
+
+.colony-onboarding-root .otp-field {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1rem 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.colony-onboarding-root .otp-field input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid var(--otp-line);
+  border-radius: 0.6rem;
+  background: var(--otp-soft);
+  color: var(--otp-ink);
+  font:
+    400 0.875rem "Manrope Variable",
+    sans-serif;
+}
+
+.colony-onboarding-root .otp-show {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.75rem;
+  font-size: 0.75rem;
+}
+
+.colony-onboarding-root .otp-error {
+  min-height: 1rem;
+  color: #aa5e52;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.colony-onboarding-root .otp-success {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  margin: 1rem 0;
+  place-items: center;
+  border-radius: 50%;
+  background: #eaf3e9;
+  color: #597c5c;
+  font-size: 1.4rem;
+}
+
+.colony-onboarding-root .otp-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.colony-onboarding-root .otp-spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid #bbb7c9;
+  border-top-color: #52699b;
+  border-radius: 50%;
+  animation: otp-spin 800ms linear infinite;
+}
+
+.colony-onboarding-root .otp-primary {
+  min-height: 3rem;
+}
+
+@keyframes otp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .colony-onboarding-root .otp-content * {
+    animation: none;
+    transition: none;
+  }
+}

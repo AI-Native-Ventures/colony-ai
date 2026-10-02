@@ -550,7 +550,7 @@ test("reopening the same entity link reapplies its workspace state", async ({
   );
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("open-projects-view")).toBeVisible();
+  await expect(page.getByTestId("open-factory-view")).toBeVisible();
   const repoLink = `buzz://repo?owner=${DEFAULT_MOCK_PUBKEY}&d=buzz&tab=prs`;
   const prLink = `buzz://pr?id=${PR_ID}&owner=${DEFAULT_MOCK_PUBKEY}&d=buzz`;
   const issueLink = `buzz://issue?id=${ISSUE_ID}&owner=${DEFAULT_MOCK_PUBKEY}&d=buzz`;
@@ -606,7 +606,7 @@ test("reopening the same entity link reapplies its workspace state", async ({
     .getByTestId("project-issue-detail")
     .getByRole("heading", { name: ISSUE_SUBJECT });
   await expect(issueHeading).toBeVisible();
-  await breadcrumb.getByRole("button", { name: "Tasks", exact: true }).click();
+  await breadcrumb.getByRole("button", { name: "Issues", exact: true }).click();
   await expect(issueHeading).toHaveCount(0);
   await emitEntityLink(issueLink);
   await expect(issueHeading).toBeVisible();

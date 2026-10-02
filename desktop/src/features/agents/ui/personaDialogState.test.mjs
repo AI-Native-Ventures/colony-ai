@@ -158,6 +158,31 @@ test("editPersonaDialogState preserves the persona id for updates", () => {
   });
 });
 
+test("editPersonaDialogState preserves configured company role metadata", () => {
+  const companyRole = {
+    job: "Product designer",
+    skills: ["Prototyping"],
+    tools: [{ name: "Browser", risk: "low" }],
+    workerMenu: ["goose"],
+  };
+  const state = editPersonaDialogState({
+    id: "persona-role-pack",
+    displayName: "Designer",
+    avatarUrl: null,
+    systemPrompt: "Design carefully.",
+    runtime: null,
+    model: null,
+    provider: null,
+    companyRole,
+    isBuiltIn: false,
+    isActive: true,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-02T00:00:00Z",
+  });
+
+  assert.deepEqual(state.initialValues.companyRole, companyRole);
+});
+
 test("editPersonaDialogState seeds envVars and namePool from the persona", () => {
   const state = editPersonaDialogState({
     id: "persona-3",

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -13,6 +14,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:nostr/nostr.dart' as nostr;
 import 'package:buzz/features/channels/channel.dart';
 import 'package:buzz/features/channels/channels_provider.dart';
+import 'package:buzz/features/channels/conversation_styles.dart';
+import 'package:buzz/features/channels/goal_reference_card.dart';
 import 'package:buzz/features/channels/message_content.dart';
 import 'package:buzz/features/channels/media_viewer_page.dart';
 import 'package:buzz/features/channels/voice_note_attachment.dart';
@@ -20,6 +23,8 @@ import 'package:buzz/features/channels/voice_note_waveform.dart';
 import 'package:buzz/features/channels/voice_note_recording.dart';
 import 'package:buzz/shared/deeplink/deep_link.dart';
 import 'package:buzz/shared/deeplink/pending_deep_link_provider.dart';
+import 'package:buzz/shared/company/goals/goal_records.dart';
+import 'package:buzz/shared/company/goals/goal_repository.dart';
 import 'package:buzz/shared/emoji/emoji_only.dart';
 import 'package:buzz/shared/relay/relay.dart';
 import 'package:buzz/shared/theme/theme.dart';
@@ -267,6 +272,11 @@ String _allRichText(WidgetTester tester) {
   final richTexts = tester.widgetList<RichText>(find.byType(RichText));
   return richTexts.map((rt) => rt.text.toPlainText()).join('\n');
 }
+
+Finder _findTextIgnoringNbsp(String text) => find.byWidgetPredicate(
+  (widget) => widget is Text && widget.data?.replaceAll('\u00A0', ' ') == text,
+  description: 'Text equal to "$text" ignoring non-breaking spaces',
+);
 
 /// Finds a RichText widget whose plain text contains [text].
 Finder _findRich(String text) {
@@ -2511,6 +2521,61 @@ Photos
         },
       );
 
+      testWidgets('renders a goal reference as a live goal card', (
+        tester,
+      ) async {
+        const goalId = '123e4567-e89b-12d3-a456-426614174000';
+        const relaySecret =
+            '1111111111111111111111111111111111111111111111111111111111111111';
+        const ownerPubkey =
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+        final content = jsonEncode({
+          'schemaVersion': 1,
+          'goalId': goalId,
+          'status': 'active',
+          'title': 'Every client plan, ready on time',
+          'goal': {
+            'schemaVersion': 1,
+            'goalId': goalId,
+            'title': 'Every client plan, ready on time',
+            'ownerPubkey': ownerPubkey,
+            'doneCondition': 'Each active client has an approved plan.',
+            'linkedChannelIds': <String>[],
+          },
+          'sourceActionEventId': List.filled(64, 'f').join(),
+        });
+        final wireEvent = nostr.Event.from(
+          kind: EventKind.goalHead,
+          content: content,
+          tags: [
+            ['d', 'company:goal:$goalId'],
+          ],
+          secretKey: relaySecret,
+          createdAt: 1758700000,
+          verify: false,
+        );
+        final event = NostrEvent.fromJson(wireEvent.toMap());
+        final record = parseGoalHeadEvent(event, event.pubkey)!;
+
+        await tester.pumpWidget(
+          _testable(
+            const MessageContent(
+              content:
+                  'See [the shared goal](buzz://goal/123e4567-e89b-12d3-a456-426614174000).',
+            ),
+            overrides: [
+              goalHeadsProvider.overrideWith((ref) async => [record]),
+            ],
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 30));
+
+        expect(find.byType(GoalReferenceCard), findsOneWidget);
+        expect(find.text('Every client plan, ready on time'), findsOneWidget);
+        expect(find.text('On track'), findsOneWidget);
+      });
+
       testWidgets('uses shortened channel identifiers when names are missing', (
         tester,
       ) async {
@@ -2530,7 +2595,7 @@ Photos
     });
 
     group('@mentions', () {
-      testWidgets('renders @mention with highlight', (tester) async {
+      testWidgets('renders a plain accent @mention', (tester) async {
         await tester.pumpWidget(
           _testable(
             const MessageContent(
@@ -2540,10 +2605,15 @@ Photos
           ),
         );
 
-        // The desktop-style mention chip renders the prefix and label
-        // separately so they can be aligned independently.
-        expect(find.text('@'), findsOneWidget);
-        expect(find.text('Alice'), findsOneWidget);
+        final mention = find.text('@Alice');
+        expect(mention, findsOneWidget);
+        expect(find.text('@'), findsNothing);
+        final text = tester.widget<Text>(mention);
+        expect(
+          text.style?.color,
+          conversationAccentColor(tester.element(mention)),
+        );
+        expect(text.style?.backgroundColor, isNull);
       });
 
       testWidgets('renders a known agent mention with the bot chip', (
@@ -2583,7 +2653,7 @@ Photos
         expect(_allRichText(tester), isNot(contains('Bot Bot')));
       });
 
-      testWidgets('highlights an entire multi-word display name', (
+      testWidgets('keeps a multi-word mention as plain accent text', (
         tester,
       ) async {
         await tester.pumpWidget(
@@ -2595,8 +2665,8 @@ Photos
           ),
         );
 
-        expect(find.text('@'), findsOneWidget);
-        expect(find.text('Kenny Lopez'), findsOneWidget);
+        expect(_findTextIgnoringNbsp('@Kenny Lopez'), findsOneWidget);
+        expect(find.text('@'), findsNothing);
         expect(find.text('@Kenny'), findsNothing);
         expect(_allRichText(tester), isNot(contains('Lopez Lopez')));
       });
@@ -2611,8 +2681,8 @@ Photos
           ),
         );
 
-        expect(find.text('@'), findsOneWidget);
-        expect(find.text('unknown'), findsOneWidget);
+        expect(find.text('@unknown'), findsOneWidget);
+        expect(find.text('@'), findsNothing);
       });
 
       testWidgets('does not treat email addresses as mentions', (tester) async {
@@ -2641,7 +2711,7 @@ Photos
           ),
         );
 
-        await tester.tap(find.text('Alice'));
+        await tester.tap(find.text('@Alice'));
         expect(tappedPubkey, 'pk1');
       });
 
@@ -2659,7 +2729,7 @@ Photos
           ),
         );
 
-        await tester.tap(find.text('Kenny Lopez'));
+        await tester.tap(_findTextIgnoringNbsp('@Kenny Lopez'));
         expect(tappedPubkey, 'pk1');
       });
 
@@ -2675,7 +2745,7 @@ Photos
           ),
         );
 
-        await tester.tap(find.text('unknown'), warnIfMissed: false);
+        await tester.tap(find.text('@unknown'), warnIfMissed: false);
         expect(tapped, isFalse);
       });
     });
@@ -2795,8 +2865,8 @@ Photos
         );
 
         expect(_hasBoldSpan(tester, 'Important'), isTrue);
-        expect(find.text('@'), findsOneWidget);
-        expect(find.text('Alice'), findsOneWidget);
+        expect(find.text('@Alice'), findsOneWidget);
+        expect(find.text('@'), findsNothing);
       });
 
       testWidgets('preserves markdown around mentions', (tester) async {
@@ -2809,8 +2879,8 @@ Photos
           ),
         );
 
-        expect(find.text('@'), findsOneWidget);
-        expect(find.text('Alice'), findsOneWidget);
+        expect(find.text('@Alice'), findsOneWidget);
+        expect(find.text('@'), findsNothing);
         expect(_allRichText(tester), isNot(contains('**')));
       });
 

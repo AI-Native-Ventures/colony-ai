@@ -1,16 +1,89 @@
 import { defineConfig, devices } from "@playwright/test";
+import { realpathSync } from "node:fs";
+import { isAbsolute, relative, resolve, sep } from "node:path";
+
+const canaryEnabled = process.env.BUZZ_E2E_CANARY === "1";
+const canaryAccountFile = process.env.BUZZ_E2E_CANARY_ACCOUNT_FILE;
+const canaryArtifactDir = process.env.BUZZ_E2E_CANARY_ARTIFACT_DIR;
+const appPort = canaryEnabled ? 4174 : 4173;
+
+function assertOutsideRepository(path: string, label: string) {
+  const repositoryRoot = realpathSync(resolve(process.cwd(), ".."));
+  const actualPath = realpathSync(path);
+  const relativePath = relative(repositoryRoot, actualPath);
+  if (
+    !relativePath ||
+    (relativePath !== ".." && !relativePath.startsWith(`..${sep}`))
+  ) {
+    throw new Error(`${label} must be outside the repository.`);
+  }
+}
+
+if (canaryEnabled) {
+  if (process.env.CI) {
+    throw new Error("The canary Playwright project is local-only.");
+  }
+  if (!canaryAccountFile || !canaryArtifactDir) {
+    throw new Error(
+      "The canary project requires its account file and artifact directory environment variables.",
+    );
+  }
+  if (!isAbsolute(canaryAccountFile) || !isAbsolute(canaryArtifactDir)) {
+    throw new Error("Canary account and artifact paths must be absolute.");
+  }
+  const canaryAccountRoot = realpathSync(
+    resolve(process.env.HOME ?? "", ".colony-canary"),
+  );
+  const accountRelativePath = relative(
+    canaryAccountRoot,
+    realpathSync(canaryAccountFile),
+  );
+  if (
+    !accountRelativePath ||
+    accountRelativePath === ".." ||
+    accountRelativePath.startsWith(`..${sep}`)
+  ) {
+    throw new Error("The canary account file must be inside ~/.colony-canary.");
+  }
+  assertOutsideRepository(canaryAccountFile, "The canary account file");
+  assertOutsideRepository(canaryArtifactDir, "The canary artifact directory");
+}
+
+const canaryProjects = canaryEnabled
+  ? [
+      {
+        name: "canary",
+        testMatch: "**/company-canary.canary.spec.ts",
+        retries: 0,
+        use: {
+          ...devices["Desktop Chrome"],
+          viewport: { width: 1440, height: 900 },
+          screenshot: "off" as const,
+          trace: "off" as const,
+          video: "off" as const,
+        },
+      },
+    ]
+  : [];
 
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 30_000,
+  expect: { timeout: canaryEnabled ? 30_000 : 5_000 },
   retries: process.env.CI ? 2 : 0,
   workers: 1,
-  reporter: [
-    ["list"],
-    ["html", { open: "never", outputFolder: "playwright-report" }],
-  ],
+  outputDir:
+    canaryEnabled && canaryArtifactDir
+      ? resolve(canaryArtifactDir, "playwright-results")
+      : "test-results",
+  reporter: canaryEnabled
+    ? [["list"]]
+    : [
+        ["list"],
+        ["html", { open: "never", outputFolder: "playwright-report" }],
+      ],
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL: `http://127.0.0.1:${appPort}`,
     screenshot: "only-on-failure",
     trace: "on-first-retry",
     video: "retain-on-failure",
@@ -20,9 +93,14 @@ export default defineConfig({
       name: "smoke",
       testMatch: [
         "**/smoke.spec.ts",
+        "**/account-auth.spec.ts",
+        "**/self-serve-community-onboarding.spec.ts",
         "**/owned-agent-discovery.spec.ts",
+        "**/agent-profile-instructions.spec.ts",
         "**/thread-head-stale-edit.spec.ts",
         "**/sidebar-offcanvas-rail.spec.ts",
+        "**/sidebar-full-app.spec.ts",
+        "**/sidebar-reference-fixture.spec.ts",
         "**/tooltip-semantics.spec.ts",
         "**/search-scope-screenshots.spec.ts",
         "**/onboarding-docked-cta-screenshots.spec.ts",
@@ -30,6 +108,7 @@ export default defineConfig({
         "**/exact-key-profile.spec.ts",
         "**/key-import-reveal.spec.ts",
         "**/navigation.spec.ts",
+        "**/relay-request-budget.spec.ts",
         "**/channels.spec.ts",
         "**/channel-shared-header-backdrop.spec.ts",
         "**/auxiliary-pane-close-visibility.spec.ts",
@@ -43,10 +122,12 @@ export default defineConfig({
         "**/messaging.spec.ts",
         "**/bestie.spec.ts",
         "**/message-feedback-snapshots.spec.ts",
+        "**/send-feedback-settings.spec.ts",
         "**/message-copy-link.spec.ts",
         "**/custom-emoji.spec.ts",
         "**/profile-custom-emoji-status.spec.ts",
         "**/custom-emoji-ui.spec.ts",
+        "**/moderation-queue-failure.spec.ts",
         "**/channel-mute.spec.ts",
         "**/channel-star.spec.ts",
         "**/channel-controls.spec.ts",
@@ -88,6 +169,17 @@ export default defineConfig({
         "**/relay-reconnect.spec.ts",
         "**/relay-reconnect-affordance.spec.ts",
         "**/workflows.spec.ts",
+        "**/company-asks.spec.ts",
+        "**/company-hiring.spec.ts",
+        "**/company-duty-ask.spec.ts",
+        "**/company-team.spec.ts",
+        "**/company-spend.spec.ts",
+        "**/company-permissions.spec.ts",
+        "**/company-work.spec.ts",
+        "**/asks-2.spec.ts",
+        "**/factory.spec.ts",
+        "**/factoryPreview.spec.ts",
+        "**/goals.spec.ts",
         "**/workflow-reaction-picker.spec.ts",
         "**/workflow-local-controls.spec.ts",
         "**/workflow-title-stability.spec.ts",
@@ -177,6 +269,13 @@ export default defineConfig({
         "**/agent-numeric-tuning.spec.ts",
         "**/needs-restart-screenshots.spec.ts",
         "**/team-catalog-screenshots.spec.ts",
+        "**/w07-agents-smoke.spec.ts",
+        "**/w10-discovery-sales.spec.ts",
+        "**/w11-clients-work.spec.ts",
+        "**/workflow-plain-builder.spec.ts",
+        "**/money.spec.ts",
+        "**/money-tax.spec.ts",
+        "**/secrets.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
@@ -191,6 +290,11 @@ export default defineConfig({
         "**/onboarding.spec.ts",
         "**/stream.spec.ts",
         "**/integration.spec.ts",
+        "**/company-asks.live.spec.ts",
+        "**/company-team.integration.spec.ts",
+        "**/company-team.live.spec.ts",
+        "**/company-work.live.spec.ts",
+        "**/company-work.spec.ts",
         "**/dm-double-notification.spec.ts",
         "**/profile.spec.ts",
         "**/sidebar.spec.ts",
@@ -202,7 +306,9 @@ export default defineConfig({
         "**/team-catalog.spec.ts",
         "**/agents-everywhere.live.spec.ts",
         "**/relay-restart.live.spec.ts",
+        "**/goals.live.spec.ts",
         "**/parity-ancestor-island.spec.ts",
+        "**/workflow-plain-builder.spec.ts",
       ],
       use: {
         ...devices["Desktop Chrome"],
@@ -211,11 +317,12 @@ export default defineConfig({
         timeout: process.env.CI ? 15_000 : 10_000,
       },
     },
+    ...canaryProjects,
   ],
   webServer: {
-    command: "python3 -m http.server 4173 -d dist",
+    command: `python3 -m http.server ${appPort} -d dist`,
     cwd: ".",
     reuseExistingServer: !process.env.CI,
-    url: "http://127.0.0.1:4173",
+    url: `http://127.0.0.1:${appPort}`,
   },
 });

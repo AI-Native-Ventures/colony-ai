@@ -19,6 +19,8 @@ import {
 import { cn } from "@/shared/lib/cn";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 
+// Workspace channel rows use a smaller avatar than the base thread row model.
+const THREAD_SUMMARY_TIMELINE_AVATAR_INSET_REM = 0.5;
 const THREAD_SUMMARY_CONTENT_OFFSET_REM =
   THREAD_REPLY_BODY_OFFSET_REM - THREAD_REPLY_ROW_MARGIN_INLINE_REM;
 const THREAD_SUMMARY_SURFACE_AVATAR_INSET_REM = 0.5;
@@ -90,6 +92,7 @@ export function MessageThreadSummaryRow({
   showDepthGuides = true,
   summary,
   summaryIndentOffsetRem = 0,
+  compactTimelineAvatar = false,
   unreadCount,
 }: {
   collapseDepthGuideActions?: ReadonlyArray<ThreadDepthGuideAction>;
@@ -106,6 +109,7 @@ export function MessageThreadSummaryRow({
   showDepthGuides?: boolean;
   summary: TimelineThreadSummary;
   summaryIndentOffsetRem?: number;
+  compactTimelineAvatar?: boolean;
   unreadCount?: number;
 }) {
   const indentRem = getThreadReplyIndentRem(depth);
@@ -113,7 +117,8 @@ export function MessageThreadSummaryRow({
     indentRem + THREAD_REPLY_ROW_MARGIN_INLINE_REM + summaryIndentOffsetRem;
   const hoverLeft = threadReplyLength(hoverLeftRem);
   const contentPaddingStart = threadReplyLength(
-    THREAD_SUMMARY_CONTENT_OFFSET_REM,
+    THREAD_SUMMARY_CONTENT_OFFSET_REM -
+      (compactTimelineAvatar ? THREAD_SUMMARY_TIMELINE_AVATAR_INSET_REM : 0),
   );
   const surfaceInsetStart = `calc(${contentPaddingStart} - ${threadReplyLength(
     THREAD_SUMMARY_SURFACE_AVATAR_INSET_REM,
@@ -232,9 +237,12 @@ export function MessageThreadSummaryRow({
         </div>
       ) : null}
 
+      {/* Block-level flex, not inline-flex: an inline button sits on a text
+          line whose baseline moves when the avatar fallback text appears,
+          shifting this row 2px and the bottom-pinned timeline with it. */}
       <button
         aria-label={summaryAriaLabel}
-        className="group relative isolate inline-flex h-[1.875rem] w-fit max-w-full cursor-pointer items-center gap-1.5 rounded-full py-0 pr-3 text-left text-xs font-medium text-muted-foreground transition-[color,opacity] hover:text-foreground hover:opacity-90 focus-visible:outline-hidden"
+        className="group relative isolate flex h-[1.875rem] w-fit max-w-full cursor-pointer items-center gap-1.5 rounded-full py-0 pr-3 text-left text-xs font-medium text-muted-foreground transition-[color,opacity] hover:text-foreground hover:opacity-90 focus-visible:outline-hidden"
         data-thread-head-id={message.id}
         data-testid="message-thread-summary"
         onClick={() => onOpenThread(message)}

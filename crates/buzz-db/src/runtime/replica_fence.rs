@@ -81,6 +81,30 @@ pub const CREATED_AT_FLOOR_SECS: i64 = 960;
 /// between machines.
 pub const FENCE_CLOCK_MARGIN_SECS: i64 = 5;
 
+// A client backend still establishing its PostgreSQL session cannot own a
+// transaction. PostgreSQL reports these rows with state `starting` on newer
+// versions, and some versions expose NULL state/xact_start during startup.
+// Other roles can also see NULL backend_type for these unauthenticated rows,
+// so identify the narrow pre-session shape before treating hidden activity as
+// unsafe. Authenticated sessions keep their database and user visible even
+// when pg_stat_activity details are masked.
+const MASKED_ACTIVITY_PREDICATE: &str = r#"
+    NOT (
+        client_port IS NOT NULL
+        AND xact_start IS NULL
+        AND (COALESCE(state = 'starting', false)
+             OR (datname IS NULL AND usename IS NULL))
+    )
+    AND (
+        backend_type IS NULL
+        OR (backend_type = 'client backend'
+            AND state IS NOT NULL
+            AND state <> 'idle'
+            AND state <> 'starting'
+            AND xact_start IS NULL)
+    )
+"#;
+
 /// How often the probe samples the writer and commits a heartbeat token.
 ///
 /// 500ms keeps the cadence at least 2x under the smallest sensible bounded
@@ -569,14 +593,20 @@ async fn sample_writer(writer: &PgPool) -> Result<WriterSample, ProbeError> {
         .await?;
 
     // 2. Activity scan. Classification (fail closed on anything unknown):
-    //    - `backend_type IS NULL` → masked. CRITICAL: an unprivileged view
-    //      masks `backend_type` itself along with `state`/`xact_start`
-    //      (verified on PG 16/17), so filtering on
+    //    - a client still establishing its session cannot own a transaction;
+    //      ignore the narrow startup row (no client database/user yet, or the
+    //      explicit `starting` state) because parallel pool opens can expose
+    //      it briefly in the cluster-wide view;
+    //    - `backend_type IS NULL` for any other row → masked. CRITICAL: an
+    //      unprivileged view masks `backend_type` itself along with
+    //      `state`/`xact_start` (verified on PG 16/17), so filtering on
     //      `backend_type = 'client backend'` would silently EXCLUDE masked
     //      rows and fail open. Masked rows must be detected before any
     //      backend-type filter;
-    //    - client backend with `state IS NULL`, or a transactional/unknown
-    //      state with NULL `xact_start` → masked → error;
+    //    - a known client backend with a non-idle/non-starting state and NULL
+    //      `xact_start` → masked → error. A known client backend with NULL
+    //      state and NULL `xact_start` is still in startup; hidden state on an
+    //      authenticated session is already caught by the NULL backend type;
     //    - client backend, `state = 'idle'`, NULL `xact_start`
     //                                 → no transaction → safely ignore;
     //    - any row with non-NULL `xact_start` (any backend type)
@@ -593,7 +623,7 @@ async fn sample_writer(writer: &PgPool) -> Result<WriterSample, ProbeError> {
     //    after the token. Their deferred floor guard already ran at PREPARE,
     //    so `pg_prepared_xacts.prepared` bounds their rows exactly like
     //    `xact_start`; fold it into the same minimum.
-    let row = sqlx::query(
+    let activity_query = format!(
         r#"
         SELECT
             least(
@@ -603,17 +633,16 @@ async fn sample_writer(writer: &PgPool) -> Result<WriterSample, ProbeError> {
                 (SELECT min(prepared) FROM pg_prepared_xacts)
             ) AS oldest_xact_start,
             (SELECT count(*)
-               FROM pg_stat_activity
+              FROM pg_stat_activity
               WHERE pid <> pg_backend_pid()
-                AND (backend_type IS NULL
-                     OR (backend_type = 'client backend'
-                         AND (state IS NULL
-                              OR (state <> 'idle' AND xact_start IS NULL))))
+                AND ({MASKED_ACTIVITY_PREDICATE})
             ) AS masked
         "#,
-    )
-    .fetch_one(&mut *conn)
-    .await?;
+    );
+    // The interpolated fragment is a compile-time predicate, not user input.
+    let row = sqlx::query(sqlx::AssertSqlSafe(activity_query))
+        .fetch_one(&mut *conn)
+        .await?;
     let masked: i64 = row.get("masked");
     if masked > 0 {
         return Err(ProbeError::MaskedActivity { masked });
@@ -1026,6 +1055,41 @@ mod postgres_tests {
         assert_eq!(during.epoch, before.epoch, "epoch is stable across samples");
 
         tx.rollback().await.expect("rollback");
+    }
+
+    /// The production activity filter ignores in-progress client startup but
+    /// still fails closed when an authenticated session is masked.
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn activity_mask_predicate_distinguishes_startup_from_masked_sessions() {
+        let pool = PgPool::connect(&crate::test_support::database_url())
+            .await
+            .expect("connect");
+        let query = format!(
+            r#"
+            SELECT ({MASKED_ACTIVITY_PREDICATE}) AS masked
+            FROM (VALUES
+                ('client backend'::text, 'starting'::text, NULL::timestamptz,
+                 54321::integer, NULL::text, NULL::text),
+                ('client backend', NULL, NULL, 54322, 'buzz', 'buzz'),
+                (NULL, NULL, NULL, 54323, NULL, NULL),
+                (NULL, NULL, NULL, 54324, 'buzz', 'other_role'),
+                (NULL, NULL, NULL, NULL, NULL, NULL),
+                ('client backend', 'active', NULL, 54325, 'buzz', 'buzz'),
+                ('client backend', 'disabled', NULL, 54326, 'buzz', 'buzz'),
+                ('client backend', 'idle', NULL, 54327, 'buzz', 'buzz')
+            ) AS activity(backend_type, state, xact_start, client_port, datname, usename)
+            "#,
+        );
+        let masked: Vec<bool> = sqlx::query_scalar(sqlx::AssertSqlSafe(query))
+            .fetch_all(&pool)
+            .await
+            .expect("evaluate production activity predicate");
+        assert_eq!(
+            masked,
+            vec![false, false, false, true, true, true, true, false],
+            "startup sessions are safe to ignore, authenticated hidden sessions fail closed"
+        );
     }
 
     /// An unprivileged probe role sees NULL `state`/`xact_start` for other

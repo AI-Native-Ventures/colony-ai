@@ -3,11 +3,15 @@
 use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 use crate::app_state::AppState;
+use crate::electron_host::shell_events::{CLOSE_HUDDLE_WINDOW, OPEN_HUDDLE_WINDOW};
 
 /// Close the companion belonging to an ended huddle. The native lifecycle is
 /// authoritative here because a webview can be suspended while it is closing.
 pub(super) fn close_huddle_window(app: &tauri::AppHandle, ephemeral_channel_id: &str) {
     if ephemeral_channel_id.is_empty() {
+        return;
+    }
+    if crate::electron_host::route_huddle_window(app, CLOSE_HUDDLE_WINDOW, ephemeral_channel_id) {
         return;
     }
     let label = format!("huddle-{ephemeral_channel_id}");
@@ -30,6 +34,11 @@ pub fn close_huddle_companion(
         .ephemeral_channel_id
         .clone()
         .ok_or("no active huddle")?;
+    if crate::electron_host::route_huddle_window(&app, CLOSE_HUDDLE_WINDOW, &ephemeral_channel_id) {
+        app.emit("huddle-companion-returned", ())
+            .map_err(|error| error.to_string())?;
+        return Ok(());
+    }
     close_huddle_window(&app, &ephemeral_channel_id);
     app.emit("huddle-companion-returned", ())
         .map_err(|error| error.to_string())?;
@@ -49,6 +58,9 @@ pub async fn open_huddle_window(
         .ephemeral_channel_id
         .clone()
         .ok_or("no active huddle")?;
+    if crate::electron_host::route_huddle_window(&app, OPEN_HUDDLE_WINDOW, &ephemeral_channel_id) {
+        return Ok(());
+    }
     let label = format!("huddle-{ephemeral_channel_id}");
 
     if let Some(window) = app.get_webview_window(&label) {

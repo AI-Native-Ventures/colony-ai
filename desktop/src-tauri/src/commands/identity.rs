@@ -17,14 +17,7 @@ use crate::{
 /// Returns the full bech32 when it is 12 chars or fewer, mirroring
 /// `truncatePubkey`'s short-string threshold.
 fn truncated_display_name(pubkey: &PublicKey) -> Result<String, String> {
-    let bech32 = pubkey
-        .to_bech32()
-        .map_err(|error| format!("bech32 encode failed: {error}"))?;
-    Ok(if bech32.len() > 12 {
-        format!("{}…{}", &bech32[..8], &bech32[bech32.len() - 4..])
-    } else {
-        bech32
-    })
+    colony_identity_kernel::truncated_display_name(pubkey)
 }
 
 #[cfg(test)]
@@ -54,9 +47,6 @@ mod truncated_display_name_tests {
 #[tauri::command]
 pub fn get_identity(state: State<'_, AppState>) -> Result<IdentityInfo, String> {
     let keys = state.keys.lock().map_err(|error| error.to_string())?;
-    let pubkey = keys.public_key();
-    let pubkey_hex = pubkey.to_hex();
-    let display_name = truncated_display_name(&pubkey)?;
     let lost = state
         .identity_lost
         .load(std::sync::atomic::Ordering::Acquire);
@@ -66,14 +56,21 @@ pub fn get_identity(state: State<'_, AppState>) -> Result<IdentityInfo, String> 
     let reset_failed = state
         .reset_failed
         .load(std::sync::atomic::Ordering::Acquire);
-
-    Ok(IdentityInfo {
-        pubkey: pubkey_hex,
-        display_name,
-        storage: state.identity_storage().as_str().to_string(),
+    let snapshot = colony_identity_kernel::project_identity(
+        &keys,
+        state.identity_storage(),
         lost,
         locked,
         reset_failed,
+    )?;
+
+    Ok(IdentityInfo {
+        pubkey: snapshot.pubkey,
+        display_name: snapshot.display_name,
+        storage: snapshot.storage,
+        lost: snapshot.lost,
+        locked: snapshot.locked,
+        reset_failed: snapshot.reset_failed,
     })
 }
 

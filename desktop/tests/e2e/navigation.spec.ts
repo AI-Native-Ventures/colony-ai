@@ -1,7 +1,11 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
-import { openSettings } from "../helpers/settings";
+import { openSettings, selectSettingsSection } from "../helpers/settings";
+import {
+  createPlainWorkflow,
+  installWorkflowAdminBridge,
+} from "../helpers/workflows";
 
 const ENGINEERING_CHANNEL_ID = "1c7e1c02-87bb-5e88-b2da-5a7a9432d0c9";
 const WATERCOLOR_CHANNEL_ID = "a27e1ee9-76a6-5bdf-a5d5-1d85610dad11";
@@ -9,7 +13,7 @@ const FORUM_POST_ID = "mock-forum-release-thread";
 const FORUM_REPLY_ID = "mock-forum-release-reply";
 
 test.beforeEach(async ({ page }) => {
-  await installMockBridge(page);
+  await installWorkflowAdminBridge(page);
 });
 
 /**
@@ -33,6 +37,24 @@ async function hoverUntilMetadataTooltip(
     .toBeGreaterThan(0);
 }
 
+async function pressHistoryChord(
+  page: import("@playwright/test").Page,
+  direction: "back" | "forward",
+) {
+  const isMac = await page.evaluate(() =>
+    /mac|iphone|ipad|ipod/i.test(navigator.platform),
+  );
+  const key = isMac
+    ? direction === "back"
+      ? "Meta+["
+      : "Meta+]"
+    : direction === "back"
+      ? "Alt+ArrowLeft"
+      : "Alt+ArrowRight";
+
+  await page.keyboard.press(key);
+}
+
 async function navigateToWorkflows(page: import("@playwright/test").Page) {
   await page.goto("/");
   await page.getByTestId("open-workflows-view").click();
@@ -40,44 +62,7 @@ async function navigateToWorkflows(page: import("@playwright/test").Page) {
   await expect(page.getByTestId("workflows-view")).toBeVisible();
 }
 
-async function createWorkflow(
-  page: import("@playwright/test").Page,
-  name: string,
-) {
-  await page.getByRole("button", { name: "Create Workflow" }).click();
-  const dialog = page.getByRole("dialog", { name: "Create workflow" });
-  await expect(dialog).toBeVisible();
-
-  const channelList = page.getByTestId("channel-combobox-list");
-  await expect(channelList).toBeVisible();
-  await channelList
-    .getByRole("option", { name: "agents", exact: true })
-    .click();
-
-  await dialog.getByRole("button", { name: "Edit workflow name" }).click();
-  await dialog.getByRole("textbox", { name: "Workflow name" }).fill(name);
-  await dialog.getByRole("button", { name: "Save workflow name" }).click();
-
-  await dialog.getByRole("button", { name: "Add step", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Send Message" }).click();
-  await dialog.getByLabel("Message text").fill("Workflow notification");
-  await dialog.getByRole("button", { name: "Create" }).click();
-  const activationConfirmation = page.getByRole("alertdialog", {
-    name: "This workflow may run often",
-  });
-  await Promise.race([
-    activationConfirmation.waitFor({ state: "visible" }),
-    dialog.waitFor({ state: "hidden" }),
-  ]);
-  if (await activationConfirmation.isVisible()) {
-    await activationConfirmation
-      .getByRole("button", { name: "Turn on" })
-      .click();
-  }
-  await expect(dialog).not.toBeVisible();
-}
-
-test("global back and forward move across channel routes", async ({ page }) => {
+test("back and forward move across channel routes", async ({ page }) => {
   await page.goto("/");
 
   await page.getByTestId("channel-general").click();
@@ -86,10 +71,10 @@ test("global back and forward move across channel routes", async ({ page }) => {
   await page.getByTestId("channel-random").click();
   await expect(page.getByTestId("chat-title")).toHaveText("random");
 
-  await page.getByTestId("global-back").click();
+  await pressHistoryChord(page, "back");
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
-  await page.getByTestId("global-forward").click();
+  await pressHistoryChord(page, "forward");
   await expect(page.getByTestId("chat-title")).toHaveText("random");
 });
 
@@ -150,34 +135,26 @@ test.fixme("direct forum thread links close back to the forum route", async ({
   ).toBeVisible();
 });
 
-test("direct workflow detail links close back to workflows", async ({
-  page,
-}) => {
+test("direct workflow detail links return to workflows", async ({ page }) => {
   const workflowName = `workflow_nav_${Date.now()}`;
 
   await navigateToWorkflows(page);
-  await createWorkflow(page, workflowName);
+  const { workflowId } = await createPlainWorkflow(page, workflowName);
+  await page.getByRole("button", { name: "Back to workflows" }).click();
+  await expect(page).toHaveURL(/#\/workflows$/);
+  await page.getByTestId(`workflow-card-${workflowId}`).click();
 
-  const workflowCard = page
-    .locator('[data-testid^="workflow-card-"]')
-    .filter({ hasText: workflowName })
-    .first();
-  const workflowTestId = await workflowCard.getAttribute("data-testid");
-  const workflowId = workflowTestId?.replace("workflow-card-", "");
-
-  expect(workflowId).toBeTruthy();
-
-  await page.goto(`/#/workflows/${workflowId}`);
-
-  const dialog = page.getByRole("dialog", { name: "Edit workflow" });
-  await expect(dialog.getByText(workflowName, { exact: true })).toBeVisible();
-  await expect(
-    dialog.getByRole("button", { name: "Trigger: Message Posted" }),
-  ).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Run history" })).toHaveCount(
-    0,
+  const detail = page.getByTestId("plain-workflow-detail");
+  await expect(page).toHaveURL(
+    new RegExp(`#\\/workflows\\/${workflowId}(?:\\?pane=trigger)?$`),
   );
-  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(
+    page
+      .getByTestId("plain-workflow-builder")
+      .getByRole("heading", { name: workflowName }),
+  ).toBeVisible();
+  await expect(detail.getByText("Active", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Back to workflows" }).click();
 
   await expect(page).toHaveURL(/#\/workflows$/);
   await expect(page.getByTestId("workflows-view")).toBeVisible();
@@ -222,11 +199,11 @@ test("back and forward restore open thread panels", async ({ page }) => {
   await expect(page.getByTestId("chat-title")).toHaveText("random");
   await expect(threadPanel).not.toBeVisible();
 
-  await page.getByTestId("global-back").click();
+  await pressHistoryChord(page, "back");
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await expect(threadPanel).toBeVisible();
 
-  await page.getByTestId("global-forward").click();
+  await pressHistoryChord(page, "forward");
   await expect(page.getByTestId("chat-title")).toHaveText("random");
   await expect(threadPanel).not.toBeVisible();
 });
@@ -250,7 +227,7 @@ test("back undoes closing a thread panel", async ({ page }) => {
   await threadPanel.getByRole("button", { name: "Close panel" }).click();
   await expect(threadPanel).not.toBeVisible();
 
-  await page.getByTestId("global-back").click();
+  await pressHistoryChord(page, "back");
   await expect(threadPanel).toBeVisible();
 });
 
@@ -336,7 +313,7 @@ test("settings is a route: section survives reload, closing returns to the previ
   await expect(page).toHaveURL(/#\/settings/);
 
   // Section switches rewrite the settings entry (replace, not push).
-  await page.getByTestId("settings-nav-notifications").click();
+  await selectSettingsSection(page, "notifications");
   await expect(page).toHaveURL(/section=notifications/);
 
   await page.reload();
@@ -611,6 +588,21 @@ test("composer Buzz chip labels wrap without orphaning their icons", async ({
   expect(fragmentMetrics.rects.length).toBeGreaterThanOrEqual(2);
 
   const tooltip = page.getByRole("tooltip");
+  // Radix closes a tooltip when an ancestor of its trigger scrolls. Focusing
+  // a chip that is partly out of view scrolls the timeline to reveal it,
+  // which closed the focus-opened tooltip; it then stayed closed because the
+  // later pointer moves never left the chip. Reveal the chip and let the
+  // timeline settle first, so focusing it does not scroll.
+  await sentChip.scrollIntoViewIfNeeded();
+  await page.getByTestId("message-timeline").evaluate(async (element) => {
+    let prior = element.scrollTop;
+    let stableFrames = 0;
+    for (let frame = 0; frame < 120 && stableFrames < 3; frame += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      stableFrames = element.scrollTop === prior ? stableFrames + 1 : 0;
+      prior = element.scrollTop;
+    }
+  });
   await sentChip.focus();
   await expect(tooltip).toBeVisible();
   const positionOverFragment = async (index: number) => {

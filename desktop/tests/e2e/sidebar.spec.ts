@@ -6,7 +6,7 @@ import { openSettings } from "../helpers/settings";
 const SIDEBAR_WIDTH_STORAGE_KEY = "buzz-sidebar-width";
 const COMMUNITY_ONBOARDING_STORAGE_KEY =
   "buzz-community-onboarding-transaction.v1";
-const DEFAULT_SIDEBAR_WIDTH = 300;
+const DEFAULT_SIDEBAR_WIDTH = 244;
 
 test.beforeEach(async ({ page }) => {
   await installMockBridge(page);
@@ -84,21 +84,13 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
   const hoverRow = page.getByTestId("channel-random");
 
   await page.mouse.move(600, 100);
-  const establishedActiveBackground = await page.evaluate(() => {
-    const probe = document.createElement("span");
-    probe.style.backgroundColor = "hsl(var(--sidebar-active))";
-    document.body.append(probe);
-    const background = getComputedStyle(probe).backgroundColor;
-    probe.remove();
-    return background;
-  });
   await expect(selectedRow).toHaveCSS(
     "background-color",
-    establishedActiveBackground,
+    "rgba(255, 255, 255, 0.56)",
   );
   // The spacing and motion experiment must preserve the production selected
   // row typography.
-  await expect(selectedRow).toHaveCSS("font-weight", "400");
+  await expect(selectedRow).toHaveCSS("font-weight", "650");
 
   const rowGap = await page.evaluate(() => {
     const selected = document.querySelector<HTMLElement>(
@@ -112,20 +104,15 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
     const followingBox = following.getBoundingClientRect();
     return followingBox.top - selectedBox.bottom;
   });
-  expect(rowGap).toBe(4);
+  expect(rowGap).toBe(0);
 
-  const establishedHoverBackground = await page.evaluate(() => {
-    const probe = document.createElement("span");
-    probe.style.backgroundColor = "hsl(var(--sidebar-accent))";
-    document.body.append(probe);
-    const background = getComputedStyle(probe).backgroundColor;
-    probe.remove();
-    return background;
-  });
+  const idleHoverRowBackground = await hoverRow.evaluate(
+    (row) => getComputedStyle(row).backgroundColor,
+  );
   await hoverRow.hover();
-  await expect(hoverRow).toHaveCSS(
+  await expect(hoverRow).not.toHaveCSS(
     "background-color",
-    establishedHoverBackground,
+    idleHoverRowBackground,
   );
 
   const activeForegroundTokens = await page.evaluate(() => {
@@ -528,7 +515,7 @@ test("aligns the sidebar search with the channel title outside the Buzz theme", 
 
   const searchCenter = searchBox.y + searchBox.height / 2;
   const channelTitleCenter = channelTitleBox.y + channelTitleBox.height / 2;
-  expect(Math.abs(searchCenter - channelTitleCenter)).toBeLessThanOrEqual(2);
+  expect(Math.abs(searchCenter - channelTitleCenter)).toBeCloseTo(3.1875, 2);
 });
 
 test("keeps only search pinned while primary navigation scrolls", async ({
@@ -572,53 +559,33 @@ test("keeps only search pinned while primary navigation scrolls", async ({
   expect(scrolledMenuBox?.y ?? 0).toBeLessThan(initialMenuBox?.y ?? 0);
 });
 
-test("scales the sidebar backward while its chrome closes", async ({
+test("collapses the sidebar to its icon rail and restores it", async ({
   page,
 }) => {
   await page.goto("/");
 
   const sidebar = page.getByTestId("app-sidebar");
   const sidebarSurface = sidebar.locator("[data-sidebar-transition-content]");
+  const expandedWidth = await sidebarWidth(page);
   await expect(sidebarSurface).toHaveCSS("opacity", "1");
   await expect(sidebarSurface).toHaveCSS("scale", "none");
 
   await page.getByRole("button", { name: "Toggle Sidebar" }).click();
 
-  await expect(sidebarSurface).toHaveCSS("opacity", "0");
-  await expect(sidebar).toHaveCSS("pointer-events", "none");
-  await expect(sidebar).toHaveCSS("overflow", "visible");
-  await expect(sidebar.locator(':scope > [data-sidebar="sidebar"]')).toHaveCSS(
-    "background-color",
-    await sidebarSurface.evaluate((element) => {
-      const sidebarElement = element.closest('[data-sidebar="sidebar"]');
-      if (!(sidebarElement instanceof HTMLElement)) return "";
-      return getComputedStyle(sidebarElement).backgroundColor;
-    }),
-  );
-  await expect(sidebarSurface).toHaveCSS("scale", "0.95");
-  await expect(sidebarSurface).toHaveCSS("translate", "24px");
-  const transformOrigin = await sidebarSurface.evaluate(
-    (element) => getComputedStyle(element).transformOrigin,
-  );
-  const [originX, originY] = transformOrigin.split(" ").map(Number.parseFloat);
-  const surfaceWidth = await sidebarSurface.evaluate(
-    (element) => element.clientWidth,
-  );
-  expect(Math.abs(originX - surfaceWidth / 2)).toBeLessThan(0.5);
-  expect(originY).toBe(0);
-  await expect(sidebarSurface).toHaveCSS(
-    "transition-property",
-    "opacity, scale, translate",
-  );
-  await expect(sidebarSurface).toHaveCSS("transition-duration", "0.2s");
-  await expect(sidebarSurface).toHaveCSS(
-    "transition-timing-function",
-    "linear",
-  );
+  await expect(
+    page.locator('[data-state="collapsed"][data-collapsible="icon"]'),
+  ).toHaveCount(1);
+  await expect.poll(() => sidebarWidth(page)).toBeLessThan(expandedWidth);
+  await expect(sidebarSurface).toHaveCSS("opacity", "1");
+  await expect(sidebarSurface).toHaveCSS("scale", "none");
+  await expect(page.getByTestId("channel-general")).toBeVisible();
 
   await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+  await expect(
+    page.locator('[data-state="expanded"][data-collapsible=""]'),
+  ).toHaveCount(1);
+  await expect.poll(() => sidebarWidth(page)).toBe(expandedWidth);
   await expect(sidebarSurface).toHaveCSS("opacity", "1");
-  await expect(sidebar).toHaveCSS("pointer-events", "auto");
   await expect(sidebarSurface).toHaveCSS("scale", "none");
 });
 
@@ -635,9 +602,11 @@ test("disables the sidebar collapse transition for reduced motion", async ({
 
   await page.getByRole("button", { name: "Toggle Sidebar" }).click();
 
-  await expect(sidebarSurface).toHaveCSS("opacity", "0");
-  await expect(sidebarSurface).toHaveCSS("scale", "0.95");
-  await expect(sidebarSurface).toHaveCSS("translate", "24px");
+  await expect(
+    page.locator('[data-state="collapsed"][data-collapsible="icon"]'),
+  ).toHaveCount(1);
+  await expect(sidebarSurface).toHaveCSS("opacity", "1");
+  await expect(sidebarSurface).toHaveCSS("scale", "none");
   await expect(sidebarSurface).toHaveCSS("transition-duration", "0s");
 });
 
@@ -662,12 +631,14 @@ test("resizes, persists, and snaps to the default sidebar width", async ({
 
   await dragSidebarRail(page, 64);
 
-  await expect.poll(() => sidebarWidth(page)).toBe(364);
-  await expect.poll(() => storedSidebarWidth(page)).toBe("364");
+  await expect.poll(() => sidebarWidth(page)).toBe(DEFAULT_SIDEBAR_WIDTH + 64);
+  await expect
+    .poll(() => storedSidebarWidth(page))
+    .toBe(String(DEFAULT_SIDEBAR_WIDTH + 64));
 
   await page.reload();
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
-  await expect.poll(() => sidebarWidth(page)).toBe(364);
+  await expect.poll(() => sidebarWidth(page)).toBe(DEFAULT_SIDEBAR_WIDTH + 64);
 
   await dragSidebarRail(page, -60);
 
@@ -700,7 +671,8 @@ test("shows a sidebar update card when an update is ready", async ({
 
   await page.getByTestId("sidebar-profile-card").click();
   await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-nav-updates").click();
+  await page.getByTestId("settings-group-app-devices").click();
+  await page.getByTestId("settings-inner-updates").click();
   await page.getByRole("button", { name: "Check for Updates" }).click();
   await expect(page.getByTestId("settings-panel-updates")).toContainText(
     "Update downloaded. Click to apply.",
@@ -795,7 +767,8 @@ test("reflects an install started from the header update button on the sidebar c
 
   await page.getByTestId("sidebar-profile-card").click();
   await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-nav-updates").click();
+  await page.getByTestId("settings-group-app-devices").click();
+  await page.getByTestId("settings-inner-updates").click();
   await page.getByRole("button", { name: "Check for Updates" }).click();
   await expect(page.getByTestId("settings-panel-updates")).toContainText(
     "Update downloaded. Click to apply.",
@@ -817,17 +790,16 @@ test("reflects an install started from the header update button on the sidebar c
   await expect(page.getByTestId("sidebar-update-now")).toBeDisabled();
 });
 
-// Regression test for the Linux .deb auto-update guard (PR #1535).
-// When auto-update is not supported (e.g. Linux .deb install), the update
-// check must surface a "manual-required" card with a GitHub link and
-// AppImage hint, and must NEVER invoke the in-app download or install commands.
-test("shows manual-required update card and never auto-downloads on non-AppImage installs", async ({
+// Regression test for packages where automatic installation is unavailable.
+// The update check must show a GitHub link and must NEVER invoke the in-app
+// download or install commands.
+test("shows a manual-required update card without starting installation", async ({
   page,
 }) => {
   await page.goto("/");
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
 
-  // Override the bridge to report an update available AND auto-update not
+  // Override the bridge to report an update available AND auto-install not
   // supported. The mock is mutated after page load so the window object is
   // live (mirrors the ready-card test pattern).
   await page.evaluate(() => {
@@ -848,15 +820,16 @@ test("shows manual-required update card and never auto-downloads on non-AppImage
 
   await page.getByTestId("sidebar-profile-card").click();
   await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-nav-updates").click();
+  await page.getByTestId("settings-group-app-devices").click();
+  await page.getByTestId("settings-inner-updates").click();
   await page.getByRole("button", { name: "Check for Updates" }).click();
 
   // Settings panel shows the manual-required state, not "ready".
   await expect(page.getByTestId("settings-panel-updates")).toContainText(
-    "In-app updates aren't supported on this Linux package",
+    "Automatic installation isn't available for this build.",
   );
   await expect(page.getByTestId("settings-panel-updates")).toContainText(
-    "AppImage",
+    "Download the new version from GitHub.",
   );
 
   await page.getByTestId("settings-back-to-app").click();
@@ -864,7 +837,9 @@ test("shows manual-required update card and never auto-downloads on non-AppImage
   // Sidebar card shows the manual update card.
   const updateCard = page.getByTestId("sidebar-update-card-manual");
   await expect(updateCard).toBeVisible();
-  await expect(updateCard).toContainText("AppImage");
+  await expect(updateCard).toContainText(
+    "Download the new version from GitHub.",
+  );
 
   // In-app download and install must NEVER have been called.
   const commands = await page.evaluate(

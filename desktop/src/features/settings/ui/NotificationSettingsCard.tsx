@@ -66,8 +66,8 @@ export function NotificationSettingsCard({
   return (
     <section className="min-w-0" data-testid="settings-notifications">
       <SettingsSectionHeader
-        title="Notifications"
-        description="Desktop alerts are on by default. Fine-tune what gets through below."
+        title="Notifications & sounds"
+        description="Choose what deserves your attention."
       />
 
       <span className="sr-only" data-testid="notifications-desktop-state">

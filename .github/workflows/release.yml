@@ -139,6 +139,8 @@ jobs:
         env:
           BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY || secrets.SPROUT_UPDATER_PUBLIC_KEY }}
           BUZZ_UPDATER_ENDPOINT: https://github.com/block/buzz/releases/download/buzz-desktop-latest/latest.json
+          COLONY_GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.COLONY_GOOGLE_DESKTOP_CLIENT_ID }}
+          COLONY_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
@@ -316,6 +318,8 @@ jobs:
         env:
           BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY || secrets.SPROUT_UPDATER_PUBLIC_KEY }}
           BUZZ_UPDATER_ENDPOINT: https://github.com/block/buzz/releases/download/buzz-desktop-latest/latest.json
+          COLONY_GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.COLONY_GOOGLE_DESKTOP_CLIENT_ID }}
+          COLONY_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
@@ -577,6 +581,8 @@ jobs:
         env:
           BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY || secrets.SPROUT_UPDATER_PUBLIC_KEY }}
           BUZZ_UPDATER_ENDPOINT: https://github.com/block/buzz/releases/download/buzz-desktop-latest/latest.json
+          COLONY_GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.COLONY_GOOGLE_DESKTOP_CLIENT_ID }}
+          COLONY_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET }}
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -721,6 +727,8 @@ jobs:
         env:
           BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY || secrets.SPROUT_UPDATER_PUBLIC_KEY }}
           BUZZ_UPDATER_ENDPOINT: https://github.com/block/buzz/releases/download/buzz-desktop-latest/latest.json
+          COLONY_GOOGLE_DESKTOP_CLIENT_ID: ${{ vars.COLONY_GOOGLE_DESKTOP_CLIENT_ID }}
+          COLONY_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.COLONY_GOOGLE_DESKTOP_CLIENT_SECRET }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"

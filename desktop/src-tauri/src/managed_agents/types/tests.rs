@@ -94,7 +94,44 @@ fn managed_agent_record_with_auth_tag_round_trips() {
 
 // ── Inbound author gate tests ────────────────────────────────────────
 
-use super::{validate_respond_to_allowlist, RespondTo};
+use super::{
+    validate_company_role_metadata, validate_respond_to_allowlist, CompanyRoleMetadata,
+    CompanyRoleTool, CompanyToolRisk, RespondTo,
+};
+
+#[test]
+fn company_role_metadata_requires_a_unique_worker_menu_and_decimal_allowance() {
+    let valid = CompanyRoleMetadata {
+        job: "Review and prepare work".to_string(),
+        skills: vec!["Review".to_string()],
+        tools: vec![CompanyRoleTool {
+            name: "read_reports".to_string(),
+            risk: CompanyToolRisk::Low,
+        }],
+        worker_menu: vec!["runtime-discovered".to_string()],
+        default_allowance: Some("25.50".to_string()),
+    };
+    assert!(validate_company_role_metadata(&valid).is_ok());
+
+    let mut no_workers = valid.clone();
+    no_workers.worker_menu.clear();
+    assert!(validate_company_role_metadata(&no_workers).is_err());
+
+    let mut duplicate_workers = valid.clone();
+    duplicate_workers
+        .worker_menu
+        .push("runtime-discovered".to_string());
+    assert!(validate_company_role_metadata(&duplicate_workers).is_err());
+
+    for allowance in ["NaN", "Infinity", "1e3", "-1", "1.2.3"] {
+        let mut invalid = valid.clone();
+        invalid.default_allowance = Some(allowance.to_string());
+        assert!(
+            validate_company_role_metadata(&invalid).is_err(),
+            "allowance {allowance:?} must be rejected"
+        );
+    }
+}
 
 #[test]
 fn respond_to_default_is_owner_only() {
@@ -501,6 +538,7 @@ fn sample_agent_record() -> ManagedAgentRecord {
 
 fn sample_persona() -> AgentDefinition {
     AgentDefinition {
+        company_role: None,
         session_policy: Default::default(),
         description: None,
         id: "custom:helper".to_string(),

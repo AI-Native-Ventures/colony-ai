@@ -21,6 +21,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
+import { selectSettingsSection } from "../helpers/settings";
 
 // ── Shared catalog fixtures ───────────────────────────────────────────────────
 
@@ -63,6 +64,34 @@ const OPENCLAW_NOT_INSTALLED = {
   node_required: false,
   auth_status: { status: "unknown" },
   source: "preset",
+} as const;
+
+const CODEX_NOT_INSTALLED = {
+  id: "codex",
+  label: "Codex",
+  avatar_url: "",
+  availability: "not_installed",
+  command: null,
+  binary_path: null,
+  default_args: [],
+  mcp_command: null,
+  install_hint: "",
+  install_instructions_url: "https://developers.openai.com/codex/cli/",
+  can_auto_install: true,
+  requires_external_cli: true,
+  underlying_cli_path: null,
+  node_required: false,
+  auth_status: { status: "unknown" },
+  source: "builtin",
+} as const;
+
+const CODEX_AVAILABLE = {
+  ...CODEX_NOT_INSTALLED,
+  availability: "available",
+  command: "codex",
+  binary_path: "/usr/local/bin/codex",
+  underlying_cli_path: "/usr/local/bin/codex",
+  auth_status: { status: "logged_in" },
 } as const;
 
 /** Cursor preset — deliberately has NO bundled logo (brand assets not
@@ -133,7 +162,7 @@ async function openHarnessSettings(page: import("@playwright/test").Page) {
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
-  await page.getByTestId("settings-nav-agents").click();
+  await selectSettingsSection(page, "harnesses");
   await expect(page.getByTestId("settings-harnesses")).toBeVisible({
     timeout: 10_000,
   });
@@ -259,6 +288,146 @@ test.describe("your harnesses split", () => {
     await expect(page.getByTestId("harness-catalog-setup-hermes")).toHaveCount(
       0,
     );
+  });
+
+  test("install failure opens the retry dialog and retry installs the runtime", async ({
+    page,
+  }) => {
+    await installMockBridge(page, {
+      acpRuntimesCatalog: [HERMES_AVAILABLE, CODEX_NOT_INSTALLED],
+      acpRuntimesCatalogAfterInstall: [HERMES_AVAILABLE, CODEX_AVAILABLE],
+      installAcpRuntimeResults: [
+        {
+          success: false,
+          steps: [
+            {
+              step: "download",
+              command: "download codex-acp",
+              success: false,
+              stdout: "",
+              stderr: "The package download was interrupted.",
+              exit_code: 1,
+            },
+          ],
+          restarted_count: 0,
+          failed_restart_count: 0,
+          log_path: null,
+        },
+        {
+          success: true,
+          steps: [
+            {
+              step: "install",
+              command: "install codex-acp",
+              success: true,
+              stdout: "Installed.",
+              stderr: "",
+              exit_code: 0,
+            },
+          ],
+          restarted_count: 0,
+          failed_restart_count: 0,
+          log_path: null,
+        },
+      ],
+    });
+    await openHarnessSettings(page);
+
+    const installCalls = () =>
+      page.evaluate(
+        () =>
+          (
+            (window as Window & { __BUZZ_E2E_COMMANDS__?: string[] })
+              .__BUZZ_E2E_COMMANDS__ ?? []
+          ).filter((command) => command === "install_acp_runtime").length,
+      );
+
+    await page.getByTestId("doctor-runtime-install-codex").click();
+    const confirmation = page.getByTestId("harness-install-confirmation-codex");
+    await expect(confirmation).toBeVisible();
+    expect(await installCalls()).toBe(0);
+    await confirmation.getByTestId("harness-install-close-codex").click();
+    await expect(confirmation).toHaveCount(0);
+    expect(await installCalls()).toBe(0);
+
+    await page.getByTestId("doctor-runtime-install-codex").click();
+    await expect(confirmation).toBeVisible();
+    await confirmation.getByTestId("harness-install-confirm-codex").click();
+    const dialog = page.getByTestId("doctor-runtime-install-failure-codex");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Codex could not be installed.");
+    await expect(dialog).toContainText("The package download was interrupted.");
+    await expect(dialog).toContainText("Other harnesses are unaffected.");
+    const details = dialog.getByText("Show details");
+    await expect(details).toBeVisible();
+    await details.click();
+    await expect(dialog).toContainText('Step "download" failed');
+    expect(await installCalls()).toBe(1);
+
+    await dialog.getByRole("button", { name: "Retry" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect.poll(installCalls).toBe(2);
+    await expect(page.getByTestId("doctor-runtime-ready-codex")).toBeVisible({
+      timeout: 5_000,
+    });
+  });
+
+  test("catalog fresh install confirms before calling the installer", async ({
+    page,
+  }) => {
+    await installMockBridge(page, {
+      acpRuntimesCatalog: [HERMES_AVAILABLE, CODEX_NOT_INSTALLED],
+      acpRuntimesCatalogAfterInstall: [HERMES_AVAILABLE, CODEX_AVAILABLE],
+      installAcpRuntimeDelayMs: 300,
+      installAcpRuntimeResults: [
+        {
+          success: true,
+          steps: [
+            {
+              step: "install",
+              command: "install codex-acp",
+              success: true,
+              stdout: "Installed.",
+              stderr: "",
+              exit_code: 0,
+            },
+          ],
+          restarted_count: 0,
+          failed_restart_count: 0,
+          log_path: null,
+        },
+      ],
+    });
+    await openHarnessSettings(page);
+    await openCatalog(page);
+
+    const installCalls = () =>
+      page.evaluate(
+        () =>
+          (
+            (window as Window & { __BUZZ_E2E_COMMANDS__?: string[] })
+              .__BUZZ_E2E_COMMANDS__ ?? []
+          ).filter((command) => command === "install_acp_runtime").length,
+      );
+
+    const installButton = page.getByTestId("harness-catalog-install-codex");
+    await expect(installButton).toBeVisible();
+    await installButton.click();
+
+    const confirmation = page.getByTestId("harness-install-confirmation-codex");
+    await expect(confirmation).toBeVisible();
+    await expect(confirmation).toContainText("Official package registry");
+    await expect(confirmation).toContainText("Latest supported version");
+    expect(await installCalls()).toBe(0);
+
+    await confirmation.getByTestId("harness-install-confirm-codex").click();
+    await expect(
+      page.getByTestId("harness-install-progress-codex"),
+    ).toBeVisible();
+    await expect.poll(installCalls).toBe(1);
+    await expect(page.getByTestId("doctor-runtime-ready-codex")).toBeVisible({
+      timeout: 5_000,
+    });
   });
 
   test("catalog Update for an outdated adapter requires confirmation before installing", async ({

@@ -22,6 +22,19 @@ val uploadSigningValues =
     )
 val missingUploadSigningValues = uploadSigningValues.filterValues { it.isNullOrBlank() }.keys
 val hasUploadSigning = missingUploadSigningValues.isEmpty()
+val debugSigningMode = providers.environmentVariable("BUZZ_ANDROID_DEBUG_SIGNING").orNull ?: "debug"
+if (debugSigningMode !in setOf("debug", "upload-keystore")) {
+    throw GradleException(
+        "BUZZ_ANDROID_DEBUG_SIGNING must be \"debug\" or \"upload-keystore\", got: " +
+            debugSigningMode,
+    )
+}
+if (debugSigningMode == "upload-keystore" && !hasUploadSigning) {
+    throw GradleException(
+        "BUZZ_ANDROID_DEBUG_SIGNING=upload-keystore requires all BUZZ_ANDROID_UPLOAD_* values. Missing: " +
+            missingUploadSigningValues.sorted().joinToString(", "),
+    )
+}
 val dartDefines = providers.gradleProperty("dart-defines").orNull.orEmpty()
 val pushGatewayDefinePrefix = "BUZZ_PUSH_GATEWAY_URL="
 val pushGatewayOrigins =
@@ -98,9 +111,10 @@ val worktreeIdSuffix =
 val debugIdSuffix =
     appOverrides.getProperty("applicationIdSuffix")?.takeIf { it.isNotBlank() }
         ?: worktreeIdSuffix
-if (debugIdSuffix != null && !debugIdSuffix.matches(Regex("""\.[a-z][a-z0-9_]*"""))) {
+        ?: ".dogfood"
+if (!debugIdSuffix.matches(Regex("""(\.[a-z][a-z0-9_]*)+"""))) {
     throw GradleException(
-        "debug applicationIdSuffix must match \\.[a-z][a-z0-9_]*, got: " +
+        "debug applicationIdSuffix must contain valid dotted segments, got: " +
             debugIdSuffix,
     )
 }
@@ -137,6 +151,8 @@ if (externalReleaseSigning && uploadSigningValues.values.any { !it.isNullOrBlank
 }
 
 android {
+    // Keep the upstream Kotlin namespace stable while publishing Colony's
+    // application ID.
     namespace = "xyz.block.buzz.mobile"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
@@ -151,7 +167,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "xyz.block.buzz.mobile"
+        applicationId = "ventures.ainative.colony"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -175,10 +191,11 @@ android {
 
     buildTypes {
         debug {
-            // Only debug builds take the worktree identity; release/profile
-            // keep the production applicationId and label.
-            if (debugIdSuffix != null) {
-                applicationIdSuffix = debugIdSuffix
+            // Debug installs use Colony's dogfood ID; worktree and explicit
+            // overrides extend or replace that suffix without affecting release.
+            applicationIdSuffix = debugIdSuffix
+            if (debugSigningMode == "upload-keystore") {
+                signingConfig = signingConfigs.getByName("upload")
             }
             val resolvedAppName =
                 debugAppName

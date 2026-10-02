@@ -46,11 +46,11 @@ test("opens a profile from a community member avatar", async ({ page }) => {
 });
 
 test("capture: consolidated invites settings", async ({ page }) => {
-  const panel = page.getByTestId("settings-panel-community-members");
+  const panel = page.getByTestId("settings-panel-people");
 
-  await expect(
-    page.getByTestId("settings-nav-community-members"),
-  ).toContainText("Invites");
+  await expect(page.getByTestId("settings-inner-people")).toContainText(
+    "People & access",
+  );
   await expect(
     page.getByRole("heading", { name: "Invites", exact: true }),
   ).toBeVisible();

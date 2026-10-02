@@ -268,6 +268,12 @@ Future<void> cacheBuzzPushAvatarFromLoadedBytes(
   }
 }
 
+/// Waits out one native persistence retry delay. Tests record the schedule
+/// instead of sleeping through it.
+@visibleForTesting
+Future<void> Function(Duration delay) debugPushNativeRetryWait =
+    Future<void>.delayed;
+
 // One bounded backoff budget for the entire export, not one per chunk.
 class _NativeWriteRetryBudget {
   static const _delays = [250, 500, 1000, 2000, 4000];
@@ -294,7 +300,7 @@ Future<void> _invokeVerifiedChunk(
       if (error.code != retryableCode) rethrow;
       final delay = budget.takeDelay();
       if (delay == null) rethrow;
-      await Future<void>.delayed(delay);
+      await debugPushNativeRetryWait(delay);
     }
   }
 }

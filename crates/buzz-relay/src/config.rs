@@ -1,11 +1,15 @@
 //! Relay configuration from environment variables.
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine as _;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tracing::warn;
+use zeroize::{Zeroize, Zeroizing};
 
 /// Default maximum inbound WebSocket frame size in bytes.
 ///
@@ -109,6 +113,377 @@ impl std::fmt::Debug for KlipyConfig {
     }
 }
 
+/// Email, key-custody, and Google configuration for account routes.
+#[derive(Clone)]
+pub struct AccountConfig {
+    account_kek: Option<Arc<Zeroizing<[u8; 32]>>>,
+    resend_api_key: Option<Arc<Zeroizing<String>>>,
+    mail_from: Option<String>,
+    mail_mode: Option<AccountMailMode>,
+    google_client_ids: Vec<String>,
+    google_jwks_url: Option<String>,
+}
+
+/// Optional PayFast checkout settings for deployment-global account credits.
+#[derive(Clone)]
+pub struct PaymentsConfig {
+    enabled: bool,
+    merchant_id: Option<String>,
+    merchant_key: Option<Arc<Zeroizing<String>>>,
+    passphrase: Option<Arc<Zeroizing<String>>>,
+    sandbox: bool,
+    notify_url: Option<String>,
+    hosting_monthly_zar_cents: Option<i64>,
+}
+
+impl PaymentsConfig {
+    /// Whether credit checkout and subscription checkout are enabled.
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// Configured PayFast merchant identifier.
+    pub(crate) fn merchant_id(&self) -> Option<&str> {
+        self.merchant_id.as_deref()
+    }
+
+    /// Configured PayFast merchant key.
+    pub(crate) fn merchant_key(&self) -> Option<&str> {
+        self.merchant_key.as_deref().map(|value| value.as_str())
+    }
+
+    /// Configured PayFast passphrase, if one is enabled.
+    pub(crate) fn passphrase(&self) -> Option<&str> {
+        self.passphrase.as_deref().map(|value| value.as_str())
+    }
+
+    /// Whether requests use PayFast's sandbox endpoints.
+    pub fn sandbox(&self) -> bool {
+        self.sandbox
+    }
+
+    /// Absolute public ITN callback URL configured for this deployment.
+    pub(crate) fn notify_url(&self) -> Option<&str> {
+        self.notify_url.as_deref()
+    }
+
+    /// Fixed ZAR charge for one monthly hosting subscription.
+    pub fn hosting_monthly_zar_cents(&self) -> Option<i64> {
+        self.hosting_monthly_zar_cents
+    }
+}
+
+impl std::fmt::Debug for PaymentsConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PaymentsConfig")
+            .field("enabled", &self.enabled)
+            .field(
+                "merchant_id",
+                &self.merchant_id.as_ref().map(|_| "[CONFIGURED]"),
+            )
+            .field(
+                "merchant_key",
+                &self.merchant_key.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field(
+                "passphrase",
+                &self.passphrase.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("sandbox", &self.sandbox)
+            .field("notify_url", &self.notify_url)
+            .field("hosting_monthly_zar_cents", &self.hosting_monthly_zar_cents)
+            .finish()
+    }
+}
+
+fn payments_config_from_lookup(
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Result<PaymentsConfig, ConfigError> {
+    let parse_flag = |name: &str, default: bool| -> Result<bool, ConfigError> {
+        match lookup(name).as_deref().map(str::trim) {
+            None | Some("") => Ok(default),
+            Some("true" | "1") => Ok(true),
+            Some("false" | "0") => Ok(false),
+            Some(_) => Err(ConfigError::InvalidValue(format!(
+                "{name} must be true or false"
+            ))),
+        }
+    };
+    let enabled = parse_flag("COLONY_PAYMENTS_ENABLED", false)?;
+    let sandbox = parse_flag("COLONY_PAYMENTS_SANDBOX", true)?;
+    let merchant_id = lookup("PAYFAST_MERCHANT_ID")
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    let merchant_key = lookup("PAYFAST_MERCHANT_KEY")
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .map(|value| Arc::new(Zeroizing::new(value)));
+    let passphrase = lookup("PAYFAST_PASSPHRASE")
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .map(|value| Arc::new(Zeroizing::new(value)));
+    let notify_url = lookup("COLONY_PAYMENTS_NOTIFY_URL")
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    let hosting_monthly_zar_cents = match lookup("COLONY_HOSTING_MONTHLY_ZAR_CENTS") {
+        Some(raw) => Some(
+            raw.trim()
+                .parse::<i64>()
+                .ok()
+                .filter(|value| *value >= 500)
+                .ok_or_else(|| {
+                    ConfigError::InvalidValue(
+                        "COLONY_HOSTING_MONTHLY_ZAR_CENTS must be at least 500".to_owned(),
+                    )
+                })?,
+        ),
+        None => None,
+    };
+    if let Some(url) = notify_url.as_deref() {
+        let parsed = url::Url::parse(url).map_err(|_| {
+            ConfigError::InvalidValue("COLONY_PAYMENTS_NOTIFY_URL must be an absolute URL".into())
+        })?;
+        if !matches!(parsed.scheme(), "http" | "https")
+            || parsed.host_str().is_none()
+            || parsed.username() != ""
+            || parsed.password().is_some()
+            || parsed.query().is_some()
+            || parsed.fragment().is_some()
+            || (enabled && !sandbox && parsed.scheme() != "https")
+        {
+            return Err(ConfigError::InvalidValue(
+                "COLONY_PAYMENTS_NOTIFY_URL must be a secure HTTP(S) URL without credentials, query, or fragment".into(),
+            ));
+        }
+    }
+    if enabled
+        && (merchant_id.is_none()
+            || merchant_key.is_none()
+            || passphrase.is_none()
+            || notify_url.is_none())
+    {
+        return Err(ConfigError::InvalidValue(
+            "enabled PayFast payments require merchant id, merchant key, passphrase, and notify URL".into(),
+        ));
+    }
+    if enabled
+        && !merchant_id.as_deref().is_some_and(|value| {
+            value.len() == 8 && value.bytes().all(|byte| byte.is_ascii_digit())
+        })
+    {
+        return Err(ConfigError::InvalidValue(
+            "PAYFAST_MERCHANT_ID must be an eight digit merchant id".into(),
+        ));
+    }
+    Ok(PaymentsConfig {
+        enabled,
+        merchant_id,
+        merchant_key,
+        passphrase,
+        sandbox,
+        notify_url,
+        hosting_monthly_zar_cents,
+    })
+}
+
+/// Configured way to deliver account verification and reset codes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AccountMailMode {
+    /// Send through the Resend HTTP API.
+    Resend,
+    /// Write delivery to the development and CI database sink.
+    Log,
+}
+
+impl AccountConfig {
+    /// Return the current account key-encryption key without formatting it.
+    pub(crate) fn account_kek(&self) -> Option<&[u8; 32]> {
+        self.account_kek.as_deref().map(|key| &**key)
+    }
+
+    /// Return the Resend API token without formatting it.
+    pub(crate) fn resend_api_key(&self) -> Option<&str> {
+        self.resend_api_key.as_deref().map(|key| key.as_str())
+    }
+
+    /// Return the configured sender address.
+    pub(crate) fn mail_from(&self) -> Option<&str> {
+        self.mail_from.as_deref()
+    }
+
+    /// Return the configured mail delivery mode.
+    pub(crate) fn mail_mode(&self) -> Option<AccountMailMode> {
+        self.mail_mode
+    }
+
+    /// Whether signup and reset email delivery is configured for the relay.
+    pub fn has_mail_delivery(&self) -> bool {
+        self.mail_mode.is_some()
+    }
+
+    /// Return configured Google OAuth client audiences.
+    pub(crate) fn google_client_ids(&self) -> &[String] {
+        &self.google_client_ids
+    }
+
+    /// Return a test-only Google JWKS URL override, when configured.
+    pub(crate) fn google_jwks_url(&self) -> Option<&str> {
+        self.google_jwks_url.as_deref()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_config(
+        account_kek: Option<[u8; 32]>,
+        mail_mode: Option<AccountMailMode>,
+        google_client_ids: Vec<String>,
+        google_jwks_url: Option<String>,
+    ) -> Self {
+        Self {
+            account_kek: account_kek.map(|key| Arc::new(Zeroizing::new(key))),
+            resend_api_key: None,
+            mail_from: None,
+            mail_mode,
+            google_client_ids,
+            google_jwks_url,
+        }
+    }
+}
+
+impl std::fmt::Debug for AccountConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AccountConfig")
+            .field(
+                "account_kek",
+                &self.account_kek.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field(
+                "resend_api_key",
+                &self.resend_api_key.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("mail_from", &self.mail_from)
+            .field(
+                "mail_mode",
+                &self.mail_mode.map(|mode| match mode {
+                    AccountMailMode::Resend => "resend",
+                    AccountMailMode::Log => "log",
+                }),
+            )
+            .field("google_client_ids", &self.google_client_ids)
+            .field(
+                "google_jwks_url",
+                &self.google_jwks_url.as_ref().map(|_| "[CONFIGURED]"),
+            )
+            .finish()
+    }
+}
+
+fn account_config_from_lookup(
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Result<AccountConfig, ConfigError> {
+    let account_kek = match lookup("COLONY_ACCOUNT_KEK") {
+        Some(mut encoded) => {
+            let decoded = BASE64.decode(encoded.trim());
+            encoded.zeroize();
+            let mut bytes = decoded.map_err(|_| {
+                ConfigError::InvalidValue(
+                    "COLONY_ACCOUNT_KEK must be base64 for exactly 32 random bytes".to_owned(),
+                )
+            })?;
+            if bytes.len() != 32 {
+                bytes.zeroize();
+                return Err(ConfigError::InvalidValue(
+                    "COLONY_ACCOUNT_KEK must be base64 for exactly 32 random bytes".to_owned(),
+                ));
+            }
+            let mut key = [0_u8; 32];
+            key.copy_from_slice(&bytes);
+            bytes.zeroize();
+            Some(Arc::new(Zeroizing::new(key)))
+        }
+        None => None,
+    };
+
+    let resend_api_key = lookup("RESEND_API_KEY")
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| Arc::new(Zeroizing::new(value)));
+    let raw_sink = lookup("COLONY_MAIL_SINK")
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
+    let mail_mode = match (resend_api_key.is_some(), raw_sink.as_deref()) {
+        (true, Some("log")) => {
+            return Err(ConfigError::InvalidValue(
+                "COLONY_MAIL_SINK=log cannot be used when RESEND_API_KEY is set".to_owned(),
+            ));
+        }
+        (_, Some("log")) => Some(AccountMailMode::Log),
+        (true, None) => Some(AccountMailMode::Resend),
+        (false, None) => None,
+        (_, Some(value)) => {
+            return Err(ConfigError::InvalidValue(format!(
+                "COLONY_MAIL_SINK must be log when set; got {value:?}"
+            )));
+        }
+    };
+
+    let mail_from = lookup("COLONY_MAIL_FROM")
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    if mail_mode == Some(AccountMailMode::Resend) && mail_from.is_none() {
+        return Err(ConfigError::InvalidValue(
+            "COLONY_MAIL_FROM is required when RESEND_API_KEY is set".to_owned(),
+        ));
+    }
+
+    let google_client_ids: Vec<String> = lookup("COLONY_GOOGLE_CLIENT_IDS")
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .collect();
+
+    let google_jwks_url = lookup("COLONY_GOOGLE_JWKS_URL")
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    if let Some(jwks_url) = google_jwks_url.as_deref() {
+        if mail_mode != Some(AccountMailMode::Log) {
+            return Err(ConfigError::InvalidValue(
+                "COLONY_GOOGLE_JWKS_URL is only allowed with COLONY_MAIL_SINK=log".to_owned(),
+            ));
+        }
+        let parsed_url = reqwest::Url::parse(jwks_url).map_err(|_| {
+            ConfigError::InvalidValue(
+                "COLONY_GOOGLE_JWKS_URL must be an absolute HTTP or HTTPS URL".to_owned(),
+            )
+        })?;
+        if !matches!(parsed_url.scheme(), "http" | "https")
+            || parsed_url.host_str().is_none()
+            || !parsed_url.username().is_empty()
+            || parsed_url.password().is_some()
+        {
+            return Err(ConfigError::InvalidValue(
+                "COLONY_GOOGLE_JWKS_URL must be an absolute HTTP or HTTPS URL without credentials"
+                    .to_owned(),
+            ));
+        }
+    }
+
+    if account_kek.is_none() && (mail_mode.is_some() || !google_client_ids.is_empty()) {
+        return Err(ConfigError::InvalidValue(
+            "COLONY_ACCOUNT_KEK is required when account login is configured".to_owned(),
+        ));
+    }
+
+    Ok(AccountConfig {
+        account_kek,
+        resend_api_key,
+        mail_from,
+        mail_mode,
+        google_client_ids,
+        google_jwks_url,
+    })
+}
+
 /// Maximum configured jitter, leaving ten seconds of the hard-drain budget for
 /// WebSocket close-frame delivery after the final delayed cancellation.
 pub const MAX_DRAIN_JITTER_MS: u64 = 20_000;
@@ -178,6 +553,10 @@ pub struct Config {
     pub slow_client_grace_limit: u8,
     /// Authentication provider configuration.
     pub auth: buzz_auth::AuthConfig,
+    /// Email, password, Google, and server-held account key configuration.
+    pub accounts: AccountConfig,
+    /// Optional PayFast credit and hosting payments configuration.
+    pub payments: PaymentsConfig,
     /// Whether REST API requests must present a valid token. Independent of
     /// WebSocket protocol auth, which is *always* required by REQ/EVENT/COUNT.
     pub require_auth_token: bool,
@@ -286,6 +665,23 @@ pub struct Config {
     /// Default: `false`. Set via `BUZZ_ALLOW_NIP_OA_AUTH=true`.
     pub allow_nip_oa_auth: bool,
 
+    /// Domain suffix for member self-serve community creation.
+    ///
+    /// When set, an authenticated signer can create `<slug>.<domain>` and
+    /// becomes its owner. `None` disables the self-serve endpoints.
+    pub self_provision_domain: Option<String>,
+
+    /// Allow signers without an existing community membership to create their
+    /// first community. Requires `self_provision_domain` and enables the
+    /// shared Redis-backed IP and deployment creation limits below.
+    pub self_provision_public: bool,
+
+    /// Public-mode community creation attempts allowed per source IP per hour.
+    pub self_provision_public_ip_limit: u32,
+
+    /// Public-mode community creation attempts allowed across the relay deployment per hour.
+    pub self_provision_public_global_limit: u32,
+
     /// Relay-owned KLIPY integration. Unset means GIF search is not advertised
     /// and its proxy routes return 404.
     pub klipy: Option<KlipyConfig>,
@@ -341,6 +737,10 @@ pub struct Config {
     /// Used to authenticate internal policy endpoint requests.
     pub git_hook_hmac_secret: String,
 
+    /// Exact HTTPS hosts accepted for Factory pull request links.
+    /// Empty means no external provider host is configured.
+    pub factory_pr_allowed_hosts: Vec<String>,
+
     /// Whether NIP-PL push discovery, lease acceptance, matching, and delivery
     /// are enabled for this deployment. Defaults to false.
     pub push_enabled: bool,
@@ -386,6 +786,85 @@ fn positive_u64_from_env(name: &str, default: u64) -> Result<u64, ConfigError> {
             "{name} must be valid Unicode"
         ))),
     }
+}
+
+fn parse_positive_u32(name: &str, default: u32) -> Result<u32, ConfigError> {
+    match std::env::var(name) {
+        Ok(raw) => raw
+            .trim()
+            .parse::<u32>()
+            .ok()
+            .filter(|value| *value > 0)
+            .ok_or_else(|| ConfigError::InvalidValue(format!("{name} must be a positive integer"))),
+        Err(std::env::VarError::NotPresent) => Ok(default),
+        Err(std::env::VarError::NotUnicode(_)) => Err(ConfigError::InvalidValue(format!(
+            "{name} must be valid Unicode"
+        ))),
+    }
+}
+
+fn parse_self_provision_domain(raw: &str) -> Result<Option<String>, ConfigError> {
+    let domain = raw.trim().trim_end_matches('.').to_ascii_lowercase();
+    if domain.is_empty() {
+        return Ok(None);
+    }
+
+    // DNS limits each slug label to 63 octets, and the full host is stored in
+    // communities.host VARCHAR(255). Reserve room for the dot plus the longest
+    // accepted slug so every name accepted by availability can be persisted.
+    let valid = domain.len() <= 191
+        && domain.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && label
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+        });
+    if valid {
+        Ok(Some(domain))
+    } else {
+        Err(ConfigError::InvalidValue(
+            "BUZZ_SELF_PROVISION_DOMAIN must be a bare domain that fits communities.host"
+                .to_string(),
+        ))
+    }
+}
+
+fn parse_factory_pr_allowed_hosts(raw: Option<&str>) -> Result<Vec<String>, ConfigError> {
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
+    };
+    if raw.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut hosts = Vec::new();
+    for value in raw.split(',') {
+        let host = value.trim().to_ascii_lowercase();
+        let valid = !host.is_empty()
+            && host.len() <= 253
+            && host.split('.').all(|label| {
+                !label.is_empty()
+                    && label.len() <= 63
+                    && label
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+                    && !label.starts_with('-')
+                    && !label.ends_with('-')
+            });
+        if !valid {
+            return Err(ConfigError::InvalidValue(
+                "BUZZ_FACTORY_PR_HOSTS must be a comma-separated list of bare DNS hostnames"
+                    .to_string(),
+            ));
+        }
+        if !hosts.contains(&host) {
+            hosts.push(host);
+        }
+    }
+    Ok(hosts)
 }
 
 fn rate_limit_config_from_env() -> Result<buzz_auth::RateLimitConfig, ConfigError> {
@@ -707,6 +1186,29 @@ impl Config {
             .map(|v| v == "true" || v == "1")
             .unwrap_or(false);
 
+        let self_provision_domain = match std::env::var("BUZZ_SELF_PROVISION_DOMAIN") {
+            Ok(value) => parse_self_provision_domain(&value)?,
+            Err(std::env::VarError::NotPresent) => None,
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err(ConfigError::InvalidValue(
+                    "BUZZ_SELF_PROVISION_DOMAIN must be valid Unicode".to_string(),
+                ));
+            }
+        };
+
+        let self_provision_public = std::env::var("BUZZ_SELF_PROVISION_PUBLIC")
+            .map(|value| value == "true" || value == "1")
+            .unwrap_or(false);
+        if self_provision_public && self_provision_domain.is_none() {
+            return Err(ConfigError::InvalidValue(
+                "BUZZ_SELF_PROVISION_PUBLIC requires BUZZ_SELF_PROVISION_DOMAIN".to_string(),
+            ));
+        }
+        let self_provision_public_ip_limit =
+            parse_positive_u32("BUZZ_SELF_PROVISION_PUBLIC_IP_LIMIT", 3)?;
+        let self_provision_public_global_limit =
+            parse_positive_u32("BUZZ_SELF_PROVISION_PUBLIC_GLOBAL_LIMIT", 50)?;
+
         let klipy = std::env::var("BUZZ_KLIPY_API_KEY")
             .ok()
             .map(|value| value.trim().to_string())
@@ -792,6 +1294,8 @@ impl Config {
         let auth = buzz_auth::AuthConfig {
             rate_limits: rate_limit_config_from_env()?,
         };
+        let accounts = account_config_from_lookup(|name| std::env::var(name).ok())?;
+        let payments = payments_config_from_lookup(|name| std::env::var(name).ok())?;
 
         if !require_auth_token {
             warn!(
@@ -960,6 +1464,15 @@ impl Config {
                 let secret: [u8; 32] = rand::random();
                 hex::encode(secret)
             });
+        let factory_pr_allowed_hosts = match std::env::var("BUZZ_FACTORY_PR_HOSTS") {
+            Ok(raw) => parse_factory_pr_allowed_hosts(Some(&raw))?,
+            Err(std::env::VarError::NotPresent) => Vec::new(),
+            Err(error) => {
+                return Err(ConfigError::InvalidValue(format!(
+                    "BUZZ_FACTORY_PR_HOSTS must be valid UTF-8: {error}"
+                )));
+            }
+        };
         let push_enabled = parse_bool("BUZZ_PUSH_ENABLED", false)?;
         let push_executor_key_id =
             std::env::var("BUZZ_PUSH_EXECUTOR_KEY_ID").unwrap_or_else(|_| "relay-v1".to_string());
@@ -1226,6 +1739,8 @@ impl Config {
             max_frame_bytes,
             slow_client_grace_limit,
             auth,
+            accounts,
+            payments,
             require_auth_token,
             cors_origins,
             relay_private_key,
@@ -1241,6 +1756,10 @@ impl Config {
             relay_operator_api_origin,
             relay_operator_pubkeys,
             allow_nip_oa_auth,
+            self_provision_domain,
+            self_provision_public,
+            self_provision_public_ip_limit,
+            self_provision_public_global_limit,
             klipy,
             media,
             media_max_concurrent_uploads,
@@ -1257,6 +1776,7 @@ impl Config {
             git_max_repos_per_pubkey,
             git_max_concurrent_ops,
             git_hook_hmac_secret,
+            factory_pr_allowed_hosts,
             push_enabled,
             push_executor_key_id,
             push_gateway_delivery_url,
@@ -1274,6 +1794,59 @@ mod tests {
     use super::*;
 
     #[test]
+    fn self_provision_domain_reserves_room_for_the_longest_slug() {
+        let longest_domain = format!("{}.{}.{}.a", "a".repeat(63), "b".repeat(63), "c".repeat(61));
+        assert_eq!(longest_domain.len(), 191);
+        assert_eq!(
+            parse_self_provision_domain(&longest_domain).expect("valid maximum domain"),
+            Some(longest_domain.clone())
+        );
+        assert_eq!(format!("{}.{}", "s".repeat(63), longest_domain).len(), 255);
+
+        let too_long = format!(
+            "{}.{}.{}.ab",
+            "a".repeat(63),
+            "b".repeat(63),
+            "c".repeat(61)
+        );
+        assert_eq!(too_long.len(), 192);
+        assert!(parse_self_provision_domain(&too_long).is_err());
+    }
+
+    #[test]
+    fn self_provision_domain_normalizes_and_rejects_non_domain_values() {
+        assert_eq!(
+            parse_self_provision_domain(" Colony.Example. ").expect("domain"),
+            Some("colony.example".to_string())
+        );
+        assert_eq!(
+            parse_self_provision_domain("  ").expect("empty domain"),
+            None
+        );
+        assert!(parse_self_provision_domain("https://colony.example").is_err());
+        assert!(parse_self_provision_domain("-invalid.example").is_err());
+    }
+
+    #[test]
+    fn factory_pr_hosts_are_exact_normalized_and_disabled_by_default() {
+        assert_eq!(
+            parse_factory_pr_allowed_hosts(None).expect("default"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            parse_factory_pr_allowed_hosts(Some(
+                " Code.Example.Test,code.example.test, git.example "
+            ))
+            .expect("valid provider hosts"),
+            vec!["code.example.test", "git.example"]
+        );
+        assert!(parse_factory_pr_allowed_hosts(Some("https://code.example.test")).is_err());
+        assert!(parse_factory_pr_allowed_hosts(Some("*.example.test")).is_err());
+        assert!(parse_factory_pr_allowed_hosts(Some("code.example.test.. ")).is_err());
+        assert!(parse_factory_pr_allowed_hosts(Some("code.example.test,")).is_err());
+    }
+
+    #[test]
     fn klipy_config_debug_redacts_the_api_key() {
         let config = KlipyConfig {
             api_key: "private-klipy-key".to_string(),
@@ -1282,6 +1855,132 @@ mod tests {
         let debug = format!("{config:?}");
         assert!(debug.contains("[REDACTED]"));
         assert!(!debug.contains("private-klipy-key"));
+    }
+
+    #[test]
+    fn payments_config_defaults_to_disabled_sandbox_and_redacts_credentials() {
+        let config = payments_config_from_lookup(env_of(&[])).expect("defaults");
+        assert!(!config.enabled());
+        assert!(config.sandbox());
+        assert_eq!(config.hosting_monthly_zar_cents(), None);
+
+        let config = payments_config_from_lookup(env_of(&[
+            ("COLONY_PAYMENTS_ENABLED", "true"),
+            ("COLONY_PAYMENTS_SANDBOX", "true"),
+            ("PAYFAST_MERCHANT_ID", "12345678"),
+            ("PAYFAST_MERCHANT_KEY", "private-test-key"),
+            ("PAYFAST_PASSPHRASE", "private-test-passphrase"),
+            (
+                "COLONY_PAYMENTS_NOTIFY_URL",
+                "https://relay.example/api/payments/webhook/payfast",
+            ),
+        ]))
+        .expect("complete sandbox settings");
+        assert!(config.enabled());
+        let debug = format!("{config:?}");
+        assert!(debug.contains("[REDACTED]"));
+        assert!(!debug.contains("private-test-key"));
+        assert!(!debug.contains("private-test-passphrase"));
+    }
+
+    #[test]
+    fn payments_config_fails_closed_on_missing_credentials_or_insecure_live_callback() {
+        assert!(
+            payments_config_from_lookup(env_of(&[("COLONY_PAYMENTS_ENABLED", "true")])).is_err()
+        );
+        assert!(payments_config_from_lookup(env_of(&[
+            ("COLONY_PAYMENTS_ENABLED", "true"),
+            ("COLONY_PAYMENTS_SANDBOX", "false"),
+            ("PAYFAST_MERCHANT_ID", "12345678"),
+            ("PAYFAST_MERCHANT_KEY", "private-test-key"),
+            ("PAYFAST_PASSPHRASE", "private-test-passphrase"),
+            (
+                "COLONY_PAYMENTS_NOTIFY_URL",
+                "http://relay.example/api/payments/webhook/payfast"
+            ),
+        ]))
+        .is_err());
+        assert!(
+            payments_config_from_lookup(env_of(&[("COLONY_PAYMENTS_SANDBOX", "maybe")])).is_err()
+        );
+    }
+
+    #[test]
+    fn account_config_parses_key_mail_sink_and_google_audiences() {
+        let encoded_key = BASE64.encode([0x5a; 32]);
+        let config = account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("COLONY_MAIL_SINK", "log"),
+            (
+                "COLONY_GOOGLE_CLIENT_IDS",
+                "desktop-test-client, mobile-test-client",
+            ),
+        ]))
+        .expect("valid test account configuration");
+
+        assert_eq!(config.account_kek(), Some(&[0x5a; 32]));
+        assert_eq!(config.mail_mode(), Some(AccountMailMode::Log));
+        assert_eq!(
+            config.google_client_ids(),
+            &["desktop-test-client", "mobile-test-client"]
+        );
+        let debug = format!("{config:?}");
+        assert!(debug.contains("[REDACTED]"));
+        assert!(!debug.contains(&encoded_key));
+    }
+
+    #[test]
+    fn account_config_rejects_missing_key_bad_mail_and_log_sink_with_resend() {
+        assert!(account_config_from_lookup(env_of(&[(
+            "COLONY_GOOGLE_CLIENT_IDS",
+            "desktop-test-client",
+        )]))
+        .is_err());
+
+        let encoded_key = BASE64.encode([0x5a; 32]);
+        assert!(account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("RESEND_API_KEY", "test-resend-token"),
+        ]))
+        .is_err());
+        assert!(account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("RESEND_API_KEY", "test-resend-token"),
+            ("COLONY_MAIL_FROM", "accounts@example.test"),
+            ("COLONY_MAIL_SINK", "log"),
+        ]))
+        .is_err());
+
+        assert!(account_config_from_lookup(env_of(&[(
+            "COLONY_ACCOUNT_KEK",
+            "not-base64-or-32-bytes",
+        )]))
+        .is_err());
+    }
+
+    #[test]
+    fn account_config_google_jwks_override_requires_log_sink_and_http_url() {
+        let encoded_key = BASE64.encode([0x5a; 32]);
+        let local_jwks = "http://127.0.0.1:48123/jwks";
+        assert!(account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("COLONY_MAIL_SINK", "log"),
+            ("COLONY_GOOGLE_JWKS_URL", local_jwks),
+        ]))
+        .is_ok());
+
+        assert!(account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("COLONY_GOOGLE_JWKS_URL", local_jwks),
+        ]))
+        .is_err());
+
+        assert!(account_config_from_lookup(env_of(&[
+            ("COLONY_ACCOUNT_KEK", &encoded_key),
+            ("COLONY_MAIL_SINK", "log"),
+            ("COLONY_GOOGLE_JWKS_URL", "file:///etc/passwd"),
+        ]))
+        .is_err());
     }
 
     // Mutex to serialize tests that mutate environment variables.

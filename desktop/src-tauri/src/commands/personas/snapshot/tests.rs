@@ -126,6 +126,7 @@ fn make_snapshot(
             name_pool: vec![],
             idle_timeout_seconds: None,
             max_turn_duration_seconds: None,
+            company_role: None,
         },
         profile: AgentSnapshotProfile {
             display_name: "Test Agent".to_string(),

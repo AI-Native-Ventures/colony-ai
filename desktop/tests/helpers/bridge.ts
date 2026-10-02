@@ -1,6 +1,12 @@
 import type { Page } from "@playwright/test";
 import type { ChannelTemplate, RelayEvent } from "../../src/shared/api/types";
-import type { MockManagedAgentSeed } from "../../src/testing/e2eBridge";
+import type { VoiceRegistryEntry } from "../../src/features/settings/ui/voiceSettingsLogic";
+import type {
+  MockFactoryProjectSeed,
+  MockFactoryRunSeed,
+  MockManagedAgentSeed,
+  VisualFixtureSeed,
+} from "../../src/testing/e2eBridge";
 import { FEATURE_OVERRIDES_STORAGE_KEY, PREVIEW_FEATURE_IDS } from "./features";
 
 export const TEST_IDENTITIES = {
@@ -35,6 +41,12 @@ export const TEST_IDENTITIES = {
     username: "outsider",
   },
 } as const;
+
+export type RelayBridgeIdentity = {
+  privateKey: string;
+  pubkey: string;
+  username: string;
+};
 
 type BridgeMode = "mock" | "relay";
 
@@ -85,6 +97,7 @@ type MockPersonaSeed = {
   id?: string;
   displayName: string;
   avatarUrl?: string | null;
+  description?: string | null;
   systemPrompt: string;
   updatedAt?: string;
   isActive?: boolean;
@@ -102,6 +115,13 @@ type MockPersonaSeed = {
   model?: string | null;
   /** Provider pinned on the persona. Leave empty for Codex/Claude runtimes. */
   provider?: string | null;
+  companyRole?: {
+    job: string;
+    skills: string[];
+    tools: Array<{ name: string; risk: "low" | "medium" | "high" }>;
+    workerMenu: string[];
+    defaultAllowance?: string | null;
+  } | null;
   namePool?: string[];
   respondTo?: "owner-only" | "allowlist" | "anyone";
   respondToAllowlist?: string[];
@@ -148,17 +168,142 @@ type MockInstallRuntimeResult = {
 type MockBridgeOptions = {
   /** Tauri window label exposed to the app. Defaults to the main window. */
   windowLabel?: string;
+  /** Account state returned by the mocked account API. Defaults to linked. */
+  accountLinked?: boolean;
+  /** Linked account address returned by the mocked account API. */
+  accountEmail?: string;
+  /** Current user status event returned by the mocked relay. */
+  userStatus?: string;
+  /** Visual harness: reproduce the reference "Lerato Social" workspace. */
+  referenceWorkspace?: boolean;
+  /** Match the company shell review's conversation rows and empty badge state. */
+  referenceSidebarShell?: boolean;
+  /** Override the current member role in reference client channels. */
+  referenceWorkspaceRole?: "owner" | "admin" | "member";
+  /** Override the active community role when testing relay-authorized actions. */
+  relayRole?: "owner" | "admin" | "member" | null;
+  /** Make the mock relay expose its NIP-43 community membership snapshot. */
+  relayRequiresMembership?: boolean;
+  /** Override record statuses to exercise reference workspace boundaries. */
+  referenceWorkspaceClientStatus?: string;
+  referenceWorkspaceWorkStatus?: string;
+  /** Exclude invoice/payment records for unavailable source-state scenarios. */
+  referenceWorkspaceMoneyRecords?: boolean;
+  /** Reject listed business record writes once in reference workspace tests. */
+  referenceWorkspaceRejectBusinessRecordEvents?: Array<{
+    kind: number;
+    reason: string;
+  }>;
   ttsSettings?: {
     version: number;
     agentTextToSpeech: boolean;
     voicePreferences: string[];
   };
+  /** Audio output records returned only by the mocked desktop host. */
+  audioOutputDevices?: Array<{ name: string; is_default: boolean }>;
+  /** Selected output device returned only by the mocked desktop host. */
+  selectedAudioOutputDevice?: string;
+  /** Optional NIP-30 records for visual fixture routes. */
+  customEmojiSets?: Array<{
+    owner: "self" | "community";
+    emojis: Array<{ shortcode: string; url: string }>;
+  }>;
   /** Native picker boundary result for Pocket voice import tests. */
   pocketVoiceImportResult?: "success" | "cancel" | "invalid";
+  /** Local voice files returned by the native registry in visual fixtures. */
+  importedPocketVoices?: VoiceRegistryEntry[];
   /** Advertised HEAD for the first mock project without adding that branch. */
   projectHeadBranch?: string;
+  /** Factory-only project announcements for focused Factory E2E coverage. */
+  factoryProjects?: MockFactoryProjectSeed[];
+  /** Native-like Factory runtime state for focused Factory E2E coverage. */
+  factoryRuns?: MockFactoryRunSeed[];
+  /** Signed Factory run heads for Preview and Review pane coverage. */
+  factoryRunRecordEvents?: RelayEvent[];
+  /** Reject successive Factory run actions in focused failure-state tests. */
+  factoryRunActionErrors?: string[];
+  /** Run ids whose snapshot reads fail, exercising reconnect states. */
+  factorySnapshotFailureRunIds?: string[];
+  /** Local checkout paths returned by the E2E filesystem boundary. */
+  factoryLocalRepositories?: Array<{ name: string; path: string }>;
   /** Relay NIP-11 identity used to sign authoritative repository state. */
   relaySelf?: string | null;
+  /** Verified relay-signed ask heads used by company ask E2E coverage. */
+  companyAskHeads?: RelayEvent[];
+  /** Ephemeral test key used to model relay-signed head updates after responses. */
+  companyAskRelayPrivateKeyHex?: string;
+  /** Verified relay-signed secret binding heads used by secure-entry E2E coverage. */
+  companySecretBindingHeads?: RelayEvent[];
+  /** Fail the native secret-store boundary with a generic error. */
+  companySecretStoreError?: boolean;
+  /** Reject secret-binding activation publishes in order. */
+  companySecretActivationErrors?: string[];
+  /** Reject these ask response publishes in order, then accept them. */
+  askResponseErrors?: string[];
+  /** Reject these ask create publishes in order, then accept them. */
+  askActionErrors?: string[];
+  /** Pending workflow approval rows used by Today E2E coverage. */
+  workflowApprovals?: Array<{
+    workflowId: string;
+    workflowName: string;
+    channelName: string;
+    runId: string;
+    approvalRef: string;
+    stepId: string;
+    stepIndex: number;
+    approverSpec: string;
+    approverPubkey?: string | null | "current";
+    expiresAt: string;
+    createdAt: number;
+  }>;
+  /** Relay-signed company goal events for goals UI E2E coverage. */
+  goalEvents?: RelayEvent[];
+  /** Synthetic relay key used only to broker goal actions in focused E2E tests. */
+  goalRelayPrivateKey?: string;
+  /** Relay-signed member-position heads for Company Team E2E coverage. */
+  companyMemberPositionEvents?: RelayEvent[];
+  /** Relay-signed member-position actions for Company Team history coverage. */
+  companyMemberPositionActions?: RelayEvent[];
+  /** Synthetic relay key used only to broker member-position actions in focused E2E tests. */
+  companyMemberRelayPrivateKeyHex?: string;
+  /** Reject successive member-position writes in order, then accept them. */
+  companyMemberActionErrors?: string[];
+  /** Relay-signed employee configuration actions for history E2E coverage. */
+  companyEmployeeRevisionActions?: RelayEvent[];
+  /** Relay-signed current employee history heads for history E2E coverage. */
+  companyEmployeeRevisionHeads?: RelayEvent[];
+  /** Reject employee history action publishes in order, then accept them. */
+  companyEmployeeRevisionActionErrors?: string[];
+  /** Relay-signed duty heads used by employee profile E2E coverage. */
+  companyDutyHeads?: RelayEvent[];
+  /** Synthetic relay key used to broker duty actions in focused E2E tests. */
+  companyDutyRelayPrivateKeyHex?: string;
+  /** Relay-signed lesson heads used by employee profile E2E coverage. */
+  companyLessonHeads?: RelayEvent[];
+  /** Synthetic relay key used to broker lesson actions in focused E2E tests. */
+  companyLessonRelayPrivateKeyHex?: string;
+  /** Reject successive duty or lesson action publishes in order, then accept. */
+  companyDutyLessonActionErrors?: string[];
+  /** Relay-signed employee allowance heads for AI spend E2E coverage. */
+  employeeAllowanceHeads?: RelayEvent[];
+  /** Relay-signed AI spend record heads for AI spend E2E coverage. */
+  aiSpendRecordHeads?: RelayEvent[];
+  /** Relay-signed company work events for company work UI E2E coverage. */
+  companyWorkEvents?: RelayEvent[];
+  /** Reject successive company work head reads in order, then accept them. */
+  companyWorkReadErrors?: string[];
+  /** Synthetic relay key used to broker company work actions in focused E2E tests. */
+  companyWorkRelayPrivateKey?: string;
+  /** Reject company work action publishes in order, then accept them. */
+  companyWorkActionErrors?: string[];
+  /** Reject company work tracking action publishes in order, then accept them. */
+  companyWorkTrackingActionErrors?: string[];
+  /** Relay-signed company hire heads used by Company Hire E2E coverage. */
+  companyHireHeads?: RelayEvent[];
+  /** Synthetic relay key used to broker hire actions in focused E2E tests. */
+  companyHireRelayPrivateKeyHex?: string;
+  /** Reject successive hire action publishes in order, then accept them. */
+  companyHireActionErrors?: string[];
   /** Native-like huddle state seeded from authoritative role-bearing membership. */
   huddle?: MockHuddleSeed;
   /** Builderlab account returned by hosted-community onboarding. Null/omitted = signed out. */
@@ -190,6 +335,10 @@ type MockBridgeOptions = {
   acpRuntimesDelayMs?: number;
   /** When true, the mock catalog discovery command throws an error. */
   acpRuntimesError?: boolean;
+  /** Reject successive product feedback events, then accept when exhausted. */
+  feedbackPublishErrors?: Array<string | null>;
+  /** Delay product feedback acknowledgements so the pending UI can be captured. */
+  feedbackPublishDelayMs?: number;
   acpAuthMethods?: Record<string, { methods: Record<string, unknown>[] }>;
   acpAuthMethodsError?: string;
   /** When set, the `delete_custom_harness` mock command throws with this message. */
@@ -221,6 +370,9 @@ type MockBridgeOptions = {
     mcp?: MockCommandAvailability;
   };
   managedAgents?: MockManagedAgentSeed[];
+  /** Channel records used only to reproduce frozen visual reference data. */
+  visualChannels?: Array<{ id: string; name: string }>;
+  agentUsageSeries?: import("../../src/shared/api/tauriArchive").AgentUsageSeries;
   /** Result returned by the mocked `add_agent_to_huddle` command. */
   addAgentToHuddleResult?: {
     ephemeral_added: boolean;
@@ -250,11 +402,15 @@ type MockBridgeOptions = {
       | "stopped";
   }>;
   personas?: MockPersonaSeed[];
+  /** Reject successive local persona creates or updates in order. */
+  personaWriteErrors?: string[];
   /** Community catalog replaceable-event heads returned by relay queries. */
   personaCatalogEvents?: RelayEvent[];
   /** Outcomes for successive explicit persona share publications. */
   personaSharePublicationStatuses?: Array<"published" | "queued">;
   teams?: MockTeamSeed[];
+  /** Use only the explicitly supplied teams instead of the generic mock teams. */
+  replaceDefaultTeams?: boolean;
   /** Community team-catalog (kind:30178) heads returned by relay queries. */
   teamCatalogEvents?: RelayEvent[];
   /** Outcomes for successive explicit team share publications. */
@@ -266,6 +422,9 @@ type MockBridgeOptions = {
   agentListDelayMs?: number;
   createManagedAgentDelayMs?: number;
   channelTemplates?: ChannelTemplate[];
+  /** Override display names for visual fixtures without changing channel IDs. */
+  channelNamesById?: Record<string, string>;
+  deleteMessageError?: string;
   addChannelMembersDelayMs?: number;
   /** Sequenced add-member failures. A string fails that call; null succeeds. */
   addChannelMembersErrors?: (string | null)[];
@@ -287,6 +446,8 @@ type MockBridgeOptions = {
   /** Number of seeded rows in the deep-history fixture. Defaults to 600. */
   deepHistoryMessageCount?: number;
   feedReadError?: string;
+  /** Exact reference records for visual comparison captures only. */
+  visualFixture?: VisualFixtureSeed;
   canvasReadError?: string;
   /** Delay (ms) for `apply_workspace`; see e2eBridge mock config. */
   applyCommunityDelayMs?: number;
@@ -412,6 +573,11 @@ type MockBridgeOptions = {
    * evaluates false).
    */
   relayRole?: "owner" | "admin" | "member" | null;
+  /** Exact NIP-43 membership snapshot for visual-reference fixtures. */
+  relayMembers?: Array<{
+    pubkey: string;
+    role: "owner" | "admin" | "member";
+  }>;
   /**
    * Descriptors returned by the mocked `pick_and_upload_media` /
    * `upload_media_bytes` commands. When omitted, the bridge returns a single
@@ -628,6 +794,7 @@ type MockBridgeOptions = {
 type BridgeOptions = {
   mode: BridgeMode;
   mock?: MockBridgeOptions;
+  forceRelayPacing?: boolean;
   relayHttpUrl?: string;
   relayWsUrl?: string;
   autoConnectDefaultRelay?: boolean;
@@ -641,6 +808,8 @@ type BridgeOptions = {
    */
   seedPreviewFeatures?: boolean;
   user?: keyof typeof TEST_IDENTITIES;
+  identity?: RelayBridgeIdentity;
+  relayAuthMode?: "http-header" | "nip42";
 };
 
 const WELCOME_CHANNEL_ENSURED_STORAGE_KEY_PREFIX =
@@ -766,10 +935,12 @@ A retired launch checklist used to live at [[mem/archive/deleted-launch-checklis
 async function seedOnboardingCompletionForKnownIdentities(
   page: Page,
   relayWsUrl?: string,
+  additionalPubkey?: string,
 ) {
   const pubkeys = [
     DEFAULT_MOCK_PUBKEY,
     ...Object.values(TEST_IDENTITIES).map(({ pubkey }) => pubkey),
+    ...(additionalPubkey ? [additionalPubkey] : []),
   ];
   await page.addInitScript(
     ({ onboardingPrefix, pubkeys: pubkeysToSeed, relayUrl, welcomePrefix }) => {
@@ -795,9 +966,10 @@ async function seedDefaultCommunity(
   page: Page,
   fallbackPubkey: string,
   relayWsUrl?: string,
+  businessName?: string,
 ) {
   await page.addInitScript(
-    ({ fallback, identityOverrideKey, relayUrl }) => {
+    ({ fallback, identityOverrideKey, relayUrl, seededBusinessName }) => {
       // If seedActiveIdentity() ran before this script (the normal ordering),
       // use its pubkey so the community matches the active identity and
       // migrateMachineOnboardingCompletion's strict voucher accepts it.
@@ -826,7 +998,7 @@ async function seedDefaultCommunity(
       const communityId = "e2e-default-community";
       const community = {
         id: communityId,
-        name: "E2E Test",
+        name: seededBusinessName ?? "E2E Test",
         relayUrl,
         pubkey: overridePubkey ?? fallback,
         addedAt: new Date().toISOString(),
@@ -841,6 +1013,7 @@ async function seedDefaultCommunity(
       fallback: fallbackPubkey,
       identityOverrideKey: "buzz:e2e-identity-override.v1",
       relayUrl: relayWsUrl ?? DEFAULT_RELAY_WS_URL,
+      seededBusinessName: businessName,
     },
   );
 }
@@ -859,7 +1032,7 @@ async function seedPreviewFeaturesEnabled(page: Page) {
 export async function installBridge(page: Page, options: BridgeOptions) {
   const identity =
     options.mode === "relay"
-      ? TEST_IDENTITIES[options.user ?? "tyler"]
+      ? (options.identity ?? TEST_IDENTITIES[options.user ?? "tyler"])
       : undefined;
 
   // Most specs seed a community so useCommunityInit doesn't show WelcomeSetup.
@@ -870,10 +1043,19 @@ export async function installBridge(page: Page, options: BridgeOptions) {
   // the bridge identity's pubkey or DEFAULT_MOCK_PUBKEY for mock mode.
   if (!options.skipCommunitySeed) {
     const activePubkey = identity?.pubkey ?? DEFAULT_MOCK_PUBKEY;
-    await seedDefaultCommunity(page, activePubkey, options.relayWsUrl);
+    await seedDefaultCommunity(
+      page,
+      activePubkey,
+      options.relayWsUrl,
+      options.mock?.visualFixture?.businessName,
+    );
   }
   if (!options.skipOnboardingSeed) {
-    await seedOnboardingCompletionForKnownIdentities(page, options.relayWsUrl);
+    await seedOnboardingCompletionForKnownIdentities(
+      page,
+      options.relayWsUrl,
+      identity?.pubkey,
+    );
   }
   // Default to opting every preview feature in. Specs that exercise the
   // Experiments toggle UI itself pass `seedPreviewFeatures: false`.
@@ -886,8 +1068,10 @@ export async function installBridge(page: Page, options: BridgeOptions) {
       identity: bridgeIdentity,
       mock,
       mode,
+      forceRelayPacing,
       relayHttpUrl,
       relayWsUrl,
+      relayAuthMode,
       autoConnectDefaultRelay,
     }) => {
       const notificationLog: Array<{
@@ -944,8 +1128,10 @@ export async function installBridge(page: Page, options: BridgeOptions) {
         identity: bridgeIdentity ?? currentConfig.identity,
         mock,
         mode,
+        forceRelayPacing: forceRelayPacing ?? currentConfig.forceRelayPacing,
         relayHttpUrl: relayHttpUrl ?? currentConfig.relayHttpUrl,
         relayWsUrl: relayWsUrl ?? currentConfig.relayWsUrl,
+        relayAuthMode: relayAuthMode ?? currentConfig.relayAuthMode,
         autoConnectDefaultRelay:
           autoConnectDefaultRelay ?? currentConfig.autoConnectDefaultRelay,
       };
@@ -968,8 +1154,10 @@ export async function installBridge(page: Page, options: BridgeOptions) {
       identity,
       mock: options.mock,
       mode: options.mode,
+      forceRelayPacing: options.forceRelayPacing,
       relayHttpUrl: options.relayHttpUrl,
       relayWsUrl: options.relayWsUrl,
+      relayAuthMode: options.relayAuthMode,
       autoConnectDefaultRelay: options.autoConnectDefaultRelay,
     },
   );
@@ -984,10 +1172,12 @@ export async function installMockBridge(
     skipOnboardingSeed?: boolean;
     skipCommunitySeed?: boolean;
     seedPreviewFeatures?: boolean;
+    forceRelayPacing?: boolean;
   },
 ) {
   await installBridge(page, {
     mode: "mock",
+    forceRelayPacing: options?.forceRelayPacing,
     mock,
     relayWsUrl: options?.relayWsUrl,
     autoConnectDefaultRelay: options?.autoConnectDefaultRelay,
@@ -1000,16 +1190,41 @@ export async function installMockBridge(
 export async function installRelayBridge(
   page: Page,
   user: keyof typeof TEST_IDENTITIES = "tyler",
-  options?: { seedPreviewFeatures?: boolean },
+  options?: {
+    relayHttpUrl?: string;
+    relaySelf?: string | null;
+    relayRequiresMembership?: boolean;
+    seedPreviewFeatures?: boolean;
+    skipCommunitySeed?: boolean;
+    identity?: RelayBridgeIdentity;
+    relayAuthMode?: "http-header" | "nip42";
+  },
 ) {
+  const relayHttpUrl = options?.relayHttpUrl ?? DEFAULT_RELAY_HTTP_URL;
+  const relayWsUrl = relayHttpUrl.replace(/^http/, "ws");
   await installBridge(page, {
     mode: "relay",
     user,
+    identity: options?.identity,
+    relayAuthMode: options?.relayAuthMode,
+    mock:
+      options?.relaySelf === undefined &&
+      options?.relayRequiresMembership === undefined
+        ? undefined
+        : {
+            ...(options?.relaySelf === undefined
+              ? {}
+              : { relaySelf: options.relaySelf }),
+            ...(options?.relayRequiresMembership === undefined
+              ? {}
+              : { relayRequiresMembership: options.relayRequiresMembership }),
+          },
     // Thread BUZZ_E2E_RELAY_URL into BOTH transports. The app defaults these to
     // :3000 in relay mode; without explicit wiring HTTP queries (channel list,
     // feed) miss an isolated relay and surface as "Failed to fetch".
-    relayHttpUrl: DEFAULT_RELAY_HTTP_URL,
-    relayWsUrl: DEFAULT_RELAY_WS_URL,
+    relayHttpUrl,
+    relayWsUrl,
+    skipCommunitySeed: options?.skipCommunitySeed,
     seedPreviewFeatures: options?.seedPreviewFeatures,
   });
 }

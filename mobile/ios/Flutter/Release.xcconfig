@@ -4,7 +4,7 @@
 // Defaults for the iOS Release build. Internal/custom builds (e.g. an
 // enterprise-signed distribution) override these without patching tracked
 // files by writing `mobile/ios/Flutter/AppOverrides.xcconfig` (gitignored).
-BUNDLE_IDENTIFIER = xyz.block.buzz.mobile
+BUNDLE_IDENTIFIER = ventures.ainative.colony
 APP_DISPLAY_NAME = Buzz
 CODE_SIGN_STYLE = Automatic
 CODE_SIGN_IDENTITY = iPhone Developer
@@ -16,4 +16,9 @@ BUZZ_APP_GROUP_IDENTIFIER = group.$(BUNDLE_IDENTIFIER)
 BUZZ_KEYCHAIN_ACCESS_GROUP = $(BUNDLE_IDENTIFIER)
 BUZZ_IOS_PUSH_ENVIRONMENT = production
 BUZZ_APP_ATTEST_ENVIRONMENT = production
+COLONY_GOOGLE_REVERSED_CLIENT_ID =
+
+// Google OAuth callback scheme for the release iOS client, generated for
+// local or CI builds by scripts/mobile-google-auth-xcconfig.sh.
+#include? "GoogleAuthRelease.xcconfig"
 #include? "AppOverrides.xcconfig"

@@ -64,7 +64,7 @@ out="$("$wt/scripts/mobile-worktree-overrides.sh")"
 ios="$wt/mobile/ios/Flutter/WorktreeOverrides.xcconfig"
 android="$wt/mobile/android/worktree.properties"
 [[ -f "$ios" && -f "$android" ]] || fail "worktree must write both override files"
-grep -q '^BUNDLE_IDENTIFIER = xyz\.block\.buzz\.dogfood\.mobile\.feature-work-1$' "$ios" \
+grep -q '^BUNDLE_IDENTIFIER = ventures\.ainative\.colony\.dogfood\.feature-work-1$' "$ios" \
   && pass "iOS bundle identifier keys to the sanitized worktree directory name" \
   || fail "iOS bundle identifier must key to the worktree dir, got: $(cat "$ios")"
 grep -q '^APP_DISPLAY_NAME = Buzz (Fix_Thing-2)$' "$ios" \
@@ -76,7 +76,7 @@ grep -q '^label=Fix_Thing-2$' "$android" \
 grep -q '^appName=Buzz (Fix_Thing-2)$' "$android" \
   && pass "Android app name defaults to the branch-labelled name" \
   || fail "Android app name wrong: $(cat "$android")"
-grep -q '^applicationIdSuffix=\.feature_work_1$' "$android" \
+grep -q '^applicationIdSuffix=\.dogfood\.feature_work_1$' "$android" \
   && pass "Android applicationIdSuffix keys to the worktree directory name" \
   || fail "Android applicationIdSuffix wrong: $(cat "$android")"
 printf '%s' "$out" | grep -q 'Worktree Feature_Work-1' \
@@ -86,8 +86,8 @@ printf '%s' "$out" | grep -q 'Worktree Feature_Work-1' \
 # ── Branch switch in the same worktree: identity stable, label follows ───────
 git -C "$wt" checkout -q -b "another/branch-name"
 "$wt/scripts/mobile-worktree-overrides.sh" > /dev/null
-grep -q '^BUNDLE_IDENTIFIER = xyz\.block\.buzz\.dogfood\.mobile\.feature-work-1$' "$ios" \
-  && grep -q '^applicationIdSuffix=\.feature_work_1$' "$android" \
+grep -q '^BUNDLE_IDENTIFIER = ventures\.ainative\.colony\.dogfood\.feature-work-1$' "$ios" \
+  && grep -q '^applicationIdSuffix=\.dogfood\.feature_work_1$' "$android" \
   && pass "branch switch keeps the install identity stable (per worktree)" \
   || fail "install identity must not change on branch switch"
 grep -q '^label=branch-name$' "$android" \
@@ -111,7 +111,7 @@ git -C "$wt" checkout -q --detach
 grep -q "^label=${sha}$" "$android" \
   && pass "detached HEAD labels with the short SHA instead of literal HEAD" \
   || fail "detached HEAD must use short SHA, got: $(cat "$android")"
-grep -q '^applicationIdSuffix=\.feature_work_1$' "$android" \
+grep -q '^applicationIdSuffix=\.dogfood\.feature_work_1$' "$android" \
   && pass "detached HEAD keeps the per-worktree install identity" \
   || fail "detached HEAD must not change the install identity"
 
@@ -119,7 +119,7 @@ grep -q '^applicationIdSuffix=\.feature_work_1$' "$android" \
 wt2="$tmp/2fast"
 make_worktree "$repo" "$wt2" "some-branch"
 "$wt2/scripts/mobile-worktree-overrides.sh" > /dev/null
-grep -q '^applicationIdSuffix=\.w_2fast$' "$wt2/mobile/android/worktree.properties" \
+grep -q '^applicationIdSuffix=\.dogfood\.w_2fast$' "$wt2/mobile/android/worktree.properties" \
   && pass "digit-leading worktree dir yields a valid Android package segment" \
   || fail "digit-leading dir segment wrong: $(cat "$wt2/mobile/android/worktree.properties")"
 
@@ -156,9 +156,9 @@ gradle="$repo_root/mobile/android/app/build.gradle.kts"
 manifest="$repo_root/mobile/android/app/src/main/AndroidManifest.xml"
 plist="$repo_root/mobile/ios/Runner/Info.plist"
 
-grep -q '^BUNDLE_IDENTIFIER = xyz\.block\.buzz\.dogfood\.mobile$' "$debug_xcconfig" \
+grep -q '^BUNDLE_IDENTIFIER = ventures\.ainative\.colony\.dogfood$' "$debug_xcconfig" \
   && pass "Debug.xcconfig defaults to the dogfood bundle identifier" \
-  || fail "Debug.xcconfig must default to xyz.block.buzz.dogfood.mobile"
+  || fail "Debug.xcconfig must default to ventures.ainative.colony.dogfood"
 grep -q 'WorktreeOverrides.xcconfig' "$debug_xcconfig" \
   && pass "Debug.xcconfig includes WorktreeOverrides" \
   || fail "Debug.xcconfig must include WorktreeOverrides.xcconfig"
@@ -169,16 +169,16 @@ if [[ -n "$worktree_line" && -n "$app_line" && "$worktree_line" -lt "$app_line" 
 else
   fail "Debug.xcconfig must include AppOverrides.xcconfig after WorktreeOverrides.xcconfig"
 fi
-grep -q '^ios_prefix="xyz.block.buzz.dogfood.mobile\."$' "$clean_script" \
+grep -q '^ios_prefix="ventures.ainative.colony.dogfood\."$' "$clean_script" \
   && pass "cleanup targets the iOS dogfood worktree prefix" \
   || fail "cleanup must share the iOS dogfood prefix used by worktree overrides"
 
 grep -q 'WorktreeOverrides' "$release_xcconfig" \
   && fail "Release.xcconfig must not include WorktreeOverrides.xcconfig" \
   || pass "Release.xcconfig does not include WorktreeOverrides"
-grep -q '^BUNDLE_IDENTIFIER = xyz\.block\.buzz\.mobile$' "$release_xcconfig" \
+grep -q '^BUNDLE_IDENTIFIER = ventures\.ainative\.colony$' "$release_xcconfig" \
   && pass "Release.xcconfig keeps the production bundle identifier" \
-  || fail "Release.xcconfig must keep BUNDLE_IDENTIFIER = xyz.block.buzz.mobile"
+  || fail "Release.xcconfig must keep BUNDLE_IDENTIFIER = ventures.ainative.colony"
 grep -q '^APP_DISPLAY_NAME = Buzz$' "$release_xcconfig" \
   && pass "Release.xcconfig keeps the production display name" \
   || fail "Release.xcconfig must keep APP_DISPLAY_NAME = Buzz"
@@ -192,6 +192,32 @@ grep -q 'android:label="@string/app_name"' "$manifest" \
 grep -q 'resValue("string", "app_name", "Buzz")' "$gradle" \
   && pass "Gradle default app_name stays Buzz" \
   || fail "Gradle must declare the default app_name resValue"
+grep -q 'applicationId = "ventures.ainative.colony"' "$gradle" \
+  && pass "Android applicationId uses the Colony production identifier" \
+  || fail "Gradle must use ventures.ainative.colony as applicationId"
+grep -q 'namespace = "xyz.block.buzz.mobile"' "$gradle" \
+  && pass "Android namespace remains stable for existing Kotlin packages" \
+  || fail "Gradle must preserve the existing Android namespace"
+grep -q '?: ".dogfood"' "$gradle" \
+  && grep -q 'applicationIdSuffix = debugIdSuffix' "$gradle" \
+  && pass "Android debug builds use the Colony dogfood identifier" \
+  || fail "Gradle must suffix Android debug builds with the Colony dogfood identifier"
+grep -q 'debugSigningMode == "upload-keystore"' "$gradle" \
+  && grep -q 'signingConfigs.getByName("upload")' "$gradle" \
+  && pass "Android debug builds can use the existing upload signing config" \
+  || fail "Gradle must bind opt-in debug upload signing to the upload config"
+grep -Fq 'PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_IDENTIFIER).NotificationService";' \
+  "$repo_root/mobile/ios/Runner.xcodeproj/project.pbxproj" \
+  && pass "iOS notification service bundle ID follows the selected app ID" \
+  || fail "Notification Service bundle ID must suffix the selected app ID"
+grep -Fq 'PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_IDENTIFIER).RunnerTests";' \
+  "$repo_root/mobile/ios/Runner.xcodeproj/project.pbxproj" \
+  && pass "iOS unit test bundle ID follows the selected app ID" \
+  || fail "RunnerTests bundle ID must suffix the selected app ID"
+grep -Fq 'PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_IDENTIFIER).RunnerUITests";' \
+  "$repo_root/mobile/ios/Runner.xcodeproj/project.pbxproj" \
+  && pass "iOS UI test bundle ID follows the selected app ID" \
+  || fail "RunnerUITests bundle ID must suffix the selected app ID"
 grep -q 'worktreeLabel.matches' "$gradle" \
   && pass "Gradle validates the worktree label before use" \
   || fail "Gradle must validate the worktree label against a safe pattern"
@@ -258,9 +284,10 @@ case "$1 $2" in
 esac
 if [[ "$1" == "devices" ]]; then exit 0; fi
 if [[ "$3 $4 $5" == "shell pm list" ]]; then
-  printf 'package:xyz.block.buzz.mobile\n'
-  printf 'package:xyz.block.buzz.mobile.feature_work_1\n'
-  printf 'package:xyz.block.buzz.mobile.w_2fast\n'
+  printf 'package:ventures.ainative.colony\n'
+  printf 'package:ventures.ainative.colony.dogfood\n'
+  printf 'package:ventures.ainative.colony.dogfood.feature_work_1\n'
+  printf 'package:ventures.ainative.colony.dogfood.w_2fast\n'
   printf 'package:com.android.settings\n'
   exit 0
 fi
@@ -271,14 +298,14 @@ chmod +x "$stub_bin/adb"
 # No xcrun stub: the iOS pass is skipped when xcrun is absent, which also
 # keeps this test honest on Linux CI.
 clean_out="$(PATH="$stub_bin:/usr/bin:/bin" bash "$clean_script" --dry-run)"
-printf '%s\n' "$clean_out" | grep -q 'xyz\.block\.buzz\.mobile\.feature_work_1' \
+printf '%s\n' "$clean_out" | grep -q 'ventures\.ainative\.colony\.dogfood\.feature_work_1' \
   && pass "cleanup targets worktree-suffixed Android installs" \
   || fail "cleanup must list suffixed installs, got: $clean_out"
-printf '%s\n' "$clean_out" | grep -q 'xyz\.block\.buzz\.mobile\.w_2fast' \
+printf '%s\n' "$clean_out" | grep -q 'ventures\.ainative\.colony\.dogfood\.w_2fast' \
   && pass "cleanup targets letter-prefixed suffixed installs" \
   || fail "cleanup must list w_-prefixed installs, got: $clean_out"
 printf '%s\n' "$clean_out" | grep -q 'mobile\.feature_work_1' || true
-if printf '%s\n' "$clean_out" | grep -Eq '(would uninstall|uninstalling).*xyz\.block\.buzz\.mobile$'; then
+if printf '%s\n' "$clean_out" | grep -Eq '(would uninstall|uninstalling).*ventures\.ainative\.colony(\.dogfood)?$'; then
   fail "cleanup must never target the production Android app id"
 else
   pass "cleanup preserves the production Android app id"

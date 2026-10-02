@@ -125,6 +125,7 @@ fn definition_from_snapshot(
         description: crate::managed_agents::effective_agent_description(
             member.profile.about.as_deref(),
         ),
+        company_role: member.definition.company_role.clone(),
         system_prompt: member.definition.system_prompt.clone().unwrap_or_default(),
         runtime: member.definition.runtime.clone(),
         model: member.definition.model.clone(),
@@ -309,12 +310,14 @@ fn build_team_export_snapshot(
                 _ => (MemoryLevel::None, Vec::new()),
             };
 
-            Ok(build_snapshot(
+            let mut snapshot = build_snapshot(
                 &persona.clone().into_agent_record(),
                 effective_level,
                 entries,
                 None,
-            ))
+            );
+            snapshot.definition.company_role = persona.company_role.clone();
+            Ok(snapshot)
         })
         .collect::<Result<Vec<_>, String>>()?;
     Ok(build_team_snapshot(team, members))

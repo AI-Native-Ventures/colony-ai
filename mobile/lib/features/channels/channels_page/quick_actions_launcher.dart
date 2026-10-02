@@ -5,10 +5,10 @@ const _kQuickActionsTabMotionCurve = Cubic(0.77, 0, 0.175, 1);
 const _kQuickActionsHiddenOverlap = Grid.half;
 const _kQuickActionsHiddenScale = 0.8;
 
-/// Places the channel quick-actions button beside mobile navigation.
+/// Shows the existing quick-action menu when opened from the pinned header.
 ///
-/// The button remains available only on Home and moves behind the navigation
-/// bar when another destination is selected.
+/// The expanded menu stays aligned with mobile navigation and closes when the
+/// user leaves Chats.
 class ChannelQuickActionsLauncher extends HookConsumerWidget {
   /// Whether the launcher should be visible beside the navigation bar.
   final bool visible;
@@ -25,6 +25,9 @@ class ChannelQuickActionsLauncher extends HookConsumerWidget {
   /// Bottom system inset used by the navigation bar's [SafeArea].
   final double systemBottomInset;
 
+  /// App-composed routes needed by a newly opened forum channel.
+  final MobileRouteRegistry? routeRegistry;
+
   /// Distance between the launcher and the right edge of the screen.
   final double rightInset;
 
@@ -37,12 +40,18 @@ class ChannelQuickActionsLauncher extends HookConsumerWidget {
     required this.navigationBarWidth,
     required this.systemBottomInset,
     required this.rightInset,
+    this.routeRegistry,
   });
+
+  /// Opens the existing quick actions from another app-composed surface.
+  static void openFromHome(WidgetRef ref) {
+    ref.read(_channelQuickActionsOpenProvider.notifier).open();
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentPubkey = ref.watch(currentPubkeyProvider);
-    final quickActionsOpen = useState(false);
+    final quickActionsOpen = ref.watch(_channelQuickActionsOpenProvider);
     final reducedMotion = MediaQuery.of(context).disableAnimations;
     final navigationBottomInset = systemBottomInset > navigationBarBottomGap
         ? systemBottomInset
@@ -53,7 +62,7 @@ class ChannelQuickActionsLauncher extends HookConsumerWidget {
         navigationBarHeight +
         Grid.xxs -
         ((navigationBarHeight - _kMorphClosedSize) / 2);
-    final effectiveOpen = visible && quickActionsOpen.value;
+    final effectiveOpen = visible && quickActionsOpen;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final navigationBarRight = (screenWidth + navigationBarWidth) / 2;
     final launcherRight = screenWidth - rightInset;
@@ -61,8 +70,8 @@ class ChannelQuickActionsLauncher extends HookConsumerWidget {
         navigationBarRight - launcherRight - _kQuickActionsHiddenOverlap;
 
     useEffect(() {
-      if (!visible && quickActionsOpen.value) {
-        quickActionsOpen.value = false;
+      if (!visible && quickActionsOpen) {
+        ref.read(_channelQuickActionsOpenProvider.notifier).close();
       }
       return null;
     }, [visible]);
@@ -71,13 +80,18 @@ class ChannelQuickActionsLauncher extends HookConsumerWidget {
       if (!context.mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => ChannelDetailPage(channel: channel),
+          builder: (_) => ChannelDetailPage(
+            channel: channel,
+            routeRegistry: routeRegistry,
+            openQuickActions: () =>
+                ChannelQuickActionsLauncher.openFromHome(ref),
+          ),
         ),
       );
     }
 
     Future<void> selectQuickAction(_QuickAction action) async {
-      quickActionsOpen.value = false;
+      ref.read(_channelQuickActionsOpenProvider.notifier).close();
       if (!reducedMotion) {
         await Future<void>.delayed(_kMorphCloseDuration);
       }
@@ -125,14 +139,15 @@ class ChannelQuickActionsLauncher extends HookConsumerWidget {
       fit: StackFit.expand,
       clipBehavior: Clip.none,
       children: [
-        if (quickActionsOpen.value)
+        if (quickActionsOpen)
           Positioned.fill(
             child: Semantics(
               button: true,
               label: 'Close quick actions',
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => quickActionsOpen.value = false,
+                onTap: () =>
+                    ref.read(_channelQuickActionsOpenProvider.notifier).close(),
               ),
             ),
           ),
@@ -144,7 +159,7 @@ class ChannelQuickActionsLauncher extends HookConsumerWidget {
           right: rightInset,
           bottom: closedBottomInset + (effectiveOpen ? openLift : 0),
           child: IgnorePointer(
-            ignoring: !visible,
+            ignoring: !visible || !quickActionsOpen,
             child: ExcludeSemantics(
               excluding: !visible,
               child: TweenAnimationBuilder<double>(
@@ -171,11 +186,9 @@ class ChannelQuickActionsLauncher extends HookConsumerWidget {
                 ),
                 child: _MorphingQuickActionsButton(
                   open: effectiveOpen,
+                  showClosedButton: false,
                   openEdgeOffset: rightInset - Grid.gutter,
-                  onToggle: () {
-                    unawaited(HapticFeedback.lightImpact());
-                    quickActionsOpen.value = !quickActionsOpen.value;
-                  },
+                  onToggle: () {},
                   onSelected: (action) => unawaited(selectQuickAction(action)),
                 ),
               ),

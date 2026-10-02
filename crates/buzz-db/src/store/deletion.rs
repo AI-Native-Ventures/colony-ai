@@ -58,9 +58,11 @@ pub const EXPECTED_SCOPED_TABLES: &[&str] = &[
     "api_tokens",
     "archived_identities",
     "audit_log",
+    "business_proposal_conversion_claims",
     "channel_members",
     "channels",
     "community_bans",
+    "company_work_watchdog_deliveries",
     "delivery_log",
     "event_mentions",
     "events",
@@ -80,6 +82,7 @@ pub const EXPECTED_SCOPED_TABLES: &[&str] = &[
     "subscriptions",
     "thread_metadata",
     "users",
+    "workflow_agent_waits",
     "workflow_approvals",
     "workflow_runs",
     "workflows",
@@ -87,6 +90,7 @@ pub const EXPECTED_SCOPED_TABLES: &[&str] = &[
 
 /// Foreign-key-safe child-before-parent order for the PostgreSQL purge.
 pub const PURGE_SCOPED_TABLES: &[&str] = &[
+    "workflow_agent_waits",
     "workflow_approvals",
     "scheduled_workflow_fires",
     "workflow_runs",
@@ -95,6 +99,8 @@ pub const PURGE_SCOPED_TABLES: &[&str] = &[
     "moderation_reports",
     "subscriptions",
     "api_tokens",
+    "business_proposal_conversion_claims",
+    "company_work_watchdog_deliveries",
     "channel_members",
     "thread_metadata",
     "moderation_actions",
@@ -1100,7 +1106,9 @@ impl DeletionStore {
             WHERE ($1::uuid IS NULL OR request.id = $1)
               AND request.stage IN ('approved', 'fenced', 'drained', 'bindings_removed',
                                     'postgres_purged', 'cache_purged', 'logically_verified')
-              AND request.blocked_at IS NULL AND request.next_attempt_at <= now()
+              AND request.blocked_at IS NULL
+              AND (request.next_attempt_at <= now()
+                   OR (request.stage = 'approved' AND request.lease_generation = 0))
               AND (request.lease_until IS NULL OR request.lease_until < now())
             ORDER BY request.created_at, request.id
             FOR UPDATE OF request SKIP LOCKED LIMIT 1"#,
@@ -1294,6 +1302,7 @@ impl DeletionStore {
         .execute(&mut *tx)
         .await?;
         set_executor_gucs(&mut tx, token.community_id, generation).await?;
+
         let affected = sqlx::query(
             "UPDATE communities SET deletion_state = 'quiescing', \
                     archived_at = COALESCE(archived_at, now()) \
@@ -1726,6 +1735,12 @@ impl DeletionStore {
         validate_catalog_on(&mut tx).await?;
         verify_lease_and_fence(&mut tx, token, DeletionStage::BindingsRemoved, generation).await?;
         set_executor_gucs(&mut tx, token.community_id, generation).await?;
+        // The trusted channel pointer is a community registry field, not a
+        // tenant child row. Clear it before the channel purge to release its FK.
+        sqlx::query("UPDATE communities SET business_channel_id = NULL WHERE id = $1")
+            .bind(token.community_id.as_uuid())
+            .execute(&mut *tx)
+            .await?;
         // Migration 0011 fences hard deletion of NIP-RS rows against legacy
         // writers. Whole-community deletion is an intentional hard-delete path,
         // and the transaction is already bound to an approved, fenced tenant.
@@ -3225,6 +3240,34 @@ mod tests {
     }
 
     #[test]
+    fn workflow_agent_waits_are_inventoried_and_purged_before_runs() {
+        assert!(EXPECTED_SCOPED_TABLES.contains(&"workflow_agent_waits"));
+        let wait_index = PURGE_SCOPED_TABLES
+            .iter()
+            .position(|table| *table == "workflow_agent_waits")
+            .expect("agent wait table is purged");
+        let run_index = PURGE_SCOPED_TABLES
+            .iter()
+            .position(|table| *table == "workflow_runs")
+            .expect("workflow run table is purged");
+        assert!(wait_index < run_index);
+    }
+
+    #[test]
+    fn company_work_watchdog_deliveries_are_inventoried_and_purged_before_channels() {
+        assert!(EXPECTED_SCOPED_TABLES.contains(&"company_work_watchdog_deliveries"));
+        let deliveries_index = PURGE_SCOPED_TABLES
+            .iter()
+            .position(|table| *table == "company_work_watchdog_deliveries")
+            .expect("watchdog delivery table is purged");
+        let channels_index = PURGE_SCOPED_TABLES
+            .iter()
+            .position(|table| *table == "channels")
+            .expect("channel table is purged");
+        assert!(deliveries_index < channels_index);
+    }
+
+    #[test]
     fn stale_lease_classifier_does_not_swallow_other_access_denials() {
         let stale = stale_lease_error(&LeaseToken {
             request_id: Uuid::new_v4(),
@@ -3559,11 +3602,37 @@ mod postgres_tests {
             mismatched_request.is_err(),
             "the frozen request digest must remain bound to its approval"
         );
+
+        // A fresh approval is immediately runnable. Its first claim must not
+        // depend on comparing transaction-start timestamps across transactions.
+        sqlx::query(
+            "UPDATE community_deletion_requests \
+             SET next_attempt_at = now() + interval '1 hour' WHERE id = $1",
+        )
+        .bind(request.id)
+        .execute(&db.pool)
+        .await
+        .expect("simulate a future retry timestamp on a fresh approval");
+        let claimed = store
+            .claim_specific(request.id, "executor-a", DEFAULT_LEASE_DURATION)
+            .await
+            .expect("claim freshly approved request")
+            .expect("freshly approved request must be claimable");
+        store
+            .record_retry(
+                &claimed.lease,
+                DeletionStage::Approved,
+                "future_retry_timestamp",
+                "simulate a retryable failure",
+                Duration::from_secs(3600),
+            )
+            .await
+            .expect("record a scheduled retry");
         assert!(store
             .claim_specific(request.id, "executor-a", DEFAULT_LEASE_DURATION)
             .await
-            .expect("claim approved")
-            .is_some());
+            .expect("claim before retry time")
+            .is_none());
     }
 
     #[tokio::test]
@@ -4375,6 +4444,47 @@ mod postgres_tests {
         let (db, store) = store().await;
         let (request, inventory) = inventoried_request(&db, &store).await;
         let host = request.community_host.clone();
+        let business_channel_id = Uuid::new_v4();
+        sqlx::query(
+            "INSERT INTO channels \
+             (community_id, id, name, channel_type, visibility, created_by) \
+             VALUES ($1, $2, $3, 'stream', 'private', $4)",
+        )
+        .bind(request.community_id.as_uuid())
+        .bind(business_channel_id)
+        .bind(format!("business-{}", Uuid::new_v4().simple()))
+        .bind(vec![2_u8; 32])
+        .execute(&db.pool)
+        .await
+        .expect("insert business channel for deletion test");
+        sqlx::query("UPDATE communities SET business_channel_id = $2 WHERE id = $1")
+            .bind(request.community_id.as_uuid())
+            .bind(business_channel_id)
+            .execute(&db.pool)
+            .await
+            .expect("register business channel for deletion test");
+        sqlx::query(
+            "INSERT INTO business_proposal_conversion_claims \
+             (community_id, business_channel_id, conversion_id, proposal_id, \
+              proposal_version_event_id, proposal_version_digest, acceptance_event_id, \
+              receipt_event_id, accepted_by_pubkey, client_id, work_item_id, draft_invoice_id) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+        )
+        .bind(request.community_id.as_uuid())
+        .bind(business_channel_id)
+        .bind(Uuid::new_v4())
+        .bind(Uuid::new_v4())
+        .bind(vec![3_u8; 32])
+        .bind(vec![4_u8; 32])
+        .bind(vec![5_u8; 32])
+        .bind(vec![6_u8; 32])
+        .bind(vec![7_u8; 32])
+        .bind(Uuid::new_v4())
+        .bind(Uuid::new_v4())
+        .bind(Uuid::new_v4())
+        .execute(&db.pool)
+        .await
+        .expect("insert conversion claim for deletion test");
         let read_state_d_tag = format!("read-state:{}", "a".repeat(32));
         sqlx::query(
             "INSERT INTO events \
@@ -4459,6 +4569,14 @@ mod postgres_tests {
             .expect("bindings");
         let first = store.purge_postgres(&token).await.expect("purge postgres");
         assert_eq!(first.len(), EXPECTED_SCOPED_TABLES.len());
+        assert_eq!(first["business_proposal_conversion_claims"], 1);
+        let business_channel_after_purge: Option<Uuid> =
+            sqlx::query_scalar("SELECT business_channel_id FROM communities WHERE id = $1")
+                .bind(request.community_id.as_uuid())
+                .fetch_one(&db.pool)
+                .await
+                .expect("read business channel after purge");
+        assert_eq!(business_channel_after_purge, None);
         assert!(
             store.purge_postgres(&token).await.is_err(),
             "completed stage cannot be replayed under stale checkpoint state"

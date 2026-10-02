@@ -12,8 +12,26 @@
 //! The caller signs with their own keys: `builder.sign_with_keys(&keys)?`.
 //! No keys are held here. No network calls are made.
 
+/// Typed event builders and record types for channel-scoped asks.
+pub mod asks;
 pub mod broker;
 pub mod builders;
+/// Typed event builders for Colony business records.
+pub mod business_records;
+/// Typed event builder for employee duty actions.
+pub mod company_duties;
+/// Typed event builders for employee configuration history.
+pub mod company_employee_history;
+/// Typed event builder for structured employee lessons.
+pub mod company_lessons;
+/// Typed event builders for Colony company member positions.
+pub mod company_members;
+/// Typed event builders for Colony company records.
+pub mod company_records;
+/// Typed event builders for Colony AI allowances and spend records.
+pub mod company_spend;
+/// Typed event builders for persisted company work suggestions and watchdog settings.
+pub mod company_work_tracking;
 pub mod mentions;
 pub mod nip_oa;
 

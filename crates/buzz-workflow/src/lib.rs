@@ -44,7 +44,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
-use buzz_core::kind::{event_kind_u32, is_workflow_execution_kind, KIND_REACTION};
+use buzz_core::kind::{
+    event_kind_u32, is_workflow_execution_kind, KIND_REACTION, KIND_STREAM_MESSAGE,
+    KIND_STREAM_MESSAGE_V2,
+};
 use buzz_core::tenant::CommunityId;
 use buzz_db::workflow::RunStatus;
 use buzz_db::Db;
@@ -221,58 +224,29 @@ impl WorkflowEngine {
 
         match result {
             Ok(result) => {
+                if result.approval_token.is_some() || result.agent_wait.is_some() {
+                    tracing::info!(run_id = %run_id, "Workflow run durably suspended");
+                    return;
+                }
                 let mut full_trace = prefix;
                 full_trace.extend(result.trace);
                 let trace_json = serde_json::Value::Array(full_trace);
                 let step_count = result.step_index as i32;
 
-                if result.approval_token.is_some() {
-                    // Approval gates are not yet implemented (WF-08).
-                    // Fail explicitly rather than creating unreachable WaitingApproval rows.
-                    tracing::warn!(
-                        run_id = %run_id,
-                        step_index = result.step_index,
-                        "Workflow hit approval gate — not yet implemented, marking as failed"
-                    );
-                    if let Err(e) = self
-                        .db
-                        .update_workflow_run(
-                            community_id,
-                            run_id,
-                            RunStatus::Failed,
-                            step_count,
-                            &trace_json,
-                            Some(buzz_db::workflow::WorkflowRunFailure {
-                                code: "approval_not_supported",
-                                message: "approval gates not yet implemented — see WF-08",
-                            }),
-                        )
-                        .await
-                    {
-                        tracing::error!(
-                            run_id = %run_id,
-                            "Failed to update run to Failed (approval gate): {e}"
-                        );
-                    }
-                } else {
-                    tracing::info!(run_id = %run_id, "Workflow run completed");
-                    if let Err(e) = self
-                        .db
-                        .update_workflow_run(
-                            community_id,
-                            run_id,
-                            RunStatus::Completed,
-                            step_count,
-                            &trace_json,
-                            None,
-                        )
-                        .await
-                    {
-                        tracing::error!(
-                            run_id = %run_id,
-                            "Failed to update run to Completed: {e}"
-                        );
-                    }
+                tracing::info!(run_id = %run_id, "Workflow run completed");
+                if let Err(e) = self
+                    .db
+                    .update_workflow_run(
+                        community_id,
+                        run_id,
+                        RunStatus::Completed,
+                        step_count,
+                        &trace_json,
+                        None,
+                    )
+                    .await
+                {
+                    tracing::error!(run_id = %run_id, "Failed to update run to Completed: {e}");
                 }
             }
             Err((e, progress)) => {
@@ -336,6 +310,42 @@ impl WorkflowEngine {
         // Exclude workflow execution events to prevent infinite loops.
         if is_workflow_execution_kind(kind_u32) {
             return Ok(());
+        }
+
+        // Workflow-authored request messages are already represented by their
+        // durable run and must not recursively trigger message workflows.
+        if event_has_workflow_tag(&event.event) {
+            return Ok(());
+        }
+
+        if matches!(kind_u32, KIND_STREAM_MESSAGE | KIND_STREAM_MESSAGE_V2) {
+            if let Some(thread) = self
+                .db
+                .get_thread_metadata_by_event(community_id, event.event.id.as_bytes())
+                .await
+                .map_err(WorkflowError::from)?
+            {
+                if let Some(request_event_id) = thread.root_event_id {
+                    if let Some(run) = self
+                        .db
+                        .complete_workflow_agent_wait(
+                            buzz_db::workflow::CompleteWorkflowAgentWaitParams {
+                                community_id,
+                                channel_id,
+                                request_event_id: &request_event_id,
+                                agent_pubkey: &event.event.pubkey.to_bytes(),
+                                reply_event_id: event.event.id.as_bytes(),
+                                reply_text: &event.event.content,
+                                now: Utc::now(),
+                            },
+                        )
+                        .await
+                        .map_err(WorkflowError::from)?
+                    {
+                        self.resume_after_agent_reply(community_id, run).await;
+                    }
+                }
+            }
         }
 
         let cache_key = (community_id, channel_id);
@@ -404,11 +414,13 @@ impl WorkflowEngine {
             let trigger_event_id_bytes = event.event.id.as_bytes().to_vec();
             let run_id = match self
                 .db
-                .create_workflow_run(
+                .create_workflow_run_versioned(
                     community_id,
                     workflow.id,
                     Some(&trigger_event_id_bytes),
                     Some(&trigger_ctx_json),
+                    &workflow.definition_hash,
+                    &workflow.definition,
                 )
                 .await
             {
@@ -476,10 +488,10 @@ impl WorkflowEngine {
     /// trigger, checks whether the cron expression or interval has elapsed
     /// and spawns execution if so.
     ///
-    /// Uses window-based matching for cron expressions to handle tick drift:
-    /// `schedule.after(&(now - 60s)).next() <= now` instead of `includes(now)`.
-    ///
-    /// Interval tracking is anchored on the durable scheduled-fire claim:
+    /// Cron catch-up is anchored on the latest durable scheduled-fire claim,
+    /// workflow creation, or definition update. Missed occurrences coalesce
+    /// into one run whose trigger context records the covered interval and
+    /// number skipped. Interval tracking is anchored on the durable claim:
     /// `last_fired` is an in-memory pre-filter, but the
     /// `(community_id, workflow_id, scheduled_for)` claim row is the
     /// at-most-once boundary across pods and restarts. On the first tick after
@@ -493,6 +505,21 @@ impl WorkflowEngine {
             tokio::time::sleep(std::time::Duration::from_secs(60)).await;
 
             let now = Utc::now();
+
+            match self.db.expire_workflow_agent_waits(now, 100).await {
+                Ok(expired) if expired > 0 => {
+                    tracing::info!(expired, "Expired workflow agent waits");
+                }
+                Ok(_) => {}
+                Err(e) => tracing::error!("Failed to expire workflow agent waits: {e}"),
+            }
+            match self.db.expire_workflow_approvals(now, 100).await {
+                Ok(expired) if expired > 0 => {
+                    tracing::info!(expired, "Expired workflow approval waits");
+                }
+                Ok(_) => {}
+                Err(e) => tracing::error!("Failed to expire workflow approvals: {e}"),
+            }
 
             let workflows = match self.db.list_all_enabled_workflows().await {
                 Ok(wf) => wf,
@@ -538,17 +565,58 @@ impl WorkflowEngine {
                 // pod (cron's own scheduled time, or the interval bucket
                 // boundary) so all pods collide on a single durable claim —
                 // never `now`, which is per-pod and would let every pod fire.
+                let mut catch_up = None;
                 let (scheduled_for, trigger_type) = match &def.trigger {
                     schema::TriggerDef::Schedule {
                         cron: Some(expr),
                         interval: None,
-                    } => match cron_fire_instant(expr, now, 60, workflow.id) {
-                        Some(instant) => (instant, "cron"),
-                        None => continue,
-                    },
+                        timezone,
+                    } => {
+                        let last = match self
+                            .db
+                            .latest_scheduled_workflow_fire(community_id, workflow.id)
+                            .await
+                        {
+                            Ok(last) => last,
+                            Err(error) => {
+                                tracing::error!(
+                                    community_id = %community_id,
+                                    workflow_id = %workflow.id,
+                                    "Cron tick: failed to read cron restart anchor: {error}"
+                                );
+                                continue;
+                            }
+                        };
+                        let watermark = last
+                            .map(|last| last.max(workflow.created_at).max(workflow.updated_at))
+                            .unwrap_or_else(|| workflow.created_at.max(workflow.updated_at));
+                        match cron_catch_up(
+                            expr,
+                            timezone.as_deref().unwrap_or("UTC"),
+                            watermark,
+                            now,
+                            MAX_CRON_CATCH_UP_OCCURRENCES,
+                        ) {
+                            Ok(Some(summary)) => {
+                                let instant = summary.last_missed;
+                                catch_up = Some(summary);
+                                (instant, "cron")
+                            }
+                            Ok(None) => continue,
+                            Err(error) => {
+                                tracing::error!(
+                                    community_id = %community_id,
+                                    workflow_id = %workflow.id,
+                                    "Cron tick: unable to calculate due cron occurrences: {error}"
+                                );
+                                continue;
+                            }
+                        }
+                    }
                     schema::TriggerDef::Schedule {
                         cron: None,
                         interval: Some(dur),
+                        timezone: None,
                     } => {
                         // Cheap pre-filter: skip the claim attempt when the
                         // in-memory clock says we're clearly mid-interval. The
@@ -651,6 +719,30 @@ impl WorkflowEngine {
                 let trigger_ctx = executor::TriggerContext {
                     channel_id: channel_id.to_string(),
                     timestamp: now.timestamp().to_string(),
+                    webhook_fields: catch_up
+                        .as_ref()
+                        .map(|summary| {
+                            HashMap::from([
+                                ("scheduled_for".to_owned(), summary.last_missed.to_rfc3339()),
+                                (
+                                    "first_missed_occurrence".to_owned(),
+                                    summary.first_missed.to_rfc3339(),
+                                ),
+                                (
+                                    "latest_missed_occurrence".to_owned(),
+                                    summary.last_missed.to_rfc3339(),
+                                ),
+                                (
+                                    "missed_occurrences".to_owned(),
+                                    summary.occurrence_count.to_string(),
+                                ),
+                                (
+                                    "skipped_occurrences".to_owned(),
+                                    summary.occurrence_count.saturating_sub(1).to_string(),
+                                ),
+                            ])
+                        })
+                        .unwrap_or_default(),
                     ..Default::default()
                 };
                 let trigger_ctx_json = match serde_json::to_value(&trigger_ctx) {
@@ -666,11 +758,13 @@ impl WorkflowEngine {
 
                 let run_id = match self
                     .db
-                    .create_workflow_run(
+                    .create_workflow_run_versioned(
                         community_id,
                         workflow.id,
                         None, // no trigger event for cron
                         trigger_ctx_json.as_ref(),
+                        &workflow.definition_hash,
+                        &workflow.definition,
                     )
                     .await
                 {
@@ -747,41 +841,212 @@ impl WorkflowEngine {
             self.last_fired.retain(|key, _| active_ids.contains(key));
         }
     }
+
+    async fn resume_after_agent_reply(
+        self: &Arc<Self>,
+        community_id: CommunityId,
+        run: buzz_db::workflow::WorkflowRunRecord,
+    ) {
+        let workflow = match self.db.get_workflow(community_id, run.workflow_id).await {
+            Ok(workflow) => workflow,
+            Err(error) => {
+                tracing::error!(run_id = %run.id, "Agent reply matched a run but workflow load failed: {error}");
+                self.finalize_run(
+                    community_id,
+                    run.id,
+                    Err((
+                        WorkflowError::from(error),
+                        PartialProgress {
+                            step_index: run.current_step.max(0) as usize,
+                            trace: vec![],
+                        },
+                    )),
+                    Some(run.execution_trace.as_array().cloned().unwrap_or_default()),
+                )
+                .await;
+                return;
+            }
+        };
+        let definition = run
+            .definition_snapshot
+            .clone()
+            .unwrap_or_else(|| workflow.definition.clone());
+        let def: WorkflowDef = match serde_json::from_value(definition) {
+            Ok(def) => def,
+            Err(error) => {
+                self.finalize_run(
+                    community_id,
+                    run.id,
+                    Err((
+                        WorkflowError::InvalidDefinition(error.to_string()),
+                        PartialProgress {
+                            step_index: run.current_step.max(0) as usize,
+                            trace: vec![],
+                        },
+                    )),
+                    Some(run.execution_trace.as_array().cloned().unwrap_or_default()),
+                )
+                .await;
+                return;
+            }
+        };
+        let Some(channel_id) = run.workflow_channel_id.or(workflow.channel_id) else {
+            self.finalize_run(
+                community_id,
+                run.id,
+                Err((
+                    WorkflowError::Unauthorized("workflow no longer has a channel".into()),
+                    PartialProgress {
+                        step_index: run.current_step.max(0) as usize,
+                        trace: vec![],
+                    },
+                )),
+                Some(run.execution_trace.as_array().cloned().unwrap_or_default()),
+            )
+            .await;
+            return;
+        };
+        if let Err(error) = self
+            .check_owner_authority(community_id, channel_id, &workflow.owner_pubkey, &def)
+            .await
+        {
+            self.finalize_run(
+                community_id,
+                run.id,
+                Err((
+                    error,
+                    PartialProgress {
+                        step_index: run.current_step.max(0) as usize,
+                        trace: vec![],
+                    },
+                )),
+                Some(run.execution_trace.as_array().cloned().unwrap_or_default()),
+            )
+            .await;
+            return;
+        }
+
+        let mut initial_outputs = HashMap::new();
+        if let Some(entries) = run.execution_trace.as_array() {
+            for entry in entries {
+                if let (Some(step_id), Some(output)) = (
+                    entry.get("step_id").and_then(serde_json::Value::as_str),
+                    entry.get("output"),
+                ) {
+                    initial_outputs.insert(step_id.to_owned(), output.clone());
+                }
+            }
+        }
+        let trigger_ctx: executor::TriggerContext = run
+            .trigger_context
+            .as_ref()
+            .and_then(|value| serde_json::from_value(value.clone()).ok())
+            .unwrap_or_default();
+        let resume_index = run.current_step.max(0) as usize;
+        let existing_trace = run.execution_trace.as_array().cloned().unwrap_or_default();
+        let engine = Arc::clone(self);
+        tokio::spawn(async move {
+            let result = executor::execute_from_step(
+                &engine,
+                community_id,
+                run.id,
+                &def,
+                &trigger_ctx,
+                resume_index,
+                Some(initial_outputs),
+            )
+            .await;
+            engine
+                .finalize_run(community_id, run.id, result, Some(existing_trace))
+                .await;
+        });
+    }
 }
 
-/// Find the cron schedule instant that fired within the `window_secs`-wide
-/// window ending at `now`, if any.
+fn event_has_workflow_tag(event: &nostr::Event) -> bool {
+    event.tags.iter().any(|tag| {
+        tag.kind().to_string() == "buzz:workflow"
+            && tag.content().is_some_and(|value| value == "true")
+    })
+}
+
+const MAX_CRON_CATCH_UP_OCCURRENCES: usize = 10_000;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CronCatchUp {
+    first_missed: DateTime<Utc>,
+    last_missed: DateTime<Utc>,
+    occurrence_count: usize,
+}
+
+/// Coalesce due calendar occurrences after the durable watermark into one run.
 ///
-/// Uses window-based matching: finds the next scheduled time after
-/// `(now - window_secs)` and returns it when it falls at or before `now`.
-/// This tolerates tick drift gracefully — a 61s tick won't miss a
-/// minute-granularity cron expression. The returned instant is the cron's own
-/// scheduled time (not `now`), so every pod evaluating the same expression in
-/// the same window computes the *same* value — making it a safe, deterministic
-/// claim anchor for cross-pod at-most-once firing.
-///
-/// Returns `None` (and logs a warning) if the expression is invalid or nothing
-/// is due in the window.
-fn cron_fire_instant(
+/// The caller supplies `now`, so downtime and DST behavior can be tested with
+/// a fixed clock. The bounded iterator fails closed for unexpectedly old,
+/// high-frequency schedules rather than consuming unbounded CPU.
+fn cron_catch_up(
     expr: &str,
+    timezone: &str,
+    after: DateTime<Utc>,
     now: DateTime<Utc>,
-    window_secs: i64,
-    workflow_id: Uuid,
-) -> Option<DateTime<Utc>> {
-    let normalized = schema::normalize_cron(expr);
-    match normalized.parse::<cron::Schedule>() {
-        Ok(sched) => {
-            let window_start = now - chrono::Duration::seconds(window_secs);
-            sched.after(&window_start).next().filter(|t| *t <= now)
+    max_occurrences: usize,
+) -> Result<Option<CronCatchUp>, String> {
+    let tz = timezone
+        .parse::<chrono_tz::Tz>()
+        .map_err(|_| format!("invalid IANA timezone '{timezone}'"))?;
+    let schedule = schema::normalize_cron(expr)
+        .parse::<cron::Schedule>()
+        .map_err(|error| format!("invalid cron expression '{expr}': {error}"))?;
+    let cursor = after.with_timezone(&tz);
+    let mut first_missed = None;
+    let mut last_missed = None;
+    let mut occurrence_count = 0usize;
+    for occurrence in schedule
+        .after(&cursor)
+        .take(max_occurrences.saturating_add(1))
+    {
+        let occurrence_utc = occurrence.with_timezone(&Utc);
+        if occurrence_utc > now {
+            break;
         }
-        Err(e) => {
-            tracing::warn!(
-                workflow_id = %workflow_id,
-                "Cron tick: invalid cron expression '{expr}': {e}"
-            );
-            None
+        occurrence_count = occurrence_count.saturating_add(1);
+        if occurrence_count > max_occurrences {
+            return Err(format!(
+                "more than {max_occurrences} due occurrences require a bounded recovery policy"
+            ));
         }
+        first_missed.get_or_insert(occurrence_utc);
+        last_missed = Some(occurrence_utc);
     }
+    Ok(match (first_missed, last_missed) {
+        (Some(first_missed), Some(last_missed)) => Some(CronCatchUp {
+            first_missed,
+            last_missed,
+            occurrence_count,
+        }),
+        _ => None,
+    })
+}
+
+/// Return the next cron occurrence after `after` using the workflow timezone.
+///
+/// The caller provides the clock value so readers and tests share the same
+/// schedule semantics as the background scheduler.
+pub fn next_cron_occurrence(
+    expr: &str,
+    timezone: &str,
+    after: DateTime<Utc>,
+) -> Result<Option<DateTime<Utc>>, String> {
+    let tz = timezone
+        .parse::<chrono_tz::Tz>()
+        .map_err(|_| format!("invalid IANA timezone '{timezone}'"))?;
+    let schedule = schema::normalize_cron(expr)
+        .parse::<cron::Schedule>()
+        .map_err(|error| format!("invalid cron expression '{expr}': {error}"))?;
+    Ok(schedule
+        .after(&after.with_timezone(&tz))
+        .next()
+        .map(|occurrence| occurrence.with_timezone(&Utc)))
 }
 
 /// Quantize `now` to the interval bucket boundary, yielding a deterministic
@@ -905,7 +1170,7 @@ async fn should_fire_workflow(
         TriggerDef::MessagePosted { filter }
         | TriggerDef::ReactionAdded { filter, .. }
         | TriggerDef::DiffPosted { filter } => filter.as_ref(),
-        TriggerDef::Schedule { .. } | TriggerDef::Webhook => None,
+        TriggerDef::Schedule { .. } | TriggerDef::Webhook | TriggerDef::Manual => None,
     };
     if let Some(expr) = filter {
         match executor::evaluate_condition(expr, trigger_ctx, &HashMap::new()).await {
@@ -1041,8 +1306,8 @@ fn trigger_matches_event(trigger: &TriggerDef, kind_u32: u32) -> bool {
         TriggerDef::MessagePosted { .. } => kind_u32 == KIND_STREAM_MESSAGE,
         TriggerDef::ReactionAdded { .. } => kind_u32 == KIND_REACTION,
         TriggerDef::DiffPosted { .. } => kind_u32 == KIND_STREAM_MESSAGE_DIFF,
-        // Schedule and Webhook triggers are not fired by channel events.
-        TriggerDef::Schedule { .. } | TriggerDef::Webhook => false,
+        // Schedule, manual, and webhook triggers are not fired by channel events.
+        TriggerDef::Schedule { .. } | TriggerDef::Webhook | TriggerDef::Manual => false,
     }
 }
 
@@ -1051,96 +1316,114 @@ mod postgres_tests {
     use super::*;
 
     #[test]
-    fn cron_fire_instant_matches_within_window() {
-        // "every minute" cron — should always fire within a 60s window.
-        let now = chrono::DateTime::parse_from_rfc3339("2026-06-15T12:00:30Z")
+    fn cron_catch_up_uses_the_scheduled_anchor_across_tick_drift() {
+        let watermark = DateTime::parse_from_rfc3339("2026-06-15T08:59:00Z")
             .unwrap()
             .with_timezone(&Utc);
-        let wf_id = Uuid::new_v4();
-        // The matched instant is the minute boundary 12:00:00, NOT `now`.
+        let scheduled = DateTime::parse_from_rfc3339("2026-06-15T09:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        for now in ["2026-06-15T09:00:00Z", "2026-06-15T09:00:45Z"] {
+            let now = DateTime::parse_from_rfc3339(now)
+                .unwrap()
+                .with_timezone(&Utc);
+            let summary = cron_catch_up("0 9 * * *", "UTC", watermark, now, 10)
+                .unwrap()
+                .unwrap();
+            assert_eq!(summary.first_missed, scheduled);
+            assert_eq!(summary.last_missed, scheduled);
+            assert_eq!(summary.occurrence_count, 1);
+        }
+    }
+
+    #[test]
+    fn cron_catch_up_returns_none_when_no_occurrence_is_due_after_watermark() {
+        let watermark = DateTime::parse_from_rfc3339("2026-06-15T09:00:01Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let now = DateTime::parse_from_rfc3339("2026-06-15T09:01:01Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert!(cron_catch_up("0 9 * * *", "UTC", watermark, now, 10)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn cron_catch_up_rejects_invalid_expressions() {
+        let watermark = DateTime::parse_from_rfc3339("2026-06-15T08:59:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let now = DateTime::parse_from_rfc3339("2026-06-15T09:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert!(cron_catch_up("not-a-cron", "UTC", watermark, now, 10).is_err());
+    }
+
+    #[test]
+    fn cron_catch_up_coalesces_missed_occurrences_with_an_injected_clock() {
+        let watermark = DateTime::parse_from_rfc3339("2026-09-01T08:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let now = DateTime::parse_from_rfc3339("2026-09-15T09:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let summary = cron_catch_up("0 8 * * 1", "UTC", watermark, now, 100)
+            .unwrap()
+            .unwrap();
+
         assert_eq!(
-            cron_fire_instant("* * * * *", now, 60, wf_id),
-            Some(
-                chrono::DateTime::parse_from_rfc3339("2026-06-15T12:00:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc)
-            ),
-            "every-minute cron should return the minute boundary as the anchor"
+            summary.first_missed.to_rfc3339(),
+            "2026-09-07T08:00:00+00:00"
         );
-    }
-
-    #[test]
-    fn cron_fire_instant_returns_none_for_invalid_expr() {
-        let now = Utc::now();
-        let wf_id = Uuid::new_v4();
-        assert!(
-            cron_fire_instant("not-a-cron", now, 60, wf_id).is_none(),
-            "invalid cron should return None"
-        );
-    }
-
-    #[test]
-    fn cron_fire_instant_returns_none_outside_window() {
-        // Fixed time: 2026-06-15 14:30:00 UTC (a Sunday in June)
-        let now = chrono::DateTime::parse_from_rfc3339("2026-06-15T14:30:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let wf_id = Uuid::new_v4();
-        // "0 0 1 1 *" = midnight on Jan 1 only — June 15 is definitely outside.
-        assert!(
-            cron_fire_instant("0 0 1 1 *", now, 60, wf_id).is_none(),
-            "Jan-1-only cron should not fire on June 15"
-        );
-    }
-
-    #[test]
-    fn cron_fire_instant_at_exact_minute_boundary() {
-        // Fixed time: exactly 09:00:00 UTC. Cron "0 9 * * *" fires at 09:00.
-        // Window [08:59:00, 09:00:00] should contain the fire time.
-        let now = chrono::DateTime::parse_from_rfc3339("2026-06-15T09:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let wf_id = Uuid::new_v4();
         assert_eq!(
-            cron_fire_instant("0 9 * * *", now, 60, wf_id),
-            Some(now),
-            "cron should fire at exact minute boundary, anchored on 09:00:00"
+            summary.last_missed.to_rfc3339(),
+            "2026-09-14T08:00:00+00:00"
         );
+        assert_eq!(summary.occurrence_count, 2);
+        assert_eq!(summary.occurrence_count.saturating_sub(1), 1);
     }
 
     #[test]
-    fn cron_fire_instant_within_drift_window_anchors_on_scheduled_time() {
-        // Fixed time: 09:00:45 UTC (45s drift). Cron "0 9 * * *" fires at 09:00.
-        // Window [08:59:45, 09:00:45] should still contain 09:00:00. Critically,
-        // the anchor is the *scheduled* 09:00:00 — not the drifted `now` — so a
-        // second pod ticking at 09:00:50 computes the identical claim key.
-        let now = chrono::DateTime::parse_from_rfc3339("2026-06-15T09:00:45Z")
+    fn cron_catch_up_uses_the_schedule_timezone() {
+        let watermark = DateTime::parse_from_rfc3339("2026-03-07T00:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
-        let wf_id = Uuid::new_v4();
+        let now = DateTime::parse_from_rfc3339("2026-03-09T07:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let summary = cron_catch_up("0 8 * * *", "Africa/Johannesburg", watermark, now, 100)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(summary.occurrence_count, 2);
         assert_eq!(
-            cron_fire_instant("0 9 * * *", now, 60, wf_id),
-            Some(
-                chrono::DateTime::parse_from_rfc3339("2026-06-15T09:00:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc)
-            ),
-            "cron anchor must be the scheduled instant, stable across pod tick drift"
+            summary.last_missed.to_rfc3339(),
+            "2026-03-09T06:00:00+00:00"
         );
     }
 
     #[test]
-    fn cron_fire_instant_returns_none_just_outside_window() {
-        // Fixed time: 09:01:01 UTC. Cron "0 9 * * *" fires at 09:00:00.
-        // Window [09:00:01, 09:01:01] does NOT contain 09:00:00.
-        let now = chrono::DateTime::parse_from_rfc3339("2026-06-15T09:01:01Z")
+    fn cron_catch_up_is_bounded_and_rejects_bad_timezone() {
+        let watermark = DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
-        let wf_id = Uuid::new_v4();
-        assert!(
-            cron_fire_instant("0 9 * * *", now, 60, wf_id).is_none(),
-            "cron should not fire 61s after the scheduled time"
-        );
+        let now = DateTime::parse_from_rfc3339("2026-01-01T01:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert!(cron_catch_up("* * * * *", "UTC", watermark, now, 10).is_err());
+        assert!(cron_catch_up("0 8 * * *", "not-a-timezone", watermark, now, 100).is_err());
+    }
+
+    #[test]
+    fn next_cron_occurrence_uses_the_schedule_timezone_and_injected_clock() {
+        let after = DateTime::parse_from_rfc3339("2026-09-30T04:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let next = next_cron_occurrence("0 9 * * *", "Africa/Johannesburg", after)
+            .unwrap()
+            .unwrap();
+        assert_eq!(next.to_rfc3339(), "2026-09-30T07:00:00+00:00");
     }
 
     #[test]
@@ -1408,6 +1691,7 @@ steps:
         let trigger = TriggerDef::Schedule {
             cron: Some("0 9 * * 1-5".to_owned()),
             interval: None,
+            timezone: None,
         };
         // Schedule triggers are fired by the cron loop, not by events.
         assert!(!trigger_matches_event(
@@ -1520,6 +1804,7 @@ steps:
         let sched_trigger = TriggerDef::Schedule {
             cron: None,
             interval: Some("1h".to_owned()),
+            timezone: None,
         };
         let webhook_trigger = TriggerDef::Webhook;
 

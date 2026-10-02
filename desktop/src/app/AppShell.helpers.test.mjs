@@ -2,11 +2,81 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  deriveShellRoute,
   markAllReadSources,
   activateDesktopNotificationTarget,
   createDesktopNotificationActivationQueue,
   shouldBounceForChannelNotification,
 } from "./AppShell.helpers.ts";
+
+test("Factory routes select the standalone Factory destination", () => {
+  for (const pathname of [
+    "/factory",
+    "/factory/projects",
+    "/factory/project/portal",
+    "/factory/plans",
+    "/factory/plan/portal-plan",
+    "/factory/review/s-ops",
+    "/factory/sessions",
+    "/factory/states",
+  ]) {
+    assert.deepEqual(deriveShellRoute(pathname), {
+      selectedChannelId: null,
+      selectedView: "factory",
+    });
+  }
+});
+
+test("legacy project routes remain separate from the Factory destination", () => {
+  assert.equal(deriveShellRoute("/projects").selectedView, "projects");
+  assert.equal(
+    deriveShellRoute("/projects/project-id").selectedView,
+    "projects",
+  );
+});
+
+test("company goal routes select the Company Goals destination", () => {
+  for (const pathname of [
+    "/goals",
+    "/goals/new",
+    "/goals/goal-1",
+    "/goals/goal-1/edit",
+    "/goals/goal-1/progress",
+    "/goals/goal-1/archive",
+    "/goals/goal-1/delete",
+    "/goals/goal-1/share",
+    "/goals/goal-1/subgoal",
+    "/goals/reference",
+  ]) {
+    assert.deepEqual(deriveShellRoute(pathname), {
+      selectedChannelId: null,
+      selectedView: "goals",
+    });
+  }
+});
+
+test("company team routes select the Company Team destination", () => {
+  for (const pathname of [
+    "/team",
+    "/team/org",
+    "/team/detail/abc",
+    "/team/edit/abc",
+    "/team/pause/abc",
+    "/team/archive/abc",
+  ]) {
+    assert.deepEqual(deriveShellRoute(pathname), {
+      selectedChannelId: null,
+      selectedView: "team",
+    });
+  }
+});
+
+test("deriveShellRoute identifies the designed channel pins page", () => {
+  assert.deepEqual(deriveShellRoute("/channels/pins/channel-id"), {
+    selectedChannelId: null,
+    selectedView: "pins",
+  });
+});
 
 test("shouldBounceForChannelNotification_allowsTopLevelChannelMessages", () => {
   assert.equal(shouldBounceForChannelNotification([["h", "channel"]]), true);

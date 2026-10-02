@@ -1,54 +1,222 @@
 import 'dart:async';
 
 import 'package:app_badge_plus/app_badge_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:intl/intl.dart';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import 'features/age_gate/age_restriction_page.dart';
 import 'features/age_gate/age_signal_provider.dart';
+import 'features/activity/activity_page.dart';
+import 'features/activity/activity_home_page.dart';
 import 'features/activity/activity_provider.dart';
+import 'features/activity/feed_item.dart';
 import 'features/activity/inbox_local_state_provider.dart';
 import 'features/activity/inbox_read_state.dart';
+import 'features/activity/compose_drafts_provider.dart';
+import 'features/auth/account_claim_prompt.dart';
+import 'features/auth/account_claim_status_provider.dart';
+import 'features/auth/auth_entry_page.dart';
+import 'features/auth/request_password_reset_page.dart';
 import 'features/channels/channel.dart';
 import 'features/channels/channel_management_provider.dart';
+import 'features/channels/channels_page.dart';
 import 'features/channels/channels_provider.dart';
 import 'features/channels/unread_badge/unread_badge_provider.dart';
 import 'features/home/home_page.dart';
-import 'features/invites/invite_create_page.dart';
+import 'features/home/company_hub_page.dart';
+import 'features/company/team_page.dart';
+import 'features/goals/goal_detail_page.dart';
+import 'features/goals/goal_lifecycle_pages.dart';
+import 'features/goals/goals_page.dart';
+import 'features/today/today_models.dart';
+import 'features/today/today_page.dart';
 import 'features/invites/invite_join_provider.dart';
+import 'features/invites/invite_create_page.dart';
 import 'features/pairing/pairing_page.dart';
 import 'features/pairing/pairing_provider.dart';
+import 'features/pulse/team_update_compose_page.dart';
+import 'features/pulse/team_update_note_page.dart';
+import 'features/pulse/pulse_actions.dart';
+import 'features/pulse/pulse_provider.dart';
+import 'features/pulse/team_updates_page.dart';
+import 'features/search/search_page.dart';
 import 'features/channels/agent_activity/observer_subscription.dart';
 import 'features/channels/channel_detail_page.dart';
+import 'features/channels/deliverable_approval_page.dart';
+import 'features/channels/deliverable_review_provider.dart';
 import 'features/channels/deep_link_dispatcher.dart';
+import 'features/channels/compose_bar.dart';
+import 'features/channels/message_content.dart';
+import 'features/channels/channel_forum_route.dart';
+import 'features/credits/credits_pages.dart';
+import 'features/forum/forum_new_post_page.dart';
+import 'features/forum/forum_posts_view.dart';
+import 'features/forum/forum_presentation.dart';
 import 'features/channels/voice_note_recording.dart';
+import 'features/business/discovery_workspace_page.dart';
+import 'features/business/business_workspace_page.dart';
+import 'features/business/money_workspace_page.dart';
+import 'features/workflows/workflow_detail_route.dart';
+import 'features/workflows/workflow_mobile_pages.dart';
+import 'features/profile/user_profile_sheet.dart';
+import 'features/profile/profile_provider.dart';
 import 'features/profile/user_status_cache_provider.dart';
-import 'features/profile/settings_profile_header.dart';
-import 'features/profile/profile_edit_page.dart';
-import 'features/profile/profile_text_editor.dart';
-import 'features/settings/settings_page.dart';
+import 'features/profile/profile_avatar_page.dart';
+import 'features/profile/profile_image_page.dart';
+import 'features/profile/profile_avatar_crop_route_page.dart';
+import 'features/profile/profile_avatar_emoji_page.dart';
+import 'features/profile/profile_avatar_capture_page.dart';
+import 'features/profile/profile_avatar_review_page.dart';
+import 'features/profile/profile_avatar_state_page.dart';
+import 'features/profile/profile_status_emoji_page.dart';
+import 'features/profile/profile_status_page.dart';
+import 'features/profile/profile_status_saved_page.dart';
+import 'features/profile/user_status_provider.dart';
+import 'features/settings/appearance_display_preference.dart';
+import 'features/settings/appearance_settings_pages.dart';
+import 'features/settings/personal_settings_home_page.dart';
+import 'features/settings/profile_settings_page.dart';
+import 'features/settings/settings_devices_page.dart';
+import 'features/settings/settings_device_page.dart';
+import 'features/settings/settings_feedback_page.dart';
+import 'features/settings/settings_feedback_failed_page.dart';
+import 'features/settings/settings_feedback_sent_page.dart';
+import 'features/settings/settings_export_page.dart';
+import 'features/settings/settings_export_failed_page.dart';
+import 'features/settings/settings_notifications_page.dart';
+import 'features/settings/settings_privacy_page.dart';
+import 'features/settings/settings_clear_cache_page.dart';
+import 'features/settings/settings_save_failed_page.dart';
 import 'shared/auth/auth.dart';
+import 'shared/business/mobile_business_entry_points.dart';
+import 'shared/business/mobile_business_records.dart';
+import 'shared/company/goals/goal_records.dart';
+import 'shared/company/goals/goal_repository.dart';
 import 'shared/deeplink/pending_deep_link_provider.dart';
 import 'shared/emoji/emoji_burst.dart';
+import 'shared/navigation/mobile_route.dart';
+import 'shared/navigation/mobile_navigation.dart';
+import 'shared/navigation/mobile_routes.dart';
 import 'shared/push/push_subscription_provider.dart';
 import 'shared/push/push_relay_capability_provider.dart';
 import 'shared/relay/relay.dart';
+import 'shared/profile/user_cache_provider.dart';
+import 'shared/utils/string_utils.dart';
 import 'shared/read_state/read_state_provider.dart';
 import 'shared/theme/theme.dart';
+import 'shared/shell/mobile_shell.dart';
 import 'shared/widgets/buzz_loading_indicator.dart';
 
-const _starterChannelNamespace = '3ce33bea-8f09-5f1b-9c85-8a7d2659e6b0';
+part 'app/mobile_route_registry.dart';
 
-const _starterChannels = [
-  (slug: 'general', description: 'General conversation and community updates.'),
-  (
-    slug: 'welcome-everyone',
-    description: 'Say hi, ask a question, or share what brought you here.',
+final _currentDeviceName = switch (defaultTargetPlatform) {
+  TargetPlatform.iOS => 'This iPhone',
+  TargetPlatform.android => 'This phone',
+  _ => 'This device',
+};
+
+ForumPresentationFactories _forumPresentation() => ForumPresentationFactories(
+  composeBarBuilder:
+      ({
+        required channelId,
+        required channelName,
+        required hintText,
+        required onSend,
+        draftKeyOverride,
+        postEditorMode = false,
+        allowEmptySend = false,
+        enabled = true,
+        submitController,
+        onBodyChanged,
+        onAttachmentCountChanged,
+        onSubmissionChanged,
+        onFailure,
+      }) => ComposeBar(
+        channelId: channelId,
+        channelName: channelName,
+        hintText: hintText,
+        onSend: onSend,
+        draftKeyOverride: draftKeyOverride,
+        postEditorMode: postEditorMode,
+        allowEmptySend: allowEmptySend,
+        enabled: enabled,
+        submitController: submitController,
+        onBodyChanged: onBodyChanged,
+        onAttachmentCountChanged: onAttachmentCountChanged,
+        onSubmissionChanged: onSubmissionChanged,
+        onFailure: onFailure,
+      ),
+  messageContentBuilder: (context, content) => MessageContent(
+    content: content.content,
+    mentionNames: content.mentionNames,
+    agentMentionPubkeys: content.agentMentionPubkeys,
+    tags: content.tags,
+    baseStyle: content.baseStyle,
+    maxLines: content.maxLines,
+    onMentionTap: content.onMentionTap,
   ),
-];
+  openProfile: showUserProfileSheet,
+  currentUserName: (ref) => ref.watch(profileProvider).value?.displayName,
+  openQuickActions: (ref) => ChannelQuickActionsLauncher.openFromHome(ref),
+);
+
+/// Builds the production page for a team update note route.
+Widget buildTeamUpdateNoteRoute(String noteId) =>
+    TeamUpdateNotePage(noteId: noteId, onReviewCampaign: null);
+
+TodayReviewItem _todayReviewItem(WidgetRef ref, FeedItem item) {
+  final author = ref.watch(
+    userCacheProvider.select((cache) => cache[item.pubkey.toLowerCase()]),
+  );
+  if (author == null) ref.read(userCacheProvider.notifier).get(item.pubkey);
+  return TodayReviewItem(
+    id: item.id,
+    requesterName: _firstName(author?.displayName) ?? shortPubkey(item.pubkey),
+    title: item.displayContent,
+    subtitle: item.channelName.isEmpty
+        ? '${_firstName(author?.displayName) ?? shortPubkey(item.pubkey)} requested your review'
+        : '${item.channelName} · ${_firstName(author?.displayName) ?? shortPubkey(item.pubkey)} requested your review',
+    initials: author?.initials ?? _pubkeyInitial(item.pubkey),
+    requesterIsAgent: author?.isAgent ?? false,
+  );
+}
+
+TodayProgressItem _todayProgressItem(WidgetRef ref, FeedItem item) {
+  final author = ref.watch(
+    userCacheProvider.select((cache) => cache[item.pubkey.toLowerCase()]),
+  );
+  if (author == null) ref.read(userCacheProvider.notifier).get(item.pubkey);
+  final authorName =
+      _firstName(author?.displayName) ?? shortPubkey(item.pubkey);
+  return TodayProgressItem(
+    id: item.id,
+    title: item.kind == 43004 ? 'Research completed' : item.headline,
+    subtitle: '$authorName · ${item.displayContent}',
+    initials: author?.initials ?? _pubkeyInitial(item.pubkey),
+    isAgent: author?.isAgent ?? item.category == 'agent_activity',
+  );
+}
+
+String _pubkeyInitial(String pubkey) =>
+    pubkey.isNotEmpty ? pubkey[0].toUpperCase() : '?';
+
+String? _firstName(String? name) {
+  final normalized = name?.trim();
+  if (normalized == null || normalized.isEmpty) return null;
+  return normalized.split(RegExp(r'\s+')).first;
+}
+
+Widget _teamUpdateComposer(TeamUpdateComposeMode mode) => Consumer(
+  builder: (context, ref, _) => TeamUpdateComposePage(
+    mode: mode,
+    onPublish: (content) => publishNote(ref, content: content),
+  ),
+);
 
 final _inviteRelayConnectedProvider = FutureProvider.family<void, String>((
   ref,
@@ -304,6 +472,14 @@ class App extends HookConsumerWidget {
     final communityTheme = ageSignalState != AgeSignalState.restricted
         ? ref.watch(communityThemeProvider)
         : defaultCommunityTheme;
+    final displayPreference = ref.watch(appearanceDisplayPreferenceProvider);
+    final baseVisualDensity = displayPreference.density.visualDensity;
+    final effectiveVisualDensity = VisualDensity(
+      horizontal: baseVisualDensity.horizontal,
+      vertical:
+          baseVisualDensity.vertical +
+          (displayPreference.largerTapTargets ? 1 : 0),
+    );
     final themeMode = communityTheme.mode;
     final accentIndex = effectiveAccentIndex(
       communityTheme.theme,
@@ -390,36 +566,77 @@ class App extends HookConsumerWidget {
       theme: AppTheme.light(
         colorScheme: lightScheme,
         topSectionGradient: buzzLightGradient,
-      ),
+        mobileTokens: isBuzzTheme(schemeName)
+            ? MobileDesignTokens.light
+            : MobileDesignTokens.fromColorScheme(lightScheme),
+      ).copyWith(visualDensity: effectiveVisualDensity),
       darkTheme: AppTheme.dark(
         colorScheme: darkScheme,
         topSectionGradient: buzzDarkGradient,
-      ),
+        mobileTokens: isBuzzTheme(schemeName)
+            ? MobileDesignTokens.dark
+            : MobileDesignTokens.fromColorScheme(darkScheme),
+      ).copyWith(visualDensity: effectiveVisualDensity),
       themeMode: effectiveMode,
       // Above the navigator, so an age restriction cannot be bypassed by a
       // route that was pushed while the store signal request was in flight.
-      builder: (context, child) => switch (ageSignalState) {
-        AgeSignalState.restricted => const AgeRestrictionPage(),
-        _ => AppMarkdownTheme(
-          child: MobileHuddleShell(
-            navigatorKey: _mobileRootNavigatorKey,
-            child: EmojiBurstOverlay(child: child ?? const SizedBox.shrink()),
+      builder: (context, child) {
+        final appContent = switch (ageSignalState) {
+          AgeSignalState.restricted => const AgeRestrictionPage(),
+          _ => AppMarkdownTheme(
+            child: MobileHuddleShell(
+              navigatorKey: _mobileRootNavigatorKey,
+              child: EmojiBurstOverlay(child: child ?? const SizedBox.shrink()),
+            ),
           ),
-        ),
+        };
+        final mediaQuery = MediaQuery.of(context);
+        return MediaQuery(
+          data: mediaQuery.copyWith(
+            disableAnimations:
+                mediaQuery.disableAnimations || displayPreference.reduceMotion,
+            textScaler: applyAppearanceTextSize(
+              mediaQuery.textScaler,
+              displayPreference.textSize,
+            ),
+          ),
+          child: appContent,
+        );
       },
       home: authState.when(
         loading: () => const _SplashScreen(),
-        error: (_, _) => const PairingPage(),
+        error: (_, _) => AuthEntryPage(
+          advancedIdentityPageBuilder: (_) => const PairingPage(),
+        ),
         data: (state) => switch (state.status) {
           AuthStatus.authenticated => DeepLinkDispatcher(
             child: HomePage(
+              routeRegistry: _mobileRouteRegistry,
               settingsPageBuilder: _buildSettingsPage,
               hasUnreadInbox: hasUnreadInbox,
+              accountClaimPrompt: const AccountClaimPrompt(),
+              overlayBuilder: (context, shellContext) =>
+                  ChannelQuickActionsLauncher(
+                    visible:
+                        shellContext.destination ==
+                            MobileShellDestination.chat ||
+                        shellContext.destination ==
+                            MobileShellDestination.company,
+                    navigationBarHeight: shellContext.navigationBarHeight,
+                    navigationBarBottomGap:
+                        shellContext.navigationBarHeight + Grid.half,
+                    navigationBarWidth: shellContext.navigationBarWidth,
+                    systemBottomInset: shellContext.bottomInset,
+                    rightInset: Grid.xs,
+                    routeRegistry: _mobileRouteRegistry,
+                  ),
             ),
           ),
-          _ => const DeepLinkDispatcher(
+          _ => DeepLinkDispatcher(
             dispatchMessageLinks: false,
-            child: PairingPage(),
+            child: AuthEntryPage(
+              advancedIdentityPageBuilder: (_) => const PairingPage(),
+            ),
           ),
         },
       ),
@@ -427,24 +644,46 @@ class App extends HookConsumerWidget {
   }
 }
 
-Widget _buildSettingsPage(BuildContext context) => const _SettingsPageContent();
+Widget _buildSettingsPage(BuildContext context) => _SettingsPageContent(
+  onOpenBusiness: () => Navigator.of(context).maybePop(),
+  onOpenAgents: () => Navigator.of(context).maybePop(),
+);
 
 class _SettingsPageContent extends ConsumerWidget {
-  const _SettingsPageContent();
+  const _SettingsPageContent({
+    required this.onOpenBusiness,
+    required this.onOpenAgents,
+  });
+
+  final VoidCallback onOpenBusiness;
+  final VoidCallback onOpenAgents;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return SettingsPage(
-      profileHeader: const SettingsProfileHeader(),
-      profileEditPageBuilder: (_) =>
-          const ProfileEditPage(startInPhotoEditor: true),
-      onEditDisplayName: showProfileDisplayNameEditor,
-      onEditProfileDescription: showProfileDescriptionEditor,
-      invitePageBuilder: (_) => const CommunityInvitePage(),
-      identityRecoveryPageBuilder: (_) =>
-          const PairingPage(addingCommunity: true, identityRecoveryOnly: true),
-    );
-  }
+  Widget build(BuildContext context, WidgetRef ref) =>
+      _personalSettingsHomePage(
+        ref,
+        onOpenBusiness: onOpenBusiness,
+        onOpenAgents: onOpenAgents,
+      );
+}
+
+Widget _personalSettingsHomePage(
+  WidgetRef ref, {
+  VoidCallback? onOpenBusiness,
+  VoidCallback? onOpenAgents,
+}) {
+  final profile = ref.watch(profileProvider).asData?.value;
+  final account = ref.watch(accountProfileProvider).asData?.value;
+  final communityName = ref.watch(activeCommunityProvider).asData?.value?.name;
+  final profileName = profile?.displayName?.trim() ?? '';
+  return PersonalSettingsHomePage(
+    displayName: profileName.isEmpty ? 'Your profile' : profileName,
+    email: account?.email,
+    avatarUrl: profile?.avatarUrl,
+    communityName: communityName ?? '',
+    onOpenBusiness: onOpenBusiness,
+    onOpenAgents: onOpenAgents,
+  );
 }
 
 class _SplashScreen extends StatelessWidget {

@@ -5,6 +5,8 @@ import {
   extractSupportedLinkPreviews,
   isSupportedLinkAutolinkLabel,
   parseSupportedLinkPreview,
+  stripRenderedPreviewPlaceholderLinks,
+  stripPreview,
 } from "./linkPreview.ts";
 
 test("parseSupportedLinkPreview parses GitHub pull request URLs", () => {
@@ -231,6 +233,7 @@ test("parseSupportedLinkPreview rejects malformed buzz:// entity links", () => {
     `buzz://issue?id=${BUZZ_EVENT_ID}&owner=nope&d=buzz-world`,
     `buzz://repo?owner=${BUZZ_OWNER}&d=.hidden`,
     `buzz://project?owner=${BUZZ_OWNER}&d=.hidden`,
+    "buzz://goal/123e4567-e89b-12d3-a456-426614174000",
   ]) {
     assert.equal(parseSupportedLinkPreview(href), null, href);
   }
@@ -242,6 +245,7 @@ test("extractSupportedLinkPreviews excludes Buzz entity links while keeping exte
     `buzz://repo?owner=${BUZZ_OWNER}&d=buzz-world`,
     `buzz://issue?id=${BUZZ_EVENT_ID}&owner=${BUZZ_OWNER}&d=buzz-world`,
     `buzz://pr?id=${BUZZ_EVENT_ID}&owner=${BUZZ_OWNER}&d=buzz-world`,
+    "buzz://goal/123e4567-e89b-12d3-a456-426614174000",
   ];
 
   assert.deepEqual(
@@ -522,4 +526,38 @@ test("extractSupportedLinkPreviews finds generic links and preserves exclusions"
       { kind: "generic-link", title: "the details" },
     ],
   );
+});
+
+test("stripRenderedPreviewPlaceholderLinks removes only a rendered zero-width link", () => {
+  const href = "https://example.com/independent-brands";
+  const content = `Review the prospects.\n\n[\u200b](${href})\n[more details](${href})`;
+
+  assert.equal(
+    stripRenderedPreviewPlaceholderLinks(content, new Set([href])),
+    `Review the prospects.\n\n[more details](${href})`,
+  );
+});
+
+test("stripRenderedPreviewPlaceholderLinks preserves unresolved placeholders", () => {
+  const href = "https://example.com/independent-brands";
+  const content = `[\u200b](${href})`;
+
+  assert.equal(
+    stripRenderedPreviewPlaceholderLinks(content, new Set()),
+    content,
+  );
+  assert.equal(
+    stripRenderedPreviewPlaceholderLinks(
+      content,
+      new Set(["https://other.example"]),
+    ),
+    content,
+  );
+});
+
+test("stripPreview uses previews loaded for markdown", () => {
+  const href = "https://example.com/independent-brands";
+  const content = `[\u200b](${href})`;
+
+  assert.equal(stripPreview(content, [{ href }]), "");
 });

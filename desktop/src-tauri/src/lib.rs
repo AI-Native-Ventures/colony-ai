@@ -8,8 +8,10 @@ mod channel_head_cache;
 mod commands;
 mod deep_link;
 mod egress_guard;
+mod electron_host;
 mod event_sync;
 mod events;
+pub(crate) mod factory_runtime;
 mod huddle;
 mod identity_storage;
 mod initial_window;
@@ -120,8 +122,13 @@ pub fn run() {
             eprintln!("buzz-mesh: failed to build big-stack tokio runtime, using default: {error}");
         }
     }
-    let builder = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+    let builder = tauri::Builder::default();
+    // The Electron parent owns single-instance coordination; the stdio child
+    // must never forward to another helper and exit before its handshake.
+    let builder = if electron_host::enabled() {
+        builder
+    } else {
+        builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // Focus the existing window when a duplicate instance launches.
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.set_focus();
@@ -133,20 +140,27 @@ pub fn run() {
                 }
             }
         }))
+    };
+    let builder = electron_host::configure(builder)
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_opener::init())
-        .plugin(
+        .plugin(tauri_plugin_opener::init());
+    let builder = if electron_host::enabled() {
+        builder
+    } else {
+        builder.plugin(
             tauri_plugin_window_state::Builder::default()
                 // Visibility is excluded: the native reveal plugin below
                 // shows the window after saved geometry has been restored.
                 .with_state_flags(StateFlags::all() & !StateFlags::VISIBLE)
                 .build(),
         )
+    };
+    let builder = builder
         .plugin(
             tauri::plugin::Builder::<_, ()>::new("initial-window-reveal")
                 .on_webview_ready(|webview| {
-                    if webview.label() != "main" {
+                    if webview.label() != "main" || electron_host::enabled() {
                         return;
                     }
                     // Linux/WebKitGTK needs media-stream settings and a
@@ -230,12 +244,14 @@ pub fn run() {
         .manage(BuilderlabLogin::default())
         .manage(commands::pairing::PairingHandle::new())
         .manage(terminal_runtime::TerminalSessions::default())
+        .manage(factory_runtime::FactoryRuntime::default())
         .manage(archive::sync::ArchiveSyncState::default())
         .manage(native_relay_client::NativeRelayClient::default())
         .manage(observed_unread::ObservedUnreadStore::default())
         .manage(channel_head_cache::ChannelHeadCacheStore::default())
         .setup(move |app| {
             let app_handle = app.handle().clone();
+            electron_host::start(&app_handle)?;
             #[cfg(target_os = "macos")]
             {
                 tray_menu::init(&app_handle)?;
@@ -530,6 +546,15 @@ pub fn run() {
             terminal_runtime::terminal_ack,
             terminal_runtime::terminal_viewport_ready,
             terminal_runtime::terminal_focus,
+            factory_runtime::factory_run_create,
+            factory_runtime::factory_run_list,
+            factory_runtime::factory_run_snapshot,
+            factory_runtime::factory_run_reattach,
+            factory_runtime::factory_run_detach,
+            factory_runtime::factory_run_cancel,
+            factory_runtime::factory_run_set_draft,
+            factory_runtime::factory_run_get_draft,
+            factory_runtime::factory_run_delete,
             take_pending_community_deep_link,
             acknowledge_pending_community_deep_link,
             take_pending_navigation_deep_link,
@@ -537,6 +562,8 @@ pub fn run() {
             clear_pending_navigation_deep_links,
             take_pending_entity_deep_link,
             acknowledge_pending_entity_deep_link,
+            #[cfg(feature = "electron-host")]
+            electron_host::deep_links::handle_electron_deep_link,
             start_builderlab_login,
             cancel_builderlab_login,
             get_builderlab_auth,
@@ -553,12 +580,15 @@ pub fn run() {
             title_bar_double_click,
             get_identity,
             get_nsec,
+            google_desktop_sign_in,
             generate_backup_passphrase,
             create_ncryptsec_backup,
             verify_ncryptsec_backup,
             save_ncryptsec_copy,
             import_identity,
             persist_current_identity,
+            store_company_secret,
+            delete_company_secret,
             get_profile,
             update_profile,
             update_profile_at_relay,
@@ -726,6 +756,7 @@ pub fn run() {
             mesh_stop_node,
             mesh_node_status,
             mesh_serving_usage,
+            mesh_connected_hosts,
             mesh_installed_models,
             mesh_model_catalog,
             update_managed_agent,
@@ -775,7 +806,12 @@ pub fn run() {
             get_channel_workflows,
             get_channels_workflows,
             get_workflow,
+            get_workflow_draft,
             create_workflow,
+            save_workflow_draft,
+            publish_workflow_draft,
+            set_workflow_status,
+            preview_workflow,
             update_workflow,
             delete_workflow,
             get_workflow_runs,
@@ -873,7 +909,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             tray_menu::update_tray_agent_activity,
         ])
-        .build(tauri::generate_context!())
+        .build(electron_host::context(tauri::generate_context!()))
         .expect("error while building tauri application");
     let shutdown_done = Arc::new(AtomicBool::new(false));
 
@@ -891,6 +927,10 @@ pub fn run() {
             event: WindowEvent::CloseRequested { api, .. },
             ..
         } if label == "main" => {
+            if electron_host::enabled() {
+                api.prevent_close();
+                return;
+            }
             // Keep the webview alive so Buzz can be reopened from its tray menu.
             api.prevent_close();
             if let Some(window) = app_handle.get_webview_window("main") {

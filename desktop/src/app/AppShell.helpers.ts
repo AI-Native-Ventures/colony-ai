@@ -3,13 +3,21 @@ import type { DesktopNotificationTarget } from "@/features/notifications/lib/des
 import type { SearchHit } from "@/shared/api/types";
 
 export type AppView =
+  | "today"
   | "home"
   | "channel"
   | "messages"
   | "agents"
   | "workflows"
+  | "clients"
+  | "work"
   | "pulse"
-  | "projects";
+  | "projects"
+  | "business"
+  | "factory"
+  | "team"
+  | "goals"
+  | "pins";
 
 const WINDOW_DRAG_HANDLE_HEIGHT = 44;
 const TAURI_DRAG_REGION_ATTR = "data-tauri-drag-region";
@@ -218,6 +226,13 @@ export function deriveShellRoute(pathname: string): {
   selectedChannelId: string | null;
   selectedView: AppView;
 } {
+  if (pathname.startsWith("/channels/pins/")) {
+    return {
+      selectedChannelId: null,
+      selectedView: "pins",
+    };
+  }
+
   if (pathname.startsWith("/channels/")) {
     const [, , rawChannelId] = pathname.split("/");
     return {
@@ -233,10 +248,40 @@ export function deriveShellRoute(pathname: string): {
     };
   }
 
+  if (
+    pathname === "/discovery" ||
+    pathname === "/leads" ||
+    pathname === "/pipeline" ||
+    pathname.startsWith("/sales/")
+  ) {
+    return {
+      selectedChannelId: null,
+      selectedView: "business",
+    };
+  }
+
   if (pathname === "/agents") {
     return {
       selectedChannelId: null,
       selectedView: "agents",
+    };
+  }
+
+  if (pathname === "/supervision" || pathname === "/power") {
+    return {
+      selectedChannelId: null,
+      selectedView: "agents",
+    };
+  }
+
+  if (
+    pathname === "/today" ||
+    pathname.startsWith("/today/") ||
+    pathname.startsWith("/navigation/")
+  ) {
+    return {
+      selectedChannelId: null,
+      selectedView: "today",
     };
   }
 
@@ -247,6 +292,34 @@ export function deriveShellRoute(pathname: string): {
     };
   }
 
+  if (pathname === "/goals" || pathname.startsWith("/goals/")) {
+    return {
+      selectedChannelId: null,
+      selectedView: "goals",
+    };
+  }
+
+  if (pathname === "/team" || pathname.startsWith("/team/")) {
+    return {
+      selectedChannelId: null,
+      selectedView: "team",
+    };
+  }
+
+  if (pathname === "/clients" || pathname.startsWith("/clients/")) {
+    return {
+      selectedChannelId: null,
+      selectedView: "clients",
+    };
+  }
+
+  if (pathname === "/work" || pathname.startsWith("/work/")) {
+    return {
+      selectedChannelId: null,
+      selectedView: "work",
+    };
+  }
+
   if (pathname === "/projects" || pathname.startsWith("/projects/")) {
     return {
       selectedChannelId: null,
@@ -254,10 +327,17 @@ export function deriveShellRoute(pathname: string): {
     };
   }
 
+  if (pathname === "/factory" || pathname.startsWith("/factory/")) {
+    return {
+      selectedChannelId: null,
+      selectedView: "factory",
+    };
+  }
+
   if (pathname === "/pulse") {
     return {
       selectedChannelId: null,
-      selectedView: "pulse",
+      selectedView: "today",
     };
   }
 

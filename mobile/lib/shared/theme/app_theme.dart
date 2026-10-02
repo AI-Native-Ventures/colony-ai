@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'app_colors.dart';
 import 'color_scheme.dart';
 import 'grid.dart';
+import 'mobile_design_tokens.dart';
+import 'mobile_typography_tokens.dart';
 import 'text_theme.dart';
 
 /// Border radius constants matching desktop shadcn "New York" style.
@@ -17,8 +19,17 @@ class Radii {
   static const double sm = 6.0;
 
   /// Shared strong radius for grouped rows, fields, and utility containers.
-  static const double container = 22.0;
+  static const double container = 20.0;
   static const double card = container; // Backwards-compatible card alias.
+  static const double companyCard = 18.0;
+  static const double tag = 7.0;
+  static const double companyPinned = 13.0;
+  static const double compactCard = 15.0;
+  static const double field = 12.0;
+  static const double button = 14.0;
+  static const double tapTarget = 12.0;
+  static const double sheet = 27.0;
+  static const double phone = 36.0;
   static const double popover = 20.0;
   static const double dialog = 24.0; // desktop uses rounded-3xl for dialogs
 
@@ -26,10 +37,106 @@ class Radii {
   static const double full = 999.0;
 }
 
+/// Shared motion timing used by mobile navigation and screen transitions.
+abstract final class MotionTokens {
+  /// Duration of the selected destination indicator transition.
+  static const tabSelection = Duration(milliseconds: 180);
+}
+
+const _pageTransitionBuilders = <TargetPlatform, PageTransitionsBuilder>{
+  TargetPlatform.android: _ReducedMotionPageTransitionsBuilder(
+    PredictiveBackPageTransitionsBuilder(),
+  ),
+  TargetPlatform.iOS: _ReducedMotionPageTransitionsBuilder(
+    CupertinoPageTransitionsBuilder(),
+  ),
+  TargetPlatform.macOS: _ReducedMotionPageTransitionsBuilder(
+    CupertinoPageTransitionsBuilder(),
+  ),
+  TargetPlatform.windows: _ReducedMotionPageTransitionsBuilder(
+    ZoomPageTransitionsBuilder(),
+  ),
+  TargetPlatform.linux: _ReducedMotionPageTransitionsBuilder(
+    ZoomPageTransitionsBuilder(),
+  ),
+  TargetPlatform.fuchsia: _ReducedMotionPageTransitionsBuilder(
+    ZoomPageTransitionsBuilder(),
+  ),
+};
+
+class _ReducedMotionPageTransitionsBuilder extends PageTransitionsBuilder {
+  const _ReducedMotionPageTransitionsBuilder(this.delegate);
+
+  final PageTransitionsBuilder delegate;
+
+  @override
+  DelegatedTransitionBuilder? get delegatedTransition =>
+      delegate.delegatedTransition;
+
+  @override
+  Duration get transitionDuration => delegate.transitionDuration;
+
+  @override
+  Duration get reverseTransitionDuration => delegate.reverseTransitionDuration;
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    if (MediaQuery.disableAnimationsOf(context)) return child;
+    return delegate.buildTransitions(
+      route,
+      context,
+      animation,
+      secondaryAnimation,
+      child,
+    );
+  }
+}
+
 class AppTheme {
+  static const _companyWashGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0x1AD7B8E4), Color(0x1AEFCBB5)],
+  );
+  static const _companyWashGradientDark = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0x33D7B8E4), Color(0x33EFCBB5)],
+  );
+  static const _channelInfoHeroGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFE3D3F0), Color(0xFFF4DFD6)],
+  );
+  static const _channelInfoHeroForeground = Color(0xFF684674);
+  static const _conversationUnreadBadgeBackground = Color(0xFF805C99);
+  static const _conversationUnreadBadgeForeground = Color(0xFFFFFFFF);
+  static const _personAvatarGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFFFE4D5), Color(0xFFECC0A9)],
+  );
+  static const _sageAvatarGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFD8E9DF), Color(0xFFA9CEC1)],
+  );
+  static const _agentAvatarGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFE8D4F2), Color(0xFFBEA8DB)],
+  );
+
   static ThemeData light({
     ColorScheme? colorScheme,
     Gradient? topSectionGradient,
+    MobileDesignTokens? mobileTokens,
   }) {
     final scheme = colorScheme ?? lightColorScheme;
     final appColors = AppColors(
@@ -39,6 +146,21 @@ class AppTheme {
       huddleDrawerSurface: const Color(0xFF000000),
       huddleControlSurface: const Color(0xFF333333),
       onHuddleDrawer: const Color(0xFFFAFAFA),
+      plum: const Color(0xFF4E2F63),
+      lilac: const Color(0xFFC9B4E3),
+      apricot: const Color(0xFFF7C5A9),
+      identityPersonForeground: const Color(0xFF8C5549),
+      identitySageForeground: const Color(0xFF315F53),
+      identityAgentForeground: const Color(0xFF583775),
+      identityPresence: const Color(0xFF64A28A),
+      companyWashGradient: _companyWashGradient,
+      channelInfoHeroGradient: _channelInfoHeroGradient,
+      channelInfoHeroForeground: _channelInfoHeroForeground,
+      conversationUnreadBadgeBackground: _conversationUnreadBadgeBackground,
+      conversationUnreadBadgeForeground: _conversationUnreadBadgeForeground,
+      personAvatarGradient: _personAvatarGradient,
+      sageAvatarGradient: _sageAvatarGradient,
+      agentAvatarGradient: _agentAvatarGradient,
       topSectionGradient: topSectionGradient,
     );
 
@@ -48,12 +170,18 @@ class AppTheme {
       brightness: Brightness.light,
       statusBarIconBrightness: Brightness.dark,
       statusBarBrightness: Brightness.light,
+      mobileTokens:
+          mobileTokens ??
+          (colorScheme == null
+              ? MobileDesignTokens.light
+              : MobileDesignTokens.fromColorScheme(scheme)),
     );
   }
 
   static ThemeData dark({
     ColorScheme? colorScheme,
     Gradient? topSectionGradient,
+    MobileDesignTokens? mobileTokens,
   }) {
     final scheme = colorScheme ?? darkColorScheme;
     final appColors = AppColors(
@@ -68,6 +196,21 @@ class AppTheme {
         scheme.primaryContainer,
       ),
       onHuddleDrawer: scheme.onPrimaryContainer,
+      plum: const Color(0xFFD1ABEA),
+      lilac: const Color(0xFFC9B4E3),
+      apricot: const Color(0xFFF7C5A9),
+      identityPersonForeground: const Color(0xFF8C5549),
+      identitySageForeground: const Color(0xFF315F53),
+      identityAgentForeground: const Color(0xFF583775),
+      identityPresence: const Color(0xFF64A28A),
+      companyWashGradient: _companyWashGradientDark,
+      channelInfoHeroGradient: _channelInfoHeroGradient,
+      channelInfoHeroForeground: _channelInfoHeroForeground,
+      conversationUnreadBadgeBackground: _conversationUnreadBadgeBackground,
+      conversationUnreadBadgeForeground: _conversationUnreadBadgeForeground,
+      personAvatarGradient: _personAvatarGradient,
+      sageAvatarGradient: _sageAvatarGradient,
+      agentAvatarGradient: _agentAvatarGradient,
       topSectionGradient: topSectionGradient,
     );
 
@@ -77,6 +220,11 @@ class AppTheme {
       brightness: Brightness.dark,
       statusBarIconBrightness: Brightness.light,
       statusBarBrightness: Brightness.dark,
+      mobileTokens:
+          mobileTokens ??
+          (colorScheme == null
+              ? MobileDesignTokens.dark
+              : MobileDesignTokens.fromColorScheme(scheme)),
     );
   }
 
@@ -86,14 +234,18 @@ class AppTheme {
     required Brightness brightness,
     required Brightness statusBarIconBrightness,
     required Brightness statusBarBrightness,
+    required MobileDesignTokens mobileTokens,
   }) {
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: _pageTransitionBuilders,
+      ),
       splashFactory: NoSplash.splashFactory,
-      scaffoldBackgroundColor: scheme.surface,
-      extensions: [appColors],
-      fontFamily: 'Inter',
+      scaffoldBackgroundColor: mobileTokens.canvas,
+      extensions: [appColors, mobileTokens, MobileTypographyTokens.v5],
+      fontFamily: 'Manrope',
       textTheme: textTheme,
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
@@ -118,86 +270,86 @@ class AppTheme {
         indicatorColor: Colors.transparent,
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return IconThemeData(color: scheme.primary, size: 24);
+            return IconThemeData(color: mobileTokens.action, size: 24);
           }
-          return IconThemeData(color: scheme.onSurfaceVariant, size: 24);
+          return IconThemeData(color: mobileTokens.muted, size: 24);
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return textTheme.labelSmall?.copyWith(
-              color: scheme.primary,
+              color: mobileTokens.action,
               fontWeight: FontWeight.w600,
             );
           }
-          return textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant);
+          return textTheme.labelSmall?.copyWith(color: mobileTokens.muted);
         }),
       ),
 
-      // Buttons: desktop uses rounded-md (8px), h-9 (36px), px-4 (16px)
+      // Buttons share the v5 plum fill and a generous touch target.
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: scheme.primary,
-          foregroundColor: scheme.onPrimary,
+          backgroundColor: appColors.plum,
+          foregroundColor: mobileTokens.onAction,
+          overlayColor: appColors.plum.withValues(alpha: 0.12),
           elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          minimumSize: const Size(0, 36),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          minimumSize: const Size(0, 44),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Radii.md),
+            borderRadius: BorderRadius.circular(Radii.button),
           ),
-          textStyle: textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-          ),
+          textStyle: buttonTextStyle,
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
+          backgroundColor: appColors.plum,
+          foregroundColor: mobileTokens.onAction,
+          overlayColor: appColors.plum.withValues(alpha: 0.12),
           elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          minimumSize: const Size(0, 36),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          minimumSize: const Size(0, 44),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Radii.md),
+            borderRadius: BorderRadius.circular(Radii.button),
           ),
-          textStyle: textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-          ),
+          textStyle: buttonTextStyle,
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          backgroundColor: scheme.surface,
-          foregroundColor: scheme.onSurface,
-          side: BorderSide(color: scheme.outline, width: 1),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          minimumSize: const Size(0, 36),
+          backgroundColor: mobileTokens.paper,
+          foregroundColor: mobileTokens.action,
+          overlayColor: mobileTokens.action.withValues(alpha: 0.08),
+          side: BorderSide(color: mobileTokens.line, width: 1),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          minimumSize: const Size(0, 44),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Radii.md),
+            borderRadius: BorderRadius.circular(Radii.button),
           ),
-          textStyle: textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-          ),
+          textStyle: buttonTextStyle,
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: scheme.onSurface,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          minimumSize: const Size(0, 36),
+          foregroundColor: mobileTokens.action,
+          overlayColor: mobileTokens.action.withValues(alpha: 0.08),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          minimumSize: const Size(0, 44),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Radii.md),
+            borderRadius: BorderRadius.circular(Radii.button),
           ),
-          textStyle: textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-          ),
+          textStyle: buttonTextStyle,
         ),
       ),
 
-      // Cards: desktop uses rounded-lg (10px), flat, no elevation
+      // Cards use a quiet paper surface with a hairline edge.
       cardTheme: CardThemeData(
-        color: scheme.surfaceContainerHighest,
+        color: mobileTokens.paper,
         margin: EdgeInsets.zero,
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(Radii.lg),
+          borderRadius: BorderRadius.circular(Radii.card),
+          side: BorderSide(color: mobileTokens.line),
         ),
       ),
 
@@ -205,23 +357,23 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: false,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(Radii.md),
-          borderSide: BorderSide(color: scheme.outline),
+          borderRadius: BorderRadius.circular(Radii.field),
+          borderSide: BorderSide(color: mobileTokens.line),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(Radii.md),
-          borderSide: BorderSide(color: scheme.outline),
+          borderRadius: BorderRadius.circular(Radii.field),
+          borderSide: BorderSide(color: mobileTokens.line),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(Radii.md),
-          borderSide: BorderSide(color: scheme.primary),
+          borderRadius: BorderRadius.circular(Radii.field),
+          borderSide: BorderSide(color: mobileTokens.action),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(Radii.md),
+          borderRadius: BorderRadius.circular(Radii.field),
           borderSide: BorderSide(color: scheme.error),
         ),
         focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(Radii.md),
+          borderRadius: BorderRadius.circular(Radii.field),
           borderSide: BorderSide(color: scheme.error),
         ),
         contentPadding: const EdgeInsets.symmetric(
@@ -233,11 +385,11 @@ class AppTheme {
 
       // Dialogs: desktop uses rounded-3xl (24px), custom overlay
       dialogTheme: DialogThemeData(
-        backgroundColor: scheme.surface,
+        backgroundColor: mobileTokens.paper,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(Radii.dialog),
-          side: BorderSide(color: scheme.outline),
+          side: BorderSide(color: mobileTokens.line),
         ),
         titleTextStyle: textTheme.titleLarge?.copyWith(
           color: scheme.onSurface,
@@ -252,16 +404,16 @@ class AppTheme {
 
       progressIndicatorTheme: ProgressIndicatorThemeData(
         strokeWidth: 2,
-        color: scheme.primary,
-        circularTrackColor: scheme.onSurfaceVariant.withValues(alpha: 0.2),
+        color: mobileTokens.action,
+        circularTrackColor: mobileTokens.soft,
       ),
 
       listTileTheme: ListTileThemeData(
-        titleTextStyle: textTheme.titleSmall?.copyWith(color: scheme.onSurface),
+        titleTextStyle: textTheme.titleSmall?.copyWith(color: mobileTokens.ink),
         subtitleTextStyle: textTheme.bodyMedium?.copyWith(
-          color: scheme.secondary,
+          color: mobileTokens.muted,
         ),
-        iconColor: scheme.secondary,
+        iconColor: mobileTokens.action,
         contentPadding: const EdgeInsets.symmetric(horizontal: Grid.twelve),
         minVerticalPadding: Grid.twelve,
         horizontalTitleGap: Grid.twelve,
@@ -277,10 +429,10 @@ class AppTheme {
         // `selectedColor` is the legacy M2 path and is ignored here. Selected
         // filter chips (Pulse/Search/Activity tabs) use the accent.
         color: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) return scheme.primary;
-          return scheme.surfaceContainerHighest;
+          if (states.contains(WidgetState.selected)) return mobileTokens.action;
+          return mobileTokens.soft;
         }),
-        checkmarkColor: scheme.onPrimary,
+        checkmarkColor: mobileTokens.onAction,
         shape: RoundedRectangleBorder(
           side: BorderSide.none,
           borderRadius: BorderRadius.circular(Radii.sm),
@@ -292,7 +444,7 @@ class AppTheme {
 
       // Popups/menus share the elevated 20px mobile popover treatment.
       popupMenuTheme: PopupMenuThemeData(
-        color: scheme.surface.withValues(alpha: 0.98),
+        color: mobileTokens.paper.withValues(alpha: 0.98),
         elevation: 8,
         shadowColor: scheme.shadow.withValues(alpha: 0.18),
         surfaceTintColor: Colors.transparent,
@@ -302,39 +454,37 @@ class AppTheme {
         ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(Radii.popover),
-          side: BorderSide(
-            color: Colors.black.withValues(alpha: 0.04),
-            width: 1,
-          ),
+          side: BorderSide(color: mobileTokens.line),
         ),
       ),
 
-      // Bottom sheet: match dialog radius
+      // Sheets share the raised paper surface and broader v5 corner.
       bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: scheme.surface,
+        backgroundColor: mobileTokens.paper,
         elevation: 0,
-        shape: const RoundedRectangleBorder(
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(
-            top: Radius.circular(Radii.dialog),
+            top: Radius.circular(Radii.sheet),
           ),
+          side: BorderSide(color: mobileTokens.line),
         ),
       ),
 
       // Tooltips: desktop uses rounded-md, primary bg
       tooltipTheme: TooltipThemeData(
         decoration: BoxDecoration(
-          color: scheme.primary,
-          borderRadius: BorderRadius.circular(Radii.md),
+          color: appColors.plum,
+          borderRadius: BorderRadius.circular(Radii.button),
         ),
         textStyle: textTheme.bodySmall?.copyWith(
-          color: scheme.onPrimary,
+          color: mobileTokens.onAction,
           fontSize: 12,
         ),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       ),
 
       dividerTheme: DividerThemeData(
-        color: scheme.outline,
+        color: mobileTokens.line,
         thickness: 1,
         space: 1,
       ),
@@ -342,8 +492,12 @@ class AppTheme {
       // Snackbar
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
+        backgroundColor: appColors.plum,
+        contentTextStyle: textTheme.bodyMedium?.copyWith(
+          color: mobileTokens.onAction,
+        ),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(Radii.md),
+          borderRadius: BorderRadius.circular(Radii.button),
         ),
       ),
     );
