@@ -249,13 +249,32 @@ pub fn ai_spend_record_d_tag(record_id: &str) -> Result<String, CompanyRecordErr
 pub fn validate_employee_allowance_action(
     action: &EmployeeAllowanceAction,
 ) -> Result<(), CompanyRecordError> {
+    validate_employee_allowance_action_at(action, Utc::now())
+}
+
+fn validate_employee_allowance_action_at(
+    action: &EmployeeAllowanceAction,
+    now: DateTime<Utc>,
+) -> Result<(), CompanyRecordError> {
+    let expires_at = validate_employee_allowance_action_shape(action)?;
+    if expires_at.is_some_and(|expires_at| expires_at <= now) {
+        return Err(CompanyRecordError::Invalid(
+            "temporary allowance expiry must be in the future",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_employee_allowance_action_shape(
+    action: &EmployeeAllowanceAction,
+) -> Result<Option<DateTime<Utc>>, CompanyRecordError> {
     if action.schema_version != COMPANY_RECORD_SCHEMA_VERSION {
         return Err(CompanyRecordError::UnsupportedSchemaVersion);
     }
     let _ = employee_allowance_d_tag(&action.employee_pubkey)?;
     validate_event_id_option(action.expected_head_event_id.as_deref())?;
     validate_allowance_value(&action.allowance)?;
-    if let Some(temporary) = &action.temporary_allowance {
+    let temporary_expires_at = if let Some(temporary) = &action.temporary_allowance {
         validate_allowance_value(&temporary.allowance)?;
         if temporary.allowance.period != action.allowance.period
             || parse_minor_unit(&temporary.allowance.amount_cents)
@@ -265,8 +284,10 @@ pub fn validate_employee_allowance_action(
                 "temporary allowance must be a raise for the permanent period",
             ));
         }
-        parse_timestamp(&temporary.expires_at)?;
-    }
+        Some(parse_timestamp(&temporary.expires_at)?)
+    } else {
+        None
+    };
     if action.funding_order.len() > MAX_FUNDING_ORDER_ITEMS {
         return Err(CompanyRecordError::Invalid(
             "fundingOrder exceeds its item limit",
@@ -287,7 +308,7 @@ pub fn validate_employee_allowance_action(
             ));
         }
     }
-    Ok(())
+    Ok(temporary_expires_at)
 }
 
 /// Validate a persisted employee allowance head.
@@ -321,7 +342,7 @@ pub fn validate_employee_allowance_head(
         temporary_allowance: head.temporary_allowance.clone(),
         funding_order: head.funding_order.clone(),
     };
-    validate_employee_allowance_action(&action)
+    validate_employee_allowance_action_shape(&action).map(|_| ())
 }
 
 /// Validate an AI spend record action.
@@ -573,6 +594,26 @@ mod tests {
         }
     }
 
+    fn allowance_action(expires_at: &str) -> EmployeeAllowanceAction {
+        EmployeeAllowanceAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            employee_pubkey: "aa".repeat(32),
+            expected_head_event_id: None,
+            allowance: AllowanceValue {
+                amount_cents: "100".into(),
+                period: AllowancePeriod::Week,
+            },
+            temporary_allowance: Some(TemporaryAllowance {
+                allowance: AllowanceValue {
+                    amount_cents: "200".into(),
+                    period: AllowancePeriod::Week,
+                },
+                expires_at: expires_at.into(),
+            }),
+            funding_order: vec![],
+        }
+    }
+
     #[test]
     fn temporary_allowance_reverts_by_injected_clock() {
         let head = allowance_head();
@@ -651,23 +692,28 @@ mod tests {
 
     #[test]
     fn expired_temporary_allowance_is_rejected_by_production_validator() {
-        let action = EmployeeAllowanceAction {
-            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-            employee_pubkey: "aa".repeat(32),
-            expected_head_event_id: None,
-            allowance: AllowanceValue {
-                amount_cents: "100".into(),
-                period: AllowancePeriod::Week,
-            },
-            temporary_allowance: Some(TemporaryAllowance {
-                allowance: AllowanceValue {
-                    amount_cents: "200".into(),
-                    period: AllowancePeriod::Week,
-                },
-                expires_at: "2020-01-01T00:00:00Z".into(),
-            }),
-            funding_order: vec![],
-        };
+        let action = allowance_action("2020-01-01T00:00:00Z");
         assert!(validate_employee_allowance_action(&action).is_err());
+    }
+
+    #[test]
+    fn temporary_allowance_expiry_must_be_after_injected_validation_time() {
+        let expiry = Utc.with_ymd_and_hms(2026, 10, 2, 2, 0, 0).unwrap();
+        let action = allowance_action(&expiry.to_rfc3339());
+        let before = expiry.clone() - chrono::Duration::seconds(1);
+        let at_expiry = expiry.clone();
+        let after = expiry + chrono::Duration::seconds(1);
+
+        assert!(validate_employee_allowance_action_at(&action, before).is_ok());
+        assert!(validate_employee_allowance_action_at(&action, at_expiry).is_err());
+        assert!(validate_employee_allowance_action_at(&action, after).is_err());
+    }
+
+    #[test]
+    fn expired_temporary_allowance_head_remains_readable_after_reversion() {
+        let mut head = allowance_head();
+        head.temporary_allowance.as_mut().unwrap().expires_at = "2000-01-01T00:00:00Z".into();
+
+        assert!(validate_employee_allowance_head(&head).is_ok());
     }
 }
