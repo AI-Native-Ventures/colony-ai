@@ -86,6 +86,21 @@ export function sidecarFilenames(platform) {
   return binaries.map((binary) => `${binary}${extension}`);
 }
 
+// Colony app icon, without extension: the packager appends .icns or .ico.
+export const APP_ICON_BASENAME = "icon";
+
+// A bundle that is modified after Electron signs it (renamed executable, new
+// Info.plist, extra resources) carries a stale seal, and macOS then reports the
+// app as "damaged" with no way to open it. Unsigned builds are re-signed ad hoc
+// over the whole bundle so the seal is valid and Gatekeeper offers Open Anyway.
+export function adhocSignArguments(appPath) {
+  return ["--force", "--deep", "--sign", "-", appPath];
+}
+
+export function verifySignatureArguments(appPath) {
+  return ["--verify", "--deep", "--strict", appPath];
+}
+
 export function createPackagerOptions({
   dir,
   out,
@@ -95,6 +110,7 @@ export function createPackagerOptions({
   platform,
   arch,
   extraResource,
+  icon,
   osxSign,
   osxNotarize,
 }) {
@@ -115,6 +131,7 @@ export function createPackagerOptions({
     prune: false,
     overwrite: true,
     extraResource,
+    ...(icon ? { icon } : {}),
     ...(platform === "darwin"
       ? {
           extendInfo: {

@@ -1,15 +1,19 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { loadConfigFromFile } from "vite";
 import {
+  APP_ICON_BASENAME,
   ELECTRON_BUNDLE_ID,
+  adhocSignArguments,
   createPackagerOptions,
   electronPackagePaths,
   nativeHostFilename,
   parseElectronPackageArgs,
   sidecarFilenames,
+  verifySignatureArguments,
 } from "./electron-package-config.mjs";
 
 test("Vite exposes the public Google client ID without exposing its secret", async () => {
@@ -210,4 +214,64 @@ test("sidecar staging includes real runtime binaries for each platform", () => {
     "buzz.exe",
   ]);
   assert.throws(() => sidecarFilenames("freebsd"), /Unsupported platform/);
+});
+
+test("the packager is given the Colony icon so apps do not ship the Electron one", () => {
+  const options = createPackagerOptions({
+    dir: "/tmp/staged-app",
+    out: "/checkout/desktop/dist-electron",
+    productName: "Colony",
+    appVersion: "1.0.1",
+    electronVersion: "44.4.3",
+    platform: "darwin",
+    arch: "arm64",
+    extraResource: [],
+    icon: "/checkout/desktop/src-tauri/icons/icon",
+  });
+
+  assert.equal(options.icon, "/checkout/desktop/src-tauri/icons/icon");
+  assert.equal(APP_ICON_BASENAME, "icon");
+});
+
+test("unsigned macOS bundles are re-signed ad hoc over the whole bundle and verified strictly", () => {
+  assert.deepEqual(adhocSignArguments("/out/Colony.app"), [
+    "--force",
+    "--deep",
+    "--sign",
+    "-",
+    "/out/Colony.app",
+  ]);
+  assert.deepEqual(verifySignatureArguments("/out/Colony.app"), [
+    "--verify",
+    "--deep",
+    "--strict",
+    "/out/Colony.app",
+  ]);
+});
+
+test("the committed app icons are the Colony icon set at usable sizes", () => {
+  const icons = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "src-tauri",
+    "icons",
+  );
+  const png = readFileSync(path.join(icons, "icon.png"));
+  assert.equal(png.subarray(1, 4).toString(), "PNG");
+  assert.equal(png.readUInt32BE(16), 1024);
+  assert.equal(png.readUInt32BE(20), 1024);
+
+  const ico = readFileSync(path.join(icons, "icon.ico"));
+  assert.equal(ico.readUInt16LE(2), 1);
+  assert.ok(ico.readUInt16LE(4) >= 6, "icon.ico carries the standard sizes");
+
+  const icns = readFileSync(path.join(icons, "icon.icns"));
+  assert.equal(icns.subarray(0, 4).toString(), "icns");
+
+  const source = readFileSync(path.join(icons, "colony-icon.svg"), "utf8");
+  assert.match(
+    source,
+    /#f4f2e8/,
+    "the committed source is the Colony ant mark",
+  );
 });
