@@ -103,7 +103,9 @@ export function AiKeyConnectionPanel({ openRouter }: { openRouter: boolean }) {
       );
       if (generation.current !== currentGeneration) return;
       setResult(
-        response in AI_CONNECTION_MESSAGES ? response : "provider-failure",
+        Object.hasOwn(AI_CONNECTION_MESSAGES, response)
+          ? response
+          : "provider-failure",
       );
     } catch {
       if (generation.current === currentGeneration)

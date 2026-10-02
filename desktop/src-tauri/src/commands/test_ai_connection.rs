@@ -113,17 +113,23 @@ pub async fn test_ai_connection(config: GlobalAgentConfig) -> AiConnectionResult
         .post(format!("{}{path}", base.trim_end_matches('/')))
         .json(&body);
     let request = if provider == "anthropic" {
-        request
-            .header("x-api-key", key)
-            .header("anthropic-version", "2023-06-01")
+        request.header("x-api-key", key).header(
+            "anthropic-version",
+            config
+                .env_vars
+                .get("ANTHROPIC_API_VERSION")
+                .map(String::as_str)
+                .unwrap_or("2023-06-01"),
+        )
     } else {
         request.bearer_auth(key)
     };
     let Ok(mut response) = request.send().await else {
         return AiConnectionResult::NetworkFailure;
     };
-    if !response.status().is_success() {
-        return status_result(response.status().as_u16());
+    let status = response.status();
+    if !status.is_success() && status.as_u16() != 400 {
+        return status_result(status.as_u16());
     }
     // Bound response capture even when a provider ignores the output token cap.
     let mut bytes = Vec::new();
@@ -140,6 +146,29 @@ pub async fn test_ai_connection(config: GlobalAgentConfig) -> AiConnectionResult
     let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
         return AiConnectionResult::ProviderFailure;
     };
+    if status.as_u16() == 400 {
+        let error = value.get("error").unwrap_or(&value);
+        let code = error.get("code").and_then(serde_json::Value::as_str);
+        let message = error
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_lowercase();
+        return if code == Some("model_not_found")
+            || [
+                "unknown model",
+                "model not found",
+                "invalid model",
+                "not a valid model",
+            ]
+            .iter()
+            .any(|phrase| message.contains(phrase))
+        {
+            AiConnectionResult::UnknownModel
+        } else {
+            AiConnectionResult::ProviderFailure
+        };
+    }
     let response_field = if provider == "anthropic" {
         "content"
     } else if path == "/responses" {
@@ -182,6 +211,11 @@ mod tests {
                 AiConnectionResult::Connected,
             ),
             (
+                400,
+                r#"{"error":{"message":"vendor/foo is not a valid model"}}"#,
+                AiConnectionResult::UnknownModel,
+            ),
+            (
                 401,
                 "credential response must not leak",
                 AiConnectionResult::KeyRejected,
@@ -201,9 +235,28 @@ mod tests {
             let address = listener.local_addr().expect("stub address");
             let server = tokio::spawn(async move {
                 let (mut stream, _) = listener.accept().await.expect("request");
-                let mut captured = vec![0; 4096];
-                let length = stream.read(&mut captured).await.expect("request bytes");
-                let request = String::from_utf8_lossy(&captured[..length]);
+                let mut captured = Vec::new();
+                loop {
+                    let mut chunk = [0; 1024];
+                    let length = stream.read(&mut chunk).await.expect("request bytes");
+                    assert!(length > 0 && captured.len() + length <= 4096);
+                    captured.extend_from_slice(&chunk[..length]);
+                    let text = String::from_utf8_lossy(&captured);
+                    if let Some((headers, body)) = text.split_once("\r\n\r\n") {
+                        let size = headers
+                            .lines()
+                            .find_map(|line| {
+                                let (name, value) = line.split_once(':')?;
+                                name.eq_ignore_ascii_case("content-length")
+                                    .then(|| value.trim().parse::<usize>().expect("content length"))
+                            })
+                            .expect("content length header");
+                        if body.len() >= size {
+                            break;
+                        }
+                    }
+                }
+                let request = String::from_utf8_lossy(&captured);
                 assert!(request.starts_with("POST /chat/completions"));
                 assert!(request.contains("fixture-model"));
                 assert!(request.contains("fixture-key"));

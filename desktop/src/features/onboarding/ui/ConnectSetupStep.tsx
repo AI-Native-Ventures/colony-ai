@@ -208,17 +208,17 @@ function RuntimeOption({
         ) : null}
       </div>
       {actionError ? (
-        <p className="runtime-action-error" role="alert">
+        <p className="runtime-action-error text-sm" role="alert">
           {actionError}
         </p>
       ) : null}
       {connectMutation.error instanceof Error ? (
-        <p className="runtime-action-error" role="alert">
+        <p className="runtime-action-error text-sm" role="alert">
           Sign-in could not be started. Try again.
         </p>
       ) : null}
       {authMethods.error instanceof Error ? (
-        <p className="runtime-action-error" role="alert">
+        <p className="runtime-action-error text-sm" role="alert">
           Sign-in options are unavailable.
         </p>
       ) : null}
@@ -417,6 +417,9 @@ export function ConnectSetupStep({
 
   const { globalConfig } = useGlobalAgentConfig();
   const runtimes = useAcpRuntimesQueryForced();
+  const bundled = runtimes.data?.find((runtime) => runtime.id === "buzz-agent");
+  const keyScene =
+    connectionScene === "api-key" || connectionScene === "openrouter-unlinked";
   const aiReady = resolveAgentReadiness(
     runtimes.data ?? [],
     globalConfig,
@@ -469,8 +472,27 @@ export function ConnectSetupStep({
           </div>
         </>
       }
-      data={data}
-      harnessMark={harnessHeader.mark}
+      data={
+        keyScene
+          ? {
+              ...data,
+              harnessLabel: bundled
+                ? getRuntimeDisplayLabel(bundled)
+                : "Colony AI",
+              harnessStatus:
+                bundled && runtimeIsReadyForOnboarding(bundled, globalConfig)
+                  ? "Ready"
+                  : "No AI connected yet",
+            }
+          : data
+      }
+      harnessMark={
+        keyScene && bundled ? (
+          <RuntimeIcon className="harness-mark-runtime" runtime={bundled} />
+        ) : (
+          harnessHeader.mark
+        )
+      }
       onNavigate={onBack}
       onSelectConnection={onSelectConnection}
       scene={connectionScene}

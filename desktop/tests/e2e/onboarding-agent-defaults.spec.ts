@@ -310,3 +310,78 @@ test("R17 bundled agent without a provider is not ready and credits are coming s
     page.getByRole("button", { name: "Open my Colony" }),
   ).toBeEnabled();
 });
+
+test("R17 OpenRouter saves a tested provider default through the real form", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    runtimes: [
+      {
+        ...r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
+        model_env_var: "BUZZ_AGENT_MODEL",
+        provider_env_var: "BUZZ_AGENT_PROVIDER",
+      },
+    ],
+    mock: {
+      globalAgentConfig: {
+        preferred_runtime: "buzz-agent",
+        provider: "openrouter",
+        model: "fixture/model",
+        env_vars: {},
+      },
+      discoverAgentModels: {
+        models: [{ id: "fixture/model", name: "Fixture model" }],
+        supportsSwitching: true,
+        selectedModel: "fixture/model",
+      },
+    },
+  });
+  await page.getByRole("button", { name: "OpenRouter", exact: true }).click();
+  const key = page.getByTestId("persona-provider-api-key");
+  await expect(key).toHaveAttribute("type", "password");
+  await key.fill("e2e-fixture-key");
+  await expect(
+    page.getByRole("button", { name: "Save AI default" }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Test connection", exact: true })
+    .click();
+  await expect(
+    page.getByText("Connection works.", { exact: false }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Save AI default" }).click();
+  await expect(
+    page.getByText("AI connected and saved as your default."),
+  ).toBeVisible();
+  expect(
+    await mockCommand(page, "get_global_agent_config_set_call_count"),
+  ).toBe(1);
+  expect(await mockCommand(page, "get_global_agent_config")).toMatchObject({
+    preferred_runtime: "buzz-agent",
+    provider: "openrouter",
+    model: "fixture/model",
+  });
+});
+
+test("R17 explicit skip can open the working defaults path in Settings", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    runtimes: [
+      {
+        ...r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
+        model_env_var: "BUZZ_AGENT_MODEL",
+        provider_env_var: "BUZZ_AGENT_PROVIDER",
+      },
+    ],
+  });
+  await page
+    .getByRole("button", { name: "Open AI settings", exact: true })
+    .click();
+  await expect(page.getByTestId("settings-view")).toBeVisible();
+  await expect(page.getByTestId("settings-global-agent-config")).toBeVisible();
+  await expect(page.getByTestId("global-agent-provider")).toBeVisible();
+  expect(
+    await mockCommand(page, "get_global_agent_config_set_call_count"),
+  ).toBe(0);
+});
