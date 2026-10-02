@@ -290,7 +290,10 @@ async function boot() {
       currentVersion: app.getVersion(),
       currentBuild: releaseCapabilities,
       platformKey: releaseCapabilities.platformKey,
-      metadataUrl: UPDATE_METADATA_URL,
+      metadataUrl:
+        process.env.COLONY_ELECTRON_UPDATE_E2E === "offline"
+          ? "http://127.0.0.1:1/update-metadata.json"
+          : UPDATE_METADATA_URL,
       onStatus: (status) => {
         for (const entry of windows.values()) {
           if (

@@ -312,33 +312,36 @@ export async function launchElectron(
   relayUrl = DEFAULT_RELAY_URL,
 ): Promise<RunningElectron> {
   const desktopRoot = path.resolve(import.meta.dirname, "../..");
-  const nativeHost = process.env.COLONY_NATIVE_HOST;
-  if (!nativeHost || !existsSync(nativeHost)) {
+  const packagedApp = process.env.COLONY_ELECTRON_PACKAGED_APP;
+  if (!packagedApp || !existsSync(packagedApp)) {
     throw new Error(
-      `COLONY_NATIVE_HOST must point to the built colony-native-host binary, got ${nativeHost ?? "unset"}`,
-    );
-  }
-  if (!existsSync(path.join(desktopRoot, "dist", "index.html"))) {
-    throw new Error(
-      `Electron renderer build is missing under ${desktopRoot}/dist`,
+      `COLONY_ELECTRON_PACKAGED_APP must point to the packaged Colony app, got ${packagedApp ?? "unset"}`,
     );
   }
 
   const logs: string[] = [];
   const nativeHostLogPath = path.join(userDataDir, "native-host.stderr.log");
   const application = await electron.launch({
+    executablePath: packagedApp,
     cwd: desktopRoot,
-    args: [path.join(desktopRoot, "electron", "main.mjs")],
+    args: [],
     env: {
       ...process.env,
       BUZZ_RELAY_URL: relayUrl,
       COLONY_ELECTRON_BACKGROUND: "1",
       COLONY_ELECTRON_USER_DATA: userDataDir,
-      COLONY_NATIVE_HOST: nativeHost,
+      COLONY_NATIVE_HOST: "",
+      COLONY_ELECTRON_UPDATE_E2E: "offline",
       COLONY_NATIVE_HOST_LOG: nativeHostLogPath,
     },
     timeout: 120_000,
   });
+
+  const isPackaged = await application.evaluate(({ app }) => app.isPackaged);
+  if (!isPackaged) {
+    await application.close();
+    throw new Error("The Electron relay E2E suite must launch a packaged app.");
+  }
 
   for (const [name, stream] of [
     ["main", application.process().stdout],

@@ -21,6 +21,7 @@ import {
 } from "./helpers";
 
 async function assertLanding(page: RunningElectron["page"]) {
+  await expect(page).toHaveURL(/^colony:\/\/app\//u);
   await expect(page.getByTestId("machine-onboarding-gate")).toBeVisible({
     timeout: 60_000,
   });
@@ -131,22 +132,80 @@ test("real Electron reaches the onboarding landing without a native startup erro
   }
 });
 
-test("imports a generated key, reconnects to the seeded community, and shows general", async ({
+test("packaged first run signs in, opens workspace surfaces, and recovers from offline update checks", async ({
   browserName: _browserName,
 }, testInfo) => {
+  test.setTimeout(180_000);
   const userDataDir = createUserDataDir(testInfo);
   const applications: RunningElectron[] = [];
   try {
     const identity = fixtureIdentity("onboarding-member");
     const running = await launchElectron(userDataDir);
     applications.push(running);
-    await onboardToCommunity(
+    const generalChannelId = await onboardToCommunity(
       running,
       identity,
       DEFAULT_RELAY_URL,
       "Electron E2E Member",
     );
-    await expect(running.page.getByTestId("channel-general")).toBeVisible();
+
+    const content = messageText("Packaged Electron first run");
+    await enterMessage(running, content, 40_000);
+    const sentEvent = await waitForRelayMessage(
+      DEFAULT_RELAY_URL,
+      identity.publicKey,
+      content,
+      40_000,
+      generalChannelId,
+    );
+    expect(sentEvent?.kind).toBe(9);
+    expect(sentEvent?.pubkey).toBe(identity.publicKey);
+
+    const { page } = running;
+    await page
+      .getByTestId("sidebar-primary-menu")
+      .getByRole("button", { name: "Today" })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Needs me", exact: true }),
+    ).toBeVisible();
+
+    await page.getByTestId("channel-general").click();
+    await page.getByTestId("raise-ask-from-composer").click();
+    await expect(page.getByLabel("What needs a response?")).toBeVisible();
+
+    await page.getByTestId("sidebar-company-team").click();
+    await expect(page.getByTestId("company-team-screen")).toBeVisible();
+
+    if (!sentEvent?.id) throw new Error("The relay event has no message id.");
+    await running.application.evaluate(({ app }, url) => {
+      app.emit("open-url", { preventDefault: () => {} }, url);
+    }, `buzz://message?channel=${generalChannelId}&id=${sentEvent.id}`);
+    await expect(page.getByTestId("chat-title")).toHaveText("general", {
+      timeout: 30_000,
+    });
+    await expect(
+      page.getByTestId("message-timeline").getByText(content, { exact: true }),
+    ).toBeVisible();
+
+    const updaterStatus = await page.evaluate(async () => {
+      const desktop = (
+        window as Window & {
+          colonyDesktop?: {
+            updater?: {
+              check: () => Promise<{ state: string; message?: string }>;
+            };
+          };
+        }
+      ).colonyDesktop;
+      if (!desktop?.updater)
+        throw new Error("Electron updater bridge missing.");
+      return desktop.updater.check();
+    });
+    expect(updaterStatus.state).toBe("error");
+    expect(updaterStatus.message).toBeTruthy();
+    await expect(page.getByTestId("native-startup-error")).toHaveCount(0);
+    await expect(page.getByTestId("channel-general")).toBeVisible();
   } finally {
     await finishElectronTest(testInfo, userDataDir, applications);
   }
