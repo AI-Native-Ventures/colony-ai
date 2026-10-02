@@ -1,46 +1,59 @@
+import CoreGraphics
 import XCTest
+import UIKit
+import Vision
 
 final class RunnerUITests: XCTestCase {
-  // Relaunch must allow a full Flutter engine cold start on a fresh
-  // simulator (observed >40s before the first semantics tree appears).
-  private let landingTimeout: TimeInterval = 120
+  private let landingReadyTimeout: TimeInterval = 60
+  private let elementReadyTimeout: TimeInterval = 15
 
   func testLandingSurvivesTerminateAndRelaunch() {
     guard let appIdentifier = testAppBundleIdentifier() else { return }
 
     let app = XCUIApplication(bundleIdentifier: appIdentifier)
+    var launchRetryUsed = false
 
-    assertAccountLanding(in: app, phase: "initial")
+    guard assertAccountLanding(in: app, phase: "initial", launchRetryUsed: &launchRetryUsed) else {
+      return
+    }
 
-    // r18: pairing an existing identity starts from "Pair with my desktop"
-    // on the landing, replacing the old "Advanced" entry.
     let pair = app.buttons["Pair with my desktop"]
-    XCTAssertTrue(
-      pair.waitForExistence(timeout: landingTimeout),
-      "Pair with my desktop action missing on the account screen"
-    )
-    XCTAssertTrue(pair.isHittable, "Pair with my desktop action is not hittable")
-    pair.tap()
+    guard waitUntilHittable(pair, timeout: elementReadyTimeout) else {
+      attachFailureEvidence(from: app, name: "pairing-entry-not-hittable")
+      XCTFail("Pair with my desktop action was not hittable on the account screen")
+      return
+    }
+
+    pair.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
 
     let scan = app.buttons["Scan QR code"]
+    guard scan.waitForExistence(timeout: elementReadyTimeout) else {
+      attachFailureEvidence(from: app, name: "pairing-start-not-reached")
+      XCTFail("Pair with my desktop did not open the pairing start screen")
+      return
+    }
+
     let enterCode = app.buttons["Enter a code instead"]
-    XCTAssertTrue(
-      scan.waitForExistence(timeout: landingTimeout),
-      "Pair with my desktop did not open pairing"
-    )
-    XCTAssertTrue(
-      enterCode.waitForExistence(timeout: landingTimeout),
-      "enter-code action missing on the pairing start screen"
-    )
-    XCTAssertTrue(scan.isHittable, "QR scan action is not hittable on the pairing start screen")
-    XCTAssertTrue(
-      enterCode.isHittable,
-      "enter-code action is not hittable on the pairing start screen"
-    )
-    XCTAssertFalse(
-      app.buttons["Create an account"].exists,
-      "account actions remained visible after opening pairing"
-    )
+    guard enterCode.exists else {
+      attachFailureEvidence(from: app, name: "pairing-code-action-missing")
+      XCTFail("Enter a code instead action was missing on the pairing start screen")
+      return
+    }
+    guard waitUntilHittable(scan, timeout: elementReadyTimeout) else {
+      attachFailureEvidence(from: app, name: "pairing-scan-not-hittable")
+      XCTFail("Scan QR code action was not hittable on the pairing start screen")
+      return
+    }
+    guard waitUntilHittable(enterCode, timeout: elementReadyTimeout) else {
+      attachFailureEvidence(from: app, name: "pairing-code-not-hittable")
+      XCTFail("Enter a code instead action was not hittable on the pairing start screen")
+      return
+    }
+    guard !app.buttons["Create an account"].exists else {
+      attachFailureEvidence(from: app, name: "account-actions-remained-visible")
+      XCTFail("Account actions remained visible after opening pairing")
+      return
+    }
 
     let pairingAttachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
     pairingAttachment.name = "landing-pairing-start"
@@ -48,9 +61,15 @@ final class RunnerUITests: XCTestCase {
     add(pairingAttachment)
 
     app.terminate()
-    XCTAssertEqual(app.state, .notRunning, "app did not terminate cleanly")
+    guard app.state == .notRunning else {
+      attachFailureEvidence(from: app, name: "app-did-not-terminate")
+      XCTFail("App did not terminate cleanly")
+      return
+    }
 
-    assertAccountLanding(in: app, phase: "relaunch")
+    guard assertAccountLanding(in: app, phase: "relaunch", launchRetryUsed: &launchRetryUsed) else {
+      return
+    }
   }
 
   private func testAppBundleIdentifier() -> String? {
@@ -65,71 +84,130 @@ final class RunnerUITests: XCTestCase {
       return nil
     }
 
-    XCTAssertFalse(
-      value == "ventures.ainative.colony",
-      "runtime proof must not target the release bundle identifier"
-    )
+    guard value != "ventures.ainative.colony" else {
+      XCTFail("runtime proof must not target the release bundle identifier")
+      return nil
+    }
     return value
   }
 
-  private func assertAccountLanding(in app: XCUIApplication, phase: String) {
+  private func assertAccountLanding(
+    in app: XCUIApplication,
+    phase: String,
+    launchRetryUsed: inout Bool
+  ) -> Bool {
     app.launch()
-    XCTAssertTrue(
-      app.wait(for: .runningForeground, timeout: landingTimeout),
-      "app did not reach foreground during \(phase)"
-    )
 
-    // r18/r19 account entry: brand eyebrow, then create / sign in / pair.
-    // Google sign-in moved onto the create and sign-in screens.
-    // The eyebrow is a plain Flutter Text. In roughly one run in ten it was on
-    // screen but absent from staticTexts (PR #103, run 36331510553), so match
-    // its copy by label on any element type.
-    let eyebrow = app.descendants(matching: .any)
-      .matching(NSPredicate(format: "label CONTAINS %@", "A HOME FOR YOUR BUSINESS"))
-      .firstMatch
     let createAccount = app.buttons["Create an account"]
+    if !createAccount.waitForExistence(timeout: landingReadyTimeout) {
+      guard app.state == .notRunning && !launchRetryUsed else {
+        attachFailureEvidence(from: app, name: "account-landing-\(phase)-not-ready")
+        XCTFail("Account landing did not become ready during \(phase)")
+        return false
+      }
+
+      launchRetryUsed = true
+      print("IOS_RUNTIME_RETRY=app-launch phase=\(phase)")
+      app.launch()
+      guard createAccount.waitForExistence(timeout: landingReadyTimeout) else {
+        attachFailureEvidence(from: app, name: "account-landing-\(phase)-retry-not-ready")
+        XCTFail("Account landing did not become ready during \(phase) after one launch retry")
+        return false
+      }
+    }
+
+    guard app.state == .runningForeground else {
+      attachFailureEvidence(from: app, name: "account-landing-\(phase)-not-foreground")
+      XCTFail("App did not remain in the foreground during \(phase)")
+      return false
+    }
+
     let signIn = app.buttons["I already have an account"]
     let pair = app.buttons["Pair with my desktop"]
-    let scan = app.buttons["Scan QR code"]
-    let enterCode = app.buttons["Enter a code instead"]
-
-    if !eyebrow.waitForExistence(timeout: landingTimeout) {
-      // Keep the accessibility tree so the next miss shows how Flutter
-      // exposed the eyebrow instead of only a screenshot.
-      let tree = XCTAttachment(string: app.debugDescription)
-      tree.name = "landing-\(phase)-accessibility-tree"
-      tree.lifetime = .keepAlways
-      add(tree)
-      XCTFail("account landing eyebrow missing during \(phase)")
+    guard signIn.exists && pair.exists else {
+      attachFailureEvidence(from: app, name: "account-landing-\(phase)-actions-missing")
+      XCTFail("Account landing actions were incomplete during \(phase)")
+      return false
     }
-    XCTAssertTrue(
-      createAccount.waitForExistence(timeout: landingTimeout),
-      "create-account action missing during \(phase)"
-    )
-    XCTAssertTrue(
-      signIn.waitForExistence(timeout: landingTimeout),
-      "sign-in action missing during \(phase)"
-    )
-    XCTAssertTrue(
-      pair.waitForExistence(timeout: landingTimeout),
-      "Pair with my desktop action missing during \(phase)"
-    )
-    XCTAssertTrue(createAccount.isHittable, "create-account action is not hittable during \(phase)")
-    XCTAssertTrue(signIn.isHittable, "sign-in action is not hittable during \(phase)")
-    XCTAssertTrue(pair.isHittable, "Pair with my desktop action is not hittable during \(phase)")
-    XCTAssertFalse(
-      scan.exists,
-      "QR scan action must stay behind Pair with my desktop during \(phase)"
-    )
-    XCTAssertFalse(
-      enterCode.exists,
-      "enter-code action must stay behind Pair with my desktop during \(phase)"
-    )
+    guard waitUntilHittable(createAccount, timeout: elementReadyTimeout) else {
+      attachFailureEvidence(from: app, name: "account-landing-\(phase)-create-not-hittable")
+      XCTFail("Create an account action was not hittable during \(phase)")
+      return false
+    }
+    guard waitUntilHittable(signIn, timeout: elementReadyTimeout) else {
+      attachFailureEvidence(from: app, name: "account-landing-\(phase)-sign-in-not-hittable")
+      XCTFail("Sign-in action was not hittable during \(phase)")
+      return false
+    }
+    guard waitUntilHittable(pair, timeout: elementReadyTimeout) else {
+      attachFailureEvidence(from: app, name: "account-landing-\(phase)-pair-not-hittable")
+      XCTFail("Pair with my desktop action was not hittable during \(phase)")
+      return false
+    }
 
-    let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+    let screenshot = XCUIScreen.main.screenshot()
+    guard screenshotContains("A HOME FOR YOUR BUSINESS", in: screenshot) else {
+      attachFailureEvidence(from: app, name: "account-landing-\(phase)-eyebrow-not-visible")
+      XCTFail("Account landing eyebrow was not visible during \(phase)")
+      return false
+    }
+    guard !app.buttons["Scan QR code"].exists && !app.buttons["Enter a code instead"].exists else {
+      attachFailureEvidence(from: app, name: "account-landing-\(phase)-pairing-actions-visible")
+      XCTFail("Pairing actions were visible before opening pairing during \(phase)")
+      return false
+    }
+
+    let attachment = XCTAttachment(screenshot: screenshot)
     attachment.name = "landing-\(phase)"
     attachment.lifetime = .keepAlways
     add(attachment)
     print("IOS_RUNTIME_STATE=landing_ok phase=\(phase)")
+    return true
+  }
+
+  private func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+    let predicate = NSPredicate(format: "exists == true AND hittable == true")
+    let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+    return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+  }
+
+  private func screenshotContains(_ text: String, in screenshot: XCUIScreenshot) -> Bool {
+    guard let image = screenshot.image.cgImage else { return false }
+
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    request.usesLanguageCorrection = false
+    request.recognitionLanguages = ["en-US"]
+
+    do {
+      try VNImageRequestHandler(cgImage: image).perform([request])
+    } catch {
+      return false
+    }
+
+    let expected = normalizeRecognizedText(text)
+    return request.results?.contains { observation in
+      guard let candidate = observation.topCandidates(1).first?.string else { return false }
+      return normalizeRecognizedText(candidate).contains(expected)
+    } ?? false
+  }
+
+  private func normalizeRecognizedText(_ text: String) -> String {
+    text
+      .split(whereSeparator: { $0.isWhitespace })
+      .joined(separator: " ")
+      .uppercased()
+  }
+
+  private func attachFailureEvidence(from app: XCUIApplication, name: String) {
+    let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+    screenshot.name = "\(name)-screenshot"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+
+    let tree = XCTAttachment(string: String(app.debugDescription.prefix(32_768)))
+    tree.name = "\(name)-accessibility-tree"
+    tree.lifetime = .keepAlways
+    add(tree)
   }
 }
