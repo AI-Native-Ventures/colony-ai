@@ -500,6 +500,8 @@ jobs:
           COLONY_NATIVE_HOST: ""
           COLONY_ELECTRON_SMOKE: "1"
           COLONY_ELECTRON_BACKGROUND: "1"
+          # Release builds are named Colony; the Package step sets this only for itself.
+          COLONY_ELECTRON_PRODUCT_NAME: ${{ inputs.release && 'Colony' || '' }}
           COLONY_ELECTRON_USER_DATA: ${{ runner.temp }}/colony-electron-smoke-user-data
         run: |
           set -euo pipefail
@@ -538,6 +540,7 @@ jobs:
           COLONY_NATIVE_HOST: ""
           COLONY_ELECTRON_SMOKE: "1"
           COLONY_ELECTRON_BACKGROUND: "1"
+          COLONY_ELECTRON_PRODUCT_NAME: ${{ inputs.release && 'Colony' || '' }}
         run: |
           $env:COLONY_ELECTRON_USER_DATA = Join-Path $env:RUNNER_TEMP "colony-electron-smoke-user-data"
           $packageName = if ($env:COLONY_ELECTRON_PRODUCT_NAME) { $env:COLONY_ELECTRON_PRODUCT_NAME } else { "Buzz" }
