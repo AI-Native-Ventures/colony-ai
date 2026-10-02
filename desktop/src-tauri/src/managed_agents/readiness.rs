@@ -634,6 +634,13 @@ fn goose_requirements(
             .unwrap_or(false)
     };
     match effective_provider {
+        Some("deepseek")
+            if env_key_missing("DEEPSEEK_API_KEY") && !file_key_present("DEEPSEEK_API_KEY") =>
+        {
+            missing.push(Requirement::EnvKey {
+                key: "DEEPSEEK_API_KEY".to_string(),
+            });
+        }
         Some("anthropic")
             if env_key_missing("ANTHROPIC_API_KEY") && !file_key_present("ANTHROPIC_API_KEY") =>
         {

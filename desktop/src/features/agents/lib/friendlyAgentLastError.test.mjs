@@ -322,6 +322,8 @@ test("genuine relay denial alone uses community membership guidance", () => {
   for (const raw of [
     "relay access denied: not a channel member",
     "community access denied: membership required",
+    "restricted: not a channel member",
+    "restricted: channel access revoked",
   ]) {
     assert.equal(
       friendlyAgentLastError(raw, -32001)?.copy,

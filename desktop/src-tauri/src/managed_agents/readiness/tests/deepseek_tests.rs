@@ -45,3 +45,19 @@ fn process_provider_is_used_before_deepseek_default() {
         Requirement::EnvKey { .. } | Requirement::NormalizedField { .. }
     )));
 }
+
+#[test]
+fn shared_deepseek_provider_option_requires_its_key_for_goose_too() {
+    let mut values = env_with(&[
+        ("GOOSE_PROVIDER", "deepseek"),
+        ("GOOSE_MODEL", "deepseek-chat"),
+    ]);
+    let env = make_env("goose", values.clone());
+    assert!(
+        goose_requirements(&env, None).contains(&Requirement::EnvKey {
+            key: "DEEPSEEK_API_KEY".into()
+        })
+    );
+    values.insert("DEEPSEEK_API_KEY".into(), "fixture-key".into());
+    assert!(goose_requirements(&make_env("goose", values), None).is_empty());
+}

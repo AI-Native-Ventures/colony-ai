@@ -84,7 +84,9 @@ export function friendlyAgentLastError(
         const detail = embedded?.remainder ?? trimmed;
         const communityDenied =
           detail.startsWith("relay access denied:") ||
-          detail.startsWith("community access denied:");
+          detail.startsWith("community access denied:") ||
+          detail === "restricted: not a channel member" ||
+          detail === "restricted: channel access revoked";
         return {
           severity: "denied",
           copy: communityDenied
