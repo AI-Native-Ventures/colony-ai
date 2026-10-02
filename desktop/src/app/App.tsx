@@ -546,6 +546,28 @@ function CommunityApp({
     transaction?.communityId === activeCommunity?.id &&
     community.isReady &&
     community.appliedKey === communityKey;
+  // If applying the community to the backend fails, the joining screen used to
+  // keep saying "Connecting securely" forever. Show the reason with a Retry.
+  const communityInitError = "error" in community ? community.error : undefined;
+  useEffect(() => {
+    if (
+      transaction?.stage !== "connecting" ||
+      !communityInitError ||
+      transaction.communityId !== activeCommunity?.id ||
+      transaction.error === communityInitError
+    ) {
+      return;
+    }
+    communityOnboarding.update({ error: communityInitError }, transaction.id);
+  }, [
+    activeCommunity?.id,
+    communityInitError,
+    communityOnboarding,
+    transaction?.communityId,
+    transaction?.error,
+    transaction?.id,
+    transaction?.stage,
+  ]);
   useEffect(() => {
     if (transaction?.stage !== "connecting" || !targetIsReady) return;
     const transactionId = transaction.id;
@@ -688,6 +710,7 @@ function CommunityApp({
           <CommunityOnboardingFlow
             onCancel={handleCommunityOnboardingCancel}
             onConnect={handleCommunityOnboardingConnect}
+            onRetryConnect={reconnectCommunity}
           />
         </div>
       ) : null}
