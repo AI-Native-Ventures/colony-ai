@@ -607,6 +607,9 @@ type E2eConfig = {
     /** Delay (ms) for `apply_workspace` so e2e tests can observe the
      *  community-switch gate. 0/undefined = instant. */
     applyCommunityDelayMs?: number;
+    /** Reject `apply_workspace` with this message, as a failed relay
+     *  sign-in does in the real app. */
+    applyCommunityError?: string;
     /** Reject `clear_pending_navigation_deep_links` with this message. */
     clearPendingNavigationDeepLinksError?: string;
     openDmDelayMs?: number;
@@ -19808,6 +19811,8 @@ export function maybeInstallE2eTauriMocks() {
             window.setTimeout(resolve, applyDelayMs),
           );
         }
+        const applyError = activeConfig?.mock?.applyCommunityError;
+        if (applyError) throw new Error(applyError);
         const relayUrl = (payload as { relayUrl?: unknown }).relayUrl;
         if (
           isRelayMode(activeConfig) &&

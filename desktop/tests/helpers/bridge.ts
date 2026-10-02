@@ -451,6 +451,8 @@ type MockBridgeOptions = {
   canvasReadError?: string;
   /** Delay (ms) for `apply_workspace`; see e2eBridge mock config. */
   applyCommunityDelayMs?: number;
+  /** Reject `apply_workspace` with this message; see e2eBridge mock config. */
+  applyCommunityError?: string;
   /** Reject `clear_pending_navigation_deep_links` with this message. */
   clearPendingNavigationDeepLinksError?: string;
   openDmDelayMs?: number;
