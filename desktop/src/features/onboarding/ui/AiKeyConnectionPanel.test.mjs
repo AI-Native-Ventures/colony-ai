@@ -227,6 +227,23 @@ test("editing key invalidates a passed connection test", async () => {
   );
   assert.equal(saves.length, 0);
 });
+test("pasted key whitespace is removed from both the tested and saved snapshot", async () => {
+  let testedConfig;
+  probe = async ({ config }) => {
+    testedConfig = config;
+    return "connected";
+  };
+  await mount();
+  await rtl.act(async () =>
+    rtl.fireEvent.change(rtl.screen.getByTestId("persona-provider-api-key"), {
+      target: { value: "  pasted-fixture  " },
+    }),
+  );
+  await click("Test connection");
+  await click("Save AI default");
+  assert.equal(testedConfig.env_vars.OPENROUTER_API_KEY, "pasted-fixture");
+  assert.deepEqual(saves, [testedConfig]);
+});
 test("an in-flight probe cannot authorize an edited draft", async () => {
   let finish;
   probe = () =>

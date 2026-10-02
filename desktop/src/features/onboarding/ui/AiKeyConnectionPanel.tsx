@@ -34,6 +34,21 @@ export const AI_CONNECTION_MESSAGES = {
 
 type ConnectionResult = keyof typeof AI_CONNECTION_MESSAGES;
 
+function normalizeConnectionConfig(
+  config: GlobalAgentConfig,
+): GlobalAgentConfig {
+  const env_vars = { ...config.env_vars };
+  for (const name of [
+    "ANTHROPIC_API_KEY",
+    "OPENAI_COMPAT_API_KEY",
+    "OPENROUTER_API_KEY",
+    "DEEPSEEK_API_KEY",
+  ]) {
+    if (env_vars[name] !== undefined) env_vars[name] = env_vars[name].trim();
+  }
+  return { ...config, model: config.model?.trim() ?? null, env_vars };
+}
+
 export function AiKeyConnectionPanel({ openRouter }: { openRouter: boolean }) {
   const queryClient = useQueryClient();
   const runtimes = useAcpRuntimesQuery();
@@ -58,16 +73,18 @@ export function AiKeyConnectionPanel({ openRouter }: { openRouter: boolean }) {
     getGlobalAgentConfig()
       .then((loaded) => {
         if (cancelled) return;
-        setConfig({
-          ...loaded,
-          preferred_runtime: "buzz-agent",
-          ...(openRouter
-            ? {
-                provider: "openrouter",
-                model: loaded.provider === "openrouter" ? loaded.model : null,
-              }
-            : {}),
-        });
+        setConfig(
+          normalizeConnectionConfig({
+            ...loaded,
+            preferred_runtime: "buzz-agent",
+            ...(openRouter
+              ? {
+                  provider: "openrouter",
+                  model: loaded.provider === "openrouter" ? loaded.model : null,
+                }
+              : {}),
+          }),
+        );
         setLoading(false);
       })
       .catch(() => {
@@ -84,7 +101,7 @@ export function AiKeyConnectionPanel({ openRouter }: { openRouter: boolean }) {
   const changeConfig = (next: GlobalAgentConfig) => {
     generation.current += 1;
     setPending(false);
-    setConfig(next);
+    setConfig(normalizeConnectionConfig(next));
     setResult(null);
     setSaved(false);
     setSaveError(null);
