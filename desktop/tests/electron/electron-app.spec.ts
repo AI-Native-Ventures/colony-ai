@@ -2,6 +2,9 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import { expect, test } from "@playwright/test";
+import { finalizeEvent } from "nostr-tools";
+
+import { KIND_ASK_ACTION } from "../../src/shared/constants/kinds";
 
 import {
   DEFAULT_RELAY_URL,
@@ -161,6 +164,52 @@ test("packaged first run signs in, opens workspace surfaces, and recovers from o
     expect(sentEvent?.kind).toBe(9);
     expect(sentEvent?.pubkey).toBe(identity.publicKey);
 
+    if (!sentEvent?.id) throw new Error("The relay event has no message id.");
+    const askPublisher = fixtureIdentity("ask-publisher");
+    const askId = randomUUID();
+    const askTitle = messageText("Packaged Electron ask");
+    const askEvent = finalizeEvent(
+      {
+        kind: KIND_ASK_ACTION,
+        created_at: Math.floor(Date.now() / 1000),
+        content: JSON.stringify({
+          schemaVersion: 1,
+          askId,
+          action: "create",
+          ask: {
+            schemaVersion: 1,
+            askId,
+            type: "approval",
+            category: "general",
+            title: askTitle,
+            body: "Confirm the first-run relay journey.",
+            threadRootEventId: sentEvent.id,
+            addresseePubkey: identity.publicKey,
+          },
+        }),
+        tags: [
+          ["h", generalChannelId],
+          ["d", `channel:${generalChannelId}:ask:${askId}`],
+          ["e", sentEvent.id, "", "root"],
+          ["e", sentEvent.id, "", "reply"],
+        ],
+      },
+      askPublisher.secretKey,
+    );
+    const askResponse = await fetch("http://localhost:3000/events", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Pubkey": askEvent.pubkey,
+      },
+      body: JSON.stringify(askEvent),
+    });
+    if (!askResponse.ok) {
+      throw new Error(
+        `The isolated relay rejected the ask with HTTP ${askResponse.status}.`,
+      );
+    }
+
     const { page } = running;
     await page
       .getByTestId("sidebar-primary-menu")
@@ -169,15 +218,15 @@ test("packaged first run signs in, opens workspace surfaces, and recovers from o
     await expect(
       page.getByRole("heading", { name: "Needs me", exact: true }),
     ).toBeVisible();
-
-    await page.getByTestId("channel-general").click();
-    await page.getByTestId("raise-ask-from-composer").click();
-    await expect(page.getByLabel("What needs a response?")).toBeVisible();
+    const todayAsk = page.getByTestId(`today-ask-${askId}`);
+    await expect(todayAsk).toBeVisible({ timeout: 30_000 });
+    await todayAsk.click();
+    await expect(page.getByTestId("ask-detail-screen")).toBeVisible();
+    await expect(page.getByTestId("ask-card")).toContainText(askTitle);
 
     await page.getByTestId("sidebar-company-team").click();
     await expect(page.getByTestId("company-team-screen")).toBeVisible();
 
-    if (!sentEvent?.id) throw new Error("The relay event has no message id.");
     await running.application.evaluate(({ app }, url) => {
       app.emit("open-url", { preventDefault: () => {} }, url);
     }, `buzz://message?channel=${generalChannelId}&id=${sentEvent.id}`);

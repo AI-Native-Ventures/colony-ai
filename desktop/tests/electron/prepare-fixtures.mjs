@@ -11,6 +11,7 @@ if (!output) {
 
 const names = [
   "onboarding-member",
+  "ask-publisher",
   "send-member",
   "receive-member",
   "receive-publisher",
