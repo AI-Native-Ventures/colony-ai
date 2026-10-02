@@ -279,7 +279,8 @@ jobs:
           target_dir="$(node -p 'JSON.parse(require("node:child_process").execFileSync("cargo", ["metadata", "--manifest-path", "desktop/src-tauri/Cargo.toml", "--format-version", "1", "--no-deps"], { encoding: "utf8" })).target_directory')"
           host="$target_dir/release/colony-native-host"
           if [ ! -f "$host" ]; then host="$host.exe"; fi
-          if ! grep -a -q "wss://relay.colony.ainative.ventures" "$host"; then
+          # LC_ALL=C: BSD grep on macOS rejects binary data under a UTF-8 locale.
+          if ! LC_ALL=C grep -a -F -q "wss://relay.colony.ainative.ventures" "$host"; then
             echo "The release native host does not contain the production relay URL." >&2
             exit 1
           fi
