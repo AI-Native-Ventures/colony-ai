@@ -46,6 +46,31 @@ function localReference(ref) {
   return clean;
 }
 
+const releaseDownloadPattern = /href="https:\/\/github\.com\/AI-Native-Ventures\/colony-ai\/releases\/download\/(desktop-v(\d+\.\d+\.\d+))\/([^"]+)"/g;
+
+// The Download section must point at one tag-pinned desktop release that has every
+// installer the page promises, so a stale or half-edited link fails the build.
+function assertDownloadLinks(html) {
+  const section = html.match(/<section[^>]*id="download"[\s\S]*?<\/section>/)?.[0];
+  if (!section) throw new Error("index.html is missing the #download section");
+  const links = [...section.matchAll(releaseDownloadPattern)];
+  const tags = new Set(links.map((m) => m[1]));
+  if (tags.size !== 1) throw new Error(`#download links must use exactly one desktop release tag, found: ${[...tags].join(", ") || "none"}`);
+  const version = links[0][2];
+  const files = links.map((m) => m[3]);
+  const required = [
+    [`Colony-${version}-arm64`, ".dmg"],
+    [`Colony-${version}-x64`, ".exe"],
+    [`Colony-${version}-x64`, ".AppImage"],
+  ];
+  for (const [prefix, ext] of required) {
+    if (!files.some((f) => f.startsWith(prefix) && f.endsWith(ext))) {
+      throw new Error(`#download is missing a ${ext} link for desktop release ${version}`);
+    }
+  }
+  if (!files.includes("checksums.txt")) throw new Error("#download is missing the checksums.txt link");
+}
+
 async function validate(files) {
   const fileSet = new Set(files);
   for (const rel of files) {
@@ -68,6 +93,7 @@ async function validate(files) {
     if (!rel.endsWith(".html") && !rel.endsWith(".css") && !rel.endsWith(".js")) continue;
 
     const content = await readFile(absolute, "utf8");
+    if (rel === "index.html") assertDownloadLinks(content);
     const refs = rel.endsWith(".html")
       ? [...content.matchAll(/(?:src|href|poster)=["']([^"']+)["']/gi)].map((m) => m[1])
       : rel.endsWith(".css")

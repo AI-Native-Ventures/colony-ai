@@ -17,6 +17,12 @@ python3 -m http.server 4173 --directory site/dist
 
 Open `http://127.0.0.1:4173/`. Check mockup parity, all five business scenarios, keyboard use, reduced motion, and mobile widths including 390px. Do not open the page through `file://`; the dialog fragment uses same-origin fetch.
 
+## Desktop download
+
+The `#download` section in `public/index.html` links to the tag-pinned assets of the public GitHub release `desktop-v<version>` (installers and `checksums.txt`). Pinned tag URLs keep working when other releases are published; `releases/latest` does not.
+
+For each new desktop release, update the section in one edit: the tag and version in every link, the file names, the sizes (from the release asset list), and the signing wording (remove the "not code-signed" copy only once the release is signed and notarized). `npm --prefix site run check` fails if the links mix release tags or if a Mac, Windows, Linux or checksums link is missing. Then deploy and confirm each link returns the installer.
+
 ## Early access
 
 The dialog validates an application locally and displays a reviewable email draft. The visitor explicitly opens their email app or copies the draft; the page does not send anything, store applications, or use analytics. The current fallback recipient is `basheer@ainative.ventures`, matching the existing flow. “Ready” means a draft is ready or copied, never that an application was received.
