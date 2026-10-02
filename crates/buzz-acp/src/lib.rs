@@ -4800,7 +4800,9 @@ fn handle_prompt_result(
                         "the turn exceeded the maximum duration".to_string()
                     }
                     PromptOutcome::AgentExited => "the agent process exited".to_string(),
-                    PromptOutcome::Error(e) => format!("{e}"),
+                    PromptOutcome::Error(e) => provider_failure::retry_reason(e)
+                        .map(str::to_string)
+                        .unwrap_or_else(|| format!("{e}")),
                     PromptOutcome::ProjectContextIndeterminate(reason) => reason.clone(),
                     _ => "repeated failures".to_string(),
                 };
@@ -11049,6 +11051,25 @@ mod error_outcome_emission_tests {
     }
 
     async fn assert_terminal_notice(code: i64, raw_error: &str, expected_notice: &str) {
+        assert_failure_notice(code, raw_error, expected_notice, 0).await;
+    }
+
+    #[tokio::test]
+    async fn exhausted_provider_retries_do_not_publish_upstream_payloads() {
+        assert_failure_notice(
+            -32000,
+            "llm: (model) provider=DeepSeek; exhausted HTTP 503 retries: sensitive payload",
+            "⚠️ I couldn't process the last request after multiple retries (the AI provider rejected the request or is temporarily unavailable. Check the provider status and your configuration in Settings, Agents, defaults). Please re-send if it's still needed.",
+            crate::queue::MAX_RETRIES,
+        ).await;
+    }
+
+    async fn assert_failure_notice(
+        code: i64,
+        raw_error: &str,
+        expected_notice: &str,
+        retry_count: u32,
+    ) {
         use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -11105,6 +11126,9 @@ mod error_outcome_emission_tests {
             },
         );
         let mut queue = EventQueue::new(config::DedupMode::Queue);
+        if retry_count > 0 {
+            queue.set_retry_count_for_test(channel_id, retry_count);
+        }
         let config = test_config();
         let mut heartbeat_in_flight = false;
         let removed_channels = std::collections::HashSet::new();

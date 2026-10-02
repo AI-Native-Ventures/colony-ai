@@ -1,4 +1,4 @@
-//! Safe, terminal provider failure notices used by the prompt-result path.
+//! Safe provider failure notices used by the prompt-result path.
 
 use crate::acp::AcpError;
 
@@ -55,6 +55,15 @@ pub(crate) fn notice(error: &AcpError) -> Option<String> {
         provider
     };
     Some(format!("⚠️ {provider} {problem}"))
+}
+
+/// Keep upstream payloads out of the eventual notice after transient retries.
+pub(crate) fn retry_reason(error: &AcpError) -> Option<&'static str> {
+    let AcpError::AgentError { message, .. } = error else {
+        return None;
+    };
+    (message.starts_with("llm:") || message.starts_with("llm auth:"))
+        .then_some("the AI provider rejected the request or is temporarily unavailable. Check the provider status and your configuration in Settings, Agents, defaults")
 }
 
 #[cfg(test)]
