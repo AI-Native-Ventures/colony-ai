@@ -197,7 +197,6 @@ class RelaySessionNotifier extends Notifier<SessionState> {
     NostrFilter filter, {
     required Duration timeout,
   }) async {
-    if (_rateLimitGate.isActive) await _rateLimitGate.wait();
     if (_disposed) throw StateError('Relay session is disposed');
     final subId = _nextSubId('h');
     final completer = Completer<List<NostrEvent>>();
@@ -317,7 +316,6 @@ class RelaySessionNotifier extends Notifier<SessionState> {
     Duration timeout = const Duration(seconds: 8),
   }) async {
     final generation = _connectionGeneration;
-    if (_rateLimitGate.isActive) await _rateLimitGate.wait();
     if (!_isActiveConnection(generation) || !_socketConnected) {
       throw StateError('Relay session is not connected');
     }
@@ -1034,7 +1032,6 @@ class RelaySessionNotifier extends Notifier<SessionState> {
     required bool Function() isCurrent,
     RelayOperationPriority priority = RelayOperationPriority.normal,
   }) async {
-    if (_rateLimitGate.isActive) await _rateLimitGate.wait();
     final generation = _connectionGeneration;
     bool isCurrentConnection() =>
         _isActiveConnection(generation) && _socketConnected && isCurrent();

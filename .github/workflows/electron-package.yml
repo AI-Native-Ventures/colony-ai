@@ -8,6 +8,23 @@ on:
         required: false
         type: boolean
         default: false
+    secrets:
+      COLONY_GOOGLE_DESKTOP_CLIENT_SECRET:
+        required: false
+      APPLE_DEVELOPER_ID_CERT_P12_B64:
+        required: false
+      APPLE_DEVELOPER_ID_CERT_PASSWORD:
+        required: false
+      APPLE_NOTARY_API_KEY_P8_B64:
+        required: false
+      APPLE_NOTARY_KEY_ID:
+        required: false
+      APPLE_NOTARY_ISSUER_ID:
+        required: false
+      WINDOWS_SIGNING_CERT_PFX_B64:
+        required: false
+      WINDOWS_SIGNING_CERT_PASSWORD:
+        required: false
     outputs:
       mac_signed:
         description: Whether the macOS release was signed and notarized.

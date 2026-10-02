@@ -24,11 +24,16 @@ import { Button } from "@/shared/ui/button";
 import { Dialog } from "@/shared/ui/dialog";
 import { ChooserDialogContent } from "@/shared/ui/chooser-dialog-content";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { PageHeader } from "@/shared/ui/PageHeader";
 
 import agentOutlineUrl from "../assets/agent-outline.svg";
 import { AgentDefinitionMetadata } from "./AgentDefinitionMetadata";
 import { PersonaAddedBy } from "./PersonaAddedBy";
 import { resolveCatalogOwnerLabel } from "./catalogOwnerLabel";
+import {
+  HireBackButton,
+  HirePageHeader,
+} from "@/features/company-hiring/ui/HirePresentation";
 
 // ── Type-tagged selection keys ────────────────────────────────────────────────
 
@@ -226,6 +231,7 @@ export function CommunityCatalogDialog({
   }
 
   function requestClose() {
+    if (personasPending) return;
     if (isCreateSelected && createDirtyRef.current) {
       setPendingNavigation({ type: "close" });
       return;
@@ -278,6 +284,61 @@ export function CommunityCatalogDialog({
     const buffer = await file.arrayBuffer();
     onOpenChange(false);
     onImportFile(Array.from(new Uint8Array(buffer)), file.name);
+  }
+
+  const discardDialog = (
+    <AlertDialog
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) setPendingNavigation(null);
+      }}
+      open={pendingNavigation !== null}
+    >
+      <AlertDialogContent data-testid="discard-create-agent-dialog">
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {rolePackMode
+              ? "Discard role pack changes?"
+              : "Discard agent changes?"}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            Your changes to this {rolePackMode ? "role pack" : "agent"} will be
+            lost.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep editing</AlertDialogCancel>
+          <AlertDialogAction asChild>
+            <Button onClick={discardChangesAndNavigate} variant="destructive">
+              Discard changes
+            </Button>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
+  if (rolePackMode) {
+    return (
+      <>
+        <section
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
+          data-testid="company-role-pack-page"
+        >
+          <HirePageHeader title="Role catalog" />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto w-full max-w-[74.5rem] px-12 pb-12 2xl:px-6">
+              <HireBackButton onClick={requestClose} />
+              <PageHeader className="mb-7" title="Role catalog" />
+              {createContent({
+                onDirtyChange: handleCreateDirtyChange,
+                onRequestClose: requestClose,
+              })}
+            </div>
+          </div>
+        </section>
+        {discardDialog}
+      </>
+    );
   }
 
   return (
@@ -578,29 +639,7 @@ export function CommunityCatalogDialog({
         </ChooserDialogContent>
       </Dialog>
 
-      <AlertDialog
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) setPendingNavigation(null);
-        }}
-        open={pendingNavigation !== null}
-      >
-        <AlertDialogContent data-testid="discard-create-agent-dialog">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Discard agent changes?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Your changes to this agent will be lost.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep editing</AlertDialogCancel>
-            <AlertDialogAction asChild>
-              <Button onClick={discardChangesAndNavigate} variant="destructive">
-                Discard changes
-              </Button>
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {discardDialog}
     </>
   );
 }

@@ -840,6 +840,7 @@ export function AgentDefinitionDialog({
       isPending={isPending}
       onCancel={() => handleOpenChange(false)}
       publishesCatalogUpdates={publishCatalogUpdatesOnSave && hasUserChanges}
+      rolePackPage={embedded && rolePackEditorVisible}
       submitLabel={submitLabel}
     />
   );
@@ -861,6 +862,7 @@ export function AgentDefinitionDialog({
             disabled={isPending}
             displayName={displayName}
             draft={companyRoleDraft}
+            footer={embedded ? footer : undefined}
             modelDiscoverySuccessfulEmpty={modelDiscoverySuccessfulEmpty}
             modelStatus={modelDiscoveryStatus?.message ?? null}
             onDisplayNameChange={updateCompanyRoleTitle}
