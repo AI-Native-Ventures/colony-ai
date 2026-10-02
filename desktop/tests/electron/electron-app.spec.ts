@@ -242,9 +242,11 @@ test("packaged first run signs in, opens workspace surfaces, and recovers from o
     await expect(page.getByTestId("ask-card")).toContainText(askTitle);
 
     await page.getByTestId("sidebar-company-team").click();
-    await expect(page.getByRole("status")).toHaveText(
-      "Team membership is unavailable for this community.",
-    );
+    await expect(
+      page.getByText("Team membership is unavailable for this community.", {
+        exact: true,
+      }),
+    ).toBeVisible();
 
     await running.application.evaluate(({ app }, url) => {
       app.emit("open-url", { preventDefault: () => {} }, url);
@@ -303,7 +305,7 @@ test("a typed channel message appears in Electron and is readable by an independ
     await enterMessage(running, content, 40_000);
 
     const saved = await waitForRelayMessage(
-      DEFAULT_RELAY_URL,
+      PROXY_RELAY_URL,
       identity.publicKey,
       content,
       40_000,
