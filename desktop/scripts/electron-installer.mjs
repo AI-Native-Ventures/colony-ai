@@ -80,7 +80,8 @@ export function createInstallerConfig({
 }
 
 async function main(args) {
-  const [platform, arch] = args;
+  // pnpm forwards a literal "--" ahead of script arguments, so accept it.
+  const [platform, arch] = args[0] === "--" ? args.slice(1) : args;
   const packageJson = JSON.parse(
     await readFile(path.join(desktop, "package.json"), "utf8"),
   );

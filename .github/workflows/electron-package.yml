@@ -279,7 +279,8 @@ jobs:
           target_dir="$(node -p 'JSON.parse(require("node:child_process").execFileSync("cargo", ["metadata", "--manifest-path", "desktop/src-tauri/Cargo.toml", "--format-version", "1", "--no-deps"], { encoding: "utf8" })).target_directory')"
           host="$target_dir/release/colony-native-host"
           if [ ! -f "$host" ]; then host="$host.exe"; fi
-          if ! grep -a -q "wss://relay.colony.ainative.ventures" "$host"; then
+          # LC_ALL=C: BSD grep on macOS rejects binary data under a UTF-8 locale.
+          if ! LC_ALL=C grep -a -F -q "wss://relay.colony.ainative.ventures" "$host"; then
             echo "The release native host does not contain the production relay URL." >&2
             exit 1
           fi
@@ -499,6 +500,8 @@ jobs:
           COLONY_NATIVE_HOST: ""
           COLONY_ELECTRON_SMOKE: "1"
           COLONY_ELECTRON_BACKGROUND: "1"
+          # Release builds are named Colony; the Package step sets this only for itself.
+          COLONY_ELECTRON_PRODUCT_NAME: ${{ inputs.release && 'Colony' || '' }}
           COLONY_ELECTRON_USER_DATA: ${{ runner.temp }}/colony-electron-smoke-user-data
         run: |
           set -euo pipefail
@@ -537,6 +540,7 @@ jobs:
           COLONY_NATIVE_HOST: ""
           COLONY_ELECTRON_SMOKE: "1"
           COLONY_ELECTRON_BACKGROUND: "1"
+          COLONY_ELECTRON_PRODUCT_NAME: ${{ inputs.release && 'Colony' || '' }}
         run: |
           $env:COLONY_ELECTRON_USER_DATA = Join-Path $env:RUNNER_TEMP "colony-electron-smoke-user-data"
           $packageName = if ($env:COLONY_ELECTRON_PRODUCT_NAME) { $env:COLONY_ELECTRON_PRODUCT_NAME } else { "Buzz" }
