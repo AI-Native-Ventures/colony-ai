@@ -48,6 +48,11 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
     runtimes: [
       r17Runtime("claude", "available", { status: "logged_in" }),
       r17Runtime("codex", "available", { status: "logged_in" }),
+      {
+        ...r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
+        model_env_var: "BUZZ_AGENT_MODEL",
+        provider_env_var: "BUZZ_AGENT_PROVIDER",
+      },
     ],
     discoveryDelayMs: 1_000,
   });
@@ -70,11 +75,13 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
   await expect(
     page.getByRole("heading", { name: "Connect directly to a provider" }),
   ).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "API key" })).toHaveAttribute(
-    "type",
-    "password",
-  );
-  await expect(page.getByRole("button", { name: "Check key" })).toBeVisible();
+  await expect(page.getByTestId("global-agent-provider")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Test connection" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Save AI default" }),
+  ).toBeDisabled();
 
   await page.getByRole("button", { name: "OpenRouter" }).click();
   await expect(
@@ -271,4 +278,35 @@ test("R17 Agent Defaults keep a failed save editable and allow retry", async ({
   expect(
     await mockCommand<number>(page, "get_global_agent_config_set_call_count"),
   ).toBe(2);
+});
+
+test("R17 bundled agent without a provider is not ready and credits are coming soon", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    runtimes: [
+      r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
+    ],
+  });
+  const card = page.getByTestId("onboarding-connect-runtime-buzz-agent");
+  await expect(card).toContainText("No AI connected yet");
+  await expect(card).not.toContainText("Ready");
+  await expect(
+    page.getByText("AI employees will not reply", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open AI settings" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Colony credits", exact: true })
+    .click();
+  const credits = page.getByTestId("onboarding-credits-coming-soon");
+  await expect(credits).toContainText("Coming soon");
+  await expect(credits).not.toContainText(/balance|Unavailable|12\.50/);
+  await expect(page.getByRole("button", { name: "Reload prices" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("button", { name: "Open my Colony" }),
+  ).toBeEnabled();
 });

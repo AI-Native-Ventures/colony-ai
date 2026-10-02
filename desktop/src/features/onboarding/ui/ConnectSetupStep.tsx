@@ -7,7 +7,16 @@ import {
   useConnectAcpRuntimeMutation,
   useInstallAcpRuntimeMutation,
 } from "@/features/agents/hooks";
-import type { AcpRuntimeCatalogEntry } from "@/shared/api/types";
+import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
+import {
+  AiKeyConnectionPanel,
+  CreditsComingSoon,
+} from "./AiKeyConnectionPanel";
+import { resolveAgentReadiness } from "./agentReadiness";
+import type {
+  GlobalAgentConfig,
+  AcpRuntimeCatalogEntry,
+} from "@/shared/api/types";
 import { getInstallErrorMessage } from "@/shared/lib/installError";
 import { Button } from "@/shared/ui/button";
 import type { OnboardingBusinessProfile } from "./BusinessSetupStep";
@@ -21,17 +30,13 @@ import {
   runtimeIsReadyForOnboarding,
 } from "./onboardingRuntimeSelection";
 import { getRuntimeDisplayLabel, RuntimeIcon } from "./RuntimeIcon";
-import {
-  unavailableCreditsOnboardingApi,
-  type CreditsSnapshot,
-} from "./creditsOnboardingApi";
 
 type ConnectSetupStepProps = {
   business: OnboardingBusinessProfile;
   communityId: string;
   error?: string | null;
   onBack: () => void;
-  onContinue: () => void;
+  onContinue: (destination?: "settings") => void;
 };
 
 type HarnessHeader = {
@@ -40,8 +45,12 @@ type HarnessHeader = {
   mark: React.ReactNode;
 };
 
-function getRuntimeHeaderStatus(runtime: AcpRuntimeCatalogEntry) {
-  if (runtimeIsReadyForOnboarding(runtime)) return "Ready";
+function getRuntimeHeaderStatus(
+  runtime: AcpRuntimeCatalogEntry,
+  globalConfig: GlobalAgentConfig,
+) {
+  if (runtimeIsReadyForOnboarding(runtime, globalConfig)) return "Ready";
+  if (runtime.id === "buzz-agent") return "No AI connected yet";
   if (
     runtime.availability === "available" &&
     runtime.authStatus.status === "logged_out"
@@ -57,11 +66,13 @@ function getRuntimeHeaderStatus(runtime: AcpRuntimeCatalogEntry) {
 }
 
 function RuntimeOption({
+  globalConfig,
   onRefresh,
   runtime,
   selected,
   onSelect,
 }: {
+  globalConfig: GlobalAgentConfig;
   onRefresh: () => void;
   runtime: AcpRuntimeCatalogEntry;
   selected: boolean;
@@ -75,7 +86,7 @@ function RuntimeOption({
   const authMethods = useAcpAuthMethodsQuery(runtime.id, {
     enabled: needsSignIn,
   });
-  const ready = runtimeIsReadyForOnboarding(runtime);
+  const ready = runtimeIsReadyForOnboarding(runtime, globalConfig);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [waitingForSignIn, setWaitingForSignIn] = React.useState(false);
 
@@ -134,6 +145,7 @@ function RuntimeOption({
     runtime.authStatus.status === "unknown"
   )
     status = "Checking status";
+  else if (runtime.id === "buzz-agent") status = "No AI connected yet";
   else if (runtime.availability === "available") status = "Installed";
 
   return (
@@ -148,7 +160,7 @@ function RuntimeOption({
         type="button"
       >
         <span className="provider-top">
-          <RuntimeIcon className="runtime-provider-icon" runtime={runtime} />
+          <RuntimeIcon className="size-8 shrink-0" runtime={runtime} />
           <strong>{getRuntimeDisplayLabel(runtime)}</strong>
           <span className="selection-dot" />
         </span>
@@ -217,15 +229,16 @@ function RuntimeOption({
 function RuntimeConnectionPanel({
   error,
   onHarnessHeaderChange,
-  onContinue,
 }: {
   error?: string | null;
   onHarnessHeaderChange: (header: HarnessHeader) => void;
-  onContinue: () => void;
 }) {
+  const { globalConfig } = useGlobalAgentConfig();
   const query = useAcpRuntimesQueryForced();
   const runtimes = getVisibleOnboardingRuntimes(query.data ?? []);
-  const ready = runtimes.filter(runtimeIsReadyForOnboarding);
+  const ready = runtimes.filter((runtime) =>
+    runtimeIsReadyForOnboarding(runtime, globalConfig),
+  );
   const [selectedRuntimeId, setSelectedRuntimeId] = React.useState<
     string | null
   >(null);
@@ -246,7 +259,7 @@ function RuntimeConnectionPanel({
     const header: HarnessHeader = selectedRuntime
       ? {
           label: getRuntimeDisplayLabel(selectedRuntime),
-          status: getRuntimeHeaderStatus(selectedRuntime),
+          status: getRuntimeHeaderStatus(selectedRuntime, globalConfig),
           mark: (
             <RuntimeIcon
               className="harness-mark-runtime"
@@ -264,7 +277,13 @@ function RuntimeConnectionPanel({
               mark: null,
             };
     onHarnessHeaderChange(header);
-  }, [onHarnessHeaderChange, query.error, query.isFetching, selectedRuntime]);
+  }, [
+    onHarnessHeaderChange,
+    query.error,
+    query.isFetching,
+    selectedRuntime,
+    globalConfig,
+  ]);
 
   return (
     <>
@@ -320,6 +339,7 @@ function RuntimeConnectionPanel({
           {runtimes.map((runtime) => (
             <RuntimeOption
               key={runtime.id}
+              globalConfig={globalConfig}
               onRefresh={refresh}
               onSelect={() => setSelectedRuntimeId(runtime.id)}
               runtime={runtime}
@@ -335,27 +355,19 @@ function RuntimeConnectionPanel({
         </div>
       ) : null}
       <p className="power-caption">
-        {selectedRuntime && runtimeIsReadyForOnboarding(selectedRuntime)
+        {selectedRuntime &&
+        runtimeIsReadyForOnboarding(selectedRuntime, globalConfig)
           ? `${getRuntimeDisplayLabel(selectedRuntime)} is ready on this computer.`
           : ready.length > 0
             ? "Choose a ready harness to continue."
             : "You can connect an AI harness later."}
       </p>
-      <div className="power-cta">
-        <button className="primary full" onClick={onContinue} type="button">
-          Open my Colony
-          <svg aria-hidden="true" className="icon">
-            <path d="M4 12h15m-6-6 6 6-6 6" />
-          </svg>
-        </button>
-      </div>
     </>
   );
 }
 
 export function ConnectSetupStep({
   business,
-  communityId,
   error,
   onBack,
   onContinue,
@@ -367,41 +379,11 @@ export function ConnectSetupStep({
     | "openrouter-unlinked"
     | "api-key"
   >("connect");
-  const [creditsSnapshot, setCreditsSnapshot] = React.useState<CreditsSnapshot>(
-    {
-      status: "unavailable",
-      reason: "contract-not-available",
-    },
-  );
   const [harnessHeader, setHarnessHeader] = React.useState<HarnessHeader>({
     label: "Finding harnesses",
     status: "Checking",
     mark: null,
   });
-  const creditsGeneration = React.useRef(0);
-  const loadCredits = React.useCallback(async () => {
-    const generation = ++creditsGeneration.current;
-    setConnectionScene("funding");
-    setCreditsSnapshot({ status: "loading" });
-    try {
-      const snapshot = await unavailableCreditsOnboardingApi.read(communityId);
-      if (generation !== creditsGeneration.current) return;
-      setCreditsSnapshot(snapshot);
-      setConnectionScene(
-        snapshot.status === "unavailable" ? "credits-price-error" : "funding",
-      );
-    } catch {
-      if (generation !== creditsGeneration.current) return;
-      setCreditsSnapshot({ status: "unavailable", reason: "request-failed" });
-      setConnectionScene("credits-price-error");
-    }
-  }, [communityId]);
-  React.useEffect(
-    () => () => {
-      creditsGeneration.current += 1;
-    },
-    [],
-  );
   const handleHarnessHeaderChange = React.useCallback(
     (header: HarnessHeader) => {
       setHarnessHeader((current) =>
@@ -421,43 +403,76 @@ export function ConnectSetupStep({
     logoUrl: business.logoUrl,
     harnessLabel: harnessHeader.label,
     harnessStatus: harnessHeader.status,
-    creditsSnapshot,
   };
-  const onSelectConnection = React.useCallback(
-    (scene: OnboardingSceneId) => {
-      if (
-        scene === "connect" ||
-        scene === "credits-price-error" ||
-        scene === "openrouter-unlinked" ||
-        scene === "api-key"
-      ) {
-        setConnectionScene(scene);
-        if (scene === "credits-price-error") {
-          void loadCredits();
-        } else {
-          creditsGeneration.current += 1;
-        }
-      }
-    },
-    [loadCredits],
-  );
+  const onSelectConnection = React.useCallback((scene: OnboardingSceneId) => {
+    if (
+      scene === "connect" ||
+      scene === "credits-price-error" ||
+      scene === "openrouter-unlinked" ||
+      scene === "api-key"
+    ) {
+      setConnectionScene(scene);
+    }
+  }, []);
+
+  const { globalConfig } = useGlobalAgentConfig();
+  const runtimes = useAcpRuntimesQueryForced();
+  const aiReady = resolveAgentReadiness(
+    runtimes.data ?? [],
+    globalConfig,
+  ).ready;
 
   return (
     <OnboardingScenePresentation
       connectionContentOverride={
-        connectionScene === "connect" ? (
-          <RuntimeConnectionPanel
-            error={error}
-            onHarnessHeaderChange={handleHarnessHeaderChange}
-            onContinue={onContinue}
-          />
-        ) : undefined
+        <>
+          {connectionScene === "connect" ? (
+            <RuntimeConnectionPanel
+              error={error}
+              onHarnessHeaderChange={handleHarnessHeaderChange}
+            />
+          ) : connectionScene === "api-key" ||
+            connectionScene === "openrouter-unlinked" ? (
+            <AiKeyConnectionPanel
+              key={connectionScene}
+              openRouter={connectionScene === "openrouter-unlinked"}
+            />
+          ) : (
+            <CreditsComingSoon />
+          )}
+          {!aiReady ? (
+            <div className="power-notice">
+              <p>
+                No AI connected yet. AI employees will not reply until you
+                connect an AI in Settings &gt; Agents &gt; Defaults.
+              </p>
+              <button
+                className="link"
+                type="button"
+                onClick={() => onContinue("settings")}
+              >
+                Open AI settings
+              </button>
+            </div>
+          ) : null}
+          <div className="power-cta">
+            <button
+              className="primary full"
+              onClick={() => onContinue()}
+              type="button"
+            >
+              Open my Colony
+            </button>
+            {!aiReady ? (
+              <p>Continue without AI. You can connect it later.</p>
+            ) : null}
+          </div>
+        </>
       }
       data={data}
       harnessMark={harnessHeader.mark}
       onNavigate={onBack}
       onSelectConnection={onSelectConnection}
-      onCreditsRetry={() => void loadCredits()}
       scene={connectionScene}
     />
   );

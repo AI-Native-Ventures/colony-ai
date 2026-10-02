@@ -1,4 +1,8 @@
-import type { AcpRuntimeCatalogEntry } from "@/shared/api/types";
+import { resolveAgentReadiness } from "./agentReadiness";
+import type {
+  GlobalAgentConfig,
+  AcpRuntimeCatalogEntry,
+} from "@/shared/api/types";
 
 export const ONBOARDING_RUNTIME_ORDER = [
   "claude",
@@ -24,7 +28,20 @@ export function runtimeIsVisibleInOnboarding(runtimeId: string) {
   return VISIBLE_ONBOARDING_RUNTIME_IDS.has(runtimeId);
 }
 
-export function runtimeIsReadyForOnboarding(runtime: AcpRuntimeCatalogEntry) {
+export function runtimeIsReadyForOnboarding(
+  runtime: AcpRuntimeCatalogEntry,
+  globalConfig?: GlobalAgentConfig,
+) {
+  if (runtime.id === "buzz-agent") {
+    return (
+      globalConfig !== undefined &&
+      resolveAgentReadiness(
+        [runtime],
+        { ...globalConfig, preferred_runtime: runtime.id },
+        "preferred",
+      ).ready
+    );
+  }
   return (
     runtime.availability === "available" &&
     (runtime.authStatus.status === "logged_in" ||
@@ -46,8 +63,9 @@ export function getVisibleOnboardingRuntimes(
 
 export function getReadyOnboardingRuntimes(
   runtimes: readonly AcpRuntimeCatalogEntry[],
+  globalConfig?: GlobalAgentConfig,
 ) {
-  return getVisibleOnboardingRuntimes(runtimes).filter(
-    runtimeIsReadyForOnboarding,
+  return getVisibleOnboardingRuntimes(runtimes).filter((runtime) =>
+    runtimeIsReadyForOnboarding(runtime, globalConfig),
   );
 }

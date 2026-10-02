@@ -68,6 +68,29 @@ test("ready onboarding runtimes exclude unknown and non-ready harnesses", () => 
 
   assert.deepEqual(
     getReadyOnboardingRuntimes(runtimes).map(({ id }) => id),
-    ["claude", "goose", "buzz-agent"],
+    ["claude", "goose"],
+  );
+});
+
+test("bundled onboarding readiness binds real provider/model/key readiness", () => {
+  const bundled = runtime("buzz-agent", "available", "not_applicable");
+  assert.equal(runtimeIsReadyForOnboarding(bundled), false);
+  for (const config of [
+    { provider: null, model: null, env_vars: {} },
+    { provider: "openrouter", model: "vendor/model", env_vars: {} },
+    {
+      provider: "openrouter",
+      model: null,
+      env_vars: { OPENROUTER_API_KEY: "fixture" },
+    },
+  ])
+    assert.equal(runtimeIsReadyForOnboarding(bundled, config), false);
+  assert.equal(
+    runtimeIsReadyForOnboarding(bundled, {
+      provider: "openrouter",
+      model: "vendor/model",
+      env_vars: { OPENROUTER_API_KEY: "fixture" },
+    }),
+    true,
   );
 });
