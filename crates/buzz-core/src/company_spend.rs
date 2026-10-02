@@ -648,4 +648,26 @@ mod tests {
         action.funding_order.push("provider subscription".into());
         assert!(validate_employee_allowance_action(&action).is_err());
     }
+
+    #[test]
+    fn expired_temporary_allowance_is_rejected_by_production_validator() {
+        let action = EmployeeAllowanceAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            employee_pubkey: "aa".repeat(32),
+            expected_head_event_id: None,
+            allowance: AllowanceValue {
+                amount_cents: "100".into(),
+                period: AllowancePeriod::Week,
+            },
+            temporary_allowance: Some(TemporaryAllowance {
+                allowance: AllowanceValue {
+                    amount_cents: "200".into(),
+                    period: AllowancePeriod::Week,
+                },
+                expires_at: "2020-01-01T00:00:00Z".into(),
+            }),
+            funding_order: vec![],
+        };
+        assert!(validate_employee_allowance_action(&action).is_err());
+    }
 }
