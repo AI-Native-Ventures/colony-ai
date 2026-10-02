@@ -15,6 +15,16 @@ Use this checklist for each site release. A successful local build is not proof 
 - [x] Both hosts currently serve the same page; `www` has no redirect to apex, and the page declares the apex canonical URL.
 - [x] Apex and `www` use proxied CNAME records to `colony-global.pages.dev` with Auto TTL. Five MX records and the SPF TXT record were visually confirmed unchanged.
 
+## Proven for the 2 Oct 2026 desktop download deployment
+
+- [x] Pages production deployment `2f46f4a9` (project `colony-global`, branch `main`, source commit `2373d32c2`) added the `#download` section and nav link. Previous production deployment `d0be35e5` remains available for rollback.
+- [x] Live `index.html` on `colony.global`, `www.colony.global` and the `pages.dev` deployment is SHA-256 identical to the built `dist/index.html`.
+- [x] Download links point at the public `desktop-v1.0.0` GitHub release. HEAD requests returned 200 after redirect with the expected sizes: DMG 211003938, EXE 168379750, AppImage 220297130, `checksums.txt` 1124 bytes.
+- [x] All four installers were downloaded anonymously and matched `checksums.txt`.
+- [x] No horizontal overflow at 1440px or 390px. The `pages.dev` host logs no console errors.
+- [ ] Known noise: on `colony.global` Cloudflare injects its Web Analytics beacon at the zone edge and the site CSP blocks it, so it logs a console error and no analytics run. Turn off Web Analytics auto-injection for the zone in the Cloudflare dashboard to silence it.
+- [ ] Not yet exercised: installing and launching the unsigned apps on real Mac, Windows and Linux machines.
+
 ## Before the next deployment
 
 - [ ] Confirm the implementation matches approved Helix r23: hero composition, wordmark, type scale, spacing, product sections, navigation, and footer attribution.
