@@ -747,7 +747,7 @@ pub struct AgentProfileInfo {
 
 mod get;
 pub use get::get_relay_json;
-pub(crate) use get::get_relay_json_bounded;
+pub(crate) use get::{get_relay_json_bounded, get_relay_json_bounded_with_signature_path};
 
 mod submit;
 pub use submit::{

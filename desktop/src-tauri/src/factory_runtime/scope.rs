@@ -436,12 +436,14 @@ async fn verify_business_community_membership(
     state: &crate::app_state::AppState,
     scope: &FactoryScope,
 ) -> Result<bool, String> {
-    let response: FactoryBusinessMembershipResponse = crate::relay::get_relay_json_bounded(
-        state,
-        "/api/communities/mine?scope=member",
-        MAX_BUSINESS_MEMBERSHIP_RESPONSE_BYTES,
-    )
-    .await?;
+    let response: FactoryBusinessMembershipResponse =
+        crate::relay::get_relay_json_bounded_with_signature_path(
+            state,
+            "/api/communities/mine?scope=member",
+            "/api/communities/mine",
+            MAX_BUSINESS_MEMBERSHIP_RESPONSE_BYTES,
+        )
+        .await?;
     response_contains_business_membership(
         &response,
         &scope.identity_pubkey,
