@@ -62,6 +62,7 @@ let result = "connected";
 let probe = async () => result;
 let saveFails = false;
 let saves = [];
+let gitBashPrerequisite = null;
 const clients = [];
 const initialConfig = {
   preferred_runtime: "buzz-agent",
@@ -95,6 +96,8 @@ globalThis.__TAURI_INTERNALS__ = {
   transformCallback: () => 1,
   invoke: async (command, args) => {
     if (command === "get_global_agent_config") return initialConfig;
+    if (command === "discover_git_bash_prerequisite")
+      return gitBashPrerequisite;
     if (command === "discover_acp_providers") return [rawRuntime];
     if (command === "discover_agent_models")
       return {
@@ -138,9 +141,10 @@ afterEach(() => {
   saveFails = false;
   result = "connected";
   probe = async () => result;
+  gitBashPrerequisite = null;
 });
 after(() => dom.window.close());
-async function mount() {
+async function mount({ ready = true } = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
@@ -155,7 +159,7 @@ async function mount() {
   await rtl.waitFor(() =>
     assert.equal(
       rtl.screen.getByRole("button", { name: "Test connection" }).disabled,
-      false,
+      !ready,
     ),
   );
 }
@@ -243,6 +247,30 @@ test("pasted key whitespace is removed from both the tested and saved snapshot",
   await click("Save AI default");
   assert.equal(testedConfig.env_vars.OPENROUTER_API_KEY, "pasted-fixture");
   assert.deepEqual(saves, [testedConfig]);
+});
+test("configured provider form preserves the Git for Windows prerequisite gate", async () => {
+  gitBashPrerequisite = {
+    available: false,
+    path: null,
+    install_instructions_url: "https://gitforwindows.org/",
+    install_hint: "Install Git for Windows",
+  };
+  await mount({ ready: false });
+  await rtl.waitFor(() =>
+    assert.match(
+      rtl.screen.getByRole("alert").textContent,
+      /Install Git for Windows/,
+    ),
+  );
+  assert.equal(
+    rtl.screen.getByRole("button", { name: "Test connection" }).disabled,
+    true,
+  );
+  assert.equal(
+    rtl.screen.getByRole("button", { name: "Save AI default" }).disabled,
+    true,
+  );
+  assert.equal(saves.length, 0);
 });
 test("an in-flight probe cannot authorize an edited draft", async () => {
   let finish;

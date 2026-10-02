@@ -368,6 +368,10 @@ test("R17 OpenRouter saves a tested provider default through the real form", asy
   await expect(
     page.getByText("AI connected and saved as your default."),
   ).toBeVisible();
+  await expect(page.locator(".harness-state")).toHaveText("Ready");
+  await expect(
+    page.getByText("AI employees will not reply", { exact: false }),
+  ).toHaveCount(0);
   expect(
     await mockCommand(page, "get_global_agent_config_set_call_count"),
   ).toBe(1);
@@ -399,4 +403,52 @@ test("R17 explicit skip can open the working defaults path in Settings", async (
   expect(
     await mockCommand(page, "get_global_agent_config_set_call_count"),
   ).toBe(0);
+});
+
+test("bundled agent readiness names missing Git for Windows before claiming Ready", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    runtimes: [
+      r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
+    ],
+    mock: {
+      globalAgentConfig: {
+        preferred_runtime: "buzz-agent",
+        provider: "openrouter",
+        model: "fixture/model",
+        env_vars: { OPENROUTER_API_KEY: "e2e-fixture-key" },
+      },
+      discoverAgentModels: {
+        models: [{ id: "fixture/model", name: "Fixture model" }],
+        supportsSwitching: true,
+        selectedModel: "fixture/model",
+      },
+      gitBashPrerequisite: {
+        available: false,
+        path: null,
+        install_instructions_url: "https://gitforwindows.org/",
+        install_hint: "Install Git for Windows",
+      },
+    },
+  });
+  const card = page.getByTestId("onboarding-connect-runtime-buzz-agent");
+  await expect(card).toContainText(
+    "Install Git for Windows from https://gitforwindows.org/",
+  );
+  await expect(card).not.toContainText("Ready on this computer");
+  await expect(card.locator(".provider-status.is-connected")).toHaveCount(0);
+  await page.getByRole("button", { name: "OpenRouter", exact: true }).click();
+  await expect(page.locator(".harness-state")).toHaveText(
+    "Git for Windows needed",
+  );
+  await expect(page.getByRole("alert")).toContainText(
+    "Install Git for Windows",
+  );
+  await expect(
+    page.getByRole("button", { name: "Test connection", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Open my Colony", exact: true }),
+  ).toBeEnabled();
 });

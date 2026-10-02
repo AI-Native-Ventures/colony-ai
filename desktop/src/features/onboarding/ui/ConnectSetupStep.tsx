@@ -4,6 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   useAcpAuthMethodsQuery,
   useAcpRuntimesQueryForced,
+  useGitBashPrerequisiteQuery,
   useConnectAcpRuntimeMutation,
   useInstallAcpRuntimeMutation,
 } from "@/features/agents/hooks";
@@ -12,10 +13,14 @@ import {
   AiKeyConnectionPanel,
   CreditsComingSoon,
 } from "./AiKeyConnectionPanel";
-import { resolveAgentReadiness } from "./agentReadiness";
+import {
+  resolveAgentPrerequisiteReadiness,
+  resolveAgentReadiness,
+} from "./agentReadiness";
 import type {
   GlobalAgentConfig,
   AcpRuntimeCatalogEntry,
+  GitBashPrerequisite,
 } from "@/shared/api/types";
 import { getInstallErrorMessage } from "@/shared/lib/installError";
 import { Button } from "@/shared/ui/button";
@@ -48,8 +53,18 @@ type HarnessHeader = {
 function getRuntimeHeaderStatus(
   runtime: AcpRuntimeCatalogEntry,
   globalConfig: GlobalAgentConfig,
+  gitBashPrerequisite: GitBashPrerequisite | null | undefined,
 ) {
-  if (runtimeIsReadyForOnboarding(runtime, globalConfig)) return "Ready";
+  const prerequisite = resolveAgentPrerequisiteReadiness(
+    runtime.id,
+    gitBashPrerequisite,
+  );
+  if (!prerequisite.ready)
+    return prerequisite.reason === "git-bash"
+      ? "Git for Windows needed"
+      : "Checking prerequisites";
+  if (runtimeIsReadyForOnboarding(runtime, globalConfig, gitBashPrerequisite))
+    return "Ready";
   if (runtime.id === "buzz-agent") return "No AI connected yet";
   if (
     runtime.availability === "available" &&
@@ -67,12 +82,14 @@ function getRuntimeHeaderStatus(
 
 function RuntimeOption({
   globalConfig,
+  gitBashPrerequisite,
   onRefresh,
   runtime,
   selected,
   onSelect,
 }: {
   globalConfig: GlobalAgentConfig;
+  gitBashPrerequisite: GitBashPrerequisite | null | undefined;
   onRefresh: () => void;
   runtime: AcpRuntimeCatalogEntry;
   selected: boolean;
@@ -86,7 +103,13 @@ function RuntimeOption({
   const authMethods = useAcpAuthMethodsQuery(runtime.id, {
     enabled: needsSignIn,
   });
-  const ready = runtimeIsReadyForOnboarding(runtime, globalConfig);
+  const prerequisite = resolveAgentPrerequisiteReadiness(
+    runtime.id,
+    gitBashPrerequisite,
+  );
+  const ready =
+    runtimeIsReadyForOnboarding(runtime, globalConfig, gitBashPrerequisite) &&
+    prerequisite.ready;
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [waitingForSignIn, setWaitingForSignIn] = React.useState(false);
 
@@ -147,6 +170,8 @@ function RuntimeOption({
     status = "Checking status";
   else if (runtime.id === "buzz-agent") status = "No AI connected yet";
   else if (runtime.availability === "available") status = "Installed";
+
+  if (!prerequisite.ready) status = prerequisite.copy;
 
   return (
     <div
@@ -235,9 +260,15 @@ function RuntimeConnectionPanel({
 }) {
   const { globalConfig } = useGlobalAgentConfig();
   const query = useAcpRuntimesQueryForced();
+  const gitBashQuery = useGitBashPrerequisiteQuery();
+  const gitBashPrerequisite = gitBashQuery.isError
+    ? undefined
+    : gitBashQuery.data;
   const runtimes = getVisibleOnboardingRuntimes(query.data ?? []);
-  const ready = runtimes.filter((runtime) =>
-    runtimeIsReadyForOnboarding(runtime, globalConfig),
+  const ready = runtimes.filter(
+    (runtime) =>
+      runtimeIsReadyForOnboarding(runtime, globalConfig, gitBashPrerequisite) &&
+      resolveAgentPrerequisiteReadiness(runtime.id, gitBashPrerequisite).ready,
   );
   const [selectedRuntimeId, setSelectedRuntimeId] = React.useState<
     string | null
@@ -245,10 +276,10 @@ function RuntimeConnectionPanel({
   const selectedRuntime = runtimes.find(
     (runtime) => runtime.id === selectedRuntimeId,
   );
-  const refresh = React.useCallback(
-    () => query.forceRefresh(),
-    [query.forceRefresh],
-  );
+  const refresh = React.useCallback(() => {
+    void gitBashQuery.refetch();
+    query.forceRefresh();
+  }, [query.forceRefresh, gitBashQuery.refetch]);
 
   React.useEffect(() => {
     if (!selectedRuntimeId && runtimes.length > 0)
@@ -259,7 +290,11 @@ function RuntimeConnectionPanel({
     const header: HarnessHeader = selectedRuntime
       ? {
           label: getRuntimeDisplayLabel(selectedRuntime),
-          status: getRuntimeHeaderStatus(selectedRuntime, globalConfig),
+          status: getRuntimeHeaderStatus(
+            selectedRuntime,
+            globalConfig,
+            gitBashPrerequisite,
+          ),
           mark: (
             <RuntimeIcon
               className="harness-mark-runtime"
@@ -283,6 +318,7 @@ function RuntimeConnectionPanel({
     query.isFetching,
     selectedRuntime,
     globalConfig,
+    gitBashPrerequisite,
   ]);
 
   return (
@@ -340,6 +376,7 @@ function RuntimeConnectionPanel({
             <RuntimeOption
               key={runtime.id}
               globalConfig={globalConfig}
+              gitBashPrerequisite={gitBashPrerequisite}
               onRefresh={refresh}
               onSelect={() => setSelectedRuntimeId(runtime.id)}
               runtime={runtime}
@@ -356,7 +393,7 @@ function RuntimeConnectionPanel({
       ) : null}
       <p className="power-caption">
         {selectedRuntime &&
-        runtimeIsReadyForOnboarding(selectedRuntime, globalConfig)
+        ready.some((runtime) => runtime.id === selectedRuntime.id)
           ? `${getRuntimeDisplayLabel(selectedRuntime)} is ready on this computer.`
           : ready.length > 0
             ? "Choose a ready harness to continue."
@@ -416,6 +453,10 @@ export function ConnectSetupStep({
   }, []);
 
   const { globalConfig } = useGlobalAgentConfig();
+  const gitBashQuery = useGitBashPrerequisiteQuery();
+  const gitBashPrerequisite = gitBashQuery.isError
+    ? undefined
+    : gitBashQuery.data;
   const runtimes = useAcpRuntimesQueryForced();
   const bundled = runtimes.data?.find((runtime) => runtime.id === "buzz-agent");
   const keyScene =
@@ -423,6 +464,8 @@ export function ConnectSetupStep({
   const aiReady = resolveAgentReadiness(
     runtimes.data ?? [],
     globalConfig,
+    "any",
+    gitBashPrerequisite,
   ).ready;
 
   return (
@@ -479,10 +522,13 @@ export function ConnectSetupStep({
               harnessLabel: bundled
                 ? getRuntimeDisplayLabel(bundled)
                 : "Colony AI",
-              harnessStatus:
-                bundled && runtimeIsReadyForOnboarding(bundled, globalConfig)
-                  ? "Ready"
-                  : "No AI connected yet",
+              harnessStatus: bundled
+                ? getRuntimeHeaderStatus(
+                    bundled,
+                    globalConfig,
+                    gitBashPrerequisite,
+                  )
+                : "No AI connected yet",
             }
           : data
       }

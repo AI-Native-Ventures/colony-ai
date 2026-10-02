@@ -84,13 +84,47 @@ test("bundled onboarding readiness binds real provider/model/key readiness", () 
       env_vars: { OPENROUTER_API_KEY: "fixture" },
     },
   ])
-    assert.equal(runtimeIsReadyForOnboarding(bundled, config), false);
+    assert.equal(runtimeIsReadyForOnboarding(bundled, config, null), false);
   assert.equal(
-    runtimeIsReadyForOnboarding(bundled, {
-      provider: "openrouter",
-      model: "vendor/model",
-      env_vars: { OPENROUTER_API_KEY: "fixture" },
-    }),
+    runtimeIsReadyForOnboarding(
+      bundled,
+      {
+        provider: "openrouter",
+        model: "vendor/model",
+        env_vars: { OPENROUTER_API_KEY: "fixture" },
+      },
+      null,
+    ),
     true,
+  );
+});
+
+test("configured bundled runtime must also pass native prerequisite readiness", () => {
+  const bundled = runtime("buzz-agent", "available", "not_applicable");
+  const config = {
+    preferred_runtime: "buzz-agent",
+    provider: "openrouter",
+    model: "vendor/model",
+    env_vars: { OPENROUTER_API_KEY: "fixture" },
+  };
+  assert.equal(runtimeIsReadyForOnboarding(bundled, config, undefined), false);
+  assert.equal(
+    runtimeIsReadyForOnboarding(bundled, config, { available: false }),
+    false,
+  );
+  assert.equal(
+    runtimeIsReadyForOnboarding(bundled, config, { available: true }),
+    true,
+  );
+  const runtimes = [bundled, runtime("claude", "available", "logged_in")];
+  assert.deepEqual(
+    getReadyOnboardingRuntimes(runtimes, config, { available: false }).map(
+      ({ id }) => id,
+    ),
+    ["claude"],
+  );
+  assert.deepEqual(
+    getReadyOnboardingRuntimes(runtimes, config, null).map(({ id }) => id),
+    ["claude", "buzz-agent"],
   );
 });

@@ -1,6 +1,9 @@
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAcpRuntimesQuery } from "@/features/agents/hooks";
+import {
+  useAcpRuntimesQuery,
+  useGitBashPrerequisiteQuery,
+} from "@/features/agents/hooks";
 import { globalAgentConfigQueryKey } from "@/features/agents/useGlobalAgentConfig";
 import {
   AgentConfigFields,
@@ -12,7 +15,10 @@ import {
 } from "@/shared/api/tauriGlobalAgentConfig";
 import { invokeTauri } from "@/shared/api/tauri";
 import type { GlobalAgentConfig } from "@/shared/api/types";
-import { resolveAgentReadiness } from "./agentReadiness";
+import {
+  resolveAgentPrerequisiteReadiness,
+  resolveAgentReadiness,
+} from "./agentReadiness";
 
 export const AI_CONNECTION_MESSAGES = {
   connected: "Connection works. Save this AI as your default to continue.",
@@ -52,6 +58,14 @@ function normalizeConnectionConfig(
 export function AiKeyConnectionPanel({ openRouter }: { openRouter: boolean }) {
   const queryClient = useQueryClient();
   const runtimes = useAcpRuntimesQuery();
+  const gitBashQuery = useGitBashPrerequisiteQuery();
+  const gitBashPrerequisite = gitBashQuery.isError
+    ? undefined
+    : gitBashQuery.data;
+  const prerequisite = resolveAgentPrerequisiteReadiness(
+    "buzz-agent",
+    gitBashPrerequisite,
+  );
   const runtime = runtimes.data?.find(
     (candidate) => candidate.id === "buzz-agent",
   );
@@ -197,6 +211,11 @@ export function AiKeyConnectionPanel({ openRouter }: { openRouter: boolean }) {
           />
         </fieldset>
       )}
+      {!loading && !runtimes.isLoading && !prerequisite.ready ? (
+        <p role={prerequisite.reason === "git-bash" ? "alert" : "status"}>
+          {prerequisite.copy}
+        </p>
+      ) : null}
       {result ? (
         <p role={result === "connected" ? "status" : "alert"}>
           {saved
@@ -214,7 +233,12 @@ export function AiKeyConnectionPanel({ openRouter }: { openRouter: boolean }) {
             loadError ||
             !valid ||
             !runtime ||
-            !resolveAgentReadiness([runtime], config, "preferred").ready
+            !resolveAgentReadiness(
+              [runtime],
+              config,
+              "preferred",
+              gitBashPrerequisite,
+            ).ready
           }
           onClick={() => void testConnection()}
           type="button"
@@ -223,7 +247,9 @@ export function AiKeyConnectionPanel({ openRouter }: { openRouter: boolean }) {
         </button>
         <button
           className="primary full"
-          disabled={pending || result !== "connected" || saved}
+          disabled={
+            pending || result !== "connected" || saved || !prerequisite.ready
+          }
           onClick={() => void save()}
           type="button"
         >

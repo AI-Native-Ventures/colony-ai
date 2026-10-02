@@ -154,12 +154,20 @@ function LoadingDots({ label }: { label: string }) {
   );
 }
 
+/** How long the joining screen waits before it says connecting is stuck. */
+const CONNECT_STALL_MS = 45_000;
+const CONNECT_STALL_MESSAGE =
+  "This is taking longer than expected. Check your connection and try again.";
+
 export function CommunityOnboardingFlow({
   onCancel,
   onConnect,
+  onRetryConnect,
 }: {
   onCancel: () => void;
   onConnect: () => void;
+  /** Re-applies the community to the backend after a failed connect. */
+  onRetryConnect?: () => void;
 }) {
   const { transaction, update, clear } = useCommunityOnboarding();
   const queryClient = useQueryClient();
@@ -259,11 +267,33 @@ export function CommunityOnboardingFlow({
     };
   }, [clear, isEnteringStage]);
 
-  const retry = () =>
+  // Never leave the joining screen spinning silently: after a while with no
+  // progress and no error, say so and offer Retry.
+  const joiningStage = transaction?.stage;
+  const joiningHasError = Boolean(transaction?.error);
+  const joiningTransactionId = transaction?.id;
+  React.useEffect(() => {
+    if (
+      !joiningTransactionId ||
+      joiningHasError ||
+      (joiningStage !== "claiming" && joiningStage !== "connecting")
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(
+      () => update({ error: CONNECT_STALL_MESSAGE }, joiningTransactionId),
+      CONNECT_STALL_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [joiningHasError, joiningStage, joiningTransactionId, update]);
+
+  const retry = () => {
     update({
       stage: transaction?.inviteCode ? "claiming" : "connecting",
       error: undefined,
     });
+    if (transaction?.stage === "connecting") onRetryConnect?.();
+  };
   const relayUrl = transaction?.relayUrl;
   const finish = React.useCallback(async () => {
     if (!relayUrl) return;

@@ -44,6 +44,7 @@ export const NO_RUNTIME_DROPDOWN_VALUE = "__no_runtime__";
 
 const KNOWN_LLM_PROVIDER_IDS = [
   "anthropic",
+  "deepseek",
   "databricks",
   "databricks_v2",
   "openai",
@@ -106,6 +107,11 @@ const PROVIDER_CREDENTIAL_CONFIG: Partial<
     secretEnvVar: "ANTHROPIC_API_KEY",
     apiKeyLabel: "Anthropic API Key",
   },
+  deepseek: {
+    requiredEnvKeys: ["DEEPSEEK_API_KEY"],
+    secretEnvVar: "DEEPSEEK_API_KEY",
+    apiKeyLabel: "DeepSeek API Key",
+  },
   openai: {
     requiredEnvKeys: ["OPENAI_COMPAT_API_KEY"],
     secretEnvVar: "OPENAI_COMPAT_API_KEY",
@@ -144,6 +150,7 @@ const DEFAULT_MODEL_OPTION: PersonaModelOption = {
 
 export const PERSONA_LLM_PROVIDER_OPTIONS: readonly PersonaModelOption[] = [
   { id: "anthropic", label: "Anthropic" },
+  { id: "deepseek", label: "DeepSeek" },
   { id: "openai", label: "OpenAI" },
   { id: "openai-compat", label: "OpenAI-compatible" },
   { id: "openrouter", label: "OpenRouter" },
@@ -305,6 +312,7 @@ export function providerRequiresExplicitModel(
   const trimmedProvider = providerId?.trim() ?? "";
   return (
     trimmedProvider === "anthropic" ||
+    trimmedProvider === "deepseek" ||
     trimmedProvider === "openai" ||
     trimmedProvider === "openai-compat" ||
     trimmedProvider === "openrouter"

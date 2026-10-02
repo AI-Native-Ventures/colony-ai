@@ -2,6 +2,7 @@ import { resolveAgentReadiness } from "./agentReadiness";
 import type {
   GlobalAgentConfig,
   AcpRuntimeCatalogEntry,
+  GitBashPrerequisite,
 } from "@/shared/api/types";
 
 export const ONBOARDING_RUNTIME_ORDER = [
@@ -28,9 +29,11 @@ export function runtimeIsVisibleInOnboarding(runtimeId: string) {
   return VISIBLE_ONBOARDING_RUNTIME_IDS.has(runtimeId);
 }
 
+/** Bundled readiness requires provider credentials and native prerequisites. */
 export function runtimeIsReadyForOnboarding(
   runtime: AcpRuntimeCatalogEntry,
   globalConfig?: GlobalAgentConfig,
+  gitBashPrerequisite?: GitBashPrerequisite | null,
 ) {
   if (runtime.id === "buzz-agent") {
     return (
@@ -39,6 +42,7 @@ export function runtimeIsReadyForOnboarding(
         [runtime],
         { ...globalConfig, preferred_runtime: runtime.id },
         "preferred",
+        gitBashPrerequisite,
       ).ready
     );
   }
@@ -61,11 +65,13 @@ export function getVisibleOnboardingRuntimes(
     );
 }
 
+/** Return configured, authenticated runtimes that can run on this computer. */
 export function getReadyOnboardingRuntimes(
   runtimes: readonly AcpRuntimeCatalogEntry[],
   globalConfig?: GlobalAgentConfig,
+  gitBashPrerequisite?: GitBashPrerequisite | null,
 ) {
   return getVisibleOnboardingRuntimes(runtimes).filter((runtime) =>
-    runtimeIsReadyForOnboarding(runtime, globalConfig),
+    runtimeIsReadyForOnboarding(runtime, globalConfig, gitBashPrerequisite),
   );
 }
