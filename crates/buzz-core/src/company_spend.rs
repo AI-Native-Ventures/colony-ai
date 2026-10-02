@@ -698,11 +698,11 @@ mod tests {
 
     #[test]
     fn temporary_allowance_expiry_must_be_after_injected_validation_time() {
-        let expiry = Utc.with_ymd_and_hms(2026, 10, 2, 2, 0, 0).unwrap();
-        let action = allowance_action(&expiry.to_rfc3339());
-        let before = expiry.clone() - chrono::Duration::seconds(1);
-        let at_expiry = expiry.clone();
-        let after = expiry + chrono::Duration::seconds(1);
+        let expiry = || Utc.with_ymd_and_hms(2026, 10, 2, 2, 0, 0).unwrap();
+        let action = allowance_action(&expiry().to_rfc3339());
+        let before = expiry() - chrono::Duration::seconds(1);
+        let at_expiry = expiry();
+        let after = expiry() + chrono::Duration::seconds(1);
 
         assert!(validate_employee_allowance_action_at(&action, before).is_ok());
         assert!(validate_employee_allowance_action_at(&action, at_expiry).is_err());
