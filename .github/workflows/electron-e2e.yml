@@ -201,6 +201,7 @@ jobs:
           echo "$(brew --prefix redis)/bin" >> "$GITHUB_PATH"
 
       - name: Restore cached service images
+        if: runner.os == 'Linux'
         uses: ./.github/actions/cached-service-images
       - name: Start isolated relay database services
         if: runner.os == 'Linux'
