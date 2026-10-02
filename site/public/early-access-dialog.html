@@ -1,0 +1,20 @@
+<header class="early-access__header">
+  <div><p class="early-access__eyebrow">EARLY ACCESS</p><h2 id="access-title">Create your colony</h2><p class="early-access__intro">Tell us about your business and what you want your AI team to help with.</p></div>
+  <button class="early-access__close" type="button" data-early-access-close aria-label="Close early access">×</button>
+</header>
+<form id="early-access-form" class="early-access__form" method="dialog">
+  <div class="early-access__fields">
+    <div><label for="early-access-name">Your name</label><input id="early-access-name" name="name" autocomplete="name" maxlength="80" required pattern=".*\S.*"></div>
+    <div><label for="early-access-email">Email address</label><input id="early-access-email" name="email" type="email" autocomplete="email" maxlength="254" required></div>
+  </div>
+  <div><label for="early-access-stage">Your business</label><select id="early-access-stage" name="stage" required><option value="" disabled selected>Choose one</option><option>Starting a business</option><option>Already running a business</option><option>Exploring an idea</option></select></div>
+  <div><label for="early-access-work">What would you like help with?</label><textarea id="early-access-work" name="work" rows="3" maxlength="600" required></textarea></div>
+  <button class="early-access__primary" type="submit">Prepare application <span aria-hidden="true">↗</span></button>
+  <p class="early-access__note">Your details stay in this page until you choose to open or copy the email. Nothing is sent automatically.</p>
+</form>
+<section id="early-access-draft" class="early-access__draft" aria-labelledby="early-access-draft-title" hidden>
+  <h3 id="early-access-draft-title" tabindex="-1">Your application is ready to review</h3><p>Check the draft below. You choose whether to send it from your email app.</p>
+  <label for="early-access-application">Application draft</label><textarea id="early-access-application" rows="8" readonly></textarea>
+  <div class="early-access__actions"><a class="early-access__primary" id="early-access-mail">Open email app <span aria-hidden="true">↗</span></a><button class="early-access__secondary" id="early-access-copy" type="button">Copy application</button></div>
+  <p id="early-access-status" class="early-access__status" role="status" aria-live="polite"></p><button id="early-access-edit" class="early-access__text-button" type="button">Edit application</button>
+</section>

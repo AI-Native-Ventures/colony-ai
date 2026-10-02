@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /product-reference/
+Sitemap: https://colony.global/sitemap.xml

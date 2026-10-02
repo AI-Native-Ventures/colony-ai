@@ -1,0 +1,42 @@
+/* Production-only polish for the approved R23 landing page. */
+.world{height:100svh}
+.launch-motion-control{flex:none;min-height:36px;padding:7px 12px;border:1px solid #c8cec0;border-radius:999px;background:#f8faf380;color:var(--ink);font-size:.6875rem;white-space:nowrap;backdrop-filter:blur(14px)}
+.launch-motion-control:hover{background:#fff}
+.launch-motion-control:focus-visible{outline-color:#315f49}
+.launch-demo-note{max-width:560px;margin:12px 0 0;color:var(--p-muted);font-size:.8125rem;line-height:1.5}
+@media(max-width:720px){
+  .world{height:100svh}
+  .launch-motion-control{min-height:34px;padding:6px 9px;font-size:.625rem}
+  .launch-demo-note{margin-top:10px;font-size:.75rem}
+}
+@media(max-width:380px){
+  .launch-motion-control{width:34px;height:34px;padding:0;overflow:hidden;font-size:0}
+  .launch-motion-control::before{content:'Ⅱ';font-size:1rem;line-height:1}
+  .launch-motion-control[aria-pressed="true"]::before{content:'▶';font-size:.75rem}
+}
+
+/* Desktop download section (release assets are tag-pinned, see site/README.md). */
+.launch-download{padding:96px 5% 104px;background:var(--r10-paper,#faf8f2);color:var(--r10-ink,#303e34);border-top:1px solid var(--r10-line,#dedfd4)}
+.launch-download .r10-heading{margin-bottom:44px}
+.download-grid{list-style:none;margin:0 auto;padding:0;max-width:1120px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.download-card{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:26px 26px 24px;border:1px solid var(--r10-line,#dedfd4);border-radius:22px;background:#fffffa}
+.download-card h3{margin:0;font-size:1.35rem;line-height:1.2}
+.launch-download .download-meta{margin:0;color:var(--p-muted,#667366);font-size:.8125rem;line-height:1.45}
+.download-button{display:inline-flex;align-items:center;justify-content:center;gap:24px;margin:8px 0 4px;padding:14px 22px;border:1px solid #465a3d;border-radius:50px;background:#40553c;color:#fffff6;font-size:.82rem;text-decoration:none;transition:transform .2s,box-shadow .2s}
+.download-button:hover{transform:translateY(-1px);box-shadow:0 8px 22px #26352222}
+.download-button:focus-visible,.download-foot a:focus-visible{outline:2px solid #315f49;outline-offset:3px}
+.launch-download .download-note{margin:0;color:var(--p-muted,#667366);font-size:.75rem;line-height:1.55;overflow-wrap:anywhere}
+.launch-download .download-foot{max-width:1120px;margin:36px auto 0;color:var(--p-muted,#667366);font-size:.8125rem;line-height:1.6;text-align:center}
+.launch-download .download-foot a{color:inherit;text-decoration:underline;text-underline-offset:3px}
+@media(max-width:860px){
+  .download-grid{grid-template-columns:minmax(0,1fr);max-width:520px}
+}
+@media(max-width:720px){
+  .launch-download{padding:72px 7% 80px}
+  .launch-download .r10-heading{margin-bottom:30px}
+  .download-card{padding:22px 20px}
+}
+@media(prefers-reduced-motion:reduce){
+  .download-button{transition:none}
+  .download-button:hover{transform:none}
+}
