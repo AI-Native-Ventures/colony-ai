@@ -161,11 +161,12 @@ function captureCanaryDiagnostics(page: Page, label: string) {
   page.on("requestfinished", (request) => pendingRequests.delete(request));
   page.on("requestfailed", (request) => {
     pendingRequests.delete(request);
+    const error = request.failure()?.errorText ?? "unknown";
     record({
-      type: "request-failed",
+      type: error === "net::ERR_ABORTED" ? "request-aborted" : "request-failed",
       method: request.method(),
       endpoint: safeEndpoint(request.url()),
-      error: redactDiagnosticText(request.failure()?.errorText ?? "unknown"),
+      error: redactDiagnosticText(error),
     });
   });
   page.on("response", (response) => {
@@ -456,7 +457,7 @@ async function capture(page: Page, name: string) {
             !element.hasAttribute("disabled") &&
             element.getAttribute("aria-hidden") !== "true",
         );
-        const unnamedCount = visibleControls.filter((element) => {
+        const isUnnamed = (element: HTMLElement) => {
           const labelledBy = element.getAttribute("aria-labelledby");
           const labelledText = labelledBy
             ? labelledBy
@@ -464,23 +465,70 @@ async function capture(page: Page, name: string) {
                 .map((id) => document.getElementById(id)?.textContent ?? "")
                 .join(" ")
             : "";
+          const nativeLabels = (
+            element as HTMLElement & {
+              labels?: NodeListOf<HTMLLabelElement>;
+            }
+          ).labels;
+          const nativeLabelText = Array.from(nativeLabels ?? [])
+            .map((label) => label.textContent ?? "")
+            .join(" ");
           const labelText =
             element.getAttribute("aria-label") ||
             labelledText ||
             element.getAttribute("title") ||
-            (element instanceof HTMLInputElement ||
-            element instanceof HTMLTextAreaElement
-              ? element.labels?.[0]?.textContent
-              : "") ||
+            nativeLabelText ||
+            element.closest("label")?.textContent ||
             element.textContent ||
             "";
           return !labelText.trim();
-        }).length;
+        };
+        const unnamed = visibleControls.filter(isUnnamed);
+        const safeAttribute = (value: string | null) =>
+          value &&
+          /^[A-Za-z][A-Za-z0-9_-]{0,79}$/.test(value) &&
+          !/(?:[0-9a-f]{32,}|(?:npub|nsec)1)/i.test(value)
+            ? value
+            : undefined;
+        const unnamedControls = unnamed.map((element) => {
+          const ancestors: Array<{
+            tag: string;
+            role?: string;
+            testId?: string;
+            classes: string[];
+          }> = [];
+          let ancestor = element.parentElement;
+          while (ancestor && ancestors.length < 4) {
+            ancestors.push({
+              tag: ancestor.tagName.toLowerCase(),
+              role: safeAttribute(ancestor.getAttribute("role")),
+              testId: safeAttribute(ancestor.getAttribute("data-testid")),
+              classes: Array.from(ancestor.classList)
+                .filter((name) => safeAttribute(name) !== undefined)
+                .slice(0, 3),
+            });
+            ancestor = ancestor.parentElement;
+          }
+          return {
+            tag: element.tagName.toLowerCase(),
+            type: safeAttribute(element.getAttribute("type")),
+            role: safeAttribute(element.getAttribute("role")),
+            id: safeAttribute(element.id),
+            testId: safeAttribute(element.getAttribute("data-testid")),
+            hasAriaLabel: Boolean(element.getAttribute("aria-label")),
+            hasLabelledBy: Boolean(element.getAttribute("aria-labelledby")),
+            classes: Array.from(element.classList)
+              .filter((name) => safeAttribute(name) !== undefined)
+              .slice(0, 4),
+            ancestors,
+          };
+        });
         return {
           viewportWidth: window.innerWidth,
           documentWidth: document.documentElement.scrollWidth,
           focusableCount: visibleControls.length,
-          unnamedCount,
+          unnamedCount: unnamed.length,
+          unnamedControls,
         };
       });
       if (pageMetrics.documentWidth > pageMetrics.viewportWidth + 1) {
@@ -502,6 +550,7 @@ async function capture(page: Page, name: string) {
             type: "interactive-without-accessible-name",
             viewport: `${viewport.width}x${viewport.height}`,
             count: pageMetrics.unnamedCount,
+            controls: pageMetrics.unnamedControls,
           }),
         );
       }
@@ -687,8 +736,8 @@ async function createMessage(
     .getByTestId("message-timeline")
     .locator(`[data-message-id="${id}"]`)
     .first();
-  await expect(persistedRow).toBeVisible();
-  await expect(persistedRow).toContainText(visibleText);
+  await expect(persistedRow).toBeVisible({ timeout: 60_000 });
+  await expect(persistedRow).toContainText(visibleText, { timeout: 60_000 });
   return id;
 }
 
@@ -728,12 +777,37 @@ test.describe("signed-in canary company UI", () => {
   });
 
   test.afterEach(() => {
-    if (!ARTIFACT_DIR) return;
-    writeFileSync(
-      resolve(ARTIFACT_DIR, `${diagnosticsFileName}-diagnostics.jsonl`),
-      diagnostics.length > 0 ? `${diagnostics.join("\n")}\n` : "",
-      { mode: 0o600 },
-    );
+    if (ARTIFACT_DIR) {
+      writeFileSync(
+        resolve(ARTIFACT_DIR, `${diagnosticsFileName}-diagnostics.jsonl`),
+        diagnostics.length > 0 ? `${diagnostics.join("\n")}\n` : "",
+        { mode: 0o600 },
+      );
+    }
+    const failingTypes = new Set([
+      "console-error",
+      "page-error",
+      "request-failed",
+      "http-error",
+      "request-pending-over-15s",
+      "horizontal-overflow",
+      "interactive-without-accessible-name",
+    ]);
+    const failures = diagnostics.flatMap((line) => {
+      const entry = JSON.parse(line) as {
+        type: string;
+        label?: string;
+        viewport?: string;
+      };
+      if (!failingTypes.has(entry.type)) return [];
+      return [
+        `${entry.type} at ${entry.label ?? "unknown"}${entry.viewport ? ` (${entry.viewport})` : ""}`,
+      ];
+    });
+    expect(
+      failures,
+      `Canary diagnostics found: ${failures.join(", ")}`,
+    ).toEqual([]);
   });
 
   test("checks the full app shell and company journeys on the canary relay", async ({
@@ -1312,6 +1386,7 @@ test.describe("signed-in canary company UI", () => {
     const findings: string[] = [];
     const unproven: string[] = [];
     const needsApi: string[] = [];
+    const needsDesign: string[] = [];
     await installCanaryPage(page);
 
     const inspectRoute = async (
@@ -1378,6 +1453,7 @@ test.describe("signed-in canary company UI", () => {
       await expect(
         page.getByTestId("company-work-full-timeline"),
       ).toBeVisible();
+      // The frozen B2 watchdog route is attached to Work, not global settings.
       await page
         .getByRole("button", { name: "Watchdog settings", exact: true })
         .click();
@@ -1559,6 +1635,8 @@ test.describe("signed-in canary company UI", () => {
       "Founder handoff requires a real canary hire proposal and authorized founder-review record; none was available for this run, and no proposal was submitted to create one.",
     );
 
+    let factoryProjectsEmpty = false;
+    let factorySessionsEmpty = false;
     for (const [label, route] of [
       ["Factory desk", "/#/factory"],
       ["Factory projects", "/#/factory/projects"],
@@ -1576,8 +1654,25 @@ test.describe("signed-in canary company UI", () => {
           if (label === "Factory desk") {
             await expect(page.getByTestId("factory-desk-layout")).toBeVisible();
           }
+          if (label === "Factory projects") {
+            factoryProjectsEmpty =
+              (await page
+                .getByText("No projects yet", { exact: true })
+                .count()) > 0;
+          }
+          if (label === "Factory sessions") {
+            factorySessionsEmpty =
+              (await page
+                .getByText("0 sessions across 0 projects", { exact: true })
+                .count()) > 0;
+          }
         },
         `14-${label.toLowerCase().replaceAll(" ", "-")}-read-only`,
+      );
+    }
+    if (factoryProjectsEmpty && factorySessionsEmpty) {
+      needsApi.push(
+        "Factory review and session preview routes need a real connected project or session record. Canary shows no projects and zero sessions, so the suite does not synthesize a repository or session.",
       );
     }
 
@@ -1653,6 +1748,18 @@ test.describe("signed-in canary company UI", () => {
                 ? "settings-profile"
                 : "settings-account-security";
       await expect(page.getByTestId(marker)).toBeVisible();
+      if (section === "privacy") {
+        await expect(
+          page.getByRole("checkbox", {
+            name: "Show message text in desktop notifications",
+          }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole("checkbox", {
+            name: "Share typing activity with the conversation",
+          }),
+        ).toBeVisible();
+      }
       await capture(page, `16-settings-${section}-read-only`);
       if (section === "appearance") {
         await page.getByRole("button", { name: "Browse named themes" }).click();
@@ -1679,11 +1786,14 @@ test.describe("signed-in canary company UI", () => {
     unproven.push(
       "Fresh-account onboarding is unreachable with the already-onboarded canary owner fixture; the live onboarding flow was not reset or replaced.",
       "Batch 2 Flutter screens were not exercised in the signed-in desktop canary browser; no Flutter canary runtime was available in this suite.",
-      "A global Settings watchdog route is not present. The available watchdog configuration is scoped to a real work item and is checked in the work flow.",
+    );
+    needsDesign.push(
+      "The l-ui checklist requests a watchdog screen in Settings, but frozen company-v9 designs watchdog configuration only from a Work detail at b2/policy/watchdog/unselected. No global Settings watchdog screen is designed.",
     );
     console.log(`CANARY_SURFACE_FINDINGS ${JSON.stringify(findings)}`);
     console.log(`CANARY_SURFACE_NEEDS_API ${JSON.stringify(needsApi)}`);
     console.log(`CANARY_SURFACE_UNPROVEN ${JSON.stringify(unproven)}`);
+    console.log(`CANARY_SURFACE_NEEDS_DESIGN ${JSON.stringify(needsDesign)}`);
     expect(findings, findings.join("\n")).toEqual([]);
   });
 
@@ -1729,6 +1839,12 @@ test.describe("signed-in canary company UI", () => {
           .locator(`[data-message-id="${account.rootId}"]`)
           .first();
         await expect(sourceRow).toBeVisible({ timeout: 30_000 });
+        await expect(
+          page.getByRole("textbox", { name: "Message #general…" }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole("textbox", { name: "Reply in thread…" }),
+        ).toBeVisible();
         await expect
           .poll(() => page.locator(".colony-ask-card").count(), {
             timeout: 15_000,

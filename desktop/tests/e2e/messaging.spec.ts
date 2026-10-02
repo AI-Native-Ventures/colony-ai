@@ -407,7 +407,12 @@ test("message agent avatar uses square initials and preserves its profile shortc
   await expect(avatar).toHaveClass(/rounded-md/);
   await expect(avatar).not.toHaveClass(/rounded-squircle/);
 
-  const avatarButton = avatar.locator("xpath=ancestor::button[1]");
+  const avatarButton = agentMessage.getByRole("button", {
+    name: /^Open profile for .+$/,
+  });
+  await expect(avatarButton).toHaveCount(1);
+  await expect(avatarButton.locator('button, [role="button"]')).toHaveCount(0);
+  await expect(avatar.locator("xpath=ancestor::button[1]")).toHaveCount(0);
   await page.keyboard.press("Tab");
   await avatarButton.focus();
   await expect(avatarButton).toBeFocused();
@@ -426,7 +431,7 @@ test("message agent avatar uses square initials and preserves its profile shortc
   expect(avatarBox.height).toBeGreaterThanOrEqual(24);
   expect(Math.abs(avatarBox.width - avatarBox.height)).toBeLessThanOrEqual(1);
 
-  await agentMessage.getByRole("button", { name: "A" }).first().click();
+  await avatarButton.click();
   const profileAvatar = page
     .getByTestId("user-profile-panel")
     .locator(".rounded-squircle")

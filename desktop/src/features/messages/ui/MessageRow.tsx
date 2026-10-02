@@ -540,7 +540,6 @@ export const MessageRow = React.memo(
 
     const isThreadReplyLayout = layoutVariant === "thread-reply";
     const guideBleedRem = isThreadReplyLayout ? 0.25 : 0;
-    const avatarButtonRadiusClass = "rounded-md";
 
     const showRespondToIndicator =
       message.respondTo === "anyone" || message.respondTo === "allowlist";
@@ -616,16 +615,12 @@ export const MessageRow = React.memo(
         pubkey={message.pubkey}
         role={profilePopoverRole}
         botIdenticonValue={message.author}
+        triggerAriaLabel={`Open profile for ${message.author}`}
+        triggerClassName="rounded-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <button
-          className={cn(
-            "flex shrink-0 items-start focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-            avatarButtonRadiusClass,
-          )}
-          type="button"
-        >
+        <div aria-hidden="true" className="flex shrink-0 items-start">
           {avatarNode}
-        </button>
+        </div>
       </UserProfilePopover>
     ) : (
       <div className="flex shrink-0 items-start">{avatarNode}</div>
