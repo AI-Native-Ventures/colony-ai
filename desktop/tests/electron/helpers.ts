@@ -327,12 +327,11 @@ function accountPsql(query: string, email: string) {
       "-v",
       `email=${email}`,
       "-qAt",
-      "-c",
-      query,
     ],
     {
       encoding: "utf8",
       env: { ...process.env, PGPASSWORD: password },
+      input: `${query};\n`,
       timeout: 5_000,
       maxBuffer: 64 * 1024,
     },
