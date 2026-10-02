@@ -288,7 +288,7 @@ describe("SetupStep cached-ready revalidation", () => {
     queryClient.clear();
   });
 
-  it("hands Buzz directly to API config while forced discovery is pending", async () => {
+  it("hands Buzz to API config without publishing credential-free readiness", async () => {
     const queryClient = makeQueryClient();
     queryClient.setQueryData(acpRuntimesQueryKey, [
       catalogEntry("buzz-agent", "not_applicable"),
@@ -340,12 +340,15 @@ describe("SetupStep cached-ready revalidation", () => {
     );
     assert.ok(
       readyRuntimeIdSnapshots.some(
-        (snapshot) =>
-          snapshot.length === 2 &&
-          snapshot.includes("buzz-agent") &&
-          snapshot.includes("goose"),
+        (snapshot) => snapshot.length === 1 && snapshot.includes("goose"),
       ),
-      "catalog readiness may still be published independently of the selected handoff",
+      "an installed tool remains ready independently of the selected handoff",
+    );
+    assert.ok(
+      readyRuntimeIdSnapshots.every(
+        (snapshot) => !snapshot.includes("buzz-agent"),
+      ),
+      "bundled Buzz without provider credentials must not be published as ready",
     );
 
     await act(async () => {

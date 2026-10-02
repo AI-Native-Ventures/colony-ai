@@ -739,10 +739,18 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
   }, [machine.reopen]);
 
   const completeMachineOnboarding = useCallback(
-    (pubkey?: string, options?: { continueToProfile?: boolean }) => {
+    (
+      pubkey?: string,
+      options?: { continueToProfile?: boolean; openAiSettings?: boolean },
+    ) => {
       setContinueOnboarding(options?.continueToProfile === true);
       setMachineInitialPage(undefined);
       machine.complete(pubkey);
+      if (options?.openAiSettings)
+        void router.navigate({
+          to: "/settings",
+          search: { section: "agent-defaults" },
+        });
     },
     [machine.complete],
   );

@@ -104,7 +104,7 @@ export function MachineOnboardingFlow({
 }: {
   complete: (
     pubkey?: string,
-    options?: { continueToProfile?: boolean },
+    options?: { continueToProfile?: boolean; openAiSettings?: boolean },
   ) => void;
   continueWithIdentity: (pubkey: string) => void;
   continueWithRecoveredIdentity: (pubkey: string) => void;
@@ -681,7 +681,7 @@ export function MachineOnboardingFlow({
           setTransitionDirection("backward");
           setPage("business");
         }}
-        onContinue={() => {
+        onContinue={(destination) => {
           const started = communityOnboarding.start({
             source: "first-community",
             firstCommunityPage: "create",
@@ -699,7 +699,9 @@ export function MachineOnboardingFlow({
             return;
           }
           setError(null);
-          complete(selectedPubkey);
+          complete(selectedPubkey, {
+            openAiSettings: destination === "settings",
+          });
         }}
       />
     );

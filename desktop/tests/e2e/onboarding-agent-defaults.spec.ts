@@ -48,6 +48,11 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
     runtimes: [
       r17Runtime("claude", "available", { status: "logged_in" }),
       r17Runtime("codex", "available", { status: "logged_in" }),
+      {
+        ...r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
+        model_env_var: "BUZZ_AGENT_MODEL",
+        provider_env_var: "BUZZ_AGENT_PROVIDER",
+      },
     ],
     discoveryDelayMs: 1_000,
   });
@@ -65,16 +70,33 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
   await expect(
     page.getByTestId("onboarding-connect-runtime-claude").getByRole("button"),
   ).toHaveAttribute("aria-pressed", "true");
+  const subscription = page.getByTestId("onboarding-connect-runtime-claude");
+  const logo = subscription
+    .locator(".provider-top img, .provider-top svg")
+    .first();
+  const logoSize = await logo.boundingBox();
+  expect(logoSize?.width).toBeGreaterThan(0);
+  expect(logoSize?.width).toBeLessThanOrEqual(64);
+  expect(logoSize?.height).toBeLessThanOrEqual(64);
+  const selectStyle = await subscription
+    .locator(".runtime-select")
+    .evaluate((button) => {
+      const style = getComputedStyle(button);
+      return { alignment: style.textAlign, border: style.borderTopWidth };
+    });
+  expect(selectStyle).toEqual({ alignment: "left", border: "0px" });
 
   await page.getByRole("button", { name: "Bring your own key" }).click();
   await expect(
     page.getByRole("heading", { name: "Connect directly to a provider" }),
   ).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "API key" })).toHaveAttribute(
-    "type",
-    "password",
-  );
-  await expect(page.getByRole("button", { name: "Check key" })).toBeVisible();
+  await expect(page.getByTestId("global-agent-provider")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Test connection" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Save AI default" }),
+  ).toBeDisabled();
 
   await page.getByRole("button", { name: "OpenRouter" }).click();
   await expect(
@@ -273,6 +295,116 @@ test("R17 Agent Defaults keep a failed save editable and allow retry", async ({
   ).toBe(2);
 });
 
+test("R17 bundled agent without a provider is not ready and credits are coming soon", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    runtimes: [
+      r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
+    ],
+  });
+  const card = page.getByTestId("onboarding-connect-runtime-buzz-agent");
+  await expect(card).toContainText("No AI connected yet");
+  await expect(card).not.toContainText("Ready");
+  await expect(
+    page.getByText("AI employees will not reply", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open AI settings" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Colony credits", exact: true })
+    .click();
+  const credits = page.getByTestId("onboarding-credits-coming-soon");
+  await expect(credits).toContainText("Coming soon");
+  await expect(credits).not.toContainText(/balance|Unavailable|12\.50/);
+  await expect(page.getByRole("button", { name: "Reload prices" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("button", { name: "Open my Colony" }),
+  ).toBeEnabled();
+});
+
+test("R17 OpenRouter saves a tested provider default through the real form", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    runtimes: [
+      {
+        ...r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
+        model_env_var: "BUZZ_AGENT_MODEL",
+        provider_env_var: "BUZZ_AGENT_PROVIDER",
+      },
+    ],
+    mock: {
+      globalAgentConfig: {
+        preferred_runtime: "buzz-agent",
+        provider: "openrouter",
+        model: "fixture/model",
+        env_vars: {},
+      },
+      discoverAgentModels: {
+        models: [{ id: "fixture/model", name: "Fixture model" }],
+        supportsSwitching: true,
+        selectedModel: "fixture/model",
+      },
+    },
+  });
+  await page.getByRole("button", { name: "OpenRouter", exact: true }).click();
+  const key = page.getByTestId("persona-provider-api-key");
+  await expect(key).toHaveAttribute("type", "password");
+  await key.fill("e2e-fixture-key");
+  await expect(
+    page.getByRole("button", { name: "Save AI default" }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Test connection", exact: true })
+    .click();
+  await expect(
+    page.getByText("Connection works.", { exact: false }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Save AI default" }).click();
+  await expect(
+    page.getByText("AI connected and saved as your default."),
+  ).toBeVisible();
+  await expect(page.locator(".harness-state")).toHaveText("Ready");
+  await expect(
+    page.getByText("AI employees will not reply", { exact: false }),
+  ).toHaveCount(0);
+  expect(
+    await mockCommand(page, "get_global_agent_config_set_call_count"),
+  ).toBe(1);
+  expect(await mockCommand(page, "get_global_agent_config")).toMatchObject({
+    preferred_runtime: "buzz-agent",
+    provider: "openrouter",
+    model: "fixture/model",
+  });
+});
+
+test("R17 explicit skip can open the working defaults path in Settings", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    runtimes: [
+      {
+        ...r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
+        model_env_var: "BUZZ_AGENT_MODEL",
+        provider_env_var: "BUZZ_AGENT_PROVIDER",
+      },
+    ],
+  });
+  await page
+    .getByRole("button", { name: "Open AI settings", exact: true })
+    .click();
+  await expect(page.getByTestId("settings-view")).toBeVisible();
+  await expect(page.getByTestId("settings-global-agent-config")).toBeVisible();
+  await expect(page.getByTestId("global-agent-provider")).toBeVisible();
+  expect(
+    await mockCommand(page, "get_global_agent_config_set_call_count"),
+  ).toBe(0);
+});
+
 test("bundled agent readiness names missing Git for Windows before claiming Ready", async ({
   page,
 }) => {
@@ -281,6 +413,17 @@ test("bundled agent readiness names missing Git for Windows before claiming Read
       r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
     ],
     mock: {
+      globalAgentConfig: {
+        preferred_runtime: "buzz-agent",
+        provider: "openrouter",
+        model: "fixture/model",
+        env_vars: { OPENROUTER_API_KEY: "e2e-fixture-key" },
+      },
+      discoverAgentModels: {
+        models: [{ id: "fixture/model", name: "Fixture model" }],
+        supportsSwitching: true,
+        selectedModel: "fixture/model",
+      },
       gitBashPrerequisite: {
         available: false,
         path: null,
@@ -295,4 +438,17 @@ test("bundled agent readiness names missing Git for Windows before claiming Read
   );
   await expect(card).not.toContainText("Ready on this computer");
   await expect(card.locator(".provider-status.is-connected")).toHaveCount(0);
+  await page.getByRole("button", { name: "OpenRouter", exact: true }).click();
+  await expect(page.locator(".harness-state")).toHaveText(
+    "Git for Windows needed",
+  );
+  await expect(page.getByRole("alert")).toContainText(
+    "Install Git for Windows",
+  );
+  await expect(
+    page.getByRole("button", { name: "Test connection", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Open my Colony", exact: true }),
+  ).toBeEnabled();
 });

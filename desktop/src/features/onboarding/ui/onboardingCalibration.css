@@ -4100,6 +4100,30 @@
   }
 }
 
+.colony-onboarding-root .runtime-select {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.colony-onboarding-root .runtime-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.colony-onboarding-root .runtime-action {
+  min-height: 2rem;
+}
+.colony-onboarding-root .runtime-action-error {
+  margin-top: 0.5rem;
+  color: var(--destructive);
+}
+
 /*
  * Fit the real window. The scenes were drawn as a framed app window with a fake
  * title bar inside a design-review gutter. In the real app that frame doubles the

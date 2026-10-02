@@ -687,6 +687,14 @@ type MockBridgeOptions = {
    * an empty config (no provider, model, or env vars) if not specified.
    * Pass a config with a provider to test Inherit-from-global behavior.
    */
+  /** Safe result of the mocked onboarding connection probe. */
+  aiConnectionResult?:
+    | "connected"
+    | "key-rejected"
+    | "insufficient-balance"
+    | "network-failure"
+    | "unknown-model"
+    | "provider-failure";
   globalAgentConfig?: {
     env_vars: Record<string, string>;
     provider: string | null;
