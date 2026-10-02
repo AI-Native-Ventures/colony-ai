@@ -8,6 +8,13 @@ if (!fixtureFile) {
 
 const document = JSON.parse(readFileSync(fixtureFile, "utf8"));
 const identities = document.identities ?? {};
+const accountFixtureNames = [
+  "onboarding-member",
+  "send-member",
+  "receive-member",
+  "restart-member",
+  "reconnect-member",
+];
 const publicKeys = Object.values(identities).map((identity) => {
   if (!/^[0-9a-f]{64}$/u.test(identity.publicKey ?? "")) {
     throw new Error("Generated fixture contains an invalid public key");
@@ -17,15 +24,40 @@ const publicKeys = Object.values(identities).map((identity) => {
 if (publicKeys.length === 0) {
   throw new Error("Generated fixture contains no identities");
 }
+const accountOwnerHosts = new Map([
+  ["onboarding-member", "localhost:3000"],
+  ["send-member", "localhost:3001"],
+  ["receive-member", "localhost:3000"],
+  ["restart-member", "localhost:3000"],
+  ["reconnect-member", "localhost:3001"],
+]);
+const accountOwners = accountFixtureNames.map((name) => {
+  const host = accountOwnerHosts.get(name);
+  const publicKey = identities[name]?.publicKey;
+  if (!host || !/^[0-9a-f]{64}$/u.test(publicKey ?? "")) {
+    throw new Error(`Generated account fixture is invalid: ${name}`);
+  }
+  return { host, publicKey };
+});
 
 const expectedMemberships = publicKeys.length * 2;
 const valueRows = publicKeys
   .map((publicKey) => `(decode('${publicKey}', 'hex'))`)
   .join(",\n  ");
+const ownerRows = accountOwners
+  .map(({ host, publicKey }) => `('${host}', '${publicKey}')`)
+  .join(",\n  ");
+const expectedOwners = accountOwners.length;
 const sql = `
 BEGIN;
 CREATE TEMP TABLE fixture_keys (pubkey BYTEA) ON COMMIT DROP;
 INSERT INTO fixture_keys(pubkey) VALUES ${valueRows};
+CREATE TEMP TABLE fixture_account_owners (
+  host TEXT NOT NULL,
+  pubkey TEXT NOT NULL,
+  PRIMARY KEY (host, pubkey)
+) ON COMMIT DROP;
+INSERT INTO fixture_account_owners(host, pubkey) VALUES ${ownerRows};
 
 WITH target_channels AS (
   SELECT c.id AS community_id, ch.id AS channel_id
@@ -43,6 +75,15 @@ FROM target_channels target
 CROSS JOIN fixture_keys fixture
 ON CONFLICT DO NOTHING;
 
+-- Owned test tenants let the packaged account sign-in enter the real workspace
+-- chooser. These grants exist only in the disposable Electron relay database.
+INSERT INTO relay_members (community_id, pubkey, role, added_by)
+SELECT community.id, fixture.pubkey, 'owner', NULL
+FROM communities community
+JOIN fixture_account_owners fixture ON fixture.host = lower(community.host)
+ON CONFLICT (community_id, pubkey) DO UPDATE
+SET role = EXCLUDED.role, updated_at = now();
+
 DO $colony_electron_fixture_memberships$
 DECLARE
   active_memberships BIGINT;
@@ -59,6 +100,21 @@ BEGIN
 
   IF active_memberships <> ${expectedMemberships} THEN
     RAISE EXCEPTION 'Expected ${expectedMemberships} active fixture memberships, found %', active_memberships;
+  END IF;
+
+  SELECT count(*) INTO active_memberships
+  FROM relay_members rm
+  JOIN communities c ON c.id = rm.community_id
+  WHERE lower(c.host) IN ('localhost:3000', 'localhost:3001')
+    AND EXISTS (
+      SELECT 1
+      FROM fixture_account_owners fixture
+      WHERE fixture.host = lower(c.host) AND fixture.pubkey = rm.pubkey
+    )
+    AND rm.role = 'owner';
+
+  IF active_memberships <> ${expectedOwners} THEN
+    RAISE EXCEPTION 'Expected ${expectedOwners} Electron account owners, found %', active_memberships;
   END IF;
 END
 $colony_electron_fixture_memberships$;

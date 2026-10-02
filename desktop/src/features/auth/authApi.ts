@@ -534,8 +534,8 @@ export function createAuthApi(options: AuthApiOptions) {
         request("GET", "/api/accounts/me", undefined, true, expectedPubkey),
         200,
       );
-      if (!isRecord(body)) throw new AuthApiError("invalid_response");
-      return accountFrom(body.account);
+      const account = isRecord(body) && "account" in body ? body.account : body;
+      return accountFrom(account);
     },
 
     async deleteAccount(expectedPubkey: string): Promise<void> {

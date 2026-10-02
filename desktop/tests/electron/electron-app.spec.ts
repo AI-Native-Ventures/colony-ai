@@ -2,12 +2,17 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import { expect, test } from "@playwright/test";
+import { finalizeEvent } from "nostr-tools";
+
+import { KIND_ASK_ACTION } from "../../src/shared/constants/kinds";
 
 import {
   DEFAULT_RELAY_URL,
   PROXY_RELAY_URL,
   closeElectron,
   createUserDataDir,
+  ensureFixtureAccount,
+  FIXTURE_ACCOUNT_PASSWORD,
   fixtureIdentity,
   finishElectronTest,
   launchElectron,
@@ -21,78 +26,94 @@ import {
 } from "./helpers";
 
 async function assertLanding(page: RunningElectron["page"]) {
-  await expect(page.getByTestId("machine-onboarding-gate")).toBeVisible({
+  await expect(page).toHaveURL(/^colony:\/\/app\//u);
+  await expect(page.getByTestId("google-account-scene")).toBeVisible({
     timeout: 60_000,
   });
-  await expect(page.getByTestId("native-startup-error")).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Create a new identity key" }),
+    page.getByRole("heading", { name: "Welcome back" }),
   ).toBeVisible();
+  await expect(page.getByTestId("native-startup-error")).toHaveCount(0);
+  await expect(page.getByLabel("Email address")).toBeVisible();
+  await expect(page.getByLabel("Password")).toBeVisible();
 }
 
 async function onboardToCommunity(
   running: RunningElectron,
   identity: TestIdentity,
-  communityUrl: string,
   displayName: string,
 ): Promise<string> {
   const { page } = running;
-  await assertLanding(page);
-  await page.getByRole("button", { name: "Use an existing key" }).click();
-  await page.getByTestId("nostr-import-nsec-input").fill(identity.nsec);
-  await page.getByTestId("nostr-import-submit").click();
+  const accountLookupStatuses: number[] = [];
+  const observeAccountLookup = (
+    response: import("@playwright/test").Response,
+  ) => {
+    if (new URL(response.url()).pathname === "/api/accounts/me") {
+      accountLookupStatuses.push(response.status());
+    }
+  };
+  page.on("response", observeAccountLookup);
+  try {
+    await assertLanding(page);
+    const email = await ensureFixtureAccount(identity, running.relayUrl);
+    await page.getByLabel("Email address").fill(email);
+    await page.getByLabel("Password").fill(FIXTURE_ACCOUNT_PASSWORD);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    const communityChoices = page
+      .getByTestId("onboarding-business-list")
+      .getByRole("button");
+    await expect(communityChoices).toHaveCount(1, { timeout: 60_000 });
+    await communityChoices.first().click();
 
-  await expect(page.getByTestId("onboarding-page-2")).toBeVisible({
-    timeout: 30_000,
-  });
-  await page.getByTestId("onboarding-setup-skip").click();
-  await expect(page.getByTestId("welcome-setup")).toBeVisible();
-  await page.getByTestId("community-choice-existing").click();
-  await page.getByTestId("existing-choice-member").click();
-  await page.getByTestId("invite-redeem-input").fill(communityUrl);
-  await expect(page.getByTestId("invite-redeem-submit")).toBeEnabled();
-  await page.getByTestId("invite-redeem-submit").click();
-
-  const profileHeading = page.getByRole("heading", {
-    name: "Build your profile",
-  });
-  const teamIntro = page.getByTestId("community-team-intro-enter");
-  await expect
-    .poll(
-      async () => {
-        if (await profileHeading.isVisible()) return "profile";
-        if (await teamIntro.isVisible()) return "team-intro";
-        if (await page.getByTestId("channel-general").isVisible())
-          return "main";
-        return "pending";
-      },
-      { timeout: 60_000 },
-    )
-    .not.toBe("pending");
-  if (await profileHeading.isVisible()) {
-    await page.getByTestId("community-profile-name-key").fill(displayName);
-    await page.getByTestId("community-profile-next").click();
-    await expect(teamIntro).toBeVisible({ timeout: 30_000 });
-  }
-  if (await teamIntro.isVisible()) {
-    await teamIntro.click();
-    await expect(page.getByTestId("community-onboarding-flow")).toHaveCount(0, {
-      timeout: 30_000,
+    const profileHeading = page.getByRole("heading", {
+      name: "Build your profile",
     });
+    const teamIntro = page.getByTestId("community-team-intro-enter");
+    await expect
+      .poll(
+        async () => {
+          if (await profileHeading.isVisible()) return "profile";
+          if (await teamIntro.isVisible()) return "team-intro";
+          if (await page.getByTestId("channel-general").isVisible())
+            return "main";
+          return "pending";
+        },
+        { timeout: 60_000 },
+      )
+      .not.toBe("pending");
+    if (await profileHeading.isVisible()) {
+      await page.getByTestId("community-profile-name-key").fill(displayName);
+      await page.getByTestId("community-profile-next").click();
+      await expect(teamIntro).toBeVisible({ timeout: 30_000 });
+    }
+    if (await teamIntro.isVisible()) {
+      await teamIntro.click();
+      await expect(page.getByTestId("community-onboarding-flow")).toHaveCount(
+        0,
+        { timeout: 30_000 },
+      );
+    }
+    await expect(page.getByTestId("channel-general")).toBeVisible({
+      timeout: 60_000,
+    });
+    await page.getByTestId("channel-general").click();
+    await expect(page.getByTestId("chat-title")).toHaveText("general", {
+      timeout: 20_000,
+    });
+    await expect(page.getByTestId("message-input")).toBeVisible();
+    const channelId = await page
+      .getByTestId("channel-general")
+      .getAttribute("data-channel-id");
+    if (!channelId) throw new Error("The visible #general channel has no id.");
+
+    await expect
+      .poll(() => accountLookupStatuses.includes(200), { timeout: 30_000 })
+      .toBe(true);
+    await expect(page.getByTestId("account-claim-prompt")).toHaveCount(0);
+    return channelId;
+  } finally {
+    page.off("response", observeAccountLookup);
   }
-  await expect(page.getByTestId("channel-general")).toBeVisible({
-    timeout: 60_000,
-  });
-  await page.getByTestId("channel-general").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("general", {
-    timeout: 20_000,
-  });
-  await expect(page.getByTestId("message-input")).toBeVisible();
-  const channelId = await page
-    .getByTestId("channel-general")
-    .getAttribute("data-channel-id");
-  if (!channelId) throw new Error("The visible #general channel has no id.");
-  return channelId;
 }
 
 async function enterMessage(
@@ -131,22 +152,130 @@ test("real Electron reaches the onboarding landing without a native startup erro
   }
 });
 
-test("imports a generated key, reconnects to the seeded community, and shows general", async ({
+test("packaged first run signs in, opens workspace surfaces, and recovers from offline update checks", async ({
   browserName: _browserName,
 }, testInfo) => {
+  test.setTimeout(180_000);
   const userDataDir = createUserDataDir(testInfo);
   const applications: RunningElectron[] = [];
   try {
     const identity = fixtureIdentity("onboarding-member");
     const running = await launchElectron(userDataDir);
     applications.push(running);
-    await onboardToCommunity(
+    const generalChannelId = await onboardToCommunity(
       running,
       identity,
-      DEFAULT_RELAY_URL,
       "Electron E2E Member",
     );
-    await expect(running.page.getByTestId("channel-general")).toBeVisible();
+
+    const content = messageText("Packaged Electron first run");
+    await enterMessage(running, content, 40_000);
+    const sentEvent = await waitForRelayMessage(
+      DEFAULT_RELAY_URL,
+      identity.publicKey,
+      content,
+      40_000,
+      generalChannelId,
+      identity,
+    );
+    expect(sentEvent?.kind).toBe(9);
+    expect(sentEvent?.pubkey).toBe(identity.publicKey);
+
+    if (!sentEvent?.id) throw new Error("The relay event has no message id.");
+    const askPublisher = fixtureIdentity("ask-publisher");
+    const askId = randomUUID();
+    const askTitle = messageText("Packaged Electron ask");
+    const askEvent = finalizeEvent(
+      {
+        kind: KIND_ASK_ACTION,
+        created_at: Math.floor(Date.now() / 1000),
+        content: JSON.stringify({
+          schemaVersion: 1,
+          askId,
+          action: "create",
+          ask: {
+            schemaVersion: 1,
+            askId,
+            type: "approval",
+            category: "general",
+            title: askTitle,
+            body: "Confirm the first-run relay journey.",
+            threadRootEventId: sentEvent.id,
+            addresseePubkey: identity.publicKey,
+          },
+        }),
+        tags: [
+          ["h", generalChannelId],
+          ["d", `channel:${generalChannelId}:ask:${askId}`],
+          ["e", sentEvent.id, "", "root"],
+          ["e", sentEvent.id, "", "reply"],
+        ],
+      },
+      askPublisher.secretKey,
+    );
+    const askResponse = await fetch("http://localhost:3000/events", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Pubkey": askEvent.pubkey,
+      },
+      body: JSON.stringify(askEvent),
+    });
+    if (!askResponse.ok) {
+      throw new Error(
+        `The isolated relay rejected the ask with HTTP ${askResponse.status}.`,
+      );
+    }
+
+    const { page } = running;
+    await page
+      .getByTestId("sidebar-primary-menu")
+      .getByRole("button", { name: "Today" })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Needs me", exact: true }),
+    ).toBeVisible();
+    const todayAsk = page.getByTestId(`today-ask-${askId}`);
+    await expect(todayAsk).toBeVisible({ timeout: 30_000 });
+    await todayAsk.click();
+    await expect(page.getByTestId("ask-detail-screen")).toBeVisible();
+    await expect(page.getByTestId("ask-card")).toContainText(askTitle);
+
+    await page.getByTestId("sidebar-company-team").click();
+    await expect(
+      page.getByText("Team membership is unavailable for this community.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+
+    await running.application.evaluate(({ app }, url) => {
+      app.emit("open-url", { preventDefault: () => {} }, url);
+    }, `buzz://message?channel=${generalChannelId}&id=${sentEvent.id}`);
+    await expect(page.getByTestId("chat-title")).toHaveText("general", {
+      timeout: 30_000,
+    });
+    await expect(
+      page.getByTestId("message-timeline").getByText(content, { exact: true }),
+    ).toBeVisible();
+
+    const updaterStatus = await page.evaluate(async () => {
+      const desktop = (
+        window as Window & {
+          colonyDesktop?: {
+            updater?: {
+              check: () => Promise<{ state: string; message?: string }>;
+            };
+          };
+        }
+      ).colonyDesktop;
+      if (!desktop?.updater)
+        throw new Error("Electron updater bridge missing.");
+      return desktop.updater.check();
+    });
+    expect(updaterStatus.state).toBe("error");
+    expect(updaterStatus.message).toBeTruthy();
+    await expect(page.getByTestId("native-startup-error")).toHaveCount(0);
+    await expect(page.getByTestId("channel-general")).toBeVisible();
   } finally {
     await finishElectronTest(testInfo, userDataDir, applications);
   }
@@ -169,7 +298,6 @@ test("a typed channel message appears in Electron and is readable by an independ
     const generalChannelId = await onboardToCommunity(
       running,
       identity,
-      DEFAULT_RELAY_URL,
       "Electron Sender",
     );
 
@@ -177,11 +305,12 @@ test("a typed channel message appears in Electron and is readable by an independ
     await enterMessage(running, content, 40_000);
 
     const saved = await waitForRelayMessage(
-      DEFAULT_RELAY_URL,
+      PROXY_RELAY_URL,
       identity.publicKey,
       content,
       40_000,
       generalChannelId,
+      identity,
     );
     expect(saved).toBeDefined();
     expect(saved?.kind).toBe(9);
@@ -204,7 +333,6 @@ test("an independent Nostr client message reaches the open Electron channel with
     const generalChannelId = await onboardToCommunity(
       running,
       identity,
-      DEFAULT_RELAY_URL,
       "Electron Receiver",
     );
 
@@ -243,7 +371,6 @@ test("relaunching the same Electron user data restores general history without o
     const generalChannelId = await onboardToCommunity(
       running,
       identity,
-      DEFAULT_RELAY_URL,
       "Electron Restart Member",
     );
 
@@ -265,15 +392,16 @@ test("relaunching the same Electron user data restores general history without o
       );
     }
 
-    await closeElectron(running);
+    const exitCode = await closeElectron(running);
+    expect(exitCode).toBe(0);
     running = await launchElectron(userDataDir);
     applications.push(running);
     await expect(running.page.getByTestId("native-startup-error")).toHaveCount(
       0,
     );
-    await expect(
-      running.page.getByTestId("machine-onboarding-gate"),
-    ).toHaveCount(0);
+    await expect(running.page.getByTestId("google-account-scene")).toHaveCount(
+      0,
+    );
     await expect(running.page.getByTestId("welcome-setup")).toHaveCount(0);
     await expect(running.page.getByTestId("channel-general")).toBeVisible({
       timeout: 60_000,
@@ -306,12 +434,11 @@ test("real TCP relay outage reconnects Electron for inbound and outbound message
         process.env.COLONY_ELECTRON_PROXY_LOG ??
         path.join(userDataDir, "relay-proxy.timeline.log"),
     });
-    const running = await launchElectron(userDataDir);
+    const running = await launchElectron(userDataDir, PROXY_RELAY_URL);
     applications.push(running);
     generalChannelId = await onboardToCommunity(
       running,
       identity,
-      PROXY_RELAY_URL,
       "Electron Reconnect Member",
     );
     await expect
@@ -369,6 +496,7 @@ test("real TCP relay outage reconnects Electron for inbound and outbound message
         outboundContent,
         15_000,
         generalChannelId,
+        identity,
       );
     } catch (error) {
       relayReadError = error instanceof Error ? error.message : String(error);

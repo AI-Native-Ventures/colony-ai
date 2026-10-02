@@ -77,7 +77,12 @@ export function validateCommunitySlug(raw: string): CommunitySlugValidation {
 }
 
 export function communityRelayUrl(host: string): string {
-  return `wss://${host}`;
+  const normalizedHost = host.trim().toLowerCase();
+  const local =
+    /^(?:localhost|(?:127\.)\d{1,3}(?:\.\d{1,3}){2})(?::\d+)?$/u.test(
+      normalizedHost,
+    ) || /^[a-z0-9-]+\.localhost(?::\d+)?$/u.test(normalizedHost);
+  return `${local ? "ws" : "wss"}://${host}`;
 }
 
 export function communityCreateErrorMessage(code: string): string {

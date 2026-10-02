@@ -3,6 +3,14 @@ mod tests {
     use serde_json::json;
 
     use crate::models::ChannelInfo;
+    use crate::should_start_voice_model_downloads;
+
+    #[test]
+    fn electron_e2e_can_skip_startup_voice_model_downloads() {
+        assert!(!should_start_voice_model_downloads(Some("1")));
+        assert!(should_start_voice_model_downloads(Some("0")));
+        assert!(should_start_voice_model_downloads(None));
+    }
 
     #[test]
     fn channel_info_defaults_is_member_for_legacy_payloads() {
