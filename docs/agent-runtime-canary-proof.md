@@ -58,13 +58,34 @@ This run exercised real canary records through the release `buzz` CLI. It did no
 
 `docs/company-records.md` states that kind 44200 reports have token counts and estimated USD usage but do not establish a funding source, next-turn estimate, or verified Colony-credit execution signal. The current runtime therefore has no verified allowance budget-stop action. An over-allowance total by itself does not stop a worker. The budget-stop portion is `NEEDS_API` until those runtime signals and a supported stop path exist.
 
-Duty records are tied to the existing workflow scheduler and store IANA timezone schedules. The approved duty ask atomically creates the workflow definition and duty head. This canary record-layer run approved and removed a test duty, but it did not wait for a scheduled workflow run or exercise catch-up.
+Duty records are tied to the existing workflow scheduler and store IANA timezone schedules. The approved duty ask atomically creates the workflow definition and duty head. A live scheduled run was later created, but it remained `waiting_agent`; the test duty was paused after observation. A completed scheduled check-in and catch-up remain unproven.
 
 ## Acceptance status
 
-- Implemented: no code changes yet.
-- Tested: canary record-layer helper reported 42/42 assertions passed; the expired-expiry defect was independently visible as an accepted canary write but was not counted as a failed assertion by that helper.
+- Implemented: `buzz-agent` now supports `LLM_PROVIDER` provider selection with DeepSeek as the default and explicit provider model configuration. Per-agent `BUZZ_AGENT_PROVIDER` still takes precedence. Changes are in PR #177.
+- Tested: the one authorized Sprig release build completed. Local tests were not run. Hosted CI passed on code head `27e58786b47b`; the following documentation update starts a new CI cycle.
 - Visually compared: not applicable; this runtime proof changes no UI.
-- Live harness: not yet run.
-- CI: not yet run.
+- Live canary: scenario 1 is proven with a correctly wired Sprig harness, a fresh owner-attested employee, and one published reply to the owner's mention. Scenarios 2 through 6 remain unproven.
+- CI: pass on the current PR code head before this report update; pending for the next pushed head.
 - `NEEDS_API`: automatic allowance stop based on verified source-of-funds and next-turn estimate.
+
+## Managed runtime attempt
+
+A first launch omitted the release directory from `PATH`, so the agent shell could not resolve the `buzz` CLI. A later DeepSeek run used the correct Buzz agent and MCP command paths, connected, received mentions, and attempted provider requests. DeepSeek returned an insufficient-balance response, so it did not answer. The direct DeepSeek path is unproven until that provider account can serve requests.
+
+Two OpenRouter retries were invalid because they put the Buzz binaries on `PATH` but did not set `BUZZ_ACP_AGENT_COMMAND` and `BUZZ_ACP_MCP_COMMAND`; Sprig therefore used its default command configuration. They are excluded from acceptance evidence. A minimal OpenRouter request using the configured credential returned HTTP 200. The accepted fallback was then run with a fresh owner-attested identity and all three executable paths explicitly selected. The agent joined the channel, the owner assigned its position, and the owner sent one tagged mention. The relay accepted the mention and an owner query returned one message authored by that employee after it, containing the unique proof marker. This proves scenario 1 on canary. The app default remains DeepSeek; OpenRouter and the explicit model were only process-level test settings.
+
+The correct Sprig invocation used `LLM_PROVIDER=openrouter`, `OPENROUTER_MODEL=deepseek/deepseek-v4-flash-0731`, `BUZZ_ACP_AGENT_COMMAND=<built buzz-agent personality>`, and `BUZZ_ACP_MCP_COMMAND=<built buzz-dev-mcp personality>`. It also set a 256-token output cap and disabled thinking for the short reply. No credential values, relay URLs, event IDs, public keys, or raw harness logs are included. Logs containing credential-shaped material remain outside the repository.
+
+Sanitized command shape:
+
+```sh
+OWNER_KEY=<canary owner key from the local canary file> OUT=<temporary identity file> ~/worktrees/.lanes/tools/attest-agent
+buzz channels join --channel <configured canary channel>
+buzz team set-position --member <fresh attested pubkey> --title "Canary AI employee runtime proof"
+LLM_PROVIDER=openrouter OPENROUTER_MODEL=deepseek/deepseek-v4-flash-0731 BUZZ_ACP_AGENT_COMMAND=<built buzz-agent personality> BUZZ_ACP_MCP_COMMAND=<built buzz-dev-mcp personality> <built buzz-acp personality>
+buzz messages send --channel <configured canary channel> --content <non-side-effect acknowledgement prompt> --mention <fresh attested pubkey>
+buzz messages get --channel <configured canary channel> --limit 200
+```
+
+The earlier empty read was superseded by the successful query of the accepted mention and employee reply in the correctly wired run. The next live gates are lesson proposal and approval, scheduled duty completion and catch-up, consent and revoke for a spend action, usage ingestion and allowance behavior, and employee revision history and undo.
