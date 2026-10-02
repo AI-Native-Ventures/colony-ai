@@ -6,6 +6,8 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import net, { type Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -21,12 +23,14 @@ import { finalizeEvent, generateSecretKey } from "nostr-tools";
 export const DEFAULT_RELAY_URL = "ws://localhost:3000";
 export const PROXY_RELAY_URL = "ws://localhost:3001";
 export const GENERAL_CHANNEL_ID = "9f28288a-d724-587a-9709-92dc7f967110";
+export const FIXTURE_ACCOUNT_PASSWORD = "electron-relay-test-password";
 
 const MAX_LOG_LINES = 250;
 const MAX_PROXY_LOG_LINES = 2_500;
 const MAX_DIAGNOSTIC_BYTES = 2 * 1024 * 1024;
 
 export type TestIdentity = {
+  fixtureName: string;
   secretKey: Uint8Array;
   publicKey: string;
   nsec: string;
@@ -35,6 +39,7 @@ export type TestIdentity = {
 export type RunningElectron = {
   application: ElectronApplication;
   page: Page;
+  relayUrl: string;
   userDataDir: string;
   nativeHostLogPath: string;
   logs: string[];
@@ -292,10 +297,162 @@ export function fixtureIdentity(name: string): TestIdentity {
     );
   }
   return {
+    fixtureName: name,
     secretKey: Uint8Array.from(Buffer.from(identity.secretKeyHex, "hex")),
     publicKey: identity.publicKey,
     nsec: identity.nsec,
   };
+}
+
+export function fixtureAccountEmail(identity: TestIdentity) {
+  return `electron-${identity.fixtureName}@example.test`;
+}
+
+function accountPsql(query: string, email: string) {
+  const password = process.env.COLONY_ELECTRON_DB_PASSWORD ?? "buzz_dev";
+  const result = spawnSync(
+    process.env.COLONY_ELECTRON_PSQL ?? "psql",
+    [
+      "-X",
+      "-h",
+      process.env.COLONY_ELECTRON_DB_HOST ?? "127.0.0.1",
+      "-p",
+      process.env.COLONY_ELECTRON_DB_PORT ?? "5432",
+      "-U",
+      process.env.COLONY_ELECTRON_DB_USER ?? "buzz",
+      "-d",
+      process.env.COLONY_ELECTRON_DB_NAME ?? "buzz",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-v",
+      `email=${email}`,
+      "-qAt",
+      "-c",
+      query,
+    ],
+    {
+      encoding: "utf8",
+      env: { ...process.env, PGPASSWORD: password },
+      timeout: 5_000,
+      maxBuffer: 64 * 1024,
+    },
+  );
+  if (result.error || result.status !== 0) {
+    throw new Error("Could not read the isolated Electron account mail sink.");
+  }
+  return result.stdout.trim();
+}
+
+function httpUrlForRelay(relayUrl: string) {
+  const parsed = new URL(relayUrl);
+  parsed.protocol = parsed.protocol === "wss:" ? "https:" : "http:";
+  return parsed.origin;
+}
+
+function fixtureAccountState(identity: TestIdentity, email: string) {
+  const account = accountPsql(
+    "SELECT (CASE WHEN email_verified_at IS NULL THEN 'pending' ELSE 'verified' END) || '|' || pubkey FROM accounts WHERE lower(email) = lower(:'email')",
+    email,
+  );
+  if (!account) return "";
+  const [state, publicKey] = account.split("|");
+  if (publicKey !== identity.publicKey) {
+    throw new Error(
+      "The isolated relay account is bound to another fixture identity.",
+    );
+  }
+  return state;
+}
+
+async function waitForAccountVerificationCode(email: string) {
+  for (let attempt = 0; attempt < 45; attempt += 1) {
+    const code = accountPsql(
+      "SELECT code FROM account_test_mail WHERE recipient = :'email' AND purpose = 'verify_email' ORDER BY delivered_at DESC LIMIT 1",
+      email,
+    );
+    if (/^\d{6}$/u.test(code)) return code;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error("The isolated relay did not deliver an account test code.");
+}
+
+/** Create or complete one verified account fixture using only the local relay. */
+export async function ensureFixtureAccount(
+  identity: TestIdentity,
+  relayUrl: string,
+) {
+  const email = fixtureAccountEmail(identity);
+  let accountState = fixtureAccountState(identity, email);
+  if (accountState === "verified") return email;
+
+  if (!accountState) {
+    const url = `${httpUrlForRelay(relayUrl)}/api/accounts/claim`;
+    const body = JSON.stringify({
+      email,
+      password: FIXTURE_ACCOUNT_PASSWORD,
+      nsec: identity.nsec,
+    });
+    const event = finalizeEvent(
+      {
+        kind: 27235,
+        created_at: Math.floor(Date.now() / 1000),
+        content: "",
+        tags: [
+          ["u", url],
+          ["method", "POST"],
+          ["payload", createHash("sha256").update(body).digest("hex")],
+          ["nonce", randomUUID()],
+        ],
+      },
+      identity.secretKey,
+    );
+    const claim = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Nostr ${Buffer.from(JSON.stringify(event)).toString("base64")}`,
+        "Content-Type": "application/json",
+      },
+      body,
+    });
+    if (claim.status !== 202 && claim.status !== 409) {
+      throw new Error(
+        `The isolated relay rejected Electron account fixture setup (HTTP ${claim.status}).`,
+      );
+    }
+    accountState = fixtureAccountState(identity, email);
+  }
+
+  if (accountState === "verified") return email;
+  if (accountState !== "pending") {
+    throw new Error("The isolated relay account fixture was not created.");
+  }
+
+  const code = await waitForAccountVerificationCode(email);
+  const verified = await fetch(
+    `${httpUrlForRelay(relayUrl)}/api/accounts/verify`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, code }),
+    },
+  );
+  if (!verified.ok) {
+    throw new Error(
+      `The isolated relay rejected Electron account verification (HTTP ${verified.status}).`,
+    );
+  }
+  const session = (await verified.json()) as {
+    account?: { pubkey?: string };
+    nsec?: string;
+  };
+  const accountPubkey = session.account?.pubkey;
+  session.nsec = "";
+  if (accountPubkey !== identity.publicKey) {
+    throw new Error(
+      "The isolated relay verified a different account identity.",
+    );
+  }
+  return email;
 }
 
 export function createUserDataDir(testInfo: TestInfo) {
@@ -390,6 +547,7 @@ export async function launchElectron(
   return {
     application,
     page,
+    relayUrl,
     userDataDir,
     nativeHostLogPath,
     logs,
@@ -398,9 +556,26 @@ export async function launchElectron(
 }
 
 export async function closeElectron(running: RunningElectron) {
-  if (running.closed) return;
-  await running.application.close();
+  if (running.closed) return running.application.process().exitCode;
+  const child = running.application.process();
+  const exited = new Promise<number | null>((resolve, reject) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolve(child.exitCode);
+      return;
+    }
+    const timer = setTimeout(
+      () => reject(new Error("Packaged Electron did not quit cleanly.")),
+      20_000,
+    );
+    child.once("exit", (code) => {
+      clearTimeout(timer);
+      resolve(code);
+    });
+  });
+  await running.application.evaluate(({ app }) => app.quit()).catch(() => {});
+  const exitCode = await exited;
   running.closed = true;
+  return exitCode;
 }
 
 export async function cleanupElectronTest(

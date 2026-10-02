@@ -11,6 +11,8 @@ import {
   PROXY_RELAY_URL,
   closeElectron,
   createUserDataDir,
+  ensureFixtureAccount,
+  FIXTURE_ACCOUNT_PASSWORD,
   fixtureIdentity,
   finishElectronTest,
   launchElectron,
@@ -25,37 +27,33 @@ import {
 
 async function assertLanding(page: RunningElectron["page"]) {
   await expect(page).toHaveURL(/^colony:\/\/app\//u);
-  await expect(page.getByTestId("machine-onboarding-gate")).toBeVisible({
+  await expect(page.getByTestId("google-account-scene")).toBeVisible({
     timeout: 60_000,
   });
-  await expect(page.getByTestId("native-startup-error")).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Create a new identity key" }),
+    page.getByRole("heading", { name: "Welcome back" }),
   ).toBeVisible();
+  await expect(page.getByTestId("native-startup-error")).toHaveCount(0);
+  await expect(page.getByLabel("Email address")).toBeVisible();
+  await expect(page.getByLabel("Password")).toBeVisible();
 }
 
 async function onboardToCommunity(
   running: RunningElectron,
   identity: TestIdentity,
-  communityUrl: string,
   displayName: string,
 ): Promise<string> {
   const { page } = running;
   await assertLanding(page);
-  await page.getByRole("button", { name: "Use an existing key" }).click();
-  await page.getByTestId("nostr-import-nsec-input").fill(identity.nsec);
-  await page.getByTestId("nostr-import-submit").click();
-
-  await expect(page.getByTestId("onboarding-page-2")).toBeVisible({
-    timeout: 30_000,
-  });
-  await page.getByTestId("onboarding-setup-skip").click();
-  await expect(page.getByTestId("welcome-setup")).toBeVisible();
-  await page.getByTestId("community-choice-existing").click();
-  await page.getByTestId("existing-choice-member").click();
-  await page.getByTestId("invite-redeem-input").fill(communityUrl);
-  await expect(page.getByTestId("invite-redeem-submit")).toBeEnabled();
-  await page.getByTestId("invite-redeem-submit").click();
+  const email = await ensureFixtureAccount(identity, running.relayUrl);
+  await page.getByLabel("Email address").fill(email);
+  await page.getByLabel("Password").fill(FIXTURE_ACCOUNT_PASSWORD);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  const communityChoices = page
+    .getByTestId("onboarding-business-list")
+    .getByRole("button");
+  await expect(communityChoices).toHaveCount(1, { timeout: 60_000 });
+  await communityChoices.first().click();
 
   const profileHeading = page.getByRole("heading", {
     name: "Build your profile",
@@ -148,7 +146,6 @@ test("packaged first run signs in, opens workspace surfaces, and recovers from o
     const generalChannelId = await onboardToCommunity(
       running,
       identity,
-      DEFAULT_RELAY_URL,
       "Electron E2E Member",
     );
 
@@ -277,7 +274,6 @@ test("a typed channel message appears in Electron and is readable by an independ
     const generalChannelId = await onboardToCommunity(
       running,
       identity,
-      DEFAULT_RELAY_URL,
       "Electron Sender",
     );
 
@@ -312,7 +308,6 @@ test("an independent Nostr client message reaches the open Electron channel with
     const generalChannelId = await onboardToCommunity(
       running,
       identity,
-      DEFAULT_RELAY_URL,
       "Electron Receiver",
     );
 
@@ -351,7 +346,6 @@ test("relaunching the same Electron user data restores general history without o
     const generalChannelId = await onboardToCommunity(
       running,
       identity,
-      DEFAULT_RELAY_URL,
       "Electron Restart Member",
     );
 
@@ -373,15 +367,16 @@ test("relaunching the same Electron user data restores general history without o
       );
     }
 
-    await closeElectron(running);
+    const exitCode = await closeElectron(running);
+    expect(exitCode).toBe(0);
     running = await launchElectron(userDataDir);
     applications.push(running);
     await expect(running.page.getByTestId("native-startup-error")).toHaveCount(
       0,
     );
-    await expect(
-      running.page.getByTestId("machine-onboarding-gate"),
-    ).toHaveCount(0);
+    await expect(running.page.getByTestId("google-account-scene")).toHaveCount(
+      0,
+    );
     await expect(running.page.getByTestId("welcome-setup")).toHaveCount(0);
     await expect(running.page.getByTestId("channel-general")).toBeVisible({
       timeout: 60_000,
@@ -414,12 +409,11 @@ test("real TCP relay outage reconnects Electron for inbound and outbound message
         process.env.COLONY_ELECTRON_PROXY_LOG ??
         path.join(userDataDir, "relay-proxy.timeline.log"),
     });
-    const running = await launchElectron(userDataDir);
+    const running = await launchElectron(userDataDir, PROXY_RELAY_URL);
     applications.push(running);
     generalChannelId = await onboardToCommunity(
       running,
       identity,
-      PROXY_RELAY_URL,
       "Electron Reconnect Member",
     );
     await expect

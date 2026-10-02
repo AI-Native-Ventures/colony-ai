@@ -53,10 +53,15 @@ test("community slug validation matches the relay's reserved and DNS rules", () 
   }
 });
 
-test("new communities connect to the server-provided host over secure websockets", () => {
+test("community connections use secure websockets except for local relay hosts", () => {
   assert.equal(
     communityRelayUrl("north-star.canary.example"),
     "wss://north-star.canary.example",
+  );
+  assert.equal(communityRelayUrl("localhost:3000"), "ws://localhost:3000");
+  assert.equal(
+    communityRelayUrl("north-star.localhost:3001"),
+    "ws://north-star.localhost:3001",
   );
 });
 

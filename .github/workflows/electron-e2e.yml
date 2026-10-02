@@ -290,6 +290,10 @@ jobs:
         run: |
           set -euo pipefail
           . ./bin/activate-hermit
+          account_kek="$(openssl rand -base64 32 | tr -d '\n')"
+          if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+            echo "::add-mask::$account_kek"
+          fi
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             # pgschema currently tries to drop an inherited partition key on
             # the fresh Postgres 17 container. Load the canonical schema into
@@ -313,6 +317,9 @@ jobs:
               RELAY_URL=ws://localhost:3000 \
               BUZZ_BIND_ADDR=0.0.0.0:3000 \
               BUZZ_RELAY_PRIVATE_KEY="$relay_key" \
+              BUZZ_SELF_PROVISION_DOMAIN=localhost \
+              COLONY_ACCOUNT_KEK="$account_kek" \
+              COLONY_MAIL_SINK=log \
               BUZZ_REQUIRE_AUTH_TOKEN=false \
               BUZZ_RECONCILE_CHANNELS=true \
               BUZZ_GIT_CONFORMANCE_PROBE=false \
@@ -347,6 +354,9 @@ jobs:
               RELAY_URL=ws://localhost:3000 \
               BUZZ_BIND_ADDR=0.0.0.0:3000 \
               BUZZ_RELAY_PRIVATE_KEY="$relay_key" \
+              BUZZ_SELF_PROVISION_DOMAIN=localhost \
+              COLONY_ACCOUNT_KEK="$account_kek" \
+              COLONY_MAIL_SINK=log \
               BUZZ_REQUIRE_AUTH_TOKEN=false \
               BUZZ_RECONCILE_CHANNELS=true \
               BUZZ_GIT_CONFORMANCE_PROBE=false \
