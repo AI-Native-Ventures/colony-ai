@@ -38,6 +38,7 @@ export type TestIdentity = {
 
 export type RunningElectron = {
   application: ElectronApplication;
+  childProcess: ReturnType<ElectronApplication["process"]>;
   page: Page;
   relayUrl: string;
   userDataDir: string;
@@ -488,10 +489,12 @@ export async function launchElectron(
       COLONY_ELECTRON_USER_DATA: userDataDir,
       COLONY_NATIVE_HOST: "",
       COLONY_ELECTRON_UPDATE_E2E: "offline",
+      COLONY_ELECTRON_E2E_NO_MODEL_DOWNLOADS: "1",
       COLONY_NATIVE_HOST_LOG: nativeHostLogPath,
     },
     timeout: 120_000,
   });
+  const childProcess = application.process();
 
   const isPackaged = await application.evaluate(({ app }) => app.isPackaged);
   if (!isPackaged) {
@@ -500,8 +503,8 @@ export async function launchElectron(
   }
 
   for (const [name, stream] of [
-    ["main", application.process().stdout],
-    ["main-err", application.process().stderr],
+    ["main", childProcess.stdout],
+    ["main-err", childProcess.stderr],
   ] as const) {
     stream?.on("data", (chunk: Buffer) => {
       for (const line of chunk.toString().split(/\r?\n/u).filter(Boolean)) {
@@ -545,6 +548,7 @@ export async function launchElectron(
 
   return {
     application,
+    childProcess,
     page,
     relayUrl,
     userDataDir,
@@ -555,8 +559,8 @@ export async function launchElectron(
 }
 
 export async function closeElectron(running: RunningElectron) {
-  if (running.closed) return running.application.process().exitCode;
-  const child = running.application.process();
+  const child = running.childProcess;
+  if (running.closed) return child.exitCode;
   const exited = new Promise<number | null>((resolve, reject) => {
     if (child.exitCode !== null || child.signalCode !== null) {
       resolve(child.exitCode);

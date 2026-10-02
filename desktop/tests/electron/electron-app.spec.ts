@@ -44,57 +44,76 @@ async function onboardToCommunity(
   displayName: string,
 ): Promise<string> {
   const { page } = running;
-  await assertLanding(page);
-  const email = await ensureFixtureAccount(identity, running.relayUrl);
-  await page.getByLabel("Email address").fill(email);
-  await page.getByLabel("Password").fill(FIXTURE_ACCOUNT_PASSWORD);
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  const communityChoices = page
-    .getByTestId("onboarding-business-list")
-    .getByRole("button");
-  await expect(communityChoices).toHaveCount(1, { timeout: 60_000 });
-  await communityChoices.first().click();
+  const accountLookupStatuses: number[] = [];
+  const observeAccountLookup = (
+    response: import("@playwright/test").Response,
+  ) => {
+    if (new URL(response.url()).pathname === "/api/accounts/me") {
+      accountLookupStatuses.push(response.status());
+    }
+  };
+  page.on("response", observeAccountLookup);
+  try {
+    await assertLanding(page);
+    const email = await ensureFixtureAccount(identity, running.relayUrl);
+    await page.getByLabel("Email address").fill(email);
+    await page.getByLabel("Password").fill(FIXTURE_ACCOUNT_PASSWORD);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    const communityChoices = page
+      .getByTestId("onboarding-business-list")
+      .getByRole("button");
+    await expect(communityChoices).toHaveCount(1, { timeout: 60_000 });
+    await communityChoices.first().click();
 
-  const profileHeading = page.getByRole("heading", {
-    name: "Build your profile",
-  });
-  const teamIntro = page.getByTestId("community-team-intro-enter");
-  await expect
-    .poll(
-      async () => {
-        if (await profileHeading.isVisible()) return "profile";
-        if (await teamIntro.isVisible()) return "team-intro";
-        if (await page.getByTestId("channel-general").isVisible())
-          return "main";
-        return "pending";
-      },
-      { timeout: 60_000 },
-    )
-    .not.toBe("pending");
-  if (await profileHeading.isVisible()) {
-    await page.getByTestId("community-profile-name-key").fill(displayName);
-    await page.getByTestId("community-profile-next").click();
-    await expect(teamIntro).toBeVisible({ timeout: 30_000 });
-  }
-  if (await teamIntro.isVisible()) {
-    await teamIntro.click();
-    await expect(page.getByTestId("community-onboarding-flow")).toHaveCount(0, {
-      timeout: 30_000,
+    const profileHeading = page.getByRole("heading", {
+      name: "Build your profile",
     });
+    const teamIntro = page.getByTestId("community-team-intro-enter");
+    await expect
+      .poll(
+        async () => {
+          if (await profileHeading.isVisible()) return "profile";
+          if (await teamIntro.isVisible()) return "team-intro";
+          if (await page.getByTestId("channel-general").isVisible())
+            return "main";
+          return "pending";
+        },
+        { timeout: 60_000 },
+      )
+      .not.toBe("pending");
+    if (await profileHeading.isVisible()) {
+      await page.getByTestId("community-profile-name-key").fill(displayName);
+      await page.getByTestId("community-profile-next").click();
+      await expect(teamIntro).toBeVisible({ timeout: 30_000 });
+    }
+    if (await teamIntro.isVisible()) {
+      await teamIntro.click();
+      await expect(page.getByTestId("community-onboarding-flow")).toHaveCount(
+        0,
+        { timeout: 30_000 },
+      );
+    }
+    await expect(page.getByTestId("channel-general")).toBeVisible({
+      timeout: 60_000,
+    });
+    await page.getByTestId("channel-general").click();
+    await expect(page.getByTestId("chat-title")).toHaveText("general", {
+      timeout: 20_000,
+    });
+    await expect(page.getByTestId("message-input")).toBeVisible();
+    const channelId = await page
+      .getByTestId("channel-general")
+      .getAttribute("data-channel-id");
+    if (!channelId) throw new Error("The visible #general channel has no id.");
+
+    await expect
+      .poll(() => accountLookupStatuses.includes(200), { timeout: 30_000 })
+      .toBe(true);
+    await expect(page.getByTestId("account-claim-prompt")).toHaveCount(0);
+    return channelId;
+  } finally {
+    page.off("response", observeAccountLookup);
   }
-  await expect(page.getByTestId("channel-general")).toBeVisible({
-    timeout: 60_000,
-  });
-  await page.getByTestId("channel-general").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("general", {
-    timeout: 20_000,
-  });
-  await expect(page.getByTestId("message-input")).toBeVisible();
-  const channelId = await page
-    .getByTestId("channel-general")
-    .getAttribute("data-channel-id");
-  if (!channelId) throw new Error("The visible #general channel has no id.");
-  return channelId;
 }
 
 async function enterMessage(

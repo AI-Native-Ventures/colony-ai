@@ -97,6 +97,11 @@ use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 use tauri_plugin_window_state::StateFlags;
 #[cfg(target_os = "macos")]
 use tray_menu::show_main_window;
+
+fn should_start_voice_model_downloads(e2e_disable_value: Option<&str>) -> bool {
+    e2e_disable_value != Some("1")
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // mesh-llm async chains overflow tokio's default 2 MiB stacks; run on 8 MiB like upstream.
@@ -446,9 +451,15 @@ pub fn run() {
 
             try_regenerate_nest(&app_handle);
 
-            if let Some(mgr) = huddle::models::global_model_manager() {
-                mgr.start_stt_download(state.http_client.clone());
-                mgr.start_tts_download(state.http_client.clone());
+            // The packaged first-run E2E journey does not exercise huddles.
+            // Its explicit test switch avoids fetching unused audio assets.
+            let skip_voice_model_downloads =
+                std::env::var("COLONY_ELECTRON_E2E_NO_MODEL_DOWNLOADS").ok();
+            if should_start_voice_model_downloads(skip_voice_model_downloads.as_deref()) {
+                if let Some(mgr) = huddle::models::global_model_manager() {
+                    mgr.start_stt_download(state.http_client.clone());
+                    mgr.start_tts_download(state.http_client.clone());
+                }
             }
 
             // Handle deep link URLs received while the app is running (macOS)
