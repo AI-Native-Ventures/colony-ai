@@ -294,3 +294,19 @@ test("getProviderApiKeyLabel_provider_id_trimmed_and_lowercased", () => {
   // Mirrors getProviderApiKeyEnvVar normalisation behaviour.
   assert.equal(getProviderApiKeyLabel(" Anthropic "), "Anthropic API Key");
 });
+
+test("DeepSeek is selectable with its own credential label and explicit model", async () => {
+  const { requiredCredentialEnvKeys, providerRequiresExplicitModel } =
+    await import("./agentConfigOptions.tsx");
+  assert.ok(
+    getPersonaProviderOptions("", "buzz-agent").some(
+      (option) => option.id === "deepseek" && option.label === "DeepSeek",
+    ),
+  );
+  assert.equal(getProviderApiKeyLabel("deepseek"), "DeepSeek API Key");
+  assert.deepEqual(requiredCredentialEnvKeys("buzz-agent", "deepseek"), [
+    "DEEPSEEK_API_KEY",
+  ]);
+  assert.equal(providerRequiresExplicitModel("deepseek"), true);
+  assert.deepEqual(getPersonaModelOptions("buzz-agent", "deepseek"), []);
+});

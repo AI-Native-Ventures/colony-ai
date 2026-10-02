@@ -777,6 +777,12 @@ type MockBridgeOptions = {
    * (the "Run on" section stays hidden). Setting this renders the remote
    * backend selector in the create-agent dialog.
    */
+  gitBashPrerequisite?: {
+    available: boolean;
+    path: string | null;
+    install_instructions_url: string;
+    install_hint: string;
+  } | null;
   backendProviders?: Array<{ id: string; binaryPath: string }>;
   /**
    * Result returned by `probe_backend_provider`. Defaults to

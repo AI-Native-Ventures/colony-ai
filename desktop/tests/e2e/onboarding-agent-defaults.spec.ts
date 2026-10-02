@@ -272,3 +272,27 @@ test("R17 Agent Defaults keep a failed save editable and allow retry", async ({
     await mockCommand<number>(page, "get_global_agent_config_set_call_count"),
   ).toBe(2);
 });
+
+test("bundled agent readiness names missing Git for Windows before claiming Ready", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    runtimes: [
+      r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
+    ],
+    mock: {
+      gitBashPrerequisite: {
+        available: false,
+        path: null,
+        install_instructions_url: "https://gitforwindows.org/",
+        install_hint: "Install Git for Windows",
+      },
+    },
+  });
+  const card = page.getByTestId("onboarding-connect-runtime-buzz-agent");
+  await expect(card).toContainText(
+    "Install Git for Windows from https://gitforwindows.org/",
+  );
+  await expect(card).not.toContainText("Ready on this computer");
+  await expect(card.locator(".provider-status.is-connected")).toHaveCount(0);
+});

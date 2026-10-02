@@ -2,12 +2,20 @@ import { requiredCredentialEnvKeys } from "@/features/agents/ui/agentConfigOptio
 import type {
   AcpRuntimeCatalogEntry,
   GlobalAgentConfig,
+  GitBashPrerequisite,
 } from "@/shared/api/types";
 
 export type AgentReadinessResult =
   | { ready: true; reason: "cli"; runtimeLabel: string }
   | { ready: true; reason: "buzz-agent" }
-  | { ready: false };
+  | {
+      ready: false;
+      reason?: "git-bash" | "checking-prerequisites";
+      copy?: string;
+    };
+
+export const GIT_BASH_REQUIRED_COPY =
+  "Install Git for Windows from https://gitforwindows.org/, then open Settings, Agent runtimes to re-check before starting your AI employees.";
 
 /**
  * Determine whether the user has a working agent path configured.
@@ -22,7 +30,17 @@ export function resolveAgentReadiness(
   runtimes: readonly AcpRuntimeCatalogEntry[],
   globalConfig: GlobalAgentConfig,
   scope: "any" | "preferred" = "any",
+  gitBashPrerequisite?: GitBashPrerequisite | null,
 ): AgentReadinessResult {
+  // Welcome starts the configured bundled runtime even if another CLI is installed.
+  // An unrelated ready CLI cannot waive this runtime's native prerequisite.
+  if (globalConfig.preferred_runtime === "buzz-agent") {
+    const prerequisite = resolveAgentPrerequisiteReadiness(
+      "buzz-agent",
+      gitBashPrerequisite,
+    );
+    if (!prerequisite.ready) return prerequisite;
+  }
   if (scope === "any") {
     for (const runtime of runtimes) {
       if (runtime.id === "buzz-agent") continue;
@@ -62,6 +80,12 @@ export function resolveAgentReadiness(
     return { ready: false };
   }
 
+  const prerequisite = resolveAgentPrerequisiteReadiness(
+    preferredRuntime.id,
+    gitBashPrerequisite,
+  );
+  if (!prerequisite.ready) return prerequisite;
+
   const provider = globalConfig.provider?.trim() ?? "";
   const model = globalConfig.model?.trim() ?? "";
   if (provider.length > 0 && model.length > 0) {
@@ -75,4 +99,29 @@ export function resolveAgentReadiness(
   }
 
   return { ready: false };
+}
+
+/** Native null means this platform does not require Git for Windows. */
+export function resolveAgentPrerequisiteReadiness(
+  runtimeId: string,
+  prerequisite: GitBashPrerequisite | null | undefined,
+):
+  | { ready: true }
+  | {
+      ready: false;
+      reason: "git-bash" | "checking-prerequisites";
+      copy: string;
+    } {
+  if (runtimeId !== "buzz-agent" || prerequisite === null)
+    return { ready: true };
+  if (prerequisite === undefined) {
+    return {
+      ready: false,
+      reason: "checking-prerequisites",
+      copy: "Checking Git for Windows readiness. Open Settings, Agent runtimes if this check fails.",
+    };
+  }
+  return prerequisite.available
+    ? { ready: true }
+    : { ready: false, reason: "git-bash", copy: GIT_BASH_REQUIRED_COPY };
 }
