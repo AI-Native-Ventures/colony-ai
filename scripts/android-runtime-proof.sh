@@ -9,11 +9,16 @@ activity="${ANDROID_ACTIVITY:-${package}/xyz.block.buzz.mobile.MainActivity}"
 apk_path="${APK_PATH:-mobile/build/app/outputs/flutter-apk/app-debug.apk}"
 output_dir="${ANDROID_RUNTIME_ARTIFACT_DIR:-android-runtime-artifacts}"
 source_sha="${SOURCE_SHA:-${GITHUB_SHA:-unknown}}"
-ui_timeout_seconds="${ANDROID_RUNTIME_UI_TIMEOUT_SECONDS:-90}"
+ui_timeout_seconds="${ANDROID_RUNTIME_UI_TIMEOUT_SECONDS:-45}"
 adb_timeout_seconds="${ANDROID_RUNTIME_ADB_TIMEOUT_SECONDS:-20}"
 install_timeout_seconds="${ANDROID_RUNTIME_INSTALL_TIMEOUT_SECONDS:-60}"
+anr_dismiss_timeout_seconds="${ANDROID_RUNTIME_ANR_DISMISS_TIMEOUT_SECONDS:-15}"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 parser_path="${ANDROID_RUNTIME_PARSER:-$script_dir/android-runtime-proof-parser.py}"
+failure_label="runtime"
+launcher_anr_dismissed=0
+launcher_anr_dismissals=0
+launcher_anr_launch_retry_used=0
 
 mkdir -p "$output_dir"
 exec > >(tee "$output_dir/harness.log") 2>&1
@@ -56,8 +61,65 @@ adb_install() {
     timeout --preserve-status "${install_timeout_seconds}s" adb "$@"
 }
 
+capture_failure_evidence() {
+    local label="${failure_label:-runtime}"
+    local raw_log="${TMPDIR:-/tmp}/colony-android-runtime-logcat-${GITHUB_RUN_ID:-0}-$$.txt"
+    local safe_log="$output_dir/failure-logcat.txt"
+
+    {
+        echo "failure_label=$label"
+        echo "launcher_anr_dismissed=$launcher_anr_dismissed"
+        echo "launcher_anr_dismissals=$launcher_anr_dismissals"
+        echo "launcher_anr_launch_retry_used=$launcher_anr_launch_retry_used"
+    } > "$output_dir/failure.txt"
+
+    adb_target exec-out screencap -p > "$output_dir/failure-${label}.png" \
+        2> "$output_dir/failure-screenshot-error.log" || true
+    adb_target shell dumpsys window windows > "$output_dir/failure-windows.txt" \
+        2> "$output_dir/failure-windows-error.log" || true
+    adb_target logcat -d -t 800 -b main -b system -b crash \
+        -s ActivityManager:W ActivityTaskManager:W WindowManager:W AndroidRuntime:E \
+        > "$raw_log" 2> "$output_dir/failure-logcat-error.log" || true
+
+    python3 - "$raw_log" "$safe_log" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+source = Path(sys.argv[1])
+target = Path(sys.argv[2])
+sensitive = re.compile(
+    r"(?i)\bauthorization\s*:|\bbearer\s+\S{12,}|"
+    r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b|"
+    r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b|"
+    r"\bsk-[A-Za-z0-9]{20,}\b|\b(?:token|password|secret|api[_-]?key)\s*[:=]\s*\S+"
+)
+max_bytes = 2 * 1024 * 1024
+written = 0
+with source.open("r", encoding="utf-8", errors="replace") as input_file, target.open(
+    "w", encoding="utf-8"
+) as output_file:
+    for line in input_file:
+        encoded = line.encode("utf-8")
+        if sensitive.search(line):
+            continue
+        if written + len(encoded) > max_bytes:
+            output_file.write("[remaining logcat lines omitted at 2 MiB cap]\n")
+            break
+        output_file.write(line)
+        written += len(encoded)
+PY
+    rm -f -- "$raw_log"
+}
+
 cleanup() {
+    local status=$?
+    trap - EXIT
+    if [[ "$status" -ne 0 ]]; then
+        capture_failure_evidence || true
+    fi
     adb_target shell am force-stop "$package" >/dev/null 2>&1 || true
+    exit "$status"
 }
 trap cleanup EXIT
 
@@ -160,19 +222,92 @@ foreground_is_expected() {
 wait_for_ui() {
     local label="$1"
     local screen="$2"
-    local deadline=$((SECONDS + ui_timeout_seconds))
+    local deadline
+    local anr_kind
+    failure_label="$label"
     rm -f "$output_dir/${label}.xml" "$output_dir/${label}-foreground.txt"
+    while true; do
+        deadline=$((SECONDS + ui_timeout_seconds))
+        while ((SECONDS < deadline)); do
+            if dump_ui "$label" 2>"$output_dir/${label}-dump-error.log"; then
+                if anr_kind="$(python3 "$parser_path" system-anr-kind "$output_dir/${label}.xml" 2>/dev/null)"; then
+                    echo "Detected Android system ANR kind=$anr_kind label=$label"
+                    if [[ "$anr_kind" != "pixel-launcher" ]]; then
+                        echo "::error::unexpected Android system ANR during $label" >&2
+                        return 1
+                    fi
+                    if ((launcher_anr_dismissals >= 2)); then
+                        echo "::error::Pixel Launcher ANR repeated after bounded recovery" >&2
+                        return 1
+                    fi
+                    launcher_anr_dismissed=1
+                    launcher_anr_dismissals=$((launcher_anr_dismissals + 1))
+                    if ! dismiss_launcher_anr "$label" "$output_dir/${label}.xml"; then
+                        return 1
+                    fi
+                    continue
+                fi
+                if foreground_is_expected "$label" && assert_ui "$output_dir/${label}.xml" "$screen"; then
+                    echo "UI assertion passed: screen=$screen label=$label"
+                    return 0
+                fi
+            fi
+            sleep 2
+        done
+
+        if [[ "$label" == "initial" || "$label" == "relaunch" ]] &&
+            ((launcher_anr_dismissals > 0)) &&
+            [[ "$launcher_anr_launch_retry_used" == "0" ]]; then
+            launcher_anr_launch_retry_used=1
+            echo "Same $label UI assertion stayed absent after Pixel Launcher recovery; retrying app launch once"
+            adb_target shell am force-stop "$package" >/dev/null 2>&1 || true
+            if ! launch_app "${label}-retry"; then
+                echo "::error::app did not start after the single launcher-ANR recovery retry" >&2
+                return 1
+            fi
+            continue
+        fi
+
+        echo "UI assertion timed out after ${ui_timeout_seconds}s: $label" >&2
+        return 1
+    done
+}
+
+wait_for_launcher_anr_to_clear() {
+    local deadline=$((SECONDS + anr_dismiss_timeout_seconds))
     while ((SECONDS < deadline)); do
-        if foreground_is_expected "$label" &&
-            dump_ui "$label" 2>"$output_dir/${label}-dump-error.log" &&
-            assert_ui "$output_dir/${label}.xml" "$screen"; then
-            echo "UI assertion passed: screen=$screen label=$label"
+        if dump_ui launcher-anr-clear-check 2>"$output_dir/launcher-anr-clear-check-dump-error.log" &&
+            ! python3 "$parser_path" system-anr-kind "$output_dir/launcher-anr-clear-check.xml" >/dev/null 2>&1; then
             return 0
         fi
-        sleep 2
+        sleep 1
     done
-    echo "UI assertion timed out after ${ui_timeout_seconds}s: $label" >&2
     return 1
+}
+
+dismiss_launcher_anr() {
+    local label="$1"
+    local ui_file="$2"
+    local point
+    local x
+    local y
+
+    point="$(python3 "$parser_path" launcher-anr-wait-point "$ui_file")" || {
+        echo "::error::Pixel Launcher ANR dialog did not expose its verified Wait action" >&2
+        return 1
+    }
+    read -r x y <<<"$point"
+    [[ "$x" =~ ^[0-9]+$ && "$y" =~ ^[0-9]+$ ]] || {
+        echo "::error::parser returned invalid Android ANR recovery coordinates" >&2
+        return 1
+    }
+    adb_target shell input tap "$x" "$y"
+    if ! wait_for_launcher_anr_to_clear; then
+        echo "::error::Pixel Launcher ANR dialog did not clear within ${anr_dismiss_timeout_seconds}s" >&2
+        return 1
+    fi
+
+    echo "Pixel Launcher recovered; continuing the same $label UI assertion"
 }
 
 tap_app_label() {

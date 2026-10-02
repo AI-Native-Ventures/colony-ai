@@ -54,13 +54,55 @@ cleanup() {
 }
 trap cleanup EXIT
 
+emit_safe_log_tail() {
+  local log_path="$1"
+  python3 - "$log_path" <<'PY'
+from collections import deque
+from pathlib import Path
+import re
+import sys
+
+path = Path(sys.argv[1])
+sensitive = re.compile(
+    r"(?i)\bauthorization\s*:|\bbearer\s+\S{12,}|"
+    r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b|"
+    r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b|"
+    r"\bsk-[A-Za-z0-9]{20,}\b|\b(?:token|password|secret|api[_-]?key)\s*[:=]\s*\S+"
+)
+with path.open("r", encoding="utf-8", errors="replace") as handle:
+    lines = deque(handle, maxlen=80)
+for line in lines:
+    if not sensitive.search(line):
+        sys.stderr.write(line)
+PY
+}
+
 run_logged() {
   local log_path="$1"
   shift
   if ! "$@" >"$log_path" 2>&1; then
-    tail -n 80 "$log_path" >&2 || true
+    emit_safe_log_tail "$log_path" || true
     return 1
   fi
+}
+
+run_logged_bounded() {
+  local timeout_seconds="$1"
+  local log_path="$2"
+  local working_directory="$3"
+  local status=0
+  shift 3
+
+  python3 "$repo_root/scripts/ios-runtime-proof-runner.py" \
+    --timeout-seconds "$timeout_seconds" \
+    --cwd "$working_directory" \
+    --log-path "$log_path" \
+    -- "$@" || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    emit_safe_log_tail "$log_path" || true
+    return "$status"
+  fi
+  return 0
 }
 
 run_in_dir() {
@@ -324,6 +366,7 @@ test_args=(
   -destination "platform=iOS Simulator,id=$sim_udid"
   -derivedDataPath "$derived_data"
   -only-testing:RunnerUITests
+  -parallel-testing-enabled NO
   -resultBundlePath "$result_bundle"
   "BUNDLE_IDENTIFIER=$app_bundle_id"
   CODE_SIGNING_ALLOWED=NO
@@ -332,11 +375,44 @@ test_args=(
 )
 log "running XCTest landing and relaunch proof"
 test_failed=0
-if ! run_logged "$run_root/xcodebuild-test-without-building.log" run_in_dir "$ios_root" \
-  "${test_args[@]}"; then
+test_timeout_seconds="${IOS_RUNTIME_TEST_TIMEOUT_SECONDS:-240}"
+if [[ ! "$test_timeout_seconds" =~ ^[1-9][0-9]{0,2}$ ]]; then
+  fail "IOS_RUNTIME_TEST_TIMEOUT_SECONDS must be between 1 and 999"
+fi
+if ! run_logged_bounded "$test_timeout_seconds" "$run_root/xcodebuild-test-without-building.log" \
+  "$ios_root" "${test_args[@]}"; then
   test_failed=1
   log "XCTest proof failed; exporting available evidence before exiting"
 fi
+
+capture_xcresult_reports() {
+  local output_path
+  if [[ ! -d "$result_bundle" ]]; then
+    log "WARNING: no result bundle; skipping test-result summary export"
+    return 0
+  fi
+
+  output_path="$run_root/xcresult-summary.json"
+  if ! xcrun xcresulttool get test-results summary --path "$result_bundle" --compact \
+    >"$output_path" 2>"$run_root/xcresult-summary-error.log"; then
+    log "WARNING: xcresult summary export failed"
+  fi
+
+  output_path="$run_root/xcresult-tests.json"
+  if ! xcrun xcresulttool get test-results tests --path "$result_bundle" --compact \
+    >"$output_path" 2>"$run_root/xcresult-tests-error.log"; then
+    log "WARNING: xcresult test-detail export failed"
+  fi
+
+  for output_path in "$run_root/xcresult-summary.json" "$run_root/xcresult-tests.json"; do
+    if [[ -f "$output_path" && "$(wc -c <"$output_path")" -gt 4194304 ]]; then
+      head -c 4194304 "$output_path" >"$output_path.capped"
+      mv "$output_path.capped" "$output_path"
+    fi
+  done
+}
+
+capture_xcresult_reports
 
 mkdir -p "$attachments_dir"
 if [[ -d "$result_bundle" ]]; then

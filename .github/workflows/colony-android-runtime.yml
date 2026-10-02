@@ -182,13 +182,14 @@ jobs:
 
       - name: Boot emulator and prove app launch/relaunch
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        timeout-minutes: 4
         with:
           api-level: 35
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          emulator-boot-timeout: 420
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          emulator-boot-timeout: 180
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -wipe-data -noaudio -no-boot-anim
           disable-animations: true
           script: bash scripts/android-runtime-proof.sh
 
@@ -198,6 +199,4 @@ jobs:
         with:
           name: colony-android-runtime-${{ github.sha }}
           if-no-files-found: warn
-          path: |
-            android-runtime-artifacts
-            mobile/build/app/outputs/flutter-apk/app-debug.apk
+          path: android-runtime-artifacts
