@@ -6,6 +6,7 @@ import {
   friendlyTurnErrorCopy,
   CLI_ACP_INTERNAL_ERROR_COPY,
   MODEL_NOT_FOUND_COPY,
+  PROVIDER_KEY_REJECTED_COPY,
   RELAY_MESH_DENIED_COPY,
 } from "./friendlyAgentLastError.ts";
 
@@ -24,7 +25,7 @@ test("buzz-acp wrapped auth failure → denied copy", () => {
   );
   assert.deepEqual(result, {
     severity: "denied",
-    copy: RELAY_MESH_DENIED_COPY,
+    copy: PROVIDER_KEY_REJECTED_COPY,
   });
 });
 
@@ -35,7 +36,7 @@ test("unwrapped buzz-agent prefix → denied copy", () => {
   const result = friendlyAgentLastError("llm auth: 403 forbidden");
   assert.deepEqual(result, {
     severity: "denied",
-    copy: RELAY_MESH_DENIED_COPY,
+    copy: PROVIDER_KEY_REJECTED_COPY,
   });
 });
 
@@ -52,12 +53,12 @@ test("trims whitespace before matching", () => {
     "  Agent reported error: llm auth: nope\n",
   );
   assert.equal(result?.severity, "denied");
-  assert.equal(result?.copy, RELAY_MESH_DENIED_COPY);
+  assert.equal(result?.copy, PROVIDER_KEY_REJECTED_COPY);
 });
 
 test("substring 'llm auth:' that isn't at start is NOT treated as denial", () => {
   // Some other failure that happens to mention 'llm auth:' deep in a message
-  // — we only promote when the failure *is* an auth failure, signalled by
+  // - we only promote when the failure *is* an auth failure, signalled by
   // the prefix. Anything else stays passthrough so we don't lie about the
   // cause of an unrelated crash.
   const result = friendlyAgentLastError(
@@ -89,11 +90,11 @@ test("code -32002 → model-not-found copy (severity: denied)", () => {
   });
 });
 
-test("code -32001 → Buzz shared compute denied copy (structured path)", () => {
+test("code -32001 → provider key rejected copy (structured path)", () => {
   const result = friendlyAgentLastError("any error text", -32001);
   assert.deepEqual(result, {
     severity: "denied",
-    copy: RELAY_MESH_DENIED_COPY,
+    copy: PROVIDER_KEY_REJECTED_COPY,
   });
 });
 
@@ -104,7 +105,7 @@ test("code null falls through to legacy string matching", () => {
   );
   assert.deepEqual(result, {
     severity: "denied",
-    copy: RELAY_MESH_DENIED_COPY,
+    copy: PROVIDER_KEY_REJECTED_COPY,
   });
 });
 
@@ -115,7 +116,7 @@ test("code undefined falls through to legacy string matching", () => {
   );
   assert.deepEqual(result, {
     severity: "denied",
-    copy: RELAY_MESH_DENIED_COPY,
+    copy: PROVIDER_KEY_REJECTED_COPY,
   });
 });
 
@@ -137,7 +138,7 @@ test("friendlyTurnErrorCopy: numeric code -32002 → model-not-found copy", () =
 test("friendlyTurnErrorCopy: string-encoded code coerces to number", () => {
   assert.equal(
     friendlyTurnErrorCopy("raw error", "-32001"),
-    RELAY_MESH_DENIED_COPY,
+    PROVIDER_KEY_REJECTED_COPY,
   );
 });
 
@@ -153,7 +154,7 @@ test("friendlyTurnErrorCopy: unknown code passes raw text through", () => {
 // --- structured-code hardening ---
 
 test("unknown code prevents string-pattern cross-classification", () => {
-  // code -32003 is structured and unrecognized — must NOT fall through to
+  // code -32003 is structured and unrecognized - must NOT fall through to
   // the legacy string path that would wrongly promote this to denied.
   const result = friendlyAgentLastError(
     "llm auth: rate limiter denial",
@@ -165,12 +166,12 @@ test("unknown code prevents string-pattern cross-classification", () => {
   });
 });
 
-test("NaN code param treated as absent — string path applies", () => {
+test("NaN code param treated as absent - string path applies", () => {
   // NaN is not finite; falls back to string matching.
   const result = friendlyAgentLastError("llm auth: denied", NaN);
   assert.deepEqual(result, {
     severity: "denied",
-    copy: RELAY_MESH_DENIED_COPY,
+    copy: PROVIDER_KEY_REJECTED_COPY,
   });
 });
 
@@ -181,7 +182,7 @@ test("embedded code -32001 recovered from message when code param is null", () =
   );
   assert.deepEqual(result, {
     severity: "denied",
-    copy: RELAY_MESH_DENIED_COPY,
+    copy: PROVIDER_KEY_REJECTED_COPY,
   });
 });
 
@@ -196,7 +197,7 @@ test("embedded code -32002 recovered from message when code param is undefined",
   });
 });
 
-test("embedded unknown code is authoritative — no cross-classification", () => {
+test("embedded unknown code is authoritative - no cross-classification", () => {
   const result = friendlyAgentLastError(
     "Agent reported error (code -32099): llm auth: weird",
     null,
@@ -211,7 +212,7 @@ test("friendlyTurnErrorCopy: garbage string code coerces to NaN → string path"
   // "garbage" → NaN → not finite → null → string prefix matches "llm auth:".
   assert.equal(
     friendlyTurnErrorCopy("llm auth: denied", "garbage"),
-    RELAY_MESH_DENIED_COPY,
+    PROVIDER_KEY_REJECTED_COPY,
   );
 });
 
@@ -227,7 +228,7 @@ test("code -32603 bare 'Internal error' → cli-acp internal error hint (severit
 
 test("code -32603 bare Internal error (wrapped) → cli-acp internal error hint", () => {
   // The ACP wrapper form "Agent reported error (code -32603): Internal error"
-  // is treated as bare — the remainder after stripping the prefix is
+  // is treated as bare - the remainder after stripping the prefix is
   // "Internal error", which maps to the hint.
   const result = friendlyAgentLastError(
     "Agent reported error (code -32603): Internal error",
@@ -240,7 +241,7 @@ test("code -32603 bare Internal error (wrapped) → cli-acp internal error hint"
 });
 
 test("code -32603 with specific message → original message preserved, NOT hint", () => {
-  // If the adapter provides detail beyond "Internal error", preserve it —
+  // If the adapter provides detail beyond "Internal error", preserve it -
   // don't bury actionable information with a broad codex-specific hint.
   const result = friendlyAgentLastError(
     "Internal error: model gpt-5.6-sol rejected by adapter",
@@ -309,10 +310,29 @@ test("friendlyTurnErrorCopy: code -32603 bare Internal error → cli-acp interna
 test("-32603 does not affect -32001/-32002 classification (regression)", () => {
   assert.deepEqual(friendlyAgentLastError("any", -32001), {
     severity: "denied",
-    copy: RELAY_MESH_DENIED_COPY,
+    copy: PROVIDER_KEY_REJECTED_COPY,
   });
   assert.deepEqual(friendlyAgentLastError("any", -32002), {
     severity: "denied",
     copy: MODEL_NOT_FOUND_COPY,
   });
+});
+
+test("genuine relay denial alone uses community membership guidance", () => {
+  for (const raw of [
+    "relay access denied: not a channel member",
+    "community access denied: membership required",
+  ]) {
+    assert.equal(
+      friendlyAgentLastError(raw, -32001)?.copy,
+      RELAY_MESH_DENIED_COPY,
+    );
+  }
+  assert.equal(
+    friendlyAgentLastError(
+      "llm auth: provider=DeepSeek; private payload",
+      -32001,
+    )?.copy,
+    PROVIDER_KEY_REJECTED_COPY,
+  );
 });

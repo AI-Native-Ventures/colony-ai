@@ -2,14 +2,14 @@
  * Promote certain machine-readable `lastError` strings to user-facing copy.
  *
  * The error classification seam flows like this:
- *   buzz-agent — classifies LLM failures into `AgentError` variants with
+ *   buzz-agent - classifies LLM failures into `AgentError` variants with
  *                  JSON-RPC codes (`-32001` auth, `-32002` model-not-found,
  *                  `-32000` generic), defined in `crates/buzz-agent/src/types.rs`.
- *   buzz-acp   — preserves the code structurally in
+ *   buzz-acp   - preserves the code structurally in
  *                  `AcpError::AgentError { code, message }`, whose Display is
  *                  `"Agent reported error (code N): message"`, and includes
  *                  `code` in `turn_error` observer events.
- *   desktop supervisor — on nonzero exit, recovers `{ message, code }` from
+ *   desktop supervisor - on nonzero exit, recovers `{ message, code }` from
  *                  the log tail (`managed_agents/storage.rs`) into
  *                  `ManagedAgent.lastError` / `lastErrorCode`.
  *
@@ -37,13 +37,16 @@ export type FriendlyAgentLastError =
  * test asserts the user-facing string verbatim rather than a fuzzy pattern.
  */
 export const RELAY_MESH_DENIED_COPY =
-  "Community access denied this agent — check its community membership.";
+  "Community access denied this agent - check its community membership.";
+
+export const PROVIDER_KEY_REJECTED_COPY =
+  "The AI provider rejected authentication. Open Settings, Agents, defaults to update the API key.";
 
 export const MODEL_NOT_FOUND_COPY =
-  "The configured model is not available — open agent settings and select a different one from the dropdown.";
+  "The configured model is not available - open agent settings and select a different one from the dropdown.";
 
 export const CLI_ACP_INTERNAL_ERROR_COPY =
-  "The agent's harness reported an internal error. For Codex agents this can mean the configured model isn't supported by your installed codex-acp — check the model in `~/.codex/config.toml` or upgrade the adapter (`brew upgrade codex-acp`).";
+  "The agent's harness reported an internal error. For Codex agents this can mean the configured model isn't supported by your installed codex-acp - check the model in `~/.codex/config.toml` or upgrade the adapter (`brew upgrade codex-acp`).";
 
 const EMBEDDED_CODE_RE = /^Agent reported error \(code (-?\d+)\): /;
 /** Bare form of the standard JSON-RPC -32603 message (after stripping the ACP wrapper prefix). */
@@ -77,12 +80,22 @@ export function friendlyAgentLastError(
     : (embedded?.code ?? null);
   if (effectiveCode != null) {
     switch (effectiveCode) {
-      case -32001:
-        return { severity: "denied", copy: RELAY_MESH_DENIED_COPY };
+      case -32001: {
+        const detail = embedded?.remainder ?? trimmed;
+        const communityDenied =
+          detail.startsWith("relay access denied:") ||
+          detail.startsWith("community access denied:");
+        return {
+          severity: "denied",
+          copy: communityDenied
+            ? RELAY_MESH_DENIED_COPY
+            : PROVIDER_KEY_REJECTED_COPY,
+        };
+      }
       case -32002:
         return { severity: "denied", copy: MODEL_NOT_FOUND_COPY };
       case -32603: {
-        // Standard JSON-RPC "Internal error" — emitted by external harnesses
+        // Standard JSON-RPC "Internal error" - emitted by external harnesses
         // (e.g. codex-acp) when the configured model is unsupported. Only
         // substitute the hint when the message is the bare "Internal error"
         // form; if the adapter included specific detail, preserve it so we
@@ -99,7 +112,7 @@ export function friendlyAgentLastError(
         return { severity: "generic", copy: remainder };
       }
     }
-    // A structured code we don't recognize is authoritative — don't let
+    // A structured code we don't recognize is authoritative - don't let
     // string patterns cross-classify it.
     return { severity: "generic", copy: trimmed };
   }
@@ -110,7 +123,7 @@ export function friendlyAgentLastError(
     trimmed.startsWith("Agent reported error: llm auth:") ||
     trimmed.startsWith("llm auth:")
   ) {
-    return { severity: "denied", copy: RELAY_MESH_DENIED_COPY };
+    return { severity: "denied", copy: PROVIDER_KEY_REJECTED_COPY };
   }
 
   return { severity: "generic", copy: trimmed };

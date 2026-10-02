@@ -190,7 +190,7 @@ impl RequirementPayload {
                 )
             }
             RequirementPayload::GitBash => {
-                "install Git for Windows (open Agent runtimes in Settings to diagnose)".to_string()
+                "install Git for Windows from https://gitforwindows.org/ (open Agent runtimes in Settings to re-check)".to_string()
             }
             RequirementPayload::MissingBinary { command } => {
                 format!("install `{command}` or add it to PATH")
@@ -947,6 +947,37 @@ mod tests {
             !body.contains("Doctor"),
             "Git Bash nudge must not point to the removed Doctor section; got: {body:?}"
         );
+    }
+
+    #[test]
+    fn nudge_lists_provider_model_key_and_git_download() {
+        let payload = SetupPayload {
+            agent_name: "Fixture".into(),
+            agent_pubkey: "fixture-pubkey".into(),
+            requirements: vec![
+                RequirementPayload::NormalizedField {
+                    field: "provider".into(),
+                },
+                RequirementPayload::NormalizedField {
+                    field: "model".into(),
+                },
+                RequirementPayload::EnvKey {
+                    key: "DEEPSEEK_API_KEY".into(),
+                },
+                RequirementPayload::GitBash,
+            ],
+        };
+        let body = payload.nudge_body();
+        for text in [
+            "**provider**",
+            "**model**",
+            "DEEPSEEK_API_KEY",
+            "Git for Windows",
+            "https://gitforwindows.org/",
+            "Agent runtimes",
+        ] {
+            assert!(body.contains(text), "missing {text}");
+        }
     }
 
     #[test]

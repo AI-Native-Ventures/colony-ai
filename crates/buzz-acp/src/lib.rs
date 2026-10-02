@@ -9,6 +9,7 @@ mod pool;
 mod pool_lifecycle;
 mod prompt_framing;
 mod prompt_project;
+mod provider_failure;
 mod queue;
 mod relay;
 mod scope;
@@ -4770,6 +4771,12 @@ fn handle_prompt_result(
                     different model from the dropdown, and save your changes. Restart the agent \
                     to apply the new configuration, then re-send your request."
                     .to_string();
+                spawn_failure_notice(rest_client, &batch, content);
+            } else if let Some(content) = match &result.outcome {
+                PromptOutcome::Error(error) => provider_failure::notice(error),
+                _ => None,
+            } {
+                // Permanent provider failures cannot recover through backoff.
                 spawn_failure_notice(rest_client, &batch, content);
             } else if matches!(&result.outcome, PromptOutcome::Error(e) if is_auth_error(e)) {
                 // Auth errors are non-retryable: the token won't self-repair
@@ -11012,6 +11019,36 @@ mod error_outcome_emission_tests {
 
     #[tokio::test]
     async fn model_not_found_posts_recovery_notice_without_retrying() {
+        assert_terminal_notice(-32002, "llm model not found: (gpt-6-astra) 404 Not Found", "⚠️ I couldn't process the last request: the configured model wasn't found at the provider's endpoint. Open agent settings, select a different model from the dropdown, and save your changes. Restart the agent to apply the new configuration, then re-send your request.").await;
+    }
+
+    #[tokio::test]
+    async fn provider_failures_post_one_immediate_safe_threaded_notice_without_retrying() {
+        for (code, raw) in [
+            (
+                -32001,
+                "llm auth: provider=DeepSeek; HTTP 401: sensitive payload",
+            ),
+            (
+                -32000,
+                "llm: (model) provider=OpenRouter; HTTP 402: sensitive payload",
+            ),
+            (
+                -32000,
+                "llm: (model) provider=OpenRouter; HTTP 403: sensitive payload",
+            ),
+        ] {
+            let error = AcpError::AgentError {
+                code,
+                message: raw.into(),
+            };
+            let notice = provider_failure::notice(&error).unwrap();
+            assert!(!notice.contains("sensitive payload"));
+            assert_terminal_notice(code, raw, &notice).await;
+        }
+    }
+
+    async fn assert_terminal_notice(code: i64, raw_error: &str, expected_notice: &str) {
         use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -11044,9 +11081,8 @@ mod error_outcome_emission_tests {
             cancel_reason: None,
         };
 
-        let raw_error = r#"llm model not found: (gpt-6-astra) 404 Not Found: {"error_code":"NOT_FOUND","message":"'gpt-6-astra' does not exist."}"#;
         let model_error = AcpError::AgentError {
-            code: -32002,
+            code,
             message: raw_error.to_string(),
         };
         let expected_error = model_error.to_string();
@@ -11104,12 +11140,12 @@ mod error_outcome_emission_tests {
         assert_eq!(
             queue.pending_channels(),
             0,
-            "model-not-found must stop immediately — batch must not be requeued"
+            "model-not-found must stop immediately - batch must not be requeued"
         );
         assert_eq!(
             queue.queued_event_count(channel_id),
             0,
-            "model-not-found must stop immediately — no events should be pending"
+            "model-not-found must stop immediately - no events should be pending"
         );
 
         assert!(
@@ -11123,7 +11159,7 @@ mod error_outcome_emission_tests {
             .filter(|event| event.kind == "turn_error")
             .collect();
         assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].payload["code"], -32002);
+        assert_eq!(errors[0].payload["code"], code);
         assert_eq!(errors[0].payload["error"], expected_error);
 
         // Capture the real signed notice sent by handle_prompt_result, without a live relay.
@@ -11160,10 +11196,7 @@ mod error_outcome_emission_tests {
         notice.verify().unwrap();
         assert_eq!(notice.pubkey, rest.keys.public_key());
         assert_eq!(notice.kind, Kind::Custom(9));
-        assert_eq!(
-            notice.content,
-            "⚠️ I couldn't process the last request: the configured model wasn't found at the provider's endpoint. Open agent settings, select a different model from the dropdown, and save your changes. Restart the agent to apply the new configuration, then re-send your request."
-        );
+        assert_eq!(notice.content, expected_notice);
         let tags = serde_json::to_value(&notice.tags).unwrap();
         assert!(tags
             .as_array()
@@ -11173,6 +11206,19 @@ mod error_outcome_emission_tests {
         let threading = queue::parse_thread_tags(&notice);
         assert_eq!(threading.root_event_id, Some(root.to_hex()));
         assert_eq!(threading.parent_event_id, Some(parent.to_hex()));
+    }
+
+    #[tokio::test]
+    async fn transient_provider_failures_still_requeue() {
+        for status in [429, 500, 502, 503] {
+            assert_application_error_is_requeued(AcpError::AgentError {
+                code: -32000,
+                message: format!(
+                    "llm: (model) provider=DeepSeek; HTTP {status}: transient failure"
+                ),
+            })
+            .await;
+        }
     }
 
     /// A non-auth application error (e.g. usage credits) must still follow the

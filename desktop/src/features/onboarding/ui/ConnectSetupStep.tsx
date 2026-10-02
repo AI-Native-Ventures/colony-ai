@@ -4,10 +4,14 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   useAcpAuthMethodsQuery,
   useAcpRuntimesQueryForced,
+  useGitBashPrerequisiteQuery,
   useConnectAcpRuntimeMutation,
   useInstallAcpRuntimeMutation,
 } from "@/features/agents/hooks";
-import type { AcpRuntimeCatalogEntry } from "@/shared/api/types";
+import type {
+  AcpRuntimeCatalogEntry,
+  GitBashPrerequisite,
+} from "@/shared/api/types";
 import { getInstallErrorMessage } from "@/shared/lib/installError";
 import { Button } from "@/shared/ui/button";
 import type { OnboardingBusinessProfile } from "./BusinessSetupStep";
@@ -26,6 +30,8 @@ import {
   type CreditsSnapshot,
 } from "./creditsOnboardingApi";
 
+import { resolveAgentPrerequisiteReadiness } from "./agentReadiness";
+
 type ConnectSetupStepProps = {
   business: OnboardingBusinessProfile;
   communityId: string;
@@ -40,7 +46,18 @@ type HarnessHeader = {
   mark: React.ReactNode;
 };
 
-function getRuntimeHeaderStatus(runtime: AcpRuntimeCatalogEntry) {
+function getRuntimeHeaderStatus(
+  runtime: AcpRuntimeCatalogEntry,
+  gitBashPrerequisite: GitBashPrerequisite | null | undefined,
+) {
+  const prerequisite = resolveAgentPrerequisiteReadiness(
+    runtime.id,
+    gitBashPrerequisite,
+  );
+  if (!prerequisite.ready)
+    return prerequisite.reason === "git-bash"
+      ? "Git for Windows needed"
+      : "Checking prerequisites";
   if (runtimeIsReadyForOnboarding(runtime)) return "Ready";
   if (
     runtime.availability === "available" &&
@@ -57,11 +74,13 @@ function getRuntimeHeaderStatus(runtime: AcpRuntimeCatalogEntry) {
 }
 
 function RuntimeOption({
+  gitBashPrerequisite,
   onRefresh,
   runtime,
   selected,
   onSelect,
 }: {
+  gitBashPrerequisite: GitBashPrerequisite | null | undefined;
   onRefresh: () => void;
   runtime: AcpRuntimeCatalogEntry;
   selected: boolean;
@@ -75,7 +94,11 @@ function RuntimeOption({
   const authMethods = useAcpAuthMethodsQuery(runtime.id, {
     enabled: needsSignIn,
   });
-  const ready = runtimeIsReadyForOnboarding(runtime);
+  const prerequisite = resolveAgentPrerequisiteReadiness(
+    runtime.id,
+    gitBashPrerequisite,
+  );
+  const ready = runtimeIsReadyForOnboarding(runtime) && prerequisite.ready;
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [waitingForSignIn, setWaitingForSignIn] = React.useState(false);
 
@@ -135,6 +158,8 @@ function RuntimeOption({
   )
     status = "Checking status";
   else if (runtime.availability === "available") status = "Installed";
+
+  if (!prerequisite.ready) status = prerequisite.copy;
 
   return (
     <div
@@ -224,18 +249,26 @@ function RuntimeConnectionPanel({
   onContinue: () => void;
 }) {
   const query = useAcpRuntimesQueryForced();
+  const gitBashQuery = useGitBashPrerequisiteQuery();
+  const gitBashPrerequisite = gitBashQuery.isError
+    ? undefined
+    : gitBashQuery.data;
   const runtimes = getVisibleOnboardingRuntimes(query.data ?? []);
-  const ready = runtimes.filter(runtimeIsReadyForOnboarding);
+  const ready = runtimes.filter(
+    (runtime) =>
+      runtimeIsReadyForOnboarding(runtime) &&
+      resolveAgentPrerequisiteReadiness(runtime.id, gitBashPrerequisite).ready,
+  );
   const [selectedRuntimeId, setSelectedRuntimeId] = React.useState<
     string | null
   >(null);
   const selectedRuntime = runtimes.find(
     (runtime) => runtime.id === selectedRuntimeId,
   );
-  const refresh = React.useCallback(
-    () => query.forceRefresh(),
-    [query.forceRefresh],
-  );
+  const refresh = React.useCallback(() => {
+    void gitBashQuery.refetch();
+    query.forceRefresh();
+  }, [query.forceRefresh, gitBashQuery.refetch]);
 
   React.useEffect(() => {
     if (!selectedRuntimeId && runtimes.length > 0)
@@ -246,7 +279,7 @@ function RuntimeConnectionPanel({
     const header: HarnessHeader = selectedRuntime
       ? {
           label: getRuntimeDisplayLabel(selectedRuntime),
-          status: getRuntimeHeaderStatus(selectedRuntime),
+          status: getRuntimeHeaderStatus(selectedRuntime, gitBashPrerequisite),
           mark: (
             <RuntimeIcon
               className="harness-mark-runtime"
@@ -264,7 +297,13 @@ function RuntimeConnectionPanel({
               mark: null,
             };
     onHarnessHeaderChange(header);
-  }, [onHarnessHeaderChange, query.error, query.isFetching, selectedRuntime]);
+  }, [
+    onHarnessHeaderChange,
+    query.error,
+    query.isFetching,
+    selectedRuntime,
+    gitBashPrerequisite,
+  ]);
 
   return (
     <>
@@ -320,6 +359,7 @@ function RuntimeConnectionPanel({
           {runtimes.map((runtime) => (
             <RuntimeOption
               key={runtime.id}
+              gitBashPrerequisite={gitBashPrerequisite}
               onRefresh={refresh}
               onSelect={() => setSelectedRuntimeId(runtime.id)}
               runtime={runtime}
@@ -335,7 +375,8 @@ function RuntimeConnectionPanel({
         </div>
       ) : null}
       <p className="power-caption">
-        {selectedRuntime && runtimeIsReadyForOnboarding(selectedRuntime)
+        {selectedRuntime &&
+        ready.some((runtime) => runtime.id === selectedRuntime.id)
           ? `${getRuntimeDisplayLabel(selectedRuntime)} is ready on this computer.`
           : ready.length > 0
             ? "Choose a ready harness to continue."

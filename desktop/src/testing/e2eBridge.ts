@@ -989,6 +989,12 @@ type E2eConfig = {
     personaWriteErrors?: string[];
     // Backend provider mocks for the create-agent "Run on" section. See
     // tests/helpers/bridge.ts:MockBridgeOptions for semantics.
+    gitBashPrerequisite?: {
+      available: boolean;
+      path: string | null;
+      install_instructions_url: string;
+      install_hint: string;
+    } | null;
     backendProviders?: Array<{ id: string; binaryPath: string }>;
     backendProviderProbeResult?: Record<string, unknown>;
     backendProviderProbeDelayMs?: number;
@@ -20556,6 +20562,8 @@ export function maybeInstallE2eTauriMocks() {
           payload as { runtimeId?: string },
           activeConfig,
         );
+      case "discover_git_bash_prerequisite":
+        return activeConfig?.mock?.gitBashPrerequisite ?? null;
       case "discover_backend_providers":
         return activeConfig?.mock?.backendProviders ?? [];
       case "probe_backend_provider": {
