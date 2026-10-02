@@ -139,7 +139,7 @@ function successFor(method, path) {
     return { status: 204 };
   }
   if (method === "GET" && path === "/api/accounts/me") {
-    return { status: 200, body: { account: ACCOUNT } };
+    return { status: 200, body: ACCOUNT };
   }
   if (method === "DELETE" && path === "/api/accounts/me") {
     return { status: 204 };
@@ -161,6 +161,28 @@ function decodeNip98(request) {
 function tagValue(event, key) {
   return event.tags.find((tag) => tag[0] === key)?.[1];
 }
+
+test("getAccount accepts direct and wrapped public-account payloads", async () => {
+  const bodies = [ACCOUNT, { account: ACCOUNT }];
+  await withFakeServer(
+    async () => ({ status: 200, body: bodies.shift() }),
+    async (baseUrl) => {
+      const expected = {
+        id: ACCOUNT.id,
+        email: ACCOUNT.email,
+        pubkey: ACCOUNT.pubkey,
+        hasPassword: true,
+        googleLinked: false,
+      };
+      for (let index = 0; index < 2; index += 1) {
+        const auth = createService(baseUrl, {
+          initialPubkey: ACCOUNT.pubkey,
+        });
+        assert.deepEqual(await auth.service.getAccount(), expected);
+      }
+    },
+  );
+});
 
 test("service covers every account endpoint and signs protected routes", async () => {
   const requests = [];
@@ -446,7 +468,7 @@ test("unclaimed account result is cached per identity while relay failures are r
         }
         return {
           status: 200,
-          body: { account: { ...ACCOUNT, pubkey: "c".repeat(64) } },
+          body: { ...ACCOUNT, pubkey: "c".repeat(64) },
         };
       }
       return { status: 204 };
@@ -507,7 +529,7 @@ test("an in-flight account lookup cannot restore cache after account deletion", 
       await auth.service.deleteAccount();
       finishFirstRead({
         status: 200,
-        body: { account: { ...ACCOUNT, pubkey: "b".repeat(64) } },
+        body: { ...ACCOUNT, pubkey: "b".repeat(64) },
       });
 
       await assert.rejects(staleLookup, (failure) => {

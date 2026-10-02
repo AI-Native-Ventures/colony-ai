@@ -7,7 +7,6 @@ import type {
 } from "@/features/onboarding/accountAuthClient";
 import { AccountAuthFlow } from "@/features/onboarding/ui/AccountAuthFlow";
 import { profileQueryKey } from "@/features/profile/hooks";
-import { useIdentityQuery } from "@/shared/api/hooks";
 import { relayClient } from "@/shared/api/relayClient";
 import { getIdentity } from "@/shared/api/tauriIdentity";
 import { Button } from "@/shared/ui/button";
@@ -25,45 +24,34 @@ export function AccountClaimPrompt({
   authClient: AccountAuthClient;
 }) {
   const queryClient = useQueryClient();
-  const identityQuery = useIdentityQuery();
-  const currentPubkey = identityQuery.data?.pubkey ?? null;
-  const currentPubkeyRef = React.useRef(currentPubkey);
-  currentPubkeyRef.current = currentPubkey;
   const [status, setStatus] = React.useState<ClaimStatus>("checking");
   const [isClaimOpen, setIsClaimOpen] = React.useState(false);
   const [isImporting, setIsImporting] = React.useState(false);
-  const lookupGeneration = React.useRef(0);
 
   const checkAccount = React.useCallback(async () => {
-    const requestedPubkey = currentPubkey;
-    const generation = ++lookupGeneration.current;
     setStatus("checking");
     try {
       const account = await authClient.getAccount();
-      if (
-        generation !== lookupGeneration.current ||
-        requestedPubkey !== currentPubkeyRef.current
-      ) {
-        return;
-      }
       setStatus(account ? "linked" : "eligible");
     } catch {
-      if (
-        generation !== lookupGeneration.current ||
-        requestedPubkey !== currentPubkeyRef.current
-      ) {
-        return;
-      }
       setStatus("unavailable");
     }
-  }, [authClient, currentPubkey]);
+  }, [authClient]);
 
   React.useEffect(() => {
-    void checkAccount();
+    let current = true;
+    void authClient
+      .getAccount()
+      .then((account) => {
+        if (current) setStatus(account ? "linked" : "eligible");
+      })
+      .catch(() => {
+        if (current) setStatus("unavailable");
+      });
     return () => {
-      lookupGeneration.current += 1;
+      current = false;
     };
-  }, [checkAccount]);
+  }, [authClient]);
 
   const installAccount = React.useCallback(
     async (account: AccountAuthRecord) => {
