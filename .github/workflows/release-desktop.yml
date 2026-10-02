@@ -137,6 +137,11 @@ jobs:
           set -euo pipefail
           if [ "$MAC_SIGNED" = "true" ]; then mac_status="signed and notarized"; else mac_status="UNSIGNED"; fi
           if [ "$WINDOWS_SIGNED" = "true" ]; then windows_status="signed"; else windows_status="UNSIGNED"; fi
+          first_launch=""
+          if [ "$MAC_SIGNED" != "true" ]; then first_launch="$first_launch- macOS: the app is not notarized, so macOS blocks the first launch. Open System Settings, then Privacy and Security, and choose Open Anyway for Colony.
+          "; fi
+          if [ "$WINDOWS_SIGNED" != "true" ]; then first_launch="$first_launch- Windows: if you see Windows protected your PC, choose More info, then Run anyway.
+          "; fi
           cat > release-notes.md <<EOF
           Colony desktop $RELEASE_VERSION
 
@@ -147,6 +152,14 @@ jobs:
 
           Verify downloaded files with checksums.txt. Automatic updates require a signed macOS build. Windows and Linux updates verify the published updater checksum before installation.
           EOF
+          if [ -n "$first_launch" ]; then
+            {
+              echo
+              echo "First launch of unsigned builds:"
+              printf '%s' "$first_launch" | sed 's/^ *//'
+              echo "- Linux: make the AppImage executable (chmod +x), then run it."
+            } >> release-notes.md
+          fi
 
       - name: Create or refresh GitHub Release
         shell: bash

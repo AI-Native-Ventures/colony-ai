@@ -1,0 +1,2 @@
+/* The playback owns no saved review state. Both stores are private to this iframe. */
+(()=>{for(const name of ['localStorage','sessionStorage']){const memory=new Map();Object.defineProperty(window,name,{value:{getItem:k=>memory.get(String(k))??null,setItem:(k,v)=>memory.set(String(k),String(v)),removeItem:k=>memory.delete(String(k)),clear:()=>memory.clear(),key:i=>[...memory.keys()][i]??null,get length(){return memory.size;}}});}})();

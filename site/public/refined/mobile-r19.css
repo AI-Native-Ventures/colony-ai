@@ -1,0 +1,11 @@
+/* Center the mobile marketing composition; conversations retain readable left alignment. */
+@media(max-width:600px){
+ .helix-concept .hero-copy{left:5%;right:5%;width:auto;align-items:center;text-align:center}
+ .helix-concept #hero-title{width:100%;text-align:center}
+ .helix-concept .hero-copy>p{width:100%;max-width:330px;margin:20px auto 0;text-align:center;text-wrap:pretty}
+ .helix-concept .actions{width:100%;justify-content:center;gap:14px}
+ .r10-work>.r10-heading,.r14-demos>.r10-heading,.r16-copy{text-align:center}
+ .r10-work>.r10-heading>p,.r16-copy>p{margin-inline:auto}
+ .r16-copy h2{margin-inline:auto}
+}
+@media(max-width:360px){.helix-concept .actions{gap:10px}.helix-concept .actions .primary{padding-inline:12px}}

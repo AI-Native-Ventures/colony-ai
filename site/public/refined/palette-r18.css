@@ -1,0 +1,47 @@
+/* Theme only the surroundings and UI chrome; artwork and avatar colours stay intact. */
+html[data-palette],html[data-palette] body{background:var(--p-paper);color:var(--p-ink)}
+html[data-palette] .lp-page-10{--pair-ink:var(--p-ink);--pair-muted:var(--p-muted);--pair-accent:var(--p-accent);--pair-paper:var(--p-paper);--pair-wash:var(--p-wash);--pair-rule:var(--p-line);--pair-light:var(--p-light);--pair-gradient:linear-gradient(120deg,var(--p-accent),var(--p-light));--ink:var(--p-ink);--r10-paper:var(--p-paper);--r10-ink:var(--p-ink);--r10-muted:var(--p-muted);--r10-green:var(--p-accent);--r10-line:var(--p-line)}
+.helix-concept .world{background:var(--p-paper)}
+.helix-concept #hero-title,.helix-concept .secondary,.navigation,.r10-story{color:var(--p-ink)}
+.helix-concept .hero-copy p,.r10-heading>p,.r12-close-copy,.r16-copy>p{color:var(--p-muted)}
+.helix-concept .navigation{background:color-mix(in srgb,var(--p-paper) 82%,transparent)}
+.helix-concept .atmosphere{display:block;background:linear-gradient(115deg,var(--p-paper),transparent 80%);opacity:.22}
+.nav-cta,.r10-primary,.demo-play{background:var(--p-accent);color:white}
+.r10-work{background:linear-gradient(var(--p-paper),color-mix(in srgb,var(--p-wash) 30%,var(--p-paper)))}
+.r14-demos{background:var(--p-paper)}
+.r10-story h2 em,.r16-copy h2 em{color:var(--p-light)}
+.r10-close{background:radial-gradient(ellipse at 50% 100%,var(--p-a),transparent 75%),var(--p-paper)}
+.colony-end{background:var(--p-wash);color:var(--p-muted)}
+.demo-toolbar,.r10-work .demo-toolbar{background:color-mix(in srgb,var(--p-paper) 95%,transparent);border-color:var(--p-line)}
+.demo-tabs button,.demo-icon{color:var(--p-accent)}
+.demo-tabs button[aria-selected=true]{background:var(--p-wash);color:var(--p-ink)}
+.demo-icon{border-color:var(--p-line)}
+.demo-toolbar button:focus-visible{outline-color:var(--p-accent)}
+.r12-display{background:var(--p-wash)}
+.r16-together{background:var(--p-paper)!important}
+.r16-together:after{background:linear-gradient(180deg,color-mix(in srgb,var(--p-b) 20%,transparent),transparent 40%,transparent 85%,var(--p-paper))}
+.r16-together .r10-messages p b,.r16-together [data-conversation-play],.r16-typing{color:var(--p-accent)}
+.r16-together .r10-attachment{background:color-mix(in srgb,var(--p-wash) 50%,transparent);border-color:var(--p-line)}
+.r16-together .r10-attachment:hover{background:var(--p-wash)}
+@media(max-width:700px){.r16-together:after{background:linear-gradient(180deg,transparent 380px,transparent 455px,var(--p-paper) 550px)}}
+@media(max-width:600px){.helix-concept .landscape:after{background:linear-gradient(var(--p-paper),transparent 22%)}}
+/* Same selected palette in the actual Colony prototype. */
+html[data-palette] .product-showcase{--accent:var(--p-accent);--accent-soft:var(--p-wash);--ap-accent:var(--p-accent)!important;--ap-soft:var(--p-wash)!important;--muted:var(--p-muted)}
+html[data-palette] .product-showcase.ap-custom .app-frame{background:radial-gradient(ellipse at 0 10%,var(--p-a),transparent 60%),linear-gradient(145deg,var(--p-b) 5%,var(--p-paper) 50%,var(--p-c) 100%)}
+.product-showcase .nav-item.active{color:var(--p-accent)}
+.product-showcase .showcase-mention,.product-showcase .agent-tag{background:var(--p-wash);color:var(--p-accent)}
+.product-showcase .send-btn{background:var(--p-accent)}
+.product-showcase .showcase-active{background:var(--p-wash);box-shadow:inset 3px 0 var(--p-light)}
+
+/* r18: saturated colour, with calm reading surfaces. */
+.helix-concept #hero-title{font-size:clamp(2.7rem,4.4vw,5.6rem);text-wrap:initial}
+.helix-concept #hero-title>span{display:block;white-space:nowrap;font-weight:550}
+.helix-concept .atmosphere{background:radial-gradient(ellipse at 0 35%,var(--p-a),transparent 68%);opacity:.16}
+.r10-work{background:radial-gradient(ellipse at 0 20%,color-mix(in srgb,var(--p-a) 27%,transparent),transparent 62%),var(--p-paper)}
+.r14-demos{background:radial-gradient(ellipse at 100% 35%,color-mix(in srgb,var(--p-a) 30%,transparent),transparent 65%),var(--p-paper)}
+.r10-close{background:radial-gradient(ellipse at 50% 115%,var(--p-a),transparent 78%),var(--p-paper)}
+html[data-palette] .product-showcase.ap-custom .app-frame{background:radial-gradient(ellipse at 0 10%,var(--p-a),transparent 72%),linear-gradient(145deg,var(--p-b) 5%,var(--p-b) 40%,var(--p-c) 100%)}
+@media(max-width:600px){.helix-concept #hero-title{font-size:clamp(1.6rem,7.7vw,2.75rem);max-width:none}}
+/* Let the studio photograph blend into the selected section colour. */
+.r12-device{isolation:auto}
+.r12-laptop-photo{mask-image:linear-gradient(to bottom,transparent,#000 9%,#000 93%,transparent),linear-gradient(to right,transparent,#000 4%,#000 96%,transparent);mask-composite:intersect}

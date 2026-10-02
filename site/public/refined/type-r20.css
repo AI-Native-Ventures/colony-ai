@@ -1,0 +1,22 @@
+/* Comfortable reading size without changing the approved heading scale. */
+.helix-concept .hero-copy>p,.r10-work>.r10-heading>p,.r16-copy>p,.r12-close-copy{font-size:1.125rem;line-height:1.7}
+.helix-concept .hero-copy>p{max-width:460px}
+.r10-work>.r10-heading>p{max-width:410px}
+.r16-copy>p{max-width:390px}
+.r16-together .r10-messages p{font-size:1rem;line-height:1.65}
+.r16-together .r10-messages h3{font-size:.9375rem}
+.r16-together .r10-messages h3 small{font-size:.75rem}
+.r16-together .r10-attachment b{font-size:.875rem}
+.r16-together .r10-attachment small{font-size:.75rem}
+.r16-together .r10-conversation>header>span{font-size:.9375rem}
+@media(max-width:700px){
+ .helix-concept .hero-copy>p,.r10-work>.r10-heading>p,.r16-copy>p,.r12-close-copy{font-size:1.0625rem;line-height:1.65}
+ .r16-together .r10-messages p{font-size:1rem;line-height:1.6}
+ .r16-together .r10-messages h3{font-size:.9375rem}
+ .r16-together .r10-messages h3 small{font-size:.75rem}
+}
+@media(max-width:600px){
+ .helix-concept .hero-copy>p{max-width:350px}
+ .helix-concept .world{height:980px;min-height:980px}
+ .helix-concept .landscape{top:500px}
+}

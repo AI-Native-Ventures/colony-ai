@@ -18,11 +18,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
+  APP_ICON_BASENAME,
+  adhocSignArguments,
   createPackagerOptions,
   electronPackagePaths,
   nativeHostFilename,
   parseElectronPackageArgs,
   sidecarFilenames,
+  verifySignatureArguments,
 } from "./electron-package-config.mjs";
 import { build } from "esbuild";
 
@@ -46,6 +49,7 @@ const sourceElectronPath = path.join(desktop, "electron");
 const packageJsonPath = path.join(desktop, "package.json");
 const tauriConfigPath = path.join(desktop, "src-tauri", "tauri.conf.json");
 const packagePaths = electronPackagePaths({ desktop, platform, arch });
+const iconsDir = path.join(desktop, "src-tauri", "icons");
 const sourceTauriConfig = JSON.parse(await readFile(tauriConfigPath, "utf8"));
 const productName =
   process.env.COLONY_ELECTRON_PRODUCT_NAME || sourceTauriConfig.productName;
@@ -130,6 +134,38 @@ async function makeArchive(outputDir, archivePath) {
       windowsHide: true,
     },
   );
+}
+
+// Fails the build when the macOS bundle would open as "damaged" or with the
+// default Electron icon, instead of finding out from a downloaded release.
+async function verifyMacBundle(appBundlePath) {
+  await exec("codesign", verifySignatureArguments(appBundlePath), {
+    windowsHide: true,
+  }).catch((error) => {
+    throw new Error(
+      `The macOS app bundle signature is invalid, so macOS would call it damaged:\n${error.stderr || error.message}`,
+    );
+  });
+  const infoPlist = path.join(appBundlePath, "Contents", "Info.plist");
+  const { stdout } = await exec("plutil", [
+    "-extract",
+    "CFBundleIconFile",
+    "raw",
+    "-o",
+    "-",
+    infoPlist,
+  ]);
+  // The packager writes our icon over the file the bundle already names, so
+  // compare bytes: the default Electron icon is a different file.
+  const bundleIcon = await readFile(
+    path.join(appBundlePath, "Contents", "Resources", stdout.trim()),
+  ).catch(() => null);
+  const colonyIcon = await readFile(path.join(iconsDir, "icon.icns"));
+  if (!bundleIcon?.equals(colonyIcon)) {
+    throw new Error(
+      "The macOS app does not carry the Colony icon (it would show the default Electron icon).",
+    );
+  }
 }
 
 const desktopStat = await stat(desktop);
@@ -272,6 +308,12 @@ try {
   });
   await cp(distPath, stagedDistPath, { recursive: true });
   await mkdir(path.dirname(stagedTauriConfigPath), { recursive: true });
+  // The Linux window icon is read from the app archive at runtime.
+  await mkdir(path.join(stageDir, "src-tauri", "icons"), { recursive: true });
+  await copyFile(
+    path.join(iconsDir, "icon.png"),
+    path.join(stageDir, "src-tauri", "icons", "icon.png"),
+  );
   await writeFile(
     stagedTauriConfigPath,
     `${JSON.stringify({ ...tauriConfig, productName }, null, 2)}\n`,
@@ -305,6 +347,7 @@ try {
     platform,
     arch,
     extraResource: [stagedHostPath, ...stagedSidecarPaths, ...releaseResources],
+    icon: path.join(iconsDir, APP_ICON_BASENAME),
     osxSign,
     osxNotarize,
   });
@@ -376,6 +419,16 @@ try {
           `Packaged runtime binary is not executable: ${packagedRuntimePaths[index]}`,
         );
     }
+  }
+
+  if (platform === "darwin") {
+    const appBundlePath = path.join(
+      packagePaths.outputDir,
+      `${productName}.app`,
+    );
+    // Last mutation of the bundle: nothing may change it after this point.
+    if (!signed) await exec("codesign", adhocSignArguments(appBundlePath));
+    await verifyMacBundle(appBundlePath);
   }
 
   await makeArchive(packagePaths.outputDir, packagePaths.archivePath);

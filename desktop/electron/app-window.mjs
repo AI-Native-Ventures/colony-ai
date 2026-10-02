@@ -35,6 +35,10 @@ export function createAppWindow({
   const window = new BrowserWindow({
     show: false,
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#17151b" : "#ffffff",
+    // macOS and Windows take the icon from the app bundle or executable.
+    ...(process.platform === "linux"
+      ? { icon: path.join(desktop, "src-tauri", "icons", "icon.png") }
+      : {}),
     ...browserOptions,
     webPreferences: {
       preload: path.join(desktop, "electron", "preload.cjs"),

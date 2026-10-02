@@ -1,0 +1,41 @@
+@font-face{font-family:Manrope;src:url('assets/manrope-variable-latin.woff2') format('woff2');font-weight:200 800;font-display:swap}
+html,body{width:100%;height:100%;margin:0;overflow:hidden;font-family:Manrope,sans-serif}
+.review,.stage>aside{display:none!important}.stage{display:block;padding:0;width:100%;height:100%}
+#phone{width:100%!important;height:100dvh!important;border-radius:0;box-shadow:none;--paper:#fffefd;--ink:var(--p-ink);--muted:var(--p-muted);--blue:var(--p-accent);--line:var(--p-line);--soft:var(--p-wash);background:linear-gradient(130deg,var(--p-a),var(--p-b) 50%,var(--p-c))}
+#phone .status{height:32px;padding:5px 18px 0;font-size:11px}
+#phone .top{height:64px;padding-inline:10px;border-bottom:0}
+#phone .top strong{font-size:16px}#phone .top small{font-size:11px;color:var(--p-ink);opacity:.7}
+#phone>.scroll{background:var(--paper);border-radius:18px 18px 0 0;scroll-behavior:smooth}
+#phone .scroll{overscroll-behavior:contain;scrollbar-width:none}#phone .scroll::-webkit-scrollbar{display:none}
+#phone .flow-footer,#phone .composer-area,#phone .home-indicator{background:var(--paper)}
+#phone .message{grid-template-columns:32px minmax(0,1fr);gap:9px;margin-bottom:23px}
+#phone .message p{font-size:15px;line-height:1.6}
+#phone .byline{flex-wrap:wrap;gap:5px}#phone .byline strong{font-size:13px}#phone .byline time{display:none}
+#phone .agent-label,#phone .human-label{font-size:10px;letter-spacing:0;text-transform:none;color:var(--p-muted);background:none;padding:0}
+#phone .demo-feed{padding:19px 15px 0}
+#phone .mention{color:var(--p-accent);background:var(--p-wash);border-radius:3px;padding:0 2px}
+#phone .composer textarea{font-size:14px}#phone .composer-area{padding:10px 12px 12px}
+#phone .primary,#phone .send{background:var(--p-accent);color:#fff}
+#phone .button,#phone .form-field,#phone .form-field input,#phone .form-field textarea,#phone .form-field select{font-size:14px}
+#phone .m-page p,#phone .d-description{font-size:14px;line-height:1.6}
+#phone .setting-row strong,#phone .row strong{font-size:14px}
+#phone .setting-row small,#phone .row small,#phone .stat span{font-size:12px}
+#phone .flow-scroll{padding:18px 16px}#phone .m-page{padding:0}
+#phone .m-heading h1,#phone .flow-title{font-size:25px}
+#phone .m-post-art{min-height:225px;background:linear-gradient(0deg,#36443144,transparent 80%),url('../../refined/assets/olive-house-r10.png') center/cover;color:#fcf8ed;display:flex;flex-direction:column;justify-content:space-between;box-sizing:border-box;padding:20px}
+#phone .m-post-art h2{font-family:Georgia,serif;font-size:32px;font-weight:400;max-width:230px;line-height:1.1}
+#phone .colony-agent-head{width:32px;height:34px;border:0!important;background:transparent!important;flex:none}
+#phone .colony-agent-head svg{stroke:none;width:100%;height:100%}
+#phone .agent-hero .colony-agent-head{width:68px;height:70px;margin:auto}
+#phone .mobile-record{display:flex;gap:10px;align-items:center;width:100%;border:1px solid var(--p-line);background:var(--p-paper);text-align:left;padding:12px;border-radius:13px;margin-top:12px}
+.mobile-record strong,.mobile-record small{display:block}.mobile-record strong{font-size:13px;line-height:1.4}.mobile-record small{font-size:11px;margin-top:4px;color:var(--p-muted)}
+.mobile-record>svg{color:var(--p-accent);width:20px}.mobile-record>span{flex:1}
+#phone .demo-typing{font-size:12px;color:var(--p-muted);padding:5px 15px 18px}
+.demo-touch{position:fixed;inset:0 auto auto 0!important;margin:0!important;border:0;padding:0;width:32px;height:32px;background:transparent;overflow:visible;pointer-events:none;z-index:2147483647}
+.demo-touch:before{content:'';position:absolute;inset:2px;border:2px solid var(--p-accent);border-radius:50%;background:color-mix(in srgb,var(--p-a) 25%,transparent);box-shadow:0 0 0 7px #fff8;opacity:0;transform:scale(.65)}
+.demo-touch.down:before{opacity:1;transform:scale(1);transition:transform .22s,opacity .15s}
+#phone .demo-bridge{border:0;background:transparent;color:var(--p-accent);font:inherit;font-size:12px;font-weight:600;display:flex;align-items:center;gap:4px;margin-top:18px;min-height:40px}
+#phone .toast{display:none}
+@media(prefers-reduced-motion:reduce){#phone *,#phone *:before{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+#phone .status{display:flex!important;position:relative}
+#phone .status:after{content:'';position:absolute;left:50%;top:7px;transform:translateX(-50%);width:62px;height:16px;border-radius:12px;background:#252725}
