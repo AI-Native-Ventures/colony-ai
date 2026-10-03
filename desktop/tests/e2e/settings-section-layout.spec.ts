@@ -220,7 +220,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
     const context = document.createElement("canvas").getContext("2d");
     if (!context) throw new Error("Cannot measure the Manrope title");
     context.font = font;
-    const text = "Your account";
+    const text = "Profile";
     return context.measureText(text).width - text.length * 29.1429 * 0.03;
   });
 

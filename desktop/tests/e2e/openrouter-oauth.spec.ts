@@ -154,8 +154,12 @@ for (const viewport of [
           .getByRole("button", { name: "Connect OpenRouter", exact: true })
           .click();
       }
+      // "usage" is a connected key without an account balance, so it shares
+      // the connected onboarding scene.
       await expect(
-        page.getByTestId(`onboarding-scene-openrouter-${state}`),
+        page.getByTestId(
+          `onboarding-scene-openrouter-${state === "usage" ? "connected" : state}`,
+        ),
       ).toBeVisible();
       if (state === "error" || state === "limit")
         await expect(

@@ -408,7 +408,9 @@ for (const id of [
   test(`selected ${id} reaches the real Connect request without a bundled fallback`, async ({
     page,
   }) => {
-    const providerRuntime = id === "buzz-agent" || id === "goose";
+    // Only the bundled agent is judged by provider config. Goose sign-in is
+    // unprobed (launch decision), so it is exercised as a signed-in harness.
+    const providerRuntime = id === "buzz-agent";
     const runtime = {
       ...r17Runtime("claude", "available", {
         status: providerRuntime ? "not_applicable" : "logged_in",

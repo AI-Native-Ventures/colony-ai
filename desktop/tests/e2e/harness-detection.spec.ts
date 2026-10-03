@@ -38,7 +38,7 @@ for (const viewport of [
     await card
       .getByRole("button", { name: "Set up connection", exact: true })
       .click();
-    await expect(card).toContainText("Ready on this computer");
+    await expect(card).toContainText("Installed");
     await expect(
       card.getByRole("button", { name: "Set up connection", exact: true }),
     ).toHaveCount(0);
@@ -97,7 +97,7 @@ for (const viewport of [
       ).toHaveCount(0);
     }
     await expect(
-      page.getByRole("button", { name: "Open my Colony", exact: true }),
+      page.getByRole("button", { name: "Skip for now", exact: true }),
     ).toBeEnabled();
     await waitForAnimations(page);
     await page.screenshot({
