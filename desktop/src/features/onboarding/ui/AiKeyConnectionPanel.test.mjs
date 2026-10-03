@@ -66,9 +66,9 @@ let gitBashPrerequisite = null;
 const clients = [];
 const initialConfig = {
   preferred_runtime: "buzz-agent",
-  provider: "openrouter",
+  provider: "anthropic",
   model: "vendor/model",
-  env_vars: { OPENROUTER_API_KEY: "test-fixture" },
+  env_vars: { ANTHROPIC_API_KEY: "test-fixture" },
 };
 const rawRuntime = {
   id: "buzz-agent",
@@ -153,12 +153,12 @@ async function mount({ ready = true } = {}) {
     react.createElement(
       QueryClientProvider,
       { client },
-      react.createElement(Panel, { openRouter: true }),
+      react.createElement(Panel, {}),
     ),
   );
   await rtl.waitFor(() =>
     assert.equal(
-      rtl.screen.getByRole("button", { name: "Test connection" }).disabled,
+      rtl.screen.getByRole("button", { name: "Check key" }).disabled,
       !ready,
     ),
   );
@@ -178,7 +178,7 @@ for (const [outcome, message] of [
   test(`mounted provider form explains ${outcome} and blocks Save`, async () => {
     result = outcome;
     await mount();
-    await click("Test connection");
+    await click("Check key");
     await rtl.waitFor(() =>
       assert.match(
         rtl.screen.getByRole("alert").textContent,
@@ -186,50 +186,42 @@ for (const [outcome, message] of [
       ),
     );
     assert.equal(
-      rtl.screen.getByRole("button", { name: "Save AI default" }).disabled,
-      true,
+      rtl.screen.getByRole("button", { name: "Check key" }).disabled,
+      false,
     );
     assert.equal(saves.length, 0);
   });
 }
-test("mounted form saves one tested default and failed saves remain retryable", async () => {
+test("one key check saves one tested default and failed saves remain retryable", async () => {
   await mount();
-  assert.equal(
-    rtl.screen.getByRole("button", { name: "Save AI default" }).disabled,
-    true,
-  );
-  await click("Test connection");
   saveFails = true;
-  await click("Save AI default");
+  await click("Check key");
   assert.match(rtl.screen.getByRole("alert").textContent, /Could not save/);
   saveFails = false;
-  await click("Save AI default");
+  await click("Check key");
   assert.equal(saves.length, 1);
   assert.equal(saves[0].preferred_runtime, "buzz-agent");
-  assert.equal(saves[0].provider, "openrouter");
+  assert.equal(saves[0].provider, "anthropic");
   assert.equal(saves[0].model, "vendor/model");
   assert.match(
     rtl.screen.getByRole("status").textContent,
     /connected and saved/,
   );
 });
-test("editing key invalidates a passed connection test", async () => {
+test("editing a checked key invalidates the saved confirmation", async () => {
   await mount();
-  await click("Test connection");
-  assert.equal(
-    rtl.screen.getByRole("button", { name: "Save AI default" }).disabled,
-    false,
-  );
+  await click("Check key");
+  assert.equal(saves.length, 1);
   await rtl.act(async () =>
-    rtl.fireEvent.change(rtl.screen.getByTestId("persona-provider-api-key"), {
+    rtl.fireEvent.change(rtl.screen.getByTestId("onboarding-provider-key"), {
       target: { value: "edited-fixture" },
     }),
   );
+  assert.equal(rtl.screen.queryByRole("status"), null);
   assert.equal(
-    rtl.screen.getByRole("button", { name: "Save AI default" }).disabled,
-    true,
+    rtl.screen.getByRole("button", { name: "Check key" }).disabled,
+    false,
   );
-  assert.equal(saves.length, 0);
 });
 test("pasted key whitespace is removed from both the tested and saved snapshot", async () => {
   let testedConfig;
@@ -239,13 +231,12 @@ test("pasted key whitespace is removed from both the tested and saved snapshot",
   };
   await mount();
   await rtl.act(async () =>
-    rtl.fireEvent.change(rtl.screen.getByTestId("persona-provider-api-key"), {
+    rtl.fireEvent.change(rtl.screen.getByTestId("onboarding-provider-key"), {
       target: { value: "  pasted-fixture  " },
     }),
   );
-  await click("Test connection");
-  await click("Save AI default");
-  assert.equal(testedConfig.env_vars.OPENROUTER_API_KEY, "pasted-fixture");
+  await click("Check key");
+  assert.equal(testedConfig.env_vars.ANTHROPIC_API_KEY, "pasted-fixture");
   assert.deepEqual(saves, [testedConfig]);
 });
 test("configured provider form preserves the Git for Windows prerequisite gate", async () => {
@@ -263,33 +254,31 @@ test("configured provider form preserves the Git for Windows prerequisite gate",
     ),
   );
   assert.equal(
-    rtl.screen.getByRole("button", { name: "Test connection" }).disabled,
+    rtl.screen.getByRole("button", { name: "Check key" }).disabled,
     true,
   );
   assert.equal(
-    rtl.screen.getByRole("button", { name: "Save AI default" }).disabled,
+    rtl.screen.getByRole("button", { name: "Check key" }).disabled,
     true,
   );
   assert.equal(saves.length, 0);
 });
-test("an in-flight probe cannot authorize an edited draft", async () => {
+test("an in-flight key check cannot persist an edited draft", async () => {
   let finish;
   probe = () =>
     new Promise((resolve) => {
       finish = resolve;
     });
   await mount();
-  await click("Test connection");
+  await click("Check key");
   await rtl.act(async () =>
-    rtl.fireEvent.change(rtl.screen.getByTestId("persona-provider-api-key"), {
+    rtl.fireEvent.change(rtl.screen.getByTestId("onboarding-provider-key"), {
       target: { value: "edited-fixture" },
     }),
   );
   await rtl.act(async () => finish("connected"));
-  assert.equal(
-    rtl.screen.getByRole("button", { name: "Save AI default" }).disabled,
-    true,
-  );
+  assert.equal(saves.length, 0);
+  assert.equal(rtl.screen.queryByRole("status"), null);
 });
 test("credits production component is coming soon with no balance or reload control", () => {
   rtl.render(react.createElement(Credits));

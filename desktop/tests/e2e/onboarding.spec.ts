@@ -675,7 +675,8 @@ async function expectWelcomeGuideIntro(
         >(page, "list_managed_agents"),
       ]);
       const fizz = agents.find(
-        (agent) => agent.name === "Fizz" && agent.persona_id === "builtin:fizz",
+        (agent) =>
+          agent.name === "Scout" && agent.persona_id === "builtin:fizz",
       );
       const fizzMember = fizz
         ? members.members.find((member) => member.pubkey === fizz.pubkey)
@@ -1552,7 +1553,9 @@ test("first-community direct join cancel returns to request access", async ({
     .getByTestId("invite-redeem-input")
     .fill("wss://onboarding.communities.buzz.xyz");
   await page.getByTestId("invite-redeem-submit").click();
-  await expect(page.getByRole("heading", { name: "A first hello." })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "A first hello." }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Cancel" }).click();
 
   await expect(
@@ -1639,9 +1642,13 @@ test("canceling a join to an existing inactive community preserves it", async ({
     window.location.reload();
   }, COMMUNITY_ONBOARDING_TRANSACTION_STORAGE_KEY);
 
-  await expect(page.getByRole("heading", { name: "A first hello." })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "A first hello." }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByRole("heading", { name: "A first hello." })).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "A first hello." }),
+  ).toHaveCount(0);
   await expect
     .poll(() =>
       page.evaluate(() => {
@@ -1945,7 +1952,7 @@ test("failed public starter channel setup does not show a retry toast", async ({
   expect(await commandCount(page, "ensure_starter_channels")).toBe(2);
 });
 
-test("first-run onboarding posts the live Fizz kickoff", async ({ page }) => {
+test("first-run onboarding posts the live Scout kickoff", async ({ page }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
   await installMockBridge(
     page,
@@ -1973,7 +1980,7 @@ test("first-run onboarding posts the live Fizz kickoff", async ({ page }) => {
     "Hi Morty QA, I'm Scout. Welcome to Colony.",
   );
   await expect(page.getByTestId("message-timeline")).toContainText(
-    "Honey and Pollen, introduce yourselves",
+    "What can I help you build?",
   );
 });
 
@@ -2005,7 +2012,7 @@ test("first-run onboarding lands before Welcome team bootstrap completes", async
     "Hi Morty QA, I'm Scout. Welcome to Colony.",
   );
   await page.waitForTimeout(1_500);
-  expect(await commandCount(page, "create_managed_agent")).toBe(3);
+  expect(await commandCount(page, "create_managed_agent")).toBe(1);
 });
 
 test("existing relay profile with display name auto-skips onboarding without localStorage", async ({

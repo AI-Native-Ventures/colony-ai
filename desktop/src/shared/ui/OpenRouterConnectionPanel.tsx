@@ -18,9 +18,11 @@ import {
 export function OpenRouterConnectionPanel({
   onboarding = false,
   onSaved,
+  onReadyChange,
 }: {
   onboarding?: boolean;
   onSaved?: () => void;
+  onReadyChange?: (ready: boolean) => void;
 }) {
   const queryClient = useQueryClient();
   const [account, setAccount] = React.useState<OpenRouterConnection | null>(
@@ -35,6 +37,8 @@ export function OpenRouterConnectionPanel({
   const [mode, setMode] = React.useState<"free" | "paid">("free");
   const generation = React.useRef(0);
   const id = React.useId();
+  const onReadyRef = React.useRef(onReadyChange);
+  onReadyRef.current = onReadyChange;
   const onSavedRef = React.useRef(onSaved);
   onSavedRef.current = onSaved;
   const apply = React.useCallback(
@@ -45,6 +49,7 @@ export function OpenRouterConnectionPanel({
         result.status === "linked"
       ) {
         setAccount(result);
+        onReadyRef.current?.(result.status !== "limit");
         setConnectionState("linked");
         setDraftModel(result.model);
         setMode(
@@ -69,10 +74,12 @@ export function OpenRouterConnectionPanel({
       } else if (result.status === "error") setMessage(result.message);
       else if (result.status === "reauth" || result.status === "unmanaged") {
         setAccount(null);
+        onReadyRef.current?.(false);
         setConnectionState(result.status);
         setMessage(result.message);
       } else if (result.status === "unlinked") {
         setAccount(null);
+        onReadyRef.current?.(false);
         setConnectionState("unlinked");
       }
     },
@@ -187,7 +194,7 @@ export function OpenRouterConnectionPanel({
             <p>Connect in your browser, then choose a free or paid model.</p>
             <ul className="list-disc">
               <li>Keep your existing OpenRouter account.</li>
-              <li>Review its key usage and limits here.</li>
+              <li>Review its balance and limits here.</li>
               <li>OpenRouter billing stays separate from Colony credits.</li>
             </ul>
           </div>

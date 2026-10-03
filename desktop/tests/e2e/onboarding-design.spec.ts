@@ -179,3 +179,48 @@ for (const viewport of [
     });
   });
 }
+
+for (const viewport of [
+  { width: 1728, height: 1117 },
+  { width: 1440, height: 900 },
+]) {
+  test(`approved provider fields and unavailable credits at ${viewport.width}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await openR17ConnectionSetup(page, {
+      runtimes: [
+        r17Runtime("claude", "available", { status: "logged_in" }),
+        r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
+      ],
+    });
+    await page
+      .getByRole("radio", { name: "Colony credits", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Connect", exact: true }),
+    ).toBeDisabled();
+    await expect(page.locator(".form-content .lede[role=status]")).toHaveCount(
+      0,
+    );
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `${SHOT_DIR}/runtime-credits-${viewport.width}.png`,
+    });
+    await page
+      .getByRole("radio", { name: "Bring your own key", exact: true })
+      .click();
+    await expect(page.getByTestId("onboarding-provider-key")).toHaveAttribute(
+      "type",
+      "password",
+    );
+    await expect(
+      page.getByRole("button", { name: "Check key", exact: true }),
+    ).toBeDisabled();
+    await expect(page.getByLabel("Model", { exact: true })).toHaveCount(0);
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `${SHOT_DIR}/runtime-byok-${viewport.width}.png`,
+    });
+  });
+}

@@ -38,7 +38,17 @@ export function CommunityOnboardingFlow({
   const queryClient = useQueryClient();
   const [pubkey, setPubkey] = React.useState("");
   React.useEffect(() => {
-    void getIdentity().then((identity) => setPubkey(identity.pubkey));
+    let active = true;
+    void getIdentity()
+      .then((identity) => {
+        if (active) setPubkey(identity.pubkey);
+      })
+      .catch(() => {
+        /* Entry retries identity lookup before provisioning. */
+      });
+    return () => {
+      active = false;
+    };
   }, []);
   const [isPending, setIsPending] = React.useState(false);
   const started = React.useRef<string | null>(null);
@@ -110,7 +120,7 @@ export function CommunityOnboardingFlow({
       if (result.focusChannelId) {
         // Direct entry: point the router at the Welcome channel *before* the
         // app mounts, so it never lands on Home first. Consume the pending
-        // entry , it exists for the Home-route fallback, and leaving it would
+        // entry. It exists for the Home-route fallback, and leaving it would
         // yank a later Home visit back to Welcome.
         takePendingWelcomeChannelForDirectEntry();
         window.location.hash = `/channels/${result.focusChannelId}`;

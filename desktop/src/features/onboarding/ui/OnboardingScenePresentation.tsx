@@ -153,7 +153,9 @@ function SceneBody(props: PresentationProps) {
               type="button"
               onClick={() => onNavigate?.("workspace")}
             >
-              Open my Colony for now
+              {data.entryCanOpen === false
+                ? "Change community"
+                : "Open my Colony for now"}
             </button>
           </>
         ) : (
@@ -173,16 +175,14 @@ function SceneBody(props: PresentationProps) {
         />
         <h2>A first hello.</h2>
         <p className="lede" role="status" aria-live="polite">
-          {data.connectionPhase === "saving"
-            ? "Saving your verified connection."
-            : data.connectionPhase === "waiting"
-              ? "Your agent started. Waiting for its first reply."
-              : "We’re starting your agent and checking that it can reply."}
+          We’re checking that your agent can reply.
         </p>
         <ol className="progress-list">
           <li className="complete">
             <Glyph name="check" />
-            Connection saved
+            {data.visualOnly || data.connectionPhase === "saving"
+              ? "Connection saved"
+              : "Connection selected"}
           </li>
           <li
             className={

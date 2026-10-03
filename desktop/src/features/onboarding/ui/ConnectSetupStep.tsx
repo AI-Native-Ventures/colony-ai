@@ -519,10 +519,17 @@ export function ConnectSetupStep({
     (runtime) => runtime.id === selectedRuntimeId,
   );
   const bundled = runtimes.data?.find((runtime) => runtime.id === "buzz-agent");
+  const [byokChecked, setByokChecked] = React.useState(false);
+  const [openRouterReady, setOpenRouterReady] = React.useState(false);
   const keyScene =
     connectionScene === "api-key" || connectionScene === "openrouter-unlinked";
   const candidateRuntime = keyScene ? bundled : selectedRuntime;
   const aiReady =
+    (connectionScene === "api-key"
+      ? byokChecked
+      : connectionScene === "openrouter-unlinked"
+        ? openRouterReady && globalConfig.provider === "openrouter"
+        : true) &&
     !!candidateRuntime &&
     runtimeIsReadyForOnboarding(
       candidateRuntime,
@@ -643,50 +650,49 @@ export function ConnectSetupStep({
               onRuntimeSelect={selectRuntime}
             />
           ) : connectionScene === "openrouter-unlinked" ? (
-            <OpenRouterConnectionPanel onboarding />
+            <OpenRouterConnectionPanel
+              onboarding
+              onReadyChange={setOpenRouterReady}
+            />
           ) : connectionScene === "api-key" ? (
-            <AiKeyConnectionPanel key={connectionScene} openRouter={false} />
+            <AiKeyConnectionPanel
+              key={connectionScene}
+              onCheckedChange={setByokChecked}
+            />
           ) : (
             <CreditsComingSoon />
           )}
           {saveError && connectionScene !== "connect" ? (
             <p role="alert">{saveError}</p>
           ) : null}
-          {!aiReady &&
-          !runtimes.isFetching &&
-          connectionScene !== "credits-price-error" ? (
-            <div className="power-notice">
-              <p>
-                No working AI connection yet. AI employees will not reply until
-                you connect an AI in Settings &gt; Agents &gt; Defaults.
-              </p>
+          {connectionScene === "connect" ||
+          connectionScene === "credits-price-error" ||
+          aiReady ? (
+            <div className="power-cta">
               <button
-                className="link"
+                className="primary full"
+                disabled={
+                  saving ||
+                  !aiReady ||
+                  connectionScene === "credits-price-error"
+                }
+                onClick={() => void continueWithRuntime()}
                 type="button"
-                onClick={() => onContinue("settings")}
               >
-                Skip and open AI settings
+                {connectionScene === "connect" && selectedRuntime
+                  ? `Connect with ${getRuntimeDisplayLabel(selectedRuntime)}`
+                  : "Connect"}{" "}
+                <span aria-hidden="true">→</span>
+              </button>
+              <button
+                className="back"
+                type="button"
+                onClick={() => onContinue()}
+              >
+                Skip for now
               </button>
             </div>
           ) : null}
-          <div className="power-cta">
-            <button
-              className="primary full"
-              disabled={
-                saving || !aiReady || connectionScene === "credits-price-error"
-              }
-              onClick={() => void continueWithRuntime()}
-              type="button"
-            >
-              {connectionScene === "connect" && selectedRuntime
-                ? `Connect with ${getRuntimeDisplayLabel(selectedRuntime)}`
-                : "Connect"}{" "}
-              <span aria-hidden="true">→</span>
-            </button>
-            <button className="back" type="button" onClick={() => onContinue()}>
-              Skip for now
-            </button>
-          </div>
         </>
       }
       data={

@@ -112,7 +112,7 @@ async function openRouterTab(page: Page) {
     ],
   });
   await mockOAuth(page);
-  await page.getByRole("button", { name: "OpenRouter", exact: true }).click();
+  await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Connect OpenRouter", exact: true }),
   ).toBeEnabled();
@@ -232,9 +232,9 @@ test("Settings provides OAuth and keeps manual configuration under Bring your ow
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openRouterTab(page);
-  await page
-    .getByRole("button", { name: "Open my Colony", exact: true })
-    .click();
+  await page.getByRole("radio", { name: "Subscriptions", exact: true }).click();
+  await page.getByRole("button", { name: "Skip for now", exact: true }).click();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await page.getByTestId("settings-group-agents-group").click();
@@ -267,7 +267,7 @@ for (const status of ["linked", "reauth", "unmanaged"] as const) {
   }) => {
     await openRouterTab(page);
     await page
-      .getByRole("button", { name: "Bring your own key", exact: true })
+      .getByRole("radio", { name: "Bring your own key", exact: true })
       .click();
     const initial =
       status === "linked"
@@ -289,7 +289,7 @@ for (const status of ["linked", "reauth", "unmanaged"] as const) {
                 : "This key uses a custom OpenRouter address. Manage it under Bring your own key.",
           };
     await mockOAuth(page, connected, false, initial);
-    await page.getByRole("button", { name: "OpenRouter", exact: true }).click();
+    await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
     const panel = page.getByTestId("openrouter-connection");
     await expect(panel).toHaveAttribute("aria-busy", "false");
     await expect(

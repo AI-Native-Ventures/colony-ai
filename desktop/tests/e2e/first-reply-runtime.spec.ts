@@ -33,7 +33,7 @@ test("Connect waits for the actual reply, then saves the selected runtime", asyn
   await page.getByRole("button", { name: /^Connect with / }).click();
   await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
   await expect(page.locator(".form-content .lede[role=status]")).toContainText(
-    "Waiting for its first reply",
+    "We’re checking that your agent can reply.",
   );
   await expect(page.locator(".progress-list li.complete")).toHaveCount(2);
   await expect(
@@ -229,9 +229,7 @@ test("Welcome exposes recovery when the saved runtime disappears, then retries p
       ).length ?? 0,
   );
   await recovery.getByRole("button", { name: "Retry" }).click();
-  await expect(page.getByTestId("message-timeline")).toContainText(
-    "Scout",
-  );
+  await expect(page.getByTestId("message-timeline")).toContainText("Scout");
   await expect(recovery).toHaveCount(0);
   expect(
     await page.evaluate(
@@ -335,9 +333,9 @@ for (const viewport of [
     });
     await page.getByRole("button", { name: /^Connect with / }).click();
     await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
-    await expect(page.locator(".form-content .lede[role=status]")).toContainText(
-      "Waiting for its first reply",
-    );
+    await expect(
+      page.locator(".form-content .lede[role=status]"),
+    ).toContainText("We’re checking that your agent can reply.");
     await waitForAnimations(page);
     await page.screenshot({
       path: `${proofDir}/app-testing-${viewport.width}.png`,
