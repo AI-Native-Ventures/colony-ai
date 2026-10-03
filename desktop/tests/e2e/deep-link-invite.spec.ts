@@ -91,7 +91,7 @@ test("join deep link is acknowledged without claiming before setup", async ({
 test("connect deep link shows a static acknowledgment during setup", async ({
   page,
 }) => {
-  // No invite code means nothing to confirm against the relay — the gate
+  // No invite code means nothing to confirm against the relay  -  the gate
   // acknowledges the link and waits for the user instead of auto-advancing.
   await startMachineSetupWithPendingLink(page, PENDING_CONNECT_LINK);
 
@@ -135,7 +135,7 @@ test("add-community deep link starts onboarding when no community is configured"
 
   await expect(page.getByTestId("community-onboarding-flow")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "No reply just yet." }),
+    page.getByRole("heading", { name: "Your Colony isn’t ready yet." }),
   ).toBeVisible();
   await expect
     .poll(() =>
@@ -185,7 +185,7 @@ test("joining screen shows why connecting failed and offers Retry instead of spi
   await expect(flow.getByText(reason)).toBeVisible();
   await expect(
     flow.getByRole("button", {
-      name: "Choose another connection",
+      name: "Change community",
       exact: true,
     }),
   ).toBeVisible();
@@ -204,7 +204,7 @@ test("add-community deep link skips profile step when identity has an existing k
   );
   await page.goto("/");
 
-  // Onboarding flow must disappear — the skip cleared the transaction.
+  // Onboarding flow must disappear  -  the skip cleared the transaction.
   await expect(page.getByTestId("community-onboarding-flow")).toHaveCount(0);
   // handleCommunityOnboardingConnect already added the community when the
   // transaction reached "connecting", so the app lands in the full UI.
@@ -445,7 +445,7 @@ test("persisted deep-link invite hands off to Joining after machine onboarding",
   // Machine onboarding is complete, so the transaction owns the screen.
   await expect(page.getByTestId("community-onboarding-flow")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "No reply just yet." }),
+    page.getByRole("heading", { name: "Your Colony isn’t ready yet." }),
   ).toBeVisible();
   await expect(page.getByTestId("pending-invite-gate")).toHaveCount(0);
 

@@ -62,10 +62,12 @@ export async function ensureOnboardingProfile(
   const displayName =
     dependencies.storage.getItem(key)?.trim() ||
     email.split("@")[0] ||
-    profile.displayName ||
-    "You";
+    (profile.displayName?.trim() !== "You"
+      ? profile.displayName?.trim()
+      : "") ||
+    "";
+  if (!displayName) return profile;
   if (!isCurrent()) throw new Error("Community setup cancelled.");
   const saved = await dependencies.write({ displayName });
-  dependencies.storage.removeItem(key);
   return saved;
 }

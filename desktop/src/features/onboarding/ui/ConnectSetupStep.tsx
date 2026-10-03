@@ -1,5 +1,4 @@
 import * as React from "react";
-import { OnboardingRuntimeModel } from "./OnboardingRuntimeModel";
 import { useQueryClient } from "@tanstack/react-query";
 import { globalAgentConfigQueryKey } from "@/features/agents/useGlobalAgentConfig";
 import {
@@ -73,7 +72,7 @@ function getRuntimeHeaderStatus(
       : "Checking prerequisites";
   if (runtimeIsReadyForOnboarding(runtime, globalConfig, gitBashPrerequisite))
     return runtime.authStatus.status === "logged_in"
-      ? "Signed in"
+      ? "Installed"
       : "Configured";
   if (runtime.id === "buzz-agent") return "No AI connected yet";
   if (
@@ -211,7 +210,7 @@ function RuntimeOption({
         {ready ? (
           <span className="provider-status is-connected">
             {runtime.authStatus.status === "logged_in"
-              ? "Signed in"
+              ? "Installed"
               : "Configured"}
           </span>
         ) : null}
@@ -346,7 +345,7 @@ function RuntimeConnectionPanel({
     <>
       {error ? (
         <div className="power-notice is-error" role="alert">
-          <svg aria-hidden="true" className="icon">
+          <svg aria-hidden="true" className="icon" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="9" />
             <path d="M12 7v6m0 3v.1" />
           </svg>
@@ -356,7 +355,7 @@ function RuntimeConnectionPanel({
       <div className="section-heading">
         <h3>On this computer</h3>
         <button className="link" onClick={() => void refresh()} type="button">
-          <svg aria-hidden="true" className="icon">
+          <svg aria-hidden="true" className="icon" viewBox="0 0 24 24">
             <path d="M20 11a8 8 0 1 0 2 5" />
             <path d="M20 4v7h-7" />
           </svg>
@@ -370,13 +369,13 @@ function RuntimeConnectionPanel({
           role="status"
         >
           <span className="spinner" />
-          <h3>Finding your AI apps.</h3>
-          <p>Checking installations and signed-in accounts.</p>
+          <h3>Checking your installed apps.</h3>
+          <p>We’re looking for supported apps on this computer.</p>
         </div>
       ) : null}
       {query.error instanceof Error ? (
         <div className="power-notice is-error" role="alert">
-          <svg aria-hidden="true" className="icon">
+          <svg aria-hidden="true" className="icon" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="9" />
             <path d="M12 7v6m0 3v.1" />
           </svg>
@@ -542,7 +541,7 @@ export function ConnectSetupStep({
   );
 
   const continueWithRuntime = async () => {
-    if (!aiReady) {
+    if (!aiReady || connectionScene === "credits-price-error") {
       return;
     }
     const attempt = ++generation.current;
@@ -550,6 +549,8 @@ export function ConnectSetupStep({
     setSaving(true);
     setSaveError(null);
     setProof(null);
+    setConnectionPhase("starting");
+    setTestState("testing");
     try {
       const runtimeId = keyScene ? "buzz-agent" : selectedRuntimeId;
       if (!runtimeId) throw new Error("Choose an AI harness before testing.");
@@ -582,7 +583,9 @@ export function ConnectSetupStep({
     return (
       <OnboardingScenePresentation
         onCancelTest={() => {
+          if (connectionPhase === "saving") return;
           generation.current += 1;
+          void cancelOnboardingConnectionTest().catch(console.warn);
           setSaving(false);
           setProof(null);
           setTestState("connect");
@@ -647,19 +650,12 @@ export function ConnectSetupStep({
           ) : (
             <CreditsComingSoon />
           )}
-          {connectionScene === "connect" && aiReady && selectedRuntime ? (
-            <OnboardingRuntimeModel
-              key={selectedRuntimeId}
-              runtime={selectedRuntime}
-              config={globalConfig}
-              model={selectedModel}
-              onChange={setSelectedModel}
-            />
-          ) : null}
           {saveError && connectionScene !== "connect" ? (
             <p role="alert">{saveError}</p>
           ) : null}
-          {!aiReady ? (
+          {!aiReady &&
+          !runtimes.isFetching &&
+          connectionScene !== "credits-price-error" ? (
             <div className="power-notice">
               <p>
                 No working AI connection yet. AI employees will not reply until
@@ -677,11 +673,16 @@ export function ConnectSetupStep({
           <div className="power-cta">
             <button
               className="primary full"
-              disabled={saving || !aiReady}
+              disabled={
+                saving || !aiReady || connectionScene === "credits-price-error"
+              }
               onClick={() => void continueWithRuntime()}
               type="button"
             >
-              Connect
+              {connectionScene === "connect" && selectedRuntime
+                ? `Connect with ${getRuntimeDisplayLabel(selectedRuntime)}`
+                : "Connect"}{" "}
+              <span aria-hidden="true">→</span>
             </button>
             <button className="back" type="button" onClick={() => onContinue()}>
               Skip for now

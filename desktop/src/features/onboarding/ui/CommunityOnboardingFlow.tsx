@@ -11,6 +11,10 @@ import {
   takePendingWelcomeChannelForDirectEntry,
   WELCOME_SURFACE_READY_EVENT,
 } from "../welcome";
+import { importIdentity } from "@/shared/api/tauriIdentity";
+import { relayClient } from "@/shared/api/relayClient";
+import { MembershipDenied } from "./MembershipDenied";
+import { getMyRelayMembershipLookup } from "@/shared/api/relayMembers";
 import { getIdentity } from "@/shared/api/tauriIdentity";
 import { OnboardingScenePresentation } from "./OnboardingScenePresentation";
 
@@ -22,16 +26,20 @@ const CONNECT_STALL_MESSAGE =
 
 /** Complete community setup without another profile or starter-team gate. */
 export function CommunityOnboardingFlow({
-  onCancel,
   onConnect,
   onRetryConnect,
+  onChangeCommunity,
 }: {
-  onCancel: () => void;
   onConnect: () => void;
   onRetryConnect?: () => void;
+  onChangeCommunity: () => void;
 }) {
   const { transaction, update, clear } = useCommunityOnboarding();
   const queryClient = useQueryClient();
+  const [pubkey, setPubkey] = React.useState("");
+  React.useEffect(() => {
+    void getIdentity().then((identity) => setPubkey(identity.pubkey));
+  }, []);
   const [isPending, setIsPending] = React.useState(false);
   const started = React.useRef<string | null>(null);
   const liveTransaction = React.useRef(transaction);
@@ -86,6 +94,10 @@ export function CommunityOnboardingFlow({
     update({ stage: "finalizing", error: undefined });
     try {
       const identity = await getIdentity();
+      const { snapshotFound, membership } = await getMyRelayMembershipLookup();
+      if (!isCurrent()) return;
+      if (snapshotFound && membership === null)
+        throw new Error("relay_membership_required");
       await ensureOnboardingProfile(isCurrent);
       if (!isCurrent()) return;
       const result = await initializeStarterChannels(queryClient, {
@@ -98,7 +110,7 @@ export function CommunityOnboardingFlow({
       if (result.focusChannelId) {
         // Direct entry: point the router at the Welcome channel *before* the
         // app mounts, so it never lands on Home first. Consume the pending
-        // entry — it exists for the Home-route fallback, and leaving it would
+        // entry , it exists for the Home-route fallback, and leaving it would
         // yank a later Home visit back to Welcome.
         takePendingWelcomeChannelForDirectEntry();
         window.location.hash = `/channels/${result.focusChannelId}`;
@@ -142,27 +154,87 @@ export function CommunityOnboardingFlow({
   };
   return (
     <div data-testid="community-onboarding-flow">
-      <OnboardingScenePresentation
-        scene={error ? "connection-error" : "testing"}
-        data={{
-          name: "",
-          email: "",
-          business: transaction.communityName,
-          website: "",
-          description: "",
-          error,
-          scoutGuidance: {
-            status: error ? "Your turn" : "Working",
-            title: error
-              ? "Let’s try that again."
-              : "Getting your Colony ready.",
-            copy: "Your account and business details are saved.",
-            pose: error ? "waiting" : "working",
-          },
-        }}
-        onCancelTest={onCancel}
-        onNavigate={(scene) => (scene === "testing" ? retry() : onCancel())}
-      />
+      {stage === "deferred" ? (
+        <div
+          role="status"
+          className="fixed bottom-4 right-4 z-50 rounded-lg border bg-background p-4 text-sm"
+        >
+          Welcome setup is unfinished.{" "}
+          <button type="button" onClick={retry}>
+            Retry setup
+          </button>
+        </div>
+      ) : /must be a relay member|not.*member|relay_membership_required|membership.?required|membership.?denied|restricted:|forbidden/i.test(
+          error ?? "",
+        ) ? (
+        <OnboardingScenePresentation
+          scene="community-entry-error"
+          data={{
+            name: "",
+            email: "",
+            business: transaction.communityName,
+            website: "",
+            description: "",
+            error,
+            scoutGuidance: {
+              status: "Your turn",
+              title: "Let’s connect you to your community.",
+              copy: "You can use an invitation or choose another community.",
+              pose: "waiting",
+            },
+          }}
+          contentOverride={
+            <MembershipDenied
+              embedded
+              activeRelayUrl={transaction.relayUrl}
+              pubkey={pubkey}
+              onBack={onChangeCommunity}
+              onChangeCommunity={onChangeCommunity}
+              onRetry={retry}
+              onImportKey={async (nsec) => {
+                const identity = await importIdentity(nsec);
+                setPubkey(identity.pubkey);
+                relayClient.disconnect();
+                queryClient.setQueryData(["identity"], identity);
+                queryClient.removeQueries({ queryKey: ["profile"] });
+                started.current = null;
+                update({ stage: "connecting", error: undefined });
+                onRetryConnect?.();
+              }}
+            />
+          }
+        />
+      ) : (
+        <OnboardingScenePresentation
+          scene={error ? "community-entry-error" : "community-entry"}
+          data={{
+            name: "",
+            email: "",
+            business: transaction.communityName,
+            website: "",
+            description: "",
+            error,
+            entryCanOpen: stage !== "connecting" && stage !== "claiming",
+            scoutGuidance: {
+              status: error ? "Your turn" : "Working",
+              title: error
+                ? "Let’s try that again."
+                : "Getting your Colony ready.",
+              copy:
+                transaction.source === "first-community"
+                  ? "Your account and business details are saved."
+                  : "Your community connection is saved.",
+              pose: error ? "waiting" : "working",
+            },
+          }}
+          onNavigate={(scene) => {
+            if (scene === "community-entry") retry();
+            else if (stage === "connecting" || stage === "claiming")
+              onChangeCommunity();
+            else update({ stage: "deferred" });
+          }}
+        />
+      )}
     </div>
   );
 }

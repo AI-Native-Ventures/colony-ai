@@ -1195,7 +1195,7 @@ test("first-community owner recovers from an npub-only account identity", async 
         expiresAt: "2099-01-01T00:00:00Z",
       },
       builderlabIdentity: {
-        // Identity object present, but no authoritative pubkey_hex , only
+        // Identity object present, but no authoritative pubkey_hex. only
         // the independent server npub, spelled for a different key.
         npub: npubEncode("f".repeat(64)),
       },
@@ -1235,7 +1235,7 @@ test("first-community owner recovers from an npub-only account identity", async 
     0,
   );
   await expect(
-    page.getByRole("button", { name: "Connect", exact: true }),
+    page.getByRole("button", { name: /^Connect with / }),
   ).toHaveCount(0);
 
   // Recovery rebinds the device key and restores readiness.
@@ -1255,7 +1255,7 @@ test("first-community owner recovers from an npub-only account identity", async 
   ).toBeVisible();
   await expect(page.getByText("North Star")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Connect", exact: true }),
+    page.getByRole("button", { name: /^Connect with / }),
   ).toBeVisible();
 });
 
@@ -1314,7 +1314,7 @@ test("first-community owner never rebinds over a same-key spelling in the hex fi
     page.getByText(`This device: ${npubEncode(BLANK_TYLER_IDENTITY.pubkey)}`),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Connect", exact: true }),
+    page.getByRole("button", { name: /^Connect with / }),
   ).toHaveCount(0);
 });
 
@@ -1337,7 +1337,7 @@ test("first-community owner with a padded same-key hex is ready, not mismatched"
       },
       builderlabIdentity: {
         // The device's own key, padded and uppercased: the same key after
-        // normalization, so the account is ready , never a mismatch
+        // normalization, so the account is ready. never a mismatch
         // demanding a delete/rebind of the identity it already holds.
         pubkey_hex: `  ${BLANK_TYLER_IDENTITY.pubkey.toUpperCase()}  `,
       },
@@ -1667,7 +1667,7 @@ test("identity fallback text does not count as a real onboarding name", async ({
 
 // Regression test for the H2 predicate fix (PR #1508).
 // A blank first-run identity (no kind:0 event on the relay) must see
-// onboarding even when the mock bridge returns display_name: "" , the gate
+// onboarding even when the mock bridge returns display_name: "". the gate
 // must depend on `hasProfileEvent`, not on `typeof displayName === "string"`.
 test("first-run blank identity with no profile event sees onboarding", async ({
   page,
@@ -1683,7 +1683,7 @@ test("first-run blank identity with no profile event sees onboarding", async ({
 
 // Regression test for the H2 predicate fix (PR #1508).
 // A returning user who has a real kind:0 profile event with an empty
-// display_name must skip onboarding , they are already onboarded.
+// display_name must skip onboarding. they are already onboarded.
 test("returning user with blank display name and real profile event skips onboarding", async ({
   page,
 }) => {
@@ -1735,11 +1735,11 @@ test("no-event profile cached then reloaded still sees onboarding", async ({
         avatarUrl: null,
         avatarDataUrl: null,
         updatedAt: 1_700_000_000_000,
-        // hasProfileEvent deliberately absent , legacy/no-event entry.
+        // hasProfileEvent deliberately absent. legacy/no-event entry.
       },
     },
   );
-  // No profile event on the relay either , ensureMockProfile uses false.
+  // No profile event on the relay either. ensureMockProfile uses false.
   await installMockBridge(page, undefined, { skipOnboardingSeed: true });
   await page.goto("/");
 
@@ -1830,7 +1830,7 @@ test("avatar upload rejects a file whose server-detected MIME is not an image", 
   // Models a spoofed/blank picker MIME: the picked file claims to be an image
   // (passes the browser-side accept filter) but the shared generic upload path
   // returns a non-image descriptor. The post-upload backstop must reject it so
-  // a non-image can't become an avatar (regression guard , the shared upload
+  // a non-image can't become an avatar (regression guard. the shared upload
   // path no longer rejects non-images server-side).
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
   await installMockBridge(
@@ -2014,7 +2014,7 @@ test("existing relay profile with display name auto-skips onboarding without loc
   // A user whose relay profile already has a display name should skip
   // onboarding even without the localStorage completion flag.
   // Seed alice's pubkey into searchProfiles so seedMockSearchProfiles writes
-  // has_profile_event: true into mockProfiles , the harness-intended mechanism
+  // has_profile_event: true into mockProfiles. the harness-intended mechanism
   // for simulating a returning user with a real kind:0 event. Do NOT use the
   // static mockProfiles seed (removed in PR #1508); that path collides with
   // FIRST_RUN_ALICE (same pubkey) and breaks the first-run onboarding specs.
@@ -2129,7 +2129,7 @@ test("welcome-everywhere banner: dismiss persists after channel re-entry", async
   await expect(page.getByTestId("chat-title")).toContainText("general");
   await expect(banner).toHaveCount(0);
 
-  // Return , banner must stay hidden.
+  // Return. banner must stay hidden.
   await page.getByTestId("channel-welcome-everyone").click();
   await expect(page.getByTestId("chat-title")).toContainText(
     "welcome-everyone",
@@ -2289,10 +2289,10 @@ test("existing relay profile with display name auto-completes onboarding", async
   page,
 }) => {
   // A user whose relay profile already has a display name should skip
-  // onboarding entirely , they've already set up their identity previously
+  // onboarding entirely. they've already set up their identity previously
   // (possibly on another machine or app data directory).
   // Seed alice's pubkey into searchProfiles so seedMockSearchProfiles writes
-  // has_profile_event: true into mockProfiles , the harness-intended mechanism
+  // has_profile_event: true into mockProfiles. the harness-intended mechanism
   // for simulating a returning user with a real kind:0 event. Do NOT use the
   // static mockProfiles seed (removed in PR #1508); that path collides with
   // FIRST_RUN_ALICE (same pubkey) and breaks the first-run onboarding specs.
@@ -2490,7 +2490,7 @@ test("same-relay identity replacement rebuilds the community boundary (A→B→A
   await expect(page.getByTestId("onboarding-gate")).toHaveCount(0);
   await expectHomeView(page);
 
-  // Leg 1 , the community boundary was rebuilt for B: a fresh query client
+  // Leg 1. the community boundary was rebuilt for B: a fresh query client
   // replaced tyler's, and the seeded cache entry did not survive into
   // alice's session.
   await expect
@@ -2515,7 +2515,7 @@ test("same-relay identity replacement rebuilds the community boundary (A→B→A
     )
     .toBe("rebuilt");
 
-  // Leg 2 , alice opens the channel tyler's seeded draft targets: the
+  // Leg 2. alice opens the channel tyler's seeded draft targets: the
   // composer must not restore another identity's draft.
   await page.getByTestId("channel-general").click();
   const composerInput = page.getByTestId("message-input");
@@ -2547,7 +2547,7 @@ test("same-relay identity replacement rebuilds the community boundary (A→B→A
       tylerDraftIntact: true,
     });
 
-  // Leg 3 , alice's own draft restores from alice's bucket, and her first
+  // Leg 3. alice's own draft restores from alice's bucket, and her first
   // send succeeds. The mock's send handler asserts the frontend-captured
   // signer against the active identity, so a send that still carried tyler's
   // cached identity would be rejected and never render.
@@ -2558,7 +2558,7 @@ test("same-relay identity replacement rebuilds the community boundary (A→B→A
   await expect(page.getByText("hello from alice").first()).toBeVisible();
   await expect(composerInput).not.toContainText("hello from alice");
 
-  // Leg 4 , A restoration: relaunch as tyler (fully onboarded this time,
+  // Leg 4. A restoration: relaunch as tyler (fully onboarded this time,
   // open relay) on the same relay. Tyler's bucket must restore tyler's
   // draft untouched by alice's session, and alice's draft must stay in
   // alice's bucket. Tyler is not a member of the mock starter channels, so
@@ -2578,7 +2578,7 @@ test("same-relay identity replacement rebuilds the community boundary (A→B→A
   await expect(composerInput).not.toContainText("alice draft after import");
 });
 
-test("onboarding relay reconnect , click shows Connected then auto-dismisses", async ({
+test("onboarding relay reconnect. click shows Connected then auto-dismisses", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 800, height: 500 });
@@ -2621,7 +2621,7 @@ test("onboarding relay reconnect , click shows Connected then auto-dismisses", a
   await expect(card).toBeHidden({ timeout: 10_000 });
 });
 
-test("onboarding relay reconnect , dismiss is clickable at minimum size", async ({
+test("onboarding relay reconnect. dismiss is clickable at minimum size", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 800, height: 500 });
@@ -2645,7 +2645,7 @@ test("onboarding relay reconnect , dismiss is clickable at minimum size", async 
   await expect(card).toHaveCount(0);
 });
 
-test("onboarding relay reconnect , connected without a prior click does not show Connected", async ({
+test("onboarding relay reconnect. connected without a prior click does not show Connected", async ({
   page,
 }) => {
   // Tests the hadActiveReconnectRef guard: if the relay transitions to
@@ -2671,7 +2671,7 @@ test("onboarding relay reconnect , connected without a prior click does not show
   // Drive to disconnected state (no reconnect click has happened).
   await setRelayConnectionState(page, "disconnected");
 
-  // Drive to connected WITHOUT clicking , this would happen on a spontaneous
+  // Drive to connected WITHOUT clicking. this would happen on a spontaneous
   // background recovery. The hadActiveReconnectRef guard must block markSuccess().
   await setRelayConnectionState(page, "connected");
 
@@ -2697,7 +2697,7 @@ test("membership denied shows all four affordances and change-community edits no
   );
   await page.goto("/");
 
-  // Fill the display name and advance , membership check triggers denial.
+  // Fill the display name and advance. membership check triggers denial.
   await page.getByTestId("onboarding-display-name").fill("Morty QA");
   await page.getByTestId("onboarding-next").click();
 
@@ -2749,7 +2749,7 @@ test("membership denied shows all four affordances and change-community edits no
     )
     .toBe("wss://new-relay.example.com");
 
-  // Identity was NOT wiped , the override storage key is still intact.
+  // Identity was NOT wiped. the override storage key is still intact.
   await expect
     .poll(() =>
       page.evaluate((storageKey) => {
@@ -2782,7 +2782,7 @@ test("cancel from profile Back preserves drafts and denied Back returns to inter
   const overlay = page.getByTestId("community-change-overlay");
   await expect(overlay).toBeVisible();
 
-  // Cancel the overlay , profile should still be visible with the name intact.
+  // Cancel the overlay. profile should still be visible with the name intact.
   await overlay.getByRole("button", { name: "Cancel" }).click();
   await expect(overlay).toHaveCount(0);
   await expect(page.getByTestId("onboarding-page-1")).toBeVisible();
@@ -2793,7 +2793,7 @@ test("cancel from profile Back preserves drafts and denied Back returns to inter
   await page.getByTestId("onboarding-next").click();
   await expect(page.getByTestId("membership-denied")).toBeVisible();
 
-  // Press Back on the denied screen , should return to the profile page
+  // Press Back on the denied screen. should return to the profile page
   // (deniedFromPage = "profile") with the name draft intact.
   await page
     .getByTestId("membership-denied")

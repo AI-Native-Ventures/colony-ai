@@ -296,13 +296,11 @@ test("welcome team starter definitions and role identities are stable", () => {
   assert.equal(WELCOME_TEAM_ID, "builtin-team:welcome");
   assert.deepEqual(WELCOME_TEAM_STARTERS, [
     { name: "Scout", personaId: "builtin:fizz", role: "lead" },
-    { name: "Honey", personaId: "builtin:honey", role: "teammate" },
-    { name: "Pollen", personaId: "builtin:bumble", role: "teammate" },
   ]);
 });
 
 test("starter matching ignores user agents with a Welcome persona", () => {
-  const honey = WELCOME_TEAM_STARTERS[1];
+  const honey = WELCOME_TEAM_STARTERS[0];
   const userHoney = makeAgent({
     personaId: honey.personaId,
     teamId: null,
@@ -315,7 +313,7 @@ test("starter matching ignores user agents with a Welcome persona", () => {
 });
 
 test("starter matching uses persona identity rather than display name", () => {
-  const honey = WELCOME_TEAM_STARTERS[1];
+  const honey = WELCOME_TEAM_STARTERS[0];
   const renamedHoney = makeAgent({
     name: "Honey the Helper",
     personaId: honey.personaId,
@@ -333,7 +331,7 @@ test("starter matching uses persona identity rather than display name", () => {
 });
 
 test("starter matching is relay scoped and normalizes trailing slashes", () => {
-  const pollen = WELCOME_TEAM_STARTERS[2];
+  const pollen = WELCOME_TEAM_STARTERS[0];
   const otherRelay = makeAgent({
     personaId: pollen.personaId,
     relayUrl: RELAY_B,

@@ -24,7 +24,7 @@ test("first entry publishes the signup name through the production kind:0 seam",
   const s = setup();
   await ensureOnboardingProfile(() => true, s.deps);
   assert.deepEqual(s.writes, [{ displayName: "Amina" }]);
-  assert.equal(s.values.has(key), false);
+  assert.equal(s.values.get(key), "Amina");
 });
 test("missing name falls back to email local part", async () => {
   const s = setup({ name: "" });
@@ -63,4 +63,16 @@ test("a stalled profile read returns a retryable failure without publishing", as
   );
   assert.equal(s.writes.length, 0);
   assert.equal(s.values.get(key), "Amina");
+});
+
+test("an unlinked identity never publishes the placeholder You", async () => {
+  const s = setup({ name: "" });
+  s.deps.read = async () => ({
+    pubkey: "identity",
+    hasProfileEvent: false,
+    displayName: "You",
+  });
+  s.deps.account = async () => null;
+  await ensureOnboardingProfile(() => true, s.deps);
+  assert.equal(s.writes.length, 0);
 });

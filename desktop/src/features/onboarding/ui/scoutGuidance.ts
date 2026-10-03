@@ -106,7 +106,6 @@ export function scoutGuidance(
     "business-error",
     "api-error",
     "connection-error",
-    "credits-price-error",
     "credits-failed",
     "openrouter-error",
     "openrouter-limit",

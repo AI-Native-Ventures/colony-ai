@@ -10,6 +10,8 @@ export const ONBOARDING_SCENE_IDS = [
   "connect",
   "connected",
   "connection-error",
+  "community-entry",
+  "community-entry-error",
   "credits-cancelled",
   "credits-checkout",
   "credits-delayed",

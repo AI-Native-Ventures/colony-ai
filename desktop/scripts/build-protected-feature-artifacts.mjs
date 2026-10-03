@@ -70,10 +70,7 @@ function emittedText(root) {
 export function assertArtifactContract({ ossOutput, internalOutput }) {
   const ossText = emittedText(ossOutput);
   const internalText = emittedText(internalOutput);
-  // Scout has the approved public Chief of Staff role. The protected
-  // feature is identified by its own name, ID and manifest content.
-  const protectedContent =
-    /\bbestie\b|builtin:bestie|Try a personal agent that is always close at hand/iu;
+  const protectedContent = /\bbestie\b|chief of staff|builtin:bestie/iu;
   const internalManifestMarker =
     "Try a personal agent that is always close at hand";
 

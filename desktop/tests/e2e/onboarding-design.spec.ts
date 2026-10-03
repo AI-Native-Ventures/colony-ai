@@ -33,9 +33,8 @@ for (const viewport of [
       page.getByText("Chief of Staff", { exact: true }),
     ).toBeVisible();
     await expect(page.getByText("Here to help", { exact: true })).toBeVisible();
-    await expect(page.locator("body")).not.toContainText(
-      /Welcome to Buzz|Build your profile|Meet your starter team|Take me to Buzz/,
-    );
+    await expect(page.getByTestId("onboarding-display-name")).toHaveCount(0);
+    await expect(page.getByTestId("onboarding-starter-team")).toHaveCount(0);
     await expect(
       page.locator('img[src*="starter-team"],img[src*="buzz-wordmark"]'),
     ).toHaveCount(0);
@@ -103,10 +102,7 @@ test("connection choices preserve keyboard and pointer radio behavior", async ({
     { skipCommunitySeed: true, skipOnboardingSeed: true },
   );
   await openR17BusinessSetup(page);
-  await completeR17BusinessSetup(page, {
-    name: "Design studio",
-    description: "We design for small businesses.",
-  });
+  await completeR17BusinessSetup(page);
   const subscriptions = page.getByRole("radio", {
     name: "Subscriptions",
     exact: true,
@@ -154,7 +150,7 @@ for (const viewport of [
     await page.screenshot({
       path: `${SHOT_DIR}/runtime-connect-ready-${viewport.width}.png`,
     });
-    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await page.getByRole("button", { name: /^Connect with / }).click();
     await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
     await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
     await waitForAnimations(page);
@@ -175,9 +171,8 @@ for (const viewport of [
       .click();
     await expect(page.getByTestId("app-sidebar")).toBeVisible();
     await expect(page.getByTestId("community-onboarding-flow")).toHaveCount(0);
-    await expect(page.locator("body")).not.toContainText(
-      /Build your profile|Meet your starter team|Take me to Buzz/,
-    );
+    await expect(page.getByTestId("onboarding-display-name")).toHaveCount(0);
+    await expect(page.getByTestId("onboarding-starter-team")).toHaveCount(0);
     await waitForAnimations(page);
     await page.screenshot({
       path: `${SHOT_DIR}/runtime-workspace-${viewport.width}.png`,

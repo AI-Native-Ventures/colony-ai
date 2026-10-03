@@ -14,7 +14,6 @@ import {
   discoverGitBashPrerequisite,
 } from "@/shared/api/tauri";
 import { discoverAcpRuntimes } from "@/shared/api/tauriAcpDiscovery";
-import { getAgentAccessOwnerOnly } from "@/shared/api/tauriAgentAccess";
 import { getGlobalAgentConfig } from "@/shared/api/tauriGlobalAgentConfig";
 import { listPersonas, setPersonaActive } from "@/shared/api/tauriPersonas";
 import type {
@@ -48,11 +47,9 @@ export type WelcomeTeamStarterDefinition = Readonly<{
 /** Stable identities used to provision the Rust-seeded Welcome Team. */
 export const WELCOME_TEAM_STARTERS = [
   { name: "Scout", personaId: "builtin:fizz", role: "lead" },
-  { name: "Honey", personaId: "builtin:honey", role: "teammate" },
-  { name: "Pollen", personaId: "builtin:bumble", role: "teammate" },
 ] as const satisfies readonly WelcomeTeamStarterDefinition[];
 
-export type WelcomeTeamAgents = [ManagedAgent, ManagedAgent, ManagedAgent];
+export type WelcomeTeamAgents = [ManagedAgent];
 
 const welcomeTeamPromises = new Map<string, Promise<WelcomeTeamAgents>>();
 
@@ -346,7 +343,7 @@ export function welcomeTeammateAccessUpdate(
 /**
  * Ensure the complete built-in Welcome Team is ready for kickoff.
  * The team itself is Rust-seeded; this only activates personas, creates any
- * missing relay-scoped instances, and adds all three to Welcome as bots.
+ * missing relay-scoped instances, and adds Scout to Welcome as a bot.
  */
 async function provisionWelcomeTeam(
   channelId: string,
@@ -354,13 +351,11 @@ async function provisionWelcomeTeam(
 ): Promise<WelcomeTeamAgents> {
   const existingAgents = await listManagedAgents();
   await ensureWelcomeTeamPersonasActive();
-  const [personas, runtimeCatalog, globalConfig, agentAccessOwnerOnly] =
-    await Promise.all([
-      listPersonas(),
-      discoverAcpRuntimes(),
-      getGlobalAgentConfig(),
-      getAgentAccessOwnerOnly(),
-    ]);
+  const [personas, runtimeCatalog, globalConfig] = await Promise.all([
+    listPersonas(),
+    discoverAcpRuntimes(),
+    getGlobalAgentConfig(),
+  ]);
   const personasById = new Map(
     personas.map((persona) => [persona.id, persona]),
   );
@@ -410,24 +405,9 @@ async function provisionWelcomeTeam(
     const created = await createManagedAgent(desired);
     agents.push(created.agent);
   }
-  const [lead, honey, pollen] = agents;
-  if (!lead || !honey || !pollen) {
-    throw new Error("Welcome Team provisioning did not return every starter.");
-  }
-  const welcomeAgents: WelcomeTeamAgents = [lead, honey, pollen];
-  const leadPubkey = lead.pubkey;
-  for (const index of [1, 2] as const) {
-    const teammate = welcomeAgents[index];
-    const accessUpdate = welcomeTeammateAccessUpdate(
-      teammate,
-      leadPubkey,
-      agentAccessOwnerOnly,
-    );
-    if (accessUpdate) {
-      const updated = await updateManagedAgent(accessUpdate);
-      welcomeAgents[index] = updated.agent;
-    }
-  }
+  const [lead] = agents;
+  if (!lead) throw new Error("Scout provisioning did not return the starter.");
+  const welcomeAgents: WelcomeTeamAgents = [lead];
   await ensureWelcomeTeamMembership(channelId, welcomeAgents);
   return welcomeAgents;
 }

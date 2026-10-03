@@ -6,7 +6,7 @@ import { mkdir } from "node:fs/promises";
 const claude = r17Runtime("claude", "available", { status: "logged_in" });
 const codex = r17Runtime("codex", "available", { status: "logged_in" });
 
-test("Connect waits for the actual reply, then pins the selected runtime and model", async ({
+test("Connect waits for the actual reply, then saves the selected runtime", async ({
   page,
 }) => {
   await openR17ConnectionSetup(page, {
@@ -30,11 +30,7 @@ test("Connect waits for the actual reply, then pins the selected runtime and mod
     .getByTestId("onboarding-connect-runtime-codex")
     .getByRole("button", { name: /Codex/ })
     .click();
-  await page.getByTestId("onboarding-runtime-model").click();
-  await page
-    .getByTestId("onboarding-runtime-model-option-actual-model")
-    .click();
-  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await page.getByRole("button", { name: /^Connect with / }).click();
   await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
   expect(
     await page.evaluate(
@@ -58,14 +54,14 @@ test("Connect waits for the actual reply, then pins the selected runtime and mod
     ),
   );
   expect(probe?.payload).toMatchObject({
-    config: { preferred_runtime: "codex", model: "actual-model" },
+    config: { preferred_runtime: "codex" },
   });
   const saved = await page.evaluate(async () =>
     window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.("get_global_agent_config", null),
   );
   expect(saved).toMatchObject({
     preferred_runtime: "codex",
-    model: "actual-model",
+    model: null,
   });
   await page
     .getByRole("button", { name: "Open my Colony", exact: true })
@@ -80,7 +76,7 @@ test("Connect waits for the actual reply, then pins the selected runtime and mod
           ).length ?? 0,
       ),
     )
-    .toBe(3);
+    .toBe(1);
   const creations = await page.evaluate(() =>
     window.__BUZZ_E2E_COMMAND_PAYLOADS__?.filter(
       (entry) => entry.command === "create_managed_agent",
@@ -91,10 +87,9 @@ test("Connect waits for the actual reply, then pins the selected runtime and mod
       input: { agentCommand: "codex", harnessOverride: true },
     });
   await page.getByTestId("channel-Welcome").click();
-  await expect(page.getByTestId("message-timeline")).toContainText(
-    "Honey and Pollen, introduce yourselves",
-    { timeout: 5_000 },
-  );
+  await expect(page.getByTestId("message-timeline")).toContainText("Scout", {
+    timeout: 5_000,
+  });
   expect(
     await page.evaluate(
       () =>
@@ -122,7 +117,7 @@ for (const result of [
         null,
       ),
     );
-    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await page.getByRole("button", { name: /^Connect with / }).click();
     await expect(
       page.getByTestId("onboarding-scene-connection-error"),
     ).toBeVisible();
@@ -148,7 +143,7 @@ test("cancelling stops the native attempt, preserves settings and ignores a late
     runtimes: [claude],
     mock: { onboardingConnectionDelayMs: 800 },
   });
-  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await page.getByRole("button", { name: /^Connect with / }).click();
   await page.getByRole("button", { name: "Cancel test" }).click();
   await expect
     .poll(() =>
@@ -207,7 +202,7 @@ for (const id of [
       await expect(
         page.getByTestId(`onboarding-connect-runtime-${id}`),
       ).not.toContainText("Signed in");
-    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await page.getByRole("button", { name: /^Connect with / }).click();
     await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
     const request = await page.evaluate(() =>
       window.__BUZZ_E2E_COMMAND_PAYLOADS__?.find(
@@ -253,7 +248,7 @@ for (const viewport of [
       runtimes: [claude],
       mock: { onboardingConnectionDelayMs: 2000 },
     });
-    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await page.getByRole("button", { name: /^Connect with / }).click();
     await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
     await waitForAnimations(page);
     await page.screenshot({

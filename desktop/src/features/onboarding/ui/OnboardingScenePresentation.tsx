@@ -125,6 +125,45 @@ function SceneBody(props: PresentationProps) {
       />
     );
   }
+  if (scene === "community-entry" || scene === "community-entry-error") {
+    return (
+      <>
+        <ScoutAvatar
+          className="agent-avatar large scout-rendered"
+          pose={data.error ? "waiting" : "working"}
+        />
+        <h2>
+          {data.error
+            ? "Your Colony isn’t ready yet."
+            : "Getting your Colony ready."}
+        </h2>
+        <p className="lede">
+          {data.error
+            ? "We couldn’t finish setting up this community."
+            : "We’re preparing your Welcome channel and Scout."}
+        </p>
+        {data.error ? (
+          <>
+            <InlineAlert>{data.error}</InlineAlert>
+            <PrimaryButton onClick={() => onNavigate?.("community-entry")}>
+              Try again
+            </PrimaryButton>
+            <button
+              className="secondary full"
+              type="button"
+              onClick={() => onNavigate?.("workspace")}
+            >
+              Open my Colony for now
+            </button>
+          </>
+        ) : (
+          <p role="status">
+            <span className="spinner" /> Getting things ready
+          </p>
+        )}
+      </>
+    );
+  }
   if (scene === "testing") {
     return (
       <>
@@ -143,7 +182,7 @@ function SceneBody(props: PresentationProps) {
         <ol className="progress-list">
           <li className="complete">
             <Glyph name="check" />
-            Connection selected
+            Connection saved
           </li>
           <li
             className={
@@ -232,19 +271,22 @@ export function OnboardingScenePresentation(props: PresentationProps) {
     id: string;
   }>();
   const rootRef = React.useRef<HTMLDivElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Focus follows rendered scene and new error feedback.
   React.useEffect(() => {
+    // Connection tabs keep roving keyboard focus within the same form.
     if (
-      !["connect", "testing", "connected", "connection-error"].includes(
-        props.scene,
-      )
+      rootRef.current?.contains(document.activeElement) &&
+      document.activeElement?.getAttribute("role") === "radio"
     )
       return;
-    const heading = rootRef.current?.querySelector<HTMLElement>("h2");
+    const heading = rootRef.current?.querySelector<HTMLElement>(
+      ".form-content h2, .form-content h1",
+    );
     if (heading) {
       heading.tabIndex = -1;
       heading.focus({ preventScroll: true });
     }
-  }, [props.scene]);
+  }, [props.scene, props.error, props.data.error]);
   const workspaceScene =
     props.scene === "workspace" ||
     props.scene === "history" ||
@@ -286,7 +328,7 @@ export function OnboardingScenePresentation(props: PresentationProps) {
   ) : null;
   const power = onboardingSceneStage(props.scene) === 2;
   return (
-    <div className="colony-onboarding-root" ref={rootRef}>
+    <main className="colony-onboarding-root" ref={rootRef}>
       <div className="onboarding-viewport">
         <section className="app-frame onboarding-app-frame">
           <div
@@ -329,6 +371,6 @@ export function OnboardingScenePresentation(props: PresentationProps) {
           </div>
         </section>
       </div>
-    </div>
+    </main>
   );
 }

@@ -4,6 +4,7 @@ import type { OnboardingSceneId } from "./onboardingScenes";
 import type { CreditsSnapshot } from "./creditsOnboardingApi";
 
 export type OnboardingSceneData = {
+  entryCanOpen?: boolean;
   scoutGuidance?: ScoutGuidance;
   firstReply?: string;
   connectionLabel?: string;
