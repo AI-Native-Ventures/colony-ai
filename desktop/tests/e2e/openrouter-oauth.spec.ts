@@ -2,6 +2,10 @@ import { expect, type Page, test } from "@playwright/test";
 import { waitForAnimations } from "../helpers/animations";
 import { openR17ConnectionSetup, r17Runtime } from "../helpers/onboarding";
 
+// These scenarios include account setup, business creation, OAuth and a first reply.
+// Keep action/assertion timeouts intact while budgeting for the complete workflow.
+test.setTimeout(60_000);
+
 const connected = {
   status: "connected",
   balance: 12.5,

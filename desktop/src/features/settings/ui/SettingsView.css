@@ -191,6 +191,11 @@ body:has(.w20-settings-shell) {
   opacity: 0.85;
 }
 
+.dark .w20-nav-search input::placeholder {
+  color: hsl(var(--foreground));
+  opacity: 1;
+}
+
 .w20-nav-content {
   min-height: 0;
   flex: 1;
@@ -219,11 +224,11 @@ body:has(.w20-settings-shell) {
 }
 
 .dark .w20-nav-heading {
-  color: #a39aa9;
+  color: hsl(var(--foreground));
 }
 
 .dark .w20-settings-sidebar.w20-settings-sidebar .w20-nav-back {
-  color: #a39aa9;
+  color: hsl(var(--foreground));
 }
 
 .w20-nav-group:not(:first-child):has(.w20-nav-heading) {

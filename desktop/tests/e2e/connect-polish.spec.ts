@@ -1,12 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { installMockBridge } from "../helpers/bridge";
 import { openR17ConnectionSetup, r17Runtime } from "../helpers/onboarding";
+import { measureSidebarContrast } from "../helpers/sidebarContrast";
 import { waitForAnimations } from "../helpers/animations";
 import {
   LIGHT_THEMES,
   SYNTAX_THEMES,
 } from "../../src/shared/theme/theme-loader";
+
+test.use({ video: "off" });
 
 const shots = "test-results/connect-polish";
 async function capture(page: Page, name: string) {
@@ -148,113 +151,102 @@ for (const viewport of [
   });
 }
 
-for (const theme of SYNTAX_THEMES.filter((name) => !LIGHT_THEMES.has(name))) {
-  test(`business and user name contrast: ${theme}`, async ({ page }) => {
-    const relay = (
-      process.env.BUZZ_E2E_RELAY_URL ?? "http://localhost:3000"
-    ).replace(/^http/u, "ws");
-    const communityKey = `buzz-community-theme.v1:${"deadbeef".repeat(8)}:${encodeURIComponent(relay)}`;
-    await page.addInitScript(
-      ({ key, theme }) => {
-        localStorage.setItem("buzz-theme", theme);
-        localStorage.setItem(
-          key,
-          JSON.stringify({
-            version: 1,
-            theme,
-            accent: "#3b82f6",
-            followSystem: false,
-          }),
-        );
-      },
-      { key: communityKey, theme },
-    );
-    await installMockBridge(page);
-    await page.goto("/#/today");
-    await expect(page.getByTestId("sidebar-profile-name")).toBeVisible();
-    // Wait for the asynchronously loaded palette before measuring computed colors.
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            JSON.parse(localStorage.getItem("buzz-theme-cache") ?? "{}")
-              .themeName,
-        ),
-      )
-      .toBe(theme);
-    const ratios = [
-      ...(await sidebarContrast(page, '[data-testid="sidebar-profile-name"]')),
-      ...(await sidebarContrast(
+test.describe("dark sidebar contrast", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+  for (const theme of SYNTAX_THEMES.filter((name) => !LIGHT_THEMES.has(name))) {
+    test(`all sidebar text: ${theme}`, async ({ page }, testInfo) => {
+      const relay = (
+        process.env.BUZZ_E2E_RELAY_URL ?? "http://localhost:3000"
+      ).replace(/^http/u, "ws");
+      const communityKey = `buzz-community-theme.v1:${"deadbeef".repeat(8)}:${encodeURIComponent(relay)}`;
+      await page.addInitScript(
+        ({ key, theme }) => {
+          localStorage.setItem("buzz-theme", theme);
+          localStorage.setItem(
+            key,
+            JSON.stringify({
+              version: 1,
+              theme,
+              accent: "#3b82f6",
+              followSystem: false,
+            }),
+          );
+        },
+        { key: communityKey, theme },
+      );
+      await installMockBridge(page);
+      await page.goto("/#/today");
+      await expect(page.getByTestId("sidebar-profile-name")).toBeVisible();
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              JSON.parse(localStorage.getItem("buzz-theme-cache") ?? "{}")
+                .themeName,
+          ),
+        )
+        .toBe(theme);
+      await waitForAnimations(page);
+      const app = await measureSidebarContrast(
         page,
-        '[data-testid="sidebar-business-switcher"]',
-      )),
-    ];
-    expect(ratios.length).toBeGreaterThan(1);
-    expect(Math.min(...ratios)).toBeGreaterThanOrEqual(4.5);
-  });
-}
-async function sidebarContrast(page: Page, selector: string) {
-  return page.locator(selector).evaluate((sidebar) => {
-    const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = 1;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Color canvas is unavailable");
-    const rgba = (color: string) => {
-      ctx.clearRect(0, 0, 1, 1);
-      ctx.fillStyle = color;
-      ctx.fillRect(0, 0, 1, 1);
-      return [...ctx.getImageData(0, 0, 1, 1).data];
-    };
-    const luminance = (rgb: number[]) =>
-      rgb
-        .slice(0, 3)
-        .map((v) => {
-          const c = v / 255;
-          return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-        })
-        .reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
-    const blend = (fg: number[], bg: number[]) =>
-      fg
-        .slice(0, 3)
-        .map((v, i) => (v * fg[3]) / 255 + bg[i] * (1 - fg[3] / 255));
-    const walker = document.createTreeWalker(sidebar, NodeFilter.SHOW_TEXT);
-    const ratios: number[] = [];
-    while (walker.nextNode()) {
-      const node = walker.currentNode;
-      const el = node.parentElement;
-      if (
-        !el ||
-        !node.textContent?.trim() ||
-        el.closest('svg,.sr-only,[aria-hidden="true"]') ||
-        !el.getBoundingClientRect().height
-      )
-        continue;
-      const style = getComputedStyle(el);
-      if (style.visibility !== "visible") continue;
-      let opacity = 1;
-      const layers: number[][] = [];
-      for (
-        let parent: Element | null = el;
-        parent;
-        parent = parent.parentElement
-      ) {
-        const s = getComputedStyle(parent);
-        opacity *= Number(s.opacity);
-        layers.push(rgba(s.backgroundColor));
+        '[data-testid="app-sidebar"]',
+      );
+      await page
+        .getByTestId("app-sidebar")
+        .locator('[data-sidebar="content"]')
+        .evaluate((el) => {
+          el.scrollTop = el.scrollHeight;
+        });
+      await waitForAnimations(page);
+      const lowerApp = await measureSidebarContrast(
+        page,
+        '[data-testid="app-sidebar"]',
+      );
+      app.text.push(...lowerApp.text);
+      await page.getByTestId("open-settings").click();
+      await page.getByTestId("profile-popover-settings").click();
+      await expect(page.getByTestId("settings-sidebar")).toBeVisible();
+      await waitForAnimations(page);
+      const settings = await measureSidebarContrast(
+        page,
+        '[data-testid="settings-sidebar"]',
+      );
+      const artifact = testInfo.outputPath("sidebar-contrast.json");
+      await mkdir(testInfo.outputDir, { recursive: true });
+      await writeFile(
+        artifact,
+        JSON.stringify(
+          { theme, project: testInfo.project.name, app, settings },
+          null,
+          2,
+        ),
+      );
+      await testInfo.attach("sidebar contrast", {
+        path: artifact,
+        contentType: "application/json",
+      });
+      for (const category of ["business", "user", "section", "nav", "search"]) {
+        const samples = [...app.text, ...settings.text].filter(
+          (sample) => sample.category === category,
+        );
+        expect(samples.length, category).toBeGreaterThan(0);
+        const worst = samples.reduce((a, b) => (a.ratio < b.ratio ? a : b));
+        expect(
+          worst.ratio,
+          `${category}: ${worst.text}`,
+        ).toBeGreaterThanOrEqual(4.5);
       }
-      if (!opacity) continue;
-      let bg = [25, 23, 29];
-      for (const layer of layers.reverse()) bg = blend(layer, bg);
-      const fg = rgba(style.color);
-      fg[3] *= opacity;
-      const ink = blend(fg, bg);
-      const a = luminance(ink),
-        b = luminance(bg);
-      const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-      if (ratio < 4.5)
-        console.warn("Sidebar contrast", node.textContent?.trim(), ratio);
-      ratios.push(ratio);
-    }
-    return ratios;
-  });
-}
+      // Flat theme edges must continue the sidebar paint. The branded dark
+      // theme intentionally retains its approved gradient.
+      if (theme !== "buzz-dark") {
+        expect(app.frame.top).toEqual(app.frame.bottom);
+        expect(settings.frame.top).toEqual(settings.frame.bottom);
+      }
+      if (theme === "github-dark") {
+        await capture(page, "github-dark-settings-1440");
+        await page.setViewportSize({ width: 1728, height: 1117 });
+        await capture(page, "github-dark-settings-1728");
+      }
+    });
+  }
+});
