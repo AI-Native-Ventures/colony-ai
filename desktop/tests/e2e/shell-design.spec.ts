@@ -287,9 +287,7 @@ for (const [preference, px] of [
   });
 }
 
-test("migrates the saved legacy sidebar default", async ({
-  page,
-}) => {
+test("migrates the saved legacy sidebar default", async ({ page }) => {
   await page.addInitScript(() =>
     localStorage.setItem("buzz-sidebar-width", "244"),
   );
