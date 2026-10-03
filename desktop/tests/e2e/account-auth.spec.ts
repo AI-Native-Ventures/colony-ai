@@ -715,6 +715,11 @@ test("passive account outage never opens an intrusive prompt over the composer",
       await reference.setViewportSize(viewport);
       await reference.goto(process.env.COLONY_REFERENCE_URL);
       await reference.locator('[data-go="inbox"]').first().click();
+      await expect(
+        reference
+          .frameLocator("iframe")
+          .getByRole("heading", { name: "Inbox", exact: true }),
+      ).toBeVisible();
       await waitForAnimations(reference);
       await reference.screenshot({
         path: `${proofDir}/reference-workspace-${viewport.width}.png`,
