@@ -114,7 +114,6 @@ export function BusinessSetupStep({
   const availabilityGeneration = React.useRef(0);
   const logoGeneration = React.useRef(0);
   const websiteGeneration = React.useRef(0);
-  const nameEdited = React.useRef(false);
   const descriptionEdited = React.useRef(false);
   const [websitePending, setWebsitePending] = React.useState(false);
   React.useEffect(
@@ -240,7 +239,6 @@ export function BusinessSetupStep({
         faviconDataUrl: string | null;
       }>("read_business_website", { href });
       if (generation !== websiteGeneration.current) return;
-      if (!nameEdited.current) setName(result.title);
       if (!descriptionEdited.current) setDescription(result.description ?? "");
       setFaviconFailed(false);
       setFaviconUrl(result.faviconDataUrl);
@@ -423,7 +421,6 @@ export function BusinessSetupStep({
       }
       error={error ?? unavailableMessage}
       onBusinessChange={(value) => {
-        nameEdited.current = true;
         setName(value);
         setError(null);
       }}

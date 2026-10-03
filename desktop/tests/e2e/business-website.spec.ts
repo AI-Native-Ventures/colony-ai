@@ -36,7 +36,7 @@ for (const viewport of [
       .getByRole("button", { name: "Read website", exact: true })
       .click();
     await expect(page.getByLabel("Business name", { exact: true })).toHaveValue(
-      "Colony",
+      "",
     );
     await expect(page.getByLabel("What does your business do?")).toHaveValue(
       metadata.description,
