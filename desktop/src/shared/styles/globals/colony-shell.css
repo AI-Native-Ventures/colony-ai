@@ -46,7 +46,10 @@
     [data-testid="thread-composer-overlay"]
   )
   .composer-dock {
-  padding: 0.625rem var(--colony-composer-gutter) 0.9375rem;
+  --composer-dock-active-rail: 1.8125rem;
+  --composer-dock-quiet-inset: 0.9375rem;
+  padding: 0.625rem var(--colony-composer-gutter)
+    var(--composer-dock-quiet-inset);
 }
 
 :root:has([data-colony-workspace-route="true"])
@@ -125,4 +128,38 @@
   [data-testid="message-composer-toolbar"]
   > div:last-child {
   margin-left: auto;
+}
+
+/* Keep the corner masks on the composer edges after the shared gutter change. */
+:root:has([data-colony-workspace-route="true"])
+  :is(
+    [data-testid="channel-composer-overlay"],
+    [data-testid="thread-composer-overlay"]
+  )
+  .composer-overlay-corner-masks::before {
+  left: var(--colony-composer-gutter);
+}
+
+:root:has([data-colony-workspace-route="true"])
+  :is(
+    [data-testid="channel-composer-overlay"],
+    [data-testid="thread-composer-overlay"]
+  )
+  .composer-overlay-corner-masks::after {
+  right: var(--colony-composer-gutter);
+}
+
+:root:has([data-colony-workspace-route="true"])
+  :is(
+    [data-testid="channel-composer-overlay"],
+    [data-testid="thread-composer-overlay"]
+  )
+  .composer-dock--with-activity {
+  padding-bottom: var(--composer-dock-active-rail);
+}
+
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="thread-composer-overlay"]
+  .composer-dock-activity {
+  padding-inline: var(--colony-composer-gutter);
 }

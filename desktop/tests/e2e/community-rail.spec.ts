@@ -1413,7 +1413,7 @@ test.describe("community rail", () => {
     expect(contentBox).not.toBeNull();
     expect(buttonBox?.y ?? 0).toBeGreaterThanOrEqual(32);
     expect(
-      Math.abs((buttonBox?.y ?? 0) - (contentBox?.y ?? 0) - 6),
+      Math.abs((buttonBox?.y ?? 0) - (contentBox?.y ?? 0) - 39),
     ).toBeLessThan(0.5);
     expect(Math.abs((railBox?.y ?? 0) - (appSurfaceBox?.y ?? 0))).toBeLessThan(
       0.5,
@@ -1437,13 +1437,13 @@ test.describe("community rail", () => {
       (searchBox?.x ?? 0) - ((buttonBox?.x ?? 0) + (buttonBox?.width ?? 0));
     expect(Math.abs(visibleRightGap - 14)).toBeLessThan(0.5);
 
-    // With the rail visible, the top-chrome history controls sit just past
-    // the traffic lights near the rail edge, not
-    // shifted far right by a redundant traffic-light offset.
+    // History controls live inside the inset content frame, clear of the
+    // native traffic lights and aligned with the content left edge.
     const back = page.getByTestId("global-back");
     const backBox = await back.boundingBox();
     expect(backBox).not.toBeNull();
-    expect(backBox?.x ?? 0).toBeLessThan(120);
+    expect(backBox?.x ?? 0).toBeGreaterThanOrEqual(contentBox?.x ?? 0);
+    expect(backBox?.x ?? 0).toBeLessThan((contentBox?.x ?? 0) + 100);
   });
 
   test("drag-to-reorder updates the stored community order and survives reload", async ({

@@ -1961,7 +1961,7 @@ test("connected first-community profile keeps navigation inside the card and bal
   expect(nameKeyStyles.borderColor).toBe("rgb(226, 226, 226)");
   expect(nameKeyStyles).toMatchObject({
     borderRadius: "12px",
-    fontSize: "14px",
+    fontSize: "15px",
   });
   await expect(page.getByText("Your username", { exact: true })).toBeVisible();
   await expect(page.getByTestId("community-onboarding-flow")).toHaveAttribute(

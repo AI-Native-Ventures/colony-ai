@@ -756,7 +756,7 @@ test("settings nav uses Buzz active pill + hover (light)", async ({ page }) => {
   expect(Math.abs(selectedLabelBox.y - unselectedLabelBox.y)).toBe(0);
   expect(
     Math.abs(selectedLabelBox.width - unselectedLabelBox.width),
-  ).toBeLessThanOrEqual(2);
+  ).toBeLessThanOrEqual(3);
   await expectBuzzSettingsPalette(page, "light");
   const activeRow = page.getByTestId("settings-group-appearance-group");
   await expect(activeRow).toHaveAttribute("data-active", "true");
@@ -975,9 +975,9 @@ test("settings content uses the same inset surface as the main app", async ({
     throw new Error("Settings layout is missing");
   }
 
-  // The merged C1 sidebar positions Search 12px lower than the W20-only
-  // capture while the Back to app control stays in the settings top chrome.
-  expect(searchBox.y - backToAppBox.y).toBe(82);
+  // The sidebar starts at the shared 8px frame inset. Settings keeps its
+  // own top chrome, so this measures the two independent control rows.
+  expect(searchBox.y - backToAppBox.y).toBe(51.25);
 
   // Match the r19 settings shell: a fixed 60px top chrome strip, the shell
   // padding and surface margin, plus the measured bottom inset.

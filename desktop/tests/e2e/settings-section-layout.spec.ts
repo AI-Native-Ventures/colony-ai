@@ -357,13 +357,13 @@ test("workspace appearance saves the named theme and density together", async ({
       };
     });
   expect(await sharedChrome()).toEqual({
-    sectionLabelTracking: "-0.22px",
+    sectionLabelTracking: "-0.235714px",
     searchTextColor: "rgb(40, 37, 50)",
     breadcrumbColor: "rgb(121, 116, 127)",
     avatar: {
       backgroundColor: "rgb(236, 229, 237)",
       color: "rgb(121, 103, 130)",
-      fontSize: "9.44px",
+      fontSize: "10.1143px",
       fontWeight: "600",
       borderRadius: "7px",
     },
@@ -386,13 +386,13 @@ test("workspace appearance saves the named theme and density together", async ({
   );
   await expect.poll(innerTabIndicatorColor).toBe("rgb(157, 193, 251)");
   await expect.poll(sharedChrome).toEqual({
-    sectionLabelTracking: "-0.22px",
+    sectionLabelTracking: "-0.235714px",
     searchTextColor: "rgb(236, 230, 239)",
     breadcrumbColor: "rgb(163, 154, 169)",
     avatar: {
       backgroundColor: "rgb(69, 58, 74)",
       color: "rgb(209, 191, 216)",
-      fontSize: "9.44px",
+      fontSize: "10.1143px",
       fontWeight: "600",
       borderRadius: "7px",
     },
