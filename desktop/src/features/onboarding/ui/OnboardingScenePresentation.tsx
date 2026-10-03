@@ -22,6 +22,8 @@ import {
 import { Glyph, InlineAlert, PrimaryButton } from "./OnboardingScenePrimitives";
 import "./onboardingCalibration.css";
 import "./onboardingTypography.css";
+import "./scoutPresence.css";
+import { ScoutAvatar } from "./ScoutAvatar";
 
 export type {
   OnboardingSceneData,
@@ -124,7 +126,10 @@ function SceneBody(props: PresentationProps) {
   if (scene === "testing") {
     return (
       <>
-        <div className="agent-avatar large" />
+        <ScoutAvatar
+          className="agent-avatar large scout-rendered"
+          pose="working"
+        />
         <h2>A first hello.</h2>
         <p className="lede">We’re checking that your agent can reply.</p>
         <ol className="progress-list">
@@ -255,7 +260,7 @@ export function OnboardingScenePresentation(props: PresentationProps) {
               <span>Colony</span>
             </div>
             <StoryPanel
-              data={props.data}
+              data={{ ...props.data, error: props.error ?? props.data.error }}
               onLogoError={props.onLogoError}
               scene={props.scene}
             />

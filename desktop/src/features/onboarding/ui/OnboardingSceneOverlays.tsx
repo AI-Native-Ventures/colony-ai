@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ScoutAvatar } from "./ScoutAvatar";
 import { createPortal } from "react-dom";
 import type { OnboardingSceneId } from "./onboardingScenes";
 import type {
@@ -230,7 +231,7 @@ export function WorkspacePreview({
               A good place to start is one small piece of work.
             </p>
             <div className="greeting-agent">
-              <span className="agent-avatar" />
+              <ScoutAvatar className="agent-avatar scout-rendered" />
               <strong>Scout</strong>
               <span>Your AI teammate</span>
             </div>
@@ -283,14 +284,14 @@ export function ConnectedScene({
 
   return (
     <>
-      <div className="agent-avatar large" />
+      <ScoutAvatar className="agent-avatar large scout-rendered" pose="done" />
       <h2 ref={headingRef} tabIndex={-1}>
         That’s a good start.
       </h2>
       <p className="lede">Your agent is connected and ready to work.</p>
       <div className="reply">
         <div className="reply-header">
-          <span className="agent-avatar" />
+          <ScoutAvatar className="agent-avatar scout-rendered" />
           <strong>Scout</strong>
           <span>
             <Glyph name="check" />
@@ -298,13 +299,17 @@ export function ConnectedScene({
           </span>
         </div>
         <p>
-          Hello {data.name.trim().split(" ")[0] || "Lerato"}, I’m here.
-          <br />
-          What shall we work on first?
+          {data.firstReply ??
+            (data.visualOnly
+              ? `Hello ${data.name.trim().split(" ")[0] || "Lerato"}, I’m here.\nWhat shall we work on first?`
+              : "")}
         </p>
       </div>
       <div className="connection-meta">
-        <span>Claude Code subscription</span>
+        <span>
+          {data.connectionLabel ??
+            (data.visualOnly ? "Claude Code subscription" : data.harnessLabel)}
+        </span>
         <span>
           <i className="status-dot" />
           Connection verified

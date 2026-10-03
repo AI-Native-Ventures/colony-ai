@@ -1,8 +1,12 @@
+import type { ScoutGuidance } from "./scoutGuidance";
 import type * as React from "react";
 import type { OnboardingSceneId } from "./onboardingScenes";
 import type { CreditsSnapshot } from "./creditsOnboardingApi";
 
 export type OnboardingSceneData = {
+  scoutGuidance?: ScoutGuidance;
+  firstReply?: string;
+  connectionLabel?: string;
   name: string;
   email: string;
   business: string;
