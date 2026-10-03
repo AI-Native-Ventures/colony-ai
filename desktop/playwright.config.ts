@@ -99,6 +99,7 @@ export default defineConfig({
         "**/smoke.spec.ts",
         "**/shell-design.spec.ts",
         "**/account-auth.spec.ts",
+        "**/colony-public-icons.spec.ts",
         "**/openrouter-oauth.spec.ts",
         "**/self-serve-community-onboarding.spec.ts",
         "**/business-website.spec.ts",
@@ -297,6 +298,7 @@ export default defineConfig({
       name: "integration",
       testMatch: [
         "**/account-auth.spec.ts",
+        "**/colony-public-icons.spec.ts",
         "**/onboarding-agent-defaults.spec.ts",
         "**/deep-link-invite.spec.ts",
         "**/first-reply-runtime.spec.ts",
