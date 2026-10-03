@@ -3,7 +3,8 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useAppShell } from "@/app/AppShellContext";
 import { cn } from "@/shared/lib/cn";
 
-function NavigationHistoryControls() {
+/** History controls shared by single-row workspace page headers. */
+export function NavigationHistoryControls() {
   const { navigationHistory } = useAppShell();
 
   return (

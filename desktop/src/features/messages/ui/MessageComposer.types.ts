@@ -109,6 +109,8 @@ export type MessageComposerProps = {
     body: string;
     id: string;
   } | null;
+  /** Hide goal tools in the first-run Welcome conversation. */
+  showGoalReference?: boolean;
   showTopBorder?: boolean;
   /** Render the app-wide upload queue above this composer dock. */
   showBackgroundUploadProgress?: boolean;
