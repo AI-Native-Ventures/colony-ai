@@ -71,6 +71,8 @@ export function onboardingSceneStage(scene: OnboardingSceneId): 0 | 1 | 2 {
       "testing",
       "connected",
       "connection-error",
+      "community-entry",
+      "community-entry-error",
       "funding",
       "api-error",
       "api-key",

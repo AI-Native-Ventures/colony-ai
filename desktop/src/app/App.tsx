@@ -322,11 +322,13 @@ function CommunityApp({
   continueOnboarding,
   currentPubkey,
   onBackToMachineConfig,
+  onIdentityRecovered,
   sharedIdentity,
 }: {
   continueOnboarding: boolean;
   currentPubkey: string | null;
   onBackToMachineConfig: () => void;
+  onIdentityRecovered: (pubkey: string) => void;
   sharedIdentity: boolean;
 }) {
   const {
@@ -629,6 +631,7 @@ function CommunityApp({
           }
         >
           <CommunityOnboardingFlow
+            onIdentityRecovered={onIdentityRecovered}
             onChangeCommunity={() => setIsCommunityChangeOpen(true)}
             onConnect={handleCommunityOnboardingConnect}
             onRetryConnect={reconnectCommunity}
@@ -739,6 +742,7 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
         continueOnboarding={continueOnboarding}
         currentPubkey={machine.currentPubkey}
         onBackToMachineConfig={reopenMachineConfig}
+        onIdentityRecovered={machine.complete}
         sharedIdentity={sharedIdentity}
       />
     );

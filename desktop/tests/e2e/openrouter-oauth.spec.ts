@@ -144,6 +144,13 @@ for (const viewport of [
           .getByRole("button", { name: "Connect OpenRouter", exact: true })
           .click();
       }
+      await expect(
+        page.getByTestId(`onboarding-scene-openrouter-${state}`),
+      ).toBeVisible();
+      if (state === "error" || state === "limit")
+        await expect(
+          page.getByText("Needs your attention", { exact: true }),
+        ).toBeVisible();
       const panel = page.getByTestId("openrouter-connection");
       await expect(panel).toHaveAttribute("aria-busy", "false");
       await expect(panel.locator('input[type="password"]')).toHaveCount(0);
@@ -152,6 +159,9 @@ for (const viewport of [
           panel.getByText("Connected", { exact: true }),
         ).toBeVisible();
         await expect(panel.getByText("$0.00", { exact: true })).toBeVisible();
+        await expect(
+          panel.getByRole("button", { name: "Use this model", exact: true }),
+        ).toHaveCount(0);
         await expect(panel.getByLabel("Model", { exact: true })).toHaveValue(
           "fixture/free:free",
         );
@@ -341,4 +351,47 @@ test("model selection keeps focus and saves only on explicit confirmation", asyn
     .click();
   await expect(panel).toHaveAttribute("aria-busy", "false");
   expect(await model()).toBe("fixture/free-two:free");
+});
+
+test("OpenRouter refresh failure updates Scout and clears connection readiness", async ({
+  page,
+}) => {
+  await openRouterTab(page);
+  await page
+    .getByRole("button", { name: "Connect OpenRouter", exact: true })
+    .click();
+  await expect(
+    page.getByTestId("onboarding-scene-openrouter-connected"),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const internals = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke: (command: string, args?: unknown) => Promise<unknown>;
+        };
+      }
+    ).__TAURI_INTERNALS__;
+    const invoke = internals.invoke.bind(internals);
+    internals.invoke = (command, args) =>
+      command === "get_openrouter_connection"
+        ? Promise.reject(new Error("fixture metadata unavailable"))
+        : invoke(command, args);
+  });
+  await page
+    .getByTestId("openrouter-connection")
+    .getByRole("button", { name: "Refresh connection", exact: true })
+    .click();
+  await expect(
+    page.getByTestId("onboarding-scene-openrouter-error"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Needs your attention", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("openrouter-connection").getByRole("alert"),
+  ).toContainText("Could not refresh OpenRouter");
+  await expect(
+    page.getByRole("button", { name: "Connect", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
 });

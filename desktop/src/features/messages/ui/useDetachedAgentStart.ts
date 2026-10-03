@@ -15,7 +15,7 @@ import { getErrorMessage } from "./useMentionSendFlow.helpers";
  * Awaiting the start used to make a duplicate unreachable: `isPending` was a
  * hard early return in the composer's send handler, so no second send could
  * begin, and by the time it lifted the mutation's `onSuccess` had written the
- * `running`/`deployed` record into the query cache. Detaching removes both . 
+ * `running`/`deployed` record into the query cache. Detaching removes both .
  * for the whole in-flight window the cache still reads `stopped`, so a second
  * send re-fires. Module-level rather than a ref because the overlaps worth
  * collapsing include cross-composer ones (channel composer, thread panel,
@@ -83,7 +83,7 @@ function warnAgentMayNotRespond(agentName: string, detail: string): void {
  * Fire-and-forget managed-agent start for the publish-first mention send,
  * bound to the tenant scope that was active when the send fired.
  *
- * Detaching the start means the call outlives the send, the channel, and . 
+ * Detaching the start means the call outlives the send, the channel, and .
  * since a community switch only remounts the React subtree .  the community
  * itself. `start_managed_agent` resolves the workspace relay and the signing
  * identity at *execution* time, so an unscoped detached start can spawn or

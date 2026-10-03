@@ -362,7 +362,7 @@ test("R17 Bring your own key saves a tested OpenRouter provider default", async 
   await expect(
     page.getByText("AI connected and saved as your default."),
   ).toBeVisible();
-  await expect(page.locator(".harness-state")).toHaveText("Configured");
+  await expect(page.locator(".harness-state")).toHaveText("Included");
   await expect(
     page.getByText("AI employees will not reply", { exact: false }),
   ).toHaveCount(0);

@@ -70,7 +70,7 @@ test("business and client scope ids persist through onboarding", () => {
   assert.equal(transaction.clientChannelId, "client-channel-9");
 });
 
-test("same-relay ingress resumes rather than replacing progress", () => {
+test("same-relay invite retries its claim while preserving the community", () => {
   const storage = createMemoryStorage();
   const first = startCommunityOnboarding(
     { source: "add-community", relayUrl: "wss://relay.example" },
@@ -93,7 +93,7 @@ test("same-relay ingress resumes rather than replacing progress", () => {
     new Date("2026-07-16T00:02:00Z"),
   );
   assert.equal(resumed.id, progressed.id);
-  assert.equal(resumed.stage, "profile");
+  assert.equal(resumed.stage, "claiming");
   assert.equal(resumed.communityId, "community-id");
   assert.equal(resumed.inviteCode, "new-code");
 });

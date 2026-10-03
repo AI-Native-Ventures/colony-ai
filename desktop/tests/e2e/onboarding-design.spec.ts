@@ -146,6 +146,9 @@ for (const viewport of [
         },
       },
     });
+    await expect(
+      page.getByTestId("onboarding-connect-runtime-claude"),
+    ).toContainText("Usage unavailable");
     await waitForAnimations(page);
     await page.screenshot({
       path: `${SHOT_DIR}/runtime-connect-ready-${viewport.width}.png`,
@@ -218,9 +221,46 @@ for (const viewport of [
       page.getByRole("button", { name: "Check key", exact: true }),
     ).toBeDisabled();
     await expect(page.getByLabel("Model", { exact: true })).toHaveCount(0);
+    await expect(page.locator(".harness-state")).toHaveText("Included");
+    await expect(page.locator(".harness-picker-copy strong")).toHaveText(
+      "Colony Agent",
+    );
     await waitForAnimations(page);
     await page.screenshot({
       path: `${SHOT_DIR}/runtime-byok-${viewport.width}.png`,
+    });
+  });
+}
+
+for (const viewport of [
+  { width: 1728, height: 1117 },
+  { width: 1440, height: 900 },
+]) {
+  test(`reply failure keeps a focused recovery scene at ${viewport.width}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await openR17ConnectionSetup(page, {
+      runtimes: [r17Runtime("claude", "available", { status: "logged_in" })],
+      mock: {
+        onboardingConnectionResult: {
+          error: "Provider rejected authentication. Sign in again.",
+        },
+      },
+    });
+    await page.getByRole("button", { name: /^Connect with / }).click();
+    await expect(
+      page.getByTestId("onboarding-scene-connection-error"),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole("main")
+        .getByRole("heading", { name: "No reply just yet.", exact: true }),
+    ).toBeFocused();
+    await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `${SHOT_DIR}/runtime-connection-error-${viewport.width}.png`,
     });
   });
 }

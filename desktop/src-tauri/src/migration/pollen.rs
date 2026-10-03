@@ -237,9 +237,11 @@ fn stock_version_updates(now: &str) -> std::collections::HashMap<String, (String
         crate::managed_agents::built_in_persona_definition("builtin:fizz", now)
     {
         let current_fizz = persona_version(&legacy_fizz);
-        legacy_fizz
-            .name_pool
-            .insert(4, crate::managed_agents::POLLEN_DISPLAY_NAME.to_string());
+        let legacy_slot = legacy_fizz.name_pool.len().min(4);
+        legacy_fizz.name_pool.insert(
+            legacy_slot,
+            crate::managed_agents::POLLEN_DISPLAY_NAME.to_string(),
+        );
         updates.insert(
             "builtin:fizz".to_string(),
             (persona_version(&legacy_fizz), current_fizz),
@@ -821,9 +823,11 @@ mod tests {
         let path = dir.path().join("agents/managed-agents.json");
         let mut legacy_fizz =
             crate::managed_agents::built_in_persona_definition("builtin:fizz", "before").unwrap();
-        legacy_fizz
-            .name_pool
-            .insert(4, crate::managed_agents::POLLEN_DISPLAY_NAME.to_string());
+        let legacy_slot = legacy_fizz.name_pool.len().min(4);
+        legacy_fizz.name_pool.insert(
+            legacy_slot,
+            crate::managed_agents::POLLEN_DISPLAY_NAME.to_string(),
+        );
         let old_version = crate::managed_agents::persona_events::persona_content_hash(
             &crate::managed_agents::persona_events::persona_event_content(&legacy_fizz),
         );

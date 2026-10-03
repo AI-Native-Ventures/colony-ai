@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 
 import {
   activateWelcomeTeamPersonasSequentially,
@@ -497,4 +498,21 @@ test("changing a running lead stops it before updating so kickoff can launch the
     ["update", "claude-code-acp"],
   ]);
   assert.equal(result.status, "stopped");
+});
+
+test("native Scout seed uses the exact approved SVG in the safe inline catalog format", () => {
+  const nativeAvatar = readFileSync(
+    new URL(
+      "../../../src-tauri/src/managed_agents/scout_avatar.txt",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const svg = readFileSync(
+    new URL("./assets/scout.svg", import.meta.url),
+    "utf8",
+  );
+  assert.equal(nativeAvatar, `data:image/svg+xml,${encodeURIComponent(svg)}`);
+  assert.ok(nativeAvatar.startsWith("data:image/svg+xml,"));
+  assert.ok(Buffer.byteLength(nativeAvatar) <= 8192);
 });

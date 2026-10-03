@@ -29,10 +29,12 @@ export function CommunityOnboardingFlow({
   onConnect,
   onRetryConnect,
   onChangeCommunity,
+  onIdentityRecovered,
 }: {
   onConnect: () => void;
   onRetryConnect?: () => void;
   onChangeCommunity: () => void;
+  onIdentityRecovered: (pubkey: string) => void;
 }) {
   const { transaction, update, clear } = useCommunityOnboarding();
   const queryClient = useQueryClient();
@@ -203,6 +205,7 @@ export function CommunityOnboardingFlow({
               onRetry={retry}
               onImportKey={async (nsec) => {
                 const identity = await importIdentity(nsec);
+                onIdentityRecovered(identity.pubkey);
                 setPubkey(identity.pubkey);
                 relayClient.disconnect();
                 queryClient.setQueryData(["identity"], identity);

@@ -126,3 +126,14 @@ test("verification retains the frozen account/business/connect progress strip", 
   assert.match(html, />Business</);
   assert.match(html, />Connect</);
 });
+
+test("community entry and recovery retain the Connect step", () => {
+  for (const scene of ["community-entry", "community-entry-error"]) {
+    const html = renderToStaticMarkup(
+      React.createElement(OnboardingScenePresentation, { scene, data }),
+    );
+    assert.match(html, /aria-current="step"[^>]*>[\s\S]*?Connect<\/li>/);
+    assert.doesNotMatch(html, /aria-current="step"[^>]*>[\s\S]*?Account<\/li>/);
+    assert.match(html, /wide power-content/);
+  }
+});

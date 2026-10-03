@@ -1,9 +1,12 @@
+import { hexToBytes } from "@noble/hashes/utils.js";
+import { nsecEncode } from "nostr-tools/nip19";
+import { waitForAnimations } from "../helpers/animations";
 import { expect, test } from "@playwright/test";
 import {
   startR17AccountAuth,
   completeR17BusinessSetup,
 } from "../helpers/onboarding";
-import { installMockBridge } from "../helpers/bridge";
+import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 const pubkey = "deadbeef".repeat(8);
 async function openEntry(
@@ -176,5 +179,98 @@ test("signup name reaches the kind:0 profile through the rendered first-run path
       localStorage.getItem("colony-signup-name.v1:signup@example.com"),
     ),
   ).toBe("Lerato Molefe");
+  await expect(page.getByTestId("onboarding-display-name")).toHaveCount(0);
+});
+
+test("community membership recovery imports another identity and resumes entry", async ({
+  page,
+}) => {
+  await openEntry(page, {
+    profileUpdateError: "restricted: not a relay member",
+  });
+  await expect(page.getByTestId("membership-denied")).toBeVisible();
+  await page.getByTestId("membership-denied-change-key").click();
+  await page
+    .getByTestId("membership-denied-nsec-input")
+    .fill(nsecEncode(hexToBytes(TEST_IDENTITIES.alice.privateKey)));
+  await page.getByTestId("membership-denied-import-key").click();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  expect(
+    await page.evaluate(() => window.__BUZZ_E2E_COMMANDS__ ?? []),
+  ).toContain("import_identity");
+  await expect(page.getByTestId("onboarding-display-name")).toHaveCount(0);
+});
+
+for (const viewport of [
+  { width: 1728, height: 1117 },
+  { width: 1440, height: 900 },
+]) {
+  test(`community setup recovery preserves the business at ${viewport.width}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await openEntry(page, {
+      createChannelErrors: ["Welcome could not be saved."],
+    });
+    await expect(
+      page.getByRole("heading", { name: "Your Colony isn’t ready yet." }),
+    ).toBeFocused();
+    await expect(
+      page
+        .getByRole("list", { name: "Setup progress" })
+        .locator('[aria-current="step"]'),
+    ).toHaveText("3Connect");
+    await expect(page.getByRole("button", { name: "Cancel test" })).toHaveCount(
+      0,
+    );
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `${process.env.COLONY_ONBOARDING_PROOF_DIR ?? "test-results/onboarding-design"}/runtime-community-error-${viewport.width}.png`,
+    });
+  });
+}
+
+test("community membership recovery claims a replacement invite and retains retry on failure", async ({
+  page,
+}) => {
+  await openEntry(page, {
+    profileUpdateError: "restricted: not a relay member",
+  });
+  await expect(page.getByTestId("membership-denied")).toBeVisible();
+  await page.route("https://recovery.example/api/join-policy", (route) =>
+    route.fulfill({ status: 404, body: "" }),
+  );
+  let claims = 0;
+  await page.route("https://recovery.example/api/invites/claim", (route) => {
+    claims++;
+    return route.fulfill({ status: 400, json: { error: "invite_expired" } });
+  });
+  await page.getByTestId("membership-denied-redeem-invite").click();
+  await page
+    .getByTestId("invite-redeem-input")
+    .fill("https://recovery.example/invite/fixture-code");
+  await page.getByTestId("invite-redeem-submit").click();
+  await expect(page.getByRole("alert")).toContainText(
+    "This invite code has expired. Ask for a new one.",
+  );
+  expect(claims).toBe(1);
+  expect(
+    await page.evaluate(() =>
+      JSON.parse(
+        localStorage.getItem("buzz-community-onboarding-transaction.v1") ??
+          "null",
+      ),
+    ),
+  ).toMatchObject({
+    source: "membership-recovery",
+    stage: "claiming",
+    relayUrl: "wss://recovery.example",
+    inviteCode: "fixture-code",
+  });
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect.poll(() => claims).toBe(2);
+  await expect(
+    page.getByRole("button", { name: "Change community", exact: true }),
+  ).toBeVisible();
   await expect(page.getByTestId("onboarding-display-name")).toHaveCount(0);
 });

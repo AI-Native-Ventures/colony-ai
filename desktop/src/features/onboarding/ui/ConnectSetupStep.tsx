@@ -38,6 +38,7 @@ import {
   type OnboardingSceneData,
 } from "./OnboardingScenePresentation";
 import type { OnboardingSceneId } from "./onboardingScenes";
+import { scoutGuidance } from "./scoutGuidance";
 import {
   getVisibleOnboardingRuntimes,
   runtimeIsReadyForOnboarding,
@@ -172,7 +173,7 @@ function RuntimeOption({
       runtime.id === "buzz-agent"
         ? "Configured on this computer"
         : runtime.authStatus.status === "logged_in"
-          ? "Signed in on this computer"
+          ? "Installed"
           : "Configured on this computer";
   else if (
     runtime.availability === "available" &&
@@ -207,6 +208,12 @@ function RuntimeOption({
         </span>
         <span className="provider-account">{status}</span>
       </button>
+      {ready && (runtime.id === "claude" || runtime.id === "codex") ? (
+        <p className="usage-unavailable">
+          Usage unavailable
+          <span>Your allowance may still be available.</span>
+        </p>
+      ) : null}
       <div className="runtime-actions">
         {ready ? (
           <span className="provider-status is-connected">
@@ -521,6 +528,8 @@ export function ConnectSetupStep({
   const bundled = runtimes.data?.find((runtime) => runtime.id === "buzz-agent");
   const [byokChecked, setByokChecked] = React.useState(false);
   const [openRouterReady, setOpenRouterReady] = React.useState(false);
+  const [openRouterScene, setOpenRouterScene] =
+    React.useState<OnboardingSceneId>("openrouter-unlinked");
   const keyScene =
     connectionScene === "api-key" || connectionScene === "openrouter-unlinked";
   const candidateRuntime = keyScene ? bundled : selectedRuntime;
@@ -653,6 +662,9 @@ export function ConnectSetupStep({
             <OpenRouterConnectionPanel
               onboarding
               onReadyChange={setOpenRouterReady}
+              onStateChange={(state) =>
+                setOpenRouterScene(`openrouter-${state}`)
+              }
             />
           ) : connectionScene === "api-key" ? (
             <AiKeyConnectionPanel
@@ -695,31 +707,26 @@ export function ConnectSetupStep({
           ) : null}
         </>
       }
-      data={
-        keyScene
+      data={{
+        ...data,
+        ...(connectionScene === "credits-price-error"
+          ? { scoutGuidance: scoutGuidance("connect") }
+          : {}),
+        ...(keyScene
           ? {
-              ...data,
-              harnessLabel: "Colony AI",
-              harnessStatus: bundled
-                ? getRuntimeHeaderStatus(
-                    bundled,
-                    globalConfig,
-                    gitBashPrerequisite,
-                  )
-                : "No AI connected yet",
+              harnessLabel: "Colony Agent",
+              harnessStatus: bundled ? "Included" : "Unavailable",
             }
-          : data
-      }
-      harnessMark={
-        keyScene && bundled ? (
-          <RuntimeIcon className="harness-mark-runtime" runtime={bundled} />
-        ) : (
-          harnessHeader.mark
-        )
-      }
+          : {}),
+      }}
+      harnessMark={keyScene ? undefined : harnessHeader.mark}
       onNavigate={onBack}
       onSelectConnection={onSelectConnection}
-      scene={connectionScene}
+      scene={
+        connectionScene === "openrouter-unlinked"
+          ? openRouterScene
+          : connectionScene
+      }
     />
   );
 }

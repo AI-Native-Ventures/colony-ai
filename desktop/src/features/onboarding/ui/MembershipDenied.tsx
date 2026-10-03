@@ -13,7 +13,7 @@ import { InviteRedeemForm } from "./InviteRedeemForm";
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
 
 type MembershipDeniedProps = {
-  /** The relay that denied membership , used as the target for bare-code invites. */
+  /** The relay that denied membership, used as the target for bare-code invites. */
   activeRelayUrl: string;
   embedded?: boolean;
   onBack: () => void;
@@ -159,7 +159,7 @@ export function MembershipDenied({
             </div>
           </div>
           <p className="text-xs leading-5 text-muted-foreground">
-            This is your public identity , it&apos;s safe to share. Send it to
+            This is your public identity. It&apos;s safe to share. Send it to
             the relay admin so they can invite you.
           </p>
         </div>
