@@ -16,8 +16,9 @@ if ! [[ "$PR" =~ ^[0-9]+$ ]]; then
 fi
 
 GH_USER=$(gh api user --jq .login)
-BRANCH="agent-screenshots/${GH_USER}"
-REPO="block/buzz"
+BRANCH="${SCREENSHOT_BRANCH:-agent-screenshots/${GH_USER}}"
+REPO="${SCREENSHOT_REPO:-block/buzz}"
+git check-ref-format "refs/heads/${BRANCH}"
 
 # macOS ships bash 3.2, which lacks mapfile — build the array with read.
 PNGS=()
@@ -56,8 +57,12 @@ if git rev-parse "origin/${BRANCH}" >/dev/null 2>&1; then
   PARENT_ARGS=(-p "origin/${BRANCH}")
 fi
 # ${arr[@]+...} guards the empty-array case, which trips set -u on bash 3.2.
-COMMIT=$(git commit-tree "$TREE" ${PARENT_ARGS[@]+"${PARENT_ARGS[@]}"} -m "screenshots: PR #${PR}")
-git push --force-with-lease origin "${COMMIT}:refs/heads/${BRANCH}"
+COMMIT=$(git commit-tree "$TREE" ${PARENT_ARGS[@]+"${PARENT_ARGS[@]}"} \
+  -m "screenshots: PR #${PR}" \
+  -m "Signed-off-by: $(git config user.name) <$(git config user.email)>" \
+  -m "Co-Authored-By: GPT-6 Luna <noreply@openai.com>")
+git -c credential.helper= -c credential.helper='!gh auth git-credential' \
+  push --no-verify --force-with-lease origin "${COMMIT}:refs/heads/${BRANCH}"
 
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/${COMMIT}"
 

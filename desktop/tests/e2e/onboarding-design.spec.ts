@@ -37,6 +37,10 @@ for (const viewport of [
     await expect(
       page.locator('img[src*="starter-team"],img[src*="buzz-wordmark"]'),
     ).toHaveCount(0);
+    await expect(page.locator(".scout-ant svg").first()).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Create account", exact: true }),
+    ).toHaveCSS("line-height", "normal");
     await waitForAnimations(page);
     await page.screenshot({
       path: `${SHOT_DIR}/runtime-account-${viewport.width}.png`,
@@ -70,3 +74,20 @@ for (const viewport of [
     });
   });
 }
+
+test("Scout retains the frozen pose without animation in reduced motion", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await installMockBridge(
+    page,
+    { accountLinked: true },
+    { skipCommunitySeed: true, skipOnboardingSeed: true },
+  );
+  await page.goto("/");
+  const body = page.locator(".scout-ant svg .body").first();
+  await expect(body).toHaveAttribute("transform", /translate/);
+  const pose = await body.getAttribute("transform");
+  await page.waitForTimeout(120);
+  expect(await body.getAttribute("transform")).toBe(pose);
+});

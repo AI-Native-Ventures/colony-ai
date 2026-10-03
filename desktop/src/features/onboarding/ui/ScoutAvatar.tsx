@@ -1,5 +1,6 @@
 import * as React from "react";
 import type { ScoutPose } from "./scoutGuidance";
+import { rig, act } from "../assets/scoutRig.js";
 
 /** Eyeless Scout rig from the frozen onboarding r4 ant.js, with scoped SVG IDs. */
 export function ScoutAvatar({
@@ -9,6 +10,52 @@ export function ScoutAvatar({
   pose?: ScoutPose;
   className?: string;
 }) {
+  const hostRef = React.useRef<HTMLSpanElement>(null);
+  React.useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const avatar = rig(host);
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let visible = true;
+    let frame: number | null = null;
+    const entered = performance.now() / 1000;
+    const draw = (time: number) => {
+      frame = null;
+      if (document.hidden || !visible || reduced.matches) return;
+      act(
+        avatar,
+        time / 1000,
+        pose,
+        time / 1000 - entered,
+        { x: 0.28, y: 0 },
+        1,
+      );
+      frame = window.requestAnimationFrame(draw);
+    };
+    const sync = () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      frame = null;
+      if (reduced.matches || document.hidden || !visible) {
+        act(avatar, 0, pose, 10, { x: 0.28, y: 0 }, 0);
+      } else {
+        frame = window.requestAnimationFrame(draw);
+      }
+    };
+    const observer = new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting;
+      sync();
+    });
+    observer.observe(host);
+    reduced.addEventListener("change", sync);
+    document.addEventListener("visibilitychange", sync);
+    sync();
+    return () => {
+      observer.disconnect();
+      reduced.removeEventListener("change", sync);
+      document.removeEventListener("visibilitychange", sync);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [pose]);
   const id = React.useId();
   const head = `${id}-head`;
   const stem = `${id}-stem`;
@@ -17,6 +64,7 @@ export function ScoutAvatar({
       aria-hidden="true"
       className={`scout-ant ${className}`}
       data-pose={pose}
+      ref={hostRef}
     >
       <svg aria-hidden="true" viewBox="-120 -145 240 235">
         <defs>

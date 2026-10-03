@@ -234,6 +234,8 @@ export async function buildWelcomeStarterCreateInput(
       ? {
           systemPrompt: persona.systemPrompt
             ?.replace(/\bFizz\b/g, "Scout")
+            .replace(/\bBuzz\b/g, "Colony")
+            .replace(/\u2014/g, ",")
             .replace(/Add occasional bee wordplay[^.]*\./gu, "")
             .trim(),
         }

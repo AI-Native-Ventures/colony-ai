@@ -147,7 +147,11 @@ function SceneBody(props: PresentationProps) {
             Waiting for a reply
           </li>
         </ol>
-        <button className="secondary full" type="button">
+        <button
+          className="secondary full"
+          onClick={props.onCancelTest}
+          type="button"
+        >
           Cancel test
         </button>
       </>
@@ -195,7 +199,10 @@ function SceneBody(props: PresentationProps) {
 }
 
 export function OnboardingScenePresentation(props: PresentationProps) {
-  const [focusTopic, setFocusTopic] = React.useState<string>();
+  const [focusTopic, setFocusTopic] = React.useState<{
+    scene: string;
+    id: string;
+  }>();
   const workspaceScene =
     props.scene === "workspace" ||
     props.scene === "history" ||
@@ -256,12 +263,17 @@ export function OnboardingScenePresentation(props: PresentationProps) {
               data={{ ...props.data, error: props.error ?? props.data.error }}
               onLogoError={props.onLogoError}
               scene={props.scene}
-              focusTopic={focusTopic}
+              focusTopic={
+                focusTopic?.scene === props.scene ? focusTopic.id : undefined
+              }
             />
             <div
               className="form-side"
               onFocusCapture={(event) =>
-                setFocusTopic((event.target as HTMLElement).id)
+                setFocusTopic({
+                  scene: props.scene,
+                  id: (event.target as HTMLElement).id,
+                })
               }
             >
               <div className="account-switch">{switchText}</div>

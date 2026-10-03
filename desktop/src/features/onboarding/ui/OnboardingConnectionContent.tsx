@@ -361,7 +361,8 @@ function SubscriptionState({
   }
   if (
     visualReady &&
-    (scene === "connect" || scene.startsWith("subscription-"))
+    scene.startsWith("subscription-") &&
+    scene !== "subscription-scan"
   ) {
     return <ReadySubscriptionPreview scene={scene} />;
   }

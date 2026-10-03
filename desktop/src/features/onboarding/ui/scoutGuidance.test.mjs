@@ -60,3 +60,42 @@ test("guidance follows actual scene and supplied runtime state", () => {
   };
   assert.deepEqual(scoutGuidance("business", null, state), state);
 });
+
+test("frozen feedback and focused field copy remain distinct", () => {
+  assert.equal(scoutGuidance("verify-verifying").status, "Your turn");
+  assert.equal(scoutGuidance("verify-error").title, "Check your email.");
+  assert.equal(scoutGuidance("reset-error").title, "Let’s get you back in.");
+  assert.equal(scoutGuidance("subscription-error").status, "Your turn");
+  for (const scene of [
+    "credits-failed",
+    "openrouter-limit",
+    "subscription-exhausted",
+  ])
+    assert.equal(scoutGuidance(scene).status, "Needs your attention");
+  assert.equal(
+    scoutGuidance("account", null, undefined, "full-name").title,
+    "What should I call you?",
+  );
+  assert.equal(
+    scoutGuidance("connect", null, undefined, undefined, true).status,
+    "Working",
+  );
+});
+
+test("frozen reset and discovery controls render the approved state", () => {
+  const render = (scene) =>
+    renderToStaticMarkup(
+      React.createElement(OnboardingScenePresentation, {
+        scene,
+        data: { ...data, visualOnly: true },
+      }),
+    );
+  assert.match(render("forgot"), /Reset your password/);
+  assert.doesNotMatch(render("forgot"), /Forgot your password/);
+  for (const scene of ["connect", "subscription-scan"]) {
+    assert.match(render(scene), /Finding your AI apps/);
+    assert.doesNotMatch(render(scene), /7 hours/);
+  }
+  assert.match(render("verify-verifying"), /Verifying…/);
+  assert.doesNotMatch(render("reset-error"), /aria-label="Setup progress"/);
+});

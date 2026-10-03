@@ -44,7 +44,7 @@ const closerMarker = welcomeKickoffMarker(WELCOME_KICKOFF_CLOSER_MARKER);
 const providerMarker = welcomeKickoffMarker(WELCOME_KICKOFF_PROVIDER_MARKER);
 
 export const WELCOME_KICKOFF_PROVIDER_MESSAGE =
-  "To get started with agents, open Settings > Agents > Defaults to connect your provider key and choose a model. Once you're connected, come back here and we'll introduce the team.";
+  "To get started with Scout, connect your AI in Settings > Agents > Defaults. Then return here to get started.";
 
 const WELCOME_KICKOFF_CTA =
   "What can we help you build? Bring us something you're working on, or give us a quick challenge to see how we work together.";

@@ -470,13 +470,14 @@ test("merging with no subtree replies leaves the channel events untouched", () =
   assert.equal(mergeKickoffEvents(channelEvents, []), channelEvents);
 });
 
-test("Fizz points new users to the working provider defaults path", () => {
+test("Scout points new users to the working AI defaults path", () => {
   assert.match(
     WELCOME_KICKOFF_PROVIDER_MESSAGE,
     /Settings > Agents > Defaults/,
   );
-  assert.match(
-    WELCOME_KICKOFF_PROVIDER_MESSAGE,
-    /provider key and choose a model/,
-  );
+  assert.match(WELCOME_KICKOFF_PROVIDER_MESSAGE, /connect your AI/);
+});
+
+test("welcome recovery does not require an API key in its primary guidance", () => {
+  assert.doesNotMatch(WELCOME_KICKOFF_PROVIDER_MESSAGE, /API key|provider key/);
 });

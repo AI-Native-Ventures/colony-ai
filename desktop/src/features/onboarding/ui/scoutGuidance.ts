@@ -14,6 +14,7 @@ export function scoutGuidance(
   error?: string | null,
   override?: ScoutGuidance,
   focusTopic?: string,
+  connectionChecking = false,
 ): ScoutGuidance {
   if (override) return override;
   let guidance: ScoutGuidance = {
@@ -55,6 +56,10 @@ export function scoutGuidance(
       pose: "waiting",
     };
   const fieldCopy: Record<string, [string, string]> = {
+    "full-name": [
+      "What should I call you?",
+      "Use the name you’d like your team to know.",
+    ],
     "business-name": [
       "What’s your business called?",
       "A working name is enough to get started.",
@@ -69,13 +74,18 @@ export function scoutGuidance(
     ],
   };
   const focused = focusTopic ? fieldCopy[focusTopic] : undefined;
-  if ((scene.includes("business") || scene === "additional") && focused)
+  if (
+    (scene.includes("business") ||
+      scene === "additional" ||
+      scene === "account") &&
+    focused
+  )
     guidance = { ...guidance, title: focused[0], copy: focused[1] };
   const working =
     scene === "testing" ||
     scene === "subscription-scan" ||
     scene === "credits-pending" ||
-    scene.endsWith("verifying");
+    connectionChecking;
   if (working)
     guidance = {
       title:
@@ -91,7 +101,23 @@ export function scoutGuidance(
       status: scene === "testing" ? "Checking the connection" : "Working",
       pose: "working",
     };
-  if ((error || scene.endsWith("error")) && !working)
+  const inlineErrorScenes: OnboardingSceneId[] = [
+    "account-error",
+    "business-error",
+    "api-error",
+    "connection-error",
+    "credits-price-error",
+    "credits-failed",
+    "openrouter-error",
+    "openrouter-limit",
+    "subscription-models-error",
+    "subscription-exhausted",
+  ];
+  const codeFeedback = scene.startsWith("verify") || scene.startsWith("reset");
+  if (
+    ((error && !codeFeedback) || inlineErrorScenes.includes(scene)) &&
+    !working
+  )
     guidance = {
       title: "We can sort this out.",
       copy: "Your next step is shown alongside me. You can retry or use another option.",

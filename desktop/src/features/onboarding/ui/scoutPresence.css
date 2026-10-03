@@ -274,22 +274,3 @@
 .colony-onboarding-root .reply p {
   white-space: pre-line;
 }
-.colony-onboarding-root .scout-ant[data-pose="working"] .scout-left-antenna {
-  animation: scout-antenna 1.3s ease-in-out infinite alternate;
-  transform-origin: -25px -35px;
-}
-.colony-onboarding-root .scout-ant[data-pose="working"] .scout-right-antenna {
-  animation: scout-antenna 1.3s 0.35s ease-in-out infinite alternate-reverse;
-  transform-origin: 25px -35px;
-}
-@keyframes scout-antenna {
-  to {
-    transform: rotate(12deg);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .colony-onboarding-root .scout-ant[data-pose="working"] .scout-left-antenna,
-  .colony-onboarding-root .scout-ant[data-pose="working"] .scout-right-antenna {
-    animation: none;
-  }
-}

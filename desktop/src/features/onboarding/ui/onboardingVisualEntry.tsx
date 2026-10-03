@@ -40,7 +40,13 @@ const data: OnboardingSceneData = {
     scene === "additional"
       ? ""
       : "We make small-batch homeware, designed and made in Johannesburg.",
-  harnessLabel: "Claude Code",
+  harnessLabel: scene.startsWith("openrouter")
+    ? "OpenCode"
+    : scene.startsWith("credits") ||
+        scene === "funding" ||
+        scene.startsWith("api-")
+      ? "Colony Agent"
+      : "Claude Code",
   harnessStatus: "Installed",
   visualOnly: true,
 };

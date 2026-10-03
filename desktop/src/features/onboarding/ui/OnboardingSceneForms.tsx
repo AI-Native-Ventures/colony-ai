@@ -79,6 +79,8 @@ export function StoryPanel({
     data.error,
     data.scoutGuidance,
     focusTopic,
+    scene === "connect" &&
+      (data.visualOnly || data.harnessStatus === "Checking"),
   );
   const businessPreview = stage === 1;
   return (
@@ -125,7 +127,7 @@ export function StoryPanel({
           </div>
         ) : null}
       </div>
-      {accessScene(scene) ? (
+      {accessScene(scene) || scene.startsWith("reset") || scene === "verify" ? (
         <div className="story-bottom" aria-hidden="true" />
       ) : (
         <StepProgress scene={scene} />
