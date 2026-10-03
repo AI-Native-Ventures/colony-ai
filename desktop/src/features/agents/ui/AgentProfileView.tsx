@@ -143,8 +143,7 @@ export function AgentProfileView({
   const identity = useIdentityQuery();
   const profileQuery = useUserProfileQuery(agent.pubkey);
   const companyTeamQuery = useCompanyTeamQuery();
-  const { goTeamArchive, goTeamEdit, goTeamMember, goTeamPause } =
-    useAppNavigation();
+  const { goTeamArchive, goTeamEdit, goTeamMember } = useAppNavigation();
   const companyMember = companyTeamQuery.data?.members.find(
     (member) => member.pubkey.toLowerCase() === agent.pubkey.toLowerCase(),
   );
@@ -386,8 +385,8 @@ export function AgentProfileView({
         <Alert className="mx-8 mt-4" data-testid="company-paused-banner">
           <AlertTitle>Paused · {position.reason}</AlertTitle>
           <AlertDescription>
-            Work remains visible with a paused reason. The employee can be
-            resumed later.
+            Existing work and history stay visible. Pausing employees is
+            unavailable.
           </AlertDescription>
         </Alert>
       ) : null}
@@ -482,7 +481,6 @@ export function AgentProfileView({
                     managerName={managerName}
                     onEdit={() => void goTeamEdit(agent.pubkey)}
                     onOpenReport={(pubkey) => void goTeamMember(pubkey)}
-                    onPause={() => void goTeamPause(agent.pubkey)}
                     onTerminate={() => void goTeamArchive(agent.pubkey)}
                     position={position}
                   />

@@ -1,12 +1,11 @@
 import * as React from "react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
-import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
+import { useIdentityQuery } from "@/shared/api/hooks";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
-import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { truncateNpub } from "@/shared/lib/pubkey";
 import { Badge } from "@/shared/ui/badge";
-import { PageHeader } from "@/shared/ui/PageHeader";
+import { TeamPage, TeamPageTitle } from "./TeamPage";
 import { Button } from "@/shared/ui/button";
 import { useCompanyTeamQuery } from "../teamRelay";
 import { buildTeamTreeRows, type TeamMember } from "../teamModels";
@@ -29,16 +28,22 @@ function memberKindLabel(member: TeamMember) {
 }
 
 function memberTitle(member: TeamMember) {
-  return member.position?.head.title.trim() ?? "";
+  return (
+    member.position?.head.title.trim() ||
+    (member.role === "owner" ? "Founder" : "")
+  );
 }
 
 function memberStatus(member: TeamMember) {
-  return member.position?.head.status ?? "active";
+  return (
+    member.position?.head.status ??
+    (member.kind === "human" ? "active" : "unknown")
+  );
 }
 
 function statusLabel(member: TeamMember) {
   const status = memberStatus(member);
-  return status === "terminated" ? "archived" : status;
+  return status;
 }
 
 function TeamTabs({ view }: TeamScreenProps) {
@@ -46,12 +51,12 @@ function TeamTabs({ view }: TeamScreenProps) {
   return (
     <div
       aria-label="Team views"
-      className="flex gap-6 border-b border-border"
+      className="mb-[1.375rem] flex gap-6 border-b border-border"
       role="tablist"
     >
       <button
         aria-selected={view === "everyone"}
-        className={`-mb-px border-b-2 px-0 pb-3 pt-1 text-sm ${view === "everyone" ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+        className={`-mb-px border-b-2 px-0 py-2.5 text-xs ${view === "everyone" ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
         onClick={() => void goTeam()}
         role="tab"
         type="button"
@@ -60,7 +65,7 @@ function TeamTabs({ view }: TeamScreenProps) {
       </button>
       <button
         aria-selected={view === "org"}
-        className={`-mb-px border-b-2 px-0 pb-3 pt-1 text-sm ${view === "org" ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+        className={`-mb-px border-b-2 px-0 py-2.5 text-xs ${view === "org" ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
         onClick={() => void goTeamOrg()}
         role="tab"
         type="button"
@@ -97,35 +102,36 @@ function TeamMemberRow({
   const accessibleName = `${name}, ${title || "No title"}, ${memberKindLabel(member)}, ${statusLabel(member)}${managerDescription}${reasonDescription}`;
   const rowContents = (
     <>
-      <span className="flex min-w-0 items-center gap-3">
-        {tree ? (
+      <span className="flex min-w-0 items-center gap-[0.9375rem]">
+        {tree && depth > 0 ? (
           <span
             aria-hidden="true"
-            className="absolute ml-[-1.5rem] h-9 border-l border-border"
+            className="absolute ml-[-1.5rem] h-full border-l border-border"
           />
         ) : null}
-        <ProfileAvatar
-          avatarUrl={null}
-          className="size-9 rounded-lg text-xs"
-          label={name}
-          shape="squircle"
-        />
+        <span
+          aria-hidden="true"
+          className={`grid size-[2.125rem] shrink-0 place-items-center rounded-[0.625rem] text-2xs font-semibold text-primary ${member.kind === "employee" ? "bg-gradient-to-br from-primary/20 to-colony-info/25" : "bg-accent"}`}
+        >
+          {name
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((part) => part[0])
+            .join("")
+            .toUpperCase()}
+        </span>
         <span className="min-w-0">
-          <span className="block truncate text-sm font-semibold text-foreground">
+          <span className="block truncate text-compact font-semibold text-foreground">
             {name}
           </span>
-          <span className="block truncate text-xs text-muted-foreground">
+          <span className="block truncate text-2xs text-muted-foreground">
             {title ? `${title} · ` : ""}
             {memberKindLabel(member)}
           </span>
-          {status === "paused" && reason ? (
-            <span className="mt-1 block truncate text-xs text-muted-foreground">
-              {reason}
-            </span>
-          ) : null}
         </span>
       </span>
-      <span className="flex shrink-0 items-center gap-5">
+      <span className="flex shrink-0 items-center gap-10">
         {managerName ? (
           <span className="hidden text-xs text-muted-foreground sm:inline">
             Reports to {managerName}
@@ -136,7 +142,7 @@ function TeamMemberRow({
           </span>
         ) : null}
         <Badge
-          className="rounded-md border-0 bg-emerald-50 px-2 py-1 text-2xs font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+          className={`rounded-[0.3125rem] border-0 px-2 py-1 text-badge font-semibold normal-case leading-relaxed tracking-normal ${status === "active" ? "bg-colony-success/10 text-colony-success" : status === "unknown" ? "bg-muted text-muted-foreground" : "bg-accent text-primary"}`}
           variant="secondary"
         >
           {statusLabel(member)}
@@ -145,7 +151,7 @@ function TeamMemberRow({
     </>
   );
   const className =
-    "group relative flex min-h-[4.5rem] w-full items-center justify-between gap-4 border-b border-border px-2 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "group relative flex min-h-[4.5625rem] w-full items-center justify-between gap-4 border-b border-border px-2 py-[1.0625rem] text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   const onClick = () => void goTeamMember(member.pubkey);
   if (tree) {
     return (
@@ -180,7 +186,7 @@ function TeamMemberRow({
 
 export function TeamScreen({ view }: TeamScreenProps) {
   const teamQuery = useCompanyTeamQuery();
-  const membershipQuery = useMyRelayMembershipQuery();
+  const identityQuery = useIdentityQuery();
   const { goHireRoles } = useAppNavigation();
   const treeRef = React.useRef<HTMLDivElement>(null);
   const [focusedTreeMember, setFocusedTreeMember] = React.useState<
@@ -195,9 +201,11 @@ export function TeamScreen({ view }: TeamScreenProps) {
     enabled: memberPubkeys.length > 0,
   });
   const profiles = profilesQuery.data?.profiles ?? {};
-  const canHire =
-    membershipQuery.data?.role === "owner" ||
-    membershipQuery.data?.role === "admin";
+  const role = teamQuery.data?.relayMembers.find(
+    (member) =>
+      member.pubkey.toLowerCase() === identityQuery.data?.pubkey.toLowerCase(),
+  )?.role;
+  const canHire = role === "owner" || role === "admin";
   let treeRows: ReturnType<typeof buildTeamTreeRows> = [];
   let treeError: string | null = null;
   if (view === "org" && members.length > 0) {
@@ -208,31 +216,35 @@ export function TeamScreen({ view }: TeamScreenProps) {
     }
   }
 
-  if (teamQuery.isLoading) {
+  if (
+    teamQuery.isLoading ||
+    teamQuery.isError ||
+    !teamQuery.data?.membershipSnapshotFound
+  ) {
     return (
-      <p
-        aria-live="polite"
-        className="py-12 text-center text-sm text-muted-foreground"
-      >
-        Loading Team
-      </p>
-    );
-  }
-  if (teamQuery.isError) {
-    return (
-      <p className="py-12 text-center text-sm text-destructive" role="alert">
-        Could not load Team: {teamQuery.error.message}
-      </p>
-    );
-  }
-  if (!teamQuery.data?.membershipSnapshotFound) {
-    return (
-      <p
-        className="py-12 text-center text-sm text-muted-foreground"
-        role="status"
-      >
-        Team membership is unavailable for this community.
-      </p>
+      <TeamPage title="Team" testId="company-team-screen">
+        <TeamPageTitle>Team</TeamPageTitle>
+        {teamQuery.isLoading ? (
+          <p aria-live="polite" className="mt-6 text-sm text-muted-foreground">
+            Loading Team
+          </p>
+        ) : teamQuery.isError ? (
+          <div role="alert" className="mt-6">
+            <p className="text-sm">This information could not load</p>
+            <Button
+              className="mt-3"
+              variant="outline"
+              onClick={() => void teamQuery.refetch()}
+            >
+              Try again
+            </Button>
+          </div>
+        ) : (
+          <p role="status" className="mt-6 text-sm text-muted-foreground">
+            Team membership is unavailable for this community.
+          </p>
+        )}
+      </TeamPage>
     );
   }
 
@@ -297,20 +309,19 @@ export function TeamScreen({ view }: TeamScreenProps) {
   };
 
   return (
-    <main
-      className="mx-auto flex w-full max-w-[72rem] flex-col gap-7 px-6 py-10"
-      data-testid="company-team-screen"
-    >
-      <PageHeader
-        action={
-          canHire ? (
-            <Button onClick={() => void goHireRoles()} type="button">
-              Hire employee
-            </Button>
-          ) : undefined
-        }
-        title="Team"
-      />
+    <TeamPage title="Team" testId="company-team-screen">
+      <div className="mb-[1.875rem] mt-2 flex items-center justify-between gap-5">
+        <TeamPageTitle>Team</TeamPageTitle>
+        {canHire ? (
+          <Button
+            className="rounded-[0.4375rem] h-auto min-h-10 bg-colony-info px-[0.9375rem] py-[0.6875rem] text-xs shadow-none"
+            onClick={() => void goHireRoles()}
+            type="button"
+          >
+            Hire employee
+          </Button>
+        ) : null}
+      </div>
       <TeamTabs view={view} />
       {treeError ? (
         <p className="py-8 text-center text-sm text-destructive" role="alert">
@@ -365,10 +376,10 @@ export function TeamScreen({ view }: TeamScreenProps) {
           No team members found.
         </p>
       ) : null}
-      <p className="border-t border-border pt-4 text-xs text-muted-foreground">
+      <p className="mt-[1.5625rem] border-t border-border pt-[0.9375rem] text-2xs text-muted-foreground">
         Humans and employees can report to either kind of teammate. Reporting
         lines do not grant spending or credential authority.
       </p>
-    </main>
+    </TeamPage>
   );
 }

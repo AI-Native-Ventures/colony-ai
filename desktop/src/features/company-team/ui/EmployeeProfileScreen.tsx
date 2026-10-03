@@ -1,6 +1,8 @@
+import { EmployeeRehireReview } from "./EmployeeRehireReview";
+import { isManagedAgentActive } from "@/features/agents/lib/managedAgentControlActions";
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, MessageSquare } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useIsManagedAgent } from "@/features/agent-memory/hooks";
@@ -18,7 +20,6 @@ import { runtimeForAgent } from "@/features/agents/agentDirectoryModel";
 import { AgentConfigPanel } from "@/features/agents/ui/AgentConfigPanel";
 import { AgentInstanceEditDialog } from "@/features/agents/ui/AgentInstanceEditDialog";
 import { ModelPicker } from "@/features/agents/ui/ModelPicker";
-import { useOpenDmMutation } from "@/features/channels/hooks";
 import { fetchSecretBindings } from "@/features/company-secrets/secretBindings";
 import { ToolPermissionList } from "@/features/company-permissions/ui/ToolPermissionScreen";
 import {
@@ -47,7 +48,7 @@ import type {
   UpdatePersonaInput,
 } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
-import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
+import { TeamPage, TeamPageTitle, handleTeamTabKeys } from "./TeamPage";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { Textarea } from "@/shared/ui/textarea";
 import { truncateNpub } from "@/shared/lib/pubkey";
@@ -69,7 +70,6 @@ const TABS: Array<{ id: EmployeeTab; label: string }> = [
   { id: "instructions", label: "Instructions" },
   { id: "model-runtime", label: "Model & runtime" },
   { id: "tools-access", label: "Tools & access" },
-  { id: "activity", label: "Activity" },
   { id: "salary", label: "Salary" },
   { id: "workers", label: "Workers" },
   { id: "duties", label: "Duties" },
@@ -205,7 +205,6 @@ export function EmployeeProfileScreen({
   onBack,
   onEditPosition,
   onOpenMember,
-  onPause,
   onTerminate,
   onEditSalary,
 }: {
@@ -218,14 +217,13 @@ export function EmployeeProfileScreen({
   onBack: () => void;
   onEditPosition: () => void;
   onOpenMember: (pubkey: string) => void;
-  onPause: () => void;
   onTerminate: () => void;
   onEditSalary: () => void;
 }) {
+  const [reviewRehire, setReviewRehire] = React.useState(false);
   const agent = member.managedAgent;
   const identity = useIdentityQuery();
-  const { goChannel, goCompanyWork, goPower } = useAppNavigation();
-  const openDm = useOpenDmMutation();
+  const { goCompanyWork, goPower } = useAppNavigation();
   const personasQuery = usePersonasQuery();
   const runtimesQuery = useAcpRuntimesQuery({ enabled: true });
   const employeePubkey = member.pubkey.toLowerCase();
@@ -271,12 +269,10 @@ export function EmployeeProfileScreen({
         managerPubkey,
       )
     : null;
-  const status = currentPosition?.status ?? "active";
-  const subtitle = [
-    currentPosition?.title || "Employee",
-    "Employee",
-    status,
-  ].join(" · ");
+  const status = currentPosition?.status ?? "unknown";
+  const subtitle = [currentPosition?.title, "Employee", status]
+    .filter(Boolean)
+    .join(" · ");
   const relaySelf = teamData.relaySelf;
   const secretsQuery = useQuery({
     queryKey: ["company-secret-bindings", relaySelf],
@@ -291,8 +287,6 @@ export function EmployeeProfileScreen({
     null,
   );
   const [notice, setNotice] = React.useState<string | null>(null);
-  const [messageError, setMessageError] = React.useState<string | null>(null);
-  const [isOpeningMessage, setIsOpeningMessage] = React.useState(false);
   const [runtimeDialogOpen, setRuntimeDialogOpen] = React.useState(false);
   const [runtimeDialogBefore, setRuntimeDialogBefore] =
     React.useState<EmployeeConfigSnapshot | null>(null);
@@ -606,24 +600,6 @@ export function EmployeeProfileScreen({
     await recordOrQueue(action);
   }
 
-  async function messageEmployee() {
-    if (isOpeningMessage) return;
-    setMessageError(null);
-    setIsOpeningMessage(true);
-    try {
-      const channel = await openDm.mutateAsync({ pubkeys: [employeePubkey] });
-      await goChannel(channel.id);
-    } catch (error) {
-      setMessageError(
-        error instanceof Error
-          ? error.message
-          : "Could not open a message with this employee.",
-      );
-    } finally {
-      setIsOpeningMessage(false);
-    }
-  }
-
   function instructionsContent() {
     if (editInstructions) {
       return (
@@ -631,9 +607,9 @@ export function EmployeeProfileScreen({
           className="max-w-[46rem]"
           data-testid="employee-instructions-editor"
         >
-          <h1 className="mb-9 text-2xl font-semibold tracking-tight">
-            Edit instructions
-          </h1>
+          <div className="mb-9 mt-2">
+            <TeamPageTitle>Edit instructions</TeamPageTitle>
+          </div>
           <form
             className="space-y-0"
             onSubmit={(event) => void saveInstructions(event)}
@@ -719,13 +695,25 @@ export function EmployeeProfileScreen({
     );
   }
 
-  if (!agent) {
-    const positionStatus = currentPosition?.status ?? "active";
+  if (reviewRehire && currentPosition && member.position && canManage) {
     return (
-      <main
-        className="mx-auto w-full max-w-[72rem] px-6 py-8 xl:px-0"
-        data-testid="company-position-unlinked"
-      >
+      <EmployeeRehireReview
+        position={currentPosition}
+        headEventId={member.position.event.id}
+        managerName={managerName}
+        fullName={fullName}
+        onBack={() => setReviewRehire(false)}
+      />
+    );
+  }
+
+  if (!agent) {
+    const positionStatus = currentPosition?.status ?? "unknown";
+    return (
+      <TeamPage title={fullName} testId="company-position-unlinked">
+        <Button variant="ghost" onClick={onBack}>
+          <ChevronLeft aria-hidden="true" className="size-3.5" /> Back
+        </Button>
         <div className="mb-8 text-xs text-muted-foreground">
           Company position
         </div>
@@ -763,7 +751,7 @@ export function EmployeeProfileScreen({
               <div className="grid grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)] gap-4 py-3">
                 <dt className="text-muted-foreground">Reports to</dt>
                 <dd className="min-w-0 break-words">
-                  {managerName ?? "Company owner"}
+                  {managerName ?? "Reporting line not set"}
                 </dd>
               </div>
               <div className="grid grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)] gap-4 py-3">
@@ -793,6 +781,26 @@ export function EmployeeProfileScreen({
           </section>
           <aside className="rounded-lg border border-border p-6">
             <h2 className="text-base font-semibold">Runtime not linked here</h2>
+            {canManage ? (
+              <div className="mt-3 space-y-3">
+                <Button variant="outline" onClick={onEditPosition}>
+                  Edit role and reporting
+                </Button>
+                {currentPosition && positionStatus !== "terminated" ? (
+                  <Button variant="ghost" onClick={onTerminate}>
+                    Terminate employee
+                  </Button>
+                ) : null}
+                {positionStatus === "terminated" && currentPosition ? (
+                  <Button
+                    className="mt-3 h-11 rounded-company-control bg-colony-info text-xs shadow-none"
+                    onClick={() => setReviewRehire(true)}
+                  >
+                    Review rehire
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
             <div className="mt-5 rounded-lg border-l-2 border-primary bg-muted/40 px-4 py-4">
               <p className="text-sm font-medium">
                 This is not a deleted employee
@@ -816,96 +824,47 @@ export function EmployeeProfileScreen({
             </div>
           </aside>
         </div>
-      </main>
+      </TeamPage>
     );
   }
 
   if (editInstructions) {
     return (
-      <main
-        className="mx-auto w-full max-w-[72rem] px-6 py-8 xl:px-0"
-        data-testid="company-employee-profile"
-      >
-        <div className="mb-8 text-xs text-muted-foreground">
-          Company / Edit instructions
-        </div>
+      <TeamPage title="Edit instructions" testId="company-employee-profile">
         <button
-          className="mb-6 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          className="mb-4 inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground"
           onClick={cancelInstructionEdit}
           type="button"
         >
-          <ArrowLeft aria-hidden="true" className="size-3.5" /> Back
+          <ChevronLeft aria-hidden="true" className="size-3.5" /> Back
         </button>
         {instructionsContent()}
-      </main>
+      </TeamPage>
     );
   }
 
   const historyNeedsSync = pendingRevisions.length > 0;
 
   return (
-    <main
-      className="mx-auto w-full max-w-[72rem] px-6 py-8 xl:px-0"
-      data-testid="company-employee-profile"
-    >
-      <div className="mb-8 text-xs text-muted-foreground">
-        Company / {fullName}
-      </div>
+    <TeamPage title={fullName} testId="company-employee-profile">
       <button
-        className="mb-6 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        className="mb-4 inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground"
         onClick={onBack}
         type="button"
       >
-        <ArrowLeft aria-hidden="true" className="size-3.5" /> Back
+        <ChevronLeft aria-hidden="true" className="size-3.5" /> Back
       </button>
       <div
-        className="mb-9 flex flex-wrap items-center justify-between gap-4"
+        className="mb-6 mt-2 flex flex-wrap items-center justify-between gap-4"
         data-testid="company-position-header"
       >
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold tracking-tight">
-            {fullName}
-          </h1>
-          <p className="mt-8 truncate text-sm text-muted-foreground">
+          <TeamPageTitle>{fullName}</TeamPageTitle>
+          <p className="mt-[1.875rem] truncate text-compact text-muted-foreground">
             {subtitle}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-3">
-          <Button
-            disabled={isOpeningMessage}
-            onClick={() => void messageEmployee()}
-            type="button"
-            variant="outline"
-          >
-            <MessageSquare aria-hidden="true" className="mr-2 size-4" />
-            {isOpeningMessage ? "Opening" : "Message"}
-          </Button>
-        </div>
       </div>
-      {status === "paused" ? (
-        <Alert className="mb-6" data-testid="company-paused-banner">
-          <AlertTitle>Paused · {currentPosition?.reason}</AlertTitle>
-          <AlertDescription>
-            Existing work stays visible. Resume when the reason is resolved.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-      {status === "terminated" ? (
-        <Alert className="mb-6" data-testid="company-terminated-banner">
-          <AlertTitle>
-            Terminated employee · {currentPosition?.reason}
-          </AlertTitle>
-          <AlertDescription>
-            Definition, lessons and history are retained. Rehire requires
-            founder review.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-      {messageError ? (
-        <p className="mb-4 text-sm text-destructive" role="alert">
-          {messageError}
-        </p>
-      ) : null}
       {notice ? (
         <p className="mb-4 text-sm text-muted-foreground" role="status">
           {notice}
@@ -923,14 +882,14 @@ export function EmployeeProfileScreen({
       ) : null}
       <div
         aria-label="Employee profile"
-        className="flex gap-5 overflow-x-auto border-b border-border"
+        className="flex gap-6 overflow-x-auto border-b border-border"
         role="tablist"
       >
         {TABS.map((item) => (
           <button
             aria-controls="employee-profile-tabpanel"
             aria-selected={tab === item.id}
-            className={`-mb-px shrink-0 border-b-2 px-1 pb-3 text-sm ${tab === item.id ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+            className={`-mb-px shrink-0 border-b-2 px-0 py-2.5 text-xs ${tab === item.id ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
             data-testid={`employee-tab-${item.id}`}
             id={`employee-tab-${item.id}`}
             key={item.id}
@@ -938,6 +897,8 @@ export function EmployeeProfileScreen({
               setTab(item.id);
               setEditInstructions(false);
             }}
+            tabIndex={tab === item.id ? 0 : -1}
+            onKeyDown={handleTeamTabKeys}
             role="tab"
             type="button"
           >
@@ -952,34 +913,60 @@ export function EmployeeProfileScreen({
         id="employee-profile-tabpanel"
         role="tabpanel"
       >
-        {tab === "overview" ? (
-          <>
-            <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
-              <MemberDoingNowSection
-                memberPubkey={employeePubkey}
-                testId="employee-doing-now"
-              />
-              <aside
-                className="rounded-lg border border-border p-4"
-                data-testid="employee-salary-overview-unavailable"
+        {tab === "overview" &&
+        (status === "paused" || status === "terminated") ? (
+          <section
+            aria-label={
+              status === "paused" ? "Paused employee" : "Terminated employee"
+            }
+            className="mb-5 border-l-2 border-border bg-muted p-[0.9375rem] text-xs"
+            data-testid={
+              status === "paused"
+                ? "company-paused-banner"
+                : "company-terminated-banner"
+            }
+          >
+            <strong>
+              {status === "paused" ? "Paused" : "Terminated employee"} ·{" "}
+              {currentPosition?.reason}
+            </strong>
+            <p className="mt-1.5 text-muted-foreground">
+              {status === "paused"
+                ? "Existing work and history stay visible. Pausing employees is unavailable."
+                : "Definition, lessons and history are retained. Rehire requires founder review."}
+            </p>
+            {status === "terminated" && canManage && currentPosition ? (
+              <Button
+                className="mt-3 h-11 rounded-company-control bg-colony-info text-xs shadow-none"
+                onClick={() => setReviewRehire(true)}
               >
-                <h2 className="text-base font-semibold">Weekly salary</h2>
-                <p className="mt-3 text-sm text-muted-foreground">
-                  Not available yet.
-                </p>
-              </aside>
-            </div>
-            <CompanyEmployeeProfileActions
-              canManage={canManage}
-              employeePubkey={employeePubkey}
-              managerName={managerName}
-              onEdit={onEditPosition}
-              onOpenReport={onOpenMember}
-              onPause={onPause}
-              onTerminate={onTerminate}
-              position={currentPosition}
+                Review rehire
+              </Button>
+            ) : null}
+            {status === "terminated" &&
+            canManage &&
+            isManagedAgentActive(agent) ? (
+              <Button variant="outline" className="mt-3" onClick={onTerminate}>
+                Retry stopping runtime
+              </Button>
+            ) : null}
+          </section>
+        ) : null}
+        {tab === "overview" ? (
+          <CompanyEmployeeProfileActions
+            canManage={canManage}
+            employeePubkey={employeePubkey}
+            managerName={managerName}
+            onEdit={onEditPosition}
+            onOpenReport={onOpenMember}
+            onTerminate={onTerminate}
+            position={currentPosition}
+          >
+            <MemberDoingNowSection
+              memberPubkey={employeePubkey}
+              testId="employee-doing-now"
             />
-          </>
+          </CompanyEmployeeProfileActions>
         ) : null}
         {tab === "instructions" ? instructionsContent() : null}
         {tab === "model-runtime" ? (
@@ -1170,6 +1157,6 @@ export function EmployeeProfileScreen({
           />
         ) : null}
       </div>
-    </main>
+    </TeamPage>
   );
 }
