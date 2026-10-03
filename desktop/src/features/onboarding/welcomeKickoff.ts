@@ -46,6 +46,16 @@ const providerMarker = welcomeKickoffMarker(WELCOME_KICKOFF_PROVIDER_MARKER);
 export const WELCOME_KICKOFF_PROVIDER_MESSAGE =
   "To get started with agents, open Settings > Agents > Defaults to connect your provider key and choose a model. Once you're connected, come back here and we'll introduce the team.";
 
+/** Post setup guidance only when the production readiness gate lacks an authenticated path. */
+export async function postWelcomeKickoffSetupNotice(
+  readiness: ReturnType<typeof resolveAgentReadiness>,
+  post: (content: string) => Promise<unknown>,
+): Promise<boolean> {
+  if (readiness.ready) return false;
+  await post(readiness.copy ?? WELCOME_KICKOFF_PROVIDER_MESSAGE);
+  return true;
+}
+
 const WELCOME_KICKOFF_CTA =
   "What can we help you build? Bring us something you're working on, or give us a quick challenge to see how we work together.";
 
@@ -599,16 +609,18 @@ export function useWelcomeKickoff(
         if (await markerExists(channelId, closerMarker)) {
           return;
         }
-        if (!readiness.ready) {
-          await sendManagedAgentChannelMessage({
-            agentPubkey: resolvedAgentSet.lead.pubkey,
-            channelId,
-            content: readiness.copy ?? WELCOME_KICKOFF_PROVIDER_MESSAGE,
-            marker: providerMarker,
-            markerScope: "channel",
-          });
+        if (
+          await postWelcomeKickoffSetupNotice(readiness, (content) =>
+            sendManagedAgentChannelMessage({
+              agentPubkey: resolvedAgentSet.lead.pubkey,
+              channelId,
+              content,
+              marker: providerMarker,
+              markerScope: "channel",
+            }),
+          )
+        )
           return;
-        }
         const openerAlreadySent = await markerExists(channelId, openerMarker);
 
         // Start before publishing the mention. buzz-acp replays events from its

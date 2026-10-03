@@ -86,7 +86,8 @@ pub(crate) fn compose_path_entries(
 ///   4. `nvm_bin` — nvm's default Node.js bin dir (if the user uses nvm)
 ///   5. exe parent dir — DMG sidecars under `Contents/MacOS/`
 ///   6. user's login-shell `PATH` — runtimes like node/python from other managers
-///   7. the current process `PATH` — appended on every platform when no
+///   7. user manager prefixes (volta, asdf, npm, bun, pnpm), after shell entries
+///   8. the current process `PATH`, appended on every platform when no
 ///      login-shell PATH exists, because callers use `Command::env("PATH", …)`
 ///      which *replaces* the child's PATH. This is the steady state on Windows,
 ///      where `login_shell_path()` always returns `None` and without it the
@@ -113,7 +114,7 @@ pub(in crate::managed_agents) fn build_augmented_path(
 
     // Build the managed/prefix entries (everything before login-shell PATH).
     let mut managed: Vec<PathBuf> = Vec::new();
-    if let Some(home) = home {
+    if let Some(home) = &home {
         managed.push(home.join(".local").join("bin"));
     }
     // Only add managed runtime dirs when a home or executable context exists.
@@ -134,12 +135,28 @@ pub(in crate::managed_agents) fn build_augmented_path(
         managed.push(parent);
     }
 
+    #[cfg(unix)]
+    if has_local_context && shell_path.is_none() {
+        managed.extend([
+            PathBuf::from("/opt/homebrew/bin"),
+            PathBuf::from("/usr/local/bin"),
+        ]);
+    }
     // Split the login-shell PATH into individual entries.
     let had_shell_path = shell_path.is_some();
-    let login: Vec<PathBuf> = shell_path
+    let mut login: Vec<PathBuf> = shell_path
         .as_deref()
         .map(|s| std::env::split_paths(s).collect())
         .unwrap_or_default();
+
+    // User manager prefixes follow managed runtimes and explicit shell entries.
+    if let Some(home) = home {
+        login.extend(
+            crate::managed_agents::user_binary_paths(&home)
+                .into_iter()
+                .filter(|p| p != &home.join(".local").join("bin")),
+        );
+    }
 
     let inherited: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).collect())
@@ -181,9 +198,41 @@ mod tests {
             "{result}"
         );
         assert!(
-            result.ends_with(":/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"),
+            result.contains(":/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:"),
             "{result}"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn managed_and_shell_bins_precede_user_managers_and_homebrew_follows_sidecars() {
+        let _guard = crate::managed_agents::lock_path_mutex();
+        let result = build_augmented_path(
+            Some(PathBuf::from("/home/agent")),
+            Some(PathBuf::from("/app/sidecars")),
+            Some("/shell/bin".to_string()),
+            None,
+        )
+        .unwrap();
+        let managed = crate::managed_agents::buzz_managed_npm_bin_dir().unwrap();
+        assert!(
+            result.find(&managed.to_string_lossy().to_string()).unwrap()
+                < result.find("/home/agent/.volta/bin").unwrap()
+        );
+        assert!(
+            result.find("/shell/bin").unwrap() < result.find("/home/agent/.volta/bin").unwrap()
+        );
+        let fallback = build_augmented_path(
+            Some(PathBuf::from("/home/agent")),
+            Some(PathBuf::from("/app/sidecars")),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            fallback.find("/app/sidecars").unwrap() < fallback.find("/opt/homebrew/bin").unwrap()
+        );
+        assert!(fallback.contains("/usr/local/bin"));
     }
 
     #[test]
@@ -216,7 +265,7 @@ mod tests {
             .find("/Applications/Buzz.app/Contents/MacOS")
             .unwrap();
         assert!(local < nvm && nvm < exe, "{result}");
-        assert!(result.ends_with(":/usr/bin:/bin"), "{result}");
+        assert!(result.contains(":/usr/bin:/bin:"), "{result}");
     }
 
     #[cfg(unix)]
@@ -224,6 +273,16 @@ mod tests {
     fn nvm_bin_none_does_not_add_segment() {
         let _guard = crate::managed_agents::lock_path_mutex();
         let previous = std::env::var_os("PATH");
+        let prefix_env = [
+            "NVM_BIN",
+            "PNPM_HOME",
+            "NPM_CONFIG_PREFIX",
+            "npm_config_prefix",
+        ]
+        .map(|key| (key, std::env::var_os(key)));
+        for (key, _) in &prefix_env {
+            std::env::remove_var(key);
+        }
         // With no shell_path the inherited process PATH is appended last, so
         // pin it to a sentinel to keep the assertion deterministic.
         std::env::set_var("PATH", "/sentinel/inherited");
@@ -240,6 +299,12 @@ mod tests {
             None => std::env::remove_var("PATH"),
         }
 
+        for (key, old) in prefix_env {
+            match old {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
         let result = result.expect("path");
         assert!(result.starts_with("/home/user/.local/bin:"), "{result}");
         assert!(!result.contains(".nvm"), "no nvm segment: {result}");
@@ -304,7 +369,7 @@ mod tests {
 
         let result = result.expect("path");
         assert!(
-            result.ends_with(":/usr/local/bin:/usr/bin:/bin"),
+            result.contains(":/usr/local/bin:/usr/bin:/bin:"),
             "Unix output must not append process PATH: {result}"
         );
     }
@@ -326,8 +391,10 @@ mod tests {
         }
 
         let result = result.expect("path must not be None with a home dir");
-        assert!(
-            result.starts_with(r"C:\Users\agent\.local\bin;"),
+        let entries: Vec<PathBuf> = std::env::split_paths(&result).collect();
+        assert_eq!(
+            entries.first(),
+            Some(&PathBuf::from(r"C:\Users\agent\.local\bin")),
             "home/.local/bin must be first: {result}"
         );
         assert!(

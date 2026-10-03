@@ -293,6 +293,7 @@ describe("SetupStep cached-ready revalidation", () => {
     queryClient.setQueryData(acpRuntimesQueryKey, [
       catalogEntry("buzz-agent", "not_applicable"),
       catalogEntry("goose", "not_applicable"),
+      catalogEntry("codex", "logged_in"),
     ]);
 
     const pending = deferred();
@@ -329,7 +330,14 @@ describe("SetupStep cached-ready revalidation", () => {
     );
 
     await act(async () => {
-      pending.resolve([rawReadyEntry("buzz-agent"), rawReadyEntry("goose")]);
+      pending.resolve([
+        rawReadyEntry("buzz-agent"),
+        {
+          ...rawReadyEntry("goose"),
+          auth_status: { status: "not_applicable" },
+        },
+        rawReadyEntry("codex"),
+      ]);
       await new Promise((r) => setTimeout(r, 50));
     });
 
@@ -340,9 +348,13 @@ describe("SetupStep cached-ready revalidation", () => {
     );
     assert.ok(
       readyRuntimeIdSnapshots.some(
-        (snapshot) => snapshot.length === 1 && snapshot.includes("goose"),
+        (snapshot) => snapshot.length === 1 && snapshot.includes("codex"),
       ),
-      "an installed tool remains ready independently of the selected handoff",
+      "a runnable, signed-in CLI remains ready independently of the selected handoff",
+    );
+    assert.ok(
+      readyRuntimeIdSnapshots.every((snapshot) => !snapshot.includes("goose")),
+      "Goose without configured provider readiness must not be published as ready",
     );
     assert.ok(
       readyRuntimeIdSnapshots.every(

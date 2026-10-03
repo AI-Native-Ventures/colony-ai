@@ -10,6 +10,7 @@ import {
   classifyWelcomeKickoffResolution,
   createWelcomeKickoffCoordinator,
   mergeKickoffEvents,
+  postWelcomeKickoffSetupNotice,
   resolveWelcomeAgentSet,
   selectWelcomeKickoffIntroTeammates,
   waitForWelcomeKickoffBeat,
@@ -478,5 +479,65 @@ test("Fizz points new users to the working provider defaults path", () => {
   assert.match(
     WELCOME_KICKOFF_PROVIDER_MESSAGE,
     /provider key and choose a model/,
+  );
+});
+
+test("welcome posts setup guidance for an installed harness with no auth probe", async () => {
+  const { resolveAgentReadiness } = await import("./ui/agentReadiness.ts");
+  const config = {
+    preferred_runtime: "goose",
+    provider: "openai",
+    model: "fixture-model",
+    env_vars: { OPENAI_API_KEY: "fixture" },
+  };
+  for (const id of [
+    "goose",
+    "cursor",
+    "devin",
+    "omp",
+    "grok",
+    "opencode",
+    "kimi",
+    "amp",
+    "hermes",
+    "openclaw",
+  ]) {
+    const posts = [];
+    const catalog = [
+      {
+        id,
+        label: id,
+        command: id,
+        binaryPath: `/bin/${id}`,
+        availability: "available",
+        authStatus: { status: "unknown" },
+      },
+    ];
+    assert.equal(
+      await postWelcomeKickoffSetupNotice(
+        resolveAgentReadiness(catalog, config, "any"),
+        async (content) => posts.push(content),
+      ),
+      true,
+    );
+    assert.deepEqual(posts, [WELCOME_KICKOFF_PROVIDER_MESSAGE]);
+  }
+  const ready = resolveAgentReadiness(
+    [
+      {
+        id: "codex",
+        label: "Codex",
+        availability: "available",
+        authStatus: { status: "logged_in" },
+      },
+    ],
+    config,
+    "any",
+  );
+  assert.equal(
+    await postWelcomeKickoffSetupNotice(ready, async () =>
+      assert.fail("must not post setup guidance for signed-in Codex"),
+    ),
+    false,
   );
 });

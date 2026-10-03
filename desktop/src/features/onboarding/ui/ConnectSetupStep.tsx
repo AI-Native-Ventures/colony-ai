@@ -35,6 +35,10 @@ import {
   getVisibleOnboardingRuntimes,
   runtimeIsReadyForOnboarding,
 } from "./onboardingRuntimeSelection";
+import {
+  harnessDetectionStatus,
+  harnessInstallLabel,
+} from "./harnessDetectionState";
 import { getRuntimeDisplayLabel, RuntimeIcon } from "./RuntimeIcon";
 
 type ConnectSetupStepProps = {
@@ -67,23 +71,13 @@ function getRuntimeHeaderStatus(
   if (runtimeIsReadyForOnboarding(runtime, globalConfig, gitBashPrerequisite))
     return "Ready";
   if (runtime.id === "buzz-agent") return "No AI connected yet";
-  if (
-    runtime.availability === "available" &&
-    runtime.authStatus.status === "logged_out"
-  )
-    return "Sign-in needed";
-  if (
-    runtime.availability === "available" &&
-    runtime.authStatus.status === "unknown"
-  )
-    return "Checking status";
-  if (runtime.availability === "available") return "Installed";
-  return "Not available";
+  return harnessDetectionStatus(runtime, false);
 }
 
 function RuntimeOption({
   globalConfig,
   gitBashPrerequisite,
+  isFetching,
   onRefresh,
   runtime,
   selected,
@@ -91,6 +85,7 @@ function RuntimeOption({
 }: {
   globalConfig: GlobalAgentConfig;
   gitBashPrerequisite: GitBashPrerequisite | null | undefined;
+  isFetching: boolean;
   onRefresh: () => void;
   runtime: AcpRuntimeCatalogEntry;
   selected: boolean;
@@ -157,20 +152,10 @@ function RuntimeOption({
     );
   };
 
-  let status = "Not installed";
-  if (ready) status = "Ready on this computer";
-  else if (
-    runtime.availability === "available" &&
-    runtime.authStatus.status === "logged_out"
-  )
-    status = "Sign-in needed";
-  else if (
-    runtime.availability === "available" &&
-    runtime.authStatus.status === "unknown"
-  )
-    status = "Checking status";
-  else if (runtime.id === "buzz-agent") status = "No AI connected yet";
-  else if (runtime.availability === "available") status = "Installed";
+  let status =
+    runtime.id === "buzz-agent" && !ready
+      ? "No AI connected yet"
+      : harnessDetectionStatus(runtime, ready);
 
   if (!prerequisite.ready) status = prerequisite.copy;
 
@@ -191,6 +176,12 @@ function RuntimeOption({
           <span className="selection-dot" />
         </span>
         <span className="provider-account">{status}</span>
+        {runtime.availability === "adapter_missing" ? (
+          <span className="provider-account">
+            {getRuntimeDisplayLabel(runtime)} is installed. Its connection
+            adapter is missing.
+          </span>
+        ) : null}
       </button>
       <div className="runtime-actions">
         {ready ? (
@@ -208,7 +199,7 @@ function RuntimeOption({
           </Button>
         ) : null}
         {!ready &&
-        runtime.availability === "available" &&
+        runtime.availability !== "available" &&
         runtime.canAutoInstall ? (
           <Button
             className="runtime-action"
@@ -217,7 +208,9 @@ function RuntimeOption({
             type="button"
             variant="outline"
           >
-            {installMutation.isPending ? "Installing…" : "Install"}
+            {installMutation.isPending
+              ? "Installing…"
+              : harnessInstallLabel(runtime)}
           </Button>
         ) : null}
         {!ready &&
@@ -229,8 +222,41 @@ function RuntimeOption({
             type="button"
             variant="outline"
           >
-            Install
+            {harnessInstallLabel(runtime)}
           </Button>
+        ) : null}
+        {!ready &&
+        runtime.id !== "buzz-agent" &&
+        runtime.availability === "available" &&
+        !needsSignIn ? (
+          <>
+            {runtime.id === "claude" || runtime.id === "codex" ? (
+              <Button
+                aria-label={`Check ${getRuntimeDisplayLabel(runtime)} again`}
+                className="runtime-action"
+                disabled={isFetching}
+                onClick={onRefresh}
+                type="button"
+                variant="outline"
+              >
+                Check again
+              </Button>
+            ) : (
+              <p className="provider-account">
+                Sign-in cannot be checked. Use the setup guide, or choose
+                another connection.
+              </p>
+            )}
+            <Button
+              aria-label={`Open ${getRuntimeDisplayLabel(runtime)} setup guide`}
+              className="runtime-action"
+              onClick={() => void openUrl(runtime.installInstructionsUrl)}
+              type="button"
+              variant="outline"
+            >
+              Open setup guide
+            </Button>
+          </>
         ) : null}
       </div>
       {actionError ? (
@@ -335,7 +361,13 @@ function RuntimeConnectionPanel({
       ) : null}
       <div className="section-heading">
         <h3>On this computer</h3>
-        <button className="link" onClick={() => void refresh()} type="button">
+        <button
+          aria-label="Check installed AI apps again"
+          className="link"
+          disabled={query.isFetching}
+          onClick={() => void refresh()}
+          type="button"
+        >
           <svg aria-hidden="true" className="icon">
             <path d="M20 11a8 8 0 1 0 2 5" />
             <path d="M20 4v7h-7" />
@@ -378,6 +410,7 @@ function RuntimeConnectionPanel({
               key={runtime.id}
               globalConfig={globalConfig}
               gitBashPrerequisite={gitBashPrerequisite}
+              isFetching={query.isFetching}
               onRefresh={refresh}
               onSelect={() => setSelectedRuntimeId(runtime.id)}
               runtime={runtime}

@@ -14672,7 +14672,7 @@ async function handleDiscoverAcpRuntimes(
       requires_external_cli: true,
       underlying_cli_path: null,
       node_required: false,
-      auth_status: { status: "not_applicable" },
+      auth_status: { status: "unknown" },
       source: "builtin",
       login_hint: undefined,
     },

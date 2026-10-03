@@ -35,6 +35,7 @@ export function runtimeIsReadyForOnboarding(
   globalConfig?: GlobalAgentConfig,
   gitBashPrerequisite?: GitBashPrerequisite | null,
 ) {
+  if (!runtime.command || !runtime.binaryPath) return false;
   if (runtime.id === "buzz-agent") {
     return (
       globalConfig !== undefined &&
@@ -48,8 +49,7 @@ export function runtimeIsReadyForOnboarding(
   }
   return (
     runtime.availability === "available" &&
-    (runtime.authStatus.status === "logged_in" ||
-      runtime.authStatus.status === "not_applicable")
+    runtime.authStatus.status === "logged_in"
   );
 }
 

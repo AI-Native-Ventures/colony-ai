@@ -28,10 +28,7 @@ fn login_shell_lookup_treats_command_as_data() {
 /// outside PATH only by scanning `common_binary_paths()`, so that directory
 /// must appear there or those installs stay undiscovered (#2239 residual).
 ///
-/// Asserts the probe list rather than a planted binary: `common_binary_paths`
-/// is a process-lifetime `OnceLock`, so a test cannot re-seed `USERPROFILE`
-/// deterministically, and planting an executable under the real user profile
-/// is not an acceptable test side effect.
+/// The legacy Windows directory remains part of the live probe list.
 #[cfg(windows)]
 #[test]
 fn common_binary_paths_probes_legacy_goose_install_dir() {
