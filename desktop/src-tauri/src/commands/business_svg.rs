@@ -126,7 +126,17 @@ pub(super) fn sanitize_svg(bytes: &[u8]) -> Result<String, String> {
                     return Err(rejected());
                 }
             }
-            Event::Comment(_) | Event::Decl(_) => {}
+            Event::Comment(_) => {}
+            Event::Decl(declaration) => {
+                if let Some(encoding) = declaration.encoding() {
+                    if !encoding
+                        .map_err(|_| rejected())?
+                        .eq_ignore_ascii_case(b"utf-8")
+                    {
+                        return Err(rejected());
+                    }
+                }
+            }
             Event::Eof => break,
             _ => return Err(rejected()),
         }
@@ -162,5 +172,35 @@ mod tests {
         ] {
             assert!(sanitize_svg(text.as_bytes()).is_err(), "{text}");
         }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn rejects_each_svg_resource_and_content_guard() {
+    for input in [
+        vec![0xff],
+        format!("<svg><!--{}--></svg>", "x".repeat(64 * 1024)).into_bytes(),
+        format!("<svg>{}</svg>", "<g/>".repeat(10_001)).into_bytes(),
+        format!("<svg>{}{}</svg>", "<g>".repeat(128), "</g>".repeat(128)).into_bytes(),
+        b"<?xml version='1.0' encoding='iso-8859-1'?><svg/>".to_vec(),
+        b"<g/>".to_vec(),
+        b"<svg xmlns='https://invalid.example'/>".to_vec(),
+        b"<svg width='1:2'/>".to_vec(),
+        b"<svg width='&#92;1'/>".to_vec(),
+        b"<svg width='&lt;1'/>".to_vec(),
+        b"<svg><path fill='url(#local) extra'/></svg>".to_vec(),
+        b"<svg>non-whitespace text</svg>".to_vec(),
+        b"<svg><?external processing?></svg>".to_vec(),
+        b"<svg width='&undefined;'/>".to_vec(),
+    ] {
+        assert!(
+            sanitize_svg(&input).is_err(),
+            "{}",
+            String::from_utf8_lossy(&input)
+                .chars()
+                .take(80)
+                .collect::<String>()
+        );
     }
 }

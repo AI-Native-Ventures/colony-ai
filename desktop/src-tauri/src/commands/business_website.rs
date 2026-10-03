@@ -315,3 +315,26 @@ mod tests {
         assert_eq!(result.description.as_deref(), Some("After early hints"));
     }
 }
+
+#[cfg(test)]
+#[tokio::test]
+async fn launch_websites_return_descriptions_through_the_real_native_command() {
+    // Explicit launch acceptance gate requested by the owner. These are public,
+    // credential-free sites; native execution runs in CI, never on the owner's Mac.
+    for href in ["https://colony.ainative.ventures/", "https://colony.global"] {
+        let result = read_business_website(href.to_string())
+            .await
+            .unwrap_or_else(|error| panic!("native website acceptance failed for {href}: {error}"));
+        assert!(
+            result
+                .description
+                .as_deref()
+                .is_some_and(|text| !text.is_empty()),
+            "{href}"
+        );
+        assert!(result
+            .favicon_data_url
+            .as_ref()
+            .is_none_or(|data| data.len() <= 100 * 1024));
+    }
+}
