@@ -477,6 +477,6 @@ test("Fizz points new users to the working provider defaults path", () => {
   );
   assert.match(
     WELCOME_KICKOFF_PROVIDER_MESSAGE,
-    /provider key and choose a model/,
+    /sign in and choose a model/,
   );
 });

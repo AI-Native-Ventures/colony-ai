@@ -44,7 +44,7 @@ const closerMarker = welcomeKickoffMarker(WELCOME_KICKOFF_CLOSER_MARKER);
 const providerMarker = welcomeKickoffMarker(WELCOME_KICKOFF_PROVIDER_MARKER);
 
 export const WELCOME_KICKOFF_PROVIDER_MESSAGE =
-  "To get started with agents, open Settings > Agents > Defaults to connect your provider key and choose a model. Once you're connected, come back here and we'll introduce the team.";
+  "To get started with agents, open Settings > Agents > Defaults to connect your AI harness, sign in and choose a model. Once you're connected, come back here and we'll introduce the team.";
 
 const WELCOME_KICKOFF_CTA =
   "What can we help you build? Bring us something you're working on, or give us a quick challenge to see how we work together.";
@@ -90,7 +90,7 @@ export function createWelcomeKickoffCoordinator() {
 const kickoffCoordinator = createWelcomeKickoffCoordinator();
 const closerInFlight = new Set<string>();
 const TEAMMATE_READY_POLL_MS = 250;
-const TEAMMATE_READY_WAIT_MS = 60_000;
+export const TEAMMATE_READY_WAIT_MS = 5_000;
 /**
  * Give-up backstop for teammates that are neither intro'd nor detectably failed
  * — i.e. alive but silent. **Not** an expectation of how fast an intro arrives.
@@ -560,7 +560,7 @@ export function useWelcomeKickoff(
       resolveAgentReadiness(
         runtimesQuery.data ?? [],
         globalConfig,
-        "any",
+        "preferred",
         gitBashQuery.isError ? undefined : gitBashQuery.data,
       ),
     [globalConfig, runtimesQuery.data, gitBashQuery.data, gitBashQuery.isError],

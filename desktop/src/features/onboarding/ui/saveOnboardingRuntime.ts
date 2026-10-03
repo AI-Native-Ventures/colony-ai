@@ -10,6 +10,7 @@ export async function saveOnboardingRuntime(
   runtimes: readonly AcpRuntimeCatalogEntry[],
   read = getGlobalAgentConfig,
   save = setGlobalAgentConfig,
+  selectedModel?: string | null,
 ) {
   if (
     !runtimes.some(
@@ -29,5 +30,6 @@ export async function saveOnboardingRuntime(
     ...(config.preferred_runtime !== runtimeId && runtimeId !== "buzz-agent"
       ? { model: null, provider: null }
       : {}),
+    ...(selectedModel === undefined ? {} : { model: selectedModel }),
   });
 }

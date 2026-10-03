@@ -298,13 +298,19 @@ export function ConnectedScene({
           </span>
         </div>
         <p>
-          Hello {data.name.trim().split(" ")[0] || "Lerato"}, I’m here.
-          <br />
-          What shall we work on first?
+          {data.connectionReply ??
+            (data.visualOnly
+              ? "Hello, I’m here. What shall we work on first?"
+              : "")}
         </p>
       </div>
       <div className="connection-meta">
-        <span>Claude Code subscription</span>
+        <span>
+          {data.harnessLabel ?? "Selected harness"}
+          {data.effectiveModel
+            ? ` · ${data.effectiveModel}`
+            : " · Model not reported"}
+        </span>
         <span>
           <i className="status-dot" />
           Connection verified
