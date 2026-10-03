@@ -15,15 +15,12 @@ test("message size applies the reference type step to conversations only", () =>
 
   try {
     for (const [size, scale] of [
-      ["smaller", "0.8125"],
-      ["default", "0.875"],
-      ["larger", "0.9375"],
+      ["smaller", "calc(var(--text-sm) - 1rem / 16)"],
+      ["default", "var(--text-sm)"],
+      ["larger", "calc(var(--text-sm) + 1rem / 16)"],
     ]) {
       applyConversationMessageSize(size);
-      assert.equal(
-        properties.get("--conversation-message-font-size"),
-        `calc(var(--buzz-type-rem) * ${scale})`,
-      );
+      assert.equal(properties.get("--conversation-message-font-size"), scale);
     }
   } finally {
     delete globalThis.document;

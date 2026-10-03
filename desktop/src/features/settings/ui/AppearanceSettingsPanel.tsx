@@ -47,9 +47,13 @@ import {
   writeAppearanceSnapshot,
   readAppearanceSnapshot,
   mergeAppearanceSnapshot,
+  mergeLiveAppearanceSnapshot,
   type AppearanceSnapshot,
 } from "../lib/appearanceSnapshot";
-import { applyConversationMessageSize } from "../lib/conversationMessageSizePreference";
+import {
+  applyConversationMessageSize,
+  conversationMessageSizeCss,
+} from "../lib/conversationMessageSizePreference";
 
 type AppearanceMode = "system" | "light" | "dark";
 type AppearanceSettingsPanelProps = {
@@ -177,7 +181,6 @@ export function currentAppearanceSnapshot(
     followSystem: theme.followSystem,
     custom: false,
     customLight: [...DEFAULT_CUSTOM_COLORS],
-    customDark: [...DEFAULT_CUSTOM_COLORS],
     glassBackground,
     glassOpacity: theme.glassOpacity,
     prominentActiveTab: theme.prominentActiveTab,
@@ -193,18 +196,20 @@ function loadPreferences(
   business: Partial<AppearanceSnapshot> | null,
   conversations: Partial<AppearanceSnapshot> | null,
 ): AppearanceSnapshot {
-  const businessSnapshot = mergeAppearanceSnapshot(base, business);
-  if (!conversations) return businessSnapshot;
+  const businessSnapshot = mergeLiveAppearanceSnapshot(base, business);
   const globalSnapshot = mergeAppearanceSnapshot(
     businessSnapshot,
     conversations,
   );
   return {
     ...businessSnapshot,
+    theme: base.theme,
+    accent: base.accent,
+    followSystem: base.followSystem,
     messageSize: globalSnapshot.messageSize,
-    density: globalSnapshot.density,
-    linkPreview: globalSnapshot.linkPreview,
-    threadLayout: globalSnapshot.threadLayout,
+    density: base.density,
+    linkPreview: base.linkPreview,
+    threadLayout: base.threadLayout,
   };
 }
 
@@ -359,12 +364,9 @@ function LiveAppearancePreview({
           "--ap-soft": softColor,
           "--ap-t1": first,
           "--ap-t2": second,
-          "--ap-message-size":
-            preferences.messageSize === "smaller"
-              ? "0.8125rem"
-              : preferences.messageSize === "larger"
-                ? "0.9375rem"
-                : "0.875rem",
+          "--ap-message-size": conversationMessageSizeCss(
+            preferences.messageSize,
+          ),
           "--ap-glass-alpha": `${preferences.glassOpacity}%`,
         } as React.CSSProperties
       }
@@ -520,20 +522,7 @@ export function AppearanceSettingsPanel({
     }
     const changedBusiness =
       previousBusinessId !== null && previousBusinessId !== businessId;
-    const base = changedBusiness
-      ? {
-          ...currentRef.current,
-          theme: "buzz",
-          accent: "#895AF6",
-          followSystem: true,
-          custom: false,
-          customLight: [...DEFAULT_CUSTOM_COLORS] as [string, string],
-          customDark: [...DEFAULT_CUSTOM_COLORS] as [string, string],
-          glassBackground: false,
-          glassOpacity: 65,
-          prominentActiveTab: false,
-        }
-      : currentRef.current;
+    const base = currentRef.current;
     const next = loadPreferences(base, business, global);
     setPreferences(next);
     setHexDrafts([...next.customLight]);
@@ -560,11 +549,6 @@ export function AppearanceSettingsPanel({
       }
     }
     if (business || changedBusiness || previousBusinessId === null) {
-      themeRef.current.applyAppearance({
-        theme: next.theme as SyntaxThemeName,
-        accent: next.accent,
-        followSystem: next.followSystem,
-      });
       themeRef.current.setGlassBackground(
         glassBackgroundSupported && next.glassBackground,
       );
@@ -572,11 +556,6 @@ export function AppearanceSettingsPanel({
       themeRef.current.setProminentActiveTab(next.prominentActiveTab);
     }
     applyConversationMessageSize(next.messageSize);
-    if (global) {
-      setConversationDensity(next.density);
-      setLinkPreviewStyle(next.linkPreview);
-      setThreadViewMode(next.threadLayout);
-    }
     // The scope IDs are the source of truth. Provider values are mirrored only
     // after a saved snapshot is loaded for this person and business.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -587,6 +566,15 @@ export function AppearanceSettingsPanel({
     lastBusinessKey,
     glassBackgroundSupported,
   ]);
+
+  React.useEffect(() => {
+    setPreferences((previous) => ({
+      ...previous,
+      theme: theme.selectedThemeName,
+      accent: theme.accentColor,
+      followSystem: theme.followSystem,
+    }));
+  }, [theme.selectedThemeName, theme.accentColor, theme.followSystem]);
 
   React.useEffect(() => {
     const root = document.documentElement;
@@ -685,10 +673,8 @@ export function AppearanceSettingsPanel({
   function updateColor(index: 0 | 1, value: string) {
     const colors: [string, string] = [...preferences.customLight];
     colors[index] = value;
-    const darkColors: [string, string] = [...preferences.customDark];
-    darkColors[index] = value;
     setHexDrafts([...colors]);
-    commit({ customLight: colors, customDark: darkColors, custom: true });
+    commit({ customLight: colors, custom: true });
   }
 
   function resetAppearance() {
@@ -702,7 +688,6 @@ export function AppearanceSettingsPanel({
       followSystem: true,
       custom: false,
       customLight: [...DEFAULT_CUSTOM_COLORS],
-      customDark: [...DEFAULT_CUSTOM_COLORS],
       glassBackground: false,
       glassOpacity: 65,
       prominentActiveTab: false,
@@ -932,7 +917,7 @@ export function AppearanceSettingsPanel({
               description={
                 glassBackgroundSupported
                   ? "Translucent navigation. Solid content."
-                  : "Translucent navigation. Solid content."
+                  : "Not available in this app"
               }
               title="Glass background"
             >

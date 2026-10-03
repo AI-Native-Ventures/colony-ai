@@ -280,8 +280,12 @@
   border-radius: 1.25rem;
 }
 .d17-filter button[aria-pressed="true"] {
-  background: #e6dbed;
-  color: #4d3a5e;
+  background: color-mix(
+    in srgb,
+    var(--w20-appearance-accent, hsl(var(--primary))) 18%,
+    hsl(var(--background))
+  );
+  color: hsl(var(--foreground));
 }
 .d17-theme-grid {
   display: grid;
@@ -333,12 +337,17 @@
   color: var(--theme-accent);
 }
 .d17-theme-tile:hover .d17-theme-mini {
-  box-shadow: 0 0 0 2px #b5a0c3;
+  box-shadow: 0 0 0 2px
+    color-mix(
+      in srgb,
+      var(--w20-appearance-accent, hsl(var(--primary))) 65%,
+      transparent
+    );
   transform: translateY(-2px);
 }
 .d17-theme-tile:focus-visible,
 .d17-filter button:focus-visible {
-  outline: 2px solid #a58bbd;
+  outline: 2px solid var(--w20-appearance-accent, hsl(var(--primary)));
   outline-offset: 4px;
 }
 .d17-theme-empty {
@@ -369,4 +378,16 @@
 
 .d17-heading h1 {
   font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .d17-theme-tile:hover .d17-theme-mini {
+    transform: none;
+  }
+}
+html[data-reduced-motion="true"] .d17-theme-mini {
+  transition: none;
+}
+html[data-reduced-motion="true"] .d17-theme-tile:hover .d17-theme-mini {
+  transform: none;
 }

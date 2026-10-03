@@ -116,10 +116,18 @@ test("archive follows the r19 title and empty state", async ({ page }) => {
 
   const archive = page.getByTestId("settings-archived-records");
   await expect(
-    archive.getByRole("heading", { name: "Archive", exact: true }),
+    archive.getByRole("heading", {
+      name: "Archived records",
+      level: 1,
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(
-    archive.getByRole("heading", { name: "Archived records", exact: true }),
+    archive.getByRole("heading", {
+      name: "Archived records",
+      level: 2,
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(archive).toContainText("No archived records.");
   await expect(archive).not.toContainText(
@@ -145,7 +153,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
 
   const profileTitle = page
     .getByTestId("settings-profile")
-    .getByRole("heading", { name: "Your account", exact: true });
+    .getByRole("heading", { name: "Profile", exact: true });
   await expect(profileTitle).toBeVisible();
   const profileCard = page.getByTestId("settings-account-profile-card");
   await expect(
@@ -206,7 +214,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
       viewport: { width: 1440, height: 900 },
       fieldLayer: { x: 1, y: 1, width: 1438, height: 898 },
       settingsSurface: { x: 240, y: 61, width: 1191, height: 830 },
-      title: { x: 314, y: 172, width: 161.3125, height: 33.1875 },
+      title: { x: 314, y: 172, width: 79.265625, height: 33.1875 },
       profileCard: { x: 314, y: 267.1875, width: 631.96875 },
       businessCard: { x: 973.96875, y: 267.1875, width: 383.03125 },
       nameField: { x: 339, y: 331.1875, width: 581.96875, height: 72.71875 },
@@ -216,7 +224,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
       viewport: { width: 1728, height: 1117 },
       fieldLayer: { x: 1, y: 1, width: 1726, height: 1115 },
       settingsSurface: { x: 240, y: 61, width: 1479, height: 1047 },
-      title: { x: 322, y: 176, width: 161.3125, height: 33.1875 },
+      title: { x: 322, y: 176, width: 79.265625, height: 33.1875 },
       profileCard: { x: 322, y: 275.1875, width: 801.328125 },
       businessCard: { x: 1151.328125, y: 275.1875, width: 485.65625 },
       nameField: { x: 347, y: 339.1875, width: 751.328125, height: 72.71875 },
@@ -514,4 +522,123 @@ test("device privacy save failure keeps both selected controls editable", async 
   await expect(
     page.getByRole("button", { name: "Save privacy preferences" }),
   ).toBeVisible();
+});
+
+test("Accessibility saves the referenced controls and restores motion and keyboard hints", async ({
+  page,
+}) => {
+  await installMockBridge(page);
+  await page.goto("/#/settings?section=accessibility");
+  const panel = page.getByTestId("settings-accessibility");
+  await expect(
+    panel.getByRole("heading", { name: "Reading & motion" }),
+  ).toBeVisible();
+  await expect(
+    panel.getByRole("heading", { name: "Keyboard", exact: true }),
+  ).toBeVisible();
+  await expect(panel.getByTestId("settings-shortcuts")).toHaveCount(0);
+  await panel.getByLabel("Motion", { exact: true }).selectOption("reduce");
+  await panel.getByLabel("Show keyboard hints").uncheck();
+  await panel.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-reduced-motion",
+    "true",
+  );
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-keyboard-hints",
+    "false",
+  );
+  await page.reload();
+  await expect(panel.getByLabel("Motion", { exact: true })).toHaveValue(
+    "reduce",
+  );
+  await expect(panel.getByLabel("Show keyboard hints")).not.toBeChecked();
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-reduced-motion",
+    "true",
+  );
+  await page.getByTestId("settings-back-to-app").click();
+  await page.getByTestId("section-actions-channels").click();
+  const hint = page
+    .getByRole("menuitem", { name: /^Browse channels/ })
+    .locator("[data-keyboard-hint]");
+  await expect(hint).toHaveCount(1);
+  await expect(hint).toBeHidden();
+  await page.keyboard.press("Escape");
+  await openSettings(page, "appearance");
+  await page.getByTestId("appearance-open-themes").click();
+  const tile = page.getByTestId("theme-catalog-buzz");
+  await tile.hover();
+  expect(
+    await tile.evaluate((element) => getComputedStyle(element).transform),
+  ).toBe("none");
+});
+
+test("Accessibility save failure preserves the durable and live preference", async ({
+  page,
+}) => {
+  await installMockBridge(page);
+  await page.goto("/#/settings?section=accessibility");
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === "colony.accessibility.v1")
+        throw new DOMException("Storage unavailable", "QuotaExceededError");
+      original.call(this, key, value);
+    };
+  });
+  const panel = page.getByTestId("settings-accessibility");
+  await panel.getByLabel("Motion", { exact: true }).selectOption("reduce");
+  await panel.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(panel.getByRole("alert")).toContainText("Could not save");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-reduced-motion",
+    "false",
+  );
+  await expect(
+    panel.getByRole("button", { name: "Save", exact: true }),
+  ).toBeEnabled();
+  expect(
+    await page.evaluate(() => localStorage.getItem("colony.accessibility.v1")),
+  ).toBeNull();
+});
+
+test("People and access gives members a denied state and a way back", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    relayRole: "member",
+    relayRequiresMembership: true,
+  });
+  await page.goto("/#/settings?section=people");
+  const panel = page.getByTestId("settings-community-members");
+  await expect(panel).toContainText("Only workspace owners and administrators");
+  await panel.getByRole("button", { name: "Back to business" }).click();
+  await expect(page.getByTestId("settings-business-profile")).toBeVisible();
+});
+
+test("People and access shows permission loading before the denied state", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    relayRole: "member",
+    relayRequiresMembership: true,
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await page.evaluate(() => {
+    window.__BUZZ_E2E_QUERY_CLIENT__?.removeQueries({
+      queryKey: ["myRelayMembershipLookup"],
+    });
+    const original = window.__TAURI_INTERNALS__.invoke;
+    window.__TAURI_INTERNALS__.invoke = async (command, args, options) => {
+      if (command === "relay_requires_membership")
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      return original(command, args, options);
+    };
+  });
+  await openSettings(page, "people");
+  const panel = page.getByTestId("settings-community-members");
+  await expect(panel.getByRole("status")).toContainText("Checking permissions");
+  await expect(panel).toContainText("Only workspace owners and administrators");
 });

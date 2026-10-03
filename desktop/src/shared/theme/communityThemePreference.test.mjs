@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DEFAULT_COMMUNITY_THEME,
+  newestCommunityThemePreference,
   cacheAndApplyCommunityTheme,
   clearCommunityThemeOutbox,
   communityThemeApplyExpectation,
@@ -12,6 +13,7 @@ import {
   parseCommunityThemePreference,
   readCommunityThemeOutbox,
   readCommunityThemePreference,
+  readCommunityThemeWriteTime,
   writeCommunityThemeOutbox,
   writeCommunityThemePreference,
 } from "./communityThemePreference.ts";
@@ -218,4 +220,57 @@ test("community switch defers stale outgoing appearance persistence", () => {
     "acknowledge",
   );
   assert.equal(communityThemePersistenceAction(null, incoming), "persist");
+});
+
+test("newer local or dirty choices supersede stale appearance snapshots", () => {
+  const old = { ...DEFAULT_COMMUNITY_THEME, theme: "dracula" };
+  const current = { ...DEFAULT_COMMUNITY_THEME, theme: "buzz" };
+  assert.equal(
+    newestCommunityThemePreference([
+      { preference: old, updatedAt: 10 },
+      { preference: current, updatedAt: 20 },
+      { preference: old, updatedAt: 5 },
+    ]),
+    current,
+  );
+  assert.equal(
+    newestCommunityThemePreference([
+      { preference: old, updatedAt: 10 },
+      { preference: current, updatedAt: 20 },
+      { preference: old, updatedAt: 30 },
+    ]),
+    old,
+  );
+  assert.equal(
+    newestCommunityThemePreference([
+      { preference: old, updatedAt: 0 },
+      { preference: current, updatedAt: 0 },
+    ]),
+    old,
+  );
+});
+
+test("durable theme clocks read validated JSON revisions and ignore malformed preferences", () => {
+  globalThis.window = { localStorage: localStorageStub() };
+  try {
+    const key = communityThemeStorageKey("person", "ws://relay.example");
+    window.localStorage.setItem(
+      key,
+      JSON.stringify({ ...DEFAULT_COMMUNITY_THEME, updatedAt: 123 }),
+    );
+    assert.equal(
+      readCommunityThemeWriteTime("person", "ws://relay.example"),
+      123,
+    );
+    window.localStorage.setItem(
+      key,
+      JSON.stringify({ version: 1, theme: "unknown", updatedAt: 500 }),
+    );
+    assert.equal(
+      readCommunityThemeWriteTime("person", "ws://relay.example"),
+      0,
+    );
+  } finally {
+    delete globalThis.window;
+  }
 });

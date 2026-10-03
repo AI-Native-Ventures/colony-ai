@@ -13,6 +13,7 @@ for (const viewport of [
     page,
     context,
   }) => {
+    test.setTimeout(60_000);
     test.skip(
       !process.env.COLONY_SETTINGS_REFERENCE_URL,
       "Frozen reference server is required for comparison evidence.",
@@ -92,6 +93,25 @@ for (const viewport of [
     await page.screenshot({
       path: `${output}/theme-applied-${viewport.width}-app.png`,
     });
+    await page.goto("/#/settings?section=accessibility");
+    await expect(page.getByTestId("settings-accessibility")).toBeVisible();
+    await capture("accessibility", "20260925-r17", "account/accessibility");
+    for (const [section, route] of [
+      ["profile", "account"],
+      ["updates", "settings/updates"],
+      ["archived-records", "account/archive"],
+      ["storage", "settings/storage"],
+      ["people", "settings/people"],
+    ]) {
+      await page.goto(`/#/settings?section=${section}`);
+      await expect(page.getByTestId(`settings-panel-${section}`)).toBeVisible();
+      await page.waitForLoadState("networkidle");
+      if (section === "updates" || section === "storage")
+        await expect(
+          page.getByTestId(`settings-panel-${section}`),
+        ).not.toContainText(/\bBuzz\b/);
+      await capture(`review-${section}`, "20260925-r17", route);
+    }
     await reference.close();
   });
 }

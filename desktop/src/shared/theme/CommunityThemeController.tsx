@@ -13,6 +13,8 @@ import {
   markCommunityThemeMigrated,
   readCommunityThemeOutbox,
   readCommunityThemePreference,
+  readCommunityThemeWriteTime,
+  newestCommunityThemePreference,
   sameCommunityThemePreference,
   writeCommunityThemeOutbox,
   writeCommunityThemePreference,
@@ -31,16 +33,11 @@ import {
   customGradientStops,
   readAppearanceSnapshot,
   isValidHexColor,
+  updateAppearanceSnapshotTheme,
 } from "@/features/settings/lib/appearanceSnapshot";
 import { applyConversationMessageSize } from "@/features/settings/lib/conversationMessageSizePreference";
-import { setConversationDensity } from "@/shared/lib/conversationDensityPreference";
-import { setLinkPreviewStyle } from "@/shared/lib/linkPreviewStylePreference";
-import { setThreadViewMode } from "@/features/channels/lib/threadViewModePreference";
-import {
-  LIGHT_THEMES,
-  SYNTAX_THEMES,
-  type SyntaxThemeName,
-} from "./theme-loader";
+import { preferenceWriteTime } from "@/shared/lib/preferenceWriteTime";
+import { SYNTAX_THEMES, type SyntaxThemeName } from "./theme-loader";
 
 export function CommunityThemeController() {
   const { activeCommunity } = useCommunities();
@@ -108,9 +105,28 @@ export function CommunityThemeController() {
             followSystem: snapshot.followSystem,
           }
         : null;
-    if (saved && (!local || !sameCommunityThemePreference(saved, local))) {
-      writeCommunityThemePreference(pubkey, relayUrl, saved);
-      writeCommunityThemeOutbox(pubkey, relayUrl, saved);
+    const localTime = readCommunityThemeWriteTime(pubkey, relayUrl);
+    const dirtyTime = readCommunityThemeWriteTime(pubkey, relayUrl, true);
+    const savedTime = preferenceWriteTime(snapshot?.updatedAt);
+    const newest = newestCommunityThemePreference([
+      { preference: dirty, updatedAt: dirtyTime },
+      { preference: local, updatedAt: localTime },
+      { preference: saved, updatedAt: savedTime },
+    ]);
+    if (
+      newest &&
+      ((saved &&
+        savedTime > Math.max(localTime, dirtyTime) &&
+        (!local ||
+          !sameCommunityThemePreference(saved, local) ||
+          (dirty && !sameCommunityThemePreference(saved, dirty)))) ||
+        (dirty &&
+          localTime > dirtyTime &&
+          !sameCommunityThemePreference(newest, dirty)))
+    ) {
+      // Recover only a newer durable choice. Never republish an older snapshot.
+      writeCommunityThemePreference(pubkey, relayUrl, newest);
+      writeCommunityThemeOutbox(pubkey, relayUrl, newest);
     }
     // Preserve the user's existing global appearance the first time this
     // feature sees their current community. Later missing/malformed target
@@ -119,7 +135,15 @@ export function CommunityThemeController() {
       hasMigratedCommunityTheme(pubkey),
       initialPreferenceRef.current,
     );
-    const scopedPreference = saved ?? dirty ?? local ?? fallback;
+    const scopedPreference = newest ?? fallback;
+    if (newest && activeCommunity?.id) {
+      updateAppearanceSnapshotTheme(
+        appearanceSnapshotKey(pubkey, activeCommunity.id),
+        newest,
+      );
+    }
+    if (newest && (!local || !sameCommunityThemePreference(newest, local)))
+      writeCommunityThemePreference(pubkey, relayUrl, newest);
     scopedPreferenceRef.current = scopedPreference;
     applyPreference(scopedPreference);
     // Initialization is programmatic even when the provider already exposes
@@ -132,7 +156,7 @@ export function CommunityThemeController() {
     );
   }, [pubkey, relayUrl, activeCommunity?.id, applyPreference]);
 
-  // Restore full local appearance before Settings is opened after a restart.
+  // Restore only preferences without independent storage keys after restart.
   useLayoutEffect(() => {
     if (!pubkey || !activeCommunity?.id) return;
     const business = readAppearanceSnapshot(
@@ -149,13 +173,7 @@ export function CommunityThemeController() {
       colors.length === 2 &&
       colors.every(isValidHexColor)
     ) {
-      const mode = business.followSystem
-        ? theme.isDark
-          ? "dark"
-          : "light"
-        : LIGHT_THEMES.has(business.theme as SyntaxThemeName)
-          ? "light"
-          : "dark";
+      const mode = theme.isDark ? "dark" : "light";
       const [first, second] = customGradientStops(colors, mode);
       root.style.setProperty("--w20-custom-gradient-start", first);
       root.style.setProperty("--w20-custom-gradient-end", second);
@@ -169,17 +187,6 @@ export function CommunityThemeController() {
     const size = conversations?.messageSize;
     if (size === "smaller" || size === "default" || size === "larger")
       applyConversationMessageSize(size);
-    const density = conversations?.density;
-    if (
-      density === "compact" ||
-      density === "comfortable" ||
-      density === "spacious"
-    )
-      setConversationDensity(density);
-    const links = conversations?.linkPreview;
-    if (links === "compact" || links === "rich") setLinkPreviewStyle(links);
-    const threads = conversations?.threadLayout;
-    if (threads === "split" || threads === "focus") setThreadViewMode(threads);
   }, [pubkey, activeCommunity?.id, theme.isDark]);
 
   useEffect(() => {
@@ -195,11 +202,38 @@ export function CommunityThemeController() {
           eventId: published.eventId,
         };
       }
+      const pending = readCommunityThemeOutbox(pubkey, relayUrl);
+      if (
+        !pending ||
+        !sameCommunityThemePreference(pending, published.preference)
+      )
+        return;
+      // Acknowledgements must not overwrite a newer edit. Retain the journal
+      // until the derived restart records already contain this exact revision.
+      const cached = readCommunityThemePreference(pubkey, relayUrl);
+      if (
+        !cached ||
+        !sameCommunityThemePreference(cached, published.preference)
+      )
+        return;
+      if (activeCommunity?.id) {
+        const snapshot = readAppearanceSnapshot(
+          appearanceSnapshotKey(pubkey, activeCommunity.id),
+        );
+        if (
+          snapshot &&
+          (snapshot.theme !== published.preference.theme ||
+            snapshot.accent !== published.preference.accent ||
+            snapshot.followSystem !== published.preference.followSystem)
+        )
+          return;
+      }
       clearCommunityThemeOutbox(pubkey, relayUrl, published.preference);
     });
     managerRef.current = manager;
     const durablePending = readCommunityThemeOutbox(pubkey, relayUrl);
-    if (durablePending) manager.publish(durablePending);
+    if (durablePending)
+      manager.publish(scopedPreferenceRef.current ?? durablePending);
 
     const applyRemote = (remote: RemoteCommunityTheme) => {
       if (scopeRef.current !== scope) return;
@@ -214,26 +248,20 @@ export function CommunityThemeController() {
           eventId: remote.eventId,
         };
         manager.acceptRemote(remote);
-        manager.publish(dirty);
+        manager.publish(scopedPreferenceRef.current ?? dirty);
         return;
       }
       // Keep the restart record in step with an accepted remote preference.
       // On storage failure retain the durable local record and retry hydration
       // on the next reconnect rather than applying a torn preference.
-      if (activeCommunity?.id) {
-        const key = appearanceSnapshotKey(pubkey, activeCommunity.id);
-        const snapshot = readAppearanceSnapshot(key);
-        if (snapshot) {
-          try {
-            window.localStorage.setItem(
-              key,
-              JSON.stringify({ ...snapshot, ...remote.preference }),
-            );
-          } catch {
-            return;
-          }
-        }
-      }
+      if (
+        activeCommunity?.id &&
+        !updateAppearanceSnapshotTheme(
+          appearanceSnapshotKey(pubkey, activeCommunity.id),
+          remote.preference,
+        )
+      )
+        return;
       lastRemoteRef.current = {
         createdAt: remote.createdAt,
         eventId: remote.eventId,
@@ -264,9 +292,9 @@ export function CommunityThemeController() {
           markCommunityThemeMigrated(pubkey);
         } else if (shouldSeedCommunityTheme(result)) {
           const local =
+            scopedPreferenceRef.current ??
             readCommunityThemeOutbox(pubkey, relayUrl) ??
             readCommunityThemePreference(pubkey, relayUrl) ??
-            scopedPreferenceRef.current ??
             DEFAULT_COMMUNITY_THEME;
           writeCommunityThemePreference(pubkey, relayUrl, local);
           writeCommunityThemeOutbox(pubkey, relayUrl, local);
@@ -284,7 +312,7 @@ export function CommunityThemeController() {
         }
         if (result.status !== "absent") return;
         const pending = readCommunityThemeOutbox(pubkey, relayUrl);
-        if (pending) manager.publish(pending);
+        if (pending) manager.publish(scopedPreferenceRef.current ?? pending);
       });
     });
 
@@ -316,13 +344,22 @@ export function CommunityThemeController() {
     }
     const stored = readCommunityThemePreference(pubkey, relayUrl);
     if (stored && sameCommunityThemePreference(stored, preference)) return;
-    scopedPreferenceRef.current = preference;
-    if (!writeCommunityThemePreference(pubkey, relayUrl, preference)) return;
+    // Journal the complete theme choice before updating derived restart caches.
+    // Failed mirrors remain recoverable from this one atomic durable revision.
     if (!writeCommunityThemeOutbox(pubkey, relayUrl, preference)) return;
+    if (activeCommunity?.id) {
+      updateAppearanceSnapshotTheme(
+        appearanceSnapshotKey(pubkey, activeCommunity.id),
+        preference,
+      );
+    }
+    scopedPreferenceRef.current = preference;
+    writeCommunityThemePreference(pubkey, relayUrl, preference);
     managerRef.current?.publish(preference);
   }, [
     pubkey,
     relayUrl,
+    activeCommunity?.id,
     theme.selectedThemeName,
     theme.accentColor,
     theme.followSystem,

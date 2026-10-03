@@ -450,7 +450,7 @@ test("updates the relay-backed profile from settings", async ({ page }) => {
   await expect(
     page.getByTestId("settings-profile").getByRole("heading", {
       exact: true,
-      name: "Your account",
+      name: "Profile",
     }),
   ).toBeVisible();
   const nameInput = page.getByTestId("profile-display-name");
@@ -1822,7 +1822,7 @@ test("renders the nine settings groups with one internal account bar", async ({
     "true",
   );
   await expect(
-    page.getByRole("heading", { name: "Your account" }),
+    page.getByRole("heading", { name: "Profile", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("tab", { name: "Profile" })).toHaveAttribute(
     "aria-selected",
@@ -2099,7 +2099,7 @@ test("opens settings with the keyboard shortcut and applies a named theme", asyn
     "true",
   );
   await expect(
-    page.getByRole("heading", { name: "Your account" }),
+    page.getByRole("heading", { name: "Profile", exact: true }),
   ).toBeVisible();
   await page.getByTestId("settings-group-appearance-group").click();
 
@@ -2209,9 +2209,10 @@ test("storage clear resets composed font size and keyboard zoom across windows",
   await page.goto("/");
   await openSettings(page, "appearance");
   await page.getByTestId("settings-inner-accessibility").click();
+  await page.getByLabel("Text size", { exact: true }).selectOption("larger");
   await page
-    .getByRole("group", { name: "Text size" })
-    .getByRole("button", { name: "Larger", exact: true })
+    .getByTestId("settings-accessibility")
+    .getByRole("button", { name: "Save", exact: true })
     .click();
 
   const dispatchZoomIn = () =>
@@ -2356,7 +2357,7 @@ test("settings subtitles share the Appearance secondary color", async ({
       const accountProfile = page.getByTestId("settings-profile");
       await expect(
         accountProfile.getByRole("heading", {
-          name: "Your account",
+          name: "Profile",
           exact: true,
         }),
       ).toBeVisible();

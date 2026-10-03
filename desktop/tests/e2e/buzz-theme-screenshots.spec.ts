@@ -653,16 +653,19 @@ test("conversation size and accessibility text size keep their own scopes", asyn
         ),
       ),
     )
-    .toContain("0.9375");
+    .toBe("calc(var(--text-sm) + 1rem / 16)");
 
   await page.getByTestId("settings-inner-accessibility").click();
   const accessibility = page.getByTestId("settings-accessibility");
   await expect(accessibility).toBeVisible();
   await expect(
-    accessibility.getByRole("group", { name: "Text size" }),
+    accessibility.getByLabel("Text size", { exact: true }),
   ).toBeVisible();
   await accessibility
-    .getByRole("button", { name: "Larger", exact: true })
+    .getByLabel("Text size", { exact: true })
+    .selectOption("larger");
+  await accessibility
+    .getByRole("button", { name: "Save", exact: true })
     .click();
   await expect(page.locator("html")).toHaveAttribute(
     "data-font-size",
@@ -993,7 +996,7 @@ test("settings content uses the same inset surface as the main app", async ({
 
   const topChromeBox = await settingsTopTitle.boundingBox();
   const settingsHeadingBox = await page
-    .getByRole("heading", { level: 1, name: "Your account" })
+    .getByRole("heading", { level: 1, name: "Profile" })
     .boundingBox();
   expect(topChromeBox).not.toBeNull();
   expect(settingsHeadingBox).not.toBeNull();

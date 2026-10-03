@@ -32,7 +32,7 @@ import {
   isValidHexColor,
   writeAppearanceSnapshot,
   readAppearanceSnapshot,
-  mergeAppearanceSnapshot,
+  mergeLiveAppearanceSnapshot,
 } from "../lib/appearanceSnapshot";
 import { currentAppearanceSnapshot } from "./AppearanceSettingsPanel";
 import {
@@ -213,7 +213,7 @@ export function SettingsView({
     appearancePersonId,
     appearanceBusinessId,
   );
-  const initialAppearance = mergeAppearanceSnapshot(
+  const initialAppearance = mergeLiveAppearanceSnapshot(
     currentAppearanceSnapshot({
       accentColor,
       followSystem,
@@ -230,10 +230,8 @@ export function SettingsView({
   const [previewTheme, setPreviewTheme] = React.useState<SyntaxThemeName>(
     initialAppearance.theme as SyntaxThemeName,
   );
-  const [appearanceDraftTheme, setAppearanceDraftTheme] =
-    React.useState<SyntaxThemeName>(initialAppearance.theme as SyntaxThemeName);
-  const [appearanceDraftDensity, setAppearanceDraftDensity] =
-    React.useState<ConversationDensity>(initialAppearance.density);
+  const [themeSearch, setThemeSearch] = React.useState("");
+  const [themeFilter, setThemeFilter] = React.useState("All");
   const [appearanceSaveFailed, setAppearanceSaveFailed] = React.useState(false);
   const [savedAppearance, setSavedAppearance] = React.useState({
     theme: initialAppearance.theme as SyntaxThemeName,
@@ -254,7 +252,7 @@ export function SettingsView({
   }, []);
 
   React.useEffect(() => {
-    const current = mergeAppearanceSnapshot(
+    const current = mergeLiveAppearanceSnapshot(
       currentAppearanceSnapshot({
         accentColor,
         followSystem,
@@ -266,8 +264,6 @@ export function SettingsView({
       readAppearanceSnapshot(appearanceKey),
     );
     const selectedTheme = current.theme as SyntaxThemeName;
-    setAppearanceDraftTheme(selectedTheme);
-    setAppearanceDraftDensity(current.density);
     setPreviewTheme(selectedTheme);
     setSavedAppearance({
       theme: selectedTheme,
@@ -382,7 +378,7 @@ export function SettingsView({
     selectedDensity: ConversationDensity,
   ) {
     const lastBusinessKey = appearanceLastBusinessKey(appearancePersonId);
-    const current = mergeAppearanceSnapshot(
+    const current = mergeLiveAppearanceSnapshot(
       currentAppearanceSnapshot(theme),
       readAppearanceSnapshot(appearanceKey),
     );
@@ -418,8 +414,6 @@ export function SettingsView({
       accent: next.accent,
       followSystem: false,
     });
-    setAppearanceDraftTheme(selectedTheme);
-    setAppearanceDraftDensity(selectedDensity);
     setSavedAppearance({ theme: selectedTheme, density: selectedDensity });
     chooseSection("settings/theme-applied");
   }
@@ -617,6 +611,12 @@ export function SettingsView({
               {activeGroup.sections.map((entry) => (
                 <button
                   aria-selected={entry.value === activeInnerSection}
+                  aria-current={
+                    entry.value === "appearance" &&
+                    activeSection.startsWith("settings/theme")
+                      ? "page"
+                      : undefined
+                  }
                   className={cn(
                     "w20-inner-tab",
                     entry.value === activeInnerSection && "is-active",
@@ -646,9 +646,11 @@ export function SettingsView({
               className={cn(
                 "w20-route-content",
                 R19_SETTINGS_LAYOUT_SECTIONS.has(activeSection) &&
+                  activeSection !== "accessibility" &&
                   "w20-route-content-r19",
-                ["profile", "security"].includes(activeSection) &&
-                  "w20-route-content-account",
+                ["profile", "security", "accessibility"].includes(
+                  activeSection,
+                ) && "w20-route-content-account",
                 activeSection === "appearance" &&
                   "w20-route-content-appearance",
                 activeSection.startsWith("settings/theme") &&
@@ -663,6 +665,10 @@ export function SettingsView({
             >
               {activeSection === "settings/themes" ? (
                 <ThemeCatalogRoute
+                  query={themeSearch}
+                  onQueryChange={setThemeSearch}
+                  filter={themeFilter}
+                  onFilterChange={setThemeFilter}
                   onBack={() => chooseSection("appearance")}
                   onPreview={(name) => {
                     setPreviewTheme(name);
@@ -704,22 +710,6 @@ export function SettingsView({
                   onSetNotifyWhileViewing,
                   onSetAllSlotAlertsEnabled,
                   onSetSoundForSlot,
-                  appearanceDensity: appearanceDraftDensity,
-                  appearanceSavedTheme: savedAppearance.theme,
-                  appearanceSavedDensity: savedAppearance.density,
-                  appearanceSaveFailed,
-                  appearanceSaved: false,
-                  onSetAppearanceDensity: (density) => {
-                    setAppearanceDraftDensity(density);
-                    setAppearanceSaveFailed(false);
-                  },
-                  onSaveAppearance: () =>
-                    saveAppearance(
-                      appearanceDraftTheme,
-                      appearanceDraftDensity,
-                    ),
-                  onReturnFromAppearanceSaved: () =>
-                    chooseSection("appearance"),
                   onOpenThemeCatalog: () => chooseSection("settings/themes"),
                   onOpenDraftRecovery: () => chooseSection("recovery"),
                   onClose,

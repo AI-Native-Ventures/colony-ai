@@ -41,25 +41,31 @@ function paletteStyle(
 function useThemeCatalogPalettes() {
   const [palettes, setPalettes] = React.useState<
     Partial<Record<SyntaxThemeName, ThemeCatalogPalette>>
-  >({});
+  >(THEME_CATALOG_PALETTES);
   const [failed, setFailed] = React.useState(false);
   React.useEffect(() => {
     let canceled = false;
     void Promise.all(
-      SYNTAX_THEMES.map(async (name) => {
-        const info = extractThemeInfo(name, await loadThemeData(name));
-        return [
-          name,
-          THEME_CATALOG_PALETTES[name] ?? {
-            background: info.bg,
-            foreground: info.fg,
-            accent: info.added ?? info.fg,
-          },
-        ] as const;
-      }),
+      SYNTAX_THEMES.filter((name) => !THEME_CATALOG_PALETTES[name]).map(
+        async (name) => {
+          const info = extractThemeInfo(name, await loadThemeData(name));
+          return [
+            name,
+            THEME_CATALOG_PALETTES[name] ?? {
+              background: info.bg,
+              foreground: info.fg,
+              accent: info.added ?? info.fg,
+            },
+          ] as const;
+        },
+      ),
     )
       .then((entries) => {
-        if (!canceled) setPalettes(Object.fromEntries(entries));
+        if (!canceled)
+          setPalettes((previous) => ({
+            ...previous,
+            ...Object.fromEntries(entries),
+          }));
       })
       .catch(() => {
         if (!canceled) setFailed(true);
@@ -164,14 +170,20 @@ function ThemeWorkspacePreview({
 export function ThemeCatalogRoute({
   onPreview,
   onBack,
+  query,
+  onQueryChange,
+  filter,
+  onFilterChange,
 }: {
   onPreview: (name: SyntaxThemeName) => void;
   onBack: () => void;
+  query: string;
+  onQueryChange: (value: string) => void;
+  filter: string;
+  onFilterChange: (value: string) => void;
 }) {
   const theme = useTheme();
   const { palettes, failed } = useThemeCatalogPalettes();
-  const [query, setQuery] = React.useState("");
-  const [filter, setFilter] = React.useState("All");
   const names = SYNTAX_THEMES.filter(
     (name) =>
       (filter === "All" || (filter === "Light") === LIGHT_THEMES.has(name)) &&
@@ -200,7 +212,7 @@ export function ThemeCatalogRoute({
         <input
           aria-label="Search themes"
           className="text-compact"
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => onQueryChange(event.target.value)}
           placeholder={`Search ${SYNTAX_THEMES.length} themes`}
           type="search"
           value={query}
@@ -212,7 +224,7 @@ export function ThemeCatalogRoute({
               aria-pressed={filter === value}
               className="text-xs"
               key={value}
-              onClick={() => setFilter(value)}
+              onClick={() => onFilterChange(value)}
               type="button"
             >
               {value}
@@ -256,8 +268,8 @@ export function ThemeCatalogRoute({
             </p>
             <Button
               onClick={() => {
-                setQuery("");
-                setFilter("All");
+                onQueryChange("");
+                onFilterChange("All");
               }}
               variant="outline"
             >
