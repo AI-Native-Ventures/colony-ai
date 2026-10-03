@@ -68,31 +68,38 @@ for (const viewport of [
   });
 }
 
-test("failed website analysis keeps the manual form usable", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1728, height: 1117 });
-  await openR17BusinessSetup(page);
-  await page
-    .getByLabel("Website", { exact: false })
-    .fill("https://colony.global");
-  await page.getByRole("button", { name: "Read website", exact: true }).click();
-  await expect(
-    page.getByText(
-      "We couldn’t read that website. You can add a logo and description yourself.",
-    ),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Read website", exact: true }),
-  ).toBeEnabled();
-  await page
-    .getByLabel("What does your business do?")
-    .fill("Manual description");
-  await waitForAnimations(page);
-  await page.screenshot({
-    path: "test-results/business-detect/app-business-error-1728.png",
+for (const viewport of [
+  { width: 1728, height: 1117 },
+  { width: 1440, height: 900 },
+]) {
+  test(`failed website analysis keeps the manual form usable at ${viewport.width}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await openR17BusinessSetup(page);
+    await page
+      .getByLabel("Website", { exact: false })
+      .fill("https://colony.global");
+    await page
+      .getByRole("button", { name: "Read website", exact: true })
+      .click();
+    await expect(
+      page.getByText(
+        "We couldn’t read that website. You can add a logo and description yourself.",
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Read website", exact: true }),
+    ).toBeEnabled();
+    await page
+      .getByLabel("What does your business do?")
+      .fill("Manual description");
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `test-results/business-detect/app-business-error-${viewport.width}.png`,
+    });
   });
-});
+}
 
 test("a result for an old URL cannot overwrite the new URL's state", async ({
   page,
@@ -113,4 +120,34 @@ test("a result for an old URL cannot overwrite the new URL's state", async ({
   );
   await expect(page.getByLabel("What does your business do?")).toHaveValue("");
   await expect(page.locator(".logo-editor img")).toHaveCount(0);
+});
+
+test("an uploaded logo wins over an in-flight website icon", async ({
+  page,
+}) => {
+  await openR17BusinessSetup(page, {
+    mock: { linkPreviewMetadata: metadata, linkPreviewMetadataDelayMs: 500 },
+  });
+  await page
+    .getByLabel("Website", { exact: false })
+    .fill("https://colony.global");
+  await page.getByRole("button", { name: "Read website", exact: true }).click();
+  await page.locator("#business-logo").setInputFiles({
+    name: "business.svg",
+    mimeType: "image/svg+xml",
+    buffer: Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle r="8" cx="8" cy="8" fill="red"/></svg>',
+    ),
+  });
+  await expect(page.locator(".logo-editor img")).toHaveAttribute(
+    "src",
+    /^data:image\/svg\+xml/,
+  );
+  await expect(
+    page.getByRole("button", { name: "Read website", exact: true }),
+  ).toBeEnabled();
+  await expect(page.locator(".logo-editor img")).toHaveAttribute(
+    "src",
+    /^data:image\/svg\+xml/,
+  );
 });

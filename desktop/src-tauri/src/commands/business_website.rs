@@ -37,7 +37,10 @@ async fn read_website(href: String) -> Result<LinkPreviewMetadata, String> {
         let mut metadata = extract_business_metadata(&html)
             .ok_or_else(|| "Website has no readable business context".to_string())?;
         for icon in business_icons(&html, &url) {
-            if let Ok((data, _)) = fetch_sanitized_image(icon, true).await {
+            if let Ok(Ok((data, _))) =
+                tokio::time::timeout(Duration::from_secs(3), fetch_sanitized_image(icon, true))
+                    .await
+            {
                 metadata.favicon_data_url = Some(data);
                 break;
             }
@@ -69,10 +72,11 @@ fn first_paragraph(html: &str) -> Option<String> {
     let visible = hidden.replace_all(html, "");
     let paragraphs = regex::Regex::new(r"(?is)<p(?:\s[^>]*)?>(.*?)</p\s*>").ok()?;
     let tags = regex::Regex::new(r"<[^>]*>").ok()?;
-    paragraphs.captures_iter(&visible).find_map(|capture| {
+    let description = paragraphs.captures_iter(&visible).find_map(|capture| {
         let text = tags.replace_all(capture.get(1)?.as_str(), " ");
         normalize_metadata_description(&text)
-    })
+    });
+    description
 }
 
 fn business_icons(html: &str, page: &Url) -> Vec<Url> {
