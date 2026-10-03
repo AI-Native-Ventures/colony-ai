@@ -1,3 +1,4 @@
+import { getDefaultPersonaRuntime } from "@/features/agents/lib/resolvePersonaRuntime";
 import { requiredCredentialEnvKeys } from "@/features/agents/ui/agentConfigOptions";
 import type {
   AcpRuntimeCatalogEntry,
@@ -41,9 +42,24 @@ export function resolveAgentReadiness(
     );
     if (!prerequisite.ready) return prerequisite;
   }
+  if (scope === "preferred" && !globalConfig.preferred_runtime) {
+    const legacy = resolveLegacyWelcomeRuntime(
+      runtimes,
+      globalConfig,
+      gitBashPrerequisite,
+    );
+    return legacy
+      ? resolveAgentReadiness(
+          runtimes,
+          { ...globalConfig, preferred_runtime: legacy.id },
+          "preferred",
+          gitBashPrerequisite,
+        )
+      : { ready: false };
+  }
   if (scope === "any") {
     for (const runtime of runtimes) {
-      if (runtime.id === "buzz-agent") continue;
+      if (runtime.id === "buzz-agent" || runtime.id === "goose") continue;
       if (
         runtime.availability === "available" &&
         (runtime.authStatus.status === "logged_in" ||
@@ -65,7 +81,8 @@ export function resolveAgentReadiness(
   }
 
   if (
-    (preferredRuntime.id === "claude" || preferredRuntime.id === "codex") &&
+    preferredRuntime.id !== "buzz-agent" &&
+    preferredRuntime.id !== "goose" &&
     (preferredRuntime.authStatus.status === "logged_in" ||
       preferredRuntime.authStatus.status === "not_applicable")
   ) {
@@ -124,4 +141,22 @@ export function resolveAgentPrerequisiteReadiness(
   return prerequisite.available
     ? { ready: true }
     : { ready: false, reason: "git-bash", copy: GIT_BASH_REQUIRED_COPY };
+}
+
+/** Legacy installs choose a ready runtime in the same order used for persona defaults. */
+export function resolveLegacyWelcomeRuntime(
+  runtimes: readonly AcpRuntimeCatalogEntry[],
+  config: GlobalAgentConfig,
+  prerequisite?: GitBashPrerequisite | null,
+) {
+  const ready = runtimes.filter(
+    (runtime) =>
+      resolveAgentReadiness(
+        [runtime],
+        { ...config, preferred_runtime: runtime.id },
+        "preferred",
+        prerequisite,
+      ).ready,
+  );
+  return getDefaultPersonaRuntime(ready);
 }

@@ -105,7 +105,7 @@ export function ChannelScreen({
   ...searchTarget
 }: ChannelScreenProps) {
   const queryClient = useQueryClient();
-  const { goHome } = useAppNavigation();
+  const { goHome, goSettings } = useAppNavigation();
   const { activeCommunity } = useCommunities();
   const {
     clearChannelUnreadSource,
@@ -281,6 +281,8 @@ export function ChannelScreen({
   const {
     entranceMessageId: welcomeEntranceMessageId,
     handleEntranceComplete: handleWelcomeEntranceComplete,
+    kickoffError,
+    retryKickoff,
   } = useWelcomeKickoffEntrance(
     activeChannel,
     resolvedMessages,
@@ -823,6 +825,13 @@ export function ChannelScreen({
           open={emptyDeleteId !== null}
         />
         <div className="colony-channel-route">
+          {kickoffError ? (
+            <div role="alert" data-testid="welcome-kickoff-recovery" className="flex items-center gap-3 border-b border-border px-4 py-3 text-sm">
+              <p>{kickoffError}</p>
+              <button type="button" onClick={() => void goSettings("agents")}>Open AI settings</button>
+              <button type="button" onClick={retryKickoff}>Retry</button>
+            </div>
+          ) : null}
           {activeChannel && !hideWorkspaceTopBar && !isHuddleTranscript ? (
             <ChannelWorkspaceTopBar
               channelTitle={activeChannelTitle}

@@ -297,7 +297,7 @@ export function ConnectedScene({
             Replied
           </span>
         </div>
-        <p>
+        <p className="whitespace-pre-wrap max-h-64 overflow-y-auto">
           {data.connectionReply ??
             (data.visualOnly
               ? "Hello, I’m here. What shall we work on first?"

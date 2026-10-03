@@ -452,3 +452,55 @@ mod tests {
         }
     }
 }
+
+/// Apply adapter defaults only when the operator did not provide the key.
+pub(crate) fn apply_runtime_default_env(
+    command: &mut std::process::Command,
+    defaults: &[(&str, &str)],
+) {
+    for (key, value) in defaults {
+        if std::env::var_os(key).is_none() {
+            command.env(key, value);
+        }
+    }
+}
+
+/// Preserve the Claude single-authority startup contract for launches and probes.
+pub(crate) fn apply_runtime_startup_model_env(
+    command: &mut std::process::Command,
+    is_claude: bool,
+    model: Option<&str>,
+) {
+    if is_claude {
+        super::claude_config::apply_claude_model_env(command, model);
+    }
+}
+
+#[cfg(test)]
+mod connection_launch_tests {
+    use super::*;
+    #[test]
+    fn probe_and_launch_helpers_preserve_parent_defaults_and_claude_model_authority() {
+        let mut command = std::process::Command::new("unused");
+        apply_runtime_default_env(
+            &mut command,
+            &[
+                ("PATH", "must-not-replace-parent"),
+                ("COLONY_CONNECTION_ENV_TEST", "default"),
+            ],
+        );
+        command.env("BUZZ_ACP_MODEL", "old");
+        apply_runtime_startup_model_env(&mut command, true, Some("chosen"));
+        let env: std::collections::HashMap<_, _> = command.get_envs().collect();
+        assert!(!env.contains_key(std::ffi::OsStr::new("PATH")));
+        assert_eq!(
+            env.get(std::ffi::OsStr::new("COLONY_CONNECTION_ENV_TEST")),
+            Some(&Some(std::ffi::OsStr::new("default")))
+        );
+        assert_eq!(env.get(std::ffi::OsStr::new("BUZZ_ACP_MODEL")), Some(&None));
+        assert_eq!(
+            env.get(std::ffi::OsStr::new("ANTHROPIC_MODEL")),
+            Some(&Some(std::ffi::OsStr::new("chosen")))
+        );
+    }
+}
