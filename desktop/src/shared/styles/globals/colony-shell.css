@@ -202,13 +202,14 @@
 /* Settings page content keeps its own layout inside the shared frame. */
 :root:has(.w20-settings-shell) .w20-settings-shell {
   padding: 0;
-  background: transparent;
-}
-
-:root:has(.w20-settings-shell) [data-testid="settings-content-surface"] {
   margin: var(--colony-shell-inset, 0.5rem);
   border-radius: var(--colony-shell-radius, 0.6875rem);
   background: hsl(var(--background));
+}
+
+:root:has(.w20-settings-shell) [data-testid="settings-content-surface"] {
+  margin: 0;
+  background: transparent;
 }
 
 @media (max-width: 75rem) {

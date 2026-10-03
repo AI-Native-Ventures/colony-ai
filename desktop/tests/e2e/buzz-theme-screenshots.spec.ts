@@ -944,6 +944,8 @@ test("settings content uses the same inset surface as the main app", async ({
 
   const settingsView = page.getByTestId("settings-view");
   const contentSurface = page.getByTestId("settings-content-surface");
+  await expect(settingsView).toHaveCSS("margin", "8px");
+  await expect(settingsView).toHaveCSS("border-radius", "11px");
   const settingsTopChrome = page.getByTestId("settings-top-chrome");
   const settingsBackToApp = page.getByTestId("settings-back-to-app");
   const backToAppBox = await page
@@ -979,12 +981,13 @@ test("settings content uses the same inset surface as the main app", async ({
   // own top chrome, so this measures the two independent control rows.
   expect(searchBox.y - backToAppBox.y).toBe(69.25);
 
-  // The 52px settings top chrome is followed by the shared 8px card inset.
-  expect(surfaceBox.y - viewBox.y).toBe(60);
-  expect(surfaceBox.x - viewBox.x).toBe(8);
-  expect(viewBox.x + viewBox.width - (surfaceBox.x + surfaceBox.width)).toBe(8);
+  // Header and content share one card. The frame carries the 8px margin;
+  // the content starts directly below its 52px header.
+  expect(surfaceBox.y - viewBox.y).toBe(52);
+  expect(surfaceBox.x - viewBox.x).toBe(0);
+  expect(viewBox.x + viewBox.width - (surfaceBox.x + surfaceBox.width)).toBe(0);
   expect(viewBox.y + viewBox.height - (surfaceBox.y + surfaceBox.height)).toBe(
-    8,
+    0,
   );
 
   const topChromeBox = await settingsTopTitle.boundingBox();
