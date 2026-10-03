@@ -333,7 +333,7 @@ test("R17 bundled agent without a provider is not ready and credits are coming s
   ).toBeEnabled();
 });
 
-test("R17 OpenRouter saves a tested provider default through the real form", async ({
+test("R17 Bring your own key saves a tested OpenRouter provider default", async ({
   page,
 }) => {
   await openR17ConnectionSetup(page, {
@@ -358,7 +358,7 @@ test("R17 OpenRouter saves a tested provider default through the real form", asy
       },
     },
   });
-  await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
+  await page.getByRole("radio", { name: "Bring your own key", exact: true }).click();
   const key = page.getByTestId("persona-provider-api-key");
   await expect(key).toHaveAttribute("type", "password");
   await key.fill("e2e-fixture-key");
@@ -445,7 +445,7 @@ test("bundled agent readiness names missing Git for Windows before claiming Read
   );
   await expect(card).not.toContainText("Ready on this computer");
   await expect(card.locator(".provider-status.is-connected")).toHaveCount(0);
-  await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
+  await page.getByRole("radio", { name: "Bring your own key", exact: true }).click();
   await expect(page.locator(".harness-state")).toHaveText(
     "Git for Windows needed",
   );

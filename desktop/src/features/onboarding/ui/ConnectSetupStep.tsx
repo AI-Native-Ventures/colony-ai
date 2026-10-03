@@ -1,3 +1,4 @@
+import { OpenRouterConnectionPanel } from "@/shared/ui/OpenRouterConnectionPanel";
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { globalAgentConfigQueryKey } from "@/features/agents/useGlobalAgentConfig";
@@ -641,12 +642,10 @@ export function ConnectSetupStep({
               selectedRuntimeId={selectedRuntimeId}
               onRuntimeSelect={selectRuntime}
             />
-          ) : connectionScene === "api-key" ||
-            connectionScene === "openrouter-unlinked" ? (
-            <AiKeyConnectionPanel
-              key={connectionScene}
-              openRouter={connectionScene === "openrouter-unlinked"}
-            />
+          ) : connectionScene === "openrouter-unlinked" ? (
+            <OpenRouterConnectionPanel onboarding />
+          ) : connectionScene === "api-key" ? (
+            <AiKeyConnectionPanel key={connectionScene} openRouter={false} />
           ) : (
             <CreditsComingSoon />
           )}
@@ -694,9 +693,7 @@ export function ConnectSetupStep({
         keyScene
           ? {
               ...data,
-              harnessLabel: bundled
-                ? getRuntimeDisplayLabel(bundled)
-                : "Colony AI",
+              harnessLabel: "Colony AI",
               harnessStatus: bundled
                 ? getRuntimeHeaderStatus(
                     bundled,
