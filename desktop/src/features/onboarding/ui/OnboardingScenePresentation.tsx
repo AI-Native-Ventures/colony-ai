@@ -178,11 +178,13 @@ function SceneBody(props: PresentationProps) {
           We’re checking that your agent can reply.
         </p>
         <ol className="progress-list">
-          <li className="complete">
-            <Glyph name="check" />
-            {data.visualOnly || data.connectionPhase === "saving"
-              ? "Connection saved"
-              : "Connection selected"}
+          <li className={data.visualOnly ? "complete" : ""}>
+            {data.visualOnly ? (
+              <Glyph name="check" />
+            ) : (
+              <span className="spinner" />
+            )}
+            Connection saved
           </li>
           <li
             className={

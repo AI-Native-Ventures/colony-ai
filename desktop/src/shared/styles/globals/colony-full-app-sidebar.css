@@ -12,6 +12,18 @@
   --colony-sidebar-muted-foreground: #aaa3b4;
 }
 
+:root:not([data-buzz-sidebar]):has([data-colony-full-app-shell="true"]) {
+  --colony-sidebar-foreground: var(--sidebar-foreground);
+  --colony-sidebar-muted-foreground: hsl(var(--sidebar-foreground));
+}
+
+:root:not([data-buzz-sidebar]):has([data-colony-full-app-shell="true"])
+  .buzz-huddle-app-surface {
+  background-image: none;
+  background-color: hsl(var(--sidebar-background));
+  border-color: hsl(var(--border));
+}
+
 :root[data-buzz-sidebar]:has([data-colony-full-app-shell="true"])
   .buzz-theme-gradient-underlay {
   background-image: url("/colony-field-light.svg");
