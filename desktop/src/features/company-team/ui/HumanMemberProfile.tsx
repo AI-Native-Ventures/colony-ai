@@ -3,13 +3,8 @@ import * as React from "react";
 import { MemberDoingNowSection } from "./MemberDoingNowSection";
 import { MemberPositionHistoryPanel } from "./MemberPositionHistoryPanel";
 import { TeamPage, TeamPageTitle } from "./TeamPage";
-import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { Button } from "@/shared/ui/button";
 import type { TeamMember } from "../teamModels";
-
-type ProfileSummary = {
-  displayName: string | null;
-  avatarUrl: string | null;
-};
 
 type HumanTab = "overview" | "history";
 
@@ -18,20 +13,25 @@ export function HumanMemberProfile({
   fullName,
   title,
   reportsTo,
-  profile,
   initialTab,
   onBack,
+  canManage,
+  onEdit,
+  directReports,
+  onOpenMember,
 }: {
   member: TeamMember;
   fullName: string;
   title: string;
   reportsTo: string;
-  profile: ProfileSummary | undefined;
   initialTab?: HumanTab;
   onBack: () => void;
+  canManage: boolean;
+  onEdit: () => void;
+  directReports: Array<{ pubkey: string; name: string; title: string }>;
+  onOpenMember: (pubkey: string) => void;
 }) {
   const [tab, setTab] = React.useState<HumanTab>(initialTab ?? "overview");
-
   React.useEffect(() => {
     if (initialTab) setTab(initialTab);
   }, [initialTab]);
@@ -39,30 +39,18 @@ export function HumanMemberProfile({
   return (
     <TeamPage title={fullName} testId="company-team-member-profile">
       <button
-        className="mb-4 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="mb-4 inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={onBack}
         type="button"
       >
-        Back
+        <span aria-hidden="true">‹</span> Back
       </button>
       <div className="mb-[1.875rem] mt-2">
         <TeamPageTitle>{fullName}</TeamPageTitle>
       </div>
-      <div className="mb-8 flex items-center gap-4">
-        <UserAvatar
-          avatarUrl={profile?.avatarUrl ?? null}
-          displayName={fullName}
-          fallbackVariant="muted"
-          shape="squircle"
-          size="md"
-        />
-        <div className="min-w-0">
-          <p className="truncate text-base font-medium">{fullName}</p>
-          <p className="mt-1 truncate text-sm text-muted-foreground">
-            Human · {title || "Member"}
-          </p>
-        </div>
-      </div>
+      <p className="mb-6 text-compact text-muted-foreground">
+        {title || "Member"} · Human · active
+      </p>
       <div
         aria-label="Member profile"
         className="flex gap-6 border-b border-border"
@@ -72,7 +60,7 @@ export function HumanMemberProfile({
           <button
             aria-controls="company-human-tabpanel"
             aria-selected={tab === item}
-            className={`-mb-px border-b-2 px-1 pb-3 text-sm ${tab === item ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+            className={`-mb-px border-b-2 px-0 py-2.5 text-xs ${tab === item ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
             data-testid={`company-human-tab-${item}`}
             id={`company-human-tab-${item}`}
             key={item}
@@ -92,35 +80,70 @@ export function HumanMemberProfile({
         role="tabpanel"
       >
         {tab === "overview" ? (
-          <>
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,1fr)]">
+          <div className="grid gap-[3.125rem] lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+            <div>
               <MemberDoingNowSection memberPubkey={member.pubkey} />
-              <section
-                className="rounded-lg border border-border p-6"
-                data-testid="company-human-role"
-              >
-                <h2 className="text-base font-semibold">Your role</h2>
-                <dl className="mt-5 divide-y divide-border text-sm">
-                  <div className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)] gap-4 py-3">
-                    <dt className="text-muted-foreground">Title</dt>
-                    <dd className="min-w-0 break-words">{title || "Member"}</dd>
+              <section className="mt-5">
+                <h2 className="mb-4 text-base font-semibold">Direct reports</h2>
+                {directReports.length ? (
+                  <div className="divide-y divide-border">
+                    {directReports.map((report) => (
+                      <button
+                        className="min-h-12 w-full px-3 py-3 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        key={report.pubkey}
+                        onClick={() => onOpenMember(report.pubkey)}
+                        type="button"
+                      >
+                        {report.name} · {report.title || "Member"}
+                      </button>
+                    ))}
                   </div>
-                  <div className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)] gap-4 py-3">
-                    <dt className="text-muted-foreground">Member type</dt>
-                    <dd>Human</dd>
-                  </div>
-                  <div className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)] gap-4 py-3">
-                    <dt className="text-muted-foreground">Reporting line</dt>
-                    <dd className="min-w-0 break-words">{reportsTo}</dd>
-                  </div>
-                </dl>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    No direct reports.
+                  </p>
+                )}
               </section>
             </div>
-            <p className="mt-8 max-w-3xl text-xs text-muted-foreground">
-              AI configuration tabs are hidden for human members. Human
-              commitments and company history remain available.
-            </p>
-          </>
+            <section
+              className="border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-[2.1875rem]"
+              data-testid="company-human-role"
+            >
+              <h2 className="mb-5 text-base font-semibold">
+                Role and reporting
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {title || "Member"}
+                <br />
+                {reportsTo === "Company owner"
+                  ? "Company founder"
+                  : `Reports to ${reportsTo}`}
+              </p>
+              {canManage ? (
+                <Button
+                  className="mt-3 h-11 w-full rounded-[0.4375rem] text-xs"
+                  onClick={onEdit}
+                  type="button"
+                  variant="outline"
+                >
+                  Edit role and reporting
+                </Button>
+              ) : null}
+              <h3 className="mb-4 mt-6 text-sm font-semibold">
+                Responsibilities
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Contribute, discuss, own commitments and review outcomes.
+              </p>
+              <h3 className="mb-4 mt-6 text-sm font-semibold">
+                Manager actions
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Assign work, propose hires and raises, pause direct reports.
+                Money and sensitive access require an authorized human.
+              </p>
+            </section>
+          </div>
         ) : (
           <MemberPositionHistoryPanel memberPubkey={member.pubkey} />
         )}

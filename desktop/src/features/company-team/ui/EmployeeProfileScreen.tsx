@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, MessageSquare } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useIsManagedAgent } from "@/features/agent-memory/hooks";
@@ -18,7 +18,6 @@ import { runtimeForAgent } from "@/features/agents/agentDirectoryModel";
 import { AgentConfigPanel } from "@/features/agents/ui/AgentConfigPanel";
 import { AgentInstanceEditDialog } from "@/features/agents/ui/AgentInstanceEditDialog";
 import { ModelPicker } from "@/features/agents/ui/ModelPicker";
-import { useOpenDmMutation } from "@/features/channels/hooks";
 import { fetchSecretBindings } from "@/features/company-secrets/secretBindings";
 import { ToolPermissionList } from "@/features/company-permissions/ui/ToolPermissionScreen";
 import {
@@ -70,7 +69,6 @@ const TABS: Array<{ id: EmployeeTab; label: string }> = [
   { id: "instructions", label: "Instructions" },
   { id: "model-runtime", label: "Model & runtime" },
   { id: "tools-access", label: "Tools & access" },
-  { id: "activity", label: "Activity" },
   { id: "salary", label: "Salary" },
   { id: "workers", label: "Workers" },
   { id: "duties", label: "Duties" },
@@ -225,8 +223,7 @@ export function EmployeeProfileScreen({
 }) {
   const agent = member.managedAgent;
   const identity = useIdentityQuery();
-  const { goChannel, goCompanyWork, goPower } = useAppNavigation();
-  const openDm = useOpenDmMutation();
+  const { goCompanyWork, goPower } = useAppNavigation();
   const personasQuery = usePersonasQuery();
   const runtimesQuery = useAcpRuntimesQuery({ enabled: true });
   const employeePubkey = member.pubkey.toLowerCase();
@@ -292,8 +289,6 @@ export function EmployeeProfileScreen({
     null,
   );
   const [notice, setNotice] = React.useState<string | null>(null);
-  const [messageError, setMessageError] = React.useState<string | null>(null);
-  const [isOpeningMessage, setIsOpeningMessage] = React.useState(false);
   const [runtimeDialogOpen, setRuntimeDialogOpen] = React.useState(false);
   const [runtimeDialogBefore, setRuntimeDialogBefore] =
     React.useState<EmployeeConfigSnapshot | null>(null);
@@ -607,24 +602,6 @@ export function EmployeeProfileScreen({
     await recordOrQueue(action);
   }
 
-  async function messageEmployee() {
-    if (isOpeningMessage) return;
-    setMessageError(null);
-    setIsOpeningMessage(true);
-    try {
-      const channel = await openDm.mutateAsync({ pubkeys: [employeePubkey] });
-      await goChannel(channel.id);
-    } catch (error) {
-      setMessageError(
-        error instanceof Error
-          ? error.message
-          : "Could not open a message with this employee.",
-      );
-    } finally {
-      setIsOpeningMessage(false);
-    }
-  }
-
   function instructionsContent() {
     if (editInstructions) {
       return (
@@ -863,17 +840,6 @@ export function EmployeeProfileScreen({
             {subtitle}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-3">
-          <Button
-            disabled={isOpeningMessage}
-            onClick={() => void messageEmployee()}
-            type="button"
-            variant="outline"
-          >
-            <MessageSquare aria-hidden="true" className="mr-2 size-4" />
-            {isOpeningMessage ? "Opening" : "Message"}
-          </Button>
-        </div>
       </div>
       {status === "paused" ? (
         <Alert className="mb-6" data-testid="company-paused-banner">
@@ -893,11 +859,6 @@ export function EmployeeProfileScreen({
             founder review.
           </AlertDescription>
         </Alert>
-      ) : null}
-      {messageError ? (
-        <p className="mb-4 text-sm text-destructive" role="alert">
-          {messageError}
-        </p>
       ) : null}
       {notice ? (
         <p className="mb-4 text-sm text-muted-foreground" role="status">

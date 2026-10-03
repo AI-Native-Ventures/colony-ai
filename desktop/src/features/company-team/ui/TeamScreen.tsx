@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
-import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
+import { useIdentityQuery } from "@/shared/api/hooks";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { truncateNpub } from "@/shared/lib/pubkey";
 import { Badge } from "@/shared/ui/badge";
@@ -108,7 +108,7 @@ function TeamMemberRow({
         ) : null}
         <span
           aria-hidden="true"
-          className={`grid size-[2.125rem] shrink-0 place-items-center rounded-[0.625rem] text-2xs font-semibold text-primary ${member.kind === "employee" ? "bg-gradient-to-br from-primary/20 to-info/25" : "bg-accent"}`}
+          className={`grid size-[2.125rem] shrink-0 place-items-center rounded-[0.625rem] text-2xs font-semibold text-primary ${member.kind === "employee" ? "bg-gradient-to-br from-primary/20 to-colony-info/25" : "bg-accent"}`}
         >
           {name
             .split(/\s+/)
@@ -139,7 +139,7 @@ function TeamMemberRow({
           </span>
         ) : null}
         <Badge
-          className={`rounded-[0.3125rem] border-0 px-2 py-1 text-badge font-semibold normal-case leading-relaxed tracking-normal ${status === "active" ? "bg-success/10 text-success" : "bg-accent text-primary"}`}
+          className={`rounded-[0.3125rem] border-0 px-2 py-1 text-badge font-semibold normal-case leading-relaxed tracking-normal ${status === "active" ? "bg-colony-success/10 text-colony-success" : "bg-accent text-primary"}`}
           variant="secondary"
         >
           {statusLabel(member)}
@@ -183,7 +183,7 @@ function TeamMemberRow({
 
 export function TeamScreen({ view }: TeamScreenProps) {
   const teamQuery = useCompanyTeamQuery();
-  const membershipQuery = useMyRelayMembershipQuery();
+  const identityQuery = useIdentityQuery();
   const { goHireRoles } = useAppNavigation();
   const treeRef = React.useRef<HTMLDivElement>(null);
   const [focusedTreeMember, setFocusedTreeMember] = React.useState<
@@ -198,9 +198,11 @@ export function TeamScreen({ view }: TeamScreenProps) {
     enabled: memberPubkeys.length > 0,
   });
   const profiles = profilesQuery.data?.profiles ?? {};
-  const canHire =
-    membershipQuery.data?.role === "owner" ||
-    membershipQuery.data?.role === "admin";
+  const role = teamQuery.data?.relayMembers.find(
+    (member) =>
+      member.pubkey.toLowerCase() === identityQuery.data?.pubkey.toLowerCase(),
+  )?.role;
+  const canHire = role === "owner" || role === "admin";
   let treeRows: ReturnType<typeof buildTeamTreeRows> = [];
   let treeError: string | null = null;
   if (view === "org" && members.length > 0) {
@@ -305,7 +307,7 @@ export function TeamScreen({ view }: TeamScreenProps) {
         <TeamPageTitle>Team</TeamPageTitle>
         {canHire ? (
           <Button
-            className="h-auto min-h-10 bg-info px-[0.9375rem] py-[0.6875rem] text-xs shadow-none"
+            className="rounded-[0.4375rem] h-auto min-h-10 bg-colony-info px-[0.9375rem] py-[0.6875rem] text-xs shadow-none"
             onClick={() => void goHireRoles()}
             type="button"
           >

@@ -314,9 +314,24 @@ export function TeamMemberScreen({
         initialTab={initialTab}
         member={member}
         onBack={() => void goTeam()}
-        profile={allProfiles[member.pubkey]}
+        canManage={canManage}
+        onEdit={() => void goTeamEdit(member.pubkey)}
+        onOpenMember={(pubkey) => void goTeamMember(pubkey)}
+        directReports={otherMembers
+          .filter(
+            (candidate) =>
+              candidate.position?.head.managerPubkey === member.pubkey,
+          )
+          .map((candidate) => ({
+            pubkey: candidate.pubkey,
+            name:
+              allProfiles[candidate.pubkey]?.displayName?.trim() ||
+              candidate.fallbackName ||
+              truncateNpub(candidate.pubkey),
+            title: candidate.position?.head.title || "",
+          }))}
         reportsTo={reportsTo || "Company owner"}
-        title={title}
+        title={title || (member.role === "owner" ? "Founder" : "")}
       />
     );
   }
@@ -343,7 +358,7 @@ export function TeamMemberScreen({
               Name
             </label>
             <Input
-              className="h-11 text-compact"
+              className="rounded-[0.4375rem] h-11 text-compact"
               id="team-member-name"
               readOnly
               value={fullName}
@@ -357,7 +372,7 @@ export function TeamMemberScreen({
               Title
             </label>
             <Input
-              className="h-11 text-compact"
+              className="rounded-[0.4375rem] h-11 text-compact"
               id="team-member-title"
               onChange={(event) => setTitleInput(event.target.value)}
               required
@@ -372,7 +387,7 @@ export function TeamMemberScreen({
               Reports to
             </label>
             <select
-              className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-compact"
               id="team-member-manager"
               onChange={(event) => setManagerInput(event.target.value)}
               value={managerInput}
@@ -409,14 +424,14 @@ export function TeamMemberScreen({
           ) : null}
           <div className="flex gap-3 border-t border-border pt-5">
             <Button
-              className="h-11 bg-info text-xs shadow-none"
+              className="rounded-[0.4375rem] h-11 bg-colony-info text-xs shadow-none"
               disabled={mutation.isPending || !titleInput.trim()}
               type="submit"
             >
               {mutation.isPending ? "Saving" : "Save changes"}
             </Button>
             <Button
-              className="h-11 text-xs"
+              className="rounded-[0.4375rem] h-11 text-xs"
               onClick={back}
               type="button"
               variant="outline"
@@ -473,7 +488,7 @@ export function TeamMemberScreen({
         ) : null}
         <div className="flex gap-3 border-t border-border pt-5">
           <Button
-            className="h-11 bg-info text-xs shadow-none"
+            className="rounded-[0.4375rem] h-11 bg-colony-info text-xs shadow-none"
             disabled={isStopping || mutation.isPending || !reasonInput.trim()}
             type="submit"
           >
@@ -484,7 +499,7 @@ export function TeamMemberScreen({
                 : "Terminate employee"}
           </Button>
           <Button
-            className="h-11 text-xs"
+            className="rounded-[0.4375rem] h-11 text-xs"
             onClick={back}
             type="button"
             variant="outline"

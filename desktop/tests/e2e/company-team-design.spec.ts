@@ -36,6 +36,41 @@ for (const viewport of [
         kind: "human",
         managerPubkey: employeePubkey,
       },
+      {
+        pubkey: getPublicKey(generateSecretKey()),
+        name: "Noor",
+        title: "Bookkeeper",
+        kind: "employee",
+        managerPubkey: owner,
+      },
+      {
+        pubkey: getPublicKey(generateSecretKey()),
+        name: "Aya",
+        title: "Business Development",
+        kind: "employee",
+        managerPubkey: owner,
+      },
+      {
+        pubkey: getPublicKey(generateSecretKey()),
+        name: "Theo",
+        title: "Software Engineer",
+        kind: "employee",
+        managerPubkey: owner,
+      },
+      {
+        pubkey: TEST_IDENTITIES.bob.pubkey,
+        name: "Sam Patel",
+        title: "Designer",
+        kind: "human",
+        managerPubkey: employeePubkey,
+      },
+      {
+        pubkey: TEST_IDENTITIES.charlie.pubkey,
+        name: "Jules Adams",
+        title: "Client Partner",
+        kind: "human",
+        managerPubkey: owner,
+      },
     ] as const;
     await page.addInitScript((identity) => {
       localStorage.setItem(
@@ -49,18 +84,20 @@ for (const viewport of [
         pubkey: person.pubkey,
         displayName: person.name,
       })),
-      relayMembers: [
-        { pubkey: owner, role: "owner" },
-        { pubkey: TEST_IDENTITIES.alice.pubkey, role: "member" },
-      ],
-      relayAgents: [
-        {
-          pubkey: employeePubkey,
+      relayMembers: people
+        .filter((person) => person.kind === "human")
+        .map((person) => ({
+          pubkey: person.pubkey,
+          role: person.pubkey === owner ? "owner" : "member",
+        })),
+      relayAgents: people
+        .filter((person) => person.kind === "employee")
+        .map((person) => ({
+          pubkey: person.pubkey,
           ownerPubkey: owner,
-          name: employee.name,
+          name: person.name,
           agentType: "agent",
-        },
-      ],
+        })),
       managedAgents: [
         {
           pubkey: employeePubkey,
@@ -80,8 +117,8 @@ for (const viewport of [
               pubkey: person.pubkey,
               title: person.title,
               kind: person.kind,
-              status: person.kind === "employee" ? "paused" : "active",
-              ...(person.kind === "employee"
+              status: person.pubkey === employeePubkey ? "paused" : "active",
+              ...(person.pubkey === employeePubkey
                 ? { reason: "Reviewing the workload." }
                 : {}),
               ...("managerPubkey" in person
@@ -95,7 +132,7 @@ for (const viewport of [
         ),
       ),
     });
-    const dir = "test-results/company-design";
+    const dir = "output/playwright/company-design";
     mkdirSync(dir, { recursive: true });
     async function capture(name: string) {
       await waitForAnimations(page);
@@ -123,7 +160,7 @@ for (const viewport of [
     await capture("team");
     await team.getByRole("tab", { name: "Reporting lines" }).click();
     const items = page.getByRole("treeitem");
-    await expect(items).toHaveCount(3);
+    await expect(items).toHaveCount(8);
     await items.first().focus();
     await page.keyboard.press("ArrowRight");
     await expect(items.nth(1)).toBeFocused();

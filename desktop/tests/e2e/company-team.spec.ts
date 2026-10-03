@@ -302,13 +302,15 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
   await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "History" })).toBeEnabled();
-  await expect(page.getByTestId("company-human-role")).toContainText("Human");
+  await expect(page.getByTestId("company-team-member-profile")).toContainText(
+    "Account Manager · Human",
+  );
   await expect(page.getByTestId("company-human-role")).toContainText(
-    "Reporting line",
+    "Reports to",
   );
   await expect(
     page.getByRole("button", { name: "Edit role and reporting" }),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await expect(page.getByRole("tab", { name: "Instructions" })).toHaveCount(0);
   await page.goto(`/#/team/edit/${alicePubkey}`);
   await expect(page).toHaveURL(new RegExp(`/team/edit/${alicePubkey}$`));
@@ -358,7 +360,7 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
     page.getByTestId("company-position-header").getByRole("button", {
       name: "Message",
     }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByTestId("company-employee-direct-reports"),
   ).toContainText("alice");

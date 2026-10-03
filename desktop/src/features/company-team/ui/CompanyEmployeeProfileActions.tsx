@@ -121,7 +121,7 @@ export function CompanyEmployeeProfileActions({
           </p>
           {canManage ? (
             <Button
-              className="mt-3 h-11 w-full text-xs"
+              className="rounded-[0.4375rem] mt-3 h-11 w-full text-xs"
               onClick={onEdit}
               type="button"
               variant="outline"
@@ -143,9 +143,12 @@ export function CompanyEmployeeProfileActions({
             Assign work, propose hires and raises, pause direct reports. Money
             and sensitive access require an authorized human.
           </p>
-          {canManage && position?.status !== "terminated" ? (
+          {canManage &&
+          (children
+            ? position?.status === "active"
+            : position?.status !== "terminated") ? (
             <Button
-              className="mt-3 h-11 w-full text-xs"
+              className="rounded-[0.4375rem] mt-3 h-11 w-full text-xs"
               onClick={onPause}
               type="button"
               variant="outline"
