@@ -1,4 +1,5 @@
 import * as React from "react";
+import { startWelcomeAgentsForKickoff } from "./welcomeStartup";
 
 import {
   managedAgentsQueryKey,
@@ -90,7 +91,7 @@ export function createWelcomeKickoffCoordinator() {
 const kickoffCoordinator = createWelcomeKickoffCoordinator();
 const closerInFlight = new Set<string>();
 const TEAMMATE_READY_POLL_MS = 250;
-const TEAMMATE_READY_WAIT_MS = 60_000;
+export const TEAMMATE_READY_WAIT_MS = 5_000;
 /**
  * Give-up backstop for teammates that are neither intro'd nor detectably failed
  * , i.e. alive but silent. **Not** an expectation of how fast an intro arrives.
@@ -183,7 +184,7 @@ export function buildWelcomeKickoffOpener(
     return `${greeting} Welcome to Colony. This is your private home base, and I'm here${teammatePhrase} to help you get oriented or work through something you're building.\n\n${WELCOME_KICKOFF_CTA}`;
   }
 
-  return `${greeting} Welcome to Colony. This is your private home base, and we're here to help you get oriented or work through something you're building.\n\n${introNames}, introduce ${introTeammates.length === 1 ? "yourself" : "yourselves"} in a sentence or two , share what you're good at and when to bring you in. Don't start any work yet.`;
+  return `${greeting} Welcome to Colony. This is your private home base, and we're here to help you get oriented or work through something you're building.\n\n${introNames}, introduce ${introTeammates.length === 1 ? "yourself" : "yourselves"} in a sentence or two, share what you're good at and when to bring you in. Don't start any work yet.`;
 }
 
 export function onlineWelcomeTeammates(
@@ -220,19 +221,30 @@ export async function waitForWelcomeTeammatesOnline(
   let latestOnline: ManagedAgent[] = [];
 
   while (!options.isCancelled()) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      latestOnline = onlineWelcomeTeammates(
-        teammates,
-        await loadPresence(pubkeys),
-      );
-      if (latestOnline.length === teammates.length) {
-        return latestOnline;
-      }
+      const result = await Promise.race([
+        loadPresence(pubkeys).then((presence) => ({ presence })),
+        new Promise<null>((resolve) => {
+          timer = setTimeout(
+            () => resolve(null),
+            Math.max(0, deadline - Date.now()),
+          );
+        }),
+      ]);
+      if (result === null) break;
+      latestOnline = onlineWelcomeTeammates(teammates, result.presence);
+      if (latestOnline.length === teammates.length) return latestOnline;
     } catch (error) {
       console.warn("Welcome teammate presence check failed; retrying.", error);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
     }
-    if (Date.now() >= deadline) break;
-    await new Promise((resolve) => globalThis.setTimeout(resolve, pollMs));
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await new Promise((resolve) =>
+      globalThis.setTimeout(resolve, Math.min(pollMs, remaining)),
+    );
   }
   return options.isCancelled() ? [] : latestOnline;
 }
@@ -560,7 +572,7 @@ export function useWelcomeKickoff(
       resolveAgentReadiness(
         runtimesQuery.data ?? [],
         globalConfig,
-        "any",
+        "preferred",
         gitBashQuery.isError ? undefined : gitBashQuery.data,
       ),
     [globalConfig, runtimesQuery.data, gitBashQuery.data, gitBashQuery.isError],
@@ -617,8 +629,10 @@ export function useWelcomeKickoff(
         const agentsToStart = openerAlreadySent
           ? resolvedAgentSet.teammates
           : [resolvedAgentSet.lead, ...resolvedAgentSet.teammates];
-        const startResults = await Promise.allSettled(
-          agentsToStart.map((agent) => {
+        const startResults = await startWelcomeAgentsForKickoff(
+          agentsToStart,
+          openerAlreadySent ? null : resolvedAgentSet.lead.pubkey,
+          (agent) => {
             const isTeammate = resolvedAgentSet.teammates.some(
               (teammate) =>
                 normalizePubkey(teammate.pubkey) ===
@@ -639,32 +653,26 @@ export function useWelcomeKickoff(
             return agent.status === "running" || agent.status === "deployed"
               ? Promise.resolve(agent)
               : startManagedAgent(agent.pubkey);
-          }),
+          },
+          (agent, error) =>
+            console.warn(`Failed to start Welcome agent ${agent.name}.`, error),
         );
-        for (const [index, result] of startResults.entries()) {
-          if (result.status === "rejected") {
-            console.warn(
-              `Failed to start Welcome agent ${agentsToStart[index]?.name ?? "unknown"}.`,
-              result.reason,
-            );
-          }
-        }
+        // A teammate's stalled start cannot delay the lead's first message.
+        if (
+          !openerAlreadySent &&
+          (!startResults.leadResult ||
+            startResults.leadResult.status === "rejected" ||
+            isCancelled())
+        )
+          return;
         await queryClient.invalidateQueries({
           queryKey: managedAgentsQueryKey,
         });
         if (openerAlreadySent) return;
 
-        const leadStartIndex = agentsToStart.findIndex(
-          (agent) => agent.pubkey === resolvedAgentSet.lead.pubkey,
-        );
-        if (startResults[leadStartIndex]?.status === "rejected") return;
         const teammatesToAwait = resolvedAgentSet.teammates.filter(
           (teammate) =>
-            startResults[
-              agentsToStart.findIndex(
-                (agent) => agent.pubkey === teammate.pubkey,
-              )
-            ]?.status !== "rejected",
+            startResults.outcomes.get(teammate.pubkey)?.status !== "rejected",
         );
         const onlineTeammates = await waitForWelcomeTeammatesOnline(
           teammatesToAwait,

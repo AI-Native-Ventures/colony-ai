@@ -150,7 +150,7 @@ function SceneBody(props: PresentationProps) {
         </ol>
         <button
           className="secondary full"
-          onClick={props.onCancelTest}
+          onClick={props.onCancelTest ?? (() => onNavigate?.("connect"))}
           type="button"
         >
           Cancel test
@@ -176,8 +176,8 @@ function SceneBody(props: PresentationProps) {
         <h2>No reply just yet.</h2>
         <p className="lede">We couldn’t get a response from your agent.</p>
         <InlineAlert>
-          Your connection isn’t working yet. Check that you’re signed in and
-          that your account has usage available.
+          {data.error ??
+            "Your connection isn’t working yet. Check that you’re signed in and that your account has usage available."}
         </InlineAlert>
         <div className="notice">
           Your account and business details are saved. You won’t need to start

@@ -217,8 +217,16 @@ export async function buildWelcomeStarterCreateInput(
   preferredRuntimeId: string | null,
   relayUrl?: string | null,
 ): Promise<CreateManagedAgentInput> {
+  if (
+    preferredRuntimeId &&
+    !runtimes.some((runtime) => runtime.id === preferredRuntimeId)
+  ) {
+    throw new Error(
+      "Your selected AI runtime is unavailable. Reconnect it in Settings, Agents, Defaults.",
+    );
+  }
   const { runtime } = resolveStartRuntimeForDefinition(
-    persona,
+    preferredRuntimeId ? { ...persona, runtime: preferredRuntimeId } : persona,
     runtimes,
     preferredRuntimeId,
   );
@@ -229,6 +237,7 @@ export async function buildWelcomeStarterCreateInput(
         : persona,
       runtime,
     )),
+    harnessOverride: true,
     name: starter.name,
     ...(starter.role === "lead"
       ? {

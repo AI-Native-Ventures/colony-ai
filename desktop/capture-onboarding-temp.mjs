@@ -1,0 +1,10 @@
+import { chromium } from '@playwright/test';
+import fs from 'node:fs/promises';
+const browser=await chromium.launch({headless:true});
+const page=await browser.newPage({viewport:{width:1728,height:1117},reducedMotion:'reduce'});
+await fs.mkdir('test-results/onboarding-design',{recursive:true});
+await page.goto('http://127.0.0.1:5335/tests/visual/onboarding.html?scene=account');
+await page.evaluate(()=>document.fonts.ready);
+await page.screenshot({path:'test-results/onboarding-design/app-account-1728.png'});
+console.log(await page.locator('h1').innerText());
+await browser.close();

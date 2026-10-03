@@ -452,3 +452,15 @@ test("owner-only-access policy accepts provider Welcome teammates", () => {
   assert.equal(welcomeTeammateHasExpectedAccess(teammate, PUB_B, true), true);
   assert.equal(welcomeTeammateHasExpectedAccess(teammate, PUB_B, false), false);
 });
+
+test("Welcome refuses a missing selected runtime instead of falling back to bundled", async () => {
+  await assert.rejects(
+    buildWelcomeStarterCreateInput(
+      WELCOME_TEAM_STARTERS[0],
+      { runtime: null },
+      [{ id: "buzz-agent", availability: "available" }],
+      "claude",
+    ),
+    /selected AI runtime is unavailable/,
+  );
+});

@@ -15,6 +15,8 @@ export type OnboardingSceneData = {
   logoUrl?: string | null;
   harnessLabel?: string;
   harnessStatus?: string;
+  connectionReply?: string;
+  effectiveModel?: string | null;
   error?: string | null;
   pending?: boolean;
   visualOnly?: boolean;

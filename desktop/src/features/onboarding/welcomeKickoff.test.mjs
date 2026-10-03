@@ -481,3 +481,19 @@ test("Scout points new users to the working AI defaults path", () => {
 test("welcome recovery does not require an API key in its primary guidance", () => {
   assert.doesNotMatch(WELCOME_KICKOFF_PROVIDER_MESSAGE, /API key|provider key/);
 });
+
+test("presence deadline also bounds a hung in-flight relay request", async () => {
+  const started = performance.now();
+  assert.deepEqual(
+    await waitForWelcomeTeammatesOnline([honey, pollen], {
+      isCancelled: () => false,
+      loadPresence: () => new Promise(() => {}),
+      waitMs: 20,
+    }),
+    [],
+  );
+  assert.ok(
+    performance.now() - started < 1_000,
+    "a pending presence response must not hold kickoff",
+  );
+});

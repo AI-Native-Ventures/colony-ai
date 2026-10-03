@@ -2,6 +2,7 @@
 
 mod acp;
 mod config;
+mod connection_test;
 mod engram_fetch;
 mod filter;
 mod observer;
@@ -2460,6 +2461,14 @@ async fn tokio_main() -> Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("failed to install rustls crypto provider");
+    if is_subcommand("connection-test") {
+        let filtered: Vec<String> = std::env::args()
+            .enumerate()
+            .filter(|(i, _)| *i != 1)
+            .map(|(_, a)| a)
+            .collect();
+        return connection_test::run(ModelsArgs::parse_from(&filtered)).await;
+    }
     if is_subcommand("models") {
         // Strip the subcommand token so clap doesn't reject it as a positional.
         // Keeps argv[0] (binary name) and passes everything after the subcommand.
