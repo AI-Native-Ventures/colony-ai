@@ -116,10 +116,18 @@ test("archive follows the r19 title and empty state", async ({ page }) => {
 
   const archive = page.getByTestId("settings-archived-records");
   await expect(
-    archive.getByRole("heading", { name: "Archive", exact: true }),
+    archive.getByRole("heading", {
+      name: "Archived records",
+      level: 1,
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(
-    archive.getByRole("heading", { name: "Archived records", exact: true }),
+    archive.getByRole("heading", {
+      name: "Archived records",
+      level: 2,
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(archive).toContainText("No archived records.");
   await expect(archive).not.toContainText(
@@ -145,7 +153,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
 
   const profileTitle = page
     .getByTestId("settings-profile")
-    .getByRole("heading", { name: "Your account", exact: true });
+    .getByRole("heading", { name: "Profile", exact: true });
   await expect(profileTitle).toBeVisible();
   const profileCard = page.getByTestId("settings-account-profile-card");
   await expect(
@@ -412,14 +420,14 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
   }
 });
 
-test("workspace appearance saves the named theme and density together", async ({
+test("workspace appearance saves the named theme and preserves density", async ({
   page,
 }) => {
   await installMockBridge(page);
   await page.goto("/");
   await openSettings(page, "appearance");
 
-  await expect(page.getByTestId("appearance-density")).toBeVisible();
+  await expect(page.getByTestId("appearance-density")).toHaveCount(0);
   const innerTabIndicatorColor = () =>
     page
       .getByTestId("settings-inner-appearance")
@@ -461,9 +469,9 @@ test("workspace appearance saves the named theme and density together", async ({
   });
   await expect.poll(innerTabIndicatorColor).toBe("rgb(38, 85, 160)");
 
-  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("appearance-open-themes").click();
   await page.getByTestId("theme-catalog-buzz-dark").click();
-  await page.getByTestId("appearance-preview-density").selectOption("compact");
+
   await page.getByTestId("theme-use").click();
   await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
   await expect
@@ -471,6 +479,12 @@ test("workspace appearance saves the named theme and density together", async ({
       page.evaluate(() => document.documentElement.classList.contains("dark")),
     )
     .toBe(true);
+  await expect(page.getByTestId("settings-inner-appearance")).toHaveAttribute(
+    "aria-selected",
+    "false",
+  );
+  await page.getByRole("button", { name: "Back to themes" }).click();
+  await page.getByRole("button", { name: "Back to appearance" }).click();
   await expect(page.getByTestId("settings-inner-appearance")).toHaveAttribute(
     "aria-selected",
     "true",
@@ -531,7 +545,7 @@ test("workspace appearance saves the named theme and density together", async ({
     glassBackground: false,
     prominentActiveTab: false,
     theme: "buzz-dark",
-    density: "compact",
+    density: "comfortable",
   });
 });
 
@@ -599,4 +613,123 @@ test("device privacy save failure keeps both selected controls editable", async 
   await expect(
     page.getByRole("button", { name: "Save privacy preferences" }),
   ).toBeVisible();
+});
+
+test("Accessibility saves the referenced controls and restores motion and keyboard hints", async ({
+  page,
+}) => {
+  await installMockBridge(page);
+  await page.goto("/#/settings?section=accessibility");
+  const panel = page.getByTestId("settings-accessibility");
+  await expect(
+    panel.getByRole("heading", { name: "Reading & motion" }),
+  ).toBeVisible();
+  await expect(
+    panel.getByRole("heading", { name: "Keyboard", exact: true }),
+  ).toBeVisible();
+  await expect(panel.getByTestId("settings-shortcuts")).toHaveCount(0);
+  await panel.getByLabel("Motion", { exact: true }).selectOption("reduce");
+  await panel.getByLabel("Show keyboard hints").uncheck();
+  await panel.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-reduced-motion",
+    "true",
+  );
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-keyboard-hints",
+    "false",
+  );
+  await page.reload();
+  await expect(panel.getByLabel("Motion", { exact: true })).toHaveValue(
+    "reduce",
+  );
+  await expect(panel.getByLabel("Show keyboard hints")).not.toBeChecked();
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-reduced-motion",
+    "true",
+  );
+  await page.getByTestId("settings-back-to-app").click();
+  await page.getByTestId("section-actions-channels").click();
+  const hint = page
+    .getByRole("menuitem", { name: /^Browse channels/ })
+    .locator("[data-keyboard-hint]");
+  await expect(hint).toHaveCount(1);
+  await expect(hint).toBeHidden();
+  await page.keyboard.press("Escape");
+  await openSettings(page, "appearance");
+  await page.getByTestId("appearance-open-themes").click();
+  const tile = page.getByTestId("theme-catalog-buzz");
+  await tile.hover();
+  expect(
+    await tile.evaluate((element) => getComputedStyle(element).transform),
+  ).toBe("none");
+});
+
+test("Accessibility save failure preserves the durable and live preference", async ({
+  page,
+}) => {
+  await installMockBridge(page);
+  await page.goto("/#/settings?section=accessibility");
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === "colony.accessibility.v1")
+        throw new DOMException("Storage unavailable", "QuotaExceededError");
+      original.call(this, key, value);
+    };
+  });
+  const panel = page.getByTestId("settings-accessibility");
+  await panel.getByLabel("Motion", { exact: true }).selectOption("reduce");
+  await panel.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(panel.getByRole("alert")).toContainText("Could not save");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-reduced-motion",
+    "false",
+  );
+  await expect(
+    panel.getByRole("button", { name: "Save", exact: true }),
+  ).toBeEnabled();
+  expect(
+    await page.evaluate(() => localStorage.getItem("colony.accessibility.v1")),
+  ).toBeNull();
+});
+
+test("People and access gives members a denied state and a way back", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    relayRole: "member",
+    relayRequiresMembership: true,
+  });
+  await page.goto("/#/settings?section=people");
+  const panel = page.getByTestId("settings-community-members");
+  await expect(panel).toContainText("Only workspace owners and administrators");
+  await panel.getByRole("button", { name: "Back to business" }).click();
+  await expect(page.getByTestId("settings-business-profile")).toBeVisible();
+});
+
+test("People and access shows permission loading before the denied state", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    relayRole: "member",
+    relayRequiresMembership: true,
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await page.evaluate(() => {
+    window.__BUZZ_E2E_QUERY_CLIENT__?.removeQueries({
+      queryKey: ["myRelayMembershipLookup"],
+    });
+    const original = window.__TAURI_INTERNALS__.invoke;
+    window.__TAURI_INTERNALS__.invoke = async (command, args, options) => {
+      if (command === "relay_requires_membership")
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      return original(command, args, options);
+    };
+  });
+  await openSettings(page, "people");
+  const panel = page.getByTestId("settings-community-members");
+  await expect(panel.getByRole("status")).toContainText("Checking permissions");
+  await expect(panel).toContainText("Only workspace owners and administrators");
 });

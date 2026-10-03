@@ -249,6 +249,7 @@ export default defineConfig({
         "**/message-author-overlap.spec.ts",
         "**/buzz-theme-screenshots.spec.ts",
         "**/appearance-previews.spec.ts",
+        "**/settings-design-proof.spec.ts",
         "**/channel-sort.spec.ts",
         "**/identity-lost.spec.ts",
         "**/deep-link-invite.spec.ts",

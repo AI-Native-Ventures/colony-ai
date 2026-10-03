@@ -84,8 +84,7 @@ import { UpdateChecker } from "../UpdateChecker";
 import { SettingsSectionHeader } from "./SettingsSectionHeader";
 import { VoiceSettingsCard } from "./VoiceSettingsCard";
 import { DevicePrivacySettingsPanel } from "./DevicePrivacySettingsPanel";
-import { WorkspaceAppearanceSettingsPanel } from "./WorkspaceAppearanceSettingsPanel";
-import type { ConversationDensity } from "@/shared/lib/conversationDensityPreference";
+import { AppearanceSettingsPanel } from "./AppearanceSettingsPanel";
 import { AgentDefaultsSettingsCard } from "./AgentDefaultsSettingsCard";
 import {
   AccessibilitySettingsPanel,
@@ -331,14 +330,6 @@ export type SettingsPanelProps = {
   onSetAllSlotAlertsEnabled: (enabled: boolean) => void;
   onSetSoundForSlot: (slot: SoundSlot, name: SoundName) => void;
   onOpenThemeCatalog?: () => void;
-  appearanceDensity?: ConversationDensity;
-  appearanceSavedTheme?: string;
-  appearanceSavedDensity?: ConversationDensity;
-  appearanceSaveFailed?: boolean;
-  appearanceSaved?: boolean;
-  onSetAppearanceDensity?: (density: ConversationDensity) => void;
-  onSaveAppearance?: () => void;
-  onReturnFromAppearanceSaved?: () => void;
   onOpenDraftRecovery?: () => void;
   onEditAvatar?: () => void;
 };
@@ -409,7 +400,7 @@ export const settingsSections: SettingsSectionDescriptor[] = [
   },
   {
     value: "local-archive",
-    label: "Local archive",
+    label: "Local storage",
     icon: Archive,
   },
   {
@@ -1055,20 +1046,9 @@ export function renderSettingsSection(
       return <MeshComputeWorkspace />;
     case "appearance":
       return (
-        <WorkspaceAppearanceSettingsPanel
-          density={props.appearanceDensity ?? "comfortable"}
-          saveFailed={props.appearanceSaveFailed ?? false}
-          saved={props.appearanceSaved ?? false}
-          savedDensity={props.appearanceSavedDensity ?? "comfortable"}
-          savedTheme={props.appearanceSavedTheme ?? "buzz"}
-          onDensityChange={props.onSetAppearanceDensity ?? (() => undefined)}
+        <AppearanceSettingsPanel
           onOpenThemeCatalog={props.onOpenThemeCatalog ?? (() => undefined)}
-          onReturn={
-            props.onReturnFromAppearanceSaved ??
-            props.onClose ??
-            (() => undefined)
-          }
-          onSave={props.onSaveAppearance ?? (() => undefined)}
+          onBackToWorkspace={props.onClose}
         />
       );
     case "privacy":
@@ -1078,18 +1058,24 @@ export function renderSettingsSection(
         />
       );
     case "accessibility":
-      return <AccessibilitySettingsPanel />;
+      return <AccessibilitySettingsPanel onClose={props.onClose} />;
     case "business-profile":
       return <BusinessProfileSettingsPanel />;
     case "people":
       return (
-        <CommunityMembersSettingsCard currentPubkey={props.currentPubkey} />
+        <CommunityMembersSettingsCard
+          currentPubkey={props.currentPubkey}
+          onBack={() => props.onSectionChange?.("business-profile")}
+        />
       );
     case "shortcuts":
       return <KeyboardShortcutsCard />;
     case "community-members":
       return (
-        <CommunityMembersSettingsCard currentPubkey={props.currentPubkey} />
+        <CommunityMembersSettingsCard
+          currentPubkey={props.currentPubkey}
+          onBack={() => props.onSectionChange?.("business-profile")}
+        />
       );
     case "moderation":
       return <ModerationQueueCard onBackToToday={props.onClose} />;

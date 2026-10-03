@@ -1,11 +1,16 @@
+import {
+  nextPreferenceWriteTime,
+  preferenceWriteTime,
+} from "@/shared/lib/preferenceWriteTime";
+
 export type AppearanceSnapshot = {
+  updatedAt?: number;
   version: 1;
   theme: string;
   accent: string;
   followSystem: boolean;
   custom: boolean;
   customLight: [string, string];
-  customDark: [string, string];
   glassBackground: boolean;
   glassOpacity: number;
   prominentActiveTab: boolean;
@@ -22,7 +27,12 @@ export function writeAppearanceSnapshot(
   snapshot: AppearanceSnapshot,
 ): boolean {
   try {
-    storage.setItem(key, JSON.stringify(snapshot));
+    const { customDark: _legacyDark, ...value } =
+      snapshot as AppearanceSnapshot & { customDark?: unknown };
+    storage.setItem(
+      key,
+      JSON.stringify({ ...value, updatedAt: nextPreferenceWriteTime() }),
+    );
     return true;
   } catch {
     return false;
@@ -87,4 +97,128 @@ export function customGradientStops(
     blendColor(base, colors[0], amount),
     blendColor(base, colors[1], amount),
   ];
+}
+
+export function readAppearanceSnapshot(
+  key: string,
+): Partial<AppearanceSnapshot> | null {
+  try {
+    const value = window.localStorage.getItem(key);
+    if (!value) return null;
+    const parsed = JSON.parse(value) as Partial<AppearanceSnapshot>;
+    preferenceWriteTime(parsed.updatedAt);
+    return parsed.version === 1 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Mirror a newer theme edit into an existing full Settings snapshot atomically. */
+export function updateAppearanceSnapshotTheme(
+  key: string,
+  preference: { theme: string; accent: string; followSystem: boolean },
+): boolean {
+  const snapshot = readAppearanceSnapshot(key);
+  if (!snapshot) return true;
+  if (
+    snapshot.theme === preference.theme &&
+    snapshot.accent === preference.accent &&
+    snapshot.followSystem === preference.followSystem
+  )
+    return true;
+  try {
+    const { customDark: _legacyDark, ...value } =
+      snapshot as Partial<AppearanceSnapshot> & { customDark?: unknown };
+    window.localStorage.setItem(
+      key,
+      JSON.stringify({
+        ...value,
+        ...preference,
+        updatedAt: nextPreferenceWriteTime(),
+      }),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function mergeAppearanceSnapshot(
+  base: AppearanceSnapshot,
+  value: Partial<AppearanceSnapshot> | null,
+): AppearanceSnapshot {
+  if (!value) return base;
+  const colors = (candidate: unknown): [string, string] | null => {
+    if (
+      Array.isArray(candidate) &&
+      candidate.length === 2 &&
+      candidate.every(
+        (color) => typeof color === "string" && isValidHexColor(color),
+      )
+    ) {
+      return [candidate[0], candidate[1]];
+    }
+    return null;
+  };
+  const customLight = colors(value.customLight) ?? base.customLight;
+  return {
+    ...base,
+    ...value,
+    version: 1,
+    theme: typeof value.theme === "string" ? value.theme : base.theme,
+    accent:
+      typeof value.accent === "string" &&
+      (isValidHexColor(value.accent) || value.accent === "neutral")
+        ? value.accent === "neutral"
+          ? "#74717B"
+          : value.accent
+        : base.accent,
+    custom: value.custom === true,
+    customLight,
+    glassBackground: value.glassBackground === true,
+    glassOpacity:
+      typeof value.glassOpacity === "number"
+        ? Math.max(30, Math.min(90, value.glassOpacity))
+        : base.glassOpacity,
+    prominentActiveTab:
+      typeof value.prominentActiveTab === "boolean"
+        ? value.prominentActiveTab
+        : base.prominentActiveTab,
+    messageSize:
+      value.messageSize === "smaller" ||
+      value.messageSize === "default" ||
+      value.messageSize === "larger"
+        ? value.messageSize
+        : base.messageSize,
+    density:
+      value.density === "compact" ||
+      value.density === "comfortable" ||
+      value.density === "spacious"
+        ? value.density
+        : base.density,
+    linkPreview:
+      value.linkPreview === "compact" || value.linkPreview === "rich"
+        ? value.linkPreview
+        : base.linkPreview,
+    threadLayout:
+      value.threadLayout === "focus" || value.threadLayout === "split"
+        ? value.threadLayout
+        : base.threadLayout,
+  };
+}
+
+/** Merge local-only fields while keeping independently restored live preferences authoritative. */
+export function mergeLiveAppearanceSnapshot(
+  base: AppearanceSnapshot,
+  saved: Partial<AppearanceSnapshot> | null,
+): AppearanceSnapshot {
+  return {
+    ...mergeAppearanceSnapshot(base, saved),
+    theme: base.theme,
+    accent: base.accent,
+    followSystem: base.followSystem,
+    density: base.density,
+    linkPreview: base.linkPreview,
+    threadLayout: base.threadLayout,
+  };
 }

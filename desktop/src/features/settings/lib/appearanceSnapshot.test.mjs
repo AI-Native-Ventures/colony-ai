@@ -8,6 +8,7 @@ import {
   customGradientStops,
   isValidHexColor,
   writeAppearanceSnapshot,
+  mergeLiveAppearanceSnapshot,
 } from "./appearanceSnapshot.ts";
 
 test("appearance snapshot keys bind the person and stable business id", () => {
@@ -71,7 +72,10 @@ test("an appearance commit replaces one complete scoped snapshot atomically", ()
   );
   assert.equal(writes.length, 1);
   assert.equal(writes[0][0], "person:business");
-  assert.deepEqual(JSON.parse(writes[0][1]), snapshot);
+  const { updatedAt, ...stored } = JSON.parse(writes[0][1]);
+  const { customDark: _legacyDark, ...expected } = snapshot;
+  assert.deepEqual(stored, expected);
+  assert.ok(Number.isSafeInteger(updatedAt) && updatedAt > 0);
   assert.equal(
     writeAppearanceSnapshot(
       {
@@ -84,4 +88,39 @@ test("an appearance commit replaces one complete scoped snapshot atomically", ()
     ),
     false,
   );
+});
+
+test("opening Settings retains live theme and channel choices over an older full snapshot", () => {
+  const live = {
+    theme: "buzz",
+    accent: "#3b82f6",
+    followSystem: false,
+    density: "spacious",
+    linkPreview: "rich",
+    threadLayout: "focus",
+    customLight: ["#895AF6", "#5A9CF6"],
+    glassOpacity: 65,
+    messageSize: "default",
+  };
+  const result = mergeLiveAppearanceSnapshot(live, {
+    theme: "dracula",
+    accent: "#895AF6",
+    followSystem: true,
+    density: "compact",
+    linkPreview: "compact",
+    threadLayout: "split",
+    custom: true,
+    messageSize: "larger",
+  });
+  for (const key of [
+    "theme",
+    "accent",
+    "followSystem",
+    "density",
+    "linkPreview",
+    "threadLayout",
+  ])
+    assert.equal(result[key], live[key]);
+  assert.equal(result.custom, true);
+  assert.equal(result.messageSize, "larger");
 });
