@@ -190,3 +190,44 @@ for (const viewport of [
     await capture("team-detail-noluthando");
   });
 }
+
+test("Team does not infer an employee position from its running runtime", async ({
+  page,
+}) => {
+  const employeePubkey = getPublicKey(generateSecretKey());
+  await installMockBridge(page, {
+    relaySelf: getPublicKey(generateSecretKey()),
+    companyMemberPositionEvents: [],
+    relayAgents: [
+      {
+        pubkey: employeePubkey,
+        ownerPubkey: TEST_IDENTITIES.tyler.pubkey,
+        name: "Unconfigured employee",
+        agentType: "agent",
+      },
+    ],
+    managedAgents: [
+      {
+        pubkey: employeePubkey,
+        name: "Unconfigured employee",
+        status: "running",
+        channelNames: ["general"],
+      },
+    ],
+  });
+  await page.goto("/#/team");
+  const row = page.getByTestId(`company-team-member-${employeePubkey}`);
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("unknown");
+  await expect(row).not.toContainText("active");
+  for (const viewport of [
+    { width: 1728, height: 1117 },
+    { width: 1440, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `output/playwright/company-design/app-team-unknown-${viewport.width}-${test.info().project.name}.png`,
+    });
+  }
+});

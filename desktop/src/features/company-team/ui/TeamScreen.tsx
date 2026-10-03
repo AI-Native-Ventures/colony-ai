@@ -35,7 +35,10 @@ function memberTitle(member: TeamMember) {
 }
 
 function memberStatus(member: TeamMember) {
-  return member.position?.head.status ?? "active";
+  return (
+    member.position?.head.status ??
+    (member.kind === "human" ? "active" : "unknown")
+  );
 }
 
 function statusLabel(member: TeamMember) {
@@ -139,7 +142,7 @@ function TeamMemberRow({
           </span>
         ) : null}
         <Badge
-          className={`rounded-[0.3125rem] border-0 px-2 py-1 text-badge font-semibold normal-case leading-relaxed tracking-normal ${status === "active" ? "bg-colony-success/10 text-colony-success" : "bg-accent text-primary"}`}
+          className={`rounded-[0.3125rem] border-0 px-2 py-1 text-badge font-semibold normal-case leading-relaxed tracking-normal ${status === "active" ? "bg-colony-success/10 text-colony-success" : status === "unknown" ? "bg-muted text-muted-foreground" : "bg-accent text-primary"}`}
           variant="secondary"
         >
           {statusLabel(member)}
