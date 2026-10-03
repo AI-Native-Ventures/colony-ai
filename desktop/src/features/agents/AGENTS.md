@@ -85,6 +85,9 @@ with a TypeScript lookup table or an id comparison in a component.
    explains that employees cannot reply until AI is connected. Its Settings
    button completes onboarding and opens Agents > Defaults. Bundled-agent
    readiness requires provider, model, and credentials via resolveAgentReadiness.
+   External harnesses require known logged-in authentication. Goose provider,
+   model, and credentials alone cannot establish readiness while its sign-in
+   remains unprobed, per the launch decision. Unknown authentication stays unready.
    Installed subscription-tool install/sign-in behavior is unchanged.
    `onboarding-agent-defaults.spec.ts` and mounted connection-panel regressions
    are the acceptance gates for this flow.

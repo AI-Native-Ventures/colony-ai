@@ -11,7 +11,7 @@ test("missing Codex adapter is a connection setup, not a missing CLI", () => {
     availability: "adapter_missing",
     authStatus: { status: "unknown" },
   };
-  assert.equal(harnessDetectionStatus(runtime, false), "Connection needed");
+  assert.equal(harnessDetectionStatus(runtime, false), "Setup needed");
   assert.equal(harnessInstallLabel(runtime), "Set up connection");
   assert.equal(
     harnessDetectionStatus(
@@ -35,7 +35,9 @@ test("installation never implies authentication", () => {
     };
     assert.equal(
       harnessDetectionStatus(runtime, false),
-      "Authentication not checked",
+      id === "codex"
+        ? "Sign-in status unavailable"
+        : "Authentication not checked",
     );
     assert.equal(
       harnessDetectionStatus(
@@ -56,4 +58,18 @@ test("installation never implies authentication", () => {
       "Ready on this computer",
     );
   }
+});
+
+test("a timed out Claude sign-in probe remains unavailable", () => {
+  assert.equal(
+    harnessDetectionStatus(
+      {
+        id: "claude",
+        availability: "available",
+        authStatus: { status: "unknown" },
+      },
+      false,
+    ),
+    "Sign-in status unavailable",
+  );
 });

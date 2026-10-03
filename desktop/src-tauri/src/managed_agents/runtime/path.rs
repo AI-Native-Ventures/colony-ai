@@ -115,7 +115,7 @@ pub(in crate::managed_agents) fn build_augmented_path(
     // Build the managed/prefix entries (everything before login-shell PATH).
     let mut managed: Vec<PathBuf> = Vec::new();
     if let Some(home) = &home {
-        managed.push(home.join(".local/bin"));
+        managed.push(home.join(".local").join("bin"));
     }
     // Only add managed runtime dirs when a home or executable context exists.
     // This keeps tests/utility callers that intentionally pass no local context
@@ -154,7 +154,7 @@ pub(in crate::managed_agents) fn build_augmented_path(
         login.extend(
             crate::managed_agents::user_binary_paths(&home)
                 .into_iter()
-                .filter(|p| p != &home.join(".local/bin")),
+                .filter(|p| p != &home.join(".local").join("bin")),
         );
     }
 
@@ -391,8 +391,10 @@ mod tests {
         }
 
         let result = result.expect("path must not be None with a home dir");
-        assert!(
-            result.starts_with(r"C:\Users\agent\.local\bin;"),
+        let entries: Vec<PathBuf> = std::env::split_paths(&result).collect();
+        assert_eq!(
+            entries.first(),
+            Some(&PathBuf::from(r"C:\Users\agent\.local\bin")),
             "home/.local/bin must be first: {result}"
         );
         assert!(

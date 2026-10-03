@@ -85,7 +85,7 @@ test("resolveAgentReadiness_cli_skips_logged_out_runtimes", () => {
   assert.equal(result.ready, false);
 });
 
-test("resolveAgentReadiness_goose_requires_provider_and_model", () => {
+test("resolveAgentReadiness_unprobed_goose_is_not_ready", () => {
   const runtimes = [
     makeRuntime({
       id: "goose",
@@ -382,5 +382,26 @@ test("a discovery entry with no auth probe cannot waive first-run AI setup", () 
       null,
     );
     assert.equal(result.ready, false);
+  }
+});
+
+test("fully configured Goose remains unready without a trustworthy auth probe", () => {
+  const config = makeConfig({
+    provider: "openai",
+    model: "fixture-model",
+    env_vars: { OPENAI_API_KEY: "e2e-placeholder" },
+  });
+  for (const status of ["unknown", "not_applicable"]) {
+    for (const scope of ["any", "preferred"]) {
+      assert.equal(
+        resolveAgentReadiness(
+          [makeRuntime({ authStatus: { status } })],
+          config,
+          scope,
+          null,
+        ).ready,
+        false,
+      );
+    }
   }
 });

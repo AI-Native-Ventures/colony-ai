@@ -77,6 +77,7 @@ function getRuntimeHeaderStatus(
 function RuntimeOption({
   globalConfig,
   gitBashPrerequisite,
+  isFetching,
   onRefresh,
   runtime,
   selected,
@@ -84,6 +85,7 @@ function RuntimeOption({
 }: {
   globalConfig: GlobalAgentConfig;
   gitBashPrerequisite: GitBashPrerequisite | null | undefined;
+  isFetching: boolean;
   onRefresh: () => void;
   runtime: AcpRuntimeCatalogEntry;
   selected: boolean;
@@ -230,7 +232,9 @@ function RuntimeOption({
           <>
             {runtime.id === "claude" || runtime.id === "codex" ? (
               <Button
+                aria-label={`Check ${getRuntimeDisplayLabel(runtime)} again`}
                 className="runtime-action"
+                disabled={isFetching}
                 onClick={onRefresh}
                 type="button"
                 variant="outline"
@@ -244,6 +248,7 @@ function RuntimeOption({
               </p>
             )}
             <Button
+              aria-label={`Open ${getRuntimeDisplayLabel(runtime)} setup guide`}
               className="runtime-action"
               onClick={() => void openUrl(runtime.installInstructionsUrl)}
               type="button"
@@ -356,7 +361,13 @@ function RuntimeConnectionPanel({
       ) : null}
       <div className="section-heading">
         <h3>On this computer</h3>
-        <button className="link" onClick={() => void refresh()} type="button">
+        <button
+          aria-label="Check installed AI apps again"
+          className="link"
+          disabled={query.isFetching}
+          onClick={() => void refresh()}
+          type="button"
+        >
           <svg aria-hidden="true" className="icon">
             <path d="M20 11a8 8 0 1 0 2 5" />
             <path d="M20 4v7h-7" />
@@ -399,6 +410,7 @@ function RuntimeConnectionPanel({
               key={runtime.id}
               globalConfig={globalConfig}
               gitBashPrerequisite={gitBashPrerequisite}
+              isFetching={query.isFetching}
               onRefresh={refresh}
               onSelect={() => setSelectedRuntimeId(runtime.id)}
               runtime={runtime}

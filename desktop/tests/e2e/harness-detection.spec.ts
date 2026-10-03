@@ -26,7 +26,7 @@ for (const viewport of [
       mock: { acpRuntimesCatalogAfterInstall: [readyCodex] },
     });
     const card = page.getByTestId("onboarding-connect-runtime-codex");
-    await expect(card).toContainText("Connection needed");
+    await expect(card).toContainText("Setup needed");
     await expect(card).toContainText(
       "Codex is installed. Its connection adapter is missing.",
     );
@@ -81,10 +81,13 @@ for (const viewport of [
         0,
       );
       await expect(
-        card.getByRole("button", { name: "Open setup guide", exact: true }),
+        card.getByRole("button", {
+          name: `Open ${id === "omp" ? "Oh My Pi" : id === "grok" ? "Grok Build" : "Goose"} setup guide`,
+          exact: true,
+        }),
       ).toBeEnabled();
       await expect(
-        card.getByRole("button", { name: "Check again", exact: true }),
+        card.getByRole("button", { name: /Check .* again/ }),
       ).toHaveCount(0);
       await expect(card).toContainText(
         "Sign-in cannot be checked. Use the setup guide, or choose another connection.",
@@ -116,13 +119,19 @@ for (const viewport of [
       discoveryDelayMs: 4000,
     });
     await expect(page.getByTestId("onboarding-runtime-loading")).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: "Check installed AI apps again",
+        exact: true,
+      }),
+    ).toBeDisabled();
     await waitForAnimations(page);
     await page.screenshot({
       path: `test-results/harness-detection/app-subscription-scan-${viewport.width}.png`,
     });
     await expect(
       page.getByTestId("onboarding-connect-runtime-codex"),
-    ).toContainText("Connection needed");
+    ).toContainText("Setup needed");
     await expect(page.getByTestId("onboarding-runtime-loading")).toHaveCount(0);
   });
 }
@@ -138,9 +147,31 @@ test("bundled Colony Agent does not offer an external setup guide or auth rechec
   const card = page.getByTestId("onboarding-connect-runtime-buzz-agent");
   await expect(card).toContainText("No AI connected yet");
   await expect(
-    card.getByRole("button", { name: "Check again", exact: true }),
+    card.getByRole("button", { name: /Check .* again/ }),
   ).toHaveCount(0);
   await expect(
-    card.getByRole("button", { name: "Open setup guide", exact: true }),
+    card.getByRole("button", { name: /Open .* setup guide/ }),
   ).toHaveCount(0);
+});
+
+test("runtime auth recheck is labelled and disabled during discovery", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    runtimes: [r17Runtime("codex", "available", { status: "unknown" })],
+    discoveryDelayMs: 1500,
+  });
+  const card = page.getByTestId("onboarding-connect-runtime-codex");
+  await expect(card).toContainText("Sign-in status unavailable");
+  const check = card.getByRole("button", {
+    name: "Check Codex again",
+    exact: true,
+  });
+  await expect(check).toBeEnabled();
+  await expect(
+    card.getByRole("button", { name: "Open Codex setup guide", exact: true }),
+  ).toBeEnabled();
+  await check.click();
+  await expect(check).toBeDisabled();
+  await expect(check).toBeEnabled();
 });

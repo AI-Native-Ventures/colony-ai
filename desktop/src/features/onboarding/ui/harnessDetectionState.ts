@@ -8,7 +8,7 @@ export function harnessDetectionStatus(
   if (ready) return "Ready on this computer";
   switch (runtime.availability) {
     case "adapter_missing":
-      return "Connection needed";
+      return "Setup needed";
     case "adapter_outdated":
       return "Connection update needed";
     case "cli_missing":
@@ -19,6 +19,8 @@ export function harnessDetectionStatus(
       if (runtime.authStatus.status === "logged_out") return "Sign-in needed";
       if (runtime.authStatus.status === "config_invalid")
         return "Configuration needs attention";
+      if (runtime.id === "claude" || runtime.id === "codex")
+        return "Sign-in status unavailable";
       return "Authentication not checked";
   }
 }
