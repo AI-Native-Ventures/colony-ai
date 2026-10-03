@@ -980,7 +980,7 @@ async fn set_password(
 async fn me(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-) -> Result<Json<PublicAccount>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let signer = authenticate(&state, &headers, "GET", "/api/accounts/me", None, false).await?;
     let account = state
         .db
@@ -989,7 +989,10 @@ async fn me(
         .map_err(|error| map_db_error("me", error))?
         .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "account_not_found"))?;
     email_rate_limit(&state, "/api/accounts/me", &account.email).await?;
-    Ok(Json(PublicAccount::from(&account)))
+    let public_account = json!(PublicAccount::from(&account));
+    let mut response = public_account.clone();
+    response["account"] = public_account;
+    Ok(Json(response))
 }
 
 /// `DELETE /api/accounts/me` deletes the signer's account and encrypted key.

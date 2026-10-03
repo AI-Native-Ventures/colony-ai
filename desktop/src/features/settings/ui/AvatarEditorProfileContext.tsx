@@ -174,7 +174,15 @@ export function AvatarEditorProfileContext({
         ) : null}
         {accountQuery.error instanceof Error ? (
           <p className="w20-account-profile-error" role="alert">
-            {accountQuery.error.message}
+            We couldn't load your account details. Try again.
+            <Button
+              disabled={accountQuery.isFetching}
+              onClick={() => void accountQuery.refetch()}
+              type="button"
+              variant="ghost"
+            >
+              Retry
+            </Button>
           </p>
         ) : null}
         {avatarSaved ? (

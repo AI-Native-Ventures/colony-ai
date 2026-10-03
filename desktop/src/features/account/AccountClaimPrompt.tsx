@@ -5,6 +5,7 @@ import type {
   AccountAuthClient,
   AccountAuthRecord,
 } from "@/features/onboarding/accountAuthClient";
+import { startAccountClaimLookup } from "./accountClaimLookup";
 import { AccountAuthFlow } from "@/features/onboarding/ui/AccountAuthFlow";
 import { profileQueryKey } from "@/features/profile/hooks";
 import { relayClient } from "@/shared/api/relayClient";
@@ -15,7 +16,7 @@ type ClaimStatus =
   | "checking"
   | "linked"
   | "eligible"
-  | "unavailable"
+  | "lookup-error"
   | "closed";
 
 export function AccountClaimPrompt({
@@ -29,17 +30,21 @@ export function AccountClaimPrompt({
   const [isImporting, setIsImporting] = React.useState(false);
 
   React.useEffect(() => {
-    let current = true;
-    void authClient
-      .getAccount()
-      .then((account) => {
-        if (current) setStatus(account ? "linked" : "eligible");
-      })
-      .catch(() => {
-        if (current) setStatus("unavailable");
-      });
+    const lookup = startAccountClaimLookup({
+      read: () => authClient.getAccount(),
+      onAccount: (account) => setStatus(account ? "linked" : "eligible"),
+      onFailure: (code, contractFailure) => {
+        console.warn("Account lookup failed", code);
+        if (contractFailure)
+          console.error("Account lookup contract failure", code);
+        setStatus("lookup-error");
+      },
+    });
+    const onFocus = () => lookup.retryOnFocus();
+    window.addEventListener("focus", onFocus);
     return () => {
-      current = false;
+      lookup.cancel();
+      window.removeEventListener("focus", onFocus);
     };
   }, [authClient]);
 
@@ -66,7 +71,7 @@ export function AccountClaimPrompt({
   );
 
   // A passive account read must not cover the composer during an outage.
-  // Account settings retains explicit lookup errors and a retry action.
+  // Bounded background retries and focus restore eligibility; settings can retry explicitly.
   if (status !== "eligible") {
     return null;
   }

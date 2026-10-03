@@ -1,8 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { mkdir } from "node:fs/promises";
-import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
+import { openSettings, openAvatarProfileContext } from "../helpers/settings";
 
 type AccountAuthMethod =
   | "signUp"
@@ -679,12 +678,14 @@ test("claim verification can be deferred without blocking the workspace", async 
 test("passive account outage never opens an intrusive prompt over the composer", async ({
   page,
 }) => {
-  await installMockBridge(page, { accountLinked: true });
+  await installMockBridge(page, { accountLinked: false });
   await page.addInitScript(() => {
+    window.__ACCOUNT_OUTAGE_CALLS__ = 0;
     Object.defineProperty(window, "__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__", {
       configurable: true,
       set(client) {
         client.getAccount = async () => {
+          window.__ACCOUNT_OUTAGE_CALLS__++;
           throw new Error("Account service unavailable");
         };
         Object.defineProperty(window, "__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__", {
@@ -697,34 +698,84 @@ test("passive account outage never opens an intrusive prompt over the composer",
   });
   await page.goto("/");
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => window.__ACCOUNT_OUTAGE_CALLS__))
+    .toBeGreaterThanOrEqual(1);
+  await page.getByTestId("channel-general").click();
+  await expect(page.getByTestId("message-input")).toBeVisible();
+  await page.getByTestId("message-input").fill("Composer is available");
+  await expect(page.getByTestId("message-input")).toContainText(
+    "Composer is available",
+  );
   await expect(page.getByTestId("account-claim-prompt")).toHaveCount(0);
-  if (process.env.COLONY_REFERENCE_URL) {
-    const proofDir =
-      process.env.COLONY_PROOF_DIR ?? "test-results/account-proof";
-    await mkdir(proofDir, { recursive: true });
-    const reference = await page.context().newPage();
-    for (const viewport of [
-      { width: 1728, height: 1117 },
-      { width: 1440, height: 900 },
-    ]) {
-      await page.setViewportSize(viewport);
-      await waitForAnimations(page);
-      await page.screenshot({
-        path: `${proofDir}/app-account-outage-${viewport.width}.png`,
-      });
-      await reference.setViewportSize(viewport);
-      await reference.goto(process.env.COLONY_REFERENCE_URL);
-      await reference.locator('[data-go="inbox"]').first().click();
-      await expect(
-        reference
-          .frameLocator("iframe")
-          .getByRole("heading", { name: "Inbox", exact: true }),
-      ).toBeVisible();
-      await waitForAnimations(reference);
-      await reference.screenshot({
-        path: `${proofDir}/reference-workspace-${viewport.width}.png`,
-      });
-    }
-    await reference.close();
-  }
 });
+
+test("a failed passive account read retries on focus and restores the claim entry", async ({
+  page,
+}) => {
+  await installMockBridge(page, { accountLinked: false });
+  await page.addInitScript(() => {
+    window.__ACCOUNT_FOCUS_CALLS__ = 0;
+    Object.defineProperty(window, "__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__", {
+      configurable: true,
+      set(client) {
+        client.getAccount = async () => {
+          window.__ACCOUNT_FOCUS_CALLS__++;
+          if (window.__ACCOUNT_FOCUS_CALLS__ === 1)
+            throw new Error("Account service unavailable");
+          return null;
+        };
+        Object.defineProperty(window, "__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__", {
+          value: client,
+          writable: true,
+          configurable: true,
+        });
+      },
+    });
+  });
+  await page.goto("/");
+  await expect
+    .poll(() => page.evaluate(() => window.__ACCOUNT_FOCUS_CALLS__))
+    .toBeGreaterThanOrEqual(1);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByTestId("account-claim-start")).toBeVisible();
+});
+
+for (const surface of ["account", "avatar"] as const) {
+  test(`${surface} account details show friendly lookup recovery and Retry refetches`, async ({
+    page,
+  }) => {
+    await installMockBridge(page, { accountLinked: true });
+    await page.goto("/");
+    await expect(page.getByTestId("app-sidebar")).toBeVisible();
+    await page.evaluate(() => {
+      const client = window.__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__;
+      const original = client.getAccount.bind(client);
+      window.__ACCOUNT_SETTINGS_CALLS__ = 0;
+      window.__ACCOUNT_SETTINGS_RECOVER__ = false;
+      client.getAccount = async () => {
+        window.__ACCOUNT_SETTINGS_CALLS__++;
+        if (!window.__ACCOUNT_SETTINGS_RECOVER__)
+          throw new Error("network_error");
+        return original();
+      };
+    });
+    await openSettings(page, "profile");
+    if (surface === "avatar") await openAvatarProfileContext(page);
+    const panel = page.getByTestId("settings-profile");
+    await expect(panel.getByRole("alert")).toContainText(
+      "We couldn't load your account details. Try again.",
+    );
+    await expect(panel.getByRole("alert")).not.toContainText("network_error");
+    const beforeRetry = await page.evaluate(() => {
+      window.__ACCOUNT_SETTINGS_RECOVER__ = true;
+      return window.__ACCOUNT_SETTINGS_CALLS__;
+    });
+    await panel.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect
+      .poll(() => page.evaluate(() => window.__ACCOUNT_SETTINGS_CALLS__))
+      .toBeGreaterThan(beforeRetry);
+    await expect(panel.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByTestId("account-profile-email")).not.toHaveValue("");
+  });
+}
