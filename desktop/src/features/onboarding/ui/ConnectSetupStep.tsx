@@ -223,16 +223,28 @@ function RuntimeOption({
             {harnessInstallLabel(runtime)}
           </Button>
         ) : null}
-        {!ready && runtime.availability === "available" && !needsSignIn ? (
+        {!ready &&
+        runtime.id !== "buzz-agent" &&
+        runtime.availability === "available" &&
+        !needsSignIn ? (
           <>
-            <Button
-              className="runtime-action"
-              onClick={onRefresh}
-              type="button"
-              variant="outline"
-            >
-              Check again
-            </Button>
+            {runtime.id === "claude" || runtime.id === "codex" ? (
+              <Button
+                className="runtime-action"
+                onClick={onRefresh}
+                type="button"
+                variant="outline"
+              >
+                Check again
+              </Button>
+            ) : (
+              <p className="provider-account">
+                Open the setup guide to configure{" "}
+                {getRuntimeDisplayLabel(runtime)}. Colony cannot check its
+                sign-in yet. Choose another connection here to start your AI
+                employees.
+              </p>
+            )}
             <Button
               className="runtime-action"
               onClick={() => void openUrl(runtime.installInstructionsUrl)}

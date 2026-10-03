@@ -724,9 +724,9 @@ pub enum AuthStatus {
         /// Trimmed excerpt of the stderr message.
         diagnostic: String,
     },
-    /// This runtime does not have a login step (e.g. goose, buzz-agent).
+    /// Authentication is configured separately (bundled agent). Never means signed in.
     NotApplicable,
-    /// Probe was not attempted (runtime unavailable or probe timed out).
+    /// No trustworthy auth result: unavailable, no probe implemented, or probe timed out.
     Unknown,
 }
 

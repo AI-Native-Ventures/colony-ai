@@ -79,7 +79,8 @@ test("unprobed provider harnesses never claim ready and retain setup recovery", 
     ).toBeEnabled();
     await expect(
       card.getByRole("button", { name: "Check again", exact: true }),
-    ).toBeEnabled();
+    ).toHaveCount(0);
+    await expect(card).toContainText("Choose another connection here");
     await expect(
       card.getByRole("button", { name: "Install", exact: true }),
     ).toHaveCount(0);
@@ -116,3 +117,21 @@ for (const viewport of [
     await expect(page.getByTestId("onboarding-runtime-loading")).toHaveCount(0);
   });
 }
+
+test("bundled Colony Agent does not offer an external setup guide or auth recheck", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    runtimes: [
+      r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
+    ],
+  });
+  const card = page.getByTestId("onboarding-connect-runtime-buzz-agent");
+  await expect(card).toContainText("No AI connected yet");
+  await expect(
+    card.getByRole("button", { name: "Check again", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    card.getByRole("button", { name: "Open setup guide", exact: true }),
+  ).toHaveCount(0);
+});

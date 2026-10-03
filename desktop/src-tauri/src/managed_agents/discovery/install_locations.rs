@@ -11,21 +11,22 @@ pub(crate) fn user_binary_paths(home: &Path) -> Vec<PathBuf> {
         ".asdf/shims",
         ".bun/bin",
         ".local/share/pnpm",
-        "Library/pnpm",
         ".pnpm",
         ".npm-global/bin",
         ".npm-packages/bin",
         ".npm/bin",
         ".codex/bin",
-        ".codex",
         ".codex/packages/standalone/current/bin",
-        "Applications/Codex.app/Contents/Resources",
     ]
     .into_iter()
     .map(|path| home.join(path))
     .collect::<Vec<_>>();
     #[cfg(target_os = "macos")]
-    paths.push(PathBuf::from("/Applications/Codex.app/Contents/Resources"));
+    {
+        paths.push(PathBuf::from("/Applications/Codex.app/Contents/Resources"));
+        paths.push(home.join("Applications/Codex.app/Contents/Resources"));
+        paths.push(home.join("Library/pnpm"));
+    }
     for key in ["PNPM_HOME", "NVM_BIN"] {
         if let Some(path) = std::env::var_os(key)
             .map(PathBuf::from)
@@ -105,8 +106,45 @@ mod tests {
         assert!(user_binary_paths(home.path())
             .iter()
             .any(|dir| super::super::is_executable_file(&dir.join("codex"))));
-        assert!(user_binary_paths(home.path()).contains(&home.path().join("Library/pnpm")));
+
         std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o644)).unwrap();
         assert!(!super::super::is_executable_file(&binary));
     }
+}
+
+#[cfg(all(test, unix))]
+#[test]
+fn production_resolver_finds_standalone_codex_and_npm_prefix_without_shell_spawn() {
+    let _guard = crate::managed_agents::lock_path_mutex();
+    super::login_shell_spawn_probe::run_in_isolated_process(|| {
+        use std::os::unix::fs::PermissionsExt;
+        let home = tempfile::tempdir().unwrap();
+        std::env::set_var("HOME", home.path());
+        std::env::set_var("XDG_DATA_HOME", home.path().join("data"));
+        std::env::set_var("PATH", "");
+        for key in [
+            "NVM_BIN",
+            "PNPM_HOME",
+            "NPM_CONFIG_PREFIX",
+            "npm_config_prefix",
+        ] {
+            std::env::remove_var(key);
+        }
+        let standalone = home
+            .path()
+            .join(".codex/packages/standalone/current/bin/codex");
+        let prefix = home.path().join("custom-npm");
+        let npm_cli = prefix.join("bin/colony-prefix-probe");
+        for binary in [&standalone, &npm_cli] {
+            std::fs::create_dir_all(binary.parent().unwrap()).unwrap();
+            std::fs::write(binary, "#!/bin/sh\nexit 0\n").unwrap();
+            std::fs::set_permissions(binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        std::env::set_var("NPM_CONFIG_PREFIX", &prefix);
+        super::clear_resolve_cache();
+        super::login_shell_spawn_probe::reset();
+        assert_eq!(super::resolve_command("codex"), Some(standalone));
+        assert_eq!(super::resolve_command("colony-prefix-probe"), Some(npm_cli));
+        assert_eq!(super::login_shell_spawn_probe::count(), 0);
+    });
 }

@@ -21,7 +21,7 @@ export const GIT_BASH_REQUIRED_COPY =
  * Determine whether the user has a working agent path configured.
  *
  * CLI path: the preferred Claude or Codex runtime is available and logged in.
- * Provider path: the preferred Buzz Agent or Goose runtime has provider and
+ * Provider path: the preferred Colony Agent runtime has provider and
  * model set, plus all required credential env vars for that provider.
  *
  * Returns enough info for the UI to say which path matched, or that neither did.
@@ -74,7 +74,7 @@ export function resolveAgentReadiness(
     };
   }
 
-  if (preferredRuntime.id !== "buzz-agent" && preferredRuntime.id !== "goose") {
+  if (preferredRuntime.id !== "buzz-agent") {
     return { ready: false };
   }
 
