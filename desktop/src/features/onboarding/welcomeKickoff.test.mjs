@@ -369,7 +369,11 @@ test("closer classification sees replies that arrive during the final beat", asy
   const opener = relayEvent({
     id: "opener",
     pubkey: fizz.pubkey,
-    tags: [["client", "buzz-welcome-kickoff.opener.v1"]],
+    tags: [
+      ["client", "buzz-welcome-kickoff.opener.v1"],
+      ["p", honey.pubkey],
+      ["p", pollen.pubkey],
+    ],
   });
   const events = [opener];
 
@@ -415,7 +419,11 @@ function introReply(id, pubkey, openerId) {
 const kickoffOpener = relayEvent({
   id: "opener",
   pubkey: fizz.pubkey,
-  tags: [["client", "buzz-welcome-kickoff.opener.v1"]],
+  tags: [
+    ["client", "buzz-welcome-kickoff.opener.v1"],
+    ["p", honey.pubkey],
+    ["p", pollen.pubkey],
+  ],
 });
 
 // The bug this branch fixes: teammate intros are thread replies, which the
@@ -476,9 +484,38 @@ test("Fizz points new users to the working provider defaults path", () => {
     WELCOME_KICKOFF_PROVIDER_MESSAGE,
     /Settings > Agents > Defaults/,
   );
-  assert.match(
-    WELCOME_KICKOFF_PROVIDER_MESSAGE,
-    /provider key and choose a model/,
+  assert.match(WELCOME_KICKOFF_PROVIDER_MESSAGE, /sign in and choose a model/);
+});
+
+test("presence deadline also bounds a hung in-flight relay request", async () => {
+  const started = performance.now();
+  assert.deepEqual(
+    await waitForWelcomeTeammatesOnline([honey, pollen], {
+      isCancelled: () => false,
+      loadPresence: () => new Promise(() => {}),
+      waitMs: 20,
+    }),
+    [],
+  );
+  assert.ok(
+    performance.now() - started < 1_000,
+    "a pending presence response must not hold kickoff",
+  );
+});
+
+test("never-mentioned teammates cannot hold the closer unresolved", () => {
+  const opener = relayEvent({
+    id: "selective",
+    pubkey: fizz.pubkey,
+    tags: [["p", honey.pubkey]],
+  });
+  const resolution = classifyWelcomeKickoffResolution([], opener, {
+    lead: fizz,
+    teammates: [honey, pollen],
+  });
+  assert.deepEqual(
+    resolution.unresolved.map((agent) => agent.pubkey),
+    [honey.pubkey],
   );
 });
 

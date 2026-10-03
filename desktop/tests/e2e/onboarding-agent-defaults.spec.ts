@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { installMockBridge } from "../helpers/bridge";
 
 import {
   openR17ConnectionSetup,
@@ -11,8 +12,14 @@ async function openR17AgentDefaultsSettings(
   page: import("@playwright/test").Page,
   options: R17ConnectionSetupOptions = {},
 ) {
-  await openR17ConnectionSetup(page, options);
-  await page.getByRole("button", { name: "Open my Colony" }).click();
+  // Settings tests seed an existing workspace. Connect has its own real-turn gate.
+  await installMockBridge(page, {
+    ...options.mock,
+    accountLinked: true,
+    acpRuntimesCatalog: options.runtimes ?? [],
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("open-settings")).toBeVisible();
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
@@ -370,7 +377,7 @@ test("R17 Bring your own key saves a tested OpenRouter provider default", async 
   await expect(
     page.getByText("AI connected and saved as your default."),
   ).toBeVisible();
-  await expect(page.locator(".harness-state")).toHaveText("Ready");
+  await expect(page.locator(".harness-state")).toHaveText("Configured");
   await expect(
     page.getByText("AI employees will not reply", { exact: false }),
   ).toHaveCount(0);

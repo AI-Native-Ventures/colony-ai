@@ -405,3 +405,63 @@ test("fully configured Goose remains unready without a trustworthy auth probe", 
     }
   }
 });
+
+test("preferred scope retains legacy null preference CLI and provider readiness", () => {
+  assert.equal(
+    resolveAgentReadiness(
+      [makeRuntime({ id: "claude" })],
+      makeConfig({ preferred_runtime: null }),
+      "preferred",
+      null,
+    ).ready,
+    true,
+  );
+  assert.equal(
+    resolveAgentReadiness(
+      [makeRuntime({ id: "buzz-agent" })],
+      makeConfig({
+        preferred_runtime: null,
+        provider: "deepseek",
+        model: "deepseek-chat",
+        env_vars: { DEEPSEEK_API_KEY: "fixture" },
+      }),
+      "preferred",
+      null,
+    ).ready,
+    true,
+  );
+});
+for (const id of [
+  "claude",
+  "codex",
+  "cursor",
+  "devin",
+  "omp",
+  "grok",
+  "opencode",
+  "kimi",
+  "amp",
+  "hermes",
+  "openclaw",
+]) {
+  test(`selected ${id} uses its own auth readiness without bundled credentials`, () => {
+    assert.equal(
+      resolveAgentReadiness(
+        [makeRuntime({ id })],
+        makeConfig({ preferred_runtime: id }),
+        "preferred",
+        null,
+      ).ready,
+      true,
+    );
+    assert.equal(
+      resolveAgentReadiness(
+        [makeRuntime({ id, authStatus: { status: "logged_out" } })],
+        makeConfig({ preferred_runtime: id }),
+        "preferred",
+        null,
+      ).ready,
+      false,
+    );
+  });
+}

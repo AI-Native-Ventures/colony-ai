@@ -1,3 +1,5 @@
+import { resolveLegacyWelcomeRuntime } from "./ui/agentReadiness";
+import { stopManagedAgent } from "@/shared/api/tauriManagedAgents";
 import {
   buildInstanceInputForDefinition,
   resolveStartRuntimeForDefinition,
@@ -8,6 +10,7 @@ import {
   getChannelMembers,
   listManagedAgents,
   updateManagedAgent,
+  discoverGitBashPrerequisite,
 } from "@/shared/api/tauri";
 import { discoverAcpRuntimes } from "@/shared/api/tauriAcpDiscovery";
 import { getAgentAccessOwnerOnly } from "@/shared/api/tauriAgentAccess";
@@ -30,7 +33,7 @@ const LEGACY_WELCOME_GUIDE_AGENT_NAME = "Kit";
 export const LEGACY_WELCOME_GUIDE_SYSTEM_PROMPT =
   "You are Kit, Sprout's friendly welcome guide. Help new users understand the community, channels, messages, and agents. Keep introductions concise, practical, and warm.";
 export const WELCOME_GUIDE_INTRO_MESSAGE =
-  "Hi, I'm Fizz. Welcome to Buzz.\n\nI can help you get oriented, answer questions, and make the first few steps feel less mysterious.\n\nFeel free to ask me what else you can do in Buzz, or just talk through what you want to build.";
+  "Hi, I'm Fizz. Welcome to Colony.\n\nI can help you get oriented, answer questions, and make the first few steps feel less mysterious.\n\nFeel free to ask me what else you can do in Colony, or just talk through what you want to build.";
 
 export type WelcomeTeamRole = "lead" | "teammate";
 
@@ -215,13 +218,20 @@ export async function buildWelcomeStarterCreateInput(
   preferredRuntimeId: string | null,
   relayUrl?: string | null,
 ): Promise<CreateManagedAgentInput> {
+  if (
+    preferredRuntimeId &&
+    !runtimes.some((runtime) => runtime.id === preferredRuntimeId)
+  ) {
+    throw new Error("Your selected AI connection is unavailable.");
+  }
   const { runtime } = resolveStartRuntimeForDefinition(
-    persona,
+    preferredRuntimeId ? { ...persona, runtime: preferredRuntimeId } : persona,
     runtimes,
     preferredRuntimeId,
   );
   return {
     ...(await buildInstanceInputForDefinition(persona, runtime)),
+    harnessOverride: true,
     name: starter.name,
     teamId: WELCOME_TEAM_ID,
     relayUrl: relayUrl ?? undefined,
@@ -260,6 +270,19 @@ export function welcomeStarterRuntimeUpdate(
     model: desiredModel,
     provider: desiredProvider,
   };
+}
+
+/** Stop a running starter before applying changed launch fields, so kickoff starts the new runtime. */
+export async function reconcileWelcomeStarter(
+  existing: ManagedAgent,
+  desired: CreateManagedAgentInput,
+  stop = stopManagedAgent,
+  update = updateManagedAgent,
+): Promise<ManagedAgent> {
+  const runtimeUpdate = welcomeStarterRuntimeUpdate(existing, desired);
+  if (!runtimeUpdate) return existing;
+  if (existing.status === "running") await stop(existing.pubkey);
+  return (await update(runtimeUpdate)).agent;
 }
 
 export function welcomeTeammateHasExpectedAccess(
@@ -339,6 +362,14 @@ async function provisionWelcomeTeam(
     (runtime): runtime is AcpRuntime => runtime.availability === "available",
   );
 
+  const runtimePreference =
+    globalConfig.preferred_runtime ??
+    resolveLegacyWelcomeRuntime(
+      runtimeCatalog,
+      globalConfig,
+      await discoverGitBashPrerequisite(),
+    )?.id ??
+    null;
   const agents: ManagedAgent[] = [];
   for (const starter of WELCOME_TEAM_STARTERS) {
     const persona = personasById.get(starter.personaId);
@@ -349,7 +380,7 @@ async function provisionWelcomeTeam(
       starter,
       persona,
       runtimes,
-      globalConfig.preferred_runtime,
+      runtimePreference,
       relayUrl,
     );
     const existing = pickWelcomeTeamStarterAgentForRelay(
@@ -358,12 +389,7 @@ async function provisionWelcomeTeam(
       relayUrl,
     );
     if (existing) {
-      const runtimeUpdate = welcomeStarterRuntimeUpdate(existing, desired);
-      agents.push(
-        runtimeUpdate
-          ? (await updateManagedAgent(runtimeUpdate)).agent
-          : existing,
-      );
+      agents.push(await reconcileWelcomeStarter(existing, desired));
       continue;
     }
 

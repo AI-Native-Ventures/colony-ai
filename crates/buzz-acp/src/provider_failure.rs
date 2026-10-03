@@ -57,6 +57,18 @@ pub(crate) fn notice(error: &AcpError) -> Option<String> {
     Some(format!("⚠️ {provider} {problem}"))
 }
 
+/// Map provider failures to a dedicated onboarding recovery action without chat decoration.
+pub(crate) fn onboarding_notice(error: &AcpError) -> Option<String> {
+    let notice = notice(error)?;
+    if notice.contains("rejected authentication") {
+        Some("The provider rejected authentication. Sign in again or update your provider connection, then retry the test.".into())
+    } else if notice.contains("no credits or balance") {
+        Some("The provider has no usage balance available. Add usage at the provider or choose another connection, then retry the test.".into())
+    } else {
+        Some("The provider denied model access. Check access or choose another model, then retry the test.".into())
+    }
+}
+
 /// Keep upstream payloads out of the eventual notice after transient retries.
 pub(crate) fn retry_reason(error: &AcpError) -> Option<&'static str> {
     let AcpError::AgentError { message, .. } = error else {

@@ -94,6 +94,7 @@ export default defineConfig({
     {
       name: "smoke",
       testMatch: [
+        "**/first-reply-runtime.spec.ts",
         "**/smoke.spec.ts",
         "**/shell-design.spec.ts",
         "**/account-auth.spec.ts",
@@ -291,6 +292,7 @@ export default defineConfig({
       name: "integration",
       testMatch: [
         "**/account-auth.spec.ts",
+        "**/first-reply-runtime.spec.ts",
         "**/agents.spec.ts",
         "**/agent-availability.spec.ts",
         "**/agent-snapshot-recipient.spec.ts",

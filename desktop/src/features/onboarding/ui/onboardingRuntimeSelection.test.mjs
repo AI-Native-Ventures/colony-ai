@@ -168,3 +168,87 @@ test("unprobed provider harnesses and missing executable paths cannot be ready",
     false,
   );
 });
+
+for (const id of [
+  "claude",
+  "codex",
+  "cursor",
+  "devin",
+  "omp",
+  "grok",
+  "opencode",
+  "kimi",
+  "amp",
+  "hermes",
+  "openclaw",
+]) {
+  test(`${id} is testable with its own authentication`, () => {
+    assert.equal(
+      runtimeIsReadyForOnboarding(runtime(id, "available", "logged_in")),
+      true,
+    );
+    assert.equal(
+      runtimeIsReadyForOnboarding(runtime(id, "available", "logged_out")),
+      false,
+    );
+  });
+}
+
+test("buzz-agent requires provider model and credentials", () => {
+  const entry = runtime("buzz-agent", "available", "not_applicable");
+  assert.equal(
+    runtimeIsReadyForOnboarding(
+      entry,
+      { env_vars: {}, provider: null, model: null },
+      null,
+    ),
+    false,
+  );
+  assert.equal(
+    runtimeIsReadyForOnboarding(
+      entry,
+      {
+        env_vars: { ANTHROPIC_API_KEY: "fixture" },
+        provider: "anthropic",
+        model: "model",
+      },
+      null,
+    ),
+    true,
+  );
+});
+
+// Launch decision (desktop/src/features/agents/AGENTS.md): Goose provider,
+// model and credentials alone cannot establish readiness while its sign-in is
+// unprobed. This replaces the first-reply lane's provider-runtime Goose case.
+test("goose with a complete provider config is still unready without a known sign-in", () => {
+  const entry = runtime("goose", "available", "not_applicable");
+  assert.equal(
+    runtimeIsReadyForOnboarding(
+      entry,
+      {
+        env_vars: { ANTHROPIC_API_KEY: "fixture" },
+        provider: "anthropic",
+        model: "model",
+      },
+      null,
+    ),
+    false,
+  );
+});
+
+test("switching from a CLI cannot borrow its model or provider as bundled readiness", () => {
+  assert.equal(
+    runtimeIsReadyForOnboarding(
+      runtime("buzz-agent", "available", "not_applicable"),
+      {
+        preferred_runtime: "claude",
+        model: "cli-model",
+        provider: "anthropic",
+        env_vars: { ANTHROPIC_API_KEY: "fixture" },
+      },
+      null,
+    ),
+    false,
+  );
+});

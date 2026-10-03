@@ -9,6 +9,7 @@ import {
   pickWelcomeGuideAgentForRelay,
   pickWelcomeTeamStarterAgentForRelay,
   welcomeStarterRuntimeUpdate,
+  reconcileWelcomeStarter,
   welcomeTeammateAccessUpdate,
   welcomeTeammateHasExpectedAccess,
   WELCOME_GUIDE_AGENT_NAME,
@@ -158,7 +159,7 @@ test("starter persona activation is serialized to protect the shared store", asy
   assert.deepEqual(calls, ["builtin:fizz", "builtin:honey", "builtin:bumble"]);
 });
 
-test("all Welcome starters use the onboarding runtime preference", async () => {
+test("all Welcome starters override a bundled persona with the chosen CLI harness", async () => {
   const claude = {
     id: "claude",
     label: "Claude",
@@ -189,7 +190,7 @@ test("all Welcome starters use the onboarding runtime preference", async () => {
         systemPrompt: `${starter.name} prompt`,
         model: null,
         provider: null,
-        runtime: null,
+        runtime: "buzz-agent",
         avatarUrl: null,
         envVars: {},
         isBuiltIn: true,
@@ -200,6 +201,7 @@ test("all Welcome starters use the onboarding runtime preference", async () => {
       RELAY_A,
     );
 
+    assert.notEqual(input.agentCommand, "buzz-agent");
     assert.equal(input.agentCommand, "claude-code-acp");
     assert.equal(input.harnessOverride, true);
     assert.equal(input.personaId, starter.personaId);
@@ -451,4 +453,50 @@ test("owner-only-access policy accepts provider Welcome teammates", () => {
   });
   assert.equal(welcomeTeammateHasExpectedAccess(teammate, PUB_B, true), true);
   assert.equal(welcomeTeammateHasExpectedAccess(teammate, PUB_B, false), false);
+});
+
+test("Welcome refuses a missing selected runtime instead of falling back to bundled", async () => {
+  await assert.rejects(
+    buildWelcomeStarterCreateInput(
+      WELCOME_TEAM_STARTERS[0],
+      { runtime: null },
+      [{ id: "buzz-agent", availability: "available" }],
+      "claude",
+    ),
+    /selected AI connection is unavailable/,
+  );
+});
+
+test("changing a running lead stops it before updating so kickoff can launch the chosen runtime", async () => {
+  const order = [];
+  const existing = makeAgent({ status: "running" });
+  const result = await reconcileWelcomeStarter(
+    existing,
+    {
+      agentCommand: "claude-code-acp",
+      agentArgs: [],
+      mcpCommand: "",
+      model: null,
+      provider: null,
+    },
+    async (pubkey) => {
+      order.push(["stop", pubkey]);
+      return { ...existing, status: "stopped" };
+    },
+    async (input) => {
+      order.push(["update", input.agentCommand]);
+      return {
+        agent: {
+          ...existing,
+          status: "stopped",
+          agentCommand: input.agentCommand,
+        },
+      };
+    },
+  );
+  assert.deepEqual(order, [
+    ["stop", existing.pubkey],
+    ["update", "claude-code-acp"],
+  ]);
+  assert.equal(result.status, "stopped");
 });

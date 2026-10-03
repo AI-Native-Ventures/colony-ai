@@ -688,6 +688,14 @@ type MockBridgeOptions = {
    * Pass a config with a provider to test Inherit-from-global behavior.
    */
   /** Safe result of the mocked onboarding connection probe. */
+  onboardingConnectionResult?: {
+    reply?: string;
+    model?: string | null;
+    error?: string;
+    startupMs?: number;
+    totalMs?: number;
+  };
+  onboardingConnectionDelayMs?: number;
   aiConnectionResult?:
     | "connected"
     | "key-rejected"

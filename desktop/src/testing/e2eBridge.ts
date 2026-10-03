@@ -618,6 +618,7 @@ type E2eConfig = {
      *  community mid-startup and observe the fail-closed scope check.
      *  Releasable early via `__BUZZ_E2E_RELEASE_MANAGED_AGENT_STARTS__()`. */
     startManagedAgentDelayMs?: number;
+    startManagedAgentDelayMsByName?: Record<string, number>;
     /** Hold the media proxy at port 0 until the E2E release seam is invoked. */
     mediaProxyInitiallyUnavailable?: boolean;
     /** Hold mock send live echoes until the E2E release seam is invoked. */
@@ -908,6 +909,14 @@ type E2eConfig = {
      * Pass a config with a provider to test Inherit-from-global behavior.
      */
     /** Safe result of the mocked onboarding connection probe. */
+    onboardingConnectionResult?: {
+      reply?: string;
+      model?: string | null;
+      error?: string;
+      startupMs?: number;
+      totalMs?: number;
+    };
+    onboardingConnectionDelayMs?: number;
     aiConnectionResult?:
       | "connected"
       | "key-rejected"
@@ -14784,6 +14793,8 @@ let installCallCount = 0;
 const installCallCountByRuntime: Record<string, number> = {};
 let addChannelMembersCallCount = 0;
 let setGlobalAgentConfigCallCount = 0;
+let cancelOnboardingProbe: { requestId: string; cancel: () => void } | null =
+  null;
 let mockGlobalAgentConfig: {
   env_vars: Record<string, string>;
   provider: string | null;
@@ -15913,7 +15924,12 @@ async function handleStartManagedAgent(
   },
   config?: E2eConfig,
 ): Promise<RawManagedAgent> {
-  const delayMs = config?.mock?.startManagedAgentDelayMs ?? 0;
+  const delayMs =
+    config?.mock?.startManagedAgentDelayMsByName?.[
+      getMockManagedAgent(args.pubkey).name
+    ] ??
+    config?.mock?.startManagedAgentDelayMs ??
+    0;
   if (delayMs > 0) {
     await new Promise<void>((resolve) => {
       let settled = false;
@@ -21359,6 +21375,45 @@ export function maybeInstallE2eTauriMocks() {
           ?.runtimeId;
         if (!runtimeId) return null;
         return config.mock?.runtimeFileConfigs?.[runtimeId] ?? null;
+      }
+      case "cancel_onboarding_connection_test": {
+        const { requestId } = payload as { requestId: string };
+        if (cancelOnboardingProbe?.requestId === requestId)
+          cancelOnboardingProbe.cancel();
+        return null;
+      }
+      case "test_onboarding_connection": {
+        const { requestId } = payload as { requestId: string };
+        cancelOnboardingProbe?.cancel();
+        const delay = activeConfig?.mock?.onboardingConnectionDelayMs ?? 0;
+        await emit("onboarding-connection-progress", {
+          requestId,
+          phase: "waiting",
+        });
+        if (delay) {
+          await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => {
+              cancelOnboardingProbe = null;
+              resolve();
+            }, delay);
+            cancelOnboardingProbe = {
+              requestId,
+              cancel: () => {
+                clearTimeout(timer);
+                cancelOnboardingProbe = null;
+                reject(new Error("Connection test cancelled."));
+              },
+            };
+          });
+        }
+        return (
+          activeConfig?.mock?.onboardingConnectionResult ?? {
+            reply: "Hello, I'm here. What shall we work on first?",
+            model: "fixture-model",
+            startupMs: 20,
+            totalMs: 50,
+          }
+        );
       }
       case "test_ai_connection":
         return activeConfig?.mock?.aiConnectionResult ?? "connected";

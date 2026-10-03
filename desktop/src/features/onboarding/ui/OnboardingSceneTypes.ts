@@ -13,6 +13,9 @@ export type OnboardingSceneData = {
   websitePending?: boolean;
   harnessLabel?: string;
   harnessStatus?: string;
+  connectionReply?: string;
+  connectionPhase?: "starting" | "waiting" | "saving";
+  effectiveModel?: string | null;
   error?: string | null;
   pending?: boolean;
   visualOnly?: boolean;

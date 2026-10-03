@@ -11,6 +11,7 @@ mod auth_status_cache;
 mod install_locations;
 pub(crate) use install_locations::user_binary_paths;
 mod bounded_command;
+pub(crate) use bounded_command::output_with_timeout;
 mod login_shell;
 mod presets;
 mod runtime_metadata;
