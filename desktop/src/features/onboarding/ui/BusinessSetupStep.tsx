@@ -147,6 +147,7 @@ export function BusinessSetupStep({
     website,
     description,
     logoUrl,
+    logoSource: logoUrl ? (uploadedLogo ? "upload" : "website") : undefined,
     websitePending,
     pending,
   };

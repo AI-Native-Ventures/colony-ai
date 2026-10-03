@@ -470,7 +470,9 @@ export function BusinessForm({
                 </div>
                 <p className="logo-hint">
                   {data.logoUrl
-                    ? "Your uploaded logo"
+                    ? data.logoSource === "website"
+                      ? "From your website"
+                      : "Your uploaded logo"
                     : "Or we’ll use your website’s icon."}
                 </p>
               </div>

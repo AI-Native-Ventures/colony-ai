@@ -45,6 +45,9 @@ for (const viewport of [
       "src",
       metadata.faviconDataUrl,
     );
+    await expect(
+      page.getByText("From your website", { exact: true }),
+    ).toBeVisible();
     await page.getByLabel("Business name", { exact: true }).fill("My business");
     await page
       .getByLabel("What does your business do?")
@@ -143,6 +146,9 @@ test("an uploaded logo wins over an in-flight website icon", async ({
     "src",
     /^data:image\/svg\+xml/,
   );
+  await expect(
+    page.getByText("Your uploaded logo", { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Read website", exact: true }),
   ).toBeEnabled();
