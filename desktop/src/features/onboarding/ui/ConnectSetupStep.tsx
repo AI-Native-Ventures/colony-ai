@@ -1,6 +1,7 @@
+import { discoverAgentModels } from "@/shared/api/agentModels";
 import { OpenRouterConnectionPanel } from "@/shared/ui/OpenRouterConnectionPanel";
 import * as React from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { globalAgentConfigQueryKey } from "@/features/agents/useGlobalAgentConfig";
 import {
   runOnboardingConnectionTest,
@@ -457,7 +458,9 @@ function RuntimeConnectionPanel({
       <p className="power-caption">
         {selectedRuntime &&
         ready.some((runtime) => runtime.id === selectedRuntime.id)
-          ? `${getRuntimeDisplayLabel(selectedRuntime)} can be tested on this computer.`
+          ? selectedRuntime.id === "claude" || selectedRuntime.id === "codex"
+            ? "Your AI teammates share these allowances with your other usage."
+            : `${getRuntimeDisplayLabel(selectedRuntime)} can be tested on this computer.`
           : ready.length > 0
             ? "Choose a signed-in harness to test."
             : "You can connect an AI harness later."}
@@ -592,6 +595,23 @@ export function ConnectSetupStep({
     (runtime) => runtime.id === testedRuntimeId,
   );
 
+  const proofModels = useQuery({
+    queryKey: ["onboarding-proof-models", testedRuntime?.id, proof?.model],
+    enabled: !!proof?.model && !!testedRuntime?.command,
+    queryFn: () => {
+      if (!testedRuntime?.command)
+        throw new Error("Harness model catalog is unavailable.");
+      return discoverAgentModels({
+        agentCommand: testedRuntime.command,
+        agentArgs: testedRuntime.defaultArgs,
+        envVars: globalConfig.env_vars,
+      });
+    },
+  });
+  const proofModelLabel =
+    proofModels.data?.models.find((model) => model.id === proof?.model)?.name ||
+    proof?.model;
+
   const continueWithRuntime = async () => {
     if (!aiReady || connectionScene === "credits-price-error") {
       return;
@@ -650,7 +670,7 @@ export function ConnectSetupStep({
             : "Colony AI",
           connectionPhase,
           connectionReply: proof?.reply,
-          effectiveModel: proof?.model,
+          effectiveModel: proofModelLabel,
           error: saveError,
         }}
         harnessMark={
@@ -696,6 +716,8 @@ export function ConnectSetupStep({
           ) : connectionScene === "openrouter-unlinked" ? (
             <OpenRouterConnectionPanel
               onboarding
+              onTestConnection={() => void continueWithRuntime()}
+              testDisabled={!aiReady || saving}
               onReadyChange={setOpenRouterReady}
               onStateChange={(state) =>
                 setOpenRouterScene(`openrouter-${state}`)
@@ -712,9 +734,10 @@ export function ConnectSetupStep({
           {saveError && connectionScene !== "connect" ? (
             <p role="alert">{saveError}</p>
           ) : null}
-          {connectionScene === "connect" ||
-          connectionScene === "credits-price-error" ||
-          aiReady ? (
+          {connectionScene !== "openrouter-unlinked" &&
+          (connectionScene === "connect" ||
+            connectionScene === "credits-price-error" ||
+            aiReady) ? (
             <div className="power-cta">
               <button
                 className="primary full"
@@ -727,17 +750,22 @@ export function ConnectSetupStep({
                 type="button"
               >
                 {connectionScene === "connect" && selectedRuntime
-                  ? `Connect with ${getRuntimeDisplayLabel(selectedRuntime)}`
+                  ? `Connect ${getRuntimeDisplayLabel(selectedRuntime)}`
                   : "Connect"}{" "}
                 <span aria-hidden="true">→</span>
               </button>
-              <button
-                className="back"
-                type="button"
-                onClick={() => onContinue()}
-              >
-                Skip for now
-              </button>
+              {aiReady && connectionScene === "connect" ? (
+                <p>Sign-in stays with the provider.</p>
+              ) : null}
+              {!aiReady || connectionScene === "credits-price-error" ? (
+                <button
+                  className="back"
+                  type="button"
+                  onClick={() => onContinue()}
+                >
+                  Skip for now
+                </button>
+              ) : null}
             </div>
           ) : null}
         </>

@@ -2,6 +2,10 @@ import { expect, type Page, test } from "@playwright/test";
 import { waitForAnimations } from "../helpers/animations";
 import { openR17ConnectionSetup, r17Runtime } from "../helpers/onboarding";
 
+// These scenarios include account setup, business creation, OAuth and a first reply.
+// Keep action/assertion timeouts intact while budgeting for the complete workflow.
+test.setTimeout(60_000);
+
 const connected = {
   status: "connected",
   balance: 12.5,
@@ -171,7 +175,7 @@ for (const viewport of [
       if (state === "connected" || state === "usage" || state === "limit") {
         await expect(
           panel.getByRole("button", { name: "Test connection", exact: true }),
-        ).toHaveClass(/secondary/);
+        ).toHaveClass(/primary/);
         if (state === "connected")
           await expect(
             page.locator(".form-content button.primary"),
@@ -283,10 +287,8 @@ for (const viewport of [
           .getByRole("button", { name: "Test connection", exact: true })
           .click();
         await expect(
-          panel.getByText("Connection works.", { exact: true }),
+          page.getByTestId("onboarding-scene-connected"),
         ).toBeVisible();
-        await panel.getByRole("button", { name: "Refresh connection" }).click();
-        await expect(panel).toHaveAttribute("aria-busy", "false");
       }
     });
   }
@@ -507,7 +509,8 @@ test("balance, spending and key limits share currency formatting with thousands 
     balance: null,
     usage: 1250.5,
   });
-  await panel.getByRole("button", { name: "Refresh connection" }).click();
+  await page.getByRole("radio", { name: "Subscriptions", exact: true }).click();
+  await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
   await expect(
     panel.getByRole("status", {
       name: "Spent so far on this key",
@@ -516,7 +519,7 @@ test("balance, spending and key limits share currency formatting with thousands 
   ).toContainText("$1,250.50");
 });
 
-test("OpenRouter refresh failure updates Scout and clears connection readiness", async ({
+test("OpenRouter reload failure updates Scout and clears connection readiness", async ({
   page,
 }) => {
   await openRouterTab(page);
@@ -540,10 +543,8 @@ test("OpenRouter refresh failure updates Scout and clears connection readiness",
         ? Promise.reject(new Error("fixture metadata unavailable"))
         : invoke(command, args);
   });
-  await page
-    .getByTestId("openrouter-connection")
-    .getByRole("button", { name: "Refresh connection", exact: true })
-    .click();
+  await page.getByRole("radio", { name: "Subscriptions", exact: true }).click();
+  await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
   await expect(
     page.getByTestId("onboarding-scene-openrouter-error"),
   ).toBeVisible();
@@ -552,7 +553,7 @@ test("OpenRouter refresh failure updates Scout and clears connection readiness",
   ).toBeVisible();
   await expect(
     page.getByTestId("openrouter-connection").getByRole("alert"),
-  ).toContainText("Could not refresh OpenRouter");
+  ).toContainText("Could not read your OpenRouter connection");
   await expect(
     page.getByRole("button", { name: "Connect", exact: true }),
   ).toHaveCount(0);

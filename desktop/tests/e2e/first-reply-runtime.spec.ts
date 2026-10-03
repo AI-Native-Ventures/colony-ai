@@ -87,12 +87,19 @@ test("Connect waits for the actual reply, then saves the selected runtime", asyn
       return reply;
     };
   });
-  await page.getByRole("button", { name: /^Connect with / }).click();
+  await page.getByRole("button", { name: /^Connect / }).click();
   await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
   await expect(page.locator(".form-content .lede[role=status]")).toContainText(
     "We’re checking that your agent can reply.",
   );
-  await expect(page.locator(".progress-list li.complete")).toHaveCount(2);
+  // Persistence follows the real reply, so the saved step remains pending.
+  await expect(page.locator(".progress-list li").first()).toHaveText(
+    "Connection saved",
+  );
+  await expect(page.locator(".progress-list li").first()).not.toHaveClass(
+    /complete/,
+  );
+  await expect(page.locator(".progress-list li.complete")).toHaveCount(1);
   await expect(
     page.locator(".progress-list li").nth(2).locator(".spinner"),
   ).toBeVisible();
@@ -118,7 +125,7 @@ test("Connect waits for the actual reply, then saves the selected runtime", asyn
     "A reply from the selected harness",
   );
   await expect(page.locator(".connection-meta")).toContainText(
-    "Codex · actual-model",
+    "Codex · Chosen model",
   );
   const probe = await page.evaluate(() =>
     window.__BUZZ_E2E_COMMAND_PAYLOADS__?.find(
@@ -209,7 +216,7 @@ for (const result of [
         null,
       ),
     );
-    await page.getByRole("button", { name: /^Connect with / }).click();
+    await page.getByRole("button", { name: /^Connect / }).click();
     await expect(
       page.getByTestId("onboarding-scene-connection-error"),
     ).toBeVisible();
@@ -235,7 +242,7 @@ test("cancelling stops the native attempt, preserves settings and ignores a late
     runtimes: [claude],
     mock: { onboardingConnectionDelayMs: 800 },
   });
-  await page.getByRole("button", { name: /^Connect with / }).click();
+  await page.getByRole("button", { name: /^Connect / }).click();
   await page.getByRole("button", { name: "Cancel test" }).click();
   await expect
     .poll(() =>
@@ -249,7 +256,7 @@ test("cancelling stops the native attempt, preserves settings and ignores a late
     .toBeGreaterThan(0);
   await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
   await expect(page.getByText("Connection verified")).toHaveCount(0);
-  await page.getByRole("button", { name: /^Connect with / }).click();
+  await page.getByRole("button", { name: /^Connect / }).click();
   await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
   await page.getByRole("button", { name: "Change connection" }).click();
   await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
@@ -288,7 +295,12 @@ for (const route of ["Bring your own key", "OpenRouter"]) {
       await page
         .getByRole("button", { name: "Check key", exact: true })
         .click();
-    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await page
+      .getByRole("button", {
+        name: openRouter ? "Test connection" : "Connect",
+        exact: true,
+      })
+      .click();
     await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
     await expect(page.locator(".connection-meta")).toContainText(
       "Colony Agent · fixture-model",
@@ -344,7 +356,7 @@ test("Welcome exposes recovery when the saved runtime disappears, then retries p
   page,
 }) => {
   await openR17ConnectionSetup(page, { runtimes: [claude] });
-  await page.getByRole("button", { name: /^Connect with / }).click();
+  await page.getByRole("button", { name: /^Connect / }).click();
   await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
   await page.evaluate(async () => {
     await window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.("set_global_agent_config", {
@@ -454,7 +466,7 @@ for (const id of [
       await expect(
         page.getByTestId(`onboarding-connect-runtime-${id}`),
       ).not.toContainText("Signed in");
-    await page.getByRole("button", { name: /^Connect with / }).click();
+    await page.getByRole("button", { name: /^Connect / }).click();
     await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
     const request = await page.evaluate(() =>
       window.__BUZZ_E2E_COMMAND_PAYLOADS__?.find(
@@ -500,7 +512,7 @@ for (const viewport of [
       runtimes: [claude],
       mock: { onboardingConnectionDelayMs: 2000 },
     });
-    await page.getByRole("button", { name: /^Connect with / }).click();
+    await page.getByRole("button", { name: /^Connect / }).click();
     await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
     await expect(
       page.locator(".form-content .lede[role=status]"),

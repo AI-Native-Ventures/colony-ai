@@ -95,6 +95,7 @@ export default defineConfig({
       name: "smoke",
       testMatch: [
         "**/first-reply-runtime.spec.ts",
+        "**/connect-polish.spec.ts",
         "**/onboarding-scout-presence.spec.ts",
         "**/smoke.spec.ts",
         "**/shell-design.spec.ts",
@@ -303,6 +304,7 @@ export default defineConfig({
         "**/onboarding-agent-defaults.spec.ts",
         "**/deep-link-invite.spec.ts",
         "**/first-reply-runtime.spec.ts",
+        "**/connect-polish.spec.ts",
         "**/onboarding-scout-presence.spec.ts",
         "**/agents.spec.ts",
         "**/agent-availability.spec.ts",
