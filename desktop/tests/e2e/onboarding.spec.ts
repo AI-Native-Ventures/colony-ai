@@ -19,6 +19,7 @@ import {
   completeR17BusinessSetup,
   openR17BusinessSetup,
   R17_BUSINESS_PROFILE_KEY,
+  r17Runtime,
   seedActiveIdentity,
   startR17AccountAuth,
 } from "../helpers/onboarding";
@@ -3102,6 +3103,9 @@ test("first-run onboarding posts the live Fizz kickoff", async ({ page }) => {
   await installMockBridge(
     page,
     {
+      acpRuntimesCatalog: [
+        r17Runtime("claude", "available", { status: "logged_in" }),
+      ],
       globalAgentConfig: {
         env_vars: { OPENAI_API_KEY: "e2e-placeholder" },
         provider: "openai",
@@ -3148,7 +3152,12 @@ test("first-run onboarding lands before Welcome team bootstrap completes", async
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
   await installMockBridge(
     page,
-    { createManagedAgentDelayMs: 1_000 },
+    {
+      createManagedAgentDelayMs: 1_000,
+      acpRuntimesCatalog: [
+        r17Runtime("claude", "available", { status: "logged_in" }),
+      ],
+    },
     { skipOnboardingSeed: true },
   );
   await page.goto("/");
@@ -3242,7 +3251,15 @@ test("welcome-everywhere banner: X dismiss removes the guidance surface", async 
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await installMockBridge(page, undefined, { skipOnboardingSeed: true });
+  await installMockBridge(
+    page,
+    {
+      acpRuntimesCatalog: [
+        r17Runtime("claude", "available", { status: "logged_in" }),
+      ],
+    },
+    { skipOnboardingSeed: true },
+  );
   await page.goto("/");
 
   await page.getByTestId("onboarding-display-name").fill("Morty QA");
@@ -3269,7 +3286,15 @@ test("welcome-everywhere banner: dismiss persists after channel re-entry", async
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await installMockBridge(page, undefined, { skipOnboardingSeed: true });
+  await installMockBridge(
+    page,
+    {
+      acpRuntimesCatalog: [
+        r17Runtime("claude", "available", { status: "logged_in" }),
+      ],
+    },
+    { skipOnboardingSeed: true },
+  );
   await page.goto("/");
 
   await page.getByTestId("onboarding-display-name").fill("Morty QA");
