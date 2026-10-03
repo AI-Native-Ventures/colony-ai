@@ -10,6 +10,8 @@ use reqwest::{
 use serde::Serialize;
 use url::Url;
 
+#[path = "business_svg.rs"]
+mod business_svg;
 #[path = "business_website.rs"]
 mod business_website;
 #[path = "link_preview_cancellation.rs"]
@@ -20,7 +22,7 @@ mod image_retry;
 mod rate_limit;
 #[path = "link_preview_youtube.rs"]
 mod youtube;
-pub use business_website::read_business_website;
+pub use business_website::*;
 
 use rate_limit::{
     image_host_cooldown_remaining, image_host_gate, retry_after_duration, set_image_host_cooldown,
@@ -266,7 +268,7 @@ async fn send_pinned_request(url: &Url, accept: &str) -> Result<reqwest::Respons
     let request = client
         .get(url.as_str())
         .header(ACCEPT, accept)
-        .header(USER_AGENT, "Buzz Desktop link preview");
+        .header(USER_AGENT, "Colony Desktop website reader");
 
     request
         .send()
@@ -527,7 +529,12 @@ where
             .ok_or(ImageFetchError::Rejected)?;
         if !matches!(
             declared_mime.as_str(),
-            "image/jpeg" | "image/png" | "image/webp" | "image/x-icon" | "image/vnd.microsoft.icon"
+            "image/jpeg"
+                | "image/png"
+                | "image/webp"
+                | "image/x-icon"
+                | "image/vnd.microsoft.icon"
+                | "image/svg+xml"
         ) {
             return Err(ImageFetchError::Rejected);
         }
@@ -557,6 +564,9 @@ fn sanitize_image(
     declared_mime: &str,
     preserve_transparency: bool,
 ) -> Result<String, String> {
+    if declared_mime == "image/svg+xml" {
+        return business_svg::sanitize_svg(bytes);
+    }
     let sniffed = infer::get(bytes)
         .map(|kind| kind.mime_type())
         .ok_or_else(|| "link preview image magic bytes are unsupported".to_string())?;
