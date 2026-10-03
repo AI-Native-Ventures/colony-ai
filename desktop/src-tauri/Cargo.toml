@@ -145,7 +145,7 @@ png = "0.18"
 # never see them (set_text still returns Ok). The backing wl-clipboard-rs dep is
 # target-gated inside arboard; at runtime X11 sessions still fall back to X11.
 arboard = { version = "3", features = ["wayland-data-control"] }
-image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "ico"] }
 zip = "8"
 flate2 = "1"
 sherpa-onnx = "1.12"

@@ -423,10 +423,12 @@ export function BusinessForm({
               />
               <button
                 className="secondary"
+                disabled={data.websitePending}
+                aria-busy={data.websitePending}
                 onClick={onReadWebsite}
                 type="button"
               >
-                Read website
+                {data.websitePending ? "Reading…" : "Read website"}
               </button>
             </div>
           </div>

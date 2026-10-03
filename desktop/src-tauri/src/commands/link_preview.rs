@@ -10,6 +10,8 @@ use reqwest::{
 use serde::Serialize;
 use url::Url;
 
+#[path = "business_website.rs"]
+mod business_website;
 #[path = "link_preview_cancellation.rs"]
 mod cancellation;
 #[path = "link_preview_image_retry.rs"]
@@ -18,6 +20,7 @@ mod image_retry;
 mod rate_limit;
 #[path = "link_preview_youtube.rs"]
 mod youtube;
+pub use business_website::read_business_website;
 
 use rate_limit::{
     image_host_cooldown_remaining, image_host_gate, retry_after_duration, set_image_host_cooldown,
@@ -524,7 +527,7 @@ where
             .ok_or(ImageFetchError::Rejected)?;
         if !matches!(
             declared_mime.as_str(),
-            "image/jpeg" | "image/png" | "image/webp"
+            "image/jpeg" | "image/png" | "image/webp" | "image/x-icon" | "image/vnd.microsoft.icon"
         ) {
             return Err(ImageFetchError::Rejected);
         }
@@ -557,13 +560,17 @@ fn sanitize_image(
     let sniffed = infer::get(bytes)
         .map(|kind| kind.mime_type())
         .ok_or_else(|| "link preview image magic bytes are unsupported".to_string())?;
-    if sniffed != declared_mime {
+    let ico = sniffed == "image/vnd.microsoft.icon" || sniffed == "image/x-icon";
+    if sniffed != declared_mime
+        && !(ico && matches!(declared_mime, "image/x-icon" | "image/vnd.microsoft.icon"))
+    {
         return Err("link preview image content type does not match its bytes".to_string());
     }
     let format = match sniffed {
         "image/jpeg" => image::ImageFormat::Jpeg,
         "image/png" => image::ImageFormat::Png,
         "image/webp" => image::ImageFormat::WebP,
+        "image/x-icon" | "image/vnd.microsoft.icon" => image::ImageFormat::Ico,
         _ => return Err("link preview image type is unsupported".to_string()),
     };
     if declares_animation(bytes, format) {

@@ -9,6 +9,7 @@ export type OnboardingSceneData = {
   website: string;
   description: string;
   logoUrl?: string | null;
+  websitePending?: boolean;
   harnessLabel?: string;
   harnessStatus?: string;
   error?: string | null;
