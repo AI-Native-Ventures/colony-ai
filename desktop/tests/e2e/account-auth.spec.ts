@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { mkdir } from "node:fs/promises";
+import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 
 type AccountAuthMethod =
@@ -696,4 +698,28 @@ test("passive account outage never opens an intrusive prompt over the composer",
   await page.goto("/");
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
   await expect(page.getByTestId("account-claim-prompt")).toHaveCount(0);
+  if (process.env.COLONY_REFERENCE_URL) {
+    const proofDir =
+      process.env.COLONY_PROOF_DIR ?? "test-results/account-proof";
+    await mkdir(proofDir, { recursive: true });
+    const reference = await page.context().newPage();
+    for (const viewport of [
+      { width: 1728, height: 1117 },
+      { width: 1440, height: 900 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await waitForAnimations(page);
+      await page.screenshot({
+        path: `${proofDir}/app-account-outage-${viewport.width}.png`,
+      });
+      await reference.setViewportSize(viewport);
+      await reference.goto(process.env.COLONY_REFERENCE_URL);
+      await reference.locator('[data-go="inbox"]').first().click();
+      await waitForAnimations(reference);
+      await reference.screenshot({
+        path: `${proofDir}/reference-workspace-${viewport.width}.png`,
+      });
+    }
+    await reference.close();
+  }
 });
