@@ -14793,6 +14793,8 @@ let installCallCount = 0;
 const installCallCountByRuntime: Record<string, number> = {};
 let addChannelMembersCallCount = 0;
 let setGlobalAgentConfigCallCount = 0;
+let cancelOnboardingProbe: { requestId: string; cancel: () => void } | null =
+  null;
 let mockGlobalAgentConfig: {
   env_vars: Record<string, string>;
   provider: string | null;
@@ -15922,7 +15924,12 @@ async function handleStartManagedAgent(
   },
   config?: E2eConfig,
 ): Promise<RawManagedAgent> {
-  const delayMs = config?.mock?.startManagedAgentDelayMsByName?.[getMockManagedAgent(args.pubkey).name] ?? config?.mock?.startManagedAgentDelayMs ?? 0;
+  const delayMs =
+    config?.mock?.startManagedAgentDelayMsByName?.[
+      getMockManagedAgent(args.pubkey).name
+    ] ??
+    config?.mock?.startManagedAgentDelayMs ??
+    0;
   if (delayMs > 0) {
     await new Promise<void>((resolve) => {
       let settled = false;
@@ -21368,11 +21375,36 @@ export function maybeInstallE2eTauriMocks() {
         if (!runtimeId) return null;
         return config.mock?.runtimeFileConfigs?.[runtimeId] ?? null;
       }
-      case "cancel_onboarding_connection_test":
+      case "cancel_onboarding_connection_test": {
+        const { requestId } = payload as { requestId: string };
+        if (cancelOnboardingProbe?.requestId === requestId)
+          cancelOnboardingProbe.cancel();
         return null;
+      }
       case "test_onboarding_connection": {
+        const { requestId } = payload as { requestId: string };
+        cancelOnboardingProbe?.cancel();
         const delay = activeConfig?.mock?.onboardingConnectionDelayMs ?? 0;
-        if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+        await emit("onboarding-connection-progress", {
+          requestId,
+          phase: "waiting",
+        });
+        if (delay) {
+          await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => {
+              cancelOnboardingProbe = null;
+              resolve();
+            }, delay);
+            cancelOnboardingProbe = {
+              requestId,
+              cancel: () => {
+                clearTimeout(timer);
+                cancelOnboardingProbe = null;
+                reject(new Error("Connection test cancelled."));
+              },
+            };
+          });
+        }
         return (
           activeConfig?.mock?.onboardingConnectionResult ?? {
             reply: "Hello, I'm here. What shall we work on first?",
