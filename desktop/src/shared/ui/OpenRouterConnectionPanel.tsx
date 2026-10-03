@@ -135,12 +135,13 @@ export function OpenRouterConnectionPanel({
   const models =
     account?.models.filter((model) => model.free === (mode === "free")) ?? [];
   const exhausted = account?.status === "limit";
+  const amount = account?.balance ?? account?.usage ?? null;
   const button = (primary = false) =>
     onboarding
       ? `${primary ? "primary" : "secondary"} full`
       : `${primary ? "bg-primary text-primary-foreground" : "border border-border"} rounded-md px-3 py-2 text-sm`;
   const openManage = () => {
-    void openUrl("https://openrouter.ai/settings/credits").catch(() =>
+    void openUrl("https://openrouter.ai/credits").catch(() =>
       setMessage("Could not open OpenRouter. Try again."),
     );
   };
@@ -236,16 +237,16 @@ export function OpenRouterConnectionPanel({
         <>
           <div className="openrouter-balance flex items-center justify-between">
             <span>
-              Key spending allowance
+              {account.balance === null
+                ? "Spent so far on this key"
+                : "OpenRouter balance"}
               <strong className="block font-semibold">
-                {account.limitRemaining === null
-                  ? account.metadataWarning
-                    ? "Allowance unavailable"
-                    : "No key spending limit"
+                {amount === null
+                  ? "Usage unavailable"
                   : new Intl.NumberFormat("en-US", {
                       style: "currency",
                       currency: "USD",
-                    }).format(account.limitRemaining)}
+                    }).format(amount)}
               </strong>
             </span>
             <button
@@ -253,21 +254,19 @@ export function OpenRouterConnectionPanel({
               onClick={openManage}
               type="button"
             >
-              Manage on OpenRouter{" "}
+              Add credits on OpenRouter{" "}
               <ArrowRight className="icon" aria-hidden="true" />
             </button>
           </div>
-          <p className="power-caption">
-            Key limit:{" "}
-            {account.limit === null
-              ? "Not set or unavailable"
-              : `$${account.limit.toFixed(2)}`}
-            . Usage:{" "}
-            {account.usage === null
-              ? "Unavailable"
-              : `$${account.usage.toFixed(2)}`}
-            .
-          </p>
+          {account.limit !== null ? (
+            <p className="power-caption">
+              Key limit: ${account.limit.toFixed(2)}. Remaining:{" "}
+              {account.limitRemaining === null
+                ? "Unavailable"
+                : `$${account.limitRemaining.toFixed(2)}`}
+              .
+            </p>
+          ) : null}
           <fieldset className="model-modes flex gap-2">
             <legend className="sr-only">OpenRouter model type</legend>
             <button
@@ -332,24 +331,33 @@ export function OpenRouterConnectionPanel({
                 <p className="power-caption">Saved model: {account.model}</p>
               ) : null}
             </div>
-            <div className="quota-line flex justify-between">
-              <span>Daily free allowance</span>
-              <strong>
-                {account.freeRemaining === null || account.freeLimit === null
-                  ? "Allowance unavailable"
-                  : `${account.freeRemaining} / ${account.freeLimit} requests left`}
-              </strong>
-            </div>
-            {account.freeRemaining !== null && account.freeLimit !== null ? (
-              <progress
-                aria-label="OpenRouter daily free requests remaining"
-                max={account.freeLimit || 1}
-                value={account.freeRemaining}
-              />
+            {account.freeTier === true ? (
+              <>
+                <div className="quota-line flex justify-between">
+                  <span>Daily free allowance</span>
+                  <strong>
+                    {account.freeRemaining === null ||
+                    account.freeLimit === null
+                      ? "Allowance unavailable"
+                      : `${account.freeRemaining} / ${account.freeLimit} requests left`}
+                  </strong>
+                </div>
+                {account.freeRemaining !== null &&
+                account.freeLimit !== null ? (
+                  <progress
+                    aria-label="OpenRouter daily free requests remaining"
+                    max={account.freeLimit || 1}
+                    value={account.freeRemaining}
+                  />
+                ) : null}
+                <p className="power-caption">
+                  {account.freeUsed !== null
+                    ? `${account.freeUsed} requests used today. `
+                    : ""}
+                  Limits are shared across OpenRouter usage.
+                </p>
+              </>
             ) : null}
-            <p className="power-caption">
-              Limits are shared across OpenRouter usage.
-            </p>
           </div>
           {exhausted ? (
             <div className="power-notice is-error" role="alert">
