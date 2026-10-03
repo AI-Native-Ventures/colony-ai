@@ -899,8 +899,8 @@ export function ChannelScreen({
                   isHuddleTranscript={isHuddleTranscript}
                   entranceMessageId={welcomeEntranceMessageId}
                   onEntranceMessageComplete={handleWelcomeEntranceComplete}
-                  welcomeKickoffStage={welcomeKickoffStage}
-                  welcomeKickoffSettingUp={welcomeKickoffSettingUp}
+                  welcomeKickoffStage={kickoffError ? null : welcomeKickoffStage}
+                  welcomeKickoffSettingUp={!kickoffError && welcomeKickoffSettingUp}
                   editTarget={
                     editTargetMessage
                       ? buildMessageComposerEditTarget(

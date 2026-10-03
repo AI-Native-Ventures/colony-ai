@@ -9,6 +9,7 @@ import {
   pickWelcomeGuideAgentForRelay,
   pickWelcomeTeamStarterAgentForRelay,
   welcomeStarterRuntimeUpdate,
+  reconcileWelcomeStarter,
   welcomeTeammateAccessUpdate,
   welcomeTeammateHasExpectedAccess,
   WELCOME_GUIDE_AGENT_NAME,
@@ -462,6 +463,40 @@ test("Welcome refuses a missing selected runtime instead of falling back to bund
       [{ id: "buzz-agent", availability: "available" }],
       "claude",
     ),
-    /selected AI runtime is unavailable/,
+    /selected AI connection is unavailable/,
   );
+});
+
+test("changing a running lead stops it before updating so kickoff can launch the chosen runtime", async () => {
+  const order = [];
+  const existing = makeAgent({ status: "running" });
+  const result = await reconcileWelcomeStarter(
+    existing,
+    {
+      agentCommand: "claude-code-acp",
+      agentArgs: [],
+      mcpCommand: "",
+      model: null,
+      provider: null,
+    },
+    async (pubkey) => {
+      order.push(["stop", pubkey]);
+      return { ...existing, status: "stopped" };
+    },
+    async (input) => {
+      order.push(["update", input.agentCommand]);
+      return {
+        agent: {
+          ...existing,
+          status: "stopped",
+          agentCommand: input.agentCommand,
+        },
+      };
+    },
+  );
+  assert.deepEqual(order, [
+    ["stop", existing.pubkey],
+    ["update", "claude-code-acp"],
+  ]);
+  assert.equal(result.status, "stopped");
 });

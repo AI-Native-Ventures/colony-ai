@@ -612,7 +612,7 @@ export function ConnectSetupStep({
             void continueWithRuntime();
             return;
           }
-          if (connectionPhase === "saving") return;
+          if (testState === "testing" && connectionPhase === "saving") return;
           generation.current += 1;
           void cancelOnboardingConnectionTest().catch(console.warn);
           setSaving(false);

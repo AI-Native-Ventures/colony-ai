@@ -36,6 +36,16 @@ test("Connect waits for the actual reply, then pins the selected runtime and mod
     .click();
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText(
+    "Waiting for its first reply",
+  );
+  await expect(page.locator(".progress-list li.complete")).toHaveCount(2);
+  await expect(
+    page.locator(".progress-list li").nth(2).locator(".spinner"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "A first hello." }),
+  ).toBeFocused();
   expect(
     await page.evaluate(
       () =>
@@ -161,8 +171,83 @@ test("cancelling stops the native attempt, preserves settings and ignores a late
     )
     .toBeGreaterThan(0);
   await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
-  await page.waitForTimeout(900);
   await expect(page.getByText("Connection verified")).toHaveCount(0);
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
+  await page.getByRole("button", { name: "Change connection" }).click();
+  await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
+});
+
+test("Welcome exposes recovery when the saved runtime disappears, then retries provisioning", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, { runtimes: [claude] });
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
+  await page.evaluate(async () => {
+    await window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.("set_global_agent_config", {
+      config: {
+        preferred_runtime: "codex",
+        model: null,
+        provider: null,
+        env_vars: {},
+      },
+    });
+  });
+  await page
+    .getByRole("button", { name: "Open my Colony", exact: true })
+    .click();
+  await page.getByTestId("channel-Welcome").click();
+  const recovery = page.getByTestId("welcome-kickoff-recovery");
+  await expect(recovery).toBeVisible();
+  await expect(
+    page.getByTestId("welcome-composer-guide-banner"),
+  ).not.toContainText("Setting up your welcome team");
+  await expect(recovery).toContainText("reconnect");
+  await expect(
+    recovery.getByRole("button", { name: "Open AI settings" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        window.__BUZZ_E2E_COMMANDS__?.filter(
+          (command) => command === "create_managed_agent",
+        ).length ?? 0,
+    ),
+  ).toBe(0);
+  await page.evaluate(async () => {
+    await window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.("set_global_agent_config", {
+      config: {
+        preferred_runtime: "claude",
+        model: null,
+        provider: null,
+        env_vars: {},
+      },
+    });
+  });
+  const discoveryBeforeRetry = await page.evaluate(
+    () =>
+      window.__BUZZ_E2E_COMMAND_PAYLOADS__?.filter(
+        (entry) =>
+          entry.command === "discover_acp_providers" &&
+          (entry.payload as { force?: boolean })?.force,
+      ).length ?? 0,
+  );
+  await recovery.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByTestId("message-timeline")).toContainText(
+    "Honey and Pollen, introduce yourselves",
+  );
+  await expect(recovery).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () =>
+        window.__BUZZ_E2E_COMMAND_PAYLOADS__?.filter(
+          (entry) =>
+            entry.command === "discover_acp_providers" &&
+            (entry.payload as { force?: boolean })?.force,
+        ).length ?? 0,
+    ),
+  ).toBeGreaterThan(discoveryBeforeRetry);
 });
 
 for (const id of [
@@ -255,6 +340,9 @@ for (const viewport of [
     });
     await page.getByRole("button", { name: "Connect", exact: true }).click();
     await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
+    await expect(page.getByRole("status")).toContainText(
+      "Waiting for its first reply",
+    );
     await waitForAnimations(page);
     await page.screenshot({
       path: `${proofDir}/app-testing-${viewport.width}.png`,

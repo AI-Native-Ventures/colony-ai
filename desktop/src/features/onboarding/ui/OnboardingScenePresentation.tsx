@@ -142,13 +142,15 @@ function SceneBody(props: PresentationProps) {
           <li
             className={
               data.connectionPhase === "waiting" ||
-              data.connectionPhase === "saving"
+              data.connectionPhase === "saving" ||
+              data.visualOnly
                 ? "complete"
                 : ""
             }
           >
             {data.connectionPhase === "waiting" ||
-            data.connectionPhase === "saving" ? (
+            data.connectionPhase === "saving" ||
+            data.visualOnly ? (
               <Glyph name="check" />
             ) : (
               <span className="spinner" />
