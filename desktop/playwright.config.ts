@@ -5,7 +5,9 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 const canaryEnabled = process.env.BUZZ_E2E_CANARY === "1";
 const canaryAccountFile = process.env.BUZZ_E2E_CANARY_ACCOUNT_FILE;
 const canaryArtifactDir = process.env.BUZZ_E2E_CANARY_ARTIFACT_DIR;
-const appPort = canaryEnabled ? 4174 : 4173;
+const appPort = canaryEnabled
+  ? 4174
+  : Number(process.env.COLONY_E2E_PORT ?? 4173);
 
 function assertOutsideRepository(path: string, label: string) {
   const repositoryRoot = realpathSync(resolve(process.cwd(), ".."));
@@ -94,6 +96,7 @@ export default defineConfig({
       testMatch: [
         "**/smoke.spec.ts",
         "**/account-auth.spec.ts",
+        "**/openrouter-oauth.spec.ts",
         "**/self-serve-community-onboarding.spec.ts",
         "**/business-website.spec.ts",
         "**/owned-agent-discovery.spec.ts",
@@ -290,6 +293,7 @@ export default defineConfig({
         "**/agent-snapshot-recipient.spec.ts",
         "**/onboarding.spec.ts",
         "**/business-website.spec.ts",
+        "**/openrouter-oauth.spec.ts",
         "**/stream.spec.ts",
         "**/integration.spec.ts",
         "**/company-asks.live.spec.ts",
