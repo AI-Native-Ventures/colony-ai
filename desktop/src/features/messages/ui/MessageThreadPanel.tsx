@@ -37,6 +37,7 @@ import { Separator } from "@/shared/ui/separator";
 import { ComposerActivityAccessory } from "./ComposerActivityAccessory";
 import { ComposerDockBackdrop } from "./ComposerDockBackdrop";
 import { MessageComposer } from "./MessageComposer";
+import { isWelcomeExperienceChannel } from "@/features/onboarding/welcome";
 import {
   MessageThreadPanelHeader,
   ThreadMessageSkeleton,
@@ -896,6 +897,9 @@ export function MessageThreadPanel({
           >
             <ComposerDockBackdrop gutterClassName="inset-x-5" />
             <MessageComposer
+              showGoalReference={
+                !channel || !isWelcomeExperienceChannel(channel)
+              }
               audienceContext={{
                 type: "thread",
                 rootTags: threadHead.tags,

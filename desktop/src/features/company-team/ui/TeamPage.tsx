@@ -1,4 +1,5 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { NavigationHistoryControls } from "@/shared/ui/workspace-topbar";
 
 /** Page frame shared by the company Team routes. */
 export function TeamPage({
@@ -15,7 +16,8 @@ export function TeamPage({
       className="min-h-0 w-full flex-1 overflow-y-auto"
       data-testid={testId}
     >
-      <header className="flex h-[4.875rem] items-center border-b border-border px-6">
+      <header className="flex h-[4.875rem] items-center gap-3 border-b border-border px-6">
+        {title === "Team" ? <NavigationHistoryControls /> : null}
         <nav aria-label="Breadcrumb" className="text-sm font-semibold">
           Company / {title}
         </nav>

@@ -104,6 +104,7 @@ function MessageComposerImpl({
   replyTarget = null,
   mediaController,
   showBackgroundUploadProgress = true,
+  showGoalReference = true,
   showTopBorder = false,
   toolbarExtraActions,
   footerContent,
@@ -1037,7 +1038,8 @@ function MessageComposerImpl({
               editor={richText.editor}
               extraActions={
                 <>
-                  {channelId &&
+                  {showGoalReference &&
+                  channelId &&
                   channelType !== "forum" &&
                   editTarget == null ? (
                     <GoalReferenceComposerButton />
