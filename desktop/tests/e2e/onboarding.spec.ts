@@ -701,7 +701,7 @@ async function expectWelcomeGuideIntro(
     .toEqual({
       fizzIsBot: true,
       fizzPersonaId: "builtin:fizz",
-      profileAvatarUrl: null,
+      profileAvatarUrl: expect.stringMatching(/^data:image\/svg\+xml,/),
     });
 
   if (expectVisible) {
@@ -1063,7 +1063,7 @@ test("first-community owner reconnect path does not expose Builderlab creation",
   await openOwnedCommunityReconnect(page);
   await page.getByRole("button", { name: "Sign in to continue" }).click();
   await expect(
-    page.getByRole("heading", { name: "Finish connecting Colony" }),
+    page.getByRole("heading", { name: /^Finish connecting / }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Connect and continue" }).click();
   await expect(
@@ -1143,7 +1143,7 @@ test("first-community owner can replace a mismatched account identity", async ({
   await openOwnedCommunityReconnect(page);
   await expect(
     page.getByRole("heading", {
-      name: "This account uses a different Colony identity",
+      name: /^This account uses a different .* identity$/,
     }),
   ).toBeVisible();
   // The account row must show the authoritative bound key's npub, never the
@@ -1222,7 +1222,7 @@ test("first-community owner recovers from an npub-only account identity", async 
   // account: the mismatch recovery modal drives the flow instead.
   await expect(
     page.getByRole("heading", {
-      name: "This account uses a different Colony identity",
+      name: /^This account uses a different .* identity$/,
     }),
   ).toBeVisible();
   await expect(
@@ -1237,7 +1237,7 @@ test("first-community owner recovers from an npub-only account identity", async 
     0,
   );
   await expect(
-    page.getByRole("button", { name: /^Connect with / }),
+    page.getByRole("button", { name: "Connect", exact: true }),
   ).toHaveCount(0);
 
   // Recovery rebinds the device key and restores readiness.
@@ -1257,8 +1257,8 @@ test("first-community owner recovers from an npub-only account identity", async 
   ).toBeVisible();
   await expect(page.getByText("North Star")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /^Connect with / }),
-  ).toBeVisible();
+    page.getByRole("button", { name: "Connect", exact: true }),
+  ).toBeEnabled();
 });
 
 test("first-community owner never rebinds over a same-key spelling in the hex field", async ({
@@ -1305,7 +1305,7 @@ test("first-community owner never rebinds over a same-key spelling in the hex fi
   await openOwnedCommunityReconnect(page);
   await expect(
     page.getByRole("heading", {
-      name: "This account uses a different Colony identity",
+      name: /^This account uses a different .* identity$/,
     }),
   ).toBeVisible();
   await expect(page.getByText("Account: Unavailable")).toBeVisible();
@@ -1316,7 +1316,7 @@ test("first-community owner never rebinds over a same-key spelling in the hex fi
     page.getByText(`This device: ${npubEncode(BLANK_TYLER_IDENTITY.pubkey)}`),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /^Connect with / }),
+    page.getByRole("button", { name: "Connect", exact: true }),
   ).toHaveCount(0);
 });
 
@@ -1355,7 +1355,7 @@ test("first-community owner with a padded same-key hex is ready, not mismatched"
   await openOwnedCommunityReconnect(page);
   await expect(
     page.getByRole("heading", {
-      name: "This account uses a different Colony identity",
+      name: /^This account uses a different .* identity$/,
     }),
   ).toHaveCount(0);
   await expect(
@@ -1399,13 +1399,11 @@ test("first-community explains when the local identity belongs to another accoun
   await page
     .getByRole("button", { name: "Use this device's identity" })
     .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "identity belongs to a different Builderlab account and can't be moved from here. Sign out, then sign in with the account that already owns this identity.",
+  );
   await expect(
-    page.getByText(
-      "This device's Colony identity belongs to a different Builderlab account and can't be moved from here. Sign out, then sign in with the account that already owns this identity.",
-    ),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Finish connecting Colony" }),
+    page.getByRole("heading", { name: /^Finish connecting / }),
   ).toBeVisible();
 });
 
@@ -1528,7 +1526,7 @@ test("first-community shows the scenario cards for localhost", async ({
   await expect(page.getByTestId("onboarding-finish")).toBeEnabled();
 });
 
-test("first-community direct join cancel returns to request access", async ({
+test("first-community direct join recovery can cancel community edits safely", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
@@ -1540,7 +1538,10 @@ test("first-community direct join cancel returns to request access", async ({
   }, BLANK_TYLER_IDENTITY.pubkey);
   await installMockBridge(
     page,
-    { applyCommunityDelayMs: 5_000 },
+    {
+      applyCommunityDelayMs: 500,
+      applyCommunityError: "Temporary community connection failure.",
+    },
     {
       relayWsUrl: "ws://localhost:3000",
       skipOnboardingSeed: true,
@@ -1555,12 +1556,19 @@ test("first-community direct join cancel returns to request access", async ({
     .fill("wss://onboarding.communities.buzz.xyz");
   await page.getByTestId("invite-redeem-submit").click();
   await expect(
-    page.getByRole("heading", { name: "A first hello." }),
+    page.getByRole("heading", { name: "Your Colony isn’t ready yet." }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Cancel" }).click();
+  await page
+    .getByRole("button", { name: "Change community", exact: true })
+    .click();
+  await expect(page.getByTestId("community-change-overlay")).toBeVisible();
+  await page
+    .getByTestId("community-change-overlay")
+    .getByRole("button", { name: "Cancel" })
+    .click();
 
   await expect(
-    page.getByRole("heading", { name: "Join a community" }),
+    page.getByRole("heading", { name: "Your Colony isn’t ready yet." }),
   ).toBeVisible();
   await expect(page.getByTestId("community-change-overlay")).toHaveCount(0);
   await expect(page.getByText("Create an identity key")).toHaveCount(0);
@@ -1574,10 +1582,13 @@ test("first-community direct join cancel returns to request access", async ({
         COMMUNITY_ONBOARDING_TRANSACTION_STORAGE_KEY,
       ),
     )
-    .toEqual({ communities: null, transaction: null });
+    .toEqual({
+      communities: expect.stringContaining("onboarding.communities.buzz.xyz"),
+      transaction: expect.stringContaining("connecting"),
+    });
 });
 
-test("canceling a join to an existing inactive community preserves it", async ({
+test("canceling recovery edits preserves an existing inactive community", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
@@ -1617,7 +1628,10 @@ test("canceling a join to an existing inactive community preserves it", async ({
   );
   await installMockBridge(
     page,
-    { applyCommunityDelayMs: 5_000 },
+    {
+      applyCommunityDelayMs: 500,
+      applyCommunityError: "Temporary community connection failure.",
+    },
     {
       relayWsUrl: "wss://active.example.com",
       skipOnboardingSeed: true,
@@ -1644,12 +1658,20 @@ test("canceling a join to an existing inactive community preserves it", async ({
   }, COMMUNITY_ONBOARDING_TRANSACTION_STORAGE_KEY);
 
   await expect(
-    page.getByRole("heading", { name: "A first hello." }),
+    page.getByRole("heading", { name: "Your Colony isn’t ready yet." }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Cancel" }).click();
+  await page
+    .getByRole("button", { name: "Change community", exact: true })
+    .click();
+  await expect(page.getByTestId("community-change-overlay")).toBeVisible();
+  await page
+    .getByTestId("community-change-overlay")
+    .getByRole("button", { name: "Cancel" })
+    .click();
+  await expect(page.getByTestId("community-change-overlay")).toHaveCount(0);
   await expect(
-    page.getByRole("heading", { name: "A first hello." }),
-  ).toHaveCount(0);
+    page.getByRole("heading", { name: "Your Colony isn’t ready yet." }),
+  ).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(() => {

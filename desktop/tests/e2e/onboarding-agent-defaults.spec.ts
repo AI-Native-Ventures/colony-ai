@@ -306,7 +306,7 @@ test("R17 bundled agent without a provider is not ready and credits are coming s
     ],
   });
   const card = page.getByTestId("onboarding-connect-runtime-buzz-agent");
-  await expect(card).toContainText("Included");
+  await expect(card).toContainText("No AI connected yet");
   await expect(card).not.toContainText("Ready");
   await expect(page.getByTestId("onboarding-ai-not-ready")).toHaveCount(0);
   await page
