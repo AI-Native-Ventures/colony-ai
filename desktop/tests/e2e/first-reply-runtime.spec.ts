@@ -90,7 +90,9 @@ for (const viewport of [
       !process.env.COLONY_REFERENCE_URL,
       "Local frozen-reference capture only",
     );
-    await mkdir("test-results/first-reply-proof", { recursive: true });
+    const proofDir =
+      process.env.COLONY_PROOF_DIR ?? "test-results/first-reply-proof";
+    await mkdir(proofDir, { recursive: true });
     await page.setViewportSize(viewport);
     await openR17ConnectionSetup(page, {
       runtimes: [claude],
@@ -100,12 +102,12 @@ for (const viewport of [
     await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
     await waitForAnimations(page);
     await page.screenshot({
-      path: `test-results/first-reply-proof/app-testing-${viewport.width}.png`,
+      path: `${proofDir}/app-testing-${viewport.width}.png`,
     });
     await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
     await waitForAnimations(page);
     await page.screenshot({
-      path: `test-results/first-reply-proof/app-connected-${viewport.width}.png`,
+      path: `${proofDir}/app-connected-${viewport.width}.png`,
     });
     const reference = await context.newPage();
     await reference.setViewportSize(viewport);
@@ -113,10 +115,11 @@ for (const viewport of [
       await reference.goto(`${process.env.COLONY_REFERENCE_URL}#${scene}`);
       // The frozen prototype reads its route on load, not hashchange.
       await reference.reload();
-      if (scene === "connected") await expect(reference.getByText("Connection verified")).toBeVisible();
+      if (scene === "connected")
+        await expect(reference.getByText("Connection verified")).toBeVisible();
       await waitForAnimations(reference);
       await reference.screenshot({
-        path: `test-results/first-reply-proof/reference-${scene}-${viewport.width}.png`,
+        path: `${proofDir}/reference-${scene}-${viewport.width}.png`,
       });
     }
     await reference.close();

@@ -3,11 +3,17 @@ use crate::managed_agents::{
     default_agent_workdir, normalize_agent_args, resolve_command, GlobalAgentConfig,
 };
 use serde_json::{json, Value};
-use std::{process::Command, time::Duration};
+use std::{process::Command, sync::LazyLock, time::Duration};
+
+static CONNECTION_TEST: LazyLock<tokio::sync::Mutex<()>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 /// Send a bounded first hello through the selected runtime's real ACP turn path.
 #[tauri::command]
 pub async fn test_onboarding_connection(config: GlobalAgentConfig) -> Result<Value, String> {
+    let _test = CONNECTION_TEST
+        .try_lock()
+        .map_err(|_| "A connection test is still running. Wait a moment before retrying.")?;
     crate::managed_agents::validate_user_env_keys(&config.env_vars)?;
     let id = config
         .preferred_runtime

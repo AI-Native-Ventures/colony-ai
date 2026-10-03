@@ -19,7 +19,7 @@ async function openR17AgentDefaultsSettings(
     acpRuntimesCatalog: options.runtimes ?? [],
   });
   await page.goto("/");
-  await expect(page.getByTestId("sidebar")).toBeVisible();
+  await expect(page.getByTestId("open-settings")).toBeVisible();
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await expect(page.getByTestId("settings-view")).toBeVisible();
