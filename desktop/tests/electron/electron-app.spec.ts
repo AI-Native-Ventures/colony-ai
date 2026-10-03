@@ -34,7 +34,7 @@ async function onboardToCommunity(
   running: RunningElectron,
   identity: TestIdentity,
   communityUrl: string,
-  displayName: string,
+  _displayName: string,
 ): Promise<string> {
   const { page } = running;
   await assertLanding(page);
@@ -53,33 +53,6 @@ async function onboardToCommunity(
   await expect(page.getByTestId("invite-redeem-submit")).toBeEnabled();
   await page.getByTestId("invite-redeem-submit").click();
 
-  const profileHeading = page.getByRole("heading", {
-    name: "Build your profile",
-  });
-  const teamIntro = page.getByTestId("community-team-intro-enter");
-  await expect
-    .poll(
-      async () => {
-        if (await profileHeading.isVisible()) return "profile";
-        if (await teamIntro.isVisible()) return "team-intro";
-        if (await page.getByTestId("channel-general").isVisible())
-          return "main";
-        return "pending";
-      },
-      { timeout: 60_000 },
-    )
-    .not.toBe("pending");
-  if (await profileHeading.isVisible()) {
-    await page.getByTestId("community-profile-name-key").fill(displayName);
-    await page.getByTestId("community-profile-next").click();
-    await expect(teamIntro).toBeVisible({ timeout: 30_000 });
-  }
-  if (await teamIntro.isVisible()) {
-    await teamIntro.click();
-    await expect(page.getByTestId("community-onboarding-flow")).toHaveCount(0, {
-      timeout: 30_000,
-    });
-  }
   await expect(page.getByTestId("channel-general")).toBeVisible({
     timeout: 60_000,
   });

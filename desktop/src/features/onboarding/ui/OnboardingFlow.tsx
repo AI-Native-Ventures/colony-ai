@@ -271,7 +271,7 @@ export function OnboardingFlow({
         if (membershipStatus === "error") {
           setMembershipError({
             kind: "error",
-            message: "Server error — try again",
+            message: "Server error , try again",
           });
           return;
         }
@@ -577,7 +577,7 @@ export function OnboardingFlow({
                     </h1>
                     <p className="mt-5 text-sm leading-6 text-muted-foreground">
                       Your identity is no longer in the system keyring.
-                      Re-import your nsec to restore it — Colony will restart to
+                      Re-import your nsec to restore it , Colony will restart to
                       finish recovery. Or go back to start a new identity with a
                       fresh key.
                     </p>

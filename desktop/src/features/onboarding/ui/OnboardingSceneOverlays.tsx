@@ -118,7 +118,8 @@ export function ConnectedScene({
           </span>
         </div>
         <p>
-          {data.connectionReply ?? data.firstReply ??
+          {data.connectionReply ??
+            data.firstReply ??
             (data.visualOnly
               ? `Hello ${data.name.trim().split(" ")[0] || "Lerato"}, I’m here.\nWhat shall we work on first?`
               : "")}
@@ -127,7 +128,9 @@ export function ConnectedScene({
       <div className="connection-meta">
         <span>
           {data.connectionLabel ??
-            (data.visualOnly ? "Claude Code · Sonnet" : `${data.harnessLabel ?? "Selected harness"} · ${data.effectiveModel ?? "Model not reported"}`)}
+            (data.visualOnly
+              ? "Claude Code · Sonnet"
+              : `${data.harnessLabel ?? "Selected harness"} · ${data.effectiveModel ?? "Model not reported"}`)}
         </span>
         <span>
           <i className="status-dot" />

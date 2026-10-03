@@ -31,9 +31,6 @@ import { getAccountAuthClient } from "@/features/onboarding/accountAuthAdapter";
 import {
   type FirstCommunityPage,
   useCommunityOnboarding,
-  markCommunityOnboardingComplete,
-  resolveProfileCheckAction,
-  isTransactionStillConnecting,
 } from "@/features/onboarding/communityOnboarding";
 import { CommunityOnboardingFlow } from "@/features/onboarding/ui/CommunityOnboardingFlow";
 import {
@@ -71,7 +68,6 @@ import {
   getSharedIdentity,
   supportsNativeCapability,
 } from "@/shared/api/nativeBridge";
-import { getProfile } from "@/shared/api/tauriProfiles";
 import {
   type AddCommunityDeepLinkPayload,
   listenForDeepLinks,
@@ -571,37 +567,13 @@ function CommunityApp({
   useEffect(() => {
     if (transaction?.stage !== "connecting" || !targetIsReady) return;
     const transactionId = transaction.id;
-    const relayUrl = transaction.relayUrl;
     if (profileCheckTransactionRef.current === transactionId) return;
     profileCheckTransactionRef.current = transactionId;
-
-    // resolveProfileCheckAction resolves exactly once (Promise.race + timer
-    // cleared on settle), so no settled flag is needed here.
-    void resolveProfileCheckAction(getProfile, 10_000).then((result) => {
-      // Atomic staleness guard via isTransactionStillConnecting: the
-      // transaction must still be the same one that launched this request
-      // AND still be in connecting. Covers cancel+replacement (B's ID !== A's)
-      // and cancel-without-replacement (transactionRef.current is null).
-      if (!isTransactionStillConnecting(transactionRef.current, transactionId))
-        return;
-
-      if (result.action === "skip") {
-        markCommunityOnboardingComplete(result.profile.pubkey, relayUrl);
-        communityOnboarding.clear();
-      } else {
-        communityOnboarding.update(
-          { stage: "profile", error: undefined },
-          transactionId,
-        );
-      }
-    });
-  }, [
-    communityOnboarding,
-    targetIsReady,
-    transaction?.stage,
-    transaction?.id,
-    transaction?.relayUrl,
-  ]);
+    communityOnboarding.update(
+      { stage: "profile", error: undefined },
+      transactionId,
+    );
+  }, [communityOnboarding, targetIsReady, transaction?.stage, transaction?.id]);
   // During "entering" the transaction stays alive as a curtain: the app mounts
   // underneath (already pointed at the Welcome channel route) while the
   // onboarding screen covers it, then fades once Welcome reports ready.

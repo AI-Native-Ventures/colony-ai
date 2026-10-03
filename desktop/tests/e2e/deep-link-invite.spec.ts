@@ -135,7 +135,7 @@ test("add-community deep link starts onboarding when no community is configured"
 
   await expect(page.getByTestId("community-onboarding-flow")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Build your profile" }),
+    page.getByRole("heading", { name: "No reply just yet." }),
   ).toBeVisible();
   await expect
     .poll(() =>
@@ -177,13 +177,18 @@ test("joining screen shows why connecting failed and offers Retry instead of spi
   await expect(flow).toBeVisible();
   await expect(flow.getByText(reason)).toBeVisible();
   await expect(flow.getByText("Connecting securely…")).toHaveCount(0);
-  const retry = flow.getByRole("button", { name: "Retry" });
+  const retry = flow.getByRole("button", { name: "Try again", exact: true });
   await expect(retry).toBeVisible();
 
   // Retry runs the connection again; the failure is reported again, not hidden.
   await retry.click();
   await expect(flow.getByText(reason)).toBeVisible();
-  await expect(flow.getByRole("button", { name: "Cancel" })).toBeVisible();
+  await expect(
+    flow.getByRole("button", {
+      name: "Choose another connection",
+      exact: true,
+    }),
+  ).toBeVisible();
 });
 
 test("add-community deep link skips profile step when identity has an existing kind:0 profile", async ({
@@ -340,8 +345,6 @@ test("deleted public starter channels do not strand community onboarding", async
   );
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Take me to Buzz" }).click();
-
   await expect(page.getByTestId("community-onboarding-flow")).toHaveCount(0);
   await expect(page).toHaveURL(/#\/channels\/[^/]+$/);
   await expect(page.getByTestId("chat-title")).toContainText("Welcome");
@@ -395,12 +398,10 @@ test("required Welcome creation failure keeps community onboarding open", async 
   );
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Take me to Buzz" }).click();
-
   await expect(page.getByTestId("community-onboarding-flow")).toBeVisible();
-  await expect(page.getByText(`${welcomeError} Try again.`)).toBeVisible();
+  await expect(page.getByText(welcomeError)).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Take me to Buzz" }),
+    page.getByRole("button", { name: "Try again", exact: true }),
   ).toBeEnabled();
   await expect(page.getByTestId("chat-title")).toHaveCount(0);
 });
@@ -444,10 +445,12 @@ test("persisted deep-link invite hands off to Joining after machine onboarding",
   // Machine onboarding is complete, so the transaction owns the screen.
   await expect(page.getByTestId("community-onboarding-flow")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Joining hive" }),
+    page.getByRole("heading", { name: "No reply just yet." }),
   ).toBeVisible();
   await expect(page.getByTestId("pending-invite-gate")).toHaveCount(0);
 
   // The claim was attempted and its failure surfaced with a Retry.
-  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Try again", exact: true }),
+  ).toBeVisible();
 });

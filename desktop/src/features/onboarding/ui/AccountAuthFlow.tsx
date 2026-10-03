@@ -1,3 +1,4 @@
+import { rememberSignupName } from "../onboardingProfile";
 import * as React from "react";
 
 import { Button } from "@/shared/ui/button";
@@ -360,6 +361,7 @@ export function AccountAuthFlow({
         password,
         name.trim() || undefined,
       );
+      rememberSignupName(email, name);
       setPassword("");
       requestCooldown(clampCooldown(sent.retryAfterSecs));
       dispatch({ type: "signup_sent", email });

@@ -517,7 +517,6 @@ export function ConnectSetupStep({
 
   const continueWithRuntime = async () => {
     if (!aiReady) {
-      onContinue();
       return;
     }
     const attempt = ++generation.current;
@@ -553,6 +552,12 @@ export function ConnectSetupStep({
   if (testState !== "connect") {
     return (
       <OnboardingScenePresentation
+        onCancelTest={() => {
+          generation.current += 1;
+          setSaving(false);
+          setProof(null);
+          setTestState("connect");
+        }}
         scene={testState}
         data={{
           ...data,
@@ -621,22 +626,22 @@ export function ConnectSetupStep({
                 type="button"
                 onClick={() => onContinue("settings")}
               >
-                Open AI settings
+                Skip and open AI settings
               </button>
             </div>
           ) : null}
           <div className="power-cta">
             <button
               className="primary full"
-              disabled={saving}
+              disabled={saving || !aiReady}
               onClick={() => void continueWithRuntime()}
               type="button"
             >
-              {aiReady ? "Connect" : "Open my Colony"}
+              Connect
             </button>
-            {!aiReady ? (
-              <p>Continue without AI. You can connect it later.</p>
-            ) : null}
+            <button className="back" type="button" onClick={() => onContinue()}>
+              Skip for now
+            </button>
           </div>
         </>
       }

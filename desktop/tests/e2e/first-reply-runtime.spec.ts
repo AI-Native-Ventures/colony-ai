@@ -125,3 +125,18 @@ for (const viewport of [
     await reference.close();
   });
 }
+
+test("an unavailable connection requires an explicit skip before app entry", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, { runtimes: [] });
+  await expect(
+    page.getByRole("button", { name: "Connect", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Open my Colony", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
+  await page.getByRole("button", { name: "Skip for now", exact: true }).click();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+});

@@ -147,9 +147,10 @@ test("first-run community creation checks, signs, creates, then connects as owne
   expect(requests.some((request) => request.includes("name=north-star"))).toBe(
     true,
   );
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Build your profile" }),
-  ).toBeVisible();
+    page.getByText("Build your profile", { exact: true }),
+  ).toHaveCount(0);
   const commands = await page.evaluate(
     () =>
       (

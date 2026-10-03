@@ -141,10 +141,10 @@ test("R17 business details lead into the designed provider connection screen", a
   await completeR17BusinessSetup(page);
   await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Connect your AI." }),
+    page.getByRole("heading", { name: "Let’s connect your first agent." }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Open my Colony" }),
+    page.getByRole("button", { name: "Skip for now" }),
   ).toBeEnabled();
   await expect(page.locator("body")).not.toContainText(/\bkey\b|nsec1/i);
   await waitForAnimations(page);
@@ -171,63 +171,4 @@ test("relay onboarding: profile and avatar docked CTAs", async ({ page }) => {
     .fill("https://example.com/onboarding-avatar.png");
   await waitForAnimations(page);
   await page.screenshot({ path: `${SHOT_DIR}/05-avatar.png` });
-});
-
-test("community onboarding: profile and starter-team cards", async ({
-  page,
-}) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await page.addInitScript(
-    ({ pubkey, transactionStorageKey }) => {
-      window.localStorage.setItem(
-        `buzz-machine-onboarding-complete.v2:${pubkey}`,
-        "true",
-      );
-      const timestamp = new Date().toISOString();
-      window.localStorage.setItem(
-        transactionStorageKey,
-        JSON.stringify({
-          id: "screenshot-community-profile",
-          source: "first-community",
-          stage: "profile",
-          relayUrl: "ws://localhost:3000",
-          communityName: "Default",
-          communityId: "e2e-default-community",
-          addedCommunity: true,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        }),
-      );
-    },
-    {
-      pubkey: BLANK_TYLER_IDENTITY.pubkey,
-      transactionStorageKey: COMMUNITY_ONBOARDING_TRANSACTION_STORAGE_KEY,
-    },
-  );
-  await installMockBridge(
-    page,
-    { profileHasEvent: false },
-    {
-      relayWsUrl: "ws://localhost:3000",
-      skipOnboardingSeed: true,
-    },
-  );
-  await page.goto("/");
-
-  await expect(
-    page.getByRole("heading", { name: "Build your profile" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("onboarding-content-card")).toBeVisible();
-  await expectSharedCardGeometry(page);
-  await waitForAnimations(page);
-  await page.screenshot({ path: `${SHOT_DIR}/06-community-profile.png` });
-
-  await page.getByTestId("community-profile-name-key").fill("Ada Lovelace");
-  await page.getByTestId("community-profile-next").click();
-  await expect(
-    page.getByRole("heading", { name: "Meet your starter team" }),
-  ).toBeVisible();
-  await expectSharedCardGeometry(page);
-  await waitForAnimations(page);
-  await page.screenshot({ path: `${SHOT_DIR}/07-starter-team.png` });
 });
