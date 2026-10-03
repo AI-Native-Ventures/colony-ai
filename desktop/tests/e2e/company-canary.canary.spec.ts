@@ -1762,7 +1762,7 @@ test.describe("signed-in canary company UI", () => {
       }
       await capture(page, `16-settings-${section}-read-only`);
       if (section === "appearance") {
-        await page.getByRole("button", { name: "Browse named themes" }).click();
+        await page.getByTestId("appearance-open-themes").click();
         const themeCatalog = page.getByTestId("settings-theme-catalog");
         await expect(themeCatalog).toHaveAttribute(
           "data-theme-catalog-ready",
@@ -1772,14 +1772,12 @@ test.describe("signed-in canary company UI", () => {
         await page.getByTestId("theme-catalog-buzz").click();
         const themePreview = page.getByTestId("settings-theme-preview");
         await expect(themePreview).toBeVisible();
+        await expect(page.getByTestId("theme-use")).toBeEnabled();
         await expect(
-          page.getByRole("button", { name: "Apply appearance" }),
-        ).toBeEnabled();
-        await expect(
-          page.getByRole("button", { name: "Cancel preview" }),
+          page.getByRole("button", { name: "Back to themes" }),
         ).toBeEnabled();
         await capture(page, "16-settings-appearance-buzz-preview-not-applied");
-        await page.getByRole("button", { name: "Cancel preview" }).click();
+        await page.getByRole("button", { name: "Back to themes" }).click();
       }
     }
 

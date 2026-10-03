@@ -139,7 +139,7 @@ function successFor(method, path) {
     return { status: 204 };
   }
   if (method === "GET" && path === "/api/accounts/me") {
-    return { status: 200, body: { account: ACCOUNT } };
+    return { status: 200, body: ACCOUNT };
   }
   if (method === "DELETE" && path === "/api/accounts/me") {
     return { status: 204 };
@@ -446,7 +446,7 @@ test("unclaimed account result is cached per identity while relay failures are r
         }
         return {
           status: 200,
-          body: { account: { ...ACCOUNT, pubkey: "c".repeat(64) } },
+          body: { ...ACCOUNT, pubkey: "c".repeat(64) },
         };
       }
       return { status: 204 };
@@ -507,7 +507,7 @@ test("an in-flight account lookup cannot restore cache after account deletion", 
       await auth.service.deleteAccount();
       finishFirstRead({
         status: 200,
-        body: { account: { ...ACCOUNT, pubkey: "b".repeat(64) } },
+        body: { ...ACCOUNT, pubkey: "b".repeat(64) },
       });
 
       await assert.rejects(staleLookup, (failure) => {
@@ -597,4 +597,18 @@ test("signed routes stop if the active identity changes before signing", async (
     },
   );
   assert.equal(fetchCount, 0);
+});
+
+test("a just-signed-up account accepts the relay's flat GET /me response", async () => {
+  await withFakeServer(
+    async (request) => successFor(request.method, request.path),
+    async (baseUrl) => {
+      const auth = createService(baseUrl);
+      await auth.service.signUp(ACCOUNT.email, "fixture password");
+      await auth.service.verifyEmail(ACCOUNT.email, "123456");
+      const account = await auth.service.getAccount();
+      assert.equal(account.pubkey, ACCOUNT.pubkey);
+      assert.equal(account.email, ACCOUNT.email);
+    },
+  );
 });

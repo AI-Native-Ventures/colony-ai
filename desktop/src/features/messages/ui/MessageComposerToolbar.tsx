@@ -124,7 +124,10 @@ export const MessageComposerToolbar = React.memo(
           editor={editor}
           onLinkButton={onLinkButton}
         />
-        <div className="-ml-2 flex min-h-10 min-w-0 flex-1 items-center gap-1 py-1">
+        <div
+          className="-ml-2 flex min-h-10 min-w-0 flex-1 items-center gap-1 py-1"
+          data-testid="message-composer-tools"
+        >
           {/*
            * AnimatePresence with mode="popLayout" — exiting elements
            * are popped out of flow immediately so entering elements

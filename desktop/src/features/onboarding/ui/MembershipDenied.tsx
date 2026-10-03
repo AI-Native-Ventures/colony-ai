@@ -13,8 +13,9 @@ import { InviteRedeemForm } from "./InviteRedeemForm";
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
 
 type MembershipDeniedProps = {
-  /** The relay that denied membership — used as the target for bare-code invites. */
+  /** The relay that denied membership, used as the target for bare-code invites. */
   activeRelayUrl: string;
+  embedded?: boolean;
   onBack: () => void;
   onChangeCommunity: () => void;
   onImportKey: (nsec: string) => Promise<void>;
@@ -24,6 +25,7 @@ type MembershipDeniedProps = {
 
 export function MembershipDenied({
   activeRelayUrl,
+  embedded = false,
   onBack,
   onChangeCommunity,
   onImportKey,
@@ -97,20 +99,30 @@ export function MembershipDenied({
 
   return (
     <div
-      className="flex min-h-dvh items-center justify-center bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.14),transparent_48%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.55))] px-4 py-8"
+      className={
+        embedded
+          ? ""
+          : "flex min-h-dvh items-center justify-center bg-background px-4 py-8"
+      }
       data-testid="membership-denied"
     >
-      <StartupWindowDragRegion />
-      <div className="w-full max-w-md rounded-[28px] border border-border/70 bg-background/92 p-8 shadow-2xl backdrop-blur-sm">
+      {embedded ? null : <StartupWindowDragRegion />}
+      <div
+        className={
+          embedded
+            ? ""
+            : "w-full max-w-md rounded-2xl border border-border bg-background p-8"
+        }
+      >
         <div className="space-y-3">
           <Badge variant="warning">Membership required</Badge>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
               <ShieldX className="h-4 w-4 text-destructive" />
             </div>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            <h2 className="text-2xl font-semibold tracking-tight text-foreground">
               Not a member yet
-            </h1>
+            </h2>
           </div>
           <p className="text-sm leading-6 text-muted-foreground">
             This relay requires an invitation. Ask a relay admin to add you as a
@@ -147,7 +159,7 @@ export function MembershipDenied({
             </div>
           </div>
           <p className="text-xs leading-5 text-muted-foreground">
-            This is your public identity — it&apos;s safe to share. Send it to
+            This is your public identity. It&apos;s safe to share. Send it to
             the relay admin so they can invite you.
           </p>
         </div>

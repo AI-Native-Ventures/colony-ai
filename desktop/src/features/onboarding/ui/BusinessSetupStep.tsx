@@ -1,4 +1,5 @@
 import * as React from "react";
+import { invokeTauri } from "@/shared/api/tauriTransport";
 
 import {
   communityCreateErrorMessage,
@@ -17,7 +18,10 @@ import {
 } from "@/features/communities/selfProvisioningApi";
 import type { OnboardingSceneData } from "./OnboardingScenePresentation";
 import { OnboardingScenePresentation } from "./OnboardingScenePresentation";
-import { resolveBusinessLogoUrl, websiteFaviconUrl } from "./businessProfile";
+import {
+  resolveBusinessLogoUrl,
+  normalizeBusinessWebsite,
+} from "./businessProfile";
 
 const PROFILE_STORAGE_KEY = "colony-business-profile.v1";
 
@@ -109,6 +113,15 @@ export function BusinessSetupStep({
   const configGeneration = React.useRef(0);
   const availabilityGeneration = React.useRef(0);
   const logoGeneration = React.useRef(0);
+  const websiteGeneration = React.useRef(0);
+  const descriptionEdited = React.useRef(false);
+  const [websitePending, setWebsitePending] = React.useState(false);
+  React.useEffect(
+    () => () => {
+      websiteGeneration.current += 1;
+    },
+    [],
+  );
 
   const slug = businessSlug(name);
   const validation = validateCommunitySlug(slug);
@@ -134,6 +147,8 @@ export function BusinessSetupStep({
     website,
     description,
     logoUrl,
+    logoSource: logoUrl ? (uploadedLogo ? "upload" : "website") : undefined,
+    websitePending,
     pending,
   };
 
@@ -209,15 +224,34 @@ export function BusinessSetupStep({
     validation.slug,
   ]);
 
-  const readWebsite = React.useCallback(() => {
-    if (!website.trim()) return;
-    const favicon = websiteFaviconUrl(website);
-    if (!favicon) {
-      setError("Add a valid website address, or continue without one.");
+  const readWebsite = React.useCallback(async () => {
+    const href = normalizeBusinessWebsite(website);
+    if (!href) {
+      setError("Add a valid HTTPS website address, or continue without one.");
       return;
     }
-    setFaviconUrl(favicon);
+    const generation = ++websiteGeneration.current;
+    setWebsitePending(true);
     setError(null);
+    try {
+      const result = await invokeTauri<{
+        title: string;
+        description: string | null;
+        faviconDataUrl: string | null;
+      }>("read_business_website", { href });
+      if (generation !== websiteGeneration.current) return;
+      if (!descriptionEdited.current) setDescription(result.description ?? "");
+      setFaviconFailed(false);
+      setFaviconUrl(result.faviconDataUrl);
+    } catch {
+      if (generation === websiteGeneration.current) {
+        setError(
+          "We couldn’t read that website. You can add a logo and description yourself.",
+        );
+      }
+    } finally {
+      if (generation === websiteGeneration.current) setWebsitePending(false);
+    }
   }, [website]);
 
   const chooseLogo = React.useCallback((file: File | null) => {
@@ -391,7 +425,10 @@ export function BusinessSetupStep({
         setName(value);
         setError(null);
       }}
-      onDescriptionChange={setDescription}
+      onDescriptionChange={(value) => {
+        descriptionEdited.current = true;
+        setDescription(value);
+      }}
       onLogoChange={chooseLogo}
       onLogoError={() => {
         if (uploadedLogo) setUploadedLogo(null);
@@ -401,6 +438,8 @@ export function BusinessSetupStep({
       onReadWebsite={readWebsite}
       onSubmit={submit}
       onWebsiteChange={(value) => {
+        websiteGeneration.current += 1;
+        setWebsitePending(false);
         setFaviconUrl(null);
         setFaviconFailed(false);
         setWebsite(value);

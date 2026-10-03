@@ -45,9 +45,15 @@ import {
   customGradientStops,
   isValidHexColor,
   writeAppearanceSnapshot,
+  readAppearanceSnapshot,
+  mergeAppearanceSnapshot,
+  mergeLiveAppearanceSnapshot,
   type AppearanceSnapshot,
 } from "../lib/appearanceSnapshot";
-import { applyConversationMessageSize } from "../lib/conversationMessageSizePreference";
+import {
+  applyConversationMessageSize,
+  conversationMessageSizeCss,
+} from "../lib/conversationMessageSizePreference";
 
 type AppearanceMode = "system" | "light" | "dark";
 type AppearanceSettingsPanelProps = {
@@ -175,7 +181,6 @@ export function currentAppearanceSnapshot(
     followSystem: theme.followSystem,
     custom: false,
     customLight: [...DEFAULT_CUSTOM_COLORS],
-    customDark: [...DEFAULT_CUSTOM_COLORS],
     glassBackground,
     glassOpacity: theme.glassOpacity,
     prominentActiveTab: theme.prominentActiveTab,
@@ -186,102 +191,25 @@ export function currentAppearanceSnapshot(
   };
 }
 
-export function readAppearanceSnapshot(
-  key: string,
-): Partial<AppearanceSnapshot> | null {
-  try {
-    const value = window.localStorage.getItem(key);
-    if (!value) return null;
-    const parsed = JSON.parse(value) as Partial<AppearanceSnapshot>;
-    return parsed.version === 1 ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-export function mergeAppearanceSnapshot(
-  base: AppearanceSnapshot,
-  value: Partial<AppearanceSnapshot> | null,
-): AppearanceSnapshot {
-  if (!value) return base;
-  const colors = (candidate: unknown): [string, string] | null => {
-    if (
-      Array.isArray(candidate) &&
-      candidate.length === 2 &&
-      candidate.every(
-        (color) => typeof color === "string" && isValidHexColor(color),
-      )
-    ) {
-      return [candidate[0], candidate[1]];
-    }
-    return null;
-  };
-  const customLight = colors(value.customLight) ?? base.customLight;
-  const customDark = colors(value.customDark) ?? base.customDark;
-  return {
-    ...base,
-    ...value,
-    version: 1,
-    theme: typeof value.theme === "string" ? value.theme : base.theme,
-    accent:
-      typeof value.accent === "string" &&
-      (isValidHexColor(value.accent) || value.accent === "neutral")
-        ? value.accent === "neutral"
-          ? "#74717B"
-          : value.accent
-        : base.accent,
-    custom: value.custom === true,
-    customLight,
-    customDark,
-    glassBackground: value.glassBackground === true,
-    glassOpacity:
-      typeof value.glassOpacity === "number"
-        ? Math.max(30, Math.min(90, value.glassOpacity))
-        : base.glassOpacity,
-    prominentActiveTab:
-      typeof value.prominentActiveTab === "boolean"
-        ? value.prominentActiveTab
-        : base.prominentActiveTab,
-    messageSize:
-      value.messageSize === "smaller" ||
-      value.messageSize === "default" ||
-      value.messageSize === "larger"
-        ? value.messageSize
-        : base.messageSize,
-    density:
-      value.density === "compact" ||
-      value.density === "comfortable" ||
-      value.density === "spacious"
-        ? value.density
-        : base.density,
-    linkPreview:
-      value.linkPreview === "compact" || value.linkPreview === "rich"
-        ? value.linkPreview
-        : base.linkPreview,
-    threadLayout:
-      value.threadLayout === "focus" || value.threadLayout === "split"
-        ? value.threadLayout
-        : base.threadLayout,
-  };
-}
-
 function loadPreferences(
   base: AppearanceSnapshot,
   business: Partial<AppearanceSnapshot> | null,
   conversations: Partial<AppearanceSnapshot> | null,
 ): AppearanceSnapshot {
-  const businessSnapshot = mergeAppearanceSnapshot(base, business);
-  if (!conversations) return businessSnapshot;
+  const businessSnapshot = mergeLiveAppearanceSnapshot(base, business);
   const globalSnapshot = mergeAppearanceSnapshot(
     businessSnapshot,
     conversations,
   );
   return {
     ...businessSnapshot,
+    theme: base.theme,
+    accent: base.accent,
+    followSystem: base.followSystem,
     messageSize: globalSnapshot.messageSize,
-    density: globalSnapshot.density,
-    linkPreview: globalSnapshot.linkPreview,
-    threadLayout: globalSnapshot.threadLayout,
+    density: base.density,
+    linkPreview: base.linkPreview,
+    threadLayout: base.threadLayout,
   };
 }
 
@@ -436,12 +364,9 @@ function LiveAppearancePreview({
           "--ap-soft": softColor,
           "--ap-t1": first,
           "--ap-t2": second,
-          "--ap-message-size":
-            preferences.messageSize === "smaller"
-              ? "0.8125rem"
-              : preferences.messageSize === "larger"
-                ? "0.9375rem"
-                : "0.875rem",
+          "--ap-message-size": conversationMessageSizeCss(
+            preferences.messageSize,
+          ),
           "--ap-glass-alpha": `${preferences.glassOpacity}%`,
         } as React.CSSProperties
       }
@@ -597,20 +522,7 @@ export function AppearanceSettingsPanel({
     }
     const changedBusiness =
       previousBusinessId !== null && previousBusinessId !== businessId;
-    const base = changedBusiness
-      ? {
-          ...currentRef.current,
-          theme: "buzz",
-          accent: "#895AF6",
-          followSystem: true,
-          custom: false,
-          customLight: [...DEFAULT_CUSTOM_COLORS] as [string, string],
-          customDark: [...DEFAULT_CUSTOM_COLORS] as [string, string],
-          glassBackground: false,
-          glassOpacity: 65,
-          prominentActiveTab: false,
-        }
-      : currentRef.current;
+    const base = currentRef.current;
     const next = loadPreferences(base, business, global);
     setPreferences(next);
     setHexDrafts([...next.customLight]);
@@ -637,11 +549,6 @@ export function AppearanceSettingsPanel({
       }
     }
     if (business || changedBusiness || previousBusinessId === null) {
-      themeRef.current.applyAppearance({
-        theme: next.theme as SyntaxThemeName,
-        accent: next.accent,
-        followSystem: next.followSystem,
-      });
       themeRef.current.setGlassBackground(
         glassBackgroundSupported && next.glassBackground,
       );
@@ -649,11 +556,6 @@ export function AppearanceSettingsPanel({
       themeRef.current.setProminentActiveTab(next.prominentActiveTab);
     }
     applyConversationMessageSize(next.messageSize);
-    if (global) {
-      setConversationDensity(next.density);
-      setLinkPreviewStyle(next.linkPreview);
-      setThreadViewMode(next.threadLayout);
-    }
     // The scope IDs are the source of truth. Provider values are mirrored only
     // after a saved snapshot is loaded for this person and business.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -664,6 +566,15 @@ export function AppearanceSettingsPanel({
     lastBusinessKey,
     glassBackgroundSupported,
   ]);
+
+  React.useEffect(() => {
+    setPreferences((previous) => ({
+      ...previous,
+      theme: theme.selectedThemeName,
+      accent: theme.accentColor,
+      followSystem: theme.followSystem,
+    }));
+  }, [theme.selectedThemeName, theme.accentColor, theme.followSystem]);
 
   React.useEffect(() => {
     const root = document.documentElement;
@@ -705,8 +616,6 @@ export function AppearanceSettingsPanel({
         ...patch,
         version: 1,
       };
-      setPreferences(next);
-      if (scope === "conversations") setHexDrafts([...next.customLight]);
       const key = scope === "conversations" ? globalKey : businessKey;
       try {
         if (!writeAppearanceSnapshot(window.localStorage, key, next)) {
@@ -714,6 +623,8 @@ export function AppearanceSettingsPanel({
           return;
         }
         setSaved(true);
+        setPreferences(next);
+        setHexDrafts([...next.customLight]);
       } catch {
         setSaved(false);
         return;
@@ -762,10 +673,8 @@ export function AppearanceSettingsPanel({
   function updateColor(index: 0 | 1, value: string) {
     const colors: [string, string] = [...preferences.customLight];
     colors[index] = value;
-    const darkColors: [string, string] = [...preferences.customDark];
-    darkColors[index] = value;
     setHexDrafts([...colors]);
-    commit({ customLight: colors, customDark: darkColors, custom: true });
+    commit({ customLight: colors, custom: true });
   }
 
   function resetAppearance() {
@@ -779,7 +688,6 @@ export function AppearanceSettingsPanel({
       followSystem: true,
       custom: false,
       customLight: [...DEFAULT_CUSTOM_COLORS],
-      customDark: [...DEFAULT_CUSTOM_COLORS],
       glassBackground: false,
       glassOpacity: 65,
       prominentActiveTab: false,
@@ -848,7 +756,7 @@ export function AppearanceSettingsPanel({
       <header className="ap-heading">
         <div>
           <h1 className="text-settings-title">Make yourself at home.</h1>
-          <p>Your appearance in {businessName}.</p>
+          <p data-settings-subcopy>Your appearance in {businessName}.</p>
         </div>
         <span className="ap-scope">
           <UsersRound aria-hidden="true" className="icon" /> Only you
@@ -1009,7 +917,7 @@ export function AppearanceSettingsPanel({
               description={
                 glassBackgroundSupported
                   ? "Translucent navigation. Solid content."
-                  : "Translucent navigation. Solid content."
+                  : "Not available in this app"
               }
               title="Glass background"
             >
@@ -1076,27 +984,6 @@ export function AppearanceSettingsPanel({
                   <option value="smaller">Smaller</option>
                   <option value="default">Default</option>
                   <option value="larger">Larger</option>
-                </select>
-                <ChevronDown aria-hidden="true" className="icon" />
-              </label>
-            </AppearanceRow>
-            <AppearanceRow title="Density">
-              <label className="ap-control ap-select-label">
-                <span className="sr-only">Conversation density</span>
-                <select
-                  aria-label="Conversation density"
-                  data-testid="appearance-density"
-                  onChange={(event) =>
-                    commit(
-                      { density: event.target.value as ConversationDensity },
-                      "conversations",
-                    )
-                  }
-                  value={preferences.density}
-                >
-                  <option value="compact">Compact</option>
-                  <option value="comfortable">Comfortable</option>
-                  <option value="spacious">Spacious</option>
                 </select>
                 <ChevronDown aria-hidden="true" className="icon" />
               </label>

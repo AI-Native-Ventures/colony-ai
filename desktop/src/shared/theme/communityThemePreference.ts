@@ -1,6 +1,10 @@
 import { normalizeRelayUrl } from "@/features/profile/lib/selfProfileStorage";
 import { ACCENT_COLORS } from "./ThemeProvider";
 import { SYNTAX_THEMES, type SyntaxThemeName } from "./theme-loader";
+import {
+  nextPreferenceWriteTime,
+  preferenceWriteTime,
+} from "@/shared/lib/preferenceWriteTime";
 
 const STORAGE_KEY_PREFIX = "buzz-community-theme.v1";
 const OUTBOX_KEY_PREFIX = "buzz-community-theme-outbox.v1";
@@ -21,7 +25,11 @@ export const DEFAULT_COMMUNITY_THEME: CommunityThemePreference = Object.freeze({
 });
 
 const THEME_NAMES = new Set<string>(SYNTAX_THEMES);
-const ACCENTS = new Set<string>(ACCENT_COLORS.map(({ value }) => value));
+const ACCENTS = new Set<string>([
+  ...ACCENT_COLORS.map(({ value }) => value.toLowerCase()),
+  "#895af6",
+  "#74717b",
+]);
 
 export function communityThemeStorageKey(
   pubkey: string,
@@ -49,7 +57,7 @@ export function parseCommunityThemePreference(
     typeof candidate.theme !== "string" ||
     !THEME_NAMES.has(candidate.theme) ||
     typeof candidate.accent !== "string" ||
-    !ACCENTS.has(candidate.accent) ||
+    !ACCENTS.has(candidate.accent.toLowerCase()) ||
     typeof candidate.followSystem !== "boolean"
   ) {
     return null;
@@ -98,7 +106,7 @@ export function writeCommunityThemeOutbox(
   try {
     window.localStorage.setItem(
       communityThemeOutboxKey(pubkey, relayUrl),
-      JSON.stringify(preference),
+      JSON.stringify({ ...preference, updatedAt: nextPreferenceWriteTime() }),
     );
     return true;
   } catch {
@@ -147,11 +155,32 @@ export function writeCommunityThemePreference(
   try {
     window.localStorage.setItem(
       communityThemeStorageKey(pubkey, relayUrl),
-      JSON.stringify(preference),
+      JSON.stringify({ ...preference, updatedAt: nextPreferenceWriteTime() }),
     );
     return true;
   } catch {
     return false;
+  }
+}
+
+/** Read the local write clock for a preference or its durable pending edit. */
+export function readCommunityThemeWriteTime(
+  pubkey: string,
+  relayUrl: string,
+  outbox = false,
+): number {
+  try {
+    const key = outbox
+      ? communityThemeOutboxKey(pubkey, relayUrl)
+      : communityThemeStorageKey(pubkey, relayUrl);
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return 0;
+    const value = JSON.parse(raw);
+    return parseCommunityThemePreference(value)
+      ? preferenceWriteTime(value.updatedAt)
+      : 0;
+  } catch {
+    return 0;
   }
 }
 
@@ -206,4 +235,28 @@ export function communityThemePersistenceAction(
   return sameCommunityThemePreference(expectedApplied, current)
     ? "acknowledge"
     : "defer";
+}
+
+/** Select the newest durable local theme revision, preserving dirty-first legacy ties. */
+export function newestCommunityThemePreference(
+  candidates: {
+    preference: CommunityThemePreference | null;
+    updatedAt: number;
+  }[],
+): CommunityThemePreference | null {
+  let winner: {
+    preference: CommunityThemePreference;
+    updatedAt: number;
+  } | null = null;
+  for (const candidate of candidates) {
+    if (
+      candidate.preference &&
+      (!winner || candidate.updatedAt > winner.updatedAt)
+    )
+      winner = {
+        preference: candidate.preference,
+        updatedAt: candidate.updatedAt,
+      };
+  }
+  return winner?.preference ?? null;
 }

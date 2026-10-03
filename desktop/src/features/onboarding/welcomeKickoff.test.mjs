@@ -10,6 +10,7 @@ import {
   classifyWelcomeKickoffResolution,
   createWelcomeKickoffCoordinator,
   mergeKickoffEvents,
+  postWelcomeKickoffSetupNotice,
   resolveWelcomeAgentSet,
   selectWelcomeKickoffIntroTeammates,
   waitForWelcomeKickoffBeat,
@@ -30,25 +31,25 @@ function agent(name, personaId, pubkey) {
   };
 }
 
-const fizz = agent("Fizz", "builtin:fizz", "f".repeat(64));
+const fizz = agent("Scout", "builtin:fizz", "f".repeat(64));
 const honey = agent("Honey", "builtin:honey", "h".repeat(64));
 const pollen = agent("Pollen", "builtin:bumble", "b".repeat(64));
 
 test("resolveWelcomeAgentSet orders agents by stable persona identity", () => {
   assert.deepEqual(resolveWelcomeAgentSet([pollen, fizz, honey]), {
     lead: fizz,
-    teammates: [honey, pollen],
+    teammates: [],
   });
-  assert.equal(resolveWelcomeAgentSet([fizz, honey]), null);
+  assert.equal(resolveWelcomeAgentSet([honey, pollen]), null);
 });
 
 test("opener uses current agent names and requests bounded simultaneous intros", () => {
-  const opener = buildWelcomeKickoffOpener({ ...fizz, name: "Fizzy" }, [
+  const opener = buildWelcomeKickoffOpener({ ...fizz, name: "Scouty" }, [
     { ...honey, name: "Honeybee" },
     pollen,
   ]);
 
-  assert.match(opener, /I'm Fizzy/);
+  assert.match(opener, /I'm Scouty/);
   assert.match(opener, /@Honeybee and @Pollen/);
   assert.doesNotMatch(opener, /@@/);
   assert.match(opener, /sentence or two/);
@@ -150,7 +151,7 @@ test("kickoff coordinator preserves one task across rerenders and cancels on nav
 });
 
 test("closer degrades coherently for partial and total startup failure", () => {
-  assert.match(buildWelcomeKickoffCloser([]), /What can we help you build/);
+  assert.match(buildWelcomeKickoffCloser([]), /What can I help you build/);
   assert.match(buildWelcomeKickoffCloser(["Honey"]), /Honey is having trouble/);
   assert.match(
     buildWelcomeKickoffCloser(["Honey", "Pollen"]),
@@ -278,7 +279,7 @@ test("opener greets the owner by name and tags their pubkey", () => {
     pollen.pubkey,
     owner.pubkey,
   ]);
-  assert.match(input.content, /^Hi @Morgan, I'm Fizz\./);
+  assert.match(input.content, /^Hi @Morgan, I'm Scout\./);
   // The raw pubkey must never leak into the visible copy.
   assert.doesNotMatch(input.content, /owner-pubkey-hex/);
 });
@@ -295,7 +296,7 @@ test("opener falls back to an unnamed greeting when the display name is missing"
 
   // Still tagged for the Inbox mentions feed, just no visible greeting name.
   assert.ok(input.mentionPubkeys.includes(owner.pubkey));
-  assert.match(input.content, /^Hi, I'm Fizz\./);
+  assert.match(input.content, /^Hi, I'm Scout\./);
   assert.doesNotMatch(input.content, /@\s/);
 });
 
@@ -308,7 +309,7 @@ test("opener greets and tags the owner even when no teammates come online", () =
 
   assert.deepEqual(input.mentionPubkeys, ["owner-pubkey-hex"]);
   assert.equal(input.additionalMarkers.length, 1);
-  assert.match(input.content, /^Hi @Morgan, I'm Fizz\./);
+  assert.match(input.content, /^Hi @Morgan, I'm Scout\./);
 });
 
 test("opener does not duplicate the owner pubkey if already mentioned", () => {
@@ -330,7 +331,7 @@ test("opener degrades to one seeded Fizz message when no teammate comes online",
   assert.deepEqual(input.mentionPubkeys, []);
   assert.equal(input.additionalMarkers.length, 1);
   assert.match(input.content, /I'm here with Honey and Pollen/);
-  assert.match(input.content, /What can we help you build/);
+  assert.match(input.content, /What can I help you build/);
   assert.doesNotMatch(
     input.content,
     /introduce yourselves|trouble|couldn't start|taking longer/i,
@@ -368,7 +369,11 @@ test("closer classification sees replies that arrive during the final beat", asy
   const opener = relayEvent({
     id: "opener",
     pubkey: fizz.pubkey,
-    tags: [["client", "buzz-welcome-kickoff.opener.v1"]],
+    tags: [
+      ["client", "buzz-welcome-kickoff.opener.v1"],
+      ["p", honey.pubkey],
+      ["p", pollen.pubkey],
+    ],
   });
   const events = [opener];
 
@@ -414,7 +419,11 @@ function introReply(id, pubkey, openerId) {
 const kickoffOpener = relayEvent({
   id: "opener",
   pubkey: fizz.pubkey,
-  tags: [["client", "buzz-welcome-kickoff.opener.v1"]],
+  tags: [
+    ["client", "buzz-welcome-kickoff.opener.v1"],
+    ["p", honey.pubkey],
+    ["p", pollen.pubkey],
+  ],
 });
 
 // The bug this branch fixes: teammate intros are thread replies, which the
@@ -470,13 +479,106 @@ test("merging with no subtree replies leaves the channel events untouched", () =
   assert.equal(mergeKickoffEvents(channelEvents, []), channelEvents);
 });
 
-test("Fizz points new users to the working provider defaults path", () => {
+test("Scout points new users to the working AI defaults path", () => {
   assert.match(
     WELCOME_KICKOFF_PROVIDER_MESSAGE,
     /Settings > Agents > Defaults/,
   );
-  assert.match(
-    WELCOME_KICKOFF_PROVIDER_MESSAGE,
-    /provider key and choose a model/,
+  assert.match(WELCOME_KICKOFF_PROVIDER_MESSAGE, /connect your AI/);
+});
+
+test("welcome recovery does not require an API key in its primary guidance", () => {
+  assert.doesNotMatch(WELCOME_KICKOFF_PROVIDER_MESSAGE, /API key|provider key/);
+});
+
+test("presence deadline also bounds a hung in-flight relay request", async () => {
+  const started = performance.now();
+  assert.deepEqual(
+    await waitForWelcomeTeammatesOnline([honey, pollen], {
+      isCancelled: () => false,
+      loadPresence: () => new Promise(() => {}),
+      waitMs: 20,
+    }),
+    [],
+  );
+  assert.ok(
+    performance.now() - started < 1_000,
+    "a pending presence response must not hold kickoff",
+  );
+});
+
+test("never-mentioned teammates cannot hold the closer unresolved", () => {
+  const opener = relayEvent({
+    id: "selective",
+    pubkey: fizz.pubkey,
+    tags: [["p", honey.pubkey]],
+  });
+  const resolution = classifyWelcomeKickoffResolution([], opener, {
+    lead: fizz,
+    teammates: [honey, pollen],
+  });
+  assert.deepEqual(
+    resolution.unresolved.map((agent) => agent.pubkey),
+    [honey.pubkey],
+  );
+});
+
+test("welcome posts setup guidance for an installed harness with no auth probe", async () => {
+  const { resolveAgentReadiness } = await import("./ui/agentReadiness.ts");
+  const config = {
+    preferred_runtime: "goose",
+    provider: "openai",
+    model: "fixture-model",
+    env_vars: { OPENAI_API_KEY: "fixture" },
+  };
+  for (const id of [
+    "goose",
+    "cursor",
+    "devin",
+    "omp",
+    "grok",
+    "opencode",
+    "kimi",
+    "amp",
+    "hermes",
+    "openclaw",
+  ]) {
+    const posts = [];
+    const catalog = [
+      {
+        id,
+        label: id,
+        command: id,
+        binaryPath: `/bin/${id}`,
+        availability: "available",
+        authStatus: { status: "unknown" },
+      },
+    ];
+    assert.equal(
+      await postWelcomeKickoffSetupNotice(
+        resolveAgentReadiness(catalog, config, "any"),
+        async (content) => posts.push(content),
+      ),
+      true,
+    );
+    assert.deepEqual(posts, [WELCOME_KICKOFF_PROVIDER_MESSAGE]);
+  }
+  const ready = resolveAgentReadiness(
+    [
+      {
+        id: "codex",
+        label: "Codex",
+        availability: "available",
+        authStatus: { status: "logged_in" },
+      },
+    ],
+    config,
+    "any",
+  );
+  assert.equal(
+    await postWelcomeKickoffSetupNotice(ready, async () =>
+      assert.fail("must not post setup guidance for signed-in Codex"),
+    ),
+    false,
   );
 });

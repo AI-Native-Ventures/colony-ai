@@ -24,9 +24,11 @@ export function ContentSurface({
   children,
   unframed = false,
   terminal,
+  topChrome,
 }: {
   children: ReactNode;
   terminal?: ReactNode;
+  topChrome?: ReactNode;
   /** Used by dedicated huddle windows, which should not resemble app cards. */
   unframed?: boolean;
 }) {
@@ -35,11 +37,12 @@ export function ContentSurface({
       className={
         unframed
           ? "relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden bg-background"
-          : "relative z-10 mb-2 ml-px mr-2 mt-px flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-background shadow-content-edge"
+          : "relative z-10 m-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-background shadow-content-edge"
       }
       data-buzz-content-surface
       data-buzz-content-unframed={unframed ? true : undefined}
     >
+      {topChrome}
       <div className="buzz-content-primary flex min-h-0 flex-1 flex-col overflow-hidden">
         {children}
       </div>

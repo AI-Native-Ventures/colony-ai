@@ -35,12 +35,23 @@ export function runtimeIsReadyForOnboarding(
   globalConfig?: GlobalAgentConfig,
   gitBashPrerequisite?: GitBashPrerequisite | null,
 ) {
+  if (!runtime.command || !runtime.binaryPath) return false;
+  // Only the bundled agent is judged by provider, model and credentials. Goose
+  // sign-in is unprobed, so provider config alone cannot make it ready (launch
+  // decision recorded in desktop/src/features/agents/AGENTS.md).
   if (runtime.id === "buzz-agent") {
     return (
       globalConfig !== undefined &&
       resolveAgentReadiness(
         [runtime],
-        { ...globalConfig, preferred_runtime: runtime.id },
+        {
+          ...globalConfig,
+          ...(globalConfig.preferred_runtime &&
+          globalConfig.preferred_runtime !== runtime.id
+            ? { provider: null, model: null }
+            : {}),
+          preferred_runtime: runtime.id,
+        },
         "preferred",
         gitBashPrerequisite,
       ).ready
@@ -48,8 +59,7 @@ export function runtimeIsReadyForOnboarding(
   }
   return (
     runtime.availability === "available" &&
-    (runtime.authStatus.status === "logged_in" ||
-      runtime.authStatus.status === "not_applicable")
+    runtime.authStatus.status === "logged_in"
   );
 }
 

@@ -35,7 +35,7 @@ import {
   ONBOARDING_INK_ICON_CLASS,
   ONBOARDING_PRIMARY_CTA_CLASS,
 } from "@/features/onboarding/ui/OnboardingChrome";
-import { BuzzMark } from "@/shared/ui/buzz-logo/BuzzMark";
+import { ColonyMark } from "@/shared/ui/ColonyMark";
 import {
   Dialog,
   DialogContent,
@@ -509,7 +509,7 @@ export function HostedCommunityOnboarding({
         surface="textured"
       >
         <div className="mx-auto flex w-full max-w-sm flex-col items-center py-2 text-center">
-          <BuzzMark className="mb-5 h-auto w-9 text-foreground" />
+          <ColonyMark className="mb-5 h-auto w-9 text-foreground" />
 
           {!auth ? (
             <>

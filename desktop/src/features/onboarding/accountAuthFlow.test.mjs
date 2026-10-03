@@ -220,3 +220,11 @@ test("every contract error has screen-appropriate feedback", () => {
     "That code was not accepted. Check it and try again.",
   );
 });
+
+test("HTTP authentication and access failures keep specific friendly recovery copy", () => {
+  for (const code of ["authentication_required", "access_denied"]) {
+    const failure = normalizeAccountAuthFailure({ code });
+    assert.equal(failure.code, code);
+    assert.match(accountAuthFailureMessage(failure, "signin"), /sign-in/i);
+  }
+});

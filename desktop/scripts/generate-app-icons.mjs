@@ -1,12 +1,13 @@
 // Generates the Colony desktop app icon set from the Colony ant mark.
 //
 //   pnpm --dir desktop exec node scripts/generate-app-icons.mjs
+// Use --public-only to refresh dialog icons and the favicon from the committed SVG.
 //
 // Outputs (src-tauri/icons): colony-icon.svg, icon.png, icon.icns, icon.ico, the
 // Tauri PNG sizes, and the Windows Store tiles. The result is committed; CI does
 // not regenerate it. The .icns step uses macOS `iconutil`, so run this on a Mac.
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,7 +79,28 @@ export function packIco(images) {
   return Buffer.concat([header, entries, ...images.map(({ data }) => data)]);
 }
 
+async function writePublicIcons(draw, svg) {
+  const publicDir = path.join(desktop, "public");
+  await writeFile(path.join(publicDir, "colony-icon.svg"), `${svg.trim()}\n`);
+  for (const [name, size] of [
+    ["app-icon@2x.png", 112],
+    ["app-icon@3x.png", 168],
+  ]) {
+    await writeFile(path.join(publicDir, name), await draw.png(svg, size));
+  }
+}
+
 async function main() {
+  if (process.argv.includes("--public-only")) {
+    const svg = await readFile(path.join(iconsDir, "colony-icon.svg"), "utf8");
+    const draw = await renderer();
+    try {
+      await writePublicIcons(draw, svg);
+    } finally {
+      await draw.close();
+    }
+    return;
+  }
   const apple = iconSvg("apple");
   const full = iconSvg("full");
   const draw = await renderer();
@@ -86,6 +108,7 @@ async function main() {
   try {
     await mkdir(iconsDir, { recursive: true });
     await write("colony-icon.svg", `${apple}\n`);
+    await writePublicIcons(draw, apple);
 
     // macOS: an iconset folder turned into icon.icns by iconutil.
     const iconset = await mkdtemp(path.join(os.tmpdir(), "colony-icons-"));

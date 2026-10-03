@@ -524,8 +524,8 @@ export function LocalArchiveSettingsCard() {
   return (
     <section className="min-w-0" data-testid="settings-local-archive">
       <SettingsSectionHeader
-        title="Local archive"
-        description="Save copies of relay messages to a local SQLite database in your Buzz nest. Events are re-verified against the relay at archive time."
+        title="Local storage"
+        description="Save copies of relay messages to a local SQLite database on this device. Events are re-verified against the relay at archive time."
       />
 
       <div className="space-y-6">

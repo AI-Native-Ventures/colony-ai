@@ -586,8 +586,8 @@ px:
   interface text. All of these derive from the virtual typography rem and
   therefore follow the user's font-size preference and Cmd +/- zoom.
 - ✅ Conversation text uses the named `text-message` token. Its
-  **Smaller / Default / Larger contract is 13 / 14 / 15px** before keyboard
-  zoom. Author names use the same conversation-size step; timestamps, system
+  **Smaller / Default / Larger contract is 14 / 15 / 16px** before keyboard
+  zoom. Author names use the neighboring `text-xs` step; timestamps, system
   rows, code, and reactions are deliberate neighboring steps on the shared
   virtual-rem ramp. Keep those relationships tokenized rather than restoring a
   fixed 16px chat baseline or hardcoding preference-specific values in

@@ -1,16 +1,27 @@
+import type { ScoutGuidance } from "./scoutGuidance";
 import type * as React from "react";
 import type { OnboardingSceneId } from "./onboardingScenes";
 import type { CreditsSnapshot } from "./creditsOnboardingApi";
 
 export type OnboardingSceneData = {
+  hideProgress?: boolean;
+  entryCanOpen?: boolean;
+  scoutGuidance?: ScoutGuidance;
+  firstReply?: string;
+  connectionLabel?: string;
   name: string;
   email: string;
   business: string;
   website: string;
   description: string;
   logoUrl?: string | null;
+  logoSource?: "upload" | "website";
+  websitePending?: boolean;
   harnessLabel?: string;
   harnessStatus?: string;
+  connectionReply?: string;
+  connectionPhase?: "starting" | "waiting" | "saving";
+  effectiveModel?: string | null;
   error?: string | null;
   pending?: boolean;
   visualOnly?: boolean;
@@ -36,6 +47,8 @@ export type OnboardingSceneActions = {
   onLogoChange?: (file: File | null) => void;
   onLogoError?: () => void;
   onReadWebsite?: () => void;
+  onChooseHarness?: () => void;
+  onCancelTest?: () => void;
   onResend?: () => void;
   onCreditsRetry?: () => void;
   onRuntimeContinue?: () => void;

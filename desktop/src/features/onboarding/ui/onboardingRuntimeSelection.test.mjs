@@ -9,7 +9,13 @@ import {
 } from "./onboardingRuntimeSelection.ts";
 
 function runtime(id, availability, status) {
-  return { id, availability, authStatus: { status } };
+  return {
+    id,
+    availability,
+    command: id,
+    binaryPath: `/usr/local/bin/${id}`,
+    authStatus: { status },
+  };
 }
 
 test("the V3 harness catalog is visible in onboarding", () => {
@@ -45,7 +51,7 @@ test("readiness requires an available and authenticated runtime", () => {
     runtimeIsReadyForOnboarding(
       runtime("codex", "available", "not_applicable"),
     ),
-    true,
+    false,
   );
   assert.equal(
     runtimeIsReadyForOnboarding(runtime("claude", "available", "logged_out")),
@@ -68,7 +74,7 @@ test("ready onboarding runtimes exclude unknown and non-ready harnesses", () => 
 
   assert.deepEqual(
     getReadyOnboardingRuntimes(runtimes).map(({ id }) => id),
-    ["claude", "goose"],
+    ["claude"],
   );
 });
 
@@ -126,5 +132,123 @@ test("configured bundled runtime must also pass native prerequisite readiness", 
   assert.deepEqual(
     getReadyOnboardingRuntimes(runtimes, config, null).map(({ id }) => id),
     ["claude", "buzz-agent"],
+  );
+});
+
+test("unprobed provider harnesses and missing executable paths cannot be ready", () => {
+  for (const id of ["goose", "omp", "grok"]) {
+    for (const auth of [
+      "unknown",
+      "not_applicable",
+      "logged_out",
+      "config_invalid",
+    ]) {
+      assert.equal(
+        runtimeIsReadyForOnboarding(runtime(id, "available", auth)),
+        false,
+      );
+    }
+    assert.equal(
+      runtimeIsReadyForOnboarding(runtime(id, "available", "logged_in")),
+      true,
+    );
+  }
+  assert.equal(
+    runtimeIsReadyForOnboarding({
+      ...runtime("codex", "available", "logged_in"),
+      binaryPath: null,
+    }),
+    false,
+  );
+  assert.equal(
+    runtimeIsReadyForOnboarding({
+      ...runtime("codex", "available", "logged_in"),
+      command: null,
+    }),
+    false,
+  );
+});
+
+for (const id of [
+  "claude",
+  "codex",
+  "cursor",
+  "devin",
+  "omp",
+  "grok",
+  "opencode",
+  "kimi",
+  "amp",
+  "hermes",
+  "openclaw",
+]) {
+  test(`${id} is testable with its own authentication`, () => {
+    assert.equal(
+      runtimeIsReadyForOnboarding(runtime(id, "available", "logged_in")),
+      true,
+    );
+    assert.equal(
+      runtimeIsReadyForOnboarding(runtime(id, "available", "logged_out")),
+      false,
+    );
+  });
+}
+
+test("buzz-agent requires provider model and credentials", () => {
+  const entry = runtime("buzz-agent", "available", "not_applicable");
+  assert.equal(
+    runtimeIsReadyForOnboarding(
+      entry,
+      { env_vars: {}, provider: null, model: null },
+      null,
+    ),
+    false,
+  );
+  assert.equal(
+    runtimeIsReadyForOnboarding(
+      entry,
+      {
+        env_vars: { ANTHROPIC_API_KEY: "fixture" },
+        provider: "anthropic",
+        model: "model",
+      },
+      null,
+    ),
+    true,
+  );
+});
+
+// Launch decision (desktop/src/features/agents/AGENTS.md): Goose provider,
+// model and credentials alone cannot establish readiness while its sign-in is
+// unprobed. This replaces the first-reply lane's provider-runtime Goose case.
+test("goose with a complete provider config is still unready without a known sign-in", () => {
+  const entry = runtime("goose", "available", "not_applicable");
+  assert.equal(
+    runtimeIsReadyForOnboarding(
+      entry,
+      {
+        env_vars: { ANTHROPIC_API_KEY: "fixture" },
+        provider: "anthropic",
+        model: "model",
+      },
+      null,
+    ),
+    false,
+  );
+});
+
+test("switching from a CLI cannot borrow its model or provider as bundled readiness", () => {
+  assert.equal(
+    runtimeIsReadyForOnboarding(
+      runtime("buzz-agent", "available", "not_applicable"),
+      {
+        preferred_runtime: "claude",
+        model: "cli-model",
+        provider: "anthropic",
+        env_vars: { ANTHROPIC_API_KEY: "fixture" },
+      },
+      null,
+    ),
+    false,
   );
 });

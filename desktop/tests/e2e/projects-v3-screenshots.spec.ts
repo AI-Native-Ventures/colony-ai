@@ -52,8 +52,12 @@ async function expectProjectContextGroups(
   await expect(panel.getByTestId("project-repository-people")).toHaveCount(0);
 }
 
-async function openBuzzProject(page: import("@playwright/test").Page) {
+async function openBuzzProject(
+  page: import("@playwright/test").Page,
+  afterBoot?: () => Promise<void>,
+) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  if (afterBoot) await afterBoot();
   await openLegacyProjectsView(page);
   await page.getByTestId("projects-section-projects").click();
   const projectEntry = page
@@ -256,24 +260,49 @@ test("restricted repositories keep event work visible and offer access help", as
   await expect(chatPanel.getByTestId("message-composer")).toBeVisible();
 });
 
-test("repository pages show a centered Buzz loader while fetching", async ({
+test("repository pages show centered Scout presence while fetching", async ({
   page,
 }) => {
-  await installMockBridge(page, { projectRepoSnapshotDelayMs: 750 });
-  await openBuzzProject(page);
+  await installMockBridge(page);
+  await openBuzzProject(page, async () => {
+    await expect(page.getByTestId("app-sidebar")).toBeVisible();
+    await page.evaluate(() => {
+      const testWindow = window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke: (
+            command: string,
+            args?: Record<string, unknown>,
+          ) => Promise<unknown>;
+        };
+        __COLONY_RELEASE_REPOSITORY__: () => void;
+      };
+      const original = testWindow.__TAURI_INTERNALS__.invoke.bind(
+        testWindow.__TAURI_INTERNALS__,
+      );
+      testWindow.__TAURI_INTERNALS__.invoke = async (command, args) => {
+        if (command === "get_project_repo_snapshot")
+          await new Promise<void>((resolve) => {
+            testWindow.__COLONY_RELEASE_REPOSITORY__ = resolve;
+          });
+        return original(command, args);
+      };
+    });
+  });
 
   const loader = page.getByTestId("buzz-loading-state");
   await expect(loader).toBeVisible();
   await expect(
-    loader.getByRole("img", { name: "Loading repository" }),
+    page.getByRole("status", { name: "Loading repository" }),
   ).toBeVisible();
-  const animatedMark = loader.locator(".buzz-logo__mark");
-  await expect(animatedMark).toHaveCSS(
-    "animation-name",
-    "buzz-logo-scale-pulse",
-  );
-  await expect(animatedMark).toHaveCSS("opacity", "1");
+  await expect(
+    loader.locator('.scout-ant[data-pose="working"] svg'),
+  ).toBeVisible();
   await expect(loader).toHaveCSS("justify-content", "center");
+  await page.evaluate(() =>
+    (
+      window as unknown as { __COLONY_RELEASE_REPOSITORY__: () => void }
+    ).__COLONY_RELEASE_REPOSITORY__(),
+  );
   await expect(loader).toBeHidden({ timeout: 5_000 });
 });
 
@@ -310,6 +339,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
     "project-repository-actions-panel",
   );
   const expectInsetSection = async () => {
+    await waitForAnimations(page);
     const sectionHeader = workspacePanel.getByTestId("project-section-header");
     const [workspaceBox, headerBox, menuBox] = await Promise.all([
       workspacePanel.boundingBox(),
@@ -365,7 +395,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
     exact: true,
   });
   await expect(repositoryHeading).toBeVisible();
-  await expect(repositoryHeading).toHaveCSS("font-size", "14px");
+  await expect(repositoryHeading).toHaveCSS("font-size", "15px");
   await expectProjectContextGroups(repositoryActionsPanel, {
     hasActions: true,
   });
@@ -663,7 +693,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   await expect(agentChatPanel).toBeVisible();
   await expect(projectPanelLayout).toHaveAttribute("data-detached", "false");
   await expect(projectContentPod).toHaveCount(0);
-  await expect(appContentSurface).toHaveCSS("border-radius", "15px");
+  await expect(appContentSurface).toHaveCSS("border-radius", "11px");
   await expect
     .poll(() =>
       appContentSurface.evaluate(
@@ -790,8 +820,8 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   expect(finalProjectContentPodBounds).not.toBeNull();
   expect(attachedContentSurfaceBounds).not.toBeNull();
   await expect(appContentSurface).toHaveCSS("box-shadow", "none");
-  // The pod starts after the 1px frame border and wrapper inset, with an
-  // 8px right and bottom gutter (mr-2 mb-2 on the pod wrapper).
+  // The pod starts after the 40px chrome, 1px border and wrapper inset,
+  // with an 8px right and bottom gutter (mr-2 mb-2 on the pod wrapper).
   expect(
     (finalProjectContentPodBounds?.x ?? 0) -
       (attachedContentSurfaceBounds?.x ?? 0),
@@ -799,11 +829,11 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   expect(
     (finalProjectContentPodBounds?.y ?? 0) -
       (attachedContentSurfaceBounds?.y ?? 0),
-  ).toBe(2);
+  ).toBe(42);
   expect(
     (attachedContentSurfaceBounds?.height ?? 0) -
       (finalProjectContentPodBounds?.height ?? 0),
-  ).toBe(11);
+  ).toBe(51);
   const viewportSize = page.viewportSize();
   expect(collapsedMainPaneBounds).not.toBeNull();
   expect(viewportSize).not.toBeNull();
@@ -1089,7 +1119,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   await expect(issueDetail).toHaveCSS("max-width", "768px");
   await expect(
     issueDetail.getByRole("heading", { level: 3 }).first(),
-  ).toHaveCSS("font-size", "18px");
+  ).toHaveCSS("font-size", "19.2857px");
   await expect(
     page.getByTestId("project-issue-comment-timeline-row").first(),
   ).toBeVisible();
@@ -1187,13 +1217,13 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   await expect(pullRequestDetail).toHaveCSS("max-width", "768px");
   await expect(
     pullRequestDetail.getByRole("heading", { level: 3 }).first(),
-  ).toHaveCSS("font-size", "18px");
+  ).toHaveCSS("font-size", "19.2857px");
   const reviewCommits = workspacePanel.getByRole("button", {
     name: "Commits",
     exact: true,
   });
   await expect(reviewCommits).toHaveAttribute("aria-expanded", "false");
-  await expect(reviewCommits).toHaveCSS("font-size", "14px");
+  await expect(reviewCommits).toHaveCSS("font-size", "15px");
   await expect(reviewCommits).toHaveCSS("font-weight", "500");
   await reviewCommits.click();
   const openedReviewCommits = workspacePanel.getByRole("button", {

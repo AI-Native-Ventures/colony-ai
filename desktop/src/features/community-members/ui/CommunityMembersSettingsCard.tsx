@@ -251,7 +251,9 @@ function RelayMemberRow({
 
 export function CommunityMembersSettingsCard({
   currentPubkey,
+  onBack,
 }: {
+  onBack?: () => void;
   currentPubkey?: string;
 }) {
   const myMembershipQuery = useMyRelayMembershipLookupQuery();
@@ -294,15 +296,47 @@ export function CommunityMembersSettingsCard({
   if (myMembershipQuery.isLoading) {
     return (
       <section className="min-w-0" data-testid="settings-community-members">
-        <p className="text-sm text-muted-foreground">
-          Checking invite permissions…
+        <SettingsSectionHeader title="People & access" />
+        <p
+          role="status"
+          aria-busy="true"
+          className="text-sm text-muted-foreground"
+        >
+          Checking permissions…
         </p>
       </section>
     );
   }
 
   if (!canManageRelay || !currentRole) {
-    return null;
+    return (
+      <section className="min-w-0" data-testid="settings-community-members">
+        <SettingsSectionHeader title="People & access" />
+        <div className="rounded-lg border border-border p-6 space-y-4">
+          <p
+            role={myMembershipQuery.isError ? "alert" : undefined}
+            className="text-sm text-muted-foreground"
+          >
+            {myMembershipQuery.isError
+              ? "Could not check your access. Try again."
+              : "Only workspace owners and administrators can manage people and access."}
+          </p>
+          <div className="flex gap-3">
+            {myMembershipQuery.isError ? (
+              <Button
+                variant="outline"
+                onClick={() => void myMembershipQuery.refetch()}
+              >
+                Retry
+              </Button>
+            ) : null}
+            <Button variant="outline" onClick={onBack}>
+              Back to business
+            </Button>
+          </div>
+        </div>
+      </section>
+    );
   }
 
   return (

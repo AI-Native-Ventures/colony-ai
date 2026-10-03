@@ -1,3 +1,4 @@
+import { getDefaultPersonaRuntime } from "@/features/agents/lib/resolvePersonaRuntime";
 import { requiredCredentialEnvKeys } from "@/features/agents/ui/agentConfigOptions";
 import type {
   AcpRuntimeCatalogEntry,
@@ -21,7 +22,7 @@ export const GIT_BASH_REQUIRED_COPY =
  * Determine whether the user has a working agent path configured.
  *
  * CLI path: the preferred Claude or Codex runtime is available and logged in.
- * Provider path: the preferred Buzz Agent or Goose runtime has provider and
+ * Provider path: the preferred Colony Agent runtime has provider and
  * model set, plus all required credential env vars for that provider.
  *
  * Returns enough info for the UI to say which path matched, or that neither did.
@@ -41,13 +42,27 @@ export function resolveAgentReadiness(
     );
     if (!prerequisite.ready) return prerequisite;
   }
+  if (scope === "preferred" && !globalConfig.preferred_runtime) {
+    const legacy = resolveLegacyWelcomeRuntime(
+      runtimes,
+      globalConfig,
+      gitBashPrerequisite,
+    );
+    return legacy
+      ? resolveAgentReadiness(
+          runtimes,
+          { ...globalConfig, preferred_runtime: legacy.id },
+          "preferred",
+          gitBashPrerequisite,
+        )
+      : { ready: false };
+  }
   if (scope === "any") {
     for (const runtime of runtimes) {
-      if (runtime.id === "buzz-agent") continue;
+      if (runtime.id === "buzz-agent" || runtime.id === "goose") continue;
       if (
         runtime.availability === "available" &&
-        (runtime.authStatus.status === "logged_in" ||
-          runtime.authStatus.status === "not_applicable")
+        runtime.authStatus.status === "logged_in"
       ) {
         return { ready: true, reason: "cli", runtimeLabel: runtime.label };
       }
@@ -65,9 +80,9 @@ export function resolveAgentReadiness(
   }
 
   if (
-    (preferredRuntime.id === "claude" || preferredRuntime.id === "codex") &&
-    (preferredRuntime.authStatus.status === "logged_in" ||
-      preferredRuntime.authStatus.status === "not_applicable")
+    preferredRuntime.id !== "buzz-agent" &&
+    preferredRuntime.id !== "goose" &&
+    preferredRuntime.authStatus.status === "logged_in"
   ) {
     return {
       ready: true,
@@ -76,7 +91,7 @@ export function resolveAgentReadiness(
     };
   }
 
-  if (preferredRuntime.id !== "buzz-agent" && preferredRuntime.id !== "goose") {
+  if (preferredRuntime.id !== "buzz-agent") {
     return { ready: false };
   }
 
@@ -124,4 +139,22 @@ export function resolveAgentPrerequisiteReadiness(
   return prerequisite.available
     ? { ready: true }
     : { ready: false, reason: "git-bash", copy: GIT_BASH_REQUIRED_COPY };
+}
+
+/** Legacy installs choose a ready runtime in the same order used for persona defaults. */
+export function resolveLegacyWelcomeRuntime(
+  runtimes: readonly AcpRuntimeCatalogEntry[],
+  config: GlobalAgentConfig,
+  prerequisite?: GitBashPrerequisite | null,
+) {
+  const ready = runtimes.filter(
+    (runtime) =>
+      resolveAgentReadiness(
+        [runtime],
+        { ...config, preferred_runtime: runtime.id },
+        "preferred",
+        prerequisite,
+      ).ready,
+  );
+  return getDefaultPersonaRuntime(ready);
 }

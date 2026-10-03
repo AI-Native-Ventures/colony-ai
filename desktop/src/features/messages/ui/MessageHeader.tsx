@@ -97,7 +97,7 @@ export function MessageAuthorText({
   return (
     <Component
       className={cn(
-        "truncate text-message font-semibold leading-message-author tracking-normal",
+        "truncate text-message-author font-semibold leading-message-author tracking-normal",
         hoverUnderline && "hover:underline",
         className,
       )}

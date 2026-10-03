@@ -1,5 +1,5 @@
 import { cn } from "@/shared/lib/cn";
-import BuzzLogoAnimation from "@/shared/ui/buzz-logo/BuzzLogoAnimation";
+import { ScoutAvatar } from "@/features/onboarding/ui/ScoutAvatar";
 
 /** Centered, low-emphasis loading state for page and panel fetches. */
 export function BuzzLoadingState({
@@ -20,15 +20,9 @@ export function BuzzLoadingState({
       )}
       data-testid="buzz-loading-state"
       role="status"
+      aria-label={label}
     >
-      <BuzzLogoAnimation
-        ariaLabel={label}
-        className="buzz-logo--scale-pulse"
-        fullScreen={false}
-        showBackground={false}
-        style={{ width: "2rem" }}
-        textured={false}
-      />
+      <ScoutAvatar pose="working" className="block w-8" />
     </div>
   );
 }

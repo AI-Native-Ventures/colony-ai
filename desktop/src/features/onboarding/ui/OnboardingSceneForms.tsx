@@ -1,4 +1,6 @@
 import * as React from "react";
+import { ScoutAvatar } from "./ScoutAvatar";
+import { scoutGuidance } from "./scoutGuidance";
 import {
   onboardingSceneStage,
   type OnboardingSceneId,
@@ -64,115 +66,49 @@ export function StoryPanel({
   scene,
   data,
   onLogoError,
+  focusTopic,
 }: {
+  focusTopic?: string;
   scene: OnboardingSceneId;
   data: OnboardingSceneData;
   onLogoError?: () => void;
 }) {
   const stage = onboardingSceneStage(scene);
-  let heading = (
-    <>
-      A little Colony.
-      <br />A bigger
-      <br />
-      <em>possibility.</em>
-    </>
+  const guidance = scoutGuidance(
+    scene,
+    data.error,
+    data.scoutGuidance,
+    focusTopic,
+    scene === "connect" &&
+      (data.visualOnly || data.harnessStatus === "Checking"),
   );
-  let description = (
-    <>
-      Your ideas. Your AI team.
-      <br />A place to make things happen.
-    </>
-  );
-  if (stage === 1) {
-    heading = (
-      <>
-        Make it
-        <br />
-        <em>your own.</em>
-      </>
-    );
-    description = (
-      <>
-        A little context helps your team
-        <br />
-        get off to a good start.
-      </>
-    );
-  }
-  if (stage === 2) {
-    heading = (
-      <>
-        Your choice.
-        <br />
-        <em>Your AI.</em>
-      </>
-    );
-    description = (
-      <>
-        A familiar account.
-        <br />A new way to work.
-      </>
-    );
-  }
-  if (
-    [
-      "signin",
-      "forgot",
-      "email-sent",
-      "new-password",
-      "reset-done",
-      "reset-expired",
-      "reset-verifying",
-      "reset-error",
-      "reset-locked",
-      "reset-resent",
-      "reset-network",
-      "reset-change-email",
-      "businesses",
-    ].includes(scene)
-  ) {
-    heading = (
-      <>
-        Your Colony.
-        <br />
-        <em>
-          Right where
-          <br /> you left it.
-        </em>
-      </>
-    );
-    description = (
-      <>
-        Your business, your team
-        <br />
-        and your next chapter.
-      </>
-    );
-  }
-  if (scene === "invite") {
-    heading = (
-      <>
-        There’s room
-        <br />
-        for <em>you here.</em>
-      </>
-    );
-    description = (
-      <>
-        Good work starts with
-        <br />
-        the right people.
-      </>
-    );
-  }
   const businessPreview = stage === 1;
   return (
     <aside className="story">
       <Brand />
       <div className="story-main">
-        <h1>{heading}</h1>
-        <p>{description}</p>
+        <div className="scout-guide" data-state={guidance.pose}>
+          <div className="scout-portrait">
+            <ScoutAvatar pose={guidance.pose} />
+            <span aria-hidden="true" className="scout-indicator">
+              {guidance.pose === "waiting"
+                ? "?"
+                : guidance.pose === "done"
+                  ? "✓"
+                  : ""}
+            </span>
+          </div>
+          <div className="scout-identity">
+            <strong>Scout</strong>
+            <span>Chief of Staff</span>
+          </div>
+          <div className="scout-status" role="status">
+            <i aria-hidden="true" />
+            <span>{guidance.status}</span>
+          </div>
+        </div>
+        <h1>{guidance.title}</h1>
+        <p>{guidance.copy}</p>
         {businessPreview ? (
           <div className="business-preview">
             <span className="business-initial">
@@ -191,7 +127,7 @@ export function StoryPanel({
           </div>
         ) : null}
       </div>
-      {accessScene(scene) ? (
+      {data.hideProgress || accessScene(scene) || scene.startsWith("reset") ? (
         <div className="story-bottom" aria-hidden="true" />
       ) : (
         <StepProgress scene={scene} />
@@ -311,7 +247,7 @@ export function SignInForm({
     <>
       <h2>Welcome back.</h2>
       <p className="lede">Let’s pick up where you left off.</p>
-      <form onSubmit={onSubmit}>
+      <form aria-label="Sign in" onSubmit={onSubmit}>
         <div className="fields">
           <div className="field">
             <label htmlFor="signin-email">Email address</label>
@@ -423,10 +359,12 @@ export function BusinessForm({
               />
               <button
                 className="secondary"
+                disabled={data.websitePending}
+                aria-busy={data.websitePending}
                 onClick={onReadWebsite}
                 type="button"
               >
-                Read website
+                {data.websitePending ? "Reading…" : "Read website"}
               </button>
             </div>
           </div>
@@ -468,7 +406,9 @@ export function BusinessForm({
                 </div>
                 <p className="logo-hint">
                   {data.logoUrl
-                    ? "Your uploaded logo"
+                    ? data.logoSource === "website"
+                      ? "From your website"
+                      : "Your uploaded logo"
                     : "Or we’ll use your website’s icon."}
                 </p>
               </div>

@@ -3,15 +3,17 @@ import { TerminalSquare } from "lucide-react";
 
 import type { AcpRuntimeCatalogEntry } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
-import { BuzzMark } from "@/shared/ui/buzz-logo/BuzzMark";
+import { AntMark } from "./OnboardingScenePrimitives";
+import codexLogoUrl from "../assets/harness-logos/codex.webp?inline";
 import claudeLogoUrl from "../assets/harness-logos/claude.png?inline";
 import { RUNTIME_MARKS } from "./HarnessMarks";
 
 // Bundled logos for compiled-in runtimes (inline base64, no network fetch).
-// Monochrome marks live in RUNTIME_MARKS instead — inline SVGs that follow
+// Monochrome marks live in RUNTIME_MARKS instead , inline SVGs that follow
 // `currentColor`, so they adapt to dark/light without bitmap filters.
 const RUNTIME_LOGOS: Record<string, string> = {
   claude: claudeLogoUrl,
+  codex: codexLogoUrl,
 };
 
 // Public-path logos for bundled presets. Served from /harness-logos/ at runtime.
@@ -35,7 +37,7 @@ function isBuzzRuntime(runtime: AcpRuntimeCatalogEntry): boolean {
 export function getRuntimeDisplayLabel(
   runtime: AcpRuntimeCatalogEntry,
 ): string {
-  return isBuzzRuntime(runtime) ? "Buzz" : runtime.label;
+  return isBuzzRuntime(runtime) ? "Colony Agent" : runtime.label;
 }
 
 function getRuntimeLogoUrl(runtime: AcpRuntimeCatalogEntry): string | null {
@@ -51,7 +53,7 @@ export function RuntimeIcon({
   runtime: AcpRuntimeCatalogEntry;
 }) {
   const [imageFailed, setImageFailed] = React.useState(false);
-  // Only use bundled logo maps — never render user-supplied avatar URLs for
+  // Only use bundled logo maps , never render user-supplied avatar URLs for
   // custom/preset entries (tracking pixel / spoofing vector, security line).
   const id = runtime.id.trim().toLowerCase();
   const imageUrl = getRuntimeLogoUrl(runtime);
@@ -60,7 +62,7 @@ export function RuntimeIcon({
   if (isBuzzRuntime(runtime)) {
     // The mark's wide viewBox letterboxes inside a square box, so honoring
     // the caller's size keeps it optically in line with the square logos.
-    return <BuzzMark className={cn(className, "text-foreground")} />;
+    return <AntMark className={cn(className, "text-foreground")} />;
   }
 
   if (Mark) {

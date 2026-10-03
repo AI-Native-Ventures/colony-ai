@@ -18,6 +18,8 @@ export type AccountAuthVerificationPurpose = "verify" | "claim";
 export type AccountAuthFailureCode =
   | "invalid_request"
   | "invalid_credentials"
+  | "authentication_required"
+  | "access_denied"
   | "email_unverified"
   | "email_taken"
   | "identity_taken"
@@ -194,6 +196,8 @@ function normalizedFailureCode(raw: unknown): AccountAuthFailureCode {
   switch (raw) {
     case "invalid_request":
     case "invalid_credentials":
+    case "authentication_required":
+    case "access_denied":
     case "email_unverified":
     case "email_taken":
     case "identity_taken":
@@ -262,6 +266,10 @@ export function accountAuthFailureMessage(
       return screen === "verify" || screen === "reset-confirm"
         ? "That code was not accepted. Check it and try again."
         : "The email or password was not accepted.";
+    case "authentication_required":
+      return "We couldn't confirm your sign-in. Sign in again to continue.";
+    case "access_denied":
+      return "This account cannot access that action. Check your sign-in and try again.";
     case "email_unverified":
       return "Check your email for a verification code.";
     case "email_taken":

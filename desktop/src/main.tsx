@@ -1,3 +1,5 @@
+import "@/shared/styles/globals/accessibility.css";
+import { initializeAccessibilityPreference } from "@/shared/lib/accessibilityPreference";
 // Must evaluate first: installs Tauri IPC internals when running in Electron.
 import "@/shared/api/electronTauriShim";
 import React from "react";
@@ -134,6 +136,7 @@ async function bootstrap() {
   recoverLocalStorageQuotaOnStartup();
   initializeConversationDensityPreference();
   initializeFontSizePreference();
+  initializeAccessibilityPreference();
   startLocalStorageSweep();
   await installE2eBridgeIfConfigured();
   if (supportsNativeCapability("legacy-migration")) {

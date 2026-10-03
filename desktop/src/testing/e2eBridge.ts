@@ -618,6 +618,7 @@ type E2eConfig = {
      *  community mid-startup and observe the fail-closed scope check.
      *  Releasable early via `__BUZZ_E2E_RELEASE_MANAGED_AGENT_STARTS__()`. */
     startManagedAgentDelayMs?: number;
+    startManagedAgentDelayMsByName?: Record<string, number>;
     /** Hold the media proxy at port 0 until the E2E release seam is invoked. */
     mediaProxyInitiallyUnavailable?: boolean;
     /** Hold mock send live echoes until the E2E release seam is invoked. */
@@ -908,6 +909,14 @@ type E2eConfig = {
      * Pass a config with a provider to test Inherit-from-global behavior.
      */
     /** Safe result of the mocked onboarding connection probe. */
+    onboardingConnectionResult?: {
+      reply?: string;
+      model?: string | null;
+      error?: string;
+      startupMs?: number;
+      totalMs?: number;
+    };
+    onboardingConnectionDelayMs?: number;
     aiConnectionResult?:
       | "connected"
       | "key-rejected"
@@ -1285,6 +1294,7 @@ type RawManagedAgent = {
   pubkey: string;
   name: string;
   persona_id: string | null;
+  team_id?: string | null;
   /** Record-level harness/runtime pin (`null` when inheriting from the persona). */
   runtime: string | null;
   relay_url: string;
@@ -2436,6 +2446,7 @@ function cloneManagedAgent(agent: MockManagedAgent): RawManagedAgent {
     pubkey: agent.pubkey,
     name: agent.name,
     persona_id: agent.persona_id,
+    team_id: agent.team_id ?? null,
     runtime: agent.runtime ?? null,
     relay_url: agent.relay_url,
     acp_command: agent.acp_command,
@@ -14672,7 +14683,7 @@ async function handleDiscoverAcpRuntimes(
       requires_external_cli: true,
       underlying_cli_path: null,
       node_required: false,
-      auth_status: { status: "not_applicable" },
+      auth_status: { status: "unknown" },
       source: "builtin",
       login_hint: undefined,
     },
@@ -14784,6 +14795,8 @@ let installCallCount = 0;
 const installCallCountByRuntime: Record<string, number> = {};
 let addChannelMembersCallCount = 0;
 let setGlobalAgentConfigCallCount = 0;
+let cancelOnboardingProbe: { requestId: string; cancel: () => void } | null =
+  null;
 let mockGlobalAgentConfig: {
   env_vars: Record<string, string>;
   provider: string | null;
@@ -15693,6 +15706,7 @@ async function handleCreateManagedAgent(
     input: {
       name: string;
       personaId?: string;
+      teamId?: string;
       relayUrl?: string;
       acpCommand?: string;
       agentCommand?: string;
@@ -15769,6 +15783,7 @@ async function handleCreateManagedAgent(
     pubkey,
     name,
     persona_id: args.input.personaId ?? null,
+    team_id: args.input.teamId ?? null,
     // Create never pins a harness id — the record inherits from the persona.
     runtime: null,
     relay_url: args.input.relayUrl ?? DEFAULT_RELAY_WS_URL,
@@ -15913,7 +15928,12 @@ async function handleStartManagedAgent(
   },
   config?: E2eConfig,
 ): Promise<RawManagedAgent> {
-  const delayMs = config?.mock?.startManagedAgentDelayMs ?? 0;
+  const delayMs =
+    config?.mock?.startManagedAgentDelayMsByName?.[
+      getMockManagedAgent(args.pubkey).name
+    ] ??
+    config?.mock?.startManagedAgentDelayMs ??
+    0;
   if (delayMs > 0) {
     await new Promise<void>((resolve) => {
       let settled = false;
@@ -19793,6 +19813,7 @@ export function maybeInstallE2eTauriMocks() {
         return;
       case "fetch_join_policy":
         return activeConfig?.mock?.joinPolicy ?? null;
+      case "read_business_website":
       case "fetch_link_preview_metadata": {
         if (activeConfig?.mock?.deferLinkPreviewMetadata) {
           await new Promise<void>((resolve) => {
@@ -20056,7 +20077,7 @@ export function maybeInstallE2eTauriMocks() {
           commit_body: [
             "See the [project guide](https://example.com/project-guide).",
             "",
-            "![Architecture](/buzz.svg)",
+            "![Architecture](/colony-icon.svg)",
             "",
             "![Demo](https://example.com/project-demo.mp4)",
           ].join("\n"),
@@ -21358,6 +21379,45 @@ export function maybeInstallE2eTauriMocks() {
           ?.runtimeId;
         if (!runtimeId) return null;
         return config.mock?.runtimeFileConfigs?.[runtimeId] ?? null;
+      }
+      case "cancel_onboarding_connection_test": {
+        const { requestId } = payload as { requestId: string };
+        if (cancelOnboardingProbe?.requestId === requestId)
+          cancelOnboardingProbe.cancel();
+        return null;
+      }
+      case "test_onboarding_connection": {
+        const { requestId } = payload as { requestId: string };
+        cancelOnboardingProbe?.cancel();
+        const delay = activeConfig?.mock?.onboardingConnectionDelayMs ?? 0;
+        await emit("onboarding-connection-progress", {
+          requestId,
+          phase: "waiting",
+        });
+        if (delay) {
+          await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => {
+              cancelOnboardingProbe = null;
+              resolve();
+            }, delay);
+            cancelOnboardingProbe = {
+              requestId,
+              cancel: () => {
+                clearTimeout(timer);
+                cancelOnboardingProbe = null;
+                reject(new Error("Connection test cancelled."));
+              },
+            };
+          });
+        }
+        return (
+          activeConfig?.mock?.onboardingConnectionResult ?? {
+            reply: "Hello, I'm here. What shall we work on first?",
+            model: "fixture-model",
+            startupMs: 20,
+            totalMs: 50,
+          }
+        );
       }
       case "test_ai_connection":
         return activeConfig?.mock?.aiConnectionResult ?? "connected";

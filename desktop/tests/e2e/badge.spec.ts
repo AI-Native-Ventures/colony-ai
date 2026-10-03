@@ -355,7 +355,7 @@ test("offscreen unread counts destinations and promotes without incrementing", a
   await expect(activityArrow).toBeVisible();
   await expect(activityArrow).toContainText("1 unread");
   await expect(activityArrow).not.toHaveClass(/bg-primary/);
-  await expect(activityArrow).toHaveCSS("font-size", "12px");
+  await expect(activityArrow).toHaveCSS("font-size", "12.8571px");
   await waitForAnimations(page);
   await page.screenshot({
     path: `${SHOTS}/sidebar-unread-overflow-default.png`,
