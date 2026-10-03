@@ -273,6 +273,14 @@ mod tests {
         assert_eq!(result.description.as_deref(), Some("Head remains readable"));
     }
 
+    #[tokio::test]
+    async fn command_rejects_private_dns_results_before_any_fetch() {
+        assert_eq!(
+            read_business_website("https://localhost/ok".to_string()).await,
+            Err("link preview host resolved to a private or reserved address".to_string())
+        );
+    }
+
     #[test]
     fn icons_use_all_candidates_in_size_order_without_social_hero_images() {
         let page = Url::parse("https://fixture.example/about").unwrap();
