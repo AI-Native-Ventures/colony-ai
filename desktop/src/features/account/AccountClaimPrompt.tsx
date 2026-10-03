@@ -5,6 +5,7 @@ import type {
   AccountAuthClient,
   AccountAuthRecord,
 } from "@/features/onboarding/accountAuthClient";
+import { startAccountClaimLookup } from "./accountClaimLookup";
 import { AccountAuthFlow } from "@/features/onboarding/ui/AccountAuthFlow";
 import { profileQueryKey } from "@/features/profile/hooks";
 import { relayClient } from "@/shared/api/relayClient";
@@ -15,7 +16,7 @@ type ClaimStatus =
   | "checking"
   | "linked"
   | "eligible"
-  | "unavailable"
+  | "lookup-error"
   | "closed";
 
 export function AccountClaimPrompt({
@@ -28,28 +29,22 @@ export function AccountClaimPrompt({
   const [isClaimOpen, setIsClaimOpen] = React.useState(false);
   const [isImporting, setIsImporting] = React.useState(false);
 
-  const checkAccount = React.useCallback(async () => {
-    setStatus("checking");
-    try {
-      const account = await authClient.getAccount();
-      setStatus(account ? "linked" : "eligible");
-    } catch {
-      setStatus("unavailable");
-    }
-  }, [authClient]);
-
   React.useEffect(() => {
-    let current = true;
-    void authClient
-      .getAccount()
-      .then((account) => {
-        if (current) setStatus(account ? "linked" : "eligible");
-      })
-      .catch(() => {
-        if (current) setStatus("unavailable");
-      });
+    const lookup = startAccountClaimLookup({
+      read: () => authClient.getAccount(),
+      onAccount: (account) => setStatus(account ? "linked" : "eligible"),
+      onFailure: (code, contractFailure) => {
+        console.warn("Account lookup failed", code);
+        if (contractFailure)
+          console.error("Account lookup contract failure", code);
+        setStatus("lookup-error");
+      },
+    });
+    const onFocus = () => lookup.retryOnFocus();
+    window.addEventListener("focus", onFocus);
     return () => {
-      current = false;
+      lookup.cancel();
+      window.removeEventListener("focus", onFocus);
     };
   }, [authClient]);
 
@@ -75,7 +70,9 @@ export function AccountClaimPrompt({
     [queryClient],
   );
 
-  if (status === "checking" || status === "linked" || status === "closed") {
+  // A passive account read must not cover the composer during an outage.
+  // Bounded background retries and focus restore eligibility; settings can retry explicitly.
+  if (status !== "eligible") {
     return null;
   }
 
@@ -94,40 +91,22 @@ export function AccountClaimPrompt({
         />
       ) : (
         <div className="flex flex-col gap-3">
-          <h2 className="text-base font-medium">
-            {status === "unavailable"
-              ? "Account setup is unavailable"
-              : "Add sign-in details"}
-          </h2>
+          <h2 className="text-base font-medium">Add sign-in details</h2>
           <p
             aria-live="polite"
             className="text-sm leading-5 text-muted-foreground"
             role="status"
           >
-            {status === "unavailable"
-              ? "Your workspace is still ready to use. Try again later."
-              : "Add an email and password so you can sign in on another device."}
+            Add an email and password so you can sign in on another device.
           </p>
           <div className="flex flex-wrap gap-2">
-            {status === "eligible" ? (
-              <Button
-                data-testid="account-claim-start"
-                onClick={() => setIsClaimOpen(true)}
-                type="button"
-              >
-                Set up account
-              </Button>
-            ) : (
-              <Button
-                data-testid="account-claim-retry"
-                disabled={isImporting}
-                onClick={() => void checkAccount()}
-                type="button"
-                variant="outline"
-              >
-                Try again
-              </Button>
-            )}
+            <Button
+              data-testid="account-claim-start"
+              onClick={() => setIsClaimOpen(true)}
+              type="button"
+            >
+              Set up account
+            </Button>
             <Button
               data-testid="account-claim-later"
               disabled={isImporting}

@@ -519,7 +519,17 @@ async fn signup_verify_signin_reset_claim_me_password_and_delete_use_production_
     let (me_status, me_body) = json_response(me).await;
     assert_eq!(me_status, StatusCode::OK);
     assert_eq!(me_body["pubkey"].as_str(), Some(original_pubkey.as_str()));
+    assert_eq!(
+        me_body["account"]["pubkey"].as_str(),
+        Some(original_pubkey.as_str())
+    );
+    let mut flat = me_body.clone();
+    flat.as_object_mut()
+        .expect("public account object")
+        .remove("account");
+    assert_eq!(flat, me_body["account"]);
     assert!(me_body.get("nsec").is_none());
+    assert!(me_body["account"].get("nsec").is_none());
 
     let delete = crate::router::build_router(state.clone())
         .oneshot(request_with_ip(

@@ -287,6 +287,7 @@ export default defineConfig({
     {
       name: "integration",
       testMatch: [
+        "**/account-auth.spec.ts",
         "**/agents.spec.ts",
         "**/agent-availability.spec.ts",
         "**/agent-snapshot-recipient.spec.ts",

@@ -9,6 +9,8 @@ const MAX_AUTH_REQUEST_BYTES = 64 * 1024;
 export type AuthErrorCode =
   | "invalid_request"
   | "invalid_credentials"
+  | "authentication_required"
+  | "access_denied"
   | "email_unverified"
   | "email_taken"
   | "identity_taken"
@@ -310,6 +312,9 @@ function errorFromResponse(status: number, value: unknown): AuthApiError {
       remainingAttempts: remainingAttempts(value),
     });
   }
+  if (status === 401)
+    return new AuthApiError("authentication_required", { status });
+  if (status === 403) return new AuthApiError("access_denied", { status });
   return new AuthApiError("server_error", { status });
 }
 
@@ -535,7 +540,17 @@ export function createAuthApi(options: AuthApiOptions) {
         200,
       );
       if (!isRecord(body)) throw new AuthApiError("invalid_response");
-      return accountFrom(body.account);
+      // Prefer the flat relay contract, while accepting older wrapped responses.
+      try {
+        return accountFrom(body);
+      } catch (error) {
+        if (
+          !(error instanceof AuthApiError) ||
+          error.code !== "invalid_response"
+        )
+          throw error;
+        return accountFrom(body.account);
+      }
     },
 
     async deleteAccount(expectedPubkey: string): Promise<void> {
