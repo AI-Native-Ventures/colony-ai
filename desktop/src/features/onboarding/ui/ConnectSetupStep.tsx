@@ -1,5 +1,8 @@
 import { OpenRouterConnectionPanel } from "@/shared/ui/OpenRouterConnectionPanel";
 import * as React from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { globalAgentConfigQueryKey } from "@/features/agents/useGlobalAgentConfig";
+import { saveOnboardingRuntime } from "./saveOnboardingRuntime";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import {
@@ -255,9 +258,13 @@ function RuntimeOption({
 function RuntimeConnectionPanel({
   error,
   onHarnessHeaderChange,
+  selectedRuntimeId,
+  onRuntimeSelect,
 }: {
   error?: string | null;
   onHarnessHeaderChange: (header: HarnessHeader) => void;
+  selectedRuntimeId: string | null;
+  onRuntimeSelect: (id: string) => void;
 }) {
   const { globalConfig } = useGlobalAgentConfig();
   const query = useAcpRuntimesQueryForced();
@@ -271,9 +278,6 @@ function RuntimeConnectionPanel({
       runtimeIsReadyForOnboarding(runtime, globalConfig, gitBashPrerequisite) &&
       resolveAgentPrerequisiteReadiness(runtime.id, gitBashPrerequisite).ready,
   );
-  const [selectedRuntimeId, setSelectedRuntimeId] = React.useState<
-    string | null
-  >(null);
   const selectedRuntime = runtimes.find(
     (runtime) => runtime.id === selectedRuntimeId,
   );
@@ -284,8 +288,8 @@ function RuntimeConnectionPanel({
 
   React.useEffect(() => {
     if (!selectedRuntimeId && runtimes.length > 0)
-      setSelectedRuntimeId(runtimes[0].id);
-  }, [runtimes, selectedRuntimeId]);
+      onRuntimeSelect(runtimes[0].id);
+  }, [runtimes, selectedRuntimeId, onRuntimeSelect]);
 
   React.useEffect(() => {
     const header: HarnessHeader = selectedRuntime
@@ -379,7 +383,7 @@ function RuntimeConnectionPanel({
               globalConfig={globalConfig}
               gitBashPrerequisite={gitBashPrerequisite}
               onRefresh={refresh}
-              onSelect={() => setSelectedRuntimeId(runtime.id)}
+              onSelect={() => onRuntimeSelect(runtime.id)}
               runtime={runtime}
               selected={selectedRuntimeId === runtime.id}
             />
@@ -410,6 +414,12 @@ export function ConnectSetupStep({
   onBack,
   onContinue,
 }: ConnectSetupStepProps) {
+  const queryClient = useQueryClient();
+  const [selectedRuntimeId, setSelectedRuntimeId] = React.useState<
+    string | null
+  >(null);
+  const [saving, setSaving] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const [connectionScene, setConnectionScene] = React.useState<
     | "connect"
     | "funding"
@@ -469,14 +479,40 @@ export function ConnectSetupStep({
     gitBashPrerequisite,
   ).ready;
 
+  const continueWithRuntime = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const runtimeId = keyScene ? "buzz-agent" : selectedRuntimeId;
+      if (runtimeId) {
+        const saved = await saveOnboardingRuntime(
+          runtimeId,
+          runtimes.data ?? [],
+        );
+        queryClient.setQueryData(globalAgentConfigQueryKey, saved.config);
+      }
+      onContinue();
+    } catch (failure) {
+      setSaveError(
+        failure instanceof Error
+          ? failure.message
+          : "Could not save your AI connection. Try again.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <OnboardingScenePresentation
       connectionContentOverride={
         <>
           {connectionScene === "connect" ? (
             <RuntimeConnectionPanel
-              error={error}
+              error={saveError ?? error}
               onHarnessHeaderChange={handleHarnessHeaderChange}
+              selectedRuntimeId={selectedRuntimeId}
+              onRuntimeSelect={setSelectedRuntimeId}
             />
           ) : connectionScene === "openrouter-unlinked" ? (
             <OpenRouterConnectionPanel onboarding />
@@ -503,7 +539,8 @@ export function ConnectSetupStep({
           <div className="power-cta">
             <button
               className="primary full"
-              onClick={() => onContinue()}
+              disabled={saving}
+              onClick={() => void continueWithRuntime()}
               type="button"
             >
               Open my Colony
