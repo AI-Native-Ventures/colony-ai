@@ -89,6 +89,30 @@ test("unprobed provider harnesses never claim ready and retain setup recovery", 
   ).toBeEnabled();
   await waitForAnimations(page);
   await page.screenshot({
-    path: "test-results/harness-detection/app-subscription-scan-1728.png",
+    path: "test-results/harness-detection/app-auth-unknown-1728.png",
   });
 });
+
+for (const viewport of [
+  { width: 1728, height: 1117 },
+  { width: 1440, height: 900 },
+]) {
+  test(`discovery shows its loading state at ${viewport.width}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await openR17ConnectionSetup(page, {
+      runtimes: [missingAdapter],
+      discoveryDelayMs: 4000,
+    });
+    await expect(page.getByTestId("onboarding-runtime-loading")).toBeVisible();
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `test-results/harness-detection/app-subscription-scan-${viewport.width}.png`,
+    });
+    await expect(
+      page.getByTestId("onboarding-connect-runtime-codex"),
+    ).toContainText("Connection needed");
+    await expect(page.getByTestId("onboarding-runtime-loading")).toHaveCount(0);
+  });
+}
