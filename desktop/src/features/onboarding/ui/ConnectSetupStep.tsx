@@ -35,6 +35,10 @@ import {
   getVisibleOnboardingRuntimes,
   runtimeIsReadyForOnboarding,
 } from "./onboardingRuntimeSelection";
+import {
+  harnessDetectionStatus,
+  harnessInstallLabel,
+} from "./harnessDetectionState";
 import { getRuntimeDisplayLabel, RuntimeIcon } from "./RuntimeIcon";
 
 type ConnectSetupStepProps = {
@@ -67,18 +71,7 @@ function getRuntimeHeaderStatus(
   if (runtimeIsReadyForOnboarding(runtime, globalConfig, gitBashPrerequisite))
     return "Ready";
   if (runtime.id === "buzz-agent") return "No AI connected yet";
-  if (
-    runtime.availability === "available" &&
-    runtime.authStatus.status === "logged_out"
-  )
-    return "Sign-in needed";
-  if (
-    runtime.availability === "available" &&
-    runtime.authStatus.status === "unknown"
-  )
-    return "Checking status";
-  if (runtime.availability === "available") return "Installed";
-  return "Not available";
+  return harnessDetectionStatus(runtime, false);
 }
 
 function RuntimeOption({
@@ -157,20 +150,10 @@ function RuntimeOption({
     );
   };
 
-  let status = "Not installed";
-  if (ready) status = "Ready on this computer";
-  else if (
-    runtime.availability === "available" &&
-    runtime.authStatus.status === "logged_out"
-  )
-    status = "Sign-in needed";
-  else if (
-    runtime.availability === "available" &&
-    runtime.authStatus.status === "unknown"
-  )
-    status = "Checking status";
-  else if (runtime.id === "buzz-agent") status = "No AI connected yet";
-  else if (runtime.availability === "available") status = "Installed";
+  let status =
+    runtime.id === "buzz-agent" && !ready
+      ? "No AI connected yet"
+      : harnessDetectionStatus(runtime, ready);
 
   if (!prerequisite.ready) status = prerequisite.copy;
 
@@ -191,6 +174,12 @@ function RuntimeOption({
           <span className="selection-dot" />
         </span>
         <span className="provider-account">{status}</span>
+        {runtime.availability === "adapter_missing" ? (
+          <span className="provider-account">
+            {getRuntimeDisplayLabel(runtime)} is installed. Its connection
+            adapter is missing.
+          </span>
+        ) : null}
       </button>
       <div className="runtime-actions">
         {ready ? (
@@ -208,7 +197,7 @@ function RuntimeOption({
           </Button>
         ) : null}
         {!ready &&
-        runtime.availability === "available" &&
+        runtime.availability !== "available" &&
         runtime.canAutoInstall ? (
           <Button
             className="runtime-action"
@@ -217,7 +206,9 @@ function RuntimeOption({
             type="button"
             variant="outline"
           >
-            {installMutation.isPending ? "Installing…" : "Install"}
+            {installMutation.isPending
+              ? "Installing…"
+              : harnessInstallLabel(runtime)}
           </Button>
         ) : null}
         {!ready &&
@@ -229,8 +220,28 @@ function RuntimeOption({
             type="button"
             variant="outline"
           >
-            Install
+            {harnessInstallLabel(runtime)}
           </Button>
+        ) : null}
+        {!ready && runtime.availability === "available" && !needsSignIn ? (
+          <>
+            <Button
+              className="runtime-action"
+              onClick={onRefresh}
+              type="button"
+              variant="outline"
+            >
+              Check again
+            </Button>
+            <Button
+              className="runtime-action"
+              onClick={() => void openUrl(runtime.installInstructionsUrl)}
+              type="button"
+              variant="outline"
+            >
+              Open setup guide
+            </Button>
+          </>
         ) : null}
       </div>
       {actionError ? (

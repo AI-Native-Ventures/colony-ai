@@ -9,7 +9,13 @@ import {
 } from "./onboardingRuntimeSelection.ts";
 
 function runtime(id, availability, status) {
-  return { id, availability, authStatus: { status } };
+  return {
+    id,
+    availability,
+    command: id,
+    binaryPath: `/usr/local/bin/${id}`,
+    authStatus: { status },
+  };
 }
 
 test("the V3 harness catalog is visible in onboarding", () => {
@@ -45,7 +51,7 @@ test("readiness requires an available and authenticated runtime", () => {
     runtimeIsReadyForOnboarding(
       runtime("codex", "available", "not_applicable"),
     ),
-    true,
+    false,
   );
   assert.equal(
     runtimeIsReadyForOnboarding(runtime("claude", "available", "logged_out")),
@@ -68,7 +74,7 @@ test("ready onboarding runtimes exclude unknown and non-ready harnesses", () => 
 
   assert.deepEqual(
     getReadyOnboardingRuntimes(runtimes).map(({ id }) => id),
-    ["claude", "goose"],
+    ["claude"],
   );
 });
 
@@ -126,5 +132,39 @@ test("configured bundled runtime must also pass native prerequisite readiness", 
   assert.deepEqual(
     getReadyOnboardingRuntimes(runtimes, config, null).map(({ id }) => id),
     ["claude", "buzz-agent"],
+  );
+});
+
+test("unprobed provider harnesses and missing executable paths cannot be ready", () => {
+  for (const id of ["goose", "omp", "grok"]) {
+    for (const auth of [
+      "unknown",
+      "not_applicable",
+      "logged_out",
+      "config_invalid",
+    ]) {
+      assert.equal(
+        runtimeIsReadyForOnboarding(runtime(id, "available", auth)),
+        false,
+      );
+    }
+    assert.equal(
+      runtimeIsReadyForOnboarding(runtime(id, "available", "logged_in")),
+      true,
+    );
+  }
+  assert.equal(
+    runtimeIsReadyForOnboarding({
+      ...runtime("codex", "available", "logged_in"),
+      binaryPath: null,
+    }),
+    false,
+  );
+  assert.equal(
+    runtimeIsReadyForOnboarding({
+      ...runtime("codex", "available", "logged_in"),
+      command: null,
+    }),
+    false,
   );
 });

@@ -46,8 +46,7 @@ export function resolveAgentReadiness(
       if (runtime.id === "buzz-agent") continue;
       if (
         runtime.availability === "available" &&
-        (runtime.authStatus.status === "logged_in" ||
-          runtime.authStatus.status === "not_applicable")
+        runtime.authStatus.status === "logged_in"
       ) {
         return { ready: true, reason: "cli", runtimeLabel: runtime.label };
       }
@@ -66,8 +65,7 @@ export function resolveAgentReadiness(
 
   if (
     (preferredRuntime.id === "claude" || preferredRuntime.id === "codex") &&
-    (preferredRuntime.authStatus.status === "logged_in" ||
-      preferredRuntime.authStatus.status === "not_applicable")
+    preferredRuntime.authStatus.status === "logged_in"
   ) {
     return {
       ready: true,

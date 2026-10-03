@@ -372,3 +372,15 @@ test("DeepSeek requires both its key and explicit model", () => {
     );
   }
 });
+
+test("a discovery entry with no auth probe cannot waive first-run AI setup", () => {
+  for (const id of ["goose", "omp", "grok", "codex"]) {
+    const result = resolveAgentReadiness(
+      [makeRuntime({ id, authStatus: { status: "not_applicable" } })],
+      makeConfig(),
+      "any",
+      null,
+    );
+    assert.equal(result.ready, false);
+  }
+});

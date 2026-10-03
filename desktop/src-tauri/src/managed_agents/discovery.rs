@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::OnceLock;
 use std::time::Duration;
 
 use crate::managed_agents::{
@@ -9,6 +8,8 @@ use crate::managed_agents::{
     HarnessSource,
 };
 mod auth_status_cache;
+mod install_locations;
+pub(crate) use install_locations::user_binary_paths;
 mod bounded_command;
 mod login_shell;
 mod presets;
@@ -38,54 +39,45 @@ const CLAUDE_CODE_AVATAR_URL: &str = "https://anthropic.gallerycdn.vsassets.io/e
 const CODEX_AVATAR_URL: &str = "https://openai.gallerycdn.vsassets.io/extensions/openai/chatgpt/26.5313.41514/1773706730621/Microsoft.VisualStudio.Services.Icons.Default";
 const BUZZ_AGENT_AVATAR_URL: &str =
     "https://raw.githubusercontent.com/block/buzz/refs/heads/main/crates/buzz-agent/buzz-agent.png";
-fn common_binary_paths() -> &'static [PathBuf] {
-    static PATHS: OnceLock<Vec<PathBuf>> = OnceLock::new();
-    PATHS.get_or_init(|| {
-        let mut paths = vec![
-            PathBuf::from("/opt/homebrew/bin"),
-            PathBuf::from("/usr/local/bin"),
-            PathBuf::from("/usr/bin"),
-            PathBuf::from("/home/linuxbrew/.linuxbrew/bin"),
-        ];
-        if let Some(managed_node_bin) = buzz_managed_node_bin_dir() {
-            paths.insert(0, managed_node_bin);
+fn common_binary_paths() -> Vec<PathBuf> {
+    let mut paths = vec![
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/usr/bin"),
+        PathBuf::from("/home/linuxbrew/.linuxbrew/bin"),
+    ];
+    if let Some(managed_node_bin) = buzz_managed_node_bin_dir() {
+        paths.insert(0, managed_node_bin);
+    }
+    if let Some(managed_bin) = buzz_managed_npm_bin_dir() {
+        paths.insert(0, managed_bin);
+    }
+    if let Some(home) = dirs::home_dir() {
+        paths.extend(user_binary_paths(&home));
+    }
+    // Windows well-known dirs for npm global shims and standalone installer targets.
+    #[cfg(windows)]
+    {
+        if let Some(appdata) = std::env::var_os("APPDATA") {
+            paths.push(PathBuf::from(appdata).join("npm"));
         }
-        if let Some(managed_bin) = buzz_managed_npm_bin_dir() {
-            paths.insert(0, managed_bin);
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            paths.push(
+                PathBuf::from(local)
+                    .join("Programs")
+                    .join("OpenAI")
+                    .join("Codex")
+                    .join("bin"),
+            );
         }
-        if let Some(home) = dirs::home_dir() {
-            paths.extend([
-                home.join(".local/share/mise/shims"),
-                home.join(".local/bin"),
-                home.join(".volta/bin"),
-                home.join(".asdf/shims"),
-                home.join(".bun/bin"),
-            ]);
+        // Goose's legacy Windows installer (superseded by #2680) unpacked
+        // to %USERPROFILE%\goose\goose.exe, which is on no standard PATH —
+        // without this probe those installs stay permanently undiscovered.
+        if let Some(profile) = std::env::var_os("USERPROFILE") {
+            paths.push(PathBuf::from(profile).join("goose"));
         }
-        // Windows well-known dirs for npm global shims and standalone installer targets.
-        #[cfg(windows)]
-        {
-            if let Some(appdata) = std::env::var_os("APPDATA") {
-                paths.push(PathBuf::from(appdata).join("npm"));
-            }
-            if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-                paths.push(
-                    PathBuf::from(local)
-                        .join("Programs")
-                        .join("OpenAI")
-                        .join("Codex")
-                        .join("bin"),
-                );
-            }
-            // Goose's legacy Windows installer (superseded by #2680) unpacked
-            // to %USERPROFILE%\goose\goose.exe, which is on no standard PATH —
-            // without this probe those installs stay permanently undiscovered.
-            if let Some(profile) = std::env::var_os("USERPROFILE") {
-                paths.push(PathBuf::from(profile).join("goose"));
-            }
-        }
-        paths
-    })
+    }
+    paths
 }
 
 /// Skill discovery directories declared by known runtimes.
@@ -593,7 +585,7 @@ fn resolve_command_uncached(command: &str) -> Option<PathBuf> {
 
     if command_looks_like_path(command) {
         let path = PathBuf::from(command);
-        return path.exists().then_some(path);
+        return is_executable_file(&path).then_some(path);
     }
 
     if let Some(managed) = resolve_buzz_managed_command(command) {
@@ -618,9 +610,6 @@ fn resolve_command_uncached(command: &str) -> Option<PathBuf> {
         }
     }
 
-    if let Some(path) = find_via_login_shell(command) {
-        return Some(path);
-    }
     for dir in common_binary_paths() {
         for basename in &basenames {
             let candidate = dir.join(basename);
@@ -628,6 +617,10 @@ fn resolve_command_uncached(command: &str) -> Option<PathBuf> {
                 return Some(candidate);
             }
         }
+    }
+
+    if let Some(path) = find_via_login_shell(command) {
+        return Some(path);
     }
 
     // Check nvm's default Node.js bin directory — nvm initializes via
@@ -1119,6 +1112,7 @@ pub fn discover_acp_runtimes_from(
             partial.entry.auth_status = if partial.entry.availability
                 == AcpAvailabilityStatus::Available
                 && partial.runtime.auth_probe_args.is_none()
+                && partial.runtime.id != "goose"
             {
                 AuthStatus::NotApplicable
             } else {

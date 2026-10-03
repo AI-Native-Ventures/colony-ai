@@ -114,7 +114,7 @@ pub(in crate::managed_agents) fn build_augmented_path(
     // Build the managed/prefix entries (everything before login-shell PATH).
     let mut managed: Vec<PathBuf> = Vec::new();
     if let Some(home) = home {
-        managed.push(home.join(".local").join("bin"));
+        managed.extend(crate::managed_agents::user_binary_paths(&home));
     }
     // Only add managed runtime dirs when a home or executable context exists.
     // This keeps tests/utility callers that intentionally pass no local context
@@ -126,6 +126,13 @@ pub(in crate::managed_agents) fn build_augmented_path(
         if let Some(managed_node_bin) = crate::managed_agents::buzz_managed_node_bin_dir() {
             managed.push(managed_node_bin);
         }
+    }
+    #[cfg(unix)]
+    if has_local_context && shell_path.is_none() {
+        managed.extend([
+            PathBuf::from("/opt/homebrew/bin"),
+            PathBuf::from("/usr/local/bin"),
+        ]);
     }
     if let Some(nvm_bin) = nvm_bin {
         managed.push(nvm_bin);
