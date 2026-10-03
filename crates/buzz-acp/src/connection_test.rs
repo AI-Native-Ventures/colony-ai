@@ -32,9 +32,20 @@ fn effective_model(raw: &Value) -> Option<String> {
         })
 }
 
+#[derive(Debug)]
+struct ConnectionFailure(&'static str);
+impl std::fmt::Display for ConnectionFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0)
+    }
+}
+impl std::error::Error for ConnectionFailure {}
+
 fn completed_reply(reply: String, stop: StopReason) -> Result<String> {
     if stop != StopReason::EndTurn || reply.trim().is_empty() {
-        bail!("The agent did not complete a reply. Check sign-in and usage, then try again.");
+        bail!(ConnectionFailure(
+            "The agent did not complete a reply. Check sign-in and usage, then try again."
+        ));
     }
     Ok(reply)
 }
@@ -54,7 +65,7 @@ pub(crate) async fn run(args: ModelsArgs) -> Result<()> {
                 match resolve_model_switch_method(&session.raw, &desired) {
                     Some(ModelSwitchMethod::ConfigOption { config_id, option_value }) => { client.session_set_config_option(&session.session_id, &config_id, &option_value).await?; }
                     Some(ModelSwitchMethod::SetModel { model_id }) => { client.session_set_model(&session.session_id, &model_id).await?; }
-                    None => bail!("Selected model is unavailable or this harness does not support model switching. Choose another model."),
+                    None => bail!(ConnectionFailure("Selected model is unavailable or this harness does not support model switching. Choose another model.")),
                 }
             }
             Some(desired)
@@ -71,7 +82,7 @@ pub(crate) async fn run(args: ModelsArgs) -> Result<()> {
         Ok(Ok(reply)) => reply,
         Ok(Err(error)) => {
             // Use the normal provider notice without exposing upstream payloads.
-            let notice = error.downcast_ref::<crate::AcpError>().and_then(crate::provider_failure::notice)
+            let notice = error.downcast_ref::<ConnectionFailure>().map(ToString::to_string).or_else(|| error.downcast_ref::<crate::AcpError>().and_then(crate::provider_failure::notice))
                 .unwrap_or_else(|| "The agent could not reply. Check this harness's sign-in, model and usage, then try again.".to_owned());
             json!({ "error": notice })
         }
