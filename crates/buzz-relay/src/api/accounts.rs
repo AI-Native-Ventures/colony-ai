@@ -989,7 +989,7 @@ async fn me(
         .map_err(|error| map_db_error("me", error))?
         .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "account_not_found"))?;
     email_rate_limit(&state, "/api/accounts/me", &account.email).await?;
-    let public_account = json!(PublicAccount::from(&account));
+    let public_account = serde_json::json!(PublicAccount::from(&account));
     let mut response = public_account.clone();
     response["account"] = public_account;
     Ok(Json(response))
