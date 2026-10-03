@@ -147,6 +147,8 @@ fn build_initialize_params() -> serde_json::Value {
 pub struct AcpClient {
     /// The agent child process (kept alive to prevent zombie).
     child: Child,
+    /// Bounded reply capture used only by the first-run connection test.
+    connection_reply: Option<(String, String)>,
     /// Write end of the agent's stdin pipe.
     stdin: ChildStdin,
     /// Framed reader over the agent's stdout pipe (line-oriented, bounded).
@@ -565,6 +567,7 @@ impl AcpClient {
 
         Ok(Self {
             child,
+            connection_reply: None,
             stdin,
             reader: FramedRead::new(stdout, LinesCodec::new_with_max_length(MAX_LINE_SIZE)),
             next_id: 0,
@@ -583,6 +586,17 @@ impl AcpClient {
             standard_usage: StandardUsageTracker::default(),
             standard_adapter,
         })
+    }
+
+    pub(crate) fn capture_connection_reply(&mut self, session_id: &str) {
+        self.connection_reply = Some((session_id.to_owned(), String::new()));
+    }
+
+    pub(crate) fn take_connection_reply(&mut self) -> String {
+        self.connection_reply
+            .take()
+            .map(|(_, text)| text)
+            .unwrap_or_default()
     }
 
     /// Attach a local observer feed to this ACP client.
@@ -1790,6 +1804,17 @@ impl AcpClient {
         match update_type {
             "agent_message_chunk" => {
                 if let Some(text) = update["content"]["text"].as_str() {
+                    if let Some((session_id, reply)) = &mut self.connection_reply {
+                        if msg["params"]["sessionId"].as_str() == Some(session_id.as_str()) {
+                            // Cap at 8 KiB on a UTF-8 boundary. This probe needs only a hello.
+                            let available = 8192_usize.saturating_sub(reply.len());
+                            let mut end = text.len().min(available);
+                            while !text.is_char_boundary(end) {
+                                end -= 1;
+                            }
+                            reply.push_str(&text[..end]);
+                        }
+                    }
                     tracing::info!(target: "acp::stream", "{text}");
                 }
                 false
@@ -1988,6 +2013,17 @@ impl AcpClient {
             "session/request_permission id={id}, {} options",
             options.len()
         );
+
+        if self.connection_reply.is_some() {
+            let response = permission_response_cancelled_with_message(
+                &id,
+                "Connection tests do not authorize tools.",
+            );
+            self.write_ndjson(&response).await?;
+            self.permission_responded = true;
+            self.pending_permission_id = None;
+            return Ok(());
+        }
 
         let decision = crate::tool_permissions::authorize_tool_call(
             msg,
@@ -3763,6 +3799,7 @@ mod tests {
     // ── claude-agent-acp _meta.systemPrompt transport ─────────────────────
 
     include!("acp/system_prompt_tests.rs");
+    include!("acp/connection_reply_tests.rs");
 
     #[tokio::test]
     async fn active_run_id_sets_on_string() {

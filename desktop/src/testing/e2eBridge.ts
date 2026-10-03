@@ -908,6 +908,14 @@ type E2eConfig = {
      * Pass a config with a provider to test Inherit-from-global behavior.
      */
     /** Safe result of the mocked onboarding connection probe. */
+    onboardingConnectionResult?: {
+      reply?: string;
+      model?: string | null;
+      error?: string;
+      startupMs?: number;
+      totalMs?: number;
+    };
+    onboardingConnectionDelayMs?: number;
     aiConnectionResult?:
       | "connected"
       | "key-rejected"
@@ -21358,6 +21366,18 @@ export function maybeInstallE2eTauriMocks() {
           ?.runtimeId;
         if (!runtimeId) return null;
         return config.mock?.runtimeFileConfigs?.[runtimeId] ?? null;
+      }
+      case "test_onboarding_connection": {
+        const delay = activeConfig?.mock?.onboardingConnectionDelayMs ?? 0;
+        if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+        return (
+          activeConfig?.mock?.onboardingConnectionResult ?? {
+            reply: "Hello, I'm here. What shall we work on first?",
+            model: "fixture-model",
+            startupMs: 20,
+            totalMs: 50,
+          }
+        );
       }
       case "test_ai_connection":
         return activeConfig?.mock?.aiConnectionResult ?? "connected";

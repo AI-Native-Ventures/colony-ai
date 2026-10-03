@@ -1,6 +1,11 @@
 import * as React from "react";
+import { OnboardingRuntimeModel } from "./OnboardingRuntimeModel";
 import { useQueryClient } from "@tanstack/react-query";
 import { globalAgentConfigQueryKey } from "@/features/agents/useGlobalAgentConfig";
+import {
+  runOnboardingConnectionTest,
+  type OnboardingConnectionProof,
+} from "./onboardingConnectionTest";
 import { saveOnboardingRuntime } from "./saveOnboardingRuntime";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -67,7 +72,7 @@ function getRuntimeHeaderStatus(
       ? "Git for Windows needed"
       : "Checking prerequisites";
   if (runtimeIsReadyForOnboarding(runtime, globalConfig, gitBashPrerequisite))
-    return "Ready";
+    return runtime.id === "buzz-agent" ? "Configured" : "Signed in";
   if (runtime.id === "buzz-agent") return "No AI connected yet";
   if (
     runtime.availability === "available" &&
@@ -160,7 +165,11 @@ function RuntimeOption({
   };
 
   let status = "Not installed";
-  if (ready) status = "Ready on this computer";
+  if (ready)
+    status =
+      runtime.id === "buzz-agent"
+        ? "Configured on this computer"
+        : "Signed in on this computer";
   else if (
     runtime.availability === "available" &&
     runtime.authStatus.status === "logged_out"
@@ -196,7 +205,9 @@ function RuntimeOption({
       </button>
       <div className="runtime-actions">
         {ready ? (
-          <span className="provider-status is-connected">Ready</span>
+          <span className="provider-status is-connected">
+            {runtime.id === "buzz-agent" ? "Configured" : "Signed in"}
+          </span>
         ) : null}
         {!ready && needsSignIn ? (
           <Button
@@ -398,9 +409,9 @@ function RuntimeConnectionPanel({
       <p className="power-caption">
         {selectedRuntime &&
         ready.some((runtime) => runtime.id === selectedRuntime.id)
-          ? `${getRuntimeDisplayLabel(selectedRuntime)} is ready on this computer.`
+          ? `${getRuntimeDisplayLabel(selectedRuntime)} can be tested on this computer.`
           : ready.length > 0
-            ? "Choose a ready harness to continue."
+            ? "Choose a signed-in harness to test."
             : "You can connect an AI harness later."}
       </p>
     </>
@@ -418,6 +429,26 @@ export function ConnectSetupStep({
     string | null
   >(null);
   const [saving, setSaving] = React.useState(false);
+  const [selectedModel, setSelectedModel] = React.useState<
+    string | null | undefined
+  >(undefined);
+  const selectRuntime = React.useCallback((id: string) => {
+    setSelectedRuntimeId(id);
+    setSelectedModel(undefined);
+  }, []);
+  const [proof, setProof] = React.useState<OnboardingConnectionProof | null>(
+    null,
+  );
+  const [testState, setTestState] = React.useState<
+    "connect" | "testing" | "connected" | "connection-error"
+  >("connect");
+  const generation = React.useRef(0);
+  React.useEffect(
+    () => () => {
+      generation.current += 1;
+    },
+    [],
+  );
   const [saveError, setSaveError] = React.useState<string | null>(null);
   const [connectionScene, setConnectionScene] = React.useState<
     | "connect"
@@ -468,39 +499,84 @@ export function ConnectSetupStep({
     ? undefined
     : gitBashQuery.data;
   const runtimes = useAcpRuntimesQueryForced();
+  const selectedRuntime = runtimes.data?.find(
+    (runtime) => runtime.id === selectedRuntimeId,
+  );
   const bundled = runtimes.data?.find((runtime) => runtime.id === "buzz-agent");
   const keyScene =
     connectionScene === "api-key" || connectionScene === "openrouter-unlinked";
   const aiReady = resolveAgentReadiness(
     runtimes.data ?? [],
-    globalConfig,
-    "any",
+    {
+      ...globalConfig,
+      preferred_runtime: keyScene ? "buzz-agent" : selectedRuntimeId,
+    },
+    "preferred",
     gitBashPrerequisite,
   ).ready;
 
   const continueWithRuntime = async () => {
+    if (!aiReady) {
+      onContinue();
+      return;
+    }
+    const attempt = ++generation.current;
+    const isCurrent = () => generation.current === attempt;
     setSaving(true);
     setSaveError(null);
+    setProof(null);
+    setTestState("testing");
     try {
       const runtimeId = keyScene ? "buzz-agent" : selectedRuntimeId;
-      if (runtimeId) {
-        const saved = await saveOnboardingRuntime(
-          runtimeId,
-          runtimes.data ?? [],
-        );
-        queryClient.setQueryData(globalAgentConfigQueryKey, saved.config);
-      }
-      onContinue();
+      if (!runtimeId) throw new Error("Choose an AI harness before testing.");
+      const saved = await saveOnboardingRuntime(runtimeId, runtimes.data ?? []);
+      if (!isCurrent()) return;
+      queryClient.setQueryData(globalAgentConfigQueryKey, saved.config);
+      const result = await runOnboardingConnectionTest(saved.config, isCurrent);
+      if (!isCurrent()) return;
+      queryClient.setQueryData(globalAgentConfigQueryKey, result.config);
+      setProof(result.proof);
+      setTestState("connected");
     } catch (failure) {
+      if (!isCurrent()) return;
       setSaveError(
         failure instanceof Error
           ? failure.message
-          : "Could not save your AI connection. Try again.",
+          : "Your agent could not reply. Check sign-in and usage, then try again.",
       );
+      setTestState("connection-error");
     } finally {
-      setSaving(false);
+      if (isCurrent()) setSaving(false);
     }
   };
+
+  if (testState !== "connect") {
+    return (
+      <OnboardingScenePresentation
+        scene={testState}
+        data={{
+          ...data,
+          connectionReply: proof?.reply,
+          effectiveModel: proof?.model,
+          error: saveError,
+        }}
+        onNavigate={(scene) => {
+          if (scene === "workspace" && proof) {
+            onContinue();
+            return;
+          }
+          if (scene === "testing") {
+            void continueWithRuntime();
+            return;
+          }
+          generation.current += 1;
+          setSaving(false);
+          setProof(null);
+          setTestState("connect");
+        }}
+      />
+    );
+  }
 
   return (
     <OnboardingScenePresentation
@@ -511,7 +587,7 @@ export function ConnectSetupStep({
               error={saveError ?? error}
               onHarnessHeaderChange={handleHarnessHeaderChange}
               selectedRuntimeId={selectedRuntimeId}
-              onRuntimeSelect={setSelectedRuntimeId}
+              onRuntimeSelect={selectRuntime}
             />
           ) : connectionScene === "api-key" ||
             connectionScene === "openrouter-unlinked" ? (
@@ -522,11 +598,23 @@ export function ConnectSetupStep({
           ) : (
             <CreditsComingSoon />
           )}
+          {connectionScene === "connect" && aiReady && selectedRuntime ? (
+            <OnboardingRuntimeModel
+              key={selectedRuntimeId}
+              runtime={selectedRuntime}
+              config={globalConfig}
+              model={selectedModel}
+              onChange={setSelectedModel}
+            />
+          ) : null}
+          {saveError && connectionScene !== "connect" ? (
+            <p role="alert">{saveError}</p>
+          ) : null}
           {!aiReady ? (
             <div className="power-notice">
               <p>
-                No AI connected yet. AI employees will not reply until you
-                connect an AI in Settings &gt; Agents &gt; Defaults.
+                No working AI connection yet. AI employees will not reply until
+                you connect an AI in Settings &gt; Agents &gt; Defaults.
               </p>
               <button
                 className="link"
@@ -544,7 +632,7 @@ export function ConnectSetupStep({
               onClick={() => void continueWithRuntime()}
               type="button"
             >
-              Open my Colony
+              {aiReady ? "Connect" : "Open my Colony"}
             </button>
             {!aiReady ? (
               <p>Continue without AI. You can connect it later.</p>
