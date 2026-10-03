@@ -13,7 +13,6 @@ export function CompanyEmployeeProfileActions({
   managerName,
   onEdit,
   onOpenReport,
-  onPause,
   onTerminate,
   position,
 }: {
@@ -23,7 +22,6 @@ export function CompanyEmployeeProfileActions({
   managerName: string | null;
   onEdit: () => void;
   onOpenReport: (pubkey: string) => void;
-  onPause: () => void;
   onTerminate: () => void;
   position: MemberPositionHead | undefined;
 }) {
@@ -123,7 +121,7 @@ export function CompanyEmployeeProfileActions({
           </p>
           {canManage ? (
             <Button
-              className="rounded-[0.4375rem] mt-3 h-11 w-full text-xs"
+              className="rounded-company-control mt-3 h-11 w-full text-xs"
               onClick={onEdit}
               type="button"
               variant="outline"
@@ -133,32 +131,26 @@ export function CompanyEmployeeProfileActions({
           ) : null}
         </div>
         <div className="mt-6">
-          <h2 className="text-xs font-semibold">Responsibilities</h2>
+          <h3 className="text-sm font-semibold">Responsibilities</h3>
           <p className="mt-2 text-xs text-muted-foreground">
             Plan, delegate, discuss and review. Workers receive scoped execution
             tools.
           </p>
         </div>
         <div className="mt-6">
-          <h2 className="text-xs font-semibold">Manager actions</h2>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Assign work, propose hires and raises, pause direct reports. Money
-            and sensitive access require an authorized human.
-          </p>
-          {canManage &&
-          position &&
-          (children
-            ? position?.status === "active"
-            : position?.status !== "terminated") ? (
+          <h3 className="text-sm font-semibold">Manager actions</h3>
+          {!children && canManage && position?.status === "terminated" ? (
             <Button
-              className="rounded-[0.4375rem] mt-3 h-11 w-full text-xs"
-              onClick={onPause}
-              type="button"
-              variant="outline"
+              className="mt-3 bg-colony-info text-xs"
+              onClick={() => onOpenReport(employeePubkey)}
             >
-              Pause employee
+              Review rehire in Team
             </Button>
           ) : null}
+          <p className="mt-2 text-xs text-muted-foreground">
+            Assign work, propose hires and raises. Money and sensitive access
+            require an authorized human.
+          </p>
           {canManage && position && position.status !== "terminated" ? (
             <Button
               className="mt-2 h-11 w-full text-xs text-destructive"

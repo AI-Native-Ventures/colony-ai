@@ -43,7 +43,7 @@ function memberStatus(member: TeamMember) {
 
 function statusLabel(member: TeamMember) {
   const status = memberStatus(member);
-  return status === "terminated" ? "archived" : status;
+  return status;
 }
 
 function TeamTabs({ view }: TeamScreenProps) {
@@ -216,31 +216,35 @@ export function TeamScreen({ view }: TeamScreenProps) {
     }
   }
 
-  if (teamQuery.isLoading) {
+  if (
+    teamQuery.isLoading ||
+    teamQuery.isError ||
+    !teamQuery.data?.membershipSnapshotFound
+  ) {
     return (
-      <p
-        aria-live="polite"
-        className="py-12 text-center text-sm text-muted-foreground"
-      >
-        Loading Team
-      </p>
-    );
-  }
-  if (teamQuery.isError) {
-    return (
-      <p className="py-12 text-center text-sm text-destructive" role="alert">
-        Could not load Team: {teamQuery.error.message}
-      </p>
-    );
-  }
-  if (!teamQuery.data?.membershipSnapshotFound) {
-    return (
-      <p
-        className="py-12 text-center text-sm text-muted-foreground"
-        role="status"
-      >
-        Team membership is unavailable for this community.
-      </p>
+      <TeamPage title="Team" testId="company-team-screen">
+        <TeamPageTitle>Team</TeamPageTitle>
+        {teamQuery.isLoading ? (
+          <p aria-live="polite" className="mt-6 text-sm text-muted-foreground">
+            Loading Team
+          </p>
+        ) : teamQuery.isError ? (
+          <div role="alert" className="mt-6">
+            <p className="text-sm">This information could not load</p>
+            <Button
+              className="mt-3"
+              variant="outline"
+              onClick={() => void teamQuery.refetch()}
+            >
+              Try again
+            </Button>
+          </div>
+        ) : (
+          <p role="status" className="mt-6 text-sm text-muted-foreground">
+            Team membership is unavailable for this community.
+          </p>
+        )}
+      </TeamPage>
     );
   }
 

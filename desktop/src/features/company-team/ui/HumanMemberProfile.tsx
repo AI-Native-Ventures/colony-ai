@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { MemberDoingNowSection } from "./MemberDoingNowSection";
 import { MemberPositionHistoryPanel } from "./MemberPositionHistoryPanel";
-import { TeamPage, TeamPageTitle } from "./TeamPage";
+import { TeamPage, TeamPageTitle, handleTeamTabKeys } from "./TeamPage";
 import { Button } from "@/shared/ui/button";
 import type { TeamMember } from "../teamModels";
 
@@ -49,7 +49,7 @@ export function HumanMemberProfile({
         <TeamPageTitle>{fullName}</TeamPageTitle>
       </div>
       <p className="mb-6 text-compact text-muted-foreground">
-        {title || "Member"} · Human · active
+        {title || "Member"} · Human · {member.position?.head.status ?? "active"}
       </p>
       <div
         aria-label="Member profile"
@@ -65,6 +65,8 @@ export function HumanMemberProfile({
             id={`company-human-tab-${item}`}
             key={item}
             onClick={() => setTab(item)}
+            tabIndex={tab === item ? 0 : -1}
+            onKeyDown={handleTeamTabKeys}
             role="tab"
             type="button"
           >
@@ -115,13 +117,15 @@ export function HumanMemberProfile({
               <p className="text-xs text-muted-foreground">
                 {title || "Member"}
                 <br />
-                {reportsTo === "Company owner"
+                {member.role === "owner"
                   ? "Company founder"
-                  : `Reports to ${reportsTo}`}
+                  : reportsTo
+                    ? `Reports to ${reportsTo}`
+                    : "Reporting line not set"}
               </p>
               {canManage ? (
                 <Button
-                  className="mt-3 h-11 w-full rounded-[0.4375rem] text-xs"
+                  className="mt-3 h-11 w-full rounded-company-control text-xs"
                   onClick={onEdit}
                   type="button"
                   variant="outline"
@@ -139,8 +143,8 @@ export function HumanMemberProfile({
                 Manager actions
               </h3>
               <p className="text-xs text-muted-foreground">
-                Assign work, propose hires and raises, pause direct reports.
-                Money and sensitive access require an authorized human.
+                Assign work, propose hires and raises. Money and sensitive
+                access require an authorized human.
               </p>
             </section>
           </div>

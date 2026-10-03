@@ -139,6 +139,7 @@ export default {
         "colony-field": "var(--colony-shadow-field)",
       },
       borderRadius: {
+        "company-control": "0.4375rem",
         lg: "var(--colony-radius-card)",
         md: "var(--colony-radius-control-medium)",
         sm: "var(--colony-radius-control)",

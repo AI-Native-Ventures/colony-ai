@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ArrowLeft } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
@@ -34,11 +34,17 @@ import { EmployeeAllowanceEditScreen } from "@/features/power/EmployeeAllowanceS
 export type TeamMemberScreenMode = "detail" | "edit" | "pause" | "archive";
 
 function AppError({ children }: { children: React.ReactNode }) {
+  const { goTeam } = useAppNavigation();
   return (
-    <Alert className="mx-auto mt-10 max-w-[46rem]" variant="destructive">
-      <AlertTitle>Team unavailable</AlertTitle>
-      <AlertDescription>{children}</AlertDescription>
-    </Alert>
+    <TeamPage title="Team">
+      <Button variant="ghost" onClick={() => void goTeam()}>
+        <ChevronLeft aria-hidden="true" className="size-3.5" /> Back
+      </Button>
+      <Alert className="mt-6 max-w-[46rem]" variant="destructive">
+        <AlertTitle>Team unavailable</AlertTitle>
+        <AlertDescription>{children}</AlertDescription>
+      </Alert>
+    </TeamPage>
   );
 }
 
@@ -61,7 +67,6 @@ export function TeamMemberScreen({
     goTeamEdit,
     goTeamMember,
     goTeamMemberSalary,
-    goTeamPause,
     goTeamSalaryEdit,
   } = useAppNavigation();
   const mutation = useMemberPositionActionMutation();
@@ -72,6 +77,18 @@ export function TeamMemberScreen({
     enabled: Boolean(member),
   });
   const otherMembers = teamQuery.data?.members ?? [];
+  const descendants = new Set([memberPubkey.toLowerCase()]);
+  for (let round = 0; round < otherMembers.length; round += 1) {
+    const previousSize = descendants.size;
+    for (const candidate of otherMembers) {
+      if (
+        candidate.position?.head.managerPubkey &&
+        descendants.has(candidate.position.head.managerPubkey)
+      )
+        descendants.add(candidate.pubkey);
+    }
+    if (descendants.size === previousSize) break;
+  }
   const otherProfiles = useUsersBatchQuery(
     otherMembers.map((candidate) => candidate.pubkey),
     { enabled: otherMembers.length > 0 },
@@ -129,21 +146,23 @@ export function TeamMemberScreen({
 
   if (teamQuery.isLoading && !teamQuery.data) {
     return (
-      <main
-        aria-live="polite"
-        className="mx-auto w-full max-w-[46rem] px-6 py-12"
-        data-testid="company-team-member-loading"
-      >
+      <TeamPage title="Team" testId="company-team-member-loading">
+        <Button variant="ghost" onClick={() => void goTeam()}>
+          <ChevronLeft aria-hidden="true" className="size-3.5" /> Back
+        </Button>
         <p className="text-base font-medium">Loading the latest record</p>
         <p className="mt-2 text-sm text-muted-foreground">
           Actions become available after the shared source responds.
         </p>
-      </main>
+      </TeamPage>
     );
   }
   if (teamQuery.isError && !teamQuery.data) {
     return (
-      <main className="mx-auto w-full max-w-[46rem] px-6 py-8">
+      <TeamPage title="Team">
+        <Button variant="ghost" onClick={() => void goTeam()}>
+          <ChevronLeft aria-hidden="true" className="size-3.5" /> Back
+        </Button>
         <Alert data-testid="company-team-unavailable">
           <AlertTitle>This information could not load</AlertTitle>
           <AlertDescription>
@@ -158,8 +177,16 @@ export function TeamMemberScreen({
             Try again
           </Button>
         </Alert>
-      </main>
+      </TeamPage>
     );
+  }
+  if (!teamQuery.data?.membershipSnapshotFound) {
+    return (
+      <AppError>Team membership is unavailable for this community.</AppError>
+    );
+  }
+  if (mode === "pause") {
+    return <AppError>Pausing employees is unavailable.</AppError>;
   }
   if (!member) {
     return (
@@ -206,7 +233,6 @@ export function TeamMemberScreen({
         onEditSalary={() => void goTeamSalaryEdit(member.pubkey)}
         onEditPosition={() => void goTeamEdit(member.pubkey)}
         onOpenMember={(pubkey) => void goTeamMember(pubkey)}
-        onPause={() => void goTeamPause(member.pubkey)}
         onTerminate={() => void goTeamArchive(member.pubkey)}
         profiles={allProfiles}
         teamData={teamQuery.data as CompanyTeamData}
@@ -216,11 +242,9 @@ export function TeamMemberScreen({
   const pageTitle =
     mode === "edit"
       ? "Edit role and reporting"
-      : mode === "pause"
-        ? "Pause employee"
-        : mode === "archive"
-          ? "Terminate employee"
-          : fullName;
+      : mode === "archive"
+        ? "Terminate employee"
+        : fullName;
 
   async function savePosition(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -254,12 +278,24 @@ export function TeamMemberScreen({
       );
       return;
     }
-    if (!reasonInput.trim()) {
+    if (
+      currentMember.position.head.status !== "terminated" &&
+      !reasonInput.trim()
+    ) {
       setErrorMessage("Enter a reason to continue.");
       return;
     }
     setIsStopping(true);
     try {
+      if (currentMember.position.head.status !== "terminated") {
+        await mutation.mutateAsync({
+          schemaVersion: 1,
+          pubkey: currentMember.pubkey,
+          action: "terminate",
+          expectedHeadEventId: currentMember.position.event.id,
+          reason: reasonInput.trim(),
+        });
+      }
       const managedAgentResult = managedAgentsQuery.data
         ? { data: managedAgentsQuery.data, error: null }
         : await managedAgentsQuery.refetch();
@@ -267,12 +303,7 @@ export function TeamMemberScreen({
       const managedAgent = managedAgentResult.data?.find(
         (candidate) => candidate.pubkey.toLowerCase() === currentMember.pubkey,
       );
-      if (!managedAgent) {
-        throw new Error(
-          "This employee runtime cannot be stopped from the current device.",
-        );
-      }
-      if (isManagedAgentActive(managedAgent)) {
+      if (managedAgent && isManagedAgentActive(managedAgent)) {
         const channels =
           channelsQuery.data ?? (await channelsQuery.refetch()).data ?? [];
         const relayAgents =
@@ -288,13 +319,8 @@ export function TeamMemberScreen({
         if (result.noticeMessage) throw new Error(result.noticeMessage);
         clearActiveTurnsForAgentOnStop(currentMember.pubkey);
       }
-      await mutation.mutateAsync({
-        schemaVersion: 1,
-        pubkey: currentMember.pubkey,
-        action: mode === "pause" ? "pause" : "terminate",
-        expectedHeadEventId: currentMember.position.event.id,
-        reason: reasonInput.trim(),
-      });
+      const refreshed = await teamQuery.refetch();
+      if (refreshed.error) throw refreshed.error;
       await goTeamMember(currentMember.pubkey, { replace: true });
     } catch (error) {
       setErrorMessage(
@@ -330,7 +356,7 @@ export function TeamMemberScreen({
               truncateNpub(candidate.pubkey),
             title: candidate.position?.head.title || "",
           }))}
-        reportsTo={reportsTo || "Company owner"}
+        reportsTo={reportsTo}
         title={title || (member.role === "owner" ? "Founder" : "")}
       />
     );
@@ -344,7 +370,7 @@ export function TeamMemberScreen({
           onClick={back}
           type="button"
         >
-          <ArrowLeft aria-hidden="true" className="size-3.5" /> Back
+          <ChevronLeft aria-hidden="true" className="size-3.5" /> Back
         </button>
         <div className="mb-[1.875rem] mt-2">
           <TeamPageTitle>{pageTitle}</TeamPageTitle>
@@ -358,7 +384,7 @@ export function TeamMemberScreen({
               Name
             </label>
             <Input
-              className="rounded-[0.4375rem] h-11 text-compact"
+              className="rounded-company-control h-11 text-compact"
               id="team-member-name"
               readOnly
               value={fullName}
@@ -372,7 +398,7 @@ export function TeamMemberScreen({
               Title
             </label>
             <Input
-              className="rounded-[0.4375rem] h-11 text-compact"
+              className="rounded-company-control h-11 text-compact"
               id="team-member-title"
               onChange={(event) => setTitleInput(event.target.value)}
               required
@@ -393,11 +419,22 @@ export function TeamMemberScreen({
               value={managerInput}
             >
               <option value="">Company owner</option>
+              {managerInput &&
+              !otherMembers.some(
+                (candidate) => candidate.pubkey === managerInput,
+              ) ? (
+                <option value={managerInput} disabled>
+                  {truncateNpub(managerInput)} · unavailable
+                </option>
+              ) : null}
               {otherMembers
                 .filter(
                   (candidate) =>
-                    candidate.pubkey !== member.pubkey &&
-                    (candidate.position?.head.status ?? "active") === "active",
+                    candidate.pubkey === managerInput ||
+                    (!descendants.has(candidate.pubkey) &&
+                      (candidate.position?.head.status ??
+                        (candidate.kind === "human" ? "active" : "unknown")) ===
+                        "active"),
                 )
                 .map((candidate) => {
                   const name =
@@ -405,9 +442,23 @@ export function TeamMemberScreen({
                     candidate.fallbackName ||
                     truncateNpub(candidate.pubkey);
                   return (
-                    <option key={candidate.pubkey} value={candidate.pubkey}>
+                    <option
+                      key={candidate.pubkey}
+                      value={candidate.pubkey}
+                      disabled={
+                        descendants.has(candidate.pubkey) ||
+                        (candidate.position?.head.status ??
+                          (candidate.kind === "human"
+                            ? "active"
+                            : "unknown")) !== "active"
+                      }
+                    >
                       {name} ·{" "}
                       {candidate.kind === "employee" ? "Employee" : "Human"}
+                      {candidate.position?.head.status &&
+                      candidate.position.head.status !== "active"
+                        ? `, ${candidate.position.head.status}`
+                        : ""}
                     </option>
                   );
                 })}
@@ -424,14 +475,14 @@ export function TeamMemberScreen({
           ) : null}
           <div className="flex gap-3 border-t border-border pt-5">
             <Button
-              className="rounded-[0.4375rem] h-11 bg-colony-info text-xs shadow-none"
+              className="rounded-company-control h-11 bg-colony-info text-xs shadow-none"
               disabled={mutation.isPending || !titleInput.trim()}
               type="submit"
             >
               {mutation.isPending ? "Saving" : "Save changes"}
             </Button>
             <Button
-              className="rounded-[0.4375rem] h-11 text-xs"
+              className="rounded-company-control h-11 text-xs"
               onClick={back}
               type="button"
               variant="outline"
@@ -444,8 +495,7 @@ export function TeamMemberScreen({
     );
   }
 
-  const isPause = mode === "pause";
-  const confirmationTitle = isPause ? "Pause employee" : "Terminate employee";
+  const confirmationTitle = "Terminate employee";
   return (
     <TeamPage title={confirmationTitle} testId={`company-team-${mode}-screen`}>
       <button
@@ -453,7 +503,7 @@ export function TeamMemberScreen({
         onClick={back}
         type="button"
       >
-        <ArrowLeft aria-hidden="true" className="size-3.5" /> Back
+        <ChevronLeft aria-hidden="true" className="size-3.5" /> Back
       </button>
       <div className="mb-[1.875rem] mt-2">
         <TeamPageTitle>{confirmationTitle}</TeamPageTitle>
@@ -471,15 +521,15 @@ export function TeamMemberScreen({
             className="text-compact"
             id="team-status-reason"
             onChange={(event) => setReasonInput(event.target.value)}
-            required
+            required={currentMember.position?.head.status !== "terminated"}
             rows={3}
             value={reasonInput}
           />
         </div>
         <div className="border-l-2 border-border bg-muted px-4 py-3 text-xs">
-          {isPause
-            ? "Work remains visible with a paused reason. The employee can be resumed later."
-            : "Active execution stops. Definition, lessons and history are retained for a future reviewed rehire."}
+          Active execution stops. This cannot be undone from this screen.
+          Definition, lessons and history are retained. Review rehire is
+          available from the terminated employee profile.
         </div>
         {errorMessage ? (
           <p className="text-sm text-destructive" role="alert">
@@ -488,18 +538,23 @@ export function TeamMemberScreen({
         ) : null}
         <div className="flex gap-3 border-t border-border pt-5">
           <Button
-            className="rounded-[0.4375rem] h-11 bg-colony-info text-xs shadow-none"
-            disabled={isStopping || mutation.isPending || !reasonInput.trim()}
+            className="rounded-company-control h-11 bg-colony-info text-xs shadow-none"
+            disabled={
+              isStopping ||
+              mutation.isPending ||
+              (currentMember.position?.head.status !== "terminated" &&
+                !reasonInput.trim())
+            }
             type="submit"
           >
             {isStopping || mutation.isPending
               ? "Saving"
-              : isPause
-                ? "Pause employee"
+              : currentMember.position?.head.status === "terminated"
+                ? "Retry stopping runtime"
                 : "Terminate employee"}
           </Button>
           <Button
-            className="rounded-[0.4375rem] h-11 text-xs"
+            className="rounded-company-control h-11 text-xs"
             onClick={back}
             type="button"
             variant="outline"
