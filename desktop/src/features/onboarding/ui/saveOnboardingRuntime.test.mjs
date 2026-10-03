@@ -60,3 +60,21 @@ test("Connect refuses unavailable selections and propagates persistence failures
     /disk full/,
   );
 });
+
+test("Connect persists the explicitly selected model on a different CLI harness", async () => {
+  const saved = await saveOnboardingRuntime(
+    "claude",
+    [{ id: "claude", availability: "available" }],
+    async () => ({
+      preferred_runtime: "buzz-agent",
+      model: "deepseek-chat",
+      provider: "deepseek",
+      env_vars: {},
+    }),
+    async (next) => ({ config: next }),
+    "chosen-claude-model",
+  );
+  assert.equal(saved.config.preferred_runtime, "claude");
+  assert.equal(saved.config.model, "chosen-claude-model");
+  assert.equal(saved.config.provider, null);
+});

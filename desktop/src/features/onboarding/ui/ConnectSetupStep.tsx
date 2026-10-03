@@ -532,7 +532,7 @@ export function ConnectSetupStep({
         runtimes.data ?? [],
         undefined,
         undefined,
-        selectedModel,
+        keyScene ? undefined : selectedModel,
       );
       if (!isCurrent()) return;
       queryClient.setQueryData(globalAgentConfigQueryKey, saved.config);

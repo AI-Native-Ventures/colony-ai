@@ -52,3 +52,15 @@ test("cancelled lookup never publishes a profile", async () => {
   );
   assert.equal(s.writes.length, 0);
 });
+
+test("a stalled profile read returns a retryable failure without publishing", async () => {
+  const s = setup();
+  s.deps.read = () => new Promise(() => {});
+  s.deps.timeoutMs = 10;
+  await assert.rejects(
+    ensureOnboardingProfile(() => true, s.deps),
+    /could not be loaded/,
+  );
+  assert.equal(s.writes.length, 0);
+  assert.equal(s.values.get(key), "Amina");
+});
