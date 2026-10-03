@@ -16,13 +16,21 @@ export function ScoutAvatar({
     if (!host) return;
     const avatar = rig(host);
     host.querySelector("svg")?.classList.add("block", "h-auto", "w-full");
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    // matchMedia and IntersectionObserver are missing in some environments
+    // (non-browser renderers, unit tests). Without a motion preference signal
+    // draw one still frame rather than throwing during mount or starting an
+    // animation loop that nothing can observe or stop.
+    const reduced =
+      typeof window.matchMedia === "function"
+        ? window.matchMedia("(prefers-reduced-motion: reduce)")
+        : null;
+    const reducedMotion = () => reduced?.matches ?? true;
     let visible = true;
     let frame: number | null = null;
     const entered = performance.now() / 1000;
     const draw = (time: number) => {
       frame = null;
-      if (document.hidden || !visible || reduced.matches) return;
+      if (document.hidden || !visible || reducedMotion()) return;
       act(
         avatar,
         time / 1000,
@@ -36,23 +44,26 @@ export function ScoutAvatar({
     const sync = () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
       frame = null;
-      if (reduced.matches || document.hidden || !visible) {
+      if (reducedMotion() || document.hidden || !visible) {
         act(avatar, 0, pose, 10, { x: 0.28, y: 0 }, 0);
       } else {
         frame = window.requestAnimationFrame(draw);
       }
     };
-    const observer = new IntersectionObserver(([entry]) => {
-      visible = entry.isIntersecting;
-      sync();
-    });
-    observer.observe(host);
-    reduced.addEventListener("change", sync);
+    const observer =
+      typeof IntersectionObserver === "function"
+        ? new IntersectionObserver(([entry]) => {
+            visible = entry.isIntersecting;
+            sync();
+          })
+        : null;
+    observer?.observe(host);
+    reduced?.addEventListener("change", sync);
     document.addEventListener("visibilitychange", sync);
     sync();
     return () => {
-      observer.disconnect();
-      reduced.removeEventListener("change", sync);
+      observer?.disconnect();
+      reduced?.removeEventListener("change", sync);
       document.removeEventListener("visibilitychange", sync);
       if (frame !== null) window.cancelAnimationFrame(frame);
     };

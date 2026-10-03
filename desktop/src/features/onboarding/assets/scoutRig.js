@@ -120,7 +120,10 @@ export function act(r, t, state, age, look = { x: 0, y: 0 }, intensity = 1) {
   }
   if (
     !document.body.classList.contains("film") &&
-    !matchMedia("(prefers-reduced-motion: reduce)").matches
+    !(
+      typeof matchMedia === "function" &&
+      matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
   ) {
     const targetPose = {
       turn,
