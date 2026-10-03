@@ -10,6 +10,10 @@ const MAX_BALANCE_KEYS = 32;
 export function pkceChallenge(verifier) {
   return createHash("sha256").update(verifier).digest("base64url");
 }
+/** Identify a cached key without retaining its credential. */
+export function keyFingerprint(key) {
+  return createHash("sha256").update(key).digest("hex");
+}
 /** Generate a 384-bit, URL-safe verifier and its matching challenge. */
 export function pkcePair() {
   const verifier = randomBytes(48).toString("base64url");
@@ -108,10 +112,11 @@ export function createOpenRouterService({
   bringToFront = () => {},
   createServerImpl = createServer,
   now = Date.now,
+  creditsTimeoutMs = 5000,
 }) {
   let active = null;
   // Native-only, bounded cache. Fingerprints identify keys without retaining them.
-  // Failed probes retry after five minutes rather than on every refresh.
+  // Authorization denials retry after five minutes; transient failures retry on refresh.
   const balances = new Map();
 
   async function json(path, key, attempt, body, requestTimeoutMs = 30_000) {
@@ -169,25 +174,28 @@ export function createOpenRouterService({
       throw new Error("OpenRouter sign-in ended. Try again.");
   }
   async function balance(key, attempt, refresh) {
-    const fingerprint = createHash("sha256").update(key).digest("hex");
+    const fingerprint = keyFingerprint(key);
     const cached = balances.get(fingerprint);
     if (!refresh || (cached?.retryAt && now() < cached.retryAt))
       return cached?.value ?? null;
     let value = null;
+    let retryAt = null;
     try {
       // This endpoint normally requires a management key. A denial is optional
       // metadata failure, never a reason to unlink or replace the OAuth key.
       value = parseCredits(
-        await json("/credits", key, attempt, undefined, 5000),
+        await json("/credits", key, attempt, undefined, creditsTimeoutMs),
       );
-    } catch {
+    } catch (error) {
       check(attempt);
+      if (error.status === 401 || error.status === 403)
+        retryAt = now() + BALANCE_RETRY_MS;
     }
     check(attempt);
     balances.delete(fingerprint);
     balances.set(fingerprint, {
       value,
-      retryAt: value === null ? now() + BALANCE_RETRY_MS : null,
+      retryAt,
     });
     if (balances.size > MAX_BALANCE_KEYS)
       balances.delete(balances.keys().next().value);
@@ -201,9 +209,11 @@ export function createOpenRouterService({
   ) {
     const account = parseAccount(await json("/key", key, attempt));
     check(attempt);
-    account.balance = await balance(key, attempt, refreshBalance);
-    const models =
-      knownModels ?? parseModels(await json("/models", key, attempt));
+    const [accountBalance, models] = await Promise.all([
+      balance(key, attempt, refreshBalance),
+      knownModels ?? json("/models", key, attempt).then(parseModels),
+    ]);
+    account.balance = accountBalance;
     check(attempt);
     return { account, models };
   }

@@ -180,12 +180,22 @@ for (const viewport of [
         await expect(panel).toContainText(
           "Key limit: $5.00. Remaining: $0.00.",
         );
+        await expect(panel).toContainText("Resets at midnight UTC.");
+        await expect(
+          panel.getByRole("status", {
+            name:
+              state === "usage"
+                ? "Spent so far on this key"
+                : "OpenRouter balance",
+            exact: true,
+          }),
+        ).toBeVisible();
         await expect(panel).toContainText(
           `${state === "limit" ? 50 : 12} requests used today.`,
         );
         await expect(
           panel.getByRole("button", {
-            name: "Add credits on OpenRouter",
+            name: "Add credits on OpenRouter (opens in your browser)",
             exact: true,
           }),
         ).toBeVisible();
@@ -232,7 +242,7 @@ for (const viewport of [
       if (state === "connected" || state === "usage" || state === "limit") {
         await panel
           .getByRole("button", {
-            name: "Add credits on OpenRouter",
+            name: "Add credits on OpenRouter (opens in your browser)",
             exact: true,
           })
           .click();
@@ -403,7 +413,7 @@ test("model selection keeps focus and saves only on explicit confirmation", asyn
   expect(await model()).toBe("fixture/free-two:free");
 });
 
-test("paid key without a spending cap shows usage and hides free-tier daily requests", async ({
+test("paid key using a free model shows daily requests and hides them in paid mode", async ({
   page,
 }) => {
   await openRouterTab(page);
@@ -423,10 +433,64 @@ test("paid key without a spending cap shows usage and hides free-tier daily requ
   ).toBeVisible();
   await expect(panel.getByText("$1.50", { exact: true })).toBeVisible();
   await expect(panel.getByText("Key limit:", { exact: false })).toHaveCount(0);
+  await expect(panel.getByText("38 / 50 requests left")).toBeVisible();
+  await panel.getByRole("button", { name: "Paid models", exact: true }).click();
   await expect(
     panel.getByText("Daily free allowance", { exact: true }),
   ).toHaveCount(0);
   await expect(
     panel.getByRole("button", { name: "Paid models", exact: true }),
   ).toBeEnabled();
+});
+
+for (const balance of [0, -0.004, -1]) {
+  test(`account balance ${balance} shows Out of credits without disabling a usable model`, async ({
+    page,
+  }) => {
+    await openRouterTab(page);
+    await mockOAuth(page, { ...connected, balance });
+    await page
+      .getByRole("button", { name: "Connect OpenRouter", exact: true })
+      .click();
+    const panel = page.getByTestId("openrouter-connection");
+    await expect(
+      panel.getByRole("status", { name: "OpenRouter balance", exact: true }),
+    ).toContainText("Out of credits");
+    await expect(
+      panel.getByRole("button", { name: "Test connection", exact: true }),
+    ).toBeEnabled();
+    await expect(panel.getByText(/-\$/)).toHaveCount(0);
+  });
+}
+
+test("balance, spending and key limits share currency formatting with thousands separators", async ({
+  page,
+}) => {
+  await openRouterTab(page);
+  await mockOAuth(page, {
+    ...connected,
+    balance: 1250.5,
+    limit: 10000,
+    limitRemaining: 9998.5,
+  });
+  await page
+    .getByRole("button", { name: "Connect OpenRouter", exact: true })
+    .click();
+  const panel = page.getByTestId("openrouter-connection");
+  await expect(panel.getByText("$1,250.50", { exact: true })).toBeVisible();
+  await expect(panel).toContainText(
+    "Key limit: $10,000.00. Remaining: $9,998.50.",
+  );
+  await mockOAuth(page, { ...connected, balance: null, usage: 1250.5 }, false, {
+    ...connected,
+    balance: null,
+    usage: 1250.5,
+  });
+  await panel.getByRole("button", { name: "Refresh connection" }).click();
+  await expect(
+    panel.getByRole("status", {
+      name: "Spent so far on this key",
+      exact: true,
+    }),
+  ).toContainText("$1,250.50");
 });

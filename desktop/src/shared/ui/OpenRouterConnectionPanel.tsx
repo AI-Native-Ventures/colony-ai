@@ -14,6 +14,11 @@ import {
   type OpenRouterOutcome,
 } from "@/shared/api/tauriOpenRouter";
 
+const formatUsd = (amount: number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
+    amount,
+  );
+
 /** Shared OAuth connection UI. The native layer owns credentials and persistence. */
 export function OpenRouterConnectionPanel({
   onboarding = false,
@@ -236,17 +241,18 @@ export function OpenRouterConnectionPanel({
       ) : (
         <>
           <div className="openrouter-balance flex items-center justify-between">
-            <span>
-              {account.balance === null
-                ? "Spent so far on this key"
-                : "OpenRouter balance"}
+            <span role="status" aria-labelledby={`${id}-balance-label`}>
+              <span id={`${id}-balance-label`}>
+                {account.balance === null
+                  ? "Spent so far on this key"
+                  : "OpenRouter balance"}
+              </span>
               <strong className="block font-semibold">
-                {amount === null
-                  ? "Usage unavailable"
-                  : new Intl.NumberFormat("en-US", {
-                      style: "currency",
-                      currency: "USD",
-                    }).format(amount)}
+                {account.balance !== null && account.balance <= 0
+                  ? "Out of credits"
+                  : amount === null
+                    ? "Usage unavailable"
+                    : formatUsd(amount)}
               </strong>
             </span>
             <button
@@ -254,16 +260,17 @@ export function OpenRouterConnectionPanel({
               onClick={openManage}
               type="button"
             >
-              Add credits on OpenRouter{" "}
+              Add credits on OpenRouter
+              <span className="sr-only"> (opens in your browser)</span>{" "}
               <ArrowRight className="icon" aria-hidden="true" />
             </button>
           </div>
           {account.limit !== null ? (
             <p className="power-caption">
-              Key limit: ${account.limit.toFixed(2)}. Remaining:{" "}
+              Key limit: {formatUsd(account.limit)}. Remaining:{" "}
               {account.limitRemaining === null
                 ? "Unavailable"
-                : `$${account.limitRemaining.toFixed(2)}`}
+                : formatUsd(account.limitRemaining)}
               .
             </p>
           ) : null}
@@ -331,7 +338,8 @@ export function OpenRouterConnectionPanel({
                 <p className="power-caption">Saved model: {account.model}</p>
               ) : null}
             </div>
-            {account.freeTier === true ? (
+            {account.freeTier === true ||
+            (mode === "free" && account.freeRemaining !== null) ? (
               <>
                 <div className="quota-line flex justify-between">
                   <span>Daily free allowance</span>
@@ -354,7 +362,8 @@ export function OpenRouterConnectionPanel({
                   {account.freeUsed !== null
                     ? `${account.freeUsed} requests used today. `
                     : ""}
-                  Limits are shared across OpenRouter usage.
+                  Resets at midnight UTC. Limits are shared across OpenRouter
+                  usage.
                 </p>
               </>
             ) : null}

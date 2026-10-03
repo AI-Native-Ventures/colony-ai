@@ -9,6 +9,7 @@ import {
   parseModels,
   parseAccount,
   parseCredits,
+  keyFingerprint,
 } from "./openrouter-oauth.mjs";
 
 test("S256 matches RFC 7636 and verifiers have independent entropy", () => {
@@ -91,6 +92,26 @@ function fixture(options = {}) {
   let fronts = 0;
   const servers = [];
   const requests = [];
+  const fixtureFetch = async (url, init) => {
+    requests.push({ url, init });
+    assert.equal(init.redirect, "error");
+    if (url.endsWith("/auth/keys")) {
+      exchanges++;
+      assert.equal(init.method, "POST");
+      const body = JSON.parse(init.body);
+      assert.equal(body.code_challenge_method, "S256");
+      assert.equal(
+        pkceChallenge(body.code_verifier),
+        authUrl.searchParams.get("code_challenge"),
+      );
+      return Response.json({ key: "fixture-credential" });
+    }
+    if (url.endsWith("/key")) return Response.json(keyInfo);
+    if (url.endsWith("/credits")) return new Response("", { status: 403 });
+    if (url.endsWith("/models")) return Response.json(catalogue);
+    throw new Error("Unexpected request");
+  };
+  const providerUrls = [];
   const service = createOpenRouterService({
     bringToFront: () => {
       fronts++;
@@ -108,25 +129,6 @@ function fixture(options = {}) {
       }
       return server;
     },
-    fetchImpl: async (url, init) => {
-      requests.push({ url, init });
-      assert.equal(init.redirect, "error");
-      if (url.endsWith("/auth/keys")) {
-        exchanges++;
-        assert.equal(init.method, "POST");
-        const body = JSON.parse(init.body);
-        assert.equal(body.code_challenge_method, "S256");
-        assert.equal(
-          pkceChallenge(body.code_verifier),
-          authUrl.searchParams.get("code_challenge"),
-        );
-        return Response.json({ key: "fixture-credential" });
-      }
-      if (url.endsWith("/key")) return Response.json(keyInfo);
-      if (url.endsWith("/credits")) return new Response("", { status: 403 });
-      if (url.endsWith("/models")) return Response.json(catalogue);
-      throw new Error("Unexpected request");
-    },
     invoke: async (command, args) => {
       if (command === "get_global_agent_config") return config;
       if (command === "set_global_agent_config") {
@@ -139,9 +141,24 @@ function fixture(options = {}) {
     },
     timeoutMs: 5000,
     ...options,
+    fetchImpl: async (url, init) => {
+      providerUrls.push(url);
+      assert.equal(new URL(url).origin, "https://openrouter.ai");
+      assert.ok(
+        [
+          "https://openrouter.ai/api/v1/credits",
+          "https://openrouter.ai/api/v1/key",
+          "https://openrouter.ai/api/v1/models",
+          "https://openrouter.ai/api/v1/auth/keys",
+        ].includes(url),
+        "only exact documented provider URLs are allowed",
+      );
+      return (options.fetchImpl ?? fixtureFetch)(url, init);
+    },
   });
   return {
     service,
+    providerUrls,
     saves,
     get fronts() {
       return fronts;
@@ -783,7 +800,7 @@ test("successful credits connect and refresh show balance, save and test keep it
   assert.equal(JSON.stringify(refreshed).includes("fixture-credential"), false);
 });
 
-for (const failure of ["403", "network", "500", "malformed"]) {
+for (const failure of ["401", "403"]) {
   test(`credits ${failure} falls back to key quota and is cached per key for five minutes`, async () => {
     let clock = 1000;
     const f = balanceFixture(
@@ -806,7 +823,10 @@ for (const failure of ["403", "network", "500", "malformed"]) {
     assert.equal((await f.service.status()).balance, null);
     assert.equal((await f.service.select("vendor/paid")).status, "connected");
     assert.equal(f.probes.length, 1);
-    clock += 5 * 60 * 1000;
+    clock += 4 * 60 * 1000 + 59 * 1000;
+    await f.service.status();
+    assert.equal(f.probes.length, 1);
+    clock += 1000;
     await f.service.status();
     assert.equal(f.probes.length, 2);
     f.changeKey();
@@ -873,3 +893,81 @@ test("balance cache is bounded and evicted keys are probed again", async () => {
   await f.service.status();
   assert.equal(f.probes.length, 34);
 });
+
+test("provider requests use exact HTTPS URLs and credits carry the saved bearer key", async () => {
+  const f = balanceFixture(() =>
+    Response.json({ data: { total_credits: 20, total_usage: 7.5 } }),
+  );
+  const pending = f.service.connect();
+  await f.callback();
+  assert.equal((await pending).status, "connected");
+  assert.deepEqual([...new Set(f.providerUrls)].sort(), [
+    "https://openrouter.ai/api/v1/auth/keys",
+    "https://openrouter.ai/api/v1/credits",
+    "https://openrouter.ai/api/v1/key",
+    "https://openrouter.ai/api/v1/models",
+  ]);
+  assert.equal(f.probes[0].headers.Authorization, "Bearer fixture-credential");
+});
+
+test("key fingerprints are deterministic SHA256 hex without the credential", () => {
+  const key = "fixture-credential";
+  const fingerprint = keyFingerprint(key);
+  assert.match(fingerprint, /^[a-f0-9]{64}$/);
+  assert.equal(fingerprint.includes(key), false);
+  assert.equal(keyFingerprint(key), fingerprint);
+  assert.notEqual(keyFingerprint("other-fixture"), fingerprint);
+});
+
+for (const failure of ["network", "500", "malformed"]) {
+  test(`transient credits ${failure} retries on the next refresh`, async () => {
+    const f = balanceFixture((_, calls) => {
+      if (calls > 1)
+        return Response.json({ data: { total_credits: 20, total_usage: 7.5 } });
+      if (failure === "network") throw new Error("fixture offline");
+      if (failure === "malformed")
+        return Response.json({ data: { total_credits: 20 } });
+      return new Response("", { status: 500 });
+    });
+    const first = await f.service.status();
+    assert.equal(first.status, "connected");
+    assert.equal(first.balance, null);
+    assert.equal(first.usage, 1.5);
+    assert.equal((await f.service.status()).balance, 12.5);
+    assert.equal(f.probes.length, 2);
+  });
+}
+
+for (const creditsTimeoutMs of [undefined, 20]) {
+  test(`hanging credits probe times out at ${creditsTimeoutMs ?? 5000} ms while models load in parallel`, {
+    timeout: 6500,
+  }, async () => {
+    let aborted = false;
+    const f = balanceFixture(
+      (init) =>
+        new Promise((_, reject) => {
+          init.signal.addEventListener(
+            "abort",
+            () => {
+              aborted = true;
+              reject(init.signal.reason);
+            },
+            { once: true },
+          );
+        }),
+      creditsTimeoutMs === undefined ? {} : { creditsTimeoutMs },
+    );
+    const started = Date.now();
+    const pending = f.service.status();
+    // Allow config and key reads to complete while credits remain pending.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.ok(f.providerUrls.includes("https://openrouter.ai/api/v1/models"));
+    assert.equal(aborted, false);
+    const result = await pending;
+    assert.equal(aborted, true);
+    assert.equal(result.status, "connected");
+    assert.equal(result.balance, null);
+    assert.ok(Date.now() - started >= (creditsTimeoutMs ?? 5000) - 5);
+    assert.ok(Date.now() - started < (creditsTimeoutMs ?? 5000) + 1000);
+  });
+}
