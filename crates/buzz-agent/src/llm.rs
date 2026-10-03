@@ -202,7 +202,7 @@ impl Llm {
         // Every arm above returns its `Result` into this mapper rather than
         // using `?` — an early return would silently skip the stamp, which is
         // exactly what the Anthropic and OpenRouter arms used to do.
-        let stamped = result.map_err(|e| match e {
+        let stamped = result.map_err(|e| match provider_failure(e, cfg.provider) {
             AgentError::Llm(s) => AgentError::Llm(format!("({effective_model}) {s}")),
             AgentError::LlmModelNotFound(s) => {
                 AgentError::LlmModelNotFound(format!("({effective_model}) {s}"))
@@ -354,7 +354,7 @@ impl Llm {
                 "llm: summarize completed"
             );
         }
-        result
+        result.map_err(|e| provider_failure(e, cfg.provider))
     }
 
     async fn post_anthropic(&self, cfg: &Config, body: &Value) -> Result<Value, AgentError> {
@@ -505,11 +505,17 @@ impl Llm {
             {
                 Err(PostError::Agent(AgentError::LlmAuth(_))) if !refreshed => {
                     refreshed = true;
-                    bearer = self
+                    let new_bearer = self
                         .auth
                         .refresh_now(&bearer)
                         .await
                         .map_err(PostError::from)?;
+                    if new_bearer == bearer {
+                        return Err(PostError::Agent(AgentError::LlmAuth(
+                            "static key rejected, update key in agent settings".into(),
+                        )));
+                    }
+                    bearer = new_bearer;
                 }
                 result => return result,
             }
@@ -532,7 +538,7 @@ impl Llm {
                     // distinct token (e.g., a PKCE OAuth source).
                     if new_bearer == bearer {
                         return Err(AgentError::LlmAuth(
-                            "401: static key rejected — update key in agent settings".into(),
+                            "HTTP 401: static key rejected, update key in agent settings".into(),
                         ));
                     }
                     bearer = new_bearer;
@@ -560,6 +566,29 @@ impl Llm {
             );
         }
         true
+    }
+}
+
+/// Keep terminal provider errors safe and identifiable across the ACP boundary.
+fn provider_failure(error: AgentError, provider: Provider) -> AgentError {
+    let label = match provider {
+        Provider::Anthropic => "Anthropic",
+        Provider::OpenAi => "OpenAI",
+        Provider::DeepSeek => "DeepSeek",
+        Provider::Databricks | Provider::DatabricksV2 => "Databricks",
+        Provider::OpenRouter => "OpenRouter",
+    };
+    match error {
+        AgentError::LlmAuth(_) => AgentError::LlmAuth(format!(
+            "provider={label}; API key rejected or missing. Open Settings, Agents, defaults to update it."
+        )),
+        AgentError::Llm(message) if message.starts_with("HTTP 402:") => AgentError::Llm(format!(
+            "provider={label}; HTTP 402: credits exhausted. Add credit at the provider or choose another provider in Settings."
+        )),
+        AgentError::Llm(message) if message.starts_with("HTTP 403:") => AgentError::Llm(format!(
+            "provider={label}; HTTP 403: permission denied. Check the API key and model access, or choose another provider in Settings."
+        )),
+        other => other,
     }
 }
 
@@ -1889,8 +1918,14 @@ where
         // Not a stall path: auth failures are not surfaced through
         // terminal_llm_error, they resolve on the next call after refresh.
         if status == 401 || status == 403 {
-            return Err(PostError::Agent(AgentError::LlmAuth(
-                read_error_body(resp).await,
+            return Err(PostError::Agent(AgentError::LlmAuth(format!(
+                "HTTP {}: provider rejected authentication",
+                status.as_u16()
+            ))));
+        }
+        if status == 402 {
+            return Err(PostError::Agent(AgentError::Llm(
+                "HTTP 402: credits exhausted".into(),
             )));
         }
         if status.is_server_error() || status == 429 || status.as_u16() == 499 {
@@ -2286,18 +2321,17 @@ async fn openrouter_post(
         // classifying 403 as `LlmAuth` would just waste a duplicate request
         // and surface Desktop's unrelated "access denied" copy.
         if status == 401 {
-            return Err(AgentError::LlmAuth(read_error_body(resp).await));
+            return Err(AgentError::LlmAuth(
+                "HTTP 401: provider rejected authentication".into(),
+            ));
         }
         if status == 403 {
-            return Err(AgentError::Llm(format!(
-                "{status}: {}",
-                read_error_body(resp).await
-            )));
+            return Err(AgentError::Llm(
+                "HTTP 403: provider denied permission".into(),
+            ));
         }
         if status == 402 {
-            return Err(AgentError::Llm(
-                "OpenRouter credits exhausted — check https://openrouter.ai/credits".into(),
-            ));
+            return Err(AgentError::Llm("HTTP 402: credits exhausted".into()));
         }
         if status == 404 {
             // OpenRouter overloads 404: a genuinely unknown/unavailable model id
@@ -7377,10 +7411,53 @@ mod tests {
         );
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn deepseek_and_openrouter_terminal_failures_are_named_safe_and_single_attempt() {
+        for provider in [Provider::DeepSeek, Provider::OpenRouter] {
+            for status in [401, 402, 403] {
+                let (url, _, attempts) = spawn_openrouter_stub(vec![CannedResponse::new(
+                    status,
+                    r#"{"error":{"message":"sensitive provider payload"}}"#,
+                )])
+                .await;
+                let mut config = cfg(provider);
+                config.base_url = url;
+                let llm = Llm::new(&config).unwrap();
+                let error = complete_model(&llm, &config, "fixture-model")
+                    .await
+                    .unwrap_err();
+                let text = error.to_string();
+                let label = if provider == Provider::DeepSeek {
+                    "DeepSeek"
+                } else {
+                    "OpenRouter"
+                };
+                assert!(text.contains(&format!("provider={label};")), "{text}");
+                assert!(!text.contains("sensitive provider payload"));
+                assert_eq!(
+                    error.json_rpc_code(),
+                    if status == 401 || (status == 403 && provider == Provider::DeepSeek) {
+                        -32001
+                    } else {
+                        -32000
+                    }
+                );
+                assert_eq!(attempts.load(std::sync::atomic::Ordering::SeqCst), 1);
+                assert!(text.contains(if status == 402 {
+                    "credits exhausted"
+                } else if status == 403 && provider == Provider::OpenRouter {
+                    "permission denied"
+                } else {
+                    "API key rejected or missing"
+                }));
+            }
+        }
+    }
+
     /// A 403 (guardrail/moderation/permission rejection, per OpenRouter docs)
     /// must NOT be classified as `LlmAuth`: refreshing a static key returns
     /// the identical key, so retrying would just waste a duplicate request.
-    /// Exactly one attempt, plain `AgentError::Llm` with the body preserved.
+    /// Exactly one attempt, plain `AgentError::Llm` with safe permission copy.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn openrouter_post_403_single_attempt_not_auth_error() {
         let (url, _captured, attempts) = spawn_openrouter_stub(vec![CannedResponse::new(
@@ -7402,8 +7479,8 @@ mod tests {
         .await
         .unwrap_err();
         assert!(
-            matches!(&err, AgentError::Llm(s) if s.contains("403") && s.contains("model flagged by moderation")),
-            "403 must surface as AgentError::Llm with status+body, not LlmAuth: got {err:?}"
+            matches!(&err, AgentError::Llm(s) if s.contains("HTTP 403: provider denied permission") && !s.contains("model flagged by moderation")),
+            "403 must surface as AgentError::Llm with safe status text, not LlmAuth: got {err:?}"
         );
         assert_eq!(
             attempts.load(std::sync::atomic::Ordering::SeqCst),

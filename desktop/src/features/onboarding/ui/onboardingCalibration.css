@@ -4099,3 +4099,89 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.colony-onboarding-root .runtime-select {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.colony-onboarding-root .runtime-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.colony-onboarding-root .runtime-action {
+  min-height: 2rem;
+}
+.colony-onboarding-root .runtime-action-error {
+  margin-top: 0.5rem;
+  color: var(--destructive);
+}
+
+/*
+ * Fit the real window. The scenes were drawn as a framed app window with a fake
+ * title bar inside a design-review gutter. In the real app that frame doubles the
+ * native title bar, wastes 126px of height and leaves the form pane too short, so
+ * the primary button ended up below the fold on common laptop screens
+ * (1280x720, 1366x768, 1080p at 125 or 150 percent scaling).
+ */
+.colony-onboarding-root .onboarding-viewport {
+  padding: 0;
+}
+.colony-onboarding-root .onboarding-app-frame {
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.colony-onboarding-root .windowbar {
+  display: none;
+}
+.colony-onboarding-root .form-side {
+  padding-top: clamp(20px, 5vh, 53px);
+  padding-bottom: clamp(12px, 3vh, 30px);
+}
+.colony-onboarding-root .form-content {
+  padding-block: clamp(8px, 3vh, 45px);
+}
+.colony-onboarding-root .power-setup .form-side {
+  padding-top: clamp(20px, 5vh, 54px);
+  padding-bottom: clamp(12px, 3vh, 26px);
+}
+.colony-onboarding-root .power-setup .form-content {
+  padding-top: clamp(8px, 3vh, 35px);
+  padding-bottom: clamp(8px, 3vh, 30px);
+}
+.colony-onboarding-root .discovery-wait,
+.colony-onboarding-root .power-empty,
+.colony-onboarding-root .power-body {
+  min-height: 0;
+}
+/* When the form still has to scroll, the primary action stays reachable. */
+.colony-onboarding-root .power-cta {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: linear-gradient(to top, var(--paper) 75%, transparent);
+  padding-block: 12px 0;
+}
+.colony-onboarding-root .form-submit {
+  position: sticky;
+  bottom: 12px;
+  z-index: 1;
+  box-shadow: 0 0 0 12px var(--paper);
+}
+/* The stacked layout is taller than the window below 850px, and the page itself
+ * cannot scroll, so the scene scrolls instead of cutting content off. */
+@media (max-width: 850px) {
+  .colony-onboarding-root .onboarding-viewport {
+    height: 100dvh;
+    overflow-y: auto;
+  }
+}

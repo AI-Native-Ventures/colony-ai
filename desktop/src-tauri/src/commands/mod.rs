@@ -6,6 +6,8 @@ mod agent_logs;
 mod agent_metric_archive;
 mod agent_model_process;
 mod agent_models;
+mod test_ai_connection;
+pub use test_ai_connection::*;
 mod agent_models_env;
 mod agent_providers;
 mod agent_settings;

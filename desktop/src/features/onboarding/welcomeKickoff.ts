@@ -3,6 +3,7 @@ import * as React from "react";
 import {
   managedAgentsQueryKey,
   useAcpRuntimesQuery,
+  useGitBashPrerequisiteQuery,
   useManagedAgentsQuery,
 } from "@/features/agents/hooks";
 import { useAgentAccessOwnerOnlyQuery } from "@/features/agents/useAgentAccessOwnerOnly";
@@ -43,7 +44,7 @@ const closerMarker = welcomeKickoffMarker(WELCOME_KICKOFF_CLOSER_MARKER);
 const providerMarker = welcomeKickoffMarker(WELCOME_KICKOFF_PROVIDER_MARKER);
 
 export const WELCOME_KICKOFF_PROVIDER_MESSAGE =
-  "To get started with agents, connect to an AI provider in Settings. Once you're connected, come back here and we'll introduce the team.";
+  "To get started with agents, open Settings > Agents > Defaults to connect your provider key and choose a model. Once you're connected, come back here and we'll introduce the team.";
 
 const WELCOME_KICKOFF_CTA =
   "What can we help you build? Bring us something you're working on, or give us a quick challenge to see how we work together.";
@@ -499,6 +500,7 @@ export function useWelcomeKickoff(
   const queryClient = useQueryClient();
   const { activeCommunity } = useCommunities();
   const runtimesQuery = useAcpRuntimesQuery();
+  const gitBashQuery = useGitBashPrerequisiteQuery();
   const managedAgentsQuery = useManagedAgentsQuery();
   const agentAccessOwnerOnlyQuery = useAgentAccessOwnerOnlyQuery();
   const agentAccessOwnerOnly = agentAccessOwnerOnlyQuery.data;
@@ -554,8 +556,14 @@ export function useWelcomeKickoff(
     [activeCommunity?.relayUrl, managedAgentsQuery.data],
   );
   const readiness = React.useMemo(
-    () => resolveAgentReadiness(runtimesQuery.data ?? [], globalConfig),
-    [globalConfig, runtimesQuery.data],
+    () =>
+      resolveAgentReadiness(
+        runtimesQuery.data ?? [],
+        globalConfig,
+        "any",
+        gitBashQuery.isError ? undefined : gitBashQuery.data,
+      ),
+    [globalConfig, runtimesQuery.data, gitBashQuery.data, gitBashQuery.isError],
   );
   React.useEffect(() => {
     if (
@@ -563,6 +571,7 @@ export function useWelcomeKickoff(
       !isActiveWelcome ||
       configLoading ||
       runtimesQuery.isPending ||
+      gitBashQuery.isPending ||
       agentAccessOwnerOnly === undefined
     ) {
       return;
@@ -594,7 +603,7 @@ export function useWelcomeKickoff(
           await sendManagedAgentChannelMessage({
             agentPubkey: resolvedAgentSet.lead.pubkey,
             channelId,
-            content: WELCOME_KICKOFF_PROVIDER_MESSAGE,
+            content: readiness.copy ?? WELCOME_KICKOFF_PROVIDER_MESSAGE,
             marker: providerMarker,
             markerScope: "channel",
           });
@@ -705,6 +714,7 @@ export function useWelcomeKickoff(
     onKickoffOpenerPosted,
     queryClient,
     readiness,
+    gitBashQuery.isPending,
     runtimesQuery.isPending,
   ]);
 

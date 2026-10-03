@@ -713,9 +713,7 @@ function OpenRouterState({
       ) : (
         <>
           <div className="openrouter-balance">
-            <span>
-              OpenRouter balance<strong>$12.50</strong>
-            </span>
+            <span>Check your balance on OpenRouter</span>
             <button className="link" disabled={!enabled} type="button">
               Manage on OpenRouter <Glyph name="arrow" />
             </button>

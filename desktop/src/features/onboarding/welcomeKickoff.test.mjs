@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  WELCOME_KICKOFF_PROVIDER_MESSAGE,
   areWelcomeTeammatesOnline,
   buildWelcomeKickoffCloser,
   buildWelcomeKickoffOpener,
@@ -467,4 +468,15 @@ test("merging the opener subtree never double-counts an already-visible reply", 
 test("merging with no subtree replies leaves the channel events untouched", () => {
   const channelEvents = [kickoffOpener];
   assert.equal(mergeKickoffEvents(channelEvents, []), channelEvents);
+});
+
+test("Fizz points new users to the working provider defaults path", () => {
+  assert.match(
+    WELCOME_KICKOFF_PROVIDER_MESSAGE,
+    /Settings > Agents > Defaults/,
+  );
+  assert.match(
+    WELCOME_KICKOFF_PROVIDER_MESSAGE,
+    /provider key and choose a model/,
+  );
 });

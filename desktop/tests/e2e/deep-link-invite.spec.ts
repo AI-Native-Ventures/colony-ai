@@ -155,6 +155,37 @@ test("add-community deep link starts onboarding when no community is configured"
     .toContain('"communityName":"Acme Team"');
 });
 
+test("joining screen shows why connecting failed and offers Retry instead of spinning forever", async ({
+  page,
+}) => {
+  // Real failure seen on production: the relay answered 401 to the sign-in the
+  // app makes right after a community is created, and the joining screen kept
+  // saying "Connecting securely" with no way out.
+  const reason =
+    "Factory business membership could not be revalidated: relay returned 401 Unauthorized";
+  await installMockBridge(
+    page,
+    {
+      pendingCommunityDeepLinks: [PENDING_ADD_COMMUNITY_LINK],
+      applyCommunityError: reason,
+    },
+    { skipCommunitySeed: true },
+  );
+  await page.goto("/");
+
+  const flow = page.getByTestId("community-onboarding-flow");
+  await expect(flow).toBeVisible();
+  await expect(flow.getByText(reason)).toBeVisible();
+  await expect(flow.getByText("Connecting securely…")).toHaveCount(0);
+  const retry = flow.getByRole("button", { name: "Retry" });
+  await expect(retry).toBeVisible();
+
+  // Retry runs the connection again; the failure is reported again, not hidden.
+  await retry.click();
+  await expect(flow.getByText(reason)).toBeVisible();
+  await expect(flow.getByRole("button", { name: "Cancel" })).toBeVisible();
+});
+
 test("add-community deep link skips profile step when identity has an existing kind:0 profile", async ({
   page,
 }) => {

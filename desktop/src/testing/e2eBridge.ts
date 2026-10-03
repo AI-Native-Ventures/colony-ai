@@ -607,6 +607,9 @@ type E2eConfig = {
     /** Delay (ms) for `apply_workspace` so e2e tests can observe the
      *  community-switch gate. 0/undefined = instant. */
     applyCommunityDelayMs?: number;
+    /** Reject `apply_workspace` with this message, as a failed relay
+     *  sign-in does in the real app. */
+    applyCommunityError?: string;
     /** Reject `clear_pending_navigation_deep_links` with this message. */
     clearPendingNavigationDeepLinksError?: string;
     openDmDelayMs?: number;
@@ -904,6 +907,14 @@ type E2eConfig = {
      * an empty config (no provider, model, or env vars) if not specified.
      * Pass a config with a provider to test Inherit-from-global behavior.
      */
+    /** Safe result of the mocked onboarding connection probe. */
+    aiConnectionResult?:
+      | "connected"
+      | "key-rejected"
+      | "insufficient-balance"
+      | "network-failure"
+      | "unknown-model"
+      | "provider-failure";
     globalAgentConfig?: {
       env_vars: Record<string, string>;
       provider: string | null;
@@ -989,6 +1000,12 @@ type E2eConfig = {
     personaWriteErrors?: string[];
     // Backend provider mocks for the create-agent "Run on" section. See
     // tests/helpers/bridge.ts:MockBridgeOptions for semantics.
+    gitBashPrerequisite?: {
+      available: boolean;
+      path: string | null;
+      install_instructions_url: string;
+      install_hint: string;
+    } | null;
     backendProviders?: Array<{ id: string; binaryPath: string }>;
     backendProviderProbeResult?: Record<string, unknown>;
     backendProviderProbeDelayMs?: number;
@@ -19808,6 +19825,8 @@ export function maybeInstallE2eTauriMocks() {
             window.setTimeout(resolve, applyDelayMs),
           );
         }
+        const applyError = activeConfig?.mock?.applyCommunityError;
+        if (applyError) throw new Error(applyError);
         const relayUrl = (payload as { relayUrl?: unknown }).relayUrl;
         if (
           isRelayMode(activeConfig) &&
@@ -20556,6 +20575,8 @@ export function maybeInstallE2eTauriMocks() {
           payload as { runtimeId?: string },
           activeConfig,
         );
+      case "discover_git_bash_prerequisite":
+        return activeConfig?.mock?.gitBashPrerequisite ?? null;
       case "discover_backend_providers":
         return activeConfig?.mock?.backendProviders ?? [];
       case "probe_backend_provider": {
@@ -21338,6 +21359,8 @@ export function maybeInstallE2eTauriMocks() {
         if (!runtimeId) return null;
         return config.mock?.runtimeFileConfigs?.[runtimeId] ?? null;
       }
+      case "test_ai_connection":
+        return activeConfig?.mock?.aiConnectionResult ?? "connected";
       case "get_global_agent_config": {
         // Return the mutable persisted mock value, seeded from the test config.
         return (

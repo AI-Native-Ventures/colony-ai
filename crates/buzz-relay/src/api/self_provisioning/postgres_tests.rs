@@ -253,7 +253,7 @@ async fn create_grants_owner_membership_and_mine_lists_it() {
         .is_some_and(|rows| { rows.iter().any(|row| row["normalized_host"] == host) }));
 
     let member_scope = signed_request_with_signature_path(
-        state,
+        state.clone(),
         &owner,
         &ingress_host,
         "GET",
@@ -271,6 +271,44 @@ async fn create_grants_owner_membership_and_mine_lists_it() {
         rows.iter()
             .any(|row| row["normalized_host"] == host && row["role"] == "owner")
     }));
+
+    // The desktop app signs the full URL including the query string, which is
+    // what NIP-98 describes. Rejecting it left every new user stuck on
+    // "Connecting securely" after signup, so the relay accepts that form too.
+    let full_url_scope = signed_request(
+        state.clone(),
+        &owner,
+        &ingress_host,
+        "GET",
+        "/api/communities/mine?scope=member",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(full_url_scope.status(), StatusCode::OK);
+    let full_url_scope = response_json(full_url_scope).await;
+    assert!(full_url_scope["communities"]
+        .as_array()
+        .is_some_and(|rows| {
+            rows.iter()
+                .any(|row| row["normalized_host"] == host && row["role"] == "owner")
+        }));
+
+    // A signature over a different query than the one sent is still rejected.
+    let wrong_query = signed_request_with_signature_path(
+        state,
+        &owner,
+        &ingress_host,
+        "GET",
+        (
+            "/api/communities/mine?scope=member",
+            "/api/communities/mine?scope=owner",
+        ),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(wrong_query.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]

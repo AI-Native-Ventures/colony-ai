@@ -451,6 +451,8 @@ type MockBridgeOptions = {
   canvasReadError?: string;
   /** Delay (ms) for `apply_workspace`; see e2eBridge mock config. */
   applyCommunityDelayMs?: number;
+  /** Reject `apply_workspace` with this message; see e2eBridge mock config. */
+  applyCommunityError?: string;
   /** Reject `clear_pending_navigation_deep_links` with this message. */
   clearPendingNavigationDeepLinksError?: string;
   openDmDelayMs?: number;
@@ -685,6 +687,14 @@ type MockBridgeOptions = {
    * an empty config (no provider, model, or env vars) if not specified.
    * Pass a config with a provider to test Inherit-from-global behavior.
    */
+  /** Safe result of the mocked onboarding connection probe. */
+  aiConnectionResult?:
+    | "connected"
+    | "key-rejected"
+    | "insufficient-balance"
+    | "network-failure"
+    | "unknown-model"
+    | "provider-failure";
   globalAgentConfig?: {
     env_vars: Record<string, string>;
     provider: string | null;
@@ -775,6 +785,12 @@ type MockBridgeOptions = {
    * (the "Run on" section stays hidden). Setting this renders the remote
    * backend selector in the create-agent dialog.
    */
+  gitBashPrerequisite?: {
+    available: boolean;
+    path: string | null;
+    install_instructions_url: string;
+    install_hint: string;
+  } | null;
   backendProviders?: Array<{ id: string; binaryPath: string }>;
   /**
    * Result returned by `probe_backend_provider`. Defaults to
