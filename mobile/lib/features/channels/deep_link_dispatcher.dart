@@ -21,15 +21,21 @@ import 'channels_provider.dart';
 typedef DeepLinkDestinationBuilder =
     Widget Function(Channel channel, BuzzDeepLink link);
 
+/// Builds the account-owned payment status route for a browser return.
+typedef CreditsPaymentPageBuilder =
+    Widget Function(String reference, {required bool isBrowserReturn});
+
 class DeepLinkDispatcher extends ConsumerStatefulWidget {
   final Widget child;
   final DeepLinkDestinationBuilder? destinationBuilder;
+  final CreditsPaymentPageBuilder? creditsPaymentPageBuilder;
   final bool dispatchMessageLinks;
 
   const DeepLinkDispatcher({
     super.key,
     required this.child,
     this.destinationBuilder,
+    this.creditsPaymentPageBuilder,
     this.dispatchMessageLinks = true,
   });
 
@@ -70,6 +76,10 @@ class _DeepLinkDispatcherState extends ConsumerState<DeepLinkDispatcher> {
       _maybeDispatchInvite(link);
       return;
     }
+    if (link is CreditsPaymentDeepLink) {
+      _dispatchCreditsPayment(link);
+      return;
+    }
     if ((link is! MessageDeepLink && link is! ChannelDeepLink) ||
         !widget.dispatchMessageLinks) {
       return;
@@ -80,6 +90,21 @@ class _DeepLinkDispatcherState extends ConsumerState<DeepLinkDispatcher> {
     }
 
     _dispatchNavigableLink(link);
+  }
+
+  void _dispatchCreditsPayment(CreditsPaymentDeepLink link) {
+    final builder = widget.creditsPaymentPageBuilder;
+    if (!widget.dispatchMessageLinks ||
+        builder == null ||
+        ref.read(pendingDeepLinkProvider) != link) {
+      return;
+    }
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => builder(link.reference, isBrowserReturn: true),
+      ),
+    );
+    ref.read(pendingDeepLinkProvider.notifier).consume();
   }
 
   Future<void> _dispatchNotificationLink(MessageDeepLink link) async {
@@ -117,7 +142,7 @@ class _DeepLinkDispatcherState extends ConsumerState<DeepLinkDispatcher> {
       _ => throw StateError('unsupported navigable deep link: $link'),
     };
     final channels = ref.read(channelsProvider).asData?.value;
-    // Channels not loaded yet — keep the link parked; the channelsProvider
+    // Channels are not loaded yet. Keep the link parked; the channelsProvider
     // listener re-attempts once data arrives.
     if (channels == null) return;
 

@@ -399,6 +399,8 @@ impl PayFast {
         email: &str,
         reference: &str,
         callback_url: &str,
+        return_url: &str,
+        cancel_url: &str,
     ) -> Result<crate::payments_provider::CheckoutAuthorization, ProviderError> {
         if amount_minor_units < 0 {
             return Err(ProviderError::NegativeAmount);
@@ -415,6 +417,8 @@ impl PayFast {
         let ordered = [
             ("merchant_id", self.credentials.merchant_id.as_str()),
             ("merchant_key", self.credentials.merchant_key.as_str()),
+            ("return_url", return_url),
+            ("cancel_url", cancel_url),
             ("notify_url", callback_url),
             ("email_address", email),
             ("m_payment_id", reference),
@@ -564,8 +568,17 @@ impl crate::payments_provider::PaymentProvider for PayFast {
         email: &str,
         reference: &str,
         callback_url: &str,
+        return_url: &str,
+        cancel_url: &str,
     ) -> Result<crate::payments_provider::CheckoutAuthorization, ProviderError> {
-        self.process_url_for(minor_units, email, reference, callback_url)
+        self.process_url_for(
+            minor_units,
+            email,
+            reference,
+            callback_url,
+            return_url,
+            cancel_url,
+        )
     }
 
     fn currency(&self) -> crate::credit_packs::Currency {
@@ -1527,6 +1540,8 @@ mod tests {
                 "founder@example.com",
                 "topup-ref-9",
                 "https://relay.example/api/payments/webhook/payfast",
+                "buzz://credits/payment?reference=credit-topup-ref-9",
+                "buzz://credits/payment?reference=credit-topup-ref-9",
             )
             .await
             .expect("initialize builds a form authorization");
@@ -1551,6 +1566,8 @@ mod tests {
             vec![
                 "merchant_id",
                 "merchant_key",
+                "return_url",
+                "cancel_url",
                 "notify_url",
                 "email_address",
                 "m_payment_id",
@@ -1563,6 +1580,14 @@ mod tests {
         assert!(fields.contains(&("amount", "5.00")));
         assert!(fields.contains(&("m_payment_id", "topup-ref-9")));
         assert!(fields.contains(&("merchant_id", TEST_MERCHANT_ID)));
+        assert!(fields.contains(&(
+            "return_url",
+            "buzz://credits/payment?reference=credit-topup-ref-9"
+        )));
+        assert!(fields.contains(&(
+            "cancel_url",
+            "buzz://credits/payment?reference=credit-topup-ref-9"
+        )));
 
         // The form's signature must verify against its fields under the
         // configured passphrase. The action URL itself carries no query data.
@@ -1573,6 +1598,20 @@ mod tests {
             .collect();
         let expected = md5_hex(&parameter_string(&encoded, TEST_PASSPHRASE));
         assert_eq!(expected, submitted_signature, "URL signature must verify");
+
+        for url_field in ["return_url", "cancel_url"] {
+            let mut altered = encoded.clone();
+            let (_, value) = altered
+                .iter_mut()
+                .find(|(name, _)| name.as_str() == url_field)
+                .expect("return and cancel URLs are signed fields");
+            value.push_str("-changed");
+            let altered_signature = md5_hex(&parameter_string(&altered, TEST_PASSPHRASE));
+            assert_ne!(
+                altered_signature, submitted_signature,
+                "changing {url_field} must invalidate the submitted signature"
+            );
+        }
     }
 
     #[tokio::test]
@@ -1584,6 +1623,8 @@ mod tests {
                 "founder@example.com",
                 "ref",
                 "https://relay.example/api/payments/webhook/payfast",
+                "buzz://credits/payment?reference=credit-ref",
+                "buzz://credits/payment?reference=credit-ref",
             )
             .await;
         assert!(matches!(result, Err(ProviderError::NegativeAmount)));
@@ -1594,6 +1635,8 @@ mod tests {
                 "founder@example.com",
                 "ref",
                 "https://relay.example/api/payments/webhook/payfast",
+                "buzz://credits/payment?reference=credit-ref",
+                "buzz://credits/payment?reference=credit-ref",
             )
             .await;
         assert!(matches!(zero_result, Err(ProviderError::InvalidAmount)));
@@ -1650,6 +1693,8 @@ mod tests {
                 "founder@example.com",
                 "ref-x",
                 "https://relay.example/api/payments/webhook/payfast",
+                "buzz://credits/payment?reference=credit-ref-x",
+                "buzz://credits/payment?reference=credit-ref-x",
             )
             .expect("authorization");
         assert!(authorization

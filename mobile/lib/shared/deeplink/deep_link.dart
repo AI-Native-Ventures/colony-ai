@@ -3,7 +3,7 @@
 /// Mirrors the desktop handler in `desktop/src-tauri/src/deep_link.rs`:
 /// `buzz://message?channel=<uuid>&id=<hex>[&thread=<hex>]` references a
 /// message (optionally inside a thread) in a channel. Required params that
-/// are missing or empty make the link invalid — the caller never sees a
+/// are missing or empty make the link invalid. The caller never sees a
 /// half-formed target.
 library;
 
@@ -108,6 +108,21 @@ class MessageDeepLink extends BuzzDeepLink {
   String toString() =>
       'MessageDeepLink(community: $communityId, channel: $channelId, id: $messageId, '
       'thread: $threadRootId)';
+}
+
+/// A PayFast browser return that asks the authenticated app to re-read one
+/// existing payment record.
+class CreditsPaymentDeepLink extends BuzzDeepLink {
+  const CreditsPaymentDeepLink({required this.reference});
+
+  final String reference;
+
+  @override
+  bool operator ==(Object other) =>
+      other is CreditsPaymentDeepLink && other.reference == reference;
+
+  @override
+  int get hashCode => reference.hashCode;
 }
 
 /// Build a canonical `buzz://message` link for a channel message.
@@ -290,9 +305,30 @@ InviteDeepLink? parseInviteDeepLink(Uri uri) {
   return null;
 }
 
+/// Parse a browser return that carries only an existing payment reference.
+///
+/// The URI cannot report or apply payment success. The app must fetch the
+/// account-owned intent and matching credit ledger from the relay.
+CreditsPaymentDeepLink? parseCreditsPaymentDeepLink(Uri uri) {
+  if (uri.scheme != 'buzz' || uri.host != 'credits') return null;
+  final params = uri.queryParametersAll;
+  if (uri.path != '/payment' ||
+      uri.hasFragment ||
+      uri.userInfo.isNotEmpty ||
+      uri.hasPort ||
+      params.keys.length != 1 ||
+      params['reference']?.length != 1) {
+    return null;
+  }
+  final reference = params['reference']!.single;
+  if (!RegExp(r'^[A-Za-z0-9._:-]{1,200}$').hasMatch(reference)) return null;
+  return CreditsPaymentDeepLink(reference: reference);
+}
+
 /// Parse any supported Buzz deep link.
 BuzzDeepLink? parseBuzzDeepLink(Uri uri) =>
     parseInviteDeepLink(uri) ??
+    parseCreditsPaymentDeepLink(uri) ??
     parseChannelDeepLink(uri) ??
     parseMessageDeepLink(uri);
 

@@ -1,12 +1,22 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:uuid/uuid.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../shared/community/community_provider.dart';
+import '../../shared/navigation/mobile_routes.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/mobile_flow_app_bar.dart';
 import 'credits_api.dart';
+
+part 'credits_checkout_pages.dart';
 
 class CreditsBalancePage extends ConsumerWidget {
   const CreditsBalancePage({this.communityName, super.key});
@@ -36,6 +46,27 @@ class CreditsBalancePage extends ConsumerWidget {
         ),
         data: (data) => _CreditsBalanceContent(overview: data),
       ),
+      bottomNavigationBar: overview.hasValue
+          ? SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                child: SizedBox(
+                  height: 48,
+                  child: FilledButton(
+                    key: const ValueKey('credits-add-credits'),
+                    style: mobileFlowActionButtonStyle(context),
+                    onPressed: () => Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const CreditsTopUpPage(),
+                      ),
+                    ),
+                    child: const Text('Add credits'),
+                  ),
+                ),
+              ),
+            )
+          : null,
     );
   }
 }
@@ -250,17 +281,25 @@ class CreditsUsagePage extends StatelessWidget {
   }
 }
 
-class CreditsPaymentStatusPage extends ConsumerWidget {
-  const CreditsPaymentStatusPage({required this.reference, super.key});
+class CreditsPaymentStatusPage extends HookConsumerWidget {
+  const CreditsPaymentStatusPage({
+    required this.reference,
+    this.isBrowserReturn = false,
+    super.key,
+  });
 
   final String reference;
+  final bool isBrowserReturn;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final showWelcomeBack = useState(isBrowserReturn);
     final community = ref.watch(activeCommunityProvider).asData?.value;
     final intent = ref.watch(creditsPaymentIntentProvider(reference));
     final overview = ref.watch(creditsOverviewProvider);
+    var retryInProgress = false;
     void onRetry() {
+      showWelcomeBack.value = false;
       ref.invalidate(creditsPaymentIntentProvider(reference));
       ref.invalidate(creditsOverviewProvider);
     }
@@ -275,6 +314,7 @@ class CreditsPaymentStatusPage extends ConsumerWidget {
         title: 'Add Colony credits',
         subtitle: community?.name,
         compact: true,
+        onBack: () => _returnToCredits(context),
       ),
       body: isLoading
           ? const Center(
@@ -287,8 +327,20 @@ class CreditsPaymentStatusPage extends ConsumerWidget {
           : _CreditsPaymentStatusContent(
               payment: payment,
               overview: credits,
+              showWelcomeBack: showWelcomeBack.value,
               onRetry: onRetry,
-              onBack: () => Navigator.of(context).pop(),
+              onRetryPayment: () {
+                if (retryInProgress) return;
+                retryInProgress = true;
+                unawaited(
+                  _retryFailedPayment(
+                    context,
+                    ref,
+                    payment,
+                  ).whenComplete(() => retryInProgress = false),
+                );
+              },
+              onBack: () => _returnToCredits(context),
             ),
     );
   }
@@ -298,13 +350,17 @@ class _CreditsPaymentStatusContent extends StatelessWidget {
   const _CreditsPaymentStatusContent({
     required this.payment,
     required this.overview,
+    required this.showWelcomeBack,
     required this.onRetry,
+    required this.onRetryPayment,
     required this.onBack,
   });
 
   final CreditsPaymentIntent payment;
   final CreditsOverview overview;
+  final bool showWelcomeBack;
   final VoidCallback onRetry;
+  final VoidCallback onRetryPayment;
   final VoidCallback onBack;
 
   bool get _hasMatchingLedgerEntry => overview.ledger.any(
@@ -349,7 +405,9 @@ class _CreditsPaymentStatusContent extends StatelessWidget {
       return _paymentState(
         context,
         eyebrow: 'PAYMENT CHECK',
-        title: 'Still waiting for confirmation.',
+        title: showWelcomeBack
+            ? 'Welcome back.'
+            : 'Still waiting for confirmation.',
         description: 'Your browser return is not proof of payment.',
         rows: [
           ('Credits to receive', _money(payment.grantUsdCents, 'USD')),
@@ -382,9 +440,9 @@ class _CreditsPaymentStatusContent extends StatelessWidget {
         noticeDescription:
             'Review the same payment attempt before trying again.',
         noticeTone: _CreditsNoticeTone.error,
-        primaryLabel: 'Check payment status',
+        primaryLabel: 'Retry this payment',
         secondaryLabel: 'Return to balance',
-        onPrimary: onRetry,
+        onPrimary: onRetryPayment,
         onSecondary: onBack,
         noticeAfterRows: true,
       );

@@ -158,6 +158,70 @@ void main() {
     expect(destination.link, same(link));
   });
 
+  testWidgets('routes a payment return to its existing status reference', (
+    tester,
+  ) async {
+    const reference = 'credit-return-18';
+    const link = CreditsPaymentDeepLink(reference: reference);
+    final pending = _RecordingPaymentPendingLinkNotifier(link);
+    var browserReturnReceived = false;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          pendingDeepLinkProvider.overrideWith(() => pending),
+          channelsProvider.overrideWith(
+            () => _FakeChannelsNotifier(Future.value([])),
+          ),
+        ],
+        child: MaterialApp(
+          home: DeepLinkDispatcher(
+            creditsPaymentPageBuilder: (value, {required isBrowserReturn}) {
+              browserReturnReceived = isBrowserReturn;
+              return _CapturedPaymentStatus(reference: value);
+            },
+            child: const Scaffold(body: SizedBox()),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Payment status: $reference'), findsOneWidget);
+    expect(browserReturnReceived, isTrue);
+    expect(pending.consumeCalls, 1);
+  });
+
+  testWidgets('keeps payment returns parked until the user is authenticated', (
+    tester,
+  ) async {
+    const link = CreditsPaymentDeepLink(reference: 'credit-return-19');
+    final pending = _RecordingPaymentPendingLinkNotifier(link);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          pendingDeepLinkProvider.overrideWith(() => pending),
+          channelsProvider.overrideWith(
+            () => _FakeChannelsNotifier(Future.value([])),
+          ),
+        ],
+        child: MaterialApp(
+          home: DeepLinkDispatcher(
+            dispatchMessageLinks: false,
+            child: const Scaffold(body: SizedBox()),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(pending.current, link);
+    expect(pending.consumeCalls, 0);
+  });
+
   testWidgets('switches to the notification community before dispatch', (
     tester,
   ) async {
@@ -816,6 +880,24 @@ class _FakePendingDeepLinkNotifier extends PendingDeepLinkNotifier {
   BuzzDeepLink? build() => link;
 }
 
+class _RecordingPaymentPendingLinkNotifier extends PendingDeepLinkNotifier {
+  _RecordingPaymentPendingLinkNotifier(this.link);
+
+  final BuzzDeepLink link;
+  int consumeCalls = 0;
+
+  @override
+  BuzzDeepLink? build() => link;
+
+  @override
+  void consume() {
+    consumeCalls++;
+    state = null;
+  }
+
+  BuzzDeepLink? get current => state;
+}
+
 class _FakeChannelsNotifier extends ChannelsNotifier {
   _FakeChannelsNotifier(this.channels);
 
@@ -848,4 +930,13 @@ class _CapturedDestination extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const SizedBox();
+}
+
+class _CapturedPaymentStatus extends StatelessWidget {
+  const _CapturedPaymentStatus({required this.reference});
+
+  final String reference;
+
+  @override
+  Widget build(BuildContext context) => Text('Payment status: $reference');
 }

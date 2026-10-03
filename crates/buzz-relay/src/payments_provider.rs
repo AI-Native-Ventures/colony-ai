@@ -131,6 +131,8 @@ pub trait PaymentProvider: Send + Sync {
         email: &str,
         reference: &str,
         callback_url: &str,
+        return_url: &str,
+        cancel_url: &str,
     ) -> Result<CheckoutAuthorization, ProviderError>;
 
     /// Currency used in the signed checkout amount.
