@@ -338,7 +338,11 @@ test("keeps automatic mention preferences in the composer across the R19 setting
   const heading = settings.getByText("Automatically mention agents");
   const headingBox = await heading.boundingBox();
   expect(settingsBox?.width).toBeGreaterThanOrEqual(300);
-  expect(headingBox?.height).toBeLessThanOrEqual(20);
+  // Keep the heading on one line as the shared typography ramp grows.
+  const headingLineHeight = await heading.evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).lineHeight),
+  );
+  expect(headingBox?.height).toBeCloseTo(headingLineHeight, 1);
   await composer
     .getByTestId("mention-autocomplete")
     .getByRole("button", { name: "Automatically mention Morgarita" })

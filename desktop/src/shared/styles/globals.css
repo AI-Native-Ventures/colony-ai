@@ -27,6 +27,7 @@
 @import "./globals/company-asks-money.css";
 @import "./globals/colony-workspace-continuation-after-asks.css";
 @import "./globals/colony-workspace-updates.css";
+@import "./globals/colony-shell.css";
 
 @config "../../../tailwind.config.js";
 

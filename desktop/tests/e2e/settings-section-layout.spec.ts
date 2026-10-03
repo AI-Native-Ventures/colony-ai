@@ -171,7 +171,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
           elements.map((element) => getComputedStyle(element).fontSize),
         ),
     )
-    .toEqual(["16px", "16px"]);
+    .toEqual(["17.1429px", "17.1429px"]);
   const titleFontSize = await profileTitle.evaluate(
     (element) => getComputedStyle(element).fontSize,
   );
@@ -195,32 +195,123 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
       return { width: rect.width, height: rect.height };
     });
 
-  expect(titleFontSize).toBe("27.2px");
-  expect(breadcrumbLineHeights).toEqual(["21px", "21px"]);
-  expect(breadcrumbFontSizes).toEqual(["14px", "14px"]);
+  expect(titleFontSize).toBe("29.1429px");
+  expect(breadcrumbLineHeights).toEqual(["22.5px", "22.5px"]);
+  expect(breadcrumbFontSizes).toEqual(["15px", "15px"]);
   expect(topbarPadding).toBe("0px 25px");
   expect(profileAvatarSize).toEqual({ width: 23, height: 23 });
 
+  // Pin the enlarged title to 600-weight Manrope and its -0.03em tracking.
+  // Measure those frozen font values independently of the element's styles:
+  // glyph advances can differ between browser platforms, not the grid bounds.
+  const titleWidth = await page.evaluate(async () => {
+    const font = '600 29.1429px "Manrope Variable"';
+    const faces = await document.fonts.load(font);
+    if (faces.length === 0)
+      throw new Error("Manrope title font is unavailable");
+    const context = document.createElement("canvas").getContext("2d");
+    if (!context) throw new Error("Cannot measure the Manrope title");
+    context.font = font;
+    const text = "Your account";
+    return context.measureText(text).width - text.length * 29.1429 * 0.03;
+  });
+
   for (const expected of [
     {
-      viewport: { width: 1440, height: 900 },
-      fieldLayer: { x: 1, y: 1, width: 1438, height: 898 },
-      settingsSurface: { x: 240, y: 61, width: 1191, height: 830 },
-      title: { x: 314, y: 172, width: 161.3125, height: 33.1875 },
-      profileCard: { x: 314, y: 267.1875, width: 631.96875 },
-      businessCard: { x: 973.96875, y: 267.1875, width: 383.03125 },
-      nameField: { x: 339, y: 331.1875, width: 581.96875, height: 72.71875 },
-      nameInput: { x: 339, y: 363.90625, width: 581.96875, height: 40 },
+      viewport: {
+        width: 1440,
+        height: 900,
+      },
+      fieldLayer: {
+        x: 1,
+        y: 1,
+        width: 1438,
+        height: 898,
+      },
+      settingsSurface: {
+        x: 246,
+        y: 60,
+        width: 1186,
+        height: 832,
+      },
+      title: {
+        x: 320,
+        y: 170.234375,
+        width: titleWidth,
+        height: 35.546875,
+      },
+      profileCard: {
+        x: 320,
+        y: 266.015625,
+        width: 628.859375,
+        height: 527.453125,
+      },
+      businessCard: {
+        x: 976.859375,
+        y: 266.015625,
+        width: 381.125,
+        height: 203.265625,
+      },
+      nameField: {
+        x: 345,
+        y: 331.71875,
+        width: 578.859375,
+        height: 74.0625,
+      },
+      nameInput: {
+        x: 345,
+        y: 365.78125,
+        width: 578.859375,
+        height: 40,
+      },
     },
     {
-      viewport: { width: 1728, height: 1117 },
-      fieldLayer: { x: 1, y: 1, width: 1726, height: 1115 },
-      settingsSurface: { x: 240, y: 61, width: 1479, height: 1047 },
-      title: { x: 322, y: 176, width: 161.3125, height: 33.1875 },
-      profileCard: { x: 322, y: 275.1875, width: 801.328125 },
-      businessCard: { x: 1151.328125, y: 275.1875, width: 485.65625 },
-      nameField: { x: 347, y: 339.1875, width: 751.328125, height: 72.71875 },
-      nameInput: { x: 347, y: 371.90625, width: 751.328125, height: 40 },
+      viewport: {
+        width: 1728,
+        height: 1117,
+      },
+      fieldLayer: {
+        x: 1,
+        y: 1,
+        width: 1726,
+        height: 1115,
+      },
+      settingsSurface: {
+        x: 246,
+        y: 60,
+        width: 1474,
+        height: 1049,
+      },
+      title: {
+        x: 328,
+        y: 173.859375,
+        width: titleWidth,
+        height: 35.546875,
+      },
+      profileCard: {
+        x: 328,
+        y: 274.1875,
+        width: 798.21875,
+        height: 527.453125,
+      },
+      businessCard: {
+        x: 1154.21875,
+        y: 274.1875,
+        width: 483.765625,
+        height: 203.265625,
+      },
+      nameField: {
+        x: 353,
+        y: 339.890625,
+        width: 748.21875,
+        height: 74.0625,
+      },
+      nameInput: {
+        x: 353,
+        y: 373.953125,
+        width: 748.21875,
+        height: 40,
+      },
     },
   ]) {
     await page.setViewportSize(expected.viewport);
@@ -357,13 +448,13 @@ test("workspace appearance saves the named theme and density together", async ({
       };
     });
   expect(await sharedChrome()).toEqual({
-    sectionLabelTracking: "-0.22px",
+    sectionLabelTracking: "-0.235714px",
     searchTextColor: "rgb(40, 37, 50)",
     breadcrumbColor: "rgb(121, 116, 127)",
     avatar: {
       backgroundColor: "rgb(236, 229, 237)",
       color: "rgb(121, 103, 130)",
-      fontSize: "9.44px",
+      fontSize: "10.1143px",
       fontWeight: "600",
       borderRadius: "7px",
     },
@@ -386,13 +477,13 @@ test("workspace appearance saves the named theme and density together", async ({
   );
   await expect.poll(innerTabIndicatorColor).toBe("rgb(157, 193, 251)");
   await expect.poll(sharedChrome).toEqual({
-    sectionLabelTracking: "-0.22px",
+    sectionLabelTracking: "-0.235714px",
     searchTextColor: "rgb(236, 230, 239)",
     breadcrumbColor: "rgb(163, 154, 169)",
     avatar: {
       backgroundColor: "rgb(69, 58, 74)",
       color: "rgb(209, 191, 216)",
-      fontSize: "9.44px",
+      fontSize: "10.1143px",
       fontWeight: "600",
       borderRadius: "7px",
     },

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 import { FEATURE_OVERRIDES_STORAGE_KEY } from "../helpers/features";
 
@@ -26,8 +27,9 @@ const COMMUNITY_B = {
 
 async function expectContentSurfaceHorizontalGutters(
   page: import("@playwright/test").Page,
-  expectedLeftGutter = 1,
+  expectedLeftGutter = 8,
 ) {
+  await waitForAnimations(page);
   const [mainInsetBox, contentBox] = await Promise.all([
     page.locator("[data-buzz-glass-inset]").boundingBox(),
     page.locator("[data-buzz-content-surface]").first().boundingBox(),
@@ -1305,11 +1307,11 @@ test.describe("community rail", () => {
     await expect(
       page.locator('[data-sidebar="sidebar"][data-mobile="true"]'),
     ).toBeHidden();
-    await expect(page.locator("[data-collapsed-content-gutter]")).toHaveCSS(
-      "width",
+    await expect(page.locator("[data-buzz-content-surface]").first()).toHaveCSS(
+      "margin-left",
       "8px",
     );
-    await expectContentSurfaceHorizontalGutters(page, 9);
+    await expectContentSurfaceHorizontalGutters(page);
   });
 
   test("hides the rail with a single community", async ({ page }) => {
@@ -1331,18 +1333,11 @@ test.describe("community rail", () => {
     await expect(
       page.locator('[data-side="left"][data-state="collapsed"]'),
     ).toBeVisible();
-    await expect(page.locator("[data-collapsed-content-gutter]")).toHaveCSS(
-      "width",
+    await expect(page.locator("[data-buzz-content-surface]").first()).toHaveCSS(
+      "margin-left",
       "8px",
     );
-    const sidebarBackground = await page
-      .locator("[data-buzz-glass-inset]")
-      .evaluate((element) => getComputedStyle(element).backgroundColor);
-    await expect(page.locator("[data-collapsed-content-gutter]")).toHaveCSS(
-      "background-color",
-      sidebarBackground,
-    );
-    await expectContentSurfaceHorizontalGutters(page, 9);
+    await expectContentSurfaceHorizontalGutters(page);
   });
 
   test("keeps the rail visible when the sidebar is collapsed", async ({
@@ -1375,8 +1370,9 @@ test.describe("community rail", () => {
       page.getByTestId(`community-rail-button-${COMMUNITY_B.id}`),
     ).toBeVisible();
     await expect(page.getByTestId("community-rail-add")).toBeVisible();
-    await expect(page.locator("[data-collapsed-content-gutter]")).toHaveCount(
-      0,
+    await expect(page.locator("[data-buzz-content-surface]").first()).toHaveCSS(
+      "margin-left",
+      "8px",
     );
     await expectContentSurfaceHorizontalGutters(page);
   });
@@ -1413,7 +1409,7 @@ test.describe("community rail", () => {
     expect(contentBox).not.toBeNull();
     expect(buttonBox?.y ?? 0).toBeGreaterThanOrEqual(32);
     expect(
-      Math.abs((buttonBox?.y ?? 0) - (contentBox?.y ?? 0) - 6),
+      Math.abs((buttonBox?.y ?? 0) - (contentBox?.y ?? 0) - 39),
     ).toBeLessThan(0.5);
     expect(Math.abs((railBox?.y ?? 0) - (appSurfaceBox?.y ?? 0))).toBeLessThan(
       0.5,
@@ -1437,13 +1433,13 @@ test.describe("community rail", () => {
       (searchBox?.x ?? 0) - ((buttonBox?.x ?? 0) + (buttonBox?.width ?? 0));
     expect(Math.abs(visibleRightGap - 14)).toBeLessThan(0.5);
 
-    // With the rail visible, the top-chrome history controls sit just past
-    // the traffic lights near the rail edge, not
-    // shifted far right by a redundant traffic-light offset.
+    // History controls live inside the inset content frame, clear of the
+    // native traffic lights and aligned with the content left edge.
     const back = page.getByTestId("global-back");
     const backBox = await back.boundingBox();
     expect(backBox).not.toBeNull();
-    expect(backBox?.x ?? 0).toBeLessThan(120);
+    expect(backBox?.x ?? 0).toBeGreaterThanOrEqual(contentBox?.x ?? 0);
+    expect(backBox?.x ?? 0).toBeLessThan((contentBox?.x ?? 0) + 100);
   });
 
   test("drag-to-reorder updates the stored community order and survives reload", async ({

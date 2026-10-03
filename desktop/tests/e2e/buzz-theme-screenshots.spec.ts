@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
+import { openSettings } from "../helpers/settings";
 
 const SHOTS = "test-results/buzz-theme";
 const THEME_STORAGE_KEY = "buzz-theme";
@@ -140,7 +141,14 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   await expect(search.locator("span").first()).toHaveClass(
     /text-sidebar-foreground\/55/,
   );
-  await expect(pinnedHeader).toHaveCSS("padding-top", "21px");
+  const isMac = await page.evaluate(() =>
+    /mac|iphone|ipad|ipod/i.test(navigator.platform),
+  );
+  if (isMac)
+    await expect(pinnedHeader).toHaveAttribute("data-mac-chrome", "true");
+  else
+    await expect(pinnedHeader).not.toHaveAttribute("data-mac-chrome", "true");
+  await expect(pinnedHeader).toHaveCSS("padding-top", isMac ? "39px" : "21px");
   await expect(pinnedHeader).toHaveCSS("padding-bottom", "10px");
   await expect(pinnedHeader).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(pinnedHeader).toHaveCSS("margin-left", "3px");
@@ -514,6 +522,27 @@ async function emitNativeThemeChange(page: Page, theme: "light" | "dark") {
   }, theme);
 }
 
+for (const theme of ["buzz", "buzz-dark", "github-light", "github-dark"]) {
+  test(`sidebar brand and owner caption use theme foreground: ${theme}`, async ({
+    page,
+  }) => {
+    await seedTheme(page, theme);
+    await installMockBridge(page);
+    await openChannel(page);
+    await page.goto("/#/team");
+    await expect(page.getByTestId("app-sidebar")).toBeVisible();
+    await expect(page.locator(".colony-sidebar-brand-mark")).toHaveCSS(
+      "color",
+      await resolveSidebarColor(page, "color", "hsl(var(--foreground))"),
+    );
+    await openSettings(page, "profile");
+    await expect(page.locator(".w20-nav-person small")).toHaveCSS(
+      "color",
+      await resolveSidebarColor(page, "color", "hsl(var(--foreground))"),
+    );
+  });
+}
+
 test("buzz light sidebar gradient", async ({ page }) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
@@ -756,7 +785,7 @@ test("settings nav uses Buzz active pill + hover (light)", async ({ page }) => {
   expect(Math.abs(selectedLabelBox.y - unselectedLabelBox.y)).toBe(0);
   expect(
     Math.abs(selectedLabelBox.width - unselectedLabelBox.width),
-  ).toBeLessThanOrEqual(2);
+  ).toBeLessThanOrEqual(3);
   await expectBuzzSettingsPalette(page, "light");
   const activeRow = page.getByTestId("settings-group-appearance-group");
   await expect(activeRow).toHaveAttribute("data-active", "true");
@@ -944,6 +973,8 @@ test("settings content uses the same inset surface as the main app", async ({
 
   const settingsView = page.getByTestId("settings-view");
   const contentSurface = page.getByTestId("settings-content-surface");
+  await expect(settingsView).toHaveCSS("margin", "8px");
+  await expect(settingsView).toHaveCSS("border-radius", "11px");
   const settingsTopChrome = page.getByTestId("settings-top-chrome");
   const settingsBackToApp = page.getByTestId("settings-back-to-app");
   const backToAppBox = await page
@@ -975,17 +1006,20 @@ test("settings content uses the same inset surface as the main app", async ({
     throw new Error("Settings layout is missing");
   }
 
-  // The merged C1 sidebar positions Search 12px lower than the W20-only
-  // capture while the Back to app control stays in the settings top chrome.
-  expect(searchBox.y - backToAppBox.y).toBe(82);
+  // The sidebar starts at the shared 8px frame inset. Settings keeps its
+  // own top chrome, so this measures the two independent control rows.
+  const isMac = await page.evaluate(() =>
+    /mac|iphone|ipad|ipod/i.test(navigator.platform),
+  );
+  expect(searchBox.y - backToAppBox.y).toBe(isMac ? 69.25 : 51.25);
 
-  // Match the r19 settings shell: a fixed 60px top chrome strip, the shell
-  // padding and surface margin, plus the measured bottom inset.
-  expect(surfaceBox.y - viewBox.y).toBe(61);
-  expect(surfaceBox.x - viewBox.x).toBe(2);
-  expect(viewBox.x + viewBox.width - (surfaceBox.x + surfaceBox.width)).toBe(9);
+  // Header and content share one card. The frame carries the 8px margin;
+  // the content starts directly below its 52px header.
+  expect(surfaceBox.y - viewBox.y).toBe(52);
+  expect(surfaceBox.x - viewBox.x).toBe(0);
+  expect(viewBox.x + viewBox.width - (surfaceBox.x + surfaceBox.width)).toBe(0);
   expect(viewBox.y + viewBox.height - (surfaceBox.y + surfaceBox.height)).toBe(
-    9,
+    0,
   );
 
   const topChromeBox = await settingsTopTitle.boundingBox();

@@ -838,15 +838,6 @@ export function AppShell() {
             >
               <AppProfilePanelProvider>
                 <AppWorkflowEditorOverlayProvider>
-                  {showAppTopChrome ? (
-                    <AppTopChrome
-                      canGoBack={canGoBack}
-                      canGoForward={canGoForward}
-                      hasCommunityRail={hasCommunityRail}
-                      onGoBack={goBack}
-                      onGoForward={goForward}
-                    />
-                  ) : null}
                   {settingsOpen ? (
                     <div className="flex min-h-0 flex-1 overflow-hidden">
                       <React.Suspense fallback={null}>
@@ -1028,6 +1019,17 @@ export function AppShell() {
                         onChange={setTerminalContextOverride}
                       >
                         <AppShellChannelSurface
+                          topChrome={
+                            showAppTopChrome ? (
+                              <AppTopChrome
+                                canGoBack={canGoBack}
+                                canGoForward={canGoForward}
+                                hasCommunityRail={hasCommunityRail}
+                                onGoBack={goBack}
+                                onGoForward={goForward}
+                              />
+                            ) : null
+                          }
                           hasCommunityRail={hasCommunityRail}
                           isHuddleRoom={isHuddleRoom}
                           isHuddleRoomStarting={isHuddleRoomStarting}

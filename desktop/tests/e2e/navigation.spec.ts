@@ -583,8 +583,8 @@ test("composer Buzz chip labels wrap without orphaning their icons", async ({
     };
   });
   expect(fragmentMetrics.boxDecorationBreak).toBe("clone");
-  expect(fragmentMetrics.lineHeight).toBe(22);
-  expect(fragmentMetrics.fragmentStep).toBe(22);
+  expect(fragmentMetrics.lineHeight).toBe(23);
+  expect(fragmentMetrics.fragmentStep).toBe(23);
   expect(fragmentMetrics.rects.length).toBeGreaterThanOrEqual(2);
 
   const tooltip = page.getByRole("tooltip");

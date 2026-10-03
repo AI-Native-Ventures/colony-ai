@@ -779,10 +779,10 @@ test("latest files commit opens its detail without a divider", async ({
   await expect(latestCommit).toHaveCSS("border-bottom-width", "0px");
   await expect(
     page.getByTestId("project-repository-latest-commit-summary"),
-  ).toHaveCSS("font-size", "12px");
+  ).toHaveCSS("font-size", "12.8571px");
   await expect(
     page.getByTestId("project-repository-entry-row").first(),
-  ).toHaveCSS("font-size", "12px");
+  ).toHaveCSS("font-size", "12.8571px");
   const repositoryEntryRow = page
     .getByTestId("project-repository-entry-row")
     .first();
@@ -1141,7 +1141,7 @@ test("commit detail opens from the commits feed with a diff", async ({
     commitDetail.getByRole("heading", {
       name: "Add Trello board workflow details",
     }),
-  ).toHaveCSS("font-size", "18px");
+  ).toHaveCSS("font-size", "19.2857px");
   await expect(
     page.getByRole("button", { name: "Copy commit hash" }),
   ).toBeVisible();

@@ -2237,7 +2237,7 @@ test("storage clear resets composed font size and keyboard zoom across windows",
 
   // Zoom scales the real root; the Font size preference layers a text-only
   // multiplier on top. Resolve the composed type rem through a rendered probe
-  // so the CSS calc is actually evaluated (root px × 15/14 for "larger").
+  // so the CSS calc is actually evaluated (root px times 16/14 for "larger").
   const readTypographyState = () =>
     page.evaluate(() => {
       const probe = document.createElement("span");
@@ -2258,7 +2258,7 @@ test("storage clear resets composed font size and keyboard zoom across windows",
   await expect.poll(readTypographyState).toEqual({
     fontSize: "larger",
     rootFontSize: "24px",
-    typeRemPx: 25.71,
+    typeRemPx: 27.43,
     textScale: "1.5",
   });
 
@@ -2270,7 +2270,7 @@ test("storage clear resets composed font size and keyboard zoom across windows",
   await expect.poll(readTypographyState).toEqual({
     fontSize: "default",
     rootFontSize: "16px",
-    typeRemPx: 16,
+    typeRemPx: 17.14,
     textScale: null,
   });
 
@@ -2280,7 +2280,7 @@ test("storage clear resets composed font size and keyboard zoom across windows",
   await expect.poll(readTypographyState).toEqual({
     fontSize: "default",
     rootFontSize: "14.4px",
-    typeRemPx: 14.4,
+    typeRemPx: 15.43,
     textScale: "0.9",
   });
 

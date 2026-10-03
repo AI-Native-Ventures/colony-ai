@@ -57,15 +57,18 @@ test("derives the typography rem from the real root so zoom scales layout too", 
   assert.doesNotMatch(typographyCss, /--buzz-type-rem:\s*[\d.]+px/);
 });
 
-test("maps the font size attribute to the 13 / 14 / 15px type contract", () => {
-  assert.match(typographyCss, /:root\s*\{[^}]*--buzz-type-scale:\s*1;/s);
+test("maps the font size attribute to the 14 / 15 / 16px type contract", () => {
   assert.match(
     typographyCss,
-    /:root\[data-font-size="smaller"\]\s*\{\s*--buzz-type-scale:\s*calc\(13 \/ 14\);/,
+    /:root\s*\{[^}]*--buzz-type-scale:\s*calc\(15 \/ 14\);/s,
   );
   assert.match(
     typographyCss,
-    /:root\[data-font-size="larger"\]\s*\{\s*--buzz-type-scale:\s*calc\(15 \/ 14\);/,
+    /:root\[data-font-size="smaller"\]\s*\{\s*--buzz-type-scale:\s*1;/,
+  );
+  assert.match(
+    typographyCss,
+    /:root\[data-font-size="larger"\]\s*\{\s*--buzz-type-scale:\s*calc\(16 \/ 14\);/,
   );
 });
 
