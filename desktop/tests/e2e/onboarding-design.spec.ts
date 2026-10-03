@@ -91,3 +91,39 @@ test("Scout retains the frozen pose without animation in reduced motion", async 
   await page.waitForTimeout(120);
   expect(await body.getAttribute("transform")).toBe(pose);
 });
+
+test("connection choices preserve keyboard and pointer radio behavior", async ({
+  page,
+}) => {
+  await installMockBridge(
+    page,
+    { accountLinked: true },
+    { skipCommunitySeed: true, skipOnboardingSeed: true },
+  );
+  await openR17BusinessSetup(page);
+  await completeR17BusinessSetup(page, {
+    name: "Design studio",
+    description: "We design for small businesses.",
+  });
+  const subscriptions = page.getByRole("radio", {
+    name: "Subscriptions",
+    exact: true,
+  });
+  await expect(subscriptions).toBeChecked();
+  await subscriptions.focus();
+  await page.keyboard.press("ArrowRight");
+  const credits = page.getByRole("radio", {
+    name: "Colony credits",
+    exact: true,
+  });
+  await expect(credits).toBeChecked();
+  await expect(credits).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(
+    page.getByRole("radio", { name: "Bring your own key", exact: true }),
+  ).toBeChecked();
+  await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
+  await expect(
+    page.getByRole("radio", { name: "OpenRouter", exact: true }),
+  ).toBeChecked();
+});

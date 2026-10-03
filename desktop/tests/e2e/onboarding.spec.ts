@@ -3232,9 +3232,9 @@ test("R17 connection setup opens the designed workspace route", async ({
     page.getByRole("heading", { name: "Connect your AI." }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Bring your own key" }),
+    page.getByRole("radio", { name: "Bring your own key" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "OpenRouter" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "OpenRouter" })).toBeVisible();
   await page.getByRole("button", { name: "Open my Colony" }).click();
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });

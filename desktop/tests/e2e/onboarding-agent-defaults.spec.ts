@@ -86,7 +86,7 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
     });
   expect(selectStyle).toEqual({ alignment: "left", border: "0px" });
 
-  await page.getByRole("button", { name: "Bring your own key" }).click();
+  await page.getByRole("radio", { name: "Bring your own key" }).click();
   await expect(
     page.getByRole("heading", { name: "Connect directly to a provider" }),
   ).toBeVisible();
@@ -98,11 +98,11 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
     page.getByRole("button", { name: "Save AI default" }),
   ).toBeDisabled();
 
-  await page.getByRole("button", { name: "OpenRouter" }).click();
+  await page.getByRole("radio", { name: "OpenRouter" }).click();
   await expect(
     page.getByRole("heading", { name: "Your OpenRouter account" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Subscriptions" }).click();
+  await page.getByRole("radio", { name: "Subscriptions" }).click();
   await expect(
     page.getByRole("heading", { name: "On this computer" }),
   ).toBeVisible();
@@ -119,7 +119,7 @@ test("R17 onboarding can continue when provider discovery fails", async ({
   await expect(discoveryNotice).toBeVisible();
   await expect(discoveryNotice).not.toContainText("Mock ACP runtime discovery");
   await expect(
-    page.getByRole("button", { name: "Bring your own key" }),
+    page.getByRole("radio", { name: "Bring your own key" }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Open my Colony" }),
@@ -313,7 +313,7 @@ test("R17 bundled agent without a provider is not ready and credits are coming s
     page.getByRole("button", { name: "Open AI settings" }),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: "Colony credits", exact: true })
+    .getByRole("radio", { name: "Colony credits", exact: true })
     .click();
   const credits = page.getByTestId("onboarding-credits-coming-soon");
   await expect(credits).toContainText("Coming soon");
@@ -351,7 +351,7 @@ test("R17 OpenRouter saves a tested provider default through the real form", asy
       },
     },
   });
-  await page.getByRole("button", { name: "OpenRouter", exact: true }).click();
+  await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
   const key = page.getByTestId("persona-provider-api-key");
   await expect(key).toHaveAttribute("type", "password");
   await key.fill("e2e-fixture-key");
@@ -438,7 +438,7 @@ test("bundled agent readiness names missing Git for Windows before claiming Read
   );
   await expect(card).not.toContainText("Ready on this computer");
   await expect(card.locator(".provider-status.is-connected")).toHaveCount(0);
-  await page.getByRole("button", { name: "OpenRouter", exact: true }).click();
+  await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
   await expect(page.locator(".harness-state")).toHaveText(
     "Git for Windows needed",
   );

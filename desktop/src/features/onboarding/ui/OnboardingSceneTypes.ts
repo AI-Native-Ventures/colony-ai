@@ -40,6 +40,7 @@ export type OnboardingSceneActions = {
   onLogoChange?: (file: File | null) => void;
   onLogoError?: () => void;
   onReadWebsite?: () => void;
+  onChooseHarness?: () => void;
   onCancelTest?: () => void;
   onResend?: () => void;
   onCreditsRetry?: () => void;

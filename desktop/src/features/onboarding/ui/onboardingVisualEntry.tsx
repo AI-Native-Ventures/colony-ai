@@ -47,7 +47,15 @@ const data: OnboardingSceneData = {
         scene.startsWith("api-")
       ? "Colony Agent"
       : "Claude Code",
-  harnessStatus: "Installed",
+  harnessStatus:
+    scene.startsWith("credits") ||
+    scene === "funding" ||
+    scene.startsWith("api-")
+      ? "Included"
+      : scene === "subscription-missing"
+        ? "Not installed"
+        : "Installed",
+  connectionLabel: "Claude Code · Sonnet",
   visualOnly: true,
 };
 

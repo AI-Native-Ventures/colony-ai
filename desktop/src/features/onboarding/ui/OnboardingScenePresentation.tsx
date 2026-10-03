@@ -120,6 +120,7 @@ function SceneBody(props: PresentationProps) {
         harnessMark={props.harnessMark}
         onNavigate={onNavigate}
         onSelectConnection={onSelectConnection}
+        onChooseHarness={props.onChooseHarness}
         scene={scene}
       />
     );

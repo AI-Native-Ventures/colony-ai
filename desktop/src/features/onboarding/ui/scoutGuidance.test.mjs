@@ -99,3 +99,21 @@ test("frozen reset and discovery controls render the approved state", () => {
   assert.match(render("verify-verifying"), /Verifying…/);
   assert.doesNotMatch(render("reset-error"), /aria-label="Setup progress"/);
 });
+
+test("connection controls keep one label owner and radio semantics", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(OnboardingScenePresentation, {
+      scene: "connect",
+      data: {
+        ...data,
+        visualOnly: true,
+        harnessLabel: "Claude Code",
+        harnessStatus: "Installed",
+      },
+    }),
+  );
+  assert.equal((html.match(/role="radio"/g) ?? []).length, 4);
+  assert.equal((html.match(/aria-checked="true"/g) ?? []).length, 1);
+  assert.match(html, /Choose agent harness. Current: Claude Code/);
+  assert.doesNotMatch(html, /harness-row|aria-pressed/);
+});
