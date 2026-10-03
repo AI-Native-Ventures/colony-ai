@@ -4,9 +4,10 @@ import { openR17ConnectionSetup, r17Runtime } from "../helpers/onboarding";
 
 const connected = {
   status: "connected",
-  balance: 0,
-  limit: null,
-  limitRemaining: null,
+  usage: 0,
+  freeUsed: 12,
+  limit: 5,
+  limitRemaining: 0,
   freeRemaining: 38,
   freeLimit: 50,
   freeTier: true,
@@ -18,6 +19,12 @@ const connected = {
       name: "Fixture free model",
       free: true,
       context: 32000,
+    },
+    {
+      id: "fixture/free-two:free",
+      name: "Second free model",
+      free: true,
+      context: 16000,
     },
     {
       id: "fixture/paid",
@@ -32,9 +39,10 @@ async function mockOAuth(
   page: Page,
   outcome: Record<string, unknown> = connected,
   delay = false,
+  initial: Record<string, unknown> = { status: "unlinked" },
 ) {
   await page.evaluate(
-    ({ next, hold }) => {
+    ({ next, hold, initial }) => {
       const internals = (
         window as unknown as {
           __TAURI_INTERNALS__: {
@@ -50,7 +58,7 @@ async function mockOAuth(
       let cancel: (() => void) | undefined;
       internals.invoke = async (command, args) => {
         if (command === "get_openrouter_connection")
-          return saved ? next : { status: "unlinked" };
+          return saved ? next : initial;
         if (command === "connect_openrouter") {
           if (hold)
             return new Promise((resolve) => {
@@ -75,12 +83,21 @@ async function mockOAuth(
         }
         if (command === "test_openrouter_connection")
           return { ...next, testResult: "connected" };
-        if (command === "select_openrouter_model")
+        if (command === "select_openrouter_model") {
+          await original("set_global_agent_config", {
+            config: {
+              preferred_runtime: "buzz-agent",
+              provider: "openrouter",
+              model: args?.model,
+              env_vars: { OPENROUTER_API_KEY: "e2e-placeholder" },
+            },
+          });
           return { ...next, model: args?.model };
+        }
         return original(command, args);
       };
     },
-    { next: outcome, hold: delay },
+    { next: outcome, hold: delay, initial },
   );
 }
 
@@ -153,7 +170,7 @@ for (const viewport of [
           ).toBeDisabled();
       }
       if (state === "error")
-        await expect(panel.getByRole("status")).toContainText(
+        await expect(panel.getByRole("alert")).toContainText(
           "sign-in did not finish",
         );
       await waitForAnimations(page);
@@ -242,4 +259,86 @@ test("Settings provides OAuth and keeps manual configuration under Bring your ow
   await page.screenshot({
     path: "test-results/openrouter-proof/settings-connected-1440.png",
   });
+});
+
+for (const status of ["linked", "reauth", "unmanaged"] as const) {
+  test(`saved OpenRouter ${status} cannot silently mint another key`, async ({
+    page,
+  }) => {
+    await openRouterTab(page);
+    await page
+      .getByRole("button", { name: "Bring your own key", exact: true })
+      .click();
+    const initial =
+      status === "linked"
+        ? {
+            ...connected,
+            status,
+            limit: null,
+            limitRemaining: null,
+            usage: null,
+            models: [],
+            metadataWarning:
+              "Your OpenRouter connection is saved. Could not read key limits. Refresh to try again.",
+          }
+        : {
+            status,
+            message:
+              status === "reauth"
+                ? "OpenRouter rejected the saved key. Sign in again."
+                : "This key uses a custom OpenRouter address. Manage it under Bring your own key.",
+          };
+    await mockOAuth(page, connected, false, initial);
+    await page.getByRole("button", { name: "OpenRouter", exact: true }).click();
+    const panel = page.getByTestId("openrouter-connection");
+    await expect(panel).toHaveAttribute("aria-busy", "false");
+    await expect(
+      panel.getByRole("button", { name: "Connect OpenRouter", exact: true }),
+    ).toHaveCount(0);
+    await expect(panel.getByRole("alert")).toBeVisible();
+    if (status === "linked") {
+      await expect(panel.getByText("Saved", { exact: true })).toBeVisible();
+      await expect(
+        panel.getByRole("button", { name: "Test connection", exact: true }),
+      ).toBeDisabled();
+    } else if (status === "reauth")
+      await expect(
+        panel.getByRole("button", { name: "Sign in again", exact: true }),
+      ).toBeEnabled();
+    else
+      await expect(
+        panel.getByRole("button", { name: "Refresh connection", exact: true }),
+      ).toBeEnabled();
+  });
+}
+
+test("model selection keeps focus and saves only on explicit confirmation", async ({
+  page,
+}) => {
+  await openRouterTab(page);
+  await page
+    .getByRole("button", { name: "Connect OpenRouter", exact: true })
+    .click();
+  const panel = page.getByTestId("openrouter-connection");
+  const select = panel.getByLabel("Model", { exact: true });
+  await select.focus();
+  await select.selectOption("fixture/free-two:free");
+  await expect(select).toBeFocused();
+  const model = () =>
+    page.evaluate(async () => {
+      const config = await (
+        window as unknown as {
+          __TAURI_INTERNALS__: {
+            invoke: (command: string) => Promise<{ model: string }>;
+          };
+        }
+      ).__TAURI_INTERNALS__.invoke("get_global_agent_config");
+      return config.model;
+    });
+  expect(await model()).toBe("fixture/free:free");
+  await panel
+    .getByRole("button", { name: "Use this model", exact: true })
+    .click();
+  await expect(panel).toHaveAttribute("aria-busy", "false");
+  expect(await model()).toBe("fixture/free-two:free");
 });

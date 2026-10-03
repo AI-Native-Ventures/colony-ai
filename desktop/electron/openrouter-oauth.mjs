@@ -36,7 +36,8 @@ export function parseAccount(value) {
     throw new Error("Could not read your OpenRouter account. Try again.");
   const data = value.data;
   return {
-    balance: null,
+    usage: finite(data.usage),
+    freeUsed: finite(data.free_model_daily_requests?.used),
     limit: finite(data.limit),
     limitRemaining: finite(data.limit_remaining),
     freeRemaining: finite(data.free_model_daily_requests?.remaining),
@@ -74,9 +75,7 @@ export function parseModels(value) {
   return models;
 }
 const canPay = (account) =>
-  account.freeTier === false &&
-  (account.balance === null || account.balance > 0) &&
-  account.limitRemaining !== 0;
+  account.freeTier === false && account.limitRemaining !== 0;
 const usable = (model, account) =>
   model.free ? account.freeRemaining !== 0 : canPay(account);
 function publicStatus(account, models, model, failedRestarts = 0) {
@@ -96,6 +95,8 @@ export function createOpenRouterService({
   invoke,
   fetchImpl = fetch,
   timeoutMs = 600_000,
+  bringToFront = () => {},
+  createServerImpl = createServer,
 }) {
   let active = null;
 
@@ -120,6 +121,7 @@ export function createOpenRouterService({
           ? "OpenRouter did not authorize this connection. Sign in again."
           : "Could not reach OpenRouter. Try again.",
       );
+      await response.body?.cancel().catch(() => {});
       error.status = response.status;
       throw error;
     }
@@ -154,19 +156,6 @@ export function createOpenRouterService({
   }
   async function accountAndModels(key, attempt, knownModels) {
     const account = parseAccount(await json("/key", key, attempt));
-    try {
-      const credits = await json("/credits", key, attempt);
-      const total = finite(credits?.data?.total_credits);
-      const used = finite(credits?.data?.total_usage);
-      if (total !== null && used !== null)
-        account.balance = Math.max(0, total - used);
-    } catch (error) {
-      // Ordinary OAuth keys can lack management permission. The balance stays unknown.
-      check(attempt);
-      if (error.status !== 401 && error.status !== 403)
-        account.metadataWarning =
-          "Connection saved. Balance is unavailable. Refresh the connection to try again.";
-    }
     const models =
       knownModels ?? parseModels(await json("/models", key, attempt));
     check(attempt);
@@ -179,18 +168,21 @@ export function createOpenRouterService({
     // Cancellation is accepted until the atomic native persistence boundary.
     attempt.saving = true;
     clearTimeout(attempt.timer);
+    const env = { ...config.env_vars, OPENROUTER_API_KEY: key };
+    delete env.OPENROUTER_BASE_URL;
     const result = await invoke("set_global_agent_config", {
       config: {
         ...config,
         provider: "openrouter",
         model,
         preferred_runtime: "buzz-agent",
-        env_vars: { ...config.env_vars, OPENROUTER_API_KEY: key },
+        env_vars: env,
       },
     });
+    check(attempt);
     return result.failed_restart_count ?? 0;
   }
-  async function run(action, duration = 30_000) {
+  async function run(action, duration = 30_000, operation = "sign-in") {
     if (active) throw new Error("An OpenRouter action is already running.");
     const attempt = { controller: new AbortController(), saving: false };
     active = attempt;
@@ -206,14 +198,14 @@ export function createOpenRouterService({
       if (attempt.controller.signal.reason === "timeout")
         return {
           status: "error",
-          message: "OpenRouter sign-in timed out. Try again.",
+          message: `OpenRouter ${operation} timed out. Try again.`,
         };
       // Never surface network URLs, provider bodies, auth codes or credentials.
       return {
         status: "error",
         message: attempt.saving
           ? "Could not finish saving OpenRouter. Refresh the connection before trying again."
-          : "OpenRouter sign-in did not finish. Try again.",
+          : `OpenRouter ${operation} did not finish. Try again.`,
       };
     } finally {
       clearTimeout(attempt.timer);
@@ -225,7 +217,9 @@ export function createOpenRouterService({
   }
   function cancel() {
     if (!active || active.saving) return false;
-    active.controller.abort("cancel");
+    const cancelled = active;
+    active = null;
+    cancelled.controller.abort("cancel");
     return true;
   }
   async function connect() {
@@ -244,10 +238,12 @@ export function createOpenRouterService({
       });
       // Install a rejection handler while listen/openExternal are still pending.
       callback.catch(() => {});
-      const server = createServer(
+      const server = createServerImpl(
         { maxHeaderSize: 8192 },
         (request, response) => {
           response.setHeader("Cache-Control", "no-store");
+          response.setHeader("X-Content-Type-Options", "nosniff");
+          response.setHeader("Referrer-Policy", "no-referrer");
           response.setHeader("Content-Type", "text/plain; charset=utf-8");
           let url;
           try {
@@ -262,10 +258,8 @@ export function createOpenRouterService({
             timingSafeEqual(Buffer.from(received), Buffer.from(state));
           if (
             request.method !== "GET" ||
-            request.headers.host !== attempt.host ||
+            !attempt.hosts.includes(request.headers.host) ||
             url.pathname !== "/callback" ||
-            !validState ||
-            url.searchParams.getAll("state").length !== 1 ||
             consumed ||
             attempt.controller.signal.aborted
           ) {
@@ -276,6 +270,24 @@ export function createOpenRouterService({
               );
             return;
           }
+          // OpenRouter omits state on denial. It can cancel this loopback flow,
+          // but can never exchange or persist a credential.
+          if (
+            url.searchParams.has("error") &&
+            !url.searchParams.has("code") &&
+            !url.searchParams.has("state")
+          ) {
+            consumed = true;
+            response.end("Sign-in cancelled. Return to Colony.");
+            accept(null);
+            bringToFront();
+            server.close();
+            return;
+          }
+          if (!validState || url.searchParams.getAll("state").length !== 1) {
+            response.writeHead(400).end("Invalid callback");
+            return;
+          }
           const codes = url.searchParams.getAll("code");
           if (codes.length > 1 || (codes[0] && codes[0].length > 4096)) {
             response.writeHead(400).end("Invalid callback");
@@ -284,6 +296,7 @@ export function createOpenRouterService({
           consumed = true;
           response.end("Return to Colony to finish connecting OpenRouter.");
           accept(url.searchParams.has("error") ? null : codes[0] || null);
+          bringToFront();
           server.close();
         },
       );
@@ -297,12 +310,13 @@ export function createOpenRouterService({
         server.listen(0, "127.0.0.1", resolve);
       });
       check(attempt);
-      attempt.host = `127.0.0.1:${server.address().port}`;
-      const redirect = new URL(`http://${attempt.host}/callback`);
-      // Embed state in callback_url, without relying on an undocumented top-level echo.
-      redirect.searchParams.set("state", state);
+      const port = server.address().port;
+      attempt.hosts = [`127.0.0.1:${port}`, `localhost:${port}`];
+      const redirect = new URL(`http://localhost:${port}/callback`);
       const auth = new URL("https://openrouter.ai/auth");
       auth.searchParams.set("callback_url", redirect.href);
+      auth.searchParams.set("state", state);
+      auth.searchParams.set("key_label", "Colony");
       auth.searchParams.set("code_challenge", challenge);
       auth.searchParams.set("code_challenge_method", "S256");
       await openExternal(auth.href);
@@ -323,20 +337,18 @@ export function createOpenRouterService({
       try {
         ({ account } = await accountAndModels(key, attempt, models));
         metadataWarning = account.metadataWarning ?? null;
-      } catch {
+      } catch (error) {
         check(attempt);
+        if (error.status === 401 || error.status === 403)
+          return {
+            status: "reauth",
+            message: "OpenRouter rejected this key. Sign in again.",
+          };
         // Preserve the new credential through the existing atomic defaults save,
         // even when a later metadata read fails. Refresh can recover it.
-        account = {
-          balance: null,
-          limit: null,
-          limitRemaining: null,
-          freeRemaining: null,
-          freeLimit: null,
-          freeTier: null,
-        };
+        account = unknownAccount();
         metadataWarning =
-          "Connection saved. Balance and limits are unavailable. Refresh the connection to try again.";
+          "Connection saved. Key limits are unavailable. Refresh the connection to try again.";
       }
       const ordered = [...models].sort(
         (a, b) => b.context - a.context || a.id.localeCompare(b.id),
@@ -349,56 +361,127 @@ export function createOpenRouterService({
       const failedRestarts = await persist(key, selected.id, attempt);
       return {
         ...publicStatus(account, models, selected.id, failedRestarts),
+        ...(metadataWarning ? { status: "linked" } : {}),
         metadataWarning,
       };
     }, timeoutMs);
   }
+  function unknownAccount() {
+    return {
+      usage: null,
+      freeUsed: null,
+      limit: null,
+      limitRemaining: null,
+      freeRemaining: null,
+      freeLimit: null,
+      freeTier: null,
+    };
+  }
   async function read(attempt) {
     const config = await invoke("get_global_agent_config", {});
-    if (!config.env_vars?.OPENROUTER_API_KEY) return null;
-    const { account, models } = await accountAndModels(
-      config.env_vars.OPENROUTER_API_KEY,
-      attempt,
-    );
-    return { config, account, models };
+    check(attempt);
+    if (!config.env_vars?.OPENROUTER_API_KEY)
+      return { outcome: { status: "unlinked" } };
+    const base = config.env_vars.OPENROUTER_BASE_URL;
+    if (base && base.replace(/\/+$/, "") !== API)
+      return {
+        outcome: {
+          status: "unmanaged",
+          message:
+            "This key uses a custom OpenRouter address. Manage it under Bring your own key.",
+        },
+      };
+    try {
+      const { account, models } = await accountAndModels(
+        config.env_vars.OPENROUTER_API_KEY,
+        attempt,
+      );
+      check(attempt);
+      return { config, account, models };
+    } catch (error) {
+      check(attempt);
+      if (error.status === 401 || error.status === 403)
+        return {
+          outcome: {
+            status: "reauth",
+            message: "OpenRouter rejected the saved key. Sign in again.",
+          },
+        };
+      return {
+        outcome: {
+          ...unknownAccount(),
+          status: "linked",
+          provider: config.provider,
+          model: config.model ?? "",
+          models: [],
+          failedRestarts: 0,
+          metadataWarning:
+            "Your OpenRouter connection is saved. Could not read key limits. Refresh to try again.",
+        },
+      };
+    }
   }
   async function status() {
-    return run(async (attempt) => {
-      const data = await read(attempt);
-      return data
-        ? publicStatus(data.account, data.models, data.config.model)
-        : { status: "unlinked" };
-    });
+    return run(
+      async (attempt) => {
+        const data = await read(attempt);
+        check(attempt);
+        return (
+          data.outcome ??
+          publicStatus(data.account, data.models, data.config.model)
+        );
+      },
+      30_000,
+      "refresh",
+    );
   }
   async function select(model) {
     if (typeof model !== "string")
       throw new Error("Choose an OpenRouter model.");
-    return run(async (attempt) => {
-      const data = await read(attempt);
-      const selected = data?.models.find((candidate) => candidate.id === model);
-      if (!selected || !usable(selected, data.account))
-        throw new Error("Choose an available model.");
-      const failedRestarts = await persist(
-        data.config.env_vars.OPENROUTER_API_KEY,
-        model,
-        attempt,
-      );
-      return publicStatus(data.account, data.models, model, failedRestarts);
-    });
+    return run(
+      async (attempt) => {
+        const data = await read(attempt);
+        check(attempt);
+        if (data.outcome) return data.outcome;
+        const selected = data.models.find(
+          (candidate) => candidate.id === model,
+        );
+        if (!selected || !usable(selected, data.account))
+          throw new Error("Choose an available model.");
+        const failedRestarts = await persist(
+          data.config.env_vars.OPENROUTER_API_KEY,
+          model,
+          attempt,
+        );
+        return publicStatus(data.account, data.models, model, failedRestarts);
+      },
+      30_000,
+      "model save",
+    );
   }
   async function testConnection() {
-    return run(async (attempt) => {
-      const data = await read(attempt);
-      if (data?.config.provider !== "openrouter")
-        throw new Error("Connect OpenRouter first.");
-      const testResult = await invoke("test_ai_connection", {
-        config: data.config,
-      });
-      check(attempt);
-      const state = publicStatus(data.account, data.models, data.config.model);
-      if (testResult === "insufficient-balance") state.status = "limit";
-      return { ...state, testResult };
-    });
+    return run(
+      async (attempt) => {
+        const data = await read(attempt);
+        check(attempt);
+        if (data.outcome) return data.outcome;
+        if (data.config.provider !== "openrouter")
+          throw new Error("Connect OpenRouter first.");
+        const testResult = await invoke("test_ai_connection", {
+          config: data.config,
+        });
+        check(attempt);
+        const state = publicStatus(
+          data.account,
+          data.models,
+          data.config.model,
+        );
+        if (testResult === "insufficient-balance") state.status = "limit";
+        return { ...state, testResult };
+      },
+      30_000,
+      "connection test",
+    );
   }
   return { connect, cancel, status, select, test: testConnection };
 }

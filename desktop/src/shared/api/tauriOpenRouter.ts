@@ -7,8 +7,9 @@ export type OpenRouterModel = {
   context: number;
 };
 export type OpenRouterConnection = {
-  status: "connected" | "limit";
-  balance: number | null;
+  status: "connected" | "limit" | "linked";
+  usage: number | null;
+  freeUsed: number | null;
   limit: number | null;
   limitRemaining: number | null;
   freeRemaining: number | null;
@@ -23,7 +24,7 @@ export type OpenRouterConnection = {
 export type OpenRouterOutcome =
   | OpenRouterConnection
   | { status: "unlinked" | "cancelled" }
-  | { status: "error"; message: string };
+  | { status: "error" | "reauth" | "unmanaged"; message: string };
 
 /** Native commands return only account/model metadata, never the provider key. */
 export const connectOpenRouter = () =>

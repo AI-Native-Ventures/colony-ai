@@ -26,6 +26,8 @@ export function OpenRouterConnectionPanel({
   const [account, setAccount] = React.useState<OpenRouterConnection | null>(
     null,
   );
+  const [connectionState, setConnectionState] = React.useState("unknown");
+  const [draftModel, setDraftModel] = React.useState("");
   const [message, setMessage] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState<
     "load" | "connect" | "save" | "test" | null
@@ -37,10 +39,17 @@ export function OpenRouterConnectionPanel({
   onSavedRef.current = onSaved;
   const apply = React.useCallback(
     async (result: OpenRouterOutcome) => {
-      if (result.status === "connected" || result.status === "limit") {
+      if (
+        result.status === "connected" ||
+        result.status === "limit" ||
+        result.status === "linked"
+      ) {
         setAccount(result);
+        setConnectionState("linked");
+        setDraftModel(result.model);
         setMode(
-          result.models.find((model) => model.id === result.model)?.free
+          (result.models.find((model) => model.id === result.model)?.free ??
+            result.model.endsWith(":free"))
             ? "free"
             : "paid",
         );
@@ -58,7 +67,14 @@ export function OpenRouterConnectionPanel({
           queryKey: globalAgentConfigQueryKey,
         });
       } else if (result.status === "error") setMessage(result.message);
-      else if (result.status === "unlinked") setAccount(null);
+      else if (result.status === "reauth" || result.status === "unmanaged") {
+        setAccount(null);
+        setConnectionState(result.status);
+        setMessage(result.message);
+      } else if (result.status === "unlinked") {
+        setAccount(null);
+        setConnectionState("unlinked");
+      }
     },
     [queryClient],
   );
@@ -93,22 +109,29 @@ export function OpenRouterConnectionPanel({
         await apply(result);
         if (
           (kind === "connect" || kind === "save") &&
-          (result.status === "connected" || result.status === "limit")
+          (result.status === "connected" ||
+            result.status === "limit" ||
+            result.status === "linked")
         )
           onSavedRef.current?.();
       }
     } catch {
       if (current === generation.current)
-        setMessage("OpenRouter sign-in did not finish. Try again.");
+        setMessage(
+          kind === "test"
+            ? "Could not test OpenRouter. Try again."
+            : kind === "save"
+              ? "Could not save the model. Try again."
+              : kind === "load"
+                ? "Could not refresh OpenRouter. Try again."
+                : "OpenRouter sign-in did not finish. Try again.",
+        );
     } finally {
       if (current === generation.current) setPending(null);
     }
   }
   const paidAvailable =
-    account &&
-    account.freeTier === false &&
-    account.limitRemaining !== 0 &&
-    (account.balance === null || account.balance > 0);
+    account && account.freeTier === false && account.limitRemaining !== 0;
   const models =
     account?.models.filter((model) => model.free === (mode === "free")) ?? [];
   const exhausted = account?.status === "limit";
@@ -141,7 +164,9 @@ export function OpenRouterConnectionPanel({
           </p>
         </div>
         {account ? (
-          <span className="connected-pill ml-auto text-xs">Connected</span>
+          <span className="connected-pill ml-auto text-xs">
+            {account.status === "linked" ? "Saved" : "Connected"}
+          </span>
         ) : null}
       </div>
       {message ? (
@@ -151,7 +176,7 @@ export function OpenRouterConnectionPanel({
               ? "power-notice"
               : "power-notice is-error"
           }
-          role="status"
+          role={message === "Connection works." ? "status" : "alert"}
         >
           <p>{message}</p>
         </div>
@@ -162,7 +187,7 @@ export function OpenRouterConnectionPanel({
             <p>Connect in your browser, then choose a free or paid model.</p>
             <ul className="list-disc">
               <li>Keep your existing OpenRouter account.</li>
-              <li>Review its balance and limits here.</li>
+              <li>Review its key usage and limits here.</li>
               <li>OpenRouter billing stays separate from Colony credits.</li>
             </ul>
           </div>
@@ -170,13 +195,27 @@ export function OpenRouterConnectionPanel({
             className={button(true)}
             type="button"
             disabled={pending !== null}
-            onClick={() => void act("connect", connectOpenRouter)}
+            onClick={() =>
+              void act(
+                connectionState === "unknown" || connectionState === "unmanaged"
+                  ? "load"
+                  : "connect",
+                connectionState === "unknown" || connectionState === "unmanaged"
+                  ? getOpenRouterConnection
+                  : connectOpenRouter,
+              )
+            }
           >
             {pending === "connect"
               ? "Waiting for OpenRouter"
               : pending === "load"
                 ? "Checking connection"
-                : "Connect OpenRouter"}
+                : connectionState === "unknown" ||
+                    connectionState === "unmanaged"
+                  ? "Refresh connection"
+                  : connectionState === "reauth"
+                    ? "Sign in again"
+                    : "Connect OpenRouter"}
             <ArrowRight className="icon" aria-hidden="true" />
           </button>
           {pending === "connect" ? (
@@ -197,14 +236,16 @@ export function OpenRouterConnectionPanel({
         <>
           <div className="openrouter-balance flex items-center justify-between">
             <span>
-              OpenRouter balance
+              Key spending allowance
               <strong className="block font-semibold">
-                {account.balance === null
-                  ? "Balance unavailable"
+                {account.limitRemaining === null
+                  ? account.metadataWarning
+                    ? "Allowance unavailable"
+                    : "No key spending limit"
                   : new Intl.NumberFormat("en-US", {
                       style: "currency",
                       currency: "USD",
-                    }).format(account.balance)}
+                    }).format(account.limitRemaining)}
               </strong>
             </span>
             <button
@@ -216,15 +257,17 @@ export function OpenRouterConnectionPanel({
               <ArrowRight className="icon" aria-hidden="true" />
             </button>
           </div>
-          {account.limit !== null ? (
-            <p className="power-caption">
-              Key spending limit: ${account.limit.toFixed(2)}. Remaining:{" "}
-              {account.limitRemaining === null
-                ? "Unavailable"
-                : `$${account.limitRemaining.toFixed(2)}`}
-              .
-            </p>
-          ) : null}
+          <p className="power-caption">
+            Key limit:{" "}
+            {account.limit === null
+              ? "Not set or unavailable"
+              : `$${account.limit.toFixed(2)}`}
+            . Usage:{" "}
+            {account.usage === null
+              ? "Unavailable"
+              : `$${account.usage.toFixed(2)}`}
+            .
+          </p>
           <fieldset className="model-modes flex gap-2">
             <legend className="sr-only">OpenRouter model type</legend>
             <button
@@ -253,16 +296,12 @@ export function OpenRouterConnectionPanel({
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                 id={id}
                 value={
-                  models.some((model) => model.id === account.model)
-                    ? account.model
+                  models.some((model) => model.id === draftModel)
+                    ? draftModel
                     : ""
                 }
                 disabled={pending !== null || !models.length}
-                onChange={(event) =>
-                  void act("save", () =>
-                    selectOpenRouterModel(event.target.value),
-                  )
-                }
+                onChange={(event) => setDraftModel(event.target.value)}
               >
                 <option value="" disabled>
                   Choose a {mode} model
@@ -274,6 +313,24 @@ export function OpenRouterConnectionPanel({
                   </option>
                 ))}
               </select>
+              <button
+                className={button()}
+                type="button"
+                disabled={
+                  pending !== null ||
+                  !draftModel ||
+                  draftModel === account.model ||
+                  !models.some((model) => model.id === draftModel)
+                }
+                onClick={() =>
+                  void act("save", () => selectOpenRouterModel(draftModel))
+                }
+              >
+                Use this model
+              </button>
+              {!models.length && account.model ? (
+                <p className="power-caption">Saved model: {account.model}</p>
+              ) : null}
             </div>
             <div className="quota-line flex justify-between">
               <span>Daily free allowance</span>
@@ -309,7 +366,9 @@ export function OpenRouterConnectionPanel({
             <button
               className={button(true)}
               type="button"
-              disabled={pending !== null || exhausted}
+              disabled={
+                pending !== null || exhausted || account.status === "linked"
+              }
               onClick={() => void act("test", testOpenRouterConnection)}
             >
               {pending === "test" ? "Testing connection" : "Test connection"}

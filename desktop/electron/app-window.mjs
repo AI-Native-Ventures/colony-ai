@@ -69,6 +69,12 @@ export function createAppWindow({
   });
   const openRouter = createOpenRouterService({
     openExternal: (url) => shell.openExternal(url),
+    bringToFront: () => {
+      if (!window.isDestroyed()) {
+        window.show();
+        window.focus();
+      }
+    },
     invoke: (command, args) => host.request("invoke", { command, args }),
   });
   window.on("closed", () => openRouter.cancel());
