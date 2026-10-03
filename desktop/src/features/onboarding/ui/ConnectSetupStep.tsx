@@ -239,10 +239,8 @@ function RuntimeOption({
               </Button>
             ) : (
               <p className="provider-account">
-                Open the setup guide to configure{" "}
-                {getRuntimeDisplayLabel(runtime)}. Colony cannot check its
-                sign-in yet. Choose another connection here to start your AI
-                employees.
+                Sign-in cannot be checked. Use the setup guide, or choose
+                another connection.
               </p>
             )}
             <Button
