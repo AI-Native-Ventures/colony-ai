@@ -19793,6 +19793,7 @@ export function maybeInstallE2eTauriMocks() {
         return;
       case "fetch_join_policy":
         return activeConfig?.mock?.joinPolicy ?? null;
+      case "read_business_website":
       case "fetch_link_preview_metadata": {
         if (activeConfig?.mock?.deferLinkPreviewMetadata) {
           await new Promise<void>((resolve) => {

@@ -423,10 +423,12 @@ export function BusinessForm({
               />
               <button
                 className="secondary"
+                disabled={data.websitePending}
+                aria-busy={data.websitePending}
                 onClick={onReadWebsite}
                 type="button"
               >
-                Read website
+                {data.websitePending ? "Reading…" : "Read website"}
               </button>
             </div>
           </div>
@@ -468,7 +470,9 @@ export function BusinessForm({
                 </div>
                 <p className="logo-hint">
                   {data.logoUrl
-                    ? "Your uploaded logo"
+                    ? data.logoSource === "website"
+                      ? "From your website"
+                      : "Your uploaded logo"
                     : "Or we’ll use your website’s icon."}
                 </p>
               </div>

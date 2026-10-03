@@ -10,6 +10,10 @@ use reqwest::{
 use serde::Serialize;
 use url::Url;
 
+#[path = "business_svg.rs"]
+mod business_svg;
+#[path = "business_website.rs"]
+mod business_website;
 #[path = "link_preview_cancellation.rs"]
 mod cancellation;
 #[path = "link_preview_image_retry.rs"]
@@ -18,6 +22,7 @@ mod image_retry;
 mod rate_limit;
 #[path = "link_preview_youtube.rs"]
 mod youtube;
+pub use business_website::*;
 
 use rate_limit::{
     image_host_cooldown_remaining, image_host_gate, retry_after_duration, set_image_host_cooldown,
@@ -179,6 +184,7 @@ fn apply_image_result(
 }
 
 async fn validate_metadata_url(url: &Url) -> Result<(), String> {
+    validate_metadata_url_format(url)?;
     #[cfg(test)]
     if METADATA_TEST_SERVER.try_with(|_| ()).is_ok() {
         return Ok(());
@@ -187,7 +193,7 @@ async fn validate_metadata_url(url: &Url) -> Result<(), String> {
     validate_public_https_url(url).await
 }
 
-async fn validate_public_https_url(url: &Url) -> Result<(), String> {
+fn validate_metadata_url_format(url: &Url) -> Result<(), String> {
     if url.scheme() != "https" || url.username() != "" || url.password().is_some() {
         return Err("link previews require an HTTPS URL without credentials".to_string());
     }
@@ -195,6 +201,26 @@ async fn validate_public_https_url(url: &Url) -> Result<(), String> {
         return Err("link previews require the default HTTPS port".to_string());
     }
 
+    let host = url
+        .host_str()
+        .ok_or_else(|| "link preview URL has no host".to_string())?;
+    let literal = match url.host() {
+        Some(url::Host::Ipv4(ip)) => Some(IpAddr::V4(ip)),
+        Some(url::Host::Ipv6(ip)) => Some(IpAddr::V6(ip)),
+        _ => None,
+    };
+    if literal
+        .as_ref()
+        .is_some_and(buzz_core_pkg::network::is_private_ip)
+    {
+        return Err("link preview host resolved to a private or reserved address".to_string());
+    }
+    let _ = host;
+    Ok(())
+}
+
+async fn validate_public_https_url(url: &Url) -> Result<(), String> {
+    validate_metadata_url_format(url)?;
     let host = url
         .host_str()
         .ok_or_else(|| "link preview URL has no host".to_string())?;
@@ -231,7 +257,10 @@ tokio::task_local! {
 async fn send_metadata_request(url: &Url, accept: &str) -> Result<reqwest::Response, String> {
     #[cfg(test)]
     if let Ok(address) = METADATA_TEST_SERVER.try_with(|address| *address) {
-        return reqwest::Client::new()
+        return reqwest::Client::builder()
+            .redirect(Policy::none())
+            .build()
+            .map_err(|error| error.to_string())?
             .get(format!("http://{address}{}", url.path()))
             .header(ACCEPT, accept)
             .send()
@@ -263,7 +292,7 @@ async fn send_pinned_request(url: &Url, accept: &str) -> Result<reqwest::Respons
     let request = client
         .get(url.as_str())
         .header(ACCEPT, accept)
-        .header(USER_AGENT, "Buzz Desktop link preview");
+        .header(USER_AGENT, "Colony Desktop website reader");
 
     request
         .send()
@@ -422,6 +451,7 @@ async fn fetch_sanitized_image(
     fetch_sanitized_image_using(
         url,
         preserve_transparency,
+        false,
         |url| async move { validate_public_https_url(&url).await },
         |url, accept| async move { send_pinned_request(&url, accept).await },
     )
@@ -431,6 +461,7 @@ async fn fetch_sanitized_image(
 async fn fetch_sanitized_image_using<V, VFut, F, Fut>(
     mut url: Url,
     preserve_transparency: bool,
+    allow_svg_ico: bool,
     mut validate_url: V,
     mut send_request: F,
 ) -> Result<(String, String), ImageFetchError>
@@ -463,12 +494,19 @@ where
         if image_host_cooldown_remaining(&url).is_some() {
             continue;
         }
-        let response = send_request(url.clone(), "image/jpeg,image/png,image/webp")
-            .await
-            .map_err(|_| ImageFetchError::Transient {
-                retry_after: None,
-                retry_inline: !waited_for_cooldown,
-            })?;
+        let response = send_request(
+            url.clone(),
+            if allow_svg_ico {
+                "image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon"
+            } else {
+                "image/jpeg,image/png,image/webp"
+            },
+        )
+        .await
+        .map_err(|_| ImageFetchError::Transient {
+            retry_after: None,
+            retry_inline: !waited_for_cooldown,
+        })?;
         if response.status().is_redirection() {
             if redirect_count == MAX_REDIRECTS {
                 return Err(ImageFetchError::Rejected);
@@ -522,10 +560,16 @@ where
                     .to_ascii_lowercase()
             })
             .ok_or(ImageFetchError::Rejected)?;
-        if !matches!(
+        let raster = matches!(
             declared_mime.as_str(),
             "image/jpeg" | "image/png" | "image/webp"
-        ) {
+        );
+        let business_format = allow_svg_ico
+            && matches!(
+                declared_mime.as_str(),
+                "image/x-icon" | "image/vnd.microsoft.icon" | "image/svg+xml"
+            );
+        if !raster && !business_format {
             return Err(ImageFetchError::Rejected);
         }
         if response
@@ -538,7 +582,7 @@ where
             .await
             .map_err(|_| ImageFetchError::Rejected)?;
         let data_url = tokio::task::spawn_blocking(move || {
-            sanitize_image(&bytes, &declared_mime, preserve_transparency)
+            sanitize_image(&bytes, &declared_mime, preserve_transparency, allow_svg_ico)
         })
         .await
         .map_err(|_| ImageFetchError::Rejected)?
@@ -553,17 +597,31 @@ fn sanitize_image(
     bytes: &[u8],
     declared_mime: &str,
     preserve_transparency: bool,
+    allow_svg_ico: bool,
 ) -> Result<String, String> {
+    if declared_mime == "image/svg+xml" {
+        if !allow_svg_ico {
+            return Err("link preview image type is unsupported".to_string());
+        }
+        return bounded_icon_data_url(business_svg::sanitize_svg(bytes)?, allow_svg_ico);
+    }
+    if !allow_svg_ico && matches!(declared_mime, "image/x-icon" | "image/vnd.microsoft.icon") {
+        return Err("link preview image type is unsupported".to_string());
+    }
     let sniffed = infer::get(bytes)
         .map(|kind| kind.mime_type())
         .ok_or_else(|| "link preview image magic bytes are unsupported".to_string())?;
-    if sniffed != declared_mime {
+    let ico = sniffed == "image/vnd.microsoft.icon" || sniffed == "image/x-icon";
+    if sniffed != declared_mime
+        && !(ico && matches!(declared_mime, "image/x-icon" | "image/vnd.microsoft.icon"))
+    {
         return Err("link preview image content type does not match its bytes".to_string());
     }
     let format = match sniffed {
         "image/jpeg" => image::ImageFormat::Jpeg,
         "image/png" => image::ImageFormat::Png,
         "image/webp" => image::ImageFormat::WebP,
+        "image/x-icon" | "image/vnd.microsoft.icon" => image::ImageFormat::Ico,
         _ => return Err("link preview image type is unsupported".to_string()),
     };
     if declares_animation(bytes, format) {
@@ -596,24 +654,36 @@ fn sanitize_image(
     let mut decoded = image::DynamicImage::from_decoder(decoder)
         .map_err(|_| "link preview image could not be decoded".to_string())?;
     decoded.apply_orientation(orientation);
-    let decoded = decoded.thumbnail(MAX_SANITIZED_DIMENSION, MAX_SANITIZED_DIMENSION);
+    let maximum = if allow_svg_ico {
+        256
+    } else {
+        MAX_SANITIZED_DIMENSION
+    };
+    let decoded = decoded.thumbnail(maximum, maximum);
     let mut output = Vec::new();
     if preserve_transparency && decoded.color().has_alpha() {
         decoded
             .write_to(&mut Cursor::new(&mut output), image::ImageFormat::Png)
             .map_err(|_| "link preview image could not be sanitized".to_string())?;
-        return Ok(format!(
-            "data:image/png;base64,{}",
-            BASE64_STANDARD.encode(output)
-        ));
+        return bounded_icon_data_url(
+            format!("data:image/png;base64,{}", BASE64_STANDARD.encode(output)),
+            allow_svg_ico,
+        );
     }
     image::codecs::jpeg::JpegEncoder::new_with_quality(&mut output, 82)
         .encode_image(&decoded)
         .map_err(|_| "link preview image could not be sanitized".to_string())?;
-    Ok(format!(
-        "data:image/jpeg;base64,{}",
-        BASE64_STANDARD.encode(output)
-    ))
+    bounded_icon_data_url(
+        format!("data:image/jpeg;base64,{}", BASE64_STANDARD.encode(output)),
+        allow_svg_ico,
+    )
+}
+
+fn bounded_icon_data_url(data: String, business: bool) -> Result<String, String> {
+    if business && data.len() > 100 * 1024 {
+        return Err("business icon exceeds storage limit".to_string());
+    }
+    Ok(data)
 }
 
 fn declares_animation(bytes: &[u8], format: image::ImageFormat) -> bool {

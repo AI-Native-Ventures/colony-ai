@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  normalizeBusinessWebsite,
   resolveBusinessLogoUrl,
   websiteFaviconUrl,
 } from "./businessProfile.ts";
@@ -41,4 +42,24 @@ test("website favicon uses a validated HTTP origin", () => {
   assert.equal(websiteFaviconUrl("javascript:alert(1)"), null);
   assert.equal(websiteFaviconUrl("https://user:secret@studio.example"), null);
   assert.equal(websiteFaviconUrl("localhost"), null);
+});
+
+test("business analysis normalizes HTTPS and rejects unsafe URL shapes", () => {
+  assert.equal(
+    normalizeBusinessWebsite(" colony.global "),
+    "https://colony.global/",
+  );
+  assert.equal(
+    normalizeBusinessWebsite("https://colony.ainative.ventures/"),
+    "https://colony.ainative.ventures/",
+  );
+  for (const value of [
+    "",
+    "http://example.com",
+    "javascript:alert(1)",
+    "https://user:pass@example.com",
+    "https://example.com:8080",
+  ]) {
+    assert.equal(normalizeBusinessWebsite(value), null);
+  }
 });

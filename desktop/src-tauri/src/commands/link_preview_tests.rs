@@ -202,6 +202,7 @@ async fn first_rate_limit_and_queued_host_request_share_one_cooldown_boundary() 
     let first = tokio::spawn(fetch_sanitized_image_using(
         url.clone(),
         false,
+        false,
         validate,
         request.clone(),
     ));
@@ -227,7 +228,7 @@ async fn first_rate_limit_and_queued_host_request_share_one_cooldown_boundary() 
     let (collision_started_tx, collision_started_rx) = oneshot::channel();
     tokio::spawn(async move {
         let collision =
-            fetch_sanitized_image_using(colliding_url, false, validate, collision_request);
+            fetch_sanitized_image_using(colliding_url, false, false, validate, collision_request);
         tokio::pin!(collision);
         assert!(futures_util::poll!(&mut collision).is_pending());
         collision_started_tx.send(()).ok();
@@ -237,7 +238,9 @@ async fn first_rate_limit_and_queued_host_request_share_one_cooldown_boundary() 
     assert_eq!(*collision_attempts.lock().unwrap(), 1);
     assert_eq!(*attempts.lock().unwrap(), 1);
 
-    let queued = tokio::spawn(fetch_sanitized_image_using(url, false, validate, request));
+    let queued = tokio::spawn(fetch_sanitized_image_using(
+        url, false, false, validate, request,
+    ));
     tokio::task::yield_now().await;
     assert!(!queued.is_finished());
     assert_eq!(*attempts.lock().unwrap(), 1);
@@ -267,6 +270,7 @@ async fn transport_failure_after_cooldown_does_not_renew_wait_on_outer_retry() {
         async move {
             fetch_sanitized_image_using(
                 url,
+                false,
                 false,
                 |_url| async { Ok(()) },
                 move |_url, _accept| {
@@ -566,8 +570,8 @@ fn sanitizer_rejects_mime_mismatch_and_outputs_static_jpeg() {
     let source = DynamicImage::ImageRgb8(RgbImage::from_pixel(2, 2, Rgb([10, 20, 30])));
     let mut png = Cursor::new(Vec::new());
     source.write_to(&mut png, ImageFormat::Png).unwrap();
-    assert!(sanitize_image(png.get_ref(), "image/jpeg", false).is_err());
-    let sanitized = sanitize_image(png.get_ref(), "image/png", false).unwrap();
+    assert!(sanitize_image(png.get_ref(), "image/jpeg", false, false).is_err());
+    let sanitized = sanitize_image(png.get_ref(), "image/png", false, false).unwrap();
     assert!(sanitized.starts_with("data:image/jpeg;base64,"));
 }
 
@@ -577,7 +581,7 @@ fn favicon_sanitizer_preserves_png_transparency() {
     let mut png = Cursor::new(Vec::new());
     source.write_to(&mut png, ImageFormat::Png).unwrap();
 
-    let sanitized = sanitize_image(png.get_ref(), "image/png", true).unwrap();
+    let sanitized = sanitize_image(png.get_ref(), "image/png", true, false).unwrap();
     assert!(sanitized.starts_with("data:image/png;base64,"));
     let encoded = sanitized.split_once(',').unwrap().1;
     let bytes = base64::engine::general_purpose::STANDARD
@@ -601,4 +605,73 @@ fn animation_markers_are_rejected_before_decode() {
 fn metadata_requires_a_non_empty_title() {
     assert_eq!(extract_link_preview_metadata("<title>   </title>"), None);
     assert_eq!(extract_link_preview_metadata("<html></html>"), None);
+}
+
+#[tokio::test]
+async fn chat_image_pipeline_rejects_svg_before_sanitization() {
+    let result = fetch_sanitized_image_using(
+        Url::parse("https://chat-svg.example/icon.svg").unwrap(),
+        true,
+        false,
+        |_| async { Ok(()) },
+        |_, _| async {
+            Ok(test_response(
+                Router::new().route(
+                    "/svg",
+                    get(|| async {
+                        Response::builder()
+                            .header("content-type", "image/svg+xml")
+                            .body(Body::from("<svg/>"))
+                            .unwrap()
+                    }),
+                ),
+                "/svg",
+            )
+            .await)
+        },
+    )
+    .await;
+    assert_eq!(result, Err(ImageFetchError::Rejected));
+    assert_eq!(
+        sanitize_image(b"<svg/>", "image/svg+xml", true, false),
+        Err("link preview image type is unsupported".to_string())
+    );
+}
+#[test]
+fn business_raster_thumbnail_and_encoded_storage_budget_are_bounded() {
+    let source = DynamicImage::ImageRgb8(RgbImage::from_pixel(1024, 1024, Rgb([10, 20, 30])));
+    let mut png = Cursor::new(Vec::new());
+    source.write_to(&mut png, ImageFormat::Png).unwrap();
+    let data = sanitize_image(png.get_ref(), "image/png", true, true).unwrap();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data.split_once(',').unwrap().1)
+        .unwrap();
+    let image = image::load_from_memory(&bytes).unwrap();
+    assert_eq!((image.width(), image.height()), (256, 256));
+    assert!(data.len() <= 100 * 1024);
+    assert_eq!(
+        super::bounded_icon_data_url("x".repeat(100 * 1024 + 1), true),
+        Err("business icon exceeds storage limit".to_string())
+    );
+    assert!(super::bounded_icon_data_url("x".repeat(100 * 1024 + 1), false).is_ok());
+}
+
+#[test]
+fn business_icon_rejects_encoded_noise_while_chat_keeps_its_raster_contract() {
+    let mut state = 0x12345678u32;
+    let noise = RgbaImage::from_fn(256, 256, |_, _| {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        Rgba(state.to_le_bytes())
+    });
+    let mut png = Cursor::new(Vec::new());
+    DynamicImage::ImageRgba8(noise)
+        .write_to(&mut png, ImageFormat::Png)
+        .unwrap();
+    assert_eq!(
+        sanitize_image(png.get_ref(), "image/png", true, true),
+        Err("business icon exceeds storage limit".to_string())
+    );
+    assert!(sanitize_image(png.get_ref(), "image/png", true, false).is_ok());
 }
