@@ -206,6 +206,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn managed_and_shell_bins_precede_user_managers_and_homebrew_follows_sidecars() {
+        let _guard = crate::managed_agents::lock_path_mutex();
         let result = build_augmented_path(
             Some(PathBuf::from("/home/agent")),
             Some(PathBuf::from("/app/sidecars")),
