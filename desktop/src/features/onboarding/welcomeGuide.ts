@@ -221,9 +221,7 @@ export async function buildWelcomeStarterCreateInput(
     preferredRuntimeId &&
     !runtimes.some((runtime) => runtime.id === preferredRuntimeId)
   ) {
-    throw new Error(
-      "Your selected AI runtime is unavailable. Reconnect it in Settings, Agents, Defaults.",
-    );
+    throw new Error("Your selected AI connection is unavailable.");
   }
   const { runtime } = resolveStartRuntimeForDefinition(
     preferredRuntimeId ? { ...persona, runtime: preferredRuntimeId } : persona,
@@ -286,6 +284,19 @@ export function welcomeStarterRuntimeUpdate(
     model: desiredModel,
     provider: desiredProvider,
   };
+}
+
+/** Stop a running starter before applying changed launch fields, so kickoff starts the new runtime. */
+export async function reconcileWelcomeStarter(
+  existing: ManagedAgent,
+  desired: CreateManagedAgentInput,
+  stop = stopManagedAgent,
+  update = updateManagedAgent,
+): Promise<ManagedAgent> {
+  const runtimeUpdate = welcomeStarterRuntimeUpdate(existing, desired);
+  if (!runtimeUpdate) return existing;
+  if (existing.status === "running") await stop(existing.pubkey);
+  return (await update(runtimeUpdate)).agent;
 }
 
 export function welcomeTeammateHasExpectedAccess(
@@ -390,15 +401,7 @@ async function provisionWelcomeTeam(
       relayUrl,
     );
     if (existing) {
-      const runtimeUpdate = welcomeStarterRuntimeUpdate(existing, desired);
-      if (runtimeUpdate && existing.status === "running") {
-        await stopManagedAgent(existing.pubkey);
-      }
-      agents.push(
-        runtimeUpdate
-          ? (await updateManagedAgent(runtimeUpdate)).agent
-          : existing,
-      );
+      agents.push(await reconcileWelcomeStarter(existing, desired));
       continue;
     }
 

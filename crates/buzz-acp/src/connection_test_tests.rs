@@ -2,9 +2,12 @@ use super::*;
 
 #[test]
 fn success_requires_a_completed_nonempty_turn_and_rejects_auth_or_quota_text() {
+    // Public adapter failure reports: github.com/zed-industries/zed/issues/37976
+    // and github.com/anthropics/claude-code/issues/12204. No owner transcript was read.
     for reply in [
         "",
         "Invalid API key, please run /login",
+        "Invalid API key · Fix external API key",
         "Credit balance is too low",
         "Usage limit reached",
     ] {

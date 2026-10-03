@@ -41,18 +41,19 @@ export async function cancelOnboardingConnectionTest() {
 async function invokeConnection(config: GlobalAgentConfig) {
   const requestId = crypto.randomUUID();
   activeRequestId = requestId;
-  const unlisten = await listen<{ requestId: string; phase: string }>(
-    "onboarding-connection-progress",
-    ({ payload }) => {
-      if (
-        payload.requestId === requestId &&
-        activeRequestId === requestId &&
-        payload.phase === "waiting"
-      )
-        reportProgress("waiting");
-    },
-  );
+  let unlisten = () => {};
   try {
+    unlisten = await listen<{ requestId: string; phase: string }>(
+      "onboarding-connection-progress",
+      ({ payload }) => {
+        if (
+          payload.requestId === requestId &&
+          activeRequestId === requestId &&
+          payload.phase === "waiting"
+        )
+          reportProgress("waiting");
+      },
+    );
     if (activeRequestId !== requestId)
       throw new Error("Connection test cancelled.");
     return await invokeTauri<OnboardingConnectionProof & { error?: string }>(

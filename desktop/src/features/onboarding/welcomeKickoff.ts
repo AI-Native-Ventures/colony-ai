@@ -3,12 +3,17 @@ import { startWelcomeAgentsForKickoff } from "./welcomeStartup";
 
 import {
   managedAgentsQueryKey,
+  gitBashPrerequisiteQueryKey,
   useAcpRuntimesQuery,
   useGitBashPrerequisiteQuery,
   useManagedAgentsQuery,
 } from "@/features/agents/hooks";
+import { refreshAcpRuntimes } from "@/features/agents/acpRuntimesQuery";
 import { useAgentAccessOwnerOnlyQuery } from "@/features/agents/useAgentAccessOwnerOnly";
-import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
+import {
+  globalAgentConfigQueryKey,
+  useGlobalAgentConfig,
+} from "@/features/agents/useGlobalAgentConfig";
 import { clearActiveTurnsForAgentOnStop } from "@/features/agents/managedAgentRuntimeHooks";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { welcomeKickoffMarker } from "@/features/onboarding/devFreshOnboarding";
@@ -527,9 +532,29 @@ export function useWelcomeKickoff(
   const [kickoffError, setKickoffError] = React.useState<string | null>(null);
   const [retryGeneration, setRetryGeneration] = React.useState(0);
   const retryKickoff = React.useCallback(() => {
-    setKickoffError(null);
-    setRetryGeneration((value) => value + 1);
-  }, []);
+    void (async () => {
+      try {
+        const [, , catalog] = await Promise.all([
+          queryClient.refetchQueries(
+            { queryKey: globalAgentConfigQueryKey },
+            { throwOnError: true },
+          ),
+          queryClient.refetchQueries(
+            { queryKey: gitBashPrerequisiteQueryKey },
+            { throwOnError: true },
+          ),
+          refreshAcpRuntimes(queryClient),
+        ]);
+        if (!catalog) throw new Error("AI connection discovery failed.");
+        setKickoffError(null);
+        setRetryGeneration((value) => value + 1);
+      } catch {
+        setKickoffError(
+          "We couldn't check your AI connection. Check your connection settings, then retry.",
+        );
+      }
+    })();
+  }, [queryClient]);
   const channelId = activeChannel?.id ?? null;
   const isActiveWelcome = isWelcomeChannel(activeChannel);
   const focusedWelcomeChannelRef = React.useRef<string | null>(null);
