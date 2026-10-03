@@ -46,7 +46,6 @@ import type {
   UpdatePersonaInput,
 } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
-import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
 import { TeamPage, TeamPageTitle } from "./TeamPage";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { Textarea } from "@/shared/ui/textarea";
@@ -841,25 +840,6 @@ export function EmployeeProfileScreen({
           </p>
         </div>
       </div>
-      {status === "paused" ? (
-        <Alert className="mb-6" data-testid="company-paused-banner">
-          <AlertTitle>Paused · {currentPosition?.reason}</AlertTitle>
-          <AlertDescription>
-            Existing work stays visible. Resume when the reason is resolved.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-      {status === "terminated" ? (
-        <Alert className="mb-6" data-testid="company-terminated-banner">
-          <AlertTitle>
-            Terminated employee · {currentPosition?.reason}
-          </AlertTitle>
-          <AlertDescription>
-            Definition, lessons and history are retained. Rehire requires
-            founder review.
-          </AlertDescription>
-        </Alert>
-      ) : null}
       {notice ? (
         <p className="mb-4 text-sm text-muted-foreground" role="status">
           {notice}
@@ -906,6 +886,29 @@ export function EmployeeProfileScreen({
         id="employee-profile-tabpanel"
         role="tabpanel"
       >
+        {tab === "overview" && status !== "active" ? (
+          <section
+            aria-label={
+              status === "paused" ? "Paused employee" : "Terminated employee"
+            }
+            className="mb-5 border-l-2 border-border bg-muted p-[0.9375rem] text-xs"
+            data-testid={
+              status === "paused"
+                ? "company-paused-banner"
+                : "company-terminated-banner"
+            }
+          >
+            <strong>
+              {status === "paused" ? "Paused" : "Terminated employee"} ·{" "}
+              {currentPosition?.reason}
+            </strong>
+            <p className="mt-1.5 text-muted-foreground">
+              {status === "paused"
+                ? "Existing work stays visible. Resume when the reason is resolved."
+                : "Definition, lessons and history are retained. Rehire requires founder review."}
+            </p>
+          </section>
+        ) : null}
         {tab === "overview" ? (
           <CompanyEmployeeProfileActions
             canManage={canManage}

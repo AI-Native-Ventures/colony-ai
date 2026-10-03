@@ -164,6 +164,7 @@ for (const viewport of [
     await items.first().focus();
     await page.keyboard.press("ArrowRight");
     await expect(items.nth(1)).toBeFocused();
+    await team.getByRole("heading", { name: "Team", exact: true }).click();
     await capture("team-org");
     await page.goto(`/#/team/detail/${employeePubkey}`);
     await expect(page.getByTestId("company-employee-profile")).toBeVisible();
@@ -173,6 +174,10 @@ for (const viewport of [
     await expect(
       page.getByTestId("company-employee-direct-reports"),
     ).toContainText("Noluthando");
+    await expect(page.getByTestId("company-paused-banner")).toBeVisible();
+    await page.getByRole("tab", { name: "Instructions", exact: true }).click();
+    await expect(page.getByTestId("company-paused-banner")).toHaveCount(0);
+    await page.getByRole("tab", { name: "Overview", exact: true }).click();
     await capture("team-detail-mina");
     await page.goto(`/#/team/edit/${employeePubkey}`);
     await expect(page.getByLabel("Title")).toHaveValue(employee.title);
