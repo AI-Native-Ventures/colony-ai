@@ -331,8 +331,8 @@ async function expectWelcomePersonaMention(page: Page) {
   const banner = page.getByTestId("welcome-composer-guide-banner");
   const personaMention = page.getByTestId("welcome-composer-persona-mention");
   await expect(personaMention).toBeVisible();
-  await expect(personaMention).toHaveAttribute("data-persona-options", "Fizz");
-  await expect(personaMention).toHaveAttribute("data-active-persona", "Fizz");
+  await expect(personaMention).toHaveAttribute("data-persona-options", "Scout");
+  await expect(personaMention).toHaveAttribute("data-active-persona", "Scout");
   await expect(personaMention).toHaveAttribute(
     "data-animation-target",
     "per-character",
@@ -798,7 +798,7 @@ test("R17 signup blocks passwords shorter than the designed minimum", async ({
     .getByRole("button", { name: "Create account", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Create your account" }),
+    page.getByRole("heading", { name: "Let’s get you started." }),
   ).toBeVisible();
   await expect(page.getByLabel("Digit 1 of 6")).toHaveCount(0);
 });
@@ -875,7 +875,7 @@ test("R17 password recovery returns to sign in without backup import", async ({
     .click();
 
   await expect(
-    page.getByRole("heading", { name: "Welcome back" }),
+    page.getByRole("heading", { name: "Welcome back." }),
   ).toBeVisible();
   await expect(page.getByRole("form", { name: "Sign in" })).toBeVisible();
   await expect(page.getByTestId("nostr-import-passphrase")).toHaveCount(0);
@@ -1132,7 +1132,7 @@ test("first-community owner reconnect path does not expose Builderlab creation",
   await openOwnedCommunityReconnect(page);
   await page.getByRole("button", { name: "Sign in to continue" }).click();
   await expect(
-    page.getByRole("heading", { name: "Finish connecting Buzz" }),
+    page.getByRole("heading", { name: "Finish connecting Colony" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Connect and continue" }).click();
   await expect(
@@ -1212,7 +1212,7 @@ test("first-community owner can replace a mismatched account identity", async ({
   await openOwnedCommunityReconnect(page);
   await expect(
     page.getByRole("heading", {
-      name: "This account uses a different Buzz identity",
+      name: "This account uses a different Colony identity",
     }),
   ).toBeVisible();
   // The account row must show the authoritative bound key's npub, never the
@@ -1291,7 +1291,7 @@ test("first-community owner recovers from an npub-only account identity", async 
   // account: the mismatch recovery modal drives the flow instead.
   await expect(
     page.getByRole("heading", {
-      name: "This account uses a different Buzz identity",
+      name: "This account uses a different Colony identity",
     }),
   ).toBeVisible();
   await expect(
@@ -1374,7 +1374,7 @@ test("first-community owner never rebinds over a same-key spelling in the hex fi
   await openOwnedCommunityReconnect(page);
   await expect(
     page.getByRole("heading", {
-      name: "This account uses a different Buzz identity",
+      name: "This account uses a different Colony identity",
     }),
   ).toBeVisible();
   await expect(page.getByText("Account: Unavailable")).toBeVisible();
@@ -1424,7 +1424,7 @@ test("first-community owner with a padded same-key hex is ready, not mismatched"
   await openOwnedCommunityReconnect(page);
   await expect(
     page.getByRole("heading", {
-      name: "This account uses a different Buzz identity",
+      name: "This account uses a different Colony identity",
     }),
   ).toHaveCount(0);
   await expect(
@@ -1470,11 +1470,11 @@ test("first-community explains when the local identity belongs to another accoun
     .click();
   await expect(
     page.getByText(
-      "This device's Buzz identity belongs to a different Builderlab account and can't be moved from here. Sign out, then sign in with the account that already owns this identity.",
+      "This device's Colony identity belongs to a different Builderlab account and can't be moved from here. Sign out, then sign in with the account that already owns this identity.",
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Finish connecting Buzz" }),
+    page.getByRole("heading", { name: "Finish connecting Colony" }),
   ).toBeVisible();
 });
 
@@ -3129,13 +3129,13 @@ test("first-run onboarding posts the live Fizz kickoff", async ({ page }) => {
     "offline",
   ]);
   await expect(page.getByTestId("message-timeline")).not.toContainText(
-    "Hi Morty QA, I'm Fizz. Welcome to Buzz.",
+    "Hi Morty QA, I'm Scout. Welcome to Colony.",
   );
   await publishWelcomeTeamPresence(page);
   // Greeted by the name typed above — the @mention pill also files the opener
   // into the new user's Inbox mentions feed.
   await expect(page.getByTestId("message-timeline")).toContainText(
-    "Hi Morty QA, I'm Fizz. Welcome to Buzz.",
+    "Hi Morty QA, I'm Scout. Welcome to Colony.",
   );
   await expect(page.getByTestId("message-timeline")).toContainText(
     "Honey and Pollen, introduce yourselves",
@@ -3160,7 +3160,7 @@ test("first-run onboarding lands before Welcome team bootstrap completes", async
   await expect(page.getByTestId("app-loading-gate")).toHaveCount(0);
   await publishWelcomeTeamPresence(page);
   await expect(page.getByTestId("message-timeline")).toContainText(
-    "Hi Morty QA, I'm Fizz. Welcome to Buzz.",
+    "Hi Morty QA, I'm Scout. Welcome to Colony.",
   );
   await page.waitForTimeout(1_500);
   expect(await commandCount(page, "create_managed_agent")).toBe(3);
@@ -4049,7 +4049,7 @@ test("denied on relay A then paste relay B invite URL switches community to B", 
   await expect(page.getByText("I am 18 years of age or older.")).toBeVisible();
   await page.getByLabel("I am 18 years of age or older.").check();
   await page
-    .getByLabel("I agree to the Buzz Terms of Service and Privacy Policy.")
+    .getByLabel("I agree to the Colony Terms of Service and Privacy Policy.")
     .check();
   await page.getByTestId("invite-redeem-submit").click();
 

@@ -76,13 +76,13 @@ test("R17 signup and email verification screens fit the onboarding card", async 
   page,
 }) => {
   await startR17AccountAuth(page);
-  await expect(page.getByTestId("google-account-scene")).toBeVisible();
+  await expect(page.getByTestId("onboarding-scene-signin")).toBeVisible();
   await waitForAnimations(page);
   await page.screenshot({ path: `${SHOT_DIR}/01-account-sign-in.png` });
 
   await page.getByRole("button", { name: "Create an account" }).click();
   await expect(
-    page.getByRole("heading", { name: "Create your account" }),
+    page.getByRole("heading", { name: "Let’s get you started." }),
   ).toBeVisible();
   await page.getByLabel("Your name").fill("Lerato Molefe");
   await page.getByLabel("Email address").fill("signup@example.com");

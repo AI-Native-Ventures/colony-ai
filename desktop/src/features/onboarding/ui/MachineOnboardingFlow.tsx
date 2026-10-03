@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Brand } from "./OnboardingScenePrimitives";
 import type { QueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "motion/react";
 
@@ -33,7 +34,6 @@ import {
 } from "./IdentityKeyHelpDialog";
 import { IdentityKeyIntroduction } from "./IdentityKeyIntroduction";
 import { IdentityRecoveryPairing } from "./IdentityRecoveryPairing";
-import { LandingBees } from "./LandingBees";
 import {
   NostrKeyImportForm,
   type NostrKeyImportStage,
@@ -85,7 +85,7 @@ function unavailableBody(capability: NativeCapability): string {
     case "identity-import":
       return "Importing an existing identity is not available in this Electron build yet. No identity data was read or changed.";
     case "identity-recovery":
-      return "Identity recovery is not available in this Electron build yet. Unlock or recover the identity in a supported Buzz desktop build.";
+      return "Identity recovery is not available in this Electron build yet. Unlock or recover the identity in a supported Colony desktop build.";
     case "identity-create":
       return "Creating or replacing an identity is not available in this Electron build yet.";
     default:
@@ -490,7 +490,6 @@ export function MachineOnboardingFlow({
         data-testid="machine-onboarding-gate"
       >
         <StartupWindowDragRegion />
-        <LandingBees />
         <OnboardingFooterProvider>
           <div className="relative my-auto flex w-full max-w-[1040px] flex-col items-center text-center">
             <OnboardingSlideTransition
@@ -498,11 +497,9 @@ export function MachineOnboardingFlow({
               direction={transitionDirection}
               transitionKey={`machine-identity-${transitionDirection}`}
             >
-              <img
-                alt="Buzz"
-                className="w-full max-w-[600px]"
-                src="/landing/buzz-wordmark.png"
-              />
+              <div className="text-4xl">
+                <Brand />
+              </div>
               <p className="mt-2 max-w-[560px] text-center text-2xl font-normal leading-none text-foreground">
                 Your people, your agents, your projects,
                 <br />
@@ -774,7 +771,7 @@ export function MachineOnboardingFlow({
                 Restore from a backup file
               </h1>
               <p className="mt-2 w-full text-base leading-6 text-foreground/80">
-                Choose the encrypted backup file you saved from Buzz.
+                Choose the encrypted backup file you saved from Colony.
               </p>
               <NostrKeyImportForm
                 key={keyImportFormKey}
@@ -798,7 +795,7 @@ export function MachineOnboardingFlow({
               </h1>
               <p className="mt-2 w-full text-base leading-6 text-foreground/80">
                 {phoneRecoveryStep === "loading" || phoneRecoveryStep === "qr"
-                  ? "Scan this code with a device where you’re currently signed in to Buzz."
+                  ? "Scan this code with a device where you’re currently signed in to Colony."
                   : "Confirm the code before sharing your identity."}
               </p>
               <div
@@ -833,7 +830,7 @@ export function MachineOnboardingFlow({
                     "Enter your backup password to restore your identity."
                   ) : (
                     <p>
-                      Paste your private key to sign in to Buzz. You can also
+                      Paste your private key to sign in to Colony. You can also
                       use a{" "}
                       <button
                         className="rounded-sm font-medium underline decoration-foreground/40 underline-offset-4 transition-colors hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-60"

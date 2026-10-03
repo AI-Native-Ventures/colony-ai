@@ -1,3 +1,4 @@
+import * as React from "react";
 import { onboardingSceneStage } from "./onboardingScenes";
 import type { PresentationProps } from "./OnboardingSceneTypes";
 import {
@@ -14,7 +15,7 @@ import {
   ConnectionShell,
   StaticConnectContent,
 } from "./OnboardingConnectionContent";
-import { ConnectedScene, WorkspacePreview } from "./OnboardingSceneOverlays";
+import { ConnectedScene } from "./OnboardingSceneOverlays";
 import {
   EmailCodePresentation,
   isEmailCodeScene,
@@ -194,21 +195,13 @@ function SceneBody(props: PresentationProps) {
 }
 
 export function OnboardingScenePresentation(props: PresentationProps) {
+  const [focusTopic, setFocusTopic] = React.useState<string>();
   const workspaceScene =
     props.scene === "workspace" ||
     props.scene === "history" ||
     props.scene === "history-review";
-  if (workspaceScene) {
-    return (
-      <div className="colony-onboarding-root">
-        <div className="onboarding-viewport">
-          <div className="app-frame onboarding-app-frame">
-            <WorkspacePreview data={props.data} scene={props.scene} />
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // The host router owns the full app. Never render the retired miniature shell.
+  if (workspaceScene) return <>{props.contentOverride}</>;
   const access = accessScene(props.scene);
   const switchText = access ? null : props.scene === "account" ||
     props.scene === "account-error" ? (
@@ -263,8 +256,14 @@ export function OnboardingScenePresentation(props: PresentationProps) {
               data={{ ...props.data, error: props.error ?? props.data.error }}
               onLogoError={props.onLogoError}
               scene={props.scene}
+              focusTopic={focusTopic}
             />
-            <div className="form-side">
+            <div
+              className="form-side"
+              onFocusCapture={(event) =>
+                setFocusTopic((event.target as HTMLElement).id)
+              }
+            >
               <div className="account-switch">{switchText}</div>
               <div
                 className={`form-content screen-enter ${power ? "wide power-content" : ""} ${onboardingSceneStage(props.scene) === 1 ? "business-content" : ""}`}

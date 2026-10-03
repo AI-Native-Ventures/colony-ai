@@ -66,13 +66,20 @@ export function StoryPanel({
   scene,
   data,
   onLogoError,
+  focusTopic,
 }: {
+  focusTopic?: string;
   scene: OnboardingSceneId;
   data: OnboardingSceneData;
   onLogoError?: () => void;
 }) {
   const stage = onboardingSceneStage(scene);
-  const guidance = scoutGuidance(scene, data.error, data.scoutGuidance);
+  const guidance = scoutGuidance(
+    scene,
+    data.error,
+    data.scoutGuidance,
+    focusTopic,
+  );
   const businessPreview = stage === 1;
   return (
     <aside className="story">
@@ -238,7 +245,7 @@ export function SignInForm({
     <>
       <h2>Welcome back.</h2>
       <p className="lede">Let’s pick up where you left off.</p>
-      <form onSubmit={onSubmit}>
+      <form aria-label="Sign in" onSubmit={onSubmit}>
         <div className="fields">
           <div className="field">
             <label htmlFor="signin-email">Email address</label>

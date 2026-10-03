@@ -13,6 +13,7 @@ export function scoutGuidance(
   scene: OnboardingSceneId,
   error?: string | null,
   override?: ScoutGuidance,
+  focusTopic?: string,
 ): ScoutGuidance {
   if (override) return override;
   let guidance: ScoutGuidance = {
@@ -53,6 +54,23 @@ export function scoutGuidance(
       status: "Your turn",
       pose: "waiting",
     };
+  const fieldCopy: Record<string, [string, string]> = {
+    "business-name": [
+      "What’s your business called?",
+      "A working name is enough to get started.",
+    ],
+    "business-website": [
+      "Already have a website?",
+      "I can bring its details into this same form.",
+    ],
+    "business-description": [
+      "What does your business do?",
+      "Tell me who you help and what you do for them.",
+    ],
+  };
+  const focused = focusTopic ? fieldCopy[focusTopic] : undefined;
+  if ((scene.includes("business") || scene === "additional") && focused)
+    guidance = { ...guidance, title: focused[0], copy: focused[1] };
   const working =
     scene === "testing" ||
     scene === "subscription-scan" ||

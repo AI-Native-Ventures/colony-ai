@@ -1,3 +1,4 @@
+import scoutSvg from "./assets/scout.svg?raw";
 import {
   buildInstanceInputForDefinition,
   resolveStartRuntimeForDefinition,
@@ -22,15 +23,16 @@ import type {
 } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 
-export const WELCOME_GUIDE_AGENT_NAME = "Fizz";
+export const WELCOME_GUIDE_AGENT_NAME = "Scout";
 export const WELCOME_GUIDE_PERSONA_ID = "builtin:fizz";
 export const WELCOME_TEAM_ID = "builtin-team:welcome";
 export const WELCOME_GUIDE_INTRO_MARKER = "buzz-welcome-intro.v1";
+export const WELCOME_SCOUT_AVATAR = `data:image/svg+xml,${encodeURIComponent(scoutSvg)}`;
 const LEGACY_WELCOME_GUIDE_AGENT_NAME = "Kit";
 export const LEGACY_WELCOME_GUIDE_SYSTEM_PROMPT =
   "You are Kit, Sprout's friendly welcome guide. Help new users understand the community, channels, messages, and agents. Keep introductions concise, practical, and warm.";
 export const WELCOME_GUIDE_INTRO_MESSAGE =
-  "Hi, I'm Fizz. Welcome to Buzz.\n\nI can help you get oriented, answer questions, and make the first few steps feel less mysterious.\n\nFeel free to ask me what else you can do in Buzz, or just talk through what you want to build.";
+  "Hi, I'm Scout. Welcome to Colony.\n\nI can help you get oriented, answer questions, and make the first few steps feel less mysterious.\n\nFeel free to ask me what else you can do in Colony, or just talk through what you want to build.";
 
 export type WelcomeTeamRole = "lead" | "teammate";
 
@@ -42,7 +44,7 @@ export type WelcomeTeamStarterDefinition = Readonly<{
 
 /** Stable identities used to provision the Rust-seeded Welcome Team. */
 export const WELCOME_TEAM_STARTERS = [
-  { name: "Fizz", personaId: "builtin:fizz", role: "lead" },
+  { name: "Scout", personaId: "builtin:fizz", role: "lead" },
   { name: "Honey", personaId: "builtin:honey", role: "teammate" },
   { name: "Pollen", personaId: "builtin:bumble", role: "teammate" },
 ] as const satisfies readonly WelcomeTeamStarterDefinition[];
@@ -221,8 +223,21 @@ export async function buildWelcomeStarterCreateInput(
     preferredRuntimeId,
   );
   return {
-    ...(await buildInstanceInputForDefinition(persona, runtime)),
+    ...(await buildInstanceInputForDefinition(
+      starter.role === "lead"
+        ? { ...persona, avatarUrl: WELCOME_SCOUT_AVATAR }
+        : persona,
+      runtime,
+    )),
     name: starter.name,
+    ...(starter.role === "lead"
+      ? {
+          systemPrompt: persona.systemPrompt
+            ?.replace(/\bFizz\b/g, "Scout")
+            .replace(/Add occasional bee wordplay[^.]*\./gu, "")
+            .trim(),
+        }
+      : {}),
     teamId: WELCOME_TEAM_ID,
     relayUrl: relayUrl ?? undefined,
     spawnAfterCreate: false,

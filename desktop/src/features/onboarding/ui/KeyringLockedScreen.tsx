@@ -51,7 +51,7 @@ export function KeyringLockedScreen() {
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
           Your identity is safe in the OS keyring, but it's unreachable this
           session. Unlock your keyring or sign into your desktop session, then
-          relaunch Buzz.
+          relaunch Colony.
         </p>
 
         {!canRelaunch && !canImport ? (
@@ -60,7 +60,7 @@ export function KeyringLockedScreen() {
             data-testid="identity-recovery-unsupported"
             role="status"
           >
-            Unlock or recover this identity in a supported Buzz desktop build,
+            Unlock or recover this identity in a supported Colony desktop build,
             then relaunch it. Electron identity recovery is not available in
             this build yet.
           </p>
@@ -81,7 +81,7 @@ export function KeyringLockedScreen() {
                 }}
                 type="button"
               >
-                Relaunch Buzz
+                Relaunch Colony
               </Button>
             ) : null}
             {canImport ? (
