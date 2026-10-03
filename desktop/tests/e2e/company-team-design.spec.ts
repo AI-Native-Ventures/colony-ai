@@ -230,4 +230,34 @@ test("Team does not infer an employee position from its running runtime", async 
       path: `output/playwright/company-design/app-team-unknown-${viewport.width}-${test.info().project.name}.png`,
     });
   }
+  await row.click();
+  const profile = page.getByTestId("company-employee-profile");
+  await expect(profile).toBeVisible();
+  await expect(page.getByTestId("company-position-header")).toContainText(
+    "Employee · unknown",
+  );
+  await expect(page.getByTestId("company-terminated-banner")).toHaveCount(0);
+  await expect(
+    profile.getByRole("button", { name: "Pause employee", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    profile.getByRole("button", { name: "Terminate employee", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    profile.getByRole("button", {
+      name: "Edit role and reporting",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(profile).toContainText("Reporting line not set");
+  for (const viewport of [
+    { width: 1728, height: 1117 },
+    { width: 1440, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `output/playwright/company-design/app-team-profile-unknown-${viewport.width}-${test.info().project.name}.png`,
+    });
+  }
 });

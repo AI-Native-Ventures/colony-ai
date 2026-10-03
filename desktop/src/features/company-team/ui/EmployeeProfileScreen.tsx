@@ -268,12 +268,10 @@ export function EmployeeProfileScreen({
         managerPubkey,
       )
     : null;
-  const status = currentPosition?.status ?? "active";
-  const subtitle = [
-    currentPosition?.title || "Employee",
-    "Employee",
-    status,
-  ].join(" · ");
+  const status = currentPosition?.status ?? "unknown";
+  const subtitle = [currentPosition?.title, "Employee", status]
+    .filter(Boolean)
+    .join(" · ");
   const relaySelf = teamData.relaySelf;
   const secretsQuery = useQuery({
     queryKey: ["company-secret-bindings", relaySelf],
@@ -697,7 +695,7 @@ export function EmployeeProfileScreen({
   }
 
   if (!agent) {
-    const positionStatus = currentPosition?.status ?? "active";
+    const positionStatus = currentPosition?.status ?? "unknown";
     return (
       <main
         className="mx-auto w-full max-w-[72rem] px-6 py-8 xl:px-0"
@@ -886,7 +884,8 @@ export function EmployeeProfileScreen({
         id="employee-profile-tabpanel"
         role="tabpanel"
       >
-        {tab === "overview" && status !== "active" ? (
+        {tab === "overview" &&
+        (status === "paused" || status === "terminated") ? (
           <section
             aria-label={
               status === "paused" ? "Paused employee" : "Terminated employee"

@@ -117,7 +117,9 @@ export function CompanyEmployeeProfileActions({
           <p className="mt-2 text-xs text-muted-foreground">
             {position?.title || "Title not set"}
             <br />
-            {managerName ? `Reports to ${managerName}` : "Company founder"}
+            {managerName
+              ? `Reports to ${managerName}`
+              : "Reporting line not set"}
           </p>
           {canManage ? (
             <Button
@@ -144,6 +146,7 @@ export function CompanyEmployeeProfileActions({
             and sensitive access require an authorized human.
           </p>
           {canManage &&
+          position &&
           (children
             ? position?.status === "active"
             : position?.status !== "terminated") ? (
@@ -156,7 +159,7 @@ export function CompanyEmployeeProfileActions({
               Pause employee
             </Button>
           ) : null}
-          {canManage && position?.status !== "terminated" ? (
+          {canManage && position && position.status !== "terminated" ? (
             <Button
               className="mt-2 h-11 w-full text-xs text-destructive"
               onClick={onTerminate}
