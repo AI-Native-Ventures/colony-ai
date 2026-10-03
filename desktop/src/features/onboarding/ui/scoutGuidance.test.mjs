@@ -117,3 +117,12 @@ test("connection controls keep one label owner and radio semantics", () => {
   assert.match(html, /Choose agent harness. Current: Claude Code/);
   assert.doesNotMatch(html, /harness-row|aria-pressed/);
 });
+
+test("verification retains the frozen account/business/connect progress strip", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(OnboardingScenePresentation, { scene: "verify", data }),
+  );
+  assert.match(html, /steps/);
+  assert.match(html, />Business</);
+  assert.match(html, />Connect</);
+});

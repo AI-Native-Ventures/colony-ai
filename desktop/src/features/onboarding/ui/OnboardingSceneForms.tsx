@@ -127,7 +127,7 @@ export function StoryPanel({
           </div>
         ) : null}
       </div>
-      {accessScene(scene) || scene.startsWith("reset") || scene === "verify" ? (
+      {accessScene(scene) || scene.startsWith("reset") ? (
         <div className="story-bottom" aria-hidden="true" />
       ) : (
         <StepProgress scene={scene} />

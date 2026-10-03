@@ -229,7 +229,7 @@ function ReadySubscriptionPreview({ scene }: { scene: OnboardingSceneId }) {
       name: "Claude Code",
       logo: claudeLogoUrl,
       plan: "Pro",
-      left: [exhausted ? 0 : 72, 46],
+      left: [exhausted ? 0 : 72, exhausted ? 0 : 46],
       resets: ["2h 18m", "4 days"],
       installed: !missing,
       auth: apiAuth

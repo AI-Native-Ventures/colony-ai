@@ -4,6 +4,8 @@ import { waitForAnimations } from "../helpers/animations";
 import {
   openR17BusinessSetup,
   completeR17BusinessSetup,
+  openR17ConnectionSetup,
+  r17Runtime,
 } from "../helpers/onboarding";
 
 const SHOT_DIR =
@@ -127,3 +129,58 @@ test("connection choices preserve keyboard and pointer radio behavior", async ({
     page.getByRole("radio", { name: "OpenRouter", exact: true }),
   ).toBeChecked();
 });
+
+for (const viewport of [
+  { width: 1728, height: 1117 },
+  { width: 1440, height: 900 },
+]) {
+  test(`reply-gated first run renders testing, connected and app at ${viewport.width}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await openR17ConnectionSetup(page, {
+      runtimes: [r17Runtime("claude", "available", { status: "logged_in" })],
+      mock: {
+        onboardingConnectionDelayMs: 4000,
+        onboardingConnectionResult: {
+          reply: "Hello Lerato, I’m here. What shall we work on first?",
+          model: "Sonnet",
+          startupMs: 80,
+          totalMs: 4000,
+        },
+      },
+    });
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `${SHOT_DIR}/runtime-connect-ready-${viewport.width}.png`,
+    });
+    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
+    await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `${SHOT_DIR}/runtime-testing-${viewport.width}.png`,
+    });
+    await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
+    await expect(
+      page.getByText("First reply received", { exact: true }),
+    ).toBeVisible();
+    await expect(page.locator(".reply")).toContainText("Hello Lerato");
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `${SHOT_DIR}/runtime-connected-${viewport.width}.png`,
+    });
+    await page
+      .getByRole("button", { name: "Open my Colony", exact: true })
+      .click();
+    await expect(page.getByTestId("app-sidebar")).toBeVisible();
+    await expect(page.getByTestId("community-onboarding-flow")).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText(
+      /Build your profile|Meet your starter team|Take me to Buzz/,
+    );
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `${SHOT_DIR}/runtime-workspace-${viewport.width}.png`,
+    });
+  });
+}
