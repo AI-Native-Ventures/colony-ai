@@ -33,6 +33,16 @@ test("parses only the versioned stable appearance contract", () => {
     followSystem: false,
   };
   assert.deepEqual(parseCommunityThemePreference(valid), valid);
+  for (const accent of ["#895AF6", "#74717B", "#3B82F6"]) {
+    assert.deepEqual(parseCommunityThemePreference({ ...valid, accent }), {
+      ...valid,
+      accent,
+    });
+  }
+  assert.equal(
+    parseCommunityThemePreference({ ...valid, accent: "#010203" }),
+    null,
+  );
   assert.equal(parseCommunityThemePreference({ ...valid, version: 2 }), null);
   assert.equal(
     parseCommunityThemePreference({ ...valid, theme: "future-theme" }),

@@ -21,7 +21,11 @@ export const DEFAULT_COMMUNITY_THEME: CommunityThemePreference = Object.freeze({
 });
 
 const THEME_NAMES = new Set<string>(SYNTAX_THEMES);
-const ACCENTS = new Set<string>(ACCENT_COLORS.map(({ value }) => value));
+const ACCENTS = new Set<string>([
+  ...ACCENT_COLORS.map(({ value }) => value.toLowerCase()),
+  "#895af6",
+  "#74717b",
+]);
 
 export function communityThemeStorageKey(
   pubkey: string,
@@ -49,7 +53,7 @@ export function parseCommunityThemePreference(
     typeof candidate.theme !== "string" ||
     !THEME_NAMES.has(candidate.theme) ||
     typeof candidate.accent !== "string" ||
-    !ACCENTS.has(candidate.accent) ||
+    !ACCENTS.has(candidate.accent.toLowerCase()) ||
     typeof candidate.followSystem !== "boolean"
   ) {
     return null;

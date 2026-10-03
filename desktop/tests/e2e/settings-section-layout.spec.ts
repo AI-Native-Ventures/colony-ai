@@ -382,6 +382,12 @@ test("workspace appearance saves the named theme and preserves density", async (
     .toBe(true);
   await expect(page.getByTestId("settings-inner-appearance")).toHaveAttribute(
     "aria-selected",
+    "false",
+  );
+  await page.getByRole("button", { name: "Back to themes" }).click();
+  await page.getByRole("button", { name: "Back to appearance" }).click();
+  await expect(page.getByTestId("settings-inner-appearance")).toHaveAttribute(
+    "aria-selected",
     "true",
   );
   await expect.poll(innerTabIndicatorColor).toBe("rgb(157, 193, 251)");

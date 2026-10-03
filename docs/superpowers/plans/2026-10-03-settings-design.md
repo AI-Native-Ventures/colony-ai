@@ -8,8 +8,9 @@ Architecture: route Appearance to its existing full panel; retain scoped prefere
 - [x] Restore preview and applied workspace scenes, preserving density and text size.
 - [x] Update dependent e2e specs with the same UI commit; cover cancel, apply, reload, storage failure, search and filters.
 - [x] Run quick TypeScript, Biome, px-text and focused preference tests.
-- [ ] Capture frozen and mock-bridge routes at 1728x1117 and 1440x900; inspect and attach with honest verdicts.
-- [ ] Rebase, push a draft PR into develop, monitor GitHub checks and correct caused failures.
-- [ ] Audit remaining Settings groups and record route verdicts and unresolved design/API dependencies.
+- [x] Capture frozen and mock-bridge routes at 1728x1117 and 1440x900; inspect and attach with honest verdicts.
+- [x] Rebase and push PR #217 into develop; attach 62 distinct screenshots and mark the bounded slice ready for review.
+- [ ] Wait for all GitHub checks and correct caused failures. Queued runner jobs remain unproven.
+- [x] Audit remaining Settings groups and record route verdicts and permission/fixture limitations.
 
 Owner constraints override repository-wide local checks: no local Rust build/test/clippy, no packaged app or keychain access, no release/deploy changes. Sidebar and typography tokens belong to shell-design.

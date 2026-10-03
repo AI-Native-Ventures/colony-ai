@@ -718,7 +718,9 @@ test("named theme preview retains the selected workspace density", async ({
   });
 });
 
-test("settings nav uses Buzz active pill + hover (light)", async ({ page }) => {
+test("settings nav keeps its row geometry with Colony selection (light)", async ({
+  page,
+}) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -730,22 +732,34 @@ test("settings nav uses Buzz active pill + hover (light)", async ({ page }) => {
   const profileLabel = profileRow.locator(".truncate");
   await expect(profileRow).toHaveAttribute("data-active", "true");
   await expect(profileRow).toHaveCSS("font-weight", "700");
+  await page.evaluate(() => document.fonts.ready);
+  const selectedRowBox = await profileRow.boundingBox();
   const selectedLabelBox = await profileLabel.boundingBox();
-  // Appearance is the active section here; its nav row uses the Buzz
-  // selected surface (data-active=true), matching the Left Nav treatment.
+  // Manrope's bold glyphs can be wider. The row and label origin must stay
+  // fixed when selection changes, without constraining intrinsic glyph width.
   await page.getByTestId("settings-group-appearance-group").click();
   await expect(profileRow).toHaveCSS("font-weight", "400");
   const unselectedLabelBox = await profileLabel.boundingBox();
+  const unselectedRowBox = await profileRow.boundingBox();
   expect(selectedLabelBox).not.toBeNull();
   expect(unselectedLabelBox).not.toBeNull();
-  if (!selectedLabelBox || !unselectedLabelBox) {
+  if (
+    !selectedLabelBox ||
+    !unselectedLabelBox ||
+    !selectedRowBox ||
+    !unselectedRowBox
+  ) {
     throw new Error("Settings nav label geometry is missing");
   }
   expect(Math.abs(selectedLabelBox.x - unselectedLabelBox.x)).toBe(0);
   expect(Math.abs(selectedLabelBox.y - unselectedLabelBox.y)).toBe(0);
-  expect(
-    Math.abs(selectedLabelBox.width - unselectedLabelBox.width),
-  ).toBeLessThanOrEqual(2);
+  expect(unselectedRowBox).toEqual(selectedRowBox);
+  expect(selectedLabelBox.x + selectedLabelBox.width).toBeLessThanOrEqual(
+    selectedRowBox.x + selectedRowBox.width,
+  );
+  expect(unselectedLabelBox.x + unselectedLabelBox.width).toBeLessThanOrEqual(
+    unselectedRowBox.x + unselectedRowBox.width,
+  );
   await expectBuzzSettingsPalette(page, "light");
   const activeRow = page.getByTestId("settings-group-appearance-group");
   await expect(activeRow).toHaveAttribute("data-active", "true");

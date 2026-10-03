@@ -54,6 +54,7 @@ test("appearance exposes the approved controls and named themes preserve convers
     await expect(page.getByTestId(id)).toBeVisible();
   await expect(page.getByTestId("appearance-density")).toHaveCount(0);
   await page.getByTestId("appearance-message-size").selectOption("larger");
+  await page.getByTestId("appearance-accent-violet").click();
   await page.getByTestId("appearance-open-themes").click();
   const catalog = page.getByTestId("settings-theme-catalog");
   await expect(
@@ -83,6 +84,7 @@ test("appearance exposes the approved controls and named themes preserve convers
       theme: "github-light",
       density: "compact",
       followSystem: false,
+      accent: "#895AF6",
     });
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
