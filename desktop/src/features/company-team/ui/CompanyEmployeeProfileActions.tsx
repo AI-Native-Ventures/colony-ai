@@ -8,6 +8,7 @@ import type { MemberPositionHead } from "../teamModels";
 
 export function CompanyEmployeeProfileActions({
   canManage,
+  children,
   employeePubkey,
   managerName,
   onEdit,
@@ -17,6 +18,7 @@ export function CompanyEmployeeProfileActions({
   position,
 }: {
   canManage: boolean;
+  children?: React.ReactNode;
   employeePubkey: string;
   managerName: string | null;
   onEdit: () => void;
@@ -65,17 +67,22 @@ export function CompanyEmployeeProfileActions({
   return (
     <section
       aria-label="Company employee overview"
-      className="mt-8 grid gap-8 border-t border-border/60 pt-6 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]"
+      className={
+        children
+          ? "grid gap-[3.125rem] lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]"
+          : "mt-8 grid gap-8 border-t border-border/60 pt-6 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]"
+      }
       data-testid="company-employee-manager-actions"
     >
       <div>
+        {children}
         {directReports.length > 0 ? (
           <section
             aria-labelledby="company-employee-direct-reports-heading"
             data-testid="company-employee-direct-reports"
           >
             <h2
-              className="text-sm font-semibold"
+              className="mb-4 mt-5 text-base font-semibold"
               id="company-employee-direct-reports-heading"
             >
               Direct reports
@@ -84,7 +91,7 @@ export function CompanyEmployeeProfileActions({
               {directReports.map((report) => (
                 <button
                   aria-label={`${report.displayName}, ${report.title} ${report.kind}`}
-                  className="min-h-12 w-full py-3 text-left text-sm hover:text-primary"
+                  className="min-h-12 w-full py-3 text-left text-xs hover:text-primary"
                   key={report.pubkey}
                   onClick={() => onOpenReport(report.pubkey)}
                   type="button"
@@ -94,19 +101,27 @@ export function CompanyEmployeeProfileActions({
               ))}
             </div>
           </section>
-        ) : null}
+        ) : (
+          <section
+            className="mt-5"
+            data-testid="company-employee-direct-reports"
+          >
+            <h2 className="mb-4 text-base font-semibold">Direct reports</h2>
+            <p className="text-xs text-muted-foreground">No direct reports.</p>
+          </section>
+        )}
       </div>
-      <div>
+      <aside className="border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-[2.1875rem]">
         <div>
-          <h2 className="text-sm font-semibold">Role and reporting</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <h2 className="mb-5 text-base font-semibold">Role and reporting</h2>
+          <p className="mt-2 text-xs text-muted-foreground">
             {position?.title || "Title not set"}
             <br />
             {managerName ? `Reports to ${managerName}` : "Company founder"}
           </p>
           {canManage ? (
             <Button
-              className="mt-4 w-full"
+              className="mt-3 h-11 w-full text-xs"
               onClick={onEdit}
               type="button"
               variant="outline"
@@ -116,21 +131,21 @@ export function CompanyEmployeeProfileActions({
           ) : null}
         </div>
         <div className="mt-6">
-          <h2 className="text-sm font-semibold">Responsibilities</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <h2 className="text-xs font-semibold">Responsibilities</h2>
+          <p className="mt-2 text-xs text-muted-foreground">
             Plan, delegate, discuss and review. Workers receive scoped execution
             tools.
           </p>
         </div>
         <div className="mt-6">
-          <h2 className="text-sm font-semibold">Manager actions</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <h2 className="text-xs font-semibold">Manager actions</h2>
+          <p className="mt-2 text-xs text-muted-foreground">
             Assign work, propose hires and raises, pause direct reports. Money
             and sensitive access require an authorized human.
           </p>
           {canManage && position?.status !== "terminated" ? (
             <Button
-              className="mt-4 w-full"
+              className="mt-3 h-11 w-full text-xs"
               onClick={onPause}
               type="button"
               variant="outline"
@@ -140,7 +155,7 @@ export function CompanyEmployeeProfileActions({
           ) : null}
           {canManage && position?.status !== "terminated" ? (
             <Button
-              className="mt-2 w-full text-destructive"
+              className="mt-2 h-11 w-full text-xs text-destructive"
               onClick={onTerminate}
               type="button"
               variant="ghost"
@@ -149,7 +164,7 @@ export function CompanyEmployeeProfileActions({
             </Button>
           ) : null}
         </div>
-      </div>
+      </aside>
     </section>
   );
 }

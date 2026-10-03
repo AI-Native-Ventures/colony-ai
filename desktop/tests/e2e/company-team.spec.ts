@@ -278,6 +278,12 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
     EMPLOYEE_NAME,
   );
   await expect(page.getByTestId("company-team-list")).toContainText("alice");
+  await expect(
+    page.getByTestId("company-team-screen").locator("header"),
+  ).toHaveText("Company / Team");
+  await expect(
+    page.getByTestId(`company-team-member-${OWNER_PUBKEY}`),
+  ).toContainText("Founder · Human");
   await expect(page.getByTestId("company-team-list")).toContainText("bob");
   await expect(page.getByTestId("company-team-list")).not.toContainText(
     "Mina worker",

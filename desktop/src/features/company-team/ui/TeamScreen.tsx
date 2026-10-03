@@ -3,10 +3,9 @@ import * as React from "react";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
-import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { truncateNpub } from "@/shared/lib/pubkey";
 import { Badge } from "@/shared/ui/badge";
-import { PageHeader } from "@/shared/ui/PageHeader";
+import { TeamPage, TeamPageTitle } from "./TeamPage";
 import { Button } from "@/shared/ui/button";
 import { useCompanyTeamQuery } from "../teamRelay";
 import { buildTeamTreeRows, type TeamMember } from "../teamModels";
@@ -29,7 +28,10 @@ function memberKindLabel(member: TeamMember) {
 }
 
 function memberTitle(member: TeamMember) {
-  return member.position?.head.title.trim() ?? "";
+  return (
+    member.position?.head.title.trim() ||
+    (member.role === "owner" ? "Founder" : "")
+  );
 }
 
 function memberStatus(member: TeamMember) {
@@ -46,12 +48,12 @@ function TeamTabs({ view }: TeamScreenProps) {
   return (
     <div
       aria-label="Team views"
-      className="flex gap-6 border-b border-border"
+      className="mb-[1.375rem] flex gap-6 border-b border-border"
       role="tablist"
     >
       <button
         aria-selected={view === "everyone"}
-        className={`-mb-px border-b-2 px-0 pb-3 pt-1 text-sm ${view === "everyone" ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+        className={`-mb-px border-b-2 px-0 py-2.5 text-xs ${view === "everyone" ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
         onClick={() => void goTeam()}
         role="tab"
         type="button"
@@ -60,7 +62,7 @@ function TeamTabs({ view }: TeamScreenProps) {
       </button>
       <button
         aria-selected={view === "org"}
-        className={`-mb-px border-b-2 px-0 pb-3 pt-1 text-sm ${view === "org" ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+        className={`-mb-px border-b-2 px-0 py-2.5 text-xs ${view === "org" ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
         onClick={() => void goTeamOrg()}
         role="tab"
         type="button"
@@ -97,35 +99,36 @@ function TeamMemberRow({
   const accessibleName = `${name}, ${title || "No title"}, ${memberKindLabel(member)}, ${statusLabel(member)}${managerDescription}${reasonDescription}`;
   const rowContents = (
     <>
-      <span className="flex min-w-0 items-center gap-3">
-        {tree ? (
+      <span className="flex min-w-0 items-center gap-[0.9375rem]">
+        {tree && depth > 0 ? (
           <span
             aria-hidden="true"
-            className="absolute ml-[-1.5rem] h-9 border-l border-border"
+            className="absolute ml-[-1.5rem] h-full border-l border-border"
           />
         ) : null}
-        <ProfileAvatar
-          avatarUrl={null}
-          className="size-9 rounded-lg text-xs"
-          label={name}
-          shape="squircle"
-        />
+        <span
+          aria-hidden="true"
+          className={`grid size-[2.125rem] shrink-0 place-items-center rounded-[0.625rem] text-2xs font-semibold text-primary ${member.kind === "employee" ? "bg-gradient-to-br from-primary/20 to-info/25" : "bg-accent"}`}
+        >
+          {name
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((part) => part[0])
+            .join("")
+            .toUpperCase()}
+        </span>
         <span className="min-w-0">
-          <span className="block truncate text-sm font-semibold text-foreground">
+          <span className="block truncate text-compact font-semibold text-foreground">
             {name}
           </span>
-          <span className="block truncate text-xs text-muted-foreground">
+          <span className="block truncate text-2xs text-muted-foreground">
             {title ? `${title} · ` : ""}
             {memberKindLabel(member)}
           </span>
-          {status === "paused" && reason ? (
-            <span className="mt-1 block truncate text-xs text-muted-foreground">
-              {reason}
-            </span>
-          ) : null}
         </span>
       </span>
-      <span className="flex shrink-0 items-center gap-5">
+      <span className="flex shrink-0 items-center gap-10">
         {managerName ? (
           <span className="hidden text-xs text-muted-foreground sm:inline">
             Reports to {managerName}
@@ -136,7 +139,7 @@ function TeamMemberRow({
           </span>
         ) : null}
         <Badge
-          className="rounded-md border-0 bg-emerald-50 px-2 py-1 text-2xs font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+          className={`rounded-[0.3125rem] border-0 px-2 py-1 text-badge font-semibold normal-case leading-relaxed tracking-normal ${status === "active" ? "bg-success/10 text-success" : "bg-accent text-primary"}`}
           variant="secondary"
         >
           {statusLabel(member)}
@@ -145,7 +148,7 @@ function TeamMemberRow({
     </>
   );
   const className =
-    "group relative flex min-h-[4.5rem] w-full items-center justify-between gap-4 border-b border-border px-2 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "group relative flex min-h-[4.5625rem] w-full items-center justify-between gap-4 border-b border-border px-2 py-[1.0625rem] text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   const onClick = () => void goTeamMember(member.pubkey);
   if (tree) {
     return (
@@ -297,20 +300,19 @@ export function TeamScreen({ view }: TeamScreenProps) {
   };
 
   return (
-    <main
-      className="mx-auto flex w-full max-w-[72rem] flex-col gap-7 px-6 py-10"
-      data-testid="company-team-screen"
-    >
-      <PageHeader
-        action={
-          canHire ? (
-            <Button onClick={() => void goHireRoles()} type="button">
-              Hire employee
-            </Button>
-          ) : undefined
-        }
-        title="Team"
-      />
+    <TeamPage title="Team" testId="company-team-screen">
+      <div className="mb-[1.875rem] mt-2 flex items-center justify-between gap-5">
+        <TeamPageTitle>Team</TeamPageTitle>
+        {canHire ? (
+          <Button
+            className="h-auto min-h-10 bg-info px-[0.9375rem] py-[0.6875rem] text-xs shadow-none"
+            onClick={() => void goHireRoles()}
+            type="button"
+          >
+            Hire employee
+          </Button>
+        ) : null}
+      </div>
       <TeamTabs view={view} />
       {treeError ? (
         <p className="py-8 text-center text-sm text-destructive" role="alert">
@@ -365,10 +367,10 @@ export function TeamScreen({ view }: TeamScreenProps) {
           No team members found.
         </p>
       ) : null}
-      <p className="border-t border-border pt-4 text-xs text-muted-foreground">
+      <p className="mt-[1.5625rem] border-t border-border pt-[0.9375rem] text-2xs text-muted-foreground">
         Humans and employees can report to either kind of teammate. Reporting
         lines do not grant spending or credential authority.
       </p>
-    </main>
+    </TeamPage>
   );
 }

@@ -48,6 +48,7 @@ import type {
 } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
+import { TeamPage, TeamPageTitle } from "./TeamPage";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { Textarea } from "@/shared/ui/textarea";
 import { truncateNpub } from "@/shared/lib/pubkey";
@@ -830,7 +831,7 @@ export function EmployeeProfileScreen({
           Company / Edit instructions
         </div>
         <button
-          className="mb-6 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          className="mb-4 inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground"
           onClick={cancelInstructionEdit}
           type="button"
         >
@@ -844,29 +845,21 @@ export function EmployeeProfileScreen({
   const historyNeedsSync = pendingRevisions.length > 0;
 
   return (
-    <main
-      className="mx-auto w-full max-w-[72rem] px-6 py-8 xl:px-0"
-      data-testid="company-employee-profile"
-    >
-      <div className="mb-8 text-xs text-muted-foreground">
-        Company / {fullName}
-      </div>
+    <TeamPage title={fullName} testId="company-employee-profile">
       <button
-        className="mb-6 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        className="mb-4 inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground"
         onClick={onBack}
         type="button"
       >
         <ArrowLeft aria-hidden="true" className="size-3.5" /> Back
       </button>
       <div
-        className="mb-9 flex flex-wrap items-center justify-between gap-4"
+        className="mb-6 mt-2 flex flex-wrap items-center justify-between gap-4"
         data-testid="company-position-header"
       >
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold tracking-tight">
-            {fullName}
-          </h1>
-          <p className="mt-8 truncate text-sm text-muted-foreground">
+          <TeamPageTitle>{fullName}</TeamPageTitle>
+          <p className="mt-[1.875rem] truncate text-compact text-muted-foreground">
             {subtitle}
           </p>
         </div>
@@ -923,14 +916,14 @@ export function EmployeeProfileScreen({
       ) : null}
       <div
         aria-label="Employee profile"
-        className="flex gap-5 overflow-x-auto border-b border-border"
+        className="flex gap-6 overflow-x-auto border-b border-border"
         role="tablist"
       >
         {TABS.map((item) => (
           <button
             aria-controls="employee-profile-tabpanel"
             aria-selected={tab === item.id}
-            className={`-mb-px shrink-0 border-b-2 px-1 pb-3 text-sm ${tab === item.id ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+            className={`-mb-px shrink-0 border-b-2 px-0 py-2.5 text-xs ${tab === item.id ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
             data-testid={`employee-tab-${item.id}`}
             id={`employee-tab-${item.id}`}
             key={item.id}
@@ -953,33 +946,21 @@ export function EmployeeProfileScreen({
         role="tabpanel"
       >
         {tab === "overview" ? (
-          <>
-            <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
-              <MemberDoingNowSection
-                memberPubkey={employeePubkey}
-                testId="employee-doing-now"
-              />
-              <aside
-                className="rounded-lg border border-border p-4"
-                data-testid="employee-salary-overview-unavailable"
-              >
-                <h2 className="text-base font-semibold">Weekly salary</h2>
-                <p className="mt-3 text-sm text-muted-foreground">
-                  Not available yet.
-                </p>
-              </aside>
-            </div>
-            <CompanyEmployeeProfileActions
-              canManage={canManage}
-              employeePubkey={employeePubkey}
-              managerName={managerName}
-              onEdit={onEditPosition}
-              onOpenReport={onOpenMember}
-              onPause={onPause}
-              onTerminate={onTerminate}
-              position={currentPosition}
+          <CompanyEmployeeProfileActions
+            canManage={canManage}
+            employeePubkey={employeePubkey}
+            managerName={managerName}
+            onEdit={onEditPosition}
+            onOpenReport={onOpenMember}
+            onPause={onPause}
+            onTerminate={onTerminate}
+            position={currentPosition}
+          >
+            <MemberDoingNowSection
+              memberPubkey={employeePubkey}
+              testId="employee-doing-now"
             />
-          </>
+          </CompanyEmployeeProfileActions>
         ) : null}
         {tab === "instructions" ? instructionsContent() : null}
         {tab === "model-runtime" ? (
@@ -1170,6 +1151,6 @@ export function EmployeeProfileScreen({
           />
         ) : null}
       </div>
-    </main>
+    </TeamPage>
   );
 }

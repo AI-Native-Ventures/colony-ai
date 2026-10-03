@@ -19,7 +19,7 @@ import { truncateNpub } from "@/shared/lib/pubkey";
 import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
-import { PageHeader } from "@/shared/ui/PageHeader";
+import { TeamPage, TeamPageTitle } from "./TeamPage";
 import { Textarea } from "@/shared/ui/textarea";
 import {
   useCompanyTeamQuery,
@@ -323,33 +323,41 @@ export function TeamMemberScreen({
 
   if (mode === "edit") {
     return (
-      <main
-        className="mx-auto w-full max-w-[46rem] px-6 py-8"
-        data-testid="company-team-edit-screen"
-      >
+      <TeamPage title={pageTitle} testId="company-team-edit-screen">
         <button
-          className="mb-7 inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
+          className="mb-4 inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
           onClick={back}
           type="button"
         >
           <ArrowLeft aria-hidden="true" className="size-3.5" /> Back
         </button>
-        <PageHeader className="mb-8" title={pageTitle} />
+        <div className="mb-[1.875rem] mt-2">
+          <TeamPageTitle>{pageTitle}</TeamPageTitle>
+        </div>
         <form
-          className="space-y-5"
+          className="max-w-[46.25rem] space-y-5"
           onSubmit={(event) => void savePosition(event)}
         >
           <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="team-member-name">
+            <label className="text-xs font-semibold" htmlFor="team-member-name">
               Name
             </label>
-            <Input id="team-member-name" readOnly value={fullName} />
+            <Input
+              className="h-11 text-compact"
+              id="team-member-name"
+              readOnly
+              value={fullName}
+            />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="team-member-title">
+            <label
+              className="text-xs font-semibold"
+              htmlFor="team-member-title"
+            >
               Title
             </label>
             <Input
+              className="h-11 text-compact"
               id="team-member-title"
               onChange={(event) => setTitleInput(event.target.value)}
               required
@@ -358,13 +366,13 @@ export function TeamMemberScreen({
           </div>
           <div className="space-y-2">
             <label
-              className="text-sm font-medium"
+              className="text-xs font-semibold"
               htmlFor="team-member-manager"
             >
               Reports to
             </label>
             <select
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               id="team-member-manager"
               onChange={(event) => setManagerInput(event.target.value)}
               value={managerInput}
@@ -390,7 +398,7 @@ export function TeamMemberScreen({
                 })}
             </select>
           </div>
-          <div className="border-l-2 border-muted bg-muted/40 px-4 py-4 text-sm text-muted-foreground">
+          <div className="border-l-2 border-border bg-muted px-4 py-3 text-xs">
             This changes reporting responsibilities only. It does not grant
             spending, secret access or administrative permissions.
           </div>
@@ -401,53 +409,59 @@ export function TeamMemberScreen({
           ) : null}
           <div className="flex gap-3 border-t border-border pt-5">
             <Button
+              className="h-11 bg-info text-xs shadow-none"
               disabled={mutation.isPending || !titleInput.trim()}
               type="submit"
             >
               {mutation.isPending ? "Saving" : "Save changes"}
             </Button>
-            <Button onClick={back} type="button" variant="outline">
+            <Button
+              className="h-11 text-xs"
+              onClick={back}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
           </div>
         </form>
-      </main>
+      </TeamPage>
     );
   }
 
   const isPause = mode === "pause";
   const confirmationTitle = isPause ? "Pause employee" : "Terminate employee";
   return (
-    <main
-      className="mx-auto w-full max-w-[46rem] px-6 py-8"
-      data-testid={`company-team-${mode}-screen`}
-    >
+    <TeamPage title={confirmationTitle} testId={`company-team-${mode}-screen`}>
       <button
-        className="mb-7 inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
+        className="mb-4 inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
         onClick={back}
         type="button"
       >
         <ArrowLeft aria-hidden="true" className="size-3.5" /> Back
       </button>
-      <PageHeader className="mb-8" title={confirmationTitle} />
+      <div className="mb-[1.875rem] mt-2">
+        <TeamPageTitle>{confirmationTitle}</TeamPageTitle>
+      </div>
       <form
-        className="space-y-4"
+        className="max-w-[46.25rem] space-y-5"
         onSubmit={(event) => void changeLifecycle(event)}
       >
         <p className="text-sm font-semibold">{fullName}</p>
         <div className="space-y-2">
-          <label className="text-sm font-medium" htmlFor="team-status-reason">
+          <label className="text-xs font-semibold" htmlFor="team-status-reason">
             Reason
           </label>
           <Textarea
+            className="text-compact"
             id="team-status-reason"
             onChange={(event) => setReasonInput(event.target.value)}
             required
-            rows={4}
+            rows={3}
             value={reasonInput}
           />
         </div>
-        <div className="border-l-2 border-muted bg-muted/40 px-4 py-4 text-sm text-muted-foreground">
+        <div className="border-l-2 border-border bg-muted px-4 py-3 text-xs">
           {isPause
             ? "Work remains visible with a paused reason. The employee can be resumed later."
             : "Active execution stops. Definition, lessons and history are retained for a future reviewed rehire."}
@@ -459,6 +473,7 @@ export function TeamMemberScreen({
         ) : null}
         <div className="flex gap-3 border-t border-border pt-5">
           <Button
+            className="h-11 bg-info text-xs shadow-none"
             disabled={isStopping || mutation.isPending || !reasonInput.trim()}
             type="submit"
           >
@@ -468,11 +483,16 @@ export function TeamMemberScreen({
                 ? "Pause employee"
                 : "Terminate employee"}
           </Button>
-          <Button onClick={back} type="button" variant="outline">
+          <Button
+            className="h-11 text-xs"
+            onClick={back}
+            type="button"
+            variant="outline"
+          >
             Cancel
           </Button>
         </div>
       </form>
-    </main>
+    </TeamPage>
   );
 }

@@ -118,13 +118,13 @@ export function MemberDoingNowSection({
           </Button>
         </Alert>
       ) : memberWorkRecords.length === 0 ? (
-        <div className="rounded-lg border border-border p-4">
-          <p className="text-sm text-muted-foreground">
+        <div className="py-3">
+          <p className="text-xs text-muted-foreground">
             No current commitments.
           </p>
         </div>
       ) : (
-        <div className="divide-y divide-border rounded-lg border border-border">
+        <div className="divide-y divide-border">
           {memberWorkRecords.map((record) => {
             const channelName = workQuery.channelsQuery.data?.find(
               (channel) =>
@@ -132,14 +132,14 @@ export function MemberDoingNowSection({
             )?.name;
             return (
               <button
-                className="flex min-h-16 w-full items-center justify-between gap-4 px-4 py-3 text-left hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex min-h-20 w-full items-center justify-between gap-4 px-1 py-5 text-left hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 data-testid={`employee-work-${record.head.workItemId}`}
                 key={record.head.workItemId}
                 onClick={() => void goCompanyWorkDetail(record.head.workItemId)}
                 type="button"
               >
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium">
+                  <span className="block truncate text-compact font-semibold">
                     {record.head.title}
                   </span>
                   <span className="mt-1 block text-xs text-muted-foreground">
@@ -149,6 +149,7 @@ export function MemberDoingNowSection({
                   </span>
                 </span>
                 <Badge
+                  className="rounded-[0.3125rem] text-badge normal-case leading-relaxed tracking-normal"
                   variant={
                     record.head.status === "blocked" ? "warning" : "outline"
                   }

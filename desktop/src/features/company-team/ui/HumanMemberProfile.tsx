@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { MemberDoingNowSection } from "./MemberDoingNowSection";
 import { MemberPositionHistoryPanel } from "./MemberPositionHistoryPanel";
+import { TeamPage, TeamPageTitle } from "./TeamPage";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 import type { TeamMember } from "../teamModels";
 
@@ -36,23 +37,17 @@ export function HumanMemberProfile({
   }, [initialTab]);
 
   return (
-    <main
-      className="mx-auto w-full max-w-[72rem] px-6 py-8 xl:px-0"
-      data-testid="company-team-member-profile"
-    >
-      <div className="mb-8 text-xs text-muted-foreground">
-        Company / {fullName}
-      </div>
+    <TeamPage title={fullName} testId="company-team-member-profile">
       <button
-        className="mb-6 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="mb-4 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={onBack}
         type="button"
       >
         Back
       </button>
-      <h1 className="mb-8 truncate text-2xl font-semibold tracking-tight">
-        {fullName}
-      </h1>
+      <div className="mb-[1.875rem] mt-2">
+        <TeamPageTitle>{fullName}</TeamPageTitle>
+      </div>
       <div className="mb-8 flex items-center gap-4">
         <UserAvatar
           avatarUrl={profile?.avatarUrl ?? null}
@@ -130,6 +125,6 @@ export function HumanMemberProfile({
           <MemberPositionHistoryPanel memberPubkey={member.pubkey} />
         )}
       </div>
-    </main>
+    </TeamPage>
   );
 }
