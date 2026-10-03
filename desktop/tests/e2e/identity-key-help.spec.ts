@@ -6,11 +6,20 @@ test("R17 account access fits a compact desktop viewport", async ({ page }) => {
   await page.setViewportSize({ width: 720, height: 620 });
   await startR17AccountAuth(page);
 
-  await expect(page.getByTestId("google-account-scene")).toBeVisible();
+  await expect(page.getByTestId("onboarding-scene-signin")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Welcome back" }),
+    page.getByRole("heading", { name: "Welcome back." }),
   ).toBeVisible();
   await expect(page.getByRole("form", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByTestId("account-auth-submit-signin")).toBeInViewport();
+  await page.getByRole("button", { name: "Create an account" }).click();
+  await expect(page.getByTestId("onboarding-scene-account")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Let’s get you started." }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Your name")).toBeVisible();
+  await expect(page.getByTestId("account-auth-submit-signup")).toBeInViewport();
+  await expect(page.getByRole("button", { name: /Google/ })).toHaveCount(0);
   const overflows = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   );
@@ -30,7 +39,7 @@ test("R17 account access remains readable in the system dark theme", async ({
     )
     .toBe(true);
   await expect(
-    page.getByRole("heading", { name: "Welcome back" }),
+    page.getByRole("heading", { name: "Welcome back." }),
   ).toBeVisible();
   await expect(page.getByLabel("Email address")).toBeVisible();
   await expect(page.getByLabel("Password", { exact: true })).toBeVisible();

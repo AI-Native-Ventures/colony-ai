@@ -302,7 +302,7 @@ export function NostrBindConsentDialog() {
         .catch((error) => {
           console.warn("get_identity for nostr bind failed:", error);
           setIdentity(null);
-          setError("Could not load the current Buzz identity.");
+          setError("Could not load the current Colony identity.");
         });
     });
 

@@ -193,7 +193,7 @@ export function HostedCommunityOnboarding({
           hostedCommunityErrorMessage(
             response.error,
             response.correlation_id,
-            "Could not connect the Buzz identity.",
+            "Could not connect the Colony identity.",
           ),
         );
       }
@@ -234,7 +234,7 @@ export function HostedCommunityOnboarding({
           hostedCommunityErrorMessage(
             released.error,
             released.correlation_id,
-            "Could not disconnect the account's previous Buzz identity.",
+            "Could not disconnect the account's previous Colony identity.",
           ),
         );
       }
@@ -243,11 +243,11 @@ export function HostedCommunityOnboarding({
         await loadAccount();
         throw new Error(
           bound.error.code === "pubkey_already_bound"
-            ? "This device's Buzz identity belongs to a different Builderlab account and can't be moved from here. Sign out, then sign in with the account that already owns this identity."
+            ? "This device's Colony identity belongs to a different Builderlab account and can't be moved from here. Sign out, then sign in with the account that already owns this identity."
             : hostedCommunityErrorMessage(
                 bound.error,
                 bound.correlation_id,
-                "Could not connect this device's Buzz identity.",
+                "Could not connect this device's Colony identity.",
               ),
         );
       }
@@ -548,12 +548,12 @@ export function HostedCommunityOnboarding({
           ) : !identity ? (
             <>
               <DialogTitle className="text-xl font-medium text-foreground">
-                Finish connecting Buzz
+                Finish connecting Colony
               </DialogTitle>
               <DialogDescription className="mt-2 text-sm leading-6 text-foreground">
                 Your Builderlab account
                 {auth.email ? ` (${auth.email})` : ""} is ready. Connect this
-                device’s Buzz identity to finish setup. Your private key stays
+                device’s Colony identity to finish setup. Your private key stays
                 on this device.
               </DialogDescription>
               {errorBox ? <div className="mt-5 w-full">{errorBox}</div> : null}
@@ -571,10 +571,10 @@ export function HostedCommunityOnboarding({
           ) : (
             <>
               <DialogTitle className="text-xl font-medium text-foreground">
-                This account uses a different Buzz identity
+                This account uses a different Colony identity
               </DialogTitle>
               <DialogDescription className="mt-2 text-sm leading-6 text-foreground">
-                This account is connected to another Buzz identity. Reconnect
+                This account is connected to another Colony identity. Reconnect
                 this device, or sign out to use a different email.
               </DialogDescription>
               <p className="mt-4 w-full break-all rounded-xl bg-[rgb(var(--buzz-hosted-community-identity-bg)/0.5)] px-4 py-3 text-left font-mono text-xs text-foreground">

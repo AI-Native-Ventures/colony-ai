@@ -14,6 +14,7 @@ import test from "node:test";
 import { npubEncode } from "nostr-tools/nip19";
 
 import {
+  hostedCommunityErrorMessage,
   normalizedBoundKeyHex,
   usableBoundIdentityNpub,
 } from "./hostedCommunityApi.ts";
@@ -95,4 +96,23 @@ test("the string normalizer rejects the same non-key values directly", () => {
   assert.equal(normalizedBoundKeyHex("f".repeat(63)), null);
   assert.equal(normalizedBoundKeyHex("f".repeat(65)), null);
   assert.equal(normalizedBoundKeyHex("  "), null);
+});
+
+test("hosted identity recovery errors use Colony copy and preserve correlation IDs", () => {
+  const messages = {
+    missing_mapping:
+      "Connect your Colony identity before creating a community.",
+    identity_already_bound:
+      "This Builderlab account is connected to another Colony identity.",
+    pubkey_already_bound:
+      "This Colony identity is connected to another Builderlab account.",
+    transferee_not_registered:
+      "That person needs a connected Colony identity before you can transfer ownership to them.",
+  };
+  for (const [code, message] of Object.entries(messages)) {
+    assert.equal(
+      hostedCommunityErrorMessage({ code }, "test-correlation", "Fallback"),
+      `${message} Correlation ID: test-correlation`,
+    );
+  }
 });

@@ -1063,7 +1063,7 @@ test("first-community owner reconnect path does not expose Builderlab creation",
   await openOwnedCommunityReconnect(page);
   await page.getByRole("button", { name: "Sign in to continue" }).click();
   await expect(
-    page.getByRole("heading", { name: /^Finish connecting / }),
+    page.getByRole("heading", { name: "Finish connecting Colony" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Connect and continue" }).click();
   await expect(
@@ -1143,7 +1143,7 @@ test("first-community owner can replace a mismatched account identity", async ({
   await openOwnedCommunityReconnect(page);
   await expect(
     page.getByRole("heading", {
-      name: /^This account uses a different .* identity$/,
+      name: "This account uses a different Colony identity",
     }),
   ).toBeVisible();
   // The account row must show the authoritative bound key's npub, never the
@@ -1222,7 +1222,7 @@ test("first-community owner recovers from an npub-only account identity", async 
   // account: the mismatch recovery modal drives the flow instead.
   await expect(
     page.getByRole("heading", {
-      name: /^This account uses a different .* identity$/,
+      name: "This account uses a different Colony identity",
     }),
   ).toBeVisible();
   await expect(
@@ -1305,7 +1305,7 @@ test("first-community owner never rebinds over a same-key spelling in the hex fi
   await openOwnedCommunityReconnect(page);
   await expect(
     page.getByRole("heading", {
-      name: /^This account uses a different .* identity$/,
+      name: "This account uses a different Colony identity",
     }),
   ).toBeVisible();
   await expect(page.getByText("Account: Unavailable")).toBeVisible();
@@ -1355,7 +1355,7 @@ test("first-community owner with a padded same-key hex is ready, not mismatched"
   await openOwnedCommunityReconnect(page);
   await expect(
     page.getByRole("heading", {
-      name: /^This account uses a different .* identity$/,
+      name: "This account uses a different Colony identity",
     }),
   ).toHaveCount(0);
   await expect(
@@ -1400,10 +1400,10 @@ test("first-community explains when the local identity belongs to another accoun
     .getByRole("button", { name: "Use this device's identity" })
     .click();
   await expect(page.getByRole("alert")).toContainText(
-    "identity belongs to a different Builderlab account and can't be moved from here. Sign out, then sign in with the account that already owns this identity.",
+    "This device's Colony identity belongs to a different Builderlab account and can't be moved from here. Sign out, then sign in with the account that already owns this identity.",
   );
   await expect(
-    page.getByRole("heading", { name: /^Finish connecting / }),
+    page.getByRole("heading", { name: "Finish connecting Colony" }),
   ).toBeVisible();
 });
 
