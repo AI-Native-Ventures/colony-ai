@@ -2,7 +2,7 @@ import { getCanvas, setCanvas } from "@/shared/api/tauri";
 
 export const WELCOME_CANVAS_CONTENT = `# Welcome to Colony
 
-This private channel is your home base for getting oriented. Fizz, Honey, and Pollen can help you learn the app, troubleshoot setup, and work through something you are building.
+This private channel is your home base for getting oriented. Scout can help you learn the app, troubleshoot setup, and work through something you are building.
 
 ## Work with your agents
 
@@ -31,7 +31,7 @@ export async function ensureWelcomeCanvas(
 ) {
   const existing = await client.getCanvas(channelId);
   // Nullish (not `!== null`) so an absent field can never masquerade as an
-  // existing canvas — that exact mismatch silently skipped seeding before.
+  // existing canvas , that exact mismatch silently skipped seeding before.
   if (existing.updatedAt != null || existing.author != null) {
     return false;
   }

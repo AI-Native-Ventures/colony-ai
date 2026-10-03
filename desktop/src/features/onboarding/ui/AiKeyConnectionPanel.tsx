@@ -5,20 +5,15 @@ import {
   useGitBashPrerequisiteQuery,
 } from "@/features/agents/hooks";
 import { globalAgentConfigQueryKey } from "@/features/agents/useGlobalAgentConfig";
-import {
-  AgentConfigFields,
-  EMPTY_GLOBAL_CONFIG,
-} from "@/features/agents/ui/AgentConfigFields";
+import { EMPTY_GLOBAL_CONFIG } from "@/features/agents/ui/AgentConfigFields";
 import {
   getGlobalAgentConfig,
   setGlobalAgentConfig,
 } from "@/shared/api/tauriGlobalAgentConfig";
 import { invokeTauri } from "@/shared/api/tauri";
 import type { GlobalAgentConfig } from "@/shared/api/types";
-import {
-  resolveAgentPrerequisiteReadiness,
-  resolveAgentReadiness,
-} from "./agentReadiness";
+import { resolveAgentPrerequisiteReadiness } from "./agentReadiness";
+import { Glyph } from "./OnboardingScenePrimitives";
 
 export const AI_CONNECTION_MESSAGES = {
   connected: "Connection works. Save this AI as your default to continue.",
@@ -40,31 +35,18 @@ export const AI_CONNECTION_MESSAGES = {
 
 type ConnectionResult = keyof typeof AI_CONNECTION_MESSAGES;
 
-function normalizeConnectionConfig(
-  config: GlobalAgentConfig,
-): GlobalAgentConfig {
-  const env_vars = { ...config.env_vars };
-  for (const name of [
-    "ANTHROPIC_API_KEY",
-    "OPENAI_COMPAT_API_KEY",
-    "OPENROUTER_API_KEY",
-    "DEEPSEEK_API_KEY",
-  ]) {
-    if (env_vars[name] !== undefined) env_vars[name] = env_vars[name].trim();
-  }
-  return { ...config, model: config.model?.trim() ?? null, env_vars };
-}
-
-export function AiKeyConnectionPanel({ openRouter }: { openRouter: boolean }) {
+/** Approved BYOK fields; provider testing and persistence use the native contract. */
+export function AiKeyConnectionPanel({
+  onCheckedChange,
+}: {
+  onCheckedChange?: (checked: boolean) => void;
+}) {
   const queryClient = useQueryClient();
   const runtimes = useAcpRuntimesQuery();
-  const gitBashQuery = useGitBashPrerequisiteQuery();
-  const gitBashPrerequisite = gitBashQuery.isError
-    ? undefined
-    : gitBashQuery.data;
+  const gitBash = useGitBashPrerequisiteQuery();
   const prerequisite = resolveAgentPrerequisiteReadiness(
     "buzz-agent",
-    gitBashPrerequisite,
+    gitBash.isError ? undefined : gitBash.data,
   );
   const runtime = runtimes.data?.find(
     (candidate) => candidate.id === "buzz-agent",
@@ -73,189 +55,187 @@ export function AiKeyConnectionPanel({ openRouter }: { openRouter: boolean }) {
     React.useState<GlobalAgentConfig>(EMPTY_GLOBAL_CONFIG);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState(false);
-  const [valid, setValid] = React.useState(false);
-  const [customProvider, setCustomProvider] = React.useState(false);
-  const [customModel, setCustomModel] = React.useState(false);
   const [pending, setPending] = React.useState(false);
+  const [showKey, setShowKey] = React.useState(false);
   const [result, setResult] = React.useState<ConnectionResult | null>(null);
   const [saved, setSaved] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
   const generation = React.useRef(0);
-
   React.useEffect(() => {
-    let cancelled = false;
+    const current = ++generation.current;
     getGlobalAgentConfig()
       .then((loaded) => {
-        if (cancelled) return;
-        setConfig(
-          normalizeConnectionConfig({
-            ...loaded,
-            preferred_runtime: "buzz-agent",
-            ...(openRouter
-              ? {
-                  provider: "openrouter",
-                  model: loaded.provider === "openrouter" ? loaded.model : null,
-                }
-              : {}),
-          }),
-        );
-        setLoading(false);
+        if (current !== generation.current) return;
+        setConfig({
+          ...loaded,
+          preferred_runtime: "buzz-agent",
+          provider:
+            loaded.provider === "openai" || loaded.provider === "openai-compat"
+              ? "openai"
+              : "anthropic",
+        });
       })
       .catch(() => {
-        if (cancelled) return;
-        setLoadError(true);
-        setLoading(false);
+        if (current === generation.current) setLoadError(true);
+      })
+      .finally(() => {
+        if (current === generation.current) setLoading(false);
       });
     return () => {
-      cancelled = true;
-      generation.current += 1;
+      generation.current++;
     };
-  }, [openRouter]);
-
+  }, []);
+  const provider = config.provider === "openai" ? "OpenAI" : "Anthropic";
+  const keyName =
+    config.provider === "openai"
+      ? "OPENAI_COMPAT_API_KEY"
+      : "ANTHROPIC_API_KEY";
+  const key = config.env_vars[keyName] ?? "";
   const changeConfig = (next: GlobalAgentConfig) => {
-    generation.current += 1;
+    generation.current++;
+    setConfig(next);
     setPending(false);
-    setConfig(normalizeConnectionConfig(next));
     setResult(null);
     setSaved(false);
+    onCheckedChange?.(false);
     setSaveError(null);
   };
-
-  const testConnection = async () => {
-    const currentGeneration = ++generation.current;
+  const checkKey = async () => {
+    const current = ++generation.current;
+    const snapshot = {
+      ...config,
+      env_vars: { ...config.env_vars, [keyName]: key.trim() },
+    };
     setPending(true);
-    setResult(null);
-    setSaved(false);
     setSaveError(null);
     try {
-      const response = await invokeTauri<ConnectionResult>(
-        "test_ai_connection",
-        { config },
-      );
-      if (generation.current !== currentGeneration) return;
-      setResult(
-        Object.hasOwn(AI_CONNECTION_MESSAGES, response)
+      if (result !== "connected") {
+        const response = await invokeTauri<ConnectionResult>(
+          "test_ai_connection",
+          { config: snapshot },
+        );
+        if (current !== generation.current) return;
+        const outcome = Object.hasOwn(AI_CONNECTION_MESSAGES, response)
           ? response
-          : "provider-failure",
-      );
+          : "provider-failure";
+        setResult(outcome);
+        if (outcome !== "connected") return;
+      }
+      if (current !== generation.current) return;
+      try {
+        const response = await setGlobalAgentConfig(snapshot);
+        if (current !== generation.current) return;
+        queryClient.setQueryData(globalAgentConfigQueryKey, response.config);
+        setSaved(true);
+        onCheckedChange?.(true);
+        if (response.failed_restart_count > 0)
+          setSaveError(
+            "AI defaults saved, but an existing employee could not restart. Retry its restart from Agents.",
+          );
+      } catch {
+        if (current === generation.current)
+          setSaveError(
+            "Could not save your AI defaults. Your key check passed. Check key to try saving again.",
+          );
+      }
     } catch {
-      if (generation.current === currentGeneration)
-        setResult("network-failure");
+      if (current === generation.current) setResult("network-failure");
     } finally {
-      if (generation.current === currentGeneration) setPending(false);
+      if (current === generation.current) setPending(false);
     }
   };
-
-  const save = async () => {
-    const currentGeneration = ++generation.current;
-    setPending(true);
-    setSaveError(null);
-    try {
-      const response = await setGlobalAgentConfig(config);
-      queryClient.setQueryData(globalAgentConfigQueryKey, response.config);
-      if (generation.current !== currentGeneration) return;
-      setConfig(response.config);
-      setSaved(true);
-      if (response.failed_restart_count > 0)
-        setSaveError(
-          "AI defaults saved, but an existing employee could not restart. Retry its restart from Agents.",
-        );
-    } catch {
-      if (generation.current === currentGeneration)
-        setSaveError(
-          "Could not save your AI defaults. Your connection test passed. Try saving again.",
-        );
-    } finally {
-      if (generation.current === currentGeneration) setPending(false);
-    }
-  };
-
   return (
     <>
       <div className="section-heading">
-        <h3>
-          {openRouter
-            ? "Your OpenRouter account"
-            : "Connect directly to a provider"}
-        </h3>
+        <h3>Connect directly to a provider</h3>
+      </div>
+      <div className="key-fields">
+        <div className="field">
+          <label htmlFor="key-provider">Provider</label>
+          <select
+            id="key-provider"
+            disabled={pending || loading}
+            value={config.provider ?? "anthropic"}
+            onChange={(event) =>
+              changeConfig({ ...config, provider: event.target.value })
+            }
+          >
+            <option value="anthropic">Anthropic</option>
+            <option value="openai">OpenAI</option>
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="provider-key">API key</label>
+          <div className="input-wrap">
+            <input
+              autoComplete="off"
+              id="provider-key"
+              data-testid="onboarding-provider-key"
+              disabled={loading}
+              type={showKey ? "text" : "password"}
+              placeholder="Paste your provider’s key"
+              value={key}
+              onChange={(event) =>
+                changeConfig({
+                  ...config,
+                  env_vars: {
+                    ...config.env_vars,
+                    [keyName]: event.target.value,
+                  },
+                })
+              }
+            />
+            <button
+              type="button"
+              aria-label={showKey ? "Hide API key" : "Show API key"}
+              onClick={() => setShowKey((value) => !value)}
+            >
+              {showKey ? "Hide" : "Show"}
+            </button>
+          </div>
+        </div>
       </div>
       <p className="power-caption">
-        {openRouter
-          ? "Browser sign-in is not available. Paste your OpenRouter API key and choose a model."
-          : "Paste your provider API key and choose a model."}{" "}
-        Usage is billed by your provider. Testing makes a small model request
-        and may use provider credits.
+        Usage is billed by {provider}, separately from any subscription.
       </p>
-      {loading || runtimes.isLoading ? (
-        <p role="status">Loading AI settings...</p>
-      ) : loadError || !runtime ? (
-        <p role="alert">
-          AI settings could not load. Return to Subscriptions and check again,
-          or connect in Settings &gt; Agents &gt; Defaults.
-        </p>
-      ) : (
-        <fieldset disabled={pending} className="min-w-0 border-0 p-0">
-          <legend className="sr-only">Provider connection settings</legend>
-          <AgentConfigFields
-            bakedEnv={[]}
-            config={config}
-            selectedRuntime={runtime}
-            disclosure="full"
-            isCustomModelEditing={customModel}
-            isCustomProvider={customProvider}
-            onConfigChange={changeConfig}
-            onCustomModelEditingChange={setCustomModel}
-            onIsCustomProviderChange={setCustomProvider}
-            onValidityChange={setValid}
-            useCustomSelect
-          />
-        </fieldset>
-      )}
-      {!loading && !runtimes.isLoading && !prerequisite.ready ? (
+      {loadError ? (
+        <div className="power-notice is-error" role="alert">
+          <p>
+            AI settings could not load. Return to Subscriptions and check again.
+          </p>
+        </div>
+      ) : null}
+      {!loading && !prerequisite.ready ? (
         <p role={prerequisite.reason === "git-bash" ? "alert" : "status"}>
           {prerequisite.copy}
         </p>
       ) : null}
-      {result ? (
-        <p role={result === "connected" ? "status" : "alert"}>
-          {saved
-            ? "AI connected and saved as your default."
-            : AI_CONNECTION_MESSAGES[result]}
-        </p>
+      {result && result !== "connected" ? (
+        <div className="power-notice is-error" role="alert">
+          <Glyph name="alert" />
+          <p>{AI_CONNECTION_MESSAGES[result]}</p>
+        </div>
       ) : null}
       {saveError ? <p role="alert">{saveError}</p> : null}
-      <div className="power-cta">
-        <button
-          className="secondary full"
-          disabled={
-            pending ||
-            loading ||
-            loadError ||
-            !valid ||
-            !runtime ||
-            !resolveAgentReadiness(
-              [runtime],
-              config,
-              "preferred",
-              gitBashPrerequisite,
-            ).ready
-          }
-          onClick={() => void testConnection()}
-          type="button"
-        >
-          {pending ? "Working..." : "Test connection"}
-        </button>
-        <button
-          className="primary full"
-          disabled={
-            pending || result !== "connected" || saved || !prerequisite.ready
-          }
-          onClick={() => void save()}
-          type="button"
-        >
-          Save AI default
-        </button>
-      </div>
+      {saved ? (
+        <p role="status">AI connected and saved as your default.</p>
+      ) : null}
+      <button
+        className="primary full"
+        type="button"
+        disabled={
+          pending ||
+          loading ||
+          loadError ||
+          !runtime ||
+          !key.trim() ||
+          !prerequisite.ready ||
+          saved
+        }
+        onClick={() => void checkKey()}
+      >
+        {pending ? "Checking key" : "Check key"} <Glyph name="arrow" />
+      </button>
     </>
   );
 }
@@ -265,8 +245,8 @@ export function CreditsComingSoon() {
     <div className="power-empty" data-testid="onboarding-credits-coming-soon">
       <h3>Coming soon</h3>
       <p>
-        Colony credits cannot power AI employees yet. Connect your own provider
-        key or an installed AI tool to get started.
+        Colony credits cannot power AI employees yet. Connect an installed AI
+        tool or your OpenRouter account to get started.
       </p>
     </div>
   );

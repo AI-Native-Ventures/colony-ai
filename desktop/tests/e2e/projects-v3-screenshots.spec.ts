@@ -52,8 +52,12 @@ async function expectProjectContextGroups(
   await expect(panel.getByTestId("project-repository-people")).toHaveCount(0);
 }
 
-async function openBuzzProject(page: import("@playwright/test").Page) {
+async function openBuzzProject(
+  page: import("@playwright/test").Page,
+  afterBoot?: () => Promise<void>,
+) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  if (afterBoot) await afterBoot();
   await openLegacyProjectsView(page);
   await page.getByTestId("projects-section-projects").click();
   const projectEntry = page
@@ -256,24 +260,49 @@ test("restricted repositories keep event work visible and offer access help", as
   await expect(chatPanel.getByTestId("message-composer")).toBeVisible();
 });
 
-test("repository pages show a centered Buzz loader while fetching", async ({
+test("repository pages show centered Scout presence while fetching", async ({
   page,
 }) => {
-  await installMockBridge(page, { projectRepoSnapshotDelayMs: 750 });
-  await openBuzzProject(page);
+  await installMockBridge(page);
+  await openBuzzProject(page, async () => {
+    await expect(page.getByTestId("app-sidebar")).toBeVisible();
+    await page.evaluate(() => {
+      const testWindow = window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke: (
+            command: string,
+            args?: Record<string, unknown>,
+          ) => Promise<unknown>;
+        };
+        __COLONY_RELEASE_REPOSITORY__: () => void;
+      };
+      const original = testWindow.__TAURI_INTERNALS__.invoke.bind(
+        testWindow.__TAURI_INTERNALS__,
+      );
+      testWindow.__TAURI_INTERNALS__.invoke = async (command, args) => {
+        if (command === "get_project_repo_snapshot")
+          await new Promise<void>((resolve) => {
+            testWindow.__COLONY_RELEASE_REPOSITORY__ = resolve;
+          });
+        return original(command, args);
+      };
+    });
+  });
 
   const loader = page.getByTestId("buzz-loading-state");
   await expect(loader).toBeVisible();
   await expect(
-    loader.getByRole("img", { name: "Loading repository" }),
+    page.getByRole("status", { name: "Loading repository" }),
   ).toBeVisible();
-  const animatedMark = loader.locator(".buzz-logo__mark");
-  await expect(animatedMark).toHaveCSS(
-    "animation-name",
-    "buzz-logo-scale-pulse",
-  );
-  await expect(animatedMark).toHaveCSS("opacity", "1");
+  await expect(
+    loader.locator('.scout-ant[data-pose="working"] svg'),
+  ).toBeVisible();
   await expect(loader).toHaveCSS("justify-content", "center");
+  await page.evaluate(() =>
+    (
+      window as unknown as { __COLONY_RELEASE_REPOSITORY__: () => void }
+    ).__COLONY_RELEASE_REPOSITORY__(),
+  );
   await expect(loader).toBeHidden({ timeout: 5_000 });
 });
 

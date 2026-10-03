@@ -17,7 +17,14 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { RUNTIME_MARKS } from "./HarnessMarks.tsx";
-import { PRESET_LOGOS } from "./RuntimeIcon.tsx";
+import { PRESET_LOGOS, getRuntimeDisplayLabel } from "./RuntimeIcon.tsx";
+
+test("bundled runtime uses the Colony Agent label", () => {
+  assert.equal(
+    getRuntimeDisplayLabel({ id: "buzz-agent", label: "Buzz Agent" }),
+    "Colony Agent",
+  );
+});
 
 const desktopRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

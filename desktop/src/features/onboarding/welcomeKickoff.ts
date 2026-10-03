@@ -50,7 +50,7 @@ const closerMarker = welcomeKickoffMarker(WELCOME_KICKOFF_CLOSER_MARKER);
 const providerMarker = welcomeKickoffMarker(WELCOME_KICKOFF_PROVIDER_MARKER);
 
 export const WELCOME_KICKOFF_PROVIDER_MESSAGE =
-  "To get started with agents, open Settings > Agents > Defaults to connect your AI harness, sign in and choose a model. Once you're connected, come back here and we'll introduce the team.";
+  "To get started with Scout, connect your AI in Settings > Agents > Defaults. Then return here to get started.";
 
 /** Post setup guidance only when the production readiness gate lacks an authenticated path. */
 export async function postWelcomeKickoffSetupNotice(
@@ -63,7 +63,7 @@ export async function postWelcomeKickoffSetupNotice(
 }
 
 const WELCOME_KICKOFF_CTA =
-  "What can we help you build? Bring us something you're working on, or give us a quick challenge to see how we work together.";
+  "What can I help you build? Bring me something you're working on, or give me a quick challenge to get started.";
 
 function formatAgentNames(agents: readonly ManagedAgent[]) {
   if (agents.length === 0) return "";
@@ -109,11 +109,11 @@ const TEAMMATE_READY_POLL_MS = 250;
 export const TEAMMATE_READY_WAIT_MS = 5_000;
 /**
  * Give-up backstop for teammates that are neither intro'd nor detectably failed
- * — i.e. alive but silent. **Not** an expectation of how fast an intro arrives.
+ *. i.e. alive but silent. **Not** an expectation of how fast an intro arrives.
  *
  * It does not gate the happy path: once every teammate is resolved (intro'd, or
  * `failedAfterKickoff`-detected), the closer fires on `CLOSER_BEAT_MS` and this
- * timer is cleared. Raising it costs the normal case nothing — it only delays
+ * timer is cleared. Raising it costs the normal case nothing. it only delays
  * the moment we give up on a silent teammate.
  *
  * So it must be long enough that "taking longer than expected" is *true* when it
@@ -123,7 +123,7 @@ export const TEAMMATE_READY_WAIT_MS = 5_000;
  * routinely beat two cold agents through harness dispatch + a full LLM turn
  * (observed 2026-07-18: intros landed ~60s in, and the false "taking longer"
  * closer had already been stamped final at 15s). A real failure does not wait
- * for this — `failedAfterKickoff` resolves crashed teammates immediately.
+ * for this. `failedAfterKickoff` resolves crashed teammates immediately.
  *
  * See docs/welcome-kickoff-silent-failures.md §1.
  */
@@ -137,7 +137,7 @@ const closerTimeouts = new Map<
 
 type WelcomeAgentSet = {
   lead: ManagedAgent;
-  teammates: [ManagedAgent, ManagedAgent];
+  teammates: ManagedAgent[];
 };
 
 function markerEvent(events: readonly RelayEvent[], marker: string) {
@@ -157,7 +157,7 @@ export function resolveWelcomeAgentSet(
   if (ordered.some((agent) => !agent)) return null;
   return {
     lead: ordered[0] as ManagedAgent,
-    teammates: [ordered[1] as ManagedAgent, ordered[2] as ManagedAgent],
+    teammates: [],
   };
 }
 
@@ -292,13 +292,13 @@ export function buildWelcomeKickoffCloser(
     return WELCOME_KICKOFF_CTA;
   }
   if (failedNames.length === 1 && delayedNames.length === 0) {
-    return `${failedNames[0]} is having trouble starting — you can check on them in Agents.\n\n${WELCOME_KICKOFF_CTA}`;
+    return `${failedNames[0]} is having trouble starting. You can check on them in Agents.\n\n${WELCOME_KICKOFF_CTA}`;
   }
   if (failedNames.length > 1 && delayedNames.length === 0) {
     return `${failedNames.join(" and ")} couldn't start. You can check on them in Agents; I'm still here to help.\n\n${WELCOME_KICKOFF_CTA}`;
   }
   if (failedNames.length === 0 && delayedNames.length === 1) {
-    return `${delayedNames[0]} is taking longer to reply — I'm still here to help.\n\n${WELCOME_KICKOFF_CTA}`;
+    return `${delayedNames[0]} is taking longer to reply. I'm still here to help.\n\n${WELCOME_KICKOFF_CTA}`;
   }
   const names = [...failedNames, ...delayedNames].join(" and ");
   return `${names} are taking longer than expected. I'm still here to help.\n\n${WELCOME_KICKOFF_CTA}`;
@@ -430,7 +430,7 @@ export type WelcomeKickoffOwner = {
  * events plus the opener's thread replies.
  *
  * Teammate intros (and the closer) are thread replies, which the channel
- * window deliberately excludes — only broadcast replies reach the main
+ * window deliberately excludes. only broadcast replies reach the main
  * timeline. So `channelEvents` alone shows the opener and never the intros,
  * and the closer stalls until the user happens to open the thread. Merging the
  * opener's subtree in is what lets the choreography resolve on its own.
@@ -582,7 +582,7 @@ export function useWelcomeKickoff(
   //
   // This has to be a latch rather than a plain derivation. The closer is a
   // *thread reply* to the opener (see sendWelcomeKickoffCloser), so it never
-  // appears in `channelEvents` unless the user happened to open the thread —
+  // appears in `channelEvents` unless the user happened to open the thread ,
   // deriving from `channelEvents` meant this never retired at all. Deriving
   // from `kickoffEvents` instead is self-referential: it gates the query that
   // feeds it, so retiring would drop the evidence that justified retiring and
@@ -655,7 +655,7 @@ export function useWelcomeKickoff(
         });
         const resolvedAgentSet: WelcomeAgentSet = {
           lead: welcomeTeam[0],
-          teammates: [welcomeTeam[1], welcomeTeam[2]],
+          teammates: [],
         };
 
         if (await markerExists(channelId, closerMarker)) {
@@ -796,7 +796,7 @@ export function useWelcomeKickoff(
       closerInFlight.has(channelId) ||
       // Respect the latch, not just the events. Retiring the opener-thread
       // watch drops the subtree from `kickoffEvents`, which is where the closer
-      // lives — so once resolved, the marker check below can no longer see it
+      // lives. so once resolved, the marker check below can no longer see it
       // and would classify every teammate as silent and re-run the closer on
       // each revisit. The latch is the durable "already resolved" signal.
       kickoffResolved

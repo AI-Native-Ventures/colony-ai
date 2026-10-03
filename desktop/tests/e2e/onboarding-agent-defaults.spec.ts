@@ -65,9 +65,9 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
   });
 
   await expect(
-    page.getByRole("heading", { name: "Connect your AI." }),
+    page.getByRole("heading", { name: "Let’s connect your first agent." }),
   ).toBeVisible();
-  await expect(page.getByTestId("onboarding-runtime-loading")).toBeVisible();
+
   await expect(
     page.getByTestId("onboarding-connect-runtime-claude"),
   ).toBeVisible();
@@ -93,23 +93,18 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
     });
   expect(selectStyle).toEqual({ alignment: "left", border: "0px" });
 
-  await page.getByRole("button", { name: "Bring your own key" }).click();
+  await page.getByRole("radio", { name: "Bring your own key" }).click();
   await expect(
     page.getByRole("heading", { name: "Connect directly to a provider" }),
   ).toBeVisible();
-  await expect(page.getByTestId("global-agent-provider")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Test connection" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Save AI default" }),
-  ).toBeDisabled();
+  await expect(page.getByLabel("Provider", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Check key" })).toBeDisabled();
 
-  await page.getByRole("button", { name: "OpenRouter" }).click();
+  await page.getByRole("radio", { name: "OpenRouter" }).click();
   await expect(
     page.getByRole("heading", { name: "Your OpenRouter account" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Subscriptions" }).click();
+  await page.getByRole("radio", { name: "Subscriptions" }).click();
   await expect(
     page.getByRole("heading", { name: "On this computer" }),
   ).toBeVisible();
@@ -126,10 +121,10 @@ test("R17 onboarding can continue when provider discovery fails", async ({
   await expect(discoveryNotice).toBeVisible();
   await expect(discoveryNotice).not.toContainText("Mock ACP runtime discovery");
   await expect(
-    page.getByRole("button", { name: "Bring your own key" }),
+    page.getByRole("radio", { name: "Bring your own key" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Open my Colony" }),
+    page.getByRole("button", { name: "Skip for now" }),
   ).toBeEnabled();
 
   const savedBusiness = await page.evaluate((key) => {
@@ -140,7 +135,7 @@ test("R17 onboarding can continue when provider discovery fails", async ({
     website: "northstar.example",
   });
 
-  await page.getByRole("button", { name: "Open my Colony" }).click();
+  await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
@@ -311,25 +306,24 @@ test("R17 bundled agent without a provider is not ready and credits are coming s
     ],
   });
   const card = page.getByTestId("onboarding-connect-runtime-buzz-agent");
-  await expect(card).toContainText("No AI connected yet");
+  await expect(card).toContainText("Included");
   await expect(card).not.toContainText("Ready");
-  await expect(
-    page.getByText("AI employees will not reply", { exact: false }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Open AI settings" }),
-  ).toBeVisible();
+  await expect(page.getByTestId("onboarding-ai-not-ready")).toHaveCount(0);
   await page
-    .getByRole("button", { name: "Colony credits", exact: true })
+    .getByRole("radio", { name: "Colony credits", exact: true })
     .click();
   const credits = page.getByTestId("onboarding-credits-coming-soon");
   await expect(credits).toContainText("Coming soon");
+  await expect(
+    page.getByRole("button", { name: "Connect", exact: true }),
+  ).toBeDisabled();
+  await expect(page.locator(".form-content .lede[role=status]")).toHaveCount(0);
   await expect(credits).not.toContainText(/balance|Unavailable|12\.50/);
   await expect(page.getByRole("button", { name: "Reload prices" })).toHaveCount(
     0,
   );
   await expect(
-    page.getByRole("button", { name: "Open my Colony" }),
+    page.getByRole("button", { name: "Skip for now" }),
   ).toBeEnabled();
 });
 
@@ -359,25 +353,16 @@ test("R17 Bring your own key saves a tested OpenRouter provider default", async 
     },
   });
   await page
-    .getByRole("button", { name: "Bring your own key", exact: true })
+    .getByRole("radio", { name: "Bring your own key", exact: true })
     .click();
-  const key = page.getByTestId("persona-provider-api-key");
+  const key = page.getByTestId("onboarding-provider-key");
   await expect(key).toHaveAttribute("type", "password");
   await key.fill("e2e-fixture-key");
-  await expect(
-    page.getByRole("button", { name: "Save AI default" }),
-  ).toBeDisabled();
-  await page
-    .getByRole("button", { name: "Test connection", exact: true })
-    .click();
-  await expect(
-    page.getByText("Connection works.", { exact: false }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Save AI default" }).click();
+  await page.getByRole("button", { name: "Check key", exact: true }).click();
   await expect(
     page.getByText("AI connected and saved as your default."),
   ).toBeVisible();
-  await expect(page.locator(".harness-state")).toHaveText("Configured");
+  await expect(page.locator(".harness-state")).toHaveText("Included");
   await expect(
     page.getByText("AI employees will not reply", { exact: false }),
   ).toHaveCount(0);
@@ -386,12 +371,12 @@ test("R17 Bring your own key saves a tested OpenRouter provider default", async 
   ).toBe(1);
   expect(await mockCommand(page, "get_global_agent_config")).toMatchObject({
     preferred_runtime: "buzz-agent",
-    provider: "openrouter",
+    provider: "anthropic",
     model: "fixture/model",
   });
 });
 
-test("R17 explicit skip can open the working defaults path in Settings", async ({
+test("R17 explicit skip opens Colony without saving a connection", async ({
   page,
 }) => {
   await openR17ConnectionSetup(page, {
@@ -403,12 +388,8 @@ test("R17 explicit skip can open the working defaults path in Settings", async (
       },
     ],
   });
-  await page
-    .getByRole("button", { name: "Open AI settings", exact: true })
-    .click();
-  await expect(page.getByTestId("settings-view")).toBeVisible();
-  await expect(page.getByTestId("settings-global-agent-config")).toBeVisible();
-  await expect(page.getByTestId("global-agent-provider")).toBeVisible();
+  await page.getByRole("button", { name: "Skip for now", exact: true }).click();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
   expect(
     await mockCommand(page, "get_global_agent_config_set_call_count"),
   ).toBe(0);
@@ -448,7 +429,7 @@ test("bundled agent readiness names missing Git for Windows before claiming Read
   await expect(card).not.toContainText("Ready on this computer");
   await expect(card.locator(".provider-status.is-connected")).toHaveCount(0);
   await page
-    .getByRole("button", { name: "Bring your own key", exact: true })
+    .getByRole("radio", { name: "Bring your own key", exact: true })
     .click();
   await expect(page.locator(".harness-state")).toHaveText(
     "Git for Windows needed",
@@ -457,9 +438,14 @@ test("bundled agent readiness names missing Git for Windows before claiming Read
     "Install Git for Windows",
   );
   await expect(
-    page.getByRole("button", { name: "Test connection", exact: true }),
+    page.getByRole("button", { name: "Check key", exact: true }),
   ).toBeDisabled();
+  await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
+  await expect(page.locator(".harness-state")).toHaveText(
+    "Git for Windows needed",
+  );
+  await page.getByRole("radio", { name: "Subscriptions", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Open my Colony", exact: true }),
+    page.getByRole("button", { name: "Skip for now", exact: true }),
   ).toBeEnabled();
 });

@@ -31,25 +31,25 @@ function agent(name, personaId, pubkey) {
   };
 }
 
-const fizz = agent("Fizz", "builtin:fizz", "f".repeat(64));
+const fizz = agent("Scout", "builtin:fizz", "f".repeat(64));
 const honey = agent("Honey", "builtin:honey", "h".repeat(64));
 const pollen = agent("Pollen", "builtin:bumble", "b".repeat(64));
 
 test("resolveWelcomeAgentSet orders agents by stable persona identity", () => {
   assert.deepEqual(resolveWelcomeAgentSet([pollen, fizz, honey]), {
     lead: fizz,
-    teammates: [honey, pollen],
+    teammates: [],
   });
-  assert.equal(resolveWelcomeAgentSet([fizz, honey]), null);
+  assert.equal(resolveWelcomeAgentSet([honey, pollen]), null);
 });
 
 test("opener uses current agent names and requests bounded simultaneous intros", () => {
-  const opener = buildWelcomeKickoffOpener({ ...fizz, name: "Fizzy" }, [
+  const opener = buildWelcomeKickoffOpener({ ...fizz, name: "Scouty" }, [
     { ...honey, name: "Honeybee" },
     pollen,
   ]);
 
-  assert.match(opener, /I'm Fizzy/);
+  assert.match(opener, /I'm Scouty/);
   assert.match(opener, /@Honeybee and @Pollen/);
   assert.doesNotMatch(opener, /@@/);
   assert.match(opener, /sentence or two/);
@@ -151,7 +151,7 @@ test("kickoff coordinator preserves one task across rerenders and cancels on nav
 });
 
 test("closer degrades coherently for partial and total startup failure", () => {
-  assert.match(buildWelcomeKickoffCloser([]), /What can we help you build/);
+  assert.match(buildWelcomeKickoffCloser([]), /What can I help you build/);
   assert.match(buildWelcomeKickoffCloser(["Honey"]), /Honey is having trouble/);
   assert.match(
     buildWelcomeKickoffCloser(["Honey", "Pollen"]),
@@ -279,7 +279,7 @@ test("opener greets the owner by name and tags their pubkey", () => {
     pollen.pubkey,
     owner.pubkey,
   ]);
-  assert.match(input.content, /^Hi @Morgan, I'm Fizz\./);
+  assert.match(input.content, /^Hi @Morgan, I'm Scout\./);
   // The raw pubkey must never leak into the visible copy.
   assert.doesNotMatch(input.content, /owner-pubkey-hex/);
 });
@@ -296,7 +296,7 @@ test("opener falls back to an unnamed greeting when the display name is missing"
 
   // Still tagged for the Inbox mentions feed, just no visible greeting name.
   assert.ok(input.mentionPubkeys.includes(owner.pubkey));
-  assert.match(input.content, /^Hi, I'm Fizz\./);
+  assert.match(input.content, /^Hi, I'm Scout\./);
   assert.doesNotMatch(input.content, /@\s/);
 });
 
@@ -309,7 +309,7 @@ test("opener greets and tags the owner even when no teammates come online", () =
 
   assert.deepEqual(input.mentionPubkeys, ["owner-pubkey-hex"]);
   assert.equal(input.additionalMarkers.length, 1);
-  assert.match(input.content, /^Hi @Morgan, I'm Fizz\./);
+  assert.match(input.content, /^Hi @Morgan, I'm Scout\./);
 });
 
 test("opener does not duplicate the owner pubkey if already mentioned", () => {
@@ -331,7 +331,7 @@ test("opener degrades to one seeded Fizz message when no teammate comes online",
   assert.deepEqual(input.mentionPubkeys, []);
   assert.equal(input.additionalMarkers.length, 1);
   assert.match(input.content, /I'm here with Honey and Pollen/);
-  assert.match(input.content, /What can we help you build/);
+  assert.match(input.content, /What can I help you build/);
   assert.doesNotMatch(
     input.content,
     /introduce yourselves|trouble|couldn't start|taking longer/i,
@@ -479,12 +479,16 @@ test("merging with no subtree replies leaves the channel events untouched", () =
   assert.equal(mergeKickoffEvents(channelEvents, []), channelEvents);
 });
 
-test("Fizz points new users to the working provider defaults path", () => {
+test("Scout points new users to the working AI defaults path", () => {
   assert.match(
     WELCOME_KICKOFF_PROVIDER_MESSAGE,
     /Settings > Agents > Defaults/,
   );
-  assert.match(WELCOME_KICKOFF_PROVIDER_MESSAGE, /sign in and choose a model/);
+  assert.match(WELCOME_KICKOFF_PROVIDER_MESSAGE, /connect your AI/);
+});
+
+test("welcome recovery does not require an API key in its primary guidance", () => {
+  assert.doesNotMatch(WELCOME_KICKOFF_PROVIDER_MESSAGE, /API key|provider key/);
 });
 
 test("presence deadline also bounds a hung in-flight relay request", async () => {

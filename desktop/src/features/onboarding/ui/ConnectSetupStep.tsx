@@ -1,6 +1,5 @@
 import { OpenRouterConnectionPanel } from "@/shared/ui/OpenRouterConnectionPanel";
 import * as React from "react";
-import { OnboardingRuntimeModel } from "./OnboardingRuntimeModel";
 import { useQueryClient } from "@tanstack/react-query";
 import { globalAgentConfigQueryKey } from "@/features/agents/useGlobalAgentConfig";
 import {
@@ -39,6 +38,7 @@ import {
   type OnboardingSceneData,
 } from "./OnboardingScenePresentation";
 import type { OnboardingSceneId } from "./onboardingScenes";
+import { scoutGuidance } from "./scoutGuidance";
 import {
   getVisibleOnboardingRuntimes,
   runtimeIsReadyForOnboarding,
@@ -76,11 +76,12 @@ function getRuntimeHeaderStatus(
     return prerequisite.reason === "git-bash"
       ? "Git for Windows needed"
       : "Checking prerequisites";
+  if (runtime.id === "buzz-agent")
+    return runtime.availability === "available" ? "Included" : "Not available";
   if (runtimeIsReadyForOnboarding(runtime, globalConfig, gitBashPrerequisite))
     return runtime.authStatus.status === "logged_in"
-      ? "Signed in"
+      ? "Installed"
       : "Configured";
-  if (runtime.id === "buzz-agent") return "No AI connected yet";
   return harnessDetectionStatus(runtime, false);
 }
 
@@ -163,14 +164,14 @@ function RuntimeOption({
   };
 
   // Not-ready states use the harness detection taxonomy (install, adapter,
-  // sign-in and unprobed authentication are distinct). A ready runtime names
-  // how it was proven: signed in for a harness, configured for the bundled
-  // agent, so Connect never implies a sign-in that was not probed.
+  // sign-in and unprobed authentication are distinct). A ready harness is
+  // known to be signed in; the bundled agent is configured by provider, model
+  // and credentials, so Connect never implies a sign-in that was not probed.
   let status = harnessDetectionStatus(runtime, false);
   if (ready)
     status =
       runtime.id !== "buzz-agent" && runtime.authStatus.status === "logged_in"
-        ? "Signed in on this computer"
+        ? "Installed"
         : "Configured on this computer";
   else if (runtime.id === "buzz-agent") status = "No AI connected yet";
 
@@ -200,11 +201,17 @@ function RuntimeOption({
           </span>
         ) : null}
       </button>
+      {ready && (runtime.id === "claude" || runtime.id === "codex") ? (
+        <p className="usage-unavailable">
+          Usage unavailable
+          <span>Your allowance may still be available.</span>
+        </p>
+      ) : null}
       <div className="runtime-actions">
         {ready ? (
           <span className="provider-status is-connected">
             {runtime.authStatus.status === "logged_in"
-              ? "Signed in"
+              ? "Installed"
               : "Configured"}
           </span>
         ) : null}
@@ -374,7 +381,7 @@ function RuntimeConnectionPanel({
     <>
       {error ? (
         <div className="power-notice is-error" role="alert">
-          <svg aria-hidden="true" className="icon">
+          <svg aria-hidden="true" className="icon" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="9" />
             <path d="M12 7v6m0 3v.1" />
           </svg>
@@ -390,7 +397,7 @@ function RuntimeConnectionPanel({
           onClick={() => void refresh()}
           type="button"
         >
-          <svg aria-hidden="true" className="icon">
+          <svg aria-hidden="true" className="icon" viewBox="0 0 24 24">
             <path d="M20 11a8 8 0 1 0 2 5" />
             <path d="M20 4v7h-7" />
           </svg>
@@ -404,13 +411,13 @@ function RuntimeConnectionPanel({
           role="status"
         >
           <span className="spinner" />
-          <h3>Finding your AI apps.</h3>
-          <p>Checking installations and signed-in accounts.</p>
+          <h3>Checking your installed apps.</h3>
+          <p>We’re looking for supported apps on this computer.</p>
         </div>
       ) : null}
       {query.error instanceof Error ? (
         <div className="power-notice is-error" role="alert">
-          <svg aria-hidden="true" className="icon">
+          <svg aria-hidden="true" className="icon" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="9" />
             <path d="M12 7v6m0 3v.1" />
           </svg>
@@ -554,12 +561,19 @@ export function ConnectSetupStep({
     (runtime) => runtime.id === selectedRuntimeId,
   );
   const bundled = runtimes.data?.find((runtime) => runtime.id === "buzz-agent");
+  const [byokChecked, setByokChecked] = React.useState(false);
+  const [openRouterReady, setOpenRouterReady] = React.useState(false);
+  const [openRouterScene, setOpenRouterScene] =
+    React.useState<OnboardingSceneId>("openrouter-unlinked");
   const keyScene =
     connectionScene === "api-key" || connectionScene === "openrouter-unlinked";
   const candidateRuntime = keyScene ? bundled : selectedRuntime;
   const aiReady =
-    (connectionScene !== "openrouter-unlinked" ||
-      globalConfig.provider === "openrouter") &&
+    (connectionScene === "api-key"
+      ? byokChecked
+      : connectionScene === "openrouter-unlinked"
+        ? openRouterReady && globalConfig.provider === "openrouter"
+        : true) &&
     !!candidateRuntime &&
     runtimeIsReadyForOnboarding(
       candidateRuntime,
@@ -579,8 +593,7 @@ export function ConnectSetupStep({
   );
 
   const continueWithRuntime = async () => {
-    if (!aiReady) {
-      onContinue();
+    if (!aiReady || connectionScene === "credits-price-error") {
       return;
     }
     const attempt = ++generation.current;
@@ -588,6 +601,7 @@ export function ConnectSetupStep({
     setSaving(true);
     setSaveError(null);
     setProof(null);
+    setConnectionPhase("starting");
     setTestState("testing");
     try {
       const runtimeId = keyScene ? "buzz-agent" : selectedRuntimeId;
@@ -620,6 +634,14 @@ export function ConnectSetupStep({
   if (testState !== "connect") {
     return (
       <OnboardingScenePresentation
+        onCancelTest={() => {
+          if (connectionPhase === "saving") return;
+          generation.current += 1;
+          void cancelOnboardingConnectionTest().catch(console.warn);
+          setSaving(false);
+          setProof(null);
+          setTestState("connect");
+        }}
         scene={testState}
         data={{
           ...data,
@@ -672,79 +694,80 @@ export function ConnectSetupStep({
               onRuntimeSelect={selectRuntime}
             />
           ) : connectionScene === "openrouter-unlinked" ? (
-            <OpenRouterConnectionPanel onboarding />
+            <OpenRouterConnectionPanel
+              onboarding
+              onReadyChange={setOpenRouterReady}
+              onStateChange={(state) =>
+                setOpenRouterScene(`openrouter-${state}`)
+              }
+            />
           ) : connectionScene === "api-key" ? (
-            <AiKeyConnectionPanel key={connectionScene} openRouter={false} />
+            <AiKeyConnectionPanel
+              key={connectionScene}
+              onCheckedChange={setByokChecked}
+            />
           ) : (
             <CreditsComingSoon />
           )}
-          {connectionScene === "connect" && aiReady && selectedRuntime ? (
-            <OnboardingRuntimeModel
-              key={selectedRuntimeId}
-              runtime={selectedRuntime}
-              config={globalConfig}
-              model={selectedModel}
-              onChange={setSelectedModel}
-            />
-          ) : null}
           {saveError && connectionScene !== "connect" ? (
             <p role="alert">{saveError}</p>
           ) : null}
-          {!aiReady ? (
-            <div className="power-notice">
-              <p>
-                No working AI connection yet. AI employees will not reply until
-                you connect an AI in Settings &gt; Agents &gt; Defaults.
-              </p>
+          {connectionScene === "connect" ||
+          connectionScene === "credits-price-error" ||
+          aiReady ? (
+            <div className="power-cta">
               <button
-                className="link"
+                className="primary full"
+                disabled={
+                  saving ||
+                  !aiReady ||
+                  connectionScene === "credits-price-error"
+                }
+                onClick={() => void continueWithRuntime()}
                 type="button"
-                onClick={() => onContinue("settings")}
               >
-                Open AI settings
+                {connectionScene === "connect" && selectedRuntime
+                  ? `Connect with ${getRuntimeDisplayLabel(selectedRuntime)}`
+                  : "Connect"}{" "}
+                <span aria-hidden="true">→</span>
+              </button>
+              <button
+                className="back"
+                type="button"
+                onClick={() => onContinue()}
+              >
+                Skip for now
               </button>
             </div>
           ) : null}
-          <div className="power-cta">
-            <button
-              className="primary full"
-              disabled={saving}
-              onClick={() => void continueWithRuntime()}
-              type="button"
-            >
-              {aiReady ? "Connect" : "Open my Colony"}
-            </button>
-            {!aiReady ? (
-              <p>Continue without AI. You can connect it later.</p>
-            ) : null}
-          </div>
         </>
       }
-      data={
-        keyScene
+      data={{
+        ...data,
+        ...(connectionScene === "credits-price-error"
+          ? { scoutGuidance: scoutGuidance("connect") }
+          : {}),
+        ...(keyScene
           ? {
-              ...data,
-              harnessLabel: "Colony AI",
+              harnessLabel: "Colony Agent",
               harnessStatus: bundled
                 ? getRuntimeHeaderStatus(
                     bundled,
                     globalConfig,
                     gitBashPrerequisite,
                   )
-                : "No AI connected yet",
+                : "Unavailable",
             }
-          : data
-      }
-      harnessMark={
-        keyScene && bundled ? (
-          <RuntimeIcon className="harness-mark-runtime" runtime={bundled} />
-        ) : (
-          harnessHeader.mark
-        )
-      }
+          : {}),
+      }}
+      harnessMark={keyScene ? undefined : harnessHeader.mark}
       onNavigate={onBack}
       onSelectConnection={onSelectConnection}
-      scene={connectionScene}
+      scene={
+        connectionScene === "openrouter-unlinked"
+          ? openRouterScene
+          : connectionScene
+      }
     />
   );
 }

@@ -113,7 +113,7 @@ async function openRouterTab(page: Page) {
     ],
   });
   await mockOAuth(page);
-  await page.getByRole("button", { name: "OpenRouter", exact: true }).click();
+  await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Connect OpenRouter", exact: true }),
   ).toBeEnabled();
@@ -154,10 +154,24 @@ for (const viewport of [
           .getByRole("button", { name: "Connect OpenRouter", exact: true })
           .click();
       }
+      await expect(
+        page.getByTestId(`onboarding-scene-openrouter-${state}`),
+      ).toBeVisible();
+      if (state === "error" || state === "limit")
+        await expect(
+          page.getByText("Needs your attention", { exact: true }),
+        ).toBeVisible();
       const panel = page.getByTestId("openrouter-connection");
       await expect(panel).toHaveAttribute("aria-busy", "false");
       await expect(panel.locator('input[type="password"]')).toHaveCount(0);
       if (state === "connected" || state === "usage" || state === "limit") {
+        await expect(
+          panel.getByRole("button", { name: "Test connection", exact: true }),
+        ).toHaveClass(/secondary/);
+        if (state === "connected")
+          await expect(
+            page.locator(".form-content button.primary"),
+          ).toHaveCount(1);
         await expect(
           panel.getByText("Connected", { exact: true }),
         ).toBeVisible();
@@ -199,6 +213,9 @@ for (const viewport of [
             exact: true,
           }),
         ).toBeVisible();
+        await expect(
+          panel.getByRole("button", { name: "Use this model", exact: true }),
+        ).toHaveCount(0);
         await expect(panel.getByLabel("Model", { exact: true })).toHaveValue(
           "fixture/free:free",
         );
@@ -297,9 +314,9 @@ test("Settings provides OAuth and keeps manual configuration under Bring your ow
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openRouterTab(page);
-  await page
-    .getByRole("button", { name: "Open my Colony", exact: true })
-    .click();
+  await page.getByRole("radio", { name: "Subscriptions", exact: true }).click();
+  await page.getByRole("button", { name: "Skip for now", exact: true }).click();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
   await page.getByTestId("open-settings").click();
   await page.getByTestId("profile-popover-settings").click();
   await page.getByTestId("settings-group-agents-group").click();
@@ -332,7 +349,7 @@ for (const status of ["linked", "reauth", "unmanaged"] as const) {
   }) => {
     await openRouterTab(page);
     await page
-      .getByRole("button", { name: "Bring your own key", exact: true })
+      .getByRole("radio", { name: "Bring your own key", exact: true })
       .click();
     const initial =
       status === "linked"
@@ -359,7 +376,7 @@ for (const status of ["linked", "reauth", "unmanaged"] as const) {
                 : "This key uses a custom OpenRouter address. Manage it under Bring your own key.",
           };
     await mockOAuth(page, connected, false, initial);
-    await page.getByRole("button", { name: "OpenRouter", exact: true }).click();
+    await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
     const panel = page.getByTestId("openrouter-connection");
     await expect(panel).toHaveAttribute("aria-busy", "false");
     await expect(
@@ -493,4 +510,47 @@ test("balance, spending and key limits share currency formatting with thousands 
       exact: true,
     }),
   ).toContainText("$1,250.50");
+});
+
+test("OpenRouter refresh failure updates Scout and clears connection readiness", async ({
+  page,
+}) => {
+  await openRouterTab(page);
+  await page
+    .getByRole("button", { name: "Connect OpenRouter", exact: true })
+    .click();
+  await expect(
+    page.getByTestId("onboarding-scene-openrouter-connected"),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const internals = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke: (command: string, args?: unknown) => Promise<unknown>;
+        };
+      }
+    ).__TAURI_INTERNALS__;
+    const invoke = internals.invoke.bind(internals);
+    internals.invoke = (command, args) =>
+      command === "get_openrouter_connection"
+        ? Promise.reject(new Error("fixture metadata unavailable"))
+        : invoke(command, args);
+  });
+  await page
+    .getByTestId("openrouter-connection")
+    .getByRole("button", { name: "Refresh connection", exact: true })
+    .click();
+  await expect(
+    page.getByTestId("onboarding-scene-openrouter-error"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Needs your attention", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("openrouter-connection").getByRole("alert"),
+  ).toContainText("Could not refresh OpenRouter");
+  await expect(
+    page.getByRole("button", { name: "Connect", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
 });

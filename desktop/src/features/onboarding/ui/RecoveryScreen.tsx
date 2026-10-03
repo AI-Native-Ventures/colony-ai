@@ -36,7 +36,7 @@ export function RecoveryScreen({
             }}
             type="button"
           >
-            Relaunch Buzz
+            Relaunch Colony
           </Button>
         ) : (
           <p
@@ -45,7 +45,7 @@ export function RecoveryScreen({
             role="status"
           >
             Identity recovery is not available in this Electron build yet.
-            Continue in a supported Buzz desktop build.
+            Continue in a supported Colony desktop build.
           </p>
         )}
       </div>

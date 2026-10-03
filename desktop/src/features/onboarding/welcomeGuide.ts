@@ -1,3 +1,4 @@
+import scoutSvg from "./assets/scout.svg?raw";
 import { resolveLegacyWelcomeRuntime } from "./ui/agentReadiness";
 import { stopManagedAgent } from "@/shared/api/tauriManagedAgents";
 import {
@@ -13,7 +14,6 @@ import {
   discoverGitBashPrerequisite,
 } from "@/shared/api/tauri";
 import { discoverAcpRuntimes } from "@/shared/api/tauriAcpDiscovery";
-import { getAgentAccessOwnerOnly } from "@/shared/api/tauriAgentAccess";
 import { getGlobalAgentConfig } from "@/shared/api/tauriGlobalAgentConfig";
 import { listPersonas, setPersonaActive } from "@/shared/api/tauriPersonas";
 import type {
@@ -25,15 +25,16 @@ import type {
 } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 
-export const WELCOME_GUIDE_AGENT_NAME = "Fizz";
+export const WELCOME_GUIDE_AGENT_NAME = "Scout";
 export const WELCOME_GUIDE_PERSONA_ID = "builtin:fizz";
 export const WELCOME_TEAM_ID = "builtin-team:welcome";
 export const WELCOME_GUIDE_INTRO_MARKER = "buzz-welcome-intro.v1";
+export const WELCOME_SCOUT_AVATAR = `data:image/svg+xml,${encodeURIComponent(scoutSvg)}`;
 const LEGACY_WELCOME_GUIDE_AGENT_NAME = "Kit";
 export const LEGACY_WELCOME_GUIDE_SYSTEM_PROMPT =
   "You are Kit, Sprout's friendly welcome guide. Help new users understand the community, channels, messages, and agents. Keep introductions concise, practical, and warm.";
 export const WELCOME_GUIDE_INTRO_MESSAGE =
-  "Hi, I'm Fizz. Welcome to Colony.\n\nI can help you get oriented, answer questions, and make the first few steps feel less mysterious.\n\nFeel free to ask me what else you can do in Colony, or just talk through what you want to build.";
+  "Hi, I'm Scout. Welcome to Colony.\n\nI can help you get oriented, answer questions, and make the first few steps feel less mysterious.\n\nFeel free to ask me what else you can do in Colony, or just talk through what you want to build.";
 
 export type WelcomeTeamRole = "lead" | "teammate";
 
@@ -45,12 +46,10 @@ export type WelcomeTeamStarterDefinition = Readonly<{
 
 /** Stable identities used to provision the Rust-seeded Welcome Team. */
 export const WELCOME_TEAM_STARTERS = [
-  { name: "Fizz", personaId: "builtin:fizz", role: "lead" },
-  { name: "Honey", personaId: "builtin:honey", role: "teammate" },
-  { name: "Pollen", personaId: "builtin:bumble", role: "teammate" },
+  { name: "Scout", personaId: "builtin:fizz", role: "lead" },
 ] as const satisfies readonly WelcomeTeamStarterDefinition[];
 
-export type WelcomeTeamAgents = [ManagedAgent, ManagedAgent, ManagedAgent];
+export type WelcomeTeamAgents = [ManagedAgent];
 
 const welcomeTeamPromises = new Map<string, Promise<WelcomeTeamAgents>>();
 
@@ -230,9 +229,24 @@ export async function buildWelcomeStarterCreateInput(
     preferredRuntimeId,
   );
   return {
-    ...(await buildInstanceInputForDefinition(persona, runtime)),
+    ...(await buildInstanceInputForDefinition(
+      starter.role === "lead"
+        ? { ...persona, avatarUrl: WELCOME_SCOUT_AVATAR }
+        : persona,
+      runtime,
+    )),
     harnessOverride: true,
     name: starter.name,
+    ...(starter.role === "lead"
+      ? {
+          systemPrompt: persona.systemPrompt
+            ?.replace(/\bFizz\b/g, "Scout")
+            .replace(/\bBuzz\b/g, "Colony")
+            .replace(/\u2014/g, ",")
+            .replace(/Add occasional bee wordplay[^.]*\./gu, "")
+            .trim(),
+        }
+      : {}),
     teamId: WELCOME_TEAM_ID,
     relayUrl: relayUrl ?? undefined,
     spawnAfterCreate: false,
@@ -340,7 +354,7 @@ export function welcomeTeammateAccessUpdate(
 /**
  * Ensure the complete built-in Welcome Team is ready for kickoff.
  * The team itself is Rust-seeded; this only activates personas, creates any
- * missing relay-scoped instances, and adds all three to Welcome as bots.
+ * missing relay-scoped instances, and adds Scout to Welcome as a bot.
  */
 async function provisionWelcomeTeam(
   channelId: string,
@@ -348,13 +362,11 @@ async function provisionWelcomeTeam(
 ): Promise<WelcomeTeamAgents> {
   const existingAgents = await listManagedAgents();
   await ensureWelcomeTeamPersonasActive();
-  const [personas, runtimeCatalog, globalConfig, agentAccessOwnerOnly] =
-    await Promise.all([
-      listPersonas(),
-      discoverAcpRuntimes(),
-      getGlobalAgentConfig(),
-      getAgentAccessOwnerOnly(),
-    ]);
+  const [personas, runtimeCatalog, globalConfig] = await Promise.all([
+    listPersonas(),
+    discoverAcpRuntimes(),
+    getGlobalAgentConfig(),
+  ]);
   const personasById = new Map(
     personas.map((persona) => [persona.id, persona]),
   );
@@ -396,24 +408,9 @@ async function provisionWelcomeTeam(
     const created = await createManagedAgent(desired);
     agents.push(created.agent);
   }
-  const [lead, honey, pollen] = agents;
-  if (!lead || !honey || !pollen) {
-    throw new Error("Welcome Team provisioning did not return every starter.");
-  }
-  const welcomeAgents: WelcomeTeamAgents = [lead, honey, pollen];
-  const leadPubkey = lead.pubkey;
-  for (const index of [1, 2] as const) {
-    const teammate = welcomeAgents[index];
-    const accessUpdate = welcomeTeammateAccessUpdate(
-      teammate,
-      leadPubkey,
-      agentAccessOwnerOnly,
-    );
-    if (accessUpdate) {
-      const updated = await updateManagedAgent(accessUpdate);
-      welcomeAgents[index] = updated.agent;
-    }
-  }
+  const [lead] = agents;
+  if (!lead) throw new Error("Scout provisioning did not return the starter.");
+  const welcomeAgents: WelcomeTeamAgents = [lead];
   await ensureWelcomeTeamMembership(channelId, welcomeAgents);
   return welcomeAgents;
 }

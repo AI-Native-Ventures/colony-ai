@@ -57,9 +57,7 @@ export function isEmailCodeScene(scene: OnboardingSceneId): boolean {
 
 function fixtureCode(scene: OnboardingSceneId, visualOnly?: boolean) {
   if (!visualOnly) return "";
-  return scene.endsWith("-network") || scene.endsWith("-verifying")
-    ? "123456"
-    : "";
+  return scene.endsWith("-verifying") ? "123456" : "";
 }
 
 function fixtureCountdown(view: CodeView, visualOnly?: boolean) {
@@ -198,7 +196,10 @@ function EmailCodeBody(props: PresentationProps) {
   const remaining = props.authCode
     ? (props.authCode.cooldownSecs ?? 0)
     : fixtureRemaining;
-  const pending = props.authCode?.pending ?? props.pending ?? false;
+  const pending =
+    props.authCode?.pending ??
+    props.pending ??
+    (props.data.visualOnly && view === "verifying");
   const locked = view === "locked";
   const expired = view === "expired";
   const disabled = pending || locked || expired;
@@ -231,7 +232,7 @@ function EmailCodeBody(props: PresentationProps) {
     return (
       <div className="otp-content" data-otp-state={view}>
         <h2 id="account-auth-title" ref={props.headingRef} tabIndex={-1}>
-          {changing ? "Change email" : "Forgot your password?"}
+          {changing ? "Change email" : "Reset your password"}
         </h2>
         <p className="otp-lede">
           {changing

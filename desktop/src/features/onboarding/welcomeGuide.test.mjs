@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 
 import {
   activateWelcomeTeamPersonasSequentially,
@@ -296,14 +297,12 @@ test("existing Welcome starter needs no update when runtime already matches", ()
 test("welcome team starter definitions and role identities are stable", () => {
   assert.equal(WELCOME_TEAM_ID, "builtin-team:welcome");
   assert.deepEqual(WELCOME_TEAM_STARTERS, [
-    { name: "Fizz", personaId: "builtin:fizz", role: "lead" },
-    { name: "Honey", personaId: "builtin:honey", role: "teammate" },
-    { name: "Pollen", personaId: "builtin:bumble", role: "teammate" },
+    { name: "Scout", personaId: "builtin:fizz", role: "lead" },
   ]);
 });
 
 test("starter matching ignores user agents with a Welcome persona", () => {
-  const honey = WELCOME_TEAM_STARTERS[1];
+  const honey = WELCOME_TEAM_STARTERS[0];
   const userHoney = makeAgent({
     personaId: honey.personaId,
     teamId: null,
@@ -316,7 +315,7 @@ test("starter matching ignores user agents with a Welcome persona", () => {
 });
 
 test("starter matching uses persona identity rather than display name", () => {
-  const honey = WELCOME_TEAM_STARTERS[1];
+  const honey = WELCOME_TEAM_STARTERS[0];
   const renamedHoney = makeAgent({
     name: "Honey the Helper",
     personaId: honey.personaId,
@@ -334,7 +333,7 @@ test("starter matching uses persona identity rather than display name", () => {
 });
 
 test("starter matching is relay scoped and normalizes trailing slashes", () => {
-  const pollen = WELCOME_TEAM_STARTERS[2];
+  const pollen = WELCOME_TEAM_STARTERS[0];
   const otherRelay = makeAgent({
     personaId: pollen.personaId,
     relayUrl: RELAY_B,
@@ -499,4 +498,21 @@ test("changing a running lead stops it before updating so kickoff can launch the
     ["update", "claude-code-acp"],
   ]);
   assert.equal(result.status, "stopped");
+});
+
+test("native Scout seed uses the exact approved SVG in the safe inline catalog format", () => {
+  const nativeAvatar = readFileSync(
+    new URL(
+      "../../../src-tauri/src/managed_agents/scout_avatar.txt",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const svg = readFileSync(
+    new URL("./assets/scout.svg", import.meta.url),
+    "utf8",
+  );
+  assert.equal(nativeAvatar, `data:image/svg+xml,${encodeURIComponent(svg)}`);
+  assert.ok(nativeAvatar.startsWith("data:image/svg+xml,"));
+  assert.ok(Buffer.byteLength(nativeAvatar) <= 8192);
 });

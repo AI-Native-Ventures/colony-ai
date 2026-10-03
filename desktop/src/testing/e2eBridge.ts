@@ -1294,6 +1294,7 @@ type RawManagedAgent = {
   pubkey: string;
   name: string;
   persona_id: string | null;
+  team_id?: string | null;
   /** Record-level harness/runtime pin (`null` when inheriting from the persona). */
   runtime: string | null;
   relay_url: string;
@@ -15704,6 +15705,7 @@ async function handleCreateManagedAgent(
     input: {
       name: string;
       personaId?: string;
+      teamId?: string;
       relayUrl?: string;
       acpCommand?: string;
       agentCommand?: string;
@@ -15780,6 +15782,7 @@ async function handleCreateManagedAgent(
     pubkey,
     name,
     persona_id: args.input.personaId ?? null,
+    team_id: args.input.teamId ?? null,
     // Create never pins a harness id — the record inherits from the persona.
     runtime: null,
     relay_url: args.input.relayUrl ?? DEFAULT_RELAY_WS_URL,

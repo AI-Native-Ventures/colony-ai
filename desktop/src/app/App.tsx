@@ -28,13 +28,7 @@ import { useAppOnboardingState } from "@/features/onboarding/hooks";
 import { useMachineOnboardingState } from "@/features/onboarding/machineOnboarding";
 import { AccountClaimPrompt } from "@/features/account/AccountClaimPrompt";
 import { getAccountAuthClient } from "@/features/onboarding/accountAuthAdapter";
-import {
-  type FirstCommunityPage,
-  useCommunityOnboarding,
-  markCommunityOnboardingComplete,
-  resolveProfileCheckAction,
-  isTransactionStillConnecting,
-} from "@/features/onboarding/communityOnboarding";
+import { useCommunityOnboarding } from "@/features/onboarding/communityOnboarding";
 import { CommunityOnboardingFlow } from "@/features/onboarding/ui/CommunityOnboardingFlow";
 import {
   MachineOnboardingFlow,
@@ -71,22 +65,19 @@ import {
   getSharedIdentity,
   supportsNativeCapability,
 } from "@/shared/api/nativeBridge";
-import { getProfile } from "@/shared/api/tauriProfiles";
 import {
   type AddCommunityDeepLinkPayload,
   listenForDeepLinks,
 } from "@/shared/deep-link";
 import { cn } from "@/shared/lib/cn";
-import { BuzzMark } from "@/shared/ui/buzz-logo/BuzzMark";
-import { FlappingBee } from "@/shared/ui/buzz-logo/FlappingBee";
-import { FuzzyLogo } from "@/shared/ui/buzz-logo/FuzzyLogo";
+import { ScoutAvatar } from "@/features/onboarding/ui/ScoutAvatar";
 import { StartupWindowDragRegion } from "@/shared/ui/StartupWindowDragRegion";
 
 const LOADING_TEXT = "Setting up your community...";
 
 // Minimum time the cold-boot splash stays on screen. A real boot resolves the
 // community in well under 100ms, and the native window setup plus first paint
-// can take longer than that — without a hold, the bee is unmounted before it is
+// can take longer than that , without a hold, the bee is unmounted before it is
 // ever visible. The hold runs as an overlay above the already-mounted app, so
 // time-to-interactive is unchanged; only the reveal waits.
 const BOOT_SPLASH_MIN_VISIBLE_MS = 1_200;
@@ -143,38 +134,12 @@ function useBootSplashHold(): BootSplashPhase {
   return phase;
 }
 
-// Animated Buzz mark for the loading gates. The static BuzzMark renders in
-// normal flow and sizes the box — it's plain SVG (no JS/SMIL), so it paints on
-// the very first frame even before scripting starts, avoiding a blank flash on
-// hard reload. The animated FuzzyLogo is layered on top and takes over once it
-// begins playing.
-function BeeLoader({
-  ariaLabel,
-  className,
-  tintClassName = "text-foreground",
-}: {
-  ariaLabel: string;
-  className?: string;
-  tintClassName?: string;
-}) {
-  return (
-    <div className={cn("relative", tintClassName, className)}>
-      <BuzzMark className="block h-auto w-full" />
-      <FuzzyLogo
-        ariaLabel={ariaLabel}
-        className="absolute inset-0 h-full! w-full! [&>svg]:h-full [&>svg]:w-full [&>svg]:max-w-full"
-        fuzz
-        loop
-        loopRestSeconds={0}
-      />
-    </div>
-  );
+// Scout keeps startup presence consistent with first run.
+function ScoutLoader({ className }: { className?: string }) {
+  return <ScoutAvatar className={cn("block", className)} pose="working" />;
 }
 
-// Cold boot gate: the theme-adaptive grainient background with a single
-// centered Buzz bee flying over it — the same static mark as before, now with
-// its wings flapping (ported from the Buzz website's wing-flap). Replaces the
-// old "Setting up your community" text, which stays as an sr-only caption.
+// Cold boot gate with the approved Scout avatar.
 function AppLoadingGate() {
   return (
     <div
@@ -185,7 +150,7 @@ function AppLoadingGate() {
       <StartupWindowDragRegion />
       <ThemeGrainientBackground />
       <span className="sr-only">{LOADING_TEXT}</span>
-      <FlappingBee className="relative z-10 h-auto w-28" />
+      <ScoutLoader className="relative z-10 h-28 w-28" />
     </div>
   );
 }
@@ -208,13 +173,7 @@ function CommunitySwitchGate() {
     >
       <StartupWindowDragRegion />
       <span className="sr-only">Switching community…</span>
-      {showSpinner ? (
-        <BeeLoader
-          ariaLabel="Switching community…"
-          className="h-auto w-20"
-          tintClassName="text-muted-foreground"
-        />
-      ) : null}
+      {showSpinner ? <ScoutLoader className="h-auto w-20" /> : null}
     </div>
   );
 }
@@ -231,9 +190,9 @@ function CommunityQueryProvider({
   // Seeding persisted channel heads is part of constructing the client, not a
   // gate in front of the app: the splash, AppReady, and relay preconnect mount
   // immediately, and only the channel query waits on the cache load (see
-  // channelHeadHydration). It must start here rather than in an effect —
+  // channelHeadHydration). It must start here rather than in an effect ,
   // React Query fires a child's queryFn when it subscribes, before any parent
-  // effect runs — and StrictMode's dev-only double initializer just issues one
+  // effect runs , and StrictMode's dev-only double initializer just issues one
   // redundant read on a discarded client. The provider is keyed on the
   // community, so one client maps to one {pubkey, relayUrl} scope.
   const [queryClient] = useState(() => {
@@ -271,7 +230,7 @@ function CommunityQueryProvider({
 
 /**
  * Watches the community-scoped identity query and fires once the active
- * pubkey changes after mount — i.e. an in-app key import through the
+ * pubkey changes after mount , i.e. an in-app key import through the
  * relay-scoped onboarding flow, which writes the new identity to the
  * community query client only. The parent uses the signal to rebuild the
  * entire community boundary (query client, AppReady subtree, module
@@ -306,7 +265,9 @@ function AppReady({
   continueOnboarding,
   isSharedIdentity,
   isCommunitySwitch,
+  skipLegacyProfile = false,
 }: {
+  skipLegacyProfile?: boolean;
   continueOnboarding: boolean;
   isSharedIdentity: boolean;
   isCommunitySwitch: boolean;
@@ -327,7 +288,7 @@ function AppReady({
   }
 
   if (
-    onboarding.stage === "onboarding" ||
+    (onboarding.stage === "onboarding" && !skipLegacyProfile) ||
     (continueOnboarding && onboarding.stage === "blocking")
   ) {
     return (
@@ -361,11 +322,13 @@ function CommunityApp({
   continueOnboarding,
   currentPubkey,
   onBackToMachineConfig,
+  onIdentityRecovered,
   sharedIdentity,
 }: {
   continueOnboarding: boolean;
   currentPubkey: string | null;
   onBackToMachineConfig: () => void;
+  onIdentityRecovered: (pubkey: string) => void;
   sharedIdentity: boolean;
 }) {
   const {
@@ -373,8 +336,6 @@ function CommunityApp({
     communities,
     reinitKey,
     addCommunity,
-    clearCommunities,
-    removeCommunity,
     switchCommunity,
     reconnectCommunity,
   } = useCommunities();
@@ -389,8 +350,6 @@ function CommunityApp({
   const transactionRef = useRef(communityOnboarding.transaction);
   transactionRef.current = communityOnboarding.transaction;
   const [isCommunityChangeOpen, setIsCommunityChangeOpen] = useState(false);
-  const [resumeFirstCommunityPage, setResumeFirstCommunityPage] =
-    useState<FirstCommunityPage | null>(null);
   const isFindingCommunityAfterLeave =
     activeCommunity === null && loadCommunityDiscoveryAfterLeave();
 
@@ -503,36 +462,6 @@ function CommunityApp({
     transitionCommunity,
   ]);
 
-  const handleCommunityOnboardingCancel = useCallback(async () => {
-    const transaction = communityOnboarding.transaction;
-    communityOnboarding.clear();
-
-    if (!transaction?.communityId) return;
-    if (!transaction.addedCommunity) {
-      if (transaction.previousCommunityId) {
-        await transitionCommunity(transaction.previousCommunityId);
-      }
-      return;
-    }
-    if (communities.length === 1) {
-      if (transaction.source === "first-community") {
-        setResumeFirstCommunityPage(transaction.firstCommunityPage ?? "join");
-      }
-      clearCommunities();
-      return;
-    }
-    if (transaction.previousCommunityId) {
-      await transitionCommunity(transaction.previousCommunityId);
-    }
-    removeCommunity(transaction.communityId);
-  }, [
-    clearCommunities,
-    communities.length,
-    communityOnboarding,
-    removeCommunity,
-    transitionCommunity,
-  ]);
-
   const bootSplashPhase = useBootSplashHold();
 
   const transaction = communityOnboarding.transaction;
@@ -571,46 +500,23 @@ function CommunityApp({
   useEffect(() => {
     if (transaction?.stage !== "connecting" || !targetIsReady) return;
     const transactionId = transaction.id;
-    const relayUrl = transaction.relayUrl;
     if (profileCheckTransactionRef.current === transactionId) return;
     profileCheckTransactionRef.current = transactionId;
-
-    // resolveProfileCheckAction resolves exactly once (Promise.race + timer
-    // cleared on settle), so no settled flag is needed here.
-    void resolveProfileCheckAction(getProfile, 10_000).then((result) => {
-      // Atomic staleness guard via isTransactionStillConnecting: the
-      // transaction must still be the same one that launched this request
-      // AND still be in connecting. Covers cancel+replacement (B's ID !== A's)
-      // and cancel-without-replacement (transactionRef.current is null).
-      if (!isTransactionStillConnecting(transactionRef.current, transactionId))
-        return;
-
-      if (result.action === "skip") {
-        markCommunityOnboardingComplete(result.profile.pubkey, relayUrl);
-        communityOnboarding.clear();
-      } else {
-        communityOnboarding.update(
-          { stage: "profile", error: undefined },
-          transactionId,
-        );
-      }
-    });
-  }, [
-    communityOnboarding,
-    targetIsReady,
-    transaction?.stage,
-    transaction?.id,
-    transaction?.relayUrl,
-  ]);
+    communityOnboarding.update(
+      { stage: "profile", error: undefined },
+      transactionId,
+    );
+  }, [communityOnboarding, targetIsReady, transaction?.stage, transaction?.id]);
   // During "entering" the transaction stays alive as a curtain: the app mounts
   // underneath (already pointed at the Welcome channel route) while the
   // onboarding screen covers it, then fades once Welcome reports ready.
   //
   // The flow must keep ONE stable position in the element tree across every
   // stage. Rendering it from a different slot when the stage flips to
-  // "entering" would remount it — React state resets and the "Meet your
+  // "entering" would remount it , React state resets and the "Meet your
   // starter team" screen visibly restarts mid-handoff.
   const isEnteringCurtain = transaction?.stage === "entering";
+  const isDeferredEntry = transaction?.stage === "deferred";
 
   // The app mounts (and starts loading data) beneath the splash overlay; the
   // overlay just keeps the bee on screen long enough to be seen, then fades.
@@ -624,7 +530,6 @@ function CommunityApp({
       // Show welcome setup for first-run users with no communities
       appContent = (
         <WelcomeSetup
-          initialPage={resumeFirstCommunityPage ?? undefined}
           onBack={
             isFindingCommunityAfterLeave ? undefined : onBackToMachineConfig
           }
@@ -659,7 +564,10 @@ function CommunityApp({
       completeCommunityViewTransition();
     }
   }, [communityApplied]);
-  if (appContent === null && (!transaction || isEnteringCurtain)) {
+  if (
+    appContent === null &&
+    (!transaction || isEnteringCurtain || isDeferredEntry)
+  ) {
     appContent = communityApplied ? (
       <CommunityQueryProvider
         key={communityKey}
@@ -672,6 +580,7 @@ function CommunityApp({
         <CommunityThemeController />
         <AppReady
           continueOnboarding={isContinuingOnboarding}
+          skipLegacyProfile={isDeferredEntry}
           isCommunitySwitch={isCommunitySwitch}
           key={communityKey}
           isSharedIdentity={sharedIdentity}
@@ -700,6 +609,20 @@ function CommunityApp({
   return (
     <>
       {appContent}
+      {isCommunityChangeOpen && transaction ? (
+        <CommunityChangeOverlay
+          onClose={() => setIsCommunityChangeOpen(false)}
+          onUpdated={(communityName, relayUrl) => {
+            communityOnboarding.update({
+              communityName,
+              relayUrl,
+              stage: "connecting",
+              error: undefined,
+            });
+            reconnectCommunity();
+          }}
+        />
+      ) : null}
       {transaction ? (
         <div
           className={isEnteringCurtain ? "fixed inset-0 z-50" : undefined}
@@ -708,7 +631,8 @@ function CommunityApp({
           }
         >
           <CommunityOnboardingFlow
-            onCancel={handleCommunityOnboardingCancel}
+            onIdentityRecovered={onIdentityRecovered}
+            onChangeCommunity={() => setIsCommunityChangeOpen(true)}
             onConnect={handleCommunityOnboardingConnect}
             onRetryConnect={reconnectCommunity}
           />
@@ -791,9 +715,9 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
   if (machine.stage === "identity-error") {
     return (
       <NativeUnavailableScreen
-        body="Buzz could not read the startup identity through its native bridge. Nothing was sent to the relay, and no fallback identity was created. Check the desktop host and try again."
+        body="Colony could not read the startup identity through its native bridge. Nothing was sent to the relay, and no fallback identity was created. Check the desktop host and try again."
         onRetry={() => window.location.reload()}
-        title="Buzz could not start"
+        title="Colony could not start"
         testId="machine-identity-error"
       />
     );
@@ -818,6 +742,7 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
         continueOnboarding={continueOnboarding}
         currentPubkey={machine.currentPubkey}
         onBackToMachineConfig={reopenMachineConfig}
+        onIdentityRecovered={machine.complete}
         sharedIdentity={sharedIdentity}
       />
     );
@@ -869,9 +794,9 @@ export function App() {
   if (startupError) {
     return (
       <NativeUnavailableScreen
-        body="Buzz could not connect to the native startup bridge. Nothing was sent to the relay, and no fallback identity was created. Check the desktop host and try again."
+        body="Colony could not connect to the native startup bridge. Nothing was sent to the relay, and no fallback identity was created. Check the desktop host and try again."
         onRetry={() => window.location.reload()}
-        title="Buzz could not start"
+        title="Colony could not start"
         testId="native-startup-error"
       />
     );
