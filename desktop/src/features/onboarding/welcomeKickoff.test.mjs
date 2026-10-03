@@ -475,8 +475,21 @@ test("Fizz points new users to the working provider defaults path", () => {
     WELCOME_KICKOFF_PROVIDER_MESSAGE,
     /Settings > Agents > Defaults/,
   );
-  assert.match(
-    WELCOME_KICKOFF_PROVIDER_MESSAGE,
-    /sign in and choose a model/,
+  assert.match(WELCOME_KICKOFF_PROVIDER_MESSAGE, /sign in and choose a model/);
+});
+
+test("presence deadline also bounds a hung in-flight relay request", async () => {
+  const started = performance.now();
+  assert.deepEqual(
+    await waitForWelcomeTeammatesOnline([honey, pollen], {
+      isCancelled: () => false,
+      loadPresence: () => new Promise(() => {}),
+      waitMs: 20,
+    }),
+    [],
+  );
+  assert.ok(
+    performance.now() - started < 1_000,
+    "a pending presence response must not hold kickoff",
   );
 });
