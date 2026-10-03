@@ -158,7 +158,7 @@ test("starter persona activation is serialized to protect the shared store", asy
   assert.deepEqual(calls, ["builtin:fizz", "builtin:honey", "builtin:bumble"]);
 });
 
-test("all Welcome starters use the onboarding runtime preference", async () => {
+test("all Welcome starters override a bundled persona with the chosen CLI harness", async () => {
   const claude = {
     id: "claude",
     label: "Claude",
@@ -189,7 +189,7 @@ test("all Welcome starters use the onboarding runtime preference", async () => {
         systemPrompt: `${starter.name} prompt`,
         model: null,
         provider: null,
-        runtime: null,
+        runtime: "buzz-agent",
         avatarUrl: null,
         envVars: {},
         isBuiltIn: true,
@@ -200,6 +200,7 @@ test("all Welcome starters use the onboarding runtime preference", async () => {
       RELAY_A,
     );
 
+    assert.notEqual(input.agentCommand, "buzz-agent");
     assert.equal(input.agentCommand, "claude-code-acp");
     assert.equal(input.harnessOverride, true);
     assert.equal(input.personaId, starter.personaId);

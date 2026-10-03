@@ -3103,7 +3103,7 @@ test("first-run onboarding posts the live Fizz kickoff", async ({ page }) => {
     page,
     {
       globalAgentConfig: {
-        env_vars: { OPENAI_API_KEY: "e2e-placeholder" },
+        env_vars: { OPENAI_COMPAT_API_KEY: "e2e-placeholder" },
         provider: "openai",
         preferred_runtime: "buzz-agent",
         model: "gpt-5.5",
@@ -3152,7 +3152,7 @@ test("first-run onboarding lands before Welcome team bootstrap completes", async
     {
       createManagedAgentDelayMs: 1_000,
       globalAgentConfig: {
-        env_vars: { OPENAI_API_KEY: "e2e-placeholder" },
+        env_vars: { OPENAI_COMPAT_API_KEY: "e2e-placeholder" },
         provider: "openai",
         model: "gpt-5.5",
         preferred_runtime: "buzz-agent",
