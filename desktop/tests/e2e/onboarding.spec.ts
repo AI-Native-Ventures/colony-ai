@@ -3105,6 +3105,7 @@ test("first-run onboarding posts the live Fizz kickoff", async ({ page }) => {
       globalAgentConfig: {
         env_vars: { OPENAI_API_KEY: "e2e-placeholder" },
         provider: "openai",
+        preferred_runtime: "buzz-agent",
         model: "gpt-5.5",
       },
     },
@@ -3129,13 +3130,13 @@ test("first-run onboarding posts the live Fizz kickoff", async ({ page }) => {
     "offline",
   ]);
   await expect(page.getByTestId("message-timeline")).not.toContainText(
-    "Hi Morty QA, I'm Fizz. Welcome to Buzz.",
+    "Hi Morty QA, I'm Fizz. Welcome to Colony.",
   );
   await publishWelcomeTeamPresence(page);
   // Greeted by the name typed above — the @mention pill also files the opener
   // into the new user's Inbox mentions feed.
   await expect(page.getByTestId("message-timeline")).toContainText(
-    "Hi Morty QA, I'm Fizz. Welcome to Buzz.",
+    "Hi Morty QA, I'm Fizz. Welcome to Colony.",
   );
   await expect(page.getByTestId("message-timeline")).toContainText(
     "Honey and Pollen, introduce yourselves",
@@ -3148,7 +3149,15 @@ test("first-run onboarding lands before Welcome team bootstrap completes", async
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
   await installMockBridge(
     page,
-    { createManagedAgentDelayMs: 1_000 },
+    {
+      createManagedAgentDelayMs: 1_000,
+      globalAgentConfig: {
+        env_vars: { OPENAI_API_KEY: "e2e-placeholder" },
+        provider: "openai",
+        model: "gpt-5.5",
+        preferred_runtime: "buzz-agent",
+      },
+    },
     { skipOnboardingSeed: true },
   );
   await page.goto("/");
@@ -3160,7 +3169,7 @@ test("first-run onboarding lands before Welcome team bootstrap completes", async
   await expect(page.getByTestId("app-loading-gate")).toHaveCount(0);
   await publishWelcomeTeamPresence(page);
   await expect(page.getByTestId("message-timeline")).toContainText(
-    "Hi Morty QA, I'm Fizz. Welcome to Buzz.",
+    "Hi Morty QA, I'm Fizz. Welcome to Colony.",
   );
   await page.waitForTimeout(1_500);
   expect(await commandCount(page, "create_managed_agent")).toBe(3);
