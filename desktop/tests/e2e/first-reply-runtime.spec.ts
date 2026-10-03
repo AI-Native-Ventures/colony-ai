@@ -32,7 +32,7 @@ test("Connect waits for the actual reply, then saves the selected runtime", asyn
     .click();
   await page.getByRole("button", { name: /^Connect with / }).click();
   await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
-  await expect(page.getByRole("status")).toContainText(
+  await expect(page.locator(".form-content .lede[role=status]")).toContainText(
     "Waiting for its first reply",
   );
   await expect(page.locator(".progress-list li.complete")).toHaveCount(2);
@@ -335,7 +335,7 @@ for (const viewport of [
     });
     await page.getByRole("button", { name: /^Connect with / }).click();
     await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
-    await expect(page.getByRole("status")).toContainText(
+    await expect(page.locator(".form-content .lede[role=status]")).toContainText(
       "Waiting for its first reply",
     );
     await waitForAnimations(page);
