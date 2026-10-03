@@ -308,8 +308,21 @@ mod tests {
         let address = listener.local_addr().unwrap();
         tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.unwrap();
-            let mut request = [0u8; 4096];
-            socket.read(&mut request).await.unwrap();
+            tokio::time::timeout(Duration::from_secs(2), async {
+                let mut request = Vec::new();
+                let mut chunk = [0u8; 512];
+                while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                    let count = socket.read(&mut chunk).await.unwrap();
+                    assert!(count > 0, "request ended before its headers");
+                    request.extend_from_slice(&chunk[..count]);
+                    assert!(
+                        request.len() <= 4096,
+                        "fixture request headers exceeded cap"
+                    );
+                }
+            })
+            .await
+            .expect("fixture headers must arrive within two seconds");
             let body = "<title>Final response</title><meta name='description' content='After early hints'>";
             socket.write_all(format!("HTTP/1.1 103 Early Hints\r\nLink: </style.css>; rel=preload\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
         });
