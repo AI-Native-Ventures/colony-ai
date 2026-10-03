@@ -12,6 +12,10 @@ test("Connect waits for the actual reply, then pins the selected runtime and mod
   await openR17ConnectionSetup(page, {
     runtimes: [claude, codex],
     mock: {
+      discoverAgentModels: {
+        supportsSwitching: true,
+        models: [{ id: "actual-model", name: "Chosen model" }],
+      },
       onboardingConnectionDelayMs: 400,
       onboardingConnectionResult: {
         reply: "A reply from the selected harness",
@@ -25,6 +29,10 @@ test("Connect waits for the actual reply, then pins the selected runtime and mod
     .getByTestId("onboarding-connect-runtime-codex")
     .getByRole("button", { name: /Codex/ })
     .click();
+  await page.getByTestId("onboarding-runtime-model").click();
+  await page
+    .getByTestId("onboarding-runtime-model-option-actual-model")
+    .click();
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
   await expect(page.getByText("Connection verified")).toHaveCount(0);
@@ -35,6 +43,14 @@ test("Connect waits for the actual reply, then pins the selected runtime and mod
   await expect(page.locator(".connection-meta")).toContainText(
     "Codex · actual-model",
   );
+  const probe = await page.evaluate(() =>
+    window.__BUZZ_E2E_COMMAND_PAYLOADS__?.find(
+      (entry) => entry.command === "test_onboarding_connection",
+    ),
+  );
+  expect(probe?.payload).toMatchObject({
+    config: { preferred_runtime: "codex", model: "actual-model" },
+  });
   const saved = await page.evaluate(async () =>
     window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.("get_global_agent_config", null),
   );
