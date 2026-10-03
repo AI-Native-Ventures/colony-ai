@@ -128,7 +128,9 @@ function readSidebarWidth() {
     10,
   );
 
-  return Number.isFinite(storedWidth)
+  // The old default was persisted during resize. Upgrade that value while
+  // preserving every deliberately wider or narrower saved width.
+  return Number.isFinite(storedWidth) && storedWidth !== 244
     ? clampSidebarWidth(storedWidth)
     : SIDEBAR_WIDTH_DEFAULT;
 }

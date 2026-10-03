@@ -26,7 +26,7 @@
     --colony-text-workspace-button: calc(var(--buzz-type-rem) * 0.74);
     --colony-text-channel-action: calc(var(--buzz-type-rem) * 0.68);
     --colony-text-channel-header: calc(var(--buzz-type-rem) * 1.05);
-    --colony-text-message-author: var(--conversation-message-font-size);
+    --colony-text-message-author: var(--text-xs);
     --colony-text-message-timestamp: calc(var(--buzz-type-rem) * 0.625);
     --colony-text-onboarding-button: calc(var(--buzz-type-rem) * 0.81);
     --colony-display-tracking: -0.042em;

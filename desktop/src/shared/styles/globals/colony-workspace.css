@@ -32,11 +32,6 @@
   border-color: #493951;
 }
 
-:root:has([data-colony-workspace-route="true"]) [data-testid="app-sidebar"] {
-  top: 0.4375rem;
-  height: calc(100% - 0.875rem);
-}
-
 .colony-sidebar-brand-mark {
   position: relative;
   display: grid;
@@ -514,8 +509,8 @@
   [data-testid="channel-composer-overlay"]
   .composer-dock--with-activity
   [data-testid="message-input-scroll"] {
-  height: 47px;
-  min-height: 47px;
+  height: calc(2 * var(--conversation-message-line-height) + 0.4375rem);
+  min-height: calc(2 * var(--conversation-message-line-height) + 0.4375rem);
 }
 
 :root:has([data-colony-workspace-route="true"])

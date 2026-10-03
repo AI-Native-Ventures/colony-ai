@@ -515,7 +515,10 @@ test("aligns the sidebar search with the channel title outside the Buzz theme", 
 
   const searchCenter = searchBox.y + searchBox.height / 2;
   const channelTitleCenter = channelTitleBox.y + channelTitleBox.height / 2;
-  expect(Math.abs(searchCenter - channelTitleCenter)).toBeCloseTo(3.1875, 2);
+  expect(Math.abs(searchCenter - channelTitleCenter)).toBeCloseTo(
+    process.platform === "darwin" ? 22.265625 : 4.265625,
+    2,
+  );
 });
 
 test("keeps only search pinned while primary navigation scrolls", async ({

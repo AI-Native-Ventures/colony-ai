@@ -9,6 +9,8 @@ import {
   House,
 } from "lucide-react";
 
+import { isMacPlatform } from "@/shared/lib/platform";
+import { useIsFullscreen } from "@/shared/lib/useIsFullscreen";
 import { TopbarSearch } from "@/features/search/ui/TopbarSearch";
 import { OPEN_SIDEBAR_PROFILE_POPOVER_EVENT } from "@/features/sidebar/lib/profilePopoverOpenEvent";
 import type { Channel, SearchHit } from "@/shared/api/types";
@@ -92,6 +94,7 @@ export function AppSidebarPinnedHeader({
   suggestionChannels,
 }: AppSidebarPinnedHeaderProps) {
   const sidebar = useSidebar();
+  const isFullscreen = useIsFullscreen();
   const communityInitial =
     activeCommunityName.trim().slice(0, 1).toUpperCase() || "C";
 
@@ -99,6 +102,7 @@ export function AppSidebarPinnedHeader({
     <div
       className="mx-[3px] shrink-0 px-2 pb-2 pt-2"
       data-testid="sidebar-pinned-header"
+      data-mac-chrome={isMacPlatform() && !isFullscreen ? "true" : undefined}
     >
       <div className="colony-sidebar-brand mb-2 flex h-10 items-center gap-2">
         {factoryView ? (

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { waitForAnimations } from "../helpers/animations";
-import { installMockBridge } from "../helpers/bridge";
+import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 const CAMPAIGN_MESSAGE =
   "The October campaign is ready for the team to review.";
@@ -89,6 +89,7 @@ async function measure(page: Page) {
 for (const [width, height] of [
   [1728, 1117],
   [1440, 900],
+  [1100, 800],
 ]) {
   test(`shell frame and conversation gutters at ${width}`, async ({
     page,
@@ -97,6 +98,7 @@ for (const [width, height] of [
     await installMockBridge(page, {
       referenceWorkspace: true,
       referenceSidebarShell: true,
+      relaySelf: TEST_IDENTITIES.tyler.pubkey,
     });
     const proofDir =
       process.env.SHELL_PROOF_DIR ?? testInfo.outputPath("shell");
@@ -113,16 +115,28 @@ for (const [width, height] of [
         await row.getByRole("button", { name: "Reply", exact: true }).click();
         await expect(page.getByTestId("message-thread-panel")).toBeVisible();
       } else if (name === "marketing") await openCampaign(page);
-      else await page.goto(`/#/${name}`);
+      else {
+        await page.goto(`/#/${name}`);
+        if (name === "team")
+          await expect(page.getByTestId("company-team-screen")).toBeVisible({
+            timeout: 15000,
+          });
+      }
       const sidebar = page.getByTestId("app-sidebar");
       await expect(sidebar).toBeVisible();
       await expect(sidebar).toHaveCSS("width", "260px");
       await expect(
         sidebar.locator('[data-sidebar="menu-button"]').first(),
-      ).toHaveCSS("font-size", "15px");
+      ).toHaveCSS("font-size", "13.9286px");
       await expect(
         sidebar.locator('[data-sidebar="menu-button"] > svg').first(),
       ).toHaveCSS("width", "18px");
+      if (height >= 900) {
+        const nav = sidebar.locator("[data-sidebar=content]");
+        expect(
+          await nav.evaluate((el) => el.scrollHeight - el.clientHeight),
+        ).toBeLessThanOrEqual(1);
+      }
       const frame = page
         .locator(
           "[data-buzz-content-surface]:not([data-buzz-content-unframed])",
@@ -144,6 +158,43 @@ for (const [width, height] of [
           "padding",
           "10px 24px 15px",
         );
+        const inputTextLeft = await input.evaluate(
+          (el) =>
+            el.getBoundingClientRect().x +
+            parseFloat(getComputedStyle(el).paddingLeft),
+        );
+        const checkbox = thread.getByRole("checkbox");
+        if (width >= 1200) {
+          const checkboxBox = await checkbox.boundingBox();
+          expect(checkboxBox).not.toBeNull();
+          expect(
+            Math.abs((checkboxBox?.x ?? 0) - inputTextLeft),
+          ).toBeLessThanOrEqual(1);
+        }
+        const channelComposer = page.getByTestId("channel-composer-overlay");
+        const toolbarBox = await channelComposer
+          .getByTestId("message-composer-toolbar")
+          .boundingBox();
+        const channelBox = await channelComposer
+          .getByTestId("message-composer")
+          .boundingBox();
+        const sendBox = await channelComposer
+          .getByTestId("send-message")
+          .boundingBox();
+        expect(toolbarBox).not.toBeNull();
+        expect(channelBox).not.toBeNull();
+        expect(sendBox).not.toBeNull();
+        expect((sendBox?.y ?? 0) + (sendBox?.height ?? 0)).toBeLessThanOrEqual(
+          (channelBox?.y ?? 0) + (channelBox?.height ?? 0),
+        );
+        expect(
+          (toolbarBox?.y ?? 0) + (toolbarBox?.height ?? 0),
+        ).toBeLessThanOrEqual((channelBox?.y ?? 0) + (channelBox?.height ?? 0));
+        expect(
+          await page
+            .getByTestId("chat-title")
+            .evaluate((el) => el.scrollWidth - el.clientWidth),
+        ).toBeLessThanOrEqual(1);
         const tools = await thread
           .getByRole("button", { name: "Record voice note", exact: true })
           .boundingBox();
@@ -235,3 +286,14 @@ for (const [preference, px] of [
     });
   });
 }
+
+test("migrates the saved legacy sidebar default", async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    localStorage.setItem("buzz-sidebar-width", "244"),
+  );
+  await installMockBridge(page);
+  await page.goto("/");
+  await expect(page.getByTestId("app-sidebar")).toHaveCSS("width", "260px");
+});

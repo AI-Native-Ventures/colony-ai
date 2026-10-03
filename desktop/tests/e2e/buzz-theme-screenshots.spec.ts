@@ -977,15 +977,14 @@ test("settings content uses the same inset surface as the main app", async ({
 
   // The sidebar starts at the shared 8px frame inset. Settings keeps its
   // own top chrome, so this measures the two independent control rows.
-  expect(searchBox.y - backToAppBox.y).toBe(51.25);
+  expect(searchBox.y - backToAppBox.y).toBe(69.25);
 
-  // Match the r19 settings shell: a fixed 60px top chrome strip, the shell
-  // padding and surface margin, plus the measured bottom inset.
-  expect(surfaceBox.y - viewBox.y).toBe(61);
-  expect(surfaceBox.x - viewBox.x).toBe(2);
-  expect(viewBox.x + viewBox.width - (surfaceBox.x + surfaceBox.width)).toBe(9);
+  // The 52px settings top chrome is followed by the shared 8px card inset.
+  expect(surfaceBox.y - viewBox.y).toBe(60);
+  expect(surfaceBox.x - viewBox.x).toBe(8);
+  expect(viewBox.x + viewBox.width - (surfaceBox.x + surfaceBox.width)).toBe(8);
   expect(viewBox.y + viewBox.height - (surfaceBox.y + surfaceBox.height)).toBe(
-    9,
+    8,
   );
 
   const topChromeBox = await settingsTopTitle.boundingBox();

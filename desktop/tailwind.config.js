@@ -9,6 +9,7 @@ export default {
       // Font size preference nudges it alone. Do NOT reintroduce arbitrary `text-[…rem]` / `text-[…px]` literals;
       // the px-text guard rejects them. Stock scale picks up from xs.
       fontSize: {
+        "message-author": "var(--colony-text-message-author)",
         "2xs": "calc(var(--buzz-type-rem) * 0.6875)", // 11px at 16px type rem
         "3xs": "calc(var(--buzz-type-rem) * 0.5)", // 8px at 16px type rem
         "update-author": "calc(var(--buzz-type-rem) * 0.83)",

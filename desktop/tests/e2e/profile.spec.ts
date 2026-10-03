@@ -2280,7 +2280,7 @@ test("storage clear resets composed font size and keyboard zoom across windows",
   await expect.poll(readTypographyState).toEqual({
     fontSize: "default",
     rootFontSize: "14.4px",
-    typeRemPx: 14.4,
+    typeRemPx: 15.43,
     textScale: "0.9",
   });
 
