@@ -523,6 +523,8 @@ export function ConnectSetupStep({
     connectionScene === "api-key" || connectionScene === "openrouter-unlinked";
   const candidateRuntime = keyScene ? bundled : selectedRuntime;
   const aiReady =
+    (connectionScene !== "openrouter-unlinked" ||
+      globalConfig.provider === "openrouter") &&
     !!candidateRuntime &&
     runtimeIsReadyForOnboarding(
       candidateRuntime,

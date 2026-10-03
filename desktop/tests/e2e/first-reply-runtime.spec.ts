@@ -178,6 +178,81 @@ test("cancelling stops the native attempt, preserves settings and ignores a late
   await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
 });
 
+for (const route of ["Bring your own key", "OpenRouter"]) {
+  test(`${route} proof labels the tested bundled runtime after choosing Claude`, async ({
+    page,
+  }) => {
+    const openRouter = route === "OpenRouter";
+    await openR17ConnectionSetup(page, {
+      runtimes: [
+        claude,
+        r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
+      ],
+      mock: {
+        globalAgentConfig: {
+          preferred_runtime: "buzz-agent",
+          provider: openRouter ? "openrouter" : "anthropic",
+          model: "provider-model",
+          env_vars: {
+            ANTHROPIC_API_KEY: "fixture",
+            OPENROUTER_API_KEY: "fixture",
+            OPENAI_COMPAT_API_KEY: "fixture",
+          },
+        },
+      },
+    });
+    await page
+      .getByTestId("onboarding-connect-runtime-claude")
+      .getByRole("button", { name: /Claude Code/ })
+      .click();
+    await page.getByRole("button", { name: route, exact: true }).click();
+    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
+    await expect(page.locator(".connection-meta")).toContainText(
+      "Colony AI · fixture-model",
+    );
+    await expect(page.locator(".connection-meta")).not.toContainText(
+      "Claude Code",
+    );
+    const request = await page.evaluate(() =>
+      window.__BUZZ_E2E_COMMAND_PAYLOADS__?.find(
+        (entry) => entry.command === "test_onboarding_connection",
+      ),
+    );
+    expect(request?.payload).toMatchObject({
+      config: {
+        preferred_runtime: "buzz-agent",
+        model: "provider-model",
+        provider: openRouter ? "openrouter" : "anthropic",
+      },
+    });
+  });
+}
+
+test("OpenRouter does not test another provider's saved connection", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    runtimes: [
+      claude,
+      r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
+    ],
+    mock: {
+      globalAgentConfig: {
+        preferred_runtime: "buzz-agent",
+        provider: "anthropic",
+        model: "provider-model",
+        env_vars: { ANTHROPIC_API_KEY: "fixture" },
+      },
+    },
+  });
+  await page.getByRole("button", { name: "OpenRouter", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Connect", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText(/No working AI connection yet/)).toBeVisible();
+});
+
 test("Welcome exposes recovery when the saved runtime disappears, then retries provisioning", async ({
   page,
 }) => {
