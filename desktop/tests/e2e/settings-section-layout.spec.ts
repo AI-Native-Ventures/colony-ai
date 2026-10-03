@@ -201,6 +201,21 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
   expect(topbarPadding).toBe("0px 25px");
   expect(profileAvatarSize).toEqual({ width: 23, height: 23 });
 
+  // Pin the enlarged title to 600-weight Manrope and its -0.03em tracking.
+  // Measure those frozen font values independently of the element's styles:
+  // glyph advances can differ between browser platforms, not the grid bounds.
+  const titleWidth = await page.evaluate(async () => {
+    const font = '600 29.1429px "Manrope Variable"';
+    const faces = await document.fonts.load(font);
+    if (faces.length === 0)
+      throw new Error("Manrope title font is unavailable");
+    const context = document.createElement("canvas").getContext("2d");
+    if (!context) throw new Error("Cannot measure the Manrope title");
+    context.font = font;
+    const text = "Your account";
+    return context.measureText(text).width - text.length * 29.1429 * 0.03;
+  });
+
   for (const expected of [
     {
       viewport: {
@@ -222,7 +237,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
       title: {
         x: 320,
         y: 170.234375,
-        width: 171.96875,
+        width: titleWidth,
         height: 35.546875,
       },
       profileCard: {
@@ -270,7 +285,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
       title: {
         x: 328,
         y: 173.859375,
-        width: 171.96875,
+        width: titleWidth,
         height: 35.546875,
       },
       profileCard: {

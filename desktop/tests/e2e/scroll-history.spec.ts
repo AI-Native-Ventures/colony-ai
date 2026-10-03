@@ -1340,6 +1340,12 @@ test("fast middle-page scroll settles with continuous mounted coverage", async (
     )
     .toBeGreaterThan(scrollHeightBeforePrepend + 2_000);
 
+  // Real reader input retires the initial bottom-pin intent. Synthetic scroll
+  // events alone can be followed by its pending settle at the list tail, where
+  // the intentional composer spacer is not a virtualization coverage hole.
+  await timeline.hover();
+  await page.mouse.wheel(0, -120);
+
   // Simulate a fast trackpad pass through several middle-page ranges, then
   // stop. The final evaluate emits the last scroll event; all coverage samples
   // after it are passive observations.
@@ -1351,6 +1357,12 @@ test("fast middle-page scroll settles with continuous mounted coverage", async (
     }
   });
   await page.waitForTimeout(250);
+
+  const middleMetrics = await getTimelineMetrics(page);
+  expect(middleMetrics.scrollTop).toBeGreaterThan(middleMetrics.clientHeight);
+  expect(middleMetrics.scrollTop).toBeLessThan(
+    middleMetrics.scrollHeight - middleMetrics.clientHeight * 2,
+  );
 
   const viewportCoverage = () =>
     timeline.evaluate((element) => {
