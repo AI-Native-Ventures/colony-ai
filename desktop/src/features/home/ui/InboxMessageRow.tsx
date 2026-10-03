@@ -230,7 +230,7 @@ export function InboxMessageRow({
                 triggerElement="span"
               >
                 <span
-                  className="block max-w-full truncate rounded text-message font-semibold leading-message-author text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                  className="block max-w-full truncate rounded text-message-author font-semibold leading-message-author text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   data-testid="message-author"
                 >
                   {message.authorLabel}

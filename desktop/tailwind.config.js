@@ -9,6 +9,11 @@ export default {
       // Font size preference nudges it alone. Do NOT reintroduce arbitrary `text-[…rem]` / `text-[…px]` literals;
       // the px-text guard rejects them. Stock scale picks up from xs.
       fontSize: {
+        "message-author": "var(--colony-text-message-author)",
+        "company-title": [
+          "calc(var(--buzz-type-rem) * 1.625)",
+          { lineHeight: "1.35" },
+        ],
         "2xs": "calc(var(--buzz-type-rem) * 0.6875)", // 11px at 16px type rem
         "3xs": "calc(var(--buzz-type-rem) * 0.5)", // 8px at 16px type rem
         "update-author": "calc(var(--buzz-type-rem) * 0.83)",
@@ -135,6 +140,7 @@ export default {
         "colony-field": "var(--colony-shadow-field)",
       },
       borderRadius: {
+        "company-control": "0.4375rem",
         lg: "var(--colony-radius-card)",
         md: "var(--colony-radius-control-medium)",
         sm: "var(--colony-radius-control)",

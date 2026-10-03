@@ -85,7 +85,7 @@ test("resolveAgentReadiness_cli_skips_logged_out_runtimes", () => {
   assert.equal(result.ready, false);
 });
 
-test("resolveAgentReadiness_goose_requires_provider_and_model", () => {
+test("resolveAgentReadiness_unprobed_goose_is_not_ready", () => {
   const runtimes = [
     makeRuntime({
       id: "goose",
@@ -372,3 +372,96 @@ test("DeepSeek requires both its key and explicit model", () => {
     );
   }
 });
+
+test("a discovery entry with no auth probe cannot waive first-run AI setup", () => {
+  for (const id of ["goose", "omp", "grok", "codex"]) {
+    const result = resolveAgentReadiness(
+      [makeRuntime({ id, authStatus: { status: "not_applicable" } })],
+      makeConfig(),
+      "any",
+      null,
+    );
+    assert.equal(result.ready, false);
+  }
+});
+
+test("fully configured Goose remains unready without a trustworthy auth probe", () => {
+  const config = makeConfig({
+    provider: "openai",
+    model: "fixture-model",
+    env_vars: { OPENAI_API_KEY: "e2e-placeholder" },
+  });
+  for (const status of ["unknown", "not_applicable"]) {
+    for (const scope of ["any", "preferred"]) {
+      assert.equal(
+        resolveAgentReadiness(
+          [makeRuntime({ authStatus: { status } })],
+          config,
+          scope,
+          null,
+        ).ready,
+        false,
+      );
+    }
+  }
+});
+
+test("preferred scope retains legacy null preference CLI and provider readiness", () => {
+  assert.equal(
+    resolveAgentReadiness(
+      [makeRuntime({ id: "claude" })],
+      makeConfig({ preferred_runtime: null }),
+      "preferred",
+      null,
+    ).ready,
+    true,
+  );
+  assert.equal(
+    resolveAgentReadiness(
+      [makeRuntime({ id: "buzz-agent" })],
+      makeConfig({
+        preferred_runtime: null,
+        provider: "deepseek",
+        model: "deepseek-chat",
+        env_vars: { DEEPSEEK_API_KEY: "fixture" },
+      }),
+      "preferred",
+      null,
+    ).ready,
+    true,
+  );
+});
+for (const id of [
+  "claude",
+  "codex",
+  "cursor",
+  "devin",
+  "omp",
+  "grok",
+  "opencode",
+  "kimi",
+  "amp",
+  "hermes",
+  "openclaw",
+]) {
+  test(`selected ${id} uses its own auth readiness without bundled credentials`, () => {
+    assert.equal(
+      resolveAgentReadiness(
+        [makeRuntime({ id })],
+        makeConfig({ preferred_runtime: id }),
+        "preferred",
+        null,
+      ).ready,
+      true,
+    );
+    assert.equal(
+      resolveAgentReadiness(
+        [makeRuntime({ id, authStatus: { status: "logged_out" } })],
+        makeConfig({ preferred_runtime: id }),
+        "preferred",
+        null,
+      ).ready,
+      false,
+    );
+  });
+}

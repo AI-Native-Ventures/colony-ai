@@ -94,6 +94,9 @@ async function resetCommunityState({
   resetBackgroundMediaUploads();
   resetLinkPreviewPreparations();
   resetPersistentAgentAudienceStore();
+  // Welcome provisioning flights are keyed by relay and starter persona and
+  // self-clean on settlement. Preserve their guard across A-to-B-to-A switches
+  // so re-entering a community cannot create a second Scout during a live flight.
   // Intentionally NOT reset: the in-flight detached agent-start map
   // (`useDetachedAgentStart`). Its entries are keyed by the scope each start
   // asserts (relay URL + signer + agent pubkey), so they cannot leak into the

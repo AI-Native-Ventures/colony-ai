@@ -450,7 +450,7 @@ test("updates the relay-backed profile from settings", async ({ page }) => {
   await expect(
     page.getByTestId("settings-profile").getByRole("heading", {
       exact: true,
-      name: "Your account",
+      name: "Profile",
     }),
   ).toBeVisible();
   const nameInput = page.getByTestId("profile-display-name");
@@ -1822,7 +1822,7 @@ test("renders the nine settings groups with one internal account bar", async ({
     "true",
   );
   await expect(
-    page.getByRole("heading", { name: "Your account" }),
+    page.getByRole("heading", { name: "Profile", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("tab", { name: "Profile" })).toHaveAttribute(
     "aria-selected",
@@ -2099,7 +2099,7 @@ test("opens settings with the keyboard shortcut and applies a named theme", asyn
     "true",
   );
   await expect(
-    page.getByRole("heading", { name: "Your account" }),
+    page.getByRole("heading", { name: "Profile", exact: true }),
   ).toBeVisible();
   await page.getByTestId("settings-group-appearance-group").click();
 
@@ -2109,20 +2109,19 @@ test("opens settings with the keyboard shortcut and applies a named theme", asyn
     )
     .toBe(true);
 
-  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("appearance-open-themes").click();
   await expect(page.getByTestId("settings-theme-catalog")).toBeVisible();
   await page.getByTestId("theme-catalog-github-light").click();
   await expect(page.getByTestId("settings-theme-preview")).toBeVisible();
   const themePreview = page.getByTestId("theme-workspace-preview");
-  const signedInName = await page.locator(".w20-nav-person strong").innerText();
-  await expect(themePreview).toContainText("Preview content only");
-  await expect(themePreview.getByTestId("theme-preview-person")).toHaveText(
-    signedInName,
+  await expect(themePreview).toContainText(
+    "The September designs are ready for feedback.",
   );
-  await page.getByTestId("appearance-preview-density").selectOption("compact");
   await page.getByTestId("theme-use").click();
   await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-  await expect(page.getByRole("status")).toContainText("Compact");
+  await expect(page.getByRole("status")).toContainText(
+    "Your personal appearance is updated.",
+  );
 
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
@@ -2210,9 +2209,10 @@ test("storage clear resets composed font size and keyboard zoom across windows",
   await page.goto("/");
   await openSettings(page, "appearance");
   await page.getByTestId("settings-inner-accessibility").click();
+  await page.getByLabel("Text size", { exact: true }).selectOption("larger");
   await page
-    .getByRole("group", { name: "Text size" })
-    .getByRole("button", { name: "Larger", exact: true })
+    .getByTestId("settings-accessibility")
+    .getByRole("button", { name: "Save", exact: true })
     .click();
 
   const dispatchZoomIn = () =>
@@ -2237,7 +2237,7 @@ test("storage clear resets composed font size and keyboard zoom across windows",
 
   // Zoom scales the real root; the Font size preference layers a text-only
   // multiplier on top. Resolve the composed type rem through a rendered probe
-  // so the CSS calc is actually evaluated (root px × 15/14 for "larger").
+  // so the CSS calc is actually evaluated (root px times 16/14 for "larger").
   const readTypographyState = () =>
     page.evaluate(() => {
       const probe = document.createElement("span");
@@ -2258,7 +2258,7 @@ test("storage clear resets composed font size and keyboard zoom across windows",
   await expect.poll(readTypographyState).toEqual({
     fontSize: "larger",
     rootFontSize: "24px",
-    typeRemPx: 25.71,
+    typeRemPx: 27.43,
     textScale: "1.5",
   });
 
@@ -2270,7 +2270,7 @@ test("storage clear resets composed font size and keyboard zoom across windows",
   await expect.poll(readTypographyState).toEqual({
     fontSize: "default",
     rootFontSize: "16px",
-    typeRemPx: 16,
+    typeRemPx: 17.14,
     textScale: null,
   });
 
@@ -2280,7 +2280,7 @@ test("storage clear resets composed font size and keyboard zoom across windows",
   await expect.poll(readTypographyState).toEqual({
     fontSize: "default",
     rootFontSize: "14.4px",
-    typeRemPx: 14.4,
+    typeRemPx: 15.43,
     textScale: "0.9",
   });
 
@@ -2357,7 +2357,7 @@ test("settings subtitles share the Appearance secondary color", async ({
       const accountProfile = page.getByTestId("settings-profile");
       await expect(
         accountProfile.getByRole("heading", {
-          name: "Your account",
+          name: "Profile",
           exact: true,
         }),
       ).toBeVisible();

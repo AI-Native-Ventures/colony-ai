@@ -32,8 +32,8 @@ export type WelcomeKickoffStagePhase =
 
 /**
  * How long the stage waits for the first agent message before settling into
- * the quiet timed-out state. Generous because the teammate presence wait
- * alone can take up to 60s (see welcomeKickoff.ts TEAMMATE_READY_WAIT_MS).
+ * the quiet timed-out state. The teammate presence wait is bounded at 5s;
+ * the remaining time belongs to actual agent startup and reply delivery.
  */
 export const WELCOME_KICKOFF_STAGE_TIMEOUT_MS = 90_000;
 

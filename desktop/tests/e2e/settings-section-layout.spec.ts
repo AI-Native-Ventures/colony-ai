@@ -116,10 +116,18 @@ test("archive follows the r19 title and empty state", async ({ page }) => {
 
   const archive = page.getByTestId("settings-archived-records");
   await expect(
-    archive.getByRole("heading", { name: "Archive", exact: true }),
+    archive.getByRole("heading", {
+      name: "Archived records",
+      level: 1,
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(
-    archive.getByRole("heading", { name: "Archived records", exact: true }),
+    archive.getByRole("heading", {
+      name: "Archived records",
+      level: 2,
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(archive).toContainText("No archived records.");
   await expect(archive).not.toContainText(
@@ -145,7 +153,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
 
   const profileTitle = page
     .getByTestId("settings-profile")
-    .getByRole("heading", { name: "Your account", exact: true });
+    .getByRole("heading", { name: "Profile", exact: true });
   await expect(profileTitle).toBeVisible();
   const profileCard = page.getByTestId("settings-account-profile-card");
   await expect(
@@ -171,7 +179,7 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
           elements.map((element) => getComputedStyle(element).fontSize),
         ),
     )
-    .toEqual(["16px", "16px"]);
+    .toEqual(["17.1429px", "17.1429px"]);
   const titleFontSize = await profileTitle.evaluate(
     (element) => getComputedStyle(element).fontSize,
   );
@@ -195,32 +203,123 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
       return { width: rect.width, height: rect.height };
     });
 
-  expect(titleFontSize).toBe("27.2px");
-  expect(breadcrumbLineHeights).toEqual(["21px", "21px"]);
-  expect(breadcrumbFontSizes).toEqual(["14px", "14px"]);
+  expect(titleFontSize).toBe("29.1429px");
+  expect(breadcrumbLineHeights).toEqual(["22.5px", "22.5px"]);
+  expect(breadcrumbFontSizes).toEqual(["15px", "15px"]);
   expect(topbarPadding).toBe("0px 25px");
   expect(profileAvatarSize).toEqual({ width: 23, height: 23 });
 
+  // Pin the enlarged title to 600-weight Manrope and its -0.03em tracking.
+  // Measure those frozen font values independently of the element's styles:
+  // glyph advances can differ between browser platforms, not the grid bounds.
+  const titleWidth = await page.evaluate(async () => {
+    const font = '600 29.1429px "Manrope Variable"';
+    const faces = await document.fonts.load(font);
+    if (faces.length === 0)
+      throw new Error("Manrope title font is unavailable");
+    const context = document.createElement("canvas").getContext("2d");
+    if (!context) throw new Error("Cannot measure the Manrope title");
+    context.font = font;
+    const text = "Profile";
+    return context.measureText(text).width - text.length * 29.1429 * 0.03;
+  });
+
   for (const expected of [
     {
-      viewport: { width: 1440, height: 900 },
-      fieldLayer: { x: 1, y: 1, width: 1438, height: 898 },
-      settingsSurface: { x: 240, y: 61, width: 1191, height: 830 },
-      title: { x: 314, y: 172, width: 161.3125, height: 33.1875 },
-      profileCard: { x: 314, y: 267.1875, width: 631.96875 },
-      businessCard: { x: 973.96875, y: 267.1875, width: 383.03125 },
-      nameField: { x: 339, y: 331.1875, width: 581.96875, height: 72.71875 },
-      nameInput: { x: 339, y: 363.90625, width: 581.96875, height: 40 },
+      viewport: {
+        width: 1440,
+        height: 900,
+      },
+      fieldLayer: {
+        x: 1,
+        y: 1,
+        width: 1438,
+        height: 898,
+      },
+      settingsSurface: {
+        x: 246,
+        y: 60,
+        width: 1186,
+        height: 832,
+      },
+      title: {
+        x: 320,
+        y: 170.234375,
+        width: titleWidth,
+        height: 35.546875,
+      },
+      profileCard: {
+        x: 320,
+        y: 266.015625,
+        width: 628.859375,
+        height: 527.453125,
+      },
+      businessCard: {
+        x: 976.859375,
+        y: 266.015625,
+        width: 381.125,
+        height: 203.265625,
+      },
+      nameField: {
+        x: 345,
+        y: 331.71875,
+        width: 578.859375,
+        height: 74.0625,
+      },
+      nameInput: {
+        x: 345,
+        y: 365.78125,
+        width: 578.859375,
+        height: 40,
+      },
     },
     {
-      viewport: { width: 1728, height: 1117 },
-      fieldLayer: { x: 1, y: 1, width: 1726, height: 1115 },
-      settingsSurface: { x: 240, y: 61, width: 1479, height: 1047 },
-      title: { x: 322, y: 176, width: 161.3125, height: 33.1875 },
-      profileCard: { x: 322, y: 275.1875, width: 801.328125 },
-      businessCard: { x: 1151.328125, y: 275.1875, width: 485.65625 },
-      nameField: { x: 347, y: 339.1875, width: 751.328125, height: 72.71875 },
-      nameInput: { x: 347, y: 371.90625, width: 751.328125, height: 40 },
+      viewport: {
+        width: 1728,
+        height: 1117,
+      },
+      fieldLayer: {
+        x: 1,
+        y: 1,
+        width: 1726,
+        height: 1115,
+      },
+      settingsSurface: {
+        x: 246,
+        y: 60,
+        width: 1474,
+        height: 1049,
+      },
+      title: {
+        x: 328,
+        y: 173.859375,
+        width: titleWidth,
+        height: 35.546875,
+      },
+      profileCard: {
+        x: 328,
+        y: 274.1875,
+        width: 798.21875,
+        height: 527.453125,
+      },
+      businessCard: {
+        x: 1154.21875,
+        y: 274.1875,
+        width: 483.765625,
+        height: 203.265625,
+      },
+      nameField: {
+        x: 353,
+        y: 339.890625,
+        width: 748.21875,
+        height: 74.0625,
+      },
+      nameInput: {
+        x: 353,
+        y: 373.953125,
+        width: 748.21875,
+        height: 40,
+      },
     },
   ]) {
     await page.setViewportSize(expected.viewport);
@@ -321,14 +420,14 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
   }
 });
 
-test("workspace appearance saves the named theme and density together", async ({
+test("workspace appearance saves the named theme and preserves density", async ({
   page,
 }) => {
   await installMockBridge(page);
   await page.goto("/");
   await openSettings(page, "appearance");
 
-  await expect(page.getByTestId("appearance-density")).toBeVisible();
+  await expect(page.getByTestId("appearance-density")).toHaveCount(0);
   const innerTabIndicatorColor = () =>
     page
       .getByTestId("settings-inner-appearance")
@@ -357,22 +456,22 @@ test("workspace appearance saves the named theme and density together", async ({
       };
     });
   expect(await sharedChrome()).toEqual({
-    sectionLabelTracking: "-0.22px",
+    sectionLabelTracking: "-0.235714px",
     searchTextColor: "rgb(40, 37, 50)",
     breadcrumbColor: "rgb(121, 116, 127)",
     avatar: {
       backgroundColor: "rgb(236, 229, 237)",
       color: "rgb(121, 103, 130)",
-      fontSize: "9.44px",
+      fontSize: "10.1143px",
       fontWeight: "600",
       borderRadius: "7px",
     },
   });
   await expect.poll(innerTabIndicatorColor).toBe("rgb(38, 85, 160)");
 
-  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("appearance-open-themes").click();
   await page.getByTestId("theme-catalog-buzz-dark").click();
-  await page.getByTestId("appearance-preview-density").selectOption("compact");
+
   await page.getByTestId("theme-use").click();
   await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
   await expect
@@ -382,17 +481,23 @@ test("workspace appearance saves the named theme and density together", async ({
     .toBe(true);
   await expect(page.getByTestId("settings-inner-appearance")).toHaveAttribute(
     "aria-selected",
+    "false",
+  );
+  await page.getByRole("button", { name: "Back to themes" }).click();
+  await page.getByRole("button", { name: "Back to appearance" }).click();
+  await expect(page.getByTestId("settings-inner-appearance")).toHaveAttribute(
+    "aria-selected",
     "true",
   );
   await expect.poll(innerTabIndicatorColor).toBe("rgb(157, 193, 251)");
   await expect.poll(sharedChrome).toEqual({
-    sectionLabelTracking: "-0.22px",
+    sectionLabelTracking: "-0.235714px",
     searchTextColor: "rgb(236, 230, 239)",
     breadcrumbColor: "rgb(163, 154, 169)",
     avatar: {
       backgroundColor: "rgb(69, 58, 74)",
       color: "rgb(209, 191, 216)",
-      fontSize: "9.44px",
+      fontSize: "10.1143px",
       fontWeight: "600",
       borderRadius: "7px",
     },
@@ -440,7 +545,7 @@ test("workspace appearance saves the named theme and density together", async ({
     glassBackground: false,
     prominentActiveTab: false,
     theme: "buzz-dark",
-    density: "compact",
+    density: "comfortable",
   });
 });
 
@@ -508,4 +613,123 @@ test("device privacy save failure keeps both selected controls editable", async 
   await expect(
     page.getByRole("button", { name: "Save privacy preferences" }),
   ).toBeVisible();
+});
+
+test("Accessibility saves the referenced controls and restores motion and keyboard hints", async ({
+  page,
+}) => {
+  await installMockBridge(page);
+  await page.goto("/#/settings?section=accessibility");
+  const panel = page.getByTestId("settings-accessibility");
+  await expect(
+    panel.getByRole("heading", { name: "Reading & motion" }),
+  ).toBeVisible();
+  await expect(
+    panel.getByRole("heading", { name: "Keyboard", exact: true }),
+  ).toBeVisible();
+  await expect(panel.getByTestId("settings-shortcuts")).toHaveCount(0);
+  await panel.getByLabel("Motion", { exact: true }).selectOption("reduce");
+  await panel.getByLabel("Show keyboard hints").uncheck();
+  await panel.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-reduced-motion",
+    "true",
+  );
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-keyboard-hints",
+    "false",
+  );
+  await page.reload();
+  await expect(panel.getByLabel("Motion", { exact: true })).toHaveValue(
+    "reduce",
+  );
+  await expect(panel.getByLabel("Show keyboard hints")).not.toBeChecked();
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-reduced-motion",
+    "true",
+  );
+  await page.getByTestId("settings-back-to-app").click();
+  await page.getByTestId("section-actions-channels").click();
+  const hint = page
+    .getByRole("menuitem", { name: /^Browse channels/ })
+    .locator("[data-keyboard-hint]");
+  await expect(hint).toHaveCount(1);
+  await expect(hint).toBeHidden();
+  await page.keyboard.press("Escape");
+  await openSettings(page, "appearance");
+  await page.getByTestId("appearance-open-themes").click();
+  const tile = page.getByTestId("theme-catalog-buzz");
+  await tile.hover();
+  expect(
+    await tile.evaluate((element) => getComputedStyle(element).transform),
+  ).toBe("none");
+});
+
+test("Accessibility save failure preserves the durable and live preference", async ({
+  page,
+}) => {
+  await installMockBridge(page);
+  await page.goto("/#/settings?section=accessibility");
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === "colony.accessibility.v1")
+        throw new DOMException("Storage unavailable", "QuotaExceededError");
+      original.call(this, key, value);
+    };
+  });
+  const panel = page.getByTestId("settings-accessibility");
+  await panel.getByLabel("Motion", { exact: true }).selectOption("reduce");
+  await panel.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(panel.getByRole("alert")).toContainText("Could not save");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-reduced-motion",
+    "false",
+  );
+  await expect(
+    panel.getByRole("button", { name: "Save", exact: true }),
+  ).toBeEnabled();
+  expect(
+    await page.evaluate(() => localStorage.getItem("colony.accessibility.v1")),
+  ).toBeNull();
+});
+
+test("People and access gives members a denied state and a way back", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    relayRole: "member",
+    relayRequiresMembership: true,
+  });
+  await page.goto("/#/settings?section=people");
+  const panel = page.getByTestId("settings-community-members");
+  await expect(panel).toContainText("Only workspace owners and administrators");
+  await panel.getByRole("button", { name: "Back to business" }).click();
+  await expect(page.getByTestId("settings-business-profile")).toBeVisible();
+});
+
+test("People and access shows permission loading before the denied state", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    relayRole: "member",
+    relayRequiresMembership: true,
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await page.evaluate(() => {
+    window.__BUZZ_E2E_QUERY_CLIENT__?.removeQueries({
+      queryKey: ["myRelayMembershipLookup"],
+    });
+    const original = window.__TAURI_INTERNALS__.invoke;
+    window.__TAURI_INTERNALS__.invoke = async (command, args, options) => {
+      if (command === "relay_requires_membership")
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      return original(command, args, options);
+    };
+  });
+  await openSettings(page, "people");
+  const panel = page.getByTestId("settings-community-members");
+  await expect(panel.getByRole("status")).toContainText("Checking permissions");
+  await expect(panel).toContainText("Only workspace owners and administrators");
 });

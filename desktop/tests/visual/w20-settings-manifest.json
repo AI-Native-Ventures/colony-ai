@@ -77,7 +77,6 @@
           "followSystem": true,
           "custom": false,
           "customLight": ["#895AF6", "#5A9CF6"],
-          "customDark": ["#895AF6", "#5A9CF6"],
           "glassBackground": false,
           "glassOpacity": 65,
           "prominentActiveTab": true,
@@ -927,56 +926,6 @@
         "referenceSelector": ".surface",
         "appSelector": "[data-testid=settings-appearance]"
       }
-    },
-    {
-      "id": "desktop-08-compact",
-      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#08/compact",
-      "appRoute": "/#/settings?section=appearance",
-      "routeLabel": "Compact conversation density",
-      "appPrefs": {
-        "localStorage": {
-          "buzz.appearance.conversationDensity": "compact"
-        }
-      },
-      "referenceCanvas": true,
-      "clip": {
-        "referenceSelector": ".surface",
-        "appSelector": "[data-testid=settings-appearance]"
-      },
-      "actions": [
-        {
-          "type": "selectOption",
-          "target": "app",
-          "selector": "[data-testid=appearance-density]",
-          "value": "compact"
-        }
-      ],
-      "appReadySelector": "[data-testid=appearance-density]"
-    },
-    {
-      "id": "desktop-08-spacious",
-      "referenceUrl": "http://127.0.0.1:5197/20260926-r19/desktop/#08/spacious",
-      "appRoute": "/#/settings?section=appearance",
-      "routeLabel": "Spacious conversation density",
-      "appPrefs": {
-        "localStorage": {
-          "buzz.appearance.conversationDensity": "spacious"
-        }
-      },
-      "referenceCanvas": true,
-      "clip": {
-        "referenceSelector": ".surface",
-        "appSelector": "[data-testid=settings-appearance]"
-      },
-      "actions": [
-        {
-          "type": "selectOption",
-          "target": "app",
-          "selector": "[data-testid=appearance-density]",
-          "value": "spacious"
-        }
-      ],
-      "appReadySelector": "[data-testid=appearance-density]"
     },
     {
       "id": "desktop-08-saved",

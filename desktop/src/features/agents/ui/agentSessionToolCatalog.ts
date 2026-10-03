@@ -174,8 +174,8 @@ export function getBuzzToolInfo(title: string): BuzzToolInfo | null {
     return {
       icon: Users,
       label: isRead
-        ? "Reads Buzz identity or presence data."
-        : "Updates Buzz identity or membership data.",
+        ? "Reads Colony identity or presence data."
+        : "Updates Colony identity or membership data.",
       tone: isWrite ? "write" : "admin",
     };
   }

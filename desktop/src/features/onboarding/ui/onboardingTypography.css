@@ -5,15 +5,17 @@
   --onboarding-font-weight-semibold: 600;
   --onboarding-font-weight-bold: 700;
   --onboarding-font-weight-heavy: 800;
-  --onboarding-tracking-heading: -0.035em;
+  --onboarding-tracking-heading: -0.055em;
   --onboarding-tracking-subheading: -0.02em;
   --onboarding-tracking-display: -0.035em;
-  --onboarding-line-heading: 1.22;
+  --onboarding-line-heading: 1.13;
   --onboarding-line-display: 1.1;
   --onboarding-tracking-body: 0em;
 }
 
 .colony-onboarding-root {
+  font-size: 1rem;
+  line-height: normal;
   letter-spacing: var(--onboarding-tracking-body);
 }
 
@@ -32,4 +34,33 @@
 
 .colony-onboarding-root h3 {
   letter-spacing: var(--onboarding-tracking-subheading);
+}
+
+/* Keep form controls independent of the shared app's body line-height. */
+.colony-onboarding-root input,
+.colony-onboarding-root textarea,
+.colony-onboarding-root button {
+  line-height: normal;
+}
+@media (min-width: 851px) and (min-height: 800px) {
+  .colony-onboarding-root .form-submit {
+    position: static;
+    box-shadow: 0 3px 8px -4px #43335860;
+  }
+}
+
+.colony-onboarding-root .form-content h2[tabindex="-1"]:focus {
+  outline: none;
+}
+
+.colony-onboarding-root .power-routes {
+  margin: 0 0 26px;
+  gap: 4px;
+}
+@media (min-width: 851px) and (min-height: 800px) {
+  .colony-onboarding-root .power-cta {
+    position: static;
+    padding-block: 0;
+    background: none;
+  }
 }

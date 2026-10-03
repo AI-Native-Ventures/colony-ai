@@ -1,4 +1,8 @@
-import type * as React from "react";
+import * as React from "react";
+import opencodeLogoUrl from "../assets/harness-logos/opencode.ico?url";
+import piLogoUrl from "../assets/harness-logos/pi.svg?url";
+import ompLogoUrl from "../assets/harness-logos/omp.svg?url";
+import primeLogoUrl from "../assets/harness-logos/prime-mark.jpg?url";
 import claudeLogoUrl from "../assets/harness-logos/claude.png?inline";
 import codexLogoUrl from "../assets/harness-logos/codex.webp?url";
 import openRouterDarkLogoUrl from "../assets/harness-logos/openrouter-dark.svg?url";
@@ -20,6 +24,7 @@ export function ConnectionShell({
   harnessMark,
   onNavigate,
   onSelectConnection,
+  onChooseHarness,
 }: {
   scene: OnboardingSceneId;
   data: OnboardingSceneData;
@@ -27,56 +32,58 @@ export function ConnectionShell({
   harnessMark?: React.ReactNode;
   onNavigate?: (scene: OnboardingSceneId) => void;
   onSelectConnection?: (scene: OnboardingSceneId) => void;
+  onChooseHarness?: () => void;
 }) {
+  const routeRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
   return (
     <>
       <div className="power-heading">
         <h2>Connect your AI.</h2>
         <p className="lede">Your harness. Your models. Your way.</p>
       </div>
-      <div className="harness-row">
-        <span
-          className={`harness-mark ${data.harnessLabel === "Claude Code" ? "claude-mark" : data.harnessLabel === "Codex" ? "codex-mark" : ""}`}
-          aria-hidden="true"
-        >
-          {harnessMark ??
-            (data.visualOnly && data.harnessLabel === "Claude Code" ? (
-              <img alt="" className="harness-mark-image" src={claudeLogoUrl} />
-            ) : (
-              <AntMark />
-            ))}
-        </span>
-        <span>
-          <small>Agent harness</small>
-          <strong>{data.harnessLabel ?? "Finding harnesses"}</strong>
-        </span>
-        <span className="harness-state">
-          {data.harnessStatus ?? "Checking"}
-        </span>
-        <button
-          className="link"
-          onClick={() => {
+      <button
+        aria-label={`Choose agent harness. Current: ${data.harnessLabel ?? "Finding harnesses"}`}
+        className="harness-picker"
+        onClick={
+          onChooseHarness ??
+          (() => {
             const runtimeList = document.getElementById(
               "onboarding-runtime-list",
             );
             runtimeList?.scrollIntoView({ block: "center" });
             runtimeList?.focus({ preventScroll: true });
-          }}
-          type="button"
+          })
+        }
+        type="button"
+      >
+        {harnessMark ?? <HarnessLogo label={data.harnessLabel ?? ""} />}
+        <span className="harness-picker-copy">
+          <span>Agent harness</span>
+          <strong>{data.harnessLabel ?? "Finding harnesses"}</strong>
+        </span>
+        <span
+          className={`harness-state ${["Installed", "Included", "Ready"].includes(data.harnessStatus ?? "") ? "ready" : ""}`}
         >
+          {data.harnessStatus ?? "Checking"}
+        </span>
+        <span className="harness-change">
           Change <Glyph name="chevron" />
-        </button>
-      </div>
-      <fieldset className="power-routes">
-        <legend className="sr-only">AI connection</legend>
+        </span>
+      </button>
+      <div
+        aria-label="AI connection"
+        className="power-routes"
+        role="radiogroup"
+      >
         {[
           ["subscription", "Subscriptions", "subscription"],
           ["credits", "Colony credits", "sparkles"],
           ["openrouter", "OpenRouter", "globe"],
           ["api", "Bring your own key", "lock"],
-        ].map(([id, label, icon]) => (
+        ].map(([id, label, icon], index) => (
+          // biome-ignore lint/a11y/useSemanticElements: Frozen icon buttons implement a tested roving radio group.
           <button
-            aria-pressed={
+            aria-checked={
               scene === "connect" || scene.startsWith("subscription")
                 ? id === "subscription"
                 : scene.startsWith("credits") || scene === "funding"
@@ -85,8 +92,43 @@ export function ConnectionShell({
                     ? id === "openrouter"
                     : id === "api"
             }
-            className="power-route"
             key={id}
+            role="radio"
+            ref={(element) => {
+              routeRefs.current[index] = element;
+            }}
+            tabIndex={
+              (
+                scene === "connect" || scene.startsWith("subscription")
+                  ? id === "subscription"
+                  : scene.startsWith("credits") || scene === "funding"
+                    ? id === "credits"
+                    : scene.startsWith("openrouter")
+                      ? id === "openrouter"
+                      : id === "api"
+              )
+                ? 0
+                : -1
+            }
+            onKeyDown={(event) => {
+              const offset =
+                event.key === "ArrowRight" || event.key === "ArrowDown"
+                  ? 1
+                  : event.key === "ArrowLeft" || event.key === "ArrowUp"
+                    ? -1
+                    : 0;
+              if (!offset && event.key !== "Home" && event.key !== "End")
+                return;
+              event.preventDefault();
+              const next =
+                event.key === "Home"
+                  ? 0
+                  : event.key === "End"
+                    ? 3
+                    : (index + offset + 4) % 4;
+              routeRefs.current[next]?.focus();
+              routeRefs.current[next]?.click();
+            }}
             onClick={() => {
               if (id === "subscription") onSelectConnection?.("connect");
               if (id === "credits") onSelectConnection?.("credits-price-error");
@@ -96,20 +138,29 @@ export function ConnectionShell({
             }}
             type="button"
           >
-            {id === "credits" ? (
-              <AntMark />
-            ) : id === "openrouter" ? (
-              <span className="harness-logo openrouter-logo" aria-hidden="true">
-                <img alt="" className="logo-light" src={openRouterLogoUrl} />
-                <img alt="" className="logo-dark" src={openRouterDarkLogoUrl} />
-              </span>
-            ) : (
-              <Glyph name={icon as GlyphName} />
-            )}
+            <span aria-hidden="true">
+              {id === "credits" ? (
+                <AntMark />
+              ) : id === "openrouter" ? (
+                <span
+                  className="harness-logo openrouter-logo"
+                  aria-hidden="true"
+                >
+                  <img alt="" className="logo-light" src={openRouterLogoUrl} />
+                  <img
+                    alt=""
+                    className="logo-dark"
+                    src={openRouterDarkLogoUrl}
+                  />
+                </span>
+              ) : (
+                <Glyph name={icon as GlyphName} />
+              )}
+            </span>
             <strong>{label}</strong>
           </button>
         ))}
-      </fieldset>
+      </div>
       <section aria-label="Connection options" className="power-body">
         {content}
       </section>
@@ -118,6 +169,25 @@ export function ConnectionShell({
         <CreditReviewDialog data={data} />
       ) : null}
     </>
+  );
+}
+
+function HarnessLogo({ label }: { label: string }) {
+  const logos: Record<string, string> = {
+    "Claude Code": claudeLogoUrl,
+    Codex: codexLogoUrl,
+    OpenCode: opencodeLogoUrl,
+    Pi: piLogoUrl,
+    "Oh My Pi": ompLogoUrl,
+    "Prime Agent": primeLogoUrl,
+  };
+  return (
+    <span
+      aria-hidden="true"
+      className={`harness-logo ${label === "Colony Agent" ? "colony-logo" : ""}`}
+    >
+      {logos[label] ? <img alt="" src={logos[label]} /> : <AntMark />}
+    </span>
   );
 }
 
@@ -137,7 +207,7 @@ function DiscoveryPreview() {
           "Prime Agent",
         ].map((name) => (
           <div className="scan-row" key={name}>
-            <span className="provider-glyph">{name.slice(0, 1)}</span>
+            <HarnessLogo label={name} />
             {name}
             <span>Checking…</span>
           </div>
@@ -159,7 +229,7 @@ function ReadySubscriptionPreview({ scene }: { scene: OnboardingSceneId }) {
       name: "Claude Code",
       logo: claudeLogoUrl,
       plan: "Pro",
-      left: [exhausted ? 0 : 72, 46],
+      left: [exhausted ? 0 : 72, exhausted ? 0 : 46],
       resets: ["2h 18m", "4 days"],
       installed: !missing,
       auth: apiAuth
@@ -361,7 +431,8 @@ function SubscriptionState({
   }
   if (
     visualReady &&
-    (scene === "connect" || scene.startsWith("subscription-"))
+    scene.startsWith("subscription-") &&
+    scene !== "subscription-scan"
   ) {
     return <ReadySubscriptionPreview scene={scene} />;
   }
@@ -810,6 +881,11 @@ function ApiKeyState({
               autoComplete="off"
               disabled={!enabled}
               id="provider-key"
+              defaultValue={
+                scene === "api-error" && enabled
+                  ? "demo-invalid-key"
+                  : undefined
+              }
               placeholder="Paste your provider’s key"
               type="password"
             />
@@ -820,7 +896,7 @@ function ApiKeyState({
         </div>
       </div>
       <p className="power-caption">
-        Usage is billed by your provider, separately from any subscription.
+        Usage is billed by Anthropic, separately from any subscription.
       </p>
       {scene === "api-error" ? (
         <div className="power-notice is-error" role="alert">
@@ -831,9 +907,12 @@ function ApiKeyState({
           </p>
         </div>
       ) : null}
-      <button className="primary full" disabled={!enabled} type="button">
-        {scene === "api-error" ? "Check key again" : "Check key"}{" "}
-        <Glyph name="arrow" />
+      <button
+        className="primary full"
+        disabled={!enabled || scene === "api-key"}
+        type="button"
+      >
+        Check key <Glyph name="arrow" />
       </button>
       <p className="power-demo-note">
         Preview only: enter a sample key, not a real credential.

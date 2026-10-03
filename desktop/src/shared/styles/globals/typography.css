@@ -11,9 +11,10 @@
      *
      * Every text token derives from this virtual typography rem, which is
      * rem-relative so it rides on top of zoom automatically. At the default
-     * preference and zoom it equals 16px, making `text-sm` 14px.
+     * preference and zoom it makes `text-sm` 15px. The launch owner
+     * requested one larger step throughout the interface.
      */
-    --buzz-type-scale: 1;
+    --buzz-type-scale: calc(15 / 14);
     --buzz-type-rem: calc(1rem * var(--buzz-type-scale));
     --colony-font-sans:
       "Manrope Variable", "Inter Variable", Inter, "Avenir Next", "Segoe UI",
@@ -25,8 +26,8 @@
     --colony-text-workspace-button: calc(var(--buzz-type-rem) * 0.74);
     --colony-text-channel-action: calc(var(--buzz-type-rem) * 0.68);
     --colony-text-channel-header: calc(var(--buzz-type-rem) * 1.05);
-    --colony-text-message-author: 0.8rem;
-    --colony-text-message-timestamp: 0.61rem;
+    --colony-text-message-author: var(--text-xs);
+    --colony-text-message-timestamp: calc(var(--buzz-type-rem) * 0.625);
     --colony-text-onboarding-button: calc(var(--buzz-type-rem) * 0.81);
     --colony-display-tracking: -0.042em;
     --colony-onboarding-heading-size: 2.15rem;
@@ -58,13 +59,13 @@
     --conversation-timestamp-line-height: var(--buzz-type-rem);
   }
 
-  /* Conversation text contract: 13 / 14 / 15px before keyboard zoom. */
+  /* Conversation text contract: 14 / 15 / 16px before keyboard zoom. */
   :root[data-font-size="smaller"] {
-    --buzz-type-scale: calc(13 / 14);
+    --buzz-type-scale: 1;
   }
 
   :root[data-font-size="larger"] {
-    --buzz-type-scale: calc(15 / 14);
+    --buzz-type-scale: calc(16 / 14);
   }
 
   :root[data-conversation-density="compact"] {

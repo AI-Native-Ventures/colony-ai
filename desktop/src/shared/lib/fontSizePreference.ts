@@ -7,7 +7,7 @@ export const FONT_SIZE_STORAGE_KEY = "buzz.appearance.fontSize";
 export const DEFAULT_FONT_SIZE: FontSize = "default";
 
 /**
- * Root attribute that selects the type scale. The 13 / 14 / 15px contract and
+ * Root attribute that selects the type scale. The 14 / 15 / 16px contract and
  * the virtual typography rem it drives live in `styles/globals/typography.css`;
  * this module only records the user's choice. Cmd +/- zoom is a separate dial
  * (`useWebviewZoomShortcuts`) that scales the real root font-size.

@@ -8,6 +8,7 @@ import {
   nativeTheme,
   shell,
 } from "electron";
+import { createOpenRouterService } from "./openrouter-oauth.mjs";
 import { RendererHost } from "./renderer-host.mjs";
 import { createShellPlugins } from "./shell-plugins.mjs";
 import { validWindowLabel } from "./window-rules.mjs";
@@ -66,6 +67,17 @@ export function createAppWindow({
     getWindow: () => window,
     emit: (event, payload) => send({ type: "shell-event", event, payload }),
   });
+  const openRouter = createOpenRouterService({
+    openExternal: (url) => shell.openExternal(url),
+    bringToFront: () => {
+      if (!window.isDestroyed()) {
+        window.show();
+        window.focus();
+      }
+    },
+    invoke: (command, args) => host.request("invoke", { command, args }),
+  });
+  window.on("closed", () => openRouter.cancel());
   const disposeWindowEvents = shellPlugins.attachWindowEvents(window);
   rendererHost.on("event", send);
   rendererHost.on("channel", send);
@@ -84,6 +96,7 @@ export function createAppWindow({
       initialNavigation = false;
       return;
     }
+    openRouter.cancel();
     // A reload retires the previous renderer's subscriptions and channels
     // before the new one may issue commands.
     void rendererHost.reset().catch(() => {
@@ -97,6 +110,20 @@ export function createAppWindow({
 
   /** Handle one renderer request that already passed the sender check. */
   async function dispatch(type, payload) {
+    if (type === "invoke" && main) {
+      switch (payload.command) {
+        case "connect_openrouter":
+          return openRouter.connect();
+        case "cancel_openrouter":
+          return openRouter.cancel();
+        case "get_openrouter_connection":
+          return openRouter.status();
+        case "select_openrouter_model":
+          return openRouter.select(payload.args?.model);
+        case "test_openrouter_connection":
+          return openRouter.test();
+      }
+    }
     if (type === "invoke" && shellPlugins.handles(payload.command))
       return shellPlugins.invoke(payload.command, payload.args ?? {});
     if (["invoke", "listen", "unlisten", "emit"].includes(type))
@@ -111,6 +138,7 @@ export function createAppWindow({
 
   /** Retire this window's native subscriptions; the host keeps running. */
   async function dispose() {
+    openRouter.cancel();
     disposeWindowEvents();
     if (!main) await rendererHost.reset().catch(() => {});
   }

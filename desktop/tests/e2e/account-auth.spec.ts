@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
+import { openSettings, openAvatarProfileContext } from "../helpers/settings";
 
 type AccountAuthMethod =
   | "signUp"
@@ -80,10 +81,11 @@ async function startFirstRun(
     });
   });
   await page.goto("/");
-  await expect(page.getByTestId("google-account-scene")).toBeVisible();
+  await expect(page.getByTestId("onboarding-scene-account")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Welcome back" }),
+    page.getByRole("heading", { name: "Let’s get you started." }),
   ).toBeVisible();
+  await expect(page.getByTestId("account-auth-submit-signup")).toBeVisible();
 }
 
 async function queueAuthError(
@@ -182,24 +184,13 @@ test("keyboard signup verifies email and installs the account identity", async (
   await startFirstRun(page);
   await expectNoKeyCopy(page);
 
-  const createAccount = page.getByRole("button", {
-    name: "Create an account",
-  });
-  await createAccount.focus();
-  await page.keyboard.press("Enter");
-  await expect(
-    page.getByRole("heading", { name: "Create your account" }),
-  ).toBeVisible();
-  await expectNoKeyCopy(page);
-
   await page.getByLabel("Your name").fill("Lerato Molefe");
   await page.getByLabel("Email address").fill("signup@example.com");
   await page
     .getByRole("textbox", { name: "Password" })
     .fill("correct-horse-12");
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
+  await page.getByTestId("account-auth-submit-signup").focus();
+  await page.keyboard.press("Enter");
 
   await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
   await expectNoKeyCopy(page);
@@ -247,7 +238,6 @@ test("email code entry supports focus movement and keeps the code on network fai
   page,
 }) => {
   await startFirstRun(page);
-  await page.getByRole("button", { name: "Create an account" }).click();
   await page.getByLabel("Your name").fill("Lerato Molefe");
   await page.getByLabel("Email address").fill("network@example.com");
   await page
@@ -290,6 +280,7 @@ test("email code entry supports focus movement and keeps the code on network fai
 test("sign in reaches the workspace setup path", async ({ page }) => {
   await startFirstRun(page);
   await expectNoKeyCopy(page);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("form", { name: "Sign in" })).toBeVisible();
   await expectNoKeyCopy(page);
 
@@ -314,6 +305,7 @@ test("returning account can open an owned business", async ({ page }) => {
     owner_pubkey: MOCK_ACCOUNT_PUBKEY,
   };
   await startFirstRun(page, [community]);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByLabel("Email address").fill("returning@example.com");
   await page
     .getByRole("textbox", { name: "Password" })
@@ -328,21 +320,24 @@ test("returning account can open an owned business", async ({ page }) => {
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });
 
-test("Google sign in uses the same account installation path", async ({
+test("first-run account access offers email signup and sign-in without Google", async ({
   page,
 }) => {
   await startFirstRun(page);
   await expectNoKeyCopy(page);
-  const continueWithGoogle = page.getByRole("button", {
-    name: "Continue with Google",
-  });
-  await continueWithGoogle.focus();
-  await page.keyboard.press("Enter");
-  await finishMachineSetup(page);
-  const calls = await accountAuthCalls(page);
-  expect(calls.map(({ route }) => route)).toContain(
-    "POST /api/accounts/google",
-  );
+  await expect(page.getByLabel("Your name")).toBeVisible();
+  await expect(page.getByLabel("Email address")).toBeVisible();
+  await expect(page.getByTestId("google-account-scene")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Google/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByTestId("onboarding-scene-signin")).toBeVisible();
+  await expect(page.getByRole("form", { name: "Sign in" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Google/ })).toHaveCount(0);
+  expect(
+    (await accountAuthCalls(page)).some(
+      ({ method }) => method === "signInWithGoogle",
+    ),
+  ).toBe(false);
 });
 
 test("forgot password requests a code and signs in after reset", async ({
@@ -350,6 +345,7 @@ test("forgot password requests a code and signs in after reset", async ({
 }) => {
   await page.clock.install();
   await startFirstRun(page);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByRole("button", { name: "Forgot password?" }).click();
   await expect(
     page.getByTestId("account-auth-screen-reset-request"),
@@ -429,7 +425,6 @@ test("verification lockout keeps code blocked until resend is available", async 
 }) => {
   await page.clock.install();
   await startFirstRun(page);
-  await page.getByRole("button", { name: "Create an account" }).click();
   await page.getByLabel("Your name").fill("Lerato Molefe");
   await page.getByLabel("Email address").fill("locked@example.com");
   await page
@@ -476,7 +471,6 @@ test("verification lockout keeps code blocked until resend is available", async 
 test("account auth screens never show key wording", async ({ page }) => {
   await startFirstRun(page);
   await expectNoKeyCopy(page);
-  await page.getByRole("button", { name: "Create an account" }).click();
   await expectNoKeyCopy(page);
   await page.getByLabel("Your name").fill("Lerato Molefe");
   await page.getByLabel("Email address").fill("guard@example.com");
@@ -505,7 +499,6 @@ test("contract errors are announced and email_unverified moves to verification",
 }) => {
   await page.clock.install();
   await startFirstRun(page);
-  await page.getByRole("button", { name: "Create an account" }).click();
   await page.getByLabel("Your name").fill("Erin Example");
   await page.getByLabel("Email address").fill("errors@example.com");
   await page.getByRole("textbox", { name: "Password" }).fill("long-enough-12");
@@ -673,3 +666,108 @@ test("claim verification can be deferred without blocking the workspace", async 
   await expect(page.getByTestId("account-claim-start")).toBeVisible();
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });
+
+test("passive account outage never opens an intrusive prompt over the composer", async ({
+  page,
+}) => {
+  await installMockBridge(page, { accountLinked: false });
+  await page.addInitScript(() => {
+    window.__ACCOUNT_OUTAGE_CALLS__ = 0;
+    Object.defineProperty(window, "__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__", {
+      configurable: true,
+      set(client) {
+        client.getAccount = async () => {
+          window.__ACCOUNT_OUTAGE_CALLS__++;
+          throw new Error("Account service unavailable");
+        };
+        Object.defineProperty(window, "__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__", {
+          value: client,
+          writable: true,
+          configurable: true,
+        });
+      },
+    });
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => window.__ACCOUNT_OUTAGE_CALLS__))
+    .toBeGreaterThanOrEqual(1);
+  await page.getByTestId("channel-general").click();
+  await expect(page.getByTestId("message-input")).toBeVisible();
+  await page.getByTestId("message-input").fill("Composer is available");
+  await expect(page.getByTestId("message-input")).toContainText(
+    "Composer is available",
+  );
+  await expect(page.getByTestId("account-claim-prompt")).toHaveCount(0);
+});
+
+test("a failed passive account read retries on focus and restores the claim entry", async ({
+  page,
+}) => {
+  await installMockBridge(page, { accountLinked: false });
+  await page.addInitScript(() => {
+    window.__ACCOUNT_FOCUS_CALLS__ = 0;
+    Object.defineProperty(window, "__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__", {
+      configurable: true,
+      set(client) {
+        client.getAccount = async () => {
+          window.__ACCOUNT_FOCUS_CALLS__++;
+          if (window.__ACCOUNT_FOCUS_CALLS__ === 1)
+            throw new Error("Account service unavailable");
+          return null;
+        };
+        Object.defineProperty(window, "__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__", {
+          value: client,
+          writable: true,
+          configurable: true,
+        });
+      },
+    });
+  });
+  await page.goto("/");
+  await expect
+    .poll(() => page.evaluate(() => window.__ACCOUNT_FOCUS_CALLS__))
+    .toBeGreaterThanOrEqual(1);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByTestId("account-claim-start")).toBeVisible();
+});
+
+for (const surface of ["account", "avatar"] as const) {
+  test(`${surface} account details show friendly lookup recovery and Retry refetches`, async ({
+    page,
+  }) => {
+    await installMockBridge(page, { accountLinked: true });
+    await page.goto("/");
+    await expect(page.getByTestId("app-sidebar")).toBeVisible();
+    await page.evaluate(() => {
+      const client = window.__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__;
+      const original = client.getAccount.bind(client);
+      window.__ACCOUNT_SETTINGS_CALLS__ = 0;
+      window.__ACCOUNT_SETTINGS_RECOVER__ = false;
+      client.getAccount = async () => {
+        window.__ACCOUNT_SETTINGS_CALLS__++;
+        if (!window.__ACCOUNT_SETTINGS_RECOVER__)
+          throw new Error("network_error");
+        return original();
+      };
+    });
+    await openSettings(page, "profile");
+    if (surface === "avatar") await openAvatarProfileContext(page);
+    const panel = page.getByTestId("settings-profile");
+    await expect(panel.getByRole("alert")).toContainText(
+      "We couldn't load your account details. Try again.",
+    );
+    await expect(panel.getByRole("alert")).not.toContainText("network_error");
+    const beforeRetry = await page.evaluate(() => {
+      window.__ACCOUNT_SETTINGS_RECOVER__ = true;
+      return window.__ACCOUNT_SETTINGS_CALLS__;
+    });
+    await panel.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect
+      .poll(() => page.evaluate(() => window.__ACCOUNT_SETTINGS_CALLS__))
+      .toBeGreaterThan(beforeRetry);
+    await expect(panel.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByTestId("account-profile-email")).not.toHaveValue("");
+  });
+}

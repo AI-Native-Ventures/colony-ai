@@ -12,8 +12,8 @@ export function UpdateChecker() {
   return (
     <section className="min-w-0" data-testid="settings-updates">
       <SettingsSectionHeader
-        title="Software Updates"
-        description="Keep Buzz up to date with the latest features and fixes."
+        title="Updates"
+        description="Keep Colony up to date with the latest features and fixes."
       />
 
       <SettingsOptionGroup title="Update status">

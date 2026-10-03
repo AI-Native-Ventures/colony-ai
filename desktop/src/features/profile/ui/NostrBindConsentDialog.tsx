@@ -302,7 +302,7 @@ export function NostrBindConsentDialog() {
         .catch((error) => {
           console.warn("get_identity for nostr bind failed:", error);
           setIdentity(null);
-          setError("Could not load the current Buzz identity.");
+          setError("Could not load the current Colony identity.");
         });
     });
 
@@ -656,7 +656,7 @@ export function NostrBindConsentDialog() {
             <StartupWindowDragRegion />
             <div className="m-auto flex w-full max-w-[500px] flex-col items-center text-center">
               <img
-                alt="Buzz"
+                alt="Colony"
                 className="h-14 w-14 rounded-xl shadow-xs"
                 src="/app-icon@2x.png"
                 srcSet="/app-icon@2x.png 1x, /app-icon@3x.png 2x"

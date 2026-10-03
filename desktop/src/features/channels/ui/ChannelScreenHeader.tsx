@@ -92,11 +92,13 @@ export function ChannelScreenHeader({
     actionsVariant !== "reference" ? (
       <Button
         aria-label={
-          terminalPanel.mode === "closed" ? "Open Buzz Term" : "Hide Buzz Term"
+          terminalPanel.mode === "closed"
+            ? "Open Colony Term"
+            : "Hide Colony Term"
         }
         onClick={toggleTerminalPanel}
         size="icon"
-        title="Buzz Term (⌘J)"
+        title="Colony Term (⌘J)"
         type="button"
         variant={terminalPanel.mode === "closed" ? "outline" : "secondary"}
       >

@@ -13,7 +13,7 @@ import type { IdentityStorage } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
 import { Button } from "@/shared/ui/button";
-import { FuzzyLogo } from "@/shared/ui/buzz-logo/FuzzyLogo";
+import { ScoutAvatar } from "@/features/onboarding/ui/ScoutAvatar";
 import { Spinner } from "@/shared/ui/spinner";
 import {
   ONBOARDING_PRIMARY_CTA_CLASS,
@@ -154,10 +154,10 @@ export function BackupStep({
 
   const storageDescription =
     identityStorage === "system-keyring"
-      ? "Buzz keeps your identity key in your system keychain. Your computer may ask for your password when Buzz needs to read the key."
+      ? "Colony keeps your identity key in your system keychain. Your computer may ask for your password when Colony needs to read the key."
       : identityStorage === "local-file"
-        ? "Your system keychain wasn’t available, so Buzz keeps your identity key in a private file on this device."
-        : "Buzz keeps your identity key protected on this device. Make a separate backup in case you lose access.";
+        ? "Your system keychain wasn’t available, so Colony keeps your identity key in a private file on this device."
+        : "Colony keeps your identity key protected on this device. Make a separate backup in case you lose access.";
   const storageTitle =
     identityStorage === "system-keyring"
       ? "Protected by your system keychain"
@@ -190,9 +190,9 @@ export function BackupStep({
               cardLayout ? "mt-2 text-base" : "mt-5 text-sm",
             )}
           >
-            Your identity key works like a password for your Buzz account. Keep
-            a copy somewhere safe. You can create a backup file and lock it with
-            a password you can remember.
+            Your identity key works like a password for your Colony account.
+            Keep a copy somewhere safe. You can create a backup file and lock it
+            with a password you can remember.
           </p>
         </div>
 
@@ -352,14 +352,10 @@ export function BackupStep({
         <div
           className="flex w-full flex-1 items-center justify-center py-10"
           data-testid="backup-intro-logo"
+          role="status"
+          aria-label="Creating your identity key"
         >
-          <FuzzyLogo
-            ariaLabel="Creating your identity key"
-            className="w-20! text-foreground"
-            fuzz
-            loop
-            loopRestSeconds={0}
-          />
+          <ScoutAvatar pose="working" className="block w-20" />
         </div>
       ) : (
         <div

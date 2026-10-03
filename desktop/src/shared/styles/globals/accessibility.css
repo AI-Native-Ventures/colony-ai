@@ -1,0 +1,32 @@
+html[data-keyboard-hints="false"] [data-keyboard-hint] {
+  display: none;
+}
+html[data-reduced-motion="true"] {
+  --colony-motion-navigation: 1ms;
+  --colony-motion-section: 1ms;
+  --colony-motion-button: 1ms;
+  --colony-motion-button-color: 1ms;
+  --colony-motion-action: 1ms;
+  --colony-motion-dialog: 1ms;
+  --colony-motion-drawer: 1ms;
+  --colony-motion-toast: 1ms;
+  --colony-motion-skeleton: 1ms;
+  --colony-motion-onboarding-spinner: 1ms;
+  --motion-duration-instant: 1ms;
+  --motion-duration-fast: 1ms;
+  --motion-duration-standard: 1ms;
+  --motion-duration-arrival: 1ms;
+  --motion-distance-arrival: 0;
+}
+html[data-reduced-motion="true"] *,
+html[data-reduced-motion="true"] *::before,
+html[data-reduced-motion="true"] *::after {
+  animation-duration: 1ms;
+  animation-delay: 0ms;
+  transition-duration: 1ms;
+  scroll-behavior: auto;
+}
+html[data-reduced-motion="true"] .motion-enter-conversation,
+html[data-reduced-motion="true"] .motion-kickoff-character-enter {
+  animation: none;
+}

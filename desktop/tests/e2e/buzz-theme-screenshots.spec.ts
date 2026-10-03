@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
+import { openSettings } from "../helpers/settings";
 
 const SHOTS = "test-results/buzz-theme";
 const THEME_STORAGE_KEY = "buzz-theme";
@@ -140,7 +141,14 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   await expect(search.locator("span").first()).toHaveClass(
     /text-sidebar-foreground\/55/,
   );
-  await expect(pinnedHeader).toHaveCSS("padding-top", "21px");
+  const isMac = await page.evaluate(() =>
+    /mac|iphone|ipad|ipod/i.test(navigator.platform),
+  );
+  if (isMac)
+    await expect(pinnedHeader).toHaveAttribute("data-mac-chrome", "true");
+  else
+    await expect(pinnedHeader).not.toHaveAttribute("data-mac-chrome", "true");
+  await expect(pinnedHeader).toHaveCSS("padding-top", isMac ? "39px" : "21px");
   await expect(pinnedHeader).toHaveCSS("padding-bottom", "10px");
   await expect(pinnedHeader).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(pinnedHeader).toHaveCSS("margin-left", "3px");
@@ -514,6 +522,27 @@ async function emitNativeThemeChange(page: Page, theme: "light" | "dark") {
   }, theme);
 }
 
+for (const theme of ["buzz", "buzz-dark", "github-light", "github-dark"]) {
+  test(`sidebar brand and owner caption use theme foreground: ${theme}`, async ({
+    page,
+  }) => {
+    await seedTheme(page, theme);
+    await installMockBridge(page);
+    await openChannel(page);
+    await page.goto("/#/team");
+    await expect(page.getByTestId("app-sidebar")).toBeVisible();
+    await expect(page.locator(".colony-sidebar-brand-mark")).toHaveCSS(
+      "color",
+      await resolveSidebarColor(page, "color", "hsl(var(--foreground))"),
+    );
+    await openSettings(page, "profile");
+    await expect(page.locator(".w20-nav-person small")).toHaveCSS(
+      "color",
+      await resolveSidebarColor(page, "color", "hsl(var(--foreground))"),
+    );
+  });
+}
+
 test("buzz light sidebar gradient", async ({ page }) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
@@ -624,52 +653,48 @@ test("appearance keeps the named catalog and supported workspace density choices
   await expect(
     appearance.getByRole("heading", { exact: true, name: "Appearance" }),
   ).toBeVisible();
-  await expect(appearance.getByText("One home for appearance")).toBeVisible();
   await expect(
-    appearance.getByRole("button", { name: "Browse named themes" }),
+    appearance.getByRole("heading", { name: "Make yourself at home." }),
   ).toBeVisible();
-  await expect(appearance.getByTestId("appearance-density")).toBeVisible();
+  await expect(appearance.getByTestId("appearance-open-themes")).toBeVisible();
+  await expect(appearance.getByTestId("appearance-density")).toHaveCount(0);
+  await expect(appearance.getByTestId("appearance-glass")).toBeVisible();
+  await expect(appearance.getByTestId("appearance-message-size")).toBeVisible();
+  await expect(appearance.getByTestId("appearance-links-rich")).toBeVisible();
   await expect(
-    appearance.getByTestId("appearance-density").locator("option"),
-  ).toHaveText(["Choose message density", "Compact", "Comfortable"]);
-  await expect(appearance.getByTestId("appearance-glass")).toHaveCount(0);
-  await expect(appearance.getByTestId("appearance-message-size")).toHaveCount(
-    0,
-  );
-  await expect(appearance.getByTestId("appearance-links-rich")).toHaveCount(0);
-  await expect(appearance.getByTestId("appearance-threads-focus")).toHaveCount(
-    0,
-  );
+    appearance.getByTestId("appearance-threads-focus"),
+  ).toBeVisible();
 });
 
-test("workspace density and accessibility text size keep their own scopes", async ({
+test("conversation size and accessibility text size keep their own scopes", async ({
   page,
 }) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
   await openAppearance(page);
-  await page.getByTestId("appearance-density").selectOption("compact");
-  await page.getByRole("button", { name: "Save appearance" }).click();
-  await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
+  await page.getByTestId("appearance-message-size").selectOption("larger");
+
   await expect
-    .poll(() => businessSnapshot(page))
-    .toMatchObject({
-      theme: "buzz",
-      density: "compact",
-    });
-  await expect(page.locator("html")).toHaveAttribute(
-    "data-conversation-density",
-    "compact",
-  );
+    .poll(() =>
+      page.evaluate(() =>
+        document.documentElement.style.getPropertyValue(
+          "--conversation-message-font-size",
+        ),
+      ),
+    )
+    .toBe("calc(var(--text-sm) + 1rem / 16)");
 
   await page.getByTestId("settings-inner-accessibility").click();
   const accessibility = page.getByTestId("settings-accessibility");
   await expect(accessibility).toBeVisible();
   await expect(
-    accessibility.getByRole("group", { name: "Text size" }),
+    accessibility.getByLabel("Text size", { exact: true }),
   ).toBeVisible();
   await accessibility
-    .getByRole("button", { name: "Larger", exact: true })
+    .getByLabel("Text size", { exact: true })
+    .selectOption("larger");
+  await accessibility
+    .getByRole("button", { name: "Save", exact: true })
     .click();
   await expect(page.locator("html")).toHaveAttribute(
     "data-font-size",
@@ -688,7 +713,7 @@ test("workspace appearance opens the retained named theme catalog", async ({
   await seedTheme(page, "buzz");
   await installMockBridge(page);
   const panel = await openAppearance(page);
-  await panel.getByRole("button", { name: "Browse named themes" }).click();
+  await panel.getByTestId("appearance-open-themes").click();
   const catalog = page.getByTestId("settings-theme-catalog");
   await expect(catalog.getByTestId("theme-catalog-buzz")).toBeVisible();
   await expect(catalog.getByTestId("theme-catalog-buzz-dark")).toBeVisible();
@@ -701,7 +726,7 @@ test("named theme catalog retains light and dark variants", async ({
   await seedTheme(page, "buzz-dark");
   await installMockBridge(page);
   await openAppearance(page);
-  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("appearance-open-themes").click();
   const catalog = page.getByTestId("settings-theme-catalog");
   await expect(catalog.getByTestId("theme-catalog-github-light")).toBeVisible();
   await expect(catalog.getByTestId("theme-catalog-github-dark")).toBeVisible();
@@ -716,20 +741,18 @@ test("named theme preview retains the selected workspace density", async ({
   await seedTheme(page, "buzz-dark");
   await installMockBridge(page);
   await openAppearance(page);
-  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("appearance-open-themes").click();
   await page.getByTestId("theme-catalog-buzz-dark").click();
-  await page
-    .getByTestId("appearance-preview-density")
-    .selectOption("comfortable");
-  await expect(page.getByTestId("appearance-preview-density")).toHaveValue(
-    "comfortable",
-  );
+  await expect(page.getByTestId("appearance-preview-density")).toHaveCount(0);
+  await waitForAnimations(page);
   await page.getByTestId("settings-view").screenshot({
     path: `${SHOTS}/05-theme-preview.png`,
   });
 });
 
-test("settings nav uses Buzz active pill + hover (light)", async ({ page }) => {
+test("settings nav keeps its row geometry with Colony selection (light)", async ({
+  page,
+}) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -741,22 +764,34 @@ test("settings nav uses Buzz active pill + hover (light)", async ({ page }) => {
   const profileLabel = profileRow.locator(".truncate");
   await expect(profileRow).toHaveAttribute("data-active", "true");
   await expect(profileRow).toHaveCSS("font-weight", "700");
+  await page.evaluate(() => document.fonts.ready);
+  const selectedRowBox = await profileRow.boundingBox();
   const selectedLabelBox = await profileLabel.boundingBox();
-  // Appearance is the active section here; its nav row uses the Buzz
-  // selected surface (data-active=true), matching the Left Nav treatment.
+  // Manrope's bold glyphs can be wider. The row and label origin must stay
+  // fixed when selection changes, without constraining intrinsic glyph width.
   await page.getByTestId("settings-group-appearance-group").click();
   await expect(profileRow).toHaveCSS("font-weight", "400");
   const unselectedLabelBox = await profileLabel.boundingBox();
+  const unselectedRowBox = await profileRow.boundingBox();
   expect(selectedLabelBox).not.toBeNull();
   expect(unselectedLabelBox).not.toBeNull();
-  if (!selectedLabelBox || !unselectedLabelBox) {
+  if (
+    !selectedLabelBox ||
+    !unselectedLabelBox ||
+    !selectedRowBox ||
+    !unselectedRowBox
+  ) {
     throw new Error("Settings nav label geometry is missing");
   }
   expect(Math.abs(selectedLabelBox.x - unselectedLabelBox.x)).toBe(0);
   expect(Math.abs(selectedLabelBox.y - unselectedLabelBox.y)).toBe(0);
-  expect(
-    Math.abs(selectedLabelBox.width - unselectedLabelBox.width),
-  ).toBeLessThanOrEqual(2);
+  expect(unselectedRowBox).toEqual(selectedRowBox);
+  expect(selectedLabelBox.x + selectedLabelBox.width).toBeLessThanOrEqual(
+    selectedRowBox.x + selectedRowBox.width,
+  );
+  expect(unselectedLabelBox.x + unselectedLabelBox.width).toBeLessThanOrEqual(
+    unselectedRowBox.x + unselectedRowBox.width,
+  );
   await expectBuzzSettingsPalette(page, "light");
   const activeRow = page.getByTestId("settings-group-appearance-group");
   await expect(activeRow).toHaveAttribute("data-active", "true");
@@ -796,9 +831,9 @@ test("workspace appearance keeps navigation controls within the frozen design", 
   await installMockBridge(page);
   const appearance = await openAppearance(page);
   const root = page.locator("html");
-  await expect(appearance.getByTestId("appearance-prominent")).toHaveCount(0);
-  await expect(appearance.getByTestId("appearance-accent-cyan")).toHaveCount(0);
-  await expect(appearance.getByTestId("appearance-glass")).toHaveCount(0);
+  await expect(appearance.getByTestId("appearance-prominent")).toBeVisible();
+  await expect(appearance.getByTestId("appearance-accent-cyan")).toBeVisible();
+  await expect(appearance.getByTestId("appearance-glass")).toBeVisible();
   await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
 
   await page.getByTestId("settings-close").click();
@@ -944,6 +979,8 @@ test("settings content uses the same inset surface as the main app", async ({
 
   const settingsView = page.getByTestId("settings-view");
   const contentSurface = page.getByTestId("settings-content-surface");
+  await expect(settingsView).toHaveCSS("margin", "8px");
+  await expect(settingsView).toHaveCSS("border-radius", "11px");
   const settingsTopChrome = page.getByTestId("settings-top-chrome");
   const settingsBackToApp = page.getByTestId("settings-back-to-app");
   const backToAppBox = await page
@@ -975,22 +1012,25 @@ test("settings content uses the same inset surface as the main app", async ({
     throw new Error("Settings layout is missing");
   }
 
-  // The merged C1 sidebar positions Search 12px lower than the W20-only
-  // capture while the Back to app control stays in the settings top chrome.
-  expect(searchBox.y - backToAppBox.y).toBe(82);
+  // The sidebar starts at the shared 8px frame inset. Settings keeps its
+  // own top chrome, so this measures the two independent control rows.
+  const isMac = await page.evaluate(() =>
+    /mac|iphone|ipad|ipod/i.test(navigator.platform),
+  );
+  expect(searchBox.y - backToAppBox.y).toBe(isMac ? 69.25 : 51.25);
 
-  // Match the r19 settings shell: a fixed 60px top chrome strip, the shell
-  // padding and surface margin, plus the measured bottom inset.
-  expect(surfaceBox.y - viewBox.y).toBe(61);
-  expect(surfaceBox.x - viewBox.x).toBe(2);
-  expect(viewBox.x + viewBox.width - (surfaceBox.x + surfaceBox.width)).toBe(9);
+  // Header and content share one card. The frame carries the 8px margin;
+  // the content starts directly below its 52px header.
+  expect(surfaceBox.y - viewBox.y).toBe(52);
+  expect(surfaceBox.x - viewBox.x).toBe(0);
+  expect(viewBox.x + viewBox.width - (surfaceBox.x + surfaceBox.width)).toBe(0);
   expect(viewBox.y + viewBox.height - (surfaceBox.y + surfaceBox.height)).toBe(
-    9,
+    0,
   );
 
   const topChromeBox = await settingsTopTitle.boundingBox();
   const settingsHeadingBox = await page
-    .getByRole("heading", { level: 1, name: "Your account" })
+    .getByRole("heading", { level: 1, name: "Profile" })
     .boundingBox();
   expect(topChromeBox).not.toBeNull();
   expect(settingsHeadingBox).not.toBeNull();
@@ -1022,7 +1062,7 @@ test("named theme catalog retains the saved theme choices", async ({
   await seedTheme(page, "buzz");
   await installMockBridge(page);
   await openAppearance(page);
-  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("appearance-open-themes").click();
   const catalog = page.getByTestId("settings-theme-catalog");
   await expect(catalog.getByTestId("theme-catalog-buzz")).toBeVisible();
   await expect(catalog.getByTestId("theme-catalog-buzz-dark")).toBeVisible();
@@ -1048,7 +1088,7 @@ test("saved glass preference keeps settings content solid", async ({
   await installMockBridge(page);
   const appearance = await openAppearance(page);
   const root = page.locator("html");
-  await expect(appearance.getByTestId("appearance-glass")).toHaveCount(0);
+  await expect(appearance.getByTestId("appearance-glass")).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(
@@ -1097,7 +1137,7 @@ test("glass controls are disabled on Linux", async ({ page }) => {
   await installMockBridge(page);
   const panel = await openAppearance(page);
 
-  await expect(panel.getByTestId("appearance-glass")).toHaveCount(0);
+  await expect(panel.getByTestId("appearance-glass")).toBeVisible();
   await expect(panel.getByTestId("appearance-glass-opacity")).toHaveCount(0);
   await expect(page.locator("html")).not.toHaveAttribute(
     "data-glass-background",
@@ -1172,20 +1212,22 @@ test("a named theme remains applied after returning to workspace appearance", as
   await installMockBridge(page);
   await openAppearance(page);
 
-  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("appearance-open-themes").click();
   await page.getByTestId("theme-catalog-buzz-dark").click();
   await expect(page.getByTestId("settings-theme-preview")).toBeVisible();
   const themePreview = page.getByTestId("theme-workspace-preview");
-  await expect(themePreview).toContainText("Preview content only");
+  await expect(themePreview).toContainText(
+    "The September designs are ready for feedback.",
+  );
   await page.getByTestId("theme-use").click();
   await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
   await expectAppliedBuzzTheme(page, "buzz-dark");
-  await page.getByRole("button", { name: "Return to Appearance" }).click();
+  await page.getByRole("button", { name: "Done", exact: true }).click();
 
   const updatedAppearance = page.getByTestId("settings-appearance");
   await expect(updatedAppearance).toBeVisible();
   await expect(
-    updatedAppearance.getByRole("button", { name: "Browse named themes" }),
+    updatedAppearance.getByTestId("appearance-open-themes"),
   ).toBeVisible();
   await expect
     .poll(() => businessSnapshot(page))
@@ -1203,15 +1245,15 @@ test("named Buzz themes apply live without a reload", async ({ page }) => {
   await expectAppliedBuzzTheme(page, "buzz");
   const lightGradient = await expectBuzzGradientPaint(page, "light");
 
-  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("appearance-open-themes").click();
   await page.getByTestId("theme-catalog-buzz-dark").click();
   await page.getByTestId("theme-use").click();
   await expectAppliedBuzzTheme(page, "buzz-dark");
   const darkGradient = await expectBuzzGradientPaint(page, "dark");
   expect(darkGradient).not.toBe(lightGradient);
 
-  await page.getByRole("button", { name: "Return to Appearance" }).click();
-  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await page.getByTestId("appearance-open-themes").click();
   await page.getByTestId("theme-catalog-buzz").click();
   await page.getByTestId("theme-use").click();
   await expectAppliedBuzzTheme(page, "buzz");
@@ -1282,24 +1324,28 @@ test("theme catalog applies a named theme through a scoped save", async ({
   await installMockBridge(page);
   await openAppearance(page);
 
-  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("appearance-open-themes").click();
   await expect(page.getByTestId("settings-theme-catalog")).toBeVisible();
   await expect(page.getByTestId("theme-catalog-buzz-dark")).toBeVisible();
   await page.getByTestId("theme-catalog-buzz-dark").click();
   await expect(page.getByTestId("settings-theme-preview")).toBeVisible();
   const themePreview = page.getByTestId("theme-workspace-preview");
-  await expect(themePreview).toContainText("Preview content only");
-  await page.getByTestId("appearance-preview-density").selectOption("compact");
+  await expect(themePreview).toContainText(
+    "The September designs are ready for feedback.",
+  );
+
   await page.getByTestId("theme-use").click();
   await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-  await expect(page.getByRole("status")).toContainText("Compact");
+  await expect(page.getByRole("status")).toContainText(
+    "Your personal appearance is updated.",
+  );
   await expectAppliedBuzzTheme(page, "buzz-dark");
   await expect
     .poll(() => businessSnapshot(page))
     .toMatchObject({
       theme: "buzz-dark",
       followSystem: false,
-      density: "compact",
+      density: "comfortable",
     });
 
   await waitForAnimations(page);
@@ -1308,32 +1354,24 @@ test("theme catalog applies a named theme through a scoped save", async ({
   });
 });
 
-test("workspace appearance saves theme and density as one scoped preference", async ({
+test("workspace appearance saves conversation size in its global preference", async ({
   page,
 }) => {
   await seedTheme(page, "buzz");
   await installMockBridge(page);
   const panel = await openAppearance(page);
-  await expect(panel.getByTestId("appearance-density")).toBeVisible();
-  await panel.getByTestId("appearance-density").selectOption("comfortable");
-  await page.getByRole("button", { name: "Save appearance" }).click();
-  await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-  await expect
-    .poll(() => businessSnapshot(page))
-    .toMatchObject({ theme: "buzz", density: "comfortable" });
+  await expect(panel.getByTestId("appearance-message-size")).toBeVisible();
+  await panel.getByTestId("appearance-message-size").selectOption("larger");
+
   await expect
     .poll(() =>
-      page.evaluate(
-        () =>
-          Object.keys(localStorage).filter(
-            (key) =>
-              key.startsWith("colony.appearance.v1:") &&
-              !key.endsWith(":last-business"),
-          ).length,
+      page.evaluate(() =>
+        Object.entries(localStorage)
+          .filter(([key]) => key.endsWith(":global-conversations"))
+          .map(([, value]) => JSON.parse(value).messageSize),
       ),
     )
-    .toBe(1);
-
+    .toEqual(["larger"]);
   await waitForAnimations(page);
   await page.getByTestId("settings-view").screenshot({
     path: `${SHOTS}/04-appearance-saved.png`,
@@ -1346,16 +1384,14 @@ test("named appearance keeps density and theme in the same scoped snapshot", asy
   await seedTheme(page, "buzz");
   await installMockBridge(page);
   const panel = await openAppearance(page);
-  await expect(panel.getByTestId("appearance-prominent")).toHaveCount(0);
-  await expect(panel.getByTestId("appearance-accent-cyan")).toHaveCount(0);
-  await expect(panel.getByTestId("appearance-density")).toHaveValue(
-    "comfortable",
-  );
-  await panel.getByRole("button", { name: "Browse named themes" }).click();
+  await expect(panel.getByTestId("appearance-prominent")).toBeVisible();
+  await expect(panel.getByTestId("appearance-accent-cyan")).toBeVisible();
+  await expect(panel.getByTestId("appearance-density")).toHaveCount(0);
+  await panel.getByTestId("appearance-open-themes").click();
   await page.getByTestId("theme-catalog-github-dark").click();
-  await page.getByTestId("appearance-preview-density").selectOption("compact");
+
   await page.getByTestId("theme-use").click();
   await expect
     .poll(() => businessSnapshot(page))
-    .toMatchObject({ theme: "github-dark", density: "compact" });
+    .toMatchObject({ theme: "github-dark", density: "comfortable" });
 });

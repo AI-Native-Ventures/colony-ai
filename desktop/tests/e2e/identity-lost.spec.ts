@@ -5,9 +5,9 @@ import { startR17AccountAuth } from "../helpers/onboarding";
 test("R17 lost-session boot offers account sign in", async ({ page }) => {
   await startR17AccountAuth(page, { identityLost: true });
 
-  await expect(page.getByTestId("google-account-scene")).toBeVisible();
+  await expect(page.getByTestId("onboarding-scene-signin")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Welcome back" }),
+    page.getByRole("heading", { name: "Welcome back." }),
   ).toBeVisible();
   await expect(page.getByLabel("Email address")).toBeVisible();
   await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute(

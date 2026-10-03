@@ -1,3 +1,4 @@
+import { AccountSettingsHeader } from "./AccountSettingsHeader";
 import * as React from "react";
 import { RotateCcw, Send } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
@@ -14,7 +15,12 @@ import {
   getActiveDraftEntries,
   useDraftsSnapshot,
 } from "@/features/messages/lib/useDrafts";
-import { useFontSize, setFontSize } from "@/shared/lib/fontSizePreference";
+import {
+  readAccessibilityPreference,
+  saveAccessibilityPreference,
+  type AccessibilityPreference,
+} from "@/shared/lib/accessibilityPreference";
+import "./AccessibilitySettingsPanel.css";
 import { Button } from "@/shared/ui/button";
 import {
   AlertDialog,
@@ -31,10 +37,8 @@ import { SettingsSectionHeader } from "./SettingsSectionHeader";
 import { HarnessesSettingsPanel } from "./HarnessesSettingsPanel";
 import { PreventSleepSettingsCard } from "./PreventSleepSettingsCard";
 import { KeepAddressedAgentsSettingsCard } from "./KeepAddressedAgentsSettingsCard";
-import { KeyboardShortcutsCard } from "./KeyboardShortcutsCard";
 import { ModerationQueueCard } from "./ModerationQueueCard";
 import { SendFeedbackController } from "./SendFeedbackController";
-import { cn } from "@/shared/lib/cn";
 
 export function BusinessProfileSettingsPanel() {
   const { activeCommunity } = useCommunities();
@@ -126,71 +130,136 @@ export function FeedbackSettingsPanel() {
   );
 }
 
-export function AccessibilitySettingsPanel() {
-  const fontSize = useFontSize();
-  const prefersReducedMotion = React.useMemo(
-    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-    [],
-  );
+export function AccessibilitySettingsPanel({
+  onClose,
+}: {
+  onClose?: () => void;
+}) {
+  const [draft, setDraft] = React.useState(readAccessibilityPreference);
+  const [error, setError] = React.useState("");
+  const [saved, setSaved] = React.useState(false);
+  function update(value: Partial<AccessibilityPreference>) {
+    setDraft((previous) => ({ ...previous, ...value }));
+    setSaved(false);
+  }
   return (
-    <section className="min-w-0" data-testid="settings-accessibility">
-      <SettingsSectionHeader
-        title="Accessibility"
-        description="Adjust reading comfort and keyboard guidance."
-      />
-      <SettingsOptionGroup title="Reading & motion">
-        <SettingsOptionRow>
-          <div>
-            <p className="text-sm font-medium">Text size</p>
-            <p className="text-xs text-muted-foreground">
-              Applies across Colony.
-            </p>
-          </div>
-          <fieldset className="flex gap-1 rounded-lg border border-border/70 bg-muted/35 p-1">
-            <legend className="sr-only">Text size</legend>
-            {(["default", "larger"] as const).map((size) => (
-              <button
-                aria-pressed={fontSize === size}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-xs",
-                  fontSize === size
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground",
-                )}
-                key={size}
-                onClick={() => setFontSize(size)}
-                type="button"
-              >
-                {size === "default" ? "Default" : "Larger"}
-              </button>
-            ))}
-          </fieldset>
-        </SettingsOptionRow>
-        <SettingsOptionRow>
-          <div>
-            <p className="text-sm font-medium">Motion</p>
-            <p className="text-xs text-muted-foreground">
-              Reduced motion follows your operating system.
-            </p>
-          </div>
-          <span className="text-xs text-muted-foreground">
-            {prefersReducedMotion ? "Reduced" : "System default"}
-          </span>
-        </SettingsOptionRow>
-        <SettingsOptionRow>
-          <div>
-            <p className="text-sm font-medium">Keyboard hints</p>
-            <p className="text-xs text-muted-foreground">
-              Shortcut reference is available below.
-            </p>
-          </div>
-          <span className="text-xs text-muted-foreground">
-            Always shown in shortcut reference
-          </span>
-        </SettingsOptionRow>
-      </SettingsOptionGroup>
-      <div className="mt-4">
-        <KeyboardShortcutsCard />
+    <section
+      className="settings-accessibility min-w-0"
+      data-testid="settings-accessibility"
+    >
+      <AccountSettingsHeader title="Accessibility" onBackToToday={onClose} />
+      <div className="settings-accessibility-grid">
+        <section
+          className="settings-accessibility-card"
+          aria-labelledby="reading-motion-title"
+        >
+          <h2 id="reading-motion-title" className="text-base font-semibold">
+            Reading & motion
+          </h2>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!saveAccessibilityPreference(draft)) {
+                setError(
+                  "Could not save accessibility preferences. Try again.",
+                );
+                return;
+              }
+              setError("");
+              setSaved(true);
+            }}
+          >
+            <label
+              htmlFor="accessibility-text-size"
+              className="text-sm font-medium"
+            >
+              Text size
+            </label>
+            <select
+              id="accessibility-text-size"
+              value={draft.textSize}
+              onChange={(event) =>
+                update({
+                  textSize: event.target
+                    .value as AccessibilityPreference["textSize"],
+                })
+              }
+            >
+              {draft.textSize === "smaller" ? (
+                <option value="smaller">Smaller</option>
+              ) : null}
+              <option value="default">Default</option>
+              <option value="larger">Larger</option>
+            </select>
+            <label
+              htmlFor="accessibility-motion"
+              className="text-sm font-medium"
+            >
+              Motion
+            </label>
+            <select
+              id="accessibility-motion"
+              value={draft.motion}
+              onChange={(event) =>
+                update({
+                  motion: event.target
+                    .value as AccessibilityPreference["motion"],
+                })
+              }
+            >
+              <option value="system">Use system preference</option>
+              <option value="reduce">Reduce motion</option>
+            </select>
+            <label className="settings-accessibility-check text-sm">
+              <input
+                type="checkbox"
+                checked={draft.keyboardHints}
+                onChange={(event) =>
+                  update({ keyboardHints: event.target.checked })
+                }
+              />{" "}
+              Show keyboard hints
+            </label>
+            {error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
+            <div className="settings-accessibility-save">
+              {saved ? (
+                <span role="status" className="text-xs text-muted-foreground">
+                  Saved
+                </span>
+              ) : null}
+              <button type="submit">Save</button>
+            </div>
+          </form>
+        </section>
+        <section
+          className="settings-accessibility-card"
+          aria-labelledby="accessibility-keyboard-title"
+        >
+          <h2
+            id="accessibility-keyboard-title"
+            className="text-base font-semibold"
+          >
+            Keyboard
+          </h2>
+          <dl className="settings-accessibility-facts text-sm">
+            <dt>Search</dt>
+            <dd>⌘ / Ctrl K</dd>
+            <dt>Send draft</dt>
+            <dd>⌘ / Ctrl Enter</dd>
+            <dt>Close dialog</dt>
+            <dd>Escape</dd>
+            <dt>Resize sidebar</dt>
+            <dd>Focus its divider, then arrow keys</dd>
+          </dl>
+          <p className="text-xs text-muted-foreground">
+            Visible focus, native form labels and reduced-motion states are part
+            of the review.
+          </p>
+        </section>
       </div>
     </section>
   );
@@ -222,7 +291,7 @@ export function ArchivedRecordsSettingsPanel({
   return (
     <section className="min-w-0" data-testid="settings-archived-records">
       <SettingsSectionHeader
-        title="Archive"
+        title="Archived records"
         action={
           <Button
             className="h-8 px-3 text-xs"

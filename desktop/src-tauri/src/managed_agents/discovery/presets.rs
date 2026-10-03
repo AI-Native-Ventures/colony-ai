@@ -92,7 +92,13 @@ pub(super) fn preset_catalog_entry(
         requires_external_cli: def.underlying_cli.is_some(),
         underlying_cli_path,
         node_required: false,
-        auth_status: AuthStatus::NotApplicable,
+        // These provider-backed CLIs have no trustworthy discovery auth probe.
+        // A filesystem hit must not be advertised as an authenticated harness.
+        auth_status: if matches!(def.id, "omp" | "grok") {
+            AuthStatus::Unknown
+        } else {
+            AuthStatus::NotApplicable
+        },
         login_hint: None,
         source: HarnessSource::Preset,
         definition_env: Default::default(),
@@ -343,6 +349,21 @@ mod tests {
         underlying_cli_install_hint: Some("Install the Amp Test CLI."),
         underlying_cli_install_instructions_url: Some("https://example.com/amp"),
     };
+
+    #[test]
+    fn provider_backed_presets_do_not_claim_authentication_from_a_file() {
+        for id in ["omp", "grok"] {
+            let preset = PRESET_HARNESSES
+                .iter()
+                .find(|preset| preset.id == id)
+                .unwrap();
+            let entry = preset_catalog_entry(preset, |command| {
+                Some(PathBuf::from(format!("/usr/local/bin/{command}")))
+            });
+            assert_eq!(entry.availability, AcpAvailabilityStatus::Available);
+            assert_eq!(entry.auth_status, AuthStatus::Unknown);
+        }
+    }
 
     #[test]
     fn devin_preset_uses_official_native_acp_invocation() {

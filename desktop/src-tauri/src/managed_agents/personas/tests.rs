@@ -49,16 +49,13 @@ fn merge_personas_adds_missing_built_ins() {
         .iter()
         .map(|record| record.display_name.as_str())
         .collect();
-    assert_eq!(display_names, vec!["Fizz", "Honey", "Pollen"]);
+    assert_eq!(display_names, vec!["Scout", "Honey", "Pollen"]);
     let active_ids: Vec<&str> = records
         .iter()
         .filter(|record| record.is_active)
         .map(|record| record.id.as_str())
         .collect();
-    assert_eq!(
-        active_ids,
-        vec!["builtin:fizz", "builtin:honey", "builtin:bumble"]
-    );
+    assert_eq!(active_ids, vec!["builtin:fizz"]);
 }
 
 #[test]

@@ -15,7 +15,7 @@ import { claimInvite } from "@/shared/api/invites";
  * transaction while the request is pending cannot mutate the replacement.
  *
  * The error guard keeps a failed claim parked on the caller's Retry
- * affordance — without it the effect refires on the error-bearing transaction
+ * affordance. Without it the effect refires on the error-bearing transaction
  * and re-claims in a loop.
  */
 export function useClaimInvite() {
@@ -39,7 +39,7 @@ export function useClaimInvite() {
         update(
           {
             error: isInviteExpiredError(error)
-              ? "This invite code has expired — ask for a new one."
+              ? "This invite code has expired. Ask for a new one."
               : isInviteExhaustedError(error)
                 ? "This invite has reached its use limit. Ask for a new invite."
                 : inviteErrorMessage(error),

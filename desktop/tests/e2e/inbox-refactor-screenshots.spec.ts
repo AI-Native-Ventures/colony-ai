@@ -396,8 +396,8 @@ test.describe("inbox refactor screenshots", () => {
     const firstUnreadRow = page.getByTestId(`home-inbox-item-${replyIds[0]}`);
     await expect(firstUnreadRow).toBeVisible();
     const listPreview = firstUnreadRow.locator(".inbox-preview-markdown");
-    await expect(listPreview).toHaveCSS("font-size", "14px");
-    await expect(listPreview).toHaveCSS("line-height", "20px");
+    await expect(listPreview).toHaveCSS("font-size", "15px");
+    await expect(listPreview).toHaveCSS("line-height", "21.4286px");
     await firstUnreadRow.click();
 
     const detail = page.getByTestId("home-inbox-detail");
@@ -489,13 +489,13 @@ test.describe("inbox refactor screenshots", () => {
     await expect
       .poll(readConversationMetrics)
       .toEqual([
-        { fontSize: "14px", lineHeight: "20px" },
+        { fontSize: "15px", lineHeight: "21.4286px" },
         { paddingBottom: "4px", paddingTop: "4px" },
         2,
-        { fontSize: "14px", lineHeight: "16px" },
-        { fontSize: "14px", lineHeight: "20px" },
-        { fontSize: "12px", lineHeight: "16px" },
-        { fontSize: "14px", lineHeight: "20px" },
+        { fontSize: "12.8571px", lineHeight: "17.1429px" },
+        { fontSize: "15px", lineHeight: "21.4286px" },
+        { fontSize: "12.8571px", lineHeight: "17.1429px" },
+        { fontSize: "15px", lineHeight: "21.4286px" },
       ]);
     await waitForAnimations(page);
 
@@ -505,26 +505,26 @@ test.describe("inbox refactor screenshots", () => {
     await expect
       .poll(readConversationMetrics)
       .toEqual([
-        { fontSize: "14px", lineHeight: "20px" },
+        { fontSize: "15px", lineHeight: "21.4286px" },
         { paddingBottom: "4px", paddingTop: "4px" },
         0,
-        { fontSize: "14px", lineHeight: "16px" },
-        { fontSize: "14px", lineHeight: "20px" },
-        { fontSize: "12px", lineHeight: "16px" },
-        { fontSize: "14px", lineHeight: "20px" },
+        { fontSize: "12.8571px", lineHeight: "17.1429px" },
+        { fontSize: "15px", lineHeight: "21.4286px" },
+        { fontSize: "12.8571px", lineHeight: "17.1429px" },
+        { fontSize: "15px", lineHeight: "21.4286px" },
       ]);
 
     await applyConversationPreferences(page, "smaller", "compact");
     await expect
       .poll(readConversationMetrics)
       .toEqual([
-        { fontSize: "13px", lineHeight: "18.5714px" },
+        { fontSize: "14px", lineHeight: "20px" },
         { paddingBottom: "4px", paddingTop: "4px" },
         0,
-        { fontSize: "13px", lineHeight: "14.8571px" },
-        { fontSize: "13px", lineHeight: "18.5714px" },
-        { fontSize: "11.1429px", lineHeight: "14.8571px" },
-        { fontSize: "13px", lineHeight: "18.5714px" },
+        { fontSize: "12px", lineHeight: "16px" },
+        { fontSize: "14px", lineHeight: "20px" },
+        { fontSize: "12px", lineHeight: "16px" },
+        { fontSize: "14px", lineHeight: "20px" },
       ]);
     await waitForAnimations(page);
     await page.screenshot({ path: `${SHOTS}/05-thread-context-compact.png` });
@@ -533,13 +533,13 @@ test.describe("inbox refactor screenshots", () => {
     await expect
       .poll(readConversationMetrics)
       .toEqual([
-        { fontSize: "15px", lineHeight: "21.4286px" },
+        { fontSize: "16px", lineHeight: "22.8571px" },
         { paddingBottom: "8px", paddingTop: "8px" },
         4,
-        { fontSize: "15px", lineHeight: "17.1429px" },
-        { fontSize: "15px", lineHeight: "21.4286px" },
-        { fontSize: "12.8571px", lineHeight: "17.1429px" },
-        { fontSize: "15px", lineHeight: "21.4286px" },
+        { fontSize: "13.7143px", lineHeight: "18.2857px" },
+        { fontSize: "16px", lineHeight: "22.8571px" },
+        { fontSize: "13.7143px", lineHeight: "18.2857px" },
+        { fontSize: "16px", lineHeight: "22.8571px" },
       ]);
     await waitForAnimations(page);
     await page.screenshot({ path: `${SHOTS}/06-thread-context-spacious.png` });
@@ -574,13 +574,13 @@ test.describe("inbox refactor screenshots", () => {
       ])
       .toEqual([
         "17.6px",
-        { fontSize: "15.4px", lineHeight: "22px" },
+        { fontSize: "16.5px", lineHeight: "23.5714px" },
         { paddingBottom: "4.4px", paddingTop: "4.4px" },
         2.2,
-        { fontSize: "15.4px", lineHeight: "17.6px" },
-        { fontSize: "15.4px", lineHeight: "22px" },
-        { fontSize: "13.2px", lineHeight: "17.6px" },
-        { fontSize: "15.4px", lineHeight: "22px" },
+        { fontSize: "14.1429px", lineHeight: "18.8571px" },
+        { fontSize: "16.5px", lineHeight: "23.5714px" },
+        { fontSize: "14.1429px", lineHeight: "18.8571px" },
+        { fontSize: "16.5px", lineHeight: "23.5714px" },
       ]);
   });
 });

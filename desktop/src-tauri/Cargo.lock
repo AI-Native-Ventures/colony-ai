@@ -1181,7 +1181,7 @@ dependencies = [
 
 [[package]]
 name = "buzz-desktop"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1236,6 +1236,7 @@ dependencies = [
  "plist",
  "png 0.18.1",
  "portable-pty",
+ "quick-xml 0.38.4",
  "regex",
  "reqwest 0.13.4",
  "rodio",

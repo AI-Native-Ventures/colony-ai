@@ -28,7 +28,7 @@ import {
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH_STORAGE_KEY = "buzz-sidebar-width";
-const SIDEBAR_WIDTH_DEFAULT = 244;
+const SIDEBAR_WIDTH_DEFAULT = 260;
 const SIDEBAR_WIDTH_DEFAULT_HAPTIC_THRESHOLD = 2;
 const SIDEBAR_WIDTH_DEFAULT_SNAP_DISTANCE = 8;
 const SIDEBAR_WIDTH_DEFAULT_MAGNET_DISTANCE = 28;
@@ -128,7 +128,9 @@ function readSidebarWidth() {
     10,
   );
 
-  return Number.isFinite(storedWidth)
+  // The old default was persisted during resize. Upgrade that value while
+  // preserving every deliberately wider or narrower saved width.
+  return Number.isFinite(storedWidth) && storedWidth !== 244
     ? clampSidebarWidth(storedWidth)
     : SIDEBAR_WIDTH_DEFAULT;
 }

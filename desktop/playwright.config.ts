@@ -5,7 +5,9 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 const canaryEnabled = process.env.BUZZ_E2E_CANARY === "1";
 const canaryAccountFile = process.env.BUZZ_E2E_CANARY_ACCOUNT_FILE;
 const canaryArtifactDir = process.env.BUZZ_E2E_CANARY_ARTIFACT_DIR;
-const appPort = canaryEnabled ? 4174 : 4173;
+const appPort = canaryEnabled
+  ? 4174
+  : Number(process.env.COLONY_E2E_PORT ?? 4173);
 
 function assertOutsideRepository(path: string, label: string) {
   const repositoryRoot = realpathSync(resolve(process.cwd(), ".."));
@@ -92,9 +94,16 @@ export default defineConfig({
     {
       name: "smoke",
       testMatch: [
+        "**/first-reply-runtime.spec.ts",
+        "**/onboarding-scout-presence.spec.ts",
         "**/smoke.spec.ts",
+        "**/shell-design.spec.ts",
         "**/account-auth.spec.ts",
+        "**/colony-public-icons.spec.ts",
+        "**/openrouter-oauth.spec.ts",
         "**/self-serve-community-onboarding.spec.ts",
+        "**/business-website.spec.ts",
+        "**/harness-detection.spec.ts",
         "**/owned-agent-discovery.spec.ts",
         "**/agent-profile-instructions.spec.ts",
         "**/thread-head-stale-edit.spec.ts",
@@ -104,6 +113,8 @@ export default defineConfig({
         "**/tooltip-semantics.spec.ts",
         "**/search-scope-screenshots.spec.ts",
         "**/onboarding-docked-cta-screenshots.spec.ts",
+        "**/onboarding-design.spec.ts",
+        "**/onboarding-community-entry.spec.ts",
         "**/identity-key-help.spec.ts",
         "**/exact-key-profile.spec.ts",
         "**/key-import-reveal.spec.ts",
@@ -173,6 +184,7 @@ export default defineConfig({
         "**/company-hiring.spec.ts",
         "**/company-duty-ask.spec.ts",
         "**/company-team.spec.ts",
+        "**/company-team-design.spec.ts",
         "**/company-spend.spec.ts",
         "**/company-permissions.spec.ts",
         "**/company-work.spec.ts",
@@ -238,6 +250,7 @@ export default defineConfig({
         "**/message-author-overlap.spec.ts",
         "**/buzz-theme-screenshots.spec.ts",
         "**/appearance-previews.spec.ts",
+        "**/settings-design-proof.spec.ts",
         "**/channel-sort.spec.ts",
         "**/identity-lost.spec.ts",
         "**/deep-link-invite.spec.ts",
@@ -284,20 +297,33 @@ export default defineConfig({
     {
       name: "integration",
       testMatch: [
+        "**/account-auth.spec.ts",
+        "**/colony-public-icons.spec.ts",
+        "**/onboarding-agent-defaults.spec.ts",
+        "**/deep-link-invite.spec.ts",
+        "**/first-reply-runtime.spec.ts",
+        "**/onboarding-scout-presence.spec.ts",
         "**/agents.spec.ts",
         "**/agent-availability.spec.ts",
         "**/agent-snapshot-recipient.spec.ts",
         "**/onboarding.spec.ts",
+        "**/business-website.spec.ts",
+        "**/onboarding-design.spec.ts",
+        "**/onboarding-community-entry.spec.ts",
+        "**/openrouter-oauth.spec.ts",
+        "**/harness-detection.spec.ts",
         "**/stream.spec.ts",
         "**/integration.spec.ts",
         "**/company-asks.live.spec.ts",
         "**/company-team.integration.spec.ts",
+        "**/company-team-design.spec.ts",
         "**/company-team.live.spec.ts",
         "**/company-work.live.spec.ts",
         "**/company-work.spec.ts",
         "**/dm-double-notification.spec.ts",
         "**/profile.spec.ts",
         "**/sidebar.spec.ts",
+        "**/shell-design.spec.ts",
         "**/sidebar-relay-card.spec.ts",
         "**/tokens.spec.ts",
         "**/persona-env-vars.spec.ts",

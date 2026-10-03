@@ -1,3 +1,4 @@
+import * as React from "react";
 import { onboardingSceneStage } from "./onboardingScenes";
 import type { PresentationProps } from "./OnboardingSceneTypes";
 import {
@@ -14,7 +15,7 @@ import {
   ConnectionShell,
   StaticConnectContent,
 } from "./OnboardingConnectionContent";
-import { ConnectedScene, WorkspacePreview } from "./OnboardingSceneOverlays";
+import { ConnectedScene } from "./OnboardingSceneOverlays";
 import {
   EmailCodePresentation,
   isEmailCodeScene,
@@ -22,6 +23,8 @@ import {
 import { Glyph, InlineAlert, PrimaryButton } from "./OnboardingScenePrimitives";
 import "./onboardingCalibration.css";
 import "./onboardingTypography.css";
+import "./scoutPresence.css";
+import { ScoutAvatar } from "./ScoutAvatar";
 
 export type {
   OnboardingSceneData,
@@ -117,31 +120,107 @@ function SceneBody(props: PresentationProps) {
         harnessMark={props.harnessMark}
         onNavigate={onNavigate}
         onSelectConnection={onSelectConnection}
+        onChooseHarness={props.onChooseHarness}
         scene={scene}
       />
+    );
+  }
+  if (scene === "community-entry" || scene === "community-entry-error") {
+    return (
+      <>
+        <ScoutAvatar
+          className="agent-avatar large scout-rendered"
+          pose={data.error ? "waiting" : "working"}
+        />
+        <h2>
+          {data.error
+            ? "Your Colony isn’t ready yet."
+            : "Getting your Colony ready."}
+        </h2>
+        <p className="lede">
+          {data.error
+            ? "We couldn’t finish setting up this community."
+            : "We’re preparing your Welcome channel and Scout."}
+        </p>
+        {data.error ? (
+          <>
+            <InlineAlert>{data.error}</InlineAlert>
+            <PrimaryButton onClick={() => onNavigate?.("community-entry")}>
+              Try again
+            </PrimaryButton>
+            <button
+              className="secondary full"
+              type="button"
+              onClick={() => onNavigate?.("workspace")}
+            >
+              {data.entryCanOpen === false
+                ? "Change community"
+                : "Open my Colony for now"}
+            </button>
+          </>
+        ) : (
+          <p role="status">
+            <span className="spinner" /> Getting things ready
+          </p>
+        )}
+      </>
     );
   }
   if (scene === "testing") {
     return (
       <>
-        <div className="agent-avatar large" />
+        <ScoutAvatar
+          className="agent-avatar large scout-rendered"
+          pose="working"
+        />
         <h2>A first hello.</h2>
-        <p className="lede">We’re checking that your agent can reply.</p>
+        <p className="lede" role="status" aria-live="polite">
+          We’re checking that your agent can reply.
+        </p>
         <ol className="progress-list">
           <li className="complete">
             <Glyph name="check" />
-            Connection saved
+            {data.visualOnly || data.connectionPhase === "saving"
+              ? "Connection saved"
+              : "Connection selected"}
           </li>
-          <li>
-            <span className="spinner" />
+          <li
+            className={
+              data.connectionPhase === "waiting" ||
+              data.connectionPhase === "saving" ||
+              data.visualOnly
+                ? "complete"
+                : ""
+            }
+          >
+            {data.connectionPhase === "waiting" ||
+            data.connectionPhase === "saving" ||
+            data.visualOnly ? (
+              <Glyph name="check" />
+            ) : (
+              <span className="spinner" />
+            )}
             Starting your agent
           </li>
-          <li>
-            <span className="waiting-dot" />
-            Waiting for a reply
+          <li className={data.connectionPhase === "saving" ? "complete" : ""}>
+            {data.connectionPhase === "saving" ? (
+              <Glyph name="check" />
+            ) : data.connectionPhase === "waiting" || data.visualOnly ? (
+              <span className="spinner" />
+            ) : (
+              <span className="waiting-dot" />
+            )}
+            {data.connectionPhase === "saving"
+              ? "Reply received"
+              : "Waiting for a reply"}
           </li>
         </ol>
-        <button className="secondary full" type="button">
+        <button
+          className="secondary full"
+          onClick={props.onCancelTest ?? (() => onNavigate?.("connect"))}
+          type="button"
+          disabled={data.connectionPhase === "saving"}
+        >
           Cancel test
         </button>
       </>
@@ -165,8 +244,8 @@ function SceneBody(props: PresentationProps) {
         <h2>No reply just yet.</h2>
         <p className="lede">We couldn’t get a response from your agent.</p>
         <InlineAlert>
-          Your connection isn’t working yet. Check that you’re signed in and
-          that your account has usage available.
+          {data.error ??
+            "Your connection isn’t working yet. Check that you’re signed in and that your account has usage available."}
         </InlineAlert>
         <div className="notice">
           Your account and business details are saved. You won’t need to start
@@ -189,21 +268,33 @@ function SceneBody(props: PresentationProps) {
 }
 
 export function OnboardingScenePresentation(props: PresentationProps) {
+  const [focusTopic, setFocusTopic] = React.useState<{
+    scene: string;
+    id: string;
+  }>();
+  const rootRef = React.useRef<HTMLDivElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Focus follows rendered scene and new error feedback.
+  React.useEffect(() => {
+    // Connection tabs keep roving keyboard focus within the same form.
+    if (
+      rootRef.current?.contains(document.activeElement) &&
+      document.activeElement?.getAttribute("role") === "radio"
+    )
+      return;
+    const heading = rootRef.current?.querySelector<HTMLElement>(
+      ".form-content h2, .form-content h1",
+    );
+    if (heading) {
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    }
+  }, [props.scene, props.error, props.data.error]);
   const workspaceScene =
     props.scene === "workspace" ||
     props.scene === "history" ||
     props.scene === "history-review";
-  if (workspaceScene) {
-    return (
-      <div className="colony-onboarding-root">
-        <div className="onboarding-viewport">
-          <div className="app-frame onboarding-app-frame">
-            <WorkspacePreview data={props.data} scene={props.scene} />
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // The host router owns the full app. Never render the retired miniature shell.
+  if (workspaceScene) return <>{props.contentOverride}</>;
   const access = accessScene(props.scene);
   const switchText = access ? null : props.scene === "account" ||
     props.scene === "account-error" ? (
@@ -239,7 +330,7 @@ export function OnboardingScenePresentation(props: PresentationProps) {
   ) : null;
   const power = onboardingSceneStage(props.scene) === 2;
   return (
-    <div className="colony-onboarding-root">
+    <main className="colony-onboarding-root" ref={rootRef}>
       <div className="onboarding-viewport">
         <section className="app-frame onboarding-app-frame">
           <div
@@ -255,11 +346,22 @@ export function OnboardingScenePresentation(props: PresentationProps) {
               <span>Colony</span>
             </div>
             <StoryPanel
-              data={props.data}
+              data={{ ...props.data, error: props.error ?? props.data.error }}
               onLogoError={props.onLogoError}
               scene={props.scene}
+              focusTopic={
+                focusTopic?.scene === props.scene ? focusTopic.id : undefined
+              }
             />
-            <div className="form-side">
+            <div
+              className="form-side"
+              onFocusCapture={(event) =>
+                setFocusTopic({
+                  scene: props.scene,
+                  id: (event.target as HTMLElement).id,
+                })
+              }
+            >
               <div className="account-switch">{switchText}</div>
               <div
                 className={`form-content screen-enter ${power ? "wide power-content" : ""} ${onboardingSceneStage(props.scene) === 1 ? "business-content" : ""}`}
@@ -271,6 +373,6 @@ export function OnboardingScenePresentation(props: PresentationProps) {
           </div>
         </section>
       </div>
-    </div>
+    </main>
   );
 }

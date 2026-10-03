@@ -1,4 +1,15 @@
+import { OpenRouterConnectionPanel } from "@/shared/ui/OpenRouterConnectionPanel";
 import * as React from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { globalAgentConfigQueryKey } from "@/features/agents/useGlobalAgentConfig";
+import {
+  runOnboardingConnectionTest,
+  cancelOnboardingConnectionTest,
+  subscribeOnboardingConnectionProgress,
+  type OnboardingConnectionProgress,
+  type OnboardingConnectionProof,
+} from "./onboardingConnectionTest";
+import { buildOnboardingRuntimeCandidate } from "./saveOnboardingRuntime";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import {
@@ -13,10 +24,7 @@ import {
   AiKeyConnectionPanel,
   CreditsComingSoon,
 } from "./AiKeyConnectionPanel";
-import {
-  resolveAgentPrerequisiteReadiness,
-  resolveAgentReadiness,
-} from "./agentReadiness";
+import { resolveAgentPrerequisiteReadiness } from "./agentReadiness";
 import type {
   GlobalAgentConfig,
   AcpRuntimeCatalogEntry,
@@ -30,10 +38,15 @@ import {
   type OnboardingSceneData,
 } from "./OnboardingScenePresentation";
 import type { OnboardingSceneId } from "./onboardingScenes";
+import { scoutGuidance } from "./scoutGuidance";
 import {
   getVisibleOnboardingRuntimes,
   runtimeIsReadyForOnboarding,
 } from "./onboardingRuntimeSelection";
+import {
+  harnessDetectionStatus,
+  harnessInstallLabel,
+} from "./harnessDetectionState";
 import { getRuntimeDisplayLabel, RuntimeIcon } from "./RuntimeIcon";
 
 type ConnectSetupStepProps = {
@@ -63,26 +76,19 @@ function getRuntimeHeaderStatus(
     return prerequisite.reason === "git-bash"
       ? "Git for Windows needed"
       : "Checking prerequisites";
+  if (runtime.id === "buzz-agent")
+    return runtime.availability === "available" ? "Included" : "Not available";
   if (runtimeIsReadyForOnboarding(runtime, globalConfig, gitBashPrerequisite))
-    return "Ready";
-  if (runtime.id === "buzz-agent") return "No AI connected yet";
-  if (
-    runtime.availability === "available" &&
-    runtime.authStatus.status === "logged_out"
-  )
-    return "Sign-in needed";
-  if (
-    runtime.availability === "available" &&
-    runtime.authStatus.status === "unknown"
-  )
-    return "Checking status";
-  if (runtime.availability === "available") return "Installed";
-  return "Not available";
+    return runtime.authStatus.status === "logged_in"
+      ? "Installed"
+      : "Configured";
+  return harnessDetectionStatus(runtime, false);
 }
 
 function RuntimeOption({
   globalConfig,
   gitBashPrerequisite,
+  isFetching,
   onRefresh,
   runtime,
   selected,
@@ -90,6 +96,7 @@ function RuntimeOption({
 }: {
   globalConfig: GlobalAgentConfig;
   gitBashPrerequisite: GitBashPrerequisite | null | undefined;
+  isFetching: boolean;
   onRefresh: () => void;
   runtime: AcpRuntimeCatalogEntry;
   selected: boolean;
@@ -156,20 +163,17 @@ function RuntimeOption({
     );
   };
 
-  let status = "Not installed";
-  if (ready) status = "Ready on this computer";
-  else if (
-    runtime.availability === "available" &&
-    runtime.authStatus.status === "logged_out"
-  )
-    status = "Sign-in needed";
-  else if (
-    runtime.availability === "available" &&
-    runtime.authStatus.status === "unknown"
-  )
-    status = "Checking status";
+  // Not-ready states use the harness detection taxonomy (install, adapter,
+  // sign-in and unprobed authentication are distinct). A ready harness is
+  // known to be signed in; the bundled agent is configured by provider, model
+  // and credentials, so Connect never implies a sign-in that was not probed.
+  let status = harnessDetectionStatus(runtime, false);
+  if (ready)
+    status =
+      runtime.id !== "buzz-agent" && runtime.authStatus.status === "logged_in"
+        ? "Installed"
+        : "Configured on this computer";
   else if (runtime.id === "buzz-agent") status = "No AI connected yet";
-  else if (runtime.availability === "available") status = "Installed";
 
   if (!prerequisite.ready) status = prerequisite.copy;
 
@@ -190,10 +194,26 @@ function RuntimeOption({
           <span className="selection-dot" />
         </span>
         <span className="provider-account">{status}</span>
+        {runtime.availability === "adapter_missing" ? (
+          <span className="provider-account">
+            {getRuntimeDisplayLabel(runtime)} is installed. Its connection
+            adapter is missing.
+          </span>
+        ) : null}
       </button>
+      {ready && (runtime.id === "claude" || runtime.id === "codex") ? (
+        <p className="usage-unavailable">
+          Usage unavailable
+          <span>Your allowance may still be available.</span>
+        </p>
+      ) : null}
       <div className="runtime-actions">
         {ready ? (
-          <span className="provider-status is-connected">Ready</span>
+          <span className="provider-status is-connected">
+            {runtime.authStatus.status === "logged_in"
+              ? "Installed"
+              : "Configured"}
+          </span>
         ) : null}
         {!ready && needsSignIn ? (
           <Button
@@ -207,7 +227,7 @@ function RuntimeOption({
           </Button>
         ) : null}
         {!ready &&
-        runtime.availability === "available" &&
+        runtime.availability !== "available" &&
         runtime.canAutoInstall ? (
           <Button
             className="runtime-action"
@@ -216,7 +236,9 @@ function RuntimeOption({
             type="button"
             variant="outline"
           >
-            {installMutation.isPending ? "Installing…" : "Install"}
+            {installMutation.isPending
+              ? "Installing…"
+              : harnessInstallLabel(runtime)}
           </Button>
         ) : null}
         {!ready &&
@@ -228,8 +250,41 @@ function RuntimeOption({
             type="button"
             variant="outline"
           >
-            Install
+            {harnessInstallLabel(runtime)}
           </Button>
+        ) : null}
+        {!ready &&
+        runtime.id !== "buzz-agent" &&
+        runtime.availability === "available" &&
+        !needsSignIn ? (
+          <>
+            {runtime.id === "claude" || runtime.id === "codex" ? (
+              <Button
+                aria-label={`Check ${getRuntimeDisplayLabel(runtime)} again`}
+                className="runtime-action"
+                disabled={isFetching}
+                onClick={onRefresh}
+                type="button"
+                variant="outline"
+              >
+                Check again
+              </Button>
+            ) : (
+              <p className="provider-account">
+                Sign-in cannot be checked. Use the setup guide, or choose
+                another connection.
+              </p>
+            )}
+            <Button
+              aria-label={`Open ${getRuntimeDisplayLabel(runtime)} setup guide`}
+              className="runtime-action"
+              onClick={() => void openUrl(runtime.installInstructionsUrl)}
+              type="button"
+              variant="outline"
+            >
+              Open setup guide
+            </Button>
+          </>
         ) : null}
       </div>
       {actionError ? (
@@ -254,9 +309,13 @@ function RuntimeOption({
 function RuntimeConnectionPanel({
   error,
   onHarnessHeaderChange,
+  selectedRuntimeId,
+  onRuntimeSelect,
 }: {
   error?: string | null;
   onHarnessHeaderChange: (header: HarnessHeader) => void;
+  selectedRuntimeId: string | null;
+  onRuntimeSelect: (id: string) => void;
 }) {
   const { globalConfig } = useGlobalAgentConfig();
   const query = useAcpRuntimesQueryForced();
@@ -270,9 +329,6 @@ function RuntimeConnectionPanel({
       runtimeIsReadyForOnboarding(runtime, globalConfig, gitBashPrerequisite) &&
       resolveAgentPrerequisiteReadiness(runtime.id, gitBashPrerequisite).ready,
   );
-  const [selectedRuntimeId, setSelectedRuntimeId] = React.useState<
-    string | null
-  >(null);
   const selectedRuntime = runtimes.find(
     (runtime) => runtime.id === selectedRuntimeId,
   );
@@ -283,8 +339,8 @@ function RuntimeConnectionPanel({
 
   React.useEffect(() => {
     if (!selectedRuntimeId && runtimes.length > 0)
-      setSelectedRuntimeId(runtimes[0].id);
-  }, [runtimes, selectedRuntimeId]);
+      onRuntimeSelect(runtimes[0].id);
+  }, [runtimes, selectedRuntimeId, onRuntimeSelect]);
 
   React.useEffect(() => {
     const header: HarnessHeader = selectedRuntime
@@ -325,7 +381,7 @@ function RuntimeConnectionPanel({
     <>
       {error ? (
         <div className="power-notice is-error" role="alert">
-          <svg aria-hidden="true" className="icon">
+          <svg aria-hidden="true" className="icon" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="9" />
             <path d="M12 7v6m0 3v.1" />
           </svg>
@@ -334,8 +390,14 @@ function RuntimeConnectionPanel({
       ) : null}
       <div className="section-heading">
         <h3>On this computer</h3>
-        <button className="link" onClick={() => void refresh()} type="button">
-          <svg aria-hidden="true" className="icon">
+        <button
+          aria-label="Check installed AI apps again"
+          className="link"
+          disabled={query.isFetching}
+          onClick={() => void refresh()}
+          type="button"
+        >
+          <svg aria-hidden="true" className="icon" viewBox="0 0 24 24">
             <path d="M20 11a8 8 0 1 0 2 5" />
             <path d="M20 4v7h-7" />
           </svg>
@@ -349,13 +411,13 @@ function RuntimeConnectionPanel({
           role="status"
         >
           <span className="spinner" />
-          <h3>Finding your AI apps.</h3>
-          <p>Checking installations and signed-in accounts.</p>
+          <h3>Checking your installed apps.</h3>
+          <p>We’re looking for supported apps on this computer.</p>
         </div>
       ) : null}
       {query.error instanceof Error ? (
         <div className="power-notice is-error" role="alert">
-          <svg aria-hidden="true" className="icon">
+          <svg aria-hidden="true" className="icon" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="9" />
             <path d="M12 7v6m0 3v.1" />
           </svg>
@@ -377,8 +439,9 @@ function RuntimeConnectionPanel({
               key={runtime.id}
               globalConfig={globalConfig}
               gitBashPrerequisite={gitBashPrerequisite}
+              isFetching={query.isFetching}
               onRefresh={refresh}
-              onSelect={() => setSelectedRuntimeId(runtime.id)}
+              onSelect={() => onRuntimeSelect(runtime.id)}
               runtime={runtime}
               selected={selectedRuntimeId === runtime.id}
             />
@@ -394,9 +457,9 @@ function RuntimeConnectionPanel({
       <p className="power-caption">
         {selectedRuntime &&
         ready.some((runtime) => runtime.id === selectedRuntime.id)
-          ? `${getRuntimeDisplayLabel(selectedRuntime)} is ready on this computer.`
+          ? `${getRuntimeDisplayLabel(selectedRuntime)} can be tested on this computer.`
           : ready.length > 0
-            ? "Choose a ready harness to continue."
+            ? "Choose a signed-in harness to test."
             : "You can connect an AI harness later."}
       </p>
     </>
@@ -409,6 +472,42 @@ export function ConnectSetupStep({
   onBack,
   onContinue,
 }: ConnectSetupStepProps) {
+  const queryClient = useQueryClient();
+  const [selectedRuntimeId, setSelectedRuntimeId] = React.useState<
+    string | null
+  >(null);
+  const [saving, setSaving] = React.useState(false);
+  const [selectedModel, setSelectedModel] = React.useState<
+    string | null | undefined
+  >(undefined);
+  const selectRuntime = React.useCallback((id: string) => {
+    setSelectedRuntimeId(id);
+    setSelectedModel(undefined);
+  }, []);
+  const [proof, setProof] = React.useState<OnboardingConnectionProof | null>(
+    null,
+  );
+  const [testState, setTestState] = React.useState<
+    "connect" | "testing" | "connected" | "connection-error"
+  >("connect");
+  const generation = React.useRef(0);
+  React.useEffect(
+    () => () => {
+      generation.current += 1;
+      void cancelOnboardingConnectionTest().catch(console.warn);
+    },
+    [],
+  );
+  const [connectionPhase, setConnectionPhase] =
+    React.useState<OnboardingConnectionProgress>("starting");
+  React.useEffect(
+    () => subscribeOnboardingConnectionProgress(setConnectionPhase),
+    [],
+  );
+  const [testedRuntimeId, setTestedRuntimeId] = React.useState<string | null>(
+    null,
+  );
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const [connectionScene, setConnectionScene] = React.useState<
     | "connect"
     | "funding"
@@ -458,15 +557,130 @@ export function ConnectSetupStep({
     ? undefined
     : gitBashQuery.data;
   const runtimes = useAcpRuntimesQueryForced();
+  const selectedRuntime = runtimes.data?.find(
+    (runtime) => runtime.id === selectedRuntimeId,
+  );
   const bundled = runtimes.data?.find((runtime) => runtime.id === "buzz-agent");
+  const [byokChecked, setByokChecked] = React.useState(false);
+  const [openRouterReady, setOpenRouterReady] = React.useState(false);
+  const [openRouterScene, setOpenRouterScene] =
+    React.useState<OnboardingSceneId>("openrouter-unlinked");
   const keyScene =
     connectionScene === "api-key" || connectionScene === "openrouter-unlinked";
-  const aiReady = resolveAgentReadiness(
-    runtimes.data ?? [],
-    globalConfig,
-    "any",
-    gitBashPrerequisite,
-  ).ready;
+  const candidateRuntime = keyScene ? bundled : selectedRuntime;
+  const aiReady =
+    (connectionScene === "api-key"
+      ? byokChecked
+      : connectionScene === "openrouter-unlinked"
+        ? openRouterReady && globalConfig.provider === "openrouter"
+        : true) &&
+    !!candidateRuntime &&
+    runtimeIsReadyForOnboarding(
+      candidateRuntime,
+      globalConfig,
+      gitBashPrerequisite,
+    ) &&
+    resolveAgentPrerequisiteReadiness(candidateRuntime.id, gitBashPrerequisite)
+      .ready;
+  React.useEffect(() => {
+    if (!selectedRuntimeId && globalConfig.preferred_runtime) {
+      setSelectedRuntimeId(globalConfig.preferred_runtime);
+      setSelectedModel(globalConfig.model);
+    }
+  }, [globalConfig.preferred_runtime, globalConfig.model, selectedRuntimeId]);
+  const testedRuntime = runtimes.data?.find(
+    (runtime) => runtime.id === testedRuntimeId,
+  );
+
+  const continueWithRuntime = async () => {
+    if (!aiReady || connectionScene === "credits-price-error") {
+      return;
+    }
+    const attempt = ++generation.current;
+    const isCurrent = () => generation.current === attempt;
+    setSaving(true);
+    setSaveError(null);
+    setProof(null);
+    setConnectionPhase("starting");
+    setTestState("testing");
+    try {
+      const runtimeId = keyScene ? "buzz-agent" : selectedRuntimeId;
+      if (!runtimeId) throw new Error("Choose an AI harness before testing.");
+      setTestedRuntimeId(runtimeId);
+      const candidate = buildOnboardingRuntimeCandidate(
+        globalConfig,
+        runtimeId,
+        runtimes.data ?? [],
+        keyScene ? undefined : selectedModel,
+      );
+      const result = await runOnboardingConnectionTest(candidate, isCurrent);
+      if (!isCurrent()) return;
+      queryClient.setQueryData(globalAgentConfigQueryKey, result.config);
+      setProof(result.proof);
+      setTestState("connected");
+    } catch (failure) {
+      if (!isCurrent()) return;
+      setSaveError(
+        failure instanceof Error
+          ? failure.message
+          : "Your agent could not reply. Check sign-in and usage, then try again.",
+      );
+      setTestState("connection-error");
+    } finally {
+      if (isCurrent()) setSaving(false);
+    }
+  };
+
+  if (testState !== "connect") {
+    return (
+      <OnboardingScenePresentation
+        onCancelTest={() => {
+          if (connectionPhase === "saving") return;
+          generation.current += 1;
+          void cancelOnboardingConnectionTest().catch(console.warn);
+          setSaving(false);
+          setProof(null);
+          setTestState("connect");
+        }}
+        scene={testState}
+        data={{
+          ...data,
+          harnessLabel: testedRuntime
+            ? getRuntimeDisplayLabel(testedRuntime)
+            : "Colony AI",
+          connectionPhase,
+          connectionReply: proof?.reply,
+          effectiveModel: proof?.model,
+          error: saveError,
+        }}
+        harnessMark={
+          testedRuntime ? (
+            <RuntimeIcon
+              className="harness-mark-runtime"
+              runtime={testedRuntime}
+            />
+          ) : null
+        }
+        onNavigate={(scene) => {
+          if (scene === "workspace" && proof) {
+            onContinue();
+            return;
+          }
+          if (scene === "testing") {
+            void continueWithRuntime();
+            return;
+          }
+          if (testState === "testing" && connectionPhase === "saving") return;
+          generation.current += 1;
+          void cancelOnboardingConnectionTest().catch(console.warn);
+          setSaving(false);
+          setProof(null);
+          setSaveError(null);
+          setTestState("connect");
+        }}
+      />
+    );
+  }
 
   return (
     <OnboardingScenePresentation
@@ -474,74 +688,86 @@ export function ConnectSetupStep({
         <>
           {connectionScene === "connect" ? (
             <RuntimeConnectionPanel
-              error={error}
+              error={saveError ?? error}
               onHarnessHeaderChange={handleHarnessHeaderChange}
+              selectedRuntimeId={selectedRuntimeId}
+              onRuntimeSelect={selectRuntime}
             />
-          ) : connectionScene === "api-key" ||
-            connectionScene === "openrouter-unlinked" ? (
+          ) : connectionScene === "openrouter-unlinked" ? (
+            <OpenRouterConnectionPanel
+              onboarding
+              onReadyChange={setOpenRouterReady}
+              onStateChange={(state) =>
+                setOpenRouterScene(`openrouter-${state}`)
+              }
+            />
+          ) : connectionScene === "api-key" ? (
             <AiKeyConnectionPanel
               key={connectionScene}
-              openRouter={connectionScene === "openrouter-unlinked"}
+              onCheckedChange={setByokChecked}
             />
           ) : (
             <CreditsComingSoon />
           )}
-          {!aiReady ? (
-            <div className="power-notice">
-              <p>
-                No AI connected yet. AI employees will not reply until you
-                connect an AI in Settings &gt; Agents &gt; Defaults.
-              </p>
+          {saveError && connectionScene !== "connect" ? (
+            <p role="alert">{saveError}</p>
+          ) : null}
+          {connectionScene === "connect" ||
+          connectionScene === "credits-price-error" ||
+          aiReady ? (
+            <div className="power-cta">
               <button
-                className="link"
+                className="primary full"
+                disabled={
+                  saving ||
+                  !aiReady ||
+                  connectionScene === "credits-price-error"
+                }
+                onClick={() => void continueWithRuntime()}
                 type="button"
-                onClick={() => onContinue("settings")}
               >
-                Open AI settings
+                {connectionScene === "connect" && selectedRuntime
+                  ? `Connect with ${getRuntimeDisplayLabel(selectedRuntime)}`
+                  : "Connect"}{" "}
+                <span aria-hidden="true">→</span>
+              </button>
+              <button
+                className="back"
+                type="button"
+                onClick={() => onContinue()}
+              >
+                Skip for now
               </button>
             </div>
           ) : null}
-          <div className="power-cta">
-            <button
-              className="primary full"
-              onClick={() => onContinue()}
-              type="button"
-            >
-              Open my Colony
-            </button>
-            {!aiReady ? (
-              <p>Continue without AI. You can connect it later.</p>
-            ) : null}
-          </div>
         </>
       }
-      data={
-        keyScene
+      data={{
+        ...data,
+        ...(connectionScene === "credits-price-error"
+          ? { scoutGuidance: scoutGuidance("connect") }
+          : {}),
+        ...(keyScene
           ? {
-              ...data,
-              harnessLabel: bundled
-                ? getRuntimeDisplayLabel(bundled)
-                : "Colony AI",
+              harnessLabel: "Colony Agent",
               harnessStatus: bundled
                 ? getRuntimeHeaderStatus(
                     bundled,
                     globalConfig,
                     gitBashPrerequisite,
                   )
-                : "No AI connected yet",
+                : "Unavailable",
             }
-          : data
-      }
-      harnessMark={
-        keyScene && bundled ? (
-          <RuntimeIcon className="harness-mark-runtime" runtime={bundled} />
-        ) : (
-          harnessHeader.mark
-        )
-      }
+          : {}),
+      }}
+      harnessMark={keyScene ? undefined : harnessHeader.mark}
       onNavigate={onBack}
       onSelectConnection={onSelectConnection}
-      scene={connectionScene}
+      scene={
+        connectionScene === "openrouter-unlinked"
+          ? openRouterScene
+          : connectionScene
+      }
     />
   );
 }

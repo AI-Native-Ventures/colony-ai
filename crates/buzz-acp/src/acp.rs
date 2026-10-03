@@ -147,6 +147,11 @@ fn build_initialize_params() -> serde_json::Value {
 pub struct AcpClient {
     /// The agent child process (kept alive to prevent zombie).
     child: Child,
+    /// Bounded reply capture used only by the first-run connection test.
+    connection_reply: Option<(String, String)>,
+    connection_tool_requested: bool,
+    connection_probe: bool,
+    own_process_group: bool,
     /// Write end of the agent's stdin pipe.
     stdin: ChildStdin,
     /// Framed reader over the agent's stdout pipe (line-oriented, bounded).
@@ -437,7 +442,7 @@ impl AcpClient {
         // Falls back to start_kill() (direct child only) on non-Unix or if
         // the child has been polled to completion (id() returns None).
         match self.child.id() {
-            Some(pid) if kill_process_group(pid) => {}
+            Some(pid) if self.own_process_group && kill_process_group(pid) => {}
             _ => {
                 let _ = self.child.start_kill();
             }
@@ -465,6 +470,25 @@ impl AcpClient {
         args: &[String],
         extra_env: &[(String, String)],
         has_generated_codex_config: bool,
+    ) -> Result<Self, AcpError> {
+        Self::spawn_with_process_group(command, args, extra_env, has_generated_codex_config, true)
+            .await
+    }
+
+    /// Probe children inherit the bounded harness group, so outer teardown owns descendants.
+    pub(crate) async fn spawn_connection_probe(
+        command: &str,
+        args: &[String],
+    ) -> Result<Self, AcpError> {
+        Self::spawn_with_process_group(command, args, &[], false, false).await
+    }
+
+    async fn spawn_with_process_group(
+        command: &str,
+        args: &[String],
+        extra_env: &[(String, String)],
+        has_generated_codex_config: bool,
+        own_process_group: bool,
     ) -> Result<Self, AcpError> {
         use std::process::Stdio;
 
@@ -538,7 +562,9 @@ impl AcpClient {
         // to the harness's own process group on Unix.
         // tokio::process::Command::process_group is a stable tokio API (no extra imports needed).
         #[cfg(unix)]
-        cmd.process_group(0);
+        if own_process_group {
+            cmd.process_group(0);
+        }
 
         // Suppress the console window that Windows otherwise allocates for every
         // console-subsystem child process spawned from a GUI/non-console parent.
@@ -552,6 +578,12 @@ impl AcpClient {
                 "codex" | "codex-acp" => Some(StandardAdapterKind::Codex),
                 _ => None,
             };
+        if !own_process_group {
+            cmd.env_remove("COLONY_CONNECTION_MODEL");
+            cmd.env_remove("COLONY_CONNECTION_CANCEL_PATH");
+            cmd.env_remove("COLONY_CONNECTION_TIMEOUT_SECS");
+            cmd.env_remove("COLONY_CONNECTION_PROGRESS_PATH");
+        }
         let mut child = cmd.spawn()?;
 
         let stdin = child
@@ -565,6 +597,10 @@ impl AcpClient {
 
         Ok(Self {
             child,
+            connection_reply: None,
+            connection_tool_requested: false,
+            connection_probe: !own_process_group,
+            own_process_group,
             stdin,
             reader: FramedRead::new(stdout, LinesCodec::new_with_max_length(MAX_LINE_SIZE)),
             next_id: 0,
@@ -583,6 +619,27 @@ impl AcpClient {
             standard_usage: StandardUsageTracker::default(),
             standard_adapter,
         })
+    }
+
+    /// Capture only the probe session, with bounded UTF-8 output.
+    pub(crate) fn capture_connection_reply(&mut self, session_id: &str) {
+        self.connection_reply = Some((session_id.to_owned(), String::new()));
+        if !self.connection_probe {
+            self.connection_tool_requested = false;
+        }
+    }
+
+    /// Whether the probe requested tools instead of a tool-free hello.
+    pub(crate) fn connection_tool_requested(&self) -> bool {
+        self.connection_tool_requested
+    }
+
+    /// Consume the probe reply without retaining prior session content.
+    pub(crate) fn take_connection_reply(&mut self) -> String {
+        self.connection_reply
+            .take()
+            .map(|(_, text)| text)
+            .unwrap_or_default()
     }
 
     /// Attach a local observer feed to this ACP client.
@@ -1790,11 +1847,29 @@ impl AcpClient {
         match update_type {
             "agent_message_chunk" => {
                 if let Some(text) = update["content"]["text"].as_str() {
+                    if let Some((session_id, reply)) = &mut self.connection_reply {
+                        if msg["params"]["sessionId"].as_str() == Some(session_id.as_str()) {
+                            // Cap at 8 KiB on a UTF-8 boundary. This probe needs only a hello.
+                            let available = 8192_usize.saturating_sub(reply.len());
+                            let mut end = text.len().min(available);
+                            while !text.is_char_boundary(end) {
+                                end -= 1;
+                            }
+                            reply.push_str(&text[..end]);
+                        }
+                    }
                     tracing::info!(target: "acp::stream", "{text}");
                 }
                 false
             }
             "tool_call" => {
+                if self.connection_probe
+                    || self.connection_reply.as_ref().is_some_and(|(session, _)| {
+                        msg["params"]["sessionId"].as_str() == Some(session.as_str())
+                    })
+                {
+                    self.connection_tool_requested = true;
+                }
                 let title = update
                     .get("title")
                     .and_then(|v| v.as_str())
@@ -1988,6 +2063,33 @@ impl AcpClient {
             "session/request_permission id={id}, {} options",
             options.len()
         );
+
+        if self.connection_probe || self.connection_reply.is_some() {
+            self.connection_tool_requested = true;
+            let response = options
+                .iter()
+                .find(|option| {
+                    option.get("kind").and_then(|kind| kind.as_str()) == Some("reject_once")
+                })
+                .and_then(|option| option.get("optionId").and_then(|id| id.as_str()))
+                .map(|option_id| {
+                    permission_response_selected_with_message(
+                        &id,
+                        option_id,
+                        "Connection tests do not authorize tools.",
+                    )
+                })
+                .unwrap_or_else(|| {
+                    permission_response_cancelled_with_message(
+                        &id,
+                        "Connection tests do not authorize tools.",
+                    )
+                });
+            self.write_ndjson(&response).await?;
+            self.permission_responded = true;
+            self.pending_permission_id = None;
+            return Ok(());
+        }
 
         let decision = crate::tool_permissions::authorize_tool_call(
             msg,
@@ -2415,7 +2517,7 @@ impl Drop for AcpClient {
         // Kill the process group when possible so subprocesses don't leak.
         // Callers SHOULD still call `shutdown().await` for guaranteed reaping.
         match self.child.id() {
-            Some(pid) if kill_process_group(pid) => {}
+            Some(pid) if self.own_process_group && kill_process_group(pid) => {}
             _ => {
                 let _ = self.child.start_kill();
             }
@@ -3763,6 +3865,7 @@ mod tests {
     // ── claude-agent-acp _meta.systemPrompt transport ─────────────────────
 
     include!("acp/system_prompt_tests.rs");
+    include!("acp/connection_reply_tests.rs");
 
     #[tokio::test]
     async fn active_run_id_sets_on_string() {

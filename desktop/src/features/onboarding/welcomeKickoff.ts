@@ -1,13 +1,19 @@
 import * as React from "react";
+import { startWelcomeAgentsForKickoff } from "./welcomeStartup";
 
 import {
   managedAgentsQueryKey,
+  gitBashPrerequisiteQueryKey,
   useAcpRuntimesQuery,
   useGitBashPrerequisiteQuery,
   useManagedAgentsQuery,
 } from "@/features/agents/hooks";
+import { refreshAcpRuntimes } from "@/features/agents/acpRuntimesQuery";
 import { useAgentAccessOwnerOnlyQuery } from "@/features/agents/useAgentAccessOwnerOnly";
-import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
+import {
+  globalAgentConfigQueryKey,
+  useGlobalAgentConfig,
+} from "@/features/agents/useGlobalAgentConfig";
 import { clearActiveTurnsForAgentOnStop } from "@/features/agents/managedAgentRuntimeHooks";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { welcomeKickoffMarker } from "@/features/onboarding/devFreshOnboarding";
@@ -44,10 +50,20 @@ const closerMarker = welcomeKickoffMarker(WELCOME_KICKOFF_CLOSER_MARKER);
 const providerMarker = welcomeKickoffMarker(WELCOME_KICKOFF_PROVIDER_MARKER);
 
 export const WELCOME_KICKOFF_PROVIDER_MESSAGE =
-  "To get started with agents, open Settings > Agents > Defaults to connect your provider key and choose a model. Once you're connected, come back here and we'll introduce the team.";
+  "To get started with Scout, connect your AI in Settings > Agents > Defaults. Then return here to get started.";
+
+/** Post setup guidance only when the production readiness gate lacks an authenticated path. */
+export async function postWelcomeKickoffSetupNotice(
+  readiness: ReturnType<typeof resolveAgentReadiness>,
+  post: (content: string) => Promise<unknown>,
+): Promise<boolean> {
+  if (readiness.ready) return false;
+  await post(readiness.copy ?? WELCOME_KICKOFF_PROVIDER_MESSAGE);
+  return true;
+}
 
 const WELCOME_KICKOFF_CTA =
-  "What can we help you build? Bring us something you're working on, or give us a quick challenge to see how we work together.";
+  "What can I help you build? Bring me something you're working on, or give me a quick challenge to get started.";
 
 function formatAgentNames(agents: readonly ManagedAgent[]) {
   if (agents.length === 0) return "";
@@ -90,14 +106,14 @@ export function createWelcomeKickoffCoordinator() {
 const kickoffCoordinator = createWelcomeKickoffCoordinator();
 const closerInFlight = new Set<string>();
 const TEAMMATE_READY_POLL_MS = 250;
-const TEAMMATE_READY_WAIT_MS = 60_000;
+export const TEAMMATE_READY_WAIT_MS = 5_000;
 /**
  * Give-up backstop for teammates that are neither intro'd nor detectably failed
- * — i.e. alive but silent. **Not** an expectation of how fast an intro arrives.
+ *. i.e. alive but silent. **Not** an expectation of how fast an intro arrives.
  *
  * It does not gate the happy path: once every teammate is resolved (intro'd, or
  * `failedAfterKickoff`-detected), the closer fires on `CLOSER_BEAT_MS` and this
- * timer is cleared. Raising it costs the normal case nothing — it only delays
+ * timer is cleared. Raising it costs the normal case nothing. it only delays
  * the moment we give up on a silent teammate.
  *
  * So it must be long enough that "taking longer than expected" is *true* when it
@@ -107,7 +123,7 @@ const TEAMMATE_READY_WAIT_MS = 60_000;
  * routinely beat two cold agents through harness dispatch + a full LLM turn
  * (observed 2026-07-18: intros landed ~60s in, and the false "taking longer"
  * closer had already been stamped final at 15s). A real failure does not wait
- * for this — `failedAfterKickoff` resolves crashed teammates immediately.
+ * for this. `failedAfterKickoff` resolves crashed teammates immediately.
  *
  * See docs/welcome-kickoff-silent-failures.md §1.
  */
@@ -121,7 +137,7 @@ const closerTimeouts = new Map<
 
 type WelcomeAgentSet = {
   lead: ManagedAgent;
-  teammates: [ManagedAgent, ManagedAgent];
+  teammates: ManagedAgent[];
 };
 
 function markerEvent(events: readonly RelayEvent[], marker: string) {
@@ -141,7 +157,7 @@ export function resolveWelcomeAgentSet(
   if (ordered.some((agent) => !agent)) return null;
   return {
     lead: ordered[0] as ManagedAgent,
-    teammates: [ordered[1] as ManagedAgent, ordered[2] as ManagedAgent],
+    teammates: [],
   };
 }
 
@@ -180,10 +196,10 @@ export function buildWelcomeKickoffOpener(
   if (introTeammates.length === 0) {
     const teammateNames = formatAgentNames(allTeammates);
     const teammatePhrase = teammateNames ? ` with ${teammateNames}` : "";
-    return `${greeting} Welcome to Buzz. This is your private home base, and I'm here${teammatePhrase} to help you get oriented or work through something you're building.\n\n${WELCOME_KICKOFF_CTA}`;
+    return `${greeting} Welcome to Colony. This is your private home base, and I'm here${teammatePhrase} to help you get oriented or work through something you're building.\n\n${WELCOME_KICKOFF_CTA}`;
   }
 
-  return `${greeting} Welcome to Buzz. This is your private home base, and we're here to help you get oriented or work through something you're building.\n\n${introNames}, introduce ${introTeammates.length === 1 ? "yourself" : "yourselves"} in a sentence or two — share what you're good at and when to bring you in. Don't start any work yet.`;
+  return `${greeting} Welcome to Colony. This is your private home base, and we're here to help you get oriented or work through something you're building.\n\n${introNames}, introduce ${introTeammates.length === 1 ? "yourself" : "yourselves"} in a sentence or two, share what you're good at and when to bring you in. Don't start any work yet.`;
 }
 
 export function onlineWelcomeTeammates(
@@ -220,19 +236,30 @@ export async function waitForWelcomeTeammatesOnline(
   let latestOnline: ManagedAgent[] = [];
 
   while (!options.isCancelled()) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      latestOnline = onlineWelcomeTeammates(
-        teammates,
-        await loadPresence(pubkeys),
-      );
-      if (latestOnline.length === teammates.length) {
-        return latestOnline;
-      }
+      const result = await Promise.race([
+        loadPresence(pubkeys).then((presence) => ({ presence })),
+        new Promise<null>((resolve) => {
+          timer = setTimeout(
+            () => resolve(null),
+            Math.max(0, deadline - Date.now()),
+          );
+        }),
+      ]);
+      if (result === null) break;
+      latestOnline = onlineWelcomeTeammates(teammates, result.presence);
+      if (latestOnline.length === teammates.length) return latestOnline;
     } catch (error) {
       console.warn("Welcome teammate presence check failed; retrying.", error);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
     }
-    if (Date.now() >= deadline) break;
-    await new Promise((resolve) => globalThis.setTimeout(resolve, pollMs));
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await new Promise((resolve) =>
+      globalThis.setTimeout(resolve, Math.min(pollMs, remaining)),
+    );
   }
   return options.isCancelled() ? [] : latestOnline;
 }
@@ -265,13 +292,13 @@ export function buildWelcomeKickoffCloser(
     return WELCOME_KICKOFF_CTA;
   }
   if (failedNames.length === 1 && delayedNames.length === 0) {
-    return `${failedNames[0]} is having trouble starting — you can check on them in Agents.\n\n${WELCOME_KICKOFF_CTA}`;
+    return `${failedNames[0]} is having trouble starting. You can check on them in Agents.\n\n${WELCOME_KICKOFF_CTA}`;
   }
   if (failedNames.length > 1 && delayedNames.length === 0) {
     return `${failedNames.join(" and ")} couldn't start. You can check on them in Agents; I'm still here to help.\n\n${WELCOME_KICKOFF_CTA}`;
   }
   if (failedNames.length === 0 && delayedNames.length === 1) {
-    return `${delayedNames[0]} is taking longer to reply — I'm still here to help.\n\n${WELCOME_KICKOFF_CTA}`;
+    return `${delayedNames[0]} is taking longer to reply. I'm still here to help.\n\n${WELCOME_KICKOFF_CTA}`;
   }
   const names = [...failedNames, ...delayedNames].join(" and ");
   return `${names} are taking longer than expected. I'm still here to help.\n\n${WELCOME_KICKOFF_CTA}`;
@@ -285,7 +312,7 @@ function isReplyToOpener(event: RelayEvent, opener: RelayEvent) {
 function introAuthorsAfterOpener(
   events: readonly RelayEvent[],
   opener: RelayEvent,
-  teammates: readonly [ManagedAgent, ManagedAgent],
+  teammates: readonly ManagedAgent[],
 ) {
   const authors = new Set(
     events
@@ -318,15 +345,22 @@ export function classifyWelcomeKickoffResolution(
   opener: RelayEvent,
   agentSet: WelcomeAgentSet,
 ) {
+  const mentionedTeammates = agentSet.teammates.filter((agent) =>
+    opener.tags.some(
+      (tag) =>
+        tag[0] === "p" &&
+        normalizePubkey(tag[1] ?? "") === normalizePubkey(agent.pubkey),
+    ),
+  );
   const introAuthors = introAuthorsAfterOpener(
     events,
     opener,
-    agentSet.teammates,
+    mentionedTeammates,
   );
-  const failed = agentSet.teammates.filter((agent) =>
+  const failed = mentionedTeammates.filter((agent) =>
     failedAfterKickoff(agent, opener),
   );
-  const unresolved = agentSet.teammates.filter(
+  const unresolved = mentionedTeammates.filter(
     (agent) =>
       !introAuthors.has(normalizePubkey(agent.pubkey)) &&
       !failed.includes(agent),
@@ -396,7 +430,7 @@ export type WelcomeKickoffOwner = {
  * events plus the opener's thread replies.
  *
  * Teammate intros (and the closer) are thread replies, which the channel
- * window deliberately excludes — only broadcast replies reach the main
+ * window deliberately excludes. only broadcast replies reach the main
  * timeline. So `channelEvents` alone shows the opener and never the intros,
  * and the closer stalls until the user happens to open the thread. Merging the
  * opener's subtree in is what lets the choreography resolve on its own.
@@ -505,6 +539,32 @@ export function useWelcomeKickoff(
   const agentAccessOwnerOnlyQuery = useAgentAccessOwnerOnlyQuery();
   const agentAccessOwnerOnly = agentAccessOwnerOnlyQuery.data;
   const { globalConfig, isLoading: configLoading } = useGlobalAgentConfig();
+  const [kickoffError, setKickoffError] = React.useState<string | null>(null);
+  const [retryGeneration, setRetryGeneration] = React.useState(0);
+  const retryKickoff = React.useCallback(() => {
+    void (async () => {
+      try {
+        const [, , catalog] = await Promise.all([
+          queryClient.refetchQueries(
+            { queryKey: globalAgentConfigQueryKey },
+            { throwOnError: true },
+          ),
+          queryClient.refetchQueries(
+            { queryKey: gitBashPrerequisiteQueryKey },
+            { throwOnError: true },
+          ),
+          refreshAcpRuntimes(queryClient),
+        ]);
+        if (!catalog) throw new Error("AI connection discovery failed.");
+        setKickoffError(null);
+        setRetryGeneration((value) => value + 1);
+      } catch {
+        setKickoffError(
+          "We couldn't check your AI connection. Check your connection settings, then retry.",
+        );
+      }
+    })();
+  }, [queryClient]);
   const channelId = activeChannel?.id ?? null;
   const isActiveWelcome = isWelcomeChannel(activeChannel);
   const focusedWelcomeChannelRef = React.useRef<string | null>(null);
@@ -522,7 +582,7 @@ export function useWelcomeKickoff(
   //
   // This has to be a latch rather than a plain derivation. The closer is a
   // *thread reply* to the opener (see sendWelcomeKickoffCloser), so it never
-  // appears in `channelEvents` unless the user happened to open the thread —
+  // appears in `channelEvents` unless the user happened to open the thread ,
   // deriving from `channelEvents` meant this never retired at all. Deriving
   // from `kickoffEvents` instead is self-referential: it gates the query that
   // feeds it, so retiring would drop the evidence that justified retiring and
@@ -560,12 +620,13 @@ export function useWelcomeKickoff(
       resolveAgentReadiness(
         runtimesQuery.data ?? [],
         globalConfig,
-        "any",
+        "preferred",
         gitBashQuery.isError ? undefined : gitBashQuery.data,
       ),
     [globalConfig, runtimesQuery.data, gitBashQuery.data, gitBashQuery.isError],
   );
   React.useEffect(() => {
+    void retryGeneration;
     if (
       !channelId ||
       !isActiveWelcome ||
@@ -579,6 +640,7 @@ export function useWelcomeKickoff(
 
     const kickoffController = kickoffCoordinator.begin(channelId);
     if (!kickoffController) return;
+    setKickoffError(null);
     const isCancelled = () =>
       kickoffController.signal.aborted ||
       focusedWelcomeChannelRef.current !== channelId;
@@ -593,22 +655,24 @@ export function useWelcomeKickoff(
         });
         const resolvedAgentSet: WelcomeAgentSet = {
           lead: welcomeTeam[0],
-          teammates: [welcomeTeam[1], welcomeTeam[2]],
+          teammates: [],
         };
 
         if (await markerExists(channelId, closerMarker)) {
           return;
         }
-        if (!readiness.ready) {
-          await sendManagedAgentChannelMessage({
-            agentPubkey: resolvedAgentSet.lead.pubkey,
-            channelId,
-            content: readiness.copy ?? WELCOME_KICKOFF_PROVIDER_MESSAGE,
-            marker: providerMarker,
-            markerScope: "channel",
-          });
+        if (
+          await postWelcomeKickoffSetupNotice(readiness, (content) =>
+            sendManagedAgentChannelMessage({
+              agentPubkey: resolvedAgentSet.lead.pubkey,
+              channelId,
+              content,
+              marker: providerMarker,
+              markerScope: "channel",
+            }),
+          )
+        )
           return;
-        }
         const openerAlreadySent = await markerExists(channelId, openerMarker);
 
         // Start before publishing the mention. buzz-acp replays events from its
@@ -617,8 +681,10 @@ export function useWelcomeKickoff(
         const agentsToStart = openerAlreadySent
           ? resolvedAgentSet.teammates
           : [resolvedAgentSet.lead, ...resolvedAgentSet.teammates];
-        const startResults = await Promise.allSettled(
-          agentsToStart.map((agent) => {
+        const startResults = await startWelcomeAgentsForKickoff(
+          agentsToStart,
+          openerAlreadySent ? null : resolvedAgentSet.lead.pubkey,
+          (agent) => {
             const isTeammate = resolvedAgentSet.teammates.some(
               (teammate) =>
                 normalizePubkey(teammate.pubkey) ===
@@ -639,47 +705,30 @@ export function useWelcomeKickoff(
             return agent.status === "running" || agent.status === "deployed"
               ? Promise.resolve(agent)
               : startManagedAgent(agent.pubkey);
-          }),
+          },
+          (agent, error) =>
+            console.warn(`Failed to start Welcome agent ${agent.name}.`, error),
         );
-        for (const [index, result] of startResults.entries()) {
-          if (result.status === "rejected") {
-            console.warn(
-              `Failed to start Welcome agent ${agentsToStart[index]?.name ?? "unknown"}.`,
-              result.reason,
-            );
-          }
-        }
+        // A teammate's stalled start cannot delay the lead's first message.
+        await queryClient.invalidateQueries({
+          queryKey: managedAgentsQueryKey,
+        });
+        if (
+          !openerAlreadySent &&
+          (!startResults.leadResult ||
+            startResults.leadResult.status === "rejected" ||
+            isCancelled())
+        )
+          return;
         await queryClient.invalidateQueries({
           queryKey: managedAgentsQueryKey,
         });
         if (openerAlreadySent) return;
 
-        const leadStartIndex = agentsToStart.findIndex(
-          (agent) => agent.pubkey === resolvedAgentSet.lead.pubkey,
-        );
-        if (startResults[leadStartIndex]?.status === "rejected") return;
-        const teammatesToAwait = resolvedAgentSet.teammates.filter(
+        const introTeammates = resolvedAgentSet.teammates.filter(
           (teammate) =>
-            startResults[
-              agentsToStart.findIndex(
-                (agent) => agent.pubkey === teammate.pubkey,
-              )
-            ]?.status !== "rejected",
+            startResults.outcomes.get(teammate.pubkey)?.status !== "rejected",
         );
-        const onlineTeammates = await waitForWelcomeTeammatesOnline(
-          teammatesToAwait,
-          { isCancelled },
-        );
-        if (isCancelled()) return;
-        const introTeammates = selectWelcomeKickoffIntroTeammates(
-          resolvedAgentSet.teammates,
-          onlineTeammates,
-        );
-        if (introTeammates.length < resolvedAgentSet.teammates.length) {
-          console.warn(
-            "Some Welcome teammates did not become ready; continuing with a degraded kickoff.",
-          );
-        }
         if (isCancelled()) return;
 
         // Best-effort: a missing profile should degrade to an ungreeted,
@@ -701,6 +750,12 @@ export function useWelcomeKickoff(
         if (!isCancelled()) onKickoffOpenerPosted?.(openerResult.eventId);
       } catch (error) {
         console.warn("Failed to start the Welcome team kickoff.", error);
+        if (!isCancelled())
+          setKickoffError(
+            error instanceof Error
+              ? `${error.message} Open Settings > Agents > Defaults, reconnect, then retry.`
+              : WELCOME_KICKOFF_PROVIDER_MESSAGE,
+          );
       } finally {
         kickoffCoordinator.finish(channelId, kickoffController);
       }
@@ -714,6 +769,7 @@ export function useWelcomeKickoff(
     onKickoffOpenerPosted,
     queryClient,
     readiness,
+    retryGeneration,
     gitBashQuery.isPending,
     runtimesQuery.isPending,
   ]);
@@ -740,7 +796,7 @@ export function useWelcomeKickoff(
       closerInFlight.has(channelId) ||
       // Respect the latch, not just the events. Retiring the opener-thread
       // watch drops the subtree from `kickoffEvents`, which is where the closer
-      // lives — so once resolved, the marker check below can no longer see it
+      // lives. so once resolved, the marker check below can no longer see it
       // and would classify every teammate as silent and re-run the closer on
       // each revisit. The latch is the durable "already resolved" signal.
       kickoffResolved
@@ -874,6 +930,7 @@ export function useWelcomeKickoff(
     isActiveWelcome,
     queryClient,
   ]);
+  return { kickoffError, retryKickoff };
 }
 
 export type { WelcomeTeamStarterDefinition };

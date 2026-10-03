@@ -1,8 +1,6 @@
 import * as React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-import { isMacPlatform } from "@/shared/lib/platform";
-import { useIsFullscreen } from "@/shared/lib/useIsFullscreen";
 import { Button } from "@/shared/ui/button";
 import { DrawerPanelIcon } from "@/shared/ui/DrawerPanelIcon";
 import { cn } from "@/shared/lib/cn";
@@ -57,26 +55,9 @@ export function AppTopChrome({
   canGoForward,
   onGoBack,
   onGoForward,
-  hasCommunityRail = false,
 }: AppTopChromeProps) {
   const topChromeRef = React.useRef<HTMLDivElement>(null);
-  const isFullscreen = useIsFullscreen();
-  // On macOS the traffic-light buttons overlay the chrome (see
-  // `trafficLightPosition` in `tauri.conf.json`), so the nav row clears their
-  // x-position. When the community rail is present it already occupies the far
-  // left, so the nav row only needs to clear the lights past the rail edge
-  // rather than the full offset. In fullscreen those buttons hide.
-  //
-  // Fixed px on purpose: the native traffic lights do not scale with the app's
-  // Cmd +/- text zoom (rem), so rem-based clearance shrinks under them when
-  // zoomed out. This is a deliberate exception to the rem-first rule.
-  const macChrome = isMacPlatform() && !isFullscreen;
-  const navRowPaddingClass = macChrome
-    ? hasCommunityRail
-      ? "pl-[32px]"
-      : "pl-[80px]"
-    : "pl-3";
-  const navRowAlignmentClass = macChrome ? "translate-y-[3px]" : null;
+  const navRowPaddingClass = "pl-3";
 
   React.useLayoutEffect(() => {
     const topChrome = topChromeRef.current;
@@ -130,7 +111,7 @@ export function AppTopChrome({
         } as React.CSSProperties
       }
     >
-      <div className={cn("flex items-center gap-0.5", navRowAlignmentClass)}>
+      <div className="flex items-center gap-0.5">
         <TopChromeSidebarTrigger />
         <Button
           aria-label="Go back"
@@ -156,7 +137,7 @@ export function AppTopChrome({
         </Button>
       </div>
       <div
-        className={cn("flex min-w-0 flex-1 items-center", navRowAlignmentClass)}
+        className="flex min-w-0 flex-1 items-center"
         data-tauri-drag-region
         id="app-top-chrome-content"
       />

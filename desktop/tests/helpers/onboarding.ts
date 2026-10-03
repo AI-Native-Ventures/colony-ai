@@ -12,6 +12,7 @@ const MOCK_ACCOUNT_PUBKEY = "deadbeef".repeat(8);
 
 export type R17RuntimeId = "claude" | "codex" | "goose" | "buzz-agent";
 export type R17ConnectionSetupOptions = {
+  pauseAtPendingInvite?: boolean;
   mock?: Partial<NonNullable<Parameters<typeof installMockBridge>[1]>>;
   runtimes?: Array<Record<string, unknown>>;
   discoveryDelayMs?: number;
@@ -117,9 +118,15 @@ export async function startR17AccountAuth(
   });
 
   await page.goto("/");
-  await expect(page.getByTestId("google-account-scene")).toBeVisible();
+  if (options.mock?.pendingCommunityDeepLinks?.length) {
+    await expect(page.getByTestId("pending-invite-gate")).toBeVisible();
+    if (options.pauseAtPendingInvite) return;
+    await page.getByTestId("pending-invite-continue").click();
+  }
+  await expect(page.getByTestId("onboarding-scene-account")).toBeVisible();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Welcome back" }),
+    page.getByRole("heading", { name: "Welcome back." }),
   ).toBeVisible();
 }
 

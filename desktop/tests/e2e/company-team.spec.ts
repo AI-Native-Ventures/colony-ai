@@ -1,3 +1,4 @@
+import { mkdirSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import {
@@ -159,10 +160,23 @@ function dutyHead(input: { relaySecret: Uint8Array; employeePubkey: string }) {
   );
 }
 
-test("Team shows mixed reporting lines and lets an owner edit and pause an employee", async ({
+test("Team shows mixed reporting lines and lets an owner edit, terminate and rehire an employee", async ({
   page,
 }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
+  async function captureRoute(name: string) {
+    mkdirSync("output/playwright/company-design", { recursive: true });
+    for (const width of [1728, 1440]) {
+      await page.setViewportSize({
+        width,
+        height: width === 1728 ? 1117 : 900,
+      });
+      await waitForAnimations(page);
+      await page.screenshot({
+        path: `output/playwright/company-design/app-${name}-${width}-smoke.png`,
+      });
+    }
+  }
   const relaySecret = generateSecretKey();
   const relaySelf = getPublicKey(relaySecret);
   const employeeSecret = generateSecretKey();
@@ -263,7 +277,7 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
     ],
     companyWorkEvents: [companyWorkHeadEvent(relaySecret, employeePubkey)],
     channelsReadErrors: Array.from(
-      { length: 4 },
+      { length: 32 },
       () => "invalid: e2e forced channel read failure.",
     ),
     visualChannels: [{ id: GENERAL_CHANNEL_ID, name: "general" }],
@@ -278,6 +292,12 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
     EMPLOYEE_NAME,
   );
   await expect(page.getByTestId("company-team-list")).toContainText("alice");
+  await expect(
+    page.getByTestId("company-team-screen").locator("header"),
+  ).toHaveText("Company / Team");
+  await expect(
+    page.getByTestId(`company-team-member-${OWNER_PUBKEY}`),
+  ).toContainText("Founder · Human");
   await expect(page.getByTestId("company-team-list")).toContainText("bob");
   await expect(page.getByTestId("company-team-list")).not.toContainText(
     "Mina worker",
@@ -296,13 +316,15 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
   await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "History" })).toBeEnabled();
-  await expect(page.getByTestId("company-human-role")).toContainText("Human");
+  await expect(page.getByTestId("company-team-member-profile")).toContainText(
+    "Account Manager · Human",
+  );
   await expect(page.getByTestId("company-human-role")).toContainText(
-    "Reporting line",
+    "Reports to",
   );
   await expect(
     page.getByRole("button", { name: "Edit role and reporting" }),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await expect(page.getByRole("tab", { name: "Instructions" })).toHaveCount(0);
   await page.goto(`/#/team/edit/${alicePubkey}`);
   await expect(page).toHaveURL(new RegExp(`/team/edit/${alicePubkey}$`));
@@ -342,6 +364,10 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
     page.getByRole("button", { name: "Connect a managed agent" }),
   ).toBeDisabled();
 
+  await expect(
+    page.getByRole("button", { name: "Edit role and reporting" }),
+  ).toBeVisible();
+  await captureRoute("team-unlinked");
   await page.goto("/#/team");
   await page.getByTestId(`company-team-member-${employeePubkey}`).click();
   await expect(page.getByTestId("company-employee-profile")).toBeVisible();
@@ -352,13 +378,17 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
     page.getByTestId("company-position-header").getByRole("button", {
       name: "Message",
     }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByTestId("company-employee-direct-reports"),
   ).toContainText("alice");
   await expect(page.getByTestId("employee-doing-now")).toContainText(
     "Could not load current work",
   );
+  await page.evaluate(() => {
+    if (window.__BUZZ_E2E__?.mock)
+      window.__BUZZ_E2E__.mock.channelsReadErrors = [];
+  });
   await page.getByRole("button", { name: "Retry current work" }).click();
   await expect(page.getByTestId("employee-doing-now")).toContainText(
     "Prepare the launch brief",
@@ -380,6 +410,8 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   await expect(
     page.getByTestId("employee-instructions-editor").getByRole("button"),
   ).toHaveText(["Save changes", "Cancel"]);
+  await expect(page.locator("h1")).toHaveCount(1);
+  await captureRoute("team-edit-instructions");
   await page
     .getByTestId("employee-system-instructions")
     .fill("First revised employee instructions.");
@@ -485,57 +517,37 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   );
 
   await page.getByRole("tab", { name: "Overview" }).click();
-  await page.getByRole("button", { name: "Pause employee" }).click();
-  await expect(page.getByTestId("company-team-pause-screen")).toBeVisible();
-  await page.getByLabel("Reason").fill("Reviewing the October workload.");
-  await page.evaluate(() => {
-    const e2e = window.__BUZZ_E2E__ as {
-      mock?: { companyMemberActionErrors?: string[] };
-    };
-    e2e.mock?.companyMemberActionErrors?.push(
-      "restricted: e2e member write rejected.",
-    );
-  });
-  await page.getByRole("button", { name: "Pause employee" }).click();
-  await expect(page.getByRole("alert")).toContainText(
-    "e2e member write rejected",
-  );
-  await expect(page.getByLabel("Reason")).toHaveValue(
-    "Reviewing the October workload.",
-  );
-  await page.evaluate(() => {
-    const e2e = window.__BUZZ_E2E__ as {
-      mock?: { companyMemberActionErrors?: string[] };
-    };
-    if (e2e.mock) e2e.mock.companyMemberActionErrors = [];
-  });
-  await page.getByRole("button", { name: "Pause employee" }).click();
-  await expect(page.getByTestId("company-paused-banner")).toContainText(
-    "Reviewing the October workload.",
-  );
-
-  await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
-  await waitForMockLiveSubscription(page, "general");
-  await emitEmployeeMessage(
-    page,
-    employeePubkey,
-    "The latest campaign draft is attached to this thread.",
-  );
-  await expect(page.getByTestId("employee-message-status-paused")).toHaveText(
-    "Paused by manager: Reviewing the October workload.",
-  );
-  await page.getByTestId("open-employee-history").click();
-  await expect(page).toHaveURL(
-    new RegExp(`/team/detail/${employeePubkey}\\?tab=history$`),
-  );
-  await expect(page.getByTestId("employee-history")).toBeVisible();
-
-  await page.goto(`/#/team/detail/${employeePubkey}`);
-  await expect(page.getByTestId("company-employee-profile")).toBeVisible();
-  await page.getByRole("tab", { name: "Overview" }).click();
+  await expect(
+    page.getByRole("button", { name: "Pause employee" }),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Terminate employee" }).click();
   await expect(page.getByTestId("company-team-archive-screen")).toBeVisible();
   await page.getByLabel("Reason").fill("The role has ended after review.");
+  await page.evaluate(() => {
+    window.__BUZZ_E2E__?.mock?.companyMemberActionErrors?.push(
+      "restricted: e2e member write rejected.",
+    );
+    window.__BUZZ_E2E_COMMAND_LOG__ = [];
+  });
+  await page.getByRole("button", { name: "Terminate employee" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "e2e member write rejected",
+  );
+  expect(
+    await page.evaluate(
+      () =>
+        window.__BUZZ_E2E_COMMAND_LOG__?.filter(
+          (entry) => entry.command === "stop_managed_agent",
+        ).length,
+    ),
+  ).toBe(0);
+  await expect(page.getByLabel("Reason")).toHaveValue(
+    "The role has ended after review.",
+  );
+  await page.evaluate(() => {
+    if (window.__BUZZ_E2E__?.mock)
+      window.__BUZZ_E2E__.mock.companyMemberActionErrors = [];
+  });
   await page.getByRole("button", { name: "Terminate employee" }).click();
   await expect(page.getByTestId("company-position-header")).toContainText(
     EMPLOYEE_TITLE,
@@ -550,11 +562,28 @@ test("Team shows mixed reporting lines and lets an owner edit and pause an emplo
   ).toHaveText("Terminated: The role has ended after review.");
   await expect(page.getByTestId("open-employee-history").last()).toBeVisible();
 
+  await page.goto(`/#/team/detail/${employeePubkey}`);
+  await page.getByRole("button", { name: "Review rehire" }).click();
+  await expect(
+    page.getByRole("button", { name: "Approve and rehire" }),
+  ).toBeDisabled();
+  await page.getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Approve and rehire" }).click();
+  await expect(page.getByTestId("company-terminated-banner")).toHaveCount(0);
+  await expect(page.getByTestId("company-position-header")).toContainText(
+    "active",
+  );
   await page.goto(`/#/team/detail/${bobPubkey}`);
   await expect(page.getByTestId("company-team-member-profile")).toContainText(
     "Designer",
   );
   await expect(page.getByTestId("company-human-role")).toContainText("alice");
+  await page.evaluate(() => {
+    if (window.__BUZZ_E2E__?.mock)
+      window.__BUZZ_E2E__.mock.channelsReadErrors = [];
+  });
+  const retryWork = page.getByRole("button", { name: "Retry current work" });
+  if (await retryWork.isVisible()) await retryWork.click();
   await expect(page.getByTestId("company-member-doing-now")).toContainText(
     "No current commitments.",
   );

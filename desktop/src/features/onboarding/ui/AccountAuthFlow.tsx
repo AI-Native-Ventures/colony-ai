@@ -1,3 +1,4 @@
+import { rememberSignupName } from "../onboardingProfile";
 import * as React from "react";
 
 import { Button } from "@/shared/ui/button";
@@ -19,16 +20,11 @@ import type {
   AccountAuthRecord,
 } from "../accountAuthClient";
 import { StartupWindowDragRegion } from "@/shared/ui/StartupWindowDragRegion";
-import { LandingBees } from "./LandingBees";
 import { OnboardingCard } from "./OnboardingCard";
 import {
   OnboardingScenePresentation,
   type OnboardingSceneData,
 } from "./OnboardingScenePresentation";
-import {
-  GoogleAccountPresentation,
-  type GoogleAccountScene,
-} from "./GoogleAccountPresentation";
 import type { OnboardingSceneId } from "./onboardingScenes";
 
 const MIN_PASSWORD_LENGTH = 10;
@@ -94,7 +90,7 @@ function screenTitle(
 ) {
   switch (state.screen) {
     case "choice":
-      return "Welcome to Buzz";
+      return "Welcome to Colony";
     case "signup":
       return "Create your account";
     case "signin":
@@ -247,8 +243,6 @@ export function AccountAuthFlow({
   const [passwordError, setPasswordError] = React.useState<string | null>(null);
   const [name, setName] = React.useState("");
   const [code, setCode] = React.useState("");
-  const [googleScene, setGoogleScene] =
-    React.useState<GoogleAccountScene | null>(null);
   const [pending, setPending] = React.useState(false);
   const [cooldownRequest, setCooldownRequest] = React.useState({
     seconds: 0,
@@ -367,6 +361,7 @@ export function AccountAuthFlow({
         password,
         name.trim() || undefined,
       );
+      rememberSignupName(email, name);
       setPassword("");
       requestCooldown(clampCooldown(sent.retryAfterSecs));
       dispatch({ type: "signup_sent", email });
@@ -467,26 +462,14 @@ export function AccountAuthFlow({
   const submitGoogle = () => {
     if (pending) return;
     setPending(true);
-    setGoogleScene("loading");
     dispatch({ type: "clear_feedback" });
     void (async () => {
       try {
         const account = await authClient.signInWithGoogle();
-        setGoogleScene(null);
         await authenticate(account);
       } catch (error) {
         const failure = normalizeAccountAuthFailure(error);
-        if (failure.code === "email_unverified") {
-          setGoogleScene("unverified");
-        } else if (
-          failure.code === "email_taken" ||
-          failure.code === "identity_taken"
-        ) {
-          setGoogleScene("password-account");
-        } else {
-          setGoogleScene(null);
-          dispatch({ type: "set_failure", failure });
-        }
+        dispatch({ type: "set_failure", failure });
       } finally {
         setPending(false);
       }
@@ -530,46 +513,6 @@ export function AccountAuthFlow({
     resendCooldown > 0;
   const waitLabel = rateLimitLocked ? `Try again in ${resendCooldown}s` : null;
   const emailCodeScene = codeScene(state, pending);
-
-  if (
-    standalone &&
-    mode === "onboarding" &&
-    !(state.screen === "signup" && state.failure?.code === "email_taken") &&
-    (state.screen === "choice" ||
-      state.screen === "signup" ||
-      state.screen === "signin")
-  ) {
-    const scene =
-      googleScene ?? (state.screen === "signup" ? "sign-up" : "sign-in");
-    const submit = state.screen === "signup" ? submitSignup : submitSignin;
-
-    return (
-      <GoogleAccountPresentation
-        email={state.email}
-        error={googleScene ? null : failureText}
-        name={name}
-        onEmailChange={(email) =>
-          dispatchAndClear({ type: "set_email", email })
-        }
-        onGoogleSignIn={submitGoogle}
-        onNameChange={setName}
-        onNavigate={(destination) => {
-          setGoogleScene(null);
-          if (destination === "sign-up") {
-            dispatchAndClear({ type: "begin_signup" });
-          } else if (destination === "sign-in") {
-            dispatchAndClear({ type: "show_signin" });
-          } else {
-            dispatchAndClear({ type: "begin_reset" });
-          }
-        }}
-        onPasswordChange={setPassword}
-        onSubmit={submit}
-        password={password}
-        scene={scene}
-      />
-    );
-  }
 
   const legacyContent = (
     <section
@@ -980,7 +923,7 @@ export function AccountAuthFlow({
   );
 
   const designedScene =
-    state.screen === "signup"
+    state.screen === "choice" || state.screen === "signup"
       ? state.failure?.code === "email_taken"
         ? "account-error"
         : "account"
@@ -1007,7 +950,7 @@ export function AccountAuthFlow({
       else if (scene === "business") onAdvanced?.();
     };
     const submit =
-      state.screen === "signup"
+      state.screen === "choice" || state.screen === "signup"
         ? submitSignup
         : state.screen === "signin"
           ? submitSignin
@@ -1089,7 +1032,6 @@ export function AccountAuthFlow({
         data-testid="machine-onboarding-gate"
       >
         <StartupWindowDragRegion />
-        <LandingBees />
         <OnboardingCard current={1} testId="machine-onboarding-card">
           {legacyContent}
         </OnboardingCard>
