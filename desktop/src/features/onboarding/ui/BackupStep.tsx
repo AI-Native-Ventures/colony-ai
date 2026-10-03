@@ -13,7 +13,7 @@ import type { IdentityStorage } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
 import { Button } from "@/shared/ui/button";
-import { FuzzyLogo } from "@/shared/ui/buzz-logo/FuzzyLogo";
+import { ScoutAvatar } from "@/features/onboarding/ui/ScoutAvatar";
 import { Spinner } from "@/shared/ui/spinner";
 import {
   ONBOARDING_PRIMARY_CTA_CLASS,
@@ -352,14 +352,10 @@ export function BackupStep({
         <div
           className="flex w-full flex-1 items-center justify-center py-10"
           data-testid="backup-intro-logo"
+          role="status"
+          aria-label="Creating your identity key"
         >
-          <FuzzyLogo
-            ariaLabel="Creating your identity key"
-            className="w-20! text-foreground"
-            fuzz
-            loop
-            loopRestSeconds={0}
-          />
+          <ScoutAvatar pose="working" className="block w-20" />
         </div>
       ) : (
         <div

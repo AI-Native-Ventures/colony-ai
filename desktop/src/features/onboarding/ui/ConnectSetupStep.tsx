@@ -72,11 +72,12 @@ function getRuntimeHeaderStatus(
     return prerequisite.reason === "git-bash"
       ? "Git for Windows needed"
       : "Checking prerequisites";
+  if (runtime.id === "buzz-agent")
+    return runtime.availability === "available" ? "Included" : "Not available";
   if (runtimeIsReadyForOnboarding(runtime, globalConfig, gitBashPrerequisite))
     return runtime.authStatus.status === "logged_in"
       ? "Installed"
       : "Configured";
-  if (runtime.id === "buzz-agent") return "No AI connected yet";
   if (
     runtime.availability === "available" &&
     runtime.authStatus.status === "logged_out"
@@ -715,7 +716,13 @@ export function ConnectSetupStep({
         ...(keyScene
           ? {
               harnessLabel: "Colony Agent",
-              harnessStatus: bundled ? "Included" : "Unavailable",
+              harnessStatus: bundled
+                ? getRuntimeHeaderStatus(
+                    bundled,
+                    globalConfig,
+                    gitBashPrerequisite,
+                  )
+                : "Unavailable",
             }
           : {}),
       }}

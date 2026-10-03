@@ -55,7 +55,11 @@ test("community entry publishes the account name and opens Welcome without legac
   await expect(page).toHaveURL(/#\/channels\//);
   await expect(page.getByTestId("chat-title")).toContainText("Welcome");
   await expect(page.getByTestId("onboarding-display-name")).toHaveCount(0);
-  await expect(page.getByTestId("onboarding-starter-team")).toHaveCount(0);
+  await expect(
+    page.locator(
+      '[data-testid^="community-profile-"], [data-testid^="community-team-intro-"], [data-testid="community-avatar-open"]',
+    ),
+  ).toHaveCount(0);
   const profile = await page.evaluate(() =>
     window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.("get_profile", null),
   );

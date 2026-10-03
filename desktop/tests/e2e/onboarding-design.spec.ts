@@ -34,7 +34,11 @@ for (const viewport of [
     ).toBeVisible();
     await expect(page.getByText("Here to help", { exact: true })).toBeVisible();
     await expect(page.getByTestId("onboarding-display-name")).toHaveCount(0);
-    await expect(page.getByTestId("onboarding-starter-team")).toHaveCount(0);
+    await expect(
+      page.locator(
+        '[data-testid^="community-profile-"], [data-testid^="community-team-intro-"], [data-testid="community-avatar-open"]',
+      ),
+    ).toHaveCount(0);
     await expect(
       page.locator('img[src*="starter-team"],img[src*="buzz-wordmark"]'),
     ).toHaveCount(0);
@@ -175,7 +179,11 @@ for (const viewport of [
     await expect(page.getByTestId("app-sidebar")).toBeVisible();
     await expect(page.getByTestId("community-onboarding-flow")).toHaveCount(0);
     await expect(page.getByTestId("onboarding-display-name")).toHaveCount(0);
-    await expect(page.getByTestId("onboarding-starter-team")).toHaveCount(0);
+    await expect(
+      page.locator(
+        '[data-testid^="community-profile-"], [data-testid^="community-team-intro-"], [data-testid="community-avatar-open"]',
+      ),
+    ).toHaveCount(0);
     await waitForAnimations(page);
     await page.screenshot({
       path: `${SHOT_DIR}/runtime-workspace-${viewport.width}.png`,

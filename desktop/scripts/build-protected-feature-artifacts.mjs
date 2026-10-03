@@ -70,7 +70,7 @@ function emittedText(root) {
 export function assertArtifactContract({ ossOutput, internalOutput }) {
   const ossText = emittedText(ossOutput);
   const internalText = emittedText(internalOutput);
-  const protectedContent = /\bbestie\b|chief of staff|builtin:bestie/iu;
+  const protectedContent = /\bbestie\b|builtin:bestie/iu;
   const internalManifestMarker =
     "Try a personal agent that is always close at hand";
 

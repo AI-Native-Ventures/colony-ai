@@ -397,7 +397,7 @@ export function OpenRouterConnectionPanel({
             style={onboarding ? { position: "static" } : undefined}
           >
             <button
-              className={button(true)}
+              className={button(!onboarding)}
               type="button"
               disabled={
                 pending !== null || exhausted || account.status === "linked"

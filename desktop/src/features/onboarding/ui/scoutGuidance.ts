@@ -91,7 +91,7 @@ export function scoutGuidance(
       title:
         scene === "testing"
           ? "Waiting for your first reply."
-          : scene === "subscription-scan"
+          : scene === "subscription-scan" || connectionChecking
             ? "Checking your installed apps."
             : "Getting things ready.",
       copy:

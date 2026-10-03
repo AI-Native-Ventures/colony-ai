@@ -95,6 +95,7 @@ export default defineConfig({
       name: "smoke",
       testMatch: [
         "**/first-reply-runtime.spec.ts",
+        "**/onboarding-scout-presence.spec.ts",
         "**/smoke.spec.ts",
         "**/account-auth.spec.ts",
         "**/openrouter-oauth.spec.ts",
@@ -290,7 +291,10 @@ export default defineConfig({
     {
       name: "integration",
       testMatch: [
+        "**/onboarding-agent-defaults.spec.ts",
+        "**/deep-link-invite.spec.ts",
         "**/first-reply-runtime.spec.ts",
+        "**/onboarding-scout-presence.spec.ts",
         "**/agents.spec.ts",
         "**/agent-availability.spec.ts",
         "**/agent-snapshot-recipient.spec.ts",

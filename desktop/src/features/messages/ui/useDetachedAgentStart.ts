@@ -151,7 +151,7 @@ export function useDetachedAgentStart(): (
         // communities.
         warnAgentMayNotRespond(
           agent.name,
-          "Colony is still connecting to this community .  mention the agent again in a moment.",
+          "Colony is still connecting to this community. Mention the agent again in a moment.",
         );
         return false;
       }

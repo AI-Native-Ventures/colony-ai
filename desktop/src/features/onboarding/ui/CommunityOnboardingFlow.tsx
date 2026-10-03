@@ -182,6 +182,7 @@ export function CommunityOnboardingFlow({
         <OnboardingScenePresentation
           scene="community-entry-error"
           data={{
+            hideProgress: transaction.source !== "first-community",
             name: "",
             email: "",
             business: transaction.communityName,
@@ -221,6 +222,7 @@ export function CommunityOnboardingFlow({
         <OnboardingScenePresentation
           scene={error ? "community-entry-error" : "community-entry"}
           data={{
+            hideProgress: transaction.source !== "first-community",
             name: "",
             email: "",
             business: transaction.communityName,

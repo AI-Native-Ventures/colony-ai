@@ -156,6 +156,13 @@ for (const viewport of [
       await expect(panel.locator('input[type="password"]')).toHaveCount(0);
       if (state === "connected" || state === "limit") {
         await expect(
+          panel.getByRole("button", { name: "Test connection", exact: true }),
+        ).toHaveClass(/secondary/);
+        if (state === "connected")
+          await expect(
+            page.locator(".form-content button.primary"),
+          ).toHaveCount(1);
+        await expect(
           panel.getByText("Connected", { exact: true }),
         ).toBeVisible();
         await expect(panel.getByText("$0.00", { exact: true })).toBeVisible();

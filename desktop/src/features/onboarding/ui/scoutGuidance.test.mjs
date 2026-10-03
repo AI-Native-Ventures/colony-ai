@@ -80,6 +80,10 @@ test("frozen feedback and focused field copy remain distinct", () => {
     scoutGuidance("connect", null, undefined, undefined, true).status,
     "Working",
   );
+  assert.equal(
+    scoutGuidance("connect", null, undefined, undefined, true).title,
+    "Checking your installed apps.",
+  );
 });
 
 test("frozen reset and discovery controls render the approved state", () => {

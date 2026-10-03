@@ -15,6 +15,7 @@ export function ScoutAvatar({
     const host = hostRef.current;
     if (!host) return;
     const avatar = rig(host);
+    host.querySelector("svg")?.classList.add("block", "h-auto", "w-full");
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     let visible = true;
     let frame: number | null = null;
@@ -66,7 +67,11 @@ export function ScoutAvatar({
       data-pose={pose}
       ref={hostRef}
     >
-      <svg aria-hidden="true" viewBox="-120 -145 240 235">
+      <svg
+        aria-hidden="true"
+        className="block h-auto w-full"
+        viewBox="-120 -145 240 235"
+      >
         <defs>
           <radialGradient id={head} cx="30%" cy="18%" r="92%">
             <stop offset="0" stopColor="#a5bd8d" />

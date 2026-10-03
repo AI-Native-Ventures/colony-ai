@@ -18,9 +18,15 @@ async function startMachineSetupWithPendingLink(
 ) {
   await startR17AccountAuth(page, {
     mock: { pendingCommunityDeepLinks: [link] },
+    pauseAtPendingInvite: true,
   });
-  await page.goto("/");
-  await expect(page.getByTestId("google-account-scene")).toBeVisible();
+}
+
+async function finishPendingAccountSignIn(
+  page: import("@playwright/test").Page,
+) {
+  await expect(page.getByTestId("onboarding-scene-account")).toBeVisible();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByLabel("Email address").fill("invite@example.com");
   await page
     .getByRole("textbox", { name: "Password" })
@@ -76,6 +82,7 @@ test("join deep link is acknowledged without claiming before setup", async ({
   ).toBeVisible();
   await page.getByTestId("pending-invite-continue").click();
   await expect(gate).toHaveCount(0);
+  await finishPendingAccountSignIn(page);
   await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
   expect(claimCalls).toBe(0);
   await expect
@@ -106,6 +113,7 @@ test("connect deep link shows a static acknowledgment during setup", async ({
   // connect resumes in CommunityOnboardingFlow after machine setup.
   await page.getByTestId("pending-invite-continue").click();
   await expect(gate).toHaveCount(0);
+  await finishPendingAccountSignIn(page);
   await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
   await expect
     .poll(() =>
@@ -134,6 +142,9 @@ test("add-community deep link starts onboarding when no community is configured"
   await page.goto("/");
 
   await expect(page.getByTestId("community-onboarding-flow")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Setup progress" })).toHaveCount(
+    0,
+  );
   await expect(
     page.getByRole("heading", { name: "Your Colony isn’t ready yet." }),
   ).toBeVisible();

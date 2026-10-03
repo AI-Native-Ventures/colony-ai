@@ -306,7 +306,7 @@ test("R17 bundled agent without a provider is not ready and credits are coming s
     ],
   });
   const card = page.getByTestId("onboarding-connect-runtime-buzz-agent");
-  await expect(card).toContainText("No AI connected yet");
+  await expect(card).toContainText("Included");
   await expect(card).not.toContainText("Ready");
   await expect(page.getByTestId("onboarding-ai-not-ready")).toHaveCount(0);
   await page
@@ -440,6 +440,10 @@ test("bundled agent readiness names missing Git for Windows before claiming Read
   await expect(
     page.getByRole("button", { name: "Check key", exact: true }),
   ).toBeDisabled();
+  await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
+  await expect(page.locator(".harness-state")).toHaveText(
+    "Git for Windows needed",
+  );
   await page.getByRole("radio", { name: "Subscriptions", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Skip for now", exact: true }),

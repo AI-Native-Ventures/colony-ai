@@ -6,6 +6,38 @@ import { mkdir } from "node:fs/promises";
 const claude = r17Runtime("claude", "available", { status: "logged_in" });
 const codex = r17Runtime("codex", "available", { status: "logged_in" });
 
+async function installOpenRouterAccount(page: import("@playwright/test").Page) {
+  await page.evaluate(() => {
+    const internals = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke: (
+            command: string,
+            args?: Record<string, unknown>,
+          ) => Promise<unknown>;
+        };
+      }
+    ).__TAURI_INTERNALS__;
+    const original = internals.invoke.bind(internals);
+    internals.invoke = (command, args) =>
+      command === "get_openrouter_connection"
+        ? Promise.resolve({
+            status: "connected",
+            model: "provider-model",
+            models: [],
+            usage: null,
+            freeUsed: null,
+            limit: null,
+            limitRemaining: null,
+            freeRemaining: null,
+            freeLimit: null,
+            freeTier: true,
+            failedRestarts: 0,
+          })
+        : original(command, args);
+  });
+}
+
 test("Connect waits for the actual reply, then saves the selected runtime", async ({
   page,
 }) => {
@@ -30,6 +62,31 @@ test("Connect waits for the actual reply, then saves the selected runtime", asyn
     .getByTestId("onboarding-connect-runtime-codex")
     .getByRole("button", { name: /Codex/ })
     .click();
+  await page.evaluate(() => {
+    const internals = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke: (
+            command: string,
+            args?: Record<string, unknown>,
+          ) => Promise<unknown>;
+        };
+      }
+    ).__TAURI_INTERNALS__;
+    const original = internals.invoke.bind(internals);
+    internals.invoke = async (command, args) => {
+      if (command !== "test_onboarding_connection")
+        return original(command, args);
+      const released = new Promise<void>((resolve) => {
+        (
+          window as unknown as { __COLONY_RELEASE_REPLY__: () => void }
+        ).__COLONY_RELEASE_REPLY__ = resolve;
+      });
+      const reply = await original(command, args);
+      await released;
+      return reply;
+    };
+  });
   await page.getByRole("button", { name: /^Connect with / }).click();
   await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
   await expect(page.locator(".form-content .lede[role=status]")).toContainText(
@@ -51,6 +108,11 @@ test("Connect waits for the actual reply, then saves the selected runtime", asyn
     ),
   ).toBe(0);
   await expect(page.getByText("Connection verified")).toHaveCount(0);
+  await page.evaluate(() =>
+    (
+      window as unknown as { __COLONY_RELEASE_REPLY__: () => void }
+    ).__COLONY_RELEASE_REPLY__(),
+  );
   await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
   await expect(page.locator(".reply")).toContainText(
     "A reply from the selected harness",
@@ -200,11 +262,16 @@ for (const route of ["Bring your own key", "OpenRouter"]) {
       .getByTestId("onboarding-connect-runtime-claude")
       .getByRole("button", { name: /Claude Code/ })
       .click();
-    await page.getByRole("button", { name: route, exact: true }).click();
+    if (openRouter) await installOpenRouterAccount(page);
+    await page.getByRole("radio", { name: route, exact: true }).click();
+    if (!openRouter)
+      await page
+        .getByRole("button", { name: "Check key", exact: true })
+        .click();
     await page.getByRole("button", { name: "Connect", exact: true }).click();
     await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
     await expect(page.locator(".connection-meta")).toContainText(
-      "Colony AI · fixture-model",
+      "Colony Agent · fixture-model",
     );
     await expect(page.locator(".connection-meta")).not.toContainText(
       "Claude Code",
@@ -241,11 +308,16 @@ test("OpenRouter does not test another provider's saved connection", async ({
       },
     },
   });
-  await page.getByRole("button", { name: "OpenRouter", exact: true }).click();
+  await installOpenRouterAccount(page);
+  await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Connect", exact: true }),
   ).toHaveCount(0);
-  await expect(page.getByText(/No working AI connection yet/)).toBeVisible();
+  await expect(
+    page
+      .getByTestId("openrouter-connection")
+      .getByText("Connected", { exact: true }),
+  ).toBeVisible();
 });
 
 test("Welcome exposes recovery when the saved runtime disappears, then retries provisioning", async ({
