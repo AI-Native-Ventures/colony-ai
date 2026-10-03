@@ -823,11 +823,15 @@ mod tests {
         let path = dir.path().join("agents/managed-agents.json");
         let mut legacy_fizz =
             crate::managed_agents::built_in_persona_definition("builtin:fizz", "before").unwrap();
-        let legacy_slot = legacy_fizz.name_pool.len().min(4);
-        legacy_fizz.name_pool.insert(
-            legacy_slot,
-            crate::managed_agents::POLLEN_DISPLAY_NAME.to_string(),
-        );
+        // This compatibility fixture must describe the historical Fizz pool,
+        // independently of the current Scout starter definition.
+        legacy_fizz.name_pool = [
+            "Nectar", "Comet", "Bramble", "Clover", "Pollen", "Amber", "Daisy", "Mason", "Thistle",
+            "Waxwing", "Hive", "Meadow", "Juniper", "Aster", "Sage", "Willow", "Orchard", "Buzz",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
         let old_version = crate::managed_agents::persona_events::persona_content_hash(
             &crate::managed_agents::persona_events::persona_event_content(&legacy_fizz),
         );
