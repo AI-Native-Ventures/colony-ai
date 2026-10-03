@@ -6,7 +6,7 @@ import { openSettings } from "../helpers/settings";
 const SIDEBAR_WIDTH_STORAGE_KEY = "buzz-sidebar-width";
 const COMMUNITY_ONBOARDING_STORAGE_KEY =
   "buzz-community-onboarding-transaction.v1";
-const DEFAULT_SIDEBAR_WIDTH = 244;
+const DEFAULT_SIDEBAR_WIDTH = 260;
 
 test.beforeEach(async ({ page }) => {
   await installMockBridge(page);

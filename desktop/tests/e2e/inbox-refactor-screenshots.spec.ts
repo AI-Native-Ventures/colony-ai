@@ -396,7 +396,7 @@ test.describe("inbox refactor screenshots", () => {
     const firstUnreadRow = page.getByTestId(`home-inbox-item-${replyIds[0]}`);
     await expect(firstUnreadRow).toBeVisible();
     const listPreview = firstUnreadRow.locator(".inbox-preview-markdown");
-    await expect(listPreview).toHaveCSS("font-size", "14px");
+    await expect(listPreview).toHaveCSS("font-size", "15px");
     await expect(listPreview).toHaveCSS("line-height", "20px");
     await firstUnreadRow.click();
 

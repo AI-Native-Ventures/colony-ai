@@ -93,6 +93,7 @@ export default defineConfig({
       name: "smoke",
       testMatch: [
         "**/smoke.spec.ts",
+        "**/shell-design.spec.ts",
         "**/account-auth.spec.ts",
         "**/self-serve-community-onboarding.spec.ts",
         "**/owned-agent-discovery.spec.ts",
@@ -298,6 +299,7 @@ export default defineConfig({
         "**/dm-double-notification.spec.ts",
         "**/profile.spec.ts",
         "**/sidebar.spec.ts",
+        "**/shell-design.spec.ts",
         "**/sidebar-relay-card.spec.ts",
         "**/tokens.spec.ts",
         "**/persona-env-vars.spec.ts",

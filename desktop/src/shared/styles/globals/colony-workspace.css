@@ -624,10 +624,9 @@
 
 :root:has([data-colony-workspace-route="true"])
   [data-buzz-content-surface]:not([data-buzz-content-unframed]) {
-  margin: 0.4375rem;
-  margin-left: 0;
+  margin: 0.5rem;
   overflow: hidden;
-  border-radius: 0;
+  border-radius: var(--colony-shell-radius);
 }
 
 /* The channel drop overlay follows the workspace surface square corners. */

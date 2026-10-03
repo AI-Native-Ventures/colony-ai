@@ -365,7 +365,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
     exact: true,
   });
   await expect(repositoryHeading).toBeVisible();
-  await expect(repositoryHeading).toHaveCSS("font-size", "14px");
+  await expect(repositoryHeading).toHaveCSS("font-size", "15px");
   await expectProjectContextGroups(repositoryActionsPanel, {
     hasActions: true,
   });
@@ -1089,7 +1089,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   await expect(issueDetail).toHaveCSS("max-width", "768px");
   await expect(
     issueDetail.getByRole("heading", { level: 3 }).first(),
-  ).toHaveCSS("font-size", "18px");
+  ).toHaveCSS("font-size", "19.2857px");
   await expect(
     page.getByTestId("project-issue-comment-timeline-row").first(),
   ).toBeVisible();
@@ -1187,13 +1187,13 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   await expect(pullRequestDetail).toHaveCSS("max-width", "768px");
   await expect(
     pullRequestDetail.getByRole("heading", { level: 3 }).first(),
-  ).toHaveCSS("font-size", "18px");
+  ).toHaveCSS("font-size", "19.2857px");
   const reviewCommits = workspacePanel.getByRole("button", {
     name: "Commits",
     exact: true,
   });
   await expect(reviewCommits).toHaveAttribute("aria-expanded", "false");
-  await expect(reviewCommits).toHaveCSS("font-size", "14px");
+  await expect(reviewCommits).toHaveCSS("font-size", "15px");
   await expect(reviewCommits).toHaveCSS("font-weight", "500");
   await reviewCommits.click();
   const openedReviewCommits = workspacePanel.getByRole("button", {

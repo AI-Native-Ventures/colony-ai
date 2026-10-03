@@ -1,0 +1,122 @@
+/* Shared launch shell. The content card has the same inset on every route. */
+:root:has([data-colony-full-app-shell="true"]) {
+  --colony-shell-inset: 0.5rem;
+  --colony-shell-radius: 0.6875rem;
+  --colony-sidebar-label-size: var(--text-xs);
+  --colony-sidebar-icon-size: 1.125rem;
+  --colony-conversation-gutter: 1.5rem;
+  --colony-composer-gutter: 1.5rem;
+  --colony-composer-input-padding: 0.75rem 0.75rem 0.4375rem;
+}
+
+:root:has([data-colony-full-app-shell="true"])
+  [data-buzz-content-surface]:not([data-buzz-content-unframed]) {
+  margin: var(--colony-shell-inset);
+  border-radius: var(--colony-shell-radius);
+  overflow: hidden;
+}
+
+:root:has([data-colony-full-app-shell="true"]) [data-testid="app-sidebar"] {
+  top: var(--colony-shell-inset);
+  height: calc(100% - 2 * var(--colony-shell-inset));
+}
+
+:root:has([data-colony-full-app-shell="true"]) [data-testid="app-top-chrome"] {
+  background: hsl(var(--background));
+}
+
+:root:has([data-colony-full-app-shell="true"])
+  .app-sidebar-full-shell
+  [data-sidebar="menu-button"] {
+  font-size: var(--colony-sidebar-label-size);
+}
+
+:root:has([data-colony-full-app-shell="true"])
+  .app-sidebar-full-shell
+  [data-sidebar="menu-button"]
+  > svg {
+  width: var(--colony-sidebar-icon-size);
+  height: var(--colony-sidebar-icon-size);
+}
+
+/* Equal reading and composing gutters, including a thread with cross-posting. */
+:root:has([data-colony-workspace-route="true"])
+  :is(
+    [data-testid="channel-composer-overlay"],
+    [data-testid="thread-composer-overlay"]
+  )
+  .composer-dock {
+  padding: 0.625rem var(--colony-composer-gutter) 0.9375rem;
+}
+
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="thread-composer-overlay"]
+  .composer-dock
+  > footer {
+  padding-inline: 0;
+}
+
+:root:has([data-colony-workspace-route="true"])
+  :is(
+    [data-testid="channel-composer-overlay"],
+    [data-testid="thread-composer-overlay"]
+  )
+  [data-testid="message-input-scroll"] {
+  padding: var(--colony-composer-input-padding);
+  font-size: var(--conversation-message-font-size);
+}
+
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="thread-composer-overlay"]
+  [data-testid="message-composer"]:has(.colony-thread-crosspost)
+  [data-testid="message-input-scroll"] {
+  padding: var(--colony-composer-input-padding);
+}
+
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="channel-composer-overlay"]
+  [data-testid="composer-dock-backdrop"] {
+  left: var(--colony-composer-gutter);
+  right: var(--colony-composer-gutter);
+}
+
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="message-timeline"] {
+  padding-inline: var(--colony-conversation-gutter);
+}
+
+:root:has([data-colony-workspace-route="true"])
+  :is(
+    [data-testid="message-thread-head"],
+    [data-testid="message-thread-head-divider"],
+    [data-testid="message-thread-replies"]
+  ) {
+  padding-inline: var(--colony-conversation-gutter);
+}
+
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="channel-view-tabs"] {
+  padding-inline: var(--colony-conversation-gutter);
+}
+
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="thread-composer-overlay"]
+  [data-testid="composer-dock-backdrop"] {
+  left: var(--colony-composer-gutter);
+  right: var(--colony-composer-gutter);
+}
+
+:root:has([data-colony-full-app-shell="true"]) .buzz-huddle-app-surface {
+  border: 0;
+}
+
+/* A narrow reply box must wrap actions instead of painting over its tools. */
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="message-composer-toolbar"] {
+  height: auto;
+}
+
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="message-composer-tools"] {
+  min-width: max-content;
+}
