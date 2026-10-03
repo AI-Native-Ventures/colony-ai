@@ -119,7 +119,7 @@ for (const [width, height] of [
       await expect(sidebar).toHaveCSS("width", "260px");
       await expect(
         sidebar.locator('[data-sidebar="menu-button"]').first(),
-      ).toHaveCSS("font-size", "12.8571px");
+      ).toHaveCSS("font-size", "15px");
       await expect(
         sidebar.locator('[data-sidebar="menu-button"] > svg').first(),
       ).toHaveCSS("width", "18px");
@@ -145,9 +145,14 @@ for (const [width, height] of [
           "10px 24px 15px",
         );
         const tools = await thread
-          .getByTestId("message-composer-tools")
+          .getByRole("button", { name: "Record voice note", exact: true })
           .boundingBox();
-        const send = await thread.getByTestId("send-message").boundingBox();
+        const send = await thread
+          .getByRole("button", {
+            name: "Reference goal or sub-goal",
+            exact: true,
+          })
+          .boundingBox();
         expect(tools).not.toBeNull();
         expect(send).not.toBeNull();
         expect(
@@ -183,7 +188,8 @@ for (const [preference, px] of [
 ] as const) {
   test(`shared text ramp preserves ${preference} and keyboard zoom`, async ({
     page,
-  }) => {
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.addInitScript(
       (size) => localStorage.setItem("buzz.appearance.fontSize", size),
       preference,
@@ -196,6 +202,11 @@ for (const [preference, px] of [
     await openCampaign(page);
     const input = page.getByTestId("message-input-scroll").first();
     await expect(input).toHaveCSS("font-size", `${px}px`);
+    const proofDir =
+      process.env.SHELL_PROOF_DIR ?? testInfo.outputPath("shell");
+    await mkdir(proofDir, { recursive: true });
+    await waitForAnimations(page);
+    await page.screenshot({ path: `${proofDir}/after-${preference}-1440.png` });
     await page.evaluate(() => {
       const mac = /mac|iphone|ipad|ipod/i.test(navigator.platform);
       window.dispatchEvent(
@@ -218,5 +229,9 @@ for (const [preference, px] of [
       )
       .toBeCloseTo(px * 1.1, 2);
     await expect(page.getByTestId("app-sidebar")).toHaveCSS("width", "260px");
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `${proofDir}/after-${preference}-zoom-1440.png`,
+    });
   });
 }

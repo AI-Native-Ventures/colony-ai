@@ -26,7 +26,7 @@ const COMMUNITY_B = {
 
 async function expectContentSurfaceHorizontalGutters(
   page: import("@playwright/test").Page,
-  expectedLeftGutter = 1,
+  expectedLeftGutter = 8,
 ) {
   const [mainInsetBox, contentBox] = await Promise.all([
     page.locator("[data-buzz-glass-inset]").boundingBox(),
@@ -1309,7 +1309,7 @@ test.describe("community rail", () => {
       "width",
       "8px",
     );
-    await expectContentSurfaceHorizontalGutters(page, 9);
+    await expectContentSurfaceHorizontalGutters(page);
   });
 
   test("hides the rail with a single community", async ({ page }) => {
@@ -1342,7 +1342,7 @@ test.describe("community rail", () => {
       "background-color",
       sidebarBackground,
     );
-    await expectContentSurfaceHorizontalGutters(page, 9);
+    await expectContentSurfaceHorizontalGutters(page);
   });
 
   test("keeps the rail visible when the sidebar is collapsed", async ({

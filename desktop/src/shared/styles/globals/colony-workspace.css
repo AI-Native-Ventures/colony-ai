@@ -622,17 +622,10 @@
   color: hsl(var(--colony-sidebar-foreground) / 0.75);
 }
 
-:root:has([data-colony-workspace-route="true"])
-  [data-buzz-content-surface]:not([data-buzz-content-unframed]) {
-  margin: 0.5rem;
-  overflow: hidden;
-  border-radius: var(--colony-shell-radius);
-}
-
-/* The channel drop overlay follows the workspace surface square corners. */
+/* The channel drop overlay follows the common content surface corners. */
 :root:has([data-colony-workspace-route="true"])
   [data-testid="drop-zone-overlay"] {
-  border-radius: 0;
+  border-radius: var(--colony-shell-radius);
 }
 
 .focus-thread-drawer-responsive {

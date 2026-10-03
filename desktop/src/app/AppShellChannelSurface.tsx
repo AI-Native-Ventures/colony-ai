@@ -38,7 +38,6 @@ export function AppShellChannelSurface({
         className={cn(
           "isolate z-0 min-h-0 min-w-0 overflow-hidden",
           isHuddleRoom ? "bg-background" : "bg-sidebar",
-          hasCollapsedSidebarGutter && "pl-2",
         )}
         data-buzz-content-surface={isHuddleRoom ? true : undefined}
         data-buzz-content-unframed={isHuddleRoom ? true : undefined}

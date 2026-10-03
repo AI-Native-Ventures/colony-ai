@@ -2,7 +2,7 @@
 :root:has([data-colony-full-app-shell="true"]) {
   --colony-shell-inset: 0.5rem;
   --colony-shell-radius: 0.6875rem;
-  --colony-sidebar-label-size: var(--text-xs);
+  --colony-sidebar-label-size: var(--text-sm);
   --colony-sidebar-icon-size: 1.125rem;
   --colony-conversation-gutter: 1.5rem;
   --colony-composer-gutter: 1.5rem;
@@ -119,4 +119,10 @@
 :root:has([data-colony-workspace-route="true"])
   [data-testid="message-composer-tools"] {
   min-width: max-content;
+}
+
+:root:has([data-colony-workspace-route="true"])
+  [data-testid="message-composer-toolbar"]
+  > div:last-child {
+  margin-left: auto;
 }
