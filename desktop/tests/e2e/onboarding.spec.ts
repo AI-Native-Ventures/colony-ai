@@ -1953,7 +1953,6 @@ test("first-run onboarding posts the live Fizz kickoff", async ({ page }) => {
       globalAgentConfig: {
         env_vars: { OPENAI_COMPAT_API_KEY: "e2e-placeholder" },
         provider: "openai",
-        preferred_runtime: "buzz-agent",
         model: "gpt-5.5",
       },
     },
@@ -1965,23 +1964,10 @@ test("first-run onboarding posts the live Fizz kickoff", async ({ page }) => {
   await completeProfileOnboarding(page);
 
   await expectPrivateWelcomeLanding(page);
-  // Runtime start alone cannot satisfy the kickoff's relay-presence wait.
-  const team = await waitForWelcomeTeam(page);
-  const presence = await invokeMockCommand<Record<string, string>>(
-    page,
-    "get_presence",
-    { pubkeys: team.map((agent) => agent.pubkey) },
-  );
-  expect(team.map((agent) => presence[agent.pubkey])).toEqual([
-    "offline",
-    "offline",
-    "offline",
-  ]);
-  await expect(page.getByTestId("message-timeline")).not.toContainText(
-    "Hi Morty QA, I'm Scout. Welcome to Colony.",
-  );
-  await publishWelcomeTeamPresence(page);
-  // Greeted by the name typed above , the @mention pill also files the opener
+  // A legacy null preference inherits its configured bundled provider.
+  // The opener does not wait for teammate relay presence.
+  await waitForWelcomeTeam(page);
+  // Greeted by the name typed above  -  the @mention pill also files the opener
   // into the new user's Inbox mentions feed.
   await expect(page.getByTestId("message-timeline")).toContainText(
     "Hi Morty QA, I'm Scout. Welcome to Colony.",
@@ -2003,7 +1989,6 @@ test("first-run onboarding lands before Welcome team bootstrap completes", async
         env_vars: { OPENAI_COMPAT_API_KEY: "e2e-placeholder" },
         provider: "openai",
         model: "gpt-5.5",
-        preferred_runtime: "buzz-agent",
       },
     },
     { skipOnboardingSeed: true },

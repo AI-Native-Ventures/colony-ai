@@ -1,17 +1,15 @@
-import {
-  getGlobalAgentConfig,
-  setGlobalAgentConfig,
-} from "@/shared/api/tauriGlobalAgentConfig";
-import type { AcpRuntimeCatalogEntry } from "@/shared/api/types";
+import type {
+  AcpRuntimeCatalogEntry,
+  GlobalAgentConfig,
+} from "@/shared/api/types";
 
-/** Persist the exact Connect selection before starter provisioning reads it. */
-export async function saveOnboardingRuntime(
+/** Build a candidate in memory; only a completed connection proof may persist it. */
+export function buildOnboardingRuntimeCandidate(
+  config: GlobalAgentConfig,
   runtimeId: string,
   runtimes: readonly AcpRuntimeCatalogEntry[],
-  read = getGlobalAgentConfig,
-  save = setGlobalAgentConfig,
   selectedModel?: string | null,
-) {
+): GlobalAgentConfig {
   if (
     !runtimes.some(
       (runtime) =>
@@ -22,14 +20,12 @@ export async function saveOnboardingRuntime(
       "Your selected AI runtime is unavailable. Check again or choose another connection.",
     );
   }
-  const config = await read();
-  return save({
+  return {
     ...config,
     preferred_runtime: runtimeId,
-    // A model from a different harness cannot be carried into this selection.
-    ...(config.preferred_runtime !== runtimeId && runtimeId !== "buzz-agent"
+    ...((config.preferred_runtime ?? "buzz-agent") !== runtimeId
       ? { model: null, provider: null }
       : {}),
     ...(selectedModel === undefined ? {} : { model: selectedModel }),
-  });
+  };
 }

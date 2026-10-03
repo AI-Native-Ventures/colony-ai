@@ -1,3 +1,4 @@
+import { listen } from "@tauri-apps/api/event";
 import { invokeTauri } from "@/shared/api/tauri";
 import { setGlobalAgentConfig } from "@/shared/api/tauriGlobalAgentConfig";
 import type { GlobalAgentConfig } from "@/shared/api/types";
@@ -9,17 +10,69 @@ export type OnboardingConnectionProof = {
   totalMs: number;
 };
 
+export type OnboardingConnectionProgress = "starting" | "waiting" | "saving";
+const progressListeners = new Set<
+  (phase: OnboardingConnectionProgress) => void
+>();
+/** Subscribe to actual adapter startup and the verified configuration commit. */
+export function subscribeOnboardingConnectionProgress(
+  listener: (phase: OnboardingConnectionProgress) => void,
+) {
+  progressListeners.add(listener);
+  return () => {
+    progressListeners.delete(listener);
+  };
+}
+function reportProgress(phase: OnboardingConnectionProgress) {
+  for (const listener of progressListeners) listener(phase);
+}
+
+let activeRequestId: string | null = null;
+
+/** Cancel the native process tree for the active attempt, without changing proof types. */
+export async function cancelOnboardingConnectionTest() {
+  const requestId = activeRequestId;
+  if (requestId) {
+    activeRequestId = null;
+    await invokeTauri("cancel_onboarding_connection_test", { requestId });
+  }
+}
+
+async function invokeConnection(config: GlobalAgentConfig) {
+  const requestId = crypto.randomUUID();
+  activeRequestId = requestId;
+  const unlisten = await listen<{ requestId: string; phase: string }>(
+    "onboarding-connection-progress",
+    ({ payload }) => {
+      if (
+        payload.requestId === requestId &&
+        activeRequestId === requestId &&
+        payload.phase === "waiting"
+      )
+        reportProgress("waiting");
+    },
+  );
+  try {
+    if (activeRequestId !== requestId)
+      throw new Error("Connection test cancelled.");
+    return await invokeTauri<OnboardingConnectionProof & { error?: string }>(
+      "test_onboarding_connection",
+      { config, requestId },
+    );
+  } finally {
+    unlisten();
+    if (activeRequestId === requestId) activeRequestId = null;
+  }
+}
+
 /** A completed nonempty turn is required; configuration/discovery is no proof. */
 export async function runOnboardingConnectionTest(
   config: GlobalAgentConfig,
   isCurrent: () => boolean,
-  invoke = (next: GlobalAgentConfig) =>
-    invokeTauri<OnboardingConnectionProof & { error?: string }>(
-      "test_onboarding_connection",
-      { config: next },
-    ),
+  invoke = invokeConnection,
   save = setGlobalAgentConfig,
 ) {
+  reportProgress("starting");
   const proof = await invoke(config);
   if (!isCurrent()) throw new Error("Connection test cancelled.");
   if (proof.error) throw new Error(proof.error);
@@ -31,8 +84,9 @@ export async function runOnboardingConnectionTest(
   if (proof.model !== null && typeof proof.model !== "string") {
     throw new Error("The harness did not report a valid model. Check again.");
   }
-  // Pin the negotiated model so starter provisioning runs the tested choice.
-  const saved = await save({ ...config, model: proof.model ?? config.model });
+  // Default remains unset. Adapter catalog ids are display proof, not global defaults.
+  reportProgress("saving");
+  const saved = await save(config);
   if (!isCurrent()) throw new Error("Connection test cancelled.");
   return { proof, config: saved.config };
 }

@@ -1,80 +1,61 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { saveOnboardingRuntime } from "./saveOnboardingRuntime.ts";
-
-test("Connect persists Claude instead of the old bundled default", async () => {
-  const config = {
-    preferred_runtime: "buzz-agent",
-    model: "deepseek-chat",
-    provider: "deepseek",
-    env_vars: {},
-  };
-  let written;
-  await saveOnboardingRuntime(
+import { buildOnboardingRuntimeCandidate } from "./saveOnboardingRuntime.ts";
+const original = {
+  preferred_runtime: "buzz-agent",
+  model: "deepseek-chat",
+  provider: "deepseek",
+  env_vars: {},
+};
+const runtimes = ["claude", "buzz-agent"].map((id) => ({
+  id,
+  availability: "available",
+}));
+test("Connect builds a candidate without mutating the saved bundled configuration", () => {
+  const candidate = buildOnboardingRuntimeCandidate(
+    original,
     "claude",
-    [{ id: "claude", availability: "available" }],
-    async () => config,
-    async (next) => {
-      written = next;
-      return { config: next };
-    },
+    runtimes,
   );
-  assert.deepEqual(written, {
-    ...config,
-    preferred_runtime: "claude",
-    model: null,
-    provider: null,
-  });
+  assert.equal(candidate.preferred_runtime, "claude");
+  assert.equal(candidate.model, null);
+  assert.equal(candidate.provider, null);
+  assert.equal(original.model, "deepseek-chat");
 });
-
-test("Connect preserves a selected harness's existing model", async () => {
-  const config = {
-    preferred_runtime: "claude",
-    model: "claude-sonnet",
-    provider: null,
-    env_vars: {},
-  };
-  const saved = await saveOnboardingRuntime(
+test("any runtime change clears incompatible model and provider", () => {
+  const candidate = buildOnboardingRuntimeCandidate(
+    { ...original, preferred_runtime: "claude", model: "claude-model" },
+    "buzz-agent",
+    runtimes,
+  );
+  assert.equal(candidate.model, null);
+  assert.equal(candidate.provider, null);
+});
+test("only an explicit selected model is pinned", () => {
+  const candidate = buildOnboardingRuntimeCandidate(
+    original,
     "claude",
-    [{ id: "claude", availability: "available" }],
-    async () => config,
-    async (next) => ({ config: next }),
+    runtimes,
+    "chosen-model",
   );
-  assert.deepEqual(saved.config, config);
+  assert.equal(candidate.model, "chosen-model");
+  assert.equal(
+    buildOnboardingRuntimeCandidate(original, "buzz-agent", runtimes, null)
+      .model,
+    null,
+  );
 });
-
-test("Connect refuses unavailable selections and propagates persistence failures", async () => {
-  await assert.rejects(
-    saveOnboardingRuntime("claude", [], async () => assert.fail()),
+test("an unavailable choice is refused before any write", () => {
+  assert.throws(
+    () => buildOnboardingRuntimeCandidate(original, "claude", []),
     /unavailable/,
   );
-  await assert.rejects(
-    saveOnboardingRuntime(
-      "claude",
-      [{ id: "claude", availability: "available" }],
-      async () => ({ env_vars: {} }),
-      async () => {
-        throw new Error("disk full");
-      },
-    ),
-    /disk full/,
-  );
 });
 
-test("Connect persists the explicitly selected model on a different CLI harness", async () => {
-  const saved = await saveOnboardingRuntime(
-    "claude",
-    [{ id: "claude", availability: "available" }],
-    async () => ({
-      preferred_runtime: "buzz-agent",
-      model: "deepseek-chat",
-      provider: "deepseek",
-      env_vars: {},
-    }),
-    async (next) => ({ config: next }),
-    "chosen-claude-model",
+test("legacy bundled defaults with no preference remain a valid in-memory candidate", () => {
+  const legacy = { ...original, preferred_runtime: null };
+  assert.deepEqual(
+    buildOnboardingRuntimeCandidate(legacy, "buzz-agent", runtimes),
+    { ...original },
   );
-  assert.equal(saved.config.preferred_runtime, "claude");
-  assert.equal(saved.config.model, "chosen-claude-model");
-  assert.equal(saved.config.provider, null);
 });

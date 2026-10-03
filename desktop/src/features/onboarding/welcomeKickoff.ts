@@ -297,7 +297,7 @@ function isReplyToOpener(event: RelayEvent, opener: RelayEvent) {
 function introAuthorsAfterOpener(
   events: readonly RelayEvent[],
   opener: RelayEvent,
-  teammates: readonly [ManagedAgent, ManagedAgent],
+  teammates: readonly ManagedAgent[],
 ) {
   const authors = new Set(
     events
@@ -330,15 +330,22 @@ export function classifyWelcomeKickoffResolution(
   opener: RelayEvent,
   agentSet: WelcomeAgentSet,
 ) {
+  const mentionedTeammates = agentSet.teammates.filter((agent) =>
+    opener.tags.some(
+      (tag) =>
+        tag[0] === "p" &&
+        normalizePubkey(tag[1] ?? "") === normalizePubkey(agent.pubkey),
+    ),
+  );
   const introAuthors = introAuthorsAfterOpener(
     events,
     opener,
-    agentSet.teammates,
+    mentionedTeammates,
   );
-  const failed = agentSet.teammates.filter((agent) =>
+  const failed = mentionedTeammates.filter((agent) =>
     failedAfterKickoff(agent, opener),
   );
-  const unresolved = agentSet.teammates.filter(
+  const unresolved = mentionedTeammates.filter(
     (agent) =>
       !introAuthors.has(normalizePubkey(agent.pubkey)) &&
       !failed.includes(agent),
@@ -517,6 +524,12 @@ export function useWelcomeKickoff(
   const agentAccessOwnerOnlyQuery = useAgentAccessOwnerOnlyQuery();
   const agentAccessOwnerOnly = agentAccessOwnerOnlyQuery.data;
   const { globalConfig, isLoading: configLoading } = useGlobalAgentConfig();
+  const [kickoffError, setKickoffError] = React.useState<string | null>(null);
+  const [retryGeneration, setRetryGeneration] = React.useState(0);
+  const retryKickoff = React.useCallback(() => {
+    setKickoffError(null);
+    setRetryGeneration((value) => value + 1);
+  }, []);
   const channelId = activeChannel?.id ?? null;
   const isActiveWelcome = isWelcomeChannel(activeChannel);
   const focusedWelcomeChannelRef = React.useRef<string | null>(null);
@@ -578,6 +591,7 @@ export function useWelcomeKickoff(
     [globalConfig, runtimesQuery.data, gitBashQuery.data, gitBashQuery.isError],
   );
   React.useEffect(() => {
+    void retryGeneration;
     if (
       !channelId ||
       !isActiveWelcome ||
@@ -591,6 +605,7 @@ export function useWelcomeKickoff(
 
     const kickoffController = kickoffCoordinator.begin(channelId);
     if (!kickoffController) return;
+    setKickoffError(null);
     const isCancelled = () =>
       kickoffController.signal.aborted ||
       focusedWelcomeChannelRef.current !== channelId;
@@ -658,6 +673,9 @@ export function useWelcomeKickoff(
             console.warn(`Failed to start Welcome agent ${agent.name}.`, error),
         );
         // A teammate's stalled start cannot delay the lead's first message.
+        await queryClient.invalidateQueries({
+          queryKey: managedAgentsQueryKey,
+        });
         if (
           !openerAlreadySent &&
           (!startResults.leadResult ||
@@ -670,24 +688,10 @@ export function useWelcomeKickoff(
         });
         if (openerAlreadySent) return;
 
-        const teammatesToAwait = resolvedAgentSet.teammates.filter(
+        const introTeammates = resolvedAgentSet.teammates.filter(
           (teammate) =>
             startResults.outcomes.get(teammate.pubkey)?.status !== "rejected",
         );
-        const onlineTeammates = await waitForWelcomeTeammatesOnline(
-          teammatesToAwait,
-          { isCancelled },
-        );
-        if (isCancelled()) return;
-        const introTeammates = selectWelcomeKickoffIntroTeammates(
-          resolvedAgentSet.teammates,
-          onlineTeammates,
-        );
-        if (introTeammates.length < resolvedAgentSet.teammates.length) {
-          console.warn(
-            "Some Welcome teammates did not become ready; continuing with a degraded kickoff.",
-          );
-        }
         if (isCancelled()) return;
 
         // Best-effort: a missing profile should degrade to an ungreeted,
@@ -709,6 +713,12 @@ export function useWelcomeKickoff(
         if (!isCancelled()) onKickoffOpenerPosted?.(openerResult.eventId);
       } catch (error) {
         console.warn("Failed to start the Welcome team kickoff.", error);
+        if (!isCancelled())
+          setKickoffError(
+            error instanceof Error
+              ? `${error.message} Open Settings > Agents > Defaults, reconnect, then retry.`
+              : WELCOME_KICKOFF_PROVIDER_MESSAGE,
+          );
       } finally {
         kickoffCoordinator.finish(channelId, kickoffController);
       }
@@ -722,6 +732,7 @@ export function useWelcomeKickoff(
     onKickoffOpenerPosted,
     queryClient,
     readiness,
+    retryGeneration,
     gitBashQuery.isPending,
     runtimesQuery.isPending,
   ]);
@@ -882,6 +893,7 @@ export function useWelcomeKickoff(
     isActiveWelcome,
     queryClient,
   ]);
+  return { kickoffError, retryKickoff };
 }
 
 export type { WelcomeTeamStarterDefinition };

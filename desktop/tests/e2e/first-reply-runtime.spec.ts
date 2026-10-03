@@ -17,6 +17,7 @@ test("Connect waits for the actual reply, then pins the selected runtime and mod
         models: [{ id: "actual-model", name: "Chosen model" }],
       },
       onboardingConnectionDelayMs: 400,
+      startManagedAgentDelayMsByName: { Honey: 30_000, Pollen: 30_000 },
       onboardingConnectionResult: {
         reply: "A reply from the selected harness",
         model: "actual-model",
@@ -35,6 +36,14 @@ test("Connect waits for the actual reply, then pins the selected runtime and mod
     .click();
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        window.__BUZZ_E2E_COMMANDS__?.filter(
+          (command) => command === "set_global_agent_config",
+        ).length ?? 0,
+    ),
+  ).toBe(0);
   await expect(page.getByText("Connection verified")).toHaveCount(0);
   await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
   await expect(page.locator(".reply")).toContainText(
@@ -58,6 +67,42 @@ test("Connect waits for the actual reply, then pins the selected runtime and mod
     preferred_runtime: "codex",
     model: "actual-model",
   });
+  await page
+    .getByRole("button", { name: "Open my Colony", exact: true })
+    .click();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.__BUZZ_E2E_COMMAND_PAYLOADS__?.filter(
+            (entry) => entry.command === "create_managed_agent",
+          ).length ?? 0,
+      ),
+    )
+    .toBe(3);
+  const creations = await page.evaluate(() =>
+    window.__BUZZ_E2E_COMMAND_PAYLOADS__?.filter(
+      (entry) => entry.command === "create_managed_agent",
+    ),
+  );
+  for (const creation of creations ?? [])
+    expect(creation.payload).toMatchObject({
+      input: { agentCommand: "codex", harnessOverride: true },
+    });
+  await page.getByTestId("channel-Welcome").click();
+  await expect(page.getByTestId("message-timeline")).toContainText(
+    "Honey and Pollen, introduce yourselves",
+    { timeout: 5_000 },
+  );
+  expect(
+    await page.evaluate(
+      () =>
+        window.__BUZZ_E2E_COMMANDS__?.filter(
+          (command) => command === "set_global_agent_config",
+        ).length ?? 0,
+    ),
+  ).toBe(1);
 });
 
 for (const result of [
@@ -71,28 +116,122 @@ for (const result of [
       runtimes: [claude],
       mock: { onboardingConnectionResult: result },
     });
+    const before = await page.evaluate(async () =>
+      window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.(
+        "get_global_agent_config",
+        null,
+      ),
+    );
     await page.getByRole("button", { name: "Connect", exact: true }).click();
     await expect(
       page.getByTestId("onboarding-scene-connection-error"),
     ).toBeVisible();
     await expect(page.getByText("Connection verified")).toHaveCount(0);
+    expect(
+      await page.evaluate(async () =>
+        window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.(
+          "get_global_agent_config",
+          null,
+        ),
+      ),
+    ).toEqual(before);
     await expect(
       page.getByRole("button", { name: "Try again", exact: true }),
     ).toBeVisible();
   });
 }
 
-test("cancelling ignores a late reply", async ({ page }) => {
+test("cancelling stops the native attempt, preserves settings and ignores a late reply", async ({
+  page,
+}) => {
   await openR17ConnectionSetup(page, {
     runtimes: [claude],
     mock: { onboardingConnectionDelayMs: 800 },
   });
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await page.getByRole("button", { name: "Cancel test" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.__BUZZ_E2E_COMMANDS__?.filter(
+            (command) => command === "cancel_onboarding_connection_test",
+          ).length ?? 0,
+      ),
+    )
+    .toBeGreaterThan(0);
   await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
   await page.waitForTimeout(900);
   await expect(page.getByText("Connection verified")).toHaveCount(0);
 });
+
+for (const id of [
+  "claude",
+  "codex",
+  "cursor",
+  "devin",
+  "omp",
+  "grok",
+  "opencode",
+  "kimi",
+  "amp",
+  "hermes",
+  "openclaw",
+  "buzz-agent",
+  "goose",
+]) {
+  test(`selected ${id} reaches the real Connect request without a bundled fallback`, async ({
+    page,
+  }) => {
+    const providerRuntime = id === "buzz-agent" || id === "goose";
+    const runtime = {
+      ...r17Runtime("claude", "available", {
+        status: providerRuntime ? "not_applicable" : "logged_in",
+      }),
+      id,
+      label: id,
+      command: id,
+    };
+    await openR17ConnectionSetup(page, {
+      runtimes: [runtime],
+      mock: {
+        globalAgentConfig: {
+          preferred_runtime: id,
+          provider: providerRuntime ? "anthropic" : null,
+          model: providerRuntime ? "provider-model" : null,
+          env_vars: providerRuntime ? { ANTHROPIC_API_KEY: "fixture" } : {},
+        },
+      },
+    });
+    if (providerRuntime)
+      await expect(
+        page.getByTestId(`onboarding-connect-runtime-${id}`),
+      ).not.toContainText("Signed in");
+    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
+    const request = await page.evaluate(() =>
+      window.__BUZZ_E2E_COMMAND_PAYLOADS__?.find(
+        (entry) => entry.command === "test_onboarding_connection",
+      ),
+    );
+    expect(request?.payload).toMatchObject({
+      config: {
+        preferred_runtime: id,
+        model: providerRuntime ? "provider-model" : null,
+      },
+    });
+    const saved = await page.evaluate(async () =>
+      window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.(
+        "get_global_agent_config",
+        null,
+      ),
+    );
+    expect(saved).toMatchObject({
+      preferred_runtime: id,
+      model: providerRuntime ? "provider-model" : null,
+    });
+  });
+}
 
 for (const viewport of [
   { width: 1728, height: 1117 },

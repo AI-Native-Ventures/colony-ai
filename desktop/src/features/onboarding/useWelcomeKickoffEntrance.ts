@@ -33,11 +33,16 @@ export function useWelcomeKickoffEntrance(
   const handleEntranceComplete = React.useCallback((eventId: string) => {
     setEntranceMessageId((current) => (current === eventId ? null : current));
   }, []);
-  useWelcomeKickoff(
+  const { kickoffError, retryKickoff } = useWelcomeKickoff(
     activeChannel,
     welcomeKickoffEvents,
     handleKickoffOpenerPosted,
   );
 
-  return { entranceMessageId, handleEntranceComplete };
+  return {
+    entranceMessageId,
+    handleEntranceComplete,
+    kickoffError,
+    retryKickoff,
+  };
 }

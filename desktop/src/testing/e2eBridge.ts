@@ -618,6 +618,7 @@ type E2eConfig = {
      *  community mid-startup and observe the fail-closed scope check.
      *  Releasable early via `__BUZZ_E2E_RELEASE_MANAGED_AGENT_STARTS__()`. */
     startManagedAgentDelayMs?: number;
+    startManagedAgentDelayMsByName?: Record<string, number>;
     /** Hold the media proxy at port 0 until the E2E release seam is invoked. */
     mediaProxyInitiallyUnavailable?: boolean;
     /** Hold mock send live echoes until the E2E release seam is invoked. */
@@ -15921,7 +15922,7 @@ async function handleStartManagedAgent(
   },
   config?: E2eConfig,
 ): Promise<RawManagedAgent> {
-  const delayMs = config?.mock?.startManagedAgentDelayMs ?? 0;
+  const delayMs = config?.mock?.startManagedAgentDelayMsByName?.[getMockManagedAgent(args.pubkey).name] ?? config?.mock?.startManagedAgentDelayMs ?? 0;
   if (delayMs > 0) {
     await new Promise<void>((resolve) => {
       let settled = false;
@@ -21367,6 +21368,8 @@ export function maybeInstallE2eTauriMocks() {
         if (!runtimeId) return null;
         return config.mock?.runtimeFileConfigs?.[runtimeId] ?? null;
       }
+      case "cancel_onboarding_connection_test":
+        return null;
       case "test_onboarding_connection": {
         const delay = activeConfig?.mock?.onboardingConnectionDelayMs ?? 0;
         if (delay) await new Promise((resolve) => setTimeout(resolve, delay));

@@ -7,7 +7,7 @@ const config = {
   provider: null,
   env_vars: {},
 };
-test("a real reply pins the negotiated model for starter launch", async () => {
+test("a real reply persists once without pinning the adapter default", async () => {
   let persisted;
   const result = await runOnboardingConnectionTest(
     config,
@@ -27,7 +27,8 @@ test("a real reply pins the negotiated model for starter launch", async () => {
     },
   );
   assert.equal(result.proof.reply, "Hello");
-  assert.equal(persisted.model, "actual-model");
+  assert.equal(persisted.model, null);
+  assert.equal(result.proof.model, "actual-model");
 });
 test("failed, empty and stale replies cannot establish success or persist a model", async () => {
   for (const [proof, current, expected] of [
@@ -61,4 +62,28 @@ test("a persistence failure cannot unlock connected", async () => {
     ),
     /disk full/,
   );
+});
+
+test("explicit selection persists only after a completed reply", async () => {
+  let writes = 0;
+  const selected = { ...config, model: "explicit-model" };
+  const result = await runOnboardingConnectionTest(
+    selected,
+    () => true,
+    async () => {
+      assert.equal(writes, 0);
+      return {
+        reply: "Hello",
+        model: "display-model",
+        startupMs: 1,
+        totalMs: 2,
+      };
+    },
+    async (input) => {
+      writes++;
+      return { config: input };
+    },
+  );
+  assert.equal(writes, 1);
+  assert.equal(result.config.model, "explicit-model");
 });

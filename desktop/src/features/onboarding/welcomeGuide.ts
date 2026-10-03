@@ -1,4 +1,6 @@
 import scoutSvg from "./assets/scout.svg?raw";
+import { resolveLegacyWelcomeRuntime } from "./ui/agentReadiness";
+import { stopManagedAgent } from "@/shared/api/tauriManagedAgents";
 import {
   buildInstanceInputForDefinition,
   resolveStartRuntimeForDefinition,
@@ -9,6 +11,7 @@ import {
   getChannelMembers,
   listManagedAgents,
   updateManagedAgent,
+  discoverGitBashPrerequisite,
 } from "@/shared/api/tauri";
 import { discoverAcpRuntimes } from "@/shared/api/tauriAcpDiscovery";
 import { getAgentAccessOwnerOnly } from "@/shared/api/tauriAgentAccess";
@@ -365,6 +368,14 @@ async function provisionWelcomeTeam(
     (runtime): runtime is AcpRuntime => runtime.availability === "available",
   );
 
+  const runtimePreference =
+    globalConfig.preferred_runtime ??
+    resolveLegacyWelcomeRuntime(
+      runtimeCatalog,
+      globalConfig,
+      await discoverGitBashPrerequisite(),
+    )?.id ??
+    null;
   const agents: ManagedAgent[] = [];
   for (const starter of WELCOME_TEAM_STARTERS) {
     const persona = personasById.get(starter.personaId);
@@ -375,7 +386,7 @@ async function provisionWelcomeTeam(
       starter,
       persona,
       runtimes,
-      globalConfig.preferred_runtime,
+      runtimePreference,
       relayUrl,
     );
     const existing = pickWelcomeTeamStarterAgentForRelay(
@@ -385,6 +396,9 @@ async function provisionWelcomeTeam(
     );
     if (existing) {
       const runtimeUpdate = welcomeStarterRuntimeUpdate(existing, desired);
+      if (runtimeUpdate && existing.status === "running") {
+        await stopManagedAgent(existing.pubkey);
+      }
       agents.push(
         runtimeUpdate
           ? (await updateManagedAgent(runtimeUpdate)).agent

@@ -14,7 +14,6 @@ use crate::{
     util::now_iso,
 };
 
-use super::claude_config::apply_claude_model_env;
 mod path;
 pub(in crate::managed_agents) use path::build_augmented_path;
 pub(crate) use path::{compose_path_entries, should_skip_claude_executable, should_use_inherited};
@@ -617,11 +616,7 @@ pub fn spawn_agent_child(
     command.env("BUZZ_ACP_MULTIPLE_EVENT_HANDLING", "steer");
     command.env("BUZZ_ACP_DEDUP", "queue");
     if let Some(meta) = runtime_meta {
-        for (key, value) in meta.default_env {
-            if std::env::var(key).is_err() {
-                command.env(key, value);
-            }
-        }
+        super::apply_runtime_default_env(&mut command, meta.default_env);
     }
     let team_instructions = super::spawn_snapshot::effective_team_instructions(record, &teams);
     if let Some(instructions) = &team_instructions {
@@ -770,10 +765,12 @@ pub fn spawn_agent_child(
     // A1: for local claude agents, ANTHROPIC_MODEL is the single startup model authority.
     // BUZZ_ACP_MODEL is removed (live ACP switches only; two authorities in the same env
     // would be ambiguous).
-    if record.backend == super::BackendKind::Local && runtime_meta.is_some_and(|r| r.id == "claude")
-    {
-        apply_claude_model_env(&mut command, effective_model.as_deref());
-    }
+    super::apply_runtime_startup_model_env(
+        &mut command,
+        record.backend == super::BackendKind::Local
+            && runtime_meta.is_some_and(|r| r.id == "claude"),
+        effective_model.as_deref(),
+    );
     configure_runtime_cli(&mut command, runtime_meta);
 
     // Buzz shared compute is stored as a native provider; derive the OpenAI-compatible

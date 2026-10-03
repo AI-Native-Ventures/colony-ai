@@ -133,25 +133,52 @@ function SceneBody(props: PresentationProps) {
           pose="working"
         />
         <h2>A first hello.</h2>
-        <p className="lede">We’re checking that your agent can reply.</p>
+        <p className="lede" role="status" aria-live="polite">
+          {data.connectionPhase === "saving"
+            ? "Saving your verified connection."
+            : data.connectionPhase === "waiting"
+              ? "Your agent started. Waiting for its first reply."
+              : "We’re starting your agent and checking that it can reply."}
+        </p>
         <ol className="progress-list">
           <li className="complete">
             <Glyph name="check" />
-            Connection saved
+            Connection selected
           </li>
-          <li>
-            <span className="spinner" />
+          <li
+            className={
+              data.connectionPhase === "waiting" ||
+              data.connectionPhase === "saving"
+                ? "complete"
+                : ""
+            }
+          >
+            {data.connectionPhase === "waiting" ||
+            data.connectionPhase === "saving" ? (
+              <Glyph name="check" />
+            ) : (
+              <span className="spinner" />
+            )}
             Starting your agent
           </li>
-          <li>
-            <span className="waiting-dot" />
-            Waiting for a reply
+          <li className={data.connectionPhase === "saving" ? "complete" : ""}>
+            {data.connectionPhase === "saving" ? (
+              <Glyph name="check" />
+            ) : data.connectionPhase === "waiting" || data.visualOnly ? (
+              <span className="spinner" />
+            ) : (
+              <span className="waiting-dot" />
+            )}
+            {data.connectionPhase === "saving"
+              ? "Reply received"
+              : "Waiting for a reply"}
           </li>
         </ol>
         <button
           className="secondary full"
           onClick={props.onCancelTest ?? (() => onNavigate?.("connect"))}
           type="button"
+          disabled={data.connectionPhase === "saving"}
         >
           Cancel test
         </button>
@@ -204,6 +231,20 @@ export function OnboardingScenePresentation(props: PresentationProps) {
     scene: string;
     id: string;
   }>();
+  const rootRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (
+      !["connect", "testing", "connected", "connection-error"].includes(
+        props.scene,
+      )
+    )
+      return;
+    const heading = rootRef.current?.querySelector<HTMLElement>("h2");
+    if (heading) {
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    }
+  }, [props.scene]);
   const workspaceScene =
     props.scene === "workspace" ||
     props.scene === "history" ||
@@ -245,7 +286,7 @@ export function OnboardingScenePresentation(props: PresentationProps) {
   ) : null;
   const power = onboardingSceneStage(props.scene) === 2;
   return (
-    <div className="colony-onboarding-root">
+    <div className="colony-onboarding-root" ref={rootRef}>
       <div className="onboarding-viewport">
         <section className="app-frame onboarding-app-frame">
           <div
