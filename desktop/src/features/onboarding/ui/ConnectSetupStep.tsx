@@ -1,3 +1,4 @@
+import { OpenRouterConnectionPanel } from "@/shared/ui/OpenRouterConnectionPanel";
 import * as React from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -477,12 +478,10 @@ export function ConnectSetupStep({
               error={error}
               onHarnessHeaderChange={handleHarnessHeaderChange}
             />
-          ) : connectionScene === "api-key" ||
-            connectionScene === "openrouter-unlinked" ? (
-            <AiKeyConnectionPanel
-              key={connectionScene}
-              openRouter={connectionScene === "openrouter-unlinked"}
-            />
+          ) : connectionScene === "openrouter-unlinked" ? (
+            <OpenRouterConnectionPanel onboarding />
+          ) : connectionScene === "api-key" ? (
+            <AiKeyConnectionPanel key={connectionScene} openRouter={false} />
           ) : (
             <CreditsComingSoon />
           )}
@@ -519,9 +518,7 @@ export function ConnectSetupStep({
         keyScene
           ? {
               ...data,
-              harnessLabel: bundled
-                ? getRuntimeDisplayLabel(bundled)
-                : "Colony AI",
+              harnessLabel: "Colony AI",
               harnessStatus: bundled
                 ? getRuntimeHeaderStatus(
                     bundled,
