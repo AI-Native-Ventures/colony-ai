@@ -673,3 +673,27 @@ test("claim verification can be deferred without blocking the workspace", async 
   await expect(page.getByTestId("account-claim-start")).toBeVisible();
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });
+
+test("passive account outage never opens an intrusive prompt over the composer", async ({
+  page,
+}) => {
+  await installMockBridge(page, { accountLinked: true });
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__", {
+      configurable: true,
+      set(client) {
+        client.getAccount = async () => {
+          throw new Error("Account service unavailable");
+        };
+        Object.defineProperty(window, "__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__", {
+          value: client,
+          writable: true,
+          configurable: true,
+        });
+      },
+    });
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await expect(page.getByTestId("account-claim-prompt")).toHaveCount(0);
+});

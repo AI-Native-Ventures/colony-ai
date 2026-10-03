@@ -535,7 +535,8 @@ export function createAuthApi(options: AuthApiOptions) {
         200,
       );
       if (!isRecord(body)) throw new AuthApiError("invalid_response");
-      return accountFrom(body.account);
+      // GET /me returns PublicAccount directly; session endpoints wrap it.
+      return accountFrom(body);
     },
 
     async deleteAccount(expectedPubkey: string): Promise<void> {
