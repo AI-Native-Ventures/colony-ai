@@ -8,6 +8,8 @@ import {
   parseExchangeKey,
   parseModels,
   parseAccount,
+  parseCredits,
+  keyFingerprint,
 } from "./openrouter-oauth.mjs";
 
 test("S256 matches RFC 7636 and verifiers have independent entropy", () => {
@@ -90,6 +92,26 @@ function fixture(options = {}) {
   let fronts = 0;
   const servers = [];
   const requests = [];
+  const fixtureFetch = async (url, init) => {
+    requests.push({ url, init });
+    assert.equal(init.redirect, "error");
+    if (url.endsWith("/auth/keys")) {
+      exchanges++;
+      assert.equal(init.method, "POST");
+      const body = JSON.parse(init.body);
+      assert.equal(body.code_challenge_method, "S256");
+      assert.equal(
+        pkceChallenge(body.code_verifier),
+        authUrl.searchParams.get("code_challenge"),
+      );
+      return Response.json({ key: "fixture-credential" });
+    }
+    if (url.endsWith("/key")) return Response.json(keyInfo);
+    if (url.endsWith("/credits")) return new Response("", { status: 403 });
+    if (url.endsWith("/models")) return Response.json(catalogue);
+    throw new Error("Unexpected request");
+  };
+  const providerUrls = [];
   const service = createOpenRouterService({
     bringToFront: () => {
       fronts++;
@@ -107,24 +129,6 @@ function fixture(options = {}) {
       }
       return server;
     },
-    fetchImpl: async (url, init) => {
-      requests.push({ url, init });
-      assert.equal(init.redirect, "error");
-      if (url.endsWith("/auth/keys")) {
-        exchanges++;
-        assert.equal(init.method, "POST");
-        const body = JSON.parse(init.body);
-        assert.equal(body.code_challenge_method, "S256");
-        assert.equal(
-          pkceChallenge(body.code_verifier),
-          authUrl.searchParams.get("code_challenge"),
-        );
-        return Response.json({ key: "fixture-credential" });
-      }
-      if (url.endsWith("/key")) return Response.json(keyInfo);
-      if (url.endsWith("/models")) return Response.json(catalogue);
-      throw new Error("Unexpected request");
-    },
     invoke: async (command, args) => {
       if (command === "get_global_agent_config") return config;
       if (command === "set_global_agent_config") {
@@ -137,9 +141,24 @@ function fixture(options = {}) {
     },
     timeoutMs: 5000,
     ...options,
+    fetchImpl: async (url, init) => {
+      providerUrls.push(url);
+      assert.equal(new URL(url).origin, "https://openrouter.ai");
+      assert.ok(
+        [
+          "https://openrouter.ai/api/v1/credits",
+          "https://openrouter.ai/api/v1/key",
+          "https://openrouter.ai/api/v1/models",
+          "https://openrouter.ai/api/v1/auth/keys",
+        ].includes(url),
+        "only exact documented provider URLs are allowed",
+      );
+      return (options.fetchImpl ?? fixtureFetch)(url, init);
+    },
   });
   return {
     service,
+    providerUrls,
     saves,
     get fronts() {
       return fronts;
@@ -384,7 +403,7 @@ test("paid selection persists the model using key tier and spending allowance", 
   assert.equal(f.saves[1].model, "vendor/paid");
 });
 
-test("exhausted free quota is authoritative and never calls management credits", async () => {
+test("exhausted free quota stays authoritative when account credits are unavailable", async () => {
   const f = fixture({
     fetchImpl: async (url) => {
       if (url.endsWith("/models")) return Response.json(catalogue);
@@ -502,6 +521,7 @@ test("consumed guard rejects replay while the exchange is still pending", async 
     fetchImpl: async (url) => {
       if (url.endsWith("/models")) return Response.json(catalogue);
       if (url.endsWith("/key")) return Response.json(keyInfo);
+      if (url.endsWith("/credits")) return new Response("", { status: 403 });
       arrived();
       return new Promise((resolve) => {
         release = () => resolve(Response.json({ key: "fixture-credential" }));
@@ -555,10 +575,10 @@ test("status is unlinked only without a saved key and reads a valid saved connec
   assert.equal(empty.requests.length, 0);
   const saved = fixture({ initialConfig: savedConfig() });
   assert.equal((await saved.service.status()).status, "connected");
-  assert.equal(saved.requests.length, 2);
+  assert.equal(saved.requests.length, 3);
   assert.equal(
     saved.requests.some((r) => r.url.endsWith("/credits")),
-    false,
+    true,
   );
 });
 
@@ -698,5 +718,256 @@ test("retired config read cannot issue provider requests after a new mount", asy
   assert.equal((await f.service.status()).status, "connected");
   release();
   assert.equal((await pending).status, "cancelled");
-  assert.equal(f.requests.length, 2);
+  assert.equal(f.requests.length, 3);
 });
+
+test("credits parsing subtracts usage exactly and rejects absent or invalid totals", () => {
+  assert.equal(
+    parseCredits({ data: { total_credits: 20, total_usage: 7.5 } }),
+    12.5,
+  );
+  assert.equal(
+    parseCredits({ data: { total_credits: 1, total_usage: 2 } }),
+    -1,
+  );
+  for (const data of [
+    {},
+    { total_credits: 20 },
+    { total_credits: "20", total_usage: 1 },
+    { total_credits: Infinity, total_usage: 1 },
+    { total_credits: 20, total_usage: -1 },
+  ])
+    assert.throws(() => parseCredits({ data }));
+});
+
+function balanceFixture(credits, options = {}) {
+  const probes = [];
+  let config = savedConfig();
+  const f = fixture({
+    fetchImpl: async (url, init) => {
+      if (url.endsWith("/credits")) {
+        probes.push(init);
+        assert.equal(init.method, "GET");
+        assert.equal(init.redirect, "error");
+        return credits(init, probes.length);
+      }
+      if (url.endsWith("/key"))
+        return Response.json({
+          data: { ...keyInfo.data, is_free_tier: false, limit_remaining: 3.5 },
+        });
+      if (url.endsWith("/models")) return Response.json(catalogue);
+      if (url.endsWith("/auth/keys"))
+        return Response.json({ key: "fixture-credential" });
+      throw new Error("Unexpected endpoint");
+    },
+    invoke: async (command, args) => {
+      if (command === "get_global_agent_config") return config;
+      if (command === "set_global_agent_config") {
+        config = args.config;
+        return {};
+      }
+      if (command === "test_ai_connection") return "connected";
+      throw new Error("Unexpected command");
+    },
+    ...options,
+  });
+  return {
+    ...f,
+    probes,
+    changeKey: (key = "second-fixture") => {
+      config = savedConfig({ OPENROUTER_API_KEY: key });
+    },
+  };
+}
+
+test("successful credits connect and refresh show balance, save and test keep it without new probes", async () => {
+  const f = balanceFixture((_, calls) =>
+    Response.json({
+      data: { total_credits: 20, total_usage: calls === 1 ? 7.5 : 8 },
+    }),
+  );
+  const pending = f.service.connect();
+  await f.callback();
+  assert.equal((await pending).balance, 12.5);
+  assert.equal(f.probes.length, 1);
+  assert.equal((await f.service.select("vendor/paid")).balance, 12.5);
+  assert.equal((await f.service.test()).balance, 12.5);
+  assert.equal(f.probes.length, 1);
+  const refreshed = await f.service.status();
+  assert.equal(refreshed.balance, 12);
+  assert.equal(refreshed.status, "connected");
+  assert.equal(f.probes.length, 2);
+  assert.equal(JSON.stringify(refreshed).includes("fixture-credential"), false);
+});
+
+for (const failure of ["401", "403"]) {
+  test(`credits ${failure} falls back to key quota and is cached per key for five minutes`, async () => {
+    let clock = 1000;
+    const f = balanceFixture(
+      () => {
+        if (failure === "network") throw new Error("fixture offline");
+        if (failure === "malformed")
+          return Response.json({ data: { total_credits: 20 } });
+        return new Response("", { status: Number(failure) });
+      },
+      { now: () => clock },
+    );
+    const first = await f.service.status();
+    assert.equal(first.status, "connected");
+    assert.equal(first.balance, null);
+    assert.equal(first.usage, 1.5);
+    assert.equal(first.limit, 5);
+    assert.equal(first.limitRemaining, 3.5);
+    assert.equal(first.freeRemaining, 38);
+    assert.equal(f.probes.length, 1);
+    assert.equal((await f.service.status()).balance, null);
+    assert.equal((await f.service.select("vendor/paid")).status, "connected");
+    assert.equal(f.probes.length, 1);
+    clock += 4 * 60 * 1000 + 59 * 1000;
+    await f.service.status();
+    assert.equal(f.probes.length, 1);
+    clock += 1000;
+    await f.service.status();
+    assert.equal(f.probes.length, 2);
+    f.changeKey();
+    await f.service.status();
+    assert.equal(f.probes.length, 3);
+  });
+}
+
+test("failed refresh clears an earlier balance rather than presenting stale account credits", async () => {
+  const f = balanceFixture((_, calls) =>
+    calls === 1
+      ? Response.json({ data: { total_credits: 20, total_usage: 7.5 } })
+      : new Response("", { status: 403 }),
+  );
+  assert.equal((await f.service.status()).balance, 12.5);
+  assert.equal((await f.service.status()).balance, null);
+  assert.equal((await f.service.test()).balance, null);
+  assert.equal(f.probes.length, 2);
+});
+
+test("cancelling a balance probe cannot poison the next refresh cache", async () => {
+  let release;
+  let arrived;
+  const probing = new Promise((resolve) => {
+    arrived = resolve;
+  });
+  const f = balanceFixture((_, calls) => {
+    if (calls > 1)
+      return Response.json({ data: { total_credits: 20, total_usage: 7.5 } });
+    arrived();
+    return new Promise((resolve) => {
+      release = () => resolve(new Response("", { status: 403 }));
+    });
+  });
+  const pending = f.service.status();
+  await probing;
+  assert.equal(f.service.cancel(), true);
+  release();
+  assert.equal((await pending).status, "cancelled");
+  assert.equal((await f.service.status()).balance, 12.5);
+  assert.equal(f.probes.length, 2);
+});
+
+test("zero account balance never overrides key-based paid-model eligibility", async () => {
+  const f = balanceFixture(() =>
+    Response.json({ data: { total_credits: 20, total_usage: 20 } }),
+  );
+  assert.equal((await f.service.status()).balance, 0);
+  const result = await f.service.select("vendor/paid");
+  assert.equal(result.status, "connected");
+  assert.equal(result.balance, 0);
+  assert.equal(f.probes.length, 1);
+});
+
+test("balance cache is bounded and evicted keys are probed again", async () => {
+  const f = balanceFixture(() => new Response("", { status: 403 }));
+  await f.service.status();
+  for (let i = 0; i < 32; i++) {
+    f.changeKey(`fixture-rotation-${i}`);
+    await f.service.status();
+  }
+  assert.equal(f.probes.length, 33);
+  f.changeKey("fixture-credential");
+  await f.service.status();
+  assert.equal(f.probes.length, 34);
+});
+
+test("provider requests use exact HTTPS URLs and credits carry the saved bearer key", async () => {
+  const f = balanceFixture(() =>
+    Response.json({ data: { total_credits: 20, total_usage: 7.5 } }),
+  );
+  const pending = f.service.connect();
+  await f.callback();
+  assert.equal((await pending).status, "connected");
+  assert.deepEqual([...new Set(f.providerUrls)].sort(), [
+    "https://openrouter.ai/api/v1/auth/keys",
+    "https://openrouter.ai/api/v1/credits",
+    "https://openrouter.ai/api/v1/key",
+    "https://openrouter.ai/api/v1/models",
+  ]);
+  assert.equal(f.probes[0].headers.Authorization, "Bearer fixture-credential");
+});
+
+test("key fingerprints are deterministic SHA256 hex without the credential", () => {
+  const key = "fixture-credential";
+  const fingerprint = keyFingerprint(key);
+  assert.match(fingerprint, /^[a-f0-9]{64}$/);
+  assert.equal(fingerprint.includes(key), false);
+  assert.equal(keyFingerprint(key), fingerprint);
+  assert.notEqual(keyFingerprint("other-fixture"), fingerprint);
+});
+
+for (const failure of ["network", "500", "malformed"]) {
+  test(`transient credits ${failure} retries on the next refresh`, async () => {
+    const f = balanceFixture((_, calls) => {
+      if (calls > 1)
+        return Response.json({ data: { total_credits: 20, total_usage: 7.5 } });
+      if (failure === "network") throw new Error("fixture offline");
+      if (failure === "malformed")
+        return Response.json({ data: { total_credits: 20 } });
+      return new Response("", { status: 500 });
+    });
+    const first = await f.service.status();
+    assert.equal(first.status, "connected");
+    assert.equal(first.balance, null);
+    assert.equal(first.usage, 1.5);
+    assert.equal((await f.service.status()).balance, 12.5);
+    assert.equal(f.probes.length, 2);
+  });
+}
+
+for (const creditsTimeoutMs of [undefined, 20]) {
+  test(`hanging credits probe times out at ${creditsTimeoutMs ?? 5000} ms while models load in parallel`, {
+    timeout: 6500,
+  }, async () => {
+    let aborted = false;
+    const f = balanceFixture(
+      (init) =>
+        new Promise((_, reject) => {
+          init.signal.addEventListener(
+            "abort",
+            () => {
+              aborted = true;
+              reject(init.signal.reason);
+            },
+            { once: true },
+          );
+        }),
+      creditsTimeoutMs === undefined ? {} : { creditsTimeoutMs },
+    );
+    const started = Date.now();
+    const pending = f.service.status();
+    // Allow config and key reads to complete while credits remain pending.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.ok(f.providerUrls.includes("https://openrouter.ai/api/v1/models"));
+    assert.equal(aborted, false);
+    const result = await pending;
+    assert.equal(aborted, true);
+    assert.equal(result.status, "connected");
+    assert.equal(result.balance, null);
+    assert.ok(Date.now() - started >= (creditsTimeoutMs ?? 5000) - 5);
+    assert.ok(Date.now() - started < (creditsTimeoutMs ?? 5000) + 1000);
+  });
+}

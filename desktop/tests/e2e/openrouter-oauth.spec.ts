@@ -4,7 +4,8 @@ import { openR17ConnectionSetup, r17Runtime } from "../helpers/onboarding";
 
 const connected = {
   status: "connected",
-  usage: 0,
+  balance: 12.5,
+  usage: 1.5,
   freeUsed: 12,
   limit: 5,
   limitRemaining: 0,
@@ -122,7 +123,13 @@ for (const viewport of [
   { width: 1728, height: 1117 },
   { width: 1440, height: 900 },
 ]) {
-  for (const state of ["unlinked", "connected", "limit", "error"] as const) {
+  for (const state of [
+    "unlinked",
+    "connected",
+    "usage",
+    "limit",
+    "error",
+  ] as const) {
     test(`OpenRouter ${state} at ${viewport.width}`, async ({ page }) => {
       await page.setViewportSize(viewport);
       await openRouterTab(page);
@@ -136,8 +143,11 @@ for (const viewport of [
               }
             : {
                 ...connected,
-                status: state,
+                status: state === "usage" ? "connected" : state,
+                balance:
+                  state === "connected" || state === "limit" ? 12.5 : null,
                 freeRemaining: state === "limit" ? 0 : 38,
+                freeUsed: state === "limit" ? 50 : 12,
               },
         );
         await page
@@ -147,11 +157,48 @@ for (const viewport of [
       const panel = page.getByTestId("openrouter-connection");
       await expect(panel).toHaveAttribute("aria-busy", "false");
       await expect(panel.locator('input[type="password"]')).toHaveCount(0);
-      if (state === "connected" || state === "limit") {
+      if (state === "connected" || state === "usage" || state === "limit") {
         await expect(
           panel.getByText("Connected", { exact: true }),
         ).toBeVisible();
-        await expect(panel.getByText("$0.00", { exact: true })).toBeVisible();
+        await expect(
+          panel.getByText(
+            state === "connected" || state === "limit"
+              ? "OpenRouter balance"
+              : "Spent so far on this key",
+            { exact: false },
+          ),
+        ).toBeVisible();
+        await expect(
+          panel.getByText(
+            state === "connected" || state === "limit" ? "$12.50" : "$1.50",
+            {
+              exact: true,
+            },
+          ),
+        ).toBeVisible();
+        await expect(panel).toContainText(
+          "Key limit: $5.00. Remaining: $0.00.",
+        );
+        await expect(panel).toContainText("Resets at midnight UTC.");
+        await expect(
+          panel.getByRole("status", {
+            name:
+              state === "usage"
+                ? "Spent so far on this key"
+                : "OpenRouter balance",
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expect(panel).toContainText(
+          `${state === "limit" ? 50 : 12} requests used today.`,
+        );
+        await expect(
+          panel.getByRole("button", {
+            name: "Add credits on OpenRouter (opens in your browser)",
+            exact: true,
+          }),
+        ).toBeVisible();
         await expect(panel.getByLabel("Model", { exact: true })).toHaveValue(
           "fixture/free:free",
         );
@@ -177,7 +224,7 @@ for (const viewport of [
       await page.screenshot({
         path: `test-results/openrouter-proof/app-${state}-${viewport.width}.png`,
       });
-      if (process.env.COLONY_DESIGN_REFERENCE_URL) {
+      if (process.env.COLONY_DESIGN_REFERENCE_URL && state !== "usage") {
         const reference = await page.context().newPage();
         await reference.setViewportSize(viewport);
         await reference.goto(
@@ -191,6 +238,24 @@ for (const viewport of [
           path: `test-results/openrouter-proof/reference-${state}-${viewport.width}.png`,
         });
         await reference.close();
+      }
+      if (state === "connected" || state === "usage" || state === "limit") {
+        await panel
+          .getByRole("button", {
+            name: "Add credits on OpenRouter (opens in your browser)",
+            exact: true,
+          })
+          .click();
+        const urls = await page.evaluate(() =>
+          (
+            window as unknown as {
+              __TAURI_INTERNALS__: {
+                invoke: (command: string) => Promise<string[]>;
+              };
+            }
+          ).__TAURI_INTERNALS__.invoke("get_e2e_opened_external_urls"),
+        );
+        expect(urls).toContain("https://openrouter.ai/credits");
       }
       if (state === "connected") {
         await panel
@@ -274,6 +339,11 @@ for (const status of ["linked", "reauth", "unmanaged"] as const) {
         ? {
             ...connected,
             status,
+            balance: null,
+            freeTier: null,
+            freeUsed: null,
+            freeRemaining: null,
+            freeLimit: null,
             limit: null,
             limitRemaining: null,
             usage: null,
@@ -341,4 +411,86 @@ test("model selection keeps focus and saves only on explicit confirmation", asyn
     .click();
   await expect(panel).toHaveAttribute("aria-busy", "false");
   expect(await model()).toBe("fixture/free-two:free");
+});
+
+test("paid key using a free model shows daily requests and hides them in paid mode", async ({
+  page,
+}) => {
+  await openRouterTab(page);
+  await mockOAuth(page, {
+    ...connected,
+    balance: null,
+    freeTier: false,
+    limit: null,
+    limitRemaining: null,
+  });
+  await page
+    .getByRole("button", { name: "Connect OpenRouter", exact: true })
+    .click();
+  const panel = page.getByTestId("openrouter-connection");
+  await expect(
+    panel.getByText("Spent so far on this key", { exact: false }),
+  ).toBeVisible();
+  await expect(panel.getByText("$1.50", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Key limit:", { exact: false })).toHaveCount(0);
+  await expect(panel.getByText("38 / 50 requests left")).toBeVisible();
+  await panel.getByRole("button", { name: "Paid models", exact: true }).click();
+  await expect(
+    panel.getByText("Daily free allowance", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    panel.getByRole("button", { name: "Paid models", exact: true }),
+  ).toBeEnabled();
+});
+
+for (const balance of [0, -0.004, -1]) {
+  test(`account balance ${balance} shows Out of credits without disabling a usable model`, async ({
+    page,
+  }) => {
+    await openRouterTab(page);
+    await mockOAuth(page, { ...connected, balance });
+    await page
+      .getByRole("button", { name: "Connect OpenRouter", exact: true })
+      .click();
+    const panel = page.getByTestId("openrouter-connection");
+    await expect(
+      panel.getByRole("status", { name: "OpenRouter balance", exact: true }),
+    ).toContainText("Out of credits");
+    await expect(
+      panel.getByRole("button", { name: "Test connection", exact: true }),
+    ).toBeEnabled();
+    await expect(panel.getByText(/-\$/)).toHaveCount(0);
+  });
+}
+
+test("balance, spending and key limits share currency formatting with thousands separators", async ({
+  page,
+}) => {
+  await openRouterTab(page);
+  await mockOAuth(page, {
+    ...connected,
+    balance: 1250.5,
+    limit: 10000,
+    limitRemaining: 9998.5,
+  });
+  await page
+    .getByRole("button", { name: "Connect OpenRouter", exact: true })
+    .click();
+  const panel = page.getByTestId("openrouter-connection");
+  await expect(panel.getByText("$1,250.50", { exact: true })).toBeVisible();
+  await expect(panel).toContainText(
+    "Key limit: $10,000.00. Remaining: $9,998.50.",
+  );
+  await mockOAuth(page, { ...connected, balance: null, usage: 1250.5 }, false, {
+    ...connected,
+    balance: null,
+    usage: 1250.5,
+  });
+  await panel.getByRole("button", { name: "Refresh connection" }).click();
+  await expect(
+    panel.getByRole("status", {
+      name: "Spent so far on this key",
+      exact: true,
+    }),
+  ).toContainText("$1,250.50");
 });

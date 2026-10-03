@@ -8,6 +8,7 @@ export type OpenRouterModel = {
 };
 export type OpenRouterConnection = {
   status: "connected" | "limit" | "linked";
+  balance: number | null;
   usage: number | null;
   freeUsed: number | null;
   limit: number | null;

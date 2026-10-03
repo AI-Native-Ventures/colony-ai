@@ -3,10 +3,16 @@ import { createServer } from "node:http";
 
 const API = "https://openrouter.ai/api/v1";
 const MAX_JSON_BYTES = 8 * 1024 * 1024;
+const BALANCE_RETRY_MS = 5 * 60 * 1000;
+const MAX_BALANCE_KEYS = 32;
 
 /** RFC 7636 S256; the verifier stays in the trusted main process. */
 export function pkceChallenge(verifier) {
   return createHash("sha256").update(verifier).digest("base64url");
+}
+/** Identify a cached key without retaining its credential. */
+export function keyFingerprint(key) {
+  return createHash("sha256").update(key).digest("hex");
 }
 /** Generate a 384-bit, URL-safe verifier and its matching challenge. */
 export function pkcePair() {
@@ -44,6 +50,14 @@ export function parseAccount(value) {
     freeLimit: finite(data.free_model_daily_requests?.limit),
     freeTier: typeof data.is_free_tier === "boolean" ? data.is_free_tier : null,
   };
+}
+/** Read the account balance only from a complete, finite credits response. */
+export function parseCredits(value) {
+  const credits = finite(value?.data?.total_credits);
+  const usage = finite(value?.data?.total_usage);
+  if (credits === null || usage === null)
+    throw new Error("OpenRouter account balance is unavailable.");
+  return credits - usage;
 }
 /** Project tool-capable text models and classify free pricing from the catalogue. */
 export function parseModels(value) {
@@ -97,10 +111,15 @@ export function createOpenRouterService({
   timeoutMs = 600_000,
   bringToFront = () => {},
   createServerImpl = createServer,
+  now = Date.now,
+  creditsTimeoutMs = 5000,
 }) {
   let active = null;
+  // Native-only, bounded cache. Fingerprints identify keys without retaining them.
+  // Authorization denials retry after five minutes; transient failures retry on refresh.
+  const balances = new Map();
 
-  async function json(path, key, attempt, body) {
+  async function json(path, key, attempt, body, requestTimeoutMs = 30_000) {
     check(attempt);
     const response = await fetchImpl(`${API}${path}`, {
       method: body ? "POST" : "GET",
@@ -112,7 +131,7 @@ export function createOpenRouterService({
       ...(body ? { body: JSON.stringify(body) } : {}),
       signal: AbortSignal.any([
         attempt.controller.signal,
-        AbortSignal.timeout(30_000),
+        AbortSignal.timeout(requestTimeoutMs),
       ]),
     });
     if (!response.ok) {
@@ -154,10 +173,47 @@ export function createOpenRouterService({
     if (active !== attempt || attempt.controller.signal.aborted)
       throw new Error("OpenRouter sign-in ended. Try again.");
   }
-  async function accountAndModels(key, attempt, knownModels) {
+  async function balance(key, attempt, refresh) {
+    const fingerprint = keyFingerprint(key);
+    const cached = balances.get(fingerprint);
+    if (!refresh || (cached?.retryAt && now() < cached.retryAt))
+      return cached?.value ?? null;
+    let value = null;
+    let retryAt = null;
+    try {
+      // This endpoint normally requires a management key. A denial is optional
+      // metadata failure, never a reason to unlink or replace the OAuth key.
+      value = parseCredits(
+        await json("/credits", key, attempt, undefined, creditsTimeoutMs),
+      );
+    } catch (error) {
+      check(attempt);
+      if (error.status === 401 || error.status === 403)
+        retryAt = now() + BALANCE_RETRY_MS;
+    }
+    check(attempt);
+    balances.delete(fingerprint);
+    balances.set(fingerprint, {
+      value,
+      retryAt,
+    });
+    if (balances.size > MAX_BALANCE_KEYS)
+      balances.delete(balances.keys().next().value);
+    return value;
+  }
+  async function accountAndModels(
+    key,
+    attempt,
+    knownModels,
+    refreshBalance = false,
+  ) {
     const account = parseAccount(await json("/key", key, attempt));
-    const models =
-      knownModels ?? parseModels(await json("/models", key, attempt));
+    check(attempt);
+    const [accountBalance, models] = await Promise.all([
+      balance(key, attempt, refreshBalance),
+      knownModels ?? json("/models", key, attempt).then(parseModels),
+    ]);
+    account.balance = accountBalance;
     check(attempt);
     return { account, models };
   }
@@ -335,7 +391,7 @@ export function createOpenRouterService({
       let account;
       let metadataWarning = null;
       try {
-        ({ account } = await accountAndModels(key, attempt, models));
+        ({ account } = await accountAndModels(key, attempt, models, true));
         metadataWarning = account.metadataWarning ?? null;
       } catch (error) {
         check(attempt);
@@ -368,6 +424,7 @@ export function createOpenRouterService({
   }
   function unknownAccount() {
     return {
+      balance: null,
       usage: null,
       freeUsed: null,
       limit: null,
@@ -377,7 +434,7 @@ export function createOpenRouterService({
       freeTier: null,
     };
   }
-  async function read(attempt) {
+  async function read(attempt, refreshBalance = false) {
     const config = await invoke("get_global_agent_config", {});
     check(attempt);
     if (!config.env_vars?.OPENROUTER_API_KEY)
@@ -395,6 +452,8 @@ export function createOpenRouterService({
       const { account, models } = await accountAndModels(
         config.env_vars.OPENROUTER_API_KEY,
         attempt,
+        undefined,
+        refreshBalance,
       );
       check(attempt);
       return { config, account, models };
@@ -424,7 +483,7 @@ export function createOpenRouterService({
   async function status() {
     return run(
       async (attempt) => {
-        const data = await read(attempt);
+        const data = await read(attempt, true);
         check(attempt);
         return (
           data.outcome ??
