@@ -45,6 +45,8 @@ import {
   customGradientStops,
   isValidHexColor,
   writeAppearanceSnapshot,
+  readAppearanceSnapshot,
+  mergeAppearanceSnapshot,
   type AppearanceSnapshot,
 } from "../lib/appearanceSnapshot";
 import { applyConversationMessageSize } from "../lib/conversationMessageSizePreference";
@@ -183,85 +185,6 @@ export function currentAppearanceSnapshot(
     density,
     linkPreview,
     threadLayout,
-  };
-}
-
-export function readAppearanceSnapshot(
-  key: string,
-): Partial<AppearanceSnapshot> | null {
-  try {
-    const value = window.localStorage.getItem(key);
-    if (!value) return null;
-    const parsed = JSON.parse(value) as Partial<AppearanceSnapshot>;
-    return parsed.version === 1 ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-export function mergeAppearanceSnapshot(
-  base: AppearanceSnapshot,
-  value: Partial<AppearanceSnapshot> | null,
-): AppearanceSnapshot {
-  if (!value) return base;
-  const colors = (candidate: unknown): [string, string] | null => {
-    if (
-      Array.isArray(candidate) &&
-      candidate.length === 2 &&
-      candidate.every(
-        (color) => typeof color === "string" && isValidHexColor(color),
-      )
-    ) {
-      return [candidate[0], candidate[1]];
-    }
-    return null;
-  };
-  const customLight = colors(value.customLight) ?? base.customLight;
-  const customDark = colors(value.customDark) ?? base.customDark;
-  return {
-    ...base,
-    ...value,
-    version: 1,
-    theme: typeof value.theme === "string" ? value.theme : base.theme,
-    accent:
-      typeof value.accent === "string" &&
-      (isValidHexColor(value.accent) || value.accent === "neutral")
-        ? value.accent === "neutral"
-          ? "#74717B"
-          : value.accent
-        : base.accent,
-    custom: value.custom === true,
-    customLight,
-    customDark,
-    glassBackground: value.glassBackground === true,
-    glassOpacity:
-      typeof value.glassOpacity === "number"
-        ? Math.max(30, Math.min(90, value.glassOpacity))
-        : base.glassOpacity,
-    prominentActiveTab:
-      typeof value.prominentActiveTab === "boolean"
-        ? value.prominentActiveTab
-        : base.prominentActiveTab,
-    messageSize:
-      value.messageSize === "smaller" ||
-      value.messageSize === "default" ||
-      value.messageSize === "larger"
-        ? value.messageSize
-        : base.messageSize,
-    density:
-      value.density === "compact" ||
-      value.density === "comfortable" ||
-      value.density === "spacious"
-        ? value.density
-        : base.density,
-    linkPreview:
-      value.linkPreview === "compact" || value.linkPreview === "rich"
-        ? value.linkPreview
-        : base.linkPreview,
-    threadLayout:
-      value.threadLayout === "focus" || value.threadLayout === "split"
-        ? value.threadLayout
-        : base.threadLayout,
   };
 }
 
@@ -705,8 +628,6 @@ export function AppearanceSettingsPanel({
         ...patch,
         version: 1,
       };
-      setPreferences(next);
-      if (scope === "conversations") setHexDrafts([...next.customLight]);
       const key = scope === "conversations" ? globalKey : businessKey;
       try {
         if (!writeAppearanceSnapshot(window.localStorage, key, next)) {
@@ -714,6 +635,8 @@ export function AppearanceSettingsPanel({
           return;
         }
         setSaved(true);
+        setPreferences(next);
+        setHexDrafts([...next.customLight]);
       } catch {
         setSaved(false);
         return;
@@ -848,7 +771,7 @@ export function AppearanceSettingsPanel({
       <header className="ap-heading">
         <div>
           <h1 className="text-settings-title">Make yourself at home.</h1>
-          <p>Your appearance in {businessName}.</p>
+          <p data-settings-subcopy>Your appearance in {businessName}.</p>
         </div>
         <span className="ap-scope">
           <UsersRound aria-hidden="true" className="icon" /> Only you
@@ -1076,27 +999,6 @@ export function AppearanceSettingsPanel({
                   <option value="smaller">Smaller</option>
                   <option value="default">Default</option>
                   <option value="larger">Larger</option>
-                </select>
-                <ChevronDown aria-hidden="true" className="icon" />
-              </label>
-            </AppearanceRow>
-            <AppearanceRow title="Density">
-              <label className="ap-control ap-select-label">
-                <span className="sr-only">Conversation density</span>
-                <select
-                  aria-label="Conversation density"
-                  data-testid="appearance-density"
-                  onChange={(event) =>
-                    commit(
-                      { density: event.target.value as ConversationDensity },
-                      "conversations",
-                    )
-                  }
-                  value={preferences.density}
-                >
-                  <option value="compact">Compact</option>
-                  <option value="comfortable">Comfortable</option>
-                  <option value="spacious">Spacious</option>
                 </select>
                 <ChevronDown aria-hidden="true" className="icon" />
               </label>

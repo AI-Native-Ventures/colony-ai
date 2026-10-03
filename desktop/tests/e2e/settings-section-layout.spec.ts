@@ -321,14 +321,14 @@ test("account profile follows the r19 grid and type scale at desktop widths", as
   }
 });
 
-test("workspace appearance saves the named theme and density together", async ({
+test("workspace appearance saves the named theme and preserves density", async ({
   page,
 }) => {
   await installMockBridge(page);
   await page.goto("/");
   await openSettings(page, "appearance");
 
-  await expect(page.getByTestId("appearance-density")).toBeVisible();
+  await expect(page.getByTestId("appearance-density")).toHaveCount(0);
   const innerTabIndicatorColor = () =>
     page
       .getByTestId("settings-inner-appearance")
@@ -370,9 +370,9 @@ test("workspace appearance saves the named theme and density together", async ({
   });
   await expect.poll(innerTabIndicatorColor).toBe("rgb(38, 85, 160)");
 
-  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("appearance-open-themes").click();
   await page.getByTestId("theme-catalog-buzz-dark").click();
-  await page.getByTestId("appearance-preview-density").selectOption("compact");
+
   await page.getByTestId("theme-use").click();
   await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
   await expect
@@ -440,7 +440,7 @@ test("workspace appearance saves the named theme and density together", async ({
     glassBackground: false,
     prominentActiveTab: false,
     theme: "buzz-dark",
-    density: "compact",
+    density: "comfortable",
   });
 });
 

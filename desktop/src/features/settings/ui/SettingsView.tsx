@@ -17,7 +17,7 @@ import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import {
-  setConversationDensity,
+  getConversationDensity,
   type ConversationDensity,
 } from "@/shared/lib/conversationDensityPreference";
 import {
@@ -31,12 +31,10 @@ import {
   blendColor,
   isValidHexColor,
   writeAppearanceSnapshot,
-} from "../lib/appearanceSnapshot";
-import {
-  currentAppearanceSnapshot,
-  mergeAppearanceSnapshot,
   readAppearanceSnapshot,
-} from "./AppearanceSettingsPanel";
+  mergeAppearanceSnapshot,
+} from "../lib/appearanceSnapshot";
+import { currentAppearanceSnapshot } from "./AppearanceSettingsPanel";
 import {
   canonicalSettingsSection,
   renderSettingsSection,
@@ -236,8 +234,6 @@ export function SettingsView({
     React.useState<SyntaxThemeName>(initialAppearance.theme as SyntaxThemeName);
   const [appearanceDraftDensity, setAppearanceDraftDensity] =
     React.useState<ConversationDensity>(initialAppearance.density);
-  const [previewDensity, setPreviewDensity] =
-    React.useState<ConversationDensity>(initialAppearance.density);
   const [appearanceSaveFailed, setAppearanceSaveFailed] = React.useState(false);
   const [savedAppearance, setSavedAppearance] = React.useState({
     theme: initialAppearance.theme as SyntaxThemeName,
@@ -246,9 +242,7 @@ export function SettingsView({
 
   const activeSection = canonicalSettingsSection(section);
   const activeGroup = routeGroup(activeSection);
-  const activeInnerSection = activeSection.startsWith("settings/theme")
-    ? "appearance"
-    : activeSection;
+  const activeInnerSection = activeSection;
   const TopbarIcon =
     activeGroup.id === "agents-group" ? Settings : activeGroup.icon;
   const signedInDisplayName =
@@ -275,7 +269,6 @@ export function SettingsView({
     setAppearanceDraftTheme(selectedTheme);
     setAppearanceDraftDensity(current.density);
     setPreviewTheme(selectedTheme);
-    setPreviewDensity(current.density);
     setSavedAppearance({
       theme: selectedTheme,
       density: current.density,
@@ -398,6 +391,7 @@ export function SettingsView({
       theme: selectedTheme,
       density: selectedDensity,
       followSystem: false,
+      custom: false,
     };
     const saved = writeAppearanceSnapshot(
       window.localStorage,
@@ -409,6 +403,11 @@ export function SettingsView({
       return;
     }
     setAppearanceSaveFailed(false);
+    document.documentElement.classList.remove("w20-custom-appearance");
+    document.documentElement.style.removeProperty(
+      "--w20-custom-gradient-start",
+    );
+    document.documentElement.style.removeProperty("--w20-custom-gradient-end");
     try {
       window.localStorage.setItem(lastBusinessKey, appearanceBusinessId);
     } catch {
@@ -419,7 +418,6 @@ export function SettingsView({
       accent: next.accent,
       followSystem: false,
     });
-    setConversationDensity(selectedDensity);
     setAppearanceDraftTheme(selectedTheme);
     setAppearanceDraftDensity(selectedDensity);
     setSavedAppearance({ theme: selectedTheme, density: selectedDensity });
@@ -427,7 +425,7 @@ export function SettingsView({
   }
 
   function savePreviewAppearance() {
-    saveAppearance(previewTheme, previewDensity);
+    saveAppearance(previewTheme, getConversationDensity());
   }
 
   return (
@@ -665,27 +663,26 @@ export function SettingsView({
             >
               {activeSection === "settings/themes" ? (
                 <ThemeCatalogRoute
+                  onBack={() => chooseSection("appearance")}
                   onPreview={(name) => {
                     setPreviewTheme(name);
-                    setPreviewDensity(appearanceDraftDensity);
+
                     setAppearanceSaveFailed(false);
                     chooseSection("settings/theme-preview");
                   }}
                 />
               ) : activeSection === "settings/theme-preview" ? (
                 <ThemePreviewRoute
-                  density={previewDensity}
-                  displayName={signedInDisplayName}
                   name={previewTheme}
                   onBack={() => chooseSection("settings/themes")}
-                  onDensityChange={setPreviewDensity}
+                  saveFailed={appearanceSaveFailed}
                   onApply={savePreviewAppearance}
                 />
               ) : activeSection === "settings/theme-applied" ? (
                 <ThemeAppliedRoute
-                  density={savedAppearance.density}
                   name={savedAppearance.theme}
                   onDone={() => chooseSection("appearance")}
+                  onBack={() => chooseSection("settings/themes")}
                 />
               ) : (
                 renderSettingsSection(activeSection, {

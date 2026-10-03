@@ -26,6 +26,21 @@ import {
   type RemoteCommunityTheme,
 } from "./communityThemeSync";
 import { useTheme } from "./ThemeProvider";
+import {
+  appearanceSnapshotKey,
+  customGradientStops,
+  readAppearanceSnapshot,
+  isValidHexColor,
+} from "@/features/settings/lib/appearanceSnapshot";
+import { applyConversationMessageSize } from "@/features/settings/lib/conversationMessageSizePreference";
+import { setConversationDensity } from "@/shared/lib/conversationDensityPreference";
+import { setLinkPreviewStyle } from "@/shared/lib/linkPreviewStylePreference";
+import { setThreadViewMode } from "@/features/channels/lib/threadViewModePreference";
+import {
+  LIGHT_THEMES,
+  SYNTAX_THEMES,
+  type SyntaxThemeName,
+} from "./theme-loader";
 
 export function CommunityThemeController() {
   const { activeCommunity } = useCommunities();
@@ -73,6 +88,30 @@ export function CommunityThemeController() {
     if (!pubkey || !relayUrl) return;
     const local = readCommunityThemePreference(pubkey, relayUrl);
     const dirty = readCommunityThemeOutbox(pubkey, relayUrl);
+    const snapshot = activeCommunity?.id
+      ? readAppearanceSnapshot(
+          appearanceSnapshotKey(pubkey, activeCommunity.id),
+        )
+      : null;
+    // The single Settings save is authoritative even if a legacy cache write
+    // failed. Keep that snapshot as the durable recovery record.
+    const saved: CommunityThemePreference | null =
+      snapshot &&
+      SYNTAX_THEMES.includes(snapshot.theme as SyntaxThemeName) &&
+      typeof snapshot.accent === "string" &&
+      isValidHexColor(snapshot.accent) &&
+      typeof snapshot.followSystem === "boolean"
+        ? {
+            version: 1,
+            theme: snapshot.theme as SyntaxThemeName,
+            accent: snapshot.accent,
+            followSystem: snapshot.followSystem,
+          }
+        : null;
+    if (saved && (!local || !sameCommunityThemePreference(saved, local))) {
+      writeCommunityThemePreference(pubkey, relayUrl, saved);
+      writeCommunityThemeOutbox(pubkey, relayUrl, saved);
+    }
     // Preserve the user's existing global appearance the first time this
     // feature sees their current community. Later missing/malformed target
     // records use the stable default so the previous community never leaks.
@@ -80,7 +119,7 @@ export function CommunityThemeController() {
       hasMigratedCommunityTheme(pubkey),
       initialPreferenceRef.current,
     );
-    const scopedPreference = dirty ?? local ?? fallback;
+    const scopedPreference = saved ?? dirty ?? local ?? fallback;
     scopedPreferenceRef.current = scopedPreference;
     applyPreference(scopedPreference);
     // Initialization is programmatic even when the provider already exposes
@@ -91,7 +130,57 @@ export function CommunityThemeController() {
       currentPreferenceRef.current,
       true,
     );
-  }, [pubkey, relayUrl, applyPreference]);
+  }, [pubkey, relayUrl, activeCommunity?.id, applyPreference]);
+
+  // Restore full local appearance before Settings is opened after a restart.
+  useLayoutEffect(() => {
+    if (!pubkey || !activeCommunity?.id) return;
+    const business = readAppearanceSnapshot(
+      appearanceSnapshotKey(pubkey, activeCommunity.id),
+    );
+    const global = readAppearanceSnapshot(
+      appearanceSnapshotKey(pubkey, "global-conversations"),
+    );
+    const root = document.documentElement;
+    const colors = business?.customLight;
+    if (
+      business?.custom &&
+      Array.isArray(colors) &&
+      colors.length === 2 &&
+      colors.every(isValidHexColor)
+    ) {
+      const mode = business.followSystem
+        ? theme.isDark
+          ? "dark"
+          : "light"
+        : LIGHT_THEMES.has(business.theme as SyntaxThemeName)
+          ? "light"
+          : "dark";
+      const [first, second] = customGradientStops(colors, mode);
+      root.style.setProperty("--w20-custom-gradient-start", first);
+      root.style.setProperty("--w20-custom-gradient-end", second);
+      root.classList.add("w20-custom-appearance");
+    } else {
+      root.style.removeProperty("--w20-custom-gradient-start");
+      root.style.removeProperty("--w20-custom-gradient-end");
+      root.classList.remove("w20-custom-appearance");
+    }
+    const conversations = global ?? business;
+    const size = conversations?.messageSize;
+    if (size === "smaller" || size === "default" || size === "larger")
+      applyConversationMessageSize(size);
+    const density = conversations?.density;
+    if (
+      density === "compact" ||
+      density === "comfortable" ||
+      density === "spacious"
+    )
+      setConversationDensity(density);
+    const links = conversations?.linkPreview;
+    if (links === "compact" || links === "rich") setLinkPreviewStyle(links);
+    const threads = conversations?.threadLayout;
+    if (threads === "split" || threads === "focus") setThreadViewMode(threads);
+  }, [pubkey, activeCommunity?.id, theme.isDark]);
 
   useEffect(() => {
     if (!pubkey || !relayUrl) return;
@@ -118,16 +207,38 @@ export function CommunityThemeController() {
       if (!isNewerCommunityThemeCoordinate(remote, last)) {
         return;
       }
+      const dirty = readCommunityThemeOutbox(pubkey, relayUrl);
+      if (dirty) {
+        lastRemoteRef.current = {
+          createdAt: remote.createdAt,
+          eventId: remote.eventId,
+        };
+        manager.acceptRemote(remote);
+        manager.publish(dirty);
+        return;
+      }
+      // Keep the restart record in step with an accepted remote preference.
+      // On storage failure retain the durable local record and retry hydration
+      // on the next reconnect rather than applying a torn preference.
+      if (activeCommunity?.id) {
+        const key = appearanceSnapshotKey(pubkey, activeCommunity.id);
+        const snapshot = readAppearanceSnapshot(key);
+        if (snapshot) {
+          try {
+            window.localStorage.setItem(
+              key,
+              JSON.stringify({ ...snapshot, ...remote.preference }),
+            );
+          } catch {
+            return;
+          }
+        }
+      }
       lastRemoteRef.current = {
         createdAt: remote.createdAt,
         eventId: remote.eventId,
       };
       manager.acceptRemote(remote);
-      const dirty = readCommunityThemeOutbox(pubkey, relayUrl);
-      if (dirty) {
-        manager.publish(dirty);
-        return;
-      }
       scopedPreferenceRef.current = remote.preference;
       manager.cancelPendingPublish();
       cacheAndApplyCommunityTheme(
@@ -184,7 +295,7 @@ export function CommunityThemeController() {
       unsubscribeReconnect();
       if (unsubscribe) void unsubscribe();
     };
-  }, [pubkey, relayUrl, applyPreference]);
+  }, [pubkey, relayUrl, activeCommunity?.id, applyPreference]);
 
   useEffect(() => {
     if (!pubkey || !relayUrl) return;

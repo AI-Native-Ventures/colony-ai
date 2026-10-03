@@ -2109,20 +2109,19 @@ test("opens settings with the keyboard shortcut and applies a named theme", asyn
     )
     .toBe(true);
 
-  await page.getByRole("button", { name: "Browse named themes" }).click();
+  await page.getByTestId("appearance-open-themes").click();
   await expect(page.getByTestId("settings-theme-catalog")).toBeVisible();
   await page.getByTestId("theme-catalog-github-light").click();
   await expect(page.getByTestId("settings-theme-preview")).toBeVisible();
   const themePreview = page.getByTestId("theme-workspace-preview");
-  const signedInName = await page.locator(".w20-nav-person strong").innerText();
-  await expect(themePreview).toContainText("Preview content only");
-  await expect(themePreview.getByTestId("theme-preview-person")).toHaveText(
-    signedInName,
+  await expect(themePreview).toContainText(
+    "The September designs are ready for feedback.",
   );
-  await page.getByTestId("appearance-preview-density").selectOption("compact");
   await page.getByTestId("theme-use").click();
   await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-  await expect(page.getByRole("status")).toContainText("Compact");
+  await expect(page.getByRole("status")).toContainText(
+    "Your personal appearance is updated.",
+  );
 
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))

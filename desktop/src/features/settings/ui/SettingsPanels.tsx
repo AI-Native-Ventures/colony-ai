@@ -84,7 +84,7 @@ import { UpdateChecker } from "../UpdateChecker";
 import { SettingsSectionHeader } from "./SettingsSectionHeader";
 import { VoiceSettingsCard } from "./VoiceSettingsCard";
 import { DevicePrivacySettingsPanel } from "./DevicePrivacySettingsPanel";
-import { WorkspaceAppearanceSettingsPanel } from "./WorkspaceAppearanceSettingsPanel";
+import { AppearanceSettingsPanel } from "./AppearanceSettingsPanel";
 import type { ConversationDensity } from "@/shared/lib/conversationDensityPreference";
 import { AgentDefaultsSettingsCard } from "./AgentDefaultsSettingsCard";
 import {
@@ -1055,20 +1055,9 @@ export function renderSettingsSection(
       return <MeshComputeWorkspace />;
     case "appearance":
       return (
-        <WorkspaceAppearanceSettingsPanel
-          density={props.appearanceDensity ?? "comfortable"}
-          saveFailed={props.appearanceSaveFailed ?? false}
-          saved={props.appearanceSaved ?? false}
-          savedDensity={props.appearanceSavedDensity ?? "comfortable"}
-          savedTheme={props.appearanceSavedTheme ?? "buzz"}
-          onDensityChange={props.onSetAppearanceDensity ?? (() => undefined)}
+        <AppearanceSettingsPanel
           onOpenThemeCatalog={props.onOpenThemeCatalog ?? (() => undefined)}
-          onReturn={
-            props.onReturnFromAppearanceSaved ??
-            props.onClose ??
-            (() => undefined)
-          }
-          onSave={props.onSaveAppearance ?? (() => undefined)}
+          onBackToWorkspace={props.onClose}
         />
       );
     case "privacy":
