@@ -5,9 +5,7 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 const canaryEnabled = process.env.BUZZ_E2E_CANARY === "1";
 const canaryAccountFile = process.env.BUZZ_E2E_CANARY_ACCOUNT_FILE;
 const canaryArtifactDir = process.env.BUZZ_E2E_CANARY_ARTIFACT_DIR;
-const appPort = Number(
-  process.env.BUZZ_E2E_APP_PORT ?? (canaryEnabled ? 4174 : 4173),
-);
+const appPort = canaryEnabled ? 4174 : 4173;
 
 function assertOutsideRepository(path: string, label: string) {
   const repositoryRoot = realpathSync(resolve(process.cwd(), ".."));

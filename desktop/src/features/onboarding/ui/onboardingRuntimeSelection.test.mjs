@@ -68,7 +68,7 @@ test("ready onboarding runtimes exclude unknown and non-ready harnesses", () => 
 
   assert.deepEqual(
     getReadyOnboardingRuntimes(runtimes).map(({ id }) => id),
-    ["claude", "goose"],
+    ["claude"],
   );
 });
 
@@ -126,5 +126,71 @@ test("configured bundled runtime must also pass native prerequisite readiness", 
   assert.deepEqual(
     getReadyOnboardingRuntimes(runtimes, config, null).map(({ id }) => id),
     ["claude", "buzz-agent"],
+  );
+});
+
+for (const id of [
+  "claude",
+  "codex",
+  "cursor",
+  "devin",
+  "omp",
+  "grok",
+  "opencode",
+  "kimi",
+  "amp",
+  "hermes",
+  "openclaw",
+]) {
+  test(`${id} is testable with its own authentication`, () => {
+    assert.equal(
+      runtimeIsReadyForOnboarding(runtime(id, "available", "logged_in")),
+      true,
+    );
+    assert.equal(
+      runtimeIsReadyForOnboarding(runtime(id, "available", "logged_out")),
+      false,
+    );
+  });
+}
+for (const id of ["buzz-agent", "goose"]) {
+  test(`${id} requires provider model and credentials`, () => {
+    const entry = runtime(id, "available", "not_applicable");
+    assert.equal(
+      runtimeIsReadyForOnboarding(
+        entry,
+        { env_vars: {}, provider: null, model: null },
+        null,
+      ),
+      false,
+    );
+    assert.equal(
+      runtimeIsReadyForOnboarding(
+        entry,
+        {
+          env_vars: { ANTHROPIC_API_KEY: "fixture" },
+          provider: "anthropic",
+          model: "model",
+        },
+        null,
+      ),
+      true,
+    );
+  });
+}
+
+test("switching from a CLI cannot borrow its model or provider as bundled readiness", () => {
+  assert.equal(
+    runtimeIsReadyForOnboarding(
+      runtime("buzz-agent", "available", "not_applicable"),
+      {
+        preferred_runtime: "claude",
+        model: "cli-model",
+        provider: "anthropic",
+        env_vars: { ANTHROPIC_API_KEY: "fixture" },
+      },
+      null,
+    ),
+    false,
   );
 });

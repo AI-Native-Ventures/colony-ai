@@ -35,12 +35,19 @@ export function runtimeIsReadyForOnboarding(
   globalConfig?: GlobalAgentConfig,
   gitBashPrerequisite?: GitBashPrerequisite | null,
 ) {
-  if (runtime.id === "buzz-agent") {
+  if (runtime.id === "buzz-agent" || runtime.id === "goose") {
     return (
       globalConfig !== undefined &&
       resolveAgentReadiness(
         [runtime],
-        { ...globalConfig, preferred_runtime: runtime.id },
+        {
+          ...globalConfig,
+          ...(globalConfig.preferred_runtime &&
+          globalConfig.preferred_runtime !== runtime.id
+            ? { provider: null, model: null }
+            : {}),
+          preferred_runtime: runtime.id,
+        },
         "preferred",
         gitBashPrerequisite,
       ).ready
