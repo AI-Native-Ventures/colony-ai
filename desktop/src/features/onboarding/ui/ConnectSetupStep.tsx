@@ -529,7 +529,13 @@ export function ConnectSetupStep({
     try {
       const runtimeId = keyScene ? "buzz-agent" : selectedRuntimeId;
       if (!runtimeId) throw new Error("Choose an AI harness before testing.");
-      const saved = await saveOnboardingRuntime(runtimeId, runtimes.data ?? []);
+      const saved = await saveOnboardingRuntime(
+        runtimeId,
+        runtimes.data ?? [],
+        undefined,
+        undefined,
+        keyScene ? undefined : selectedModel,
+      );
       if (!isCurrent()) return;
       queryClient.setQueryData(globalAgentConfigQueryKey, saved.config);
       const result = await runOnboardingConnectionTest(saved.config, isCurrent);
