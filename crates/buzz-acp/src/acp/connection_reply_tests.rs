@@ -13,9 +13,20 @@ async fn connection_reply_uses_the_real_prompt_stream_and_ignores_other_sessions
     "#;
     let mut client = spawn_script(script).await;
     client.initialize().await.expect("initialize");
-    let session = client.session_new_full("/tmp", vec![], None, None).await.expect("session");
+    let session = client
+        .session_new_full("/tmp", vec![], None, None)
+        .await
+        .expect("session");
     client.capture_connection_reply(&session.session_id);
-    let stop = client.session_prompt_with_idle_timeout(&session.session_id, "hello", std::time::Duration::from_secs(2), std::time::Duration::from_secs(3)).await.expect("prompt");
+    let stop = client
+        .session_prompt_with_idle_timeout(
+            &session.session_id,
+            "hello",
+            std::time::Duration::from_secs(2),
+            std::time::Duration::from_secs(3),
+        )
+        .await
+        .expect("prompt");
     assert_eq!(stop, StopReason::EndTurn);
     assert_eq!(client.take_connection_reply(), "hello");
     client.shutdown().await;
