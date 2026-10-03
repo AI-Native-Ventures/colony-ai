@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 import { FEATURE_OVERRIDES_STORAGE_KEY } from "../helpers/features";
 
@@ -28,6 +29,7 @@ async function expectContentSurfaceHorizontalGutters(
   page: import("@playwright/test").Page,
   expectedLeftGutter = 8,
 ) {
+  await waitForAnimations(page);
   const [mainInsetBox, contentBox] = await Promise.all([
     page.locator("[data-buzz-glass-inset]").boundingBox(),
     page.locator("[data-buzz-content-surface]").first().boundingBox(),
@@ -1305,8 +1307,8 @@ test.describe("community rail", () => {
     await expect(
       page.locator('[data-sidebar="sidebar"][data-mobile="true"]'),
     ).toBeHidden();
-    await expect(page.locator("[data-collapsed-content-gutter]")).toHaveCSS(
-      "width",
+    await expect(page.locator("[data-buzz-content-surface]").first()).toHaveCSS(
+      "margin-left",
       "8px",
     );
     await expectContentSurfaceHorizontalGutters(page);
@@ -1331,16 +1333,9 @@ test.describe("community rail", () => {
     await expect(
       page.locator('[data-side="left"][data-state="collapsed"]'),
     ).toBeVisible();
-    await expect(page.locator("[data-collapsed-content-gutter]")).toHaveCSS(
-      "width",
+    await expect(page.locator("[data-buzz-content-surface]").first()).toHaveCSS(
+      "margin-left",
       "8px",
-    );
-    const sidebarBackground = await page
-      .locator("[data-buzz-glass-inset]")
-      .evaluate((element) => getComputedStyle(element).backgroundColor);
-    await expect(page.locator("[data-collapsed-content-gutter]")).toHaveCSS(
-      "background-color",
-      sidebarBackground,
     );
     await expectContentSurfaceHorizontalGutters(page);
   });
@@ -1375,8 +1370,9 @@ test.describe("community rail", () => {
       page.getByTestId(`community-rail-button-${COMMUNITY_B.id}`),
     ).toBeVisible();
     await expect(page.getByTestId("community-rail-add")).toBeVisible();
-    await expect(page.locator("[data-collapsed-content-gutter]")).toHaveCount(
-      0,
+    await expect(page.locator("[data-buzz-content-surface]").first()).toHaveCSS(
+      "margin-left",
+      "8px",
     );
     await expectContentSurfaceHorizontalGutters(page);
   });

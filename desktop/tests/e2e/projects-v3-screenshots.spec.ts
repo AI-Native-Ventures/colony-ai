@@ -310,6 +310,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
     "project-repository-actions-panel",
   );
   const expectInsetSection = async () => {
+    await waitForAnimations(page);
     const sectionHeader = workspacePanel.getByTestId("project-section-header");
     const [workspaceBox, headerBox, menuBox] = await Promise.all([
       workspacePanel.boundingBox(),
@@ -790,8 +791,8 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   expect(finalProjectContentPodBounds).not.toBeNull();
   expect(attachedContentSurfaceBounds).not.toBeNull();
   await expect(appContentSurface).toHaveCSS("box-shadow", "none");
-  // The pod starts after the 1px frame border and wrapper inset, with an
-  // 8px right and bottom gutter (mr-2 mb-2 on the pod wrapper).
+  // The pod starts after the 40px chrome, 1px border and wrapper inset,
+  // with an 8px right and bottom gutter (mr-2 mb-2 on the pod wrapper).
   expect(
     (finalProjectContentPodBounds?.x ?? 0) -
       (attachedContentSurfaceBounds?.x ?? 0),
@@ -799,11 +800,11 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   expect(
     (finalProjectContentPodBounds?.y ?? 0) -
       (attachedContentSurfaceBounds?.y ?? 0),
-  ).toBe(2);
+  ).toBe(42);
   expect(
     (attachedContentSurfaceBounds?.height ?? 0) -
       (finalProjectContentPodBounds?.height ?? 0),
-  ).toBe(11);
+  ).toBe(51);
   const viewportSize = page.viewportSize();
   expect(collapsedMainPaneBounds).not.toBeNull();
   expect(viewportSize).not.toBeNull();

@@ -141,8 +141,14 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   await expect(search.locator("span").first()).toHaveClass(
     /text-sidebar-foreground\/55/,
   );
-  await expect(pinnedHeader).toHaveAttribute("data-mac-chrome", "true");
-  await expect(pinnedHeader).toHaveCSS("padding-top", "39px");
+  const isMac = await page.evaluate(() =>
+    /mac|iphone|ipad|ipod/i.test(navigator.platform),
+  );
+  if (isMac)
+    await expect(pinnedHeader).toHaveAttribute("data-mac-chrome", "true");
+  else
+    await expect(pinnedHeader).not.toHaveAttribute("data-mac-chrome", "true");
+  await expect(pinnedHeader).toHaveCSS("padding-top", isMac ? "39px" : "21px");
   await expect(pinnedHeader).toHaveCSS("padding-bottom", "10px");
   await expect(pinnedHeader).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(pinnedHeader).toHaveCSS("margin-left", "3px");
@@ -527,20 +533,12 @@ for (const theme of ["buzz", "buzz-dark", "github-light", "github-dark"]) {
     await expect(page.getByTestId("app-sidebar")).toBeVisible();
     await expect(page.locator(".colony-sidebar-brand-mark")).toHaveCSS(
       "color",
-      await resolveSidebarColor(
-        page,
-        "color",
-        "hsl(var(--foreground))",
-      ),
+      await resolveSidebarColor(page, "color", "hsl(var(--foreground))"),
     );
     await openSettings(page, "profile");
     await expect(page.locator(".w20-nav-person small")).toHaveCSS(
       "color",
-      await resolveSidebarColor(
-        page,
-        "color",
-        "hsl(var(--foreground))",
-      ),
+      await resolveSidebarColor(page, "color", "hsl(var(--foreground))"),
     );
   });
 }
@@ -1010,7 +1008,10 @@ test("settings content uses the same inset surface as the main app", async ({
 
   // The sidebar starts at the shared 8px frame inset. Settings keeps its
   // own top chrome, so this measures the two independent control rows.
-  expect(searchBox.y - backToAppBox.y).toBe(69.25);
+  const isMac = await page.evaluate(() =>
+    /mac|iphone|ipad|ipod/i.test(navigator.platform),
+  );
+  expect(searchBox.y - backToAppBox.y).toBe(isMac ? 69.25 : 51.25);
 
   // Header and content share one card. The frame carries the 8px margin;
   // the content starts directly below its 52px header.
