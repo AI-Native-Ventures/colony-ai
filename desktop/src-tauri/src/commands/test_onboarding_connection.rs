@@ -19,7 +19,7 @@ pub async fn test_onboarding_connection(config: GlobalAgentConfig) -> Result<Val
         .preferred_runtime
         .as_deref()
         .ok_or("Choose an AI harness before testing.")?;
-    let runtime = crate::managed_agents::discovery::known_acp_runtime_exact(id)
+    let runtime = crate::managed_agents::known_acp_runtime_exact(id)
         .ok_or("Connection testing is unavailable for this harness. Choose another connection.")?;
     let (agent, resolved_agent) = runtime
         .commands
@@ -45,7 +45,7 @@ pub async fn test_onboarding_connection(config: GlobalAgentConfig) -> Result<Val
         command.env(key, value);
     }
     crate::managed_agents::build_buzz_agent_provider_defaults(&mut command);
-    for (key, value) in crate::managed_agents::runtime::runtime_metadata_env_vars(
+    for (key, value) in crate::managed_agents::runtime_metadata_env_vars(
         runtime.model_env_var,
         runtime.provider_env_var,
         runtime.provider_locked,
@@ -70,7 +70,7 @@ pub async fn test_onboarding_connection(config: GlobalAgentConfig) -> Result<Val
     crate::build_identity::apply_demo_config_home(&mut command)?;
     crate::managed_agents::configure_runtime_cli(&mut command, Some(runtime));
     let output = tokio::task::spawn_blocking(move || {
-        crate::managed_agents::discovery::output_with_timeout(command, Duration::from_secs(45))
+        crate::managed_agents::output_with_timeout(command, Duration::from_secs(45))
     })
     .await
     .map_err(|_| "The connection test could not start. Try again.")?;
