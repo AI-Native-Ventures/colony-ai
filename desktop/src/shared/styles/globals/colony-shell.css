@@ -212,6 +212,10 @@
   background: transparent;
 }
 
+:root:has(.w20-settings-shell) .w20-nav-person small {
+  color: hsl(var(--foreground));
+}
+
 @media (max-width: 75rem) {
   :root:has([data-colony-workspace-route="true"])
     [data-testid="chat-header"]

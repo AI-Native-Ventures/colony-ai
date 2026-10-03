@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
+import { openSettings } from "../helpers/settings";
 
 const SHOTS = "test-results/buzz-theme";
 const THEME_STORAGE_KEY = "buzz-theme";
@@ -140,7 +141,8 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   await expect(search.locator("span").first()).toHaveClass(
     /text-sidebar-foreground\/55/,
   );
-  await expect(pinnedHeader).toHaveCSS("padding-top", "21px");
+  await expect(pinnedHeader).toHaveAttribute("data-mac-chrome", "true");
+  await expect(pinnedHeader).toHaveCSS("padding-top", "39px");
   await expect(pinnedHeader).toHaveCSS("padding-bottom", "10px");
   await expect(pinnedHeader).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(pinnedHeader).toHaveCSS("margin-left", "3px");
@@ -512,6 +514,35 @@ async function emitNativeThemeChange(page: Page, theme: "light" | "dark") {
       payload: nextTheme,
     });
   }, theme);
+}
+
+for (const theme of ["buzz", "buzz-dark", "github-light", "github-dark"]) {
+  test(`sidebar brand and owner caption use theme foreground: ${theme}`, async ({
+    page,
+  }) => {
+    await seedTheme(page, theme);
+    await installMockBridge(page);
+    await openChannel(page);
+    await page.goto("/#/team");
+    await expect(page.getByTestId("app-sidebar")).toBeVisible();
+    await expect(page.locator(".colony-sidebar-brand-mark")).toHaveCSS(
+      "color",
+      await resolveSidebarColor(
+        page,
+        "color",
+        "hsl(var(--foreground))",
+      ),
+    );
+    await openSettings(page, "profile");
+    await expect(page.locator(".w20-nav-person small")).toHaveCSS(
+      "color",
+      await resolveSidebarColor(
+        page,
+        "color",
+        "hsl(var(--foreground))",
+      ),
+    );
+  });
 }
 
 test("buzz light sidebar gradient", async ({ page }) => {
