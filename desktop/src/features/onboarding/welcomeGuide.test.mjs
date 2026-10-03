@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import {
   activateWelcomeTeamPersonasSequentially,
   buildWelcomeStarterCreateInput,
+  ensureWelcomeTeam,
   LEGACY_WELCOME_GUIDE_SYSTEM_PROMPT,
   pickWelcomeGuideAgent,
   pickWelcomeGuideAgentForRelay,
@@ -304,6 +305,7 @@ test("welcome team starter definitions and role identities are stable", () => {
 test("starter matching ignores user agents with a Welcome persona", () => {
   const honey = WELCOME_TEAM_STARTERS[0];
   const userHoney = makeAgent({
+    name: "My personal helper",
     personaId: honey.personaId,
     teamId: null,
   });
@@ -312,6 +314,144 @@ test("starter matching ignores user agents with a Welcome persona", () => {
     pickWelcomeTeamStarterAgentForRelay([userHoney], honey, RELAY_A),
     null,
   );
+});
+
+test("Welcome provisioning is single-flight across channels and reuses a starter with missing team metadata", async () => {
+  const previousWindow = globalThis.window;
+  const records = [];
+  let creations = 0;
+  const memberships = [];
+  const raw = (value) =>
+    Object.fromEntries(
+      Object.entries(value).map(([key, field]) => [
+        key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`),
+        field,
+      ]),
+    );
+  globalThis.window = {
+    __TAURI_INTERNALS__: {
+      async invoke(command, args) {
+        switch (command) {
+          case "list_managed_agents":
+            return records.map((record) => ({ ...record, team_id: null }));
+          case "list_personas":
+            return [
+              {
+                id: "builtin:fizz",
+                display_name: "Scout",
+                is_active: true,
+                env_vars: {},
+                system_prompt: "Hello",
+                runtime: "buzz-agent",
+              },
+            ];
+          case "discover_acp_providers":
+            return [
+              {
+                id: "codex",
+                command: "codex",
+                availability: "available",
+                default_args: [],
+                auth_status: { status: "logged_in" },
+                definition_env: {},
+              },
+            ];
+          case "get_global_agent_config":
+            return {
+              preferred_runtime: "codex",
+              model: null,
+              provider: null,
+              env_vars: {},
+            };
+          case "create_managed_agent": {
+            const creationId = ++creations;
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            const agent = raw(
+              makeAgent({
+                pubkey: String(creationId).repeat(64),
+                personaId: args.input.personaId,
+                agentCommand: args.input.agentCommand,
+                mcpCommand: "",
+                teamId: args.input.teamId,
+                relayUrl: args.input.relayUrl,
+              }),
+            );
+            records.push(agent);
+            return { agent };
+          }
+          case "get_channel_members":
+            return { members: [] };
+          case "add_channel_members":
+            memberships.push(args.channelId);
+            return { added: args.pubkeys, errors: [] };
+          default:
+            throw new Error(`Unexpected production command: ${command}`);
+        }
+      },
+    },
+  };
+  try {
+    const [first, second] = await Promise.all([
+      ensureWelcomeTeam("welcome-a", RELAY_A),
+      ensureWelcomeTeam("welcome-b", `${RELAY_A}/`),
+    ]);
+    assert.equal(
+      creations,
+      1,
+      "overlapping channels share one provisioning flight",
+    );
+    const repeated = await ensureWelcomeTeam("welcome-a", RELAY_A);
+    assert.equal(
+      creations,
+      1,
+      "both provisioning triggers must use the same Scout",
+    );
+    assert.equal(first[0].pubkey, second[0].pubkey);
+    assert.equal(first[0].pubkey, repeated[0].pubkey);
+    const otherCommunity = await ensureWelcomeTeam("welcome-other", RELAY_B);
+    assert.equal(creations, 2, "a different community needs its own Scout");
+    assert.notEqual(otherCommunity[0].pubkey, first[0].pubkey);
+    assert.equal(otherCommunity[0].relayUrl, RELAY_B);
+    assert.deepEqual(memberships.sort(), [
+      "welcome-a",
+      "welcome-a",
+      "welcome-b",
+      "welcome-other",
+    ]);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});
+
+test("missing-team starter lookup requires its persona, canonical name, runtime and community", () => {
+  const starter = WELCOME_TEAM_STARTERS[0];
+  const scout = makeAgent({
+    personaId: starter.personaId,
+    teamId: null,
+    agentCommand: "codex",
+  });
+  assert.equal(
+    pickWelcomeTeamStarterAgentForRelay([scout], starter, RELAY_A, "codex"),
+    scout,
+  );
+  for (const overrides of [
+    { personaId: "user:helper" },
+    { name: "Personal helper" },
+    { agentCommand: "buzz-agent" },
+    { relayUrl: RELAY_B },
+    { teamId: "user:team" },
+  ]) {
+    assert.equal(
+      pickWelcomeTeamStarterAgentForRelay(
+        [{ ...scout, ...overrides }],
+        starter,
+        RELAY_A,
+        "codex",
+      ),
+      null,
+    );
+  }
 });
 
 test("starter matching uses persona identity rather than display name", () => {

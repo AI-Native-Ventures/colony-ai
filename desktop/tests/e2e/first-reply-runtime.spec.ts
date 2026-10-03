@@ -162,6 +162,26 @@ test("Connect waits for the actual reply, then saves the selected runtime", asyn
   await expect(page.getByTestId("message-timeline")).toContainText("Scout", {
     timeout: 5_000,
   });
+  // The opener proves kickoff has run after channel initialization seeded Scout.
+  // Both triggers must reuse the same managed identity, even after the first flight ends.
+  expect(
+    await page.evaluate(
+      () =>
+        window.__BUZZ_E2E_COMMAND_PAYLOADS__?.filter(
+          (entry) => entry.command === "create_managed_agent",
+        ).length ?? 0,
+    ),
+  ).toBe(1);
+  const scouts = await page.evaluate(async () =>
+    window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.("list_managed_agents", null),
+  );
+  expect(scouts).toEqual([
+    expect.objectContaining({
+      persona_id: "builtin:fizz",
+      team_id: "builtin-team:welcome",
+      agent_command: "codex",
+    }),
+  ]);
   expect(
     await page.evaluate(
       () =>
