@@ -751,6 +751,28 @@ test("closing the person's tab ends the task's access to it", async () => {
   assert.deepEqual(env.caps.getGrant(env.grant.id).tabIds, []);
 });
 
+test("element references do not survive into a later grant", async () => {
+  const env = setup();
+  const snap = await snapshotRefs(env);
+  const ref = env.refOf(snap, "Add to cart");
+  env.broker.revoke(env.grant.id);
+  const next = env.caps.issue({
+    agentId: "agent-a",
+    taskId: "task-2",
+    businessId: "biz-1",
+    tabId: "tab-1",
+    allowedOrigins: ["https://shop.example"],
+  });
+  // The host hands the tab back to the agent when it issues a grant.
+  env.driver.tabs.get("tab-1").controlOwner = "agent";
+  const result = await env.broker.call(next.token, "browser_click", {
+    tab: "tab-1",
+    ref,
+  });
+  assert.equal(result.code, "stale_ref");
+  assert.equal(env.driver.count("click"), 0);
+});
+
 test("take over ends the grant, hands the tab back and stops loading", async () => {
   const env = setup();
   assert.equal(env.broker.takeOver(env.grant.id), true);

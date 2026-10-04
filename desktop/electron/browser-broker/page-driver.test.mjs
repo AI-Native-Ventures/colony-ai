@@ -251,6 +251,44 @@ test("every page function compiles and the allowlist holds no dangerous domains"
   assert.ok(!ALLOWED_CDP_METHODS.has("Page.navigate"));
 });
 
+test("the driver refuses any CDP method outside the allowlist", async () => {
+  const internals = {};
+  const rig = createRig();
+  const driver = createPageDriver({
+    adapter: rig.adapter,
+    internals,
+    cdpTimeoutMs: 200,
+  });
+  assert.ok(driver);
+  for (const method of [
+    "Network.getCookies",
+    "Network.getAllCookies",
+    "Storage.getCookies",
+    "DOMStorage.getDOMStorageItems",
+    "Runtime.evaluate",
+    "Page.navigate",
+    "Target.createTarget",
+    "Fetch.enable",
+    "Browser.close",
+    "Emulation.setUserAgentOverride",
+    "Input.synthesizePinchGesture",
+  ]) {
+    await assert.rejects(
+      internals.send("tab-1", method, {}),
+      /not allowed/u,
+      method,
+    );
+  }
+  assert.ok(
+    !rig
+      .methods()
+      .some((m) =>
+        /^(Network|Storage|Runtime\.evaluate|Page\.navigate|Target)/u.test(m),
+      ),
+  );
+  await internals.send("tab-1", "Page.getFrameTree", {});
+});
+
 test("a broad scenario only ever sends allowed methods and fixed functions in the isolated world", async () => {
   const rig = createRig();
   rig.state.facts = { ...rig.state.facts, inputType: "file", tag: "input" };

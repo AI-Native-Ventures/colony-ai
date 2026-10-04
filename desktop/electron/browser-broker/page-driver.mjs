@@ -115,6 +115,7 @@ function center(quad) {
 }
 
 export function createPageDriver({
+  internals,
   adapter,
   cdpTimeoutMs = 15_000,
   loadTimeoutMs = 30_000,
@@ -289,6 +290,11 @@ export function createPageDriver({
   }
 
   // ---- PageDriver interface ------------------------------------------------
+
+  // Test hook: lets unit tests prove the CDP allowlist actually guards.
+  if (internals && typeof internals === "object")
+    internals.send = async (tabId, method, params) =>
+      send(await sessionFor(tabId), method, params);
 
   const driver = {
     attach(value) {

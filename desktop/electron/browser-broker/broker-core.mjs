@@ -203,6 +203,11 @@ export function createBroker({
         () => undefined,
       );
     }
+    for (const tabId of grant?.tabIds ?? []) {
+      // Element references never outlive the grant that created them.
+      registries.delete(tabId);
+      documentIds.delete(tabId);
+    }
     openedTabs.delete(event.grantId);
     queues.delete(event.grantId);
     emit("grant-changed", {
