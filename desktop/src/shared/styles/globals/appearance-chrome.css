@@ -40,7 +40,6 @@
   --colony-sidebar-selected-foreground: var(--sidebar-active-foreground);
   --colony-sidebar-muted-foreground: hsl(var(--muted-foreground));
   --colony-sidebar-hover-surface: hsl(var(--muted));
-  --colony-sidebar-active-surface: hsl(var(--primary) / 0.12);
   --colony-sidebar-active-indicator: hsl(var(--primary));
   --colony-workspace-link-color: hsl(var(--primary));
   --w20-appearance-accent: hsl(var(--primary));
@@ -64,10 +63,9 @@
 ) {
   --colony-sidebar-foreground: var(--sidebar-foreground);
   --colony-sidebar-muted-foreground: hsl(var(--muted-foreground));
-  --colony-chrome-paint: linear-gradient(
-    hsl(var(--sidebar-background)),
-    hsl(var(--sidebar-background))
-  );
+  /* A flat fill: a same-colour gradient dithers by one step at the top and
+     bottom viewport edges, so flat themes would no longer match across them. */
+  --colony-chrome-paint: none;
 }
 
 :root.w20-custom-appearance:has(
@@ -81,10 +79,12 @@
   );
 }
 
-:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance):has(
-    [data-colony-full-app-shell],
-    .w20-settings-shell
-  )
+/* Glass owns its translucent tint (theme.css), so these opaque fills stay out
+   of it; they would hide the native vibrancy and the theme sidebar tint. */
+:root:not([data-glass-background]):is(
+    :not([data-buzz-sidebar]),
+    .w20-custom-appearance
+  ):has([data-colony-full-app-shell], .w20-settings-shell)
   :is(
     .buzz-theme-gradient-underlay,
     .buzz-theme-gradient-layer-light,
@@ -201,7 +201,10 @@
   :is(.w20-nav-item.is-active::before, .w20-inner-tab.is-active::after) {
   background: hsl(var(--primary));
 }
-:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance)
+:root:not([data-glass-background]):is(
+    :not([data-buzz-sidebar]),
+    .w20-custom-appearance
+  )
   :is(.buzz-huddle-shell, body:has(.w20-settings-shell)) {
   background: hsl(var(--sidebar-background));
 }
@@ -220,7 +223,10 @@
   outline-offset: 2px;
 }
 
-:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance)
+/* Default and named themes keep the approved white selected row from
+   colony-full-app-sidebar.css; only the owner's Custom style tints it with the
+   accent. The :has() term lifts specificity over the dark selected-row rule. */
+:root.w20-custom-appearance:has([data-colony-full-app-shell="true"])
   .app-sidebar-full-shell
   [data-sidebar="menu-button"][data-active="true"] {
   background: var(--colony-sidebar-active-surface);
