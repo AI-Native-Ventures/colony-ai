@@ -4,6 +4,9 @@ import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { truncateNpub } from "@/shared/lib/pubkey";
+import { EmployeeAvatar } from "./EmployeeAvatar";
+import { useEmployeeRuntime } from "../useEmployeeRuntime";
+import { usePersonasQuery } from "@/features/agents/hooks";
 import { Badge } from "@/shared/ui/badge";
 import { TeamPage, TeamPageTitle } from "./TeamPage";
 import { Button } from "@/shared/ui/button";
@@ -37,13 +40,8 @@ function memberTitle(member: TeamMember) {
 function memberStatus(member: TeamMember) {
   return (
     member.position?.head.status ??
-    (member.kind === "human" ? "active" : "unknown")
+    (member.kind === "human" ? "active" : "Needs attention")
   );
-}
-
-function statusLabel(member: TeamMember) {
-  const status = memberStatus(member);
-  return status;
 }
 
 function TeamTabs({ view }: TeamScreenProps) {
@@ -84,6 +82,8 @@ function TeamMemberRow({
   tree = false,
   tabIndex,
   onTreeFocus,
+  avatarUrl,
+  definitionAvatar,
 }: {
   member: TeamMember;
   name: string;
@@ -92,14 +92,18 @@ function TeamMemberRow({
   tree?: boolean;
   tabIndex?: number;
   onTreeFocus?: (pubkey: string) => void;
+  avatarUrl?: string | null;
+  definitionAvatar?: string | null;
 }) {
   const { goTeamMember } = useAppNavigation();
   const title = memberTitle(member);
-  const status = memberStatus(member);
+  const runtime = useEmployeeRuntime(member);
+  const status =
+    member.kind === "employee" ? runtime.label : memberStatus(member);
   const reason = member.position?.head.reason;
   const managerDescription = managerName ? `, Reports to ${managerName}` : "";
   const reasonDescription = reason ? `, Reason: ${reason}` : "";
-  const accessibleName = `${name}, ${title || "No title"}, ${memberKindLabel(member)}, ${statusLabel(member)}${managerDescription}${reasonDescription}`;
+  const accessibleName = `${name}, ${title || "No title"}, ${memberKindLabel(member)}, ${status}${managerDescription}${reasonDescription}`;
   const rowContents = (
     <>
       <span className="flex min-w-0 items-center gap-[0.9375rem]">
@@ -109,18 +113,30 @@ function TeamMemberRow({
             className="absolute ml-[-1.5rem] h-full border-l border-border"
           />
         ) : null}
-        <span
-          aria-hidden="true"
-          className={`grid size-[2.125rem] shrink-0 place-items-center rounded-[0.625rem] text-2xs font-semibold text-primary ${member.kind === "employee" ? "bg-gradient-to-br from-primary/20 to-colony-info/25" : "bg-accent"}`}
-        >
-          {name
-            .split(/\s+/)
-            .filter(Boolean)
-            .slice(0, 2)
-            .map((part) => part[0])
-            .join("")
-            .toUpperCase()}
-        </span>
+        {member.kind === "employee" ? (
+          <EmployeeAvatar
+            name={name}
+            profile={avatarUrl}
+            instance={member.managedAgent?.avatarUrl}
+            definition={definitionAvatar}
+            personaId={member.managedAgent?.personaId}
+            className="size-[2.125rem] shrink-0"
+            testId={`team-avatar-${member.pubkey}`}
+          />
+        ) : (
+          <span
+            aria-hidden="true"
+            className={`grid size-[2.125rem] shrink-0 place-items-center rounded-[0.625rem] text-2xs font-semibold text-primary bg-accent`}
+          >
+            {name
+              .split(/\s+/)
+              .filter(Boolean)
+              .slice(0, 2)
+              .map((part) => part[0])
+              .join("")
+              .toUpperCase()}
+          </span>
+        )}
         <span className="min-w-0">
           <span className="block truncate text-compact font-semibold text-foreground">
             {name}
@@ -142,10 +158,10 @@ function TeamMemberRow({
           </span>
         ) : null}
         <Badge
-          className={`rounded-[0.3125rem] border-0 px-2 py-1 text-badge font-semibold normal-case leading-relaxed tracking-normal ${status === "active" ? "bg-colony-success/10 text-colony-success" : status === "unknown" ? "bg-muted text-muted-foreground" : "bg-accent text-primary"}`}
+          className={`rounded-[0.3125rem] border-0 px-2 py-1 text-badge font-semibold normal-case leading-relaxed tracking-normal ${status === "active" || status === "Ready" || status === "Working" ? "bg-colony-success/10 text-colony-success" : (status === "Offline" || status === "Loading") ? "bg-muted text-muted-foreground" : "bg-accent text-primary"}`}
           variant="secondary"
         >
-          {statusLabel(member)}
+          {status}
         </Badge>
       </span>
     </>
@@ -187,6 +203,7 @@ function TeamMemberRow({
 export function TeamScreen({ view }: TeamScreenProps) {
   const teamQuery = useCompanyTeamQuery();
   const identityQuery = useIdentityQuery();
+  const personasQuery = usePersonasQuery();
   const { goHireRoles } = useAppNavigation();
   const treeRef = React.useRef<HTMLDivElement>(null);
   const [focusedTreeMember, setFocusedTreeMember] = React.useState<
@@ -337,6 +354,12 @@ export function TeamScreen({ view }: TeamScreenProps) {
         >
           {treeRows.map(({ member, depth }, index) => (
             <TeamMemberRow
+              avatarUrl={profiles[member.pubkey]?.avatarUrl}
+              definitionAvatar={
+                personasQuery.data?.find(
+                  (persona) => persona.id === member.managedAgent?.personaId,
+                )?.avatarUrl
+              }
               depth={depth}
               key={member.pubkey}
               managerName={managerName(member)}
@@ -360,6 +383,12 @@ export function TeamScreen({ view }: TeamScreenProps) {
         <div data-testid="company-team-list">
           {members.map((member) => (
             <TeamMemberRow
+              avatarUrl={profiles[member.pubkey]?.avatarUrl}
+              definitionAvatar={
+                personasQuery.data?.find(
+                  (persona) => persona.id === member.managedAgent?.personaId,
+                )?.avatarUrl
+              }
               key={member.pubkey}
               managerName={managerName(member)}
               member={member}

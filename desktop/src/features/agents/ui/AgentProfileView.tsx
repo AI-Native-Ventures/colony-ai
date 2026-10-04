@@ -1,3 +1,5 @@
+import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
+import { useEmployeeRuntime } from "@/features/company-team/useEmployeeRuntime";
 import * as React from "react";
 import {
   Archive,
@@ -201,14 +203,19 @@ export function AgentProfileView({
     : null;
   const ownerName = ownerProfileQuery.data?.displayName?.trim() || null;
   const description = linkedPersona?.description?.trim() || null;
-  const presenceLabel =
-    relayAgent?.status === "online"
-      ? "Online"
-      : relayAgent?.status === "away"
-        ? "Away"
-        : relayAgent?.status === "offline"
-          ? "Offline"
-          : "Unknown";
+  const employeeRuntime = useEmployeeRuntime(
+    companyMember ?? {
+      pubkey: agent.pubkey,
+      kind: "employee",
+      createdAt: agent.createdAt,
+      fallbackName: agent.name,
+      role: null,
+      managedAgent: agent,
+      relayAgent: relayAgent ?? null,
+      position: null,
+    },
+  );
+  const presenceLabel = employeeRuntime.label;
 
   React.useEffect(() => {
     const pubkey = agent.pubkey.toLowerCase();
@@ -223,14 +230,7 @@ export function AgentProfileView({
     void profileQuery.refetch();
   }, [agent.pubkey, profileQuery.data?.hasProfileEvent, profileQuery.refetch]);
 
-  const profileStatus =
-    activeTurns.length > 0
-      ? "Working"
-      : agent.status === "running" || agent.status === "deployed"
-        ? "Idle"
-        : agent.status === "not_deployed"
-          ? "Not deployed"
-          : agent.status;
+  const profileStatus = employeeRuntime.label;
   const canStop = agent.status === "running" || agent.status === "deployed";
 
   async function openMessage() {
@@ -262,21 +262,18 @@ export function AgentProfileView({
             >
               <ArrowLeft aria-hidden="true" className="size-3.5" />
             </Button>
-            {agent.avatarUrl ? (
-              <img
-                alt=""
-                aria-hidden="true"
-                className="size-[2.6875rem] shrink-0 rounded-xl object-cover"
-                src={agent.avatarUrl}
-              />
-            ) : (
-              <div
-                aria-hidden="true"
-                className="flex size-[2.6875rem] shrink-0 items-center justify-center rounded-xl bg-muted text-lg font-medium text-muted-foreground"
-              >
-                {(agent.name || "?").slice(0, 1).toUpperCase()}
-              </div>
-            )}
+            <EmployeeAvatar
+              name={agent.name}
+              profile={profileQuery.data?.avatarUrl}
+              instance={agent.avatarUrl}
+              definition={
+                personas.find((persona) => persona.id === agent.personaId)
+                  ?.avatarUrl
+              }
+              personaId={agent.personaId}
+              className="size-[2.6875rem] shrink-0"
+              testId="agent-profile-avatar"
+            />
             <div className="min-w-0">
               <h1 className="truncate text-2xl font-semibold leading-tight tracking-tight text-foreground">
                 {agent.name || "Unnamed agent"}
@@ -308,8 +305,14 @@ export function AgentProfileView({
               </Badge>
             ) : null}
             <Badge
-              className="ml-1 shrink-0 rounded-[5px] border border-[#dce9df] bg-[#edf4ef] px-2 py-0.5 text-2xs font-medium normal-case tracking-normal text-[#507d69] dark:border-[#3c5445] dark:bg-[#25392e] dark:text-[#9ebda8]"
-              variant={profileStatus === "Working" ? "default" : "success"}
+              className="ml-1 shrink-0 rounded-[5px] px-2 py-0.5 text-2xs font-medium normal-case tracking-normal"
+              variant={
+                profileStatus === "Ready" || profileStatus === "Working"
+                  ? "success"
+                  : profileStatus === "Needs attention"
+                    ? "warning"
+                    : "secondary"
+              }
             >
               {profileStatus}
             </Badge>

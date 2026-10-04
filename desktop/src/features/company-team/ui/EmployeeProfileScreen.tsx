@@ -19,7 +19,6 @@ import {
 import { runtimeForAgent } from "@/features/agents/agentDirectoryModel";
 import { AgentConfigPanel } from "@/features/agents/ui/AgentConfigPanel";
 import { AgentInstanceEditDialog } from "@/features/agents/ui/AgentInstanceEditDialog";
-import { ModelPicker } from "@/features/agents/ui/ModelPicker";
 import { fetchSecretBindings } from "@/features/company-secrets/secretBindings";
 import { ToolPermissionList } from "@/features/company-permissions/ui/ToolPermissionScreen";
 import {
@@ -49,7 +48,9 @@ import type {
 } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
 import { TeamPage, TeamPageTitle, handleTeamTabKeys } from "./TeamPage";
-import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { EmployeeAvatar } from "./EmployeeAvatar";
+import { EmployeeRuntimeSummary } from "./EmployeeRuntimeSummary";
+import { useEmployeeRuntime } from "../useEmployeeRuntime";
 import { Textarea } from "@/shared/ui/textarea";
 import { truncateNpub } from "@/shared/lib/pubkey";
 
@@ -206,7 +207,6 @@ export function EmployeeProfileScreen({
   onEditPosition,
   onOpenMember,
   onTerminate,
-  onEditSalary,
 }: {
   member: TeamMember;
   fullName: string;
@@ -218,7 +218,6 @@ export function EmployeeProfileScreen({
   onEditPosition: () => void;
   onOpenMember: (pubkey: string) => void;
   onTerminate: () => void;
-  onEditSalary: () => void;
 }) {
   const [reviewRehire, setReviewRehire] = React.useState(false);
   const agent = member.managedAgent;
@@ -269,8 +268,9 @@ export function EmployeeProfileScreen({
         managerPubkey,
       )
     : null;
-  const status = currentPosition?.status ?? "unknown";
-  const subtitle = [currentPosition?.title, "Employee", status]
+  const status = currentPosition?.status;
+  const employeeRuntime = useEmployeeRuntime(member);
+  const subtitle = [currentPosition?.title, "Employee", employeeRuntime.label]
     .filter(Boolean)
     .join(" · ");
   const relaySelf = teamData.relaySelf;
@@ -469,36 +469,6 @@ export function EmployeeProfileScreen({
       );
     }
     setRuntimeDialogBefore(null);
-  }
-
-  async function recordModelUpdate(change: {
-    beforeModel: string | null;
-    afterModel: string | null;
-  }) {
-    if (!agent || !snapshot) return;
-    const before = normalizedSnapshot({
-      instructions: snapshot.instructions,
-      provider: snapshot.provider,
-      model: change.beforeModel ?? snapshot.model,
-      runtime: snapshot.runtime,
-    });
-    const after = normalizedSnapshot({
-      instructions: snapshot.instructions,
-      provider: snapshot.provider,
-      model: change.afterModel,
-      runtime: snapshot.runtime,
-    });
-    try {
-      const history = await fetchEmployeeHistory(employeePubkey);
-      const action = buildRecordAction(before, after, history);
-      if (action) await recordOrQueue(action);
-    } catch (error) {
-      setConfigError(
-        error instanceof Error
-          ? error.message
-          : "Model history could not be recorded.",
-      );
-    }
   }
 
   async function retryPendingRevision(index: number) {
@@ -708,7 +678,7 @@ export function EmployeeProfileScreen({
   }
 
   if (!agent) {
-    const positionStatus = currentPosition?.status ?? "unknown";
+    const positionStatus = currentPosition?.status;
     return (
       <TeamPage title={fullName} testId="company-position-unlinked">
         <Button variant="ghost" onClick={onBack}>
@@ -721,12 +691,11 @@ export function EmployeeProfileScreen({
           Company position
         </h1>
         <div className="mb-8 flex items-center gap-4">
-          <UserAvatar
-            avatarUrl={profile?.avatarUrl ?? null}
-            displayName={fullName}
-            fallbackVariant="muted"
-            shape="squircle"
-            size="md"
+          <EmployeeAvatar
+            name={fullName}
+            profile={profile?.avatarUrl}
+            definition={persona?.avatarUrl}
+            testId="employee-header-avatar"
           />
           <div className="min-w-0">
             <p className="truncate text-base font-medium">{fullName}</p>
@@ -755,11 +724,9 @@ export function EmployeeProfileScreen({
                 </dd>
               </div>
               <div className="grid grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)] gap-4 py-3">
-                <dt className="text-muted-foreground">Status</dt>
+                <dt className="text-muted-foreground">Runtime status</dt>
                 <dd>
-                  {positionStatus === "active"
-                    ? "Position exists"
-                    : positionStatus}
+                  {employeeRuntime.label}
                   {positionStatus !== "active" && currentPosition?.reason
                     ? ` · ${currentPosition.reason}`
                     : ""}
@@ -858,11 +825,22 @@ export function EmployeeProfileScreen({
         className="mb-6 mt-2 flex flex-wrap items-center justify-between gap-4"
         data-testid="company-position-header"
       >
-        <div className="min-w-0">
-          <TeamPageTitle>{fullName}</TeamPageTitle>
-          <p className="mt-[1.875rem] truncate text-compact text-muted-foreground">
-            {subtitle}
-          </p>
+        <div className="flex min-w-0 items-center gap-4">
+          <EmployeeAvatar
+            name={fullName}
+            profile={profile?.avatarUrl}
+            instance={agent.avatarUrl}
+            definition={persona?.avatarUrl}
+            personaId={agent.personaId}
+            className="size-12 shrink-0"
+            testId="employee-header-avatar"
+          />
+          <div className="min-w-0">
+            <TeamPageTitle>{fullName}</TeamPageTitle>
+            <p className="mt-[1.875rem] truncate text-compact text-muted-foreground">
+              {subtitle}
+            </p>
+          </div>
         </div>
       </div>
       {notice ? (
@@ -971,31 +949,17 @@ export function EmployeeProfileScreen({
         {tab === "instructions" ? instructionsContent() : null}
         {tab === "model-runtime" ? (
           <section data-testid="employee-model-runtime">
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
-              <h2 className="text-lg font-semibold tracking-tight">
-                Model & runtime
-              </h2>
-              {canUndo ? (
-                <Button onClick={() => void openRuntimeEditor()} type="button">
-                  Configure runtime
-                </Button>
-              ) : null}
-            </div>
-            <div className="grid gap-5 lg:grid-cols-2">
-              <section className="rounded-lg border border-border p-4">
-                <h3 className="mb-3 text-sm font-semibold">Lead model</h3>
-                <ModelPicker
-                  agent={agent}
-                  onModelChanged={recordModelUpdate}
-                  readOnly={!canUndo}
-                />
-              </section>
-              <AgentConfigPanel
-                advancedMode="flat"
-                pubkey={employeePubkey}
-                sections={["model", "advanced"]}
-              />
-            </div>
+            <h2 className="sr-only">Model & runtime</h2>
+            <EmployeeRuntimeSummary agent={agent} />
+            {canUndo ? (
+              <Button
+                className="mt-5 h-auto min-h-10 rounded-md bg-colony-info px-[0.9375rem] py-[0.6875rem] text-xs shadow-none hover:bg-colony-info/90"
+                onClick={() => void openRuntimeEditor()}
+                type="button"
+              >
+                Configure runtime
+              </Button>
+            ) : null}
             <p className="mt-5 border-l-2 border-muted bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
               Takeover can expand execution access only through a recorded
               authorization. This review does not silently enable takeover.
@@ -1091,12 +1055,7 @@ export function EmployeeProfileScreen({
           />
         ) : null}
         {tab === "salary" ? (
-          <EmployeeSalaryPanel
-            canManage={canManage}
-            employee={member}
-            employees={teamData.members}
-            onEdit={onEditSalary}
-          />
+          <EmployeeSalaryPanel employee={member} employees={teamData.members} />
         ) : null}
         {tab === "workers" ? unavailableState("Workers") : null}
         {tab === "duties" ? (
