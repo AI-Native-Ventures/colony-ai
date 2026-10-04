@@ -14,6 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { startAgentTrace } from "./agent-trace.mjs";
 import { Evidence } from "./report.mjs";
 import {
   assertSafeDiagnostics,
@@ -169,6 +170,14 @@ process.on("unhandledRejection", () => {
 });
 let application;
 let page;
+// Native host stderr (the host's own timing markers) goes to a file in the throwaway
+// profile. Managed agent logs are read from the same profile. Both are timestamped at
+// observation, redacted and bounded by agent-trace.mjs.
+const nativeHostLog = path.join(privateDir, "native-host.log");
+const trace = realEnv
+  ? startAgentTrace({ userDataDir, extraFiles: [nativeHostLog] })
+  : null;
+evidence.metadata.anchors = {};
 try {
   if (realEnv) {
     application = await electron.launch({
@@ -177,7 +186,10 @@ try {
         ...(isolateKeychain ? ["--no-sandbox"] : []),
         `--user-data-dir=${userDataDir}`,
       ],
-      env: realEnvironment(process.env, userDataDir, relay.origin),
+      env: {
+        ...realEnvironment(process.env, userDataDir, relay.origin),
+        COLONY_NATIVE_HOST_LOG: nativeHostLog,
+      },
       timeout: 60000,
     });
   } else {
@@ -198,6 +210,26 @@ try {
       timeout: 45000,
     });
   }
+  // Unexpected exits are the crash question: stamp every process exit and app close.
+  evidence.metadata.lifecycle = [];
+  const lifecycle = evidence.metadata.lifecycle;
+  const launchedAt = Date.now();
+  application.process().on("exit", (code, signal) => {
+    lifecycle.push({
+      event: "process exit",
+      sinceLaunchMs: Date.now() - launchedAt,
+      code,
+      signal,
+    });
+    void evidence.write();
+  });
+  application.on("close", () => {
+    lifecycle.push({
+      event: "application close",
+      sinceLaunchMs: Date.now() - launchedAt,
+    });
+    void evidence.write();
+  });
   const provenance = await application.evaluate(({ app }) => ({
     version: app.getVersion(),
     packaged: app.isPackaged,
@@ -268,7 +300,26 @@ try {
     : "Raw exception and process logs withheld to avoid credential disclosure. Sandbox restrictions may be causal.";
   if (page && !page.isClosed()) await evidence.capture(row.name, page, row);
 } finally {
+  if (trace) {
+    await trace.stop();
+    await writeFile(
+      path.join(output, "agent-trace.json"),
+      JSON.stringify({ events: trace.events, lines: trace.lines }, null, 2),
+    );
+    evidence.metadata.agentTrace = {
+      file: "agent-trace.json",
+      events: trace.events.length,
+      lines: trace.lines.length,
+    };
+  }
   if (application) {
+    // State at the moment the driver finished or failed, before the harness closes the app.
+    evidence.metadata.preCloseState = {
+      windows: application.windows().length,
+      processExitCode: application.process().exitCode,
+      processSignal: application.process().signalCode,
+      page: page ? { closed: page.isClosed() } : null,
+    };
     try {
       await Promise.race([
         application.close(),
