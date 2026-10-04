@@ -15,6 +15,18 @@ test("long native commands receive a longer deadline", () => {
   );
   assert.equal(nativeRequestTimeout("invoke", "sign_out", 60_000), 60_000);
   assert.equal(
+    nativeRequestTimeout("invoke", "google_desktop_sign_in", 60_000),
+    210_000,
+  );
+  assert.equal(
+    nativeRequestTimeout("invoke", "google_desktop_sign_in", 120_000),
+    210_000,
+  );
+  assert.equal(
+    nativeRequestTimeout("invoke", "google_desktop_sign_in", 240_000),
+    240_000,
+  );
+  assert.equal(
     nativeRequestTimeout("emit", "save_onboarding_memories", 60_000),
     60_000,
   );
@@ -57,6 +69,24 @@ test("out of order responses retain native error values", async (t) => {
   send({ type: "response", id: requests[0].id, result: { ok: true } });
   await assert.rejects(second, (e) => e === "relay rate-limited: retry");
   assert.deepEqual(await first, { ok: true });
+  assert.equal(host.pending.size, 0);
+});
+test("Google OAuth can finish after Electron's ordinary deadline", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { host, requests, send } = fixture(t);
+  const pending = host.request("invoke", {
+    command: "google_desktop_sign_in",
+    args: { clientId: "generated-test-client" },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  t.mock.timers.tick(120_001);
+  assert.equal(host.pending.size, 1);
+  send({
+    type: "response",
+    id: requests[0].id,
+    result: "generated-fixture-id-token",
+  });
+  assert.equal(await pending, "generated-fixture-id-token");
   assert.equal(host.pending.size, 0);
 });
 test("fragmented frames and legacy diagnostics do not lose pushes", (t) => {

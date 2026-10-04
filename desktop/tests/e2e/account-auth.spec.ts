@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
+import { waitForAnimations } from "../helpers/animations";
 import { openSettings, openAvatarProfileContext } from "../helpers/settings";
 
 type AccountAuthMethod =
@@ -320,7 +321,7 @@ test("returning account can open an owned business", async ({ page }) => {
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });
 
-test("first-run account access offers email signup and sign-in without Google", async ({
+test("first-run account access offers email and Google signup and sign-in", async ({
   page,
 }) => {
   await startFirstRun(page);
@@ -328,11 +329,15 @@ test("first-run account access offers email signup and sign-in without Google", 
   await expect(page.getByLabel("Your name")).toBeVisible();
   await expect(page.getByLabel("Email address")).toBeVisible();
   await expect(page.getByTestId("google-account-scene")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Google/ })).toHaveCount(0);
+  await expect(page.getByTestId("account-auth-google")).toHaveText(
+    "Continue with Google",
+  );
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByTestId("onboarding-scene-signin")).toBeVisible();
   await expect(page.getByRole("form", { name: "Sign in" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Google/ })).toHaveCount(0);
+  await expect(page.getByTestId("account-auth-google")).toHaveText(
+    "Continue with Google",
+  );
   expect(
     (await accountAuthCalls(page)).some(
       ({ method }) => method === "signInWithGoogle",
@@ -771,3 +776,151 @@ for (const surface of ["account", "avatar"] as const) {
     await expect(page.getByTestId("account-profile-email")).not.toHaveValue("");
   });
 }
+
+for (const width of [1728, 1440]) {
+  test(`Google account entry and sign-in fit the approved shell at ${width}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: width === 1728 ? 1117 : 900 });
+    await startFirstRun(page);
+    const google = page.getByTestId("account-auth-google");
+    await expect(google).toBeInViewport();
+    await expect(google).toHaveAttribute("type", "button");
+    await expect(page.locator(".account-auth-divider")).toHaveText("or");
+    await expect(page.locator(".scout-ant svg").first()).toBeVisible();
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `output/playwright/google-account/account-${width}.png`,
+    });
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(google).toBeInViewport();
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `output/playwright/google-account/signin-${width}.png`,
+    });
+    await google.click();
+    await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
+    expect(
+      (await accountAuthCalls(page)).filter(
+        ({ method }) => method === "signInWithGoogle",
+      ),
+    ).toEqual([
+      expect.objectContaining({ route: "POST /api/accounts/google" }),
+    ]);
+    expect(
+      (await accountAuthCalls(page)).some(
+        ({ method }) => method === "signUp" || method === "signIn",
+      ),
+    ).toBe(false);
+  });
+}
+
+for (const failure of [
+  {
+    code: "google_sign_in_cancelled",
+    copy: "Google sign-in was cancelled. Try again or use your email.",
+  },
+  {
+    code: "google_sign_in_timed_out",
+    copy: "Google sign-in took too long. Try again or use your email.",
+  },
+  {
+    code: "google_sign_in_unavailable",
+    copy: "Google sign-in isn’t available right now. You can use your email instead.",
+  },
+  {
+    code: "google_sign_in_failed",
+    copy: "We couldn’t finish Google sign-in. Try again or use your email.",
+  },
+  {
+    code: "invalid_credentials",
+    copy: "We couldn’t finish Google sign-in. Try again or use your email.",
+  },
+  {
+    code: "invalid_request",
+    copy: "We couldn’t finish Google sign-in. Try again or use your email.",
+  },
+]) {
+  for (const screen of ["account", "signin"]) {
+    test(`Google ${screen} recovers from ${failure.code}`, async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await startFirstRun(page);
+      if (screen === "signin") {
+        await page
+          .getByRole("button", { name: "Sign in", exact: true })
+          .click();
+        await page.getByLabel("Email address").fill("returning@example.com");
+      } else {
+        await page.getByLabel("Your name").fill("Lerato Molefe");
+      }
+      await queueAuthError(page, "signInWithGoogle", { code: failure.code });
+      const google = page.getByTestId("account-auth-google");
+      await google.click();
+      await expect(page.getByRole("alert")).toHaveText(failure.copy);
+      if (screen === "account" && failure.code === "google_sign_in_cancelled") {
+        await waitForAnimations(page);
+        await page.screenshot({
+          path: "output/playwright/google-account/cancelled-1440.png",
+        });
+      }
+      await expect(google).toBeEnabled();
+      if (screen === "signin") {
+        await expect(page.getByLabel("Email address")).toHaveValue(
+          "returning@example.com",
+        );
+      } else {
+        await expect(page.getByLabel("Your name")).toHaveValue("Lerato Molefe");
+      }
+      await expect(
+        page.getByTestId(
+          `account-auth-submit-${screen === "signin" ? "signin" : "signup"}`,
+        ),
+      ).toBeEnabled();
+      await google.click();
+      await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
+    });
+  }
+}
+
+test("Google waits for the browser without sending duplicate requests", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await startFirstRun(page);
+  await page.evaluate(() => {
+    const client = window.__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__;
+    if (!client) throw new Error("Account mock unavailable");
+    const original = client.signInWithGoogle.bind(client);
+    client.signInWithGoogle = async () => {
+      await new Promise<void>((resolve) => {
+        (window as unknown as { releaseGoogle: () => void }).releaseGoogle =
+          resolve;
+      });
+      return original();
+    };
+  });
+  await page.getByTestId("account-auth-google").click();
+  await expect(page.getByTestId("account-auth-google")).toBeDisabled();
+  await expect(page.getByTestId("account-auth-submit-signup")).toBeDisabled();
+  await expect(page.getByTestId("account-auth-google")).toHaveText(
+    "Waiting for Google…",
+  );
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: "Finish signing in in your browser" }),
+  ).toBeVisible();
+  await waitForAnimations(page);
+  await page.screenshot({
+    path: "output/playwright/google-account/pending-1440.png",
+  });
+  await page.evaluate(() =>
+    (window as unknown as { releaseGoogle: () => void }).releaseGoogle(),
+  );
+  await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
+  expect(
+    (await accountAuthCalls(page)).filter(
+      ({ method }) => method === "signInWithGoogle",
+    ),
+  ).toHaveLength(1);
+});

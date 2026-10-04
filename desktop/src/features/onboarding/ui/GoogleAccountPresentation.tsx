@@ -49,7 +49,8 @@ const noticeCopy: Partial<
   ],
 };
 
-function GoogleMark() {
+/** Google brand mark shared by account entry actions. */
+export function GoogleMark() {
   return (
     <svg aria-hidden="true" className="google-mark" viewBox="0 0 48 48">
       <path

@@ -12,6 +12,8 @@ const LONG_COMMANDS = new Map([
   // Node bootstrap and two bounded connection package operations can outlast
   // the ordinary one-minute RPC window. Keep the response alive through them.
   ["install_acp_runtime", 12 * 60_000],
+  // Native Google OAuth allows 180 seconds for the browser and 20 for exchange.
+  ["google_desktop_sign_in", 210_000],
 ]);
 
 export function nativeRequestTimeout(type, command, fallback) {
