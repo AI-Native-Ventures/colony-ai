@@ -79,12 +79,51 @@ not a diagnosis of the owner's slow run. Lane 2 owns changes to this path.
 
 ## Not proven and required next gate
 
-NEEDS_API / NEEDS_OWNER: designate an isolated relay and existing Google test
-account, or an owner-driven run that can complete the native flow without
-keychain prompts. Confirm that this relay's COLONY_GOOGLE_CLIENT_IDS includes
-the configured desktop client audience. A successful account request creates
-or links an account and imports the returned identity; the brief prohibits
-production data changes and automation that triggers keychain prompts.
+The coordinator authorized a branch-only push and will ask the owner to run
+the combined candidate with their own Google account. This live gate does not
+block publishing the prepared branch. It remains a gate for claiming live
+Google sign-in works. The worker does not run the native app, modify production
+accounts or automate keychain prompts.
+
+## Owner test script, exactly five steps
+
+Use the coordinator's combined candidate on a first-run account screen. Use
+your own Google account in the browser; do not send credentials, browser URL
+queries, authorization codes, tokens or developer-console output to the team.
+
+1. On "Let’s get you started.", leave name, email and password empty and click
+   "Continue with Google" below "Create account" and the "or" divider. Success:
+   the system browser opens Google's account chooser or sign-in page, and
+   Colony shows "Waiting for Google…" with instructions to finish in the
+   browser. There must be no email/password validation error or duplicate
+   browser launch. If no browser opens, record the plain message in Colony.
+2. Cancel in Google's browser flow, then return to Colony. Success: the
+   Account form stays available and shows "Google sign-in was cancelled. Try
+   again or use your email." If Google offers no Cancel action, close that
+   browser tab and wait about three minutes: expect "Google sign-in took too
+   long. Try again or use your email." The Google and email buttons must become
+   usable again. Closing a tab does not immediately notify Colony.
+3. Click "Sign in" beside "Already have an account?". On "Welcome back.",
+   leave email and password empty and click its "Continue with Google" below
+   "Sign in" and the "or" divider. Success: a new Google browser flow opens
+   with the same waiting copy; the email form must not block it.
+4. In Google, choose your own account, complete any requested sign-in and
+   approve the requested access, then return to Colony. Success: the waiting
+   state ends and the Business step opens without asking for a Colony password,
+   verification code or API key. Failure: Colony stays on Sign in with plain
+   copy, such as "We couldn’t finish Google sign-in. Try again or use your
+   email.", "Google sign-in isn’t available right now. You can use your email
+   instead.", or "Can't reach the server right now. Try again later." No stack
+   trace, provider response, authorization code or token may appear.
+5. Complete Business and Connect using the coordinator's designated connection,
+   wait for Scout's real reply on Connected, then click "Open my Colony".
+   Success: "Getting things ready" ends and the full app opens the Welcome
+   channel. Record seconds from that click until Welcome is usable. Send the
+   coordinator the candidate version, which steps passed, the visible plain
+   failure text if any, and that timing. If any step fails, stop and report its
+   number; do not copy browser URL queries or console/network payloads.
+
+## Remaining proof
 
 No live Google ID token was obtained. No real relay accepted a desktop token.
 The valid client-secret/client-ID pairing, production audience allowlist,
