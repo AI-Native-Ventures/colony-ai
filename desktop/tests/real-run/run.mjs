@@ -209,14 +209,39 @@ try {
   page = await application.firstWindow({ timeout: 20000 });
   await page.setViewportSize({ width: 1728, height: 1117 });
   await page.waitForLoadState("domcontentloaded", { timeout: 20000 });
+  const firstWindow = page;
+  // The packaged app may replace its window between onboarding stages. Route every
+  // call to the newest open window so a window swap is observed, not misread.
+  const current = () => {
+    if (!firstWindow.isClosed()) return firstWindow;
+    const open = application.windows().filter((item) => !item.isClosed());
+    return open[open.length - 1] ?? firstWindow;
+  };
+  const livePage = new Proxy(firstWindow, {
+    get(_target, property) {
+      const active = current();
+      const value = active[property];
+      return typeof value === "function" ? value.bind(active) : value;
+    },
+  });
+  application.on("window", () => {
+    evidence.metadata.windowEvents = (evidence.metadata.windowEvents ?? 0) + 1;
+    void evidence.write();
+  });
   await driveFirstRun({
-    page,
+    page: livePage,
     evidence,
     website: options.website ?? "https://example.com",
     replyTimeoutMs,
     inspectWithoutAi: options["inspect-without-ai"] === "1",
     realEnv,
   });
+  evidence.metadata.endState = {
+    windows: application.windows().length,
+    firstWindowClosed: firstWindow.isClosed(),
+    processExitCode: application.process().exitCode,
+    processSignal: application.process().signalCode,
+  };
 } catch (error) {
   evidence.metadata.failureCategory = error.name;
   // Never persist raw automation exceptions: locator arguments can contain secrets.
