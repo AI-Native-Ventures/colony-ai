@@ -104,8 +104,7 @@ export const TOOLS = Object.freeze([
   },
   {
     name: "browser_read",
-    description:
-      "Visible text of the page or of one element, bounded." + UNTRUSTED,
+    description: `Visible text of the page or of one element, bounded.${UNTRUSTED}`,
     inputSchema: object(
       { tab, ref, maxChars: { type: "integer", minimum: 200, maximum: 20000 } },
       ["tab"],

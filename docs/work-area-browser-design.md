@@ -148,6 +148,13 @@ Module layout (all under `desktop/electron/browser-broker/`)
    token, grant state, expiry, epoch and tab binding on every call, not once per
    session.
 
+Secret hygiene. `buzz-acp` strips every `COLONY_BROWSER_*` variable from the
+agent process environment (`AGENT_ENV_REMOVALS` in `acp.rs`) so neither the
+agent nor its shell tools can read the broker secret or socket path. They reach
+only the browser MCP server, through its own explicit MCP environment. The
+agent's secret key is never forwarded; the server identifies the agent by public
+key.
+
 Identity note. The agent public key is asserted by the runtime that starts the
 MCP server, and the broker secret proves "a Colony launched MCP server", not
 "this specific agent". Agents run as the same OS user and are not OS isolated
@@ -157,7 +164,13 @@ the owner approved restricted browser-only execution mode (section 11).
 
 Launch of the MCP server: `ELECTRON_RUN_AS_NODE=1` with the app's own
 executable and `mcp-server.mjs`, so no separate Node install is required and
-the server has no npm dependencies. In development it is `node`.
+the server has no npm dependencies. In development it is `node`. UNPROVEN: that
+Electron's node mode loads an ES module from inside `app.asar`. If it does not,
+the fix is to `asarUnpack` the `browser-broker` directory or ship the server as
+one bundled file next to `colony-native-host`. A packaged run must prove this
+before the feature is enabled. The feature ships dark: nothing starts unless
+`COLONY_BROWSER_AGENT=1` (later a setting), so there is no extra process per
+agent session by default.
 
 ## 6. Capability model
 

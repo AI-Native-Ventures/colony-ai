@@ -26,6 +26,18 @@ const MAX_LINE_SIZE: usize = 10_000_000; // 10 MB
 /// Package and binary name used by Buzz's Pi ACP fork.
 pub(crate) const BUZZ_PI_ACP_NAME: &str = "buzz-pi-acp";
 
+/// Host-only variables that must never reach the agent process or its shell
+/// tools: the agent browser broker socket, secret and launch settings. The
+/// browser MCP server receives them through its own explicit environment.
+pub(crate) const AGENT_ENV_REMOVALS: [&str; 6] = [
+    "COLONY_BROWSER_MCP_COMMAND",
+    "COLONY_BROWSER_MCP_SCRIPT",
+    "COLONY_BROWSER_MCP_RUN_AS_NODE",
+    "COLONY_BROWSER_BROKER_SOCKET",
+    "COLONY_BROWSER_BROKER_SECRET",
+    "COLONY_BROWSER_AGENT_ID",
+];
+
 /// An MCP server configuration passed to `session/new`.
 ///
 /// Corresponds to the `McpServerStdio` variant in the ACP schema.
@@ -585,6 +597,12 @@ impl AcpClient {
             cmd.env_remove("COLONY_CONNECTION_CANCEL_PATH");
             cmd.env_remove("COLONY_CONNECTION_TIMEOUT_SECS");
             cmd.env_remove("COLONY_CONNECTION_PROGRESS_PATH");
+        }
+        // The agent browser broker secret and socket belong to its MCP server
+        // only (handed over through the MCP server's own env). The agent
+        // process and its shell tools must never see them.
+        for name in AGENT_ENV_REMOVALS {
+            cmd.env_remove(name);
         }
         let mut child = cmd.spawn()?;
 

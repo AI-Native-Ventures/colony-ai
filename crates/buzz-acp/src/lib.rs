@@ -5896,7 +5896,66 @@ async fn run_models(args: ModelsArgs) -> Result<()> {
     Ok(())
 }
 
+/// Environment contract for the optional Colony agent browser MCP server.
+///
+/// The desktop host sets these only when the agent browser feature is on. With
+/// any of command, socket or secret missing or empty, no browser server is
+/// added and agent sessions are exactly what they were before. See
+/// `docs/work-area-browser-design.md`.
+const BROWSER_MCP_COMMAND_ENV: &str = "COLONY_BROWSER_MCP_COMMAND";
+const BROWSER_MCP_SCRIPT_ENV: &str = "COLONY_BROWSER_MCP_SCRIPT";
+const BROWSER_MCP_RUN_AS_NODE_ENV: &str = "COLONY_BROWSER_MCP_RUN_AS_NODE";
+const BROWSER_BROKER_SOCKET_ENV: &str = "COLONY_BROWSER_BROKER_SOCKET";
+const BROWSER_BROKER_SECRET_ENV: &str = "COLONY_BROWSER_BROKER_SECRET";
+const BROWSER_AGENT_ID_ENV: &str = "COLONY_BROWSER_AGENT_ID";
+
 fn build_mcp_servers(config: &Config) -> Vec<McpServer> {
+    let mut servers = build_dev_mcp_servers(config);
+    servers.extend(browser_mcp_server(config, &|name| std::env::var(name).ok()));
+    servers
+}
+
+/// The agent browser MCP server, or `None` when the host has not enabled it.
+///
+/// The broker secret and socket path are handed only to this server's own
+/// environment. The agent process never receives them (see
+/// `AGENT_ENV_REMOVALS` in `acp.rs`). The agent's public key, not its secret
+/// key, identifies it to the broker.
+fn browser_mcp_server(config: &Config, env: &dyn Fn(&str) -> Option<String>) -> Option<McpServer> {
+    let non_empty = |name: &str| env(name).filter(|value| !value.is_empty());
+    let command = non_empty(BROWSER_MCP_COMMAND_ENV)?;
+    let socket = non_empty(BROWSER_BROKER_SOCKET_ENV)?;
+    let secret = non_empty(BROWSER_BROKER_SECRET_ENV)?;
+    let args = non_empty(BROWSER_MCP_SCRIPT_ENV).into_iter().collect();
+    let mut server_env = vec![
+        EnvVar {
+            name: BROWSER_BROKER_SOCKET_ENV.into(),
+            value: socket,
+        },
+        EnvVar {
+            name: BROWSER_BROKER_SECRET_ENV.into(),
+            value: secret,
+        },
+        EnvVar {
+            name: BROWSER_AGENT_ID_ENV.into(),
+            value: config.keys.public_key().to_hex(),
+        },
+    ];
+    if non_empty(BROWSER_MCP_RUN_AS_NODE_ENV).as_deref() == Some("1") {
+        server_env.push(EnvVar {
+            name: "ELECTRON_RUN_AS_NODE".into(),
+            value: "1".into(),
+        });
+    }
+    Some(McpServer {
+        name: "colony-browser".into(),
+        command,
+        args,
+        env: server_env,
+    })
+}
+
+fn build_dev_mcp_servers(config: &Config) -> Vec<McpServer> {
     if config.mcp_command.is_empty() {
         return vec![];
     }
@@ -9205,6 +9264,163 @@ mod build_mcp_servers_tests {
             no_base_prompt: false,
             base_prompt_content: None,
         }
+    }
+
+    fn browser_env<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |name| {
+            pairs
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| (*value).to_string())
+        }
+    }
+
+    const FULL_BROWSER_ENV: [(&str, &str); 5] = [
+        (
+            "COLONY_BROWSER_MCP_COMMAND",
+            "/Applications/Colony.app/Contents/MacOS/Colony",
+        ),
+        (
+            "COLONY_BROWSER_MCP_SCRIPT",
+            "/Applications/Colony.app/Contents/Resources/mcp-server.mjs",
+        ),
+        ("COLONY_BROWSER_MCP_RUN_AS_NODE", "1"),
+        ("COLONY_BROWSER_BROKER_SOCKET", "/tmp/colony-501/b-aa.sock"),
+        (
+            "COLONY_BROWSER_BROKER_SECRET",
+            "0123456789abcdef0123456789abcdef",
+        ),
+    ];
+
+    #[test]
+    fn browser_mcp_server_absent_without_host_env() {
+        let config = test_config();
+        let none: [(&str, &str); 0] = [];
+        assert!(browser_mcp_server(&config, &browser_env(&none)).is_none());
+    }
+
+    #[test]
+    fn browser_mcp_server_requires_command_socket_and_secret() {
+        let config = test_config();
+        for missing in [
+            "COLONY_BROWSER_MCP_COMMAND",
+            "COLONY_BROWSER_BROKER_SOCKET",
+            "COLONY_BROWSER_BROKER_SECRET",
+        ] {
+            let pairs: Vec<(&str, &str)> = FULL_BROWSER_ENV
+                .iter()
+                .copied()
+                .filter(|(key, _)| *key != missing)
+                .collect();
+            assert!(
+                browser_mcp_server(&config, &browser_env(&pairs)).is_none(),
+                "{missing} is required"
+            );
+            let blanked: Vec<(&str, &str)> = FULL_BROWSER_ENV
+                .iter()
+                .copied()
+                .map(|(key, value)| {
+                    if key == missing {
+                        (key, "")
+                    } else {
+                        (key, value)
+                    }
+                })
+                .collect();
+            assert!(
+                browser_mcp_server(&config, &browser_env(&blanked)).is_none(),
+                "an empty {missing} must not enable the server"
+            );
+        }
+    }
+
+    #[test]
+    fn browser_mcp_server_gets_socket_secret_and_public_identity_only() {
+        let config = test_config();
+        let server = browser_mcp_server(&config, &browser_env(&FULL_BROWSER_ENV))
+            .expect("browser server when the host enables it");
+        assert_eq!(server.name, "colony-browser");
+        assert_eq!(
+            server.command,
+            "/Applications/Colony.app/Contents/MacOS/Colony"
+        );
+        assert_eq!(
+            server.args,
+            vec!["/Applications/Colony.app/Contents/Resources/mcp-server.mjs".to_string()]
+        );
+        let value_of = |name: &str| {
+            server
+                .env
+                .iter()
+                .find(|var| var.name == name)
+                .map(|var| var.value.clone())
+        };
+        assert_eq!(
+            value_of("COLONY_BROWSER_BROKER_SOCKET").as_deref(),
+            Some("/tmp/colony-501/b-aa.sock")
+        );
+        assert_eq!(
+            value_of("COLONY_BROWSER_BROKER_SECRET").as_deref(),
+            Some("0123456789abcdef0123456789abcdef")
+        );
+        assert_eq!(
+            value_of("COLONY_BROWSER_AGENT_ID"),
+            Some(config.keys.public_key().to_hex())
+        );
+        assert_eq!(value_of("ELECTRON_RUN_AS_NODE").as_deref(), Some("1"));
+        let names: Vec<&str> = server.env.iter().map(|var| var.name.as_str()).collect();
+        assert!(
+            !names.contains(&"BUZZ_PRIVATE_KEY"),
+            "the agent secret key must never reach the browser server; got {names:?}"
+        );
+    }
+
+    #[test]
+    fn agent_process_never_receives_browser_broker_variables() {
+        for name in [
+            BROWSER_MCP_COMMAND_ENV,
+            BROWSER_MCP_SCRIPT_ENV,
+            BROWSER_MCP_RUN_AS_NODE_ENV,
+            BROWSER_BROKER_SOCKET_ENV,
+            BROWSER_BROKER_SECRET_ENV,
+            BROWSER_AGENT_ID_ENV,
+        ] {
+            assert!(
+                crate::acp::AGENT_ENV_REMOVALS.contains(&name),
+                "{name} must be stripped from the agent environment"
+            );
+        }
+    }
+
+    #[test]
+    fn browser_mcp_server_run_as_node_is_opt_in() {
+        let config = test_config();
+        let pairs: Vec<(&str, &str)> = FULL_BROWSER_ENV
+            .iter()
+            .copied()
+            .filter(|(key, _)| *key != "COLONY_BROWSER_MCP_RUN_AS_NODE")
+            .collect();
+        let server = browser_mcp_server(&config, &browser_env(&pairs)).expect("server");
+        assert!(server
+            .env
+            .iter()
+            .all(|var| var.name != "ELECTRON_RUN_AS_NODE"));
+        let zero: Vec<(&str, &str)> = FULL_BROWSER_ENV
+            .iter()
+            .copied()
+            .map(|(key, value)| {
+                if key == "COLONY_BROWSER_MCP_RUN_AS_NODE" {
+                    (key, "0")
+                } else {
+                    (key, value)
+                }
+            })
+            .collect();
+        let server = browser_mcp_server(&config, &browser_env(&zero)).expect("server");
+        assert!(server
+            .env
+            .iter()
+            .all(|var| var.name != "ELECTRON_RUN_AS_NODE"));
     }
 
     #[test]
