@@ -252,6 +252,7 @@ test("custom colors validate, survive Default and reload, and reset can be undon
     "aria-pressed",
     "true",
   );
+  await page.getByTestId("appearance-apply").click();
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/w20-custom-appearance/);
 });
@@ -360,7 +361,7 @@ test("channel preferences supersede stale Appearance conversation fields on relo
   );
 });
 
-test("Appearance write failure leaves every visible control and live theme unchanged", async ({
+test("Appearance write failure retains the draft for retry and leaves the live theme unchanged", async ({
   page,
 }) => {
   await openAppearance(page);
@@ -374,13 +375,9 @@ test("Appearance write failure leaves every visible control and live theme uncha
     };
   });
   await page.getByTestId("appearance-theme-custom").click();
-  await expect(page.getByTestId("appearance-theme-default")).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await expect(page.getByTestId("appearance-color-hex-1")).toHaveCount(0);
   await page.getByTestId("appearance-mode-dark").click();
-  await expect(page.getByTestId("appearance-mode-light")).toHaveAttribute(
+  await page.getByTestId("appearance-apply").click();
+  await expect(page.getByTestId("appearance-theme-custom")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -390,6 +387,11 @@ test("Appearance write failure leaves every visible control and live theme uncha
   expect(await appearanceSnapshot(page)).toEqual(before);
   expect(await page.evaluate(() => localStorage.getItem("buzz-theme"))).toBe(
     "buzz",
+  );
+  await page.getByTestId("appearance-cancel").click();
+  await expect(page.getByTestId("appearance-theme-default")).toHaveAttribute(
+    "aria-pressed",
+    "true",
   );
 });
 

@@ -226,7 +226,7 @@ export function OpenRouterConnectionPanel({
         <>
           <div className="openrouter-intro">
             <p>Connect in your browser, then choose a free or paid model.</p>
-            <ul className="list-disc">
+            <ul className="list-disc pl-5 space-y-1">
               <li>Keep your existing OpenRouter account.</li>
               <li>Review its balance and limits here.</li>
               <li>OpenRouter billing stays separate from Colony credits.</li>

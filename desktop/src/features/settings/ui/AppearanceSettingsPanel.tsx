@@ -54,6 +54,7 @@ import {
   applyConversationMessageSize,
   conversationMessageSizeCss,
 } from "../lib/conversationMessageSizePreference";
+import { THEME_CATALOG_PALETTES } from "../lib/themeCatalogPalettes";
 
 type AppearanceMode = "system" | "light" | "dark";
 type AppearanceSettingsPanelProps = {
@@ -321,6 +322,10 @@ function LiveAppearancePreview({
   preferences: AppearanceSnapshot;
   isDark: boolean;
 }) {
+  const palette =
+    preferences.theme === "buzz" || preferences.theme === "buzz-dark"
+      ? undefined
+      : THEME_CATALOG_PALETTES[preferences.theme];
   const baseColor =
     ACCENTS.find(
       ([, hex]) => hex.toLowerCase() === preferences.accent.toLowerCase(),
@@ -368,11 +373,36 @@ function LiveAppearancePreview({
             preferences.messageSize,
           ),
           "--ap-glass-alpha": `${preferences.glassOpacity}%`,
+          ...(palette
+            ? {
+                "--ink": palette.foreground,
+                "--muted": blendColor(
+                  palette.foreground,
+                  palette.background,
+                  0.35,
+                ),
+                "--paper": palette.background,
+                "--panel": palette.background,
+                "--line": blendColor(
+                  palette.foreground,
+                  palette.background,
+                  0.85,
+                ),
+                "--ap-window-paint": preferences.custom
+                  ? `linear-gradient(155deg, ${first}, ${second})`
+                  : `linear-gradient(${palette.background}, ${palette.background})`,
+              }
+            : {}),
         } as React.CSSProperties
       }
     >
       <div className="ap-desktop">
-        <div className="ap-live-window">
+        <div
+          className="ap-live-window"
+          style={
+            palette ? { backgroundImage: "var(--ap-window-paint)" } : undefined
+          }
+        >
           <div className="ap-live-top">
             <span aria-hidden="true">● ● ●</span>
             <span>colony</span>
@@ -504,6 +534,12 @@ export function AppearanceSettingsPanel({
     return loadPreferences(current, business, global);
   });
   const [saved, setSaved] = React.useState(true);
+  const [appliedPreferences, setAppliedPreferences] =
+    React.useState(preferences);
+  const [previousAppearance, setPreviousAppearance] =
+    React.useState<AppearanceSnapshot | null>(null);
+  const appearancePending =
+    JSON.stringify(preferences) !== JSON.stringify(appliedPreferences);
   const [undoSnapshot, setUndoSnapshot] =
     React.useState<AppearanceSnapshot | null>(null);
   const [hexDrafts, setHexDrafts] = React.useState<[string, string]>(() => [
@@ -525,6 +561,7 @@ export function AppearanceSettingsPanel({
     const base = currentRef.current;
     const next = loadPreferences(base, business, global);
     setPreferences(next);
+    setAppliedPreferences(next);
     setHexDrafts([...next.customLight]);
     if (!business) {
       let snapshotWritten = false;
@@ -568,27 +605,22 @@ export function AppearanceSettingsPanel({
   ]);
 
   React.useEffect(() => {
-    setPreferences((previous) => ({
+    const update = (previous: AppearanceSnapshot) => ({
       ...previous,
       theme: theme.selectedThemeName,
       accent: theme.accentColor,
       followSystem: theme.followSystem,
-    }));
+    });
+    setPreferences(update);
+    setAppliedPreferences(update);
   }, [theme.selectedThemeName, theme.accentColor, theme.followSystem]);
 
   React.useEffect(() => {
     const root = document.documentElement;
-    if (preferences.custom) {
-      const mode = preferences.followSystem
-        ? isDark
-          ? "dark"
-          : "light"
-        : LIGHT_THEMES.has(preferences.theme as SyntaxThemeName)
-          ? "light"
-          : "dark";
+    if (appliedPreferences.custom) {
       const [first, second] = customGradientStops(
-        preferences.customLight,
-        mode,
+        appliedPreferences.customLight,
+        isDark ? "dark" : "light",
       );
       root.style.setProperty("--w20-custom-gradient-start", first);
       root.style.setProperty("--w20-custom-gradient-end", second);
@@ -598,21 +630,15 @@ export function AppearanceSettingsPanel({
       root.style.removeProperty("--w20-custom-gradient-end");
       root.classList.remove("w20-custom-appearance");
     }
-  }, [
-    isDark,
-    preferences.custom,
-    preferences.customLight,
-    preferences.followSystem,
-    preferences.theme,
-  ]);
+  }, [isDark, appliedPreferences]);
 
-  const commit = React.useCallback(
+  const applyCommit = React.useCallback(
     (
       patch: Partial<AppearanceSnapshot>,
       scope: "business" | "conversations" = "business",
     ) => {
       const next: AppearanceSnapshot = {
-        ...preferences,
+        ...(scope === "conversations" ? appliedPreferences : preferences),
         ...patch,
         version: 1,
       };
@@ -620,14 +646,20 @@ export function AppearanceSettingsPanel({
       try {
         if (!writeAppearanceSnapshot(window.localStorage, key, next)) {
           setSaved(false);
-          return;
+          return false;
         }
         setSaved(true);
-        setPreferences(next);
-        setHexDrafts([...next.customLight]);
+        if (scope === "conversations") {
+          setPreferences((previous) => ({ ...previous, ...patch }));
+          setAppliedPreferences((previous) => ({ ...previous, ...patch }));
+        } else {
+          setPreferences(next);
+          setAppliedPreferences(next);
+          setHexDrafts([...next.customLight]);
+        }
       } catch {
         setSaved(false);
-        return;
+        return false;
       }
 
       if (
@@ -659,9 +691,55 @@ export function AppearanceSettingsPanel({
         setLinkPreviewStyle(next.linkPreview);
       if (patch.threadLayout !== undefined)
         setThreadViewMode(next.threadLayout);
+      return true;
     },
-    [businessKey, globalKey, preferences, theme, glassBackgroundSupported],
+    [
+      businessKey,
+      globalKey,
+      preferences,
+      appliedPreferences,
+      theme,
+      glassBackgroundSupported,
+    ],
   );
+
+  function commit(
+    patch: Partial<AppearanceSnapshot>,
+    scope: "business" | "conversations" = "business",
+  ) {
+    if (scope === "conversations") {
+      applyCommit(patch, scope);
+      return;
+    }
+    const next = { ...preferences, ...patch };
+    setPreferences(next);
+    setHexDrafts([...next.customLight]);
+    setSaved(true);
+  }
+
+  function applyBusinessAppearance(snapshot: AppearanceSnapshot) {
+    return applyCommit({
+      theme: snapshot.theme,
+      accent: snapshot.accent,
+      followSystem: snapshot.followSystem,
+      custom: snapshot.custom,
+      customLight: snapshot.customLight,
+      glassBackground: snapshot.glassBackground,
+      glassOpacity: snapshot.glassOpacity,
+      prominentActiveTab: snapshot.prominentActiveTab,
+    });
+  }
+
+  function applyDraft() {
+    const previous = appliedPreferences;
+    if (applyBusinessAppearance(preferences)) setPreviousAppearance(previous);
+  }
+
+  function cancelDraft() {
+    setPreferences(appliedPreferences);
+    setHexDrafts([...appliedPreferences.customLight]);
+    setSaved(true);
+  }
 
   function selectMode(mode: AppearanceMode) {
     commit({
@@ -729,9 +807,9 @@ export function AppearanceSettingsPanel({
   React.useEffect(() => {
     document.documentElement.style.setProperty(
       "--w20-appearance-accent",
-      accentTint,
+      appliedPreferences.accent,
     );
-  }, [accentTint]);
+  }, [appliedPreferences.accent]);
 
   return (
     <div
@@ -1074,12 +1152,52 @@ export function AppearanceSettingsPanel({
       </div>
       <footer className="ap-foot">
         <span>
-          {saved ? <CheckCircle2 aria-hidden="true" className="icon" /> : null}
-          {saved
-            ? `Saved for you in ${businessName}`
-            : "Unable to save locally"}
+          {saved && !appearancePending ? (
+            <CheckCircle2 aria-hidden="true" className="icon" />
+          ) : null}
+          <span role="status" data-testid="appearance-apply-status">
+            {!saved
+              ? "Unable to save locally"
+              : appearancePending
+                ? "Preview only"
+                : "Applied"}
+          </span>
         </span>
-        <span>Local appearance preview</span>
+        <div className="ap-apply-actions">
+          {appearancePending ? (
+            <button
+              data-testid="appearance-cancel"
+              type="button"
+              onClick={cancelDraft}
+            >
+              Cancel
+            </button>
+          ) : previousAppearance ? (
+            <button
+              data-testid="appearance-revert"
+              type="button"
+              onClick={() => {
+                if (applyBusinessAppearance(previousAppearance)) {
+                  setPreviousAppearance(null);
+                }
+              }}
+            >
+              Revert
+            </button>
+          ) : null}
+          <button
+            className="ap-apply-button"
+            data-testid="appearance-apply"
+            type="button"
+            disabled={
+              !appearancePending ||
+              hexDrafts.some((color) => !isValidHexColor(color))
+            }
+            onClick={applyDraft}
+          >
+            Apply
+          </button>
+        </div>
       </footer>
     </div>
   );

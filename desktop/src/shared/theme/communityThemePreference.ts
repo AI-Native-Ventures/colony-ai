@@ -1,5 +1,5 @@
 import { normalizeRelayUrl } from "@/features/profile/lib/selfProfileStorage";
-import { ACCENT_COLORS } from "./ThemeProvider";
+import { ACCENT_COLORS, DEFAULT_ACCENT } from "./ThemeProvider";
 import { SYNTAX_THEMES, type SyntaxThemeName } from "./theme-loader";
 import {
   nextPreferenceWriteTime,
@@ -20,7 +20,7 @@ export type CommunityThemePreference = {
 export const DEFAULT_COMMUNITY_THEME: CommunityThemePreference = Object.freeze({
   version: 1,
   theme: "buzz",
-  accent: "#3b82f6",
+  accent: DEFAULT_ACCENT,
   followSystem: true,
 });
 
