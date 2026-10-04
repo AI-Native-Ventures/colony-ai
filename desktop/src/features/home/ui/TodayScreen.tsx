@@ -412,7 +412,7 @@ export function TodayScreen({
       <TodayTopBar onOpenInbox={() => void goHome()} />
       <div className="colony-today-scroll">
         <div className="colony-today-heading">
-          <h1>Needs me</h1>
+          <h1>Today</h1>
           {showUpdatesAction ? (
             <Button
               className="colony-secondary-button"
@@ -432,7 +432,7 @@ export function TodayScreen({
               <p>
                 {needsMeErrors.length > 0
                   ? "Open asks unavailable"
-                  : `${needItems.length} open`}
+                  : `Needs me · ${needItems.length} open ${needItems.length === 1 ? "decision" : "decisions"}`}
               </p>
               {needItems.length > 0 && overdueItems.length > 0 ? (
                 <button

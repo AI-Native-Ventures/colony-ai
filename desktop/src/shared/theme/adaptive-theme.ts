@@ -76,6 +76,30 @@ function overlay(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/** Keep section labels muted while meeting AA on both sidebar surfaces. */
+export function sidebarSectionForeground(
+  hint: string,
+  backgrounds: string[],
+): string {
+  const minContrast = (color: string) =>
+    Math.min(
+      ...backgrounds.map(
+        (background) =>
+          (Math.max(luminance(color), luminance(background)) + 0.05) /
+          (Math.min(luminance(color), luminance(background)) + 0.05),
+      ),
+    );
+  if (minContrast(hint) >= 4.52) return hint;
+  let low = 0;
+  let high = 1;
+  for (let step = 0; step < 20; step++) {
+    const mid = (low + high) / 2;
+    if (minContrast(mix(hint, "#ffffff", mid)) >= 4.52) high = mid;
+    else low = mid;
+  }
+  return mix(hint, "#ffffff", high);
+}
+
 // =============================================================================
 // Chrome Color Calculation
 // =============================================================================
@@ -272,6 +296,16 @@ export function createThemeVars(
       // Sidebar
       "--sidebar-background": hexToHsl(chromeColor),
       "--sidebar-foreground": textFg,
+      "--sidebar-section-foreground": hexToHsl(
+        isDark
+          ? sidebarSectionForeground(
+              syntaxComment === syntaxFg
+                ? mix(syntaxFg, chromeColor, 0.6)
+                : syntaxComment,
+              [chromeColor, primaryBg],
+            )
+          : syntaxComment,
+      ),
       "--sidebar-accent": hexToHsl(primaryBg),
       "--sidebar-accent-foreground": textFg,
       "--sidebar-border": hexToHsl(borderColor),

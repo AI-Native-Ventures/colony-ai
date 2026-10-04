@@ -332,7 +332,7 @@ export function WelcomeComposerBanner({
                 : 0,
           }}
           className={cn(
-            "relative z-[1] mx-5 mb-0 flex items-center gap-2 rounded-t-2xl border border-b-0 px-4 pb-5 pt-2.5 text-sm leading-5 transition-colors",
+            "relative z-[1] mx-5 mb-3 flex items-center gap-2 rounded-t-2xl border px-4 py-2.5 text-sm leading-5 transition-colors",
             state !== "prompt"
               ? "border-emerald-500/30 bg-emerald-500/15 text-foreground"
               : "border-border/60 bg-muted/55 text-muted-foreground",
@@ -408,6 +408,7 @@ export function WelcomeComposerBanner({
                 className="min-w-0 flex-1"
                 exit="exit"
                 initial="initial"
+                data-testid="welcome-composer-prompt-copy"
                 key="prompt-copy"
                 variants={welcomeComposerBannerContentVariants}
               >

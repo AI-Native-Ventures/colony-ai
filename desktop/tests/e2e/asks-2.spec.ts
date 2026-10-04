@@ -615,7 +615,7 @@ test("busy Needs me groups the full deadline-sorted queue", async ({
 
   await page.goto("/#/today");
   const needsMe = page.getByRole("region", { name: "Needs me" });
-  await expect(needsMe.getByText("18 open")).toBeVisible();
+  await expect(needsMe.getByText("Needs me · 18 open decisions")).toBeVisible();
   await expect(page.locator('[data-testid^="today-ask-"]')).toHaveCount(6);
   await expect(needsMe.getByRole("heading", { name: "Overdue" })).toBeVisible();
   await expect(needsMe.getByText("3 asks are overdue")).toBeVisible();

@@ -291,6 +291,11 @@ function createColonyFoundationVars(root: HTMLElement): Record<string, string> {
     "--sidebar": token("canvas"),
     "--sidebar-background": token("canvas"),
     "--sidebar-foreground": token("sidebar-foreground"),
+    // Branded Settings has a painted gradient rather than a flat sidebar.
+    // This muted shade reaches AA at its measured section-label backgrounds.
+    "--sidebar-section-foreground": root.classList.contains("dark")
+      ? hexToHsl("#cec9d1")
+      : token("muted"),
     "--sidebar-primary": token("accent"),
     "--sidebar-primary-foreground": token("surface"),
     "--sidebar-active": token("accent-soft"),

@@ -57,14 +57,9 @@ async function openNostrBind(
 ) {
   await installMockBridge(page, mock);
   await page.goto("/");
-  await page.waitForFunction(
-    () =>
-      typeof (
-        window as Window & {
-          __BUZZ_E2E_INVOKE_MOCK_COMMAND__?: unknown;
-        }
-      ).__BUZZ_E2E_INVOKE_MOCK_COMMAND__ === "function",
-  );
+  // The IPC bridge is installed before React mounts the consent listener.
+  // Wait for the rendered app before emitting a native deep-link event.
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
   await emitNostrBind(page, payload);
   await expect(page.getByTestId("nostr-bind-page")).toBeVisible();
 }
