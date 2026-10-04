@@ -25,8 +25,12 @@ export function OpenRouterConnectionPanel({
   onSaved,
   onReadyChange,
   onStateChange,
+  onTestConnection,
+  testDisabled = false,
 }: {
   onboarding?: boolean;
+  onTestConnection?: () => void;
+  testDisabled?: boolean;
   onSaved?: () => void;
   onReadyChange?: (ready: boolean) => void;
   onStateChange?: (state: "unlinked" | "connected" | "limit" | "error") => void;
@@ -222,7 +226,7 @@ export function OpenRouterConnectionPanel({
         <>
           <div className="openrouter-intro">
             <p>Connect in your browser, then choose a free or paid model.</p>
-            <ul className="list-disc">
+            <ul className="list-disc pl-5 space-y-1">
               <li>Keep your existing OpenRouter account.</li>
               <li>Review its balance and limits here.</li>
               <li>OpenRouter billing stays separate from Colony credits.</li>
@@ -409,30 +413,36 @@ export function OpenRouterConnectionPanel({
               </p>
             </div>
           ) : null}
-          <div
-            className="power-cta"
-            style={onboarding ? { position: "static" } : undefined}
-          >
+          <div className="power-cta">
             <button
-              className={button(!onboarding)}
+              className={button(true)}
               type="button"
               disabled={
-                pending !== null || exhausted || account.status === "linked"
+                pending !== null ||
+                testDisabled ||
+                exhausted ||
+                account.status === "linked"
               }
-              onClick={() => void act("test", testOpenRouterConnection)}
+              onClick={() =>
+                onTestConnection
+                  ? onTestConnection()
+                  : void act("test", testOpenRouterConnection)
+              }
             >
               {pending === "test" ? "Testing connection" : "Test connection"}
             </button>
             <p>Uses the selected OpenRouter model.</p>
           </div>
-          <button
-            className="link text-sm"
-            type="button"
-            disabled={pending !== null}
-            onClick={() => void act("load", getOpenRouterConnection)}
-          >
-            Refresh connection
-          </button>
+          {!onboarding || account.status === "linked" ? (
+            <button
+              className="link"
+              type="button"
+              disabled={pending !== null}
+              onClick={() => void act("load", getOpenRouterConnection)}
+            >
+              Refresh connection
+            </button>
+          ) : null}
         </>
       )}
     </section>

@@ -1,4 +1,12 @@
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
+import { getOpenRouterConnection } from "@/shared/api/tauriOpenRouter";
+import {
+  useAgentConfigSurface,
+  useAcpRuntimesQuery,
+} from "@/features/agents/hooks";
+import { runtimeForAgent } from "@/features/agents/agentDirectoryModel";
+import { employeeFundingSource } from "@/features/company-team/employeePresentation";
 import { ArrowLeft } from "lucide-react";
 
 import type { TeamMember } from "@/features/company-team/teamModels";
@@ -26,14 +34,33 @@ import {
 export function EmployeeSalaryPanel({
   employee,
   employees,
-  canManage,
-  onEdit,
 }: {
   employee: TeamMember;
   employees: TeamMember[];
-  canManage: boolean;
-  onEdit: () => void;
 }) {
+  const catalog = useAcpRuntimesQuery({ enabled: true });
+  const config = useAgentConfigSurface(
+    employee.managedAgent ? employee.pubkey : null,
+  );
+  const runtime = employee.managedAgent
+    ? runtimeForAgent(employee.managedAgent, catalog.data ?? [])
+    : undefined;
+  const source = employeeFundingSource(
+    employee.managedAgent,
+    runtime,
+    config.data?.normalized.provider?.value,
+  );
+  const openRouter = useQuery({
+    queryKey: ["employee-openrouter-connection", employee.pubkey],
+    queryFn: getOpenRouterConnection,
+    enabled: source.source === "OpenRouter",
+  });
+  const funding = employeeFundingSource(
+    employee.managedAgent,
+    runtime,
+    config.data?.normalized.provider?.value,
+    openRouter.data,
+  );
   const allowancesQuery = useEmployeeAllowanceHeadsQuery();
   const spendQuery = useAiSpendHeadsQuery();
   const sync = useSyncAgentTurnSpendRecords(employees, spendQuery, true);
@@ -64,6 +91,24 @@ export function EmployeeSalaryPanel({
 
   return (
     <section className="space-y-8" data-testid="employee-salary">
+      <section
+        className="max-w-2xl rounded-lg border border-border p-5"
+        data-testid="employee-funding-source"
+      >
+        <h2 className="text-base font-semibold">Connected source</h2>
+        <p className="mt-3 text-sm font-medium">{funding.source}</p>
+        <p className="mt-1 text-sm text-muted-foreground" role="status">
+          {catalog.isLoading ||
+          (source.source === "OpenRouter" && openRouter.isLoading)
+            ? "Loading connection status"
+            : catalog.isError || config.isError || openRouter.isError
+              ? "Connection details could not load"
+              : funding.state}
+        </p>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Billing plan and employee usage are not reported here.
+        </p>
+      </section>
       <div className="max-w-2xl rounded-lg border border-border bg-muted/20 p-5">
         <p className="text-sm text-muted-foreground">
           API-equivalent allowance
@@ -76,9 +121,9 @@ export function EmployeeSalaryPanel({
             </span>
           </h2>
         ) : (
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight">
-            Not configured
-          </h2>
+          <p className="mt-3 text-sm text-muted-foreground">
+            No company allowance recorded.
+          </p>
         )}
         {effective?.temporary && allowance?.head.temporaryAllowance ? (
           <p className="mt-2 text-sm text-muted-foreground">
@@ -93,7 +138,7 @@ export function EmployeeSalaryPanel({
             ? `${formatUsdCents(usedCents ?? 0n)} estimated used this period`
             : usage?.turnCount === 0
               ? "Usage not reported"
-              : "Usage unavailable"}
+              : "Usage totals are not reported by the connected source"}
           {limitCents === null ? "" : ` of ${formatUsdCents(limitCents)}`}
           {usage && usage.unpricedTurnCount > 0
             ? ` · ${usage.unpricedTurnCount} turn costs not reported`
@@ -124,7 +169,7 @@ export function EmployeeSalaryPanel({
         <div className="mt-3 rounded-lg border border-border bg-muted/20 p-4 text-sm">
           {allowance?.head.fundingOrder.length
             ? allowance.head.fundingOrder.join(" → ")
-            : "Not configured"}
+            : "No fallback funding order recorded"}
         </div>
       </div>
 
@@ -133,17 +178,10 @@ export function EmployeeSalaryPanel({
         from the connected source.
       </p>
 
-      {canManage ? (
-        <Button className="w-full" onClick={onEdit} type="button">
-          Change allowance or funding
-        </Button>
-      ) : null}
-
       {allowancesQuery.isError || spendQuery.isError || sync.error ? (
         <p className="text-sm text-destructive" role="alert">
-          {allowancesQuery.error?.message ??
-            spendQuery.error?.message ??
-            sync.error?.message}
+          Allowance or usage records could not load. Connection status is shown
+          separately.
         </p>
       ) : null}
       {allowancesQuery.isLoading || spendQuery.isLoading ? (

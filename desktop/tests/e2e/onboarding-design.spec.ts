@@ -152,12 +152,12 @@ for (const viewport of [
     });
     await expect(
       page.getByTestId("onboarding-connect-runtime-claude"),
-    ).toContainText("Usage unavailable");
+    ).toContainText("Subscription could not be checked");
     await waitForAnimations(page);
     await page.screenshot({
       path: `${SHOT_DIR}/runtime-connect-ready-${viewport.width}.png`,
     });
-    await page.getByRole("button", { name: /^Connect with / }).click();
+    await page.getByRole("button", { name: /^Connect / }).click();
     await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
     await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
     await waitForAnimations(page);
@@ -256,7 +256,7 @@ for (const viewport of [
         },
       },
     });
-    await page.getByRole("button", { name: /^Connect with / }).click();
+    await page.getByRole("button", { name: /^Connect / }).click();
     await expect(
       page.getByTestId("onboarding-scene-connection-error"),
     ).toBeVisible();

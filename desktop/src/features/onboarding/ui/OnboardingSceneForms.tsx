@@ -1,5 +1,6 @@
 import * as React from "react";
 import { ScoutAvatar } from "./ScoutAvatar";
+import { GoogleMark } from "./GoogleAccountPresentation";
 import { scoutGuidance } from "./scoutGuidance";
 import {
   onboardingSceneStage,
@@ -136,6 +137,37 @@ export function StoryPanel({
   );
 }
 
+function GoogleAccountAction({
+  data,
+  onGoogleSignIn,
+  googlePending,
+}: Pick<PresentationProps, "data" | "onGoogleSignIn" | "googlePending">) {
+  if (!onGoogleSignIn) return null;
+  return (
+    <div className="account-google-action">
+      <div className="account-auth-divider text-xs" aria-hidden="true">
+        or
+      </div>
+      <button
+        className="secondary full account-google-button"
+        data-testid="account-auth-google"
+        disabled={data.pending}
+        onClick={onGoogleSignIn}
+        type="button"
+      >
+        <GoogleMark />
+        {googlePending ? "Waiting for Google…" : "Continue with Google"}
+      </button>
+      {googlePending ? (
+        <p className="account-google-help text-xs" role="status">
+          Finish signing in in your browser. You can cancel there and return
+          here.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function AccountForm({
   data,
   error,
@@ -143,6 +175,8 @@ export function AccountForm({
   onNameChange,
   onPasswordChange,
   onSubmit,
+  onGoogleSignIn,
+  googlePending,
 }: PresentationProps) {
   return (
     <>
@@ -191,6 +225,11 @@ export function AccountForm({
           {data.pending ? "Please wait…" : "Create account"}
         </PrimaryButton>
       </form>
+      <GoogleAccountAction
+        data={data}
+        onGoogleSignIn={onGoogleSignIn}
+        googlePending={googlePending}
+      />
     </>
   );
 }
@@ -242,6 +281,8 @@ export function SignInForm({
   onNavigate,
   onPasswordChange,
   onSubmit,
+  onGoogleSignIn,
+  googlePending,
 }: PresentationProps) {
   return (
     <>
@@ -287,6 +328,11 @@ export function SignInForm({
           {data.pending ? "Please wait…" : "Sign in"}
         </PrimaryButton>
       </form>
+      <GoogleAccountAction
+        data={data}
+        onGoogleSignIn={onGoogleSignIn}
+        googlePending={googlePending}
+      />
       <div className="form-end">
         New to Colony?
         <button

@@ -57,14 +57,9 @@ async function openNostrBind(
 ) {
   await installMockBridge(page, mock);
   await page.goto("/");
-  await page.waitForFunction(
-    () =>
-      typeof (
-        window as Window & {
-          __BUZZ_E2E_INVOKE_MOCK_COMMAND__?: unknown;
-        }
-      ).__BUZZ_E2E_INVOKE_MOCK_COMMAND__ === "function",
-  );
+  // The IPC bridge is installed before React mounts the consent listener.
+  // Wait for the rendered app before emitting a native deep-link event.
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
   await emitNostrBind(page, payload);
   await expect(page.getByTestId("nostr-bind-page")).toBeVisible();
 }
@@ -459,7 +454,7 @@ test("keeps the signed response available when clipboard access fails", async ({
   await expect(
     page
       .getByTestId("nostr-bind-manual-fallback-content")
-      .getByText("Buzz couldn't access the clipboard. Try again."),
+      .getByText("Colony couldn't access the clipboard. Try again."),
   ).toBeVisible();
   await expect(page.getByTestId("nostr-bind-signed-response")).toContainText(
     "e2e-signed-nostr-binding",

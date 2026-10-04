@@ -75,7 +75,7 @@ export function shouldOpenDoctor(
 }
 
 export function missingBinaryRecoveryMessage(): string {
-  return "not found in PATH — install it or update PATH, then restart Buzz";
+  return "not found in PATH , install it or update PATH, then restart Colony";
 }
 
 /**
@@ -414,8 +414,8 @@ function RequirementRow({
     }
     case "cli_config_invalid": {
       // Config-invalid rows are purely informational — the user must edit an
-      // external file. No Agent runtimes CTA (Buzz can't repair ~/.codex/config.toml)
-      // and no Edit Agent CTA (the field isn't managed by Buzz).
+      // external file. No Agent runtimes CTA (Colony can't repair ~/.codex/config.toml)
+      // and no Edit Agent CTA (the field isn't managed by Colony).
       const cli = requirement.probe_args[0] ?? "the CLI";
       const configFile = `~/.${cli}/config.toml`;
       return (

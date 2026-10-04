@@ -358,7 +358,7 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
     "Campaign Designer",
   );
   await expect(page.getByTestId("company-position-record")).toContainText(
-    "Position exists",
+    "Runtime statusReady",
   );
   await expect(
     page.getByRole("button", { name: "Connect a managed agent" }),
@@ -372,7 +372,7 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
   await page.getByTestId(`company-team-member-${employeePubkey}`).click();
   await expect(page.getByTestId("company-employee-profile")).toBeVisible();
   await expect(page.getByTestId("company-position-header")).toContainText(
-    `${EMPLOYEE_TITLE} · Employee · active`,
+    `${EMPLOYEE_TITLE} · Employee · Ready`,
   );
   await expect(
     page.getByTestId("company-position-header").getByRole("button", {
@@ -430,11 +430,12 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
 
   await page.getByRole("tab", { name: "Salary" }).click();
   await expect(page.getByTestId("employee-salary")).toContainText(
-    "Not configured",
+    "No company allowance recorded.",
   );
-  await page
-    .getByRole("button", { name: "Change allowance or funding" })
-    .click();
+  await expect(
+    page.getByRole("button", { name: "Change allowance or funding" }),
+  ).toHaveCount(0);
+  await page.goto(`/#/team/detail/${employeePubkey}?panel=salary-edit`);
   await expect(page).toHaveURL(
     new RegExp(`/team/detail/${employeePubkey}\\?panel=salary-edit$`),
   );
@@ -447,9 +448,10 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
   );
   await waitForAnimations(page);
   await page.screenshot({ path: "test-results/employee-salary.png" });
-  await page
-    .getByRole("button", { name: "Change allowance or funding" })
-    .click();
+  await expect(
+    page.getByRole("button", { name: "Change allowance or funding" }),
+  ).toHaveCount(0);
+  await page.goto(`/#/team/detail/${employeePubkey}?panel=salary-edit`);
   await expect(page.getByTestId("employee-allowance-edit")).toBeVisible();
   await waitForAnimations(page);
   await page.screenshot({ path: "test-results/employee-allowance-edit.png" });
@@ -571,8 +573,21 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
   await page.getByRole("button", { name: "Approve and rehire" }).click();
   await expect(page.getByTestId("company-terminated-banner")).toHaveCount(0);
   await expect(page.getByTestId("company-position-header")).toContainText(
-    "active",
+    "Employee · Offline",
   );
+  await expect
+    .poll(() =>
+      page.evaluate((pubkey) => {
+        const events = JSON.parse(
+          localStorage.getItem("buzz-e2e-company-member-position-events-v1") ??
+            "[]",
+        );
+        return events
+          .map((event: { content: string }) => JSON.parse(event.content))
+          .find((head: { pubkey: string }) => head.pubkey === pubkey)?.status;
+      }, employeePubkey),
+    )
+    .toBe("active");
   await page.goto(`/#/team/detail/${bobPubkey}`);
   await expect(page.getByTestId("company-team-member-profile")).toContainText(
     "Designer",

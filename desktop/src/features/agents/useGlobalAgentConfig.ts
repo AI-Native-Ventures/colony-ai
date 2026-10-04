@@ -6,8 +6,8 @@
  * receive the already-populated value on first render, eliminating the
  * per-mount IPC race that caused required-env-key rows to be missing on open.
  *
- * On fetch error the query falls back to EMPTY_CONFIG (safe — the absence of
- * a global config is never an error state for callers).
+ * Placeholder data is still loading. Fetch failures remain explicit so
+ * readiness consumers cannot treat an unread configuration as disconnected.
  */
 import { useQuery } from "@tanstack/react-query";
 
@@ -26,8 +26,9 @@ export const globalAgentConfigQueryKey = ["globalAgentConfig"] as const;
 export function useGlobalAgentConfig(): {
   globalConfig: GlobalAgentConfig;
   isLoading: boolean;
+  isError: boolean;
 } {
-  const { data, isPending } = useQuery({
+  const { data, isPending, isPlaceholderData, isError } = useQuery({
     queryKey: globalAgentConfigQueryKey,
     queryFn: getGlobalAgentConfig,
     // Config is only mutated via setGlobalAgentConfig — treat as stable until
@@ -39,6 +40,7 @@ export function useGlobalAgentConfig(): {
 
   return {
     globalConfig: data ?? EMPTY_CONFIG,
-    isLoading: isPending,
+    isLoading: isPending || isPlaceholderData,
+    isError,
   };
 }

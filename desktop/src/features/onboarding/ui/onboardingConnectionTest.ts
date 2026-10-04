@@ -8,6 +8,10 @@ export type OnboardingConnectionProof = {
   model: string | null;
   startupMs: number;
   totalMs: number;
+  spawnMs?: number;
+  initializeMs?: number;
+  sessionMs?: number;
+  firstTokenMs?: number | null;
 };
 
 export type OnboardingConnectionProgress = "starting" | "waiting" | "saving";
@@ -38,7 +42,10 @@ export async function cancelOnboardingConnectionTest() {
   }
 }
 
-async function invokeConnection(config: GlobalAgentConfig) {
+async function invokeConnection(
+  config: GlobalAgentConfig,
+  business?: { name: string; website: string; description: string },
+) {
   const requestId = crypto.randomUUID();
   activeRequestId = requestId;
   let unlisten = () => {};
@@ -58,7 +65,7 @@ async function invokeConnection(config: GlobalAgentConfig) {
       throw new Error("Connection test cancelled.");
     return await invokeTauri<OnboardingConnectionProof & { error?: string }>(
       "test_onboarding_connection",
-      { config, requestId },
+      { config, requestId, business },
     );
   } finally {
     unlisten();
@@ -85,9 +92,27 @@ export async function runOnboardingConnectionTest(
   if (proof.model !== null && typeof proof.model !== "string") {
     throw new Error("The harness did not report a valid model. Check again.");
   }
+  console.info("colony-onboarding timing", {
+    spawnMs: proof.spawnMs,
+    initializeMs: proof.initializeMs,
+    sessionMs: proof.sessionMs,
+    firstTokenMs: proof.firstTokenMs,
+    totalMs: proof.totalMs,
+  });
   // Default remains unset. Adapter catalog ids are display proof, not global defaults.
   reportProgress("saving");
   const saved = await save(config);
   if (!isCurrent()) throw new Error("Connection test cancelled.");
   return { proof, config: saved.config };
+}
+
+/** Run the same proof turn with business facts so its real reply can introduce Scout in Welcome. */
+export function runOnboardingBusinessConnectionTest(
+  config: GlobalAgentConfig,
+  isCurrent: () => boolean,
+  business: { name: string; website: string; description: string },
+) {
+  return runOnboardingConnectionTest(config, isCurrent, (candidate) =>
+    invokeConnection(candidate, business),
+  );
 }

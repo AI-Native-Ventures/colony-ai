@@ -1,3 +1,4 @@
+import { SCOUT_SYSTEM_PROMPT } from "@/features/onboarding/scoutPersona";
 import * as React from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -198,6 +199,7 @@ type MockCommandAvailability = {
 };
 
 export type MockManagedAgentSeed = {
+  relayUrl?: string;
   pubkey: string;
   name: string;
   about?: string | null;
@@ -484,6 +486,8 @@ type E2eConfig = {
     feedbackPublishErrors?: Array<string | null>;
     /** Delay product feedback acknowledgements so the pending UI can be captured. */
     feedbackPublishDelayMs?: number;
+    aiSubscriptions?: import("@/shared/api/aiSubscriptions").AiSubscription[];
+    claudeSubscriptionResult?: import("@/shared/api/aiSubscriptions").AiSubscription;
     acpAuthMethods?: Record<string, RawAcpAuthMethodsResult>;
     acpAuthMethodsErrors?: Record<string, string>;
     acpAuthMethodsError?: string;
@@ -2893,7 +2897,7 @@ function buildMockConfigSurface(pubkey: string): {
   };
 
   // Mixed-provenance showcase — top-level rows carry different origins so the
-  // panel witnesses distinct provenance labels in one frame: "Set in Buzz",
+  // panel witnesses distinct provenance labels in one frame: "Set in Colony",
   // "Inherited from template", "From config file (...)" and
   // "From environment variable (...)".
   const multiOriginSurface = {
@@ -2955,7 +2959,7 @@ function buildMockConfigSurface(pubkey: string): {
   const buzzAgentSurface = {
     ...gooseSurface,
     runtimeId: "buzz-agent",
-    runtimeLabel: "Buzz Agent",
+    runtimeLabel: "Colony Agent",
     advanced: [],
     extensions: [],
     sources: {
@@ -3019,7 +3023,7 @@ function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
     // Native serde always emits this key (`null` when unpinned) — the bridge
     // must mirror the wire shape, not omit the key.
     runtime: seed.runtime ?? null,
-    relay_url: DEFAULT_RELAY_WS_URL,
+    relay_url: seed.relayUrl ?? DEFAULT_RELAY_WS_URL,
     acp_command: "buzz-acp",
     agent_command: agentCommand,
     agent_args: agentArgs,
@@ -3152,21 +3156,21 @@ function resetMockPersonas(config?: E2eConfig) {
   const builtInPersonas = [
     {
       id: "builtin:fizz",
-      display_name: "Fizz",
+      display_name: "Scout",
       avatar_url: null,
-      system_prompt: "You are Fizz.",
+      system_prompt: SCOUT_SYSTEM_PROMPT,
     },
     {
       id: "builtin:honey",
-      display_name: "Honey",
+      display_name: "Writer",
       avatar_url: null,
-      system_prompt: "You are Honey.",
+      system_prompt: "You are a writing assistant.",
     },
     {
       id: "builtin:bumble",
-      display_name: "Pollen",
+      display_name: "Researcher",
       avatar_url: null,
-      system_prompt: "You are Pollen.",
+      system_prompt: "You are a research assistant.",
     },
   ];
   mockPersonas = builtInPersonas.map((persona) => ({
@@ -3462,7 +3466,7 @@ const mockChannels: MockChannel[] = [
     name: "buzz",
     channel_type: "stream",
     visibility: "open",
-    description: "Project home for the Buzz community platform.",
+    description: "Project home for the Colony community platform.",
     topic: null,
     purpose: null,
     last_message_at: null,
@@ -10595,7 +10599,7 @@ const MOCK_PROJECT_SEEDS = [
     dtag: "buzz",
     name: "buzz",
     description:
-      "Relay, desktop, and mobile clients for the Buzz community platform.",
+      "Relay, desktop, and mobile clients for the Colony community platform.",
     cloneUrl: `${DEFAULT_RELAY_HTTP_URL}/git/${MOCK_IDENTITY_PUBKEY}/buzz`,
     webUrl: null,
     owner: MOCK_IDENTITY_PUBKEY,
@@ -10926,7 +10930,7 @@ function buildMockProjectEvents(): RelayEvent[] {
         [
           ["d", "buzz"],
           ["name", "buzz"],
-          ["description", "The complete Buzz community platform."],
+          ["description", "The complete Colony community platform."],
           ["a", `${KIND_REPO_ANNOUNCEMENT}:${projectOwner}:buzz`],
           ["a", `${KIND_REPO_ANNOUNCEMENT}:${ALICE_PUBKEY}:relay-tools`],
           [
@@ -14729,14 +14733,14 @@ async function handleDiscoverAcpRuntimes(
     },
     {
       id: "buzz-agent",
-      label: "Buzz Agent",
+      label: "Colony Agent",
       avatar_url: "",
       availability: "available",
       command: "buzz-agent",
       binary_path: "/usr/local/bin/buzz-agent",
       default_args: [],
       mcp_command: "buzz-dev-mcp",
-      install_hint: "Ships with the Buzz desktop app.",
+      install_hint: "Ships with the Colony desktop app.",
       install_instructions_url: "https://github.com/block/buzz",
       can_auto_install: false,
       requires_external_cli: false,
@@ -15973,7 +15977,7 @@ async function handleStartManagedAgent(
         mockMeshState.models.some((model) => model.id === modelId));
     if (!hasLiveTarget) {
       throw new Error(
-        "Buzz shared compute cannot start because no live member is serving this model.",
+        "Colony shared compute cannot start because no live member is serving this model.",
       );
     }
   }
@@ -19547,7 +19551,7 @@ export function maybeInstallE2eTauriMocks() {
               name: "Gemma-4-E4B-it-Q4_K_M",
               size: "3.5GB",
               sizeGb: 3.5,
-              description: "Buzz-curated local agent model",
+              description: "Colony-curated local agent model",
               fit: "comfortable",
               installed: mockMeshState.catalogInstalled,
               recommended: true,
@@ -20057,7 +20061,7 @@ export function maybeInstallE2eTauriMocks() {
               kind: "blob",
               size: 33120,
               preview_content:
-                "// Smart HTTP git transport\n// Handles upload-pack and receive-pack for Buzz git repos.\n",
+                "// Smart HTTP git transport\n// Handles upload-pack and receive-pack for Colony git repos.\n",
             },
           ],
         };
@@ -20590,6 +20594,38 @@ export function maybeInstallE2eTauriMocks() {
         return handleConnectAcpRuntime(
           payload as { request?: { runtimeId?: string; methodId?: string } },
           activeConfig,
+        );
+      case "get_ai_subscriptions":
+        return (
+          activeConfig?.mock?.aiSubscriptions ?? [
+            {
+              id: "claude",
+              signedIn: null,
+              plan: null,
+              source: "unavailable",
+              windows: [],
+              message: "Subscription could not be checked. Try again.",
+            },
+            {
+              id: "codex",
+              signedIn: null,
+              plan: null,
+              source: "unavailable",
+              windows: [],
+              message: "Subscription could not be checked. Try again.",
+            },
+          ]
+        );
+      case "check_claude_subscription":
+        return (
+          activeConfig?.mock?.claudeSubscriptionResult ?? {
+            id: "claude",
+            signedIn: null,
+            plan: null,
+            source: "unavailable",
+            windows: [],
+            message: "Claude subscription could not be checked. Try again.",
+          }
         );
       case "install_acp_runtime":
         return handleInstallAcpRuntime(
@@ -21339,7 +21375,7 @@ export function maybeInstallE2eTauriMocks() {
           }
           if (mockMeshState.models.length === 0) {
             throw new Error(
-              "no Buzz shared compute serving members are available",
+              "no Colony shared compute serving members are available",
             );
           }
         }

@@ -61,7 +61,12 @@ export function parsePromptText(text: string): {
     ...semanticPrefix.sections,
     ...semanticTurn.sections,
     ...parsePromptSections(semanticTurn.remainder),
-  ].filter((s) => s.body.trim().length > 0);
+  ]
+    .filter((s) => s.body.trim().length > 0)
+    .map((section) => ({
+      ...section,
+      title: section.title.replace(/^Buzz event/i, "Colony event"),
+    }));
   if (sections.length === 0) {
     return {
       sections: [],
@@ -74,7 +79,7 @@ export function parsePromptText(text: string): {
 
   const eventSection = sections.find((section) => {
     const title = section.title.toLowerCase();
-    return title.startsWith("buzz event");
+    return /^(?:buzz|colony) event/.test(title);
   });
   const eventContent = eventSection
     ? extractEventContent(eventSection.body)
@@ -88,7 +93,7 @@ export function parsePromptText(text: string): {
   return {
     sections,
     userText: eventContent,
-    userTitle: eventKind ? titleCase(eventKind) : "Buzz event",
+    userTitle: eventKind ? titleCase(eventKind) : "Colony event",
     userPubkey: eventAuthorPubkey,
     userEventId: eventId,
   };
@@ -474,9 +479,11 @@ function semanticTurnTitle(
       return `${label} (${attributes.included} of ${attributes.total} messages${truncated})`;
     }
     case "buzz-event":
-      return attributes.type ? `Buzz event: ${attributes.type}` : "Buzz event";
+      return attributes.type
+        ? `Colony event: ${attributes.type}`
+        : "Colony event";
     case "buzz-events":
-      return `Buzz events — ${attributes.count} events`;
+      return `Colony events , ${attributes.count} events`;
     case "what-you-were-working-on":
       return "What you were working on";
     case "new-message-arrived-while-you-were-working":

@@ -47,7 +47,7 @@ export type SupportedLinkPreview = {
     | "link";
 };
 
-// Buzz relay hosts differ per community, so relay git URLs are recognized by
+// Colony relay hosts differ per community, so relay git URLs are recognized by
 // their distinctive path shape (`/git/<64-hex-pubkey>/<repo>`) rather than by
 // hostname, and require an explicit scheme. Generic previews remain HTTPS-only.
 const SUPPORTED_URL_RE =
@@ -321,7 +321,7 @@ function parseBuzzEntityPreview(href: string): SupportedLinkPreview | null {
     return {
       kind: "buzz-pull-request",
       href: buildPullRequestLink(link),
-      provider: "Buzz",
+      provider: "Colony",
       title,
       typeLabel: "Review",
     };
@@ -330,7 +330,7 @@ function parseBuzzEntityPreview(href: string): SupportedLinkPreview | null {
     return {
       kind: "buzz-issue",
       href: buildIssueLink(link),
-      provider: "Buzz",
+      provider: "Colony",
       title,
       typeLabel: "Task",
     };
@@ -339,7 +339,7 @@ function parseBuzzEntityPreview(href: string): SupportedLinkPreview | null {
     return {
       kind: "buzz-project",
       href: buildProjectLink(link),
-      provider: "Buzz",
+      provider: "Colony",
       title,
       typeLabel: "project",
     };
@@ -347,7 +347,7 @@ function parseBuzzEntityPreview(href: string): SupportedLinkPreview | null {
   return {
     kind: "buzz-repository",
     href: buildRepoLink(link),
-    provider: "Buzz",
+    provider: "Colony",
     title,
     typeLabel: "repo",
   };
@@ -357,7 +357,7 @@ const BUZZ_GIT_PATH_RE =
   /^\/git\/([a-f0-9]{64})\/([a-zA-Z0-9._-]+?)(?:\.git)?\/?$/;
 
 /**
- * Recognize a Buzz relay git URL (`{relay-origin}/git/<owner-pubkey>/<repo>`,
+ * Recognize a Colony relay git URL (`{relay-origin}/git/<owner-pubkey>/<repo>`,
  * the clone URL shape agents paste when announcing work). The preview href
  * is normalized to the canonical `buzz://repo` deep link: the raw git
  * transport endpoint is not a browsable page, and the buzz:// href gives the
@@ -366,7 +366,7 @@ const BUZZ_GIT_PATH_RE =
  *
  * Security: the URL origin must equal `activeRelayOrigin` (the currently
  * connected relay). Path shape alone is not proof that a host belongs to the
- * active Buzz relay — an arbitrary external URL sharing the path shape must
+ * active Colony relay , an arbitrary external URL sharing the path shape must
  * remain an ordinary external link. Pass `null` when the relay origin is not
  * yet resolved; the link stays external until it can be verified.
  */
@@ -389,7 +389,7 @@ function parseBuzzGitLink(
   return {
     kind: "buzz-repository",
     href: buildRepoLink({ owner, dtag: repo }),
-    provider: "Buzz",
+    provider: "Colony",
     title: repo,
     typeLabel: "repo",
   };
@@ -701,7 +701,7 @@ export function extractSupportedLinkPreviews(
   const relayOrigin = activeRelayOrigin ?? null;
   for (const candidate of candidates) {
     const preview = parseSupportedLinkPreview(candidate.href, relayOrigin);
-    // Buzz-native links render as inline entity chips. Their relay-backed
+    // Colony-native links render as inline entity chips. Their relay-backed
     // metadata is available from the chip on hover, so a second standalone
     // preview would duplicate the same entity presentation. This also covers
     // same-relay clone URLs, which parseSupportedLinkPreview normalizes to a

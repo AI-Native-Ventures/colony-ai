@@ -1,8 +1,8 @@
+import { useCompanyManagedAgentsQuery } from "@/features/agents/useCompanyManagedAgents";
 import * as React from "react";
 import { ArrowUpRight } from "lucide-react";
 
 import { useActiveAgentTurnsByChannel } from "@/features/agents/activeAgentTurnsStore";
-import { useManagedAgentsQuery } from "@/features/agents/hooks";
 import { ManagedAgentSessionPanel } from "@/features/agents/ui/ManagedAgentSessionPanel";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
@@ -21,7 +21,7 @@ export function AgentSupervisionView({
   onSelectTrace: (channelId: string, agentPubkey: string) => void;
 }) {
   const { goAgents, goChannel } = useAppNavigation();
-  const managedAgentsQuery = useManagedAgentsQuery();
+  const managedAgentsQuery = useCompanyManagedAgentsQuery();
   const channelsQuery = useChannelsQuery();
   const activeTurns = useActiveAgentTurnsByChannel();
   const agents = managedAgentsQuery.data ?? [];

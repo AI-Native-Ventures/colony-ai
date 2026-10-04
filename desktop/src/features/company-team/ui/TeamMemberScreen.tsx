@@ -67,7 +67,6 @@ export function TeamMemberScreen({
     goTeamEdit,
     goTeamMember,
     goTeamMemberSalary,
-    goTeamSalaryEdit,
   } = useAppNavigation();
   const mutation = useMemberPositionActionMutation();
   const member = teamQuery.data?.members.find(
@@ -230,7 +229,6 @@ export function TeamMemberScreen({
         member={member}
         initialTab={salaryPanel === "salary" ? "salary" : initialTab}
         onBack={() => void goTeam()}
-        onEditSalary={() => void goTeamSalaryEdit(member.pubkey)}
         onEditPosition={() => void goTeamEdit(member.pubkey)}
         onOpenMember={(pubkey) => void goTeamMember(pubkey)}
         onTerminate={() => void goTeamArchive(member.pubkey)}

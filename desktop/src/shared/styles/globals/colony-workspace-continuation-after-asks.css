@@ -109,7 +109,7 @@
 :root:has([data-colony-workspace-route="true"])
   [data-testid="sidebar-profile-card"]
   [data-testid="sidebar-profile-name"] {
-  color: #282532;
+  color: hsl(var(--colony-sidebar-foreground, var(--sidebar-foreground)));
   line-height: 1.5;
 }
 

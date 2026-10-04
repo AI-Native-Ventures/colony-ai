@@ -1,5 +1,7 @@
 #![deny(unsafe_code)]
 
+mod business_context;
+
 mod acp;
 mod config;
 mod connection_test;
@@ -5497,6 +5499,7 @@ async fn initialize_agent_pool(
     // Attempt each spawn under a 60-second timeout; a partial pool is valid.
     let mut agent_slots: Vec<Option<OwnedAgent>> = Vec::with_capacity(startup.agents as usize);
     for i in 0..startup.agents as usize {
+        let spawned_at = std::time::Instant::now();
         let spawn_result = AcpClient::spawn(
             &startup.command,
             &startup.args,
@@ -5506,6 +5509,8 @@ async fn initialize_agent_pool(
         .await;
         match spawn_result {
             Ok(mut acp) => {
+                tracing::info!(target: "buzz_acp::timing", agent = i, adapter_spawn_ms = spawned_at.elapsed().as_millis() as u64, "adapter process spawned");
+                let initialize_started = std::time::Instant::now();
                 acp.set_observer(startup.observer.clone(), i);
                 let initialize = tokio::time::timeout(Duration::from_secs(60), acp.initialize());
                 let initialize_result = match shutdown.as_mut() {
@@ -5522,6 +5527,7 @@ async fn initialize_agent_pool(
                 };
                 match initialize_result {
                     Ok(Ok(init_result)) => {
+                        tracing::info!(target: "buzz_acp::timing", agent = i, initialize_ms = initialize_started.elapsed().as_millis() as u64, "adapter negotiation completed");
                         tracing::info!(agent = i, "agent initialized: {init_result}");
                         let protocol_version =
                             init_result["protocolVersion"].as_u64().unwrap_or(1) as u32;

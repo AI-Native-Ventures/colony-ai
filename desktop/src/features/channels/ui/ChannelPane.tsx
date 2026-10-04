@@ -2,6 +2,7 @@ import * as React from "react";
 import { LogIn, Plus } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { useNavigate } from "@tanstack/react-router";
+import { WorkAreaFiles } from "@/features/workarea/WorkAreaFiles";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useClientRecordsQuery } from "@/features/clients/useBusinessRecords";
 import { parseWorkItemReferenceCoordinate } from "@/features/clients/lib/businessRecords";
@@ -699,6 +700,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                 : undefined
             }
           >
+            <WorkAreaFiles />
             {isHuddleTranscript ? null : header}
             {workspaceChrome && activeChannel?.channelType === "stream" ? (
               <ChannelWorkspaceTabs />
@@ -919,6 +921,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                                     : `Message #${activeChannel.name}…`
                                   : "Select a channel"
                       }
+                      showGoalReference={!isActiveWelcomeChannel}
                       showTopBorder={false}
                     />
                     <ChannelComposerActivityAccessory

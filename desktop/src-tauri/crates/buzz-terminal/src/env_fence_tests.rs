@@ -129,7 +129,7 @@ fn fence_still_delivers_the_terminal_contract() {
     seed_secrets();
     let out = fenced_child_environment();
 
-    for (key, value) in [("TERM", "xterm-256color"), ("TERM_PROGRAM", "Buzz")] {
+    for (key, value) in [("TERM", "xterm-256color"), ("TERM_PROGRAM", "Colony")] {
         assert!(
             out.lines().any(|line| line == format!("{key}={value}")),
             "{key} missing from child environment:\n{out}"

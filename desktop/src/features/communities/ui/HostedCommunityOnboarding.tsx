@@ -337,7 +337,7 @@ export function HostedCommunityOnboarding({
           hostedCommunityErrorMessage(
             available.error,
             available.correlation_id,
-            "That Buzz address is already taken.",
+            "That Colony address is already taken.",
           ),
         );
       }
@@ -518,8 +518,8 @@ export function HostedCommunityOnboarding({
               </DialogTitle>
               <DialogDescription className="mt-2 text-sm leading-6 text-foreground">
                 {allowCreate
-                  ? "Sign in to connect a community you already own or create a new one. We’ll open Builderlab in your browser, then bring you back to Buzz."
-                  : "Sign in to connect a community you already own. We’ll open Builderlab in your browser, then bring you back to Buzz."}
+                  ? "Sign in to connect a community you already own or create a new one. We’ll open Builderlab in your browser, then bring you back to Colony."
+                  : "Sign in to connect a community you already own. We’ll open Builderlab in your browser, then bring you back to Colony."}
               </DialogDescription>
               {errorBox ? <div className="mt-5 w-full">{errorBox}</div> : null}
               {action === "Signing in…" ? (
@@ -538,10 +538,10 @@ export function HostedCommunityOnboarding({
                   Sign in to continue
                 </Button>
               )}
-              {/* Quiet breadcrumb: Buzz itself is open source; this hosted
+              {/* Quiet breadcrumb: Colony itself is open source; this hosted
                     relay is the one account-backed piece of the flow. */}
               <p className="mt-6 w-full border-t border-foreground/10 pt-4 text-xs leading-5 text-foreground/45">
-                Buzz is open source. Builderlab hosts the relay for this
+                Colony is open source. Builderlab hosts the relay for this
                 account.
               </p>
             </>
@@ -628,7 +628,7 @@ export function HostedCommunityOnboarding({
             ? "Connect one you own, or start something new."
             : "Connect a community you already own."
           : allowCreate
-            ? "Claim a Buzz address to get started."
+            ? "Claim a Colony address to get started."
             : "We couldn’t find a community for this account."}
       </p>
 

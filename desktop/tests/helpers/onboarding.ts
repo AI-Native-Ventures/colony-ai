@@ -29,7 +29,7 @@ export function r17Runtime(
     id,
     label:
       id === "buzz-agent"
-        ? "Buzz Agent"
+        ? "Colony Agent"
         : id === "goose"
           ? "Goose"
           : id === "codex"

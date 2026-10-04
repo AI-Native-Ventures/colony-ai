@@ -25,7 +25,7 @@ const EXTERNAL_HREF = "https://example.com/entity-chip-control";
 const RELAY_ORIGIN = "http://localhost:3000";
 const CLONE_HREF = `${RELAY_ORIGIN}/git/${ALICE_PUBKEY}/relay-tools.git`;
 
-test("agent-style Buzz links stay chip-only with metadata tooltips", async ({
+test("agent-style Colony links stay chip-only with metadata tooltips", async ({
   page,
 }) => {
   await page.addInitScript(
@@ -399,7 +399,7 @@ test("entity tooltip uses project context while relay metadata is delayed", asyn
     page
       .getByRole("tooltip")
       .locator('[data-buzz-tooltip-metadata-content=""]'),
-  ).toHaveText("buzz · The complete Buzz community platform.");
+  ).toHaveText("buzz · The complete Colony community platform.");
 });
 
 test("desktop composer and sent message keep Buzz entities chip-only", async ({

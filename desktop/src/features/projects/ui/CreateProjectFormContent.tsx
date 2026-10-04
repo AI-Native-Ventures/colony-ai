@@ -143,7 +143,7 @@ export function CreateProjectFormContent({
                 setName(event.target.value);
                 setErrorMessage(null);
               }}
-              placeholder="bee-garden-game"
+              placeholder="garden-game"
               ref={nameInputRef}
               spellCheck={false}
               value={name}

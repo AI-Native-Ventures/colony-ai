@@ -31,6 +31,25 @@ const INSTALL_MAX_ATTEMPTS: u32 = 3;
 /// works again in Settings. User-facing cancellation is the product-level fix.
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(900);
 
+// Small connection packages should fail with a retry action rather than hold
+// onboarding through three 15-minute attempts. Full CLI downloads retain their
+// existing ceiling, including slower Windows Defender scans.
+fn command_timeout(step: &str) -> Duration {
+    if step == "adapter" {
+        Duration::from_secs(120)
+    } else {
+        INSTALL_TIMEOUT
+    }
+}
+
+fn command_attempts(step: &str) -> u32 {
+    if step == "adapter" {
+        1
+    } else {
+        INSTALL_MAX_ATTEMPTS
+    }
+}
+
 /// How long the group gets to exit on SIGTERM before the ceiling escalates to
 /// SIGKILL.
 #[cfg(unix)]
@@ -63,17 +82,38 @@ pub(super) fn run_install_command_with_retry(
     command: &str,
     reporter: &InstallReporter,
 ) -> InstallStepResult {
+    run_reported_install(
+        step,
+        command,
+        reporter,
+        run_install_command,
+        std::thread::sleep,
+    )
+}
+
+fn run_reported_install(
+    step: &str,
+    command: &str,
+    reporter: &InstallReporter,
+    mut execute: impl FnMut(&str, &str, Duration, Option<LineObserver>) -> InstallOutcome,
+    sleep: impl FnMut(Duration),
+) -> InstallStepResult {
     run_install_with_retry(
-        INSTALL_MAX_ATTEMPTS,
+        command_attempts(step),
         |attempt| {
             // Before the command spawns, so the previous attempt's last line
             // stops being displayed for the whole backoff rather than until the
             // new attempt happens to print something.
             reporter.start_attempt();
-            let outcome = run_install_command(step, command, reporter.line_observer());
+            let outcome = execute(
+                step,
+                command,
+                command_timeout(step),
+                reporter.line_observer(),
+            );
             reporter.record_attempt(attempt, outcome)
         },
-        std::thread::sleep,
+        sleep,
     )
 }
 
@@ -142,6 +182,7 @@ fn prepare_install_command(command: &str) -> Result<std::process::Command, Strin
 fn run_install_command(
     step: &str,
     command: &str,
+    timeout: Duration,
     observer: Option<LineObserver>,
 ) -> InstallOutcome {
     let mut cmd = match prepare_install_command(command) {
@@ -179,7 +220,7 @@ fn run_install_command(
         }
     };
 
-    await_install_child(step, command, child, INSTALL_TIMEOUT, observer)
+    await_install_child(step, command, child, timeout, observer)
 }
 
 /// Drain a spawned install child's output into bounded buffers and wait for it
@@ -187,7 +228,7 @@ fn run_install_command(
 ///
 /// Split from the spawn so the timing-sensitive half is testable without a real
 /// login shell: shell startup alone can outlast a short test ceiling on a
-/// loaded machine. Production always passes [`INSTALL_TIMEOUT`].
+/// loaded machine. Production selects the ceiling with [`command_timeout`].
 fn await_install_child(
     step: &str,
     command: &str,
@@ -486,6 +527,36 @@ fn timeout_message(timeout: Duration) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn connection_updates_have_a_short_ceiling_and_no_silent_retries() {
+        assert_eq!(command_timeout("adapter"), Duration::from_secs(120));
+        assert_eq!(command_attempts("adapter"), 1);
+        assert_eq!(command_timeout("cli"), INSTALL_TIMEOUT);
+        assert_eq!(command_attempts("cli"), INSTALL_MAX_ATTEMPTS);
+        assert!(timeout_message(command_timeout("adapter")).contains("2-minute"));
+    }
+
+    #[test]
+    fn connection_update_dispatch_binds_timeout_and_single_attempt_to_the_runner() {
+        let reporter = InstallReporter::silent_for_tests();
+        let mut calls = 0;
+        let result = run_reported_install(
+            "adapter",
+            "install fixture",
+            &reporter,
+            |step, command, timeout, _observer| {
+                calls += 1;
+                assert_eq!(step, "adapter");
+                assert_eq!(command, "install fixture");
+                assert_eq!(timeout, Duration::from_secs(120));
+                InstallOutcome::synthesized(step_result(false, Some(1), "permission denied"))
+            },
+            |_| panic!("connection updates must not silently retry"),
+        );
+        assert_eq!(calls, 1);
+        assert!(!result.success);
+    }
 
     // ── install retry ─────────────────────────────────────────────────────────
 

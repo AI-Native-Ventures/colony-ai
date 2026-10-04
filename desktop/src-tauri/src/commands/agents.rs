@@ -169,6 +169,7 @@ pub(super) async fn start_local_agent_with_preflight(
     expected_signer_pubkey: Option<&str>,
     replay_floor_unix: Option<u64>,
 ) -> Result<ManagedAgentSummary, String> {
+    let preflight_started = std::time::Instant::now();
     let record_snapshot = {
         let _store_guard = state
             .managed_agents_store_lock
@@ -201,7 +202,15 @@ pub(super) async fn start_local_agent_with_preflight(
             &personas,
             &global,
         );
+    eprintln!(
+        "colony-agent timing record_resolution_ms={}",
+        preflight_started.elapsed().as_millis()
+    );
     ensure_relay_mesh_for_record(app, mesh_model_id.as_deref(), allow_fresh_create_start).await?;
+    eprintln!(
+        "colony-agent timing mesh_preflight_ms={}",
+        preflight_started.elapsed().as_millis()
+    );
 
     // The mesh preflight above is the suspension window Projects callbacks
     // capture their scope against: a community switch during that await

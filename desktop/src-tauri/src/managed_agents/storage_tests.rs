@@ -830,3 +830,26 @@ fn install_log_filename_accepts_ordinary_runtime_ids() {
         );
     }
 }
+
+#[test]
+fn scout_snapshot_migration_preserves_identity_and_custom_instructions() {
+    let mut stock = record_with_pubkey_and_key("stock-public-identity", "");
+    stock.persona_id = Some("builtin:fizz".to_string());
+    stock.name = "Fizz".to_string();
+    stock.system_prompt = Some(super::super::personas::SCOUT_LEGACY_SYSTEM_PROMPT.to_string());
+    let mut custom = stock.clone();
+    custom.pubkey = "custom-public-identity".to_string();
+    custom.system_prompt = Some("My custom instructions".to_string());
+    let mut records = vec![stock.clone(), custom.clone()];
+    super::migrate_stock_scout_instances(&mut records);
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[0].pubkey, stock.pubkey);
+    assert_eq!(records[0].relay_url, stock.relay_url);
+    assert_eq!(records[0].name, "Scout");
+    assert_eq!(
+        records[0].system_prompt.as_deref(),
+        Some(super::super::personas::SCOUT_SYSTEM_PROMPT.trim())
+    );
+    assert_eq!(records[1].name, custom.name);
+    assert_eq!(records[1].system_prompt, custom.system_prompt);
+}

@@ -49,7 +49,7 @@ test("Connect waits for the actual reply, then saves the selected runtime", asyn
         models: [{ id: "actual-model", name: "Chosen model" }],
       },
       onboardingConnectionDelayMs: 400,
-      startManagedAgentDelayMsByName: { Honey: 30_000, Pollen: 30_000 },
+      startManagedAgentDelayMsByName: { Writer: 30_000, Researcher: 30_000 },
       onboardingConnectionResult: {
         reply: "A reply from the selected harness",
         model: "actual-model",
@@ -87,12 +87,19 @@ test("Connect waits for the actual reply, then saves the selected runtime", asyn
       return reply;
     };
   });
-  await page.getByRole("button", { name: /^Connect with / }).click();
+  await page.getByRole("button", { name: /^Connect / }).click();
   await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
   await expect(page.locator(".form-content .lede[role=status]")).toContainText(
     "We’re checking that your agent can reply.",
   );
-  await expect(page.locator(".progress-list li.complete")).toHaveCount(2);
+  // Persistence follows the real reply, so the saved step remains pending.
+  await expect(page.locator(".progress-list li").first()).toHaveText(
+    "Connection saved",
+  );
+  await expect(page.locator(".progress-list li").first()).not.toHaveClass(
+    /complete/,
+  );
+  await expect(page.locator(".progress-list li.complete")).toHaveCount(1);
   await expect(
     page.locator(".progress-list li").nth(2).locator(".spinner"),
   ).toBeVisible();
@@ -118,7 +125,7 @@ test("Connect waits for the actual reply, then saves the selected runtime", asyn
     "A reply from the selected harness",
   );
   await expect(page.locator(".connection-meta")).toContainText(
-    "Codex · actual-model",
+    "Codex · Chosen model",
   );
   const probe = await page.evaluate(() =>
     window.__BUZZ_E2E_COMMAND_PAYLOADS__?.find(
@@ -209,7 +216,7 @@ for (const result of [
         null,
       ),
     );
-    await page.getByRole("button", { name: /^Connect with / }).click();
+    await page.getByRole("button", { name: /^Connect / }).click();
     await expect(
       page.getByTestId("onboarding-scene-connection-error"),
     ).toBeVisible();
@@ -235,7 +242,7 @@ test("cancelling stops the native attempt, preserves settings and ignores a late
     runtimes: [claude],
     mock: { onboardingConnectionDelayMs: 800 },
   });
-  await page.getByRole("button", { name: /^Connect with / }).click();
+  await page.getByRole("button", { name: /^Connect / }).click();
   await page.getByRole("button", { name: "Cancel test" }).click();
   await expect
     .poll(() =>
@@ -249,7 +256,7 @@ test("cancelling stops the native attempt, preserves settings and ignores a late
     .toBeGreaterThan(0);
   await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
   await expect(page.getByText("Connection verified")).toHaveCount(0);
-  await page.getByRole("button", { name: /^Connect with / }).click();
+  await page.getByRole("button", { name: /^Connect / }).click();
   await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
   await page.getByRole("button", { name: "Change connection" }).click();
   await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
@@ -288,7 +295,12 @@ for (const route of ["Bring your own key", "OpenRouter"]) {
       await page
         .getByRole("button", { name: "Check key", exact: true })
         .click();
-    await page.getByRole("button", { name: "Connect", exact: true }).click();
+    await page
+      .getByRole("button", {
+        name: openRouter ? "Test connection" : "Connect",
+        exact: true,
+      })
+      .click();
     await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
     await expect(page.locator(".connection-meta")).toContainText(
       "Colony Agent · fixture-model",
@@ -344,7 +356,7 @@ test("Welcome exposes recovery when the saved runtime disappears, then retries p
   page,
 }) => {
   await openR17ConnectionSetup(page, { runtimes: [claude] });
-  await page.getByRole("button", { name: /^Connect with / }).click();
+  await page.getByRole("button", { name: /^Connect / }).click();
   await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
   await page.evaluate(async () => {
     await window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.("set_global_agent_config", {
@@ -364,7 +376,7 @@ test("Welcome exposes recovery when the saved runtime disappears, then retries p
   await expect(recovery).toBeVisible();
   await expect(
     page.getByTestId("welcome-composer-guide-banner"),
-  ).not.toContainText("Setting up your welcome team");
+  ).not.toContainText("Setting up Scout");
   await expect(recovery).toContainText("reconnect");
   await expect(
     recovery.getByRole("button", { name: "Open AI settings" }),
@@ -454,7 +466,7 @@ for (const id of [
       await expect(
         page.getByTestId(`onboarding-connect-runtime-${id}`),
       ).not.toContainText("Signed in");
-    await page.getByRole("button", { name: /^Connect with / }).click();
+    await page.getByRole("button", { name: /^Connect / }).click();
     await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
     const request = await page.evaluate(() =>
       window.__BUZZ_E2E_COMMAND_PAYLOADS__?.find(
@@ -500,7 +512,7 @@ for (const viewport of [
       runtimes: [claude],
       mock: { onboardingConnectionDelayMs: 2000 },
     });
-    await page.getByRole("button", { name: /^Connect with / }).click();
+    await page.getByRole("button", { name: /^Connect / }).click();
     await expect(page.getByTestId("onboarding-scene-testing")).toBeVisible();
     await expect(
       page.locator(".form-content .lede[role=status]"),
@@ -544,4 +556,143 @@ test("an unavailable connection requires an explicit skip before app entry", asy
   await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
   await page.getByRole("button", { name: "Skip for now", exact: true }).click();
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
+});
+
+test("verified Claude reply reaches Welcome before a delayed managed start despite a stale auth catalog", async ({
+  page,
+}) => {
+  const reply =
+    "I'm Scout. Welcome to North Star. Your independent design studio is ready. What shall we work on first?";
+  await openR17ConnectionSetup(page, {
+    runtimes: [claude],
+    mock: {
+      onboardingConnectionResult: {
+        reply,
+        model: "sonnet",
+        startupMs: 10,
+        totalMs: 20,
+      },
+      startManagedAgentDelayMsByName: { Scout: 15_000 },
+    },
+  });
+  await page.getByRole("button", { name: /^Connect / }).click();
+  await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
+  await page.evaluate(() => {
+    const original = window.__TAURI_INTERNALS__.invoke.bind(
+      window.__TAURI_INTERNALS__,
+    );
+    window.__TAURI_INTERNALS__.invoke = async (command, args) => {
+      if (command === "get_global_agent_config")
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      if (command === "discover_acp_providers")
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      const result = await original(command, args);
+      if (command === "discover_acp_providers" && Array.isArray(result))
+        return result.map((runtime) => ({
+          ...runtime,
+          auth_status: { status: "unknown" },
+        }));
+      return result;
+    };
+  });
+  const openedAt = Date.now();
+  await page
+    .getByRole("button", { name: "Open my Colony", exact: true })
+    .click();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await expect(page.getByTestId("message-timeline")).toContainText(reply, {
+    timeout: 10_000,
+  });
+  expect(Date.now() - openedAt).toBeLessThan(15_000);
+  await expect(page.getByTestId("message-timeline")).not.toContainText("Fizz");
+  await expect(page.getByTestId("message-timeline")).not.toContainText(
+    "connect your AI in Settings",
+  );
+  const payloads = await page.evaluate(
+    () => window.__BUZZ_E2E_COMMAND_PAYLOADS__ ?? [],
+  );
+  const testPayload = payloads.find(
+    (entry) => entry.command === "test_onboarding_connection",
+  )?.payload;
+  expect(testPayload).toMatchObject({
+    business: {
+      name: "North Star",
+      website: "northstar.example",
+      description: "An independent design studio.",
+    },
+  });
+  const created = payloads.find(
+    (entry) => entry.command === "create_managed_agent",
+  )?.payload as {
+    input?: {
+      envVars?: Record<string, string>;
+      parallelism?: number;
+      agentCommand?: string;
+    };
+  };
+  expect(created.input?.agentCommand).toBe("claude");
+  expect(created.input?.parallelism).toBe(1);
+  expect(
+    JSON.parse(created.input?.envVars?.COLONY_BUSINESS_PROFILE ?? "null"),
+  ).toMatchObject({
+    name: "North Star",
+    description: "An independent design studio.",
+  });
+  expect(
+    payloads.filter((entry) => entry.command === "test_onboarding_connection"),
+  ).toHaveLength(1);
+});
+
+test("a failed Scout start can retry after its verified intro was delivered", async ({
+  page,
+}) => {
+  const reply =
+    "I'm Scout. Welcome to North Star. What shall we work on first?";
+  await openR17ConnectionSetup(page, {
+    runtimes: [claude],
+    mock: {
+      onboardingConnectionResult: {
+        reply,
+        model: "sonnet",
+        startupMs: 10,
+        totalMs: 20,
+      },
+    },
+  });
+  await page.getByRole("button", { name: /^Connect / }).click();
+  await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
+  await page.evaluate(() => {
+    const original = window.__TAURI_INTERNALS__.invoke.bind(
+      window.__TAURI_INTERNALS__,
+    );
+    let rejected = false;
+    window.__TAURI_INTERNALS__.invoke = async (command, args) => {
+      if (command === "start_managed_agent" && !rejected) {
+        rejected = true;
+        throw new Error("The connection was interrupted.");
+      }
+      return original(command, args);
+    };
+  });
+  await page
+    .getByRole("button", { name: "Open my Colony", exact: true })
+    .click();
+  await expect(page.getByTestId("message-timeline")).toContainText(reply);
+  const retry = page.getByRole("button", { name: "Retry", exact: true });
+  await expect(retry).toBeVisible();
+  await retry.click();
+  await expect(retry).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const agents = await window.__TAURI_INTERNALS__.invoke(
+          "list_managed_agents",
+        );
+        return agents.find((agent) => agent.name === "Scout")?.status;
+      }),
+    )
+    .toBe("running");
+  await expect(
+    page.getByTestId("message-timeline").getByText(reply, { exact: true }),
+  ).toHaveCount(1);
 });

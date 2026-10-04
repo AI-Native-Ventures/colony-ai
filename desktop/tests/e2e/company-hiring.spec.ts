@@ -153,7 +153,7 @@ test("empty role catalog opens a blank role pack editor", async ({ page }) => {
   await expect(workerModel.locator("option")).toHaveText([
     "Choose worker model",
     "Goose",
-    "Buzz Agent",
+    "Colony Agent",
   ]);
   const roleEditor = page.getByTestId("company-role-editor");
   const formPanel = await roleEditor

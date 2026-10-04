@@ -56,7 +56,7 @@ test.describe("welcome and channel agent entry points", () => {
       managedAgents: [
         {
           pubkey: FIZZ_PUBKEY,
-          name: "Fizz",
+          name: "Scout",
           personaId: "builtin:fizz",
           status: "running",
           channelNames: ["Welcome"],
@@ -86,7 +86,7 @@ test.describe("welcome and channel agent entry points", () => {
     await page.getByTestId("welcome-create-agent-in-chat").click();
     await expect(dialog).not.toBeVisible();
     await expect(page.getByTestId("message-timeline")).toContainText(
-      "Fizz, help me create a new agent.",
+      "Scout, help me create a new agent.",
     );
   });
 
@@ -98,7 +98,7 @@ test.describe("welcome and channel agent entry points", () => {
       managedAgents: [
         {
           pubkey: FIZZ_PUBKEY,
-          name: "Fizz",
+          name: "Scout",
           personaId: "builtin:fizz",
           status: "running",
           channelNames: ["Welcome"],
@@ -202,13 +202,13 @@ test.describe("welcome and channel agent entry points", () => {
     await expect(page.getByTestId("chat-title")).toHaveText("random");
   });
 
-  test("only Fizz is already in the channel", async ({ page }) => {
+  test("only Scout is already in the channel", async ({ page }) => {
     await installMockBridge(page, {
       activePersonaIds: ["builtin:fizz"],
       managedAgents: [
         {
           pubkey: FIZZ_PUBKEY,
-          name: "Fizz",
+          name: "Scout",
           personaId: "builtin:fizz",
           status: "running",
           channelNames: ["random"],
@@ -229,7 +229,7 @@ test.describe("welcome and channel agent entry points", () => {
       managedAgents: [
         {
           pubkey: FIZZ_PUBKEY,
-          name: "Fizz",
+          name: "Scout",
           personaId: "builtin:fizz",
           status: "running",
           channelNames: ["random"],
@@ -262,7 +262,7 @@ test.describe("welcome and channel agent entry points", () => {
       managedAgents: [
         {
           pubkey: FIZZ_PUBKEY,
-          name: "Fizz",
+          name: "Scout",
           personaId: "builtin:fizz",
           status: "running",
           channelNames: ["random"],

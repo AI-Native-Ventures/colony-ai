@@ -1,4 +1,8 @@
 import * as React from "react";
+import { useManagedAgentRuntimesQuery } from "../managedAgentRuntimeHooks";
+import { useCommunities } from "@/features/communities/useCommunities";
+import { usePersonasQuery, useRelayAgentsQuery } from "../hooks";
+import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import {
   ArrowLeft,
   ArrowRight,
@@ -26,10 +30,9 @@ import { Input } from "@/shared/ui/input";
 const FILTER_OPTIONS: Array<{ value: AgentDirectoryFilter; label: string }> = [
   { value: "all", label: "All Statuses" },
   { value: "working", label: "Working" },
-  { value: "idle", label: "Idle" },
-  { value: "stopped", label: "Stopped" },
-  { value: "needs-connection", label: "Needs connection" },
-  { value: "unknown", label: "Unknown" },
+  { value: "idle", label: "Ready" },
+  { value: "stopped", label: "Offline" },
+  { value: "needs-connection", label: "Needs attention" },
   { value: "archived", label: "Archived" },
 ];
 
@@ -70,6 +73,29 @@ export function AgentDirectory({
   onOpenAgent: (agent: ManagedAgent) => void;
   onMessageAgent: (pubkey: string) => void;
 }) {
+  const runtimeQuery = useManagedAgentRuntimesQuery();
+  const relayAgentsQuery = useRelayAgentsQuery();
+  const { activeCommunity } = useCommunities();
+  const statusInput = React.useMemo(
+    () => ({
+      activePubkeys,
+      archivedPubkeys,
+      runtimes,
+      runtimeStatuses: runtimeQuery.data ?? [],
+      relayUrl: activeCommunity?.relayUrl,
+      runtimeQueryFailed: runtimeQuery.isError,
+      relayAgents: relayAgentsQuery.data,
+    }),
+    [
+      activePubkeys,
+      archivedPubkeys,
+      runtimes,
+      runtimeQuery.data,
+      runtimeQuery.isError,
+      relayAgentsQuery.data,
+      activeCommunity?.relayUrl,
+    ],
+  );
   const [query, setQuery] = React.useState("");
   const [status, setStatus] = React.useState<AgentDirectoryFilter>("all");
   const [harnessId, setHarnessId] = React.useState("");
@@ -98,21 +124,10 @@ export function AgentDirectory({
         query,
         status,
         harnessId,
-        activePubkeys,
-        archivedPubkeys,
-        runtimes,
+        ...statusInput,
         agentRoles: rolesByPubkey,
       }),
-    [
-      activePubkeys,
-      agents,
-      archivedPubkeys,
-      harnessId,
-      query,
-      rolesByPubkey,
-      runtimes,
-      status,
-    ],
+    [agents, harnessId, query, rolesByPubkey, status, statusInput],
   );
   const sorted = React.useMemo(() => {
     const result = [...filtered];
@@ -124,22 +139,14 @@ export function AgentDirectory({
       );
     }
     return result.sort((left, right) => {
-      const leftStatus = agentDirectoryStatus(left, {
-        activePubkeys,
-        archivedPubkeys,
-        runtimes,
-      });
-      const rightStatus = agentDirectoryStatus(right, {
-        activePubkeys,
-        archivedPubkeys,
-        runtimes,
-      });
+      const leftStatus = agentDirectoryStatus(left, statusInput);
+      const rightStatus = agentDirectoryStatus(right, statusInput);
       return (
         STATUS_SORT_ORDER[leftStatus] - STATUS_SORT_ORDER[rightStatus] ||
         left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
       );
     });
-  }, [activePubkeys, archivedPubkeys, filtered, runtimes, sort]);
+  }, [filtered, sort, statusInput]);
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
   const visible = sorted.slice(page * pageSize, (page + 1) * pageSize);
 
@@ -265,11 +272,7 @@ export function AgentDirectory({
               </thead>
               <tbody className="divide-y divide-border/55">
                 {visible.map((agent) => {
-                  const agentStatus = agentDirectoryStatus(agent, {
-                    activePubkeys,
-                    archivedPubkeys,
-                    runtimes,
-                  });
+                  const agentStatus = agentDirectoryStatus(agent, statusInput);
                   return (
                     <tr
                       key={agent.pubkey}
@@ -284,7 +287,12 @@ export function AgentDirectory({
                         />
                       </td>
                       <td className="py-1.5 pl-0 pr-3">
-                        <StatusBadge status={agentStatus} />
+                        <StatusBadge
+                          status={agentStatus}
+                          loading={
+                            runtimeQuery.isLoading && agentStatus !== "archived"
+                          }
+                        />
                       </td>
                       <td className="truncate py-1.5 pl-0 pr-3 text-muted-foreground">
                         <AgentHarnessCell agent={agent} runtimes={runtimes} />
@@ -385,8 +393,10 @@ export function AgentDirectory({
 
 function StatusBadge({
   status,
+  loading,
 }: {
   status: ReturnType<typeof agentDirectoryStatus>;
+  loading: boolean;
 }) {
   const colorClass =
     status === "needs-connection"
@@ -401,7 +411,7 @@ function StatusBadge({
       className={`whitespace-nowrap rounded-[5px] border px-2 py-0.5 text-2xs font-medium normal-case tracking-normal ${colorClass}`}
       variant="outline"
     >
-      {agentDirectoryStatusLabel(status)}
+      {loading ? "Loading" : agentDirectoryStatusLabel(status)}
     </Badge>
   );
 }
@@ -416,6 +426,10 @@ function AgentIdentityButton({
   onRoleLoaded: (pubkey: string, role: string | null) => void;
 }) {
   const profileQuery = useUserProfileQuery(agent.pubkey);
+  const personasQuery = usePersonasQuery();
+  const persona = personasQuery.data?.find(
+    (entry) => entry.id === agent.personaId,
+  );
   const role = profileQuery.data?.about?.trim();
   const refreshedSummaryProfile = React.useRef(false);
   React.useEffect(() => {
@@ -435,24 +449,19 @@ function AgentIdentityButton({
   return (
     <button
       aria-label={`Open ${agent.name} profile`}
-      className="group flex min-w-0 items-center gap-3 text-left"
+      className="group flex w-full min-w-0 items-center gap-3 overflow-hidden text-left"
       onClick={() => onOpenAgent(agent)}
       type="button"
     >
-      {agent.avatarUrl ? (
-        <img
-          alt=""
-          className="size-7 shrink-0 rounded-lg object-cover"
-          src={agent.avatarUrl}
-        />
-      ) : (
-        <span
-          aria-hidden="true"
-          className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-medium text-muted-foreground"
-        >
-          {(agent.name || "?").slice(0, 1).toUpperCase()}
-        </span>
-      )}
+      <EmployeeAvatar
+        name={agent.name}
+        profile={profileQuery.data?.avatarUrl}
+        instance={agent.avatarUrl}
+        definition={persona?.avatarUrl}
+        personaId={agent.personaId}
+        className="size-7 shrink-0"
+        testId={`agent-directory-avatar-${agent.pubkey}`}
+      />
       <span className="min-w-0">
         <span className="block truncate text-sm font-semibold leading-tight text-foreground group-hover:underline">
           {agent.name || "Unnamed agent"}

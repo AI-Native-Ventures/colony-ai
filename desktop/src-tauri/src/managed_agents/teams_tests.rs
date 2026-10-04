@@ -862,3 +862,25 @@ fn test_delete_catalog_team_team_save_failure_rolls_back_both_stores() {
         "teams must be restored to original bytes"
     );
 }
+
+#[test]
+fn legacy_stock_welcome_team_migrates_to_scout_only_and_keeps_custom_teams() {
+    let mut stock = team("builtin-team:welcome", "Welcome Team");
+    stock.is_builtin = true;
+    stock.description =
+        Some("A friendly starter trio ready to help you plan, create, and ship.".to_string());
+    stock.persona_ids = vec![
+        "builtin:fizz".to_string(),
+        "builtin:honey".to_string(),
+        "builtin:bumble".to_string(),
+    ];
+    let (records, changed) = merge_teams(vec![stock.clone()], "2026-10-04T00:00:00Z");
+    assert!(changed);
+    let welcome = records.iter().find(|record| record.id == stock.id).unwrap();
+    assert_eq!(welcome.persona_ids, vec!["builtin:fizz"]);
+    stock.instructions = Some("My custom team instructions".to_string());
+    let (records, _) = merge_teams(vec![stock.clone()], "2026-10-04T00:00:00Z");
+    let welcome = records.iter().find(|record| record.id == stock.id).unwrap();
+    assert_eq!(welcome.persona_ids, stock.persona_ids);
+    assert_eq!(welcome.instructions, stock.instructions);
+}

@@ -5,7 +5,7 @@ import type {
   OnboardingSceneData,
   PresentationProps,
 } from "./OnboardingSceneTypes";
-import { BackButton, Glyph, PrimaryButton } from "./OnboardingScenePrimitives";
+import { Glyph, PrimaryButton } from "./OnboardingScenePrimitives";
 
 function ReferenceDialog({ children }: { children: React.ReactNode }) {
   const dialogRef = React.useRef<HTMLDialogElement>(null);
@@ -140,9 +140,13 @@ export function ConnectedScene({
       <PrimaryButton onClick={() => onNavigate?.("workspace")}>
         Open my Colony
       </PrimaryButton>
-      <BackButton onClick={() => onNavigate?.("connect")}>
+      <button
+        className="back"
+        type="button"
+        onClick={() => onNavigate?.("connect")}
+      >
         Change connection
-      </BackButton>
+      </button>
     </>
   );
 }

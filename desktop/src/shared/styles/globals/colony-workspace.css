@@ -42,7 +42,7 @@
   border: 1px solid rgb(255 255 255 / 56%);
   border-radius: 0.5rem;
   background: rgb(255 255 255 / 60%);
-  color: #282532;
+  color: hsl(var(--colony-sidebar-foreground, var(--sidebar-foreground)));
   font-size: 1.2rem;
   font-weight: 600;
 }
@@ -75,7 +75,7 @@
   width: auto;
   gap: 0.5rem;
   padding: 0 0.1875rem 0 0.4375rem;
-  color: #282532;
+  color: hsl(var(--colony-sidebar-foreground, var(--sidebar-foreground)));
 }
 
 :root:has([data-colony-workspace-route="true"])
@@ -83,7 +83,7 @@
   > span:nth-child(2) {
   flex: 1;
   min-width: 0;
-  color: #282532;
+  color: hsl(var(--colony-sidebar-foreground, var(--sidebar-foreground)));
   font-size: 0.8rem;
   font-weight: 700;
   line-height: 1.5;

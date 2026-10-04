@@ -656,3 +656,38 @@ test("native Scout seed uses the exact approved SVG in the safe inline catalog f
   assert.ok(nativeAvatar.startsWith("data:image/svg+xml,"));
   assert.ok(Buffer.byteLength(nativeAvatar) <= 8192);
 });
+
+test("Scout business context and single-worker preparation use the production update payload", () => {
+  const existing = makeAgent({
+    agentCommand: "claude",
+    envVars: { KEEP: "value" },
+    parallelism: 10,
+  });
+  const facts = JSON.stringify({
+    name: "Owner Company",
+    website: "https://example.com",
+    description: "We deliver groceries.",
+  });
+  const payload = welcomeStarterRuntimeUpdate(existing, {
+    name: "Scout",
+    agentCommand: "claude",
+    agentArgs: existing.agentArgs,
+    mcpCommand: existing.mcpCommand,
+    model: existing.model,
+    provider: existing.provider,
+    parallelism: 1,
+    envVars: { COLONY_BUSINESS_PROFILE: facts },
+  });
+  assert.deepEqual(payload.envVars, {
+    KEEP: "value",
+    COLONY_BUSINESS_PROFILE: facts,
+  });
+  assert.equal(payload.parallelism, 1);
+  assert.equal(
+    welcomeStarterRuntimeUpdate(
+      { ...existing, ...payload },
+      { ...payload, name: "Scout" },
+    ),
+    null,
+  );
+});

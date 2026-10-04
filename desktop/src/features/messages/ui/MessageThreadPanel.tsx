@@ -1,4 +1,5 @@
 import * as React from "react";
+import { parseWorkspaceThreadContext } from "@/features/messages/lib/workspaceThreadContext";
 import { ArrowDown } from "lucide-react";
 
 import { HuddleTranscriptIntro } from "@/features/huddle/components/HuddleTranscriptIntro";
@@ -37,6 +38,7 @@ import { Separator } from "@/shared/ui/separator";
 import { ComposerActivityAccessory } from "./ComposerActivityAccessory";
 import { ComposerDockBackdrop } from "./ComposerDockBackdrop";
 import { MessageComposer } from "./MessageComposer";
+import { isWelcomeExperienceChannel } from "@/features/onboarding/welcome";
 import {
   MessageThreadPanelHeader,
   ThreadMessageSkeleton,
@@ -144,16 +146,6 @@ type MessageThreadPanelProps = ThreadPanelLayoutProps & {
 
 const EMPTY_THREAD_REPLIES: MainTimelineEntry[] = [];
 const THREAD_PANEL_SUMMARY_INDENT_OFFSET_REM = 0;
-
-function parseWorkspaceThreadContext(content: string) {
-  const lines = content
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const title = lines[0]?.match(/^#{1,3}\s+(.+)$/)?.[1];
-  if (!title) return null;
-  return { title, description: lines.slice(1).join(" ") };
-}
 
 export function MessageThreadPanel({
   channel,
@@ -896,6 +888,9 @@ export function MessageThreadPanel({
           >
             <ComposerDockBackdrop gutterClassName="inset-x-5" />
             <MessageComposer
+              showGoalReference={
+                !channel || !isWelcomeExperienceChannel(channel)
+              }
               audienceContext={{
                 type: "thread",
                 rootTags: threadHead.tags,

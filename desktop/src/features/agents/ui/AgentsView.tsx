@@ -28,7 +28,7 @@ import { TeamDialog } from "./TeamDialog";
 import { AgentTeamsReviewView } from "./AgentTeamsReviewView";
 import { TeamsSection } from "./TeamsSection";
 import { UnifiedAgentsSection } from "./UnifiedAgentsSection";
-import { useManagedAgentActions } from "./useManagedAgentActions";
+import { useCompanyScopedAgentActions } from "./useCompanyScopedAgentActions";
 import { usePersonaActions } from "./usePersonaActions";
 import { useTeamActions } from "./useTeamActions";
 import { useProfilePanel } from "@/shared/context/ProfilePanelContext";
@@ -115,7 +115,7 @@ export function AgentsView({
   const archivedQuery = useArchivedIdentitiesQuery();
   const activeTurnsByChannel = useActiveAgentTurnsByChannel();
   const inheritedDefaults = getInheritedAgentDefaults(globalConfig, bakedEnv);
-  const agents = useManagedAgentActions();
+  const agents = useCompanyScopedAgentActions();
   const personas = usePersonaActions();
   const membershipQuery = useMyRelayMembershipQuery();
   const canCurateCompanyRoles =

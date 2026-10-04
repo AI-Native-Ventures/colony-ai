@@ -54,7 +54,7 @@ export const ACCENT_COLORS = [
   { name: "Indigo", value: "#6366f1" },
 ] as const;
 
-const DEFAULT_ACCENT = "#3b82f6";
+export const DEFAULT_ACCENT = "#895AF6";
 
 type ThemeContextValue = {
   themeName: string;
@@ -199,6 +199,8 @@ function applyAccentColor(value: string) {
   const root = document.documentElement;
   const isBrandedTheme = root.hasAttribute("data-buzz-sidebar");
   if (value === NEUTRAL_ACCENT) {
+    root.style.removeProperty("--colony-accent");
+    root.style.removeProperty("--colony-focus");
     const styles = window.getComputedStyle(root);
     const foreground = styles.getPropertyValue("--foreground").trim();
     const background = styles.getPropertyValue("--background").trim();
@@ -224,6 +226,8 @@ function applyAccentColor(value: string) {
       VIDEO_REVIEW_NEUTRAL_ACCENT,
     );
     root.style.setProperty("--primary", primary);
+    root.style.setProperty("--ring", primary);
+    root.style.setProperty("--sidebar-ring", primary);
     root.style.setProperty("--primary-foreground", primaryForeground);
     root.style.setProperty("--sidebar-primary", primary);
     root.style.setProperty("--sidebar-primary-foreground", primaryForeground);
@@ -242,6 +246,10 @@ function applyAccentColor(value: string) {
     getReviewAccentForeground(hex),
   );
   root.style.setProperty("--primary", accentHsl);
+  root.style.setProperty("--ring", accentHsl);
+  root.style.setProperty("--sidebar-ring", accentHsl);
+  root.style.setProperty("--colony-accent", accentHsl);
+  root.style.setProperty("--colony-focus", accentHsl);
   root.style.setProperty("--primary-foreground", fgHsl);
   root.style.setProperty("--sidebar-primary", accentHsl);
   root.style.setProperty("--sidebar-primary-foreground", fgHsl);
@@ -291,6 +299,11 @@ function createColonyFoundationVars(root: HTMLElement): Record<string, string> {
     "--sidebar": token("canvas"),
     "--sidebar-background": token("canvas"),
     "--sidebar-foreground": token("sidebar-foreground"),
+    // Branded Settings has a painted gradient rather than a flat sidebar.
+    // This muted shade reaches AA at its measured section-label backgrounds.
+    "--sidebar-section-foreground": root.classList.contains("dark")
+      ? hexToHsl("#cec9d1")
+      : token("muted"),
     "--sidebar-primary": token("accent"),
     "--sidebar-primary-foreground": token("surface"),
     "--sidebar-active": token("accent-soft"),
@@ -303,23 +316,20 @@ function createColonyFoundationVars(root: HTMLElement): Record<string, string> {
 }
 
 /**
- * The branded themes use the fixed foundation accent. Their appearance panel
- * hides the accent picker, while the user's chosen accent stays in storage for
- * other syntax themes.
+ * Identify the branded light and dark foundation palettes.
  */
 export function isBuzzTheme(themeName: string): boolean {
   return themeName === "buzz" || themeName === "buzz-dark";
 }
 
 /**
- * Resolve the accent to apply: branded themes use their foundation accent;
- * other themes use the stored or selected accent.
+ * Honor the stored or explicitly selected accent in every palette.
  */
 function resolveEffectiveAccent(
-  themeName: string,
+  _themeName: string,
   accentColor: string,
 ): string {
-  return isBuzzTheme(themeName) ? NEUTRAL_ACCENT : accentColor;
+  return accentColor;
 }
 
 /** Toggle the Buzz-specific gradient marker independently from glass. */
@@ -479,9 +489,7 @@ function applyCachedVars(): string | null {
     glassThemeReady = true;
 
     const accent = getStorageItem(ACCENT_STORAGE_KEY) ?? DEFAULT_ACCENT;
-    // Pin Buzz themes to the neutral accent here too, matching applyTheme.
-    // Otherwise a cached Buzz theme + non-neutral stored accent flashes the
-    // old accent on reload until the async applyTheme effect runs.
+    // Restore the saved accent with the cached palette before the first paint.
     applyAccentColor(resolveEffectiveAccent(themeName, accent));
 
     return themeName;
@@ -517,6 +525,8 @@ async function applyTheme(name: SyntaxThemeName): Promise<{
   const root = document.documentElement;
   root.classList.toggle("dark", isDark);
   root.classList.toggle("light", !isDark);
+  root.style.removeProperty("--colony-accent");
+  root.style.removeProperty("--colony-focus");
   const vars = isBuzzTheme(name)
     ? { ...adaptiveVars, ...createColonyFoundationVars(root) }
     : adaptiveVars;
@@ -531,8 +541,7 @@ async function applyTheme(name: SyntaxThemeName): Promise<{
   // Apply the accent synchronously in the same batch as the theme vars so the
   // browser paints the new theme + accent together. Doing this in a later
   // microtask (e.g. the caller's `.then`) let the previous accent flash on the
-  // new theme for a frame, which caused flicker when switching to Buzz. Buzz
-  // themes resolve to the neutral accent regardless of the stored value.
+  // new theme for a frame, which caused flicker when switching themes.
   applyAccentColor(
     resolveEffectiveAccent(
       name,
@@ -702,7 +711,7 @@ export function ThemeProvider({
   }, [followSystem]);
 
   // Re-apply the accent when the user picks a new swatch or the effective theme
-  // changes. applyTheme already applies the (Buzz-neutral-aware) accent in the
+  // changes. applyTheme already applies the saved accent in the
   // same synchronous batch as the theme vars to avoid switch-time flicker.
   // This effect is idempotent on theme changes and covers accent-only changes.
   useEffect(() => {

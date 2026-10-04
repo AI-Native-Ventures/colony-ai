@@ -99,14 +99,19 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   const mutedColor = await resolveSidebarColor(
     page,
     "color",
-    "var(--colony-sidebar-muted-foreground)",
+    mode === "dark"
+      ? "var(--colony-sidebar-section-color)"
+      : "var(--colony-sidebar-muted-foreground)",
   );
   const secondaryTextColor = await resolveSidebarColor(
     page,
     "color",
     "var(--colony-sidebar-muted-foreground)",
   );
-  const searchSurface = "rgba(255, 255, 255, 0.25)";
+  const searchSurface =
+    mode === "light"
+      ? "rgba(255, 255, 255, 0.25)"
+      : "rgba(232, 227, 237, 0.06)";
   const rowHoverSurface =
     mode === "light"
       ? "rgba(255, 255, 255, 0.31)"
@@ -459,7 +464,11 @@ async function expectBuzzSettingsPalette(page: Page, mode: "light" | "dark") {
     .locator(".w20-nav-heading")
     .filter({ hasText: "Personal" });
 
-  await expect(sectionLabel).toHaveCSS("color", mutedColor);
+  await expect(sectionLabel).toHaveCSS(
+    "color",
+    // The reference is #a39aa9; the gradient needs this smallest AA step.
+    mode === "dark" ? "rgb(206, 201, 209)" : mutedColor,
+  );
   await expect(
     sidebar.locator('.w20-nav-item[data-active="true"]'),
   ).not.toHaveCSS("color", mutedColor);
@@ -1186,7 +1195,11 @@ test("glass keeps a non-Buzz theme sidebar tint", async ({ page }) => {
       const sidebar = rootStyles
         .getPropertyValue("--sidebar-background")
         .trim();
-      const staticFallback = rootStyles.getPropertyValue("--sidebar").trim();
+      // --sidebar now aliases --sidebar-background through the canvas token,
+      // so the tint is compared with the value the theme actually applied.
+      const appliedSidebar = JSON.parse(
+        localStorage.getItem("buzz-theme-cache") ?? "{}",
+      ).vars?.["--sidebar-background"];
       const probe = document.createElement("div");
       probe.style.backgroundColor = `hsl(${sidebar} / 65%)`;
       document.body.appendChild(probe);
@@ -1197,12 +1210,25 @@ test("glass keeps a non-Buzz theme sidebar tint", async ({ page }) => {
         actual: getComputedStyle(element).backgroundColor,
         expected,
         sidebar,
-        staticFallback,
+        appliedSidebar,
       };
     });
 
-  expect(tint.sidebar).not.toBe(tint.staticFallback);
+  expect(tint.appliedSidebar).toBeTruthy();
+  expect(tint.sidebar).toBe(tint.appliedSidebar);
   expect(tint.actual).toBe(tint.expected);
+  // An opaque chrome fill would hide native vibrancy even with the right tint.
+  for (const selector of [
+    ".buzz-theme-gradient-underlay",
+    ".buzz-huddle-app-surface",
+    ".buzz-huddle-shell",
+  ]) {
+    await expect(page.locator(selector)).toHaveCSS("background-image", "none");
+    await expect(page.locator(selector)).toHaveCSS(
+      "background-color",
+      "rgba(0, 0, 0, 0)",
+    );
+  }
 });
 
 test("a named theme remains applied after returning to workspace appearance", async ({

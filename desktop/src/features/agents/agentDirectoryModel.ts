@@ -1,4 +1,11 @@
-import type { AcpRuntimeCatalogEntry, ManagedAgent } from "@/shared/api/types";
+import type {
+  AcpRuntimeCatalogEntry,
+  ManagedAgent,
+  ManagedAgentRuntimeStatus,
+  RelayAgent,
+} from "@/shared/api/types";
+import { employeeRuntimeStatus } from "@/features/company-team/employeePresentation";
+import { findManagedAgentRuntime } from "./managedAgentRuntimeStatus";
 
 export type AgentDirectoryStatus =
   | "working"
@@ -19,6 +26,10 @@ export type AgentDirectoryFilterInput = {
   archivedPubkeys: ReadonlySet<string>;
   runtimes: readonly AcpRuntimeCatalogEntry[];
   agentRoles?: ReadonlyMap<string, string>;
+  runtimeStatuses?: readonly ManagedAgentRuntimeStatus[];
+  relayUrl?: string;
+  runtimeQueryFailed?: boolean;
+  relayAgents?: readonly RelayAgent[];
 };
 
 export function parseAgentDirectoryPageSize(
@@ -43,11 +54,45 @@ export function agentDirectoryStatus(
   agent: ManagedAgent,
   input: Pick<
     AgentDirectoryFilterInput,
-    "activePubkeys" | "archivedPubkeys" | "runtimes"
+    | "activePubkeys"
+    | "archivedPubkeys"
+    | "runtimes"
+    | "runtimeStatuses"
+    | "relayUrl"
+    | "runtimeQueryFailed"
+    | "relayAgents"
   >,
 ): AgentDirectoryStatus {
   const key = agent.pubkey.toLowerCase();
   if (input.archivedPubkeys.has(key)) return "archived";
+  if (input.runtimeStatuses !== undefined) {
+    const pair = input.relayUrl
+      ? findManagedAgentRuntime(
+          input.runtimeStatuses,
+          agent.pubkey,
+          input.relayUrl,
+        )
+      : undefined;
+    const label = employeeRuntimeStatus(
+      {
+        managedAgent: agent,
+        relayAgent:
+          input.relayAgents?.find(
+            (candidate) => candidate.pubkey.toLowerCase() === key,
+          ) ?? null,
+      },
+      pair,
+      input.activePubkeys.has(key),
+      input.runtimeQueryFailed,
+    );
+    return label === "Working"
+      ? "working"
+      : label === "Ready"
+        ? "idle"
+        : label === "Offline"
+          ? "stopped"
+          : "needs-connection";
+  }
   const runtime = runtimeForAgent(agent, input.runtimes);
   if (
     runtime &&
@@ -103,13 +148,13 @@ export function agentDirectoryStatusLabel(
     case "working":
       return "Working";
     case "idle":
-      return "Idle";
+      return "Ready";
     case "stopped":
-      return "Stopped";
+      return "Offline";
     case "needs-connection":
-      return "Needs connection";
+      return "Needs attention";
     case "unknown":
-      return "Unknown";
+      return "Needs attention";
     case "archived":
       return "Archived";
   }

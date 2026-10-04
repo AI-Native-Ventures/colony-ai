@@ -465,3 +465,33 @@ for (const id of [
     );
   });
 }
+
+test("a recent exact-runtime reply overrides stale discovery auth, never a different runtime or missing adapter", () => {
+  const runtime = makeRuntime({
+    id: "claude",
+    authStatus: { status: "unknown" },
+  });
+  const config = makeConfig({ preferred_runtime: "claude" });
+  assert.equal(
+    resolveAgentReadiness([runtime], config, "preferred", null).ready,
+    false,
+  );
+  assert.equal(
+    resolveAgentReadiness([runtime], config, "preferred", null, "claude").ready,
+    true,
+  );
+  assert.equal(
+    resolveAgentReadiness([runtime], config, "preferred", null, "codex").ready,
+    false,
+  );
+  assert.equal(
+    resolveAgentReadiness(
+      [{ ...runtime, availability: "not_installed" }],
+      config,
+      "preferred",
+      null,
+      "claude",
+    ).ready,
+    false,
+  );
+});

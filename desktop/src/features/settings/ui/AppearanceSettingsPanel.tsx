@@ -4,7 +4,6 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
-  Mic,
   PanelRight,
   UsersRound,
 } from "lucide-react";
@@ -41,7 +40,6 @@ import {
 import {
   appearanceLastBusinessKey,
   appearanceSnapshotKey,
-  blendColor,
   customGradientStops,
   isValidHexColor,
   writeAppearanceSnapshot,
@@ -50,10 +48,12 @@ import {
   mergeLiveAppearanceSnapshot,
   type AppearanceSnapshot,
 } from "../lib/appearanceSnapshot";
+import { applyConversationMessageSize } from "../lib/conversationMessageSizePreference";
 import {
-  applyConversationMessageSize,
-  conversationMessageSizeCss,
-} from "../lib/conversationMessageSizePreference";
+  ACCENTS,
+  LiveAppearancePreview,
+  MiniTheme,
+} from "./AppearanceLivePreview";
 
 type AppearanceMode = "system" | "light" | "dark";
 type AppearanceSettingsPanelProps = {
@@ -61,54 +61,7 @@ type AppearanceSettingsPanelProps = {
   onBackToWorkspace?: () => void;
 };
 
-const ACCENTS = [
-  ["Violet", "#895AF6"],
-  ["Neutral", "#74717B"],
-  ["Blue", "#3B82F6"],
-  ["Cyan", "#06B6D4"],
-  ["Green", "#22C55E"],
-  ["Orange", "#F97316"],
-  ["Red", "#EF4444"],
-  ["Pink", "#EC4899"],
-  ["Lilac", "#C0A2F1"],
-  ["Purple", "#A855F7"],
-  ["Indigo", "#6366F1"],
-] as const;
-
 const DEFAULT_CUSTOM_COLORS: [string, string] = ["#895AF6", "#5A9CF6"];
-
-const appearancePreviewIconPaths = {
-  home: "M3 10 12 3l9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z",
-  work: "M5 4h14v17H5Z M9 4V2h6v2M8 10h8M8 14h5",
-  globe:
-    "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18",
-  grid: "M3 3h7v7H3ZM14 3h7v7h-7ZM3 14h7v7H3ZM14 14h7v7h-7Z",
-  folder: "M3 6h7l2 3h9v11H3Z",
-} as const;
-
-function AppearancePreviewIcon({
-  name,
-}: {
-  name: keyof typeof appearancePreviewIconPaths;
-}) {
-  return (
-    <svg
-      aria-hidden="true"
-      className="icon"
-      fill="none"
-      focusable="false"
-      height="24"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={1.65}
-      viewBox="0 0 24 24"
-      width="24"
-    >
-      <path d={appearancePreviewIconPaths[name]} />
-    </svg>
-  );
-}
 
 function currentMode(followSystem: boolean, theme: string): AppearanceMode {
   if (followSystem) return "system";
@@ -295,189 +248,6 @@ function SwitchControl({
   );
 }
 
-function MiniTheme({ custom }: { custom: boolean }) {
-  return (
-    <span aria-hidden="true" className={`ap-mini${custom ? " custom" : ""}`}>
-      <i className="ap-mini-nav">
-        <b />
-        <b />
-        <b />
-        <b />
-      </i>
-      <i className="ap-mini-content">
-        <b />
-        <span />
-        <span />
-        <em />
-      </i>
-    </span>
-  );
-}
-
-function LiveAppearancePreview({
-  preferences,
-  isDark,
-}: {
-  preferences: AppearanceSnapshot;
-  isDark: boolean;
-}) {
-  const baseColor =
-    ACCENTS.find(
-      ([, hex]) => hex.toLowerCase() === preferences.accent.toLowerCase(),
-    )?.[1] ?? "#895AF6";
-  const color = blendColor(
-    baseColor,
-    isDark ? "#FFFFFF" : "#000000",
-    isDark ? 0.5 : 0.35,
-  );
-  const softColor = blendColor(
-    baseColor,
-    isDark ? "#1C1C1C" : "#FFFFFF",
-    isDark ? 0.86 : 0.88,
-  );
-  const [first, second] = preferences.custom
-    ? customGradientStops(
-        preferences.customLight,
-        preferences.followSystem
-          ? isDark
-            ? "dark"
-            : "light"
-          : LIGHT_THEMES.has(preferences.theme as SyntaxThemeName)
-            ? "light"
-            : "dark",
-      )
-    : ["transparent", "transparent"];
-  return (
-    <div
-      className={[
-        "ap-preview",
-        preferences.custom ? "ap-custom" : "",
-        preferences.glassBackground ? "ap-glass" : "",
-        preferences.prominentActiveTab ? "ap-prominent" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      data-testid="appearance-live-preview"
-      style={
-        {
-          "--ap-accent": color,
-          "--ap-soft": softColor,
-          "--ap-t1": first,
-          "--ap-t2": second,
-          "--ap-message-size": conversationMessageSizeCss(
-            preferences.messageSize,
-          ),
-          "--ap-glass-alpha": `${preferences.glassOpacity}%`,
-        } as React.CSSProperties
-      }
-    >
-      <div className="ap-desktop">
-        <div className="ap-live-window">
-          <div className="ap-live-top">
-            <span aria-hidden="true">● ● ●</span>
-            <span>colony</span>
-            <PanelRight aria-hidden="true" className="icon" />
-          </div>
-          <div className="ap-live-body">
-            <aside className="ap-live-nav">
-              <strong>Lerato Social</strong>
-              <span>
-                <AppearancePreviewIcon name="home" /> Today
-              </span>
-              <span>
-                <AppearancePreviewIcon name="work" /> Work
-              </span>
-              <small>Channels</small>
-              <span className="selected"># the-olive-house</span>
-              <span># studio</span>
-              <span># design</span>
-              <small>Business</small>
-              <span>
-                <AppearancePreviewIcon name="globe" /> Website
-              </span>
-              <span>
-                <AppearancePreviewIcon name="grid" /> Social
-              </span>
-              <span>
-                <AppearancePreviewIcon name="folder" /> Library
-              </span>
-              <div className="ap-live-person">
-                <span>LM</span> Lerato
-              </div>
-            </aside>
-            <div
-              className={`ap-live-chat${preferences.threadLayout === "focus" ? " focused" : ""}`}
-            >
-              <header>
-                # the-olive-house <span>3 members</span>
-              </header>
-              <div className="ap-demo-message">
-                <span className="ap-demo-avatar">M</span>
-                <div>
-                  <strong>
-                    Mina <small>10:42</small>
-                  </strong>
-                  <p>The spring campaign is ready for your feedback.</p>
-                  <div className={`ap-demo-link ${preferences.linkPreview}`}>
-                    {preferences.linkPreview === "rich" ? (
-                      <div className="ap-demo-art">
-                        <span>SPRING, SLOWLY.</span>
-                        <i />
-                      </div>
-                    ) : (
-                      <span className="ap-demo-link-icon">↗</span>
-                    )}
-                    <div>
-                      <strong>Spring collection</strong>
-                      <small>theolivehouse.example</small>
-                    </div>
-                  </div>
-                  <span className="ap-demo-replies">2 replies</span>
-                </div>
-              </div>
-              <div className="ap-demo-message human">
-                <span className="ap-demo-avatar">L</span>
-                <div>
-                  <strong>
-                    Lerato <small>10:44</small>
-                  </strong>
-                  <p>Love this direction. Let’s soften the headline.</p>
-                </div>
-              </div>
-              <div className="ap-demo-thread">
-                <header>
-                  <span>
-                    {preferences.threadLayout === "focus"
-                      ? "← Thread"
-                      : "Thread"}
-                  </span>
-                  <span>×</span>
-                </header>
-                <p>
-                  <strong>Mina</strong>
-                  <br />
-                  I’ll update the design and send a new version.
-                </p>
-                <div>
-                  Reply to thread… <Mic aria-hidden="true" className="icon" />
-                </div>
-              </div>
-              <div className="ap-live-compose">
-                Message #the-olive-house…
-                <span>
-                  <span aria-hidden="true">＋</span>
-                  <i>@</i>
-                  <Mic aria-hidden="true" />
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function AppearanceSettingsPanel({
   onOpenThemeCatalog,
   onBackToWorkspace,
@@ -504,6 +274,12 @@ export function AppearanceSettingsPanel({
     return loadPreferences(current, business, global);
   });
   const [saved, setSaved] = React.useState(true);
+  const [appliedPreferences, setAppliedPreferences] =
+    React.useState(preferences);
+  const [previousAppearance, setPreviousAppearance] =
+    React.useState<AppearanceSnapshot | null>(null);
+  const appearancePending =
+    JSON.stringify(preferences) !== JSON.stringify(appliedPreferences);
   const [undoSnapshot, setUndoSnapshot] =
     React.useState<AppearanceSnapshot | null>(null);
   const [hexDrafts, setHexDrafts] = React.useState<[string, string]>(() => [
@@ -525,6 +301,7 @@ export function AppearanceSettingsPanel({
     const base = currentRef.current;
     const next = loadPreferences(base, business, global);
     setPreferences(next);
+    setAppliedPreferences(next);
     setHexDrafts([...next.customLight]);
     if (!business) {
       let snapshotWritten = false;
@@ -568,27 +345,22 @@ export function AppearanceSettingsPanel({
   ]);
 
   React.useEffect(() => {
-    setPreferences((previous) => ({
+    const update = (previous: AppearanceSnapshot) => ({
       ...previous,
       theme: theme.selectedThemeName,
       accent: theme.accentColor,
       followSystem: theme.followSystem,
-    }));
+    });
+    setPreferences(update);
+    setAppliedPreferences(update);
   }, [theme.selectedThemeName, theme.accentColor, theme.followSystem]);
 
   React.useEffect(() => {
     const root = document.documentElement;
-    if (preferences.custom) {
-      const mode = preferences.followSystem
-        ? isDark
-          ? "dark"
-          : "light"
-        : LIGHT_THEMES.has(preferences.theme as SyntaxThemeName)
-          ? "light"
-          : "dark";
+    if (appliedPreferences.custom) {
       const [first, second] = customGradientStops(
-        preferences.customLight,
-        mode,
+        appliedPreferences.customLight,
+        isDark ? "dark" : "light",
       );
       root.style.setProperty("--w20-custom-gradient-start", first);
       root.style.setProperty("--w20-custom-gradient-end", second);
@@ -598,21 +370,15 @@ export function AppearanceSettingsPanel({
       root.style.removeProperty("--w20-custom-gradient-end");
       root.classList.remove("w20-custom-appearance");
     }
-  }, [
-    isDark,
-    preferences.custom,
-    preferences.customLight,
-    preferences.followSystem,
-    preferences.theme,
-  ]);
+  }, [isDark, appliedPreferences]);
 
-  const commit = React.useCallback(
+  const applyCommit = React.useCallback(
     (
       patch: Partial<AppearanceSnapshot>,
       scope: "business" | "conversations" = "business",
     ) => {
       const next: AppearanceSnapshot = {
-        ...preferences,
+        ...(scope === "conversations" ? appliedPreferences : preferences),
         ...patch,
         version: 1,
       };
@@ -620,14 +386,20 @@ export function AppearanceSettingsPanel({
       try {
         if (!writeAppearanceSnapshot(window.localStorage, key, next)) {
           setSaved(false);
-          return;
+          return false;
         }
         setSaved(true);
-        setPreferences(next);
-        setHexDrafts([...next.customLight]);
+        if (scope === "conversations") {
+          setPreferences((previous) => ({ ...previous, ...patch }));
+          setAppliedPreferences((previous) => ({ ...previous, ...patch }));
+        } else {
+          setPreferences(next);
+          setAppliedPreferences(next);
+          setHexDrafts([...next.customLight]);
+        }
       } catch {
         setSaved(false);
-        return;
+        return false;
       }
 
       if (
@@ -659,9 +431,55 @@ export function AppearanceSettingsPanel({
         setLinkPreviewStyle(next.linkPreview);
       if (patch.threadLayout !== undefined)
         setThreadViewMode(next.threadLayout);
+      return true;
     },
-    [businessKey, globalKey, preferences, theme, glassBackgroundSupported],
+    [
+      businessKey,
+      globalKey,
+      preferences,
+      appliedPreferences,
+      theme,
+      glassBackgroundSupported,
+    ],
   );
+
+  function commit(
+    patch: Partial<AppearanceSnapshot>,
+    scope: "business" | "conversations" = "business",
+  ) {
+    if (scope === "conversations") {
+      applyCommit(patch, scope);
+      return;
+    }
+    const next = { ...preferences, ...patch };
+    setPreferences(next);
+    setHexDrafts([...next.customLight]);
+    setSaved(true);
+  }
+
+  function applyBusinessAppearance(snapshot: AppearanceSnapshot) {
+    return applyCommit({
+      theme: snapshot.theme,
+      accent: snapshot.accent,
+      followSystem: snapshot.followSystem,
+      custom: snapshot.custom,
+      customLight: snapshot.customLight,
+      glassBackground: snapshot.glassBackground,
+      glassOpacity: snapshot.glassOpacity,
+      prominentActiveTab: snapshot.prominentActiveTab,
+    });
+  }
+
+  function applyDraft() {
+    const previous = appliedPreferences;
+    if (applyBusinessAppearance(preferences)) setPreviousAppearance(previous);
+  }
+
+  function cancelDraft() {
+    setPreferences(appliedPreferences);
+    setHexDrafts([...appliedPreferences.customLight]);
+    setSaved(true);
+  }
 
   function selectMode(mode: AppearanceMode) {
     commit({
@@ -729,9 +547,9 @@ export function AppearanceSettingsPanel({
   React.useEffect(() => {
     document.documentElement.style.setProperty(
       "--w20-appearance-accent",
-      accentTint,
+      appliedPreferences.accent,
     );
-  }, [accentTint]);
+  }, [appliedPreferences.accent]);
 
   return (
     <div
@@ -1074,12 +892,52 @@ export function AppearanceSettingsPanel({
       </div>
       <footer className="ap-foot">
         <span>
-          {saved ? <CheckCircle2 aria-hidden="true" className="icon" /> : null}
-          {saved
-            ? `Saved for you in ${businessName}`
-            : "Unable to save locally"}
+          {saved && !appearancePending ? (
+            <CheckCircle2 aria-hidden="true" className="icon" />
+          ) : null}
+          <span role="status" data-testid="appearance-apply-status">
+            {!saved
+              ? "Unable to save locally"
+              : appearancePending
+                ? "Preview only"
+                : "Applied"}
+          </span>
         </span>
-        <span>Local appearance preview</span>
+        <div className="ap-apply-actions">
+          {appearancePending ? (
+            <button
+              data-testid="appearance-cancel"
+              type="button"
+              onClick={cancelDraft}
+            >
+              Cancel
+            </button>
+          ) : previousAppearance ? (
+            <button
+              data-testid="appearance-revert"
+              type="button"
+              onClick={() => {
+                if (applyBusinessAppearance(previousAppearance)) {
+                  setPreviousAppearance(null);
+                }
+              }}
+            >
+              Revert
+            </button>
+          ) : null}
+          <button
+            className="ap-apply-button"
+            data-testid="appearance-apply"
+            type="button"
+            disabled={
+              !appearancePending ||
+              hexDrafts.some((color) => !isValidHexColor(color))
+            }
+            onClick={applyDraft}
+          >
+            Apply
+          </button>
+        </div>
       </footer>
     </div>
   );
