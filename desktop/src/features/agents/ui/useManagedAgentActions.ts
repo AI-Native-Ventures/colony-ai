@@ -1,4 +1,3 @@
-import { useCompanyAgentPubkeys } from "@/features/agents/useCompanyManagedAgents";
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -44,10 +43,6 @@ export function useManagedAgentActions() {
   const { globalConfig } = useGlobalAgentConfig();
   const relayAgentsQuery = useRelayAgentsQuery();
   const managedAgentsQuery = useManagedAgentsQuery();
-  const companyAgentPubkeys = useCompanyAgentPubkeys(
-    managedAgentsQuery.data,
-    relayAgentsQuery.data,
-  );
   const [shouldLoadChannels, setShouldLoadChannels] = React.useState(false);
   const channelsQuery = useChannelsQuery({ enabled: shouldLoadChannels });
   const startMutation = useStartManagedAgentMutation();
@@ -87,18 +82,14 @@ export function useManagedAgentActions() {
 
   const managedAgents = React.useMemo(
     () =>
-      [...(managedAgentsQuery.data ?? [])]
-        .filter((agent) =>
-          companyAgentPubkeys.has(normalizePubkey(agent.pubkey)),
-        )
-        .sort((left, right) => {
-          const activeScore = (s: string) =>
-            s === "running" || s === "deployed" ? 1 : 0;
-          const diff = activeScore(right.status) - activeScore(left.status);
-          if (diff !== 0) return diff;
-          return left.name.localeCompare(right.name);
-        }),
-    [managedAgentsQuery.data, companyAgentPubkeys],
+      [...(managedAgentsQuery.data ?? [])].sort((left, right) => {
+        const activeScore = (s: string) =>
+          s === "running" || s === "deployed" ? 1 : 0;
+        const diff = activeScore(right.status) - activeScore(left.status);
+        if (diff !== 0) return diff;
+        return left.name.localeCompare(right.name);
+      }),
+    [managedAgentsQuery.data],
   );
   // Observer ingestion is owner-global (useAgentObserverIngestion in
   // AppShell); this hook only reads derived state.
