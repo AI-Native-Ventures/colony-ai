@@ -1,3 +1,7 @@
+import {
+  readVerifiedWelcomeConnection,
+  type VerifiedWelcomeConnection,
+} from "./welcomeConnection";
 import * as React from "react";
 import { startWelcomeAgentsForKickoff } from "./welcomeStartup";
 
@@ -538,7 +542,11 @@ export function useWelcomeKickoff(
   const managedAgentsQuery = useManagedAgentsQuery();
   const agentAccessOwnerOnlyQuery = useAgentAccessOwnerOnlyQuery();
   const agentAccessOwnerOnly = agentAccessOwnerOnlyQuery.data;
-  const { globalConfig, isLoading: configLoading } = useGlobalAgentConfig();
+  const {
+    globalConfig,
+    isLoading: configLoading,
+    isError: configError,
+  } = useGlobalAgentConfig();
   const [kickoffError, setKickoffError] = React.useState<string | null>(null);
   const [retryGeneration, setRetryGeneration] = React.useState(0);
   const retryKickoff = React.useCallback(() => {
@@ -615,6 +623,47 @@ export function useWelcomeKickoff(
       ),
     [activeCommunity?.relayUrl, managedAgentsQuery.data],
   );
+  const [proofState, setProofState] = React.useState<{
+    config: typeof globalConfig;
+    businessId: string | undefined;
+    proof: VerifiedWelcomeConnection | null;
+    error?: string;
+  } | null>(null);
+  const proofPending =
+    !proofState ||
+    proofState.config !== globalConfig ||
+    proofState.businessId !== activeCommunity?.businessCommunityId;
+  const verifiedConnection = proofPending ? null : proofState.proof;
+  React.useEffect(() => {
+    void retryGeneration;
+    let cancelled = false;
+    void readVerifiedWelcomeConnection(
+      activeCommunity?.businessCommunityId,
+      globalConfig,
+    )
+      .then((proof) => {
+        if (!cancelled)
+          setProofState({
+            config: globalConfig,
+            businessId: activeCommunity?.businessCommunityId,
+            proof,
+          });
+      })
+      .catch(() => {
+        console.warn("Could not read the saved onboarding connection proof.");
+        if (!cancelled)
+          setProofState({
+            config: globalConfig,
+            businessId: activeCommunity?.businessCommunityId,
+            proof: null,
+            error:
+              "We couldn't read your verified connection. Retry the check before reconnecting.",
+          });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCommunity?.businessCommunityId, globalConfig, retryGeneration]);
   const readiness = React.useMemo(
     () =>
       resolveAgentReadiness(
@@ -622,15 +671,39 @@ export function useWelcomeKickoff(
         globalConfig,
         "preferred",
         gitBashQuery.isError ? undefined : gitBashQuery.data,
+        verifiedConnection?.runtimeId,
       ),
-    [globalConfig, runtimesQuery.data, gitBashQuery.data, gitBashQuery.isError],
+    [
+      globalConfig,
+      runtimesQuery.data,
+      gitBashQuery.data,
+      gitBashQuery.isError,
+      verifiedConnection,
+    ],
   );
   React.useEffect(() => {
     void retryGeneration;
+    if (!proofPending && proofState?.error) {
+      setKickoffError(proofState.error);
+      return;
+    }
+    if (runtimesQuery.isError) {
+      setKickoffError(
+        "We couldn't check your AI harness. Retry the check before reconnecting.",
+      );
+      return;
+    }
+    if (configError) {
+      setKickoffError(
+        "We couldn't read your saved AI connection. Retry the check before reconnecting.",
+      );
+      return;
+    }
     if (
       !channelId ||
       !isActiveWelcome ||
       configLoading ||
+      proofPending ||
       runtimesQuery.isPending ||
       gitBashQuery.isPending ||
       agentAccessOwnerOnly === undefined
@@ -646,12 +719,16 @@ export function useWelcomeKickoff(
       focusedWelcomeChannelRef.current !== channelId;
     void (async () => {
       try {
+        const provisionStarted = performance.now();
         const welcomeTeam = await ensureWelcomeTeam(
           channelId,
           activeCommunity?.relayUrl,
         );
         await queryClient.invalidateQueries({
           queryKey: managedAgentsQueryKey,
+        });
+        console.info("colony-welcome timing", {
+          provisionMs: Math.round(performance.now() - provisionStarted),
         });
         const resolvedAgentSet: WelcomeAgentSet = {
           lead: welcomeTeam[0],
@@ -674,6 +751,29 @@ export function useWelcomeKickoff(
         )
           return;
         const openerAlreadySent = await markerExists(channelId, openerMarker);
+        if (verifiedConnection) {
+          if (!openerAlreadySent) {
+            const opener = await sendManagedAgentChannelMessage({
+              agentPubkey: resolvedAgentSet.lead.pubkey,
+              channelId,
+              content: verifiedConnection.reply,
+              marker: openerMarker,
+              markerScope: "channel",
+            });
+            if (!isCancelled()) onKickoffOpenerPosted?.(opener.eventId);
+          }
+          // Prepare the managed harness in the background. The real intro is already delivered.
+          if (
+            resolvedAgentSet.lead.status !== "running" &&
+            resolvedAgentSet.lead.status !== "deployed"
+          ) {
+            await startManagedAgent(resolvedAgentSet.lead.pubkey);
+            await queryClient.invalidateQueries({
+              queryKey: managedAgentsQueryKey,
+            });
+          }
+          return;
+        }
 
         // Start before publishing the mention. buzz-acp replays events from its
         // startup watermark, so no separate subscription-ready wait is needed.
@@ -765,13 +865,18 @@ export function useWelcomeKickoff(
     agentAccessOwnerOnly,
     channelId,
     configLoading,
+    configError,
     isActiveWelcome,
     onKickoffOpenerPosted,
     queryClient,
     readiness,
+    verifiedConnection,
+    proofPending,
+    proofState,
     retryGeneration,
     gitBashQuery.isPending,
     runtimesQuery.isPending,
+    runtimesQuery.isError,
   ]);
 
   React.useEffect(() => {

@@ -441,6 +441,16 @@ fn collect_missing_requirements(
         return vec![];
     };
 
+    if rt.id != "buzz-agent"
+        && rt.id != "goose"
+        && crate::managed_agents::verified_connection::ready(rt.id, &effective.env)
+        && rt
+            .commands
+            .iter()
+            .any(|command| crate::managed_agents::resolve_command(command).is_some())
+    {
+        return vec![];
+    }
     match rt.id {
         "buzz-agent" => buzz_agent_requirements(effective),
         "goose" => {

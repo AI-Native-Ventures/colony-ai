@@ -557,3 +557,142 @@ test("an unavailable connection requires an explicit skip before app entry", asy
   await page.getByRole("button", { name: "Skip for now", exact: true }).click();
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });
+
+test("verified Claude reply reaches Welcome before a delayed managed start despite a stale auth catalog", async ({
+  page,
+}) => {
+  const reply =
+    "I'm Scout. Welcome to North Star. Your independent design studio is ready. What shall we work on first?";
+  await openR17ConnectionSetup(page, {
+    runtimes: [claude],
+    mock: {
+      onboardingConnectionResult: {
+        reply,
+        model: "sonnet",
+        startupMs: 10,
+        totalMs: 20,
+      },
+      startManagedAgentDelayMsByName: { Scout: 15_000 },
+    },
+  });
+  await page.getByRole("button", { name: /^Connect / }).click();
+  await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
+  await page.evaluate(() => {
+    const original = window.__TAURI_INTERNALS__.invoke.bind(
+      window.__TAURI_INTERNALS__,
+    );
+    window.__TAURI_INTERNALS__.invoke = async (command, args) => {
+      if (command === "get_global_agent_config")
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      if (command === "discover_acp_providers")
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      const result = await original(command, args);
+      if (command === "discover_acp_providers" && Array.isArray(result))
+        return result.map((runtime) => ({
+          ...runtime,
+          auth_status: { status: "unknown" },
+        }));
+      return result;
+    };
+  });
+  const openedAt = Date.now();
+  await page
+    .getByRole("button", { name: "Open my Colony", exact: true })
+    .click();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await expect(page.getByTestId("message-timeline")).toContainText(reply, {
+    timeout: 10_000,
+  });
+  expect(Date.now() - openedAt).toBeLessThan(15_000);
+  await expect(page.getByTestId("message-timeline")).not.toContainText("Fizz");
+  await expect(page.getByTestId("message-timeline")).not.toContainText(
+    "connect your AI in Settings",
+  );
+  const payloads = await page.evaluate(
+    () => window.__BUZZ_E2E_COMMAND_PAYLOADS__ ?? [],
+  );
+  const testPayload = payloads.find(
+    (entry) => entry.command === "test_onboarding_connection",
+  )?.payload;
+  expect(testPayload).toMatchObject({
+    business: {
+      name: "North Star",
+      website: "northstar.example",
+      description: "An independent design studio.",
+    },
+  });
+  const created = payloads.find(
+    (entry) => entry.command === "create_managed_agent",
+  )?.payload as {
+    input?: {
+      envVars?: Record<string, string>;
+      parallelism?: number;
+      agentCommand?: string;
+    };
+  };
+  expect(created.input?.agentCommand).toBe("claude");
+  expect(created.input?.parallelism).toBe(1);
+  expect(
+    JSON.parse(created.input?.envVars?.COLONY_BUSINESS_PROFILE ?? "null"),
+  ).toMatchObject({
+    name: "North Star",
+    description: "An independent design studio.",
+  });
+  expect(
+    payloads.filter((entry) => entry.command === "test_onboarding_connection"),
+  ).toHaveLength(1);
+});
+
+test("a failed Scout start can retry after its verified intro was delivered", async ({
+  page,
+}) => {
+  const reply =
+    "I'm Scout. Welcome to North Star. What shall we work on first?";
+  await openR17ConnectionSetup(page, {
+    runtimes: [claude],
+    mock: {
+      onboardingConnectionResult: {
+        reply,
+        model: "sonnet",
+        startupMs: 10,
+        totalMs: 20,
+      },
+    },
+  });
+  await page.getByRole("button", { name: /^Connect / }).click();
+  await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
+  await page.evaluate(() => {
+    const original = window.__TAURI_INTERNALS__.invoke.bind(
+      window.__TAURI_INTERNALS__,
+    );
+    let rejected = false;
+    window.__TAURI_INTERNALS__.invoke = async (command, args) => {
+      if (command === "start_managed_agent" && !rejected) {
+        rejected = true;
+        throw new Error("The connection was interrupted.");
+      }
+      return original(command, args);
+    };
+  });
+  await page
+    .getByRole("button", { name: "Open my Colony", exact: true })
+    .click();
+  await expect(page.getByTestId("message-timeline")).toContainText(reply);
+  const retry = page.getByRole("button", { name: "Retry", exact: true });
+  await expect(retry).toBeVisible();
+  await retry.click();
+  await expect(retry).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const agents = await window.__TAURI_INTERNALS__.invoke(
+          "list_managed_agents",
+        );
+        return agents.find((agent) => agent.name === "Scout")?.status;
+      }),
+    )
+    .toBe("running");
+  await expect(
+    page.getByTestId("message-timeline").getByText(reply, { exact: true }),
+  ).toHaveCount(1);
+});

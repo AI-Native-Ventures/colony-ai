@@ -477,7 +477,12 @@ pub fn resolve_command_cached(command: &str) -> Option<PathBuf> {
 /// Clear the resolve_command cache so that newly-installed binaries are detected.
 pub fn clear_resolve_cache() {
     let mut guard = resolve_cache().lock().unwrap_or_else(|e| e.into_inner());
-    guard.clear();
+    // A real completed turn is stronger evidence than an in-flight discovery refresh.
+    // Preserve only its still-executable paths, never a negative or missing binary.
+    guard.retain(|command, path| {
+        super::verified_connection::protects_command(command)
+            && path.as_deref().is_some_and(is_executable_file)
+    });
     // Also invalidate the adapter-availability cache so a freshly-installed
     // adapter is reflected the next time the summary builder checks the badge.
     clear_adapter_availability_cache();
