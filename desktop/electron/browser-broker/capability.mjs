@@ -312,7 +312,7 @@ export function createCapabilityStore({
       const host = parsed.hostname.replace(/^\[|\]$/gu, "");
       const port = parsed.port || (parsed.protocol === "https:" ? "443" : "80");
       exceptions = normalizePrivateExceptions([
-        ...grant.privateExceptions.map((entry) => entry),
+        ...grant.privateExceptions,
         `${host}:${port}`,
       ]);
     }
@@ -359,7 +359,7 @@ export function createCapabilityStore({
 
   function unbindTab(grantId, tabId) {
     const grant = grants.get(grantId);
-    if (!grant || !grant.tabIds.delete(tabId)) return false;
+    if (!grant?.tabIds.delete(tabId)) return false;
     if (grant.primaryTabId === tabId) grant.primaryTabId = null;
     grant.epoch += 1;
     emit("tab-unbound", grant, { tabId });
