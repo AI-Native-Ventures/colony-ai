@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   agentDirectoryStatus,
+  agentDirectoryStatusLabel,
   filterManagedAgents,
   parseAgentDirectoryPageSize,
 } from "./agentDirectoryModel.ts";
@@ -69,6 +70,61 @@ test("directory classifies the structured harness auth error as needs connection
     runtimes: [runtime],
   };
   assert.equal(agentDirectoryStatus(expired, input), "needs-connection");
+});
+
+test("directory observes the active community runtime, including filters and safe labels", () => {
+  const mina = agent();
+  const input = {
+    activePubkeys: new Set(),
+    archivedPubkeys: new Set(),
+    runtimes: [],
+    relayUrl: "ws://localhost:3000",
+    runtimeStatuses: [
+      {
+        pubkey: mina.pubkey,
+        relayUrl: "ws://127.0.0.1:3000",
+        lifecycle: "ready",
+        localSetup: true,
+      },
+    ],
+  };
+  assert.equal(agentDirectoryStatus(mina, input), "idle");
+  assert.equal(agentDirectoryStatusLabel("idle"), "Ready");
+  assert.equal(agentDirectoryStatusLabel("stopped"), "Offline");
+  assert.equal(agentDirectoryStatusLabel("unknown"), "Needs attention");
+  assert.equal(
+    agentDirectoryStatus(mina, {
+      ...input,
+      activePubkeys: new Set([mina.pubkey]),
+    }),
+    "working",
+  );
+  assert.equal(
+    agentDirectoryStatus(mina, { ...input, relayUrl: "wss://other.example" }),
+    "needs-connection",
+  );
+  assert.equal(
+    agentDirectoryStatus(mina, { ...input, runtimeQueryFailed: true }),
+    "needs-connection",
+  );
+  assert.deepEqual(
+    filterManagedAgents([mina], {
+      ...input,
+      query: "",
+      status: "idle",
+      harnessId: "",
+    }),
+    [mina],
+  );
+  assert.deepEqual(
+    filterManagedAgents([mina], {
+      ...input,
+      query: "",
+      status: "stopped",
+      harnessId: "",
+    }),
+    [],
+  );
 });
 
 test("directory filters search the real name and catalog harness label", () => {
