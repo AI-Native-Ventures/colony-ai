@@ -1,4 +1,6 @@
 import path from "node:path";
+import { createSubscriptionService } from "./ai-subscriptions.mjs";
+import { requestClaudeCredential } from "./claude-credential-access.mjs";
 import {
   BrowserWindow,
   Notification,
@@ -77,6 +79,13 @@ export function createAppWindow({
     },
     invoke: (command, args) => host.request("invoke", { command, args }),
   });
+  const subscriptions = createSubscriptionService({
+    requestClaudeCredential: () =>
+      requestClaudeCredential({
+        confirm: (options) => dialog.showMessageBox(window, options),
+        alive: () => !window.isDestroyed(),
+      }),
+  });
   window.on("closed", () => openRouter.cancel());
   const disposeWindowEvents = shellPlugins.attachWindowEvents(window);
   rendererHost.on("event", send);
@@ -112,6 +121,10 @@ export function createAppWindow({
   async function dispatch(type, payload) {
     if (type === "invoke" && main) {
       switch (payload.command) {
+        case "get_ai_subscriptions":
+          return subscriptions.read();
+        case "check_claude_subscription":
+          return subscriptions.readClaude();
         case "connect_openrouter":
           return openRouter.connect();
         case "cancel_openrouter":

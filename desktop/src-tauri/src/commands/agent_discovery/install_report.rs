@@ -112,6 +112,11 @@ impl Drop for InstallReporter {
 }
 
 impl InstallReporter {
+    #[cfg(test)]
+    pub(super) fn silent_for_tests() -> Self {
+        Self::with_secrets("codex", None, None, Vec::new())
+    }
+
     /// The reporter a real install run uses: it starts this run's log session
     /// and emits live output events through `app`.
     ///

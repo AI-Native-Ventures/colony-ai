@@ -39,10 +39,10 @@ export function ConnectionShell({
     <>
       <div className="power-heading">
         <h2>Connect your AI.</h2>
-        <p className="lede">Your harness. Your models. Your way.</p>
+        <p className="lede">Your AI. Your models. Your way.</p>
       </div>
       <button
-        aria-label={`Choose agent harness. Current: ${data.harnessLabel ?? "Finding harnesses"}`}
+        aria-label={`Choose AI app. Current: ${data.harnessLabel ?? "Finding AI apps"}`}
         className="harness-picker"
         onClick={
           onChooseHarness ??
@@ -58,8 +58,8 @@ export function ConnectionShell({
       >
         {harnessMark ?? <HarnessLogo label={data.harnessLabel ?? ""} />}
         <span className="harness-picker-copy">
-          <span>Agent harness</span>
-          <strong>{data.harnessLabel ?? "Finding harnesses"}</strong>
+          <span>AI app</span>
+          <strong>{data.harnessLabel ?? "Finding AI apps"}</strong>
         </span>
         <span
           className={`harness-state ${["Installed", "Included", "Ready"].includes(data.harnessStatus ?? "") ? "ready" : ""}`}
