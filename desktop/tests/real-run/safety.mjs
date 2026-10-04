@@ -140,6 +140,44 @@ export function cleanEnvironment(source, userDataDir, relayUrl) {
   };
 }
 
+// Real HOME and signed-in Claude Code, but the app tree cannot reach the OS keychain
+// service. The packaged host stores its identity in the shared "buzz-desktop"
+// keychain slot (not profile scoped), so a throwaway profile would adopt or overwrite
+// the owner's identity. With securityd unreachable the host falls back to its 0600
+// file inside the throwaway profile. /usr/bin/security alone runs unsandboxed so
+// Claude Code can read its own existing sign-in exactly as it normally does.
+// Nothing here creates, unlocks or modifies a keychain.
+export function realEnvSandboxPolicy(home = homedir(), probePath = "") {
+  const q = (s) => JSON.stringify(s);
+  const support = path.join(home, "Library", "Application Support");
+  const forbidden = [
+    path.join(home, "Library", "Keychains"),
+    "/Library/Keychains",
+    path.join(support, "xyz.block.buzz.app"),
+    path.join(support, "xyz.block.buzz.app.dev"),
+    path.join(support, "Colony Electron"),
+    path.join(support, "Colony Electron Dev"),
+    ...(probePath ? [probePath] : []),
+  ];
+  return [
+    "(version 1)",
+    "(allow default)",
+    ...[
+      ...new Set(
+        forbidden.flatMap((p) => {
+          try {
+            return [p, realpathSync(p)];
+          } catch {
+            return [p];
+          }
+        }),
+      ),
+    ].map((p) => `(deny file-read* file-write* (subpath ${q(p)}))`),
+    '(deny mach-lookup (global-name "com.apple.securityd") (global-name "com.apple.SecurityServer") (global-name "com.apple.security.agent") (global-name "com.apple.SecurityAgent") (global-name-regex #"^com\\.apple\\.(securityd|SecurityServer|SecurityAgent|security\\.agent)(\\.|$)"))',
+    '(allow process-exec (literal "/usr/bin/security") (with no-sandbox))',
+  ].join("\n");
+}
+
 // Real-environment launch: the real HOME so a signed-in Claude Code is found. Only an
 // allowlist is forwarded, so inherited credentials and native/test overrides stay out.
 // Both the env var and the CLI flag are set because the packaged main process calls

@@ -10,6 +10,7 @@ import {
   fileReferenceVerdict,
   personalConfigFindings,
   realEnvironment,
+  realEnvSandboxPolicy,
   SETUP_NOTICE,
   cleanEnvironment,
   outsideRepo,
@@ -225,4 +226,18 @@ test("the setup notice pattern matches the shipped wording and not intros", () =
   assert.ok(
     !SETUP_NOTICE.test("Hi, I'm Scout. I will be your chief of staff."),
   );
+});
+
+test("real-env policy blocks the keychain service for the app but not Claude sign-in or the real home", () => {
+  const policy = realEnvSandboxPolicy("/Users/test", "/tmp/probe");
+  assert.match(policy, /\(deny mach-lookup[^)]*com\.apple\.securityd/u);
+  assert.match(
+    policy,
+    /\(allow process-exec \(literal "\/usr\/bin\/security"\) \(with no-sandbox\)\)/u,
+  );
+  assert.match(policy, /Colony Electron"/u);
+  assert.match(policy, /\/tmp\/probe/u);
+  // The real nest and Claude config stay reachable: HOME is deliberately real.
+  assert.doesNotMatch(policy, /\/Users\/test\/\.buzz/u);
+  assert.doesNotMatch(policy, /\/Users\/test\/\.claude/u);
 });
