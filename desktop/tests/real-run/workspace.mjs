@@ -448,6 +448,9 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
       .getByTestId("message-timeline")
       .locator(`[data-testid="message-row"][data-message-id="${id}"]`)
       .first();
+  // COLONY_REAL_RUN_NO_SAMPLE=1 keeps the window on the Welcome channel while waiting, so
+  // sampling the Team page cannot influence the reply (control for the sampling).
+  const sampleStatus = process.env.COLONY_REAL_RUN_NO_SAMPLE !== "1";
   const scoutStatusNow = async () => {
     await page.getByTestId("sidebar-company-team").click();
     const row = page.getByTestId(`company-team-member-${scoutPubkey}`);
@@ -536,7 +539,7 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
             };
           }
         }
-        if (!found && Date.now() >= nextSample) {
+        if (!found && sampleStatus && Date.now() >= nextSample) {
           try {
             const status = await scoutStatusNow();
             evidence.metadata.scoutStatusTimeline ??= [];
