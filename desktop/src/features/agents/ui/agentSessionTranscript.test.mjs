@@ -76,11 +76,11 @@ test("buildTranscript renders Prompt context + user message for a multi-block se
       params: {
         sessionId: "sess-1",
         prompt: [
-          { type: "text", text: "[Agent Memory — core]\nremember this" },
+          { type: "text", text: "[Agent Memory \u2014 core]\nremember this" },
           { type: "text", text: "[Context]\nScope: thread" },
           {
             type: "text",
-            text: `[Buzz event: @mention]\nEvent ID: ${PROMPT_EVENT_ID.toUpperCase()}\nFrom: x (hex: ${"a".repeat(64)})\nContent: hello`,
+            text: `[Colony event: @mention]\nEvent ID: ${PROMPT_EVENT_ID.toUpperCase()}\nFrom: x (hex: ${"a".repeat(64)})\nContent: hello`,
           },
         ],
       },
@@ -96,7 +96,7 @@ test("buildTranscript renders Prompt context + user message for a multi-block se
   const promptContext = items.find((i) => i.title === "Prompt context");
   assert.deepEqual(
     promptContext.sections.map((s) => s.title),
-    ["Agent Memory — core", "Context", "Buzz event: @mention"],
+    ["Agent Memory \u2014 core", "Context", "Colony event: @mention"],
     "every section header is counted",
   );
   const userMessage = items.find((i) => i.type === "message");
@@ -146,7 +146,7 @@ test("buildTranscript preserves a slash-command preamble before semantic prompt 
   );
   assert.deepEqual(
     promptContext?.sections.map((section) => section.title),
-    ["Prompt", "Context", "Buzz event: @mention"],
+    ["Prompt", "Context", "Colony event: @mention"],
   );
   assert.equal(promptContext?.sections[0]?.body, "/goal ship it");
 });
@@ -162,7 +162,7 @@ test("buildTranscript falls back to a single turn trigger id for older prompt fr
         prompt: [
           {
             type: "text",
-            text: `[Buzz event: @mention]\nFrom: x (hex: ${"a".repeat(64)})\nContent: hello`,
+            text: `[Colony event: @mention]\nFrom: x (hex: ${"a".repeat(64)})\nContent: hello`,
           },
         ],
       },
@@ -858,7 +858,7 @@ test("buildTranscript no-ops on a permission response with an unmatched id", () 
     makePermissionResponse(2, "req-WRONG", "selected", "allow_once"),
   ]);
 
-  // The permission item exists but has no outcome appended — the mismatched
+  // The permission item exists but has no outcome appended \u2014 the mismatched
   // response id must not crash or attach to the wrong item.
   assert.equal(transcript.length, 1);
   const item = transcript[0];
@@ -974,7 +974,7 @@ test("buildTranscript renders usage_update with cost when present", () => {
 
 test("buildTranscript coalesces usage_update to latest-per-turn (replace, not append)", () => {
   // Three usage frames in the same turn must produce exactly ONE lifecycle item
-  // showing the LAST value — not an accumulation of all three.
+  // showing the LAST value \u2014 not an accumulation of all three.
   const transcript = buildTranscript([
     acpToolUpdate(1, { sessionUpdate: "usage_update", used: 100, size: 8192 }),
     acpToolUpdate(2, { sessionUpdate: "usage_update", used: 300, size: 8192 }),
@@ -1135,7 +1135,7 @@ test("observer feed renders system-prompt before prompt-context in display order
           prompt: [
             {
               type: "text",
-              text: `[Buzz event: @mention]\nEvent ID: ${"a".repeat(64)}\nFrom: x (hex: ${"b".repeat(64)})\nContent: hello`,
+              text: `[Colony event: @mention]\nEvent ID: ${"a".repeat(64)}\nFrom: x (hex: ${"b".repeat(64)})\nContent: hello`,
             },
             { type: "text", text: "[Thread context]\nPrior messages here." },
           ],
@@ -1144,7 +1144,7 @@ test("observer feed renders system-prompt before prompt-context in display order
     },
   ];
 
-  // Route through the display layer — this is the layer that contained the bug.
+  // Route through the display layer \u2014 this is the layer that contained the bug.
   const rawItems = buildTranscript(events);
   const displayItems = flattenDisplayBlocks(
     buildTranscriptDisplayBlocks(rawItems),
@@ -1231,7 +1231,7 @@ test("observer feed renders system-prompt before prompt-context in display order
           prompt: [
             {
               type: "text",
-              text: `[Buzz event: @mention]\nEvent ID: ${"a".repeat(64)}\nFrom: x (hex: ${"b".repeat(64)})\nContent: turn 1`,
+              text: `[Colony event: @mention]\nEvent ID: ${"a".repeat(64)}\nFrom: x (hex: ${"b".repeat(64)})\nContent: turn 1`,
             },
             { type: "text", text: "[Thread context]\nEmpty." },
           ],
@@ -1265,7 +1265,7 @@ test("observer feed renders system-prompt before prompt-context in display order
           prompt: [
             {
               type: "text",
-              text: `[Buzz event: @mention]\nEvent ID: ${"c".repeat(64)}\nFrom: x (hex: ${"d".repeat(64)})\nContent: turn 2`,
+              text: `[Colony event: @mention]\nEvent ID: ${"c".repeat(64)}\nFrom: x (hex: ${"d".repeat(64)})\nContent: turn 2`,
             },
             { type: "text", text: "[Thread context]\nOne prior message." },
           ],
@@ -1281,7 +1281,7 @@ test("observer feed renders system-prompt before prompt-context in display order
   const systemPromptIdx = displayItems.findIndex(
     (i) => i.title === "System prompt",
   );
-  // Both turns produce a Prompt context — grab the first one (turn-1).
+  // Both turns produce a Prompt context \u2014 grab the first one (turn-1).
   const firstPromptContextIdx = displayItems.findIndex(
     (i) => i.title === "Prompt context",
   );
@@ -1327,7 +1327,7 @@ test("steer ingress bundles its prompt context into the steer prompt segment, no
           prompt: [
             {
               type: "text",
-              text: `[Buzz event: @mention]\nEvent ID: ${"e".repeat(64)}\nFrom: x (hex: ${"f".repeat(64)})\nContent: steer me`,
+              text: `[Colony event: @mention]\nEvent ID: ${"e".repeat(64)}\nFrom: x (hex: ${"f".repeat(64)})\nContent: steer me`,
             },
             { type: "text", text: "[Thread context]\nPrior messages here." },
           ],
@@ -1364,7 +1364,7 @@ test("buildTranscript correctly renders prompt segment when session/prompt arriv
   // usage) arrive first because the desktop subscribed slightly after turn start,
   // then session/prompt arrives later (e.g. via reconnect replay or archive
   // backfill). buildTranscript is called in out-of-order sequence order but
-  // processTranscriptEvent handles insertion — the full rebuild path in
+  // processTranscriptEvent handles insertion \u2014 the full rebuild path in
   // appendAgentEvent (slow path for out-of-order) re-processes events sorted by
   // timestamp+seq, so the prompt segment must appear.
   const TURN = "turn-oot";
@@ -1404,7 +1404,7 @@ test("buildTranscript correctly renders prompt segment when session/prompt arriv
     },
   });
 
-  // session/prompt has the lowest seq — it was published first but arrived last
+  // session/prompt has the lowest seq \u2014 it was published first but arrived last
   const promptEvent = makeEvent(1, "acp_write", "2026-06-18T00:01:00Z", {
     method: "session/prompt",
     params: {
@@ -1412,7 +1412,7 @@ test("buildTranscript correctly renders prompt segment when session/prompt arriv
       prompt: [
         {
           type: "text",
-          text: `[Buzz event: @mention]\nEvent ID: ${EVENT_HEX.toUpperCase()}\nFrom: Alice (hex: ${AUTHOR_HEX})\nContent: please help`,
+          text: `[Colony event: @mention]\nEvent ID: ${EVENT_HEX.toUpperCase()}\nFrom: Alice (hex: ${AUTHOR_HEX})\nContent: please help`,
         },
         { type: "text", text: "[Context]\nScope: thread" },
       ],
@@ -1452,8 +1452,8 @@ test("buildTranscript correctly renders prompt segment when session/prompt arriv
 
 test("buildTranscript restart sequence: both sessions retain their own system-prompt card", () => {
   // Full two-session restart sequence routed through processTranscriptEvent.
-  // Each session/new event is keyed by (seq, timestamp) — the same dedup pair
-  // used by observerRelayStore — producing distinct system-prompt items for
+  // Each session/new event is keyed by (seq, timestamp) \u2014 the same dedup pair
+  // used by observerRelayStore \u2014 producing distinct system-prompt items for
   // sess-1 and sess-2. Both must be present in the final transcript and placed
   // in the correct run:
   //   sess-1: system-prompt → sess-1 activity (before boundary)
@@ -1474,7 +1474,7 @@ test("buildTranscript restart sequence: both sessions retain their own system-pr
       turnId: "turn-1",
       payload: { source: "channel", triggeringEventIds: [] },
     },
-    // sess-1 session/new (first fire — pushes system-prompt to the stream)
+    // sess-1 session/new (first fire \u2014 pushes system-prompt to the stream)
     {
       seq: 2,
       timestamp: "2026-07-01T10:00:00.100Z",
@@ -1594,7 +1594,7 @@ test("buildTranscript restart sequence: both sessions retain their own system-pr
           prompt: [
             {
               type: "text",
-              text: `[Buzz event: @mention]\nEvent ID: ${USER_EVENT_HEX.toUpperCase()}\nFrom: Will (hex: ${AUTHOR_HEX})\nContent: @Paul status check? I had to restart`,
+              text: `[Colony event: @mention]\nEvent ID: ${USER_EVENT_HEX.toUpperCase()}\nFrom: Will (hex: ${AUTHOR_HEX})\nContent: @Paul status check? I had to restart`,
             },
           ],
         },
@@ -1640,14 +1640,14 @@ test("buildTranscript restart sequence: both sessions retain their own system-pr
 
   const boundaryIdx = blocks.indexOf(boundaryBlocks[0]);
 
-  // (b) Exactly two system-prompt standalone blocks — one per session.
+  // (b) Exactly two system-prompt standalone blocks \u2014 one per session.
   const systemPromptBlocks = blocks.filter(
     (b) => b.kind === "single" && b.item?.acpSource === "session/new",
   );
   assert.equal(
     systemPromptBlocks.length,
     2,
-    "must be exactly two system-prompt standalone blocks — one per session",
+    "must be exactly two system-prompt standalone blocks \u2014 one per session",
   );
   const sess1PromptIdx = blocks.indexOf(systemPromptBlocks[0]);
   const sess2PromptIdx = blocks.indexOf(systemPromptBlocks[1]);
@@ -1742,7 +1742,7 @@ test("buildTranscript same-seq different-timestamp session/new events both produ
   assert.equal(
     systemPromptItems.length,
     2,
-    "two same-seq different-timestamp session/new events must produce two distinct system-prompt items — not one (key collision guard)",
+    "two same-seq different-timestamp session/new events must produce two distinct system-prompt items \u2014 not one (key collision guard)",
   );
 
   const bodies = systemPromptItems.map((i) =>
@@ -1760,7 +1760,7 @@ test("buildTranscript same-seq different-timestamp session/new events both produ
 
 test("buildTranscript five-section system prompt card is standalone with all sections; CheckCheck context contains only Buzz/thread context", () => {
   // Production scenario: team-pack agent harness emits
-  // [Base]/[System (with team delimiter)]/[Agent Memory — core]/[Channel Canvas]
+  // [Base]/[System (with team delimiter)]/[Agent Memory \u2014 core]/[Channel Canvas]
   // in systemPrompt. The display layer must:
   //   (a) Render it as a standalone single block (acpSource "session/new"),
   //       NOT inside any turn's prompt bundle.
@@ -1805,7 +1805,7 @@ test("buildTranscript five-section system prompt card is standalone with all sec
             "# Team Instructions",
             "Always tag on handoff.",
             "",
-            "[Agent Memory — core]",
+            "[Agent Memory \u2014 core]",
             "I am Duncan.",
             "",
             "[Channel Canvas]",
@@ -1843,7 +1843,7 @@ test("buildTranscript five-section system prompt card is standalone with all sec
           prompt: [
             {
               type: "text",
-              text: `[Buzz event: @mention]\nEvent ID: ${"a".repeat(64)}\nFrom: x (hex: ${"b".repeat(64)})\nContent: hello`,
+              text: `[Colony event: @mention]\nEvent ID: ${"a".repeat(64)}\nFrom: x (hex: ${"b".repeat(64)})\nContent: hello`,
             },
             {
               type: "text",
@@ -1899,7 +1899,7 @@ test("buildTranscript five-section system prompt card is standalone with all sec
   );
 
   // (d) CheckCheck context (prompt segment's context field) must contain only
-  // the session/prompt:context item — Buzz/thread context only, no system-prompt sections.
+  // the session/prompt:context item \u2014 Buzz/thread context only, no system-prompt sections.
   const promptContextItem = flat.find(
     (i) => i.acpSource === "session/prompt:context",
   );
@@ -1912,8 +1912,8 @@ test("buildTranscript five-section system prompt card is standalone with all sec
   );
   // Must have Buzz event and Thread context sections, NOT Base/System/Team Instructions/Core Memory/Channel Canvas.
   assert.ok(
-    contextSectionTitles.some((t) => t.toLowerCase().includes("buzz")),
-    "prompt context must contain a Buzz event section",
+    contextSectionTitles.some((t) => t.toLowerCase().includes("colony")),
+    "prompt context must contain a Colony event section",
   );
   assert.ok(
     !contextSectionTitles.some(
@@ -2004,7 +2004,7 @@ test("buildTranscript session/new via _meta.systemPrompt.append produces identic
           prompt: [
             {
               type: "text",
-              text: `[Buzz event: @mention]\nEvent ID: ${"a".repeat(64)}\nFrom: x (hex: ${"b".repeat(64)})\nContent: hello`,
+              text: `[Colony event: @mention]\nEvent ID: ${"a".repeat(64)}\nFrom: x (hex: ${"b".repeat(64)})\nContent: hello`,
             },
             { type: "text", text: "[Thread context]\nPrior messages here." },
           ],
@@ -2088,7 +2088,7 @@ test("buildTranscript session/new via _meta.systemPrompt.append produces identic
 
 test("buildTranscript session/new bare systemPrompt field takes precedence over _meta.systemPrompt.append", () => {
   // When both transports are present (non-standard but must not regress),
-  // the standard bare field must win — a reversed ?? would silently use the
+  // the standard bare field must win \u2014 a reversed ?? would silently use the
   // wrong text and the card body would differ from the wire source of truth.
   const CH = "66666666-6666-6666-6666-666666666666";
   const events = [

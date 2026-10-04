@@ -483,10 +483,10 @@ async function expectWelcomeComposerBannerCompletesAfterPersonaMention(
     throw new Error("Could not measure the Welcome composer");
   }
 
-  // The fixture has a seeded Fizz and this new member's starter Fizz. A
+  // The fixture has a seeded Scout and this new member's starter Scout. A
   // manually typed name cannot choose between them or complete onboarding.
   const input = page.getByTestId("message-input");
-  const content = "Thanks @Fizz";
+  const content = "Thanks @Scout";
   const sentRecipients = () =>
     page.evaluate(
       (content) =>
@@ -501,7 +501,7 @@ async function expectWelcomeComposerBannerCompletesAfterPersonaMention(
   await input.press("Escape");
   await page.getByTestId("send-message").click();
   await expect(
-    page.getByText("The mention @Fizz is ambiguous.", { exact: false }),
+    page.getByText("The mention @Scout is ambiguous.", { exact: false }),
   ).toBeVisible();
   await expect(input).toHaveText(content);
   await expect(banner).toHaveAttribute("data-state", "prompt");

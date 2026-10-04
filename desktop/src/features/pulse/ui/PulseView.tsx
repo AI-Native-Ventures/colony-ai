@@ -1,10 +1,8 @@
+import { useCompanyManagedAgentsQuery } from "@/features/agents/useCompanyManagedAgents";
 import { Search } from "lucide-react";
 import * as React from "react";
 
-import {
-  useManagedAgentsQuery,
-  useRelayAgentsQuery,
-} from "@/features/agents/hooks";
+import { useRelayAgentsQuery } from "@/features/agents/hooks";
 import {
   useContactListQuery,
   useFollowMutation,
@@ -118,7 +116,7 @@ export function PulseView({
   const peoplePubkeys = React.useMemo(() => contactPubkeys, [contactPubkeys]);
 
   const relayAgentsQuery = useRelayAgentsQuery();
-  const managedAgentsQuery = useManagedAgentsQuery();
+  const managedAgentsQuery = useCompanyManagedAgentsQuery();
   const relayAgents = React.useMemo(() => {
     const agentsByPubkey = new Map<
       string,

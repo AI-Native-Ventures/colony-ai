@@ -40,6 +40,8 @@ export type BuildMentionCandidatesInput = {
   mentionableAgentPubkeys: ReadonlySet<string>;
   personaNameByPubkey: ReadonlyMap<string, string>;
   profiles: UserProfileLookup | undefined;
+  /** Current company Team, not the global managed-agent directory. */
+  teamMemberPubkeys?: ReadonlySet<string>;
   relayAgentDirectoryReady: boolean;
   relayAgentNamesByPubkey: ReadonlyMap<string, string>;
   relayAgents: readonly RelayAgent[] | undefined;
@@ -71,6 +73,7 @@ export function buildMentionCandidates({
   mentionableAgentPubkeys,
   personaNameByPubkey,
   profiles,
+  teamMemberPubkeys,
   relayAgentDirectoryReady,
   relayAgentNamesByPubkey,
   relayAgents,
@@ -79,6 +82,13 @@ export function buildMentionCandidates({
   const candidatesByPubkey = new Map<string, MentionCandidate>();
   const addCandidate = (candidate: MentionCandidate & { pubkey: string }) => {
     const pubkey = normalizePubkey(candidate.pubkey);
+    if (
+      candidate.isAgent &&
+      teamMemberPubkeys &&
+      !candidate.isMember &&
+      !teamMemberPubkeys.has(pubkey)
+    )
+      return;
     if (isArchived(pubkey)) {
       return;
     }
@@ -226,7 +236,10 @@ export function buildMentionCandidates({
     }
   }
   const personaCandidates: MentionCandidate[] = activePersonas
-    .filter((persona) => !managedAgentPersonaIds.has(persona.id))
+    .filter(
+      (persona) =>
+        !managedAgentPersonaIds.has(persona.id) && !teamMemberPubkeys,
+    )
     .map((persona) => ({
       kind: "persona" as const,
       personaId: persona.id,

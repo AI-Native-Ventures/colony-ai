@@ -49,7 +49,7 @@ test("Connect waits for the actual reply, then saves the selected runtime", asyn
         models: [{ id: "actual-model", name: "Chosen model" }],
       },
       onboardingConnectionDelayMs: 400,
-      startManagedAgentDelayMsByName: { Honey: 30_000, Pollen: 30_000 },
+      startManagedAgentDelayMsByName: { Writer: 30_000, Researcher: 30_000 },
       onboardingConnectionResult: {
         reply: "A reply from the selected harness",
         model: "actual-model",
@@ -376,7 +376,7 @@ test("Welcome exposes recovery when the saved runtime disappears, then retries p
   await expect(recovery).toBeVisible();
   await expect(
     page.getByTestId("welcome-composer-guide-banner"),
-  ).not.toContainText("Setting up your welcome team");
+  ).not.toContainText("Setting up Scout");
   await expect(recovery).toContainText("reconnect");
   await expect(
     recovery.getByRole("button", { name: "Open AI settings" }),

@@ -1,4 +1,4 @@
-//! `mint_agent_card` / `save_agent_card` Tauri commands — Agent Trading Cards.
+//! `mint_agent_card` / `save_agent_card` Tauri commands , Agent Trading Cards.
 //!
 //! Mints a collectible trading-card PNG for an agent via one OpenAI Responses
 //! API call (designer model + native `image_generation` tool), then embeds the
@@ -6,7 +6,7 @@
 //! encoder so the card IS an importable `.agent.png`.
 //!
 //! Boundary rules (agreed with Wren, buzz-agent-trading-cards thread):
-//! - Snapshot construction/injection reuses `agent_snapshot.rs` — cards
+//! - Snapshot construction/injection reuses `agent_snapshot.rs` , cards
 //!   inherit manifest-v1 behavior, exclusions, and size checks. No card-only
 //!   wire format exists.
 //! - Memory inclusion is opt-in and shares the export flow's semantics: the
@@ -47,7 +47,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
-/// The Buzz card frame template — Tyler's gold-honeycomb base. Generation
+/// The Buzz card frame template , Tyler's gold-honeycomb base. Generation
 /// input only: it never participates in the snapshot manifest, PNG chunk,
 /// import decoder, or attachment validation. Embedded at compile time for
 /// deterministic packaging (see `card_template_decodes` test).
@@ -84,7 +84,7 @@ pub struct MintedCard {
     /// Designer commentary emitted alongside the image (may be empty).
     pub designer_notes: String,
     /// True when the embedded snapshot is NIP-44-encrypted to the
-    /// (owner, agent) pair — only their nsecs can import this card.
+    /// (owner, agent) pair , only their nsecs can import this card.
     pub locked: bool,
     /// How much memory is embedded in the card's snapshot ("none"/"core"/
     /// "everything"). The viewer's import disclosure depends on this.
@@ -94,7 +94,7 @@ pub struct MintedCard {
 // ── Card archive ──────────────────────────────────────────────────────────────
 
 /// Sidecar metadata for one archived card PNG. Stored as `<stem>.json` next
-/// to `<stem>.agent.png` in the cards dir — two plain files per mint, no
+/// to `<stem>.agent.png` in the cards dir , two plain files per mint, no
 /// shared index to corrupt. Listing scans sidecars; a card whose PNG is
 /// missing is skipped rather than failing the whole list.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,14 +110,14 @@ pub struct ArchivedCardMeta {
     pub designer_notes: String,
     pub locked: bool,
     /// Memory embedded in this card's snapshot. Defaults to `None` when the
-    /// sidecar predates the field — every pre-field mint was minted with
+    /// sidecar predates the field , every pre-field mint was minted with
     /// `MemoryLevel::None` (it was structural), so the default is honest.
     #[serde(default)]
     pub memory_level: MemoryLevel,
     /// ISO-8601 mint timestamp.
     pub minted_at: String,
     /// Small JPEG preview for gallery grids, base64. Populated by
-    /// `list_agent_cards` from the sidecar thumb file — never stored in the
+    /// `list_agent_cards` from the sidecar thumb file , never stored in the
     /// JSON sidecar itself.
     #[serde(default, skip_deserializing)]
     pub thumb_jpeg_base64: Option<String>,
@@ -130,7 +130,7 @@ fn cards_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 }
 
 /// Persist a freshly minted card to the archive. Failures are surfaced to the
-/// caller (which logs and continues) — an archive write must never fail a
+/// caller (which logs and continues) , an archive write must never fail a
 /// mint the user already paid for.
 fn archive_minted_card(
     app: &AppHandle,
@@ -314,7 +314,7 @@ pub(crate) fn resolve_key_layer(
 /// The Responses endpoint to post mints to. `OPENAI_BASE_URL` (same env
 /// layering as the key) overrides the default host, supporting endpoints and
 /// proxies that speak the OpenAI Responses shape with Bearer auth. Azure
-/// OpenAI is NOT covered by this override alone — it uses its own URL scheme
+/// OpenAI is NOT covered by this override alone , it uses its own URL scheme
 /// and `api-key` auth header, which would need a real driver.
 pub(crate) fn responses_url(base_url: Option<String>) -> String {
     let base = base_url.unwrap_or_else(|| "https://api.openai.com/v1".to_string());
@@ -336,32 +336,32 @@ pub(crate) fn build_card_instructions(
         String::new()
     } else {
         format!(
-            "\nOWNER'S DIRECTIONS — these override the default art-style and copy guidance \
+            "\nOWNER'S DIRECTIONS , these override the default art-style and copy guidance \
              below wherever they conflict (they cannot change the frame, layout, or \
              text-fidelity requirements). The owner may direct the art, the card text \
              (type line, ability, flavor), or both:\n{style_notes}\n"
         )
     };
     format!(
-        r#"You are designing one premium collectible trading card for the Buzz agent "{agent_name}".
+        r#"You are designing one premium collectible trading card for the Colony agent "{agent_name}".
 
-Input image 1 is the official Buzz card frame template (gold honeycomb border, dark interior, name banner top, hex badge top-right, text box lower third). Input image 2 is the agent's avatar — study its exact art style: medium, pixel grid if any, palette, shading, background motifs.
+Input image 1 is the official Colony card frame template (gold geometric border, dark interior, name banner top, hex badge top-right, text box lower third). Input image 2 is the agent's avatar , study its exact art style: medium, pixel grid if any, palette, shading, background motifs.
 
 Persona notes for the card copy:
 {persona_notes}
 {owner_directions}
 First, write professional trading-card copy at Magic: The Gathering editorial quality:
-- a type line (e.g. "Legendary Agent — Team Lead"),
+- a type line (e.g. "Legendary Agent , Team Lead"),
 - ONE keyworded ability: short bolded ability name + one sentence of crisp rules text written like real MTG rules (present tense, precise, no fluff),
 - ONE italic flavor-text line, evocative and short, the kind that gets quoted.
 Where the owner's directions specify card text, use their wording within the 220-character text-box limit below (edited only for spelling; if their text exceeds the limit, condense it minimally while keeping their words and intent); invent copy only for the parts they left open.
 Keep total text-box copy under 220 characters so it renders cleanly.
 
 Then generate the finished card with the image tool, exactly 1024x1536 portrait:
-- The frame must follow input image 1 faithfully: same gold honeycomb border, same layout, honey drip detail.
-- Default art style: match input image 2's art style EXACTLY — same medium, same pixel density if pixel art, same palette, same background honeycomb-lattice sky. It must look like the same artist drew a larger scene: the character in a confident pose, conjuring glowing golden hexagons. The owner's directions above override any of this default styling where they conflict.
+- The frame must follow input image 1 faithfully: same gold geometric border, same layout, decorative detail.
+- Default art style: match input image 2's art style EXACTLY , same medium, same pixel density if pixel art, same palette, same background patterned sky. It must look like the same artist drew a larger scene: the character in a confident pose, conjuring glowing golden hexagons. The owner's directions above override any of this default styling where they conflict.
 - Name banner: "{agent_name}" plus the type line beneath it in smaller type.
-- Text box: the ability name in bold, rules text in regular, then the flavor line in italics, cleanly typeset like a real MTG card — professional kerning, no misspellings, hyphenate nothing.
+- Text box: the ability name in bold, rules text in regular, then the flavor line in italics, cleanly typeset like a real MTG card , professional kerning, no misspellings, hyphenate nothing.
 - Top-right hex badge: one small emblem of your choice, no text.
 Render all text with perfect fidelity."#
     )
@@ -437,13 +437,13 @@ pub(crate) fn extract_card_output(resp: &serde_json::Value) -> Result<(String, S
 // ── Commands ──────────────────────────────────────────────────────────────────
 
 /// Save an `OPENAI_API_KEY` into the global Agent Defaults env for card
-/// minting — a narrow seam with deliberately different semantics from the
+/// minting , a narrow seam with deliberately different semantics from the
 /// general `set_global_agent_config`:
 ///
 /// - **No agent restarts.** The general command stops/restarts every running
 ///   local agent whose effective env changes, because agent env is baked at
 ///   spawn time. The mint command re-reads the config from disk on every
-///   mint, so minting needs no restart — and a card setup must never disrupt
+///   mint, so minting needs no restart , and a card setup must never disrupt
 ///   running agents as a side effect. Agents pick the key up naturally on
 ///   their next (re)start.
 /// - **Read-modify-write of the latest on-disk config.** The config is
@@ -455,7 +455,7 @@ pub(crate) fn extract_card_output(resp: &serde_json::Value) -> Result<(String, S
 ///   today, the last writer wins between the two surfaces.)
 ///
 /// Standard global-config validation still applies (POSIX key shape,
-/// reserved-key reject, size caps) — this is not a validation bypass.
+/// reserved-key reject, size caps) , this is not a validation bypass.
 #[tauri::command]
 pub fn card_mint_save_openai_key(
     key: String,
@@ -479,7 +479,7 @@ pub fn card_mint_save_openai_key(
 }
 
 /// Report which env layer resolves the OpenAI key for a card mint of agent
-/// `id` — same layering as `mint_agent_card`. Delegates to `resolve_key_layer`
+/// `id` , same layering as `mint_agent_card`. Delegates to `resolve_key_layer`
 /// for the classification; see that helper for the return-value contract.
 #[tauri::command]
 pub fn card_mint_key_status(
@@ -515,15 +515,15 @@ pub fn card_mint_key_status(
 }
 
 /// Mint a trading card for the agent identified by `id` (instance pubkey,
-/// instance slug, or definition slug — same resolution as snapshot export).
+/// instance slug, or definition slug , same resolution as snapshot export).
 ///
 /// When `lock` is true the embedded manifest is NIP-44-encrypted to the
-/// (owner, agent) pair per the locked-envelope contract — this requires a
+/// (owner, agent) pair per the locked-envelope contract , this requires a
 /// linked agent instance (the second key endpoint); bare definitions cannot
 /// be locked.
 ///
 /// When `memory_level` is `"core"` or `"everything"`, the owner's decrypted
-/// memory for the agent is embedded in the manifest — same levels and fetch
+/// memory for the agent is embedded in the manifest , same levels and fetch
 /// as snapshot export. The memory source is always the resolved instance
 /// itself (derived, never caller-supplied), so it requires a linked instance;
 /// bare definitions can only mint `"none"` (the default).
@@ -592,14 +592,14 @@ pub async fn mint_agent_card(
     let lock_keys = if lock {
         if is_definition {
             return Err(
-                "Locked cards need a linked agent instance — this persona has never been \
+                "Locked cards need a linked agent instance , this persona has never been \
                  started, so there is no agent key to lock to."
                     .to_string(),
             );
         }
         let owner_keys = state.signing_keys()?;
         // Same canonical check the envelope decoder enforces (incl. curve
-        // validation) — a non-point record pubkey must fail BEFORE the API
+        // validation) , a non-point record pubkey must fail BEFORE the API
         // spend, not at post-mint encryption.
         let agent_pubkey = crate::managed_agents::agent_snapshot_envelope::parse_canonical_pubkey(
             "agentPubkey",
@@ -617,7 +617,7 @@ pub async fn mint_agent_card(
     };
 
     // ── Memory needs a keyed instance, resolved up front BEFORE the API
-    //    spend — the memory source is always the resolved instance itself
+    //    spend , the memory source is always the resolved instance itself
     //    (derived, never caller-supplied), so cross-agent pairing cannot be
     //    expressed. A failed fetch fails the mint here, not after payment.
     let memory_entries = if memory_level == MemoryLevel::None {
@@ -625,7 +625,7 @@ pub async fn mint_agent_card(
     } else {
         if is_definition {
             return Err(
-                "Cards with memory need a linked agent instance — this persona has never \
+                "Cards with memory need a linked agent instance , this persona has never \
                  been started, so there is no agent memory to include."
                     .to_string(),
             );
@@ -643,10 +643,10 @@ pub async fn mint_agent_card(
     // The record's `avatar_url` is a stale presentation snapshot: with
     // agent-managed profiles the agent updates its own kind:0 `picture` and
     // desktop reconciliation is disabled (`agent_settings.rs`), so the relay
-    // profile — not the local record — is the live source of truth for how the
+    // profile , not the local record , is the live source of truth for how the
     // agent looks. Definitions have no keypair and thus no kind:0; they keep
     // the record's avatar. A relay error fails the mint here, BEFORE the API
-    // spend (same fail-early rule as the key/memory guards above) — minting
+    // spend (same fail-early rule as the key/memory guards above) , minting
     // with the wrong face wastes the spend it was supposed to protect.
     if !is_definition {
         let relay_url = crate::relay::effective_agent_relay_url(
@@ -807,7 +807,7 @@ pub async fn mint_agent_card(
     // ── Verify: size ceiling + round-trip on the FINAL bytes ────────────────
     // Locked cards: extract the actual chunk, parse the envelope, decrypt
     // with the owner key, then compare the logical manifest (ciphertext is
-    // nondeterministic — never compare bytes).
+    // nondeterministic , never compare bytes).
     validate_snapshot_encode_size(final_bytes.len(), true)?;
     let decoded = match &lock_keys {
         None => decode_snapshot_png(&final_bytes)
@@ -845,7 +845,7 @@ pub async fn mint_agent_card(
     };
 
     // Archive best-effort: the mint is already paid for and verified, so a
-    // failed archive write logs and continues — it never fails the mint.
+    // failed archive write logs and continues , it never fails the mint.
     if let Err(e) = archive_minted_card(&app, &id, &display_name, &minted, &final_bytes) {
         eprintln!("buzz-desktop: card-archive: failed to archive minted card: {e}");
     }
@@ -871,7 +871,7 @@ fn preferred_avatar_url(
 ///
 /// Unlocked cards must carry the agent's REAL avatar inline: the PNG body is
 /// the generated card artwork, and the importer only adopts the body as the
-/// avatar when the manifest carries no inline bytes (`import.rs`) — without
+/// avatar when the manifest carries no inline bytes (`import.rs`) , without
 /// these bytes an imported agent would wear the card as its face. Downscaled
 /// to [`MANIFEST_AVATAR_MAX_DIM`] so the manifest tEXt chunk stays small.
 ///
@@ -893,7 +893,7 @@ fn manifest_avatar_bytes(
 
 /// True when `url` shares an origin (scheme, host, port) with `relay_base`.
 ///
-/// Gate for attaching the minted media get-auth header — the token must never
+/// Gate for attaching the minted media get-auth header , the token must never
 /// be sent to a non-relay origin (same contract as `validate_download_url` in
 /// `media_download.rs`, but non-fatal: a foreign origin just fetches
 /// unauthenticated instead of failing the mint).
@@ -907,7 +907,7 @@ fn is_same_origin(url: &str, relay_base: &str) -> bool {
 /// Fetch an avatar over HTTP with a hard size cap.
 ///
 /// `auth` is an optional pre-minted Blossom get-auth header value, attached
-/// verbatim — the caller is responsible for only supplying it for
+/// verbatim , the caller is responsible for only supplying it for
 /// relay-origin URLs. Redirects are not followed when auth is present
 /// (redirect-hop guard, same rule as `media_download.rs`).
 ///
@@ -969,7 +969,7 @@ fn append_within_avatar_cap(buf: &mut Vec<u8>, chunk: &[u8]) -> Result<(), Strin
 /// Re-validates the bytes (chunk parses as a plain manifest or a
 /// structurally valid locked envelope, size within the import ceiling) so a
 /// corrupted preview can never be written as a `.agent.png`. No decryption
-/// happens here — the mint already round-trip-verified with the real key.
+/// happens here , the mint already round-trip-verified with the real key.
 #[tauri::command]
 pub async fn save_agent_card(
     card_png_base64: String,

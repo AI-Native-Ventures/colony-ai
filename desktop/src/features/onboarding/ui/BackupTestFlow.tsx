@@ -78,7 +78,7 @@ type BackupTestFlowProps = {
   onVerified?: () => void;
 };
 
-const BURST_EMOJIS = ["🎉", "✨", "🐝", "🍯", "🔑", "💛"] as const;
+const BURST_EMOJIS = ["🎉", "✨", "🐜", "🍯", "🔑", "💛"] as const;
 const BURST_PARTICLE_COUNT = 18;
 const VERIFICATION_CONNECTOR_DOTS = [
   "verification-dot-1",

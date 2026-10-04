@@ -436,12 +436,18 @@ async function expectAgentProfileActionsHidden(
   ).toHaveCount(0);
 }
 
-test("@ trigger prioritizes channel members before runnable personas and other managed agents", async ({
+test("@ trigger prioritizes channel members before other Team agents", async ({
   page,
 }) => {
   await installMockBridge(page, {
     activePersonaIds: ["builtin:fizz"],
     managedAgents: [
+      {
+        pubkey: "e".repeat(64),
+        name: "Scout",
+        personaId: "builtin:fizz",
+        status: "stopped",
+      },
       {
         pubkey: TEST_IDENTITIES.charlie.pubkey,
         name: "charlie",
@@ -460,7 +466,7 @@ test("@ trigger prioritizes channel members before runnable personas and other m
   await expect(dropdown).toBeVisible();
   await expect(dropdown.getByText("alice")).toBeVisible();
   await expect(dropdown.getByText("bob")).toBeVisible();
-  await expect(dropdown.getByText("Fizz")).toBeVisible();
+  await expect(dropdown.getByText("Scout")).toBeVisible();
   await expect(dropdown.getByText("charlie")).toBeVisible();
   await expect(dropdown.getByText("outsider")).toHaveCount(0);
   const charlieRow = dropdown.locator("button", { hasText: "charlie" });
@@ -475,7 +481,7 @@ test("@ trigger prioritizes channel members before runnable personas and other m
   const suggestions = dropdown.locator("button");
   const suggestionText = await suggestions.allInnerTexts();
   const aliceIndex = suggestionText.findIndex((text) => text.includes("alice"));
-  const fizzIndex = suggestionText.findIndex((text) => text.includes("Fizz"));
+  const fizzIndex = suggestionText.findIndex((text) => text.includes("Scout"));
   const bobIndex = suggestionText.findIndex((text) => text.includes("bob"));
   const charlieIndex = suggestionText.findIndex((text) =>
     text.includes("charlie"),
@@ -777,7 +783,7 @@ test("Shift+Space leaves an exact agent name plain and emits no mention tag", as
 // The three tests below pin the code-context gate on the Space commit. They
 // key off casing, because a commit rewrites the draft to the candidate's
 // canonical display name: a surviving "@ALICE" means the typed text was left
-// alone. Chip decorations are deliberately not asserted — they already render
+// alone. Chip decorations are deliberately not asserted , they already render
 // over known names inside code, which is a separate pre-existing gap.
 test("Space inside a code block leaves an exact agent name literal", async ({
   page,
@@ -929,6 +935,15 @@ test("blocks non-participant persona mentions in DM threads", async ({
 }) => {
   await installMockBridge(page, {
     activePersonaIds: ["builtin:fizz"],
+    managedAgents: [
+      {
+        pubkey: "e".repeat(64),
+        name: "Scout",
+        personaId: "builtin:fizz",
+        status: "stopped",
+        runtime: "buzz-agent",
+      },
+    ],
   });
   await page.goto("/");
   await page.getByTestId("channel-bob-tyler").click();
@@ -949,11 +964,11 @@ test("blocks non-participant persona mentions in DM threads", async ({
 
   const threadPanel = page.getByTestId("message-thread-panel");
   const input = threadPanel.getByTestId("message-input");
-  await input.fill("Ask @fi");
+  await input.fill("Ask @sc");
   await expect(
     threadPanel
       .getByTestId("mention-autocomplete")
-      .locator("button", { hasText: "Fizz" }),
+      .locator("button", { hasText: "Scout" }),
   ).toBeVisible();
   await input.press("Enter");
   await page.keyboard.type(" in this thread");
@@ -973,7 +988,7 @@ test("blocks non-participant persona mentions in DM threads", async ({
   expect(commandCount(commands, "add_channel_members")).toBe(
     commandCount(baselineCommands, "add_channel_members"),
   );
-  await expect(input).toContainText("Fizz");
+  await expect(input).toContainText("Scout");
   await expect(page.getByTestId("chat-title")).toHaveText("bob-tyler");
 });
 
@@ -1533,11 +1548,20 @@ test("selecting a managed agent mention inserts @Name into input", async ({
   ).toHaveCSS("opacity", "0");
 });
 
-test("selecting a persona mention creates a channel agent before sending and starts it detached", async ({
+test("mentioning an existing Team agent joins the channel and starts it detached", async ({
   page,
 }) => {
   await installMockBridge(page, {
     activePersonaIds: ["builtin:fizz"],
+    managedAgents: [
+      {
+        pubkey: "e".repeat(64),
+        name: "Scout",
+        personaId: "builtin:fizz",
+        status: "stopped",
+        runtime: "buzz-agent",
+      },
+    ],
     // Far longer than the test runs: sign_event landing below proves the
     // publish no longer waits for start_managed_agent to resolve.
     startManagedAgentDelayMs: 45_000,
@@ -1547,10 +1571,10 @@ test("selecting a persona mention creates a channel agent before sending and sta
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
   const input = page.getByTestId("message-input");
-  await input.fill("Ask @fi");
+  await input.fill("Ask @sc");
 
   const dropdown = autocomplete(page);
-  const fizzRow = dropdown.locator("button", { hasText: "Fizz" });
+  const fizzRow = dropdown.locator("button", { hasText: "Scout" });
   await expect(fizzRow).toBeVisible();
   await expect(fizzRow.getByTestId("mention-agent-icon")).toBeVisible();
   await expect(fizzRow.getByText("agent")).toBeVisible();
@@ -1559,10 +1583,10 @@ test("selecting a persona mention creates a channel agent before sending and sta
   await page.keyboard.type(" for a hand");
 
   const composerChip = input.locator(".agent-mention-highlight", {
-    hasText: "Fizz",
+    hasText: "Scout",
   });
   await expect(composerChip).toBeVisible();
-  await expect(composerChip).toHaveText("Fizz");
+  await expect(composerChip).toHaveText("Scout");
 
   const baselineCommands = await readCommandLog(page);
   const baselineCreateCount = commandCount(
@@ -1584,7 +1608,7 @@ test("selecting a persona mention creates a channel agent before sending and sta
     .poll(async () =>
       commandCount(await readCommandLog(page), "create_managed_agent"),
     )
-    .toBeGreaterThan(baselineCreateCount);
+    .toBe(baselineCreateCount);
   await expect
     .poll(async () =>
       commandCount(await readCommandLog(page), "add_channel_members"),
@@ -1602,26 +1626,24 @@ test("selecting a persona mention creates a channel agent before sending and sta
   const commandsAfterSend = (await readCommandLog(page)).slice(
     baselineCommands.length,
   );
-  const createIndex = commandsAfterSend.indexOf("create_managed_agent");
+  expect(commandsAfterSend).not.toContain("create_managed_agent");
   const addIndex = commandsAfterSend.indexOf("add_channel_members");
   const sendIndex = commandsAfterSend.indexOf("sign_event");
-  expect(createIndex).toBeGreaterThanOrEqual(0);
   expect(addIndex).toBeGreaterThanOrEqual(0);
   expect(sendIndex).toBeGreaterThanOrEqual(0);
-  // Publish-first: creation and the membership write still precede the
+  // Publish-first: the membership write still precedes the
   // publish (the outgoing tags need the agent's pubkey, and the harness only
-  // subscribes to channels it is a member of), but the start is detached —
+  // subscribes to channels it is a member of), but the start is detached ,
   // sign_event landed while start_managed_agent was still pending behind the
   // injected 45s delay, which the old start-blocking send could never do.
-  expect(createIndex).toBeLessThan(sendIndex);
   expect(addIndex).toBeLessThan(sendIndex);
 
   const mentionChip = page
     .getByTestId("message-row")
     .last()
-    .locator("[data-mention].agent-mention-highlight", { hasText: "Fizz" });
+    .locator("[data-mention].agent-mention-highlight", { hasText: "Scout" });
   await expect(mentionChip).toBeVisible();
-  await expect(mentionChip).toHaveText("Fizz");
+  await expect(mentionChip).toHaveText("Scout");
   await expect(mentionChip).toHaveClass(/wrapping-inline-chip/);
   const timelineLayout = await timelineChipLayout(mentionChip);
   expect(timelineLayout).toMatchObject({
@@ -1649,7 +1671,7 @@ test("selecting a persona mention reuses an existing persona agent", async ({
     managedAgents: [
       {
         pubkey: REUSABLE_PERSONA_AGENT_PUBKEY,
-        name: "Fizz",
+        name: "Scout",
         personaId: "builtin:fizz",
         status: "stopped",
       },
@@ -1660,10 +1682,10 @@ test("selecting a persona mention reuses an existing persona agent", async ({
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
   const input = page.getByTestId("message-input");
-  await input.fill("Ask @fi");
+  await input.fill("Ask @sc");
 
   const dropdown = autocomplete(page);
-  const fizzRow = dropdown.locator("button", { hasText: "Fizz" });
+  const fizzRow = dropdown.locator("button", { hasText: "Scout" });
   await expect(fizzRow).toBeVisible();
   await input.press("Enter");
   await page.keyboard.type(" for a hand");
@@ -1702,9 +1724,9 @@ test("selecting a persona mention reuses an existing persona agent", async ({
   const mentionChip = page
     .getByTestId("message-row")
     .last()
-    .locator("[data-mention].agent-mention-highlight", { hasText: "Fizz" });
+    .locator("[data-mention].agent-mention-highlight", { hasText: "Scout" });
   await expect(mentionChip).toBeVisible();
-  await expect(mentionChip).toHaveText("Fizz");
+  await expect(mentionChip).toHaveText("Scout");
 });
 
 test("managed relay-profile agents with member roles can be addressed explicitly", async ({
@@ -2153,7 +2175,7 @@ test("relay-only allowlisted agents emit a p tag when sent", async ({
 
   const commands = await readCommandLog(page);
   // Two targeted revalidations: the pre-side-effect admission pass, then the
-  // publish-boundary pass, which is unconditional — even this fast path (member
+  // publish-boundary pass, which is unconditional , even this fast path (member
   // agent, no deferred upload/preview, no DM expansion, no huddle) re-runs it.
   expect(commandCount(commands, "revalidate_relay_agents")).toBe(
     commandCount(baselineCommands, "revalidate_relay_agents") + 2,
@@ -2285,7 +2307,7 @@ test("targeted revocation before send causes no agent side effects", async ({
 test("deferred-upload sends revalidate agent authorization at the publish boundary", async ({
   page,
 }) => {
-  // A background media upload can hold the publish open for arbitrarily long —
+  // A background media upload can hold the publish open for arbitrarily long ,
   // authorization revoked during that window must block publication. This
   // pins the publish-boundary revalidation on the deferred path.
   await installMockBridge(page, {
@@ -2393,12 +2415,12 @@ test("sends that attach a mentioned agent revalidate at the publish boundary", a
 }) => {
   // The awaited membership write for a non-member managed agent is a relay
   // round-trip between the pre-side-effect authorization pass and the publish
-  // — authorization revoked during that window must block publication.
+  // , authorization revoked during that window must block publication.
   await installMockBridge(page, {
     managedAgents: [
       {
         pubkey: OUT_OF_CHANNEL_MANAGED_AGENT_PUBKEY,
-        name: "fizz",
+        name: "scout",
         status: "running",
         // Already matching the reusable-agent policy: no update_managed_agent
         // write below, so the attach write alone re-opens the window.
@@ -2442,13 +2464,13 @@ test("sends that attach a mentioned agent revalidate at the publish boundary", a
   const quinnRow = autocomplete(page).locator("button", { hasText: "quinn" });
   await expect(quinnRow).toBeVisible();
   await quinnRow.click();
-  await page.keyboard.type("@fizz");
-  const fizzRow = autocomplete(page).locator("button", { hasText: "fizz" });
+  await page.keyboard.type("@scout");
+  const fizzRow = autocomplete(page).locator("button", { hasText: "scout" });
   await expect(fizzRow).toBeVisible();
   await expect(fizzRow.getByText("not in channel")).toBeVisible();
   await fizzRow.click();
   await page.keyboard.type("hello");
-  await expect(input).toHaveText("@quinn @fizz hello");
+  await expect(input).toHaveText("@quinn @scout hello");
 
   // Hold the attach's membership write open so the revocation below lands
   // inside the pass-to-publish window.
@@ -2476,9 +2498,9 @@ test("sends that attach a mentioned agent revalidate at the publish boundary", a
     page.getByText("Could not authorize a mentioned agent.", { exact: false }),
   ).toBeVisible();
   expect(
-    await readOutgoingMentionPubkeys(page, "@quinn @fizz hello"),
+    await readOutgoingMentionPubkeys(page, "@quinn @scout hello"),
   ).toBeNull();
-  await expect(input).toHaveText("@quinn @fizz hello");
+  await expect(input).toHaveText("@quinn @scout hello");
   const commands = await readCommandLog(page);
   expect(commandCount(commands, "revalidate_relay_agents")).toBe(
     commandCount(baselineCommands, "revalidate_relay_agents") + 2,
@@ -2563,8 +2585,8 @@ test("a send held open by a no-write step still revalidates at the publish bound
 }) => {
   // The publish boundary revalidates unconditionally, however brief the gap:
   // here the only thing separating the authorization pass from the publish is
-  // the huddle sync — which with no active huddle writes nothing to the relay
-  // — and the revocation is released with zero further hold. A revocation
+  // the huddle sync , which with no active huddle writes nothing to the relay
+  // , and the revocation is released with zero further hold. A revocation
   // landing in any admission-to-publish gap must block publication; this is the
   // reviewer's sub-threshold probe of the since-removed elapsed-time bound,
   // which deliberately accepted this very staleness.
@@ -2628,7 +2650,7 @@ test("a send held open by a no-write step still revalidates at the publish bound
     window.__BUZZ_E2E__.mock.relayAgentRevalidationRevokedPubkeys = [pubkey];
   }, ALLOWLIST_RELAY_AGENT_PUBKEY);
 
-  // Release immediately — no post-revocation hold. Any conditional reuse of
+  // Release immediately , no post-revocation hold. Any conditional reuse of
   // the admission pass (a trigger enumeration, an elapsed-time bound) would
   // publish quinn's stale p tag here.
   await expect
@@ -2652,7 +2674,7 @@ test("a send held open by a no-write step still revalidates at the publish bound
   expect(commandCount(commands, "sync_agents_to_active_huddle")).toBe(
     commandCount(baselineCommands, "sync_agents_to_active_huddle") + 1,
   );
-  // Nothing on this leg wrote relay state — the second pass exists only
+  // Nothing on this leg wrote relay state , the second pass exists only
   // because the publish boundary is unconditional.
   for (const command of [
     "add_channel_members",
@@ -3014,7 +3036,7 @@ test("mentioning an in-channel stopped managed agent publishes first and starts 
     managedAgents: [
       {
         pubkey: IN_CHANNEL_MANAGED_AGENT_PUBKEY,
-        name: "fizz",
+        name: "scout",
         status: "stopped",
         channelNames: ["general"],
       },
@@ -3028,10 +3050,10 @@ test("mentioning an in-channel stopped managed agent publishes first and starts 
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
   const input = page.getByTestId("message-input");
-  await input.fill("Hey @fizz");
+  await input.fill("Hey @scout");
 
   const dropdown = autocomplete(page);
-  await expect(dropdown.getByText("fizz")).toBeVisible();
+  await expect(dropdown.getByText("scout")).toBeVisible();
   await expect(dropdown.getByText("agent")).toBeVisible();
   await input.press("Enter");
   await page.keyboard.type(" can you help?");
@@ -3084,7 +3106,7 @@ test("mentioning an in-channel stopped managed agent publishes first and starts 
     expectedSignerPubkey: MOCK_VIEWER_PUBKEY,
   });
   // The wake is queued during send preparation and flushed only after the
-  // relay accepts the publish, so the sign always precedes the start — a
+  // relay accepts the publish, so the sign always precedes the start , a
   // wake can never exist (nor its failure toast "your message was sent"
   // appear) for a message whose publish outcome is still unknown.
   const commandsAfterSend = (await readCommandLog(page)).slice(
@@ -3097,7 +3119,7 @@ test("mentioning an in-channel stopped managed agent publishes first and starts 
   const mentionChip = page
     .getByTestId("message-row")
     .last()
-    .locator("[data-mention].agent-mention-highlight", { hasText: "fizz" });
+    .locator("[data-mention].agent-mention-highlight", { hasText: "scout" });
   await expect(mentionChip).toBeVisible();
 });
 
@@ -3108,13 +3130,13 @@ test("a second mention while the first wake is in flight does not start the agen
     managedAgents: [
       {
         pubkey: IN_CHANNEL_MANAGED_AGENT_PUBKEY,
-        name: "fizz",
+        name: "scout",
         status: "stopped",
         channelNames: ["general"],
       },
     ],
     // Held open for the whole test. Awaiting the start used to make a
-    // duplicate unreachable — the composer refused to send while one was
+    // duplicate unreachable , the composer refused to send while one was
     // pending, and by the time it lifted the success handler had cached a
     // running record. Detached, the record keeps reading "stopped" for the
     // whole spawn, which is precisely when a second send re-fires.
@@ -3132,12 +3154,12 @@ test("a second mention while the first wake is in flight does not start the agen
     "start_managed_agent",
   );
 
-  await input.fill("Hey @fizz");
-  await expect(dropdown.getByText("fizz")).toBeVisible();
+  await input.fill("Hey @scout");
+  await expect(dropdown.getByText("scout")).toBeVisible();
   await input.press("Enter");
-  await expect(input.locator(".mention-chip")).toHaveText("fizz");
+  await expect(input.locator(".mention-chip")).toHaveText("scout");
   await page.keyboard.type("do X");
-  await expect(input).toHaveText("Hey @fizz do X");
+  await expect(input).toHaveText("Hey @scout do X");
   await page.getByTestId("send-message").click();
   await expect(
     page.getByTestId("message-row").filter({ hasText: "do X" }),
@@ -3148,23 +3170,23 @@ test("a second mention while the first wake is in flight does not start the agen
     )
     .toBe(baselineStartCount + 1);
 
-  await input.fill("Hey @fizz");
-  await expect(dropdown.getByText("fizz")).toBeVisible();
+  await input.fill("Hey @scout");
+  await expect(dropdown.getByText("scout")).toBeVisible();
   await input.press("Enter");
-  await expect(input.locator(".mention-chip")).toHaveText("fizz");
+  await expect(input.locator(".mention-chip")).toHaveText("scout");
   await page.keyboard.type("also Y");
-  await expect(input).toHaveText("Hey @fizz also Y");
+  await expect(input).toHaveText("Hey @scout also Y");
   await page.getByTestId("send-message").click();
 
-  // The second message publishes on its own — suppression is of the wake, not
+  // The second message publishes on its own , suppression is of the wake, not
   // of the send; the composer is never gated on a pending start again.
   await expect(
     page.getByTestId("message-row").filter({ hasText: "also Y" }),
   ).toBeVisible();
-  expect(await readOutgoingMentionPubkeys(page, "Hey @fizz do X")).toContain(
+  expect(await readOutgoingMentionPubkeys(page, "Hey @scout do X")).toContain(
     IN_CHANNEL_MANAGED_AGENT_PUBKEY,
   );
-  expect(await readOutgoingMentionPubkeys(page, "Hey @fizz also Y")).toContain(
+  expect(await readOutgoingMentionPubkeys(page, "Hey @scout also Y")).toContain(
     IN_CHANNEL_MANAGED_AGENT_PUBKEY,
   );
   // One wake serves both messages: its replay floor predates the first
@@ -3182,7 +3204,7 @@ test("a detached agent start failure surfaces as a toast after the message sends
     managedAgents: [
       {
         pubkey: IN_CHANNEL_MANAGED_AGENT_PUBKEY,
-        name: "fizz",
+        name: "scout",
         status: "stopped",
         channelNames: ["general"],
       },
@@ -3194,25 +3216,25 @@ test("a detached agent start failure surfaces as a toast after the message sends
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
   const input = page.getByTestId("message-input");
-  await input.fill("Hey @fizz");
+  await input.fill("Hey @scout");
 
   const dropdown = autocomplete(page);
-  await expect(dropdown.getByText("fizz")).toBeVisible();
+  await expect(dropdown.getByText("scout")).toBeVisible();
   await input.press("Enter");
   await page.keyboard.type(" can you help?");
 
   await page.getByTestId("send-message").click();
 
-  // The message still publishes — the start runs off the critical path.
+  // The message still publishes , the start runs off the critical path.
   const mentionChip = page
     .getByTestId("message-row")
     .last()
-    .locator("[data-mention].agent-mention-highlight", { hasText: "fizz" });
+    .locator("[data-mention].agent-mention-highlight", { hasText: "scout" });
   await expect(mentionChip).toBeVisible();
 
   // The failed start surfaces as a post-send toast instead of blocking the
   // send, and the sent text is not restored into the composer. (The
-  // persistent agent audience may legitimately re-seed an "@fizz"
+  // persistent agent audience may legitimately re-seed an "@scout"
   // auto-mention, so only the message body proves there was no
   // failed-send restore.)
   await expect(page.getByText(startError, { exact: false })).toBeVisible();
@@ -3226,13 +3248,13 @@ test("a failed publish drops the queued agent wake and never claims the message 
     managedAgents: [
       {
         pubkey: IN_CHANNEL_MANAGED_AGENT_PUBKEY,
-        name: "fizz",
+        name: "scout",
         status: "stopped",
         channelNames: ["general"],
       },
     ],
     // Reject the publish itself. The wake is queued behind it, so a publish
-    // that never lands must fire no wake at all — before this ordering, the
+    // that never lands must fire no wake at all , before this ordering, the
     // wake fired during send preparation, rejected fast (the injected start
     // error below), and toasted "your message was sent" while the publish
     // went on to fail with no corrective message.
@@ -3246,8 +3268,8 @@ test("a failed publish drops the queued agent wake and never claims the message 
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
   const input = page.getByTestId("message-input");
-  await input.fill("Hey @fizz");
-  await expect(autocomplete(page).getByText("fizz")).toBeVisible();
+  await input.fill("Hey @scout");
+  await expect(autocomplete(page).getByText("scout")).toBeVisible();
   await input.press("Enter");
   await page.keyboard.type(" do X");
 
@@ -3258,8 +3280,8 @@ test("a failed publish drops the queued agent wake and never claims the message 
   await page.getByTestId("send-message").click();
 
   // Deterministic completion signal: the failed send restores the draft into
-  // the composer. On the pre-fix ordering the wake had already fired — and
-  // toasted — before this point, so the assertions below need no timing games.
+  // the composer. On the pre-fix ordering the wake had already fired , and
+  // toasted , before this point, so the assertions below need no timing games.
   await expect(input).toContainText("do X");
 
   // The message never landed: the optimistic row was rolled back...
@@ -3282,10 +3304,10 @@ test("a detached start fired before a real community switch fails closed and kee
   // Two seeded communities and a real rail-button switch: the click drives
   // the actual provider → remount → resetCommunityState path (which clears
   // and repoints the toast-scope mirror), and persists the active community
-  // id the mock's scope check reads — so the held start is refused exactly
+  // id the mock's scope check reads , so the held start is refused exactly
   // as the real backend would refuse it. The predecessor of this spec moved
   // localStorage directly, which exercised the fail-closed refusal but never
-  // the switch itself, and pinned the stale toast's *presence* — the outcome
+  // the switch itself, and pinned the stale toast's *presence* , the outcome
   // the delivery fence now forbids.
   const COMMUNITY_A = {
     id: "ws-a",
@@ -3305,13 +3327,13 @@ test("a detached start fired before a real community switch fails closed and kee
       managedAgents: [
         {
           pubkey: IN_CHANNEL_MANAGED_AGENT_PUBKEY,
-          name: "fizz",
+          name: "scout",
           status: "stopped",
           channelNames: ["general"],
         },
       ],
       // Holds the start open long enough for the real switch below to
-      // complete under it — the window the detached (publish-first) wake
+      // complete under it , the window the detached (publish-first) wake
       // opened.
       startManagedAgentDelayMs: 3_000,
     },
@@ -3329,8 +3351,8 @@ test("a detached start fired before a real community switch fails closed and kee
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
   const input = page.getByTestId("message-input");
-  await input.fill("Hey @fizz");
-  await expect(autocomplete(page).getByText("fizz")).toBeVisible();
+  await input.fill("Hey @scout");
+  await expect(autocomplete(page).getByText("scout")).toBeVisible();
   await input.press("Enter");
   await page.keyboard.type(" can you help?");
 
@@ -3346,11 +3368,11 @@ test("a detached start fired before a real community switch fails closed and kee
   const baselinePayloadCount = (await readCommandPayloadLog(page)).length;
   await page.getByTestId("send-message").click();
 
-  // The message published in A — only the wake is at stake from here on.
+  // The message published in A , only the wake is at stake from here on.
   const mentionChip = page
     .getByTestId("message-row")
     .last()
-    .locator("[data-mention].agent-mention-highlight", { hasText: "fizz" });
+    .locator("[data-mention].agent-mention-highlight", { hasText: "scout" });
   await expect(mentionChip).toBeVisible();
   await expect
     .poll(async () =>
@@ -3358,7 +3380,7 @@ test("a detached start fired before a real community switch fails closed and kee
     )
     .toBeGreaterThan(baselineStartCount);
   // The wake carries A's scope, so the backend fails it closed once B is
-  // active — the unit tests can't pin the real invoke payload.
+  // active , the unit tests can't pin the real invoke payload.
   const startCall = (await readCommandPayloadLog(page))
     .slice(baselinePayloadCount)
     .find((entry) => entry.command === "start_managed_agent");
@@ -3390,12 +3412,12 @@ test("a detached start fired before a real community switch fails closed and kee
   // B is on screen and community A's failure never toasts over it. The
   // suppression is logged to the console instead; an A→B→A round-trip would
   // re-arm delivery (pinned at the unit level). These counts are immediate
-  // snapshots, not retrying toHaveCount(0) assertions — a retry would simply
+  // snapshots, not retrying toHaveCount(0) assertions , a retry would simply
   // wait out the toast's auto-dismiss and pass against the very toast it
   // forbids.
   await expect(page.getByTestId("channel-general")).toBeVisible();
   expect(
-    await page.getByText("Could not start fizz", { exact: false }).count(),
+    await page.getByText("Could not start scout", { exact: false }).count(),
   ).toBe(0);
   expect(
     await page.getByText("your message was sent", { exact: false }).count(),
@@ -3406,7 +3428,7 @@ test("a deploy held across an A→B→A community round-trip is not fired twice"
   page,
 }) => {
   // The in-flight detached-start map used to be cleared by every community
-  // switch, and the backend's scope assertion is a current-state check — so a
+  // switch, and the backend's scope assertion is a current-state check , so a
   // deploy still held from community A became valid again the moment A was
   // re-applied, and a second mention back in A deployed the agent a second
   // time (carrying the second message's replay floor, past the first
@@ -3448,7 +3470,7 @@ test("a deploy held across an A→B→A community round-trip is not fired twice"
       startManagedAgentDelayMs: 45_000,
       // Arms the first settlement to reject. A successful mock settle writes
       // `deployed` into the record, and the third send below would then skip
-      // the wake on status alone — the retry leg has to prove the *map entry*
+      // the wake on status alone , the retry leg has to prove the *map entry*
       // self-cleaned, so the record must still read `not_deployed`.
       startManagedAgentErrors: ["Mock provider deploy failed."],
     },
@@ -3518,7 +3540,7 @@ test("a deploy held across an A→B→A community round-trip is not fired twice"
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
   // Back in A, the held deploy's scope is valid again and the record still
-  // reads `not_deployed`, so this send queues a wake — the retained map entry
+  // reads `not_deployed`, so this send queues a wake , the retained map entry
   // is the only thing standing between it and a duplicate deploy. A
   // suppressed wake makes no call, so give the post-publish flush a moment
   // before snapshotting: pre-fix the duplicate invoke landed well inside it.
@@ -3544,7 +3566,7 @@ test("a deploy held across an A→B→A community round-trip is not fired twice"
       commandCount(await readCommandLog(page), "start_managed_agent:settled"),
     )
     .toBe(baselineSettledCount + 1);
-  // The failure settled with A on screen, so its warning delivers here — the
+  // The failure settled with A on screen, so its warning delivers here , the
   // round-trip kept it out of B without dropping it.
   await expect(
     page.getByText("Could not start portal", { exact: false }),
@@ -3614,7 +3636,7 @@ test("mentioning an in-channel provider managed agent publishes first and deploy
     )
     .toBeGreaterThan(baselineStartCount);
 
-  // The detached deploy carries the replay floor too — the backend threads it
+  // The detached deploy carries the replay floor too , the backend threads it
   // into the provider payload's launch.policy_env so the remote harness
   // replays past the just-published message like a local spawn.
   const startCall = (await readCommandPayloadLog(page))
@@ -3639,14 +3661,14 @@ test("mentioning a non-member managed agent adds it before sending and starts it
     personas: [
       {
         id: "persona-owner",
-        displayName: "Fizz",
+        displayName: "Scout",
         systemPrompt: "",
       },
     ],
     managedAgents: [
       {
         pubkey: OUT_OF_CHANNEL_MANAGED_AGENT_PUBKEY,
-        name: "fizz",
+        name: "scout",
         personaId: "persona-owner",
         status: "stopped",
         respondTo: "anyone",
@@ -3662,10 +3684,10 @@ test("mentioning a non-member managed agent adds it before sending and starts it
   await expect(page.getByTestId("chat-title")).toHaveText("general");
 
   const input = page.getByTestId("message-input");
-  await input.fill("Loop in @fizz");
+  await input.fill("Loop in @scout");
 
   const dropdown = autocomplete(page);
-  const fizzRow = dropdown.locator("button", { hasText: "fizz" });
+  const fizzRow = dropdown.locator("button", { hasText: "scout" });
   await expect(fizzRow).toBeVisible();
   await expect(fizzRow.getByText("not in channel")).toBeVisible();
   await input.press("Enter");
@@ -3692,7 +3714,7 @@ test("mentioning a non-member managed agent adds it before sending and starts it
   // Publish-first: the message signs while start_managed_agent is still
   // pending behind the injected delay.
   await expect
-    .poll(() => readOutgoingMentionPubkeys(page, "Loop in @fizz"))
+    .poll(() => readOutgoingMentionPubkeys(page, "Loop in @scout"))
     .toContain(OUT_OF_CHANNEL_MANAGED_AGENT_PUBKEY);
   await expect
     .poll(async () =>
@@ -3715,7 +3737,7 @@ test("mentioning a non-member managed agent adds it before sending and starts it
   const sendIndex = sendCommands.findIndex((entry) => {
     if (entry.command !== "sign_event") return false;
     const payload = entry.payload as { content?: string } | undefined;
-    return payload?.content === "Loop in @fizz";
+    return payload?.content === "Loop in @scout";
   });
   expect(updateIndex).toBeGreaterThanOrEqual(0);
   expect(updateIndex).toBeLessThan(addIndex);
@@ -3744,7 +3766,7 @@ test("mentioning a non-member managed agent adds it before sending and starts it
   const mentionChip = page
     .getByTestId("message-row")
     .last()
-    .locator("[data-mention].agent-mention-highlight", { hasText: "fizz" });
+    .locator("[data-mention].agent-mention-highlight", { hasText: "scout" });
   await expect(mentionChip).toBeVisible();
 
   const persistedPolicy = await page.evaluate(async (pubkey) => {
@@ -4789,7 +4811,7 @@ test("clicking a mention chip in a forum post opens the profile panel", async ({
   page,
 }) => {
   await page.goto("/");
-  // Seed the forum post before entering the channel — forum views load from
+  // Seed the forum post before entering the channel , forum views load from
   // the mock store on fetch, so no live subscription is needed.
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
@@ -4819,7 +4841,7 @@ test("agent profile popover shows its owner", async ({ page }) => {
     searchProfiles: [
       {
         pubkey: OWNED_AGENT_PROFILE_PUBKEY,
-        displayName: "Pollen",
+        displayName: "Researcher",
         ownerPubkey: TEST_IDENTITIES.bob.pubkey,
         isAgent: true,
       },
@@ -4830,14 +4852,14 @@ test("agent profile popover shows its owner", async ({ page }) => {
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await waitForMockLiveSubscription(page, "general");
 
-  await emitMockMessage(page, "general", "Pollen checking in.", {
+  await emitMockMessage(page, "general", "Researcher checking in.", {
     pubkey: OWNED_AGENT_PROFILE_PUBKEY,
   });
   await waitForTimelineSettled(page);
 
   const pollenMessage = page
     .getByTestId("message-row")
-    .filter({ hasText: "Pollen checking in." })
+    .filter({ hasText: "Researcher checking in." })
     .first();
   await pollenMessage.locator("button").first().hover();
 
@@ -4859,7 +4881,7 @@ test("agent profile popover labels an agent owned by the viewer as you", async (
     searchProfiles: [
       {
         pubkey: OWNED_AGENT_PROFILE_PUBKEY,
-        displayName: "Pollen",
+        displayName: "Researcher",
         ownerPubkey: MOCK_VIEWER_PUBKEY,
         isAgent: true,
       },
@@ -4870,14 +4892,14 @@ test("agent profile popover labels an agent owned by the viewer as you", async (
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await waitForMockLiveSubscription(page, "general");
 
-  await emitMockMessage(page, "general", "Pollen checking in.", {
+  await emitMockMessage(page, "general", "Researcher checking in.", {
     pubkey: OWNED_AGENT_PROFILE_PUBKEY,
   });
   await waitForTimelineSettled(page);
 
   const pollenMessage = page
     .getByTestId("message-row")
-    .filter({ hasText: "Pollen checking in." })
+    .filter({ hasText: "Researcher checking in." })
     .first();
   await pollenMessage.locator("button").first().hover();
 
@@ -4899,7 +4921,7 @@ test("agent profile popover falls back to the owner's pubkey", async ({
     searchProfiles: [
       {
         pubkey: OWNED_AGENT_PROFILE_PUBKEY,
-        displayName: "Pollen",
+        displayName: "Researcher",
         ownerPubkey: CASEY_PROFILE_PUBKEY,
         isAgent: true,
       },
@@ -4910,14 +4932,14 @@ test("agent profile popover falls back to the owner's pubkey", async ({
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await waitForMockLiveSubscription(page, "general");
 
-  await emitMockMessage(page, "general", "Pollen checking in.", {
+  await emitMockMessage(page, "general", "Researcher checking in.", {
     pubkey: OWNED_AGENT_PROFILE_PUBKEY,
   });
   await waitForTimelineSettled(page);
 
   const pollenMessage = page
     .getByTestId("message-row")
-    .filter({ hasText: "Pollen checking in." })
+    .filter({ hasText: "Researcher checking in." })
     .first();
   await pollenMessage.locator("button").first().hover();
 

@@ -1,3 +1,9 @@
+import {
+  readScoutBusinessContext,
+  type ScoutBusinessContext,
+} from "./scoutBusinessContext";
+import { buildScoutSystemPrompt } from "./scoutPersona";
+import { isStockScoutPrompt } from "./scoutPersona";
 import scoutSvg from "./assets/scout.svg?raw";
 import { resolveLegacyWelcomeRuntime } from "./ui/agentReadiness";
 import { stopManagedAgent } from "@/shared/api/tauriManagedAgents";
@@ -223,6 +229,7 @@ export async function buildWelcomeStarterCreateInput(
   runtimes: readonly AcpRuntime[],
   preferredRuntimeId: string | null,
   relayUrl?: string | null,
+  business: ScoutBusinessContext | null = null,
 ): Promise<CreateManagedAgentInput> {
   if (
     preferredRuntimeId &&
@@ -244,15 +251,8 @@ export async function buildWelcomeStarterCreateInput(
     )),
     harnessOverride: true,
     name: starter.name,
-    ...(starter.role === "lead"
-      ? {
-          systemPrompt: persona.systemPrompt
-            ?.replace(/\bFizz\b/g, "Scout")
-            .replace(/\bBuzz\b/g, "Colony")
-            .replace(/\u2014/g, ",")
-            .replace(/Add occasional bee wordplay[^.]*\./gu, "")
-            .trim(),
-        }
+    ...(starter.role === "lead" && isStockScoutPrompt(persona.systemPrompt)
+      ? { systemPrompt: buildScoutSystemPrompt(business) }
       : {}),
     teamId: WELCOME_TEAM_ID,
     relayUrl: relayUrl ?? undefined,
@@ -301,9 +301,35 @@ export async function reconcileWelcomeStarter(
   update = updateManagedAgent,
 ): Promise<ManagedAgent> {
   const runtimeUpdate = welcomeStarterRuntimeUpdate(existing, desired);
-  if (!runtimeUpdate) return existing;
+  const stockPromptUpdate =
+    existing.personaId === WELCOME_GUIDE_PERSONA_ID &&
+    desired.systemPrompt != null &&
+    isStockScoutPrompt(desired.systemPrompt) &&
+    isStockScoutPrompt(existing.systemPrompt) &&
+    existing.systemPrompt !== desired.systemPrompt
+      ? { systemPrompt: desired.systemPrompt }
+      : {};
+  const stockNameUpdate =
+    existing.personaId === WELCOME_GUIDE_PERSONA_ID &&
+    isStockScoutPrompt(existing.systemPrompt) &&
+    existing.name === "Fizz"
+      ? { name: "Scout" }
+      : {};
+  if (
+    !runtimeUpdate &&
+    !Object.keys(stockPromptUpdate).length &&
+    !Object.keys(stockNameUpdate).length
+  )
+    return existing;
   if (existing.status === "running") await stop(existing.pubkey);
-  return (await update(runtimeUpdate)).agent;
+  return (
+    await update({
+      pubkey: existing.pubkey,
+      ...runtimeUpdate,
+      ...stockPromptUpdate,
+      ...stockNameUpdate,
+    })
+  ).agent;
 }
 
 export function welcomeTeammateHasExpectedAccess(
@@ -400,6 +426,7 @@ async function provisionWelcomeTeam(
       runtimes,
       runtimePreference,
       relayUrl,
+      readScoutBusinessContext(relayUrl),
     );
     const existing = pickWelcomeTeamStarterAgentForRelay(
       existingAgents,

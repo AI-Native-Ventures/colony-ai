@@ -115,7 +115,7 @@ for (const [label, input, expectedHref] of EXACT_LINK_PASTE_ACCEPTED_CASES) {
   });
 }
 
-test("exact link paste canonicalizes Buzz links", () => {
+test("exact link paste canonicalizes Colony links", () => {
   assert.deepEqual(
     exactLinkPaste(
       `BUZZ://channel/${CHANNEL_ID.toUpperCase()}/${CHANNEL_MESSAGE_ID.toUpperCase()}`,
@@ -150,7 +150,7 @@ for (const [label, input, expectedHref] of [
   ["exact http", "https://example.com", "https://example.com"],
   ["wrapped http", "<https://example.com>", "https://example.com"],
   [
-    "canonical Buzz link",
+    "canonical Colony link",
     CHANNEL_MESSAGE_HREF,
     `buzz://message?channel=${CHANNEL_ID}&id=${CHANNEL_MESSAGE_ID}`,
   ],
@@ -278,7 +278,7 @@ test("paste handler links selected text instead of replacing it", () => {
   assert.deepEqual(view.state.storedMarks, []);
 });
 
-test("paste handler canonicalizes Buzz links over selected text", () => {
+test("paste handler canonicalizes Colony links over selected text", () => {
   const doc = document(paragraph(text("selected")));
   const view = createMockView(stateFromDocument(doc, 1, 9));
   const event = createPasteEvent(CHANNEL_MESSAGE_HREF);

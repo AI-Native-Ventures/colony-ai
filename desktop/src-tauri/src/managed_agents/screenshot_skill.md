@@ -14,16 +14,16 @@ host (imgur, imgbb, etc.) for PR screenshots.** Relay media URLs fail through
 GitHub's camo proxy (`Non-Image content-type returned`). External hosts are
 unreliable and may expose content.
 
-**ALWAYS use `scripts/post-screenshots.sh`** — it hosts PNGs on a per-developer
+**ALWAYS use `scripts/post-screenshots.sh`** , it hosts PNGs on a per-developer
 git branch with immutable commit-SHA URLs that render correctly on GitHub.
 If you manually compose or edit PR markdown, run
 `scripts/check-pr-image-urls.sh <markdown-file>` before posting. The checker
-fails on Buzz/relay media URLs so broken images are caught locally.
+fails on Colony/relay media URLs so broken images are caught locally.
 
 This hosting rule applies to any PNG you want in a PR, including mobile
 simulator screenshots captured outside the desktop Playwright helper.
 
-## Step 1 — Capture Screenshots
+## Step 1 , Capture Screenshots
 
 `just desktop-screenshot` builds the frontend, starts a preview server, and
 runs Playwright with the mock bridge (no relay needed).
@@ -65,7 +65,7 @@ while the camera stays put (for unread indicators, badges).
 `general` has pre-seeded messages (always shows `hasUnread`). Use `engineering`
 for "no unread" visual states.
 
-## Step 2 — Post to a PR
+## Step 2 , Post to a PR
 
 ```bash
 ./scripts/post-screenshots.sh <PR-number> test-results/screenshots
@@ -95,9 +95,9 @@ Right-click shows "Star channel".
 
 ## Gotchas
 
-1. **Stale server** — `reuseExistingServer: true` means a prior build serves old
+1. **Stale server** , `reuseExistingServer: true` means a prior build serves old
    code. Kill port 4173 and rebuild (`cd desktop && pnpm run build`) after code changes.
-2. **Clip for readability** — full 1280x720 screenshots are hard to read for sidebar
+2. **Clip for readability** , full 1280x720 screenshots are hard to read for sidebar
    features. Sidebar = 256px wide; context menus ~450px.
-3. **`post-screenshots.sh` requires `gh` auth** — the script uses `gh api` and
+3. **`post-screenshots.sh` requires `gh` auth** , the script uses `gh api` and
    `gh pr comment`. Ensure `gh auth status` succeeds.

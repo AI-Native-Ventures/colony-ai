@@ -154,7 +154,7 @@ export function resolveExactLinkPaste(
  * Resolves a clipboard payload for the *selected text* branch of paste
  * handling, where this handler is the only one that runs.
  *
- * The exact Buzz/http matchers win first, so Buzz links keep their canonical
+ * The exact Colony/http matchers win first, so Colony links keep their canonical
  * form. Anything else falls back to linkify with `defaultProtocol: "http"` —
  * the same matcher TipTap's `linkOnPaste` used before the composer took sole
  * ownership of this branch, so `www.example.com`, `foo@example.com` and
@@ -389,11 +389,11 @@ function composerLinkPresentation(
   const entity = parseEntityLink(href);
   if (!entity.ok) {
     return {
-      ariaLabel: "Buzz link",
+      ariaLabel: "Colony link",
       channelName: "",
       dataAttributes: {},
       icon: "message",
-      label: "Buzz link",
+      label: "Colony link",
     };
   }
 

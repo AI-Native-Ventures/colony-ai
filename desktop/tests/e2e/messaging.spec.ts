@@ -239,7 +239,7 @@ test.beforeEach(async ({ page }, testInfo) => {
                     testInfo.title.includes("composer no-image link embeds")
                   ? {
                       linkPreviewMetadata: {
-                        title: "Buzz",
+                        title: "Colony",
                         siteName: "GitHub",
                         description:
                           "Open-source collaboration for the Buzz app.",
