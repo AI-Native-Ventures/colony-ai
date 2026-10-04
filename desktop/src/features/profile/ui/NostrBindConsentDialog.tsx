@@ -20,9 +20,9 @@ import { StartupWindowDragRegion } from "@/shared/ui/StartupWindowDragRegion";
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
 
 const COPY_SUCCESS_MESSAGE =
-  "Signed response copied. Paste it into the Buzz admin console.";
+  "Signed response copied. Paste it into the Colony admin console.";
 const PREVIEW_COPY_SUCCESS_MESSAGE = "Preview response copied.";
-const COPY_FAILURE_MESSAGE = "Buzz couldn't access the clipboard. Try again.";
+const COPY_FAILURE_MESSAGE = "Colony couldn't access the clipboard. Try again.";
 const EXPIRED_LINK_MESSAGE =
   "This binding link has expired. Request a new one from the requesting app.";
 const VERIFICATION_CODE_LENGTH = 6;
@@ -672,15 +672,15 @@ export function NostrBindConsentDialog() {
                   <DialogPrimitive.Title className="mt-6 text-3xl font-semibold tracking-tight">
                     {payload.returnMode === "browser_fragment_v1"
                       ? "Continue in your browser"
-                      : "Finish on the Buzz website"}
+                      : "Finish on the Colony website"}
                   </DialogPrimitive.Title>
                   <DialogPrimitive.Description
                     className="mt-3 max-w-[440px] text-sm leading-6 text-muted-foreground"
                     id="nostr-bind-description"
                   >
                     {payload.returnMode === "browser_fragment_v1"
-                      ? "Buzz opened your browser to finish verification."
-                      : "Copy the response below, then paste it into the Buzz website to finish verification."}
+                      ? "Colony opened your browser to finish verification."
+                      : "Copy the response below, then paste it into the Colony website to finish verification."}
                   </DialogPrimitive.Description>
 
                   {error ? (

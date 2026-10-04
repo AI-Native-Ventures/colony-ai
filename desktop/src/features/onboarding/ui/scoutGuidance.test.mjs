@@ -118,7 +118,7 @@ test("connection controls keep one label owner and radio semantics", () => {
   );
   assert.equal((html.match(/role="radio"/g) ?? []).length, 4);
   assert.equal((html.match(/aria-checked="true"/g) ?? []).length, 1);
-  assert.match(html, /Choose agent harness. Current: Claude Code/);
+  assert.match(html, /Choose AI app. Current: Claude Code/);
   assert.doesNotMatch(html, /harness-row|aria-pressed/);
 });
 

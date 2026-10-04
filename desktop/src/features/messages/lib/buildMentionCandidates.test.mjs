@@ -168,3 +168,57 @@ for (const locallyManaged of [true, false]) {
     assert.equal(Boolean(candidate.isManagedAgent), locallyManaged);
   });
 }
+
+test("the scoped picker excludes legacy outsiders from every merged source without removing Team or channel agents", () => {
+  const legacy = {
+    pubkey: AGENT_PUBKEY,
+    name: "Fizz",
+    personaId: "builtin:fizz",
+    status: "stopped",
+  };
+  for (const name of ["Fizz", "Honey", "Pollen"]) {
+    const base = input({
+      managedAgents: [{ ...legacy, name }],
+      managedAgentNamesByPubkey: new Map([[AGENT_PUBKEY, name]]),
+      relayAgents: [{ ...legacy, name, channelIds: [] }],
+      mentionableAgentPubkeys: new Set([AGENT_PUBKEY]),
+      teamMemberPubkeys: new Set(),
+    });
+    assert.deepEqual(buildMentionCandidates(base), []);
+    assert.equal(
+      buildMentionCandidates({
+        ...base,
+        teamMemberPubkeys: new Set([AGENT_PUBKEY]),
+      }).length,
+      1,
+    );
+    assert.equal(
+      buildMentionCandidates({
+        ...base,
+        members: [
+          {
+            pubkey: AGENT_PUBKEY,
+            displayName: name,
+            isAgent: true,
+            role: "bot",
+          },
+        ],
+        memberPubkeys: new Set([AGENT_PUBKEY]),
+      }).length,
+      1,
+    );
+    assert.equal(base.managedAgents.length, 1);
+  }
+});
+
+test("unstarted templates are not current business members", () => {
+  assert.deepEqual(
+    buildMentionCandidates(
+      input({
+        teamMemberPubkeys: new Set(),
+        activePersonas: [{ id: "builtin:fizz", displayName: "Scout" }],
+      }),
+    ),
+    [],
+  );
+});

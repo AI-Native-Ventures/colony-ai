@@ -152,7 +152,7 @@ for (const viewport of [
     });
     await expect(
       page.getByTestId("onboarding-connect-runtime-claude"),
-    ).toContainText("Usage unavailable");
+    ).toContainText("Subscription could not be checked");
     await waitForAnimations(page);
     await page.screenshot({
       path: `${SHOT_DIR}/runtime-connect-ready-${viewport.width}.png`,

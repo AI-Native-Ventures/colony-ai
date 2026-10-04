@@ -149,7 +149,7 @@ test.describe("observer feed screenshots", () => {
             prompt: [
               {
                 type: "text",
-                text: "[Buzz event: Kind 9]\nContent: @Observer Agent help me debug this",
+                text: "[Colony event: Kind 9]\nContent: @Observer Agent help me debug this",
               },
               {
                 type: "text",
@@ -362,7 +362,7 @@ test.describe("observer feed screenshots", () => {
             prompt: [
               {
                 type: "text",
-                text: "[Buzz event: Kind 9]\nContent: @Observer Agent help me debug this",
+                text: "[Colony event: Kind 9]\nContent: @Observer Agent help me debug this",
               },
               {
                 type: "text",
@@ -728,7 +728,7 @@ test.describe("observer feed screenshots", () => {
             prompt: [
               {
                 type: "text",
-                text: "[Buzz event: Kind 9]\nContent: @Observer Agent help me debug this",
+                text: "[Colony event: Kind 9]\nContent: @Observer Agent help me debug this",
               },
               {
                 type: "text",
@@ -792,7 +792,7 @@ test.describe("observer feed screenshots", () => {
     const sectionTitles = await sectionArticles.allInnerTexts();
     // Only per-turn context sections (Buzz event + Thread context) — no system-prompt sections.
     expect(sectionTitles.length).toBe(2);
-    expect(sectionTitles[0]).toContain("Buzz event");
+    expect(sectionTitles[0]).toContain("Colony event");
     expect(sectionTitles[1]).toContain("Thread context");
     // Collect all article heading text and assert none of the five
     // system-prompt section labels appear — including exact "System" which

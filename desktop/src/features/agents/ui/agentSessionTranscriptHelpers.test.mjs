@@ -35,7 +35,7 @@ test("parsePromptText wraps header-less free text in a single Prompt section", (
   );
   assert.equal(result.sections[0].body, "just some free text");
   assert.equal(result.userText, "");
-  assert.equal(result.userTitle, "Buzz event");
+  assert.equal(result.userTitle, "Colony event");
   assert.equal(result.userPubkey, null);
   assert.equal(result.userEventId, null);
 });
@@ -45,7 +45,7 @@ test("parsePromptText extracts event id, content, hex pubkey, and a title-cased 
     "[System]",
     "system preamble here",
     "",
-    "[Buzz event: @mention]",
+    "[Colony event: @mention]",
     `Event ID: ${HEX_UPPER}`,
     "Channel: demo",
     `From: Wes (hex: ${HEX})`,
@@ -63,13 +63,13 @@ test("parsePromptText extracts event id, content, hex pubkey, and a title-cased 
   // Both headers become sections.
   assert.deepEqual(
     result.sections.map((s) => s.title),
-    ["System", "Buzz event: @mention"],
+    ["System", "Colony event: @mention"],
   );
 });
 
 test("parsePromptText preserves multiline event content in the user bubble text", () => {
   const text = [
-    "[Buzz event: @mention]",
+    "[Colony event: @mention]",
     "Event ID: event-1",
     "Channel: agents",
     `From: tho (hex: ${HEX})`,
@@ -101,7 +101,7 @@ test("parsePromptText preserves multiline event content in the user bubble text"
 
 test("parsePromptText lowercases the extracted hex pubkey", () => {
   const text = [
-    "[Buzz event: dm]",
+    "[Colony event: dm]",
     `From: Someone (hex: ${HEX_UPPER})`,
     "Content: hi",
   ].join("\n");
@@ -111,7 +111,7 @@ test("parsePromptText lowercases the extracted hex pubkey", () => {
 });
 
 test("parsePromptText yields a null pubkey when From has no hex", () => {
-  const text = ["[Buzz event: note]", "From: Someone", "Content: hi"].join(
+  const text = ["[Colony event: note]", "From: Someone", "Content: hi"].join(
     "\n",
   );
 
@@ -121,10 +121,10 @@ test("parsePromptText yields a null pubkey when From has no hex", () => {
   assert.equal(result.userTitle, "Note");
 });
 
-test("parsePromptText defaults the title to 'Buzz event' when no kind is present", () => {
-  const text = ["[Buzz event]", "Content: x"].join("\n");
+test("parsePromptText defaults the title to 'Colony event' when no kind is present", () => {
+  const text = ["[Colony event]", "Content: x"].join("\n");
   const result = parsePromptText(text);
-  assert.equal(result.userTitle, "Buzz event");
+  assert.equal(result.userTitle, "Colony event");
 });
 
 test("parsePromptText leading text before a header becomes a Prompt section", () => {
@@ -149,7 +149,7 @@ test("parsePromptText splits a tagged standing prefix from the dynamic turn", ()
     "[Context]",
     "Scope: channel",
     "",
-    "[Buzz event: @mention]",
+    "[Colony event: @mention]",
     "Event ID: abc123",
     "From: Alice (hex: AABBCC)",
     "Content: ship it",
@@ -160,7 +160,7 @@ test("parsePromptText splits a tagged standing prefix from the dynamic turn", ()
   assert.equal(parsed.userText, "ship it");
   assert.deepEqual(
     parsed.sections.map((section) => section.title),
-    ["Base", "Agent Instructions", "Context", "Buzz event: @mention"],
+    ["Base", "Agent Instructions", "Context", "Colony event: @mention"],
   );
 });
 
@@ -191,7 +191,7 @@ test("parsePromptText splits paired top-level turn sections and preserves inner 
       body: "[1] Alice (2026-08-25T12:00:00Z): prior message",
     },
     {
-      title: "Buzz event: @mention",
+      title: "Colony event: @mention",
       body: "Event ID: abc123\nFrom: Alice (hex: AABBCC)\nContent: ship it",
     },
   ]);

@@ -150,7 +150,7 @@ for (const viewport of [
     const row = page.getByTestId(`company-team-member-${employeePubkey}`);
     await expect(row).toContainText("Social Media Manager · Employee");
     await expect(row).toContainText("Reports to Lerato Molefe");
-    await expect(row.locator("span").filter({ hasText: /^paused$/ })).toHaveCSS(
+    await expect(row.locator("span").filter({ hasText: /^Ready$/ })).toHaveCSS(
       "text-transform",
       "none",
     );
@@ -255,7 +255,7 @@ test("Team does not infer an employee position from its running runtime", async 
   await page.goto("/#/team");
   const row = page.getByTestId(`company-team-member-${employeePubkey}`);
   await expect(row).toBeVisible();
-  await expect(row).toContainText("unknown");
+  await expect(row).toContainText("Ready");
   await expect(row).not.toContainText("active");
   for (const viewport of [
     { width: 1728, height: 1117 },
@@ -271,7 +271,7 @@ test("Team does not infer an employee position from its running runtime", async 
   const profile = page.getByTestId("company-employee-profile");
   await expect(profile).toBeVisible();
   await expect(page.getByTestId("company-position-header")).toContainText(
-    "Employee · unknown",
+    "Employee · Ready",
   );
   await expect(page.getByTestId("company-terminated-banner")).toHaveCount(0);
   await expect(
@@ -402,8 +402,22 @@ for (const width of [1728, 1440]) {
     await page.getByRole("button", { name: "Approve and rehire" }).click();
     await expect(page.getByTestId("company-rehire-review")).toHaveCount(0);
     await expect(page.getByTestId("company-position-header")).toContainText(
-      "active",
+      "Employee · Offline",
     );
+    await expect
+      .poll(() =>
+        page.evaluate((pubkey) => {
+          const events = JSON.parse(
+            localStorage.getItem(
+              "buzz-e2e-company-member-position-events-v1",
+            ) ?? "[]",
+          );
+          return events
+            .map((event: { content: string }) => JSON.parse(event.content))
+            .find((head: { pubkey: string }) => head.pubkey === pubkey)?.status;
+        }, minaPk),
+      )
+      .toBe("active");
     await expect(page.getByTestId("company-terminated-banner")).toHaveCount(0);
   });
 }

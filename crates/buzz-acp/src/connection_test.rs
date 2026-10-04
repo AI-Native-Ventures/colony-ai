@@ -100,7 +100,10 @@ async fn probe_turn(
     progress: Option<&Path>,
     started: Instant,
 ) -> Result<Value> {
+    let initialize_started = Instant::now();
     client.initialize().await?;
+    let initialize_ms = initialize_started.elapsed().as_millis();
+    let session_started = Instant::now();
     let session = client
         .session_new_full(
             &crate::current_working_directory()?,
@@ -109,6 +112,7 @@ async fn probe_turn(
             Some("Colony connection test"),
         )
         .await?;
+    let session_ms = session_started.elapsed().as_millis();
     let startup_ms = started.elapsed().as_millis();
     let model = if let Some(desired) = desired {
         if effective_model(&session.raw).as_deref() != Some(desired) {
@@ -125,11 +129,20 @@ async fn probe_turn(
     if let Some(path) = progress {
         std::fs::write(path, "waiting").context("record connection progress")?;
     }
+    let context = std::env::var("COLONY_CONNECTION_BUSINESS")
+        .ok()
+        .map(|raw| crate::business_context::context(&raw))
+        .transpose()?;
+    let prompt = if let Some(context) = context {
+        format!("You are Scout, Colony's Chief of Staff. This is your first introduction to the owner, and will also appear in their private Welcome channel. Do not use tools or read files. Briefly introduce yourself, welcome them to their business by name, and ask what they want to work on first.{}", context)
+    } else {
+        PROMPT.to_owned()
+    };
     client.capture_connection_reply(&session.session_id);
     let stop = client
         .session_prompt_with_idle_timeout(
             &session.session_id,
-            PROMPT,
+            &prompt,
             Duration::from_secs(20),
             Duration::from_secs(30),
         )
@@ -139,7 +152,7 @@ async fn probe_turn(
     }
     let reply = completed_reply(client.take_connection_reply(), stop)?;
     Ok(
-        json!({ "reply": reply, "model": model, "startupMs": startup_ms, "totalMs": started.elapsed().as_millis() }),
+        json!({ "reply": reply, "model": model, "startupMs": startup_ms, "totalMs": started.elapsed().as_millis(), "spawnMs": startup_ms.saturating_sub(initialize_ms + session_ms), "initializeMs": initialize_ms, "sessionMs": session_ms, "firstTokenMs": client.first_token_ms() }),
     )
 }
 

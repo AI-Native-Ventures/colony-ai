@@ -32,6 +32,9 @@ pub(super) fn store(runtime_id: &str, status: &AuthStatus) {
 /// Last known auth status for `runtime_id`, or `AuthStatus::Unknown` when no
 /// forced discovery has probed it yet. Never spawns a process.
 pub(super) fn get(runtime_id: &str) -> AuthStatus {
+    if crate::managed_agents::verified_connection::runtime_recent(runtime_id) {
+        return AuthStatus::LoggedIn;
+    }
     cache()
         .lock()
         .ok()
@@ -95,6 +98,11 @@ pub(super) fn resolve_auth_statuses(partials: &mut [super::PartialEntry], force:
 }
 
 fn patch_entry(partial: &mut super::PartialEntry, status: AuthStatus) {
+    let status = if crate::managed_agents::verified_connection::runtime_recent(&partial.entry.id) {
+        AuthStatus::LoggedIn
+    } else {
+        status
+    };
     partial.entry.login_hint = if matches!(status, AuthStatus::LoggedIn | AuthStatus::NotApplicable)
     {
         None

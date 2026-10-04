@@ -791,10 +791,21 @@ test("sends the first message from the new direct message composer", async ({
   await expect(page.getByTestId("message-timeline")).toContainText(message);
 });
 
-test("creates the DM before preparing a persona mention", async ({ page }) => {
+test("creates the DM before preparing an existing Team agent mention", async ({
+  page,
+}) => {
   await installMockBridge(page, {
     activePersonaIds: ["builtin:fizz"],
-    createManagedAgentDelayMs: 1_000,
+    managedAgents: [
+      {
+        pubkey: "e".repeat(64),
+        name: "Scout",
+        personaId: "builtin:fizz",
+        status: "stopped",
+        runtime: "buzz-agent",
+      },
+    ],
+    openDmDelayMs: 1_000,
   });
   await page.goto("/");
   await openNewMessagePage(page);
@@ -805,12 +816,12 @@ test("creates the DM before preparing a persona mention", async ({ page }) => {
     .click();
 
   const input = page.getByTestId("message-input");
-  await input.fill("Ask @fi");
+  await input.fill("Ask @sc");
   await expect(
     page
       .getByTestId("message-composer")
       .getByTestId("mention-autocomplete")
-      .locator("button", { hasText: "Fizz" }),
+      .locator("button", { hasText: "Scout" }),
   ).toBeVisible();
   await input.press("Enter");
   await page.keyboard.type(" for a hand");
@@ -836,9 +847,9 @@ test("creates the DM before preparing a persona mention", async ({ page }) => {
     .poll(async () =>
       commandCount(await readCommandLog(page), "create_managed_agent"),
     )
-    .toBeGreaterThan(baselineCreateCount);
+    .toBe(baselineCreateCount);
   await expect(page.getByTestId("chat-title")).toContainText("charlie");
-  await expect(page.getByTestId("chat-title")).toContainText("Fizz");
+  await expect(page.getByTestId("chat-title")).toContainText("Scout");
   // Assert popover hidden after chat-title settles - by this point the send
   // flow has completed and the UI has fully transitioned away from the popover.
   await expect(page.getByTestId("new-message-recipient-popover")).toBeHidden();
@@ -851,11 +862,10 @@ test("creates the DM before preparing a persona mention", async ({ page }) => {
   );
   expect(commandCount(sendCommands, "open_dm")).toBe(2);
   const firstOpenIndex = sendCommands.indexOf("open_dm");
-  const createIndex = sendCommands.indexOf("create_managed_agent");
   const expandedOpenIndex = sendCommands.lastIndexOf("open_dm");
   const startIndex = sendCommands.indexOf("start_managed_agent");
-  expect(firstOpenIndex).toBeLessThan(createIndex);
-  expect(createIndex).toBeLessThan(expandedOpenIndex);
+  expect(sendCommands).not.toContain("create_managed_agent");
+  expect(firstOpenIndex).toBeLessThan(expandedOpenIndex);
   expect(expandedOpenIndex).toBeLessThan(startIndex);
   expect(sendCommands).not.toContain("add_channel_members");
 
@@ -882,7 +892,7 @@ test("creates the DM before preparing a persona mention", async ({ page }) => {
     page
       .getByTestId("message-row")
       .last()
-      .locator("[data-mention].agent-mention-highlight", { hasText: "Fizz" }),
+      .locator("[data-mention].agent-mention-highlight", { hasText: "Scout" }),
   ).toBeVisible();
 });
 
@@ -893,6 +903,15 @@ test("routes an agent mention from an existing DM to the expanded conversation",
   // cannot collapse into the same fast CI tick before assertions observe it.
   await installMockBridge(page, {
     activePersonaIds: ["builtin:fizz"],
+    managedAgents: [
+      {
+        pubkey: "e".repeat(64),
+        name: "Scout",
+        personaId: "builtin:fizz",
+        status: "stopped",
+        runtime: "buzz-agent",
+      },
+    ],
     createManagedAgentDelayMs: 100,
   });
   await page.goto("/");
@@ -905,12 +924,12 @@ test("routes an agent mention from an existing DM to the expanded conversation",
 
   const messageTail = "in this DM";
   const input = page.getByTestId("message-input");
-  await input.fill("Ask @fi");
+  await input.fill("Ask @sc");
   await expect(
     page
       .getByTestId("message-composer")
       .getByTestId("mention-autocomplete")
-      .locator("button", { hasText: "Fizz" }),
+      .locator("button", { hasText: "Scout" }),
   ).toBeVisible();
   await input.press("Enter");
   await page.keyboard.type(" in this DM");
@@ -926,8 +945,8 @@ test("routes an agent mention from an existing DM to the expanded conversation",
     page.locator("[data-active='true'][data-channel-id]"),
   ).toHaveAttribute("data-channel-id", sentChannelId ?? "");
   await expect(page.getByTestId("chat-title")).toContainText("alice");
-  await expect(page.getByTestId("chat-title")).toContainText("Fizz");
-  await expect(sourceDm).not.toContainText("Fizz");
+  await expect(page.getByTestId("chat-title")).toContainText("Scout");
+  await expect(sourceDm).not.toContainText("Scout");
   const sendCommands = (await readCommandPayloadLog(page)).slice(
     baselineCommands.length,
   );
@@ -1024,6 +1043,15 @@ test("does not reroute an expanded DM after the user navigates away", async ({
 }) => {
   await installMockBridge(page, {
     activePersonaIds: ["builtin:fizz"],
+    managedAgents: [
+      {
+        pubkey: "e".repeat(64),
+        name: "Scout",
+        personaId: "builtin:fizz",
+        status: "stopped",
+        runtime: "buzz-agent",
+      },
+    ],
     sendMessageDelayMs: 1_000,
   });
   await page.goto("/");
@@ -1031,12 +1059,12 @@ test("does not reroute an expanded DM after the user navigates away", async ({
   await expect(page.getByTestId("chat-title")).toHaveText("alice-tyler");
 
   const input = page.getByTestId("message-input");
-  await input.fill("Ask @fi");
+  await input.fill("Ask @sc");
   await expect(
     page
       .getByTestId("message-composer")
       .getByTestId("mention-autocomplete")
-      .locator("button", { hasText: "Fizz" }),
+      .locator("button", { hasText: "Scout" }),
   ).toBeVisible();
   await input.press("Enter");
   await page.keyboard.type(" while I leave");
@@ -1056,6 +1084,15 @@ test("does not reroute an expanded DM after the channel pane unmounts", async ({
 }) => {
   await installMockBridge(page, {
     activePersonaIds: ["builtin:fizz"],
+    managedAgents: [
+      {
+        pubkey: "e".repeat(64),
+        name: "Scout",
+        personaId: "builtin:fizz",
+        status: "stopped",
+        runtime: "buzz-agent",
+      },
+    ],
     openDmDelayMs: 1_000,
   });
   await page.goto("/");
@@ -1063,12 +1100,12 @@ test("does not reroute an expanded DM after the channel pane unmounts", async ({
   await expect(page.getByTestId("chat-title")).toHaveText("alice-tyler");
 
   const input = page.getByTestId("message-input");
-  await input.fill("Ask @fi");
+  await input.fill("Ask @sc");
   await expect(
     page
       .getByTestId("message-composer")
       .getByTestId("mention-autocomplete")
-      .locator("button", { hasText: "Fizz" }),
+      .locator("button", { hasText: "Scout" }),
   ).toBeVisible();
   await input.press("Enter");
   await page.keyboard.type(" while I open settings");
@@ -1091,6 +1128,15 @@ test("drops an expanded DM after the first message fails", async ({ page }) => {
   // cannot collapse into the same fast CI tick before assertions observe it.
   await installMockBridge(page, {
     activePersonaIds: ["builtin:fizz"],
+    managedAgents: [
+      {
+        pubkey: "e".repeat(64),
+        name: "Scout",
+        personaId: "builtin:fizz",
+        status: "stopped",
+        runtime: "buzz-agent",
+      },
+    ],
     createManagedAgentDelayMs: 100,
     sendMessageErrors: [sendError],
   });
@@ -1103,12 +1149,12 @@ test("drops an expanded DM after the first message fails", async ({ page }) => {
     .click();
 
   const input = page.getByTestId("message-input");
-  await input.fill("Ask @fi");
+  await input.fill("Ask @sc");
   await expect(
     page
       .getByTestId("message-composer")
       .getByTestId("mention-autocomplete")
-      .locator("button", { hasText: "Fizz" }),
+      .locator("button", { hasText: "Scout" }),
   ).toBeVisible();
   await input.press("Enter");
   await page.keyboard.type(" for a hand");
@@ -1121,7 +1167,7 @@ test("drops an expanded DM after the first message fails", async ({ page }) => {
     .locator("[data-sonner-toast]")
     .filter({ hasText: `Message failed to send: ${sendError}` });
   await expect(sendErrorToast).toBeVisible();
-  await expect(input).toContainText("Fizz");
+  await expect(input).toContainText("Scout");
 
   const commandsAfterFailure = await readCommandPayloadLog(page);
   const failedSendChannelId = (
@@ -1190,6 +1236,15 @@ test("publishes into an expanded DM even when agent startup fails", async ({
   const startError = "Mock agent startup failed.";
   await installMockBridge(page, {
     activePersonaIds: ["builtin:fizz"],
+    managedAgents: [
+      {
+        pubkey: "e".repeat(64),
+        name: "Scout",
+        personaId: "builtin:fizz",
+        status: "stopped",
+        runtime: "buzz-agent",
+      },
+    ],
     startManagedAgentErrors: [startError],
   });
   await page.goto("/");
@@ -1201,26 +1256,26 @@ test("publishes into an expanded DM even when agent startup fails", async ({
     .click();
 
   const input = page.getByTestId("message-input");
-  await input.fill("Ask @fi");
+  await input.fill("Ask @sc");
   await expect(
     page
       .getByTestId("message-composer")
       .getByTestId("mention-autocomplete")
-      .locator("button", { hasText: "Fizz" }),
+      .locator("button", { hasText: "Scout" }),
   ).toBeVisible();
   await input.press("Enter");
   await page.keyboard.type(" before startup fails");
   await page.getByTestId("send-message").click();
 
   // The message lands in the expanded DM despite the failed start.
-  await expect(page.getByTestId("chat-title")).toContainText("Fizz");
+  await expect(page.getByTestId("chat-title")).toContainText("Scout");
   await expect(page.getByTestId("message-timeline")).toContainText(
     "before startup fails",
   );
 
   // The start failure surfaces as a toast, and the sent text is not restored
   // into the composer - the send succeeded, so there is nothing to retry.
-  // (The persistent agent audience may legitimately re-seed a "@Fizz"
+  // (The persistent agent audience may legitimately re-seed a "@Scout"
   // auto-mention, so only the message body proves there was no restore.)
   await expect(
     page.getByText(startError, { exact: false }).first(),

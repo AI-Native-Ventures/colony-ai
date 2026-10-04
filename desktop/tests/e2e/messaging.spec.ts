@@ -239,7 +239,7 @@ test.beforeEach(async ({ page }, testInfo) => {
                     testInfo.title.includes("composer no-image link embeds")
                   ? {
                       linkPreviewMetadata: {
-                        title: "Buzz",
+                        title: "Colony",
                         siteName: "GitHub",
                         description:
                           "Open-source collaboration for the Buzz app.",
@@ -1607,7 +1607,7 @@ test("composer no-image link embeds keep the attachment footprint", async ({
   await expect(card).toHaveAttribute("data-image-state", "none");
   await expect(card.locator("[data-link-preview-thumbnail]")).toBeVisible();
   await expect(card.locator('[data-slot="attachment-title"]')).toContainText(
-    /github\.com|Buzz/,
+    /github\.com|Colony/,
   );
   await expect(card).toHaveCSS("height", "55px");
 });
@@ -1884,9 +1884,10 @@ test("pasting a long copied code block scrolls composer to cursor", async ({
 
 test("code block shows language label when language is specified", async ({
   page,
+  baseURL,
 }) => {
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], {
-    origin: "http://127.0.0.1:4173",
+    origin: baseURL,
   });
 
   await page.goto("/");

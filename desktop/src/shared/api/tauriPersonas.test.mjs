@@ -37,3 +37,26 @@ test("fromRawPersona maps authored description and defaults absence to null", ()
   );
   assert.equal(fromRawPersona(rawPersona()).description, null);
 });
+
+test("legacy built-in welcome persona renders as Scout and keeps custom names", () => {
+  assert.equal(
+    fromRawPersona(
+      rawPersona({
+        id: "builtin:fizz",
+        is_builtin: true,
+        display_name: "Fizz",
+      }),
+    ).displayName,
+    "Scout",
+  );
+  assert.equal(
+    fromRawPersona(
+      rawPersona({
+        id: "builtin:fizz",
+        is_builtin: true,
+        display_name: "My Guide",
+      }),
+    ).displayName,
+    "My Guide",
+  );
+});

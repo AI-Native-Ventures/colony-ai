@@ -1,10 +1,17 @@
+import {
+  getAiSubscriptions,
+  checkClaudeSubscription,
+  type AiSubscription,
+} from "@/shared/api/aiSubscriptions";
+import { SubscriptionAllowance } from "./SubscriptionAllowance";
+import { saveVerifiedWelcomeConnection } from "../welcomeConnection";
 import { discoverAgentModels } from "@/shared/api/agentModels";
 import { OpenRouterConnectionPanel } from "@/shared/ui/OpenRouterConnectionPanel";
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { globalAgentConfigQueryKey } from "@/features/agents/useGlobalAgentConfig";
 import {
-  runOnboardingConnectionTest,
+  runOnboardingBusinessConnectionTest,
   cancelOnboardingConnectionTest,
   subscribeOnboardingConnectionProgress,
   type OnboardingConnectionProgress,
@@ -94,6 +101,9 @@ function RuntimeOption({
   runtime,
   selected,
   onSelect,
+  subscription,
+  onClaudeCheck,
+  checkingClaude,
 }: {
   globalConfig: GlobalAgentConfig;
   gitBashPrerequisite: GitBashPrerequisite | null | undefined;
@@ -102,6 +112,9 @@ function RuntimeOption({
   runtime: AcpRuntimeCatalogEntry;
   selected: boolean;
   onSelect: () => void;
+  subscription?: AiSubscription;
+  onClaudeCheck: () => void;
+  checkingClaude: boolean;
 }) {
   const installMutation = useInstallAcpRuntimeMutation();
   const connectMutation = useConnectAcpRuntimeMutation();
@@ -131,12 +144,23 @@ function RuntimeOption({
     setActionError(null);
     installMutation.mutate(runtime.id, {
       onSuccess: (result) => {
-        if (!result.success) setActionError(getInstallErrorMessage(result));
-        else void onRefresh();
+        if (!result.success) {
+          const detail =
+            result.steps.find((step) => !step.success)?.stderr ?? "";
+          setActionError(
+            runtime.id === "codex" || runtime.id === "claude"
+              ? detail.includes("EACCES") || detail.includes("permission")
+                ? "Connection update could not write its files. Check app permissions, then retry."
+                : detail.includes("ceiling") || detail.includes("timed out")
+                  ? "Connection update timed out. Check your internet connection, then retry."
+                  : "Connection update failed. Check your internet connection, then retry."
+              : getInstallErrorMessage(result),
+          );
+        } else void onRefresh();
       },
-      onError: (error) => {
+      onError: () => {
         setActionError(
-          error instanceof Error ? error.message : "Install failed.",
+          "Connection update could not finish. Check your internet connection, then retry.",
         );
       },
     });
@@ -190,26 +214,43 @@ function RuntimeOption({
         type="button"
       >
         <span className="provider-top">
-          <RuntimeIcon className="size-8 shrink-0" runtime={runtime} />
+          <span
+            className={`provider-monogram ${runtime.id === "claude" ? "claude" : runtime.id === "codex" ? "codex" : ""}`}
+          >
+            <RuntimeIcon className="size-6 shrink-0" runtime={runtime} />
+          </span>
           <strong>{getRuntimeDisplayLabel(runtime)}</strong>
           <span className="selection-dot" />
         </span>
         <span className="provider-account">{status}</span>
         {runtime.availability === "adapter_missing" ? (
           <span className="provider-account">
-            {getRuntimeDisplayLabel(runtime)} is installed. Its connection
-            adapter is missing.
+            {getRuntimeDisplayLabel(runtime)} is installed. Its connection needs
+            to be set up.
           </span>
         ) : null}
       </button>
-      {ready && (runtime.id === "claude" || runtime.id === "codex") ? (
-        <p className="usage-unavailable">
-          Usage unavailable
-          <span>Your allowance may still be available.</span>
-        </p>
+      {runtime.id === "claude" || runtime.id === "codex" ? (
+        <SubscriptionAllowance subscription={subscription} />
+      ) : null}
+      {runtime.id === "claude" && subscription?.source !== "live" ? (
+        <Button
+          className="runtime-action"
+          disabled={checkingClaude}
+          onClick={onClaudeCheck}
+          type="button"
+          variant="outline"
+        >
+          {checkingClaude ? "Checking…" : "Check Claude subscription"}
+        </Button>
       ) : null}
       <div className="runtime-actions">
-        {ready ? (
+        {ready &&
+        !(
+          subscription?.source === "live" &&
+          subscription.signedIn &&
+          subscription.plan
+        ) ? (
           <span className="provider-status is-connected">
             {runtime.authStatus.status === "logged_in"
               ? "Installed"
@@ -238,8 +279,10 @@ function RuntimeOption({
             variant="outline"
           >
             {installMutation.isPending
-              ? "Installing…"
-              : harnessInstallLabel(runtime)}
+              ? "Updating connection…"
+              : actionError
+                ? "Retry"
+                : harnessInstallLabel(runtime)}
           </Button>
         ) : null}
         {!ready &&
@@ -288,6 +331,12 @@ function RuntimeOption({
           </>
         ) : null}
       </div>
+      {installMutation.isPending ? (
+        <p className="provider-account" role="status">
+          Preparing your connection files may take several minutes. Each package
+          update has a two-minute limit.
+        </p>
+      ) : null}
       {actionError ? (
         <p className="runtime-action-error text-sm" role="alert">
           {actionError}
@@ -320,6 +369,39 @@ function RuntimeConnectionPanel({
 }) {
   const { globalConfig } = useGlobalAgentConfig();
   const query = useAcpRuntimesQueryForced();
+  const subscriptions = useQuery({
+    queryKey: ["ai-subscriptions"],
+    queryFn: getAiSubscriptions,
+    retry: false,
+    staleTime: 30_000,
+  });
+  const queryClient = useQueryClient();
+  const [checkingClaude, setCheckingClaude] = React.useState(false);
+  const [claudeCheckError, setClaudeCheckError] = React.useState<string | null>(
+    null,
+  );
+  const checkClaude = async () => {
+    if (checkingClaude) return;
+    setCheckingClaude(true);
+    setClaudeCheckError(null);
+    try {
+      await queryClient.cancelQueries({ queryKey: ["ai-subscriptions"] });
+      const result = await checkClaudeSubscription();
+      queryClient.setQueryData<AiSubscription[]>(
+        ["ai-subscriptions"],
+        (current) => [
+          ...(current ?? []).filter((item) => item.id !== "claude"),
+          result,
+        ],
+      );
+    } catch {
+      setClaudeCheckError(
+        "Claude subscription could not be checked. Try again.",
+      );
+    } finally {
+      setCheckingClaude(false);
+    }
+  };
   const gitBashQuery = useGitBashPrerequisiteQuery();
   const gitBashPrerequisite = gitBashQuery.isError
     ? undefined
@@ -330,18 +412,58 @@ function RuntimeConnectionPanel({
       runtimeIsReadyForOnboarding(runtime, globalConfig, gitBashPrerequisite) &&
       resolveAgentPrerequisiteReadiness(runtime.id, gitBashPrerequisite).ready,
   );
+  const primaryRuntimes = runtimes.filter(
+    (runtime) =>
+      ready.includes(runtime) ||
+      subscriptions.data?.some(
+        (item) => item.id === runtime.id && item.signedIn === true && item.plan,
+      ),
+  );
+  const moreRuntimes = runtimes.filter(
+    (runtime) => !primaryRuntimes.includes(runtime),
+  );
+  const renderRuntime = (runtime: AcpRuntimeCatalogEntry) => (
+    <RuntimeOption
+      key={runtime.id}
+      globalConfig={globalConfig}
+      gitBashPrerequisite={gitBashPrerequisite}
+      isFetching={
+        query.isFetching || subscriptions.isFetching || checkingClaude
+      }
+      onRefresh={refresh}
+      onSelect={() => onRuntimeSelect(runtime.id)}
+      runtime={runtime}
+      selected={selectedRuntimeId === runtime.id}
+      subscription={
+        subscriptions.data?.find((item) => item.id === runtime.id) ??
+        (subscriptions.isError
+          ? {
+              id: runtime.id === "claude" ? "claude" : "codex",
+              signedIn: null,
+              source: "unavailable",
+              plan: null,
+              windows: [],
+              message: "Subscription could not be checked. Try again.",
+            }
+          : undefined)
+      }
+      onClaudeCheck={() => void checkClaude()}
+      checkingClaude={checkingClaude}
+    />
+  );
   const selectedRuntime = runtimes.find(
     (runtime) => runtime.id === selectedRuntimeId,
   );
   const refresh = React.useCallback(() => {
     void gitBashQuery.refetch();
     query.forceRefresh();
-  }, [query.forceRefresh, gitBashQuery.refetch]);
+    void subscriptions.refetch();
+  }, [query.forceRefresh, gitBashQuery.refetch, subscriptions.refetch]);
 
   React.useEffect(() => {
     if (!selectedRuntimeId && runtimes.length > 0)
-      onRuntimeSelect(runtimes[0].id);
-  }, [runtimes, selectedRuntimeId, onRuntimeSelect]);
+      onRuntimeSelect(primaryRuntimes[0]?.id ?? runtimes[0].id);
+  }, [runtimes, primaryRuntimes, selectedRuntimeId, onRuntimeSelect]);
 
   React.useEffect(() => {
     const header: HarnessHeader = selectedRuntime
@@ -362,9 +484,9 @@ function RuntimeConnectionPanel({
       : query.error instanceof Error
         ? { label: "Unavailable", status: "Check again", mark: null }
         : query.isFetching
-          ? { label: "Finding harnesses", status: "Checking", mark: null }
+          ? { label: "Finding AI apps", status: "Checking", mark: null }
           : {
-              label: "No supported harness",
+              label: "No supported AI app",
               status: "Unavailable",
               mark: null,
             };
@@ -394,7 +516,9 @@ function RuntimeConnectionPanel({
         <button
           aria-label="Check installed AI apps again"
           className="link"
-          disabled={query.isFetching}
+          disabled={
+            query.isFetching || subscriptions.isFetching || checkingClaude
+          }
           onClick={() => void refresh()}
           type="button"
         >
@@ -435,24 +559,26 @@ function RuntimeConnectionPanel({
           tabIndex={-1}
         >
           <legend className="sr-only">Detected AI apps</legend>
-          {runtimes.map((runtime) => (
-            <RuntimeOption
-              key={runtime.id}
-              globalConfig={globalConfig}
-              gitBashPrerequisite={gitBashPrerequisite}
-              isFetching={query.isFetching}
-              onRefresh={refresh}
-              onSelect={() => onRuntimeSelect(runtime.id)}
-              runtime={runtime}
-              selected={selectedRuntimeId === runtime.id}
-            />
-          ))}
+          {primaryRuntimes.map(renderRuntime)}
         </fieldset>
+      ) : null}
+      {moreRuntimes.length ? (
+        <details className="more-tools">
+          <summary>More tools ({moreRuntimes.length})</summary>
+          <div className="subscription-cards">
+            {moreRuntimes.map(renderRuntime)}
+          </div>
+        </details>
+      ) : null}
+      {claudeCheckError ? (
+        <p role="alert" className="runtime-action-error text-sm">
+          {claudeCheckError}
+        </p>
       ) : null}
       {!query.isFetching && !query.error && runtimes.length === 0 ? (
         <div className="power-empty" data-testid="onboarding-acp-empty">
-          <h3>No supported harnesses are available.</h3>
-          <p>You can continue and connect a harness later.</p>
+          <h3>No supported AI appes are available.</h3>
+          <p>You can continue and connect an AI app later.</p>
         </div>
       ) : null}
       <p className="power-caption">
@@ -462,8 +588,8 @@ function RuntimeConnectionPanel({
             ? "Your AI teammates share these allowances with your other usage."
             : `${getRuntimeDisplayLabel(selectedRuntime)} can be tested on this computer.`
           : ready.length > 0
-            ? "Choose a signed-in harness to test."
-            : "You can connect an AI harness later."}
+            ? "Choose a signed-in AI app to test."
+            : "You can connect an AI app later."}
       </p>
     </>
   );
@@ -471,6 +597,7 @@ function RuntimeConnectionPanel({
 
 export function ConnectSetupStep({
   business,
+  communityId,
   error,
   onBack,
   onContinue,
@@ -519,7 +646,7 @@ export function ConnectSetupStep({
     | "api-key"
   >("connect");
   const [harnessHeader, setHarnessHeader] = React.useState<HarnessHeader>({
-    label: "Finding harnesses",
+    label: "Finding AI apps",
     status: "Checking",
     mark: null,
   });
@@ -625,7 +752,7 @@ export function ConnectSetupStep({
     setTestState("testing");
     try {
       const runtimeId = keyScene ? "buzz-agent" : selectedRuntimeId;
-      if (!runtimeId) throw new Error("Choose an AI harness before testing.");
+      if (!runtimeId) throw new Error("Choose an AI app before testing.");
       setTestedRuntimeId(runtimeId);
       const candidate = buildOnboardingRuntimeCandidate(
         globalConfig,
@@ -633,7 +760,21 @@ export function ConnectSetupStep({
         runtimes.data ?? [],
         keyScene ? undefined : selectedModel,
       );
-      const result = await runOnboardingConnectionTest(candidate, isCurrent);
+      const result = await runOnboardingBusinessConnectionTest(
+        candidate,
+        isCurrent,
+        {
+          name: business.name,
+          website: business.website,
+          description: business.description,
+        },
+      );
+      if (!isCurrent()) return;
+      await saveVerifiedWelcomeConnection(
+        communityId,
+        result.config,
+        result.proof,
+      );
       if (!isCurrent()) return;
       queryClient.setQueryData(globalAgentConfigQueryKey, result.config);
       setProof(result.proof);

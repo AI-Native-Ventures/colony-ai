@@ -94,6 +94,8 @@ export default defineConfig({
     {
       name: "smoke",
       testMatch: [
+        "**/scout-branding.spec.ts",
+        "**/workspace-file-links.spec.ts",
         "**/first-reply-runtime.spec.ts",
         "**/connect-polish.spec.ts",
         "**/onboarding-scout-presence.spec.ts",
@@ -187,6 +189,7 @@ export default defineConfig({
         "**/company-duty-ask.spec.ts",
         "**/company-team.spec.ts",
         "**/company-team-design.spec.ts",
+        "**/company-team-scout.spec.ts",
         "**/company-spend.spec.ts",
         "**/company-permissions.spec.ts",
         "**/company-work.spec.ts",
@@ -252,6 +255,7 @@ export default defineConfig({
         "**/message-author-overlap.spec.ts",
         "**/buzz-theme-screenshots.spec.ts",
         "**/appearance-previews.spec.ts",
+        "**/appearance-chrome.spec.ts",
         "**/settings-design-proof.spec.ts",
         "**/channel-sort.spec.ts",
         "**/identity-lost.spec.ts",
@@ -299,9 +303,11 @@ export default defineConfig({
     {
       name: "integration",
       testMatch: [
+        "**/workspace-file-links.spec.ts",
         "**/account-auth.spec.ts",
         "**/colony-public-icons.spec.ts",
         "**/onboarding-agent-defaults.spec.ts",
+        "**/appearance-chrome.spec.ts",
         "**/deep-link-invite.spec.ts",
         "**/first-reply-runtime.spec.ts",
         "**/connect-polish.spec.ts",
@@ -320,7 +326,9 @@ export default defineConfig({
         "**/integration.spec.ts",
         "**/company-asks.live.spec.ts",
         "**/company-team.integration.spec.ts",
+        "**/company-team.spec.ts",
         "**/company-team-design.spec.ts",
+        "**/company-team-scout.spec.ts",
         "**/company-team.live.spec.ts",
         "**/company-work.live.spec.ts",
         "**/company-work.spec.ts",

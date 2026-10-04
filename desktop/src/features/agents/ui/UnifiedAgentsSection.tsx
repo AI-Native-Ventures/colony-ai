@@ -1,10 +1,9 @@
 import * as React from "react";
+import scoutArt from "@/features/onboarding/assets/scout.svg";
+import { employeeAvatarSource } from "@/features/company-team/employeePresentation";
 import { AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 
-import {
-  isAgentCardAvatarLoading,
-  resolveAgentCardAvatarUrl,
-} from "@/features/agents/lib/agentCardAvatar";
+import { isAgentCardAvatarLoading } from "@/features/agents/lib/agentCardAvatar";
 import { resolveAgentCardModelLabel } from "@/features/agents/lib/agentCardModelLabel";
 import { effectiveAgentDescription } from "@/features/agents/lib/agentDescription";
 import { friendlyAgentLastError } from "@/features/agents/lib/friendlyAgentLastError";
@@ -285,9 +284,14 @@ function AgentPersonaCard({
     });
   const isActive = agent ? isManagedAgentActive(agent) : false;
   const profileQuery = useUserProfileQuery(agent?.pubkey);
-  const avatarUrl = agent
-    ? resolveAgentCardAvatarUrl(profileQuery.data?.avatarUrl, persona.avatarUrl)
-    : persona.avatarUrl;
+  const avatarUrl = employeeAvatarSource({
+    name: agent?.name || persona.displayName,
+    profile: profileQuery.data?.avatarUrl,
+    instance: agent?.avatarUrl,
+    definition: persona.avatarUrl,
+    personaId: persona.id,
+    scoutArt,
+  });
   const friendlyError = agent
     ? friendlyAgentLastError(agent.lastError, agent.lastErrorCode)?.copy
     : null;

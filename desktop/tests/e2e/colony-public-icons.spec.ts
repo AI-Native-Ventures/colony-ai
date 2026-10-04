@@ -77,6 +77,15 @@ test("bind consent loads the Colony icon at its existing size", async ({
     .getByTestId("nostr-bind-page")
     .getByRole("img", { name: "Colony", exact: true });
   await expect(icon).toBeVisible();
+  await expect
+    .poll(() =>
+      icon.evaluate(
+        (element) =>
+          (element as HTMLImageElement).complete &&
+          (element as HTMLImageElement).naturalWidth > 0,
+      ),
+    )
+    .toBe(true);
   const size = await icon.evaluate((element) => {
     const image = element as HTMLImageElement;
     const box = image.getBoundingClientRect();

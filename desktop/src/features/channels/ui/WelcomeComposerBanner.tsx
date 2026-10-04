@@ -286,7 +286,7 @@ type WelcomeComposerBannerProps = {
   state: WelcomeComposerBannerState;
   /**
    * While the Welcome kickoff is still setting up the team, the banner's
-   * prompt copy reads as a setup status ("Setting up your welcome team…")
+   * prompt copy reads as a setup status ("Setting up Scout…")
    * instead of the mention hint — the kickoff characters stand on top of the
    * banner during this window.
    */
@@ -400,7 +400,7 @@ export function WelcomeComposerBanner({
                 key="setting-up-copy"
                 variants={welcomeComposerBannerContentVariants}
               >
-                Setting up your welcome team…
+                Setting up Scout…
               </motion.span>
             ) : (
               <motion.span

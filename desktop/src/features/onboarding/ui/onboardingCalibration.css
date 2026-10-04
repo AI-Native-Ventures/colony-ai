@@ -4185,3 +4185,49 @@
     overflow-y: auto;
   }
 }
+
+.colony-onboarding-root .more-tools {
+  margin-top: 16px;
+}
+.colony-onboarding-root .more-tools summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.colony-onboarding-root .more-tools[open] .subscription-cards {
+  margin-top: 12px;
+}
+/* Google account access uses the same secondary action as the frozen forms. */
+.colony-onboarding-root .account-google-action {
+  margin-top: 16px;
+}
+.colony-onboarding-root .account-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+.colony-onboarding-root .account-auth-divider::before,
+.colony-onboarding-root .account-auth-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--line);
+}
+.colony-onboarding-root .account-google-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  min-height: 49px;
+}
+.colony-onboarding-root .account-google-button .google-mark {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.colony-onboarding-root .account-google-help {
+  color: var(--muted);
+  margin: 12px 0 0;
+  line-height: 1.5;
+}

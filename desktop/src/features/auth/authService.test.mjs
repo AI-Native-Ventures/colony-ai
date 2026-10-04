@@ -612,3 +612,37 @@ test("a just-signed-up account accepts the relay's flat GET /me response", async
     },
   );
 });
+
+test("Google native failures become safe retry codes before any relay call", async () => {
+  const cases = [
+    ["Google sign-in was cancelled.", "google_sign_in_cancelled"],
+    ["Google sign-in timed out.", "google_sign_in_timed_out"],
+    [
+      new Error("Native command timed out; its result is unknown"),
+      "google_sign_in_timed_out",
+    ],
+    ["Google sign-in is not configured.", "google_sign_in_unavailable"],
+    [new Error("untrusted provider response"), "google_sign_in_failed"],
+  ];
+  for (const [failure, code] of cases) {
+    let requests = 0;
+    const auth = createService("http://127.0.0.1:9", {
+      googleSignIn: async () => {
+        throw failure;
+      },
+      fetcher: async () => {
+        requests++;
+        throw new Error("Unexpected relay call");
+      },
+    });
+    await assert.rejects(
+      auth.service.signInWithGoogle(),
+      (error) =>
+        error instanceof AuthApiError &&
+        error.code === code &&
+        error.message === code,
+    );
+    assert.equal(requests, 0);
+    assert.equal(auth.imports.length, 0);
+  }
+});

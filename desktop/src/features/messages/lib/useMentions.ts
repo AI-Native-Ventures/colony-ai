@@ -1,3 +1,4 @@
+import { useCompanyAgentPubkeys } from "@/features/agents/useCompanyManagedAgents";
 import * as React from "react";
 import {
   useManagedAgentsQuery,
@@ -106,6 +107,10 @@ export function useMentions(
   const isArchivedDiscovery = useIsArchivedPredicate();
   const managedAgentsQuery = useManagedAgentsQuery();
   const relayAgentsQuery = useRelayAgentsQuery();
+  const teamMemberPubkeys = useCompanyAgentPubkeys(
+    managedAgentsQuery.data,
+    relayAgentsQuery.data,
+  );
   const channelsQuery = useChannelsQuery();
   const personasQuery = usePersonasQuery();
   const teamsQuery = useTeamsQuery();
@@ -271,6 +276,7 @@ export function useMentions(
         mentionableAgentPubkeys,
         personaNameByPubkey,
         profiles,
+        teamMemberPubkeys,
         relayAgentDirectoryReady,
         relayAgentNamesByPubkey,
         relayAgents: relayAgentsQuery.data,
@@ -295,6 +301,7 @@ export function useMentions(
       mentionableAgentPubkeys,
       personaNameByPubkey,
       profiles,
+      teamMemberPubkeys,
       relayAgentDirectoryReady,
       relayAgentNamesByPubkey,
       relayAgentsQuery.data,
@@ -454,7 +461,7 @@ export function useMentions(
     mentionSelection;
   const isMentionOpen = mentionQuery !== null && suggestions.length > 0;
   // Untrusted clipboard records only become bindable identities once trusted
-  // Buzz state confirms the pair — see `mentionIdentityTrust`.
+  // Colony state confirms the pair , see `mentionIdentityTrust`.
   const verifyMentionIdentities = useVerifyMentionIdentities({
     mentionCandidates,
     profiles,

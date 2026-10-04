@@ -28,6 +28,7 @@ async fn connection_reply_uses_the_real_prompt_stream_and_ignores_other_sessions
         .await
         .expect("prompt");
     assert_eq!(stop, StopReason::EndTurn);
+    assert!(client.first_token_ms().is_some(), "the production assistant stream records first-token timing");
     assert_eq!(client.take_connection_reply(), "hello");
     client.shutdown().await;
 }

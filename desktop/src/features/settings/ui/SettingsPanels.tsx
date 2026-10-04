@@ -587,8 +587,8 @@ const APPEARANCE_MODE_OPTIONS = [
 
 // Reveal/hide motion for the accent picker: a small translate + opacity fade.
 // The picker sits below the theme grid and reads as tucking up behind it, so
-// it enters from above (slides *down* into place when a non-Buzz theme reveals
-// it) and exits upward (slides up behind the grid when Buzz hides it). No
+// it enters from above (slides *down* into place when a non-Colony theme reveals
+// it) and exits upward (slides up behind the grid when Colony hides it). No
 // height/scale: height collapse clipped the swatches behind the grid's bottom
 // fade (the "white bar"). Snappier than the modal 0.2s since this is a small
 // settings control, sharing the modal/ProfileSettingsCard easing curve.
@@ -616,9 +616,9 @@ export function ThemeSettingsCard() {
   const showCommunityScope = communities.length > 1;
   const communityLabel = appearanceCommunityLabel(activeCommunity?.name);
 
-  // Buzz themes pin a neutral accent (GitHub black in light, white in dark),
-  // so the accent picker is hidden while a Buzz theme is active. `themeName` is
-  // the effective theme, so this also covers System mode resolving to Buzz.
+  // Colony themes pin a neutral accent (GitHub black in light, white in dark),
+  // so the accent picker is hidden while a Colony theme is active. `themeName` is
+  // the effective theme, so this also covers System mode resolving to Colony.
   const buzzThemeSelected = isBuzzTheme(themeName);
   const accentPickerHidden = buzzThemeSelected;
   const shouldReduceMotion = useReducedMotion();
@@ -755,7 +755,7 @@ export function ThemeSettingsCard() {
           }}
         />
         {/* Bottom fade is hidden while the accent picker is visible so its
-            near-white gradient (Buzz light) can't mask the swatches below it
+            near-white gradient (Colony light) can't mask the swatches below it
             (the "white bar"). Kept only when the picker is hidden. */}
         {accentPickerHidden ? (
           <div
@@ -817,7 +817,7 @@ export function ThemeSettingsCard() {
     >
       <SettingsSectionHeader
         title="Appearance"
-        description="Choose how Buzz looks and feels."
+        description="Choose how Colony looks and feels."
       />
 
       <SettingsOptionGroupList>
@@ -877,7 +877,7 @@ export function ThemeSettingsCard() {
                 className="text-sm font-normal text-muted-foreground/70"
                 data-settings-subcopy
               >
-                Choose the colors used throughout Buzz.
+                Choose the colors used throughout Colony.
               </p>
             </div>
             <button
@@ -928,7 +928,7 @@ export function ThemeSettingsCard() {
             </AnimatePresence>
           )}
 
-          {/* Accent color picker is hidden for Buzz themes (pinned neutral accent).
+          {/* Accent color picker is hidden for Colony themes (pinned neutral accent).
               Reveal/hide with the translate-up + opacity fade defined by
               ACCENT_PICKER_TRANSITION above. Reduced motion skips the transition
               and just renders/unrenders. */}

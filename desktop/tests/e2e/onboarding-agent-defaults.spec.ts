@@ -75,7 +75,9 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
     page.getByTestId("onboarding-connect-runtime-codex"),
   ).toBeVisible();
   await expect(
-    page.getByTestId("onboarding-connect-runtime-claude").getByRole("button"),
+    page
+      .getByTestId("onboarding-connect-runtime-claude")
+      .locator(".runtime-select"),
   ).toHaveAttribute("aria-pressed", "true");
   const subscription = page.getByTestId("onboarding-connect-runtime-claude");
   const logo = subscription

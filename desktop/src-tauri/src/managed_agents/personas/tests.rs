@@ -49,7 +49,7 @@ fn merge_personas_adds_missing_built_ins() {
         .iter()
         .map(|record| record.display_name.as_str())
         .collect();
-    assert_eq!(display_names, vec!["Scout", "Honey", "Pollen"]);
+    assert_eq!(display_names, vec!["Scout", "Writer", "Researcher"]);
     let active_ids: Vec<&str> = records
         .iter()
         .filter(|record| record.is_active)
@@ -418,4 +418,27 @@ fn fizz_builtin_resolves_to_buzz_agent() {
         "buzz-agent",
         "Fizz must resolve to buzz-agent specifically"
     );
+}
+
+#[test]
+fn stock_scout_prompt_migrates_and_custom_instructions_survive() {
+    let mut stock = custom_persona("builtin:fizz", "Fizz");
+    stock.system_prompt = super::SCOUT_LEGACY_SYSTEM_PROMPT.to_string();
+    stock.name_pool = vec!["Fizz".to_string()];
+    let (records, _) = merge_personas(vec![stock], "2026-10-04T00:00:00Z");
+    let scout = records
+        .iter()
+        .find(|record| record.id == "builtin:fizz")
+        .expect("Scout definition");
+    assert_eq!(scout.display_name, "Scout");
+    assert_eq!(scout.system_prompt, super::SCOUT_SYSTEM_PROMPT.trim());
+    assert_eq!(scout.name_pool, vec!["Scout"]);
+    let custom = custom_persona("builtin:fizz", "My assistant");
+    let (records, _) = merge_personas(vec![custom.clone()], "2026-10-04T00:00:00Z");
+    let kept = records
+        .iter()
+        .find(|record| record.id == "builtin:fizz")
+        .expect("custom Scout definition");
+    assert_eq!(kept.system_prompt, custom.system_prompt);
+    assert_eq!(kept.display_name, custom.display_name);
 }

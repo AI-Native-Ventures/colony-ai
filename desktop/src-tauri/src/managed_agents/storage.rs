@@ -440,7 +440,38 @@ pub(crate) fn save_agent_definitions<R: tauri::Runtime>(
     instances.retain(|record| !record.pubkey.is_empty());
     let mut definitions = definitions.to_vec();
     definitions.retain(|record| record.pubkey.is_empty());
+    if definitions.iter().any(|record| {
+        record.slug.as_deref() == Some("builtin:fizz")
+            && record
+                .system_prompt
+                .as_deref()
+                .is_some_and(|prompt| prompt.trim() == super::personas::SCOUT_SYSTEM_PROMPT.trim())
+    }) {
+        migrate_stock_scout_instances(&mut instances);
+    }
     write_agent_store(app, definitions, instances)
+}
+
+/// Refresh shipped Scout snapshots without removing identities or overwriting custom instructions.
+fn migrate_stock_scout_instances(instances: &mut [ManagedAgentRecord]) {
+    for record in instances {
+        if record.persona_id.as_deref() != Some("builtin:fizz")
+            || !matches!(record.name.as_str(), "Scout" | "Fizz")
+        {
+            continue;
+        }
+        if !super::personas::is_stock_scout_prompt(
+            record.system_prompt.as_deref().unwrap_or_default(),
+        ) {
+            continue;
+        }
+        record.system_prompt = Some(super::personas::SCOUT_SYSTEM_PROMPT.trim().to_string());
+        if record.name == "Fizz" {
+            record.name = "Scout".to_string();
+            record.avatar_url =
+                super::personas::built_in_persona_avatar_url("builtin:fizz").map(str::to_string);
+        }
+    }
 }
 
 /// Serialize definitions + instances into the single unified store file.

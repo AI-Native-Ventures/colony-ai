@@ -9,7 +9,23 @@ test("long native commands receive a longer deadline", () => {
     nativeRequestTimeout("invoke", "save_onboarding_memories", 60_000),
     300_000,
   );
+  assert.equal(
+    nativeRequestTimeout("invoke", "install_acp_runtime", 60_000),
+    720_000,
+  );
   assert.equal(nativeRequestTimeout("invoke", "sign_out", 60_000), 60_000);
+  assert.equal(
+    nativeRequestTimeout("invoke", "google_desktop_sign_in", 60_000),
+    210_000,
+  );
+  assert.equal(
+    nativeRequestTimeout("invoke", "google_desktop_sign_in", 120_000),
+    210_000,
+  );
+  assert.equal(
+    nativeRequestTimeout("invoke", "google_desktop_sign_in", 240_000),
+    240_000,
+  );
   assert.equal(
     nativeRequestTimeout("emit", "save_onboarding_memories", 60_000),
     60_000,
@@ -53,6 +69,24 @@ test("out of order responses retain native error values", async (t) => {
   send({ type: "response", id: requests[0].id, result: { ok: true } });
   await assert.rejects(second, (e) => e === "relay rate-limited: retry");
   assert.deepEqual(await first, { ok: true });
+  assert.equal(host.pending.size, 0);
+});
+test("Google OAuth can finish after Electron's ordinary deadline", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { host, requests, send } = fixture(t);
+  const pending = host.request("invoke", {
+    command: "google_desktop_sign_in",
+    args: { clientId: "generated-test-client" },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  t.mock.timers.tick(120_001);
+  assert.equal(host.pending.size, 1);
+  send({
+    type: "response",
+    id: requests[0].id,
+    result: "generated-fixture-id-token",
+  });
+  assert.equal(await pending, "generated-fixture-id-token");
   assert.equal(host.pending.size, 0);
 });
 test("fragmented frames and legacy diagnostics do not lose pushes", (t) => {
@@ -105,4 +139,26 @@ test("shutdown kills a resistant owned child and waits for exit", async () => {
   await host.close();
   assert.equal(host.childExited, true);
   assert.deepEqual(signals, ["SIGKILL"]);
+});
+
+test("installation response survives the ordinary RPC deadline", async (t) => {
+  const { host, requests, send } = fixture(t);
+  host.timeout = 5;
+  const install = host
+    .request("invoke", {
+      command: "install_acp_runtime",
+      args: { runtimeId: "codex" },
+    })
+    .then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    );
+  const ordinary = host.request("invoke", { command: "get_config" });
+  await assert.rejects(ordinary, /timed out/);
+  const request = requests.find(
+    (frame) => frame.command === "install_acp_runtime",
+  );
+  assert.equal(host.pending.has(request.id), true);
+  send({ type: "response", id: request.id, result: { success: true } });
+  assert.deepEqual(await install, { value: { success: true } });
 });

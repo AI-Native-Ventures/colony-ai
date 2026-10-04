@@ -91,6 +91,7 @@ pub async fn test_onboarding_connection(
     app: AppHandle,
     config: GlobalAgentConfig,
     request_id: String,
+    business: Option<serde_json::Value>,
 ) -> Result<Value, String> {
     let cancel = CancellationToken::new();
     {
@@ -127,6 +128,15 @@ pub async fn test_onboarding_connection(
         .ok_or("The Colony agent harness is missing. Reinstall Colony.")?;
     let mut command = Command::new(acp);
     command.arg("connection-test").arg("--json");
+    if let Some(business) = business {
+        let context = serde_json::to_string(&business).map_err(|_| "Invalid business context.")?;
+        if context.len() > 8192 {
+            return Err("Business description is too long. Shorten it and try again.".into());
+        }
+        command.env("COLONY_CONNECTION_BUSINESS", context);
+    } else {
+        command.env_remove("COLONY_CONNECTION_BUSINESS");
+    }
     command.env("BUZZ_ACP_AGENT_COMMAND", resolved_agent);
     command.env(
         "BUZZ_ACP_AGENT_ARGS",
@@ -214,8 +224,20 @@ pub async fn test_onboarding_connection(
             json!({"error":"The agent could not start. Check this harness's sign-in and adapter installation, then try again."}),
         );
     }
-    serde_json::from_slice(&output.stdout)
-        .map_err(|_| "The agent returned an invalid connection result. Try again.".to_owned())
+    let result: Value = serde_json::from_slice(&output.stdout)
+        .map_err(|_| "The agent returned an invalid connection result. Try again.".to_owned())?;
+    if cancel.is_cancelled() {
+        return Err("Connection test cancelled.".into());
+    }
+    if result.get("error").is_none()
+        && result
+            .get("reply")
+            .and_then(Value::as_str)
+            .is_some_and(|reply| !reply.trim().is_empty())
+    {
+        crate::managed_agents::verified_connection::record(&config)?;
+    }
+    Ok(result)
 }
 
 #[cfg(test)]

@@ -1,4 +1,6 @@
 import path from "node:path";
+import { createSubscriptionService } from "./ai-subscriptions.mjs";
+import { requestClaudeCredential } from "./claude-credential-access.mjs";
 import {
   BrowserWindow,
   Notification,
@@ -9,6 +11,7 @@ import {
   shell,
 } from "electron";
 import { createOpenRouterService } from "./openrouter-oauth.mjs";
+import { createWorkspaceFileService } from "./workspace-files.mjs";
 import { RendererHost } from "./renderer-host.mjs";
 import { createShellPlugins } from "./shell-plugins.mjs";
 import { validWindowLabel } from "./window-rules.mjs";
@@ -77,6 +80,17 @@ export function createAppWindow({
     },
     invoke: (command, args) => host.request("invoke", { command, args }),
   });
+  const subscriptions = createSubscriptionService({
+    requestClaudeCredential: () =>
+      requestClaudeCredential({
+        confirm: (options) => dialog.showMessageBox(window, options),
+        alive: () => !window.isDestroyed(),
+      }),
+  });
+  const workspaceFiles = createWorkspaceFileService({
+    invoke: (command, args) =>
+      rendererHost.request("invoke", { command, args }),
+  });
   window.on("closed", () => openRouter.cancel());
   const disposeWindowEvents = shellPlugins.attachWindowEvents(window);
   rendererHost.on("event", send);
@@ -110,8 +124,25 @@ export function createAppWindow({
 
   /** Handle one renderer request that already passed the sender check. */
   async function dispatch(type, payload) {
+    if (
+      type === "invoke" &&
+      ["resolve_agent_workspace_file", "read_agent_workspace_file"].includes(
+        payload.command,
+      )
+    ) {
+      const generation = rendererHost.generation;
+      const result = await (payload.command === "resolve_agent_workspace_file"
+        ? workspaceFiles.resolve(payload.args)
+        : workspaceFiles.read(payload.args));
+      rendererHost.check(generation);
+      return result;
+    }
     if (type === "invoke" && main) {
       switch (payload.command) {
+        case "get_ai_subscriptions":
+          return subscriptions.read();
+        case "check_claude_subscription":
+          return subscriptions.readClaude();
         case "connect_openrouter":
           return openRouter.connect();
         case "cancel_openrouter":

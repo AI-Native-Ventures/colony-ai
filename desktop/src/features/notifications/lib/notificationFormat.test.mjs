@@ -138,7 +138,7 @@ test("approval and needs-action titles match the home-feed conventions", () => {
     }),
     {
       title: "Needs Action",
-      body: "Something in Buzz needs your attention.",
+      body: "Something in Colony needs your attention.",
     },
   );
 });

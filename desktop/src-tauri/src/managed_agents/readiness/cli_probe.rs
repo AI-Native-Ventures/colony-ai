@@ -65,10 +65,10 @@ pub(crate) fn login_probe(
     }
     crate::util::configure_no_window(&mut command);
 
-    match command.output() {
-        Ok(o) if o.status.success() => ProbeOutcome::LoggedIn,
-        Ok(o) => classify_probe_output(&o.stderr, false),
-        Err(_) => ProbeOutcome::LoggedOut,
+    match crate::managed_agents::output_with_timeout(command, std::time::Duration::from_secs(10)) {
+        Some(o) if o.status.success() => ProbeOutcome::LoggedIn,
+        Some(o) => classify_probe_output(&o.stderr, false),
+        None => ProbeOutcome::LoggedOut,
     }
 }
 

@@ -60,6 +60,27 @@ function safeIdentityError(error: unknown): AuthApiError {
     : new AuthApiError("identity_unavailable");
 }
 
+function safeGoogleError(error: unknown): AuthApiError {
+  if (error instanceof AuthApiError) return error;
+  const message =
+    typeof error === "string"
+      ? error
+      : error instanceof Error
+        ? error.message
+        : "";
+  switch (message) {
+    case "Google sign-in was cancelled.":
+      return new AuthApiError("google_sign_in_cancelled");
+    case "Google sign-in timed out.":
+    case "Native command timed out; its result is unknown":
+      return new AuthApiError("google_sign_in_timed_out");
+    case "Google sign-in is not configured.":
+      return new AuthApiError("google_sign_in_unavailable");
+    default:
+      return new AuthApiError("google_sign_in_failed");
+  }
+}
+
 function cacheScope(baseUrl: string, pubkey: string): string {
   let base: URL;
   try {
@@ -179,8 +200,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         const { api } = await apiFor();
         return await consumeSession(await api.signInWithGoogle(idToken));
       } catch (error) {
-        if (error instanceof AuthApiError) throw error;
-        throw new AuthApiError("google_sign_in_failed");
+        throw safeGoogleError(error);
       } finally {
         idToken = "";
       }
@@ -293,8 +313,7 @@ async function googleSignInFromNativeHost(): Promise<string> {
     if (!token) throw new AuthApiError("google_sign_in_failed");
     return token;
   } catch (error) {
-    if (error instanceof AuthApiError) throw error;
-    throw new AuthApiError("google_sign_in_failed");
+    throw safeGoogleError(error);
   }
 }
 

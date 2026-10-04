@@ -32,6 +32,7 @@ export function resolveAgentReadiness(
   globalConfig: GlobalAgentConfig,
   scope: "any" | "preferred" = "any",
   gitBashPrerequisite?: GitBashPrerequisite | null,
+  verifiedRuntimeId?: string | null,
 ): AgentReadinessResult {
   // Welcome starts the configured bundled runtime even if another CLI is installed.
   // An unrelated ready CLI cannot waive this runtime's native prerequisite.
@@ -82,7 +83,9 @@ export function resolveAgentReadiness(
   if (
     preferredRuntime.id !== "buzz-agent" &&
     preferredRuntime.id !== "goose" &&
-    preferredRuntime.authStatus.status === "logged_in"
+    (preferredRuntime.authStatus.status === "logged_in" ||
+      (verifiedRuntimeId === preferredRuntime.id &&
+        verifiedRuntimeId === globalConfig.preferred_runtime))
   ) {
     return {
       ready: true,

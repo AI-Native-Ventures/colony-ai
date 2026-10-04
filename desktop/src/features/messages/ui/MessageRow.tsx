@@ -40,6 +40,7 @@ import {
 } from "@/shared/constants/kinds";
 import { AskActionAttachment } from "@/features/messages/ui/AskActionAttachment";
 import { askIdFromAction } from "@/features/company-asks/askRecords";
+import { getWorkspaceFileAuthorPubkey } from "@/features/workarea/workspaceFileAuthor";
 import { getConfigNudgeAuthorPubkey } from "@/features/messages/ui/configNudgeAuthPubkey";
 import { cn } from "@/shared/lib/cn";
 import { useMeasuredCssVariable } from "@/shared/layout/useMeasuredCssVariable";
@@ -514,6 +515,10 @@ export const MessageRow = React.memo(
               // raw event signer (signerPubkey), not a relay-delegated display
               // author, because the agent itself must have signed the card.
               configNudgeAuthorPubkey={getConfigNudgeAuthorPubkey(
+                message,
+                isKnownAgentPubkey,
+              )}
+              workspaceAgentPubkey={getWorkspaceFileAuthorPubkey(
                 message,
                 isKnownAgentPubkey,
               )}

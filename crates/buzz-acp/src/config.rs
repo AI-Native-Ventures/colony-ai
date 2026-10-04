@@ -294,6 +294,10 @@ pub struct CliArgs {
     )]
     pub system_prompt_file: Option<PathBuf>,
 
+    /// Owner-supplied business context for a Colony managed agent.
+    #[arg(long, env = "COLONY_BUSINESS_PROFILE", hide = true)]
+    pub business_profile: Option<String>,
+
     /// Number of parallel agent subprocesses.
     #[arg(long, env = "BUZZ_ACP_AGENTS", default_value_t = 1,
           value_parser = clap::value_parser!(u32).range(1..=32))]
@@ -945,6 +949,10 @@ impl Config {
         } else {
             None
         };
+
+        let system_prompt =
+            crate::business_context::append(system_prompt, args.business_profile.as_deref())
+                .map_err(|error| ConfigError::ConfigFile(error.to_string()))?;
 
         if args.heartbeat_interval > 0 && args.heartbeat_interval < 10 {
             return Err(ConfigError::ConfigFile(
@@ -2947,6 +2955,40 @@ channels = "ALL"
     // A minimal valid private key for test use (secp256k1 scalar = 1).
     const TEST_PRIVATE_KEY: &str =
         "0000000000000000000000000000000000000000000000000000000000000001";
+
+    #[test]
+    fn business_context_reaches_config_through_the_real_cli_path() {
+        let facts = r#"{"name":"North Star","website":"https://northstar.example","description":"An independent design studio."}"#;
+        let args = CliArgs::try_parse_from([
+            "buzz-acp",
+            "--private-key",
+            TEST_PRIVATE_KEY,
+            "--system-prompt",
+            "You are Scout.",
+            "--business-profile",
+            facts,
+        ])
+        .expect("parse standing context");
+        let config = Config::from_args(args).expect("business config");
+        let prompt = config.system_prompt.expect("standing prompt");
+        for fact in [
+            "You are Scout.",
+            "North Star",
+            "https://northstar.example",
+            "An independent design studio.",
+        ] {
+            assert!(prompt.contains(fact), "missing business fact");
+        }
+        let args = CliArgs::try_parse_from([
+            "buzz-acp",
+            "--private-key",
+            TEST_PRIVATE_KEY,
+            "--business-profile",
+            "invalid JSON",
+        ])
+        .expect("parse malformed context");
+        assert!(Config::from_args(args).is_err());
+    }
 
     #[test]
     fn allowed_respond_to_full_path_rejects_disallowed_mode() {

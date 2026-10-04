@@ -1,3 +1,5 @@
+mod agent_workspace;
+pub use agent_workspace::*;
 mod agent_access;
 mod agent_auth;
 mod agent_config;
