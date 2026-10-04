@@ -399,7 +399,7 @@ test("entity tooltip uses project context while relay metadata is delayed", asyn
     page
       .getByRole("tooltip")
       .locator('[data-buzz-tooltip-metadata-content=""]'),
-  ).toHaveText("buzz · The complete Buzz community platform.");
+  ).toHaveText("buzz · The complete Colony community platform.");
 });
 
 test("desktop composer and sent message keep Buzz entities chip-only", async ({
