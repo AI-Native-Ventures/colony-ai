@@ -436,20 +436,22 @@ test("reacting with a custom emoji renders via the loopback media proxy", async 
 
   const inlineAddReactionButton = row.getByLabel("Add reaction");
   // The picker closes with the pointer/focus position depending on animation
-  // timing. Put the row into a deterministic idle state before checking the
+  // timing: Radix hands focus back to a trigger once the exit animation ends,
+  // which can land after a one-shot blur and keep the row focus-within. Put
+  // the row into a deterministic idle state on every poll, then check the
   // pill's pre-existing hidden behavior.
-  await page.mouse.move(0, 0);
-  await page.evaluate(() => {
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-  });
   await expect
-    .poll(() =>
-      inlineAddReactionButton.evaluate((button) => {
+    .poll(async () => {
+      await page.mouse.move(0, 0);
+      await page.evaluate(() => {
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+      });
+      return inlineAddReactionButton.evaluate((button) => {
         return getComputedStyle(button).opacity;
-      }),
-    )
+      });
+    })
     .toBe("0");
   await expect
     .poll(() =>
