@@ -177,11 +177,33 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
   let teammates = [];
   let scout;
   let scoutPubkey = "";
+  const dumpTestIds = async (label) => {
+    try {
+      evidence.observed[label] = await page.evaluate(() =>
+        [
+          ...new Set(
+            [...document.querySelectorAll("[data-testid]")].map((node) =>
+              node
+                .getAttribute("data-testid")
+                .replace(/[0-9a-f]{64}/gu, "<id>"),
+            ),
+          ),
+        ].join("\n"),
+      );
+    } catch {
+      // Page unavailable.
+    }
+  };
   await evidence.step("Team", page, async () => {
     await page.getByTestId("sidebar-company-team").click();
-    const list = page.getByTestId("company-team-list");
-    await list.waitFor({ timeout: 25000 });
-    const rows = list.locator('[data-testid^="company-team-member-"]');
+    // Rows are matched at page level: the list wrapper test id is not required.
+    const rows = page.locator('[data-testid^="company-team-member-"]');
+    try {
+      await rows.first().waitFor({ timeout: 25000 });
+    } catch (error) {
+      await dumpTestIds("DOM test ids when the Team roster was not found");
+      throw error;
+    }
     teammates = await rows.evaluateAll((items) =>
       items.map((row) => ({
         pubkey: row.dataset.testid.replace("company-team-member-", ""),
@@ -302,7 +324,7 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
       const menu = page.getByTestId("mention-autocomplete");
       await menu.waitFor({ timeout: 15000 });
       const entries = await menu
-        .locator('[data-testid^="mention-suggestion-"]')
+        .locator("[data-mention-suggestion-index]")
         .evaluateAll((rows) =>
           rows.map((row) => ({
             key: row.dataset.testid.replace("mention-suggestion-", ""),
@@ -438,6 +460,36 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
     }
   }
   evidence.observed["Welcome timeline text (final)"] = await timelineText();
+  // Scout's status can still be settling on first sight, so look again after a reply.
+  if (replyText) {
+    const recheck = {
+      name: "Team status after reply",
+      status: "BLOCKED",
+      reason: "Team page not reopened.",
+      sinceStartMs: Date.now() - evidence.started,
+    };
+    evidence.rows.push(recheck);
+    try {
+      const started = Date.now();
+      await page.getByTestId("sidebar-company-team").click();
+      const row = page.locator('[data-testid^="company-team-member-"]').filter({
+        hasText: /\bScout\b/u,
+      });
+      await row.first().waitFor({ timeout: 15000 });
+      const text = (await row.first().innerText()).replace(/\n+/gu, " / ");
+      evidence.observed["Scout Team row after the business reply"] = text;
+      Object.assign(recheck, {
+        status: "PASS",
+        reason: `Scout Team row after a real reply: ${text}`,
+        durationMs: Date.now() - started,
+      });
+    } catch {
+      recheck.status = "FAIL";
+      recheck.reason = "Scout Team row not found on the second look.";
+    }
+    await evidence.capture(recheck.name, page, recheck);
+    await evidence.write();
+  }
   await evidence.step("Reply file references", page, async () => {
     if (!reply)
       return { status: "BLOCKED", reason: "No reply row to inspect." };
