@@ -175,7 +175,7 @@ never by page content). Fields:
 | `allowedOrigins` | exact `scheme://host:port` strings approved by the person |
 | `privateExceptions` | explicit `host:port` the person approved despite private range (default empty, UI must warn) |
 | `issuedAt`, `expiresAt` | default 15 minutes, hard cap 60 minutes |
-| `epoch` | integer, incremented on revoke, take over, and policy change |
+| `epoch` | integer, incremented on revoke, take over, expiry and any narrowing (origin or tab removed); widening (approving an origin) does not fence |
 | `state` | `active`, `revoked`, `expired`, `taken-over` |
 
 Rules
@@ -296,8 +296,9 @@ page url=https://shop.example/cart title="Cart" generation=3
 
 Rules
 
-- Interactive and landmark nodes get refs `e1`, `e2` ... Static text is kept
-  only when it labels something, so snapshots stay small.
+- Interactive and landmark nodes get refs `e1`, `e2` ... Static text is kept as
+  `- text "..."` lines (each capped at 160 chars) except where a named control
+  already carries the same text. Bulk reading goes through `browser_read`.
 - Stable refs: a ref maps to the CDP `backendDOMNodeId`. The mapping persists
   across snapshots of the same document, so an element keeps its ref when the
   page re-renders around it. A new document (main frame navigation) starts a new
@@ -307,11 +308,18 @@ Rules
 - Bounds: depth max 40, max 1 500 nodes, max 30 000 chars, name and value
   truncated to 160 chars each. A truncated snapshot ends with
   `truncated nodes=N omitted=M` so the agent knows to scroll or narrow.
-- Values: input values are included except for credential fields (`type=password`,
-  autocomplete tokens `cc-*`, `one-time-code`, `current-password`, `new-password`),
-  which print `value=[redacted]`. Annotation `credential` and `consequential`
+- Values: input values are included only when the DOM attributes prove the field
+  is not a credential (`type=password`, autocomplete tokens `cc-*`,
+  `one-time-code`, `current-password`, `new-password`, or a credential style
+  name). Credential fields and fields whose attributes are unknown print
+  `value=[redacted]` (fail closed). Annotations `credential` and `consequential`
   come from the classifier, so the agent knows in advance what will need the
   person.
+- Page text is sanitized before it is shown: control, zero width, bidi and Unicode
+  tag characters are stripped, whitespace collapsed, quotes escaped, and secret
+  shaped strings redacted, so a name cannot break out of its line or smuggle
+  hidden instructions.
+- Cross-origin frame content is never walked.
 - Hidden, `aria-hidden` and `display:none` nodes are skipped.
 - Cross-origin frames: one line `iframe origin=https://x.test (not accessible)`.
 
