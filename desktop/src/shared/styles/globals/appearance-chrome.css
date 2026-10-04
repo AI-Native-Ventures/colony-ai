@@ -1,0 +1,257 @@
+/* Named palettes and custom navigation share the same chrome paint source. */
+:root .w20-settings-shell.w20-settings-shell {
+  --primary: inherit;
+  --primary-foreground: inherit;
+  --ring: inherit;
+}
+
+:root:not([data-buzz-sidebar]) .w20-settings-shell {
+  --background: inherit;
+  --foreground: inherit;
+  --muted: inherit;
+  --muted-foreground: inherit;
+  --border: inherit;
+  --input: inherit;
+  --settings-subcopy-color: hsl(var(--muted-foreground));
+}
+
+:root:not([data-buzz-sidebar]) .w20-appearance {
+  --ink: hsl(var(--foreground));
+  --muted: hsl(var(--muted-foreground));
+  --line: hsl(var(--border));
+  --paper: hsl(var(--background));
+  --panel: hsl(var(--card));
+  --hover: hsl(var(--colony-hover));
+}
+
+:root:not([data-buzz-sidebar]) {
+  --colony-accent: var(--primary);
+  --colony-focus: var(--ring);
+  --colony-fg: var(--foreground);
+  --colony-muted: var(--muted-foreground);
+  --colony-faint: var(--muted-foreground);
+  --colony-border: var(--border);
+  --colony-surface: var(--background);
+  --colony-surface-raised: var(--card);
+  --colony-canvas: var(--sidebar-background);
+  --colony-hover: var(--muted);
+  --colony-field: var(--muted);
+  --colony-sidebar-foreground: var(--sidebar-foreground);
+  --colony-sidebar-selected-foreground: var(--sidebar-active-foreground);
+  --colony-sidebar-muted-foreground: hsl(var(--muted-foreground));
+  --colony-sidebar-hover-surface: hsl(var(--muted));
+  --colony-sidebar-active-surface: hsl(var(--primary) / 0.12);
+  --colony-sidebar-active-indicator: hsl(var(--primary));
+  --colony-workspace-link-color: hsl(var(--primary));
+  --w20-appearance-accent: hsl(var(--primary));
+}
+
+:root.w20-custom-appearance {
+  --colony-chrome-paint: linear-gradient(
+    155deg,
+    var(--w20-custom-gradient-start) 8%,
+    var(--w20-custom-gradient-end) 95%
+  );
+  --colony-sidebar-active-indicator: hsl(var(--primary));
+  --colony-sidebar-active-surface: hsl(var(--primary) / 0.12);
+  --colony-sidebar-hover-surface: hsl(var(--primary) / 0.08);
+  --colony-workspace-link-color: hsl(var(--primary));
+}
+
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance):has(
+  [data-colony-full-app-shell],
+  .w20-settings-shell
+) {
+  --colony-sidebar-foreground: var(--sidebar-foreground);
+  --colony-sidebar-muted-foreground: hsl(var(--muted-foreground));
+  --colony-chrome-paint: linear-gradient(
+    hsl(var(--sidebar-background)),
+    hsl(var(--sidebar-background))
+  );
+}
+
+:root.w20-custom-appearance:has(
+  [data-colony-full-app-shell],
+  .w20-settings-shell
+) {
+  --colony-chrome-paint: linear-gradient(
+    155deg,
+    var(--w20-custom-gradient-start) 8%,
+    var(--w20-custom-gradient-end) 95%
+  );
+}
+
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance):has(
+    [data-colony-full-app-shell],
+    .w20-settings-shell
+  )
+  :is(
+    .buzz-theme-gradient-underlay,
+    .buzz-theme-gradient-layer-light,
+    .buzz-theme-gradient-layer-dark,
+    .buzz-huddle-app-surface,
+    .group\/sidebar-wrapper
+  ) {
+  /* biome-ignore lint/complexity/noImportantStyles: Applied paint must override later lazy route artwork. */
+  background-image: var(--colony-chrome-paint) !important;
+  background-color: hsl(var(--sidebar-background));
+}
+
+:root.w20-custom-appearance
+  :is(
+    [data-testid="community-rail"],
+    [data-testid="app-top-chrome"],
+    [data-testid="app-sidebar"],
+    .w20-settings-sidebar [data-sidebar="sidebar"]
+  ) {
+  background-color: transparent;
+  background-image: none;
+}
+
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance)
+  :is(
+    .w20-settings-shell,
+    .w20-settings-sidebar,
+    [data-colony-workspace-route]
+  ) {
+  color: hsl(var(--foreground));
+}
+
+:root:not([data-buzz-sidebar])
+  :is(
+    .w20-settings-shell,
+    .w20-settings-shell main,
+    .w20-settings-shell [data-buzz-content-surface],
+    [data-buzz-content-surface]
+  ) {
+  background-color: hsl(var(--background));
+  border-color: hsl(var(--border));
+}
+
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance)
+  :is(
+    .w20-nav-title,
+    .w20-nav-back,
+    .w20-nav-item,
+    .w20-inner-tab,
+    .w20-nav-search input,
+    .w20-settings-sidebar [data-sidebar="sidebar"]
+  ) {
+  color: hsl(var(--foreground));
+}
+
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance)
+  :is(.w20-nav-item.is-active, .w20-inner-tab[aria-selected="true"]) {
+  color: hsl(var(--primary));
+}
+
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance)
+  :is(
+    .w20-inner-tab[aria-selected="true"]::after,
+    .w20-nav-item.is-active::before
+  ) {
+  background: hsl(var(--primary));
+}
+
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance)
+  [data-testid^="community-rail-button-"]
+  > span:not([data-testid]) {
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--foreground));
+}
+
+.ap-apply-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.ap-apply-actions button {
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  padding: 0.5rem 0.875rem;
+  font-size: var(--text-xs);
+  color: hsl(var(--foreground));
+}
+.ap-apply-actions .ap-apply-button {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: transparent;
+}
+.ap-apply-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ap-apply-actions button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance)
+  [data-button-variant="default"] {
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance)
+  .w20-nav-item.is-active {
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--foreground));
+}
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance)
+  :is(.w20-nav-item.is-active::before, .w20-inner-tab.is-active::after) {
+  background: hsl(var(--primary));
+}
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance)
+  :is(.buzz-huddle-shell, body:has(.w20-settings-shell)) {
+  background: hsl(var(--sidebar-background));
+}
+
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance)
+  [data-testid="open-search"],
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance) .w20-nav-search {
+  background: hsl(var(--background) / 0.35);
+  border-color: hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+}
+
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance)
+  :is(input, select, button, a):focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance)
+  .app-sidebar-full-shell
+  [data-sidebar="menu-button"][data-active="true"] {
+  background: var(--colony-sidebar-active-surface);
+  color: hsl(var(--sidebar-foreground));
+}
+
+:root:not([data-buzz-sidebar])
+  :is(.w20-nav-heading, .w20-nav-person small, .w20-topbar-title > span) {
+  color: hsl(var(--muted-foreground));
+}
+
+:root:not([data-buzz-sidebar])
+  :is(.w20-topbar-title strong, .w20-inner-tab:not(.is-active)) {
+  color: hsl(var(--foreground));
+}
+
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance)
+  :is(.w20-nav-avatar, .w20-nav-person > span) {
+  background: hsl(var(--colony-hover));
+  color: hsl(var(--foreground));
+}
+
+:root:is(:not([data-buzz-sidebar]), .w20-custom-appearance)
+  .w20-template-create-button {
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+:root:not([data-buzz-sidebar]) [role="alertdialog"] {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+}

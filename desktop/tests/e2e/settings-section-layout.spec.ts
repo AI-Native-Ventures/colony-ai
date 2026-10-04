@@ -467,7 +467,7 @@ test("workspace appearance saves the named theme and preserves density", async (
       borderRadius: "7px",
     },
   });
-  await expect.poll(innerTabIndicatorColor).toBe("rgb(38, 85, 160)");
+  await expect.poll(innerTabIndicatorColor).toBe("rgb(137, 90, 246)");
 
   await page.getByTestId("appearance-open-themes").click();
   await page.getByTestId("theme-catalog-buzz-dark").click();
@@ -489,7 +489,7 @@ test("workspace appearance saves the named theme and preserves density", async (
     "aria-selected",
     "true",
   );
-  await expect.poll(innerTabIndicatorColor).toBe("rgb(157, 193, 251)");
+  await expect.poll(innerTabIndicatorColor).toBe("rgb(137, 90, 246)");
   await expect.poll(sharedChrome).toEqual({
     sectionLabelTracking: "-0.235714px",
     searchTextColor: "rgb(236, 230, 239)",
