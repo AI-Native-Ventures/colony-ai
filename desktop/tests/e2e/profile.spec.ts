@@ -1210,8 +1210,14 @@ test("renders agent profile ingress subviews from the Playwright mock bridge", a
             activeTab: string | undefined;
             x: number[];
           }> = [];
+          const initialTab = container.dataset.activeTab;
           const startedAt = performance.now();
+          let switchedAt: number | null = null;
+          // The window opens at the tab switch, not at the click: a slow click
+          // would otherwise close it before the exit slide leaves its first
+          // frame. Ten seconds only bounds a switch that never happens.
           const sample = () => {
+            const now = performance.now();
             samples.push({
               activeTab: container.dataset.activeTab,
               x: Array.from(container.children).map((child) => {
@@ -1221,11 +1227,17 @@ test("renders agent profile ingress subviews from the Playwright mock bridge", a
                   : new DOMMatrixReadOnly(transform).m41;
               }),
             });
-            if (performance.now() - startedAt < 320) {
-              requestAnimationFrame(sample);
-            } else {
-              resolve(samples);
-            }
+            if (
+              switchedAt === null &&
+              container.dataset.activeTab !== initialTab
+            )
+              switchedAt = now;
+            const done =
+              switchedAt === null
+                ? now - startedAt >= 10_000
+                : now - switchedAt >= 320;
+            if (done) resolve(samples);
+            else requestAnimationFrame(sample);
           };
           requestAnimationFrame(sample);
         },
@@ -1421,6 +1433,11 @@ test("renders agent profile ingress subviews from the Playwright mock bridge", a
   await expect(diagnosticsIngress.locator("svg.lucide-chevron-up")).toHaveCount(
     0,
   );
+  // The start-on-launch toast sits over the last runtime row, and Sonner keeps
+  // a toast open while the pointer rests on it. Park the pointer and let it
+  // leave so the click reaches the ingress.
+  await page.mouse.move(0, 0);
+  await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
   await diagnosticsIngress.click();
   await expectHashSearchParam(page, "profileView", "diagnostics");
   await expect(
