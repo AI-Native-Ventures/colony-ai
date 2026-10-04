@@ -1,3 +1,5 @@
+import { showWorkspaceFiles } from "@/features/workarea/workspaceFiles";
+
 /** Visible channel sections in the reference workspace shell. */
 export function ChannelWorkspaceTabs() {
   return (
@@ -12,7 +14,13 @@ export function ChannelWorkspaceTabs() {
       <span className="text-sm">Work</span>
       <span className="text-sm">Knowledge</span>
       <span className="text-sm">Canvas</span>
-      <span className="text-sm">Files</span>
+      <button
+        type="button"
+        className="text-sm text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+        onClick={showWorkspaceFiles}
+      >
+        Files
+      </button>
     </section>
   );
 }

@@ -37,6 +37,8 @@ export type MessageLinkPillProps = {
 };
 
 export type MarkdownRuntime = {
+  /** Authenticated local agent author, used only for workspace file references. */
+  workspaceAgentPubkey?: string | null;
   agentMentionPubkeysByName?: Record<string, string>;
   channels: Channel[];
   imetaByUrl?: ImetaLookup;
@@ -71,6 +73,8 @@ export type MarkdownRuntime = {
 };
 
 export type MarkdownProps = {
+  /** Raw event signer, present only on agent-authored messages. */
+  workspaceAgentPubkey?: string | null;
   channelNames?: string[];
   className?: string;
   content: string;
