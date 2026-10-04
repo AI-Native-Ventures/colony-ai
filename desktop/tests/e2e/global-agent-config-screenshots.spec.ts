@@ -701,7 +701,7 @@ test.describe("global agent config screenshots", () => {
     await openCreateDialog(page);
 
     const defaults = page.getByTestId("agent-ai-defaults-notice");
-    await expect(defaults).toContainText("Colony Agent");
+    await expect(defaults).toContainText("Buzz Agent");
     await defaults
       .getByRole("button", { name: "Edit global defaults" })
       .click();
