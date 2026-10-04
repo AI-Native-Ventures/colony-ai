@@ -94,7 +94,8 @@ export function AgentDefaultsSettingsCard() {
             ) : null}
           </details>
         )}
-        <section aria-label="Agent defaults configuration">
+        <section aria-label="Bring your own key">
+          <h4 className="mb-3 text-sm font-semibold">Bring your own key</h4>
           <AgentDefaultsEditor key={revision} layout="flat" />
         </section>
       </div>

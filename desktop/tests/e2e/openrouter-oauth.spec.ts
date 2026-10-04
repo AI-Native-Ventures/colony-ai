@@ -327,6 +327,15 @@ test("Settings provides OAuth and keeps manual configuration under Bring your ow
   await page.getByTestId("profile-popover-settings").click();
   await page.getByTestId("settings-group-agents-group").click();
   const card = page.getByTestId("settings-global-agent-config");
+  // Agent Defaults is connection-first: with nothing connected, OpenRouter
+  // sign-in sits behind its own disclosure.
+  await expect(
+    card.getByTestId("agent-defaults-connection"),
+  ).not.toHaveAttribute("aria-busy", "true");
+  await card
+    .getByTestId("agent-defaults-openrouter-alternative")
+    .locator("summary")
+    .click();
   await expect(
     card.getByRole("button", { name: "Connect OpenRouter", exact: true }),
   ).toBeEnabled();
