@@ -91,11 +91,15 @@ Module layout (all under `desktop/electron/browser-broker/`)
 | `redaction.mjs` | pure | strip secrets from text, URLs, log records |
 | `snapshot.mjs` | pure | accessibility tree to text with stable refs, bounds |
 | `action-log.mjs` | pure | bounded redacted log |
-| `broker-core.mjs` | pure given a driver | tool dispatch, gating order, fencing |
+| `tool-definitions.mjs` | pure | the 13 tools, JSON schemas, strict input validation |
+| `broker-core.mjs` | pure given a driver | tool dispatch, gating order, fencing, confirmation parking |
 | `page-driver.mjs` | Electron | CDP driver, the only module that touches `webContents.debugger` |
+| `cdp-functions.mjs` | constants | allowlisted CDP methods and the fixed page functions |
+| `driver-errors.mjs` | pure | the only driver error codes that reach an agent |
 | `egress-proxy.mjs` | node | connect-time resolve and pin, private range denial |
-| `broker-server.mjs` | node | local socket, auth, framing |
-| `mcp-server.mjs` | node | stdio MCP, tools list driven by grant state |
+| `broker-server.mjs`, `broker-client.mjs` | node | local socket, auth, framing, reconnect |
+| `mcp-server.mjs` | node | stdio MCP, tool list driven by grant state |
+| `browser-agent-host.mjs` | node | composition root and the person facing request API |
 
 ## 4. Tabs and sessions
 
@@ -277,8 +281,10 @@ Every call returns `{ ok: true, ... }` or `{ ok: false, code, message }` where
 `private_network_denied`, `scheme_denied`, `dns_failed`, `confirmation_required`
 (nobody to ask), `confirmation_denied`, `stale_ref`, `not_found`,
 `credential_field`, `secret_in_text`, `use_upload_tool`, `timeout`, `tab_limit`,
-`too_large`, `busy`, `invalid_input` and `driver_error`. Driver errors never
-carry internal messages or paths.
+`too_large`, `busy`, `invalid_input`, `driver_error`, and the driver codes
+`click_intercepted`, `element_not_actionable`, `debugger_detached`,
+`tab_crashed` and `cdp_timeout`. Driver errors never carry internal messages or
+paths.
 
 All text that came from a page is wrapped:
 
@@ -290,6 +296,35 @@ All text that came from a page is wrapped:
 
 The broker never parses page text for instructions. Nothing in the policy path
 reads page text. The tool descriptions tell the agent that this block is data.
+
+### Driver safeguards (`page-driver.mjs`)
+
+- Fixed allowlist of CDP methods (`ALLOWED_CDP_METHODS`). Not present: `Network`,
+  `Storage`, `Fetch`, `Target`, `Browser`, `Emulation`, `Runtime.evaluate`,
+  `Page.navigate`. Navigation goes through the host adapter so the broker's
+  synchronous gate and the egress proxy apply.
+- Page functions are constants (`cdp-functions.mjs`) and run through
+  `Runtime.callFunctionOn` in an isolated world created per document, so a page
+  cannot override the built-ins they use. No agent text is ever concatenated into
+  one; the driver refuses any declaration not in the table.
+- Clicks are real input events at the element centre. After scrolling into view a
+  hit test must confirm the element (or a descendant) is what sits at that point,
+  otherwise `click_intercepted` and nothing is sent (defeats overlay tricks). The
+  broker fence is checked again immediately before the mouse events.
+- Screenshots hide credential and card inputs first and always restore them; if
+  hiding fails, no screenshot is taken.
+- A page can still lie through structure it controls (R4). Isolating the
+  functions protects the facts the classifier reads from tampering, not from
+  being truthful about a deceptive page.
+- Adapter contract the Electron host must provide (added to `browser-host.mjs`
+  later): `getTab`, `webContents`, `createTab`, `closeTab`, `loadUrl`, `history`,
+  `stop`, `setControlOwner`, `consumeBlocked`, `onDocumentChanged`,
+  `onTabClosed`, `setNavigationGate`. The gate is called from `will-frame-navigate`
+  and `will-redirect`; a block is cancelled there, recorded, and surfaced to the
+  agent as `origin_approval_required`.
+- Egress proxy wiring per business session: `session.setProxy` with
+  `proxyBypassRules: "<-loopback>"` (Chromium bypasses proxies for loopback by
+  default), then `closeAllConnections()`; reversed when the last grant ends.
 
 ## 9. Snapshot format
 
@@ -443,22 +478,41 @@ Electron and is NOT run locally while the machine rules and the launch hold
 apply. It runs in GitHub CI (`electron-e2e` job family) or later through
 `heavy.sh` when the coordinator lifts the hold.
 
-What stays unproven until then: real Chromium behavior of the CDP driver, the
-proxy against real TLS sites, MCP interop with each ACP runtime's handling of
-`list_changed`, packaged `ELECTRON_RUN_AS_NODE` launch, Rust env wiring.
+What stays unproven until then:
+
+- real Chromium behavior of `page-driver.mjs` and `cdp-functions.mjs` (written to
+  the CDP specs, tested only against a fake debugger and by compiling the page
+  functions)
+- the egress proxy against real TLS sites and Chromium's proxy handling
+- `browser-host.mjs` adapter additions and the navigation gate in
+  `will-frame-navigate` and `will-redirect` (not written yet)
+- MCP interop with each ACP runtime's handling of `tools/list_changed`
+- packaged `ELECTRON_RUN_AS_NODE` launch of `mcp-server.mjs` from `app.asar`
+- the Rust change in `buzz-acp` (`build_mcp_servers` and `AGENT_ENV_REMOVALS`):
+  rustfmt clean, never compiled locally; a pull request or manual CI dispatch is
+  needed because plain branch pushes do not run CI
 
 ## 15. Slices
 
-1. This document.
-2. Pure policy modules plus tests: url-policy, capability, classifier,
-   redaction, snapshot, action-log.
-3. broker-core with fake driver and race tests.
-4. Broker server and MCP server with protocol tests.
-5. `buzz-acp` env gated second MCP server (Rust, compiled by CI only) and main
-   process wiring.
-6. CDP page driver, egress proxy, tab manager additions (Electron, CI only).
-7. Fixture suite in CI, then owner review before the feature is enabled for real
-   sites.
+1. DONE. This document.
+2. DONE. Pure modules with node tests: `url-policy`, `redaction`, `capability`,
+   `classifier`, `snapshot`, `action-log`.
+3. DONE. `tool-definitions` and `broker-core` against an in-memory fake driver
+   (revoke mid task, confirm gate, fencing, untrusted text).
+4. DONE. `broker-server`, `broker-client`, `mcp-server`, `browser-agent-host`
+   with real socket and real child process protocol tests.
+5. DONE, CI UNPROVEN. `buzz-acp` env gated second MCP server and agent env
+   stripping (Rust).
+6. DONE for node. `egress-proxy` (fake resolver, injected connect) and
+   `page-driver` (fake debugger).
+7. HELD until the launch gates pass: `browser-host.mjs` adapter and gate,
+   `main.mjs` and preload wiring behind `COLONY_BROWSER_AGENT=1`, the
+   TypeScript API types for the UI lanes, the Electron fixture site suite
+   (allowed actions, cross origin, private network, redirect approval, revoke
+   mid task, confirmation gate, injection text, credential fields), the packaged
+   MCP launch proof.
+8. Owner review of the threat model and a run on one approved public site before
+   the feature is enabled for real sites.
 
 ## 16. Decisions needing the owner
 
