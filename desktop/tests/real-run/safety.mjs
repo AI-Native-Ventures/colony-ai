@@ -140,6 +140,78 @@ export function cleanEnvironment(source, userDataDir, relayUrl) {
   };
 }
 
+// Real-environment launch: the real HOME so a signed-in Claude Code is found. Only an
+// allowlist is forwarded, so inherited credentials and native/test overrides stay out.
+// Both the env var and the CLI flag are set because the packaged main process calls
+// app.setPath("userData") from COLONY_ELECTRON_USER_DATA and would otherwise fall back
+// to the real "Colony Electron" profile.
+export function realEnvironment(source, userDataDir, relayUrl) {
+  const env = {};
+  for (const key of [
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "TMPDIR",
+    "LANG",
+    "LC_ALL",
+    "CLAUDE_CONFIG_DIR",
+  ]) {
+    if (source[key]) env[key] = source[key];
+  }
+  return {
+    ...env,
+    BUZZ_RELAY_URL: relayUrl,
+    COLONY_ELECTRON_USER_DATA: userDataDir,
+    COLONY_ELECTRON_BACKGROUND: "1",
+  };
+}
+
+// Words that only appear in the owner's personal Claude configuration. A first reply
+// containing any of them leaked unrelated personal context.
+export const PERSONAL_CONFIG_MARKERS = [
+  "gstack",
+  "graphify",
+  "caveman",
+  "superpowers",
+  "adhd",
+  "basheer",
+  "phiri",
+  "ainative.ventures",
+  "html-first",
+  "em-dash",
+  "logo.dev",
+  "clearbit",
+  "llm_provider",
+  "hermit",
+  "merchandmove",
+  "anastellar",
+];
+
+export function personalConfigFindings(text) {
+  const lower = String(text).toLowerCase();
+  return PERSONAL_CONFIG_MARKERS.filter((marker) => lower.includes(marker));
+}
+
+export function businessMentionVerdict(reply, businessName, website) {
+  const text = String(reply).toLowerCase();
+  let host = "";
+  try {
+    host = new URL(website).hostname.replace(/^www\./u, "").toLowerCase();
+  } catch {
+    host = "";
+  }
+  const name = String(businessName ?? "").toLowerCase();
+  const hits = [
+    ...(name && text.includes(name) ? [`name:${businessName}`] : []),
+    ...(host && text.includes(host) ? [`website:${host}`] : []),
+  ];
+  return { status: hits.length ? "PASS" : "FAIL", hits };
+}
+
+export const SETUP_NOTICE = /connect your ai|settings\s*>\s*agents/iu;
+
 export function fileReferenceVerdict(paths, links) {
   if (!paths.length)
     return {

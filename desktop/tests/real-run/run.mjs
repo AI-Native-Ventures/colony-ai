@@ -5,6 +5,7 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   realpath,
   writeFile,
@@ -18,6 +19,7 @@ import {
   assertSafeDiagnostics,
   cleanEnvironment,
   outsideRepo,
+  realEnvironment,
   sandboxPolicy,
 } from "./safety.mjs";
 import { driveFirstRun } from "./steps.mjs";
@@ -71,13 +73,25 @@ try {
 } catch (error) {
   if (error.code !== "ENOENT") throw error;
 }
+// --real-env 1: no process sandbox. The real HOME is used so the signed-in Claude Code
+// on this Mac is found. The app still gets a throwaway user-data directory.
+const realEnv = options["real-env"] === "1";
 const appPath = path.resolve(options.app);
-const executable = path.join(appPath, "Contents", "MacOS", "Colony");
+const macosDir = path.join(appPath, "Contents", "MacOS");
+const executableName = realEnv
+  ? (options.executable ?? (await readdir(macosDir))[0])
+  : "Colony";
+const executable = path.join(macosDir, executableName);
 const resources = path.join(appPath, "Contents", "Resources");
-const digest = async (file) =>
-  createHash("sha256")
-    .update(await readFile(file))
-    .digest("hex");
+const digest = async (file) => {
+  try {
+    return createHash("sha256")
+      .update(await readFile(file))
+      .digest("hex");
+  } catch {
+    return "unavailable";
+  }
+};
 const privateDir = await realpath(
   await mkdtemp(path.join(os.tmpdir(), "colony-real-run-private-")),
 );
@@ -89,28 +103,38 @@ const probeDir = await realpath(
 );
 const { nativeDir, profile, policy } = sandboxPolicy(userDataDir, probeDir);
 const sandboxPath = path.join(privateDir, "sandbox.sb");
-await writeFile(sandboxPath, policy, { mode: 0o600 });
 const quote = (value) => `'${value.replace(/'/gu, `'\\''`)}'`;
 const launcher = path.join(privateDir, "launch.sh");
-await writeFile(
-  launcher,
-  `#!/bin/sh\nexec /usr/bin/sandbox-exec -f ${quote(sandboxPath)} ${quote(executable)} "$@"\n`,
-  { mode: 0o700 },
-);
+if (!realEnv) {
+  await writeFile(sandboxPath, policy, { mode: 0o600 });
+  await writeFile(
+    launcher,
+    `#!/bin/sh\nexec /usr/bin/sandbox-exec -f ${quote(sandboxPath)} ${quote(executable)} "$@"\n`,
+    { mode: 0o700 },
+  );
+}
 const evidence = new Evidence(output, {
-  mode: "Restricted packaged baseline",
+  mode: realEnv
+    ? "Real environment packaged first run"
+    : "Restricted packaged baseline",
+  realEnv,
   appPath,
-  scope:
-    "Unchanged artifact and native IPC, real relay and disposable account. Process sandbox denies keychain access and existing home agent/application data. Normal storage and signed-in provider authentication remain unproven.",
+  scope: realEnv
+    ? "Unchanged CI candidate, real renderer and native host, real HOME and signed-in Claude Code, production relay and a disposable smoke account. Throwaway user-data directory only. No process sandbox."
+    : "Unchanged artifact and native IPC, real relay and disposable account. Process sandbox denies keychain access and existing home agent/application data. Normal storage and signed-in provider authentication remain unproven.",
   artifact: {
     asarSha256: await digest(path.join(resources, "app.asar")),
     nativeHostSha256: await digest(path.join(resources, "colony-native-host")),
   },
-  chromiumSandbox:
-    "Disabled because macOS rejects nested sandbox initialization. Mandatory outer process policy remains inherited by children.",
-  sourceBase: "6e04386b1bd0dfc2494eae730e41b7fbe3eeda5a",
+  chromiumSandbox: realEnv
+    ? "Default Chromium sandbox, no outer process policy."
+    : "Disabled because macOS rejects nested sandbox initialization. Mandatory outer process policy remains inherited by children.",
+  sourceBase:
+    options["source-base"] ?? "6e04386b1bd0dfc2494eae730e41b7fbe3eeda5a",
   relay: relay.origin,
-  privateProfile: { userDataDir, nativeDir, profile },
+  privateProfile: realEnv
+    ? { userDataDir }
+    : { userDataDir, nativeDir, profile },
   replyTimeoutMs,
 });
 await evidence.write();
@@ -124,22 +148,31 @@ process.on("unhandledRejection", () => {
 let application;
 let page;
 try {
-  // Prove this child cannot read a harmless synthetic path outside its profile.
-  const probe =
-    'const fs=require("fs");try{fs.readdirSync(process.argv[1]);process.exit(9)}catch(e){process.exit(e.code==="EPERM"||e.code==="EACCES"?0:8)}';
-  await exec(
-    "/usr/bin/sandbox-exec",
-    ["-f", sandboxPath, process.execPath, "-e", probe, probeDir],
-    { timeout: 10000 },
-  );
-  evidence.metadata.sandboxDenyProbe = "PASS";
-  await evidence.write();
-  application = await electron.launch({
-    executablePath: launcher,
-    args: ["--no-sandbox", `--user-data-dir=${userDataDir}`],
-    env: cleanEnvironment(process.env, userDataDir, relay.origin),
-    timeout: 45000,
-  });
+  if (realEnv) {
+    application = await electron.launch({
+      executablePath: executable,
+      args: [`--user-data-dir=${userDataDir}`],
+      env: realEnvironment(process.env, userDataDir, relay.origin),
+      timeout: 60000,
+    });
+  } else {
+    // Prove this child cannot read a harmless synthetic path outside its profile.
+    const probe =
+      'const fs=require("fs");try{fs.readdirSync(process.argv[1]);process.exit(9)}catch(e){process.exit(e.code==="EPERM"||e.code==="EACCES"?0:8)}';
+    await exec(
+      "/usr/bin/sandbox-exec",
+      ["-f", sandboxPath, process.execPath, "-e", probe, probeDir],
+      { timeout: 10000 },
+    );
+    evidence.metadata.sandboxDenyProbe = "PASS";
+    await evidence.write();
+    application = await electron.launch({
+      executablePath: launcher,
+      args: ["--no-sandbox", `--user-data-dir=${userDataDir}`],
+      env: cleanEnvironment(process.env, userDataDir, relay.origin),
+      timeout: 45000,
+    });
+  }
   const provenance = await application.evaluate(({ app }) => ({
     version: app.getVersion(),
     packaged: app.isPackaged,
@@ -157,6 +190,7 @@ try {
     website: options.website ?? "https://example.com",
     replyTimeoutMs,
     inspectWithoutAi: options["inspect-without-ai"] === "1",
+    realEnv,
   });
 } catch (error) {
   evidence.metadata.failureCategory = error.name;
@@ -175,11 +209,13 @@ try {
     };
     evidence.rows.push(row);
   } else {
-    row.reason =
-      "Restricted packaged startup did not reach Account within the launch gate. No native/mock substitution was made.";
+    row.reason = realEnv
+      ? "Packaged startup did not reach Account within the launch gate. No native/mock substitution was made."
+      : "Restricted packaged startup did not reach Account within the launch gate. No native/mock substitution was made.";
   }
-  evidence.metadata.prerequisiteFailure =
-    "Raw exception and process logs withheld to avoid credential disclosure. Sandbox restrictions may be causal.";
+  evidence.metadata.prerequisiteFailure = realEnv
+    ? "Raw exception and process logs withheld to avoid credential disclosure."
+    : "Raw exception and process logs withheld to avoid credential disclosure. Sandbox restrictions may be causal.";
   if (page && !page.isClosed()) await evidence.capture(row.name, page, row);
 } finally {
   if (application) {
