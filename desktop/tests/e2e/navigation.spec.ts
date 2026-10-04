@@ -555,37 +555,44 @@ test("composer Buzz chip labels wrap without orphaning their icons", async ({
   });
   await expect(sentChip).toBeVisible();
   await expect(sentChip).toHaveClass(/wrapping-inline-chip/);
-  await sentChip.evaluate((element) => {
-    const container = element.parentElement;
-    if (container) container.style.width = "220px";
+  // The sent row can re-render (optimistic row replaced by the confirmed one)
+  // after the chip first appears, which drops a width set on the first
+  // container. Re-apply the width to whichever chip is current on every poll
+  // so the wrapped layout is measured, not a one-shot read of a stale node.
+  const measureWrappedSentChip = () =>
+    sentChip.evaluate((element) => {
+      const container = element.parentElement;
+      if (container) container.style.width = "220px";
+      const chipStyle = getComputedStyle(element);
+      const rects = Array.from(element.getClientRects(), (rect) => ({
+        bottom: rect.bottom,
+        height: rect.height,
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        width: rect.width,
+      })).filter((rect) => rect.width > 0 && rect.height > 0);
+      const fragmentTops = Array.from(
+        new Set(rects.map((rect) => Math.round(rect.top))),
+      ).sort((a, b) => a - b);
+      return {
+        boxDecorationBreak:
+          chipStyle.getPropertyValue("box-decoration-break") ||
+          chipStyle.getPropertyValue("-webkit-box-decoration-break"),
+        fragmentStep:
+          fragmentTops.length > 1 ? fragmentTops[1] - fragmentTops[0] : null,
+        lineHeight: Number.parseFloat(chipStyle.lineHeight),
+        rects,
+      };
+    });
+  await expect.poll(measureWrappedSentChip).toMatchObject({
+    boxDecorationBreak: "clone",
+    lineHeight: 23,
+    fragmentStep: 23,
   });
-  const fragmentMetrics = await sentChip.evaluate((element) => {
-    const chipStyle = getComputedStyle(element);
-    const rects = Array.from(element.getClientRects(), (rect) => ({
-      bottom: rect.bottom,
-      height: rect.height,
-      left: rect.left,
-      right: rect.right,
-      top: rect.top,
-      width: rect.width,
-    })).filter((rect) => rect.width > 0 && rect.height > 0);
-    const fragmentTops = Array.from(
-      new Set(rects.map((rect) => Math.round(rect.top))),
-    ).sort((a, b) => a - b);
-    return {
-      boxDecorationBreak:
-        chipStyle.getPropertyValue("box-decoration-break") ||
-        chipStyle.getPropertyValue("-webkit-box-decoration-break"),
-      fragmentStep:
-        fragmentTops.length > 1 ? fragmentTops[1] - fragmentTops[0] : null,
-      lineHeight: Number.parseFloat(chipStyle.lineHeight),
-      rects,
-    };
-  });
-  expect(fragmentMetrics.boxDecorationBreak).toBe("clone");
-  expect(fragmentMetrics.lineHeight).toBe(23);
-  expect(fragmentMetrics.fragmentStep).toBe(23);
-  expect(fragmentMetrics.rects.length).toBeGreaterThanOrEqual(2);
+  expect((await measureWrappedSentChip()).rects.length).toBeGreaterThanOrEqual(
+    2,
+  );
 
   const tooltip = page.getByRole("tooltip");
   // Radix closes a tooltip when an ancestor of its trigger scrolls. Focusing

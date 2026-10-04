@@ -144,9 +144,18 @@ test.describe("activity panel scope label", () => {
     await page.setViewportSize({ width: 720, height: 700 });
     await expect(scope).toBeVisible();
     await expect(recency).toBeVisible();
-    const recencyWidth = await recency.evaluate(
-      (element) => element.clientWidth,
-    );
+    // Resizing can remount the responsive pane. Visibility alone can resolve
+    // before the flex header has layout, recording a zero-width or mid-layout
+    // baseline. Wait for two consecutive equal, non-zero readings.
+    let recencyWidth = 0;
+    await expect
+      .poll(async () => {
+        const width = await recency.evaluate((element) => element.clientWidth);
+        const settled = width > 0 && width === recencyWidth;
+        recencyWidth = width;
+        return settled;
+      })
+      .toBe(true);
 
     await page.getByTestId("agent-session-settings-menu-trigger").click();
     await page.getByTestId("agent-session-toggle-raw-feed").click();
