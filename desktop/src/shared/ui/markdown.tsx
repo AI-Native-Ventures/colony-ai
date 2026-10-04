@@ -30,10 +30,7 @@ import {
   selectNudgeLeadingContent,
   selectProseOrNudge,
 } from "@/shared/lib/computeConfigNudge";
-import {
-  INLINE_CODE_CHIP_CLASS,
-  MESSAGE_MARKDOWN_CLASS,
-} from "@/shared/ui/mentionChip";
+import { MESSAGE_MARKDOWN_CLASS } from "@/shared/ui/mentionChip";
 
 import {
   classifyChildren,
@@ -41,16 +38,12 @@ import {
   isImageOnlyParagraph,
   markdownPropsAreEqual,
 } from "./markdownUtils";
+import { createMarkdownCode } from "./markdown/MarkdownCode";
 import { ImageMosaic } from "./markdown/ImageMosaic";
 import { copyImageToClipboard, downloadImage } from "./markdown/imageActions";
 import { ImageGalleryStatus } from "./markdown/ImageGalleryStatus";
 import { ImageLightboxZoomControls } from "./markdown/ImageLightboxZoomControls";
-import {
-  CODE_BLOCK_CLASS,
-  extractLanguage,
-  MarkdownCodeBlock,
-  SyntaxHighlightedCode,
-} from "./markdown/CodeBlock";
+import { extractLanguage, MarkdownCodeBlock } from "./markdown/CodeBlock";
 import { EntityLinkAnchor, useOpenEntityLink } from "./markdown/entityLinks";
 import { ExternalLinkAnchor } from "./markdown/ExternalLinkAnchor";
 import { FileCard } from "./markdown/FileCard";
@@ -1404,40 +1397,7 @@ export function createMarkdownComponents(
       </blockquote>
     ),
     br: () => <br />,
-    code: ({ children, className, ...props }: React.ComponentProps<"code">) => {
-      const rawCode = String(children);
-      const code = rawCode.replace(/\n$/, "");
-      const isFencedCodeBlock =
-        typeof className === "string" && className.includes("language-");
-
-      if (isFencedCodeBlock || rawCode.endsWith("\n") || code.includes("\n")) {
-        const language = extractLanguage(className);
-
-        if (language) {
-          return (
-            <SyntaxHighlightedCode code={code} language={language} {...props} />
-          );
-        }
-
-        const lines = code.split("\n");
-        return (
-          <code {...props} className={CODE_BLOCK_CLASS}>
-            {lines.map((line, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: lines are positional
-              <span key={i} data-line="">
-                {line}
-              </span>
-            ))}
-          </code>
-        );
-      }
-
-      return (
-        <code {...props} className={cn(INLINE_CODE_CHIP_CLASS, className)}>
-          {children}
-        </code>
-      );
-    },
+    code: createMarkdownCode(interactive),
     h1: ({ children }) => (
       <h1 className="text-xl font-semibold leading-8 tracking-tight">
         {children}
@@ -1675,6 +1635,7 @@ function MarkdownInner({
   channelNames,
   className,
   configNudgeAuthorPubkey,
+  workspaceAgentPubkey,
   content,
   customEmoji,
   hardLineBreaks = true,
@@ -1730,6 +1691,7 @@ function MarkdownInner({
   );
   const runtime = React.useMemo<MarkdownRuntime>(
     () => ({
+      workspaceAgentPubkey,
       agentMentionPubkeysByName,
       channels,
       imetaByUrl,
@@ -1751,6 +1713,7 @@ function MarkdownInner({
       },
     }),
     [
+      workspaceAgentPubkey,
       agentMentionPubkeysByName,
       channels,
       imetaByUrl,

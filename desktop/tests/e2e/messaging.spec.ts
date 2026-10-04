@@ -1884,9 +1884,10 @@ test("pasting a long copied code block scrolls composer to cursor", async ({
 
 test("code block shows language label when language is specified", async ({
   page,
+  baseURL,
 }) => {
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"], {
-    origin: "http://127.0.0.1:4173",
+    origin: baseURL,
   });
 
   await page.goto("/");
