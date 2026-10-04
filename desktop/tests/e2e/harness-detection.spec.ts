@@ -25,10 +25,11 @@ for (const viewport of [
       runtimes: [missingAdapter],
       mock: { acpRuntimesCatalogAfterInstall: [readyCodex] },
     });
+    await page.getByText(/^More tools \(/).click();
     const card = page.getByTestId("onboarding-connect-runtime-codex");
     await expect(card).toContainText("Setup needed");
     await expect(card).toContainText(
-      "Codex is installed. Its connection adapter is missing.",
+      "Codex is installed. Its connection needs to be set up.",
     );
     await expect(card).not.toContainText("Not installed");
     await waitForAnimations(page);
@@ -73,6 +74,7 @@ for (const viewport of [
       },
     ];
     await openR17ConnectionSetup(page, { runtimes });
+    await page.getByText(/^More tools \(/).click();
     for (const id of ["goose", "omp", "grok"]) {
       const card = page.getByTestId(`onboarding-connect-runtime-${id}`);
       await expect(card).toContainText("Authentication not checked");
@@ -144,6 +146,7 @@ test("bundled Colony Agent does not offer an external setup guide or auth rechec
       r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
     ],
   });
+  await page.getByText(/^More tools \(/).click();
   const card = page.getByTestId("onboarding-connect-runtime-buzz-agent");
   await expect(card).toContainText("No AI connected yet");
   await expect(
@@ -161,6 +164,7 @@ test("runtime auth recheck is labelled and disabled during discovery", async ({
     runtimes: [r17Runtime("codex", "available", { status: "unknown" })],
     discoveryDelayMs: 1500,
   });
+  await page.getByText(/^More tools \(/).click();
   const card = page.getByTestId("onboarding-connect-runtime-codex");
   await expect(card).toContainText("Sign-in status unavailable");
   const check = card.getByRole("button", {
@@ -175,3 +179,218 @@ test("runtime auth recheck is labelled and disabled during discovery", async ({
   await expect(check).toBeDisabled();
   await expect(check).toBeEnabled();
 });
+
+for (const viewport of [
+  { width: 1728, height: 1117 },
+  { width: 1440, height: 900 },
+]) {
+  test(`subscriptions show actual allowances before collapsed tools at ${viewport.width}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await openR17ConnectionSetup(page, {
+      runtimes: [
+        r17Runtime("goose", "available", { status: "unknown" }),
+        { ...readyCodex, availability: "adapter_outdated" },
+        r17Runtime("claude", "available", { status: "logged_in" }),
+      ],
+      mock: {
+        aiSubscriptions: [
+          // This fixture uses the real redacted Codex result observed on this
+          // Mac on 4 October. Browser bridge evidence is still not a packaged run.
+          {
+            id: "codex",
+            signedIn: true,
+            plan: "ChatGPT Pro",
+            source: "live",
+            windows: [
+              {
+                label: "Weekly allowance",
+                remainingPercent: 87,
+                resetsAt: 1791580861000,
+              },
+            ],
+            message: null,
+          },
+          {
+            id: "claude",
+            signedIn: null,
+            plan: "Max 20x",
+            source: "cached",
+            windows: [],
+            message:
+              "Allow access to Claude sign-in to check your subscription. macOS may ask for permission.",
+          },
+        ],
+        installAcpRuntimeResults: [
+          {
+            success: false,
+            steps: [
+              {
+                step: "adapter",
+                command: "install",
+                success: false,
+                stdout: "",
+                stderr:
+                  "install command exceeded the 2-minute ceiling and was terminated",
+                exit_code: null,
+              },
+            ],
+            restarted_count: 0,
+            failed_restart_count: 0,
+            log_path: null,
+          },
+          {
+            success: true,
+            steps: [],
+            restarted_count: 0,
+            failed_restart_count: 0,
+            log_path: null,
+          },
+        ],
+        acpRuntimesCatalogAfterInstall: [
+          readyCodex,
+          r17Runtime("claude", "available", { status: "logged_in" }),
+          r17Runtime("goose", "available", { status: "unknown" }),
+        ],
+      },
+    });
+    const codex = page.getByTestId("onboarding-connect-runtime-codex");
+    await expect(codex).toBeVisible();
+    await expect(codex).toContainText("ChatGPT Pro");
+    await expect(codex).toContainText("87% left");
+    await expect(codex.getByRole("progressbar")).toHaveAttribute("value", "87");
+    await expect(codex).not.toContainText("5-hour allowance");
+    await expect(
+      page.getByTestId("onboarding-connect-runtime-goose"),
+    ).toBeHidden();
+    await expect(
+      page.getByTestId("onboarding-connect-runtime-claude"),
+    ).toContainText("Last known plan: Max 20x");
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `test-results/subscriptions/app-real-data-${viewport.width}.png`,
+    });
+    await codex
+      .getByRole("button", { name: "Update connection", exact: true })
+      .click();
+    await expect(codex.getByRole("alert")).toContainText("timed out");
+    await codex.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(
+      codex.getByRole("button", { name: "Retry", exact: true }),
+    ).toHaveCount(0);
+    await page.getByText(/^More tools \(/).click();
+    await expect(
+      page.getByTestId("onboarding-connect-runtime-goose"),
+    ).toBeVisible();
+  });
+}
+
+test("Claude protected subscription is checked only after an explicit action", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    runtimes: [r17Runtime("claude", "available", { status: "logged_in" })],
+    mock: {
+      aiSubscriptions: [
+        {
+          id: "claude",
+          signedIn: null,
+          plan: "Max 20x",
+          source: "cached",
+          windows: [],
+          message: "macOS may ask for permission.",
+        },
+      ],
+      claudeSubscriptionResult: {
+        id: "claude",
+        signedIn: true,
+        plan: "Max 20x",
+        source: "live",
+        windows: [
+          { label: "5-hour allowance", remainingPercent: 72, resetsAt: null },
+        ],
+        message: null,
+      },
+    },
+  });
+  const card = page.getByTestId("onboarding-connect-runtime-claude");
+  await expect(card).toContainText("Last known plan");
+  await expect(card).not.toContainText("72% left");
+  await card
+    .getByRole("button", { name: "Check Claude subscription", exact: true })
+    .click();
+  await expect(card).toContainText("72% left");
+  await expect(card).toContainText("Subscription found");
+  await expect(
+    card.getByRole("button", {
+      name: "Check Claude subscription",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+});
+
+for (const viewport of [
+  { width: 1728, height: 1117 },
+  { width: 1440, height: 900 },
+]) {
+  test(`local real subscription snapshot proof ${viewport.width}`, async ({
+    page,
+    context,
+  }) => {
+    test.skip(
+      !process.env.COLONY_SUBSCRIPTION_PROOF_FILE,
+      "Local acceptance only, uses a redacted production-reader result",
+    );
+    const { readFile, mkdir } = await import("node:fs/promises");
+    const snapshot = JSON.parse(
+      await readFile(
+        process.env.COLONY_SUBSCRIPTION_PROOF_FILE as string,
+        "utf8",
+      ),
+    );
+    const proofDir =
+      process.env.COLONY_SUBSCRIPTION_PROOF_DIR ?? "test-results/subscriptions";
+    await mkdir(proofDir, { recursive: true });
+    await page.setViewportSize(viewport);
+    await openR17ConnectionSetup(page, {
+      runtimes: [
+        r17Runtime("claude", "available", { status: "logged_in" }),
+        readyCodex,
+        r17Runtime("goose", "available", { status: "unknown" }),
+      ],
+      mock: { aiSubscriptions: snapshot.subscriptions },
+    });
+    await expect(
+      page.getByTestId("onboarding-connect-runtime-codex"),
+    ).toContainText("ChatGPT Pro");
+    await expect(
+      page.getByTestId("onboarding-connect-runtime-claude"),
+    ).toContainText("Last known plan: Max 20x");
+    await expect(
+      page.getByTestId("onboarding-connect-runtime-goose"),
+    ).toBeHidden();
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `${proofDir}/app-production-snapshot-${viewport.width}.png`,
+    });
+    if (process.env.COLONY_REFERENCE_URL) {
+      const reference = await context.newPage();
+      await reference.setViewportSize(viewport);
+      await reference.emulateMedia({ reducedMotion: "reduce" });
+      await reference.goto(`${process.env.COLONY_REFERENCE_URL}#connect`);
+      await expect(
+        reference.getByText("Subscription found", { exact: true }).first(),
+      ).toBeVisible();
+      await expect(reference.locator(".form-content")).toHaveCSS(
+        "opacity",
+        "1",
+      );
+      await waitForAnimations(reference);
+      await reference.screenshot({
+        path: `${proofDir}/reference-connect-${viewport.width}.png`,
+      });
+      await reference.close();
+    }
+  });
+}

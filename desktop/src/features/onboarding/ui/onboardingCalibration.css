@@ -4185,3 +4185,14 @@
     overflow-y: auto;
   }
 }
+
+.colony-onboarding-root .more-tools {
+  margin-top: 16px;
+}
+.colony-onboarding-root .more-tools summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.colony-onboarding-root .more-tools[open] .subscription-cards {
+  margin-top: 12px;
+}

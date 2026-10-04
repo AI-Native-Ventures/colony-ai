@@ -9,6 +9,10 @@ test("long native commands receive a longer deadline", () => {
     nativeRequestTimeout("invoke", "save_onboarding_memories", 60_000),
     300_000,
   );
+  assert.equal(
+    nativeRequestTimeout("invoke", "install_acp_runtime", 60_000),
+    720_000,
+  );
   assert.equal(nativeRequestTimeout("invoke", "sign_out", 60_000), 60_000);
   assert.equal(
     nativeRequestTimeout("emit", "save_onboarding_memories", 60_000),
@@ -105,4 +109,26 @@ test("shutdown kills a resistant owned child and waits for exit", async () => {
   await host.close();
   assert.equal(host.childExited, true);
   assert.deepEqual(signals, ["SIGKILL"]);
+});
+
+test("installation response survives the ordinary RPC deadline", async (t) => {
+  const { host, requests, send } = fixture(t);
+  host.timeout = 5;
+  const install = host
+    .request("invoke", {
+      command: "install_acp_runtime",
+      args: { runtimeId: "codex" },
+    })
+    .then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    );
+  const ordinary = host.request("invoke", { command: "get_config" });
+  await assert.rejects(ordinary, /timed out/);
+  const request = requests.find(
+    (frame) => frame.command === "install_acp_runtime",
+  );
+  assert.equal(host.pending.has(request.id), true);
+  send({ type: "response", id: request.id, result: { success: true } });
+  assert.deepEqual(await install, { value: { success: true } });
 });

@@ -484,6 +484,8 @@ type E2eConfig = {
     feedbackPublishErrors?: Array<string | null>;
     /** Delay product feedback acknowledgements so the pending UI can be captured. */
     feedbackPublishDelayMs?: number;
+    aiSubscriptions?: import("@/shared/api/aiSubscriptions").AiSubscription[];
+    claudeSubscriptionResult?: import("@/shared/api/aiSubscriptions").AiSubscription;
     acpAuthMethods?: Record<string, RawAcpAuthMethodsResult>;
     acpAuthMethodsErrors?: Record<string, string>;
     acpAuthMethodsError?: string;
@@ -20590,6 +20592,38 @@ export function maybeInstallE2eTauriMocks() {
         return handleConnectAcpRuntime(
           payload as { request?: { runtimeId?: string; methodId?: string } },
           activeConfig,
+        );
+      case "get_ai_subscriptions":
+        return (
+          activeConfig?.mock?.aiSubscriptions ?? [
+            {
+              id: "claude",
+              signedIn: null,
+              plan: null,
+              source: "unavailable",
+              windows: [],
+              message: "Subscription could not be checked. Try again.",
+            },
+            {
+              id: "codex",
+              signedIn: null,
+              plan: null,
+              source: "unavailable",
+              windows: [],
+              message: "Subscription could not be checked. Try again.",
+            },
+          ]
+        );
+      case "check_claude_subscription":
+        return (
+          activeConfig?.mock?.claudeSubscriptionResult ?? {
+            id: "claude",
+            signedIn: null,
+            plan: null,
+            source: "unavailable",
+            windows: [],
+            message: "Claude subscription could not be checked. Try again.",
+          }
         );
       case "install_acp_runtime":
         return handleInstallAcpRuntime(

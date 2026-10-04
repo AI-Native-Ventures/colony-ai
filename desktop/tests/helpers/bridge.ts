@@ -339,6 +339,8 @@ type MockBridgeOptions = {
   feedbackPublishErrors?: Array<string | null>;
   /** Delay product feedback acknowledgements so the pending UI can be captured. */
   feedbackPublishDelayMs?: number;
+  aiSubscriptions?: import("../../src/shared/api/aiSubscriptions").AiSubscription[];
+  claudeSubscriptionResult?: import("../../src/shared/api/aiSubscriptions").AiSubscription;
   acpAuthMethods?: Record<string, { methods: Record<string, unknown>[] }>;
   acpAuthMethodsError?: string;
   /** When set, the `delete_custom_harness` mock command throws with this message. */
