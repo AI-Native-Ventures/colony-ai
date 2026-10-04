@@ -402,6 +402,15 @@ export function createCapabilityStore({
       .map(view);
   }
 
+  /** The active grant that owns a tab, or null. */
+  function grantForTab(tabId) {
+    for (const grant of grants.values()) {
+      if (current(grant).state === "active" && grant.tabIds.has(tabId))
+        return view(grant);
+    }
+    return null;
+  }
+
   function getGrant(grantId) {
     const grant = grants.get(grantId);
     return grant ? view(current(grant)) : null;
@@ -439,6 +448,7 @@ export function createCapabilityStore({
     revokeAll: (reason = "revoked") => revokeWhere(() => true, reason),
     sweep,
     grantsForAgent,
+    grantForTab,
     getGrant,
     remainingMs,
     onChange,

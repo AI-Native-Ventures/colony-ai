@@ -210,3 +210,29 @@ export function wrapUntrusted(text, { origin, tab } = {}) {
       .slice(0, 300);
   return `<untrusted-page-content origin="${attr(origin)}" tab="${attr(tab)}">\n${body}\n</untrusted-page-content>`;
 }
+
+/**
+ * Like `sanitizeUntrusted` but keeps line structure, for multi line page text.
+ * Strips control and invisible characters, trims lines, collapses runs of
+ * blank lines, redacts secrets and bounds the length.
+ */
+export function sanitizeBlock(text, maxLength = 8_000) {
+  if (typeof text !== "string") return { text: "", truncated: false };
+  const cleaned = text
+    .slice(0, maxLength * 4)
+    .normalize("NFKC")
+    .replace(INVISIBLE, "")
+    .replace(CONTROLS, "")
+    .replace(/\r\n?/gu, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/gu, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+  const redacted = redactText(cleaned, maxLength * 4);
+  const truncated = redacted.length > maxLength;
+  return {
+    text: truncated ? `${redacted.slice(0, maxLength)}...` : redacted,
+    truncated,
+  };
+}

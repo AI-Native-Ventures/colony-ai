@@ -258,11 +258,14 @@ a stable shape. Tool names are prefixed `browser_`.
 Not exposed, by design: evaluate, run script, CDP, cookies, storage, headers,
 network interception, clipboard, file system paths, extension install.
 
-Every call returns `{ ok, ... }` or `{ ok: false, code, message }` where `code`
-is one of `no_grant`, `grant_expired`, `grant_revoked`, `fenced`,
-`origin_denied`, `origin_approval_required`, `private_network_denied`,
-`scheme_denied`, `confirmation_required`, `confirmation_denied`, `stale_ref`,
-`not_found`, `credential_field`, `timeout`, `tab_limit`, `invalid_input`.
+Every call returns `{ ok: true, ... }` or `{ ok: false, code, message }` where
+`code` is one of `no_grant`, `grant_expired`, `grant_revoked`, `fenced`,
+`origin_denied`, `origin_approval_required` (with `origin`),
+`private_network_denied`, `scheme_denied`, `dns_failed`, `confirmation_required`
+(nobody to ask), `confirmation_denied`, `stale_ref`, `not_found`,
+`credential_field`, `secret_in_text`, `use_upload_tool`, `timeout`, `tab_limit`,
+`too_large`, `busy`, `invalid_input` and `driver_error`. Driver errors never
+carry internal messages or paths.
 
 All text that came from a page is wrapped:
 
