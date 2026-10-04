@@ -53,7 +53,8 @@ the report lists its email for coordinator cleanup. The harness never deletes it
 
 Default intro/reply deadlines are 120 seconds. Override with
 `--reply-timeout-ms 180000`, bounded at 300000. No traces, videos, request bodies,
-headers, tokens or secret input values are recorded. Screenshots mask password
+headers, tokens or secret input values are recorded. DEBUG and PWDEBUG must be
+unset because automation diagnostics can disclose filled input values. Screenshots mask password
 and verification-code inputs. The script exits nonzero for FAIL or BLOCKED rows.
 Use a different output directory for the combined-branch rerun to retain baseline
 provenance. Only public account identifiers appear in the report.

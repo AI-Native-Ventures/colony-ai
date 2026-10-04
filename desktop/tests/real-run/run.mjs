@@ -14,9 +14,15 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { Evidence } from "./report.mjs";
-import { cleanEnvironment, outsideRepo, sandboxPolicy } from "./safety.mjs";
+import {
+  assertSafeDiagnostics,
+  cleanEnvironment,
+  outsideRepo,
+  sandboxPolicy,
+} from "./safety.mjs";
 import { driveFirstRun } from "./steps.mjs";
 
+assertSafeDiagnostics(process.env);
 const exec = promisify(execFile);
 const repo = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

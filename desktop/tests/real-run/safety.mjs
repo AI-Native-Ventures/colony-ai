@@ -166,3 +166,11 @@ export function fileReferenceVerdict(paths, links) {
     reason: `${paths.length} file-like references rendered as plain text, with no interactive claim.`,
   };
 }
+
+export function assertSafeDiagnostics(environment) {
+  if (environment.DEBUG || environment.PWDEBUG) {
+    throw new Error(
+      "Disable DEBUG and PWDEBUG before running: automation diagnostics can expose secret input values.",
+    );
+  }
+}

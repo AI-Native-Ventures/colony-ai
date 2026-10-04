@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  assertSafeDiagnostics,
   brandingFindings,
   fileReferenceVerdict,
   cleanEnvironment,
@@ -144,4 +145,10 @@ test("file references pass only as plain text unless real opening was observed",
     fileReferenceVerdict(["notes.md"], [{ tag: "button", href: null }]).status,
     "BLOCKED",
   );
+});
+
+test("debug tracing is rejected before automation can fill secret fields", () => {
+  assert.throws(() => assertSafeDiagnostics({ DEBUG: "pw:api" }), /Disable/u);
+  assert.throws(() => assertSafeDiagnostics({ PWDEBUG: "1" }), /Disable/u);
+  assert.doesNotThrow(() => assertSafeDiagnostics({}));
 });

@@ -183,15 +183,19 @@ export async function driveWorkspace({ page, evidence, replyTimeoutMs }) {
         reason:
           "Actual reply has no file reference. This gate was not exercised.",
       };
-    const links = await body.locator("a,button").evaluateAll((elements) =>
-      elements
-        .filter((element) =>
-          element.textContent?.match(/\.(md|txt|json|csv|pdf)\b/u),
-        )
-        .map((element) => ({
-          tag: element.tagName.toLowerCase(),
-          href: element.getAttribute("href"),
-        })),
+    const links = await body.locator("a,button").evaluateAll(
+      (elements, references) =>
+        elements
+          .filter((element) =>
+            references.some((reference) =>
+              element.textContent?.includes(reference),
+            ),
+          )
+          .map((element) => ({
+            tag: element.tagName.toLowerCase(),
+            href: element.getAttribute("href"),
+          })),
+      paths,
     );
     return fileReferenceVerdict(paths, links);
   });
