@@ -4,13 +4,14 @@ import {
   type AiSubscription,
 } from "@/shared/api/aiSubscriptions";
 import { SubscriptionAllowance } from "./SubscriptionAllowance";
+import { saveVerifiedWelcomeConnection } from "../welcomeConnection";
 import { discoverAgentModels } from "@/shared/api/agentModels";
 import { OpenRouterConnectionPanel } from "@/shared/ui/OpenRouterConnectionPanel";
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { globalAgentConfigQueryKey } from "@/features/agents/useGlobalAgentConfig";
 import {
-  runOnboardingConnectionTest,
+  runOnboardingBusinessConnectionTest,
   cancelOnboardingConnectionTest,
   subscribeOnboardingConnectionProgress,
   type OnboardingConnectionProgress,
@@ -596,6 +597,7 @@ function RuntimeConnectionPanel({
 
 export function ConnectSetupStep({
   business,
+  communityId,
   error,
   onBack,
   onContinue,
@@ -758,7 +760,21 @@ export function ConnectSetupStep({
         runtimes.data ?? [],
         keyScene ? undefined : selectedModel,
       );
-      const result = await runOnboardingConnectionTest(candidate, isCurrent);
+      const result = await runOnboardingBusinessConnectionTest(
+        candidate,
+        isCurrent,
+        {
+          name: business.name,
+          website: business.website,
+          description: business.description,
+        },
+      );
+      if (!isCurrent()) return;
+      await saveVerifiedWelcomeConnection(
+        communityId,
+        result.config,
+        result.proof,
+      );
       if (!isCurrent()) return;
       queryClient.setQueryData(globalAgentConfigQueryKey, result.config);
       setProof(result.proof);

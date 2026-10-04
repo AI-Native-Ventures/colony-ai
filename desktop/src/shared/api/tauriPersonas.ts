@@ -42,7 +42,12 @@ export type RawPersona = {
 export function fromRawPersona(persona: RawPersona): AgentPersona {
   return {
     id: persona.id,
-    displayName: persona.display_name,
+    displayName:
+      persona.is_builtin &&
+      persona.id === "builtin:fizz" &&
+      persona.display_name === "Fizz"
+        ? "Scout"
+        : persona.display_name,
     avatarUrl: persona.avatar_url,
     description: persona.description ?? null,
     companyRole: persona.company_role ?? null,

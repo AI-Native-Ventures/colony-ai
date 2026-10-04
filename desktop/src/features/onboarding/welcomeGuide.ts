@@ -4,6 +4,7 @@ import {
 } from "./scoutBusinessContext";
 import { buildScoutSystemPrompt } from "./scoutPersona";
 import { isStockScoutPrompt } from "./scoutPersona";
+import { readWelcomeBusinessContext } from "./welcomeConnection";
 import scoutSvg from "./assets/scout.svg?raw";
 import { resolveLegacyWelcomeRuntime } from "./ui/agentReadiness";
 import { stopManagedAgent } from "@/shared/api/tauriManagedAgents";
@@ -259,6 +260,7 @@ export async function buildWelcomeStarterCreateInput(
     spawnAfterCreate: false,
     startOnAppLaunch: false,
     respondTo: "owner-only",
+    parallelism: 1,
   };
 }
 
@@ -277,7 +279,12 @@ export function welcomeStarterRuntimeUpdate(
     existing.agentArgs.join(",") === desiredArgs.join(",") &&
     existing.model === desiredModel &&
     existing.provider === desiredProvider &&
-    existing.mcpCommand === desiredMcpCommand
+    existing.mcpCommand === desiredMcpCommand &&
+    (!desired.envVars?.COLONY_BUSINESS_PROFILE ||
+      existing.envVars.COLONY_BUSINESS_PROFILE ===
+        desired.envVars.COLONY_BUSINESS_PROFILE) &&
+    (desired.parallelism === undefined ||
+      existing.parallelism === desired.parallelism)
   ) {
     return null;
   }
@@ -290,6 +297,17 @@ export function welcomeStarterRuntimeUpdate(
     mcpCommand: desiredMcpCommand,
     model: desiredModel,
     provider: desiredProvider,
+    ...(desired.envVars?.COLONY_BUSINESS_PROFILE
+      ? {
+          envVars: {
+            ...existing.envVars,
+            COLONY_BUSINESS_PROFILE: desired.envVars.COLONY_BUSINESS_PROFILE,
+          },
+        }
+      : {}),
+    ...(desired.parallelism === undefined
+      ? {}
+      : { parallelism: desired.parallelism }),
   };
 }
 
@@ -428,6 +446,12 @@ async function provisionWelcomeTeam(
       relayUrl,
       readScoutBusinessContext(relayUrl),
     );
+    const business = readWelcomeBusinessContext(relayUrl);
+    if (business)
+      desired.envVars = {
+        ...desired.envVars,
+        COLONY_BUSINESS_PROFILE: JSON.stringify(business),
+      };
     const existing = pickWelcomeTeamStarterAgentForRelay(
       existingAgents,
       starter,

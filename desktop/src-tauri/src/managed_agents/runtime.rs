@@ -451,6 +451,7 @@ pub fn spawn_agent_child(
     owner_hex: Option<&str>,
     replay_floor_unix: Option<u64>,
 ) -> Result<crate::managed_agents::ManagedAgentProcess, String> {
+    let launch_started = std::time::Instant::now();
     if let Some(error) = spawn_key_refusal(record) {
         return Err(error);
     }
@@ -512,6 +513,13 @@ pub fn spawn_agent_child(
         ),
     )?;
 
+    append_log_marker(
+        &log_path,
+        &format!(
+            "colony-agent timing launch_configuration_ms={}",
+            launch_started.elapsed().as_millis()
+        ),
+    )?;
     let stdout = open_log_file(&log_path)?;
     let stderr = stdout
         .try_clone()
@@ -825,6 +833,14 @@ pub fn spawn_agent_child(
         command.creation_flags(CREATE_NO_WINDOW);
     }
 
+    append_log_marker(
+        &log_path,
+        &format!(
+            "colony-agent timing launch_setup_ms={}",
+            launch_started.elapsed().as_millis()
+        ),
+    )?;
+    let spawn_started = std::time::Instant::now();
     let child = spawn_with_effort_proof(&mut command, effort).map_err(|error| {
         format!(
             "failed to spawn `{}` for agent {}: {error}",
@@ -832,6 +848,11 @@ pub fn spawn_agent_child(
             record.name
         )
     })?;
+
+    eprintln!(
+        "colony-agent timing harness_spawn_ms={}",
+        spawn_started.elapsed().as_millis()
+    );
 
     // Codex: stamp adapter availability for the Phase-2 badge drift check.
     // Cold cache returns `None` → drift check skipped until discovery warms it.

@@ -151,6 +151,8 @@ pub struct AcpClient {
     connection_reply: Option<(String, String)>,
     connection_tool_requested: bool,
     connection_probe: bool,
+    prompt_started: Option<std::time::Instant>,
+    first_token_ms: Option<u64>,
     own_process_group: bool,
     /// Write end of the agent's stdin pipe.
     stdin: ChildStdin,
@@ -600,6 +602,8 @@ impl AcpClient {
             connection_reply: None,
             connection_tool_requested: false,
             connection_probe: !own_process_group,
+            prompt_started: None,
+            first_token_ms: None,
             own_process_group,
             stdin,
             reader: FramedRead::new(stdout, LinesCodec::new_with_max_length(MAX_LINE_SIZE)),
@@ -634,7 +638,12 @@ impl AcpClient {
         self.connection_tool_requested
     }
 
-    /// Consume the probe reply without retaining prior session content.
+    /// Time from the current prompt to its first assistant text, without retaining text.
+    pub(crate) fn first_token_ms(&self) -> Option<u64> {
+        self.first_token_ms
+    }
+
+    /// Take the bounded assistant reply captured by the connection proof.
     pub(crate) fn take_connection_reply(&mut self) -> String {
         self.connection_reply
             .take()
@@ -759,7 +768,9 @@ impl AcpClient {
             // Merge — _meta may already carry a system prompt from an adapter extension.
             params["_meta"]["sessionTitle"] = serde_json::Value::String(title.to_owned());
         }
+        let started = std::time::Instant::now();
         let result = self.send_request("session/new", params).await?;
+        tracing::info!(target: "buzz_acp::timing", session_new_ms = started.elapsed().as_millis() as u64, "session startup completed");
         let session_id = result["sessionId"]
             .as_str()
             .ok_or_else(|| AcpError::Protocol("session/new response missing sessionId".into()))?
@@ -867,6 +878,8 @@ impl AcpClient {
         idle_timeout: std::time::Duration,
         max_duration: std::time::Duration,
     ) -> Result<StopReason, AcpError> {
+        self.prompt_started = Some(std::time::Instant::now());
+        self.first_token_ms = None;
         let params = build_prompt_params(session_id, prompt_blocks);
         let hard_deadline = tokio::time::Instant::now() + max_duration;
         self.current_hard_deadline = Some(hard_deadline);
@@ -1847,6 +1860,12 @@ impl AcpClient {
         match update_type {
             "agent_message_chunk" => {
                 if let Some(text) = update["content"]["text"].as_str() {
+                    if !text.is_empty() && self.first_token_ms.is_none() {
+                        self.first_token_ms = self.prompt_started.map(|start| {
+                            u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)
+                        });
+                        tracing::info!(target: "buzz_acp::timing", first_token_ms = self.first_token_ms, "first assistant token");
+                    }
                     if let Some((session_id, reply)) = &mut self.connection_reply {
                         if msg["params"]["sessionId"].as_str() == Some(session_id.as_str()) {
                             // Cap at 8 KiB on a UTF-8 boundary. This probe needs only a hello.
