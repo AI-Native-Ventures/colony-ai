@@ -466,12 +466,23 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
   };
   let replyText = "";
   let replyWhere = "";
+  const summaries = page
+    .getByTestId("message-timeline")
+    .getByTestId("message-thread-summary");
+  let summariesBefore = 0;
+  let bodyBefore = new Set();
   if (
     !(await evidence.step("Business reply", page, async () => {
       const start = Date.now();
       await scoutSuggestion.click();
       await composer.press("End");
       await composer.pressSequentially(` ${QUESTION}`);
+      summariesBefore = await summaries.count();
+      bodyBefore = new Set(
+        (await page.evaluate(() => document.body.innerText))
+          .split("\n")
+          .map((line) => line.trim()),
+      );
       const sendAt = Date.now();
       anchors.sendAt = sendAt;
       await composer.press("Enter");
@@ -521,22 +532,53 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
         if (topLevel) {
           anchors.replyVisibleAt = Date.now();
           found = { where: "top-level channel message", text: topLevel.text };
-        } else if (
-          (await question.getByTestId("message-thread-summary").count()) > 0
-        ) {
+        } else if ((await summaries.count()) > summariesBefore) {
+          // The summary row is a sibling of the message row, so it is counted
+          // timeline-wide against the count taken at send time.
           anchors.threadSummaryAt ??= Date.now();
-          const thread = await openThread(question);
-          const scoutReply = thread.bodies
+          anchors.replyVisibleAt = anchors.threadSummaryAt;
+          await summaries.last().click();
+          await page.waitForTimeout(2500);
+          const thread = await readThread();
+          const scoutReply = thread?.bodies
             .filter((item) => item.author === "Scout" && item.text.trim())
             .pop();
           if (scoutReply) {
-            anchors.replyVisibleAt = anchors.threadSummaryAt;
             anchors.replyReadAt = Date.now();
             found = {
               where: "reply in the thread under the question",
               text: scoutReply.text,
               panel: thread.panelText,
             };
+          } else {
+            // Fallback: new page text after the thread opened, minus what was there at send.
+            const after = await page.evaluate(() => document.body.innerText);
+            const fresh = after
+              .split("\n")
+              .map((line) => line.trim())
+              .filter(
+                (line) =>
+                  line.length > 15 &&
+                  !bodyBefore.has(line) &&
+                  !line.includes(QUESTION),
+              );
+            const row = {
+              name: "Thread opened",
+              status: "PASS",
+              reason: `Opened the thread under the question. New page text: ${fresh.join(" / ").slice(0, 600) || "none"}`,
+              sinceStartMs: Date.now() - evidence.started,
+            };
+            evidence.rows.push(row);
+            await evidence.capture(row.name, page, row);
+            await evidence.write();
+            if (fresh.length) {
+              anchors.replyReadAt = Date.now();
+              found = {
+                where:
+                  "reply in the thread under the question (page text after opening the thread)",
+                text: fresh.join("\n"),
+              };
+            }
           }
         }
         if (!found && sampleStatus && Date.now() >= nextSample) {
