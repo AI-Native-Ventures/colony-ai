@@ -41,6 +41,8 @@ export type OnboardingSceneActions = {
   onNameChange?: (value: string) => void;
   onEmailChange?: (value: string) => void;
   onPasswordChange?: (value: string) => void;
+  onGoogleSignIn?: () => void;
+  googlePending?: boolean;
   onBusinessChange?: (value: string) => void;
   onWebsiteChange?: (value: string) => void;
   onDescriptionChange?: (value: string) => void;

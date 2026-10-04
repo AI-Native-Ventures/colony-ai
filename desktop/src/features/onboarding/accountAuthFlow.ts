@@ -30,6 +30,10 @@ export type AccountAuthFailureCode =
   | "weak_password"
   | "rate_limited"
   | "unreachable"
+  | "google_sign_in_unavailable"
+  | "google_sign_in_cancelled"
+  | "google_sign_in_timed_out"
+  | "google_sign_in_failed"
   | "unknown";
 
 export type AccountAuthFailure = {
@@ -207,6 +211,10 @@ function normalizedFailureCode(raw: unknown): AccountAuthFailureCode {
     case "resend_cooldown":
     case "weak_password":
     case "rate_limited":
+    case "google_sign_in_unavailable":
+    case "google_sign_in_cancelled":
+    case "google_sign_in_timed_out":
+    case "google_sign_in_failed":
       return raw;
     default:
       return "unknown";
@@ -300,5 +308,13 @@ export function accountAuthFailureMessage(
       return "Can't reach the server right now. Try again later.";
     case "unknown":
       return "Something went wrong. Please try again.";
+    case "google_sign_in_cancelled":
+      return "Google sign-in was cancelled. Try again or use your email.";
+    case "google_sign_in_timed_out":
+      return "Google sign-in took too long. Try again or use your email.";
+    case "google_sign_in_unavailable":
+      return "Google sign-in isn’t available right now. You can use your email instead.";
+    case "google_sign_in_failed":
+      return "We couldn’t finish Google sign-in. Try again or use your email.";
   }
 }

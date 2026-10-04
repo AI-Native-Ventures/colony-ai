@@ -228,3 +228,31 @@ test("HTTP authentication and access failures keep specific friendly recovery co
     assert.match(accountAuthFailureMessage(failure, "signin"), /sign-in/i);
   }
 });
+
+test("Google failures keep plain recovery copy on both account forms", () => {
+  const cases = [
+    [
+      "google_sign_in_cancelled",
+      "Google sign-in was cancelled. Try again or use your email.",
+    ],
+    [
+      "google_sign_in_timed_out",
+      "Google sign-in took too long. Try again or use your email.",
+    ],
+    [
+      "google_sign_in_unavailable",
+      "Google sign-in isn’t available right now. You can use your email instead.",
+    ],
+    [
+      "google_sign_in_failed",
+      "We couldn’t finish Google sign-in. Try again or use your email.",
+    ],
+  ];
+  for (const [code, copy] of cases) {
+    const failure = normalizeAccountAuthFailure({ code });
+    assert.equal(failure.code, code);
+    for (const screen of ["choice", "signup", "signin"]) {
+      assert.equal(accountAuthFailureMessage(failure, screen), copy);
+    }
+  }
+});

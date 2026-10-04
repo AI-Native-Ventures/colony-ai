@@ -244,6 +244,7 @@ export function AccountAuthFlow({
   const [name, setName] = React.useState("");
   const [code, setCode] = React.useState("");
   const [pending, setPending] = React.useState(false);
+  const [googlePending, setGooglePending] = React.useState(false);
   const [cooldownRequest, setCooldownRequest] = React.useState({
     seconds: 0,
   });
@@ -462,6 +463,7 @@ export function AccountAuthFlow({
   const submitGoogle = () => {
     if (pending) return;
     setPending(true);
+    setGooglePending(true);
     dispatch({ type: "clear_feedback" });
     void (async () => {
       try {
@@ -469,9 +471,17 @@ export function AccountAuthFlow({
         await authenticate(account);
       } catch (error) {
         const failure = normalizeAccountAuthFailure(error);
-        dispatch({ type: "set_failure", failure });
+        dispatch({
+          type: "set_failure",
+          failure:
+            failure.code === "invalid_credentials" ||
+            failure.code === "invalid_request"
+              ? { code: "google_sign_in_failed" }
+              : failure,
+        });
       } finally {
         setPending(false);
+        setGooglePending(false);
       }
     })();
   };
@@ -982,6 +992,8 @@ export function AccountAuthFlow({
             onNameChange={setName}
             onNavigate={navigate}
             onPasswordChange={setPassword}
+            onGoogleSignIn={submitGoogle}
+            googlePending={googlePending}
             onSubmit={submit}
             scene={designedScene}
             authCode={

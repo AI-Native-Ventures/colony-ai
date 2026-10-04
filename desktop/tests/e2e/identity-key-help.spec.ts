@@ -19,7 +19,8 @@ test("R17 account access fits a compact desktop viewport", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByLabel("Your name")).toBeVisible();
   await expect(page.getByTestId("account-auth-submit-signup")).toBeInViewport();
-  await expect(page.getByRole("button", { name: /Google/ })).toHaveCount(0);
+  await page.getByTestId("account-auth-google").scrollIntoViewIfNeeded();
+  await expect(page.getByTestId("account-auth-google")).toBeInViewport();
   const overflows = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   );

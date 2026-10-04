@@ -31,6 +31,8 @@ export type AuthErrorCode =
   | "account_state_changed"
   | "identity_import_failed"
   | "google_sign_in_unavailable"
+  | "google_sign_in_cancelled"
+  | "google_sign_in_timed_out"
   | "google_sign_in_failed";
 
 /** A safe, typed failure. Raw relay response bodies are never attached. */
