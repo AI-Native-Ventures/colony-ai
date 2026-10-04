@@ -20,6 +20,7 @@ import {
   cleanEnvironment,
   outsideRepo,
   realEnvironment,
+  realEnvSandboxPolicy,
   sandboxPolicy,
 } from "./safety.mjs";
 import { driveFirstRun } from "./steps.mjs";
@@ -76,6 +77,9 @@ try {
 // --real-env 1: no process sandbox. The real HOME is used so the signed-in Claude Code
 // on this Mac is found. The app still gets a throwaway user-data directory.
 const realEnv = options["real-env"] === "1";
+// Default protects the shared buzz-desktop keychain identity slot. Opt out only with
+// the owner's explicit approval: --shared-keychain 1.
+const isolateKeychain = realEnv && options["shared-keychain"] !== "1";
 const appPath = path.resolve(options.app);
 const macosDir = path.join(appPath, "Contents", "MacOS");
 const executableName = realEnv
@@ -105,7 +109,16 @@ const { nativeDir, profile, policy } = sandboxPolicy(userDataDir, probeDir);
 const sandboxPath = path.join(privateDir, "sandbox.sb");
 const quote = (value) => `'${value.replace(/'/gu, `'\\''`)}'`;
 const launcher = path.join(privateDir, "launch.sh");
-if (!realEnv) {
+if (isolateKeychain) {
+  await writeFile(sandboxPath, realEnvSandboxPolicy(undefined, probeDir), {
+    mode: 0o600,
+  });
+  await writeFile(
+    launcher,
+    `#!/bin/sh\nexec /usr/bin/sandbox-exec -f ${quote(sandboxPath)} ${quote(executable)} "$@"\n`,
+    { mode: 0o700 },
+  );
+} else if (!realEnv) {
   await writeFile(sandboxPath, policy, { mode: 0o600 });
   await writeFile(
     launcher,
@@ -118,6 +131,11 @@ const evidence = new Evidence(output, {
     ? "Real environment packaged first run"
     : "Restricted packaged baseline",
   realEnv,
+  keychainIsolation: isolateKeychain
+    ? "App tree cannot reach securityd or the keychain files. Only /usr/bin/security runs unsandboxed so Claude Code reads its own sign-in. Host identity uses its file fallback in the throwaway profile. Real HOME otherwise."
+    : realEnv
+      ? "None: shared keychain allowed."
+      : "Full no-keychain sandbox.",
   appPath,
   scope: realEnv
     ? "Unchanged CI candidate, real renderer and native host, real HOME and signed-in Claude Code, production relay and a disposable smoke account. Throwaway user-data directory only. No process sandbox."
@@ -127,7 +145,9 @@ const evidence = new Evidence(output, {
     nativeHostSha256: await digest(path.join(resources, "colony-native-host")),
   },
   chromiumSandbox: realEnv
-    ? "Default Chromium sandbox, no outer process policy."
+    ? isolateKeychain
+      ? "Disabled because macOS rejects nested sandbox initialization. Outer keychain-isolation policy is inherited by children."
+      : "Default Chromium sandbox, no outer process policy."
     : "Disabled because macOS rejects nested sandbox initialization. Mandatory outer process policy remains inherited by children.",
   sourceBase:
     options["source-base"] ?? "6e04386b1bd0dfc2494eae730e41b7fbe3eeda5a",
@@ -136,6 +156,8 @@ const evidence = new Evidence(output, {
     ? { userDataDir }
     : { userDataDir, nativeDir, profile },
   replyTimeoutMs,
+  loadAvgAtStart: os.loadavg().map((value) => Number(value.toFixed(2))),
+  niceness: os.getPriority(),
 });
 await evidence.write();
 let driverFailure = false;
@@ -150,8 +172,11 @@ let page;
 try {
   if (realEnv) {
     application = await electron.launch({
-      executablePath: executable,
-      args: [`--user-data-dir=${userDataDir}`],
+      executablePath: isolateKeychain ? launcher : executable,
+      args: [
+        ...(isolateKeychain ? ["--no-sandbox"] : []),
+        `--user-data-dir=${userDataDir}`,
+      ],
       env: realEnvironment(process.env, userDataDir, relay.origin),
       timeout: 60000,
     });
