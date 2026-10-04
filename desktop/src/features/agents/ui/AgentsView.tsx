@@ -28,6 +28,8 @@ import { TeamDialog } from "./TeamDialog";
 import { AgentTeamsReviewView } from "./AgentTeamsReviewView";
 import { TeamsSection } from "./TeamsSection";
 import { UnifiedAgentsSection } from "./UnifiedAgentsSection";
+import { useCompanyAgentPubkeys } from "@/features/agents/useCompanyManagedAgents";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 import { useManagedAgentActions } from "./useManagedAgentActions";
 import { usePersonaActions } from "./usePersonaActions";
 import { useTeamActions } from "./useTeamActions";
@@ -115,7 +117,22 @@ export function AgentsView({
   const archivedQuery = useArchivedIdentitiesQuery();
   const activeTurnsByChannel = useActiveAgentTurnsByChannel();
   const inheritedDefaults = getInheritedAgentDefaults(globalConfig, bakedEnv);
-  const agents = useManagedAgentActions();
+  const allAgents = useManagedAgentActions();
+  const companyAgentPubkeys = useCompanyAgentPubkeys(
+    allAgents.managedAgents,
+    allAgents.relayAgentsQuery.data,
+  );
+  // The management hook knows every managed agent (deletion and presence
+  // checks need that). This screen shows only the current business's agents;
+  // legacy starter agents stay hidden without being deleted.
+  const visibleManagedAgents = React.useMemo(
+    () =>
+      allAgents.managedAgents.filter((agent) =>
+        companyAgentPubkeys.has(normalizePubkey(agent.pubkey)),
+      ),
+    [allAgents.managedAgents, companyAgentPubkeys],
+  );
+  const agents = { ...allAgents, managedAgents: visibleManagedAgents };
   const personas = usePersonaActions();
   const membershipQuery = useMyRelayMembershipQuery();
   const canCurateCompanyRoles =
