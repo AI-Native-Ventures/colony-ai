@@ -7,6 +7,7 @@ import {
   sanitizeUntrusted,
   wrapUntrusted,
 } from "./redaction.mjs";
+import { DRIVER_ERROR_CODES, isDriverError } from "./driver-errors.mjs";
 import { buildSnapshot, createRefRegistry } from "./snapshot.mjs";
 import {
   DEFAULT_WAIT_MS,
@@ -816,6 +817,13 @@ export function createBroker({
           summary: `${name}: ${error.code}`,
         });
         return fail(error.code, error.message, error.extra);
+      }
+      if (isDriverError(error)) {
+        record(grant, name, args, "error", started, {
+          code: error.driverCode,
+          summary: `${name}: ${error.driverCode}`,
+        });
+        return fail(error.driverCode, DRIVER_ERROR_CODES[error.driverCode]);
       }
       record(grant, name, args, "error", started, {
         code: "driver_error",

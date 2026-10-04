@@ -186,7 +186,7 @@ test("a mixed public and private answer is refused", async () => {
 
 test("DNS rebinding cannot change the target after the check", async () => {
   const env = await setup({
-    answers: (host, call) =>
+    answers: (_host, call) =>
       call === 1
         ? [{ address: "93.184.216.34", family: 4 }]
         : [{ address: "127.0.0.1", family: 4 }],
@@ -311,6 +311,16 @@ test("plain HTTP to a private target is refused and non http requests are reject
     req.end();
   });
   assert.equal(origin, 400);
+  // https requests must arrive as CONNECT; an absolute https URI is refused.
+  assert.equal(
+    (await proxiedGet(env.port, "https://shop.example/x")).status,
+    400,
+  );
+  assert.equal(
+    (await proxiedGet(env.port, "ftp://shop.example/x")).status,
+    400,
+  );
+  assert.equal(env.connects.length, 0);
   await env.close();
 });
 
