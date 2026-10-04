@@ -11,6 +11,7 @@
   --colony-sidebar-foreground: 270 21.74% 90.98%;
   --colony-sidebar-muted-foreground: hsl(var(--colony-sidebar-foreground));
   --colony-sidebar-section-opacity: 1;
+  --colony-sidebar-section-color: hsl(var(--sidebar-section-foreground));
   --colony-sidebar-search-surface: hsl(var(--colony-sidebar-foreground) / 0.06);
   --buzz-muted-foreground: hsl(var(--colony-sidebar-foreground));
 }
@@ -1155,4 +1156,14 @@
   font-size: 5cqw;
   font-weight: 600;
   letter-spacing: -0.03em;
+}
+
+:root.dark:has([data-colony-full-app-shell="true"])
+  .app-sidebar-full-shell
+  :is(
+    [data-sidebar="group-label"],
+    [data-sidebar-section-title],
+    .sidebar-navigation-group-toggle
+  ) {
+  color: var(--colony-sidebar-section-color);
 }

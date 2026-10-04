@@ -99,14 +99,19 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   const mutedColor = await resolveSidebarColor(
     page,
     "color",
-    "var(--colony-sidebar-muted-foreground)",
+    mode === "dark"
+      ? "var(--colony-sidebar-section-color)"
+      : "var(--colony-sidebar-muted-foreground)",
   );
   const secondaryTextColor = await resolveSidebarColor(
     page,
     "color",
     "var(--colony-sidebar-muted-foreground)",
   );
-  const searchSurface = "rgba(255, 255, 255, 0.25)";
+  const searchSurface =
+    mode === "light"
+      ? "rgba(255, 255, 255, 0.25)"
+      : "rgba(232, 227, 237, 0.06)";
   const rowHoverSurface =
     mode === "light"
       ? "rgba(255, 255, 255, 0.31)"
@@ -459,7 +464,11 @@ async function expectBuzzSettingsPalette(page: Page, mode: "light" | "dark") {
     .locator(".w20-nav-heading")
     .filter({ hasText: "Personal" });
 
-  await expect(sectionLabel).toHaveCSS("color", mutedColor);
+  await expect(sectionLabel).toHaveCSS(
+    "color",
+    // The reference is #a39aa9; the gradient needs this smallest AA step.
+    mode === "dark" ? "rgb(206, 201, 209)" : mutedColor,
+  );
   await expect(
     sidebar.locator('.w20-nav-item[data-active="true"]'),
   ).not.toHaveCSS("color", mutedColor);

@@ -224,7 +224,7 @@ body:has(.w20-settings-shell) {
 }
 
 .dark .w20-nav-heading {
-  color: hsl(var(--foreground));
+  color: hsl(var(--sidebar-section-foreground));
 }
 
 .dark .w20-settings-sidebar.w20-settings-sidebar .w20-nav-back {

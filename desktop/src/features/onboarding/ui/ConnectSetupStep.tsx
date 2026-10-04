@@ -757,7 +757,11 @@ export function ConnectSetupStep({
               {aiReady && connectionScene === "connect" ? (
                 <p>Sign-in stays with the provider.</p>
               ) : null}
-              {!aiReady || connectionScene === "credits-price-error" ? (
+              {/* A configured bundled agent is not a signed-in subscription. Keep
+                  its fallback attached while asynchronous detection settles. */}
+              {!aiReady ||
+              selectedRuntime?.id === "buzz-agent" ||
+              connectionScene === "credits-price-error" ? (
                 <button
                   className="back"
                   type="button"

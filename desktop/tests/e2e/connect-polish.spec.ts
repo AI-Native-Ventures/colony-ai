@@ -242,10 +242,20 @@ test.describe("dark sidebar contrast", () => {
         expect(app.frame.top).toEqual(app.frame.bottom);
         expect(settings.frame.top).toEqual(settings.frame.bottom);
       }
-      if (theme === "github-dark") {
-        await capture(page, "github-dark-settings-1440");
+      if (theme === "github-dark" || theme === "buzz-dark") {
+        await capture(page, `${theme}-settings-1440`);
         await page.setViewportSize({ width: 1728, height: 1117 });
-        await capture(page, "github-dark-settings-1728");
+        await capture(page, `${theme}-settings-1728`);
+        const wide = await measureSidebarContrast(
+          page,
+          '[data-testid="settings-sidebar"]',
+        );
+        for (const sample of wide.text) {
+          expect(
+            sample.ratio,
+            `${theme}: ${sample.text} at 1728`,
+          ).toBeGreaterThanOrEqual(4.5);
+        }
       }
     });
   }

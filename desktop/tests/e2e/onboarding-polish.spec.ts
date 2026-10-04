@@ -103,9 +103,26 @@ for (const size of sizes) {
       },
     });
     await completeR17BusinessSetup(page);
-    await page
-      .getByRole("button", { name: "Skip for now", exact: true })
-      .click();
+    const skip = page.getByRole("button", {
+      name: "Skip for now",
+      exact: true,
+    });
+    const initialSkip = await skip.elementHandle();
+    expect(initialSkip).not.toBeNull();
+    await expect(
+      page.getByRole("button", { name: "Connect Colony Agent", exact: true }),
+    ).toBeEnabled();
+    // Harness readiness must not remove the fallback under the pointer.
+    expect(await initialSkip!.evaluate((element) => element.isConnected)).toBe(
+      true,
+    );
+    expect(
+      await skip.evaluate(
+        (element, initial) => element === initial,
+        initialSkip,
+      ),
+    ).toBe(true);
+    await skip.click();
     await expect(page.getByTestId("chat-title")).toContainText("Welcome");
     await expect
       .poll(() =>
@@ -133,7 +150,13 @@ for (const size of sizes) {
       .filter({ hasText: "Welcome to Colony" })
       .first();
     await expect(row).toBeVisible();
+    await waitForAnimations(page);
     await row.hover();
+    await waitForAnimations(page);
+    await expect(row.locator('[data-testid^="message-action-bar-"]')).toHaveCSS(
+      "opacity",
+      "1",
+    );
     await row.getByRole("button", { name: "Reply", exact: true }).click();
     await expect(page.getByTestId("message-thread-panel")).toBeVisible();
     await waitForAnimations(page);
