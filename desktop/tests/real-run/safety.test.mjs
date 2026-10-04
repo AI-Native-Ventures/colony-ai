@@ -6,7 +6,11 @@ import test from "node:test";
 import {
   assertSafeDiagnostics,
   brandingFindings,
+  businessMentionVerdict,
   fileReferenceVerdict,
+  personalConfigFindings,
+  realEnvironment,
+  SETUP_NOTICE,
   cleanEnvironment,
   outsideRepo,
   redact,
@@ -151,4 +155,74 @@ test("debug tracing is rejected before automation can fill secret fields", () =>
   assert.throws(() => assertSafeDiagnostics({ DEBUG: "pw:api" }), /Disable/u);
   assert.throws(() => assertSafeDiagnostics({ PWDEBUG: "1" }), /Disable/u);
   assert.doesNotThrow(() => assertSafeDiagnostics({}));
+});
+
+test("real environment keeps the real HOME but pins the throwaway profile and drops secrets", () => {
+  const actual = realEnvironment(
+    {
+      HOME: "/Users/test",
+      PATH: "/bin",
+      COLONY_ELECTRON_USER_DATA:
+        "/Users/test/Library/Application Support/Colony Electron",
+      ANTHROPIC_API_KEY: "fixture",
+      CLAUDE_CODE_OAUTH_TOKEN: "fixture",
+      GH_TOKEN: "fixture",
+    },
+    "/tmp/throwaway",
+    "https://relay.example",
+  );
+  assert.equal(actual.HOME, "/Users/test");
+  // Without this the packaged main process falls back to the owner's real profile.
+  assert.equal(actual.COLONY_ELECTRON_USER_DATA, "/tmp/throwaway");
+  assert.equal(actual.BUZZ_RELAY_URL, "https://relay.example");
+  assert.equal(actual.ANTHROPIC_API_KEY, undefined);
+  assert.equal(actual.CLAUDE_CODE_OAUTH_TOKEN, undefined);
+  assert.equal(actual.GH_TOKEN, undefined);
+});
+
+test("personal configuration terms are flagged only when present", () => {
+  assert.deepEqual(
+    personalConfigFindings("I'm Scout, your chief of staff at Acme."),
+    [],
+  );
+  assert.deepEqual(
+    personalConfigFindings("Per your gstack and ADHD mode rules, Basheer"),
+    ["gstack", "adhd", "basheer"],
+  );
+});
+
+test("business answers must mention the typed name or website host", () => {
+  const name = "Launch smoke ab12";
+  assert.equal(
+    businessMentionVerdict(
+      "You run Launch smoke AB12.",
+      name,
+      "https://www.example.com",
+    ).status,
+    "PASS",
+  );
+  assert.equal(
+    businessMentionVerdict(
+      "See example.com for details.",
+      name,
+      "https://www.example.com",
+    ).hits[0],
+    "website:example.com",
+  );
+  assert.equal(
+    businessMentionVerdict("I know nothing yet.", name, "https://example.com")
+      .status,
+    "FAIL",
+  );
+});
+
+test("the setup notice pattern matches the shipped wording and not intros", () => {
+  assert.ok(
+    SETUP_NOTICE.test(
+      "To get started with Scout, connect your AI in Settings > Agents > Defaults.",
+    ),
+  );
+  assert.ok(
+    !SETUP_NOTICE.test("Hi, I'm Scout. I will be your chief of staff."),
+  );
 });

@@ -1,67 +1,252 @@
-import { fileReferenceVerdict, teammateVerdict } from "./safety.mjs";
+import {
+  brandingFindings,
+  businessMentionVerdict,
+  fileReferenceVerdict,
+  personalConfigFindings,
+  SETUP_NOTICE,
+  teammateVerdict,
+} from "./safety.mjs";
 
+const INTRO_BUDGET_MS = 20000;
+
+const LABELS = {
+  1: "No 'connect your AI in Settings' notice after a verified connection",
+  2: "Scout intro appears in Welcome within 20 s of it opening",
+  3: "No visible Buzz, Fizz, Honey, Pollen or bee emoji on any visited screen",
+  4: "Team shows an avatar and a real status for Scout",
+  5: "The @ list shows only teammates",
+  6: "Scout's business answer mentions the business name or website typed in onboarding",
+  7: "First reply is not polluted with unrelated personal config",
+};
+
+/** Always produce all seven verdict rows, even when a prerequisite was not reached. */
 export async function driveWorkspace({ page, evidence, replyTimeoutMs }) {
+  const state = { noticeSeen: false, page };
+  try {
+    await drive({ page, evidence, replyTimeoutMs }, state);
+  } finally {
+    await finalize({ page, evidence }, state);
+  }
+}
+
+async function finalize({ page, evidence }, state) {
+  try {
+    const body = page.isClosed() ? "" : await page.locator("body").innerText();
+    if (SETUP_NOTICE.test(body)) state.noticeSeen = true;
+  } catch {
+    // The screen is already recorded in screenshots.
+  }
+  const verified = evidence.metadata.connectionVerified === true;
+  evidence.verdict(
+    1,
+    LABELS[1],
+    !verified ? "BLOCKED" : state.noticeSeen ? "FAIL" : "PASS",
+    verified
+      ? `Connection test returned a real reply. Notice text seen in Welcome or app body: ${state.noticeSeen}.`
+      : `Connection was not verified, so the assertion is not meaningful. Notice text seen: ${state.noticeSeen}.`,
+  );
+  const textual = Object.entries(evidence.observed).flatMap(([key, value]) =>
+    typeof value === "string"
+      ? brandingFindings(value).map((finding) => `${key}: ${finding}`)
+      : [],
+  );
+  const screens = evidence.scans.filter((scan) => scan.findings.length);
+  evidence.verdict(
+    3,
+    LABELS[3],
+    evidence.scans.length === 0
+      ? "BLOCKED"
+      : screens.length || textual.length
+        ? "FAIL"
+        : "PASS",
+    `Scanned the visible body text and window title of ${evidence.scans.length} captured screens. Screens with findings: ${screens.map((scan) => `${scan.step} (${scan.findings.join(", ")})`).join("; ") || "none"}. Captured Scout texts with findings: ${textual.join("; ") || "none"}. Screens not reached were not scanned.`,
+  );
+  for (const [id, label] of Object.entries(LABELS)) {
+    if (!evidence.verdicts.some((item) => String(item.id) === id))
+      evidence.verdict(
+        Number(id),
+        label,
+        "BLOCKED",
+        "Prerequisite step was not reached.",
+      );
+  }
+  evidence.verdicts.sort((a, b) => a.id - b.id);
+  await evidence.write();
+}
+
+async function drive({ page, evidence, replyTimeoutMs }, state) {
   const enteredAt = evidence.metadata.appOpenedAt ?? Date.now();
+  let welcomeOpenedAt = enteredAt;
   if (
     !(await evidence.step("Welcome channel", page, async () => {
       const welcome = page.locator('[data-testid="channel-welcome" i]').first();
       await welcome.waitFor({ timeout: 30000 });
-      await welcome.click();
+      // When the app already landed in Welcome the clock starts at app entry.
+      const alreadyOpen =
+        (await welcome.getAttribute("data-active")) === "true";
+      if (!alreadyOpen) {
+        welcomeOpenedAt = Date.now();
+        await welcome.click();
+      }
       await page.getByTestId("message-timeline").waitFor();
-      return { reason: "Opened the new smoke company's Welcome channel." };
+      evidence.metadata.welcomeAlreadyOpenOnEntry = alreadyOpen;
+      return {
+        reason: `Opened the new smoke company's Welcome channel (already open on entry: ${alreadyOpen}).`,
+      };
     }))
   )
     return;
   const welcomeUrl = page.url();
+  const timelineText = async () =>
+    page
+      .getByTestId("message-timeline")
+      .innerText()
+      .catch(() => "");
+  const scoutRowsData = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="message-row"]')]
+        .filter(
+          (row) =>
+            row
+              .querySelector('[data-testid="message-author"]')
+              ?.textContent?.trim() === "Scout",
+        )
+        .map((row) => ({
+          id: row.dataset.messageId,
+          text:
+            row.querySelector('[data-testid="message-body"]')?.innerText ??
+            row.innerText,
+        })),
+    );
   const scoutRows = () =>
     page.getByTestId("message-row").filter({
       has: page.getByTestId("message-author").filter({ hasText: /^Scout$/u }),
     });
+
   await evidence.step("Scout intro", page, async () => {
-    const intro = scoutRows()
-      .filter({ hasText: /welcome|chief of staff|I.?m Scout/iu })
-      .first();
-    await intro.waitFor({
-      timeout: Math.max(1000, replyTimeoutMs - (Date.now() - enteredAt)),
-    });
-    const introMs = Date.now() - enteredAt;
-    evidence.metadata.scoutIntroMs = introMs;
+    const seen = new Map();
+    const deadline = Date.now() + replyTimeoutMs;
+    let intro = null;
+    while (Date.now() < deadline && !intro) {
+      for (const row of await scoutRowsData()) {
+        if (!seen.has(row.id))
+          seen.set(row.id, { text: row.text, at: Date.now() });
+      }
+      for (const entry of seen.values()) {
+        if (SETUP_NOTICE.test(entry.text)) state.noticeSeen = true;
+      }
+      intro = [...seen.values()].find(
+        (entry) => entry.text.trim() && !SETUP_NOTICE.test(entry.text),
+      );
+      if (!intro) await page.waitForTimeout(200);
+    }
+    evidence.observed["Welcome timeline text (after intro wait)"] =
+      await timelineText();
+    if (SETUP_NOTICE.test(await timelineText())) state.noticeSeen = true;
+    if (!intro)
+      return {
+        status: "FAIL",
+        reason: `No Scout-authored introduction within ${replyTimeoutMs} ms of app entry (setup notice seen: ${state.noticeSeen}).`,
+      };
+    const sinceWelcome = intro.at - welcomeOpenedAt;
+    const sinceEntry = intro.at - enteredAt;
+    evidence.metadata.scoutIntroMs = sinceWelcome;
+    evidence.metadata.scoutIntroSinceAppEntryMs = sinceEntry;
+    evidence.observed["Scout intro (verbatim)"] = intro.text;
+    const leaks = personalConfigFindings(intro.text);
+    evidence.verdict(
+      2,
+      "Scout intro appears in Welcome within 20 s of it opening",
+      sinceWelcome <= INTRO_BUDGET_MS ? "PASS" : "FAIL",
+      `Intro seen ${sinceWelcome} ms after Welcome opened and ${sinceEntry} ms after Open my Colony (poll granularity about 0.25 s).`,
+    );
+    evidence.metadata.introPersonalConfigFindings = leaks;
     return {
-      status: introMs <= replyTimeoutMs ? "PASS" : "FAIL",
-      reason: `Scout-authored introduction observed ${introMs} ms after app entry.`,
+      status: sinceWelcome <= INTRO_BUDGET_MS ? "PASS" : "FAIL",
+      reason: `Scout-authored introduction observed ${sinceWelcome} ms after Welcome opened, ${sinceEntry} ms after app entry.`,
     };
   });
-  let teammateIds = [];
+  if (!evidence.verdicts.some((item) => item.id === 2))
+    evidence.verdict(
+      2,
+      "Scout intro appears in Welcome within 20 s of it opening",
+      "FAIL",
+      "No Scout-authored introduction was observed.",
+    );
+
+  let teammates = [];
   let scout;
+  let scoutPubkey = "";
   await evidence.step("Team", page, async () => {
     await page.getByTestId("sidebar-company-team").click();
     const list = page.getByTestId("company-team-list");
     await list.waitFor({ timeout: 25000 });
-    teammateIds = await list
-      .locator('[data-testid^="company-team-member-"]')
-      .evaluateAll((rows) =>
-        rows.map((row) =>
-          row.dataset.testid.replace("company-team-member-", ""),
-        ),
-      );
-    scout = list
-      .locator('[data-testid^="company-team-member-"]')
-      .filter({ hasText: /\bScout\b/u })
-      .first();
+    const rows = list.locator('[data-testid^="company-team-member-"]');
+    teammates = await rows.evaluateAll((items) =>
+      items.map((row) => ({
+        pubkey: row.dataset.testid.replace("company-team-member-", ""),
+        label: row.getAttribute("aria-label") ?? "",
+        text: row.innerText,
+      })),
+    );
+    evidence.observed["Team roster rows (verbatim)"] = teammates
+      .map(
+        (member) => `${member.label} | ${member.text.replace(/\n+/gu, " / ")}`,
+      )
+      .join("\n");
+    scout = rows.filter({ hasText: /\bScout\b/u }).first();
     await scout.waitFor({ timeout: 25000 });
-    const hasAvatar = await scout
-      .locator("img")
-      .evaluateAll((images) =>
-        images.some((image) => image.complete && image.naturalWidth > 0),
+    scoutPubkey = (await scout.getAttribute("data-testid")).replace(
+      "company-team-member-",
+      "",
+    );
+    const avatar = await page
+      .getByTestId(`team-avatar-${scoutPubkey}`)
+      .evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const image = node.querySelector("img") ?? node;
+          const loaded =
+            image.tagName === "IMG" && image.complete && image.naturalWidth > 0;
+          return {
+            loadedImage: loaded,
+            hasSvg: Boolean(node.querySelector("svg")),
+            text: node.textContent?.trim().slice(0, 8) ?? "",
+            width: node.getBoundingClientRect().width,
+          };
+        }),
       );
-    const label = await scout.getAttribute("aria-label");
+    const statusText = (await scout.innerText())
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .pop();
+    const hasAvatar =
+      avatar.length > 0 &&
+      avatar[0].width > 0 &&
+      (avatar[0].loadedImage || avatar[0].hasSvg || avatar[0].text.length > 0);
     const hasStatus =
-      /, (active|running|idle|paused|offline|error)(?:,|$)/iu.test(label ?? "");
+      Boolean(statusText) && !/^(loading|unknown|n\/a|-|—)$/iu.test(statusText);
+    evidence.metadata.scoutAvatar = avatar[0] ?? "no team-avatar element";
+    evidence.metadata.scoutStatusText = statusText;
+    evidence.verdict(
+      4,
+      "Team shows an avatar and a real status for Scout",
+      hasAvatar && hasStatus ? "PASS" : "FAIL",
+      `Avatar element: ${JSON.stringify(avatar[0] ?? null)}. Status badge text: "${statusText}".`,
+    );
     return {
       status: hasAvatar && hasStatus ? "PASS" : "FAIL",
-      reason: `Scout avatar loaded: ${hasAvatar}. Explicit non-unknown roster status: ${hasStatus}.`,
+      reason: `Scout avatar present: ${hasAvatar}. Status badge: "${statusText}" (real, not Loading/unknown: ${hasStatus}).`,
     };
   });
+  if (!evidence.verdicts.some((item) => item.id === 4))
+    evidence.verdict(
+      4,
+      "Team shows an avatar and a real status for Scout",
+      "BLOCKED",
+      "Team roster or Scout row not reached.",
+    );
+
   await evidence.step("Scout pages", page, async () => {
     if (!scout)
       return {
@@ -69,12 +254,13 @@ export async function driveWorkspace({ page, evidence, replyTimeoutMs }) {
         reason: "No real Scout roster row was available.",
       };
     await scout.click();
+    // Instructions, Model & runtime and Salary were requested explicitly.
     const tabs = [
       "overview",
       "instructions",
       "model-runtime",
-      "tools-access",
       "salary",
+      "tools-access",
       "workers",
       "duties",
       "lessons",
@@ -115,29 +301,72 @@ export async function driveWorkspace({ page, evidence, replyTimeoutMs }) {
       await composer.fill("@");
       const menu = page.getByTestId("mention-autocomplete");
       await menu.waitFor({ timeout: 15000 });
-      const suggestions = await menu
+      const entries = await menu
         .locator('[data-testid^="mention-suggestion-"]')
         .evaluateAll((rows) =>
-          rows.map((row) =>
-            row.dataset.testid.replace("mention-suggestion-", ""),
-          ),
+          rows.map((row) => ({
+            key: row.dataset.testid.replace("mention-suggestion-", ""),
+            text: row.innerText.replace(/\n+/gu, " / "),
+            label:
+              row.querySelector("button")?.getAttribute("aria-label") ?? "",
+          })),
         );
-      const verdict = teammateVerdict(suggestions, teammateIds, "");
+      evidence.observed["@ menu entries (verbatim)"] = entries
+        .map((entry) => `${entry.label} | ${entry.text} | ${entry.key}`)
+        .join("\n");
+      const rosterNames = teammates.map((member) =>
+        member.text.split("\n")[0].trim(),
+      );
+      const byKey = new Set(teammates.map((member) => member.pubkey));
+      const outsiders = entries.filter(
+        (entry) =>
+          !byKey.has(entry.key) &&
+          !rosterNames.some(
+            (name) =>
+              name &&
+              entry.label.toLowerCase() === `mention ${name}`.toLowerCase(),
+          ),
+      );
+      const verdict = teammateVerdict(
+        entries.map((entry) => entry.label.replace(/^Mention /u, "")),
+        rosterNames,
+        "",
+      );
       scoutSuggestion = menu.getByRole("button", {
         name: "Mention Scout",
         exact: true,
       });
+      const status = entries.length
+        ? outsiders.length
+          ? "FAIL"
+          : "PASS"
+        : "BLOCKED";
+      evidence.verdict(
+        5,
+        "The @ list shows only teammates",
+        status,
+        `${entries.length} entries, ${outsiders.length} not matched to a Team roster row (${outsiders.map((entry) => entry.label).join(", ") || "none"}). Name-only verdict: ${verdict.status}.`,
+      );
       return {
-        status: verdict.status,
-        reason: `Suggestion identities compared with the rendered roster: ${suggestions.length} entries, ${verdict.outsiders?.length ?? 0} outside roster. Unbound persona/team suggestions are not counted as teammates.`,
+        status,
+        reason: `Suggestion identities compared with the rendered roster: ${entries.length} entries, ${outsiders.length} outside roster.`,
       };
     }))
-  )
+  ) {
+    if (!evidence.verdicts.some((item) => item.id === 5))
+      evidence.verdict(
+        5,
+        "The @ list shows only teammates",
+        "BLOCKED",
+        "The @ menu did not open.",
+      );
     return;
+  }
   const before = await scoutRows().evaluateAll((rows) =>
     rows.map((row) => row.dataset.messageId),
   );
   let reply;
+  let replyText = "";
   if (
     !(await evidence.step("Business reply", page, async () => {
       const start = Date.now();
@@ -152,7 +381,11 @@ export async function driveWorkspace({ page, evidence, replyTimeoutMs }) {
               !old.includes(row.dataset.messageId) &&
               row
                 .querySelector('[data-testid="message-author"]')
-                ?.textContent?.trim() === "Scout",
+                ?.textContent?.trim() === "Scout" &&
+              (
+                row.querySelector('[data-testid="message-body"]')?.innerText ??
+                ""
+              ).trim().length > 0,
           ),
         before,
         { timeout: replyTimeoutMs },
@@ -160,17 +393,54 @@ export async function driveWorkspace({ page, evidence, replyTimeoutMs }) {
       reply = scoutRows()
         .filter({ has: page.getByTestId("message-body") })
         .last();
-      const body = (await reply.getByTestId("message-body").innerText()).trim();
-      if (!body)
+      replyText = (await reply.getByTestId("message-body").innerText()).trim();
+      if (!replyText)
         return { status: "FAIL", reason: "New Scout row has no reply body." };
       evidence.metadata.businessReplyMs = Date.now() - start;
+      evidence.observed["Scout business reply (verbatim)"] = replyText;
+      const mention = businessMentionVerdict(
+        replyText,
+        evidence.metadata.smokeBusinessName,
+        evidence.metadata.website,
+      );
+      evidence.verdict(
+        6,
+        "Scout's business answer mentions the business name or website typed in onboarding",
+        mention.status,
+        `Looked for "${evidence.metadata.smokeBusinessName}" and the website host of ${evidence.metadata.website}. Hits: ${mention.hits.join(", ") || "none"}. Reply length ${replyText.length} characters, received ${evidence.metadata.businessReplyMs} ms after send.`,
+      );
+      const leaks = [
+        ...new Set([
+          ...personalConfigFindings(replyText),
+          ...(evidence.metadata.introPersonalConfigFindings ?? []),
+        ]),
+      ];
+      evidence.verdict(
+        7,
+        "First reply is not polluted with unrelated personal config",
+        leaks.length ? "FAIL" : "PASS",
+        `Keyword scan of the intro and the business reply for the owner's personal configuration terms: ${leaks.join(", ") || "none found"}. Keyword scan only, read the verbatim text below for a human judgement.`,
+      );
       return {
-        reason: `New Scout-authored reply received in ${evidence.metadata.businessReplyMs} ms. Semantic accuracy of business knowledge requires reading the captured response.`,
+        reason: `New Scout-authored reply received in ${evidence.metadata.businessReplyMs} ms.`,
       };
     }))
-  )
-    return;
+  ) {
+    for (const [id, label] of [
+      [
+        6,
+        "Scout's business answer mentions the business name or website typed in onboarding",
+      ],
+      [7, "First reply is not polluted with unrelated personal config"],
+    ]) {
+      if (!evidence.verdicts.some((item) => item.id === id))
+        evidence.verdict(id, label, "BLOCKED", "No Scout reply was received.");
+    }
+  }
+  evidence.observed["Welcome timeline text (final)"] = await timelineText();
   await evidence.step("Reply file references", page, async () => {
+    if (!reply)
+      return { status: "BLOCKED", reason: "No reply row to inspect." };
     const body = reply.getByTestId("message-body");
     const text = await body.innerText();
     const paths =

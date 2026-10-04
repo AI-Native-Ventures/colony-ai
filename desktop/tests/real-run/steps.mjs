@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { createSmokeInbox } from "./mailbox.mjs";
+import { SETUP_NOTICE } from "./safety.mjs";
 
 export async function driveFirstRun({
   page,
@@ -7,14 +8,20 @@ export async function driveFirstRun({
   website,
   replyTimeoutMs,
   inspectWithoutAi = false,
+  realEnv = false,
 }) {
+  evidence.metadata.website = website;
   if (
     !(await evidence.step("Account", page, async () => {
       await page
         .getByTestId("machine-onboarding-gate")
         .waitFor({ timeout: 30000 });
+      const text = await page.locator("body").innerText();
+      const google = /Continue with Google/iu.test(text);
+      evidence.observed["Account screen text"] = text.slice(0, 2000);
+      evidence.metadata.continueWithGooglePresent = google;
       return {
-        reason: "Packaged Account UI rendered without injected frontend state.",
+        reason: `Packaged Account UI rendered without injected frontend state. Continue with Google present: ${google}.`,
       };
     }))
   )
@@ -123,6 +130,10 @@ export async function driveFirstRun({
         0,
         500,
       );
+      // Plan text as shown to the owner, verbatim.
+      evidence.observed["Connect screen text (plan text)"] = (
+        await page.locator("body").innerText()
+      ).slice(0, 3000);
       return {
         reason:
           "Real runtime discovery offered Claude Code and it was selected. Authentication is tested separately.",
@@ -134,6 +145,7 @@ export async function driveFirstRun({
     const start = Date.now();
     const runtime = page.getByTestId("onboarding-connect-runtime-claude");
     if (
+      !realEnv &&
       /Sign-in needed|Authentication not checked/iu.test(
         await runtime.innerText(),
       )
@@ -159,11 +171,16 @@ export async function driveFirstRun({
         reason: "Connected scene had no actual reply.",
       };
     evidence.metadata.connectionReplyMs = Date.now() - start;
+    evidence.observed["Connection test reply (verbatim)"] = reply;
+    evidence.observed["Connected screen text"] = (
+      await page.locator("body").innerText()
+    ).slice(0, 2000);
     return {
       reason: "Actual Claude Code connection test returned a reply.",
       replyLength: reply.length,
     };
   });
+  evidence.metadata.connectionVerified = connected;
   if (!connected) {
     if (!inspectWithoutAi) return;
     evidence.metadata.exploratoryWithoutAi = true;
@@ -195,7 +212,7 @@ export async function driveFirstRun({
         .getByRole("button", { name: "Open my Colony", exact: true })
         .click();
       await page.getByTestId("app-sidebar").waitFor({ timeout: 45000 });
-      if (/connect your ai/iu.test(await page.locator("body").innerText()))
+      if (SETUP_NOTICE.test(await page.locator("body").innerText()))
         return {
           status: "FAIL",
           reason:
