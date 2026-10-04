@@ -5,7 +5,7 @@ import { buildProjectsViewAgentContextItems } from "./buildProjectsViewAgentCont
 
 const repository = {
   description: "Relay and desktop source",
-  name: "Buzz",
+  name: "Colony",
   repoAddress: "owner:buzz",
 };
 const project = {
@@ -52,7 +52,7 @@ const base = {
 for (const [filter, expected] of [
   ["all", "Buzz Patrol"],
   ["projects", "Buzz Patrol"],
-  ["repositories", "Buzz"],
+  ["repositories", "Colony"],
   ["issues", "Agent context"],
   ["prs", "Expose overview data"],
   ["channels", "#buzz-dev"],

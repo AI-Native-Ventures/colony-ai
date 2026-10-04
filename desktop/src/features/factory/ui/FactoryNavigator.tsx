@@ -1,3 +1,4 @@
+import { useCompanyManagedAgentsQuery } from "@/features/agents/useCompanyManagedAgents";
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueries, useQuery } from "@tanstack/react-query";
@@ -14,7 +15,6 @@ import {
   Folder,
 } from "lucide-react";
 
-import { useManagedAgentsQuery } from "@/features/agents/hooks";
 import { useProjectsQuery } from "@/features/projects/hooks";
 import {
   FACTORY_PLAN_CHANGE_EVENT,
@@ -61,7 +61,7 @@ export function FactoryNavigator({ scope }: FactoryNavigatorProps) {
     refetchInterval: 5_000,
   });
   const projectsQuery = useProjectsQuery();
-  const agentsQuery = useManagedAgentsQuery();
+  const agentsQuery = useCompanyManagedAgentsQuery();
   const runs = runsQuery.data ?? [];
   const projects = projectsQuery.data ?? [];
   const agents = agentsQuery.data ?? [];

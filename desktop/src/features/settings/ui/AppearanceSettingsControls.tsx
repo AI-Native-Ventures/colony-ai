@@ -44,7 +44,7 @@ import { Switch } from "@/shared/ui/switch";
 import { SettingsOptionRow } from "./SettingsOptionGroup";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 
-/** Buzz navigation can use either its production tint or a stronger tab. */
+/** Colony navigation can use either its production tint or a stronger tab. */
 export function ProminentActiveTabSetting() {
   const { prominentActiveTab, setProminentActiveTab } = useTheme();
 
@@ -234,7 +234,7 @@ export function ConversationDisplaySettings() {
             className="text-sm font-normal text-muted-foreground/70"
             data-settings-subcopy
           >
-            Spacing in conversations and Markdown content across Buzz
+            Spacing in conversations and Markdown content across Colony
           </p>
         </div>
         <SegmentedControl
@@ -270,9 +270,9 @@ const LINK_PREVIEW_SAMPLE_BASE: Omit<ResolvedLinkPreview, "imageDataUrl"> = {
 };
 
 /**
- * Build the sample thumbnail as an SVG data URL from the Buzz gradient
+ * Build the sample thumbnail as an SVG data URL from the Colony gradient
  * tokens. Data-URL images cannot resolve CSS variables, so the token values
- * are read from the live stylesheet and baked in per render — if the Buzz
+ * are read from the live stylesheet and baked in per render , if the Colony
  * gradient ever changes in `theme.css`, this preview follows automatically.
  */
 function buzzGradientSampleImage(isDark: boolean): string {
@@ -505,7 +505,7 @@ function ThreadLayoutDiagram({ mode }: { mode: ThreadViewMode }) {
   const { isDark } = useTheme();
   const gradientId = React.useId();
   // Inline SVG resolves CSS variables, so the frame gradient references the
-  // Buzz gradient tokens directly and follows theme.css automatically.
+  // Colony gradient tokens directly and follows theme.css automatically.
   const gradientTop = isDark
     ? "var(--buzz-gradient-dark-top, #4a4616)"
     : "var(--buzz-gradient-light-top, #e6e6b6)";
@@ -668,7 +668,7 @@ export function AccentPickerContent({
           className="text-sm font-normal text-muted-foreground/70"
           data-settings-subcopy
         >
-          Choose the highlight color used throughout Buzz.
+          Choose the highlight color used throughout Colony.
         </p>
       </div>
       <div

@@ -95,6 +95,20 @@ fn merge_teams_impl(
     // Seed missing built-ins / re-promote existing ones that were downgraded.
     for built_in in built_in_team_records(built_ins, now) {
         if let Some(existing) = stored.iter_mut().find(|record| record.id == built_in.id) {
+            if existing.id == "builtin-team:welcome"
+                && existing.name == "Welcome Team"
+                && existing.instructions.is_none()
+                && existing.source_dir.is_none()
+                && !existing.is_symlink
+                && existing.description.as_deref()
+                    == Some("A friendly starter trio ready to help you plan, create, and ship.")
+                && existing.persona_ids == vec!["builtin:fizz", "builtin:honey", "builtin:bumble"]
+            {
+                existing.description = built_in.description.clone();
+                existing.persona_ids = built_in.persona_ids.clone();
+                existing.updated_at = now.to_string();
+                changed = true;
+            }
             if !existing.is_builtin {
                 existing.is_builtin = true;
                 existing.updated_at = now.to_string();

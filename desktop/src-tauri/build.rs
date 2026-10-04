@@ -98,8 +98,8 @@ fn main() {
             // own enforcement.
             if is_reserved_env_key(key) {
                 panic!(
-                    "BUZZ_BUILD_AGENT_ENV line {}: `{}` is reserved by Buzz and cannot be baked \
-                     into a build (it would override Buzz's own identity/access env)",
+                    "BUZZ_BUILD_AGENT_ENV line {}: `{}` is reserved by Colony and cannot be baked \
+                     into a build (it would override Colony's own identity/access env)",
                     line_no + 1,
                     key
                 );

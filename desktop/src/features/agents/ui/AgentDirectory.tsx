@@ -435,7 +435,7 @@ function AgentIdentityButton({
   return (
     <button
       aria-label={`Open ${agent.name} profile`}
-      className="group flex min-w-0 items-center gap-3 text-left"
+      className="group flex w-full min-w-0 items-center gap-3 overflow-hidden text-left"
       onClick={() => onOpenAgent(agent)}
       type="button"
     >

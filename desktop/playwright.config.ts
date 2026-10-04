@@ -94,6 +94,7 @@ export default defineConfig({
     {
       name: "smoke",
       testMatch: [
+        "**/scout-branding.spec.ts",
         "**/first-reply-runtime.spec.ts",
         "**/connect-polish.spec.ts",
         "**/onboarding-scout-presence.spec.ts",

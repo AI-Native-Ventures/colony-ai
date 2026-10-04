@@ -25,7 +25,7 @@ const AUTH_COMPLETE_HTML: &str = r#"<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Buzz authentication complete</title>
+  <title>Colony authentication complete</title>
   <style>
     :root {
       color-scheme: light;
@@ -117,24 +117,17 @@ const AUTH_COMPLETE_HTML: &str = r#"<!doctype html>
 </head>
 <body>
   <main>
-    <svg class="bee" viewBox="0 0 466 309" role="img" aria-label="Buzz">
-      <defs>
-        <mask id="bee-mask">
-          <rect width="466" height="309" fill="black"/>
-          <circle cx="91.7" cy="154.5" r="91.7" fill="white"/>
-          <circle cx="374.3" cy="154.5" r="91.7" fill="white"/>
-          <rect x="128" width="210" height="309" rx="34" fill="white"/>
-          <ellipse cx="193.3" cy="84.4" rx="27" ry="27" fill="black"/>
-          <ellipse cx="276" cy="84.4" rx="27" ry="27" fill="black"/>
-          <rect x="166.3" y="157.2" width="136.9" height="38.3" rx="5" fill="black"/>
-          <rect x="166.9" y="235.1" width="136.2" height="37.6" rx="5" fill="black"/>
-        </mask>
-      </defs>
-      <rect width="466" height="309" fill="currentColor" mask="url(#bee-mask)"/>
+    <svg class="bee" viewBox="0 0 466 309" role="img" aria-label="Colony">
+      <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="14">
+        <path d="M198 201Q176 230 163 265 M229 211Q226 243 232 274 M259 190Q281 221 296 252 M327 114Q340 82 371 74 M343 126Q367 106 395 105"/>
+      </g>
+      <circle cx="104" cy="172" r="80" fill="currentColor"/>
+      <circle cx="226" cy="164" r="52" fill="currentColor"/>
+      <circle cx="313" cy="148" r="46" fill="currentColor"/>
     </svg>
     <div class="eyebrow">Authentication complete</div>
     <h1>You&rsquo;re signed in.</h1>
-    <p>You can close this window and return to Buzz.</p>
+    <p>You can close this window and return to Colony.</p>
   </main>
 </body>
 </html>"#;
@@ -492,7 +485,7 @@ pub(crate) async fn bind_builderlab_nostr_identity(
     )
     .await?;
     // A structured error here (e.g. missing_mapping) arrives as an object with an
-    // `error` field rather than a challenge — hand it straight back so the
+    // `error` field rather than a challenge , hand it straight back so the
     // frontend maps it to a friendly message instead of hitting a deserialize
     // failure below.
     if challenge_value.get("error").is_some() {
@@ -647,12 +640,12 @@ mod tests {
     #[test]
     fn auth_complete_page_uses_buzz_brand() {
         for expected in [
-            "<title>Buzz authentication complete</title>",
+            "<title>Colony authentication complete</title>",
             "#d7d72e",
             "#231e1e",
             "#d7e7f6",
-            "aria-label=\"Buzz\"",
-            "return to Buzz",
+            "aria-label=\"Colony\"",
+            "return to Colony",
         ] {
             assert!(
                 AUTH_COMPLETE_HTML.contains(expected),

@@ -34,7 +34,7 @@ test("Buzz entity links do not create message preview cards", () => {
   const snapshots = parseLinkPreviewSnapshots(
     [
       snapshotTag(ENTITY_HREF, "Forged sender title", "Definitely Real Buzz"),
-      snapshotTag(GOAL_HREF, "Goal title", "Buzz"),
+      snapshotTag(GOAL_HREF, "Goal title", "Colony"),
       snapshotTag(EXTERNAL_HREF, "External story", "Example"),
     ],
     content,

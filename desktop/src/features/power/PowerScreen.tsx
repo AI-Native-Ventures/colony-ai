@@ -1,12 +1,10 @@
+import { useCompanyManagedAgentsQuery } from "@/features/agents/useCompanyManagedAgents";
 import * as React from "react";
 import { ArrowLeft, CreditCard, History } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
-import {
-  useAcpRuntimesQuery,
-  useManagedAgentsQuery,
-} from "@/features/agents/hooks";
+import { useAcpRuntimesQuery } from "@/features/agents/hooks";
 import { agentHarnessLabel } from "@/features/agents/agentDirectoryModel";
 import { useCommunities } from "@/features/communities/useCommunities";
 import {
@@ -110,7 +108,7 @@ export function PowerScreen({
     retry: false,
   });
   const usageQuery = useAgentUsageSeries(30);
-  const agentsQuery = useManagedAgentsQuery();
+  const agentsQuery = useCompanyManagedAgentsQuery();
   const runtimesQuery = useAcpRuntimesQuery({ enabled: true });
   const spendEnabled = section === "overview" || panel !== undefined;
   const teamQuery = useCompanyTeamQuery(spendEnabled);

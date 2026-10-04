@@ -245,14 +245,14 @@ test("catalog hides built-ins and shows the shared-agent empty state", async ({
   await openAgentTemplatesView(page);
 
   await expect(page.getByTestId("agents-library-personas")).toBeVisible();
-  for (const personaName of ["Fizz", "Honey", "Pollen"]) {
+  for (const personaName of ["Scout", "Writer", "Researcher"]) {
     await expect(page.getByTestId("agents-library-personas")).toContainText(
       personaName,
     );
   }
 
   await openPersonaCatalog(page);
-  for (const personaName of ["Fizz", "Honey", "Pollen"]) {
+  for (const personaName of ["Scout", "Writer", "Researcher"]) {
     await expect(
       page.getByTestId("community-catalog-dialog"),
     ).not.toContainText(personaName);
@@ -275,7 +275,7 @@ test("catalog hides built-ins and shows the shared-agent empty state", async ({
     .getByTestId("community-catalog-dialog")
     .getByRole("button", { name: "Close" })
     .click();
-  await page.getByLabel("Open actions for Fizz").click();
+  await page.getByLabel("Open actions for Scout").click();
   await page.getByRole("menuitem", { name: "Share" }).click();
   await expect(page.getByTestId("persona-share-catalog")).toHaveCount(0);
   await expect(page.getByTestId("persona-share-catalog-access")).toHaveCount(0);
@@ -312,18 +312,18 @@ test("built-in persona edits persist", async ({ page }) => {
   await gotoApp(page);
   await openAgentTemplatesView(page);
 
-  await page.getByLabel("Open actions for Fizz").click();
+  await page.getByLabel("Open actions for Scout").click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
 
   const dialog = page.getByTestId("persona-dialog");
-  await dialog.getByLabel("Agent name").fill("My Fizz");
+  await dialog.getByLabel("Agent name").fill("My Scout");
   await dialog.getByLabel("Description").fill("Helps teams ship reliably.");
   await dialog.getByLabel("Agent instruction").fill("User-edited instructions");
   await dialog.getByRole("button", { name: "Save changes" }).click();
 
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId("agents-library-personas")).toContainText(
-    "My Fizz",
+    "My Scout",
   );
   await expect(
     page.getByTestId("persona-agent-row-builtin:fizz"),
@@ -339,7 +339,7 @@ test("built-in persona edits persist", async ({ page }) => {
   expect(
     personas.find((persona) => persona.id === "builtin:fizz"),
   ).toMatchObject({
-    display_name: "My Fizz",
+    display_name: "My Scout",
     description: "Helps teams ship reliably.",
     system_prompt: "User-edited instructions",
   });
@@ -2721,7 +2721,7 @@ test("inactive built-ins cannot be used to create teams", async ({ page }) => {
     },
   });
 
-  expect(error).toBe("Honey is not in My Agents.");
+  expect(error).toBe("Writer is not in My Agents.");
 });
 
 test("built-in removal failures show up from My Agents", async ({ page }) => {
@@ -2738,13 +2738,13 @@ test("built-in removal failures show up from My Agents", async ({ page }) => {
     },
   });
 
-  await page.getByLabel("Open actions for Honey").click();
+  await page.getByLabel("Open actions for Writer").click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
 
   await expect(
     page
       .locator("[data-sonner-toast]")
-      .filter({ hasText: "Honey is still referenced by a team." }),
+      .filter({ hasText: "Writer is still referenced by a team." }),
   ).toBeVisible();
 });
 

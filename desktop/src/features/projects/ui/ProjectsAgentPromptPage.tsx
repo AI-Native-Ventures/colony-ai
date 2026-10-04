@@ -1,3 +1,4 @@
+import { useCompanyManagedAgentsQuery } from "@/features/agents/useCompanyManagedAgents";
 import { EditorContent } from "@tiptap/react";
 import {
   ALargeSmall,
@@ -11,7 +12,6 @@ import { toast } from "sonner";
 
 import { useAgentWorking } from "@/features/agents/agentWorkingSignal";
 import {
-  useManagedAgentsQuery,
   useRelayAgentsQuery,
   useStartManagedAgentMutation,
 } from "@/features/agents/hooks";
@@ -159,7 +159,7 @@ function buildSuggestions(projects: readonly Project[]) {
 /** Sorts runnable agents first so the default pick can answer immediately. */
 export function useAgentCandidates() {
   const identityQuery = useIdentityQuery();
-  const managedAgentsQuery = useManagedAgentsQuery();
+  const managedAgentsQuery = useCompanyManagedAgentsQuery();
   const relayAgentsQuery = useRelayAgentsQuery();
   const channelsQuery = useChannelsQuery();
 
