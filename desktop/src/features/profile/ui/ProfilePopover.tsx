@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Smile } from "lucide-react";
+import { Camera, Smile } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
@@ -12,6 +12,8 @@ import {
   getPresenceChipClassName,
   getPresenceLabel,
 } from "@/features/presence/lib/presence";
+import { useUpdateProfileMutation } from "@/features/profile/hooks";
+import { ProfileAvatarDialog } from "@/features/settings/ui/ProfileAvatarDialog";
 import { SetStatusDialog } from "@/features/user-status/ui/SetStatusDialog";
 import {
   DEFAULT_USER_STATUS_EMOJI,
@@ -76,6 +78,8 @@ export function ProfilePopover({
   communitySwitcherSlot,
 }: ProfilePopoverProps) {
   const [statusDialogOpen, setStatusDialogOpen] = React.useState(false);
+  const [avatarDialogOpen, setAvatarDialogOpen] = React.useState(false);
+  const updateProfile = useUpdateProfileMutation();
   const [presenceMenuOpen, setPresenceMenuOpen] = React.useState(false);
   const hasUserStatus = Boolean(userStatusText || userStatusEmoji);
   const settingsShortcutLabel = isMacPlatform() ? "⌘," : "Ctrl+,";
@@ -242,6 +246,25 @@ export function ProfilePopover({
               </button>
             </div>
 
+            <button
+              className={MENU_ITEM_CLASS}
+              data-testid="profile-popover-change-photo"
+              onClick={() => {
+                closePopover();
+                window.requestAnimationFrame(() => {
+                  setAvatarDialogOpen(true);
+                });
+              }}
+              role="menuitem"
+              type="button"
+            >
+              <Camera
+                aria-hidden="true"
+                className="h-4 w-4 shrink-0 text-muted-foreground"
+              />
+              <span className="flex-1">Change photo</span>
+            </button>
+
             <hr className="my-1 h-px border-0 bg-border/60" />
 
             {communitySwitcherSlot ? (
@@ -292,6 +315,16 @@ export function ProfilePopover({
           </div>
         </PopoverContent>
       </Popover>
+
+      <ProfileAvatarDialog
+        avatarUrl={avatarUrl ?? ""}
+        displayName={displayName}
+        onOpenChange={setAvatarDialogOpen}
+        onSave={async (nextAvatarUrl) => {
+          await updateProfile.mutateAsync({ avatarUrl: nextAvatarUrl });
+        }}
+        open={avatarDialogOpen}
+      />
 
       <SetStatusDialog
         hasExistingStatus={hasUserStatus}

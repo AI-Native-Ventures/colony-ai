@@ -1,6 +1,15 @@
 import { File as FileIcon, Monitor, X } from "lucide-react";
 import * as React from "react";
 
+import {
+  AVATAR_ACCEPT_ATTRIBUTE,
+  AVATAR_ACCEPTED_LABEL,
+  AVATAR_MAX_SOURCE_LABEL,
+  type AvatarProblem,
+  checkAvatarFile,
+  describeAvatarFailure,
+  describeCameraProblem,
+} from "@/features/profile/avatarUploadProblems";
 import { emojiAvatarDataUrl } from "@/features/profile/ui/ProfileAvatarEditor.utils";
 import { uploadMediaFile } from "@/shared/api/tauriMedia";
 import { Button } from "@/shared/ui/button";
@@ -12,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/ui/dialog";
+import { ProfileAvatarProblem } from "./ProfileAvatarProblem";
 
 const AVATAR_OPTIONS = [
   { label: "Star", emoji: "✦", color: "#FFFFFF", background: "#ece5ed" },
@@ -77,11 +87,20 @@ export function ProfileAvatarDialog({
     cropY: number;
   } | null>(null);
   const uploadedUrlRef = React.useRef<string | null>(null);
+  const [problem, setProblem] = React.useState<AvatarProblem | null>(null);
+  const recoveryButtonRef = React.useRef<HTMLButtonElement>(null);
+  const lastPresetRef = React.useRef<string | null>(null);
+  // Bumped whenever the dialog closes or a new save starts, so a save that was
+  // cancelled or superseded cannot write its result into a newer dialog state.
+  const attemptRef = React.useRef(0);
   const isOpenRef = React.useRef(open);
   isOpenRef.current = open;
 
   React.useEffect(() => {
     if (open) return;
+    attemptRef.current += 1;
+    lastPresetRef.current = null;
+    setProblem(null);
     setStage("choose");
     setSelectedChoice(null);
     setFile(null);
@@ -97,12 +116,21 @@ export function ProfileAvatarDialog({
     return () => URL.revokeObjectURL(previewUrl);
   }, [previewUrl]);
 
+  // A failure replaces the control the person just used, so move focus to the
+  // recovery action instead of dropping it to the page.
+  React.useEffect(() => {
+    if (problem) recoveryButtonRef.current?.focus();
+  }, [problem]);
+
   React.useEffect(() => {
     if (!open || stage !== "camera") return;
 
     let live = true;
     setIsCameraReady(false);
-    if (!navigator.mediaDevices?.getUserMedia) return;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setProblem(describeCameraProblem(null));
+      return;
+    }
 
     void navigator.mediaDevices
       .getUserMedia({ video: true })
@@ -119,8 +147,10 @@ export function ProfileAvatarDialog({
           void video.play().catch(() => undefined);
         }
       })
-      .catch(() => {
-        if (live) setIsCameraReady(false);
+      .catch((error: unknown) => {
+        if (!live) return;
+        setIsCameraReady(false);
+        setProblem(describeCameraProblem(error));
       });
 
     return () => {
@@ -133,12 +163,15 @@ export function ProfileAvatarDialog({
 
   function setImageFile(nextFile: File | undefined) {
     if (!nextFile) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(nextFile.type)) {
+    const fileProblem = checkAvatarFile(nextFile);
+    if (fileProblem) {
       setFile(null);
+      setProblem(fileProblem);
       setStage("invalid");
       return;
     }
 
+    setProblem(null);
     setPreviewUrl(URL.createObjectURL(nextFile));
     setFile(nextFile);
     setZoom(1);
@@ -239,33 +272,47 @@ export function ProfileAvatarDialog({
     return new File([blob], "profile-avatar.png", { type: "image/png" });
   }
 
-  async function saveAvatar(avatar: string, isPreset = false) {
+  async function savePreset(avatar: string) {
+    const attempt = ++attemptRef.current;
+    lastPresetRef.current = avatar;
+    setProblem(null);
     setStage("saving");
     try {
       await onSave(avatar);
+      if (attempt !== attemptRef.current) return;
       onOpenChange(false);
-    } catch {
-      if (isPreset) {
-        setStage("choose");
-        onOpenChange(false);
-      } else {
-        setStage("failed");
-      }
+    } catch (error) {
+      if (attempt !== attemptRef.current) return;
+      setSelectedChoice(null);
+      setProblem(
+        describeAvatarFailure(error, { hasCrop: false, phase: "publish" }),
+      );
+      setStage("choose");
     }
   }
 
   async function saveCrop() {
     if (!file && !uploadedUrlRef.current) return;
+    const attempt = ++attemptRef.current;
+    setProblem(null);
     setStage("saving");
+    let phase: "prepare" | "upload" | "publish" = "prepare";
     try {
       if (!uploadedUrlRef.current) {
         const cropped = await renderCroppedImage();
+        phase = "upload";
         const descriptor = await uploadMediaFile(cropped);
+        // Cancelled while uploading: keep the profile unchanged.
+        if (attempt !== attemptRef.current) return;
         uploadedUrlRef.current = descriptor.url;
       }
+      phase = "publish";
       await onSave(uploadedUrlRef.current);
+      if (attempt !== attemptRef.current) return;
       onOpenChange(false);
-    } catch {
+    } catch (error) {
+      if (attempt !== attemptRef.current) return;
+      setProblem(describeAvatarFailure(error, { hasCrop: true, phase }));
       setStage("failed");
     }
   }
@@ -291,7 +338,15 @@ export function ProfileAvatarDialog({
       size,
     );
     canvas.toBlob((blob) => {
-      if (!blob || !isOpenRef.current) return;
+      if (!isOpenRef.current) return;
+      if (!blob) {
+        setProblem({
+          kind: "camera",
+          title: "The photo was not taken",
+          message: "Try Take photo again, or upload an image instead.",
+        });
+        return;
+      }
       const photo = new File([blob], "profile-photo.png", {
         type: "image/png",
       });
@@ -301,19 +356,25 @@ export function ProfileAvatarDialog({
 
   async function chooseAvatar(option: (typeof AVATAR_OPTIONS)[number]) {
     setSelectedChoice(option.label);
-    await saveAvatar(emojiAvatarDataUrl(option.emoji, option.color), true);
+    await savePreset(emojiAvatarDataUrl(option.emoji, option.color));
   }
 
   async function retrySave() {
+    if (stage === "choose" && lastPresetRef.current) {
+      await savePreset(lastPresetRef.current);
+      return;
+    }
     await saveCrop();
   }
 
   const isSaving = stage === "saving";
   const isCropStage = stage === "crop" || stage === "failed";
+  const canRetryPreset =
+    stage === "choose" && problem !== null && lastPresetRef.current !== null;
   const dialogHeight = {
-    choose: "h-[20.125rem]",
+    choose: problem ? "h-[27.5rem]" : "h-[20.125rem]",
     upload: "h-[24.625rem]",
-    camera: "h-[39.25rem]",
+    camera: problem ? "h-[43rem]" : "h-[39.25rem]",
     crop: "h-[38.0625rem]",
     saving: "h-[24.1875rem]",
     invalid: "h-[31.6875rem]",
@@ -321,12 +382,7 @@ export function ProfileAvatarDialog({
   }[stage];
 
   return (
-    <Dialog
-      onOpenChange={(nextOpen) => {
-        if (!isSaving) onOpenChange(nextOpen);
-      }}
-      open={open}
-    >
+    <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
         aria-describedby={undefined}
         className={`flex max-h-[calc(100vh-2rem)] max-w-[540px] flex-col gap-0 overflow-hidden border-border/80 bg-card p-0 dark:bg-[#26232d] ${dialogHeight}`}
@@ -340,7 +396,6 @@ export function ProfileAvatarDialog({
           <DialogClose
             aria-label="Close"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-            disabled={isSaving}
           >
             <X aria-hidden="true" className="h-4 w-4" />
           </DialogClose>
@@ -349,6 +404,12 @@ export function ProfileAvatarDialog({
         <div className="min-h-0 flex-1 overflow-y-auto px-[25px] py-6">
           {stage === "choose" ? (
             <>
+              {problem ? (
+                <ProfileAvatarProblem
+                  problem={problem}
+                  testId="avatar-save-error"
+                />
+              ) : null}
               <div
                 className="flex flex-wrap gap-3"
                 data-testid="avatar-options"
@@ -363,9 +424,8 @@ export function ProfileAvatarDialog({
                   data-testid="avatar-option-initials"
                   onClick={() => {
                     setSelectedChoice("initials");
-                    void saveAvatar(
+                    void savePreset(
                       emojiAvatarDataUrl(initials(displayName), "#796782"),
-                      true,
                     );
                   }}
                   type="button"
@@ -391,7 +451,10 @@ export function ProfileAvatarDialog({
                 <Button
                   className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
                   data-testid="avatar-upload-open"
-                  onClick={() => setStage("upload")}
+                  onClick={() => {
+                    setProblem(null);
+                    setStage("upload");
+                  }}
                   type="button"
                 >
                   Upload image
@@ -399,7 +462,10 @@ export function ProfileAvatarDialog({
                 <Button
                   className="rounded-md text-xs"
                   data-testid="avatar-camera-open"
-                  onClick={() => setStage("camera")}
+                  onClick={() => {
+                    setProblem(null);
+                    setStage("camera");
+                  }}
                   type="button"
                   variant="outline"
                 >
@@ -411,20 +477,11 @@ export function ProfileAvatarDialog({
 
           {stage === "upload" || stage === "invalid" ? (
             <>
-              {stage === "invalid" ? (
-                <div
-                  className="mb-[18px] rounded-[7px] border border-[#edd8dd] bg-[#fcf2f4] px-[18px] py-[15px] text-xs leading-[1.65] text-[#925369] dark:border-[#63414e] dark:bg-[#402b34] dark:text-[#dcacb8]"
-                  data-testid="avatar-invalid"
-                  role="alert"
-                >
-                  <p className="font-medium">
-                    Choose a smaller supported image
-                  </p>
-                  <p>
-                    Use JPEG, PNG or WebP, up to 5 MB. This limit is a design
-                    proposal; bind it to the media validator.
-                  </p>
-                </div>
+              {stage === "invalid" && problem ? (
+                <ProfileAvatarProblem
+                  problem={problem}
+                  testId="avatar-invalid"
+                />
               ) : null}
               <label
                 className="flex min-h-[190px] w-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-input bg-transparent px-6 py-6 text-sm text-muted-foreground"
@@ -434,9 +491,11 @@ export function ProfileAvatarDialog({
                 <strong className="font-semibold text-foreground">
                   Choose an image
                 </strong>
-                <span>JPEG, PNG or WebP</span>
+                <span>
+                  {AVATAR_ACCEPTED_LABEL}, up to {AVATAR_MAX_SOURCE_LABEL}
+                </span>
                 <input
-                  accept="image/jpeg,image/png,image/webp"
+                  accept={AVATAR_ACCEPT_ATTRIBUTE}
                   className="mt-2 w-full text-xs file:mr-2 file:rounded-[3px] file:border file:border-[#c4c4c4] file:bg-[#efefef] file:px-1 file:py-0 file:text-2xs file:text-[#282532] dark:file:border-[#5a5264] dark:file:bg-[#3a3243] dark:file:text-[#e6e1ec]"
                   data-testid="avatar-file-input"
                   onChange={(event) => {
@@ -453,6 +512,12 @@ export function ProfileAvatarDialog({
 
           {stage === "camera" ? (
             <>
+              {problem ? (
+                <ProfileAvatarProblem
+                  problem={problem}
+                  testId="avatar-camera-error"
+                />
+              ) : null}
               <p className="mb-[18px] rounded-[7px] border border-[#dce5ef] bg-[#f1f6fc] px-[18px] py-[15px] text-xs leading-[1.65] text-[#48637f] dark:border-[#43516a] dark:bg-[#293445] dark:text-[#b4c6e0]">
                 <strong className="mb-1 block font-medium">
                   Camera permission
@@ -493,15 +558,11 @@ export function ProfileAvatarDialog({
 
           {isCropStage ? (
             <>
-              {stage === "failed" ? (
-                <div
-                  className="mb-[18px] rounded-[7px] border border-[#edd8dd] bg-[#fcf2f4] px-[18px] py-[17px] text-xs leading-[1.65] text-[#925369] dark:border-[#63414e] dark:bg-[#402b34] dark:text-[#dcacb8]"
-                  data-testid="avatar-save-error"
-                  role="alert"
-                >
-                  <p className="font-medium">Your avatar wasn’t saved</p>
-                  <p>The crop is kept. Check your connection and try again.</p>
-                </div>
+              {stage === "failed" && problem ? (
+                <ProfileAvatarProblem
+                  problem={problem}
+                  testId="avatar-save-error"
+                />
               ) : null}
               <div
                 aria-label="Avatar crop position"
@@ -588,7 +649,8 @@ export function ProfileAvatarDialog({
               />
               <p className="text-base font-medium">Saving your avatar…</p>
               <p className="text-sm text-muted-foreground">
-                Your current avatar stays visible until this completes.
+                Your current avatar stays visible until this completes. You can
+                cancel at any time.
               </p>
             </div>
           ) : null}
@@ -599,7 +661,6 @@ export function ProfileAvatarDialog({
             <Button
               className="rounded-md bg-card text-xs"
               data-testid="avatar-cancel"
-              disabled={isSaving}
               onClick={() => onOpenChange(false)}
               type="button"
               variant="outline"
@@ -607,15 +668,45 @@ export function ProfileAvatarDialog({
               Cancel
             </Button>
           </DialogClose>
-          {stage === "crop" || stage === "failed" ? (
+          {stage === "crop" || stage === "failed" || canRetryPreset ? (
             <Button
               className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
-              data-testid={stage === "failed" ? "avatar-retry" : "avatar-save"}
+              data-testid={
+                stage === "failed" || canRetryPreset
+                  ? "avatar-retry"
+                  : "avatar-save"
+              }
               disabled={isSaving}
               onClick={() => void retrySave()}
+              ref={recoveryButtonRef}
               type="button"
             >
-              {stage === "failed" ? "Try again" : "Save avatar"}
+              {stage === "failed" || canRetryPreset ? "Retry" : "Save avatar"}
+            </Button>
+          ) : null}
+          {stage === "invalid" ? (
+            <Button
+              className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
+              data-testid="avatar-choose-another"
+              onClick={() => fileInputRef.current?.click()}
+              ref={recoveryButtonRef}
+              type="button"
+            >
+              Choose another image
+            </Button>
+          ) : null}
+          {stage === "camera" && problem ? (
+            <Button
+              className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
+              data-testid="avatar-camera-use-upload"
+              onClick={() => {
+                setProblem(null);
+                setStage("upload");
+              }}
+              ref={recoveryButtonRef}
+              type="button"
+            >
+              Upload an image instead
             </Button>
           ) : null}
         </DialogFooter>

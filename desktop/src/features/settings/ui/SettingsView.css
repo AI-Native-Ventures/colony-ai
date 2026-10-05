@@ -1011,6 +1011,15 @@ body:has(.w20-settings-shell) {
   color: #a39aa9;
 }
 
+.w20-account-profile-grid .w20-account-photo-row {
+  margin-bottom: 20px;
+}
+
+.w20-account-profile-grid .w20-account-avatar-saved {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
 .w20-account-avatar-action {
   height: 36px;
   min-height: 36px;

@@ -12,6 +12,7 @@ import {
 } from "@/shared/ui/sidebar";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { ACCENT_STORAGE_KEY, useTheme } from "@/shared/theme/ThemeProvider";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
@@ -523,31 +524,41 @@ export function SettingsView({
         </SidebarContent>
 
         <SidebarFooter className="w20-nav-footer">
-          <button
-            aria-label="Open profile avatar settings"
-            className="w20-nav-person w20-nav-person-action"
-            data-testid="settings-profile-avatar-context"
-            onClick={() => {
-              chooseSection("profile");
-              setAvatarSaved(false);
-              setAvatarEditorContext(true);
-            }}
-            type="button"
-          >
-            <div className="w20-nav-person-avatar">
-              <ProfileAvatar
-                avatarUrl={profile.data?.avatarUrl ?? null}
-                className="size-full rounded-[7px]"
-                label={signedInDisplayName}
-                shape="squircle"
-                testId="settings-profile-avatar"
-              />
-            </div>
-            <div>
-              <strong>{signedInDisplayName}</strong>
-              <small>Workspace owner</small>
-            </div>
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                aria-label={`Profile and account, ${signedInDisplayName}`}
+                className="w20-nav-person w20-nav-person-action"
+                data-testid="settings-profile-avatar-context"
+                onClick={() => {
+                  chooseSection("profile");
+                  setAvatarSaved(false);
+                  setAvatarEditorContext(true);
+                }}
+                type="button"
+              >
+                <div className="w20-nav-person-avatar">
+                  <ProfileAvatar
+                    avatarUrl={profile.data?.avatarUrl ?? null}
+                    className="size-full rounded-[7px]"
+                    label={signedInDisplayName}
+                    shape="squircle"
+                    testId="settings-profile-avatar"
+                  />
+                </div>
+                <div>
+                  <strong>{signedInDisplayName}</strong>
+                  <small>Workspace owner</small>
+                </div>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent
+              data-testid="settings-profile-avatar-context-tooltip"
+              side="right"
+            >
+              Profile and account
+            </TooltipContent>
+          </Tooltip>
         </SidebarFooter>
       </Sidebar>
 

@@ -14,13 +14,16 @@ import {
 import { getAccountAuthClient } from "@/features/onboarding/accountAuthAdapter";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import type { SettingsSection } from "./SettingsPanels";
 import { AccountSettingsHeader } from "./AccountSettingsHeader";
 
 type AccountProfileSettingsPanelProps = {
+  avatarSaved?: boolean;
   fallbackDisplayName?: string;
   onClose: () => void;
+  onEditAvatar?: () => void;
   onSectionChange: (section: SettingsSection) => void;
 };
 
@@ -34,8 +37,10 @@ function roleLabel(role: string | undefined) {
 }
 
 export function AccountProfileSettingsPanel({
+  avatarSaved = false,
   fallbackDisplayName,
   onClose,
+  onEditAvatar,
   onSectionChange,
 }: AccountProfileSettingsPanelProps) {
   const profileQuery = useProfileQuery();
@@ -107,6 +112,38 @@ export function AccountProfileSettingsPanel({
           <h2 className="w20-account-card-title" id="account-profile-title">
             Your profile
           </h2>
+          <div className="w20-account-photo-row">
+            <ProfileAvatar
+              avatarUrl={profileQuery.data?.avatarUrl ?? null}
+              className="size-8 rounded-[7px]"
+              label={profileName || "Your profile"}
+              shape="squircle"
+              testId="account-profile-avatar"
+            />
+            <div className="w20-account-photo-copy">
+              <strong>Profile photo</strong>
+              <p>Shown to people in your businesses.</p>
+            </div>
+            <Button
+              className="w20-account-avatar-action"
+              data-testid="profile-photo-change"
+              onClick={onEditAvatar}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Change photo
+            </Button>
+          </div>
+          {avatarSaved ? (
+            <div
+              className="w20-account-avatar-saved"
+              data-testid="profile-avatar-saved"
+              role="status"
+            >
+              Profile photo updated
+            </div>
+          ) : null}
           <form
             aria-label="Your profile"
             className="w20-account-profile-form"
