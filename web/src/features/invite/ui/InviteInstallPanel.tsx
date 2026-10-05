@@ -46,7 +46,7 @@ export function InviteInstallPanel({ inviteUrl }: { inviteUrl: string }) {
   );
   const [copyState, setCopyState] = React.useState<CopyState>("idle");
   const linkInputRef = React.useRef<HTMLInputElement>(null);
-  const copyTimerRef = React.useRef<number>();
+  const copyTimerRef = React.useRef<number | undefined>(undefined);
 
   React.useEffect(() => {
     let active = true;
