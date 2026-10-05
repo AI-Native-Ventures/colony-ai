@@ -260,7 +260,7 @@ test("invite offers the invite link to copy and an honest open fallback", async 
   await page.goto("/invite/demo-code");
   await expect(
     page.getByText(
-      "Install Colony, create your account, then choose Join a community and paste this link.",
+      "Install Colony, open it, choose Have an invite link? on the first screen and paste this link.",
     ),
   ).toBeVisible();
 
