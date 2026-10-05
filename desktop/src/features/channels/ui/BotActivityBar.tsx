@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 
 import { useAgentTranscript } from "@/features/agents/ui/useObserverEvents";
 import {
+  getActivityDetail,
   getActivityHeadline,
   isMeaningfulItem,
   isSpineItem,
@@ -17,6 +18,7 @@ import {
   PopoverTrigger,
 } from "@/shared/ui/popover";
 import { Shimmer } from "@/shared/ui/Shimmer";
+import { BotActivityDetails } from "./BotActivityDetails";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 
 export type BotActivityAgent = Pick<ManagedAgent, "pubkey" | "name">;
@@ -97,6 +99,37 @@ export function BotActivityComposerAction({
 
     return headlines;
   }, [channelId, singleWorkingAgent, transcript]);
+  const activityDetails = React.useMemo(() => {
+    if (!singleWorkingAgent) {
+      return [];
+    }
+
+    const seen = new Set<string>();
+    const details: { label: string; detail: string }[] = [];
+    const scopedTranscript = channelId
+      ? transcript.filter((item) => item.channelId === channelId)
+      : transcript;
+
+    for (let i = scopedTranscript.length - 1; i >= 0; i--) {
+      const item = scopedTranscript[i];
+      if (!isMeaningfulItem(item)) {
+        continue;
+      }
+      const detail = getActivityDetail(item);
+      const label = getActivityHeadline(item);
+      if (!detail || !label || seen.has(detail)) {
+        continue;
+      }
+
+      seen.add(detail);
+      details.unshift({ label, detail });
+      if (details.length >= 5) {
+        break;
+      }
+    }
+
+    return details;
+  }, [channelId, singleWorkingAgent, transcript]);
   const [headlineIndex, setHeadlineIndex] = React.useState(0);
 
   const clearHoverTimer = React.useCallback(() => {
@@ -161,119 +194,124 @@ export function BotActivityComposerAction({
       : `${workingAgents[0]?.name ?? "Agent"} +${workingAgents.length - 1}`;
 
   return (
-    <Popover onOpenChange={setOpen} open={open}>
-      <PopoverTrigger asChild>
-        <button
-          aria-label={`${triggerLabel}. View activity.`}
-          className={cn(
-            "inline-flex items-center justify-center rounded-full border border-border/60 bg-background font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:border-primary/40 data-[state=open]:bg-primary/10 data-[state=open]:text-primary",
-            isInline
-              ? "min-w-0 gap-1.5 overflow-visible border-transparent bg-transparent px-0 text-xs font-normal leading-normal shadow-none hover:border-transparent hover:bg-transparent data-[state=open]:border-transparent data-[state=open]:bg-transparent"
-              : "h-9 min-w-9 gap-1.5 px-2 text-xs",
-          )}
-          data-testid="bot-activity-composer-trigger"
-          onBlur={closeWithDelay}
-          onClick={() => {
-            clearHoverTimer();
-            setOpen((current) => !current);
-          }}
-          onFocus={() => setOpen(true)}
-          onMouseEnter={openWithDelay}
-          onMouseLeave={closeWithDelay}
-          type="button"
-        >
-          <span className="flex h-4.5 items-center overflow-visible -space-x-1">
-            {workingAgents.slice(0, 2).map((agent) => (
-              <UserAvatar
-                avatarUrl={agentAvatarUrl(agent)}
-                className={cn(
-                  "border border-background",
-                  isInline ? "!h-4.5 !w-4.5 text-3xs" : "shrink-0",
-                )}
-                displayName={agent.name}
-                shape="squircle"
-                fallbackDelayMs={isInline ? 0 : undefined}
-                key={agent.pubkey}
-                size="xs"
-                testId={`bot-activity-composer-avatar-${agent.pubkey}`}
-              />
-            ))}
-          </span>
-          {workingAgents.length > 2 ? (
-            <span className="text-2xs leading-none">
-              +{workingAgents.length - 2}
-            </span>
-          ) : null}
-          <span
+    <>
+      <Popover onOpenChange={setOpen} open={open}>
+        <PopoverTrigger asChild>
+          <button
+            aria-label={`${triggerLabel}. View activity.`}
             className={cn(
+              "inline-flex items-center justify-center rounded-full border border-border/60 bg-background font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring data-[state=open]:border-primary/40 data-[state=open]:bg-primary/10 data-[state=open]:text-primary",
               isInline
-                ? "flex h-4.5 min-w-0 flex-1 items-center overflow-visible leading-none"
-                : "sr-only",
+                ? "min-w-0 gap-1.5 overflow-visible border-transparent bg-transparent px-0 text-xs font-normal leading-normal shadow-none hover:border-transparent hover:bg-transparent data-[state=open]:border-transparent data-[state=open]:bg-transparent"
+                : "h-9 min-w-9 gap-1.5 px-2 text-xs",
             )}
+            data-testid="bot-activity-composer-trigger"
+            onBlur={closeWithDelay}
+            onClick={() => {
+              clearHoverTimer();
+              setOpen((current) => !current);
+            }}
+            onFocus={() => setOpen(true)}
+            onMouseEnter={openWithDelay}
+            onMouseLeave={closeWithDelay}
+            type="button"
           >
-            {isInline ? (
-              <Shimmer className="-my-px truncate py-px">
-                {visibleStatusLabel}
-              </Shimmer>
-            ) : (
-              "working"
-            )}
-          </span>
-          {isInline ? null : (
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin opacity-70" />
-          )}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align={isInline ? "start" : "end"}
-        className="w-64 p-1"
-        onMouseEnter={keepOpen}
-        onMouseLeave={closeWithDelay}
-        onOpenAutoFocus={(event) => event.preventDefault()}
-        side="top"
-        sideOffset={8}
-      >
-        <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
-          Agents working
-        </div>
-        <div className="mt-1 flex flex-col gap-1">
-          {workingAgents.map((agent) => {
-            const isSelected = selectedPubkey === agent.pubkey.toLowerCase();
-
-            return (
-              <button
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
-                  isSelected
-                    ? "bg-primary/10 text-primary"
-                    : "text-foreground hover:bg-accent hover:text-accent-foreground",
-                )}
-                data-testid={`bot-activity-composer-item-${agent.pubkey}`}
-                key={agent.pubkey}
-                onClick={() => {
-                  clearHoverTimer();
-                  setOpen(false);
-                  onOpenAgentSession(agent.pubkey, channelId);
-                }}
-                type="button"
-              >
+            <span className="flex h-4.5 items-center overflow-visible -space-x-1">
+              {workingAgents.slice(0, 2).map((agent) => (
                 <UserAvatar
                   avatarUrl={agentAvatarUrl(agent)}
-                  className="shrink-0"
+                  className={cn(
+                    "border border-background",
+                    isInline ? "!h-4.5 !w-4.5 text-3xs" : "shrink-0",
+                  )}
                   displayName={agent.name}
                   shape="squircle"
-                  size="sm"
+                  fallbackDelayMs={isInline ? 0 : undefined}
+                  key={agent.pubkey}
+                  size="xs"
+                  testId={`bot-activity-composer-avatar-${agent.pubkey}`}
                 />
-                <span className="min-w-0 flex-1 truncate">{agent.name}</span>
-                <span className="shrink-0 whitespace-nowrap text-xs font-medium opacity-80">
-                  View activity
-                </span>
-                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground/70" />
-              </button>
-            );
-          })}
-        </div>
-      </PopoverContent>
-    </Popover>
+              ))}
+            </span>
+            {workingAgents.length > 2 ? (
+              <span className="text-2xs leading-none">
+                +{workingAgents.length - 2}
+              </span>
+            ) : null}
+            <span
+              className={cn(
+                isInline
+                  ? "flex h-4.5 min-w-0 flex-1 items-center overflow-visible leading-none"
+                  : "sr-only",
+              )}
+            >
+              {isInline ? (
+                <Shimmer className="-my-px truncate py-px">
+                  {visibleStatusLabel}
+                </Shimmer>
+              ) : (
+                "working"
+              )}
+            </span>
+            {isInline ? null : (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin opacity-70" />
+            )}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align={isInline ? "start" : "end"}
+          className="w-64 p-1"
+          onMouseEnter={keepOpen}
+          onMouseLeave={closeWithDelay}
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          side="top"
+          sideOffset={8}
+        >
+          <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
+            Agents working
+          </div>
+          <div className="mt-1 flex flex-col gap-1">
+            {workingAgents.map((agent) => {
+              const isSelected = selectedPubkey === agent.pubkey.toLowerCase();
+
+              return (
+                <button
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
+                    isSelected
+                      ? "bg-primary/10 text-primary"
+                      : "text-foreground hover:bg-accent hover:text-accent-foreground",
+                  )}
+                  data-testid={`bot-activity-composer-item-${agent.pubkey}`}
+                  key={agent.pubkey}
+                  onClick={() => {
+                    clearHoverTimer();
+                    setOpen(false);
+                    onOpenAgentSession(agent.pubkey, channelId);
+                  }}
+                  type="button"
+                >
+                  <UserAvatar
+                    avatarUrl={agentAvatarUrl(agent)}
+                    className="shrink-0"
+                    displayName={agent.name}
+                    shape="squircle"
+                    size="sm"
+                  />
+                  <span className="min-w-0 flex-1 truncate">{agent.name}</span>
+                  <span className="shrink-0 whitespace-nowrap text-xs font-medium opacity-80">
+                    View activity
+                  </span>
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground/70" />
+                </button>
+              );
+            })}
+          </div>
+        </PopoverContent>
+      </Popover>
+      {isInline && singleWorkingAgent && activityDetails.length > 0 ? (
+        <BotActivityDetails entries={activityDetails} />
+      ) : null}
+    </>
   );
 }

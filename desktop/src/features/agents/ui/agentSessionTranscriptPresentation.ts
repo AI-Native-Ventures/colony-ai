@@ -1,5 +1,5 @@
 import type { TranscriptItem } from "./agentSessionTypes";
-import { buildCompactToolSummary } from "./agentSessionToolSummary";
+import { plainActivityLabel } from "./agentActivityPlainLabel";
 
 /**
  * Whether a polished activity row should render the opt-in timestamp footer.
@@ -29,8 +29,9 @@ const LIFECYCLE_NOISE = new Set([
 /** Human-readable headline for a single transcript item. */
 export function getActivityHeadline(item: TranscriptItem): string | null {
   if (item.type === "tool") {
-    const summary = buildCompactToolSummary(item);
-    return [summary.label, summary.preview].filter(Boolean).join(" · ");
+    // Plain wording only: the raw command stays out of the default view and
+    // is offered through getActivityDetail for an explicit disclosure.
+    return plainActivityLabel(item).label;
   }
 
   if (item.type === "message") {
@@ -58,6 +59,14 @@ export function getActivityHeadline(item: TranscriptItem): string | null {
   }
 
   return item.title;
+}
+
+/**
+ * Raw command (or path) behind a tool headline, for the opt-in "Show details"
+ * disclosure. Null for items without one.
+ */
+export function getActivityDetail(item: TranscriptItem): string | null {
+  return item.type === "tool" ? plainActivityLabel(item).detail : null;
 }
 
 function isLifecycleNoise(

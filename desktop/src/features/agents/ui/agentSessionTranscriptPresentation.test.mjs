@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getActivityDetail,
   getActivityHeadline,
   isMeaningfulItem,
   isSpineItem,
@@ -41,7 +42,7 @@ function makeMessage(overrides = {}) {
 }
 
 test("getActivityHeadline formats tool titles and assistant text", () => {
-  assert.equal(getActivityHeadline(makeTool()), "Send Message · abc");
+  assert.equal(getActivityHeadline(makeTool()), "Sending a message");
   assert.equal(
     getActivityHeadline(makeMessage({ text: "First line\nSecond line" })),
     "First line",
@@ -128,8 +129,38 @@ test("getActivityHeadline uses semantic tool descriptors", () => {
         },
       }),
     ),
-    "Send Message · hi",
+    "Sending a message",
   );
+});
+
+test("getActivityHeadline never shows raw commands or legacy product words", () => {
+  const rawLines = [
+    "buzz --format compact channels list 2>&1 | head -50",
+    "echo hi | buzz messages send --channel dc25bbfd-1111-2222-3333-444455556666 --content -",
+  ];
+  const expected = ["Checking channels", "Sending a message"];
+  rawLines.forEach((command, index) => {
+    // Descriptor missing on purpose: the real run reached the fallback.
+    const item = makeTool({
+      title: "Run command",
+      toolName: "mystery",
+      buzzToolName: null,
+      args: { command },
+      descriptor: {
+        renderClass: "generic",
+        label: "Ran tool",
+        preview: command,
+        source: "fallback",
+        groupKey: "generic:mystery",
+      },
+    });
+    const headline = getActivityHeadline(item);
+    assert.equal(headline, expected[index]);
+    assert.doesNotMatch(headline, /buzz|[|]|--/i);
+    // The raw line is still reachable, but only through the detail accessor.
+    assert.equal(getActivityDetail(item), command);
+  });
+  assert.equal(getActivityDetail(makeMessage()), null);
 });
 
 test("isMeaningfulItem ignores suppressed tools", () => {
@@ -225,7 +256,7 @@ test("two-tier headline: metadata excluded when spine work is present", () => {
     "System prompt should not headline when spine work exists",
   );
   assert.ok(
-    headlines.some((h) => h?.includes("Send Message")),
+    headlines.some((h) => h?.includes("Sending a message")),
     "Tool headline should appear",
   );
 });
