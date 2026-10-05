@@ -161,6 +161,30 @@ test.describe("profile photo is easy to find", () => {
     await expect(page.getByTestId("profile-photo-change")).toBeVisible();
   });
 
+  for (const [role, caption] of [
+    ["owner", "Owner"],
+    ["admin", "Admin"],
+    ["member", "Member"],
+  ] as const) {
+    test(`the settings footer shows the real role: ${role}`, async ({
+      page,
+    }) => {
+      await installMockBridge(page, {
+        relayRequiresMembership: true,
+        relayRole: role,
+      });
+      await page.goto("/");
+      await openSettings(page, "profile");
+
+      const footer = page.getByTestId("settings-profile-avatar-context");
+      await expect(footer.locator("small")).toHaveText(caption);
+      // A member or admin must never be told they own the workspace.
+      if (role !== "owner") {
+        await expect(footer).not.toContainText("Workspace owner");
+      }
+    });
+  }
+
   test("keyboard only: Tab to Change photo, Enter opens, Escape closes and returns focus", async ({
     page,
   }) => {

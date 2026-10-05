@@ -18,6 +18,7 @@ import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import type { SettingsSection } from "./SettingsPanels";
 import { AccountSettingsHeader } from "./AccountSettingsHeader";
+import { membershipRoleLabel } from "./membershipRoleLabel";
 
 type AccountProfileSettingsPanelProps = {
   avatarSaved?: boolean;
@@ -28,13 +29,6 @@ type AccountProfileSettingsPanelProps = {
 };
 
 const accountQueryKey = ["settings-account-auth"] as const;
-
-function roleLabel(role: string | undefined) {
-  if (role === "owner") return "Owner";
-  if (role === "admin") return "Admin";
-  if (role === "member") return "Member";
-  return "";
-}
 
 export function AccountProfileSettingsPanel({
   avatarSaved = false,
@@ -67,7 +61,7 @@ export function AccountProfileSettingsPanel({
   );
   const pubkey = identityQuery.data?.pubkey?.toLowerCase() ?? "";
   const status = visibleUserStatus(statusQuery.data?.[pubkey])?.text ?? "";
-  const membershipRole = roleLabel(membershipQuery.data?.role);
+  const membershipRole = membershipRoleLabel(membershipQuery.data?.role);
   const isLoading =
     profileQuery.isLoading ||
     identityQuery.isLoading ||

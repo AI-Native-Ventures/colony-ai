@@ -15,6 +15,7 @@ import { Input } from "@/shared/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { ACCENT_STORAGE_KEY, useTheme } from "@/shared/theme/ThemeProvider";
 import { useCommunities } from "@/features/communities/useCommunities";
+import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import {
@@ -50,6 +51,7 @@ import {
   ThemeCatalogRoute,
   ThemePreviewRoute,
 } from "./ThemeCatalogRoute";
+import { membershipRoleLabel } from "./membershipRoleLabel";
 import { ProfileAvatarDialog } from "./ProfileAvatarDialog";
 import "./SettingsView.css";
 
@@ -206,6 +208,10 @@ export function SettingsView({
   const { activeCommunity } = useCommunities();
   const identity = useIdentityQuery();
   const profile = useProfileQuery();
+  // Same source as the People panel, so the footer never claims a role the
+  // person does not hold.
+  const membershipQuery = useMyRelayMembershipQuery();
+  const roleCaption = membershipRoleLabel(membershipQuery.data?.role);
   const updateProfile = useUpdateProfileMutation();
   const appearancePersonId =
     identity.data?.pubkey ?? activeCommunity?.pubkey ?? "local";
@@ -548,7 +554,7 @@ export function SettingsView({
                 </div>
                 <div>
                   <strong>{signedInDisplayName}</strong>
-                  <small>Workspace owner</small>
+                  {roleCaption ? <small>{roleCaption}</small> : null}
                 </div>
               </button>
             </TooltipTrigger>
