@@ -40,10 +40,14 @@ export function ToolItem({
   const canonicalToolName = item.buzzToolName ?? item.toolName;
   const buzzTool = getBuzzToolInfo(canonicalToolName);
   const compactSummary = buildCompactToolSummary(item);
-  // Calls that carry a raw shell command show plain wording by default; the
-  // command itself is only in the expanded details.
+  // Calls that carry a raw shell command, and tools we do not recognise (whose
+  // preview can be a raw command used as a title), show plain wording by
+  // default. The raw text is only in the expanded details.
   const plain = plainActivityLabel(item);
-  const plainRowLabel = plain.hasRawCommand ? plain.label : null;
+  const plainRowLabel =
+    plain.hasRawCommand || compactSummary.kind === "generic"
+      ? plain.label
+      : null;
   const duration = getToolDurationDisplay(item);
   const messageLink = getSentMessageLink(item);
   const timestampTitle = formatTranscriptTimestampTitle(item.timestamp);

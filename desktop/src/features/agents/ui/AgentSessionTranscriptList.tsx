@@ -586,7 +586,7 @@ function groupedItemSummaryText(item: TranscriptItem): string {
     return item.title;
   }
   const plain = plainActivityLabel(item);
-  return plain.hasRawCommand
+  return plain.hasRawCommand || item.descriptor.renderClass === "generic"
     ? plain.label
     : item.descriptor.preview || item.descriptor.label;
 }
