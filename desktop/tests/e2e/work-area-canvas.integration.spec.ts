@@ -32,6 +32,10 @@ test("canvas saved in the dock round-trips through the relay and survives a relo
   const first = `# Plan ${stamp}\n\n- first item`;
   const second = `# Plan ${stamp}\n\n- first item\n- second item`;
 
+  // The channel's Canvas and Files labels are part of the workspace chrome,
+  // which the app shows from 1440px wide (below that the dock's own "+" menu
+  // and the Work area button are the way in).
+  await page.setViewportSize({ width: 1440, height: 900 });
   await installRelayBridge(page, "tyler");
   await page.goto("/");
   await createStream(page, channelName);
