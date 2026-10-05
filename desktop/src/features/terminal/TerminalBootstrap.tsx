@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { isTauri } from "@tauri-apps/api/core";
 
 import {
@@ -11,6 +12,7 @@ import {
   TerminalSubstrate,
   type TerminalViewportSize,
 } from "./TerminalSubstrate";
+import { useTerminalDockSlot } from "./terminalDockSlot";
 import {
   setTerminalPanelMode,
   setTerminalSessionChannels,
@@ -83,6 +85,7 @@ export function TerminalBootstrap({
   const [activeKey, setActiveKey] = React.useState<string | null>(null);
   const [available, setAvailable] = React.useState(() => isTauri());
   const panel = useTerminalPanel();
+  const dockSlot = useTerminalDockSlot();
   const [renderedMode, setRenderedMode] = React.useState<
     "docked" | "maximized"
   >(panel.mode === "maximized" ? "maximized" : "docked");
@@ -93,6 +96,15 @@ export function TerminalBootstrap({
     panel.mode !== "closed",
   );
   const [splashPending, setSplashPending] = React.useState(true);
+  // While the panel is open it renders into the work area dock's slot if one
+  // is registered. The last slot is remembered until the substrate has fully
+  // unmounted, so a dock that closes does not make the terminal jump to the
+  // bottom dock for the 180ms it takes to hide. Sessions live in this
+  // component's state either way.
+  const hostSlotRef = React.useRef<HTMLElement | null>(null);
+  if (dockSlot) hostSlotRef.current = dockSlot;
+  else if (!panelMounted) hostSlotRef.current = null;
+  const hostSlot = hostSlotRef.current;
   const [viewportReportingEnabled, setViewportReportingEnabled] =
     React.useState(panel.mode !== "closed");
   const previousPanelModeRef = React.useRef(panel.mode);
@@ -358,8 +370,9 @@ export function TerminalBootstrap({
 
   if (!panelMounted) return null;
 
-  return (
+  const substrate = (
     <TerminalSubstrate
+      placement={hostSlot ? "embedded" : "bottom"}
       bracketedPaste={active?.frame?.bracketedPaste ?? false}
       channelName={active?.context.channelName ?? channelName}
       enabled={available && Boolean(context)}
@@ -435,4 +448,5 @@ export function TerminalBootstrap({
         }))}
     />
   );
+  return hostSlot ? createPortal(substrate, hostSlot) : substrate;
 }

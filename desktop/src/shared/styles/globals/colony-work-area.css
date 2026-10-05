@@ -1,0 +1,261 @@
+/*
+ * Conversation work area dock. Quiet by design: it reuses the channel shell
+ * tokens and the r15 work area proportions (43px header, 5px divider) and adds
+ * no colour of its own. Text sizes come from the shared rem ramp so Cmd +/-
+ * zoom scales the dock with the conversation.
+ */
+@layer components {
+  .colony-work-area-layout {
+    position: relative;
+    display: grid;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .colony-work-area-layout[data-open="true"][data-overlay="false"] {
+    grid-template-columns:
+      minmax(21.25rem, 1fr) 5px
+      minmax(23.75rem, var(--colony-work-area-size, 64%));
+  }
+
+  .colony-work-area-conversation {
+    display: flex;
+    min-height: 0;
+    min-width: 0;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .colony-work-area-divider {
+    position: relative;
+    z-index: 3;
+    cursor: col-resize;
+    touch-action: none;
+    background: hsl(var(--sidebar, var(--background)));
+    border-inline: 1px solid hsl(var(--border));
+  }
+
+  .colony-work-area-divider::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  .colony-work-area-divider:hover::after,
+  .colony-work-area-divider:focus-visible::after,
+  .colony-work-area-divider[data-dragging="true"]::after {
+    background: hsl(var(--ring) / 0.45);
+  }
+
+  .colony-work-area-divider:focus-visible {
+    outline: none;
+  }
+
+  .colony-work-area-panel {
+    display: flex;
+    min-height: 0;
+    min-width: 0;
+    flex-direction: column;
+    overflow: hidden;
+    background: hsl(var(--background));
+  }
+
+  .colony-work-area-layout[data-overlay="true"] > .colony-work-area-panel {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    z-index: 30;
+    width: min(100%, 30rem);
+    border-inline-start: 1px solid hsl(var(--border));
+    box-shadow: -12px 0 32px hsl(var(--foreground) / 0.08);
+  }
+
+  .colony-work-area-head {
+    display: flex;
+    flex: none;
+    height: 2.6875rem;
+    min-height: 2.6875rem;
+    align-items: center;
+    gap: 0.375rem;
+    padding-inline: 0.375rem;
+    border-bottom: 1px solid hsl(var(--border));
+    background: hsl(var(--sidebar, var(--background)));
+  }
+
+  .colony-work-area-tabs {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    gap: 0.1875rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .colony-work-area-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .colony-work-area-tab {
+    display: flex;
+    min-width: 5.625rem;
+    max-width: 12.5rem;
+    flex-shrink: 0;
+    align-items: center;
+    border: 1px solid transparent;
+    border-radius: 0.4375rem;
+  }
+
+  .colony-work-area-tab[data-selected="true"] {
+    border-color: hsl(var(--border));
+    background: hsl(var(--background));
+  }
+
+  .colony-work-area-tab-select {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    gap: 0.4375rem;
+    border: 0;
+    border-radius: 0.375rem;
+    background: none;
+    padding: 0.4375rem 0.3125rem 0.4375rem 0.5rem;
+    color: hsl(var(--muted-foreground));
+    font-size: var(--text-sm);
+  }
+
+  .colony-work-area-tab[data-selected="true"] .colony-work-area-tab-select {
+    color: hsl(var(--foreground));
+  }
+
+  .colony-work-area-tab-select > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .colony-work-area-tab-select svg,
+  .colony-work-area-icon-button svg {
+    width: 0.875rem;
+    height: 0.875rem;
+    flex: none;
+  }
+
+  .colony-work-area-icon-button {
+    display: grid;
+    width: 1.625rem;
+    height: 1.75rem;
+    flex: none;
+    place-content: center;
+    border: 0;
+    border-radius: 0.375rem;
+    background: none;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .colony-work-area-icon-button:hover,
+  .colony-work-area-icon-button:focus-visible {
+    background: hsl(var(--foreground) / 0.06);
+    color: hsl(var(--foreground));
+  }
+
+  .colony-work-area-tab-select:focus-visible,
+  .colony-work-area-icon-button:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: -2px;
+  }
+
+  .colony-work-area-actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+  }
+
+  .colony-work-area-body {
+    position: relative;
+    display: flex;
+    min-height: 0;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .colony-work-area-tabpanel {
+    display: flex;
+    min-height: 0;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .colony-work-area-tabpanel[hidden] {
+    display: none;
+  }
+
+  .colony-work-area-empty {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 2rem;
+    text-align: center;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .colony-work-area-empty h2 {
+    color: hsl(var(--foreground));
+    font-size: var(--text-lg);
+    font-weight: 600;
+  }
+
+  .colony-work-area-empty p {
+    max-width: 22.5rem;
+    font-size: var(--text-sm);
+  }
+
+  .colony-work-area-choices {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  .colony-work-area-choice {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4375rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.375rem;
+    background: hsl(var(--background));
+    padding: 0.375rem 0.625rem;
+    color: hsl(var(--foreground));
+    font-size: var(--text-sm);
+  }
+
+  .colony-work-area-choice:hover {
+    background: hsl(var(--foreground) / 0.05);
+  }
+
+  .colony-work-area-choice:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 1px;
+  }
+
+  .colony-work-area-choice svg {
+    width: 0.9375rem;
+    height: 0.9375rem;
+  }
+
+  .colony-work-area-button[aria-expanded="true"] {
+    background: hsl(var(--foreground) / 0.06);
+  }
+}

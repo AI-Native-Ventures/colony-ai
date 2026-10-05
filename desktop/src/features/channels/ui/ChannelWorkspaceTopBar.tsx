@@ -1,12 +1,15 @@
 import { Bell, Globe, Hash, PanelLeft, Search, Users } from "lucide-react";
 import { ChannelMemberAvatarStack } from "@/features/channels/ui/ChannelMemberAvatarStack";
-import { toggleTerminalPanel } from "@/features/terminal/terminalPanelStore";
+import { WORK_AREA_PANEL_ID } from "@/features/workarea/dock/WorkAreaPanel";
+import { toggleWorkAreaFrom } from "@/features/workarea/dock/workAreaActions";
+import { useWorkAreaDock } from "@/features/workarea/dock/useWorkAreaDock";
 import type { ChannelMember } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
 import { WorkspaceTopBar } from "@/shared/ui/workspace-topbar";
 
 /** Reference workspace chrome for the active channel and optional thread. */
 export function ChannelWorkspaceTopBar({
+  channelId,
   channelTitle,
   isThreadOpen,
   currentPubkey,
@@ -14,6 +17,7 @@ export function ChannelWorkspaceTopBar({
   onToggleMembers,
   onOpenInbox,
 }: {
+  channelId: string;
   channelTitle: string;
   isThreadOpen: boolean;
   currentPubkey?: string;
@@ -21,6 +25,7 @@ export function ChannelWorkspaceTopBar({
   onToggleMembers: () => void;
   onOpenInbox: () => void;
 }) {
+  const workArea = useWorkAreaDock(channelId);
   const openSearch = () => {
     document
       .querySelector<HTMLButtonElement>('[data-testid="open-search"]')
@@ -32,9 +37,13 @@ export function ChannelWorkspaceTopBar({
       actions={
         <>
           <Button
+            aria-controls={workArea.open ? WORK_AREA_PANEL_ID : undefined}
+            aria-expanded={workArea.open}
             className="colony-work-area-button"
             data-testid="channel-work-area-trigger"
-            onClick={toggleTerminalPanel}
+            onClick={(event) =>
+              toggleWorkAreaFrom(channelId, event.currentTarget)
+            }
             size="sm"
             type="button"
             variant="outline"

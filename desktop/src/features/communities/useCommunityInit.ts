@@ -48,6 +48,8 @@ import { resetFactorySessionRequests } from "@/features/factory/lib/factorySessi
 import { clearMarkdownNodeCache } from "@/shared/ui/markdown/nodeCache";
 import { resetMessageLinkMetadataCache } from "@/shared/ui/markdown/useMessageLinkMetadata";
 import { resetVideoPlayerState } from "@/shared/ui/videoPlayerState";
+import { initWorkAreaStore } from "@/features/workarea/dock/workAreaStore";
+import { resetWorkAreaState } from "@/features/workarea/dock/resetWorkAreaState";
 
 import {
   initFirstCommunity,
@@ -86,6 +88,7 @@ async function resetCommunityState({
   }
   resetSidebarRelayConnectionCardState();
   resetFactorySessionRequests();
+  resetWorkAreaState();
   resetMediaCaches();
   resetLinkPreviewMetadataCache();
   resetVideoPlayerState();
@@ -398,6 +401,8 @@ export function useCommunityInit(
         if (identityPubkey !== null) {
           initDraftStore(identityPubkey, activeCommunity.relayUrl);
         }
+        // Per-channel work area layout is remembered per community.
+        initWorkAreaStore(activeCommunity.relayUrl);
         // Restore any turn state saved for this community (a prior A→B round-
         // trip). This runs after applyCommunity succeeds and before the app
         // renders so components see the restored timers on first render.

@@ -279,6 +279,18 @@
     transform: translateY(16px);
   }
 
+  /* Hosted inside the work area dock: the dock owns size and visibility. */
+  .buzz-terminal-substrate[data-terminal-placement="embedded"],
+  .buzz-terminal-substrate[data-terminal-placement="embedded"][data-terminal-visible="false"] {
+    border-top: 0;
+    flex: 1 1 auto;
+    height: 100% !important;
+    min-height: 0;
+    transform: none;
+    transition: none;
+    pointer-events: auto;
+  }
+
   .buzz-terminal-dock-host [data-terminal-mode="maximized"] {
     flex: 1 1 auto;
     height: 100%;
