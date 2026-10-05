@@ -26,9 +26,12 @@ export const workAreaTabDomId = (tabId: string) => `work-area-tab-${tabId}`;
 export const workAreaPanelDomId = (tabId: string) => `work-area-panel-${tabId}`;
 
 /**
- * Tab strip with the WAI-ARIA tabs pattern: roving tabindex, Left/Right/Home/
- * End move and activate, Delete closes the focused tab. Each tab's close
- * control is a separate button with its own label, so no label has two owners.
+ * Tab strip with the WAI-ARIA tabs pattern and manual activation: Left/Right/
+ * Home/End move focus between tabs, Enter or Space activates the focused one,
+ * Delete closes it. Activation is manual because a tab can take focus for
+ * itself (the terminal does), which would otherwise trap arrow navigation on
+ * the first terminal visit. Each tab's close control is a separate button with
+ * its own label, so no label has two owners.
  */
 export function WorkAreaTabStrip({
   tabs,
@@ -44,7 +47,6 @@ export function WorkAreaTabStrip({
   );
 
   const moveTo = (tabId: string) => {
-    onSelect(tabId);
     refs.current.get(tabId)?.focus();
   };
 
@@ -78,55 +80,59 @@ export function WorkAreaTabStrip({
 
   return (
     <>
-      <div
-        aria-label="Work area tabs"
-        className="colony-work-area-tabs"
-        role="tablist"
-      >
-        {tabs.map((tab, index) => {
-          const definition = getWorkAreaTabDefinition(tab.kind);
-          const Icon = definition.icon;
-          const selected = tab.id === activeTabId;
-          return (
-            <div
-              className="colony-work-area-tab"
-              data-selected={selected ? "true" : "false"}
-              key={tab.id}
-              role="presentation"
-            >
-              <button
-                aria-controls={workAreaPanelDomId(tab.id)}
-                aria-selected={selected}
-                className="colony-work-area-tab-select"
-                data-testid={`work-area-tab-${tab.id}`}
-                id={workAreaTabDomId(tab.id)}
-                onClick={() => onSelect(tab.id)}
-                onKeyDown={(event) => onKeyDown(event, index)}
-                ref={(element) => {
-                  if (element) refs.current.set(tab.id, element);
-                  else refs.current.delete(tab.id);
-                }}
-                role="tab"
-                tabIndex={selected ? 0 : -1}
-                type="button"
+      {tabs.length === 0 ? (
+        <div className="colony-work-area-tabs" />
+      ) : (
+        <div
+          aria-label="Work area tabs"
+          className="colony-work-area-tabs"
+          role="tablist"
+        >
+          {tabs.map((tab, index) => {
+            const definition = getWorkAreaTabDefinition(tab.kind);
+            const Icon = definition.icon;
+            const selected = tab.id === activeTabId;
+            return (
+              <div
+                className="colony-work-area-tab"
+                data-selected={selected ? "true" : "false"}
+                key={tab.id}
+                role="presentation"
               >
-                <Icon aria-hidden="true" />
-                <span>{definition.label}</span>
-              </button>
-              <button
-                aria-label={`Close ${definition.label}`}
-                className="colony-work-area-icon-button"
-                data-testid={`work-area-close-tab-${tab.id}`}
-                onClick={() => onClose(tab.id)}
-                tabIndex={selected ? 0 : -1}
-                type="button"
-              >
-                <X aria-hidden="true" />
-              </button>
-            </div>
-          );
-        })}
-      </div>
+                <button
+                  aria-controls={workAreaPanelDomId(tab.id)}
+                  aria-selected={selected}
+                  className="colony-work-area-tab-select"
+                  data-testid={`work-area-tab-${tab.id}`}
+                  id={workAreaTabDomId(tab.id)}
+                  onClick={() => onSelect(tab.id)}
+                  onKeyDown={(event) => onKeyDown(event, index)}
+                  ref={(element) => {
+                    if (element) refs.current.set(tab.id, element);
+                    else refs.current.delete(tab.id);
+                  }}
+                  role="tab"
+                  tabIndex={selected ? 0 : -1}
+                  type="button"
+                >
+                  <Icon aria-hidden="true" />
+                  <span>{definition.label}</span>
+                </button>
+                <button
+                  aria-label={`Close ${definition.label}`}
+                  className="colony-work-area-icon-button"
+                  data-testid={`work-area-close-tab-${tab.id}`}
+                  onClick={() => onClose(tab.id)}
+                  tabIndex={selected ? 0 : -1}
+                  type="button"
+                >
+                  <X aria-hidden="true" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
       {addable.length > 0 ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

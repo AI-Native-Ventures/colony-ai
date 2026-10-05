@@ -71,12 +71,14 @@ test.describe("work area dock", () => {
 
     await expect(dock(page)).toBeVisible();
     await expect(trigger(page)).toHaveAttribute("aria-expanded", "true");
+    // Nothing open yet: the empty state offers the tab kinds, no empty tablist.
+    await expect(page.getByTestId("work-area-empty")).toBeVisible();
+    await expect(dock(page).getByRole("tablist")).toHaveCount(0);
+
+    await page.getByTestId("work-area-open-files").click();
     await expect(
       dock(page).getByRole("tablist", { name: "Work area tabs" }),
     ).toBeVisible();
-    await expect(page.getByTestId("work-area-empty")).toBeVisible();
-
-    await page.getByTestId("work-area-open-files").click();
     const filesTab = dock(page).getByRole("tab", {
       name: "Files",
       exact: true,
@@ -128,21 +130,31 @@ test.describe("work area dock", () => {
     // Both kinds are open, so there is nothing left to add.
     await expect(page.getByTestId("work-area-add-tab")).toHaveCount(0);
 
+    // Manual activation: arrows move focus, Enter or Space activates. (The
+    // terminal takes focus for itself when it is shown, so activating on
+    // arrow would trap keyboard users in it.)
     await terminalTab.focus();
     await page.keyboard.press("ArrowLeft");
-    await expect(filesTab).toHaveAttribute("aria-selected", "true");
     await expect(filesTab).toBeFocused();
-    await expect(dock(page).locator(TERM)).toHaveCount(0);
-    await page.keyboard.press("ArrowRight");
-    await expect(terminalTab).toBeFocused();
     await expect(terminalTab).toHaveAttribute("aria-selected", "true");
+    await page.keyboard.press("ArrowLeft");
+    await expect(terminalTab).toBeFocused();
     await page.keyboard.press("Home");
     await expect(filesTab).toBeFocused();
     await page.keyboard.press("End");
     await expect(terminalTab).toBeFocused();
+    await page.keyboard.press("Home");
+    await expect(filesTab).toBeFocused();
     // Modified arrows belong to the platform.
-    await page.keyboard.press("ControlOrMeta+ArrowLeft");
-    await expect(terminalTab).toBeFocused();
+    await page.keyboard.press("ControlOrMeta+ArrowRight");
+    await expect(filesTab).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(filesTab).toHaveAttribute("aria-selected", "true");
+    await expect(dock(page).locator(TERM)).toHaveCount(0);
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Space");
+    await expect(terminalTab).toHaveAttribute("aria-selected", "true");
+    await expect(dock(page).locator(TERM)).toBeVisible();
 
     await dock(page)
       .getByRole("button", { name: "Close Terminal", exact: true })
@@ -368,16 +380,30 @@ test.describe("work area dock", () => {
       }, index);
     }
     const conversation = page.getByTestId("work-area-conversation");
-    const scroller = conversation
-      .locator("[data-scroll-restoration-id]")
-      .first();
+    // The timeline's scroll element: the scrollable box inside the
+    // conversation that holds the messages.
+    const findScroller = () =>
+      conversation.evaluateHandle((root) => {
+        const candidates = Array.from(root.querySelectorAll<HTMLElement>("*"));
+        return (
+          candidates.find((element) => {
+            const overflowY = getComputedStyle(element).overflowY;
+            return (
+              /(auto|scroll)/.test(overflowY) &&
+              element.scrollHeight > element.clientHeight + 200 &&
+              element.textContent?.includes("dock scroll row")
+            );
+          }) ?? null
+        );
+      });
     await expect
-      .poll(() =>
-        scroller.evaluate(
-          (element) => element.scrollHeight - element.clientHeight,
-        ),
-      )
-      .toBeGreaterThan(300);
+      .poll(async () => {
+        const handle = await findScroller();
+        return (await handle.evaluate((el) => el !== null)) as boolean;
+      })
+      .toBe(true);
+    const scroller = (await findScroller()).asElement();
+    if (!scroller) throw new Error("timeline scroller not found");
 
     const scrolled = await scroller.evaluate((element) => {
       element.scrollTop = Math.max(0, element.scrollHeight / 3);
@@ -402,7 +428,6 @@ test.describe("work area dock", () => {
         (window as unknown as Record<string, Element>)[name] = element;
       };
       tag('[data-testid="message-input"]', "__composerNode");
-      tag("[data-scroll-restoration-id]", "__scrollNode");
       (window as unknown as Record<string, Element | null>).__conversationNode =
         root;
     });
@@ -416,12 +441,13 @@ test.describe("work area dock", () => {
           composer:
             root?.querySelector('[data-testid="message-input"]') ===
             w.__composerNode,
-          scroll:
-            root?.querySelector("[data-scroll-restoration-id]") ===
-            w.__scrollNode,
+          scroll: w.__scrollNode?.isConnected === true,
           conversation: root === w.__conversationNode,
         };
       });
+    await scroller.evaluate((element) => {
+      (window as unknown as Record<string, Element>).__scrollNode = element;
+    });
     const scrollTop = () => scroller.evaluate((element) => element.scrollTop);
 
     // Open (button), switch tab, resize, shortcut-close, reopen, close.

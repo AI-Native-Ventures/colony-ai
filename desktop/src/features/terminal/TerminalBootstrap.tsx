@@ -14,7 +14,8 @@ import {
 } from "./TerminalSubstrate";
 import { useTerminalDockSlot } from "./terminalDockSlot";
 import {
-  getTerminalPanelMode,
+  getTerminalPanelSnapshot,
+  isTerminalPanelHosted,
   setTerminalPanelMode,
   setTerminalSessionChannels,
   toggleTerminalPanel,
@@ -293,11 +294,16 @@ export function TerminalBootstrap({
     );
   }, [sessions]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `panel.hostChannelId` re-runs this when a host starts showing the terminal for another channel; the body reads the live snapshot.
   React.useEffect(() => {
     if (panel.mode === "closed" || !available || !context) return;
-    // A host (the work area dock) may have hidden the terminal for this very
-    // commit, e.g. on a channel switch; never spawn a PTY for a hidden panel.
-    if (getTerminalPanelMode() === "closed") return;
+    // A host (the work area dock) decides, per channel, whether the terminal
+    // is on screen. On a channel switch this effect can run before the new
+    // channel's dock has said so; never spawn a PTY for a hidden terminal.
+    const live = getTerminalPanelSnapshot();
+    if (live.mode === "closed") return;
+    if (isTerminalPanelHosted() && live.hostChannelId !== context.channelId)
+      return;
     if (channelSessions.length === 0) createSession();
     else if (!channelSessions.some((session) => session.key === activeKey))
       setActiveKey(channelSessions.at(-1)?.key ?? null);
@@ -308,6 +314,7 @@ export function TerminalBootstrap({
     context,
     createSession,
     panel.mode,
+    panel.hostChannelId,
   ]);
 
   React.useEffect(() => {

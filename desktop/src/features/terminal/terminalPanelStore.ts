@@ -5,9 +5,15 @@ export type TerminalPanelMode = "closed" | "docked" | "maximized";
 type Snapshot = {
   mode: TerminalPanelMode;
   sessionChannelIds: ReadonlySet<string>;
+  /** Channel whose dock is showing the terminal; null outside a host. */
+  hostChannelId: string | null;
 };
 
-let snapshot: Snapshot = { mode: "closed", sessionChannelIds: new Set() };
+let snapshot: Snapshot = {
+  mode: "closed",
+  sessionChannelIds: new Set(),
+  hostChannelId: null,
+};
 const listeners = new Set<() => void>();
 
 function publish(next: Snapshot) {
@@ -36,10 +42,21 @@ export function registerTerminalPanelHost(next: TerminalPanelHost) {
   };
 }
 
-/** Apply a panel mode directly. Only the registered host should call this. */
-export function commitTerminalPanelMode(mode: TerminalPanelMode) {
-  if (snapshot.mode === mode) return;
-  publish({ ...snapshot, mode });
+/**
+ * Apply a panel mode directly. Only the registered host should call this, and
+ * it says which channel the terminal is being shown for.
+ */
+export function commitTerminalPanelMode(
+  mode: TerminalPanelMode,
+  hostChannelId: string | null = null,
+) {
+  if (snapshot.mode === mode && snapshot.hostChannelId === hostChannelId)
+    return;
+  publish({ ...snapshot, mode, hostChannelId });
+}
+
+export function isTerminalPanelHosted(): boolean {
+  return host !== null;
 }
 
 export function setTerminalPanelMode(mode: TerminalPanelMode) {
@@ -51,12 +68,12 @@ export function setTerminalPanelMode(mode: TerminalPanelMode) {
 }
 
 /**
- * The mode right now, read at call time. Effects use this instead of the
- * render-time snapshot when a host may have changed the mode earlier in the
- * same commit (a channel switch that hides the dock's terminal tab).
+ * The snapshot right now, read at call time. Effects use this instead of the
+ * render-time snapshot when a host may have changed it earlier in the same
+ * commit (a channel switch that hides the dock's terminal tab).
  */
-export function getTerminalPanelMode(): TerminalPanelMode {
-  return snapshot.mode;
+export function getTerminalPanelSnapshot(): Snapshot {
+  return snapshot;
 }
 
 export function toggleTerminalPanel() {
@@ -84,7 +101,11 @@ export function useTerminalPanel() {
 }
 
 export function resetTerminalPanelForTests() {
-  snapshot = { mode: "closed", sessionChannelIds: new Set() };
+  snapshot = {
+    mode: "closed",
+    sessionChannelIds: new Set(),
+    hostChannelId: null,
+  };
   host = null;
 }
 

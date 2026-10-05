@@ -14,6 +14,9 @@
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
     overflow: hidden;
+    /* The conversation inside uses its own z-index layers (header, tab strip);
+       keep them below the overlay panel without touching anything outside. */
+    isolation: isolate;
   }
 
   .colony-work-area-layout[data-open="true"][data-overlay="false"] {
@@ -68,7 +71,7 @@
     position: absolute;
     inset-block: 0;
     inset-inline-end: 0;
-    z-index: 30;
+    z-index: 2000;
     width: min(100%, 30rem);
     border-inline-start: 1px solid hsl(var(--border));
     box-shadow: -12px 0 32px hsl(var(--foreground) / 0.08);

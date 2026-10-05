@@ -86,8 +86,11 @@ export function WorkAreaLayout({
   // layout effect, so the store is already correct when the terminal's own
   // effects run in the same commit (no PTY is spawned for a hidden tab).
   React.useLayoutEffect(() => {
-    commitTerminalPanelMode(terminalVisible ? "docked" : "closed");
-  }, [terminalVisible]);
+    commitTerminalPanelMode(
+      terminalVisible ? "docked" : "closed",
+      terminalVisible ? channelId : null,
+    );
+  }, [terminalVisible, channelId]);
   const channelIdRef = React.useRef(channelId);
   channelIdRef.current = channelId;
   React.useEffect(() => {
