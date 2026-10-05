@@ -138,6 +138,20 @@ async function pasteCode(page: Page, code: string) {
   }, code);
 }
 
+async function pasteIntoPage(page: Page, text: string, selector = "body") {
+  await page.locator(selector).evaluate((element, value) => {
+    const clipboard = new DataTransfer();
+    clipboard.setData("text/plain", value);
+    element.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData: clipboard,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  }, text);
+}
+
 async function storedTransaction(page: Page) {
   return page.evaluate(
     (key) => JSON.parse(window.localStorage.getItem(key) ?? "null"),
@@ -385,16 +399,57 @@ test("after a failed invite the person can still create their own business", asy
   await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
 });
 
-test("an existing user's invite link joins through the same claim and lands in the new workspace", async ({
+test("an existing user's invite link offers Join <business> and joins through the same claim", async ({
   page,
 }) => {
   const { counts } = await startFirstRun(page, {
     deepLink: true,
     existingUser: true,
   });
-  await expect(page.getByTestId("sidebar-profile-avatar-button")).toBeVisible();
-  await expect.poll(() => counts.claims).toBe(1);
+  await expect(page.getByTestId("invite-brand")).toContainText(
+    "Rosebank Studio",
+  );
+  await expect(page.getByTestId("invite-join")).toContainText(
+    "Join Rosebank Studio",
+  );
+  // Nothing is claimed until the person chooses to join.
+  expect(counts.claims).toBe(0);
+  await page.getByTestId("invite-join").click();
+  await expectLandedInGeneral(page);
+  expect(counts.claims).toBe(1);
   expect(counts.creates).toBe(0);
+});
+
+test("pasting an invite link outside a text field offers Join <business> without the switcher", async ({
+  page,
+}) => {
+  const { counts } = await startFirstRun(page, { existingUser: true });
+  await expect(page.getByTestId("sidebar-profile-avatar-button")).toBeVisible();
+  await pasteIntoPage(page, INVITE_LINK);
+  await expect(page.getByTestId("invite-join")).toContainText(
+    "Join Rosebank Studio",
+  );
+  expect(counts.claims).toBe(0);
+
+  // "Not now" leaves the person in their own workspace and drops the invite.
+  await page.getByTestId("invite-create-own-business").click();
+  await expect(page.getByTestId("sidebar-profile-avatar-button")).toBeVisible();
+  await expect(page.getByTestId("invite-join")).toHaveCount(0);
+  expect(await storedTransaction(page)).toBeNull();
+  expect(counts.claims).toBe(0);
+});
+
+test("pasting a link into a text field is left alone", async ({ page }) => {
+  await startFirstRun(page, { existingUser: true });
+  await expect(page.getByTestId("sidebar-profile-avatar-button")).toBeVisible();
+  await page.evaluate(() => {
+    const input = document.createElement("input");
+    input.id = "paste-target";
+    document.body.append(input);
+    input.focus();
+  });
+  await pasteIntoPage(page, INVITE_LINK, "#paste-target");
+  await expect(page.getByTestId("invite-join")).toHaveCount(0);
 });
 
 test("an invalid invite never strands an existing user, even after a relaunch", async ({
@@ -405,6 +460,7 @@ test("an invalid invite never strands an existing user, even after a relaunch", 
     existingUser: true,
     claim: "invalid",
   });
+  await page.getByTestId("invite-join").click();
   const failed = page.getByTestId("invite-claim-failed");
   await expect(failed).toContainText("That invite didn’t work.");
   await expect(failed).not.toContainText("invite_invalid");

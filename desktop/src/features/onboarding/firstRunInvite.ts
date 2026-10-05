@@ -74,3 +74,21 @@ export function firstRunInviteFromTransaction(
     initial: businessName.charAt(0).toUpperCase() || "C",
   };
 }
+
+/**
+ * A link opened (or pasted) after setup is offered as "Join <workspace>" first.
+ * Nothing is claimed until the person confirms, and a confirmed or retried
+ * claim (acknowledged, or any other source) proceeds without asking again.
+ */
+export function needsJoinConfirmation(
+  transaction: CommunityOnboardingTransaction | null,
+): boolean {
+  return (
+    transaction !== null &&
+    transaction.source === "deep-link-join" &&
+    transaction.stage === "claiming" &&
+    !transaction.acknowledged &&
+    !transaction.error &&
+    Boolean(transaction.inviteCode?.trim())
+  );
+}

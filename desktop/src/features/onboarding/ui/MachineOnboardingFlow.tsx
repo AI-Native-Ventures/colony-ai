@@ -550,12 +550,6 @@ export function MachineOnboardingFlow({
         email={accountIdentity.email}
         invite={inviteSnapshot}
         name={accountIdentity.name}
-        onCreateOwnBusiness={() => {
-          communityOnboarding.clear();
-          setBusinessBackPage("account-auth");
-          setTransitionDirection("forward");
-          setPage("business");
-        }}
         onJoined={() => {
           communityOnboarding.update({
             stage: "connecting",
@@ -564,7 +558,16 @@ export function MachineOnboardingFlow({
           });
           complete(selectedPubkey);
         }}
-        onTerminalFailure={communityOnboarding.clear}
+        onTerminalFailure={() => communityOnboarding.clear()}
+        secondaryAction={{
+          label: "Create my own business instead",
+          onClick: () => {
+            communityOnboarding.clear();
+            setBusinessBackPage("account-auth");
+            setTransitionDirection("forward");
+            setPage("business");
+          },
+        }}
         onUseAnotherAccount={() => {
           setAccountAuthenticated(false);
           setTransitionDirection("backward");

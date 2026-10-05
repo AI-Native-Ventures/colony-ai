@@ -37,6 +37,7 @@ import {
 import { NativeUnavailableScreen } from "@/features/onboarding/ui/NativeUnavailableScreen";
 import { OnboardingFlow } from "@/features/onboarding/ui/OnboardingFlow";
 import { PendingInviteGate } from "@/features/onboarding/ui/PendingInviteGate";
+import { useInvitePasteCapture } from "@/features/onboarding/useInvitePasteCapture";
 import { KeyringLockedScreen } from "@/features/onboarding/ui/KeyringLockedScreen";
 import { RelaunchRequiredScreen } from "@/features/onboarding/ui/RelaunchRequiredScreen";
 import { ResetFailedScreen } from "@/features/onboarding/ui/ResetFailedScreen";
@@ -722,6 +723,11 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
       void unlisten.then((fn) => fn());
     };
   }, [acceptsCommunityDeepLinks, communityOnboarding.start, openAddCommunity]);
+
+  useInvitePasteCapture(
+    communityOnboarding.start,
+    acceptsCommunityDeepLinks && machine.stage === "ready",
+  );
 
   if (machine.stage === "reset-failed") return <ResetFailedScreen />;
   if (machine.stage === "keyring-locked") return <KeyringLockedScreen />;

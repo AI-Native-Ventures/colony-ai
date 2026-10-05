@@ -439,6 +439,8 @@ test("persisted deep-link invite hands off to Joining after machine onboarding",
           relayUrl: "wss://hive.example.com",
           inviteCode: "abc.def",
           communityName: "hive",
+          // The person already chose to join: no second confirmation.
+          acknowledged: true,
           createdAt: timestamp,
           updatedAt: timestamp,
         }),

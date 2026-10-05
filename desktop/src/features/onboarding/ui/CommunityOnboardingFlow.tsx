@@ -14,9 +14,14 @@ import {
 import { importIdentity } from "@/shared/api/tauriIdentity";
 import { getChannels } from "@/shared/api/tauriChannels";
 import { useCommunities } from "@/features/communities/useCommunities";
+import {
+  firstRunInviteFromTransaction,
+  needsJoinConfirmation,
+} from "../firstRunInvite";
 import { isTerminalInviteMessage } from "../inviteFailure";
 import { pickMemberLandingChannel } from "../memberLanding";
 import { InviteClaimFailed } from "./InviteClaimFailed";
+import { InviteJoinScene } from "./InviteScenes";
 import { relayClient } from "@/shared/api/relayClient";
 import { MembershipDenied } from "./MembershipDenied";
 import { getMyRelayMembershipLookup } from "@/shared/api/relayMembers";
@@ -179,6 +184,9 @@ export function CommunityOnboardingFlow({
     void finalize();
   }, [id, error, stage, finalize]);
   if (!transaction) return null;
+  const joinInvite = needsJoinConfirmation(transaction)
+    ? firstRunInviteFromTransaction(transaction)
+    : null;
   const retry = () => {
     started.current = null;
     if (stage === "claiming" || stage === "connecting") {
@@ -242,6 +250,27 @@ export function CommunityOnboardingFlow({
               }}
             />
           }
+        />
+      ) : joinInvite ? (
+        <InviteJoinScene
+          invite={joinInvite}
+          onJoined={() =>
+            update(
+              {
+                stage: "connecting",
+                communityName: joinInvite.businessName,
+                error: undefined,
+              },
+              transaction.id,
+            )
+          }
+          onTerminalFailure={(message) =>
+            update({ error: message }, transaction.id)
+          }
+          secondaryAction={{
+            label: communities.length > 0 ? "Not now" : "Continue setup",
+            onClick: clear,
+          }}
         />
       ) : stage === "claiming" &&
         error &&

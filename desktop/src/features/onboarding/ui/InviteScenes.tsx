@@ -200,22 +200,24 @@ export function InviteJoinScene({
   email,
   invite,
   name,
-  onCreateOwnBusiness,
   onJoined,
   onTerminalFailure,
   onUseAnotherAccount,
   onUseAnotherLink,
+  secondaryAction,
 }: {
-  email: string;
+  /** Account email, when known. */
+  email?: string;
   invite: FirstRunInvite;
-  name: string;
-  onCreateOwnBusiness: () => void;
+  name?: string;
   /** Invite claimed: the caller advances into the workspace. */
   onJoined: () => void;
   /** The invite can never work; the caller drops it so no relaunch is trapped. */
-  onTerminalFailure: () => void;
-  onUseAnotherAccount: () => void;
-  onUseAnotherLink: () => void;
+  onTerminalFailure: (message: string) => void;
+  onUseAnotherAccount?: () => void;
+  onUseAnotherLink?: () => void;
+  /** The way forward after a failed invite, e.g. "Create my own business instead". */
+  secondaryAction: { label: string; onClick: () => void };
 }) {
   const [policyState, setPolicyState] = React.useState<PolicyState>({
     status: "loading",
@@ -287,7 +289,7 @@ export function InviteJoinScene({
     } catch (error) {
       const described = describeInviteFailure(error);
       if (!alive.current) return;
-      if (described.kind === "terminal") onTerminalFailure();
+      if (described.kind === "terminal") onTerminalFailure(described.message);
       if (described.kind === "policy") {
         setReceiptStale(true);
         setPolicyAttempt((current) => current + 1);
@@ -310,21 +312,25 @@ export function InviteJoinScene({
       <InviteBrand invite={invite} />
       <h2>That invite didn’t work.</h2>
       <p className="lede">{failure.message}</p>
+      {onUseAnotherLink ? (
+        <button
+          className="primary full form-submit"
+          data-testid="invite-use-another-link"
+          onClick={onUseAnotherLink}
+          type="button"
+        >
+          Try a different link
+        </button>
+      ) : null}
       <button
-        className="primary full form-submit"
-        data-testid="invite-use-another-link"
-        onClick={onUseAnotherLink}
-        type="button"
-      >
-        Try a different link
-      </button>
-      <button
-        className="secondary full"
+        className={
+          onUseAnotherLink ? "secondary full" : "primary full form-submit"
+        }
         data-testid="invite-create-own-business"
-        onClick={onCreateOwnBusiness}
+        onClick={secondaryAction.onClick}
         type="button"
       >
-        Create my own business instead
+        {secondaryAction.label}
       </button>
     </div>
   ) : (
@@ -345,8 +351,14 @@ export function InviteJoinScene({
           </div>
         ) : null}
         <div className="notice">
-          You’ll join as a team member using{" "}
-          <strong className="mail-address">{email}</strong>.
+          You’ll join as a team member
+          {email ? (
+            <>
+              {" "}
+              using <strong className="mail-address">{email}</strong>
+            </>
+          ) : null}
+          .
         </div>
         {policyState.status === "ready" && policyNeedsConsent && policy ? (
           <JoinPolicyNotice
@@ -385,14 +397,18 @@ export function InviteJoinScene({
           {joinLabel}
         </PrimaryButton>
       </form>
-      <BackButton onClick={onUseAnotherAccount}>Use another account</BackButton>
+      {onUseAnotherAccount ? (
+        <BackButton onClick={onUseAnotherAccount}>
+          Use another account
+        </BackButton>
+      ) : null}
     </>
   );
 
   return (
     <OnboardingScenePresentation
       contentOverride={content}
-      data={{ ...EMPTY_DATA, name, email }}
+      data={{ ...EMPTY_DATA, name: name ?? "", email: email ?? "" }}
       scene="invite"
     />
   );

@@ -3,6 +3,7 @@ import * as React from "react";
 import { useCommunityOnboarding } from "@/features/onboarding/communityOnboarding";
 import { claimInvite } from "@/shared/api/invites";
 
+import { needsJoinConfirmation } from "./firstRunInvite";
 import { describeInviteFailure } from "./inviteFailure";
 
 /**
@@ -23,6 +24,8 @@ export function useClaimInvite() {
     if (transaction?.stage !== "claiming" || transaction.error || isPending) {
       return;
     }
+    // A link opened after setup waits for the person to choose "Join".
+    if (needsJoinConfirmation(transaction)) return;
     setIsPending(true);
     void claimInvite(
       transaction.relayUrl,
