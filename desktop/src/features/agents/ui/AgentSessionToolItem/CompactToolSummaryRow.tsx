@@ -25,6 +25,7 @@ export function CompactToolSummaryRow({
   fileEditSummary,
   kind,
   label,
+  plainLabel = null,
   preview,
   thumbnailSrc,
 }: {
@@ -33,6 +34,12 @@ export function CompactToolSummaryRow({
   fileEditSummary: CompactFileEditSummary | null;
   kind: CompactToolKind;
   label: string;
+  /**
+   * Plain wording for calls that carry a raw shell command. When set, the row
+   * shows only this label: no command text, no preview, no tooltip. The raw
+   * command stays behind the row's expand control.
+   */
+  plainLabel?: string | null;
   preview: string | null;
   thumbnailSrc: string | null;
 }) {
@@ -44,13 +51,24 @@ export function CompactToolSummaryRow({
     if (!thumbnailSrc || thumbnailFailed) return null;
     return resolveToolImageSrc(thumbnailSrc);
   }, [thumbnailFailed, thumbnailSrc]);
-  const actionLabel = fileEditSummary
-    ? null
-    : getCompactToolActionLabel(action, kind, label, preview);
+  const actionLabel =
+    fileEditSummary || plainLabel
+      ? null
+      : getCompactToolActionLabel(action, kind, label, preview);
 
   return (
     <>
-      {fileEditSummary ? (
+      {plainLabel ? (
+        <span
+          className={cn(
+            "min-w-0 truncate font-semibold",
+            isCompactPreview ? "text-xs" : "text-sm",
+            mutedTone,
+          )}
+        >
+          {plainLabel}
+        </span>
+      ) : fileEditSummary ? (
         <CompactFileEditSummaryView summary={fileEditSummary} />
       ) : actionLabel ? (
         <ActivityRowLabel
@@ -70,7 +88,7 @@ export function CompactToolSummaryRow({
           {label}
         </span>
       )}
-      {!fileEditSummary && resolvedThumbnail ? (
+      {!fileEditSummary && !plainLabel && resolvedThumbnail ? (
         <img
           alt=""
           className="h-5 w-auto max-w-12 shrink-0 rounded-sm object-cover"
@@ -80,7 +98,7 @@ export function CompactToolSummaryRow({
           src={resolvedThumbnail}
           title={preview ?? undefined}
         />
-      ) : !fileEditSummary && !actionLabel && preview ? (
+      ) : !fileEditSummary && !plainLabel && !actionLabel && preview ? (
         <span
           className={cn(
             "min-w-0 max-w-48 truncate",

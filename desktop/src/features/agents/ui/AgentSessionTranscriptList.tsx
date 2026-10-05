@@ -55,6 +55,7 @@ import {
   type TranscriptDisplayBlock,
   type TranscriptTurnSegment,
 } from "./agentSessionTranscriptGrouping";
+import { plainActivityLabel } from "./agentActivityPlainLabel";
 import { buildCompactToolSummary } from "./agentSessionToolSummary";
 import { shouldShowTranscriptRowTimestamp } from "./agentSessionTranscriptPresentation";
 import { formatTranscriptTimestampTitle } from "./agentSessionUtils";
@@ -567,9 +568,7 @@ function SameKindSummaryItem({
                     className="truncate text-xs text-muted-foreground"
                     key={item.id}
                   >
-                    {item.type === "tool"
-                      ? item.descriptor.preview || item.descriptor.label
-                      : item.title}
+                    {groupedItemSummaryText(item)}
                   </p>
                 ))}
         </ActivityRowContent>
@@ -579,6 +578,17 @@ function SameKindSummaryItem({
       ) : null}
     </>
   );
+}
+
+/** One-line text for a grouped item; calls with a raw command read plainly. */
+function groupedItemSummaryText(item: TranscriptItem): string {
+  if (item.type !== "tool") {
+    return item.title;
+  }
+  const plain = plainActivityLabel(item);
+  return plain.hasRawCommand
+    ? plain.label
+    : item.descriptor.preview || item.descriptor.label;
 }
 
 function getGroupedFileEditDiffs(items: TranscriptItem[]): FileEditDiff[] {
