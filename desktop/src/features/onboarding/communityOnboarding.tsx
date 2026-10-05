@@ -312,17 +312,29 @@ export function CommunityOnboardingProvider({
     },
     [enabled, transaction],
   );
+  // Updates run as state updaters, i.e. at render time. One queued before a
+  // clear would otherwise write the cleared transaction back to storage.
+  const clearedIds = React.useRef(new Set<string>());
+  const currentId = React.useRef<string | null>(null);
+  currentId.current = transaction?.id ?? null;
   const update = React.useCallback(
     (patch: CommunityOnboardingTransactionPatch, expectedId?: string) => {
       if (!enabled) return;
       setTransaction((current) =>
-        updateCurrentCommunityOnboardingTransaction(current, patch, expectedId),
+        current && clearedIds.current.has(current.id)
+          ? null
+          : updateCurrentCommunityOnboardingTransaction(
+              current,
+              patch,
+              expectedId,
+            ),
       );
     },
     [enabled],
   );
   const clear = React.useCallback(() => {
     if (!enabled) return;
+    if (currentId.current) clearedIds.current.add(currentId.current);
     clearCommunityOnboardingTransaction();
     setTransaction(null);
   }, [enabled]);

@@ -952,6 +952,8 @@ export function AccountAuthFlow({
 
   if (standalone && mode === "onboarding" && designedScene) {
     const data: OnboardingSceneData = {
+      // Invited people have no business or connection steps ahead of them.
+      hideProgress: inviteBrand !== undefined,
       name,
       email: state.email,
       business: "",

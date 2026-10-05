@@ -194,7 +194,7 @@ test("Have an invite link? opens the invite scene and a pasted link joins withou
   expect(counts.claims).toBe(1);
   expect(claimBodies[0]?.code).toBe("v2.abc");
   expect(counts.creates).toBe(0);
-  expect(await storedTransaction(page)).toBeNull();
+  await expect.poll(() => storedTransaction(page)).toBeNull();
 });
 
 test("a bare code with the workspace address works and Escape leaves the invite step", async ({
@@ -308,8 +308,8 @@ test("a pending invite survives a reload in the middle of sign-up", async ({
   await signIn(page);
   await page.getByTestId("invite-join").click();
   await expectLandedInGeneral(page);
-  // Cleared exactly once, after the claim.
-  expect(await storedTransaction(page)).toBeNull();
+  // Cleared once the claim has succeeded and the person is in.
+  await expect.poll(() => storedTransaction(page)).toBeNull();
 });
 
 test("a relay that requires terms asks for them, then carries the receipt through the claim", async ({
