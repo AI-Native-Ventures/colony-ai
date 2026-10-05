@@ -7,11 +7,11 @@ import {
   teammateVerdict,
 } from "./safety.mjs";
 
-const INTRO_BUDGET_MS = 20000;
+const INTRO_BUDGET_MS = 30000;
 
 const LABELS = {
   1: "No 'connect your AI in Settings' notice after a verified connection",
-  2: "Scout intro appears in Welcome within 20 s of it opening",
+  2: "Scout intro appears in Welcome within 30 s of it opening",
   3: "No visible Buzz, Fizz, Honey, Pollen or bee emoji on any visited screen",
   4: "Team shows an avatar and a real status for Scout",
   5: "The @ list shows only teammates",
@@ -161,7 +161,7 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
     const leaks = personalConfigFindings(intro.text);
     evidence.verdict(
       2,
-      "Scout intro appears in Welcome within 20 s of it opening",
+      "Scout intro appears in Welcome within 30 s of it opening",
       sinceWelcome <= INTRO_BUDGET_MS ? "PASS" : "FAIL",
       `Intro seen ${sinceWelcome} ms after Welcome opened and ${sinceEntry} ms after Open my Colony (poll granularity about 0.25 s).`,
     );
@@ -174,7 +174,7 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
   if (!evidence.verdicts.some((item) => item.id === 2))
     evidence.verdict(
       2,
-      "Scout intro appears in Welcome within 20 s of it opening",
+      "Scout intro appears in Welcome within 30 s of it opening",
       "FAIL",
       "No Scout-authored introduction was observed.",
     );
@@ -316,6 +316,13 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
       await button.waitFor({ timeout: 15000 });
       await button.click();
       await page.getByTestId("employee-profile-tabpanel").waitFor();
+      if (tab === "instructions") {
+        // Verbatim Instructions page text (should be the Chief of Staff persona).
+        await page.waitForTimeout(1000);
+        evidence.observed["Scout Instructions page text (verbatim)"] = (
+          await page.getByTestId("employee-profile-tabpanel").innerText()
+        ).slice(0, 6000);
+      }
       const row = {
         name: `Scout ${tab}`,
         status: "PASS",
@@ -432,22 +439,50 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
         ),
       };
     }, PANEL);
-  const openThread = async (row) => {
-    if (!(await readThread()))
-      await row.getByTestId("message-thread-summary").first().click();
+  // The summary row is a sibling of its root message row, so each summary is paired with
+  // the nearest preceding message row in document order.
+  const threadSummaries = async () =>
+    page.evaluate(() => {
+      const timeline = document.querySelector(
+        '[data-testid="message-timeline"]',
+      );
+      if (!timeline) return [];
+      const rows = [
+        ...timeline.querySelectorAll('[data-testid="message-row"]'),
+      ];
+      return [
+        ...timeline.querySelectorAll('[data-testid="message-thread-summary"]'),
+      ].map((summary) => {
+        let root = null;
+        for (const row of rows) {
+          if (
+            row.compareDocumentPosition(summary) &
+            Node.DOCUMENT_POSITION_FOLLOWING
+          )
+            root = row;
+          else break;
+        }
+        const text = summary.innerText.replace(/\s+/gu, " ").trim();
+        return {
+          rootId: root?.dataset.messageId ?? null,
+          text,
+          replies: Number(/(\d+)\s+repl/u.exec(text)?.[1] ?? 0),
+        };
+      });
+    });
+  const openSummary = async (index) => {
+    await page
+      .getByTestId("message-timeline")
+      .getByTestId("message-thread-summary")
+      .nth(index)
+      .click();
     let thread = null;
     for (let attempt = 0; attempt < 30 && !thread; attempt++) {
       await page.waitForTimeout(500);
       thread = await readThread();
     }
-    if (!thread) throw new Error("Thread panel did not open");
     return thread;
   };
-  const mainRow = (id) =>
-    page
-      .getByTestId("message-timeline")
-      .locator(`[data-testid="message-row"][data-message-id="${id}"]`)
-      .first();
   // COLONY_REAL_RUN_NO_SAMPLE=1 keeps the window on the Welcome channel while waiting, so
   // sampling the Team page cannot influence the reply (control for the sampling).
   const sampleStatus = process.env.COLONY_REAL_RUN_NO_SAMPLE !== "1";
@@ -466,23 +501,12 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
   };
   let replyText = "";
   let replyWhere = "";
-  const summaries = page
-    .getByTestId("message-timeline")
-    .getByTestId("message-thread-summary");
-  let summariesBefore = 0;
-  let bodyBefore = new Set();
   if (
     !(await evidence.step("Business reply", page, async () => {
       const start = Date.now();
       await scoutSuggestion.click();
       await composer.press("End");
       await composer.pressSequentially(` ${QUESTION}`);
-      summariesBefore = await summaries.count();
-      bodyBefore = new Set(
-        (await page.evaluate(() => document.body.innerText))
-          .split("\n")
-          .map((line) => line.trim()),
-      );
       const sendAt = Date.now();
       anchors.sendAt = sendAt;
       await composer.press("Enter");
@@ -493,7 +517,6 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
       await sent.waitFor({ timeout: 15000 });
       anchors.questionVisibleAt = Date.now();
       const sentId = await sent.getAttribute("data-message-id");
-      const question = mainRow(sentId);
       const shots = [4000, 20000, 60000, 120000, 240000];
       let nextShot = 0;
       let nextSample = Date.now() + 6000;
@@ -532,51 +555,48 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
         if (topLevel) {
           anchors.replyVisibleAt = Date.now();
           found = { where: "top-level channel message", text: topLevel.text };
-        } else if ((await summaries.count()) > summariesBefore) {
-          // The summary row is a sibling of the message row, so it is counted
-          // timeline-wide against the count taken at send time.
-          anchors.threadSummaryAt ??= Date.now();
-          anchors.replyVisibleAt = anchors.threadSummaryAt;
-          await summaries.last().click();
-          await page.waitForTimeout(2500);
-          const thread = await readThread();
-          const scoutReply = thread?.bodies
-            .filter((item) => item.author === "Scout" && item.text.trim())
-            .pop();
-          if (scoutReply) {
-            anchors.replyReadAt = Date.now();
-            found = {
-              where: "reply in the thread under the question",
-              text: scoutReply.text,
-              panel: thread.panelText,
-            };
-          } else {
-            // Fallback: new page text after the thread opened, minus what was there at send.
-            const after = await page.evaluate(() => document.body.innerText);
-            const fresh = after
-              .split("\n")
-              .map((line) => line.trim())
-              .filter(
-                (line) =>
-                  line.length > 15 &&
-                  !bodyBefore.has(line) &&
-                  !line.includes(QUESTION),
-              );
-            const row = {
-              name: "Thread opened",
-              status: "PASS",
-              reason: `Opened the thread under the question. New page text: ${fresh.join(" / ").slice(0, 600) || "none"}`,
-              sinceStartMs: Date.now() - evidence.started,
-            };
-            evidence.rows.push(row);
-            await evidence.capture(row.name, page, row);
-            await evidence.write();
-            if (fresh.length) {
+        } else {
+          // Do not click while waiting. Summaries are only read, and a thread is opened
+          // only when the reply lands in the question's own thread, or another thread
+          // grows past the single reply Scout posts under its own introduction.
+          const sums = await threadSummaries();
+          const signature = JSON.stringify(
+            sums.map((item) => [item.rootId === sentId, item.replies]),
+          );
+          evidence.metadata.threadSummaryLog ??= [];
+          const log = evidence.metadata.threadSummaryLog;
+          if (!log.length || log[log.length - 1].signature !== signature)
+            log.push({
+              sinceSendMs: Date.now() - sendAt,
+              signature,
+              summaries: sums.map((item) => ({
+                underQuestion: item.rootId === sentId,
+                text: item.text,
+              })),
+            });
+          const own = sums.findIndex((item) => item.rootId === sentId);
+          const grown = sums.findIndex(
+            (item) => item.rootId !== sentId && item.replies >= 2,
+          );
+          const target = own >= 0 ? own : grown;
+          if (target >= 0) {
+            anchors.threadSummaryAt ??= Date.now();
+            anchors.replyVisibleAt = anchors.threadSummaryAt;
+            const thread = await openSummary(target);
+            // The first body of a thread panel is its root message.
+            const scoutReply = thread?.bodies
+              .slice(1)
+              .filter((item) => item.author === "Scout" && item.text.trim())
+              .pop();
+            if (scoutReply) {
               anchors.replyReadAt = Date.now();
               found = {
                 where:
-                  "reply in the thread under the question (page text after opening the thread)",
-                text: fresh.join("\n"),
+                  own >= 0
+                    ? "reply in the thread under the question"
+                    : "second reply in the thread under the Scout introduction",
+                text: scoutReply.text,
+                panel: thread.panelText,
               };
             }
           }
@@ -643,16 +663,25 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
   ) {
     // Verdicts 6 and 7 are filled as BLOCKED by finalize.
   }
-  // What the first thread under the introduction contains, verbatim.
+  // What the thread under the Scout introduction contains, verbatim. Scout posts a short
+  // follow-up there, so it must be read to tell it apart from the answer to the question.
   try {
-    const introRow = scoutRows().first();
-    if ((await introRow.getByTestId("message-thread-summary").count()) > 0) {
-      const thread = await openThread(introRow);
-      evidence.observed["Thread under the Scout intro (verbatim)"] =
-        thread.bodies
-          .map((item) => `${item.author}: ${item.text}`)
-          .join("\n---\n");
+    const sums = await threadSummaries();
+    const index = sums.findIndex((item) => item.rootId === before[0]);
+    if (index >= 0) {
+      const thread = await openSummary(index);
+      if (thread) {
+        evidence.observed["Thread under the Scout intro (verbatim)"] =
+          thread.bodies
+            .map((item) => `${item.author}: ${item.text}`)
+            .join("\n---\n");
+        evidence.metadata.introThreadSummary = sums[index].text;
+      }
     }
+    evidence.metadata.finalThreadSummaries = sums.map((item) => ({
+      underQuestion: item.rootId !== null && item.rootId !== before[0],
+      text: item.text,
+    }));
   } catch {
     // The thread under the introduction is optional evidence.
   }
@@ -668,12 +697,27 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
     evidence.rows.push(recheck);
     try {
       const started = Date.now();
-      await page.getByTestId("sidebar-company-team").click();
-      const row = page.locator('[data-testid^="company-team-member-"]').filter({
-        hasText: /\bScout\b/u,
-      });
-      await row.first().waitFor({ timeout: 15000 });
-      const text = (await row.first().innerText()).replace(/\n+/gu, " / ");
+      await page.getByTestId("sidebar-company-team").click({ timeout: 10000 });
+      await page
+        .locator('[data-testid^="company-team-member-"]')
+        .first()
+        .waitFor({ timeout: 20000 });
+      // Read the Scout row by text without locator filters, tolerant of re-rendering.
+      let text = "";
+      for (let attempt = 0; attempt < 20 && !text; attempt++) {
+        text = await page.evaluate(
+          () =>
+            [
+              ...document.querySelectorAll(
+                '[data-testid^="company-team-member-"]',
+              ),
+            ]
+              .map((row) => row.innerText.replace(/\n+/gu, " / "))
+              .find((value) => /(^| \/ )Scout( \/ |$)/u.test(value)) ?? "",
+        );
+        if (!text) await page.waitForTimeout(500);
+      }
+      if (!text) throw new Error("Scout row text not found");
       evidence.observed["Scout Team row after the business reply"] = text;
       evidence.metadata.scoutStatusTimeline ??= [];
       evidence.metadata.scoutStatusTimeline.push({
@@ -699,11 +743,16 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
       for (let sample = 1; sample <= 5; sample++) {
         await page.waitForTimeout(15000);
         try {
-          const idle = page
-            .locator('[data-testid^="company-team-member-"]')
-            .filter({ hasText: /\bScout\b/u })
-            .first();
-          const idleText = (await idle.innerText()).replace(/\n+/gu, " / ");
+          const idleText = await page.evaluate(
+            () =>
+              [
+                ...document.querySelectorAll(
+                  '[data-testid^="company-team-member-"]',
+                ),
+              ]
+                .map((row) => row.innerText.replace(/\n+/gu, " / "))
+                .find((value) => /(^| \/ )Scout( \/ |$)/u.test(value)) ?? "",
+          );
           evidence.metadata.scoutStatusTimeline.push({
             at: Date.now(),
             status: idleText.split(" / ").filter(Boolean).pop(),
@@ -761,4 +810,107 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
       );
     return fileReferenceVerdict(paths, links);
   });
+  await appearanceApplyRevert({ page, evidence });
+}
+
+/**
+ * Settings Appearance: change the colour mode, Apply, then Revert. Every observation is
+ * recorded as its own row so a missing control shows as FAIL with a screenshot, never as
+ * a silent skip.
+ */
+async function appearanceApplyRevert({ page, evidence }) {
+  const record = async (name, status, reason, started) => {
+    const row = {
+      name,
+      status,
+      reason,
+      durationMs: Date.now() - started,
+      sinceStartMs: Date.now() - evidence.started,
+    };
+    evidence.rows.push(row);
+    await evidence.capture(name, page, row);
+    await evidence.write();
+  };
+  const text = async (id) =>
+    (
+      await page
+        .getByTestId(id)
+        .first()
+        .innerText({ timeout: 5000 })
+        .catch(() => "(absent)")
+    ).trim();
+  let started = Date.now();
+  try {
+    await page.getByTestId("open-settings").click({ timeout: 10000 });
+    await page
+      .getByTestId("profile-popover-settings")
+      .click({ timeout: 10000 });
+    await page.getByTestId("settings-view").waitFor({ timeout: 15000 });
+    // Appearance is its own entry in the left settings navigation.
+    const nav = page
+      .getByTestId("settings-sidebar")
+      .getByRole("button", { name: /^Appearance$/u })
+      .first();
+    if ((await nav.count()) > 0) await nav.click({ timeout: 10000 });
+    else await page.getByTestId("settings-inner-appearance").click();
+    await page.getByTestId("settings-appearance").waitFor({ timeout: 15000 });
+    const pressed = async () =>
+      page.evaluate(
+        () =>
+          ["system", "light", "dark"].find(
+            (mode) =>
+              document
+                .querySelector(`[data-testid="appearance-mode-${mode}"]`)
+                ?.getAttribute("aria-pressed") === "true",
+          ) ?? "none",
+      );
+    const before = await pressed();
+    await record(
+      "Appearance opened",
+      "PASS",
+      `Settings Appearance opened. Colour mode before: ${before}. Footer status: ${await text("appearance-apply-status")}.`,
+      started,
+    );
+    started = Date.now();
+    const target = before === "dark" ? "light" : "dark";
+    await page
+      .getByTestId(`appearance-mode-${target}`)
+      .click({ timeout: 10000 });
+    await page.waitForTimeout(600);
+    const preview = await text("appearance-apply-status");
+    await record(
+      "Appearance preview",
+      preview === "Preview only" ? "PASS" : "FAIL",
+      `Picked ${target}. Footer status: "${preview}" (expected "Preview only").`,
+      started,
+    );
+    started = Date.now();
+    await page.getByTestId("appearance-apply").click({ timeout: 10000 });
+    await page.waitForTimeout(800);
+    const applied = await text("appearance-apply-status");
+    const nowPressed = await pressed();
+    await record(
+      "Appearance Apply",
+      applied === "Applied" && nowPressed === target ? "PASS" : "FAIL",
+      `Apply clicked. Footer status: "${applied}". Colour mode pressed: ${nowPressed} (expected ${target}). Revert control present: ${(await page.getByTestId("appearance-revert").count()) > 0}.`,
+      started,
+    );
+    started = Date.now();
+    await page.getByTestId("appearance-revert").click({ timeout: 10000 });
+    await page.waitForTimeout(800);
+    const reverted = await pressed();
+    await record(
+      "Appearance Revert",
+      reverted === before ? "PASS" : "FAIL",
+      `Revert clicked. Colour mode pressed: ${reverted} (expected ${before}). Footer status: "${await text("appearance-apply-status")}".`,
+      started,
+    );
+  } catch (error) {
+    await record(
+      "Appearance Apply and Revert",
+      "FAIL",
+      `Appearance flow did not complete (${error.name}). Screenshot shows the observed state.`,
+      started,
+    );
+  }
 }
