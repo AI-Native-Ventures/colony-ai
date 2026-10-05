@@ -99,7 +99,7 @@ export function InviteInstallPanel({ inviteUrl }: { inviteUrl: string }) {
       <div className="mt-4 flex flex-col gap-2 sm:flex-row">
         <input
           aria-label="Invite link"
-          className="h-10 min-w-0 flex-1 rounded-full border border-colony-line bg-colony-paper px-4 font-mono text-xs text-colony-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-colony-focus"
+          className="h-10 w-full min-w-0 rounded-full sm:flex-1 border border-colony-line bg-colony-paper px-4 font-mono text-xs text-colony-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-colony-focus"
           onFocus={(event) => event.currentTarget.select()}
           readOnly
           ref={linkInputRef}
