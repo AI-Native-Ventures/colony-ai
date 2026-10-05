@@ -432,7 +432,7 @@ test("pasting an invite link outside a text field offers Join <business> without
   expect(counts.claims).toBe(0);
 
   // "Not now" leaves the person in their own workspace and drops the invite.
-  await page.getByTestId("invite-create-own-business").click();
+  await page.getByTestId("invite-dismiss").click();
   await expect(page.getByTestId("sidebar-profile-avatar-button")).toBeVisible();
   await expect(page.getByTestId("invite-join")).toHaveCount(0);
   expect(await storedTransaction(page)).toBeNull();

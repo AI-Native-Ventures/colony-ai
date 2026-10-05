@@ -21,7 +21,9 @@ export function InviteClaimFailed({
   const leaveLabel = hasWorkspace ? "Back to my workspace" : "Continue setup";
   return (
     <div data-testid="invite-claim-failed">
-      <h2>That invite didn’t work.</h2>
+      <h2>
+        {canRetry ? "We couldn’t join just yet." : "That invite didn’t work."}
+      </h2>
       <p className="lede">{message}</p>
       {canRetry ? (
         <>

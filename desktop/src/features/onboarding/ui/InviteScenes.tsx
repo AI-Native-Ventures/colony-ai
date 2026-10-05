@@ -202,6 +202,7 @@ export function InviteJoinScene({
   name,
   onJoined,
   onTerminalFailure,
+  onDismiss,
   onUseAnotherAccount,
   onUseAnotherLink,
   secondaryAction,
@@ -214,6 +215,8 @@ export function InviteJoinScene({
   onJoined: () => void;
   /** The invite can never work; the caller drops it so no relaunch is trapped. */
   onTerminalFailure: (message: string) => void;
+  /** Leave the invite alone, e.g. "Not now" for someone who already has a workspace. */
+  onDismiss?: { label: string; onClick: () => void };
   onUseAnotherAccount?: () => void;
   onUseAnotherLink?: () => void;
   /** The way forward after a failed invite, e.g. "Create my own business instead". */
@@ -401,6 +404,15 @@ export function InviteJoinScene({
         <BackButton onClick={onUseAnotherAccount}>
           Use another account
         </BackButton>
+      ) : onDismiss ? (
+        <button
+          className="back"
+          data-testid="invite-dismiss"
+          onClick={onDismiss.onClick}
+          type="button"
+        >
+          {onDismiss.label}
+        </button>
       ) : null}
     </>
   );

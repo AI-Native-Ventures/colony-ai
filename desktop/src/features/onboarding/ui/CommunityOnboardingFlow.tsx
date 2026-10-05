@@ -267,8 +267,15 @@ export function CommunityOnboardingFlow({
           onTerminalFailure={(message) =>
             update({ error: message }, transaction.id)
           }
-          secondaryAction={{
+          onDismiss={{
             label: communities.length > 0 ? "Not now" : "Continue setup",
+            onClick: clear,
+          }}
+          secondaryAction={{
+            label:
+              communities.length > 0
+                ? "Back to my workspace"
+                : "Continue setup",
             onClick: clear,
           }}
         />

@@ -457,12 +457,14 @@ test("persisted deep-link invite hands off to Joining after machine onboarding",
   // Machine onboarding is complete, so the transaction owns the screen.
   await expect(page.getByTestId("community-onboarding-flow")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Your Colony isn’t ready yet." }),
+    page.getByRole("heading", { name: "We couldn’t join just yet." }),
   ).toBeVisible();
   await expect(page.getByTestId("pending-invite-gate")).toHaveCount(0);
 
-  // The claim was attempted and its failure surfaced with a Retry.
+  // The claim was attempted and its failure surfaced with a Retry and a way
+  // back out.
   await expect(
     page.getByRole("button", { name: "Try again", exact: true }),
   ).toBeVisible();
+  await expect(page.getByTestId("invite-claim-leave")).toBeVisible();
 });
