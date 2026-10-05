@@ -17,13 +17,21 @@ import path from "node:path";
 import { createSmokeInbox } from "./mailbox.mjs";
 import { realEnvironment, realEnvSandboxPolicy } from "./safety.mjs";
 
+// Defaults target the Colony 1.0.5 candidate gate. Override with AI_OUT, AI_APP, AI_PROGRESS, AI_STATE.
 export const OUT =
-  "/Users/mac/worktrees/.lanes/phase2/real-run-20261004/avatar-invite";
-export const APP = "/Users/mac/Downloads/Colony-1.0.4-published/Colony.app";
+  process.env.AI_OUT ??
+  "/Users/mac/worktrees/.lanes/phase2/real-run-20261004/candidate-105";
+export const APP =
+  process.env.AI_APP ??
+  "/Users/mac/Downloads/Colony-candidate-b131f7f/extracted/darwin-arm64/Buzz.app";
 export const RELAY = "https://relay.colony.ainative.ventures";
 export const PROGRESS =
-  "/Users/mac/worktrees/.lanes/phase2/briefs-20261004/progress-avatar-invite.txt";
-export const STATE = path.join(OUT, "state.json");
+  process.env.AI_PROGRESS ??
+  "/Users/mac/worktrees/.lanes/phase2/briefs-20261004/progress-candidate-105.txt";
+// state.json holds passwords and invite codes: it lives outside the report directory.
+export const STATE =
+  process.env.AI_STATE ??
+  "/Users/mac/worktrees/.lanes/phase2/real-run-20261004/candidate-105-private/state.json";
 
 export const stamp = () => new Date().toTimeString().slice(0, 8);
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -189,8 +197,13 @@ export async function waitForLoad(max = 12, timeoutMs = 20 * 60 * 1000) {
 }
 
 // Launch the published app under the keychain-deny policy with a given user-data dir.
-export async function launch({ privateDir, userDataDir, extraEnv = {} }) {
-  const exe = path.join(APP, "Contents", "MacOS", "Colony");
+export async function launch({
+  privateDir,
+  userDataDir,
+  extraEnv = {},
+  extraArgs = [],
+}) {
+  const exe = path.join(APP, "Contents", "MacOS", await macosExecutable());
   const q = (value) => `'${value.replace(/'/gu, `'\\''`)}'`;
   const sandbox = path.join(privateDir, "sandbox.sb");
   await writeFile(sandbox, realEnvSandboxPolicy(undefined, ""), {
@@ -204,7 +217,7 @@ export async function launch({ privateDir, userDataDir, extraEnv = {} }) {
   );
   const application = await electron.launch({
     executablePath: launcher,
-    args: ["--no-sandbox", `--user-data-dir=${userDataDir}`],
+    args: ["--no-sandbox", `--user-data-dir=${userDataDir}`, ...extraArgs],
     env: {
       ...realEnvironment(process.env, userDataDir, RELAY),
       COLONY_NATIVE_HOST_LOG: path.join(privateDir, "native-host.log"),
@@ -235,6 +248,48 @@ export async function launch({ privateDir, userDataDir, extraEnv = {} }) {
     },
   });
   return { application, page, version: version.version };
+}
+
+// The PR packaging names the executable Buzz, the published release Colony: take the only file.
+export async function macosExecutable() {
+  const { readdir } = await import("node:fs/promises");
+  return (await readdir(path.join(APP, "Contents", "MacOS")))[0];
+}
+
+// Deliver a deep link to the INSTANCE UNDER TEST only: start a second process of the same bundle
+// executable with the same --user-data-dir. Electron's single-instance lock hands argv to the first
+// instance ("second-instance" event, deep-links.mjs handleSecondInstance) and the second process exits.
+// Never uses `open buzz://`, which LaunchServices may route to the owner's installed app.
+export async function sendDeepLink({ privateDir, userDataDir }, url) {
+  const { spawn } = await import("node:child_process");
+  const launcher = path.join(privateDir, "launch.sh");
+  const started = Date.now();
+  const child = spawn(
+    launcher,
+    ["--no-sandbox", `--user-data-dir=${userDataDir}`, url],
+    {
+      env: {
+        ...realEnvironment(process.env, userDataDir, RELAY),
+        COLONY_NATIVE_HOST_LOG: path.join(privateDir, "native-host-second.log"),
+      },
+      stdio: "ignore",
+    },
+  );
+  const result = await new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      resolve({ exited: false });
+    }, 15000);
+    child.on("exit", (code, signal) => {
+      clearTimeout(timer);
+      resolve({ exited: true, code, signal });
+    });
+  });
+  return {
+    ...result,
+    ms: Date.now() - started,
+    method: "second-instance argv",
+  };
 }
 
 export async function closeApp(application) {
