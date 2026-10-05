@@ -11,7 +11,10 @@ import {
   shell,
 } from "electron";
 import { createOpenRouterService } from "./openrouter-oauth.mjs";
-import { createWorkspaceFileService } from "./workspace-files.mjs";
+import {
+  createWorkspaceFileService,
+  WORKSPACE_FILE_COMMANDS,
+} from "./workspace-files.mjs";
 import { RendererHost } from "./renderer-host.mjs";
 import { createShellPlugins } from "./shell-plugins.mjs";
 import { validWindowLabel } from "./window-rules.mjs";
@@ -124,16 +127,11 @@ export function createAppWindow({
 
   /** Handle one renderer request that already passed the sender check. */
   async function dispatch(type, payload) {
-    if (
-      type === "invoke" &&
-      ["resolve_agent_workspace_file", "read_agent_workspace_file"].includes(
-        payload.command,
-      )
-    ) {
+    if (type === "invoke" && WORKSPACE_FILE_COMMANDS.has(payload.command)) {
       const generation = rendererHost.generation;
-      const result = await (payload.command === "resolve_agent_workspace_file"
-        ? workspaceFiles.resolve(payload.args)
-        : workspaceFiles.read(payload.args));
+      const result = await workspaceFiles[
+        WORKSPACE_FILE_COMMANDS.get(payload.command)
+      ](payload.args);
       rendererHost.check(generation);
       return result;
     }

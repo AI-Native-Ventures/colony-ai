@@ -30,6 +30,33 @@ export function resolveWorkspaceFile(reference: WorkspaceFileReference) {
     reference,
   );
 }
+export type WorkspaceDirectoryReference = {
+  agentPubkey: string;
+  expectedRelayUrl: string;
+  /** Folder relative to the workspace root; empty for the root itself. */
+  path: string;
+};
+export type WorkspaceEntry = {
+  name: string;
+  /** Slash-separated path from the workspace root; accepted by read. */
+  path: string;
+  kind: "dir" | "file";
+  size?: number;
+};
+export type WorkspaceListing = {
+  path: string;
+  entries: WorkspaceEntry[];
+  truncated: boolean;
+};
+
+/**
+ * List one folder of the author's workspace. The trusted native host repeats
+ * the scope and path checks; the renderer only ever sees names and sizes.
+ */
+export function listWorkspaceDirectory(reference: WorkspaceDirectoryReference) {
+  return invoke<WorkspaceListing>("list_agent_workspace_files", reference);
+}
+
 /** Read bounded UTF-8 content after repeating native scope and path checks. */
 export function readWorkspaceFile(reference: WorkspaceFileReference) {
   return invoke<WorkspaceFile>("read_agent_workspace_file", reference);

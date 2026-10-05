@@ -6,6 +6,7 @@ import {
   useSetCanvasMutation,
 } from "@/features/channels/hooks";
 import { useChannelNavigation } from "@/shared/context/ChannelNavigationContext";
+import { useCanvasEditState } from "./canvasEditStore";
 import { Button } from "@/shared/ui/button";
 import { Markdown } from "@/shared/ui/markdown";
 import { Textarea } from "@/shared/ui/textarea";
@@ -18,12 +19,18 @@ type ChannelCanvasProps = {
   channelId: string | null;
   canEdit: boolean;
   isArchived: boolean;
+  /**
+   * When set, an edit in progress is kept under this key if the canvas
+   * unmounts (the work area dock closing) and is restored on return.
+   */
+  keepEditsKey?: string | null;
 };
 
 export function ChannelCanvas({
   channelId,
   canEdit,
   isArchived,
+  keepEditsKey = null,
 }: ChannelCanvasProps) {
   const canvasQuery = useCanvasQuery(channelId, channelId !== null);
   const setCanvasMutation = useSetCanvasMutation(channelId);
@@ -32,8 +39,9 @@ export function ChannelCanvas({
     () => channels.filter((c) => c.channelType !== "dm").map((c) => c.name),
     [channels],
   );
-  const [isEditing, setIsEditing] = React.useState(false);
-  const [draft, setDraft] = React.useState("");
+  const [{ isEditing, draft }, setEditState] = useCanvasEditState(keepEditsKey);
+  const setDraft = (next: string) =>
+    setEditState({ isEditing: true, draft: next });
 
   const canvasContent = canvasQuery.data?.content ?? null;
   // Defer the single large Markdown parse so opening the canvas commits the
@@ -41,18 +49,16 @@ export function ChannelCanvas({
   const deferredCanvasContent = React.useDeferredValue(canvasContent);
 
   function handleStartEditing() {
-    setDraft(canvasContent ?? "");
-    setIsEditing(true);
+    setEditState({ isEditing: true, draft: canvasContent ?? "" });
   }
 
   function handleCancelEditing() {
-    setIsEditing(false);
-    setDraft("");
+    setEditState({ isEditing: false, draft: "" });
   }
 
   async function handleSave() {
     await setCanvasMutation.mutateAsync(draft);
-    setIsEditing(false);
+    setEditState({ isEditing: false, draft: "" });
   }
 
   if (canvasQuery.isLoading) {

@@ -1,105 +1,29 @@
-import * as React from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-
 import { useRelayOrigin } from "@/shared/lib/useRelayOrigin";
-import { Button } from "@/shared/ui/button";
 
-import {
-  readWorkspaceFile,
-  type WorkspaceFile,
-  type WorkspaceFileReference,
-} from "../../workspaceFiles";
-import {
-  setWorkAreaFileReference,
-  useWorkAreaFileReference,
-} from "../workAreaFilesStore";
+import { useWorkAreaFilesView } from "../workAreaFilesStore";
 import type { WorkAreaTabPanelProps } from "../workAreaTabRegistry";
+import { WorkspaceFileList } from "./WorkspaceFileList";
+import { WorkspaceFileReader } from "./WorkspaceFileReader";
 
-/** A read-only Files surface. No document HTML or external images are executed. */
+/**
+ * Files tab: the agent workspace folder list, and the read-only reader for the
+ * file chosen from it or from a link in a message.
+ */
 export function WorkAreaFilesTab({ channelId }: WorkAreaTabPanelProps) {
   const relayOrigin = useRelayOrigin();
-  const stored = useWorkAreaFileReference(channelId);
+  const view = useWorkAreaFilesView(channelId);
   // A reference only counts for the relay it was resolved against.
   const reference =
-    stored && stored.expectedRelayUrl === relayOrigin ? stored : null;
-  const [loaded, setLoaded] = React.useState<{
-    reference: WorkspaceFileReference;
-    file: WorkspaceFile;
-  } | null>(null);
-  const file = loaded?.reference === reference ? loaded.file : null;
-  const [error, setError] = React.useState(false);
-  React.useEffect(() => {
-    let current = true;
-    setLoaded(null);
-    setError(false);
-    if (reference) {
-      void readWorkspaceFile(reference)
-        .then((next) => {
-          if (current) setLoaded({ reference, file: next });
-        })
-        .catch(() => {
-          if (current) setError(true);
-        });
-    }
-    return () => {
-      current = false;
-    };
-  }, [reference]);
-  return (
-    <div
-      className="min-h-0 flex-1 overflow-auto p-4"
-      data-testid="work-area-files"
-    >
-      <p className="mb-4 break-all text-sm font-medium">{reference?.path}</p>
-      {!reference ? (
-        <p className="text-sm text-muted-foreground">
-          Choose a file link in an agent's message to read it here.
-        </p>
-      ) : null}
-      {reference && !file && !error ? (
-        <p role="status" className="text-sm text-muted-foreground">
-          Opening file...
-        </p>
-      ) : null}
-      {error ? (
-        <div role="alert" className="space-y-3 text-sm">
-          <p>This file is no longer available in the agent's workspace.</p>
-          <Button
-            variant="outline"
-            onClick={() =>
-              reference && setWorkAreaFileReference(channelId, { ...reference })
-            }
-          >
-            Try again
-          </Button>
-        </div>
-      ) : null}
-      {file ? (
-        /\.(md|markdown)$/i.test(file.path) ? (
-          <article
-            data-testid="work-area-markdown"
-            className="space-y-3 break-words text-sm [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:bg-muted [&_pre]:p-3 [&_code]:font-mono [&_table]:w-full [&_td]:border [&_td]:p-2 [&_th]:border [&_th]:p-2"
-          >
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                img: ({ alt }) => <span>{alt || "Image"}</span>,
-                a: ({ children }) => <span>{children}</span>,
-              }}
-            >
-              {file.content}
-            </ReactMarkdown>
-          </article>
-        ) : (
-          <pre
-            data-testid="work-area-text"
-            className="whitespace-pre-wrap break-words font-mono text-sm"
-          >
-            {file.content}
-          </pre>
-        )
-      ) : null}
-    </div>
+    view.reference && view.reference.expectedRelayUrl === relayOrigin
+      ? view.reference
+      : null;
+  return reference ? (
+    <WorkspaceFileReader channelId={channelId} reference={reference} />
+  ) : (
+    <WorkspaceFileList
+      channelId={channelId}
+      directory={view.directory}
+      relayOrigin={relayOrigin}
+    />
   );
 }

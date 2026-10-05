@@ -38,7 +38,9 @@ async function setup(page: Page) {
     (command: string, args: Record<string, unknown>) =>
       command === "read_agent_workspace_file"
         ? service.read(args)
-        : service.resolve(args),
+        : command === "list_agent_workspace_files"
+          ? service.list(args)
+          : service.resolve(args),
   );
   await page.addInitScript(() => {
     const w = window as typeof window & {
@@ -67,6 +69,7 @@ async function setup(page: Page) {
             [
               "resolve_agent_workspace_file",
               "read_agent_workspace_file",
+              "list_agent_workspace_files",
             ].includes(command)
           )
             return w.__FILE_HOST__(command, args);
@@ -236,7 +239,11 @@ for (const viewport of [
         .getByRole("button", { name: "Files", exact: true })
         .click();
       const viewer = page.getByTestId("work-area-panel");
-      await expect(viewer).toContainText("Choose a file link");
+      // Files opens on the agent workspace list; a file chosen there or from
+      // a message link opens in the reader.
+      await expect(
+        viewer.getByRole("button", { name: /^DAY1_VIDEO_PACK\.md/ }),
+      ).toBeVisible();
       await viewer
         .getByRole("button", { name: "Close work area", exact: true })
         .click();

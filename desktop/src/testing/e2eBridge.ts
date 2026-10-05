@@ -13759,6 +13759,52 @@ async function handleUpdateChannel(
   };
 }
 
+/** Kind 40100: the channel canvas. Same event shape as the desktop host's `set_canvas`. */
+const CANVAS_EVENT_KIND = 40100;
+
+async function handleSetCanvas(
+  args: { channelId: string; content: string },
+  config: E2eConfig | undefined,
+) {
+  if (!isRelayMode(config)) {
+    return { ok: true, event_id: mockEventId() };
+  }
+  // Relay mode writes the real event, so a canvas saved in the UI is read
+  // back from the relay (and survives a reload) exactly as in the app.
+  const result = await submitSignedEvent(config, {
+    kind: CANVAS_EVENT_KIND,
+    content: args.content,
+    tags: [["h", args.channelId]],
+  });
+  return { ok: true, event_id: result.event_id };
+}
+
+async function handleGetCanvas(
+  args: { channelId: string },
+  config: E2eConfig | undefined,
+) {
+  if (!isRelayMode(config)) {
+    const canvasReadError = config?.mock?.canvasReadError;
+    if (canvasReadError) {
+      throw new Error(canvasReadError);
+    }
+    // The no-canvas success shape: content null means no canvas set.
+    return { content: null, updated_at: null, author: null };
+  }
+  const [latest] = await relayQuery(config, [
+    { kinds: [CANVAS_EVENT_KIND], "#h": [args.channelId], limit: 1 },
+  ]);
+  if (!latest) {
+    return { content: "", event_id: null, updated_at: null, author: null };
+  }
+  return {
+    content: latest.content,
+    event_id: latest.id,
+    updated_at: latest.created_at,
+    author: latest.pubkey,
+  };
+}
+
 async function handleSetChannelTopic(
   args: {
     channelId: string;
@@ -22154,15 +22200,15 @@ export function maybeInstallE2eTauriMocks() {
         // returning null mirrors the Rust submit_event success path.
         return null;
       case "set_canvas":
-        return { ok: true, event_id: mockEventId() };
-      case "get_canvas": {
-        const canvasReadError = activeConfig?.mock?.canvasReadError;
-        if (canvasReadError) {
-          throw new Error(canvasReadError);
-        }
-        // Return the no-canvas success shape — content null means no canvas set.
-        return { content: null, updated_at: null, author: null };
-      }
+        return handleSetCanvas(
+          payload as Parameters<typeof handleSetCanvas>[0],
+          activeConfig,
+        );
+      case "get_canvas":
+        return handleGetCanvas(
+          payload as Parameters<typeof handleGetCanvas>[0],
+          activeConfig,
+        );
       // ── Local-save archive ──────────────────────────────────────────────
       // These stubs drive the LocalArchiveSettingsCard in screenshot / UI tests
       // without requiring a real SQLite backend. `mockSaveSubscriptions` is a
