@@ -114,7 +114,7 @@ test.describe("profile photo is easy to find", () => {
     await expect(
       page
         .getByTestId("settings-account-profile-card")
-        .getByText("Profile photo", { exact: true }),
+        .getByTestId("account-profile-avatar"),
     ).toBeVisible();
 
     await control.click();
