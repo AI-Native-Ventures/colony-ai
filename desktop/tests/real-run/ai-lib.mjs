@@ -35,7 +35,7 @@ export async function progress(line) {
 // Redaction: no invite codes, no keys, no query strings in anything written to evidence.
 export function redact(value) {
   return String(value ?? "")
-    .replace(/(invite|join)([/=])[A-Za-z0-9_-]{6,}/giu, "$1$2XXXX")
+    .replace(/(invite|join)([/=])[A-Za-z0-9._-]{6,}/giu, "$1$2XXXX")
     .replace(
       /([?&](code|token|key|sig|auth|authorization)=)[^&\s"']+/giu,
       "$1XXXX",
@@ -90,18 +90,21 @@ export class Rec {
     return row;
   }
   async write() {
+    // Redact the whole document: notes may carry visible text that includes an invite URL.
     await writeFile(
       path.join(OUT, `phase-${this.phase}.json`),
-      JSON.stringify(
-        {
-          phase: this.phase,
-          rows: this.rows,
-          notes: this.notes,
-          console: this.console,
-          network: this.network,
-        },
-        null,
-        2,
+      redact(
+        JSON.stringify(
+          {
+            phase: this.phase,
+            rows: this.rows,
+            notes: this.notes,
+            console: this.console,
+            network: this.network,
+          },
+          null,
+          2,
+        ),
       ),
     );
   }
@@ -299,9 +302,114 @@ export async function createBusiness(
 
 export async function skipConnect(page) {
   const skip = page.getByRole("button", { name: "Skip for now", exact: true });
+  if (!(await skip.isVisible().catch(() => false))) {
+    // Same as the first-run harness: select the Claude Code runtime card first.
+    await page
+      .getByTestId("onboarding-connect-runtime-claude")
+      .getByRole("button", { name: /Claude Code/iu })
+      .click()
+      .catch(() => undefined);
+    await skip.waitFor({ timeout: 15000 });
+  }
   await skip.scrollIntoViewIfNeeded();
   await skip.click();
   await page.getByTestId("app-sidebar").waitFor({ timeout: 45000 });
+}
+
+// Drive whatever onboarding screen is showing until the app sidebar is visible:
+// owned-business list (open it, never create another), Connect (select Claude Code and connect for
+// real), connected scene (Open my Colony). Returns the list of screens passed.
+export async function enterApp(page, onScreen, creds) {
+  let signedIn = false;
+  const sidebar = page.getByTestId("app-sidebar");
+  const trail = [];
+  const seen = new Set();
+  const note = async (name) => {
+    if (!seen.has(name)) {
+      seen.add(name);
+      trail.push(name);
+      await onScreen?.(name);
+    }
+  };
+  const deadline = Date.now() + 240000;
+  while (Date.now() < deadline) {
+    if (await sidebar.isVisible().catch(() => false)) return trail;
+    if (
+      creds &&
+      !signedIn &&
+      (await page
+        .getByLabel("Your name", { exact: true })
+        .isVisible()
+        .catch(() => false))
+    ) {
+      // A relaunch before onboarding completed lands on the Account step again: sign in.
+      signedIn = true;
+      await note("account-step-after-relaunch");
+      const link = page
+        .getByRole("button", { name: /^Sign in$/iu })
+        .or(page.getByRole("link", { name: /^Sign in$/iu }))
+        .or(page.getByText(/^Sign in$/u))
+        .first();
+      await link.click({ timeout: 8000 }).catch(() => undefined);
+      await page
+        .getByTestId("account-auth-submit-signin")
+        .waitFor({ timeout: 8000 })
+        .catch(() => undefined);
+      await sleep(500);
+      await page.getByLabel(/Email/iu).first().fill(creds.email);
+      await page
+        .getByLabel(/Password/iu)
+        .first()
+        .fill(creds.password);
+      await page
+        .getByTestId("account-auth-submit-signin")
+        .click()
+        .catch(() => undefined);
+      await note("sign-in-submitted");
+      await sleep(3500);
+      continue;
+    }
+    const open = page.getByRole("button", {
+      name: "Open my Colony",
+      exact: true,
+    });
+    if (await open.isVisible().catch(() => false)) {
+      await note("connected");
+      await open.click().catch(() => undefined);
+      await sleep(2000);
+      continue;
+    }
+    const list = page.getByTestId("onboarding-business-list");
+    if (await list.isVisible().catch(() => false)) {
+      await note("businesses");
+      await list
+        .getByRole("button")
+        .first()
+        .click()
+        .catch(() => undefined);
+      await sleep(2500);
+      continue;
+    }
+    const runtime = page.getByTestId("onboarding-connect-runtime-claude");
+    if (await runtime.isVisible().catch(() => false)) {
+      await note("connect");
+      const pick = runtime.getByRole("button", { name: /Claude Code/iu });
+      if (await pick.isVisible().catch(() => false))
+        await pick.click().catch(() => undefined);
+      const test = page.getByRole("button", {
+        name: /^(Connect Claude Code|Test connection)$/iu,
+      });
+      if (await test.isVisible().catch(() => false)) {
+        await test.scrollIntoViewIfNeeded().catch(() => undefined);
+        await test.click().catch(() => undefined);
+        await note("connecting");
+      }
+      await sleep(3000);
+      continue;
+    }
+    await sleep(800);
+  }
+  throw new Error("enterApp deadline: app sidebar never appeared");
 }
 
 // ---- png ----

@@ -1,15 +1,13 @@
-// Phase A2: relaunch profile A with the SAME user-data dir. Checks avatar persistence (QA3), the member
-// list entry points (QA1 member list), then mints invites (QB1) and curls the landing page (QB2).
-// usage: COLONY_REAL_RUN=1 node ai-a2.mjs   (through heavy.sh)
+// Phase A2: relaunch profile A with the SAME user-data dir. Avatar persistence (QA3), members-list entry
+// point (QA1), then mint invites (QB1) and curl the landing page (QB2). Local only (COLONY_REAL_RUN=1).
 import { execFile } from "node:child_process";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { writeFile } from "node:fs/promises";
 import {
   OUT,
   Rec,
   closeApp,
-  cleanUrl,
   instrument,
   inventory,
   launch,
@@ -52,162 +50,223 @@ const guard = async (id, label, fn) => {
     return undefined;
   }
 };
-const imgInfo = (testid) =>
-  page.evaluate((id) => {
-    const el = document.querySelector(`[data-testid="${id}"]`);
-    const img = el?.tagName === "IMG" ? el : el?.querySelector("img");
+const sidebarAvatar = () =>
+  page.evaluate(() => {
+    const img = document.querySelector(
+      '[data-testid="sidebar-profile-avatar-image"]',
+    );
+    const fb = document.querySelector(
+      '[data-testid="sidebar-profile-avatar-fallback"]',
+    );
     return {
-      present: Boolean(el),
-      img: img
-        ? {
-            src: img.currentSrc.slice(0, 120),
-            nat: [img.naturalWidth, img.naturalHeight],
-            complete: img.complete,
-          }
-        : null,
-      text: (el?.innerText ?? "").slice(0, 30),
+      image: Boolean(img),
+      fallback: Boolean(fb),
+      src: img?.currentSrc?.slice(0, 110) ?? null,
+      nat: img ? [img.naturalWidth, img.naturalHeight] : null,
     };
-  }, testid);
+  });
+const entries = {};
+const invites = {};
 try {
-  await guard(
-    "QA3-relaunch",
-    "Relaunch profile A and reach the app",
-    async () => {
-      await page.getByTestId("app-sidebar").waitFor({ timeout: 60000 });
-      await sleep(4000);
-      rec.row(
-        "QA3-relaunch",
-        "Relaunch with same profile dir reaches the signed-in app",
-        "PASS",
-        "app-sidebar visible after relaunch",
-        { screenshot: await shot(page, rec, "qa3-relaunched") },
-      );
-      const info = await imgInfo("open-settings");
-      rec.notes.sidebarAvatarAfterRelaunch = JSON.parse(
-        redact(JSON.stringify(info)),
-      );
-      rec.row(
-        "QA3-persist",
-        "Avatar still shown in sidebar after relaunch",
-        info.img && info.img.nat[0] > 0 ? "PASS" : "FAIL",
-        JSON.stringify(info),
-        {},
-      );
-    },
-  );
-  // Member list entry points.
-  const entries = {};
-  await guard("QA1-team", "Entry point: Team screen own row", async () => {
-    await page.getByTestId("sidebar-company-team").click({ timeout: 10000 });
-    await sleep(1500);
-    entries.team = await inventory(page, "body", 60);
-    const rows = await page
-      .locator('[data-testid^="company-team-member-"]')
-      .count();
+  await guard("QA3-relaunch", "Relaunch profile A", async () => {
+    await page.getByTestId("app-sidebar").waitFor({ timeout: 60000 });
+    await sleep(5000);
     rec.row(
-      "QA1-team",
-      "Entry point: Team screen lists people; own profile reachable?",
-      rows ? "PASS" : "NOT OBSERVED",
-      `${rows} team rows. Rows are for ${rows ? "employees/agents (human owner row not guaranteed)" : "none"}`,
-      { screenshot: await shot(page, rec, "qa1-team") },
+      "QA3-relaunch",
+      "Relaunch with same profile dir reaches the signed-in app",
+      "PASS",
+      "app-sidebar visible after relaunch",
+      { screenshot: await shot(page, rec, "qa3-relaunched") },
+    );
+    const info = await sidebarAvatar();
+    rec.notes.sidebarAvatarAfterRelaunch = JSON.parse(
+      redact(JSON.stringify(info)),
+    );
+    const src = info.src ?? "";
+    rec.notes.avatarSrcKind = src.startsWith("data:")
+      ? "data URL"
+      : src.startsWith("buzz-media:")
+        ? "buzz-media:// (relay media via app proxy)"
+        : src.startsWith("http://127.0.0.1")
+          ? "local media proxy"
+          : src
+            ? "other"
+            : "none";
+    rec.row(
+      "QA3-persist",
+      "Uploaded avatar still shown in sidebar after relaunch (same profile dir)",
+      info.image && info.nat?.[0] > 0 ? "PASS" : "FAIL",
+      JSON.stringify(info),
+      { screenshot: await shot(page, rec, "qa3-sidebar") },
     );
   });
-  await guard(
-    "QA1-general",
-    "Entry point: general channel members",
-    async () => {
-      // Back to a channel
-      const channel = page
-        .locator('[data-testid^="channel-"]')
-        .filter({ hasText: /general/iu })
-        .first();
-      await channel.click({ timeout: 8000 }).catch(async () => {
-        await page
-          .getByText(/^general$/iu)
-          .first()
-          .click({ timeout: 5000 });
-      });
-      await page.getByTestId("message-timeline").waitFor({ timeout: 15000 });
-      await sleep(1200);
-      entries.general = await inventory(page, "body", 80);
-      rec.row(
-        "QA1-general-open",
-        "Opened #general",
-        "PASS",
-        "message-timeline visible",
-        { screenshot: await shot(page, rec, "qa1-general") },
-      );
-    },
-  );
-  await writeFile(
-    path.join(OUT, "entries-A2.json"),
-    JSON.stringify(entries, null, 2),
-  );
-  // Settings > People
-  await guard("QB1-people", "Open Settings > members", async () => {
+
+  // #general: send a message so avatar-next-to-message can be checked here and by B.
+  await guard("QA3-general", "Open #general and post a message", async () => {
+    await page
+      .getByText(/^general$/iu)
+      .first()
+      .click({ timeout: 8000 });
+    await page.getByTestId("message-timeline").waitFor({ timeout: 15000 });
+    await sleep(1200);
+    const msg = `Avatar check message from A ${Date.now() % 100000}`;
+    await page
+      .locator(
+        '[data-testid="message-composer"] [contenteditable="true"], [data-testid="message-composer"] textarea',
+      )
+      .first()
+      .click();
+    await page.keyboard.type(msg);
+    await page.keyboard.press("Enter");
+    await sleep(2500);
+    const own = await page.evaluate((m) => {
+      const row = [
+        ...document.querySelectorAll('[data-testid="message-row"]'),
+      ].find((r) => r.textContent.includes(m));
+      const img = row?.querySelector("img");
+      return {
+        found: Boolean(row),
+        avatarImg: img
+          ? {
+              nat: [img.naturalWidth, img.naturalHeight],
+              kind: img.currentSrc.startsWith("data:") ? "data" : "url",
+            }
+          : null,
+      };
+    }, msg);
+    rec.notes.aMessage = msg;
+    rec.row(
+      "QA3-own-message-avatar",
+      "A's own message in #general shows A's uploaded avatar",
+      own.avatarImg && own.avatarImg.nat[0] > 0 ? "PASS" : "FAIL",
+      `message visible: ${own.found}; avatar: ${JSON.stringify(own)}`,
+      { screenshot: await shot(page, rec, "qa3-own-message") },
+    );
+  });
+
+  // Settings > Business > People & access
+  await guard("QB1-people", "Open Settings > People & access", async () => {
     await page.getByTestId("open-settings").click({ timeout: 8000 });
     await page.getByTestId("profile-popover-settings").click({ timeout: 8000 });
     await page.getByTestId("settings-view").waitFor({ timeout: 15000 });
-    const groups = await page
+    rec.notes.settingsGroups = await page
       .locator('[data-testid^="settings-group-"]')
-      .evaluateAll((els) =>
-        els.map((e) => ({
-          id: e.getAttribute("data-testid"),
-          text: e.innerText.trim(),
-        })),
-      );
-    rec.notes.settingsGroups = groups;
-    const people = groups.find((g) =>
-      /people|member/iu.test(`${g.id} ${g.text}`),
-    );
-    if (!people)
-      throw new Error(
-        `no people/members group among: ${groups.map((g) => g.text).join(",")}`,
-      );
-    await page.getByTestId(people.id).click();
+      .evaluateAll((els) => els.map((e) => e.innerText.trim()));
+    await page.getByTestId("settings-group-business").click();
+    await sleep(600);
+    rec.notes.businessTabs = await page
+      .locator('[data-testid^="settings-inner-"]')
+      .evaluateAll((els) => els.map((e) => e.innerText.trim()));
+    await page.getByTestId("settings-inner-people").click();
     await page
       .getByTestId("settings-community-members")
       .waitFor({ timeout: 15000 });
-    await sleep(1200);
-    entries.members = await inventory(
-      page,
-      '[data-testid="settings-community-members"]',
-      60,
-    );
+    await sleep(1500);
+    const trigger = page.getByTestId("community-invite-dialog-trigger");
     rec.row(
       "QB1-people",
-      "Invite entry point: Settings > " +
-        people.text +
-        " shows the members card with an invite trigger",
-      (await page.getByTestId("community-invite-dialog-trigger").count())
-        ? "PASS"
-        : "FAIL",
-      `group "${people.text}" (${people.id}); trigger text: "${(
-        await page
-          .getByTestId("community-invite-dialog-trigger")
-          .innerText()
-          .catch(() => "")
-      ).trim()}"`,
+      "Invite entry point: Settings > Business > People & access shows Invite to community",
+      (await trigger.count()) ? "PASS" : "FAIL",
+      `tabs: ${rec.notes.businessTabs.join(", ")}; heading text: ${(await page.getByTestId("settings-community-members").innerText()).replace(/\s+/gu, " ").slice(0, 160)}; trigger: "${(await trigger.innerText().catch(() => "")).trim()}"`,
       { screenshot: await shot(page, rec, "qb1-members") },
     );
+    // Members list: click own row avatar for the entry-point inventory.
+    const own = page
+      .locator('[data-testid^="relay-member-row-"]')
+      .filter({ hasText: /\bYou\b/u })
+      .first();
+    if (await own.count()) {
+      await own
+        .locator('button[aria-label^="Open profile for"]')
+        .first()
+        .click({ timeout: 5000 })
+        .catch(() => undefined);
+      await sleep(900);
+      const inv = await inventory(
+        page,
+        "[data-radix-popper-content-wrapper]",
+        80,
+      );
+      entries.memberListOwn = inv;
+      const upload = inv.filter((i) =>
+        /avatar|photo|upload|picture/iu.test(
+          `${i.testid ?? ""} ${i.aria ?? ""} ${i.text ?? ""}`,
+        ),
+      );
+      rec.row(
+        "QA1-memberlist",
+        "Entry point: click own row in the members list",
+        upload.length ? "PASS" : "FAIL",
+        upload.length
+          ? `Avatar controls: ${JSON.stringify(upload)}`
+          : `Own profile popover has no avatar upload control. Controls: ${inv
+              .map((i) => i.testid ?? i.text ?? i.aria)
+              .filter(Boolean)
+              .slice(0, 25)
+              .join(" | ")}`,
+        { screenshot: await shot(page, rec, "qa1-memberlist-own") },
+      );
+      await sleep(300);
+    } else
+      rec.row(
+        "QA1-memberlist",
+        "Entry point: click own row in the members list",
+        "NOT OBSERVED",
+        "No own row with a You badge",
+        { screenshot: await shot(page, rec, "qa1-memberlist-missing") },
+      );
   });
-  // Open invite dialog, read generated link and options.
-  const invites = {};
+
+  const gotoPeople = async () => {
+    if (
+      !(await page
+        .getByTestId("settings-view")
+        .isVisible()
+        .catch(() => false))
+    ) {
+      await page.getByTestId("open-settings").click({ timeout: 8000 });
+      await page
+        .getByTestId("profile-popover-settings")
+        .click({ timeout: 8000 });
+      await page.getByTestId("settings-view").waitFor({ timeout: 15000 });
+    }
+    await page.getByTestId("settings-group-business").click();
+    await sleep(500);
+    await page.getByTestId("settings-inner-people").click();
+    await page
+      .getByTestId("settings-community-members")
+      .waitFor({ timeout: 15000 });
+    await sleep(1000);
+  };
   const readLink = async () => {
-    const preview = page.getByTestId("invite-link-preview");
-    await preview.waitFor({ timeout: 25000 });
-    return (await preview.innerText()).trim();
+    await page.waitForFunction(
+      () =>
+        /\/invite\/v2\./u.test(
+          document.querySelector('[data-testid="invite-link-url"]')?.value ??
+            "",
+        ),
+      null,
+      { timeout: 30000 },
+    );
+    return (await page.getByTestId("invite-link-url").inputValue()).trim();
   };
   await guard("QB1-link", "Invite dialog and link", async () => {
     const t = Date.now();
-    await page.getByTestId("community-invite-dialog-trigger").click();
+    if (
+      !(await page
+        .getByTestId("community-invite-dialog-trigger")
+        .isVisible()
+        .catch(() => false))
+    )
+      await gotoPeople();
+    await page
+      .getByTestId("community-invite-dialog-trigger")
+      .click({ timeout: 10000 });
     await page
       .getByTestId("community-invite-dialog")
       .waitFor({ timeout: 8000 });
-    const url = await readLink();
-    invites.default = url;
-    const shape = redact(url);
-    rec.notes.inviteShape = shape;
+    invites.default = await readLink();
+    rec.notes.inviteShape = redact(invites.default);
     rec.notes.inviteDialogText = (
       await page.getByTestId("community-invite-dialog").innerText()
     )
@@ -217,44 +276,43 @@ try {
       "QB1-link",
       "Invite link generates",
       "PASS",
-      `Link generated in ${Date.now() - t} ms. Shape: ${shape}`,
+      `Generated in ${Date.now() - t} ms. Shape: ${rec.notes.inviteShape}. Dialog text: ${rec.notes.inviteDialogText}`,
       { screenshot: await shot(page, rec, "qb1-invite-dialog") },
     );
-    // Expiry options
     await page.getByTestId("invite-link-ttl-trigger").click();
+    await sleep(400);
     const ttl = await page
-      .locator(
-        '[data-testid^="invite-link-ttl-"]:not([data-testid$="trigger"])',
-      )
-      .allInnerTexts();
-    rec.notes.ttlOptions = ttl;
+      .locator('[data-testid^="invite-link-ttl-"]')
+      .evaluateAll((els) =>
+        els
+          .filter((e) => !e.getAttribute("data-testid").endsWith("trigger"))
+          .map((e) => e.innerText.trim()),
+      );
     await shot(page, rec, "qb1-ttl-options");
     await page.keyboard.press("Escape");
-    await sleep(400);
+    await sleep(500);
     await page.getByTestId("invite-link-max-uses-trigger").click();
+    await sleep(400);
     const uses = await page
-      .locator(
-        '[data-testid^="invite-link-max-uses-"]:not([data-testid$="trigger"])',
-      )
-      .allInnerTexts();
-    rec.notes.maxUsesOptions = uses;
+      .locator('[data-testid^="invite-link-max-uses-"]')
+      .evaluateAll((els) =>
+        els
+          .filter((e) => !e.getAttribute("data-testid").endsWith("trigger"))
+          .map((e) => e.innerText.trim()),
+      );
     await shot(page, rec, "qb1-uses-options");
+    rec.notes.ttlOptions = ttl;
+    rec.notes.maxUsesOptions = uses;
     rec.row(
       "QB1-options",
       "Expiry and max-uses options",
       ttl.length && uses.length ? "PASS" : "FAIL",
-      `Expiry: ${ttl.join(", ")}. Max uses: ${uses.join(", ")}. Default expiry: ${(await page.getByTestId("invite-link-ttl-trigger").innerText()).trim()}`,
+      `Expiry: ${ttl.join(", ")}. Max uses: ${uses.join(", ")}. Default expiry shown: ${(await page.getByTestId("invite-link-ttl-trigger").innerText()).trim()}`,
       {},
     );
-    // Single-use invite I2: choose "1 use" (this mints a NEW invite).
+    // 1 use invite (this mints a NEW invite).
     await page.getByTestId("invite-link-max-uses-1").click();
-    await sleep(800);
-    await page.waitForFunction(
-      () =>
-        !document.querySelector('[data-testid="invite-link-url"]')?.disabled,
-      null,
-      { timeout: 25000 },
-    );
+    await sleep(1000);
     invites.single = await readLink();
     rec.row(
       "QB1-single",
@@ -266,75 +324,67 @@ try {
   });
   state.invites = invites;
   await saveState(state);
-  rec.notes.emailInvite =
-    "Direct add form accepts a name search or a pubkey (npub/hex), not an email address (AddMemberDialog.tsx)";
-  await guard("QB1-direct", "Direct add option present", async () => {
+  await guard("QB1-direct", "Direct add option", async () => {
     const direct = page.getByTestId("direct-add-member-form");
     rec.row(
       "QB1-direct",
-      "Invite dialog also has a direct add form (not email)",
+      "Invite dialog also has a direct add form; email invite?",
       (await direct.count()) ? "PASS" : "FAIL",
-      `placeholder: ${await page
+      `Direct add input placeholder: "${await page
         .getByTestId("member-pubkey-input")
         .getAttribute("placeholder")
-        .catch(() => "n/a")}; role control: ${(
+        .catch(
+          () => "n/a",
+        )}" (name search or npub, no email field). Confirm button: "${(
         await page
-          .getByTestId("member-role")
+          .getByTestId("confirm-add-member")
           .innerText()
           .catch(() => "")
-      ).trim()}`,
+      ).trim()}"`,
       {},
     );
   });
-  // QB2: curl the landing page with the REAL minted code (read only GET).
+
+  // QB2: curl the REAL minted URL (read only GET). Body saved with the code replaced by XXXX.
   await guard("QB2-curl", "GET invite URL", async () => {
     const url = invites.default;
+    const file = path.join(OUT, "invite-landing.raw");
     const { stdout } = await run(
       "curl",
-      [
-        "-sS",
-        "-m",
-        "20",
-        "-L",
-        "-D",
-        "-",
-        "-o",
-        path.join(OUT, "invite-landing.html"),
-        url,
-      ],
+      ["-sS", "-m", "20", "-D", "-", "-o", file, url],
       { maxBuffer: 1 << 20 },
     );
     const status = stdout
       .split("\n")
-      .filter((l) => /^HTTP\//u.test(l))
-      .pop()
+      .find((l) => /^HTTP\//u.test(l))
       ?.trim();
     const ctype = stdout
       .split("\n")
       .find((l) => /^content-type:/iu.test(l))
       ?.trim();
-    const { readFile } = await import("node:fs/promises");
-    const body = await readFile(path.join(OUT, "invite-landing.html"), "utf8");
+    const body = await readFile(file, "utf8");
     const title = body.match(/<title>([^<]*)<\/title>/iu)?.[1];
-    rec.notes.landing = { status, ctype, title, bytes: body.length };
-    // Scripts load the SPA, so also record asset references.
-    rec.notes.landingAssets = [...body.matchAll(/(?:src|href)="([^"]+)"/gu)]
+    const assets = [...body.matchAll(/(?:src|href)="([^"]+)"/gu)]
       .map((m) => m[1])
       .slice(0, 12);
-    // Redact the code in the saved copy
+    rec.notes.landing = { status, ctype, title, bytes: body.length, assets };
     await writeFile(
       path.join(OUT, "invite-landing.html"),
       redact(body.replaceAll(url.split("/").pop(), "XXXX")),
     );
     rec.row(
       "QB2-curl",
-      "GET invite URL (curl)",
+      "curl GET of the real invite URL",
       status?.includes("200") ? "PASS" : "FAIL",
-      `${status}; ${ctype}; <title>${title}</title>; ${body.length} bytes (raw HTML, SPA shell). Assets: ${rec.notes.landingAssets.join(", ")}`,
+      `${status}; ${ctype}; <title>${title}</title>; ${body.length} bytes (SPA shell; text is rendered by JavaScript). Assets: ${assets.join(", ")}`,
       {},
     );
   });
 } finally {
+  await writeFile(
+    path.join(OUT, "entries-A2.json"),
+    JSON.stringify(entries, null, 2),
+  );
   rec.notes.endedAt = new Date().toISOString();
   await rec.write();
   await closeApp(application);
