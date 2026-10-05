@@ -1637,6 +1637,17 @@ async function writeClipboardFlavors({
 
 declare global {
   interface Window {
+    /**
+     * Deliver a community deep link while the app is running, like the Rust
+     * side does for a link opened mid-session: queue it, then fire the event.
+     */
+    __BUZZ_E2E_PUSH_COMMUNITY_DEEP_LINK__?: (link: {
+      id: string;
+      kind: "connect" | "join" | "add-community";
+      relayUrl: string;
+      code?: string | null;
+      name?: string | null;
+    }) => Promise<void>;
     __BUZZ_E2E__?: E2eConfig;
     __BUZZ_E2E_REFERENCE_WORKSPACE_WINDOW_LABEL__?: {
       channelId: string;
@@ -18091,6 +18102,21 @@ export function maybeInstallE2eTauriMocks() {
   window.__BUZZ_E2E_ACCOUNT_AUTH_CALLS__ = accountAuthCalls;
   window.__BUZZ_E2E_QUEUE_ACCOUNT_AUTH_ERROR__ = (method, error) => {
     queuedAccountAuthErrors.push({ method, error });
+  };
+  window.__BUZZ_E2E_PUSH_COMMUNITY_DEEP_LINK__ = async (link) => {
+    mockPendingCommunityDeepLinks.push({
+      ...link,
+      code: link.code ?? null,
+      name: link.name ?? null,
+    });
+    await emit(
+      link.kind === "join"
+        ? "deep-link-join"
+        : link.kind === "connect"
+          ? "deep-link-connect"
+          : "deep-link-add-community",
+      {},
+    );
   };
   window.__BUZZ_E2E_SET_ACCOUNT_LINKED__ = (linked, email) => {
     mockAccountLinked = linked;
