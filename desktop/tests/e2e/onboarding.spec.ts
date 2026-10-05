@@ -1664,6 +1664,12 @@ test("canceling recovery edits preserves an existing inactive community", async 
     .getByRole("button", { name: "Change community", exact: true })
     .click();
   await expect(page.getByTestId("community-change-overlay")).toBeVisible();
+  // A failed connect must never strand the person on this community.
+  await expect(
+    page
+      .getByTestId("community-change-overlay")
+      .getByTestId("community-escape-remove"),
+  ).toBeVisible();
   await page
     .getByTestId("community-change-overlay")
     .getByRole("button", { name: "Cancel" })

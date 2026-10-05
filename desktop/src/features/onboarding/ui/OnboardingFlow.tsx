@@ -493,6 +493,7 @@ export function OnboardingFlow({
         />
         {isCommunityChangeOpen ? (
           <CommunityChangeOverlay
+            escape={{}}
             onClose={() => setIsCommunityChangeOpen(false)}
           />
         ) : null}
