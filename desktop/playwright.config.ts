@@ -94,6 +94,7 @@ export default defineConfig({
     {
       name: "smoke",
       testMatch: [
+        "**/avatar-discoverability.spec.ts",
         "**/scout-branding.spec.ts",
         "**/workspace-file-links.spec.ts",
         "**/work-area-dock.spec.ts",
@@ -308,6 +309,7 @@ export default defineConfig({
     {
       name: "integration",
       testMatch: [
+        "**/avatar-discoverability.spec.ts",
         "**/workspace-file-links.spec.ts",
         "**/work-area-dock.spec.ts",
         "**/work-area-dock-screenshots.spec.ts",

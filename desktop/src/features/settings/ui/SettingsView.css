@@ -1011,6 +1011,23 @@ body:has(.w20-settings-shell) {
   color: #a39aa9;
 }
 
+/*
+ * The photo control sits in the card header without taking part in the flow, so
+ * the r19 profile grid (name field and everything below it) keeps its geometry.
+ */
+.w20-account-profile-grid .w20-account-profile-details {
+  position: relative;
+}
+
+.w20-account-photo-action {
+  position: absolute;
+  top: 18px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .w20-account-avatar-action {
   height: 36px;
   min-height: 36px;

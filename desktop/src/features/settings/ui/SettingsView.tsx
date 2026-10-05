@@ -12,8 +12,10 @@ import {
 } from "@/shared/ui/sidebar";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { ACCENT_STORAGE_KEY, useTheme } from "@/shared/theme/ThemeProvider";
 import { useCommunities } from "@/features/communities/useCommunities";
+import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import {
@@ -49,6 +51,7 @@ import {
   ThemeCatalogRoute,
   ThemePreviewRoute,
 } from "./ThemeCatalogRoute";
+import { membershipRoleLabel } from "./membershipRoleLabel";
 import { ProfileAvatarDialog } from "./ProfileAvatarDialog";
 import "./SettingsView.css";
 
@@ -205,6 +208,10 @@ export function SettingsView({
   const { activeCommunity } = useCommunities();
   const identity = useIdentityQuery();
   const profile = useProfileQuery();
+  // Same source as the People panel, so the footer never claims a role the
+  // person does not hold.
+  const membershipQuery = useMyRelayMembershipQuery();
+  const roleCaption = membershipRoleLabel(membershipQuery.data?.role);
   const updateProfile = useUpdateProfileMutation();
   const appearancePersonId =
     identity.data?.pubkey ?? activeCommunity?.pubkey ?? "local";
@@ -523,31 +530,41 @@ export function SettingsView({
         </SidebarContent>
 
         <SidebarFooter className="w20-nav-footer">
-          <button
-            aria-label="Open profile avatar settings"
-            className="w20-nav-person w20-nav-person-action"
-            data-testid="settings-profile-avatar-context"
-            onClick={() => {
-              chooseSection("profile");
-              setAvatarSaved(false);
-              setAvatarEditorContext(true);
-            }}
-            type="button"
-          >
-            <div className="w20-nav-person-avatar">
-              <ProfileAvatar
-                avatarUrl={profile.data?.avatarUrl ?? null}
-                className="size-full rounded-[7px]"
-                label={signedInDisplayName}
-                shape="squircle"
-                testId="settings-profile-avatar"
-              />
-            </div>
-            <div>
-              <strong>{signedInDisplayName}</strong>
-              <small>Workspace owner</small>
-            </div>
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                aria-label={`Profile and account, ${signedInDisplayName}`}
+                className="w20-nav-person w20-nav-person-action"
+                data-testid="settings-profile-avatar-context"
+                onClick={() => {
+                  chooseSection("profile");
+                  setAvatarSaved(false);
+                  setAvatarEditorContext(true);
+                }}
+                type="button"
+              >
+                <div className="w20-nav-person-avatar">
+                  <ProfileAvatar
+                    avatarUrl={profile.data?.avatarUrl ?? null}
+                    className="size-full rounded-[7px]"
+                    label={signedInDisplayName}
+                    shape="squircle"
+                    testId="settings-profile-avatar"
+                  />
+                </div>
+                <div>
+                  <strong>{signedInDisplayName}</strong>
+                  <small>{roleCaption}</small>
+                </div>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent
+              data-testid="settings-profile-avatar-context-tooltip"
+              side="right"
+            >
+              Profile and account
+            </TooltipContent>
+          </Tooltip>
         </SidebarFooter>
       </Sidebar>
 

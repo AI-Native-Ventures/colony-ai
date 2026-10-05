@@ -996,8 +996,10 @@ export function renderSettingsSection(
       }
       return (
         <AccountProfileSettingsPanel
+          avatarSaved={props.avatarSaved ?? false}
           fallbackDisplayName={props.fallbackDisplayName}
           onClose={props.onClose ?? (() => undefined)}
+          onEditAvatar={props.onEditAvatar}
           onSectionChange={props.onSectionChange ?? (() => undefined)}
         />
       );
