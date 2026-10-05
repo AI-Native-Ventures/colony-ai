@@ -9,6 +9,8 @@ export type MachineOnboardingPage =
   | "unsupported"
   | "backup"
   | "businesses"
+  | "invite-link"
+  | "invite"
   | "business"
   | "connect"
   | "setup"

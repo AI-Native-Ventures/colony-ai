@@ -171,6 +171,7 @@ function GoogleAccountAction({
 export function AccountForm({
   data,
   error,
+  inviteBrand,
   onEmailChange,
   onNameChange,
   onPasswordChange,
@@ -180,8 +181,13 @@ export function AccountForm({
 }: PresentationProps) {
   return (
     <>
-      <h2>Let’s get you started.</h2>
-      <p className="lede">Create an account. Make room for what’s next.</p>
+      {inviteBrand}
+      <h2>{inviteBrand ? "You’re invited." : "Let’s get you started."}</h2>
+      <p className="lede">
+        {inviteBrand
+          ? "Create an account to join your team’s workspace on Colony."
+          : "Create an account. Make room for what’s next."}
+      </p>
       <form className="account-form" onSubmit={onSubmit}>
         <div className="fields">
           <div className="field">
@@ -277,6 +283,7 @@ function PasswordInput({
 export function SignInForm({
   data,
   error,
+  inviteBrand,
   onEmailChange,
   onNavigate,
   onPasswordChange,
@@ -286,8 +293,13 @@ export function SignInForm({
 }: PresentationProps) {
   return (
     <>
+      {inviteBrand}
       <h2>Welcome back.</h2>
-      <p className="lede">Let’s pick up where you left off.</p>
+      <p className="lede">
+        {inviteBrand
+          ? "Sign in to join your team’s workspace on Colony."
+          : "Let’s pick up where you left off."}
+      </p>
       <form aria-label="Sign in" onSubmit={onSubmit}>
         <div className="fields">
           <div className="field">

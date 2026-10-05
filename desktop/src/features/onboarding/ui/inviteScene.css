@@ -1,0 +1,16 @@
+/* Invite entry: the "Have an invite link?" line sits quietly under the sign-in line. */
+.colony-onboarding-root .account-switch-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.colony-onboarding-root .invite-link-entry {
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.colony-onboarding-root .invite-link-entry:hover {
+  color: var(--accent);
+}

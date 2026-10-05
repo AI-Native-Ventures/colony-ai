@@ -63,6 +63,10 @@ export type OnboardingSceneActions = {
   onSelectBusiness?: (id: string) => void;
   onCreateBusiness?: () => void;
   canSubmit?: boolean;
+  /** Business mark and name of a pending workspace invite (account and sign-in). */
+  inviteBrand?: React.ReactNode;
+  /** "Have an invite link?" on the account screen; absent once an invite is pending. */
+  onHaveInviteLink?: () => void;
   headingRef?: React.RefObject<HTMLHeadingElement | null>;
   authCode?: {
     value: string;

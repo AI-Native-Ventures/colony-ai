@@ -1,12 +1,10 @@
 import * as React from "react";
 
 import { useCommunityOnboarding } from "@/features/onboarding/communityOnboarding";
-import {
-  inviteErrorMessage,
-  isInviteExhaustedError,
-  isInviteExpiredError,
-} from "@/shared/api/inviteHelpers";
 import { claimInvite } from "@/shared/api/invites";
+
+import { needsJoinConfirmation } from "./firstRunInvite";
+import { describeInviteFailure } from "./inviteFailure";
 
 /**
  * Drive the `claiming` stage after machine onboarding completes: claim the
@@ -26,6 +24,8 @@ export function useClaimInvite() {
     if (transaction?.stage !== "claiming" || transaction.error || isPending) {
       return;
     }
+    // A link opened after setup waits for the person to choose "Join".
+    if (needsJoinConfirmation(transaction)) return;
     setIsPending(true);
     void claimInvite(
       transaction.relayUrl,
@@ -36,16 +36,7 @@ export function useClaimInvite() {
         update({ stage: "connecting", error: undefined }, transaction.id);
       })
       .catch((error: unknown) =>
-        update(
-          {
-            error: isInviteExpiredError(error)
-              ? "This invite code has expired. Ask for a new one."
-              : isInviteExhaustedError(error)
-                ? "This invite has reached its use limit. Ask for a new invite."
-                : inviteErrorMessage(error),
-          },
-          transaction.id,
-        ),
+        update({ error: describeInviteFailure(error).message }, transaction.id),
       )
       .finally(() => setIsPending(false));
   }, [isPending, transaction, update]);

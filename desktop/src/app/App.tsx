@@ -37,6 +37,7 @@ import {
 import { NativeUnavailableScreen } from "@/features/onboarding/ui/NativeUnavailableScreen";
 import { OnboardingFlow } from "@/features/onboarding/ui/OnboardingFlow";
 import { PendingInviteGate } from "@/features/onboarding/ui/PendingInviteGate";
+import { useInvitePasteCapture } from "@/features/onboarding/useInvitePasteCapture";
 import { KeyringLockedScreen } from "@/features/onboarding/ui/KeyringLockedScreen";
 import { RelaunchRequiredScreen } from "@/features/onboarding/ui/RelaunchRequiredScreen";
 import { ResetFailedScreen } from "@/features/onboarding/ui/ResetFailedScreen";
@@ -723,6 +724,11 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
     };
   }, [acceptsCommunityDeepLinks, communityOnboarding.start, openAddCommunity]);
 
+  useInvitePasteCapture(
+    communityOnboarding.start,
+    acceptsCommunityDeepLinks && machine.stage === "ready",
+  );
+
   if (machine.stage === "reset-failed") return <ResetFailedScreen />;
   if (machine.stage === "keyring-locked") return <KeyringLockedScreen />;
   if (machine.stage === "relaunch-required") return <RelaunchRequiredScreen />;
@@ -769,7 +775,10 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
   const isDeepLink =
     transaction?.source === "deep-link-join" ||
     transaction?.source === "deep-link-connect";
-  const shouldAcknowledgeDeepLink = isDeepLink && !transaction.acknowledged;
+  // Links that carry an invite code are presented by the invite scene during
+  // first run; the gate remains for links with nothing to confirm.
+  const shouldAcknowledgeDeepLink =
+    isDeepLink && !transaction.acknowledged && !transaction.inviteCode;
 
   return (
     <>
