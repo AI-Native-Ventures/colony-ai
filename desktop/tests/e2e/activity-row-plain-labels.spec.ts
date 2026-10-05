@@ -115,16 +115,7 @@ async function visibleTextAndNames(scope: Locator) {
 
 test.describe("agent activity shows plain labels", () => {
   test.beforeEach(async ({ page }) => {
-    await installMockBridge(page, {
-      managedAgents: [
-        {
-          pubkey: AGENT,
-          name: "Scout",
-          status: "running" as const,
-          channelNames: ["agents"],
-        },
-      ],
-    });
+    await installMockBridge(page);
   });
 
   test("composer row shows a plain label and never the raw command", async ({

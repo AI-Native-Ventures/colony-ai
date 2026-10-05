@@ -45,3 +45,37 @@ test("all app surfaces reject retired bee component imports", () => {
   };
   walk(new URL("../../", import.meta.url));
 });
+
+test("agent activity display strings carry no legacy product words", () => {
+  // The composer activity row and transcript rows show these strings to
+  // people by default. Raw agent commands (which still name the CLI binary)
+  // only reach the screen through the opt-in details disclosure.
+  const files = [
+    "../agents/ui/agentActivityPlainLabel.ts",
+    "../agents/ui/agentSessionTranscriptPresentation.ts",
+    "../channels/ui/BotActivityBar.tsx",
+    "../channels/ui/BotActivityDetails.tsx",
+  ];
+  const legacy = /buzz|fizz|honey|pollen|\bbee\b/i;
+  for (const relative of files) {
+    const url = new URL(relative, import.meta.url);
+    const source = ts.createSourceFile(
+      url.pathname,
+      readFileSync(url, "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      url.pathname.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    );
+    const visit = (node) => {
+      if (
+        ts.isStringLiteral(node) ||
+        ts.isNoSubstitutionTemplateLiteral(node) ||
+        ts.isJsxText(node)
+      ) {
+        assert.doesNotMatch(node.text, legacy, `${relative}: ${node.text}`);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+});
