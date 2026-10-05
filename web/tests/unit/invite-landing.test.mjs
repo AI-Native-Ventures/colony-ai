@@ -49,7 +49,7 @@ test("invite page renders Colony copy, mark, download target and invite link", a
   assert.match(text, /Open in Colony/);
   assert.match(
     text,
-    /Install Colony, create your account, then choose Join a community and paste this link\./,
+    /Install Colony, open it, choose Have an invite link\? on the first screen and paste this link\./,
   );
   assert.match(text, /Copy link/);
   assert.match(text, /Download Colony/);

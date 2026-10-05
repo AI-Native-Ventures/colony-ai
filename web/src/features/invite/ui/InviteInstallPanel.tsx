@@ -93,8 +93,8 @@ export function InviteInstallPanel({ inviteUrl }: { inviteUrl: string }) {
         Don&apos;t have Colony yet?
       </h2>
       <p className="mt-1 text-sm leading-6 text-colony-muted">
-        Install Colony, create your account, then choose Join a community and
-        paste this link.
+        Install Colony, open it, choose Have an invite link? on the first screen
+        and paste this link.
       </p>
       <div className="mt-4 flex flex-col gap-2 sm:flex-row">
         <input
