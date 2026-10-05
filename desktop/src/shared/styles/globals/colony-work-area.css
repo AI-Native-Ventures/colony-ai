@@ -261,6 +261,7 @@
 
 /* Outside the layer on purpose: the topbar rule that sets this button's
    background is unlayered and would otherwise win. Open state reads as pressed. */
-.colony-workspace-topbar-actions .colony-work-area-button[aria-expanded="true"] {
+.colony-workspace-topbar-actions
+.colony-work-area-button[aria-expanded="true"] {
   background: hsl(var(--foreground) / 0.07);
 }
