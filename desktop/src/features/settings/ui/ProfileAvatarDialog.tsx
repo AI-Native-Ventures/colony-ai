@@ -95,6 +95,17 @@ export function ProfileAvatarDialog({
   const attemptRef = React.useRef(0);
   const isOpenRef = React.useRef(open);
   isOpenRef.current = open;
+  // Radix returns focus only to a DialogTrigger, and this dialog is opened by
+  // controlled state from several places. Remember who opened it so closing
+  // hands focus back to that control (keyboard-only people would otherwise
+  // land on the page body).
+  const returnFocusRef = React.useRef<HTMLElement | null>(null);
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    const active = document.activeElement;
+    returnFocusRef.current =
+      active instanceof HTMLElement && active !== document.body ? active : null;
+  }, [open]);
 
   React.useEffect(() => {
     if (open) return;
@@ -385,6 +396,12 @@ export function ProfileAvatarDialog({
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
         aria-describedby={undefined}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          const target = returnFocusRef.current;
+          returnFocusRef.current = null;
+          if (target?.isConnected) target.focus();
+        }}
         className={`flex max-h-[calc(100vh-2rem)] max-w-[540px] flex-col gap-0 overflow-hidden border-border/80 bg-card p-0 dark:bg-[#26232d] ${dialogHeight}`}
         data-testid="profile-avatar-dialog"
         showCloseButton={false}

@@ -27,6 +27,11 @@ type FailureWindow = typeof window & {
 };
 
 async function installFailureSwitch(page: Page) {
+  await page.waitForFunction(
+    () =>
+      typeof (window as FailureWindow).__TAURI_INTERNALS__?.invoke ===
+      "function",
+  );
   await page.evaluate(() => {
     const w = window as FailureWindow;
     w.__AVATAR_FAIL__ = {};
