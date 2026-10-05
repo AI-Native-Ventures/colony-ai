@@ -257,8 +257,10 @@
     width: 0.9375rem;
     height: 0.9375rem;
   }
+}
 
-  .colony-work-area-button[aria-expanded="true"] {
-    background: hsl(var(--foreground) / 0.06);
-  }
+/* Outside the layer on purpose: the topbar rule that sets this button's
+   background is unlayered and would otherwise win. Open state reads as pressed. */
+.colony-workspace-topbar-actions .colony-work-area-button[aria-expanded="true"] {
+  background: hsl(var(--foreground) / 0.07);
 }
