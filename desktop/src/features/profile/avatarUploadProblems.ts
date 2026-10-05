@@ -119,7 +119,7 @@ export function describeAvatarFailure(
       kind: "unreadable",
       title: "Colony could not read that image",
       message:
-        "The file may be damaged. Choose another image, or retry with this one.",
+        "The file may be damaged. Try again, or cancel and choose another image.",
     };
   }
   if (/rate-limited|\b429\b|too many/.test(text)) {
