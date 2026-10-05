@@ -465,6 +465,7 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
         const text = summary.innerText.replace(/\s+/gu, " ").trim();
         return {
           rootId: root?.dataset.messageId ?? null,
+          rootText: root?.innerText ?? "",
           text,
           replies: Number(/(\d+)\s+repl/u.exec(text)?.[1] ?? 0),
         };
@@ -516,13 +517,14 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
         .last();
       await sent.waitFor({ timeout: 15000 });
       anchors.questionVisibleAt = Date.now();
-      const sentId = await sent.getAttribute("data-message-id");
       const shots = [4000, 20000, 60000, 120000, 240000];
       let nextShot = 0;
       let nextSample = Date.now() + 6000;
       let typingFirst = null;
       const deadline = sendAt + replyTimeoutMs;
       let found = null;
+      const messages = [];
+      const readReplies = new Map();
       while (Date.now() < deadline && !found) {
         const elapsed = Date.now() - sendAt;
         if (nextShot < shots.length && elapsed >= shots[nextShot]) {
@@ -548,58 +550,88 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
           typingFirst = Date.now() - sendAt;
           anchors.typingIndicatorAt = Date.now();
         }
-        // Top-level Scout reply, or a reply in the thread under the question.
-        const topLevel = (await scoutRowsData()).find(
-          (row) => !before.includes(row.id) && row.text.trim(),
+        // Collect every Scout message after the question, on whichever surface it lands.
+        // Scout posts a short follow-up under its own introduction, so the first message
+        // is not assumed to answer the question: the wait continues until a message lands
+        // in the question's own thread or is a full answer, or the window ends.
+        const seenMessage = (text) =>
+          messages.some((item) => item.text === text);
+        const timelineRows = await page.evaluate(() =>
+          [
+            ...document.querySelectorAll(
+              '[data-testid="message-timeline"] [data-testid="message-row"]',
+            ),
+          ]
+            .filter(
+              (row) =>
+                row
+                  .querySelector('[data-testid="message-author"]')
+                  ?.textContent?.trim() === "Scout",
+            )
+            .map((row) => ({
+              id: row.dataset.messageId,
+              text:
+                row.querySelector('[data-testid="message-body"]')?.innerText ??
+                "",
+            })),
         );
-        if (topLevel) {
-          anchors.replyVisibleAt = Date.now();
-          found = { where: "top-level channel message", text: topLevel.text };
-        } else {
-          // Do not click while waiting. Summaries are only read, and a thread is opened
-          // only when the reply lands in the question's own thread, or another thread
-          // grows past the single reply Scout posts under its own introduction.
-          const sums = await threadSummaries();
-          const signature = JSON.stringify(
-            sums.map((item) => [item.rootId === sentId, item.replies]),
-          );
-          evidence.metadata.threadSummaryLog ??= [];
-          const log = evidence.metadata.threadSummaryLog;
-          if (!log.length || log[log.length - 1].signature !== signature)
-            log.push({
-              sinceSendMs: Date.now() - sendAt,
-              signature,
-              summaries: sums.map((item) => ({
-                underQuestion: item.rootId === sentId,
-                text: item.text,
-              })),
+        for (const row of timelineRows) {
+          const text = row.text.trim();
+          if (!before.includes(row.id) && text && !seenMessage(text))
+            messages.push({
+              text,
+              atMs: Date.now() - sendAt,
+              where: "top-level channel message",
             });
-          const own = sums.findIndex((item) => item.rootId === sentId);
-          const grown = sums.findIndex(
-            (item) => item.rootId !== sentId && item.replies >= 2,
-          );
-          const target = own >= 0 ? own : grown;
-          if (target >= 0) {
-            anchors.threadSummaryAt ??= Date.now();
-            anchors.replyVisibleAt = anchors.threadSummaryAt;
-            const thread = await openSummary(target);
-            // The first body of a thread panel is its root message.
-            const scoutReply = thread?.bodies
-              .slice(1)
-              .filter((item) => item.author === "Scout" && item.text.trim())
-              .pop();
-            if (scoutReply) {
-              anchors.replyReadAt = Date.now();
-              found = {
-                where:
-                  own >= 0
-                    ? "reply in the thread under the question"
-                    : "second reply in the thread under the Scout introduction",
-                text: scoutReply.text,
+        }
+        const sums = await threadSummaries();
+        const signature = JSON.stringify(
+          sums.map((item) => [item.rootText.includes(QUESTION), item.replies]),
+        );
+        evidence.metadata.threadSummaryLog ??= [];
+        const log = evidence.metadata.threadSummaryLog;
+        if (!log.length || log[log.length - 1].signature !== signature)
+          log.push({
+            sinceSendMs: Date.now() - sendAt,
+            signature,
+            summaries: sums.map((item) => ({
+              underQuestion: item.rootText.includes(QUESTION),
+              text: item.text,
+            })),
+          });
+        for (const [index, item] of sums.entries()) {
+          if (
+            item.rootId === null ||
+            item.replies <= (readReplies.get(item.rootId) ?? 0)
+          )
+            continue;
+          readReplies.set(item.rootId, item.replies);
+          anchors.threadSummaryAt ??= Date.now();
+          const thread = await openSummary(index);
+          const where = item.rootText.includes(QUESTION)
+            ? "reply in the thread under the question"
+            : "reply in the thread under the Scout introduction";
+          // The first body of a thread panel is its root message.
+          for (const body of thread?.bodies.slice(1) ?? []) {
+            const text = body.text.trim();
+            if (body.author === "Scout" && text && !seenMessage(text))
+              messages.push({
+                text,
+                atMs: Date.now() - sendAt,
+                where,
                 panel: thread.panelText,
-              };
-            }
+              });
           }
+        }
+        found =
+          messages.find(
+            (item) =>
+              item.where === "reply in the thread under the question" ||
+              item.text.length >= 200,
+          ) ?? null;
+        if (found) {
+          anchors.replyVisibleAt = anchors.threadSummaryAt ?? Date.now();
+          anchors.replyReadAt = Date.now();
         }
         if (!found && sampleStatus && Date.now() >= nextSample) {
           try {
@@ -619,15 +651,44 @@ async function drive({ page, evidence, replyTimeoutMs }, state) {
         if (!found) await page.waitForTimeout(400);
       }
       evidence.metadata.businessReplyMs = Date.now() - start;
-      evidence.metadata.replyLatencyMs = found
-        ? (anchors.replyVisibleAt ?? Date.now()) - sendAt
-        : null;
+      evidence.metadata.replyLatencyMs = found ? found.atMs : null;
       evidence.metadata.typingIndicatorFirstMs = typingFirst;
-      if (!found)
+      evidence.metadata.scoutMessagesAfterQuestion = messages.map((item) => ({
+        atMs: item.atMs,
+        where: item.where,
+        text: item.text,
+      }));
+      evidence.observed[
+        "Scout messages after the question (verbatim, with seconds after send)"
+      ] = messages
+        .map(
+          (item) =>
+            `[${(item.atMs / 1000).toFixed(1)} s, ${item.where}] ${item.text}`,
+        )
+        .join("\n---\n");
+      if (!found) {
+        const leaks = [
+          ...new Set(
+            messages.flatMap((item) => personalConfigFindings(item.text)),
+          ),
+        ];
+        evidence.verdict(
+          6,
+          LABELS[6],
+          "BLOCKED",
+          `No answer to the question was observed within ${replyTimeoutMs} ms. ${messages.length} other Scout message(s) were observed after the send.`,
+        );
+        evidence.verdict(
+          7,
+          LABELS[7],
+          messages.length ? (leaks.length ? "FAIL" : "PASS") : "BLOCKED",
+          `Keyword scan of ${messages.length} Scout message(s) seen after the question (none was an answer): ${leaks.join(", ") || "none found"}.`,
+        );
         return {
           status: "FAIL",
-          reason: `No Scout reply, top-level or in a thread, within ${replyTimeoutMs} ms of sending.`,
+          reason: `No Scout answer to the question within ${replyTimeoutMs} ms of sending. Other Scout messages seen: ${messages.length}.`,
         };
+      }
       replyText = found.text.trim();
       replyWhere = found.where;
       evidence.metadata.businessReplyWhere = found.where;
