@@ -88,13 +88,21 @@ export class Evidence {
         .update(await readFile(path.join(this.output, row.screenshot)))
         .digest("hex");
       const title = await page.title();
-      const findings = brandingFindings(
-        `${await page.locator("body").innerText()}\n${title}`,
-      );
+      const scanned = `${await page.locator("body").innerText()}\n${title}`;
+      const findings = brandingFindings(scanned);
+      // Keep the surrounding text of any hit so a finding can be traced to its source.
+      const context = findings.length
+        ? (
+            scanned.match(
+              /.{0,80}(buzz|fizz|honey|pollen|\u{1f41d}).{0,80}/iu,
+            )?.[0] ?? ""
+          ).replace(/\s+/gu, " ")
+        : undefined;
       this.scans.push({
         step: name,
         findings,
         status: findings.length ? "FAIL" : "PASS",
+        ...(context ? { context, title } : {}),
       });
     } catch {
       row.captureFailure =
