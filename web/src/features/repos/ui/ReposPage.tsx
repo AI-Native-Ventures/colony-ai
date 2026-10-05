@@ -2,7 +2,7 @@ import { BookMarked, GitBranch } from "lucide-react";
 import { toast } from "sonner";
 import { useEffect, useMemo, useState } from "react";
 
-import buzzAppIcon from "@/assets/app-icon@3x.png";
+import colonyIcon from "@/assets/colony-icon.svg";
 import { Input } from "@/shared/ui/input";
 import { mockRepos } from "../mock-repos";
 import { useRepos } from "../use-repos";
@@ -49,18 +49,13 @@ function CommunityEmptyState() {
   return (
     <div className="flex flex-1 items-center justify-center bg-[#F3F3F3] px-4 py-16 text-center dark:bg-[#171717]">
       <div className="flex w-full max-w-xl flex-col items-center px-6 py-10 sm:px-12 sm:py-12">
-        <div
-          className="h-16 w-16 overflow-hidden bg-black"
-          style={{ borderRadius: "22.37%" }}
-        >
-          <img alt="Buzz" className="h-full w-full" src={buzzAppIcon} />
-        </div>
+        <img alt="Colony" className="h-16 w-16" src={colonyIcon} />
         <h1 className="mt-6 text-2xl font-semibold tracking-tight text-black dark:text-white">
           This community is empty
         </h1>
         <p className="mt-2 max-w-md text-sm leading-relaxed text-black/60 dark:text-white/60">
           Repositories pushed to this community will show up here. Open this
-          community in the Buzz desktop app to start pushing code.
+          community in the Colony desktop app to start pushing code.
         </p>
         <ConnectButton className="mt-6" />
       </div>

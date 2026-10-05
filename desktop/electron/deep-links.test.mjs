@@ -23,7 +23,8 @@ function fakeHost() {
 }
 
 test("reads and validates the app URL schemes from the Tauri config", () => {
-  assert.deepEqual(schemes, ["buzz"]);
+  // colony:// is what the web invite page mints; buzz:// stays for old links.
+  assert.deepEqual(schemes, ["colony", "buzz"]);
   assert.deepEqual(
     deepLinkSchemesFromConfig({
       plugins: {
@@ -35,6 +36,13 @@ test("reads and validates the app URL schemes from the Tauri config", () => {
     ["colony"],
   );
   assert.equal(isDeepLinkUrl("buzz://message?channel=1&id=2", schemes), true);
+  assert.equal(
+    isDeepLinkUrl("colony://join?relay=wss%3A%2F%2Fa.example&code=b", schemes),
+    true,
+  );
+  assert.equal(isDeepLinkUrl("COLONY://connect?relay=x", schemes), true);
+  assert.equal(isDeepLinkUrl("colony:/join", schemes), false);
+  assert.equal(isDeepLinkUrl("colonyx://join", schemes), false);
   assert.equal(isDeepLinkUrl("https://example.test", schemes), false);
   assert.equal(isDeepLinkUrl("buzz:/message", schemes), false);
   assert.equal(isDeepLinkUrl("javascript:alert(1)", schemes), false);
@@ -49,27 +57,67 @@ test("registers URL schemes for packaged and development Electron apps", () => {
     },
   };
 
-  assert.deepEqual(registerDeepLinkSchemes(app, schemes), [true]);
+  assert.deepEqual(registerDeepLinkSchemes(app, schemes), [true, true]);
   assert.deepEqual(
     registerDeepLinkSchemes(app, schemes, {
       isDefaultApp: true,
       executablePath: "/Applications/Electron.app/Contents/MacOS/Electron",
       appPath: "/work/desktop",
     }),
-    [true],
+    [true, true],
   );
+  const developmentArguments = (scheme) => [
+    scheme,
+    "/Applications/Electron.app/Contents/MacOS/Electron",
+    ["/work/desktop"],
+  ];
   assert.deepEqual(calls, [
+    ["colony"],
     ["buzz"],
-    [
-      "buzz",
-      "/Applications/Electron.app/Contents/MacOS/Electron",
-      ["/work/desktop"],
-    ],
+    developmentArguments("colony"),
+    developmentArguments("buzz"),
   ]);
   assert.throws(
     () => registerDeepLinkSchemes(app, schemes, { isDefaultApp: true }),
     /needs an app path/,
   );
+});
+
+test("delivers a colony:// invite link to the native host like a legacy link", async () => {
+  const host = fakeHost();
+  const router = createDeepLinkRouter({ schemes, revealWindow() {} });
+  const url = "colony://join?relay=wss%3A%2F%2Fcanary.example&code=abc";
+
+  router.handleOpenUrl({ preventDefault() {} }, url);
+  await router.setHost(host);
+
+  assert.deepEqual(
+    host.calls.map(([, payload]) => payload),
+    [{ command: "handle_electron_deep_link", args: { url } }],
+  );
+});
+
+test("never accepts the internal colony://app content origin as a deep link", async () => {
+  // colony://app/ is the privileged scheme the renderer loads from. Sharing
+  // the scheme with the OS deep link must not let it reach the native host.
+  assert.equal(isDeepLinkUrl("colony://app/", schemes), false);
+  assert.equal(isDeepLinkUrl("colony://app/index.html", schemes), false);
+  assert.equal(isDeepLinkUrl("COLONY://APP/index.html", schemes), false);
+  assert.equal(isDeepLinkUrl("colony://application?x=1", schemes), true);
+
+  const host = fakeHost();
+  let reveals = 0;
+  const router = createDeepLinkRouter({
+    host,
+    schemes,
+    revealWindow: () => reveals++,
+  });
+  router.handleOpenUrl({ preventDefault() {} }, "colony://app/index.html");
+  router.handleSecondInstance(["/Applications/Colony.app", "colony://app/"]);
+  router.handleInitialArgv(["colony://app/"]);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(host.calls, []);
 });
 
 test("forwards initial, open-url, and second-instance links through the host command", async () => {

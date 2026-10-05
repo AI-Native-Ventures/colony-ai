@@ -1,10 +1,11 @@
 import { ExternalLink } from "lucide-react";
 
+import { colonyConnectLink } from "@/shared/lib/colony-links";
 import { relayWsUrl } from "@/shared/lib/relay-url";
 import { Button } from "@/shared/ui/button";
 
 export function ConnectButton({ className }: { className?: string }) {
-  const deepLink = `buzz://connect?relay=${encodeURIComponent(relayWsUrl())}`;
+  const deepLink = colonyConnectLink(relayWsUrl());
 
   return (
     <Button
@@ -13,7 +14,7 @@ export function ConnectButton({ className }: { className?: string }) {
     >
       <a href={deepLink}>
         <ExternalLink className="h-4 w-4" />
-        Open in Buzz
+        Open in Colony
       </a>
     </Button>
   );
