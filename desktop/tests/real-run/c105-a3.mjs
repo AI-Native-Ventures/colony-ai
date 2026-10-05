@@ -61,7 +61,18 @@ try {
         .first()
         .click({ timeout: 8000 });
       await page.getByTestId("message-timeline").waitFor({ timeout: 15000 });
-      await sleep(2500);
+      // The timeline fills in after the relaunch: wait up to 30 s for the invitees' messages.
+      const waitStart = Date.now();
+      while (Date.now() - waitStart < 30000) {
+        const text = await page
+          .getByTestId("message-timeline")
+          .innerText()
+          .catch(() => "");
+        if (/hello from/u.test(text)) break;
+        await sleep(1000);
+      }
+      rec.notes.messagesAppearedAfterMs = Date.now() - waitStart;
+      await sleep(1500);
       const rows = await page.evaluate(() =>
         [...document.querySelectorAll('[data-testid="message-row"]')]
           .slice(-20)
@@ -171,6 +182,7 @@ try {
       const still = await page
         .locator('[data-testid^="relay-member-row-"]')
         .filter({ hasText: name })
+        .filter({ hasNotText: /\bYou\b/u })
         .count();
       rec.row(
         `${phase}-remove`,

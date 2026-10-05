@@ -17,7 +17,7 @@ import {
 
 if (process.env.COLONY_REAL_RUN !== "1" || process.env.CI)
   throw new Error("COLONY_REAL_RUN=1 required, local only");
-const rec = new Rec("DOCK");
+const rec = new Rec(process.env.STEPS ? "DOCK2" : "DOCK");
 const state = await loadState();
 if (!state.A?.userDataDir) throw new Error("no profile A in state");
 const load = await waitForLoad();
@@ -35,7 +35,42 @@ application
   .on("exit", (code, signal) =>
     lifecycle.push({ sinceLaunchMs: Date.now() - launchedAt, code, signal }),
   );
+
+// Legacy-name watcher: visible text, accessible names and window title, every 200 ms, with context.
+const legacy = [];
+const legacyWatcher = setInterval(async () => {
+  try {
+    const hits = await page.evaluate(() => {
+      const re = /.{0,50}(buzz|fizz|honey|pollen|\u{1f41d}).{0,50}/iu;
+      const out = [];
+      const m = (document.body?.innerText ?? "").match(re);
+      if (m) out.push({ where: "visible text", context: m[0] });
+      for (const el of document.querySelectorAll(
+        "[aria-label],[title],[alt]",
+      )) {
+        const v = `${el.getAttribute("aria-label") ?? ""} ${el.getAttribute("title") ?? ""} ${el.getAttribute("alt") ?? ""}`;
+        if (re.test(v))
+          out.push({ where: "attribute", context: v.trim().slice(0, 120) });
+        if (out.length > 3) break;
+      }
+      if (re.test(document.title))
+        out.push({ where: "window title", context: document.title });
+      return out;
+    });
+    for (const item of hits) {
+      const key = `${item.where}|${item.context}`;
+      if (!legacy.some((l) => l.key === key))
+        legacy.push({ key, ...item, atMs: Date.now() - launchedAt });
+    }
+  } catch {
+    /* page gone */
+  }
+}, 200);
+const wanted = (id) =>
+  !process.env.STEPS ||
+  process.env.STEPS.split(",").some((w) => id.startsWith(w));
 const guard = async (id, label, fn) => {
+  if (!wanted(id)) return undefined;
   try {
     return await fn();
   } catch (error) {
@@ -74,7 +109,8 @@ const width = async () =>
       .getAttribute("aria-valuenow")
       .catch(() => "NaN"),
   );
-const channel = (name) => page.getByTestId(`channel-${name}`).first();
+const channel = (name) =>
+  page.locator(`[data-testid="channel-${name}" i]`).first();
 const openDock = async () => {
   if (await dockOpen()) return;
   await page.getByTestId("channel-work-area-trigger").click({ timeout: 8000 });
@@ -330,6 +366,9 @@ try {
 
   // Resize by drag and keyboard.
   await guard("DOCK-resize", "Resize by drag and by keyboard", async () => {
+    await channel("general").click();
+    await sleep(800);
+    await openDock();
     const w0 = await width();
     const box = await divider().boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -337,30 +376,40 @@ try {
     await page.mouse.move(box.x - 160, box.y + box.height / 2, { steps: 8 });
     await page.mouse.up();
     await sleep(600);
-    const w1 = await width();
+    const wDrag = await width();
     await shot(page, rec, "d6-after-drag");
     await divider().focus();
+    await page.keyboard.press("Home");
+    await sleep(300);
+    const w1 = await width();
     await page.keyboard.press("ArrowLeft");
     await sleep(300);
     const w2 = await width();
     await page.keyboard.press("Shift+ArrowRight");
     await sleep(300);
     const w3 = await width();
+    await page.keyboard.press("Shift+ArrowLeft");
+    await sleep(300);
+    await page.keyboard.press("Shift+ArrowLeft");
+    await sleep(300);
+    const wMax = await width();
     await page.keyboard.press("Home");
     await sleep(300);
     const w4 = await width();
     rec.row(
       "DOCK-resize-drag",
       "Resize by pointer drag",
-      w1 !== w0 && Number.isFinite(w1) ? "PASS" : "FAIL",
-      `Width ${w0}% -> ${w1}% after dragging the divider 160 px left`,
+      wDrag !== w0 && Number.isFinite(wDrag) ? "PASS" : "FAIL",
+      `Width ${w0}% -> ${wDrag}% after dragging the divider 160 px left`,
       {},
     );
     rec.row(
       "DOCK-resize-key",
       "Resize by keyboard (Left +2, Shift+Right -10, Home resets)",
-      w2 === w1 + 2 && w3 === w2 - 10 && w4 === 64 ? "PASS" : "FAIL",
-      `After drag ${w1}; ArrowLeft ${w2} (expect ${w1 + 2}); Shift+ArrowRight ${w3} (expect ${w2 - 10}); Home ${w4} (expect 64)`,
+      w1 === 64 && w2 === w1 + 2 && w3 === w2 - 10 && wMax === 75 && w4 === 64
+        ? "PASS"
+        : "FAIL",
+      `Home ${w1} (expect 64); ArrowLeft ${w2} (expect ${w1 + 2}); Shift+ArrowRight ${w3} (expect ${w2 - 10}); Shift+ArrowLeft twice ${wMax} (clamped at 75); Home ${w4} (expect 64)`,
       {
         screenshot: await shot(page, rec, "d7-after-keys"),
       },
@@ -479,6 +528,8 @@ try {
     "DOCK-narrow",
     "Narrow window overlays the dock and it can be closed",
     async () => {
+      await channel("general").click();
+      await sleep(900);
       await openDock();
       await page.setViewportSize({ width: 900, height: 760 });
       await sleep(1500);
@@ -498,12 +549,25 @@ try {
       await sleep(600);
       const closedByButton = !(await dockOpen());
       await openDock();
-      await divider()
-        .focus()
-        .catch(() => undefined);
+      const dividerPresent = await divider()
+        .isVisible()
+        .catch(() => false);
+      await page.getByTestId("work-area-close").focus();
+      const focusedBefore = await page.evaluate(
+        () =>
+          document.activeElement?.getAttribute("data-testid") ??
+          document.activeElement?.tagName,
+      );
       await page.keyboard.press("Escape");
-      await sleep(600);
+      await sleep(900);
       const closedByEscape = !(await dockOpen());
+      rec.notes.escapeProbe = { dividerPresent, focusedBefore, closedByEscape };
+      if (!closedByEscape)
+        await page
+          .getByTestId("work-area-close")
+          .click()
+          .catch(() => undefined);
+      await sleep(500);
       await page.setViewportSize({ width: 600, height: 760 });
       await sleep(1200);
       await openDock().catch(() => undefined);
@@ -531,63 +595,59 @@ try {
           veryNarrowClosed
           ? "PASS"
           : "FAIL",
-        `data-overlay at 900 px: ${overlay}. Close visible: ${closeVisible}. Closed by button: ${closedByButton}. Closed by Escape: ${closedByEscape}. At 600 px close visible ${veryNarrowClose}, closed ${veryNarrowClosed}`,
+        `data-overlay at 900 px: ${overlay}. Close visible: ${closeVisible}. Closed by button: ${closedByButton}. Closed by Escape with focus on the close button: ${closedByEscape} (probe ${JSON.stringify(rec.notes.escapeProbe)}). At 600 px close visible ${veryNarrowClose}, closed ${veryNarrowClosed}`,
         {},
       );
     },
   );
 
-  // Files tab: a file link from chat. Ask Scout to author a file and link it.
+  // Files tab: a file link from chat. Scout already authored dock-check.md and replied in a thread under the
+  // request (earlier runs); open that thread and click the path in Scout's reply.
   await guard(
     "DOCK-files",
     "A file link from chat opens in the dock Files tab",
     async () => {
       await channel("welcome").click();
-      await sleep(1200);
-      const composer = page
-        .locator('[data-testid="message-composer"] [contenteditable="true"]')
+      await sleep(1500);
+      // The last "View thread" chip in Welcome belongs to the dock-check.md request.
+      await page
+        .getByText(/View thread/u)
+        .last()
+        .click({ timeout: 8000 });
+      const panel = page
+        .locator(
+          '[data-testid="message-thread-panel"], [data-testid="focus-thread-drawer"]',
+        )
         .first();
-      await composer.click();
-      await composer.fill("@");
-      const menu = page.getByTestId("mention-autocomplete");
-      await menu.waitFor({ timeout: 15000 });
-      await menu
-        .locator("[data-mention-suggestion-index]")
-        .filter({ hasText: /Scout/u })
-        .first()
-        .click();
-      await composer.press("End");
-      await composer.pressSequentially(
-        " please create a file named dock-check.md in your workspace containing a heading and two bullet points, then reply with its path in backticks like `dock-check.md`.",
-      );
-      await composer.press("Enter");
-      const t = Date.now();
-      let linkEl = null;
-      while (Date.now() - t < 150000 && !linkEl) {
-        await sleep(3000);
-        const candidates = page
-          .locator(
-            '[data-testid="message-row"] code, [data-testid="message-row"] button',
-          )
-          .filter({ hasText: /dock-check\.md/u });
-        if ((await candidates.count()) > 0) linkEl = candidates.last();
-      }
-      if (!linkEl) {
+      await panel.waitFor({ timeout: 10000 });
+      await sleep(1500);
+      const panelText = redact(
+        (await panel.innerText().catch(() => "")).replace(/\s+/gu, " "),
+      ).slice(0, 700);
+      await shot(page, rec, "d14-thread");
+      const link = panel
+        .locator('[data-testid="message-row"]')
+        .filter({
+          has: page
+            .getByTestId("message-author")
+            .filter({ hasText: /^Scout$/u }),
+        })
+        .locator("code, a, button")
+        .filter({ hasText: /dock-check\.md/u })
+        .first();
+      if (!(await link.count())) {
         rec.row(
           "DOCK-files",
           "A file link from chat opens in the dock Files tab",
           "NOT OBSERVED",
-          `Scout produced no clickable dock-check.md reference within ${Math.round((Date.now() - t) / 1000)} s. Page: ${await body(200)}`,
-          {
-            screenshot: await shot(page, rec, "d14-no-link"),
-          },
+          `Scout's thread reply has no clickable dock-check.md path. Thread text: ${panelText}`,
+          { screenshot: await shot(page, rec, "d14-no-link") },
         );
         return;
       }
-      await shot(page, rec, "d14-scout-reply");
-      await linkEl.click({ timeout: 6000 });
+      await link.click({ timeout: 6000 });
       await sleep(2500);
-      const panel = await dockOpen();
+      const open = await dockOpen();
       const content = redact(
         await page
           .getByTestId("work-area-files")
@@ -601,15 +661,22 @@ try {
       rec.row(
         "DOCK-files",
         "A file link from chat opens in the dock Files tab",
-        panel && md && content.length > 20 ? "PASS" : "FAIL",
-        `Dock open: ${panel}. Markdown rendered: ${md}. Files tab text: ${content.slice(0, 300)}. Scout answered after ${Math.round((Date.now() - t) / 1000)} s`,
-        {
-          screenshot: await shot(page, rec, "d15-file-in-dock"),
-        },
+        open && md && content.length > 20 ? "PASS" : "FAIL",
+        `Dock open: ${open}. Markdown rendered: ${md}. Files tab text: ${content.slice(0, 300)}. Thread text: ${panelText}`,
+        { screenshot: await shot(page, rec, "d15-file-in-dock") },
       );
     },
   );
 } finally {
+  clearInterval(legacyWatcher);
+  rec.notes.legacyHits = legacy.map(({ key: _k, ...rest }) => rest);
+  rec.row(
+    "DOCK-legacy-names",
+    "No visible Buzz, Fizz, Honey, Pollen or bee text during the whole dock run (incl. Scout tool activity)",
+    legacy.length ? "FAIL" : "PASS",
+    `Watched every 200 ms for ${Math.round((Date.now() - launchedAt) / 1000)} s. Hits: ${JSON.stringify(rec.notes.legacyHits)}`,
+    {},
+  );
   rec.notes.lifecycle = lifecycle;
   rec.notes.endedAt = new Date().toISOString();
   await rec.write();
