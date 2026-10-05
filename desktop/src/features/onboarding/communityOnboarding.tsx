@@ -124,6 +124,15 @@ function isTransaction(
   );
 }
 
+/**
+ * A failed invite claim must never outlive the screen that reported it. A
+ * persisted failed claim relaunches into a dead-end "isn't ready yet" screen
+ * with no route back to the person's own workspace.
+ */
+function isFailedInviteClaim(transaction: CommunityOnboardingTransaction) {
+  return transaction.stage === "claiming" && Boolean(transaction.error);
+}
+
 export function loadCommunityOnboardingTransaction(
   storage: Storage = localStorage,
 ): CommunityOnboardingTransaction | null {
@@ -131,7 +140,13 @@ export function loadCommunityOnboardingTransaction(
     const raw = storage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
-    return isTransaction(parsed) ? parsed : null;
+    if (!isTransaction(parsed)) return null;
+    if (isFailedInviteClaim(parsed)) {
+      // Left behind by an older build: drop it so this launch is not trapped.
+      storage.removeItem(STORAGE_KEY);
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -141,6 +156,11 @@ export function saveCommunityOnboardingTransaction(
   transaction: CommunityOnboardingTransaction,
   storage: Storage = localStorage,
 ): void {
+  if (isFailedInviteClaim(transaction)) {
+    // The failure stays on screen in memory only; see isFailedInviteClaim.
+    storage.removeItem(STORAGE_KEY);
+    return;
+  }
   if (typeof localStorage !== "undefined" && storage === localStorage) {
     setLocalStorageItemWithRecovery(STORAGE_KEY, JSON.stringify(transaction));
   } else {
