@@ -844,7 +844,18 @@ export function ChannelScreen({
               onOpenInbox={() => void goHome()}
             />
           ) : null}
-          <WorkAreaLayout channelId={activeChannel?.id ?? null}>
+          <WorkAreaLayout
+            channel={
+              activeChannel
+                ? {
+                    channelType: activeChannel.channelType,
+                    isArchived: Boolean(activeChannel.archivedAt),
+                    currentPubkey,
+                  }
+                : undefined
+            }
+            channelId={activeChannel?.id ?? null}
+          >
           <div
             className="colony-channel-route-content"
             ref={channelContentRef}

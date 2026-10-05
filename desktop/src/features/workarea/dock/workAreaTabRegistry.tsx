@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import type * as React from "react";
 
+import { WorkAreaCanvasTab } from "./tabs/WorkAreaCanvasTab";
 import { WorkAreaFilesTab } from "./tabs/WorkAreaFilesTab";
 import { WorkAreaTerminalTab } from "./tabs/WorkAreaTerminalTab";
 import type { WorkAreaTabKind } from "./workAreaTypes";
@@ -25,10 +26,6 @@ export type WorkAreaTabDefinition = {
   available: boolean;
   Panel: React.ComponentType<WorkAreaTabPanelProps>;
 };
-
-function UnavailablePanel() {
-  return null;
-}
 
 /**
  * The typed registry. `Record<WorkAreaTabKind, ...>` makes the compiler demand
@@ -52,14 +49,12 @@ const DEFINITIONS: Record<WorkAreaTabKind, WorkAreaTabDefinition> = {
     available: true,
     Panel: WorkAreaFilesTab,
   },
-  // Registered so persisted layouts and the kind list stay complete; the
-  // Markdown canvas is hosted here by the next change.
   canvas: {
     kind: "canvas",
     label: "Canvas",
     icon: Pencil,
-    available: false,
-    Panel: UnavailablePanel,
+    available: true,
+    Panel: WorkAreaCanvasTab,
   },
 };
 

@@ -14,7 +14,12 @@ import {
   openWorkAreaFrom,
   toggleWorkAreaFrom,
 } from "./workAreaActions";
+import { listenForWorkAreaTabRequests } from "./workAreaRequests";
 import { setWorkAreaFileReference } from "./workAreaFilesStore";
+import {
+  type WorkAreaChannel,
+  WorkAreaChannelContext,
+} from "./workAreaChannelContext";
 import { getWorkAreaTabDefinition } from "./workAreaTabRegistry";
 import {
   openWorkArea,
@@ -59,9 +64,12 @@ function useOverlayMode(layoutRef: React.RefObject<HTMLDivElement | null>) {
  */
 export function WorkAreaLayout({
   channelId,
+  channel,
   children,
 }: {
   channelId: string | null;
+  /** Facts about the channel that tabs need (canvas edit rights, archive state). */
+  channel?: Omit<WorkAreaChannel, "channelId">;
   children: React.ReactNode;
 }) {
   const state = useWorkAreaDock(channelId);
@@ -128,6 +136,17 @@ export function WorkAreaLayout({
     [channelId],
   );
 
+  // Controls outside the dock (the channel's Canvas label) ask for a tab.
+  React.useEffect(
+    () =>
+      listenForWorkAreaTabRequests((kind) => {
+        if (channelId) {
+          openWorkAreaFrom(channelId, kind, document.activeElement);
+        }
+      }),
+    [channelId],
+  );
+
   // Cmd/Ctrl+\ toggles the dock. Shift, Alt and the other platform's modifier
   // are deliberately not this shortcut.
   React.useEffect(() => {
@@ -153,6 +172,21 @@ export function WorkAreaLayout({
 
   // Opening a tab from inside the dock (menu, empty state) keeps focus where
   // the user's own action put it.
+  const channelType = channel?.channelType;
+  const isArchived = channel?.isArchived;
+  const currentPubkey = channel?.currentPubkey;
+  const channelContext = React.useMemo<WorkAreaChannel | null>(
+    () =>
+      channelId && channelType !== undefined
+        ? {
+            channelId,
+            channelType,
+            isArchived: isArchived ?? false,
+            currentPubkey,
+          }
+        : null,
+    [channelId, channelType, isArchived, currentPubkey],
+  );
   const openKind = React.useCallback(
     (kind: WorkAreaTabKind) => {
       if (channelId) openWorkArea(channelId, kind);
@@ -189,17 +223,19 @@ export function WorkAreaLayout({
         />
       ) : null}
       {openChannelId !== null ? (
-        <WorkAreaPanel
-          activeTabId={activeTabId}
-          channelId={openChannelId}
-          onClose={() => closeWorkAreaRestoringFocus(openChannelId)}
-          onCloseTab={(tabId) =>
-            closeWorkAreaTabRestoringFocus(openChannelId, tabId)
-          }
-          onOpenKind={openKind}
-          onSelect={(tabId) => selectWorkAreaTab(openChannelId, tabId)}
-          tabs={tabs}
-        />
+        <WorkAreaChannelContext.Provider value={channelContext}>
+          <WorkAreaPanel
+            activeTabId={activeTabId}
+            channelId={openChannelId}
+            onClose={() => closeWorkAreaRestoringFocus(openChannelId)}
+            onCloseTab={(tabId) =>
+              closeWorkAreaTabRestoringFocus(openChannelId, tabId)
+            }
+            onOpenKind={openKind}
+            onSelect={(tabId) => selectWorkAreaTab(openChannelId, tabId)}
+            tabs={tabs}
+          />
+        </WorkAreaChannelContext.Provider>
       ) : null}
     </div>
   );

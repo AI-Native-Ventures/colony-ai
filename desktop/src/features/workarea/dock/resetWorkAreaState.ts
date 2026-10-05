@@ -1,3 +1,5 @@
+import { resetCanvasEdits } from "@/features/channels/ui/canvasEditStore";
+
 import { resetWorkAreaFileReferences } from "./workAreaFilesStore";
 import { resetWorkAreaStore } from "./workAreaStore";
 
@@ -9,4 +11,5 @@ import { resetWorkAreaStore } from "./workAreaStore";
 export function resetWorkAreaState() {
   resetWorkAreaStore();
   resetWorkAreaFileReferences();
+  resetCanvasEdits();
 }
