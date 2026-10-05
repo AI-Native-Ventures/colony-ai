@@ -16,6 +16,9 @@ import {
   describeCameraProblem,
 } from "./avatarUploadProblems.ts";
 
+// Built from a code point so this file itself contains no em dash.
+const EM_DASH = new RegExp(String.fromCodePoint(0x2014));
+
 const png = { name: "me.png", size: 1024, type: "image/png" };
 
 test("the chooser accepts exactly the types the check accepts", () => {
@@ -113,6 +116,6 @@ test("no wording contains an em dash", () => {
     describeCameraProblem(null),
   ];
   for (const sample of samples) {
-    assert.doesNotMatch(`${sample.title} ${sample.message}`, /—/);
+    assert.doesNotMatch(`${sample.title} ${sample.message}`, EM_DASH);
   }
 });
