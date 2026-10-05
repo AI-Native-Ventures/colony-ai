@@ -554,7 +554,7 @@ export function SettingsView({
                 </div>
                 <div>
                   <strong>{signedInDisplayName}</strong>
-                  {roleCaption ? <small>{roleCaption}</small> : null}
+                  <small>{roleCaption}</small>
                 </div>
               </button>
             </TooltipTrigger>
