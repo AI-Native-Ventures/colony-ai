@@ -19,18 +19,21 @@ import {
   saveState,
   shot,
   signUp,
-  skipConnect,
+  enterApp,
   sleep,
   waitForLoad,
 } from "./ai-lib.mjs";
 
 if (process.env.COLONY_REAL_RUN !== "1" || process.env.CI)
   throw new Error("COLONY_REAL_RUN=1 required, local only");
-const rec = new Rec("A1");
+const rec = new Rec(process.argv[2] === "resume" ? "A1r" : "A1");
 const state = await loadState();
 const load = await waitForLoad();
 await progress(`[A1] load ${load.toFixed(1)} ok, launching profile A`);
-const profile = await newProfile("A");
+const resume = process.argv[2] === "resume";
+const profile = resume
+  ? { privateDir: state.A.privateDir, userDataDir: state.A.userDataDir }
+  : await newProfile("A");
 const { application, page, version } = await launch(profile);
 rec.notes.version = version;
 instrument(page, rec, "A");
@@ -52,52 +55,87 @@ const guard = async (id, label, fn) => {
 try {
   // ---- account and business (setup, not under test) ----
   const t0 = Date.now();
-  const inbox = await guard("A-setup-account", "Create account A", () =>
-    signUp(page, rec, "Smoke Avatar A"),
-  );
-  if (!inbox) throw new Error("no account");
-  state.A = {
-    email: inbox.email,
-    password: inbox.password,
-    userDataDir: profile.userDataDir,
-    privateDir: profile.privateDir,
-    name: "Smoke Avatar A",
-  };
-  await saveState(state);
-  rec.row(
-    "A-setup-account",
-    "Create account A (real signup, mail.tm code)",
-    "PASS",
-    `Account ${inbox.email} verified in ${Date.now() - t0} ms`,
-    { screenshot: await shot(page, rec, "setup-account") },
-  );
-  const suffix = inbox.email.split("@")[0].replace("colony-launch-check-", "");
-  const bizName = `Avatar invite ${suffix}`;
-  const t1 = Date.now();
-  await createBusiness(page, bizName).catch(async (error) => {
-    const text = (
-      await page
-        .locator("body")
-        .innerText()
-        .catch(() => "")
-    ).slice(0, 400);
+  if (!resume) {
+    const inbox = await guard("A-setup-account", "Create account A", () =>
+      signUp(page, rec, "Smoke Avatar A"),
+    );
+    if (!inbox) throw new Error("no account");
+    state.A = {
+      email: inbox.email,
+      password: inbox.password,
+      userDataDir: profile.userDataDir,
+      privateDir: profile.privateDir,
+      name: "Smoke Avatar A",
+    };
+    await saveState(state);
+    rec.row(
+      "A-setup-account",
+      "Create account A (real signup, mail.tm code)",
+      "PASS",
+      `Account ${inbox.email} verified in ${Date.now() - t0} ms`,
+      { screenshot: await shot(page, rec, "setup-account") },
+    );
+    const suffix = inbox.email
+      .split("@")[0]
+      .replace("colony-launch-check-", "");
+    const bizName = `Avatar invite ${suffix}`;
+    const t1 = Date.now();
+    await createBusiness(page, bizName).catch(async (error) => {
+      const text = (
+        await page
+          .locator("body")
+          .innerText()
+          .catch(() => "")
+      ).slice(0, 400);
+      rec.row(
+        "A-setup-business",
+        "Create business A",
+        "FAIL",
+        `Create business failed (${error.name}). Page text: ${text}`,
+        { screenshot: await shot(page, rec, "business-fail") },
+      );
+      throw error;
+    });
+    state.A.business = bizName;
+    await saveState(state);
     rec.row(
       "A-setup-business",
-      "Create business A",
+      "Create business A (real onboarding, Connect screen reached)",
+      "PASS",
+      `Business created in ${Date.now() - t1} ms`,
+      { screenshot: await shot(page, rec, "business-created") },
+    );
+  }
+  // The Connect step has no skip when Claude Code is ready: connect for real, then open the app.
+  const tEnter = Date.now();
+  const trail = await enterApp(
+    page,
+    (name) => shot(page, rec, `enter-${name}`),
+    resume ? state.A : undefined,
+  ).catch(async (error) => {
+    rec.row(
+      "A-enter-app",
+      "Reach the app after Connect",
       "FAIL",
-      `Create business failed (${error.name}). Page text: ${text}`,
-      { screenshot: await shot(page, rec, "business-fail") },
+      `${error.message}. Page: ${redact(
+        (
+          await page
+            .locator("body")
+            .innerText()
+            .catch(() => "")
+        )
+          .replace(/\s+/gu, " ")
+          .slice(0, 400),
+      )}`,
+      { screenshot: await shot(page, rec, "enter-fail") },
     );
     throw error;
   });
-  state.A.business = bizName;
-  await saveState(state);
-  await skipConnect(page);
   rec.row(
-    "A-setup-business",
-    "Create business A and open app (Skip for now on Connect)",
+    "A-enter-app",
+    "Connect Claude Code and open the app",
     "PASS",
-    `Business created and app opened in ${Date.now() - t1} ms`,
+    `Screens passed: ${trail.join(" > ")} in ${Date.now() - tEnter} ms`,
     { screenshot: await shot(page, rec, "app-open") },
   );
   await sleep(3000);
