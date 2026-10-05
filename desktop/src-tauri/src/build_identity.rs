@@ -46,14 +46,27 @@ fn demo_config_home_for(
     }
 }
 
-pub(crate) fn deep_link_scheme() -> Cow<'static, str> {
-    demo_slug()
-        .map(|slug| Cow::Owned(format!("buzz-demo-{slug}")))
-        .unwrap_or(Cow::Borrowed("buzz"))
+/// URL schemes this build answers. Production answers its own `colony` scheme
+/// and the legacy `buzz` scheme that links minted before `colony://` still use.
+/// A named demo build answers only its own scheme so it can never claim a
+/// production link.
+fn accepted_deep_link_schemes(demo_slug: Option<&str>) -> Vec<String> {
+    match demo_slug {
+        Some(slug) => vec![format!("buzz-demo-{slug}")],
+        None => vec!["buzz".to_string(), "colony".to_string()],
+    }
+}
+
+pub(crate) fn is_deep_link_scheme_for_build(scheme: &str) -> bool {
+    accepted_deep_link_schemes(demo_slug())
+        .iter()
+        .any(|accepted| accepted.as_str() == scheme)
 }
 
 pub(crate) fn is_deep_link_for_build(value: &str) -> bool {
-    is_deep_link_for_scheme(value, deep_link_scheme().as_ref())
+    accepted_deep_link_schemes(demo_slug())
+        .iter()
+        .any(|scheme| is_deep_link_for_scheme(value, scheme))
 }
 
 fn is_deep_link_for_scheme(value: &str, scheme: &str) -> bool {
@@ -107,7 +120,10 @@ mod tests {
     #[test]
     fn ordinary_release_defaults_remain_production_identity() {
         if demo_slug().is_none() {
-            assert_eq!(deep_link_scheme(), "buzz");
+            assert_eq!(
+                accepted_deep_link_schemes(demo_slug()),
+                vec!["buzz", "colony"]
+            );
             assert_eq!(keyring_service(), "buzz-desktop");
             assert_eq!(nest_name(false), ".buzz");
             assert_eq!(cli_name(false), "buzz");
@@ -166,6 +182,15 @@ mod tests {
             "buzz://message?id=1",
             "buzz-demo-board-1234567812345678"
         ));
+    }
+
+    #[test]
+    fn production_answers_colony_and_legacy_schemes_but_demos_only_their_own() {
+        assert_eq!(accepted_deep_link_schemes(None), vec!["buzz", "colony"]);
+        assert_eq!(
+            accepted_deep_link_schemes(Some("board-1234567812345678")),
+            vec!["buzz-demo-board-1234567812345678"]
+        );
     }
 
     #[test]

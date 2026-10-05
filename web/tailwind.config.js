@@ -9,10 +9,10 @@ export default {
       },
       fontFamily: {
         sans: [
-          '"Inter Variable"',
-          "Inter",
+          "Manrope",
           '"Avenir Next"',
           '"Segoe UI"',
+          "system-ui",
           "sans-serif",
         ],
       },
@@ -68,6 +68,17 @@ export default {
         warning: {
           DEFAULT: "var(--ui-warning)",
           bg: "var(--ui-warning-bg)",
+        },
+        // Colony brand colours, taken from the colony.global download section.
+        colony: {
+          ink: "var(--colony-ink)",
+          muted: "var(--colony-muted)",
+          paper: "var(--colony-paper)",
+          card: "var(--colony-card)",
+          line: "var(--colony-line)",
+          green: "var(--colony-green)",
+          "green-ink": "var(--colony-green-ink)",
+          focus: "var(--colony-focus)",
         },
       },
     },

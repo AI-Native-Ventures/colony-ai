@@ -1,15 +1,35 @@
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import {
-  BUZZ_ANDROID_PLAY_STORE_URL,
-  BUZZ_IOS_APP_STORE_URL,
-  BUZZ_RELEASES_URL,
-} from "../../src/shared/lib/buzz-download";
+import { COLONY_DOWNLOAD_PAGE_URL } from "../../src/shared/lib/colony-download";
 
-test("home page loads with Buzz branding", async ({ page }) => {
+const COLONY_RELEASE_BASE =
+  "https://github.com/AI-Native-Ventures/colony-ai/releases/download/desktop-v1.0.4";
+
+/** What the GitHub releases API returns: Colony desktop plus unrelated tags. */
+function colonyReleases() {
+  const asset = (name: string) => ({
+    name,
+    browser_download_url: `${COLONY_RELEASE_BASE}/${name}`,
+  });
+  return [
+    { tag_name: "relay-v9.9.9", draft: false, prerelease: false, assets: [] },
+    {
+      tag_name: "desktop-v1.0.4",
+      draft: false,
+      prerelease: false,
+      assets: [
+        asset("Colony-1.0.4-arm64-UNSIGNED.dmg"),
+        asset("Colony-1.0.4-x64-UNSIGNED.exe"),
+        asset("Colony-1.0.4-x64-UNSIGNED.AppImage"),
+      ],
+    },
+  ];
+}
+
+test("home page loads with Colony branding", async ({ page }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("main").getByRole("img", { name: "Buzz" }),
+    page.getByRole("main").getByRole("img", { name: "Colony" }),
   ).toBeVisible();
 });
 
@@ -18,7 +38,7 @@ test("home page shows repositories section", async ({ page }) => {
   await expect(page.getByText("Repositories")).toBeVisible();
 });
 
-test("invite requires age and legal consent before opening Buzz", async ({
+test("invite requires age and legal consent before opening Colony", async ({
   page,
 }) => {
   await page.route("**/api/join-policy", async (route) => {
@@ -40,52 +60,25 @@ test("invite requires age and legal consent before opening Buzz", async ({
       status: 200,
       contentType: "application/json",
       headers: { "Access-Control-Allow-Origin": "*" },
-      body: JSON.stringify([
-        { draft: false, prerelease: false, assets: [] },
-        {
-          draft: false,
-          prerelease: false,
-          assets: [
-            {
-              name: "Buzz_0.4.9_aarch64.dmg",
-              browser_download_url:
-                "https://github.com/block/buzz/releases/download/v0.4.9/Buzz_0.4.9_aarch64.dmg",
-            },
-            {
-              name: "Buzz_0.4.9_x64.dmg",
-              browser_download_url:
-                "https://github.com/block/buzz/releases/download/v0.4.9/Buzz_0.4.9_x64.dmg",
-            },
-            {
-              name: "Buzz_0.4.9_amd64.AppImage",
-              browser_download_url:
-                "https://github.com/block/buzz/releases/download/v0.4.9/Buzz_0.4.9_amd64.AppImage",
-            },
-            {
-              name: "Buzz_0.4.9_x64-setup_alpha-unsigned.exe",
-              browser_download_url:
-                "https://github.com/block/buzz/releases/download/v0.4.9/Buzz_0.4.9_x64-setup_alpha-unsigned.exe",
-            },
-          ],
-        },
-      ]),
+      body: JSON.stringify(colonyReleases()),
     });
   });
   await page.goto("/invite/demo-code");
 
+  await expect(page).toHaveTitle("Colony");
   await expect(
-    page.getByRole("link", { name: "Download it now" }),
+    page.getByRole("link", { name: /^Download Colony/ }),
   ).toHaveAttribute(
     "href",
-    "https://github.com/block/buzz/releases/download/v0.4.9/Buzz_0.4.9_x64-setup_alpha-unsigned.exe",
+    `${COLONY_RELEASE_BASE}/Colony-1.0.4-x64-UNSIGNED.exe`,
   );
 
   const ageConfirmation = page.getByLabel("I am 18 years of age or older.");
   const agreementConfirmation = page.getByLabel(
-    "I agree to the Buzz Terms of Service and Privacy Policy.",
+    "I agree to the Colony Terms of Service and Privacy Policy.",
   );
   const acceptInvite = page.getByRole("button", {
-    name: "Accept invite in Buzz",
+    name: "Open in Colony",
   });
 
   await expect(ageConfirmation).toBeVisible();
@@ -111,7 +104,7 @@ test("invite requires age and legal consent before opening Buzz", async ({
   await page
     .locator("label")
     .filter({
-      hasText: "I agree to the Buzz Terms of Service and Privacy Policy.",
+      hasText: "I agree to the Colony Terms of Service and Privacy Policy.",
     })
     .click({ position: { x: 8, y: 8 } });
   await expect(agreementConfirmation).toBeChecked();
@@ -206,7 +199,7 @@ test("invite can enroll a NIP-07 identity for browser access", async ({
   expect(claimObserved).toBe(true);
 });
 
-test("invite asks Safari users to choose their Mac download", async ({
+test("invite gives Mac visitors the Apple Silicon download", async ({
   browser,
 }) => {
   const context = await browser.newContext({
@@ -229,49 +222,70 @@ test("invite asks Safari users to choose their Mac download", async ({
     });
   });
   await page.route("https://api.github.com/**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Access-Control-Allow-Origin": "*" },
+      body: JSON.stringify(colonyReleases()),
+    });
+  });
+
+  await page.goto("/invite/demo-code");
+  const download = page.getByRole("link", { name: "Download Colony for Mac" });
+  await expect(download).toHaveAttribute(
+    "href",
+    `${COLONY_RELEASE_BASE}/Colony-1.0.4-arm64-UNSIGNED.dmg`,
+  );
+  await expect(page.getByText("Apple Silicon (M1 or later)")).toBeVisible();
+  await context.close();
+});
+
+test("invite offers the invite link to copy and an honest open fallback", async ({
+  browser,
+}) => {
+  const context = await browser.newContext();
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const page = await context.newPage();
+  await page.route("**/api/join-policy", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ policy: null }),
+    });
+  });
+  await page.route("https://api.github.com/**", async (route) => {
     await route.fulfill({ status: 500 });
   });
 
   await page.goto("/invite/demo-code");
-  const download = page.getByRole("link", { name: "Download it now" });
-  await expect(download).toHaveAttribute("aria-haspopup", "dialog");
-  await download.click();
+  await expect(
+    page.getByText(
+      "Install Colony, create your account, then choose Join a community and paste this link.",
+    ),
+  ).toBeVisible();
 
-  const chooser = page.getByRole("dialog", {
-    name: "Which Mac do you have?",
-  });
-  await expect(chooser).toBeVisible();
-  await expect(chooser.getByRole("link", { name: /Newer Mac/ })).toContainText(
-    "2021 or later, or a late-2020 Mac with an Apple M1 chip",
+  const inviteLink = page.getByLabel("Invite link");
+  await expect(inviteLink).toHaveValue(/\/invite\/demo-code$/);
+  await page.getByRole("button", { name: "Copy link" }).click();
+  await expect(page.getByText("Invite link copied.")).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    await inviteLink.inputValue(),
   );
-  await expect(chooser.getByRole("link", { name: /Older Mac/ })).toContainText(
-    "2019 or earlier, or a 2020 Mac with an Intel processor",
+
+  const openInColony = page.getByRole("link", { name: "Open in Colony" });
+  await expect(openInColony).toHaveAttribute(
+    "href",
+    /^colony:\/\/join\?relay=.+&code=demo-code$/,
   );
-  await expect(chooser.getByText("About This Mac")).toBeVisible();
-
-  const openedPagePromise = context.waitForEvent("page");
-  await chooser.getByRole("link", { name: /Newer Mac/ }).click();
-  const openedPage = await openedPagePromise;
-  await expect(chooser).toBeHidden();
-  await expect(openedPage).toHaveURL("https://github.com/block/buzz/releases");
-  await expect(page).toHaveURL(/\/invite\/demo-code$/);
-  await openedPage.close();
-
-  await download.click();
-  await expect(chooser).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(chooser).toBeHidden();
-  await expect(download).toBeFocused();
   await context.close();
 });
 
-test("invite download links to the appropriate platform destination", async ({
+test("invite download falls back to the Colony site off desktop", async ({
   browser,
 }) => {
   const devices = [
     {
       name: "iPhone Safari",
-      expectedUrl: BUZZ_IOS_APP_STORE_URL,
       platform: "iPhone",
       userAgent:
         "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15",
@@ -279,7 +293,6 @@ test("invite download links to the appropriate platform destination", async ({
     },
     {
       name: "iPadOS desktop mode",
-      expectedUrl: BUZZ_IOS_APP_STORE_URL,
       platform: "MacIntel",
       userAgent:
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15",
@@ -287,23 +300,13 @@ test("invite download links to the appropriate platform destination", async ({
     },
     {
       name: "Android phone",
-      expectedUrl: BUZZ_ANDROID_PLAY_STORE_URL,
       platform: "Linux armv8l",
       userAgent:
         "Mozilla/5.0 (Linux; Android 15; Pixel 9 Pro) AppleWebKit/537.36 Mobile",
       maxTouchPoints: 5,
     },
     {
-      name: "Fire tablet",
-      expectedUrl: BUZZ_RELEASES_URL,
-      platform: "Linux armv8l",
-      userAgent:
-        "Mozilla/5.0 (Linux; Android 9; KFMAWI) AppleWebKit/537.36 Silk/126.0 like Chrome/126.0.0.0 Safari/537.36",
-      maxTouchPoints: 5,
-    },
-    {
       name: "ChromeOS",
-      expectedUrl: BUZZ_RELEASES_URL,
       platform: "Linux x86_64",
       userAgent: "Mozilla/5.0 (X11; CrOS x86_64 16093.68.0) AppleWebKit/537.36",
       maxTouchPoints: 0,
@@ -321,7 +324,6 @@ test("invite download links to the appropriate platform destination", async ({
           value: {
             platform,
             mobile: maxTouchPoints > 0,
-            // Store routing must not wait for desktop architecture hints.
             getHighEntropyValues: () => new Promise(() => {}),
           },
         },
@@ -340,38 +342,20 @@ test("invite download links to the appropriate platform destination", async ({
         status: 200,
         contentType: "application/json",
         headers: { "Access-Control-Allow-Origin": "*" },
-        body: JSON.stringify([
-          {
-            draft: false,
-            prerelease: false,
-            assets: [
-              {
-                name: "Buzz_0.4.9_x64.dmg",
-                browser_download_url:
-                  "https://github.com/block/buzz/releases/download/v0.4.9/Buzz_0.4.9_x64.dmg",
-              },
-              {
-                name: "Buzz_0.4.9_amd64.AppImage",
-                browser_download_url:
-                  "https://github.com/block/buzz/releases/download/v0.4.9/Buzz_0.4.9_amd64.AppImage",
-              },
-            ],
-          },
-        ]),
+        body: JSON.stringify(colonyReleases()),
       });
     });
 
     await page.goto("/invite/demo-code");
-    await expect(
-      page.getByRole("link", { name: "Download it now" }),
-      device.name,
-    ).toHaveAttribute("href", device.expectedUrl);
-    await context.route(device.expectedUrl, (route) =>
-      route.fulfill({ contentType: "text/html", body: "Store destination" }),
+    const download = page.getByRole("link", { name: "Download Colony" });
+    await expect(download, device.name).toHaveAttribute(
+      "href",
+      COLONY_DOWNLOAD_PAGE_URL,
     );
-    const destination = context.waitForEvent("page");
-    await page.getByRole("link", { name: "Download it now" }).click();
-    await expect(await destination).toHaveURL(device.expectedUrl);
+    // No app store links exist for Colony.
+    await expect(page.locator('a[href*="apple.com"]'), device.name).toHaveCount(
+      0,
+    );
     await context.close();
   }
 });

@@ -28,6 +28,7 @@ import {
   verifySignatureArguments,
 } from "./electron-package-config.mjs";
 import { build } from "esbuild";
+import { deepLinkSchemesFromConfig } from "../electron/deep-links.mjs";
 
 const exec = promisify(execFile);
 const desktop = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -350,6 +351,7 @@ try {
     icon: path.join(iconsDir, APP_ICON_BASENAME),
     osxSign,
     osxNotarize,
+    deepLinkSchemes: deepLinkSchemesFromConfig(tauriConfig),
   });
   const packagedPaths = await packager(options);
   if (packagedPaths.length !== 1)

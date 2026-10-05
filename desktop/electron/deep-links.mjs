@@ -2,6 +2,11 @@ const ELECTRON_DEEP_LINK_COMMAND = "handle_electron_deep_link";
 const MAX_DEEP_LINK_URL_LENGTH = 4096;
 const MAX_PENDING_DEEP_LINKS = 64;
 const DEDUPE_WINDOW_MS = 1500;
+// colony://app/ is the privileged origin the renderer itself loads from (see
+// registerSchemesAsPrivileged in main.mjs). It shares a scheme with the OS
+// deep link, so it must never be accepted as one.
+const INTERNAL_APP_SCHEME = "colony";
+const INTERNAL_APP_HOST = "app";
 
 export function deepLinkSchemesFromConfig(config) {
   const configured = config?.plugins?.["deep-link"]?.desktop?.schemes;
@@ -33,10 +38,17 @@ export function isDeepLinkUrl(value, schemes) {
     return false;
   }
 
-  let protocol;
+  let parsed;
   try {
-    protocol = new URL(value).protocol.slice(0, -1).toLowerCase();
+    parsed = new URL(value);
   } catch {
+    return false;
+  }
+  const protocol = parsed.protocol.slice(0, -1).toLowerCase();
+  if (
+    protocol === INTERNAL_APP_SCHEME &&
+    parsed.hostname.toLowerCase() === INTERNAL_APP_HOST
+  ) {
     return false;
   }
   return schemes.includes(protocol);
