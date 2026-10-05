@@ -42,9 +42,13 @@ function focusDockSoon() {
     const panel = document.querySelector<HTMLElement>(
       '[data-testid="work-area-panel"]',
     );
+    const selected = panel?.querySelector<HTMLElement>(
+      '[role="tab"][aria-selected="true"]',
+    );
+    // The terminal moves focus into its own input; do not fight it.
+    if (selected?.dataset.testid === "work-area-tab-terminal") return;
     const target =
-      panel?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ??
-      panel?.querySelector<HTMLElement>(".colony-work-area-choice");
+      selected ?? panel?.querySelector<HTMLElement>(".colony-work-area-choice");
     target?.focus({ preventScroll: true });
   });
 }

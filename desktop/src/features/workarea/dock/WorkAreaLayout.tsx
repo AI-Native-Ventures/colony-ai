@@ -82,8 +82,10 @@ export function WorkAreaLayout({
   const activeKind = tabs.find((tab) => tab.id === activeTabId)?.kind;
   const terminalVisible = open && activeKind === "terminal";
 
-  // The terminal's visibility is derived from the dock and nothing else.
-  React.useEffect(() => {
+  // The terminal's visibility is derived from the dock and nothing else. A
+  // layout effect, so the store is already correct when the terminal's own
+  // effects run in the same commit (no PTY is spawned for a hidden tab).
+  React.useLayoutEffect(() => {
     commitTerminalPanelMode(terminalVisible ? "docked" : "closed");
   }, [terminalVisible]);
   const channelIdRef = React.useRef(channelId);

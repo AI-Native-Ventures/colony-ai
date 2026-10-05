@@ -50,6 +50,15 @@ export function setTerminalPanelMode(mode: TerminalPanelMode) {
   commitTerminalPanelMode(mode);
 }
 
+/**
+ * The mode right now, read at call time. Effects use this instead of the
+ * render-time snapshot when a host may have changed the mode earlier in the
+ * same commit (a channel switch that hides the dock's terminal tab).
+ */
+export function getTerminalPanelMode(): TerminalPanelMode {
+  return snapshot.mode;
+}
+
 export function toggleTerminalPanel() {
   setTerminalPanelMode(snapshot.mode === "closed" ? "docked" : "closed");
 }

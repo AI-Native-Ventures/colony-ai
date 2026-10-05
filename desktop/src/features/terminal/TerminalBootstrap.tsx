@@ -14,6 +14,7 @@ import {
 } from "./TerminalSubstrate";
 import { useTerminalDockSlot } from "./terminalDockSlot";
 import {
+  getTerminalPanelMode,
   setTerminalPanelMode,
   setTerminalSessionChannels,
   toggleTerminalPanel,
@@ -294,6 +295,9 @@ export function TerminalBootstrap({
 
   React.useEffect(() => {
     if (panel.mode === "closed" || !available || !context) return;
+    // A host (the work area dock) may have hidden the terminal for this very
+    // commit, e.g. on a channel switch; never spawn a PTY for a hidden panel.
+    if (getTerminalPanelMode() === "closed") return;
     if (channelSessions.length === 0) createSession();
     else if (!channelSessions.some((session) => session.key === activeKey))
       setActiveKey(channelSessions.at(-1)?.key ?? null);
