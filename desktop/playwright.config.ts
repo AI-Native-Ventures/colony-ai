@@ -94,6 +94,7 @@ export default defineConfig({
     {
       name: "smoke",
       testMatch: [
+        "**/avatar-discoverability.spec.ts",
         "**/scout-branding.spec.ts",
         "**/workspace-file-links.spec.ts",
         "**/first-reply-runtime.spec.ts",
@@ -304,6 +305,7 @@ export default defineConfig({
     {
       name: "integration",
       testMatch: [
+        "**/avatar-discoverability.spec.ts",
         "**/workspace-file-links.spec.ts",
         "**/account-auth.spec.ts",
         "**/colony-public-icons.spec.ts",

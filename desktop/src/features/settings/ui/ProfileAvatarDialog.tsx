@@ -681,7 +681,9 @@ export function ProfileAvatarDialog({
               ref={recoveryButtonRef}
               type="button"
             >
-              {stage === "failed" || canRetryPreset ? "Retry" : "Save avatar"}
+              {stage === "failed" || canRetryPreset
+                ? "Try again"
+                : "Save avatar"}
             </Button>
           ) : null}
           {stage === "invalid" ? (
