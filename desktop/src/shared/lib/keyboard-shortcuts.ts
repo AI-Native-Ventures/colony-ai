@@ -96,6 +96,14 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     category: "Navigation",
   },
   {
+    id: "toggle-work-area",
+    label: "Work area",
+    description: "Open or close the work area beside the conversation",
+    keys: "⌘\\",
+    keysWindows: "Ctrl+\\",
+    category: "Navigation",
+  },
+  {
     id: "toggle-sidebar",
     label: "Toggle sidebar",
     description: "Show or hide the sidebar",

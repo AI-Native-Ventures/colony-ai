@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { isTauri } from "@tauri-apps/api/core";
 
 import {
@@ -11,7 +12,10 @@ import {
   TerminalSubstrate,
   type TerminalViewportSize,
 } from "./TerminalSubstrate";
+import { useTerminalDockSlot } from "./terminalDockSlot";
 import {
+  getTerminalPanelSnapshot,
+  isTerminalPanelHosted,
   setTerminalPanelMode,
   setTerminalSessionChannels,
   toggleTerminalPanel,
@@ -83,6 +87,7 @@ export function TerminalBootstrap({
   const [activeKey, setActiveKey] = React.useState<string | null>(null);
   const [available, setAvailable] = React.useState(() => isTauri());
   const panel = useTerminalPanel();
+  const dockSlot = useTerminalDockSlot();
   const [renderedMode, setRenderedMode] = React.useState<
     "docked" | "maximized"
   >(panel.mode === "maximized" ? "maximized" : "docked");
@@ -93,6 +98,15 @@ export function TerminalBootstrap({
     panel.mode !== "closed",
   );
   const [splashPending, setSplashPending] = React.useState(true);
+  // While the panel is open it renders into the work area dock's slot if one
+  // is registered. The last slot is remembered until the substrate has fully
+  // unmounted, so a dock that closes does not make the terminal jump to the
+  // bottom dock for the 180ms it takes to hide. Sessions live in this
+  // component's state either way.
+  const hostSlotRef = React.useRef<HTMLElement | null>(null);
+  if (dockSlot) hostSlotRef.current = dockSlot;
+  else if (!panelMounted) hostSlotRef.current = null;
+  const hostSlot = hostSlotRef.current;
   const [viewportReportingEnabled, setViewportReportingEnabled] =
     React.useState(panel.mode !== "closed");
   const previousPanelModeRef = React.useRef(panel.mode);
@@ -280,8 +294,16 @@ export function TerminalBootstrap({
     );
   }, [sessions]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `panel.hostChannelId` re-runs this when a host starts showing the terminal for another channel; the body reads the live snapshot.
   React.useEffect(() => {
     if (panel.mode === "closed" || !available || !context) return;
+    // A host (the work area dock) decides, per channel, whether the terminal
+    // is on screen. On a channel switch this effect can run before the new
+    // channel's dock has said so; never spawn a PTY for a hidden terminal.
+    const live = getTerminalPanelSnapshot();
+    if (live.mode === "closed") return;
+    if (isTerminalPanelHosted() && live.hostChannelId !== context.channelId)
+      return;
     if (channelSessions.length === 0) createSession();
     else if (!channelSessions.some((session) => session.key === activeKey))
       setActiveKey(channelSessions.at(-1)?.key ?? null);
@@ -292,6 +314,7 @@ export function TerminalBootstrap({
     context,
     createSession,
     panel.mode,
+    panel.hostChannelId,
   ]);
 
   React.useEffect(() => {
@@ -358,8 +381,9 @@ export function TerminalBootstrap({
 
   if (!panelMounted) return null;
 
-  return (
+  const substrate = (
     <TerminalSubstrate
+      placement={hostSlot ? "embedded" : "bottom"}
       bracketedPaste={active?.frame?.bracketedPaste ?? false}
       channelName={active?.context.channelName ?? channelName}
       enabled={available && Boolean(context)}
@@ -435,4 +459,5 @@ export function TerminalBootstrap({
         }))}
     />
   );
+  return hostSlot ? createPortal(substrate, hostSlot) : substrate;
 }

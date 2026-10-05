@@ -96,6 +96,8 @@ export default defineConfig({
       testMatch: [
         "**/scout-branding.spec.ts",
         "**/workspace-file-links.spec.ts",
+        "**/work-area-dock.spec.ts",
+        "**/work-area-dock-screenshots.spec.ts",
         "**/first-reply-runtime.spec.ts",
         "**/connect-polish.spec.ts",
         "**/onboarding-scout-presence.spec.ts",
@@ -305,6 +307,8 @@ export default defineConfig({
       name: "integration",
       testMatch: [
         "**/workspace-file-links.spec.ts",
+        "**/work-area-dock.spec.ts",
+        "**/work-area-dock-screenshots.spec.ts",
         "**/account-auth.spec.ts",
         "**/colony-public-icons.spec.ts",
         "**/onboarding-agent-defaults.spec.ts",
