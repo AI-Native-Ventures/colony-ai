@@ -614,6 +614,9 @@ type E2eConfig = {
     /** Reject `apply_workspace` with this message, as a failed relay
      *  sign-in does in the real app. */
     applyCommunityError?: string;
+    /** Reject `apply_workspace` with the message mapped to the relay URL being
+     *  applied, so one community fails while another still connects. */
+    applyCommunityErrorByRelayUrl?: Record<string, string>;
     /** Reject `clear_pending_navigation_deep_links` with this message. */
     clearPendingNavigationDeepLinksError?: string;
     openDmDelayMs?: number;
@@ -19853,6 +19856,15 @@ export function maybeInstallE2eTauriMocks() {
         const applyError = activeConfig?.mock?.applyCommunityError;
         if (applyError) throw new Error(applyError);
         const relayUrl = (payload as { relayUrl?: unknown }).relayUrl;
+        const applyErrorByRelayUrl =
+          activeConfig?.mock?.applyCommunityErrorByRelayUrl;
+        if (
+          typeof relayUrl === "string" &&
+          applyErrorByRelayUrl &&
+          Object.hasOwn(applyErrorByRelayUrl, relayUrl)
+        ) {
+          throw new Error(applyErrorByRelayUrl[relayUrl]);
+        }
         if (
           isRelayMode(activeConfig) &&
           typeof relayUrl === "string" &&

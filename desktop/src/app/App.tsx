@@ -56,6 +56,7 @@ import {
 import { WelcomeSetup } from "@/features/communities/ui/WelcomeSetup";
 import { CommunityApplyErrorScreen } from "@/features/communities/ui/CommunityApplyErrorScreen";
 import { CommunityChangeOverlay } from "@/features/communities/ui/CommunityChangeOverlay";
+import { prepareCommunitySwitchFromFailure } from "@/app/prepareCommunitySwitch";
 import { setAvatarProfileSyncQueryClient } from "@/features/profile/avatarProfileSync";
 import { seedProjectSnapshot } from "@/features/projects/projectSnapshot";
 import { createBuzzQueryClient } from "@/shared/api/queryClient";
@@ -420,6 +421,14 @@ function CommunityApp({
     [activeCommunity?.id, switchCommunity],
   );
 
+  // The router is not mounted on failure screens, so leaving a failed
+  // community edits history directly instead of navigating.
+  const prepareLanding = useCallback(
+    (communityId: string) =>
+      prepareCommunitySwitchFromFailure(communityId, router.history),
+    [],
+  );
+
   const handleCommunityOnboardingConnect = useCallback(async () => {
     const transaction = communityOnboarding.transaction;
     if (transaction?.stage !== "connecting") return;
@@ -541,7 +550,8 @@ function CommunityApp({
         <>
           <CommunityApplyErrorScreen
             error={community.error}
-            onChangeCommunity={() => setIsCommunityChangeOpen(true)}
+            onEditCommunity={() => setIsCommunityChangeOpen(true)}
+            onPrepareLanding={prepareLanding}
             onRetry={reconnectCommunity}
           />
           {isCommunityChangeOpen ? (
@@ -611,6 +621,10 @@ function CommunityApp({
       {appContent}
       {isCommunityChangeOpen && transaction ? (
         <CommunityChangeOverlay
+          escape={{
+            onPrepareLanding: prepareLanding,
+            onEscaped: communityOnboarding.clear,
+          }}
           onClose={() => setIsCommunityChangeOpen(false)}
           onUpdated={(communityName, relayUrl) => {
             communityOnboarding.update({

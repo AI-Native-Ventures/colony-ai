@@ -2,17 +2,39 @@ import * as React from "react";
 
 import { useCommunities } from "../useCommunities";
 import { CommunityEditForm } from "./CommunityEditForm";
+import {
+  RemoveCommunityControl,
+  SwitchCommunityList,
+  useCommunityEscape,
+} from "./CommunityEscapeActions";
 
 type CommunityChangeOverlayProps = {
   onClose: () => void;
   onUpdated?: (name: string, relayUrl: string) => void;
+  /**
+   * Failure screens pass this to offer a way out of the failing community
+   * (switch to another one, or remove this one from the device).
+   */
+  escape?: {
+    onPrepareLanding?: (communityId: string) => void;
+    onEscaped?: () => void;
+  };
 };
 
 export function CommunityChangeOverlay({
   onClose,
   onUpdated,
+  escape: escapeOptions,
 }: CommunityChangeOverlayProps) {
   const { activeCommunity, updateCommunity } = useCommunities();
+  const escapeOnEscaped = escapeOptions?.onEscaped;
+  const exit = useCommunityEscape({
+    onPrepareLanding: escapeOptions?.onPrepareLanding,
+    onEscaped: React.useCallback(() => {
+      escapeOnEscaped?.();
+      onClose();
+    }, [escapeOnEscaped, onClose]),
+  });
   const [error, setError] = React.useState<string | null>(null);
   const overlayRef = React.useRef<HTMLDivElement>(null);
 
@@ -92,6 +114,18 @@ export function CommunityChangeOverlay({
         </div>
         {error ? (
           <p className="mt-4 text-center text-sm text-destructive">{error}</p>
+        ) : null}
+        {escapeOptions ? (
+          <div
+            className="mt-6 flex flex-col gap-3 border-t border-border pt-6"
+            data-testid="community-change-overlay-escape"
+          >
+            <p className="text-sm text-muted-foreground">
+              Not working? Leave this community instead.
+            </p>
+            <SwitchCommunityList exit={exit} />
+            <RemoveCommunityControl exit={exit} />
+          </div>
         ) : null}
       </div>
     </div>

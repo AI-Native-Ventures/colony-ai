@@ -455,6 +455,8 @@ type MockBridgeOptions = {
   applyCommunityDelayMs?: number;
   /** Reject `apply_workspace` with this message; see e2eBridge mock config. */
   applyCommunityError?: string;
+  /** Reject `apply_workspace` per relay URL; see e2eBridge mock config. */
+  applyCommunityErrorByRelayUrl?: Record<string, string>;
   /** Reject `clear_pending_navigation_deep_links` with this message. */
   clearPendingNavigationDeepLinksError?: string;
   openDmDelayMs?: number;
