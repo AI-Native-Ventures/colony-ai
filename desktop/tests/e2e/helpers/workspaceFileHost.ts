@@ -7,7 +7,11 @@ import { createWorkspaceFileService } from "../../../electron/workspace-files.mj
 
 export const FILE_AGENT = "a".repeat(64);
 
-const COMMANDS = ["resolve_agent_workspace_file", "read_agent_workspace_file"];
+const COMMANDS = [
+  "resolve_agent_workspace_file",
+  "read_agent_workspace_file",
+  "list_agent_workspace_files",
+];
 
 /** A real temp workspace with a few Markdown files, owned by the caller. */
 export async function createSampleWorkspace() {
@@ -21,6 +25,10 @@ export async function createSampleWorkspace() {
     path.join(root, "DAY1_VIDEO_PACK.md"),
     "# Day one video pack\n\n1. Record\n2. Review",
   );
+  // Things the listing must never show.
+  await writeFile(path.join(root, ".env"), "SECRET=1");
+  await writeFile(path.join(root, "credentials.md"), "# not for listing");
+  await writeFile(path.join(root, "logo.png"), "not text");
   return root;
 }
 
@@ -45,7 +53,9 @@ export async function installWorkspaceFileHost(page: Page, root: string) {
     (command: string, args: Record<string, unknown>) =>
       command === "read_agent_workspace_file"
         ? service.read(args)
-        : service.resolve(args),
+        : command === "list_agent_workspace_files"
+          ? service.list(args)
+          : service.resolve(args),
   );
   await page.addInitScript((commands) => {
     const w = window as typeof window & {

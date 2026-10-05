@@ -88,3 +88,53 @@ for (const viewport of [
     }
   });
 }
+
+// Files list and Canvas tab (second change): same two viewports.
+for (const viewport of [
+  { width: 1728, height: 1117 },
+  { width: 1440, height: 900 },
+]) {
+  test(`files list and canvas screenshots at ${viewport.width}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    const root = await createSampleWorkspace();
+    try {
+      await installWorkspaceFileHost(page, root);
+      await installMockBridge(page, {
+        managedAgents: [
+          { pubkey: FILE_AGENT, name: "Scout", status: "running" },
+        ],
+      });
+      await page.goto("/");
+      await page.getByTestId("channel-general").click();
+      await expect(page.getByTestId("chat-title")).toHaveText("general");
+      const dock = page.getByTestId("work-area-panel");
+
+      await page
+        .getByTestId("channel-view-tabs")
+        .getByRole("button", { name: "Files", exact: true })
+        .click();
+      await expect(
+        dock.getByRole("button", { name: /^DAY1_VIDEO_PACK\.md/ }),
+      ).toBeVisible();
+      await waitForAnimations(page);
+      await page.screenshot({ path: `${OUT}/dock-list-${viewport.width}.png` });
+
+      await page
+        .getByTestId("channel-view-tabs")
+        .getByRole("button", { name: "Canvas", exact: true })
+        .click();
+      await dock.getByTestId("channel-canvas-edit").click();
+      await dock
+        .getByTestId("channel-canvas-editor")
+        .fill("# Launch plan\n\n- Brief the team\n- Review the designs");
+      await waitForAnimations(page);
+      await page.screenshot({
+        path: `${OUT}/dock-canvas-${viewport.width}.png`,
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}

@@ -90,7 +90,9 @@ test.describe("work area dock", () => {
     ).toHaveCount(1);
     const panel = dock(page).getByRole("tabpanel", { name: "Files" });
     await expect(panel).toBeVisible();
-    await expect(panel).toContainText("Choose a file link");
+    // No local agent in this mock: the honest empty state, no fake files.
+    await expect(page.getByTestId("work-area-files-no-agent")).toBeVisible();
+    await expect(panel).toContainText("No agent workspace here yet");
 
     // Escape from the header closes the dock and returns focus to the opener.
     await filesTab.focus();
@@ -127,8 +129,15 @@ test.describe("work area dock", () => {
     });
     await expect(terminalTab).toHaveAttribute("aria-selected", "true");
     await expect(dock(page).locator(TERM)).toBeVisible();
-    // Both kinds are open, so there is nothing left to add.
-    await expect(page.getByTestId("work-area-add-tab")).toHaveCount(0);
+    // Only the kind that is not open yet is offered.
+    await page.getByTestId("work-area-add-tab").click();
+    await expect(page.getByTestId("work-area-add-canvas")).toBeVisible();
+    await expect(page.getByTestId("work-area-add-files")).toHaveCount(0);
+    await expect(page.getByTestId("work-area-add-terminal")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("work-area-add-canvas")).toHaveCount(0);
+    // Escape closed the menu, not the dock.
+    await expect(dock(page)).toBeVisible();
 
     // Manual activation: arrows move focus, Enter or Space activates. (The
     // terminal takes focus for itself when it is shown, so activating on
