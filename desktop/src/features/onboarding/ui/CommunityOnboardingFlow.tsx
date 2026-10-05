@@ -12,6 +12,11 @@ import {
   WELCOME_SURFACE_READY_EVENT,
 } from "../welcome";
 import { importIdentity } from "@/shared/api/tauriIdentity";
+import { getChannels } from "@/shared/api/tauriChannels";
+import { useCommunities } from "@/features/communities/useCommunities";
+import { isTerminalInviteMessage } from "../inviteFailure";
+import { pickMemberLandingChannel } from "../memberLanding";
+import { InviteClaimFailed } from "./InviteClaimFailed";
 import { relayClient } from "@/shared/api/relayClient";
 import { MembershipDenied } from "./MembershipDenied";
 import { getMyRelayMembershipLookup } from "@/shared/api/relayMembers";
@@ -37,6 +42,7 @@ export function CommunityOnboardingFlow({
   onIdentityRecovered: (pubkey: string) => void;
 }) {
   const { transaction, update, clear } = useCommunityOnboarding();
+  const { communities } = useCommunities();
   const queryClient = useQueryClient();
   const [pubkey, setPubkey] = React.useState("");
   React.useEffect(() => {
@@ -112,6 +118,17 @@ export function CommunityOnboardingFlow({
         throw new Error("relay_membership_required");
       await ensureOnboardingProfile(isCurrent);
       if (!isCurrent()) return;
+      if (transaction?.inviteCode) {
+        // Joined by invite: land in the workspace's shared channels. The
+        // private Welcome and business setup belong to the owner.
+        const landing = pickMemberLandingChannel(
+          (await getChannels(null)).channels ?? [],
+        );
+        if (!isCurrent()) return;
+        if (landing) window.location.hash = `/channels/${landing}`;
+        await finish();
+        return;
+      }
       const result = await initializeStarterChannels(queryClient, {
         focus: true,
         pubkey: identity.pubkey,
@@ -140,7 +157,15 @@ export function CommunityOnboardingFlow({
       });
       setIsPending(false);
     }
-  }, [finish, isPending, queryClient, relayUrl, update, transaction?.id]);
+  }, [
+    finish,
+    isPending,
+    queryClient,
+    relayUrl,
+    update,
+    transaction?.id,
+    transaction?.inviteCode,
+  ]);
 
   React.useEffect(() => {
     if (
@@ -215,6 +240,35 @@ export function CommunityOnboardingFlow({
                 update({ stage: "connecting", error: undefined });
                 onRetryConnect?.();
               }}
+            />
+          }
+        />
+      ) : stage === "claiming" &&
+        error &&
+        transaction.source !== "membership-recovery" ? (
+        <OnboardingScenePresentation
+          scene="community-entry-error"
+          data={{
+            hideProgress: transaction.source !== "first-community",
+            name: "",
+            email: "",
+            business: transaction.communityName,
+            website: "",
+            description: "",
+            scoutGuidance: {
+              status: "Your turn",
+              title: "Let’s sort out this invite.",
+              copy: "Your own workspace is safe. Choose how to carry on.",
+              pose: "waiting",
+            },
+          }}
+          contentOverride={
+            <InviteClaimFailed
+              canRetry={!isTerminalInviteMessage(error)}
+              hasWorkspace={communities.length > 0}
+              message={error}
+              onLeave={clear}
+              onRetry={retry}
             />
           }
         />

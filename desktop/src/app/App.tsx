@@ -769,7 +769,10 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
   const isDeepLink =
     transaction?.source === "deep-link-join" ||
     transaction?.source === "deep-link-connect";
-  const shouldAcknowledgeDeepLink = isDeepLink && !transaction.acknowledged;
+  // Links that carry an invite code are presented by the invite scene during
+  // first run; the gate remains for links with nothing to confirm.
+  const shouldAcknowledgeDeepLink =
+    isDeepLink && !transaction.acknowledged && !transaction.inviteCode;
 
   return (
     <>

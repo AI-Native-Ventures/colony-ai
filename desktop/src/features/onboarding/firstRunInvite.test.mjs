@@ -8,10 +8,13 @@ import {
   updateCommunityOnboardingTransaction,
 } from "./communityOnboarding.tsx";
 import {
-  describeInviteFailure,
   firstRunInviteFromTransaction,
   humanizeInviteHost,
 } from "./firstRunInvite.ts";
+import {
+  describeInviteFailure,
+  isTerminalInviteMessage,
+} from "./inviteFailure.ts";
 
 function createMemoryStorage(initial = {}) {
   const values = new Map(Object.entries(initial));
@@ -94,31 +97,63 @@ test("a pending invite survives a restart: it is read back from storage", () => 
   assert.equal(loadCommunityOnboardingTransaction(storage), null);
 });
 
-test("a failed invite claim is never persisted, so a relaunch is not trapped", () => {
+test("a terminally failed invite claim is never persisted, so a relaunch is not trapped", () => {
   const storage = createMemoryStorage();
   const started = startCommunityOnboarding(JOIN, storage);
   const failed = updateCommunityOnboardingTransaction(
     started,
-    { error: "invite_invalid" },
+    { error: describeInviteFailure(new Error("invite_invalid")).message },
     storage,
   );
-  assert.equal(failed.error, "invite_invalid");
+  assert.ok(failed.error);
   assert.equal(loadCommunityOnboardingTransaction(storage), null);
   assert.equal(firstRunInviteFromTransaction(failed), null);
 });
 
 test("a failed claim left by an older build is dropped on load", () => {
+  for (const legacy of [
+    "invite_invalid",
+    "invite_expired",
+    "This invite code has expired. Ask for a new one.",
+    "This invite has reached its use limit. Ask for a new invite.",
+  ]) {
+    const storage = createMemoryStorage();
+    const started = startCommunityOnboarding(JOIN, storage);
+    storage.setItem(
+      "buzz-community-onboarding-transaction.v1",
+      JSON.stringify({ ...started, error: legacy }),
+    );
+    assert.equal(loadCommunityOnboardingTransaction(storage), null, legacy);
+    assert.equal(
+      storage.getItem("buzz-community-onboarding-transaction.v1"),
+      null,
+    );
+  }
+});
+
+test("a retryable claim failure keeps its durable retry record", () => {
   const storage = createMemoryStorage();
   const started = startCommunityOnboarding(JOIN, storage);
-  storage.setItem(
-    "buzz-community-onboarding-transaction.v1",
-    JSON.stringify({ ...started, error: "invite_invalid" }),
+  updateCommunityOnboardingTransaction(
+    started,
+    { error: describeInviteFailure(new TypeError("Failed to fetch")).message },
+    storage,
   );
-  assert.equal(loadCommunityOnboardingTransaction(storage), null);
-  assert.equal(
-    storage.getItem("buzz-community-onboarding-transaction.v1"),
-    null,
+  assert.equal(loadCommunityOnboardingTransaction(storage)?.id, started.id);
+});
+
+test("a membership recovery keeps its retry record even after a terminal failure", () => {
+  const storage = createMemoryStorage();
+  const started = startCommunityOnboarding(
+    { ...JOIN, source: "membership-recovery" },
+    storage,
   );
+  updateCommunityOnboardingTransaction(
+    started,
+    { error: "This invite code has expired. Ask for a new one." },
+    storage,
+  );
+  assert.equal(loadCommunityOnboardingTransaction(storage)?.id, started.id);
 });
 
 test("a retried claim (error cleared) is persisted again", () => {
@@ -126,7 +161,7 @@ test("a retried claim (error cleared) is persisted again", () => {
   const started = startCommunityOnboarding(JOIN, storage);
   const failed = updateCommunityOnboardingTransaction(
     started,
-    { error: "boom" },
+    { error: "invite_invalid" },
     storage,
   );
   updateCommunityOnboardingTransaction(
@@ -135,6 +170,20 @@ test("a retried claim (error cleared) is persisted again", () => {
     storage,
   );
   assert.equal(loadCommunityOnboardingTransaction(storage)?.id, started.id);
+});
+
+test("terminal invite messages are recognised, retryable ones are not", () => {
+  for (const code of ["invite_expired", "invite_exhausted", "invite_invalid"]) {
+    assert.ok(
+      isTerminalInviteMessage(describeInviteFailure(new Error(code)).message),
+    );
+  }
+  assert.equal(
+    isTerminalInviteMessage(
+      describeInviteFailure(new TypeError("Failed to fetch")).message,
+    ),
+    false,
+  );
 });
 
 test("invite failures use plain words and say what to do next", () => {

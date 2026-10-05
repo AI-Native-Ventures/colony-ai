@@ -4,6 +4,8 @@ import {
 } from "@/features/communities/communityStorage";
 import { setLocalStorageItemWithRecovery } from "@/shared/lib/localStorageQuota";
 
+import { isTerminalInviteMessage } from "./inviteFailure";
+
 const STORAGE_KEY = "buzz-community-onboarding-transaction.v1";
 
 export type CommunityOnboardingSource =
@@ -125,12 +127,21 @@ function isTransaction(
 }
 
 /**
- * A failed invite claim must never outlive the screen that reported it. A
- * persisted failed claim relaunches into a dead-end "isn't ready yet" screen
- * with no route back to the person's own workspace.
+ * A claim that failed in a way no retry can fix must never outlive the screen
+ * that reported it: persisted, it relaunches into a dead-end "isn't ready yet"
+ * screen with no route back to the person's own workspace. Retryable failures
+ * stay durable (they keep their retry record), and so does a membership
+ * recovery, whose retry record is deliberate.
  */
-function isFailedInviteClaim(transaction: CommunityOnboardingTransaction) {
-  return transaction.stage === "claiming" && Boolean(transaction.error);
+function isUnrecoverableInviteClaim(
+  transaction: CommunityOnboardingTransaction,
+) {
+  return (
+    transaction.stage === "claiming" &&
+    transaction.source !== "membership-recovery" &&
+    Boolean(transaction.error) &&
+    isTerminalInviteMessage(transaction.error ?? "")
+  );
 }
 
 export function loadCommunityOnboardingTransaction(
@@ -141,7 +152,7 @@ export function loadCommunityOnboardingTransaction(
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (!isTransaction(parsed)) return null;
-    if (isFailedInviteClaim(parsed)) {
+    if (isUnrecoverableInviteClaim(parsed)) {
       // Left behind by an older build: drop it so this launch is not trapped.
       storage.removeItem(STORAGE_KEY);
       return null;
@@ -156,8 +167,8 @@ export function saveCommunityOnboardingTransaction(
   transaction: CommunityOnboardingTransaction,
   storage: Storage = localStorage,
 ): void {
-  if (isFailedInviteClaim(transaction)) {
-    // The failure stays on screen in memory only; see isFailedInviteClaim.
+  if (isUnrecoverableInviteClaim(transaction)) {
+    // The failure stays on screen in memory only; see isUnrecoverableInviteClaim.
     storage.removeItem(STORAGE_KEY);
     return;
   }

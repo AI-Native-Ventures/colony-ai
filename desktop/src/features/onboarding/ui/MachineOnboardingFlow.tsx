@@ -58,6 +58,12 @@ import {
 import type { DefaultConfigDraft } from "./types";
 import { useCommunityOnboarding } from "../communityOnboarding";
 import {
+  firstRunInviteFromTransaction,
+  type FirstRunInvite,
+} from "../firstRunInvite";
+import { readRememberedSignupName } from "../onboardingProfile";
+import { InviteBrand, InviteJoinScene, InviteLinkScene } from "./InviteScenes";
+import {
   BusinessSetupStep,
   businessCommunityRelayUrl,
   readOnboardingBusinessProfile,
@@ -132,6 +138,21 @@ export function MachineOnboardingFlow({
   const [identityWasImported, setIdentityWasImported] = React.useState(false);
   const [accountAuthenticated, setAccountAuthenticated] = React.useState(false);
   const communityOnboarding = useCommunityOnboarding();
+  // A workspace invite waiting for this person (deep link or pasted link). It
+  // lives in the persisted transaction, so it survives a restart mid sign-up.
+  const pendingInvite = firstRunInviteFromTransaction(
+    communityOnboarding.transaction,
+  );
+  const pendingInviteRef = React.useRef(pendingInvite);
+  pendingInviteRef.current = pendingInvite;
+  // Held while the invite scene is up, so a failed claim can keep explaining
+  // itself after the failed transaction has been dropped.
+  const [inviteSnapshot, setInviteSnapshot] =
+    React.useState<FirstRunInvite | null>(null);
+  const [accountIdentity, setAccountIdentity] = React.useState({
+    email: "",
+    name: "",
+  });
   const [createdCommunity, setCreatedCommunity] =
     React.useState<SelfServeCommunity | null>(null);
   const [businessProfile, setBusinessProfile] =
@@ -331,6 +352,19 @@ export function MachineOnboardingFlow({
       setSelectedPubkey(identity.pubkey);
       setIdentityStorage(identity.storage);
       setBusinessListError(null);
+      setAccountIdentity({
+        email: account.email,
+        name: readRememberedSignupName(account.email),
+      });
+      // Invited people join the workspace they were invited to. They are
+      // never sent to create a business of their own.
+      const invite = pendingInviteRef.current;
+      if (invite) {
+        setInviteSnapshot(invite);
+        setTransitionDirection("forward");
+        setPage("invite");
+        return;
+      }
       try {
         const httpBase = await getSelfProvisioningHttpBase();
         const mine = await listMyCommunities(httpBase);
@@ -424,6 +458,23 @@ export function MachineOnboardingFlow({
     setPage("setup");
   }, [configBackTarget]);
 
+  // A link opened (or pasted) while the person is already signed in becomes the
+  // invite scene instead of a stray business form or a second sign-in.
+  const inviteCode = pendingInvite?.code;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: inviteCode re-runs this when a new invite arrives; the invite itself is read from the ref.
+  React.useEffect(() => {
+    const invite = pendingInviteRef.current;
+    if (
+      !invite ||
+      !accountAuthenticated ||
+      (page !== "business" && page !== "businesses" && page !== "account-auth")
+    )
+      return;
+    setInviteSnapshot(invite);
+    setTransitionDirection("forward");
+    setPage("invite");
+  }, [accountAuthenticated, inviteCode, page]);
+
   const chromeBackAction =
     page === "identity-key-help"
       ? {
@@ -468,10 +519,81 @@ export function MachineOnboardingFlow({
                     }
                   : undefined;
 
+  if (page === "invite-link") {
+    return (
+      <InviteLinkScene
+        onBack={() => {
+          setTransitionDirection("backward");
+          setPage("account-auth");
+        }}
+        onContinue={(target) => {
+          const started = communityOnboarding.start({
+            source: "first-community",
+            firstCommunityPage: "join",
+            relayUrl: target.relayUrl,
+            inviteCode: target.code,
+          });
+          if (!started) {
+            return "Another workspace setup is already in progress. Finish it first.";
+          }
+          setTransitionDirection("forward");
+          setPage("account-auth");
+          return null;
+        }}
+      />
+    );
+  }
+
+  if (page === "invite" && inviteSnapshot && selectedPubkey) {
+    return (
+      <InviteJoinScene
+        email={accountIdentity.email}
+        invite={inviteSnapshot}
+        name={accountIdentity.name}
+        onCreateOwnBusiness={() => {
+          communityOnboarding.clear();
+          setBusinessBackPage("account-auth");
+          setTransitionDirection("forward");
+          setPage("business");
+        }}
+        onJoined={() => {
+          communityOnboarding.update({
+            stage: "connecting",
+            communityName: inviteSnapshot.businessName,
+            error: undefined,
+          });
+          complete(selectedPubkey);
+        }}
+        onTerminalFailure={communityOnboarding.clear}
+        onUseAnotherAccount={() => {
+          setAccountAuthenticated(false);
+          setTransitionDirection("backward");
+          setPage("account-auth");
+        }}
+        onUseAnotherLink={() => {
+          communityOnboarding.clear();
+          setTransitionDirection("forward");
+          setPage("invite-link");
+        }}
+      />
+    );
+  }
+
   if (page === "account-auth") {
     return (
       <AccountAuthFlow
         authClient={authClient}
+        inviteBrand={
+          pendingInvite ? <InviteBrand invite={pendingInvite} /> : undefined
+        }
+        onHaveInviteLink={
+          pendingInvite
+            ? undefined
+            : () => {
+                setTransitionDirection("forward");
+                setPage("invite-link");
+              }
+        }
         onAdvanced={() => {
           setAccountAuthenticated(false);
           setTransitionDirection("forward");

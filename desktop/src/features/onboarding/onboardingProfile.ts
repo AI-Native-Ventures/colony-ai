@@ -11,6 +11,19 @@ export function rememberSignupName(email: string, name: string) {
   );
 }
 
+/** The name typed at sign-up for this email, or "" when none was kept. */
+export function readRememberedSignupName(email: string): string {
+  try {
+    return (
+      localStorage
+        .getItem(`${SIGNUP_NAME_KEY}:${email.trim().toLowerCase()}`)
+        ?.trim() ?? ""
+    );
+  } catch {
+    return "";
+  }
+}
+
 async function readWithDeadline<T>(
   request: Promise<T>,
   timeoutMs: number,

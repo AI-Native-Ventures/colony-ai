@@ -3,7 +3,7 @@ import * as React from "react";
 import { useCommunityOnboarding } from "@/features/onboarding/communityOnboarding";
 import { claimInvite } from "@/shared/api/invites";
 
-import { describeInviteFailure } from "./firstRunInvite";
+import { describeInviteFailure } from "./inviteFailure";
 
 /**
  * Drive the `claiming` stage after machine onboarding completes: claim the
