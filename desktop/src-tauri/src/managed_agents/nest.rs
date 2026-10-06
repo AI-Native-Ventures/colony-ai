@@ -41,9 +41,9 @@ const NEST_DIRS: &[&str] = &[
 /// Fully static — no runtime interpolation, no secrets, no user paths.
 pub(crate) const AGENTS_MD: &str = include_str!("nest_agents.md");
 
-/// Default SKILL.md content for the buzz-cli skill.
-/// Written to ~/.buzz/.agents/skills/buzz-cli/SKILL.md on first init.
-const BUZZ_CLI_SKILL_MD: &str = include_str!("nest_skill.md");
+/// Default SKILL.md content for the colony-cli skill.
+/// Written to `<nest>/.agents/skills/colony-cli/SKILL.md` on first init.
+const COLONY_CLI_SKILL_MD: &str = include_str!("nest_skill.md");
 
 /// Template content version for AGENTS.md static content (above managed markers).
 /// Bump this when changing `nest_agents.md` to trigger refresh on existing installs.
@@ -52,13 +52,25 @@ const NEST_AGENTS_VERSION: u32 = 6;
 
 /// Template content version for SKILL.md.
 /// Bump this when changing `nest_skill.md` to trigger refresh on existing installs.
-const NEST_SKILL_VERSION: u32 = 6;
+/// Version 7 renamed the skill from `buzz-cli` to `colony-cli`.
+const NEST_SKILL_VERSION: u32 = 7;
 
 const BEGIN_MARKER: &str = "<!-- BEGIN BUZZ MANAGED";
 const END_MARKER: &str = "<!-- END BUZZ MANAGED -->";
 
+/// Directory name of the generated CLI skill, under the canonical skills
+/// directory and under every harness-specific skills directory.
+const SKILL_NAME: &str = "colony-cli";
+
 /// Canonical skill directory path relative to the nest root.
-const CANONICAL_SKILL_DIR: &str = ".agents/skills/buzz-cli";
+const CANONICAL_SKILL_DIR: &str = ".agents/skills/colony-cli";
+
+/// Name the generated CLI skill had before it was renamed to [`SKILL_NAME`].
+/// Only [`retire_legacy_skill_entries`] still touches it.
+const LEGACY_SKILL_NAME: &str = "buzz-cli";
+
+/// Canonical directory of the legacy skill, relative to the nest root.
+const LEGACY_CANONICAL_SKILL_DIR: &str = ".agents/skills/buzz-cli";
 
 /// Nest directory name for production builds.
 const NEST_DIR_PROD: &str = ".buzz";
@@ -115,9 +127,10 @@ pub fn ensure_nest() -> Result<(), String> {
 ///
 /// - Creates the root directory and all subdirectories.
 /// - Writes `AGENTS.md` only if it doesn't already exist.
-/// - Writes `.agents/skills/buzz-cli/SKILL.md` only if it doesn't already exist.
+/// - Writes `.agents/skills/colony-cli/SKILL.md` only if it doesn't already exist.
 /// - Creates harness-specific symlinks pointing to the canonical
-///   `.agents/skills/buzz-cli` directory for each known provider.
+///   `.agents/skills/colony-cli` directory for each known provider.
+/// - Retires the generated `buzz-cli` skill entries left by earlier builds.
 /// - Sets 700 permissions on the root, all subdirectories, and the skill
 ///   directory tree (Unix).
 ///
@@ -181,9 +194,8 @@ pub fn ensure_nest_at(root: &Path) -> Result<(), String> {
         }
     }
 
-    // Write buzz-cli skill to the harness-agnostic .agents path.
-    // The first-init write uses the new canonical path; migration from
-    // the old .claude path is handled in refresh_skill_md_if_stale.
+    // Write the colony-cli skill to the harness-agnostic .agents path.
+    // Entries of the pre-rename buzz-cli skill are retired below.
     let agents_skill_dir = root.join(CANONICAL_SKILL_DIR);
     fs::create_dir_all(&agents_skill_dir)
         .map_err(|e| format!("create {}: {e}", agents_skill_dir.display()))?;
@@ -196,7 +208,7 @@ pub fn ensure_nest_at(root: &Path) -> Result<(), String> {
     {
         Ok(mut file) => {
             use std::io::Write;
-            file.write_all(BUZZ_CLI_SKILL_MD.as_bytes())
+            file.write_all(COLONY_CLI_SKILL_MD.as_bytes())
                 .map_err(|e| format!("write {}: {e}", skill_md.display()))?;
         }
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
@@ -206,13 +218,17 @@ pub fn ensure_nest_at(root: &Path) -> Result<(), String> {
     }
 
     // Create harness-specific symlinks for all known providers.
-    // Migration of the old .claude/skills/buzz-cli real dir is handled in
-    // refresh_skill_md_if_stale; ensure_skill_symlinks skips paths that already exist.
+    // ensure_skill_symlinks skips paths that already exist.
     ensure_skill_symlinks(root)?;
 
     // Refresh static content if the embedded template version is newer.
     refresh_agents_md_if_stale(root)?;
     refresh_skill_md_if_stale(root)?;
+
+    // The colony-cli skill is now in place, so the pre-rename skill can go.
+    // Runs on every call, not only on a version bump: an older build that is
+    // launched once and then upgraded again recreates the legacy entries.
+    retire_legacy_skill_entries(root)?;
 
     // Set owner-only permissions on root and all subdirectories.
     // Skip any path that is a symlink — chmod would affect the target.
@@ -286,7 +302,7 @@ fn ensure_skill_symlinks(root: &Path) -> Result<(), String> {
     for skill_dir in known_skill_dirs() {
         let parent = root.join(skill_dir);
         fs::create_dir_all(&parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
-        let link = parent.join("buzz-cli");
+        let link = parent.join(SKILL_NAME);
         if link.symlink_metadata().is_ok() {
             continue; // symlink or real path exists — skip
         }
@@ -435,30 +451,13 @@ fn refresh_agents_md_if_stale(root: &Path) -> Result<(), String> {
 
 /// Refresh SKILL.md if the template version has changed.
 ///
-/// SKILL.md has no user-editable sections — it is fully overwritten on version bump.
+/// SKILL.md has no user-editable sections, so it is fully overwritten on version bump.
 fn refresh_skill_md_if_stale(root: &Path) -> Result<(), String> {
-    let agents_skill_dir = root.join(".agents/skills/buzz-cli");
+    let agents_skill_dir = root.join(CANONICAL_SKILL_DIR);
     let version_path = agents_skill_dir.join(".skill-version");
     if read_version_file(&version_path) >= NEST_SKILL_VERSION {
         return Ok(());
     }
-
-    // Migration: if .claude/skills/buzz-cli exists as a real directory
-    // (pre-migration install), copy user's SKILL.md to the new location
-    // then remove the old directory so we can replace it with a symlink.
-    let old_skill_dir = root.join(".claude/skills/buzz-cli");
-    let old_is_real_dir = old_skill_dir
-        .symlink_metadata()
-        .map(|m| m.file_type().is_dir())
-        .unwrap_or(false);
-
-    let skill_content = if old_is_real_dir {
-        // Preserve user-edited content during migration.
-        fs::read_to_string(old_skill_dir.join("SKILL.md"))
-            .unwrap_or_else(|_| BUZZ_CLI_SKILL_MD.to_string())
-    } else {
-        BUZZ_CLI_SKILL_MD.to_string()
-    };
 
     // Ensure the canonical .agents skill directory exists.
     fs::create_dir_all(&agents_skill_dir)
@@ -470,25 +469,19 @@ fn refresh_skill_md_if_stale(root: &Path) -> Result<(), String> {
         .map_err(|e| format!("tempfile in {}: {e}", agents_skill_dir.display()))?;
     {
         use std::io::Write;
-        tmp.write_all(skill_content.as_bytes())
+        tmp.write_all(COLONY_CLI_SKILL_MD.as_bytes())
             .map_err(|e| format!("write tempfile: {e}"))?;
     }
     tmp.persist(&skill_md)
         .map_err(|e| format!("persist {}: {e}", skill_md.display()))?;
 
-    // Replace old real directory with a symlink.
-    if old_is_real_dir {
-        fs::remove_dir_all(&old_skill_dir)
-            .map_err(|e| format!("remove {}: {e}", old_skill_dir.display()))?;
-    }
-
-    // Create/replace the .claude/skills/buzz-cli symlink.
+    // Create/replace the .claude/skills/colony-cli symlink.
     #[cfg(unix)]
     {
         let claude_skills_dir = root.join(".claude/skills");
         fs::create_dir_all(&claude_skills_dir)
             .map_err(|e| format!("create {}: {e}", claude_skills_dir.display()))?;
-        let symlink_path = root.join(".claude/skills/buzz-cli");
+        let symlink_path = claude_skills_dir.join(SKILL_NAME);
         // Remove any stale symlink before (re)creating.
         let symlink_exists = symlink_path
             .symlink_metadata()
@@ -499,7 +492,7 @@ fn refresh_skill_md_if_stale(root: &Path) -> Result<(), String> {
                 .map_err(|e| format!("remove symlink {}: {e}", symlink_path.display()))?;
         }
         create_symlink(
-            std::path::Path::new("../../.agents/skills/buzz-cli"),
+            std::path::Path::new(&format!("../../{CANONICAL_SKILL_DIR}")),
             &symlink_path,
         )
         .map_err(|e| format!("symlink {}: {e}", symlink_path.display()))?;
@@ -509,6 +502,77 @@ fn refresh_skill_md_if_stale(root: &Path) -> Result<(), String> {
         .map_err(|e| format!("write {}: {e}", version_path.display()))?;
 
     Ok(())
+}
+
+/// Remove the generated `buzz-cli` skill entries that builds before the
+/// `colony-cli` rename left in the nest, so agents list one CLI skill and the
+/// old name never reaches them.
+///
+/// Move-only and exact: it removes only what Colony itself generated, namely the
+/// harness symlinks that point at the legacy canonical directory, the legacy
+/// `SKILL.md` and `.skill-version`, and the legacy directories once they are
+/// empty. Anything else a user or another tool put in those places stays.
+/// Failures other than "already gone" or "not empty" propagate so the next boot
+/// retries; nothing here is skipped silently.
+fn retire_legacy_skill_entries(root: &Path) -> Result<(), String> {
+    for skill_dir in known_skill_dirs() {
+        let link = root.join(skill_dir).join(LEGACY_SKILL_NAME);
+        let metadata = match link.symlink_metadata() {
+            Ok(metadata) => metadata,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(format!("stat {}: {e}", link.display())),
+        };
+        if metadata.file_type().is_symlink() {
+            let depth = Path::new(skill_dir).components().count();
+            let generated_target = format!("{}{LEGACY_CANONICAL_SKILL_DIR}", "../".repeat(depth));
+            let points_at_legacy_skill = fs::read_link(&link)
+                .map(|target| target == Path::new(&generated_target))
+                .map_err(|e| format!("read link {}: {e}", link.display()))?;
+            if points_at_legacy_skill {
+                fs::remove_file(&link)
+                    .map_err(|e| format!("remove symlink {}: {e}", link.display()))?;
+            }
+        } else if metadata.file_type().is_dir() {
+            // Pre-`.agents` layout: a real directory holding a copy of the skill.
+            remove_generated_skill_dir(&link)?;
+        }
+    }
+    remove_generated_skill_dir(&root.join(LEGACY_CANONICAL_SKILL_DIR))
+}
+
+/// Delete the files Colony generates inside a skill directory, then the
+/// directory itself if nothing else is left in it. A symlink or anything that
+/// is not a plain directory is not ours and is left alone.
+fn remove_generated_skill_dir(dir: &Path) -> Result<(), String> {
+    match dir.symlink_metadata() {
+        Ok(metadata) if metadata.file_type().is_dir() => {}
+        Ok(_) => return Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(format!("stat {}: {e}", dir.display())),
+    }
+    for generated in ["SKILL.md", ".skill-version"] {
+        let path = dir.join(generated);
+        match fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("remove {}: {e}", path.display())),
+        }
+    }
+    match fs::remove_dir(dir) {
+        Ok(()) => Ok(()),
+        // Something Colony did not generate lives here, so the directory stays.
+        Err(e)
+            if matches!(
+                e.kind(),
+                io::ErrorKind::NotFound
+                    | io::ErrorKind::DirectoryNotEmpty
+                    | io::ErrorKind::AlreadyExists
+            ) =>
+        {
+            Ok(())
+        }
+        Err(e) => Err(format!("remove {}: {e}", dir.display())),
+    }
 }
 
 fn escape_md_cell(s: &str) -> String {

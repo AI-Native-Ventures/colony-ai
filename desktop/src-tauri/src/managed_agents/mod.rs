@@ -14,6 +14,7 @@ pub(crate) use agent_description::{effective_agent_description, record_effective
 mod backend;
 pub(crate) mod bestie_assignment;
 pub(crate) mod claude_config;
+mod colony_command;
 pub(crate) mod config_bridge;
 pub(crate) mod custom_harnesses;
 mod definition_validation;
@@ -74,6 +75,7 @@ pub(crate) fn lock_env_mutex() -> std::sync::MutexGuard<'static, ()> {
 }
 
 pub use backend::*;
+pub use colony_command::ensure_agent_command_link;
 pub(crate) use definition_validation::{
     validate_agent_definition_text, validate_agent_description_text,
     validate_managed_agent_definition_text, validate_visible_text,

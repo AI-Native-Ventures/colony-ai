@@ -649,7 +649,7 @@ buzz users set-profile 2>&1; echo "exit: $?"
 # Exit 3: No auth configured
 env -u BUZZ_PRIVATE_KEY \
   cargo run -p buzz-cli -- channels list 2>&1; echo "exit: $?"
-# stderr: {"error":"auth_error","message":"auth error: BUZZ_PRIVATE_KEY is required (use --private-key or set env var)"}
+# stderr: {"error":"auth_error","message":"auth error: no identity key is configured (run this from a Colony agent, or pass --private-key)"}
 # exit: 3
 
 # Not-found returns null, not an error (exit 0)
@@ -672,7 +672,7 @@ BUZZ_PRIVATE_KEY="nsec1..." buzz channels list | jq .
 # No auth → exit 3
 env -u BUZZ_PRIVATE_KEY \
   cargo run -p buzz-cli -- channels list 2>&1; echo "exit: $?"
-# stderr: {"error":"auth_error","message":"auth error: BUZZ_PRIVATE_KEY is required (use --private-key or set env var)"}
+# stderr: {"error":"auth_error","message":"auth error: no identity key is configured (run this from a Colony agent, or pass --private-key)"}
 # exit: 3
 ```
 

@@ -86,8 +86,8 @@ const REPLY_GUARD_SERVER: &str = "buzz-agent";
 /// Explicitly licenses silence. The base prompt tells agents that publishing is
 /// optional and "silence is usually correct"; a reminder that argued otherwise
 /// would fight that instruction and make agents chattier.
-const REPLY_GUARD_NAG: &str = "You are about to end this turn without calling `buzz messages send`. \
-Your assistant text and reasoning are never shown to anyone — if you did work, found an answer, \
+const REPLY_GUARD_NAG: &str = "You are about to end this turn without calling `colony messages send`. \
+Your assistant text and reasoning are never shown to anyone. If you did work, found an answer, \
 or hit a blocker that someone is waiting on, it exists only if you publish it. \
 If you already posted, or if silence is genuinely correct for this turn, ignore this and end your turn.";
 
@@ -1454,6 +1454,11 @@ mod tests {
     #[test]
     fn reply_shape_matches_documented_send_forms() {
         for cmd in [
+            "colony messages send --channel X --content Y",
+            "colony --relay wss://r messages send --channel X --content Y",
+            "/abs/path/colony messages send",
+            "printf 'hi' | colony messages send --content -",
+            "colony reactions add --event E --emoji +",
             "buzz messages send --channel X --content Y",
             "buzz --relay wss://r messages send --channel X --content Y",
             "/abs/path/buzz messages send",
@@ -1468,6 +1473,15 @@ mod tests {
                 "expected {cmd:?} to count as a publish attempt"
             );
         }
+    }
+
+    /// The reminder an agent reads names the command agents are taught, and
+    /// never the old product name.
+    #[test]
+    fn reply_guard_nag_names_the_colony_command() {
+        assert!(REPLY_GUARD_NAG.contains("`colony messages send`"));
+        assert!(!REPLY_GUARD_NAG.to_ascii_lowercase().contains("buzz"));
+        assert!(!REPLY_GUARD_NAG.contains('\u{2014}'));
     }
 
     /// Commands that do real work but do not reply in the originating
