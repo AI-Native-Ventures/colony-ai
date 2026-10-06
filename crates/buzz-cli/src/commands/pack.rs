@@ -1,4 +1,4 @@
-//! `colony pack` subcommands — local persona pack operations.
+//! `colony pack` subcommands, local persona pack operations.
 //!
 //! These commands operate on local pack directories. No relay connection needed.
 

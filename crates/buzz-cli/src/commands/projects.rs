@@ -1,4 +1,4 @@
-//! `colony projects` commands — NIP-MP kind:30621 write path.
+//! `colony projects` commands, NIP-MP kind:30621 write path.
 //!
 //! All mutations follow a read-modify-write pattern:
 //!   1. Fetch the caller's own live head via `kinds:[30621] + authors:[self] + #d:[slug]`.

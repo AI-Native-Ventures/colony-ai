@@ -23,7 +23,7 @@ pub enum CliError {
     Key(String),
 
     /// Relay accepted the event but reported it as superseded by a newer
-    /// head — used by `colony mem` set/rm to surface NIP-33 LWW conflicts.
+    /// head, used by `colony mem` set/rm to surface NIP-33 LWW conflicts.
     #[error("conflict: {0}")]
     Conflict(String),
 

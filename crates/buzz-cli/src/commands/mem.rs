@@ -1,12 +1,12 @@
-//! `colony mem` — agent-side engram management (NIP-AE).
+//! `colony mem` - agent-side engram management (NIP-AE).
 //!
 //! Subcommands:
-//! - `colony mem ls`                   — list non-tombstoned memories
-//! - `colony mem get <slug>`            — print the value to stdout
-//! - `colony mem hash <slug>`           — print sha256(value) hex
-//! - `colony mem set <slug> <value|-> ` — write a value (use `-` for stdin)
-//! - `colony mem patch <slug>`          — apply a unified diff to the current value
-//! - `colony mem rm <slug>`             — publish a tombstone
+//! - `colony mem ls`                   - list non-tombstoned memories
+//! - `colony mem get <slug>`            - print the value to stdout
+//! - `colony mem hash <slug>`           - print sha256(value) hex
+//! - `colony mem set <slug> <value|-> ` - write a value (use `-` for stdin)
+//! - `colony mem patch <slug>`          - apply a unified diff to the current value
+//! - `colony mem rm <slug>`             - publish a tombstone
 //!
 //! By default, the caller's `BUZZ_PRIVATE_KEY` is the agent's nsec. The
 //! agent's owner pubkey is resolved from `BUZZ_AUTH_TAG` (NIP-OA attestation)
@@ -184,7 +184,7 @@ async fn fetch_head(
     Ok((Some(head), body))
 }
 
-/// `colony mem ls` — list non-tombstoned memory entries.
+/// `colony mem ls` - list non-tombstoned memory entries.
 pub async fn cmd_ls(
     client: &BuzzClient,
     owner_flag: Option<&str>,
@@ -270,7 +270,7 @@ pub async fn cmd_ls(
     Ok(())
 }
 
-/// `colony mem get <slug>` — print value (memory) or profile (core) to stdout.
+/// `colony mem get <slug>` - print value (memory) or profile (core) to stdout.
 ///
 /// Exit codes: 0 on found, 1 on absent or tombstoned.
 pub async fn cmd_get(
@@ -290,7 +290,7 @@ pub async fn cmd_get(
             Err(CliError::NotFound(format!("tombstoned: {slug}")))
         }
         Some(Body::Memory { value: Some(v), .. }) => {
-            // Raw stdout, no trailing newline — round-trips with `colony mem set foo -`.
+            // Raw stdout, no trailing newline, round-trips with `colony mem set foo -`.
             std::io::stdout()
                 .write_all(v.as_bytes())
                 .map_err(|e| CliError::Other(e.to_string()))
@@ -301,7 +301,7 @@ pub async fn cmd_get(
     }
 }
 
-/// `colony mem set <slug> <value|->` — write a value or core profile.
+/// `colony mem set <slug> <value|->` - write a value or core profile.
 ///
 /// Pass `-` to read the value from stdin.
 ///
@@ -498,7 +498,7 @@ async fn fetch_value(
     }
 }
 
-/// `colony mem hash <slug>` — print sha256(value) in hex to stdout.
+/// `colony mem hash <slug>` - print sha256(value) in hex to stdout.
 ///
 /// The output is a 64-character hex digest followed by a newline (line-
 /// oriented for shell use). Use this to capture a base-hash before editing,
@@ -518,7 +518,7 @@ pub async fn cmd_hash(
     Ok(())
 }
 
-/// `colony mem patch <slug>` — apply a unified diff to the current value.
+/// `colony mem patch <slug>` - apply a unified diff to the current value.
 ///
 /// Reads a unified diff from stdin (or `--patch-file <path>`), fetches the
 /// current head, applies the diff with **strict context matching** (no
@@ -696,7 +696,7 @@ pub async fn cmd_patch(
     Ok(())
 }
 
-/// `colony mem rm <slug>` — publish a tombstone (`value: null`).
+/// `colony mem rm <slug>` - publish a tombstone (`value: null`).
 ///
 /// `rm core` writes a tombstone-shaped body, but a core tombstone has no
 /// well-defined semantics in NIP-AE (the spec only defines tombstones for
