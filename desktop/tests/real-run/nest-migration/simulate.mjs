@@ -483,6 +483,15 @@ export async function simulateMigration(home, options) {
  * to it from the harness folders. Idempotent. Shared by the fake app and the unit tests.
  */
 export async function provisionSkill(folder) {
+  // The host regenerates the managed section of AGENTS.md at boot and writes the Colony markers in place (PR 249).
+  const agents = path.join(folder, "AGENTS.md");
+  if (await exists(agents)) {
+    const text = await readFile(agents, "utf8");
+    const next = text
+      .replace(/^<!-- BEGIN BUZZ MANAGED[^\n]*$/mu, "<!-- BEGIN COLONY MANAGED - regenerated automatically, do not edit below -->")
+      .replace(/^<!-- END BUZZ MANAGED -->/mu, "<!-- END COLONY MANAGED -->");
+    if (next !== text) await writeFile(agents, next);
+  }
   const skill = path.join(folder, ".agents", "skills", "colony-cli");
   if (await exists(skill)) return;
   await mkdir(skill, { recursive: true });

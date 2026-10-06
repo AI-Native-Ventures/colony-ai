@@ -180,7 +180,7 @@ function refreshAgentsMd(folder) {
   const agentsFile = path.join(folder, "AGENTS.md");
   if (!present(stampFile) || !present(agentsFile)) return;
   const stamp = Number.parseInt(readFileSync(stampFile, "utf8"), 10);
-  if (!(stamp < HOST_AGENTS_VERSION)) return;
+  // The real host regenerates the managed section at every boot and writes the Colony markers in place, whatever the stamp.
   const text = readFileSync(agentsFile, "utf8")
     .replace(
       /^<!-- BEGIN BUZZ MANAGED[^\n]*$/m,
@@ -188,7 +188,7 @@ function refreshAgentsMd(folder) {
     )
     .replace(/^<!-- END BUZZ MANAGED -->/m, "<!-- END COLONY MANAGED -->");
   writeFileSync(agentsFile, text);
-  writeFileSync(stampFile, `${HOST_AGENTS_VERSION}\n`);
+  if (stamp < HOST_AGENTS_VERSION) writeFileSync(stampFile, `${HOST_AGENTS_VERSION}\n`);
 }
 
 /** What ensure_nest does for the chosen folder: markers on a new folder, the refresh of an old one, the skill the new folder owns. */
