@@ -186,14 +186,24 @@ export async function newProfile(label) {
   return { privateDir, userDataDir };
 }
 
-export async function waitForLoad(max = 12, timeoutMs = 20 * 60 * 1000) {
+// Wait for a quiet machine (1 minute load average below `max`). The final 1.0.5 gate ran on a Mac that other
+// agents kept at a load of 15 to 22 for hours, so the wait is capped (GATE_LOAD_CAP_MS, default 90 s) and the
+// launch then proceeds alone at low priority through heavy.sh; the cap being hit is logged, never hidden.
+export async function waitForLoad(
+  max = 12,
+  timeoutMs = Number(process.env.GATE_LOAD_CAP_MS ?? 90000),
+) {
   const end = Date.now() + timeoutMs;
   while (Date.now() < end) {
     const load = os.loadavg()[0];
     if (load < max) return load;
     await sleep(10000);
   }
-  throw new Error("Load gate not reached");
+  const load = os.loadavg()[0];
+  await progress(
+    `load gate cap reached after ${timeoutMs} ms, load ${load.toFixed(1)} (>= ${max}); launching anyway, one launch at a time under heavy.sh`,
+  );
+  return load;
 }
 
 // Launch the published app under the keychain-deny policy with a given user-data dir.
@@ -215,14 +225,18 @@ export async function launch({
     `#!/bin/sh\nexec /usr/bin/sandbox-exec -f ${q(sandbox)} ${q(exe)} "$@"\n`,
     { mode: 0o700 },
   );
+  const launchEnv = {
+    ...realEnvironment(process.env, userDataDir, RELAY),
+    COLONY_NATIVE_HOST_LOG: path.join(privateDir, "native-host.log"),
+    ...extraEnv,
+  };
+  await progress(
+    `[launch] HOME=${launchEnv.HOME} COLONY_NEST_MIGRATION=${launchEnv.COLONY_NEST_MIGRATION} userData=${userDataDir}`,
+  );
   const application = await electron.launch({
     executablePath: launcher,
     args: ["--no-sandbox", `--user-data-dir=${userDataDir}`, ...extraArgs],
-    env: {
-      ...realEnvironment(process.env, userDataDir, RELAY),
-      COLONY_NATIVE_HOST_LOG: path.join(privateDir, "native-host.log"),
-      ...extraEnv,
-    },
+    env: launchEnv,
     timeout: 60000,
   });
   const version = await application.evaluate(({ app }) => ({

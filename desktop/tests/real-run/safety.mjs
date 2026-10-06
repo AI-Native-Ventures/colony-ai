@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { realpathSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -187,7 +187,6 @@ export function realEnvironment(source, userDataDir, relayUrl) {
   const env = {};
   for (const key of [
     "PATH",
-    "HOME",
     "USER",
     "LOGNAME",
     "SHELL",
@@ -198,12 +197,58 @@ export function realEnvironment(source, userDataDir, relayUrl) {
   ]) {
     if (source[key]) env[key] = source[key];
   }
-  return {
+  // Final 1.0.5 gate: the app tree never gets the owner's real HOME. Every profile gets a
+  // throwaway HOME next to its user-data directory (privateDir/home), so the owner's real ~/.buzz
+  // and ~/.colony are never read, migrated or written. GATE_REAL_HOME=1 would restore the old
+  // behaviour but then COLONY_NEST_MIGRATION must be exactly "0" (guard below).
+  const throwaway = path.join(path.dirname(userDataDir), "home");
+  const useReal = source.GATE_REAL_HOME === "1";
+  // GATE_HOME_SEED_FROM: a pre-built throwaway HOME (the owner-shaped ~/.buzz fixture) moved in as this
+  // profile's HOME on its first launch. Never moves anything out of the real home: the seed lives in tmp.
+  if (!useReal && source.GATE_HOME_SEED_FROM && !existsSync(throwaway)) {
+    renameSync(source.GATE_HOME_SEED_FROM, throwaway);
+  }
+  if (!useReal) {
+    mkdirSync(path.join(throwaway, "Library", "Application Support"), {
+      recursive: true,
+      mode: 0o700,
+    });
+  }
+  // GATE_MIGRATION_UNSET=1 leaves the flag out (the build's compiled default), allowed only on a throwaway HOME.
+  const migration =
+    source.GATE_MIGRATION_UNSET === "1"
+      ? undefined
+      : (source.COLONY_NEST_MIGRATION ?? "0");
+  const launchEnv = {
     ...env,
+    HOME: useReal ? source.HOME : throwaway,
     BUZZ_RELAY_URL: relayUrl,
     COLONY_ELECTRON_USER_DATA: userDataDir,
     COLONY_ELECTRON_BACKGROUND: "1",
+    ...(migration === undefined ? {} : { COLONY_NEST_MIGRATION: migration }),
   };
+  assertHomeMigrationGuard(launchEnv);
+  console.log(
+    `LAUNCH GUARD HOME=${launchEnv.HOME} COLONY_NEST_MIGRATION=${launchEnv.COLONY_NEST_MIGRATION ?? "(unset, build default)"}`,
+  );
+  return launchEnv;
+}
+
+// Refuses to start any launch whose HOME is the owner's real home unless the migration flag is
+// exactly "0". Throws, so no app process is created.
+export function assertHomeMigrationGuard(env, realHome = homedir()) {
+  const canonical = (value) => {
+    try {
+      return realpathSync(value);
+    } catch {
+      return path.resolve(String(value ?? ""));
+    }
+  };
+  if (!env.HOME) throw new Error("Launch guard: HOME is not set");
+  if (canonical(env.HOME) === canonical(realHome) && env.COLONY_NEST_MIGRATION !== "0")
+    throw new Error(
+      "Launch guard: HOME is the real home and COLONY_NEST_MIGRATION is not exactly 0. Refusing to start.",
+    );
 }
 
 // Words that only appear in the owner's personal Claude configuration. A first reply

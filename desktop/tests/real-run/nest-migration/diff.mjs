@@ -6,7 +6,13 @@ import { indexManifest } from "./manifest.mjs";
 
 /** Entries whose content the host legitimately rewrites while it runs. Compared by existence only. */
 export function isVolatile(relativeToNest) {
-  return relativeToNest === "archive" || relativeToNest.startsWith("archive/");
+  // AGENTS.md: the host regenerates its managed block at every boot (owner notes below the end marker stay;
+  // the stale case checks them). Final 1.0.5 gate: compared by existence only.
+  return (
+    relativeToNest === "archive" ||
+    relativeToNest.startsWith("archive/") ||
+    relativeToNest === "AGENTS.md"
+  );
 }
 
 /** Split ".buzz/REPOS/app" into { nest: ".buzz", rel: "REPOS/app" }. rel is "" for the nest root. */
@@ -249,6 +255,15 @@ export function diffNests({ before, after, contract = defaultContract() }) {
       continue;
     }
     if (!destination && !source) {
+      // A moved WAL or SHM that SQLite consumed when the database was opened and closed cleanly at the new place
+      // is a checkpoint, not a loss; ARCHIVE-INTACT still proves the rows and the integrity.
+      if (
+        /^archive\/archive\.db-(wal|shm)$/u.test(rel) &&
+        afterIndex.has(`${contract.newNest}/archive/archive.db`)
+      ) {
+        (result.owned.checkpointed ??= []).push(entry.path);
+        continue;
+      }
       result.owned.lost.push(entry.path);
       continue;
     }

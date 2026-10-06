@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  assertHomeMigrationGuard,
   assertSafeDiagnostics,
   brandingFindings,
   businessMentionVerdict,
@@ -158,7 +159,9 @@ test("debug tracing is rejected before automation can fill secret fields", () =>
   assert.doesNotThrow(() => assertSafeDiagnostics({}));
 });
 
-test("real environment keeps the real HOME but pins the throwaway profile and drops secrets", () => {
+test("real environment gives the app a throwaway HOME, pins the profile and drops secrets", async () => {
+  const privateDir = await mkdtemp(path.join(os.tmpdir(), "safety-test-"));
+  const userData = path.join(privateDir, "user-data");
   const actual = realEnvironment(
     {
       HOME: "/Users/test",
@@ -169,16 +172,49 @@ test("real environment keeps the real HOME but pins the throwaway profile and dr
       CLAUDE_CODE_OAUTH_TOKEN: "fixture",
       GH_TOKEN: "fixture",
     },
-    "/tmp/throwaway",
+    userData,
     "https://relay.example",
   );
-  assert.equal(actual.HOME, "/Users/test");
+  // The owner's real HOME is never forwarded: the app gets privateDir/home.
+  assert.equal(actual.HOME, path.join(privateDir, "home"));
+  assert.equal(actual.COLONY_NEST_MIGRATION, "0");
   // Without this the packaged main process falls back to the owner's real profile.
-  assert.equal(actual.COLONY_ELECTRON_USER_DATA, "/tmp/throwaway");
+  assert.equal(actual.COLONY_ELECTRON_USER_DATA, userData);
   assert.equal(actual.BUZZ_RELAY_URL, "https://relay.example");
   assert.equal(actual.ANTHROPIC_API_KEY, undefined);
   assert.equal(actual.CLAUDE_CODE_OAUTH_TOKEN, undefined);
   assert.equal(actual.GH_TOKEN, undefined);
+  await rm(privateDir, { recursive: true, force: true });
+});
+
+test("launch guard refuses the real HOME unless the migration flag is exactly 0", () => {
+  const realHome = "/Users/someone";
+  assert.throws(
+    () => assertHomeMigrationGuard({ HOME: realHome }, realHome),
+    /Refusing to start/u,
+  );
+  for (const value of ["1", "", "false", "00", " 0"])
+    assert.throws(
+      () =>
+        assertHomeMigrationGuard(
+          { HOME: realHome, COLONY_NEST_MIGRATION: value },
+          realHome,
+        ),
+      /Refusing to start/u,
+    );
+  assert.doesNotThrow(() =>
+    assertHomeMigrationGuard(
+      { HOME: realHome, COLONY_NEST_MIGRATION: "0" },
+      realHome,
+    ),
+  );
+  assert.doesNotThrow(() =>
+    assertHomeMigrationGuard(
+      { HOME: "/tmp/throwaway", COLONY_NEST_MIGRATION: "1" },
+      realHome,
+    ),
+  );
+  assert.throws(() => assertHomeMigrationGuard({}, realHome), /HOME is not set/u);
 });
 
 test("personal configuration terms are flagged only when present", () => {

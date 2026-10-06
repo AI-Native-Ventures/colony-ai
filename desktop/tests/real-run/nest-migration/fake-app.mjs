@@ -129,9 +129,12 @@ async function migrate() {
     const file = path.join(oldRoot, "gate-note.md");
     if (present(file)) writeFileSync(file, readFileSync(file));
   }
-  if (broken === "overwrite" && present(path.join(newRoot, "AGENTS.md")))
+  if (
+    broken === "overwrite" &&
+    present(path.join(newRoot, ".nest-agents-version"))
+  )
     writeFileSync(
-      path.join(newRoot, "AGENTS.md"),
+      path.join(newRoot, ".nest-agents-version"),
       "overwritten by the migration\n",
     );
   if (broken === "delete-owned")

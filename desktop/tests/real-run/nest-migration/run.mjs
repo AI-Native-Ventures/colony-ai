@@ -8,7 +8,7 @@
 // The app path is a parameter: a packaged Buzz.app (PR build) or Colony.app (release). Nothing here ever opens
 // the real home folder: every case builds a throwaway HOME, and the launch is sandboxed against the real
 // ~/.buzz and ~/.colony. See README.md in this folder.
-import { appendFile, readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FAIL, NOT_OBSERVED, verdictOf } from "./checks.mjs";
@@ -72,10 +72,18 @@ const { file, data } = await runProof({
   contract: args.contract
     ? JSON.parse(await readFile(args.contract, "utf8"))
     : undefined,
-  onCase: (result) =>
-    progress(
-      `[${result.id}] ${verdictOf(result.rows)} (${result.rows.length} checks)`,
-    ),
+  onCase: async (result) => {
+    // Final 1.0.5 gate: write every case as soon as it ends, so a killed run loses nothing.
+    await mkdir(path.resolve(args.out), { recursive: true });
+    await writeFile(
+      path.join(path.resolve(args.out), `case-${result.id}.json`),
+      JSON.stringify(result, null, 1),
+    );
+    const bad = result.rows.filter((r) => r.status !== "PASS");
+    await progress(
+      `[${result.id}] ${verdictOf(result.rows)} (${result.rows.length} checks); not PASS: ${bad.map((r) => `${r.id}=${r.status}`).join(", ") || "none"}`,
+    );
+  },
 });
 const rows = data.cases.flatMap((c) => c.rows);
 const failed = rows.filter((r) => r.status === FAIL).length;
