@@ -11,6 +11,7 @@
 mod brand_guard;
 
 use super::*;
+use crate::managed_agents::nest_folder::{resolve_nest_dir, NestFolderReason};
 use crate::managed_agents::personas::{built_in_persona_definition, POLLEN_PERSONA_ID};
 use brand_guard::{Allow, Match, Surface};
 
@@ -76,6 +77,18 @@ fn walk(root: &Path, dir: &Path, files: &mut Vec<Surface>, tree: &mut Vec<String
     }
 }
 
+/// The folder name the production resolver gives a fresh install of this build, and why.
+///
+/// `None` for demo builds: they are namespaced on purpose (`.buzz-demo-<slug>`), carry no legacy
+/// name and never reach people as Colony.
+fn fresh_install_folder() -> Option<(String, NestFolderReason)> {
+    crate::build_identity::legacy_nest_name(false)?;
+    let home = tempfile::tempdir().expect("temp home");
+    let (path, choice) = resolve_nest_dir(home.path(), false);
+    let name = path.file_name()?.to_string_lossy().into_owned();
+    Some((name, choice.reason))
+}
+
 fn surfaces() -> Vec<Surface> {
     let tmp = tempfile::tempdir().expect("temp dir");
     let root = tmp.path().join(".colony");
@@ -95,6 +108,11 @@ fn surfaces() -> Vec<Surface> {
         tree.join("\n"),
     ));
     out.push(Surface::new("managed section (no agents)", managed));
+
+    // The folder an agent starts in is printed by `pwd`, the workspace section and its tools.
+    if let Some((name, _)) = fresh_install_folder() {
+        out.push(Surface::new("fresh install working folder name", name));
+    }
 
     // Persona instructions are part of what Scout and the other built-in
     // employees are told.
@@ -150,4 +168,13 @@ fn guard_corpus_covers_what_the_writer_produces() {
         agents.text.contains("## Active Agents"),
         "AGENTS.md must include the rendered managed section"
     );
+}
+
+#[test]
+fn a_fresh_install_names_its_working_folder_colony() {
+    let Some((name, reason)) = fresh_install_folder() else {
+        return;
+    };
+    assert_eq!(name, ".colony");
+    assert_eq!(reason, NestFolderReason::FreshInstall);
 }
