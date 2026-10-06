@@ -272,84 +272,6 @@ pub(crate) fn probe_buzz_marker(_pid: u32, _instance_id: &str) -> MarkerProbe {
     MarkerProbe::Unknown
 }
 
-#[cfg(test)]
-mod marker_probe_tests {
-    use super::*;
-    use std::io::{Error, ErrorKind};
-
-    const INSTANCE: &str = "xyz.block.buzz.app";
-
-    fn environ(entries: &[&str]) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        for entry in entries {
-            bytes.extend_from_slice(entry.as_bytes());
-            bytes.push(0);
-        }
-        bytes
-    }
-
-    #[test]
-    fn an_environment_with_this_installs_marker_is_ours() {
-        let data = environ(&[
-            "PATH=/usr/bin",
-            "BUZZ_MANAGED_AGENT=xyz.block.buzz.app",
-            "HOME=/h",
-        ]);
-        assert_eq!(classify_environ(Ok(data), INSTANCE), MarkerProbe::Ours);
-    }
-
-    #[test]
-    fn an_empty_environment_is_unknown_never_foreign() {
-        // What `/proc/<pid>/environ` reads for a process still inside `execve`.
-        assert_eq!(
-            classify_environ(Ok(Vec::new()), INSTANCE),
-            MarkerProbe::Unknown
-        );
-    }
-
-    #[test]
-    fn a_read_error_is_unknown_never_foreign() {
-        for kind in [
-            ErrorKind::PermissionDenied,
-            ErrorKind::InvalidData,
-            ErrorKind::Other,
-            ErrorKind::Interrupted,
-        ] {
-            assert_eq!(
-                classify_environ(Err(Error::from(kind)), INSTANCE),
-                MarkerProbe::Unknown,
-                "{kind:?}"
-            );
-        }
-        assert_eq!(
-            classify_environ(Err(Error::from_raw_os_error(13)), INSTANCE),
-            MarkerProbe::Unknown
-        );
-    }
-
-    #[test]
-    fn a_vanished_process_is_gone() {
-        assert_eq!(
-            classify_environ(Err(Error::from(ErrorKind::NotFound)), INSTANCE),
-            MarkerProbe::Gone
-        );
-    }
-
-    #[test]
-    fn a_readable_environment_without_the_marker_is_foreign() {
-        let data = environ(&["PATH=/usr/bin", "HOME=/h"]);
-        assert_eq!(classify_environ(Ok(data), INSTANCE), MarkerProbe::Foreign);
-    }
-
-    #[test]
-    fn another_installs_marker_is_foreign() {
-        let data = environ(&["BUZZ_MANAGED_AGENT=xyz.block.buzz.app.dev"]);
-        assert_eq!(classify_environ(Ok(data), INSTANCE), MarkerProbe::Foreign);
-        let data = environ(&["BUZZ_MANAGED_AGENT=xyz.block.buzz.app2"]);
-        assert_eq!(classify_environ(Ok(data), INSTANCE), MarkerProbe::Foreign);
-    }
-}
-
 #[cfg(unix)]
 fn signal_process_group_or_leader(pid: u32, signal: i32, action: &str) -> Result<(), String> {
     let pgid = -(pid as i32);
@@ -612,4 +534,82 @@ pub(crate) fn terminate_untracked_pair_runtime(
         process_is_running,
         super::super::remove_agent_runtime_receipt_path,
     )
+}
+
+#[cfg(test)]
+mod marker_probe_tests {
+    use super::*;
+    use std::io::{Error, ErrorKind};
+
+    const INSTANCE: &str = "xyz.block.buzz.app";
+
+    fn environ(entries: &[&str]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for entry in entries {
+            bytes.extend_from_slice(entry.as_bytes());
+            bytes.push(0);
+        }
+        bytes
+    }
+
+    #[test]
+    fn an_environment_with_this_installs_marker_is_ours() {
+        let data = environ(&[
+            "PATH=/usr/bin",
+            "BUZZ_MANAGED_AGENT=xyz.block.buzz.app",
+            "HOME=/h",
+        ]);
+        assert_eq!(classify_environ(Ok(data), INSTANCE), MarkerProbe::Ours);
+    }
+
+    #[test]
+    fn an_empty_environment_is_unknown_never_foreign() {
+        // What `/proc/<pid>/environ` reads for a process still inside `execve`.
+        assert_eq!(
+            classify_environ(Ok(Vec::new()), INSTANCE),
+            MarkerProbe::Unknown
+        );
+    }
+
+    #[test]
+    fn a_read_error_is_unknown_never_foreign() {
+        for kind in [
+            ErrorKind::PermissionDenied,
+            ErrorKind::InvalidData,
+            ErrorKind::Other,
+            ErrorKind::Interrupted,
+        ] {
+            assert_eq!(
+                classify_environ(Err(Error::from(kind)), INSTANCE),
+                MarkerProbe::Unknown,
+                "{kind:?}"
+            );
+        }
+        assert_eq!(
+            classify_environ(Err(Error::from_raw_os_error(13)), INSTANCE),
+            MarkerProbe::Unknown
+        );
+    }
+
+    #[test]
+    fn a_vanished_process_is_gone() {
+        assert_eq!(
+            classify_environ(Err(Error::from(ErrorKind::NotFound)), INSTANCE),
+            MarkerProbe::Gone
+        );
+    }
+
+    #[test]
+    fn a_readable_environment_without_the_marker_is_foreign() {
+        let data = environ(&["PATH=/usr/bin", "HOME=/h"]);
+        assert_eq!(classify_environ(Ok(data), INSTANCE), MarkerProbe::Foreign);
+    }
+
+    #[test]
+    fn another_installs_marker_is_foreign() {
+        let data = environ(&["BUZZ_MANAGED_AGENT=xyz.block.buzz.app.dev"]);
+        assert_eq!(classify_environ(Ok(data), INSTANCE), MarkerProbe::Foreign);
+        let data = environ(&["BUZZ_MANAGED_AGENT=xyz.block.buzz.app2"]);
+        assert_eq!(classify_environ(Ok(data), INSTANCE), MarkerProbe::Foreign);
+    }
 }
