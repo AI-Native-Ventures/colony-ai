@@ -98,8 +98,9 @@ pub(crate) struct ResetContext<'a> {
     /// present and non-empty, wiped alongside `app_data_dir` to prevent
     /// `migrate_legacy_app_data_dir` from restoring the old identity.
     pub legacy_app_data_dir: Option<PathBuf>,
-    /// Nest dir (`~/.buzz` or `~/.buzz-dev`) scoped to this build's variant,
-    /// injected so unit tests can override without touching the global OnceLock.
+    /// Nest dir this process chose (`~/.colony` or `~/.buzz` for production,
+    /// `~/.buzz-dev` for dev), injected so unit tests can override without
+    /// touching the global OnceLock. Reset removes exactly this folder.
     pub nest_dir: Option<PathBuf>,
     pub keychain: &'a dyn ResetKeychain,
     pub home_dir: Option<PathBuf>,
@@ -694,6 +695,141 @@ mod tests {
         assert!(outcome.completed, "wipe must complete");
         assert!(!prod_nest.exists(), "prod nest must be wiped");
         assert!(dev_nest.exists(), "dev nest must survive");
+    }
+
+    // ── Test 7b: reset wipes the CHOSEN production folder, never the other ────
+
+    #[derive(Clone, Copy)]
+    enum Seed {
+        Absent,
+        /// An initialised nest holding agent knowledge.
+        Nest,
+        /// A folder with the right name that holds no nest marker.
+        Unrelated,
+    }
+
+    fn seed_folder(home: &Path, name: &str, seed: Seed) {
+        let folder = home.join(name);
+        match seed {
+            Seed::Absent => {}
+            Seed::Nest => {
+                std::fs::create_dir_all(folder.join("RESEARCH")).unwrap();
+                std::fs::write(folder.join("AGENTS.md"), "nest").unwrap();
+                std::fs::write(folder.join(".nest-agents-version"), "6").unwrap();
+                std::fs::write(folder.join("RESEARCH").join("notes.md"), name).unwrap();
+            }
+            Seed::Unrelated => {
+                std::fs::create_dir_all(&folder).unwrap();
+                std::fs::write(folder.join("not-a-nest.txt"), name).unwrap();
+            }
+        }
+    }
+
+    /// Run the reset exactly as `lib.rs` wires it: the folder handed to the wipe
+    /// is the one `init_nest_dir` picks for this home.
+    fn reset_with_chosen_folder(home: &Path) -> (String, ResetOutcome) {
+        let chosen = crate::managed_agents::nest_folder::choose_nest_folder(home, false)
+            .name
+            .into_owned();
+        let app_data = home.join("Application Support").join("xyz.block.buzz.app");
+        std::fs::create_dir_all(&app_data).unwrap();
+        write_sentinel(&app_data).unwrap();
+        let kc = FakeKeychain::ok();
+        let ctx = ResetContext {
+            app_data_dir: &app_data,
+            legacy_app_data_dir: None,
+            nest_dir: Some(home.join(&chosen)),
+            keychain: &kc,
+            home_dir: None,
+            is_dev: false,
+            demo_config_dir: None,
+            is_demo: false,
+        };
+        (chosen, run_boot_reset_with_keychain(ctx))
+    }
+
+    #[test]
+    fn test_reset_wipes_only_the_chosen_production_folder() {
+        if crate::build_identity::is_demo_build() {
+            return;
+        }
+        // (label, .buzz, .colony, wiped, kept)
+        let cases = [
+            ("only .buzz", Seed::Nest, Seed::Absent, ".buzz", None),
+            ("only .colony", Seed::Absent, Seed::Nest, ".colony", None),
+            (
+                "both, .colony holds the nest",
+                Seed::Nest,
+                Seed::Nest,
+                ".colony",
+                Some((".buzz", "RESEARCH/notes.md")),
+            ),
+            (
+                "both, .colony is unrelated",
+                Seed::Nest,
+                Seed::Unrelated,
+                ".buzz",
+                Some((".colony", "not-a-nest.txt")),
+            ),
+        ];
+        for (label, buzz, colony, wiped, kept) in cases {
+            let tmp = TempDir::new().unwrap();
+            let home = tmp.path();
+            seed_folder(home, ".buzz", buzz);
+            seed_folder(home, ".colony", colony);
+            // Tooling the owner keeps next to the nest must never be touched.
+            std::fs::create_dir_all(home.join(".venv-tts")).unwrap();
+            std::fs::write(home.join(".venv-tts").join("pyvenv.cfg"), "venv").unwrap();
+
+            let (chosen, outcome) = reset_with_chosen_folder(home);
+
+            assert!(outcome.completed, "{label}: reset must complete");
+            assert_eq!(chosen, wiped, "{label}: wrong folder chosen");
+            assert!(
+                !home.join(wiped).exists(),
+                "{label}: chosen folder must be wiped"
+            );
+            match kept {
+                Some((name, file)) => {
+                    let survivor = std::fs::read_to_string(home.join(name).join(file))
+                        .unwrap_or_else(|e| panic!("{label}: {name}/{file} lost: {e}"));
+                    assert_eq!(survivor, name, "{label}: {name} must be byte-identical");
+                }
+                None => {
+                    let other = if wiped == ".buzz" { ".colony" } else { ".buzz" };
+                    assert!(
+                        !home.join(other).exists(),
+                        "{label}: reset must not create {other}"
+                    );
+                }
+            }
+            assert_eq!(
+                std::fs::read_to_string(home.join(".venv-tts").join("pyvenv.cfg")).unwrap(),
+                "venv",
+                "{label}: foreign tooling must survive"
+            );
+        }
+    }
+
+    #[test]
+    fn test_after_reset_of_the_only_folder_the_next_boot_starts_fresh_on_colony() {
+        if crate::build_identity::is_demo_build() {
+            return;
+        }
+        for existing in [".buzz", ".colony"] {
+            let tmp = TempDir::new().unwrap();
+            seed_folder(tmp.path(), existing, Seed::Nest);
+
+            let (_, outcome) = reset_with_chosen_folder(tmp.path());
+            assert!(outcome.completed);
+
+            let next = crate::managed_agents::nest_folder::choose_nest_folder(tmp.path(), false);
+            assert_eq!(next.name, ".colony", "after wiping {existing}");
+            assert_eq!(
+                next.reason,
+                crate::managed_agents::nest_folder::NestFolderReason::FreshInstall
+            );
+        }
     }
 
     // ── Test 8: legacy app-data removed on reset ──────────────────────────────

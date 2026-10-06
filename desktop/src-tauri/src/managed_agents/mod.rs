@@ -24,6 +24,7 @@ pub(crate) mod git_bash;
 pub(crate) mod global_config;
 mod managed_node_paths;
 mod nest;
+pub(crate) mod nest_folder;
 pub(crate) mod parallelism;
 mod persona_avatars;
 pub(crate) mod persona_events;
@@ -118,12 +119,13 @@ pub use types::*;
 #[cfg(test)]
 pub(crate) use teams::delete_catalog_team_at;
 
-/// Returns the Buzz nest directory (`~/.buzz`) if it exists as a real
-/// directory (not a symlink), falling back to the user's home directory.
+/// Returns the nest directory (`~/.colony` for a new install, `~/.buzz` for an
+/// existing one) if it exists as a real directory (not a symlink), falling back
+/// to the user's home directory.
 ///
 /// Used as the default working directory for spawned agent processes.
 /// `ensure_nest()` must be called during app setup before this is first
-/// invoked, so that `~/.buzz` exists and gets cached.
+/// invoked, so that the nest exists and gets cached.
 ///
 /// Cached for the process lifetime via `OnceLock`.
 /// Returns `None` in sandboxed/containerized environments where `$HOME` is
@@ -134,7 +136,7 @@ pub fn default_agent_workdir() -> Option<std::path::PathBuf> {
     static WORKDIR: OnceLock<Option<std::path::PathBuf>> = OnceLock::new();
     WORKDIR
         .get_or_init(|| {
-            // Prefer ~/.buzz if it exists (created by ensure_nest()).
+            // Prefer the nest if it exists (created by ensure_nest()).
             // Reject symlinks to prevent redirect attacks — is_dir()
             // follows symlinks, so check symlink_metadata() first.
             // Fall back to $HOME for resilience.

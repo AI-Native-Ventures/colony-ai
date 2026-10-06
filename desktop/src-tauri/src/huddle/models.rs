@@ -1,17 +1,20 @@
 //! Model download manager for STT (Parakeet TDT-CTC 110M) and TTS (Pocket TTS) models.
 //!
 //! Mental model:
-//!   app launch → start_stt_download (background) → ~/.buzz/models/parakeet-tdt-ctc-110m-en/
-//!   app launch → start_tts_download (background) → ~/.buzz/models/pocket-tts/
+//!   app launch → start_stt_download (background) → NEST/models/parakeet-tdt-ctc-110m-en/
+//!   app launch → start_tts_download (background) → NEST/models/pocket-tts/
 //!   STT pipeline → is_stt_ready() → stt_model_dir() → run inference
 //!   TTS pipeline → is_tts_ready() → tts_model_dir() → run synthesis
+//!
+//! `NEST` is the install's nest folder (`~/.colony` for new installs, the
+//! existing `~/.buzz` for older ones), so the models follow it.
 //!
 //! Models are downloaded once and cached. A version manifest (`.buzz-model-manifest`)
 //! is written alongside model files — if the on-disk version doesn't match the
 //! compiled-in version, the model is re-downloaded.
 //!
 //! Upgrade note: an older Moonshine STT model directory at
-//! `~/.buzz/models/moonshine-tiny/` is removed best-effort once the new STT
+//! `NEST/models/moonshine-tiny/` is removed best-effort once the new STT
 //! model finishes installing successfully. Cleanup is gated on the new model
 //! being Ready, so a failed download never removes the previous on-disk model
 //! during migration. If removal fails (permissions, etc.) the leftover is
@@ -123,7 +126,7 @@ const STT_DOWNLOAD_URL: &str =
 /// Subdirectory name produced by `tar xjf` on the archive.
 const STT_ARCHIVE_SUBDIR: &str = "sherpa-onnx-nemo-parakeet_tdt_ctc_110m-en-36000-int8";
 
-/// Final directory name under `~/.buzz/models/`.
+/// Final directory name under `<nest>/models/`.
 const STT_MODEL_DIR_NAME: &str = "parakeet-tdt-ctc-110m-en";
 
 /// All files that must be present for the model to be considered ready.
@@ -158,7 +161,7 @@ license text for full warranty disclaimer.
 
 // ── Pocket TTS model ──────────────────────────────────────────────────────────
 
-/// Final directory name under `~/.buzz/models/`.
+/// Final directory name under `<nest>/models/`.
 const TTS_MODEL_DIR_NAME: &str = "pocket-tts";
 
 /// Attribution sidecar written next to the Pocket TTS model files.
@@ -376,7 +379,7 @@ where
 /// Per-model state + config. `ModelManager` owns two of these (stt, tts).
 #[derive(Clone)]
 struct ModelSlot {
-    dir_name: &'static str,                  // subdir under ~/.buzz/models/
+    dir_name: &'static str,                  // subdir under <nest>/models/
     expected_files: &'static [&'static str], // files required for "ready"
     version: &'static str,                   // manifest version; increment to force re-download
     expected_size: fn(&str) -> Option<u64>,
@@ -807,7 +810,7 @@ impl ModelManager {
 
     /// Download and verify the Pocket TTS model files from HuggingFace.
     ///
-    /// Downloads files into `~/.buzz/models/pocket-tts/`:
+    /// Downloads files into `<nest>/models/pocket-tts/`:
     ///   - five ONNX sessions selected by the April INT8 bundle
     ///   - bundle metadata, SentencePiece tokenizer, and learned voice BOS
     ///   - upstream `LICENSE` plus Buzz's `MODEL_LICENSE.txt` attribution sidecar
@@ -954,7 +957,7 @@ pub fn is_stt_ready() -> bool {
 
 /// Best-effort cleanup of the legacy Moonshine STT model directory.
 ///
-/// Removes `~/.buzz/models/moonshine-tiny/` if present (~70 MB on disk).
+/// Removes `<nest>/models/moonshine-tiny/` if present (~70 MB on disk).
 /// Idempotent — no-op if the directory is absent. Errors are logged and
 /// swallowed; the leftover is harmless and the user can remove it manually.
 ///

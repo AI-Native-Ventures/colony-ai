@@ -81,6 +81,19 @@ pub(crate) fn keyring_service() -> Cow<'static, str> {
         .unwrap_or(Cow::Borrowed("buzz-desktop"))
 }
 
+/// Folder name of the production agent home ("nest") that new installs create.
+const PRODUCTION_NEST_NAME: &str = ".colony";
+
+/// Folder name production installs used before the Colony name. An install that
+/// already has it keeps using it until a separate, gated migration moves it.
+const LEGACY_PRODUCTION_NEST_NAME: &str = ".buzz";
+
+/// Preferred nest folder name for this build, the name a fresh install gets.
+///
+/// Production is `.colony`; dev builds keep `.buzz-dev` and demo builds keep
+/// `.buzz-demo-<slug>`. A production install that already has a legacy folder
+/// is steered by [`legacy_nest_name`] through
+/// `managed_agents::nest_folder::choose_nest_folder`, not by this function.
 pub(crate) fn nest_name(is_dev: bool) -> Cow<'static, str> {
     nest_name_for(demo_slug(), is_dev)
 }
@@ -91,8 +104,27 @@ fn nest_name_for(demo_slug: Option<&str>, is_dev: bool) -> Cow<'_, str> {
     } else if is_dev {
         Cow::Borrowed(".buzz-dev")
     } else {
-        Cow::Borrowed(".buzz")
+        Cow::Borrowed(PRODUCTION_NEST_NAME)
     }
+}
+
+/// The earlier nest folder name this build may still find on disk and must keep
+/// using when it exists. Only production builds ever used `.buzz` as their
+/// nest: dev and demo builds were always namespaced, so they return `None`.
+pub(crate) fn legacy_nest_name(is_dev: bool) -> Option<&'static str> {
+    legacy_nest_name_for(demo_slug(), is_dev)
+}
+
+fn legacy_nest_name_for(demo_slug: Option<&str>, is_dev: bool) -> Option<&'static str> {
+    (demo_slug.is_none() && !is_dev).then_some(LEGACY_PRODUCTION_NEST_NAME)
+}
+
+/// Every folder name a production install can have used as its nest, newest
+/// first. Read-only lookups that must work for any production install, such as
+/// a dev build finding the repositories the installed app cloned, search all of
+/// them.
+pub(crate) fn production_nest_names() -> [&'static str; 2] {
+    [PRODUCTION_NEST_NAME, LEGACY_PRODUCTION_NEST_NAME]
 }
 
 pub(crate) fn cli_name(is_dev: bool) -> String {
@@ -125,7 +157,8 @@ mod tests {
                 vec!["buzz", "colony"]
             );
             assert_eq!(keyring_service(), "buzz-desktop");
-            assert_eq!(nest_name(false), ".buzz");
+            assert_eq!(nest_name(false), ".colony");
+            assert_eq!(legacy_nest_name(false), Some(".buzz"));
             assert_eq!(cli_name(false), "buzz");
         }
     }
@@ -195,7 +228,8 @@ mod tests {
 
     #[test]
     fn production_and_named_demo_nests_are_distinct() {
-        assert_eq!(nest_name_for(None, false), ".buzz");
+        assert_eq!(nest_name_for(None, false), ".colony");
+        assert_eq!(nest_name_for(None, true), ".buzz-dev");
         assert_eq!(
             nest_name_for(Some("workstream-board"), false),
             ".buzz-demo-workstream-board"
@@ -204,5 +238,18 @@ mod tests {
             nest_name_for(Some("second-demo"), false),
             ".buzz-demo-second-demo"
         );
+    }
+
+    #[test]
+    fn only_production_has_a_legacy_nest_name() {
+        assert_eq!(legacy_nest_name_for(None, false), Some(".buzz"));
+        assert_eq!(legacy_nest_name_for(None, true), None);
+        assert_eq!(legacy_nest_name_for(Some("workstream-board"), false), None);
+        assert_eq!(legacy_nest_name_for(Some("workstream-board"), true), None);
+    }
+
+    #[test]
+    fn production_nest_names_list_new_name_first() {
+        assert_eq!(production_nest_names(), [".colony", ".buzz"]);
     }
 }

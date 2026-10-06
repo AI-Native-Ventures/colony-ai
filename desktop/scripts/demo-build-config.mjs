@@ -14,6 +14,9 @@ export const productionBuildIdentity = Object.freeze({
   identifier: PRODUCTION_IDENTIFIER,
   deepLinkScheme: "buzz",
   keyringService: "buzz-desktop",
+  // The legacy production nest folder. New production installs use `.colony`
+  // and installs that already have `.buzz` keep it; the native build chooses at
+  // boot (see managed_agents/nest_folder.rs). Nothing reads this field.
   nestName: ".buzz",
   cliName: "buzz",
 });
