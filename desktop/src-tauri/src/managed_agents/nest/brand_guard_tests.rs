@@ -15,6 +15,8 @@ use crate::managed_agents::personas::{built_in_persona_definition, POLLEN_PERSON
 use brand_guard::{Allow, Match, Surface};
 
 /// The only places the old name may still appear in the working folder.
+///
+/// The skill no longer names environment variables, so no `BUZZ_*` entry is allowed here.
 const ALLOW: &[Allow] = &[
     Allow {
         text: "<!-- BEGIN BUZZ MANAGED",
@@ -30,27 +32,6 @@ const ALLOW: &[Allow] = &[
         reason: "Closing marker of the managed AGENTS.md section, paired with the opening marker \
                  and kept for the same reason. Removal: the nest migration PR, with dual-marker \
                  matching.",
-    },
-    Allow {
-        text: "BUZZ_RELAY_URL",
-        kind: Match::Token,
-        reason: "Environment variable name the harness sets for the agent process and the CLI \
-                 reads. Renaming needs dual-read in the CLI, harness and desktop spawn code. \
-                 Removal: later track, COLONY_* aliases.",
-    },
-    Allow {
-        text: "BUZZ_PRIVATE_KEY",
-        kind: Match::Token,
-        reason: "Environment variable name carrying the agent identity, read by the CLI and the \
-                 dev tools. Renaming needs dual-read everywhere it is consumed. \
-                 Removal: later track, COLONY_* aliases.",
-    },
-    Allow {
-        text: "BUZZ_AUTH_TAG",
-        kind: Match::Token,
-        reason: "Environment variable name carrying the owner attestation, read by the CLI when \
-                 opening owner-reviewed drafts. Renaming needs dual-read everywhere it is read. \
-                 Removal: later track, COLONY_* aliases.",
     },
 ];
 
