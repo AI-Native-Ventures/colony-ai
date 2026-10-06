@@ -17,25 +17,26 @@ Acceptance gate: focused Node fault tests pass, touched-file Biome and TypeScrip
 checks pass, and every P1 PR check is success or skipped. CI proves automated
 behavior only. Real consent, eligibility and inference remain owner-only proof.
 
-- [ ] Add protocol policy, bounded HTTP, RS256 validation and callback modules.
+- [x] Add protocol policy, bounded HTTP, RS256 validation and callback modules.
   Tests exercise production functions against a local RSA/JWKS fake, including
   wrong issuer, audience, signature, nonce, state, callback path and clock skew.
-- [ ] Add owner-only durable storage and OAuth lifecycle. Use temporary files,
+- [x] Add owner-only durable storage and OAuth lifecycle. Use temporary files,
   file sync, rename and directory sync. Journal refresh before the remote call;
   an interrupted rotation becomes durable needs-sign-in on restart. Keep remote
   revoke material in pending records until successful revocation.
-- [ ] Add single-flight renewal, generation fencing, bounded retries and wake
+- [x] Add single-flight renewal, generation fencing, bounded retries and wake
   scheduling. Tests cover concurrent processes, interrupted rotation, stale
   results, terminal errors, earliest refresh time and exhausted retries.
-- [ ] Add the dependency-free fake authorize/token/JWKS/models/SSE server. Only
+- [x] Add the dependency-free fake authorize/token/JWKS/models/SSE server. Only
   explicit test builds may use the two loopback origin overrides. Production
   ignores overrides. Fake request records contain no token values or URLs.
-- [ ] Add main-process IPC dispatch and typed renderer wrapper. Disabled mode
+- [x] Add main-process IPC dispatch and typed renderer wrapper. Disabled mode
   must neither initialize storage nor open a listener or browser. All results
   are explicit non-secret metadata projections.
-- [ ] Add CLEAN-ROOM.md, storage trade-off and owner acceptance steps. Commit
+- [x] Add CLEAN-ROOM.md, storage trade-off and owner acceptance steps. Commit
   with signoff and the requested co-author trailer, push meaningful checkpoints,
   create one PR to develop, watch CI and correct observed failures.
+- [ ] Every check on the P1 PR is success or skipped. No merge by this agent.
 
 Files are split by responsibility under desktop/electron/chatgpt/, with the
 service entry at desktop/electron/chatgpt-oauth.mjs. Tests use node --test, real

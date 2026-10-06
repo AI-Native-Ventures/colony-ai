@@ -5,6 +5,7 @@ export type ChatGptAccountState =
   | "plan_use_off"
   | "needs_sign_in"
   | "pending_revoke"
+  | "unavailable"
   | "disconnected";
 
 export type ChatGptAccount = {

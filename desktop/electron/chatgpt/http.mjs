@@ -1,4 +1,15 @@
-import { ChatGptError } from "./policy.mjs";
+import { ChatGptError, TERMINAL_REFRESH_ERRORS } from "./policy.mjs";
+
+const ERROR_CODES = new Set([
+  ...TERMINAL_REFRESH_ERRORS,
+  "invalid_client",
+  "invalid_request",
+  "invalid_scope",
+  "unauthorized_client",
+  "access_denied",
+  "temporarily_unavailable",
+  "server_error",
+]);
 
 /** Bounded, non-redirecting JSON/form HTTP transport for the main process. */
 export function createChatGptHttp({
@@ -38,9 +49,7 @@ export function createChatGptHttp({
         const code =
           typeof data?.error === "string" ? data.error : data?.error?.code;
         // Never forward error_description or other server-controlled text.
-        const safe = /^[a-z][a-z0-9_]{0,99}$/.test(code ?? "")
-          ? code
-          : "http_error";
+        const safe = ERROR_CODES.has(code) ? code : "http_error";
         throw new ChatGptError(safe, response.status);
       }
       return data;

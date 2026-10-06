@@ -52,7 +52,6 @@ export async function dispatchChatGpt(
       if (!args.accountId) throw new ChatGptError("invalid_arguments");
       return service.disconnect(args.accountId);
     case "refresh_chatgpt_plan":
-      await service.resume();
-      return service.status();
+      return service.retry();
   }
 }

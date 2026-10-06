@@ -195,7 +195,11 @@ test("temporary errors back off, preserve credentials, and stop after bounded re
     f.advance(backoff);
   }
   await f.service.refresh(id);
-  assert.equal((await f.read()).accounts[0].state, "needs_sign_in");
+  assert.equal((await f.read()).accounts[0].state, "unavailable");
+  assert.equal(
+    (await f.read()).accounts[0].refresh_token,
+    before.refresh_token,
+  );
   const count = f.fake.counters.refresh;
   for (let i = 0; i < 5; i++) {
     f.advance(600_000);
@@ -204,6 +208,9 @@ test("temporary errors back off, preserve credentials, and stop after bounded re
   assert.equal(f.fake.counters.refresh, count);
   assert.equal(count, 6);
   assert.ok(f.scheduled.every((s) => s.ms >= 1000));
+  delete f.fake.faults.tokenError;
+  await f.service.retry();
+  assert.equal((await f.read()).accounts[0].state, "active");
 });
 
 test("earliest refresh time gates both scheduled and on-demand renewal", async (t) => {

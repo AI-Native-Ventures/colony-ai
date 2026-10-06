@@ -1,6 +1,7 @@
 import { createPublicKey, timingSafeEqual, verify } from "node:crypto";
 import { ChatGptError, ISSUER } from "./policy.mjs";
 
+/** Compare bounded secret strings without a content-dependent comparison. */
 export function equalSecret(left, right) {
   return (
     typeof left === "string" &&

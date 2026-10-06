@@ -32,6 +32,7 @@ const STATES = new Set([
   "needs_sign_in",
   "pending_revoke",
   "disconnected",
+  "unavailable",
 ]);
 
 /** Stable registration identity, independent of email and safe for metadata. */

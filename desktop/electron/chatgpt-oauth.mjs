@@ -217,7 +217,8 @@ export function createChatGptService({
       await openExternal(listener.url);
       const callback = await listener.result;
       check();
-      if (!callback) return { outcome: "cancelled", ...(await status()) };
+      if (!callback)
+        return { outcome: "cancelled", ...(await status()), connecting: false };
       pendingId = accountId(callback.clientId, "pending");
       await store.locked(() => {
         check();
@@ -333,7 +334,11 @@ export function createChatGptService({
         const a = find(state, id);
         if (a.state !== "active" && a.state !== "plan_use_off") return;
         if (rejectedToken && a.access_token !== rejectedToken) return;
-        if (a.next_attempt_at > now() || a.earliest_refresh_at > now()) return;
+        if (
+          a.next_attempt_at > now() ||
+          (!a.rotation_id_token && a.earliest_refresh_at > now())
+        )
+          return;
         if (a.refresh_expires_at <= now() || !a.refresh_token) {
           clearTokens(a, true);
           a.state = "needs_sign_in";
@@ -345,25 +350,30 @@ export function createChatGptService({
         a.refresh_inflight = true;
         store.save(state);
         try {
-          const data = await request(
-            `${policy.auth}/api/accounts/oauth/token`,
-            {
-              form: {
-                grant_type: "refresh_token",
-                client_id: a.client_id,
-                refresh_token: a.refresh_token,
-                resource: policy.resource,
+          let tokens;
+          if (a.rotation_id_token)
+            tokens = { ...a, id_token: a.rotation_id_token };
+          else {
+            const data = await request(
+              `${policy.auth}/api/accounts/oauth/token`,
+              {
+                form: {
+                  grant_type: "refresh_token",
+                  client_id: a.client_id,
+                  refresh_token: a.refresh_token,
+                  resource: policy.resource,
+                },
               },
-            },
-          );
-          const tokens = tokenFields(data, now());
-          // Save rotated material before any subsequent network validation.
-          // A crash here remains fenced by the durable refresh_inflight marker.
-          Object.assign(a, tokens, {
-            id_token: a.id_token,
-            rotation_id_token: tokens.id_token,
-          });
-          store.save(state);
+            );
+            tokens = tokenFields(data, now());
+            // Save rotated material before any subsequent network validation.
+            // A crash here remains fenced by the durable refresh_inflight marker.
+            Object.assign(a, tokens, {
+              id_token: a.id_token,
+              rotation_id_token: tokens.id_token,
+            });
+            store.save(state);
+          }
           if (stopped || epoch(id) !== fence) {
             // A retired result must not reactivate the selected account. On a
             // local disconnect the latest rotated session still needs revoke.
@@ -431,11 +441,12 @@ export function createChatGptService({
             clearTokens(a, true);
             a.state = "needs_sign_in";
           } else {
-            delete a.refresh_inflight;
+            if (!a.rotation_id_token) delete a.refresh_inflight;
             a.retry_count = (a.retry_count ?? 0) + 1;
             if (a.retry_count > BACKOFF_MS.length) {
-              clearTokens(a, true);
-              a.state = "needs_sign_in";
+              // Stop automatic retries without erasing a grant solely because
+              // infrastructure is unavailable. Explicit Retry can resume it.
+              a.state = "unavailable";
             } else
               a.next_attempt_at =
                 now() +
@@ -591,6 +602,27 @@ export function createChatGptService({
         error instanceof ChatGptError ? error.code : "storage_failed";
     }
   }
+  async function retry() {
+    await initialize();
+    await store.locked(() => {
+      const state = store.snapshot();
+      for (const a of [...state.accounts, ...state.pending]) {
+        if (a.pending_revoke) {
+          a.pending_revoke.retry_count = 0;
+          a.pending_revoke.next_attempt_at = 0;
+        }
+        if (a.state === "unavailable") {
+          a.state = a.scopes.includes(PLAN_SCOPE) ? "active" : "plan_use_off";
+          a.retry_count = 0;
+          a.next_attempt_at = 0;
+          a.generation++;
+        }
+      }
+      store.save(state);
+    });
+    await tick();
+    return status();
+  }
   function stop() {
     stopped = true;
     cancel();
@@ -607,6 +639,7 @@ export function createChatGptService({
     start,
     resume: tick,
     wake,
+    retry,
     stop,
     policy,
   };
