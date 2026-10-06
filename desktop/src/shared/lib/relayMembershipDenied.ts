@@ -14,9 +14,15 @@ const MEMBERSHIP_DENIED_MARKERS = [
   "invalid: you are not a relay member",
 ] as const;
 
-// The native layer formats HTTP failures as "relay returned {status}: {message}"
-// (desktop/src-tauri/src/relay.rs). The transport prefix is noise to a person.
-const RELAY_TRANSPORT_PREFIX = /^relay returned \d{3}[^:]*:\s*/i;
+// The native layer wraps relay failures before they reach the app:
+// "relay returned {status}: {message}" for an HTTP refusal (relay.rs) and
+// "relay <what> query failed: {inner}" around it (relay_directory.rs), so the
+// same refusal can arrive wrapped several layers deep. Every wrapper is noise
+// to a person.
+const RELAY_WRAPPER_PREFIX = /^relay (?:returned [^:]*|[\w -]+? failed):\s*/i;
+
+const MEMBERSHIP_REQUIRED_SENTENCE =
+  "You must be a relay member to access this relay";
 
 function messageOf(error: unknown): string | null {
   if (typeof error === "string") return error;
@@ -34,9 +40,27 @@ export function isRelayMembershipDeniedError(error: unknown): boolean {
 }
 
 /**
- * The relay's own reason without the transport prefix, for the small details
- * line on the escape screen. Never shown as the main message.
+ * The text of `error` with every native-layer wrapper removed ("relay returned
+ * 403 Forbidden:", "relay owned-agent query failed:", however deeply nested).
+ * Safe to apply twice; plain text passes through unchanged.
+ */
+export function stripRelayWrappers(error: unknown): string {
+  let text = (messageOf(error) ?? "").trim();
+  for (;;) {
+    const next = text.replace(RELAY_WRAPPER_PREFIX, "").trim();
+    if (next === text) return text;
+    text = next;
+  }
+}
+
+/**
+ * The relay's own reason in plain words, without any wrapper, for the small
+ * details line on the escape screen. Never shown as the main message. The raw
+ * text belongs in the console, not on screen.
  */
 export function relayMembershipDenialDetail(error: unknown): string {
-  return (messageOf(error) ?? "").replace(RELAY_TRANSPORT_PREFIX, "").trim();
+  const reason = stripRelayWrappers(error);
+  return reason.includes("relay_membership_required")
+    ? MEMBERSHIP_REQUIRED_SENTENCE
+    : reason;
 }

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   isRelayUnreachableError,
+  isTechnicalRelayError,
   plainRelayErrorMessage,
   RELAY_GENERIC_ERROR_MESSAGE,
   RELAY_UNREACHABLE_SHORT,
@@ -82,4 +83,41 @@ test("plainRelayErrorMessage keeps the unreachable wording for unreachable error
     plainRelayErrorMessage("relay unreachable: connection refused"),
     RELAY_UNREACHABLE_SHORT,
   );
+});
+
+test("plainRelayErrorMessage sees through a nested wrapper", () => {
+  assert.equal(
+    plainRelayErrorMessage(
+      "relay owned-agent query failed: relay unreachable: request timed out",
+    ),
+    RELAY_UNREACHABLE_SHORT,
+  );
+  assert.equal(
+    plainRelayErrorMessage(
+      "relay owned-agent query failed: relay returned 500 Internal Server Error: boom",
+    ),
+    RELAY_GENERIC_ERROR_MESSAGE,
+  );
+});
+
+test("isTechnicalRelayError flags relay wrapper text and nothing else", () => {
+  for (const raw of [
+    "relay returned 403 Forbidden: nope",
+    "relay returned 503",
+    "relay returned malformed response: not valid JSON",
+    "relay unreachable: request timed out",
+    "relay owned-agent query failed: relay returned 403 Forbidden: nope",
+    "relay owned-agent query failed: relay unreachable: network error",
+  ]) {
+    assert.equal(isTechnicalRelayError(raw), true, raw);
+    assert.equal(isTechnicalRelayError(new Error(raw)), true, raw);
+  }
+  for (const plain of [
+    "Temporary community connection failure.",
+    "Failed to apply community configuration",
+    "",
+  ]) {
+    assert.equal(isTechnicalRelayError(plain), false, plain);
+  }
+  assert.equal(isTechnicalRelayError(null), false);
 });
