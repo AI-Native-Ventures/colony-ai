@@ -71,13 +71,16 @@ fn only_live_receipts_of_this_install_count() {
         &|pid, _| pid != 10,
     );
 
-    assert_eq!(live, vec![7]);
-    assert!(
+    assert_eq!(live.pids, vec![7]);
+    assert_eq!(
+        live.unreadable, 0,
+        "a stale or foreign file is not unreadable"
+    );
+    let missing =
         boot::live_agent_pids_in(&dir.path().join("missing"), INSTANCE, &|_| true, &|_, _| {
             true
-        })
-        .is_empty()
-    );
+        });
+    assert_eq!(missing, boot::LiveAgents::default());
 }
 
 #[test]
