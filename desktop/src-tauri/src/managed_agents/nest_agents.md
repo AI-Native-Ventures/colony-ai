@@ -57,9 +57,9 @@ Git authorship, co-authorship, DCO sign-off, and cryptographic signing are separ
 
 A repository may require an accountable human as author and the implementing agent as co-author. An agent-owned repository may use the agent as author and require no human trailer. In both cases, repository-local policy controls.
 
-<!-- BEGIN BUZZ MANAGED , regenerated automatically, do not edit below -->
+<!-- BEGIN COLONY MANAGED - regenerated automatically, do not edit below -->
 ## Active Agents
 
 *(No agents deployed yet. Add agents in the Colony desktop app.)*
 
-<!-- END BUZZ MANAGED -->
+<!-- END COLONY MANAGED -->

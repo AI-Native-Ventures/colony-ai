@@ -164,7 +164,31 @@ function choose() {
   };
 }
 
-/** What ensure_nest does for the chosen folder: markers on a new folder, the skill the new folder owns. */
+/** NEST_AGENTS_VERSION of the host (nest.rs): a stamp below it makes the host refresh AGENTS.md. */
+const HOST_AGENTS_VERSION = 7;
+
+/**
+ * What the host's version refresh does to a moved AGENTS.md: the legacy markers of the managed section become the
+ * Colony markers in place, the owner's text and the section body are kept, and the stamp is written. (The real
+ * refresh also replaces the static text above the section; this stand-in leaves it, which no check reads.)
+ */
+function refreshAgentsMd(folder) {
+  const stampFile = path.join(folder, ".nest-agents-version");
+  const agentsFile = path.join(folder, "AGENTS.md");
+  if (!present(stampFile) || !present(agentsFile)) return;
+  const stamp = Number.parseInt(readFileSync(stampFile, "utf8"), 10);
+  if (!(stamp < HOST_AGENTS_VERSION)) return;
+  const text = readFileSync(agentsFile, "utf8")
+    .replace(
+      /^<!-- BEGIN BUZZ MANAGED[^\n]*$/m,
+      "<!-- BEGIN COLONY MANAGED - regenerated automatically, do not edit below -->",
+    )
+    .replace(/^<!-- END BUZZ MANAGED -->/m, "<!-- END COLONY MANAGED -->");
+  writeFileSync(agentsFile, text);
+  writeFileSync(stampFile, `${HOST_AGENTS_VERSION}\n`);
+}
+
+/** What ensure_nest does for the chosen folder: markers on a new folder, the refresh of an old one, the skill the new folder owns. */
 async function provision(chosen) {
   const folder = path.join(home, chosen);
   if (chosen === contract.oldNest) return;
@@ -172,6 +196,7 @@ async function provision(chosen) {
     mkdirSync(folder, { recursive: true });
     writeFileSync(path.join(folder, ".nest-agents-version"), "999\n");
   }
+  refreshAgentsMd(folder);
   await provisionSkill(folder);
   await resolveReposAtBoot(folder);
 }

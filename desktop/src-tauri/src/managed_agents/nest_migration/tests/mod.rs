@@ -16,6 +16,7 @@ mod basics;
 mod crash;
 mod faults;
 mod links;
+mod markers;
 mod pointer;
 mod wipe;
 
