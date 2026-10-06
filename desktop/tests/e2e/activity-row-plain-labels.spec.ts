@@ -15,6 +15,13 @@ const LIST_COMMAND = "buzz --format compact channels list 2>&1 | head -50";
 const SEND_COMMAND =
   'echo "On it" | buzz messages send --channel dc25bbfd-1b2c-4d3e-8f90-123456789abc --content -';
 
+// Agents are taught the `colony` command now. It must read exactly like the
+// legacy `buzz` one: same plain labels, raw text only behind Show details.
+const COLONY_LIST_COMMAND =
+  "colony --format compact channels list 2>&1 | head -50";
+const COLONY_SEND_COMMAND =
+  'echo "On it" | colony messages send --channel dc25bbfd-1b2c-4d3e-8f90-123456789abc --content -';
+
 const proof = process.env.ACTIVITY_PROOF_DIR;
 
 test.use({ viewport: { width: 1728, height: 1117 } });
@@ -135,6 +142,32 @@ test.describe("agent activity shows plain labels", () => {
     expect(text).not.toContain("--format");
     expect(text).not.toContain("dc25bbfd");
     await capture(page, "composer-default");
+  });
+
+  test("the colony command gets the same plain labels and stays hidden", async ({
+    page,
+  }) => {
+    const row = await workingAgentRow(page);
+    await seedToolCalls(page, [COLONY_LIST_COMMAND, COLONY_SEND_COMMAND]);
+
+    await expect(row).toContainText("Checking channels");
+    await expect(row).toContainText("Sending a message", { timeout: 15_000 });
+    await expect(row).not.toContainText("Running a command");
+    await expect(row).not.toContainText("Ran tool");
+
+    const text = await visibleTextAndNames(row);
+    expect(text).not.toMatch(/buzz/i);
+    expect(text).not.toContain("colony --format");
+    expect(text).not.toContain("colony messages");
+    expect(text).not.toContain("|");
+    expect(text).not.toContain("--format");
+    expect(text).not.toContain("dc25bbfd");
+
+    // The raw command is still one explicit click away.
+    await page.getByTestId("bot-activity-details-trigger").click();
+    const details = page.getByTestId("bot-activity-details");
+    await expect(details).toContainText(COLONY_LIST_COMMAND);
+    await expect(details).toContainText(COLONY_SEND_COMMAND);
   });
 
   test("Show details reveals the raw command and collapses again", async ({
