@@ -736,8 +736,8 @@ export function createHttp({
   allowedOrigins = DEFAULT_ENDPOINTS.allowedOrigins,
   fetchImpl = globalThis.fetch,
   timeoutMs = 20_000,
-  streamIdleMs = 30_000,
-  streamTotalMs = 90_000,
+  streamIdleMs = 60_000,
+  streamTotalMs = 180_000,
   maxBodyBytes = 262_144,
   maxStreamBytes = 524_288,
 } = {}) {
@@ -1468,6 +1468,9 @@ export function describeInference(result, { expectCall = false } = {}) {
   if (summary.incomplete) notes.push("response.incomplete seen");
   if (result.truncated) notes.push("stream cut at size cap");
   if (error.detail) notes.push(`detail: ${error.detail}`);
+  if (result.status === 200 && result.streamed === false) {
+    notes.push("HTTP 200 but not an event stream");
+  }
   if (result.status && result.status !== 200 && result.jsonBody === false) {
     notes.push(`non-JSON body, ${result.bodyLength} chars`);
   }

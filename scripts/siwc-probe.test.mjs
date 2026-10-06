@@ -1718,3 +1718,17 @@ test("describeInference: a non-JSON error body is noted, not echoed", () => {
   assert.equal(described.http, 403);
   assert.match(described.note, /non-JSON body, 512 chars/);
 });
+
+test("describeInference: HTTP 200 without an event stream is a failure with a note", () => {
+  const described = describeInference({
+    status: 200,
+    streamed: false,
+    jsonBody: true,
+    bodyLength: 2,
+    error: { code: null, param: null, detail: null },
+    summary: newStreamSummary(),
+    ms: 4,
+  });
+  assert.equal(described.outcome, "fail");
+  assert.match(described.note, /not an event stream/);
+});
