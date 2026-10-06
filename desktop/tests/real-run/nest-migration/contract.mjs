@@ -123,7 +123,10 @@ export function defaultContract() {
     // and the differ treats that link as the way the new nest reaches the left-behind folder, not as a copy.
     // Names the migration may add that are neither owned entries nor user data. The staging folder exists only
     // while a run is in flight, and the proof checks it is gone afterwards.
-    allowedNewArtifacts: [`${NEW_NEST}.staging`, `${NEW_NEST}/.scratch`],
+    allowedNewArtifacts:
+      process.env.NEST_STRICT === "1"
+        ? [`${NEW_NEST}.staging`]
+        : [`${NEW_NEST}.staging`, `${NEW_NEST}/.scratch`],
   };
 }
 

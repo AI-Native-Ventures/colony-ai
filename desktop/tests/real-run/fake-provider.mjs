@@ -189,7 +189,7 @@ export async function startFakeProvider({ logFile, port = 0 } = {}) {
   });
   await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
   const url = `http://127.0.0.1:${server.address().port}/v1`;
-  return { url, stats: () => ({ ...sessions }), close: () => new Promise((r) => server.close(r)) };
+  return { url, stats: () => ({ ...sessions }), close: () => new Promise((r) => { server.closeAllConnections?.(); server.close(r); }) };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

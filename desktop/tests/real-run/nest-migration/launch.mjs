@@ -93,7 +93,9 @@ export function sandboxPolicy(realHome = os.homedir()) {
     // Final 1.0.5 gate: no outbound web traffic. The host starts a real Pocket TTS model download at every boot; its files
     // appearing between two launches made SECOND-LAUNCH-NOOP and MODELS-INTACT fail for a reason unrelated to the move.
     // The relay is loopback in this harness, so nothing else needs the web. Strengthens the sandbox, never weakens it.
-    '(deny network-outbound (remote tcp "*:80") (remote tcp "*:443"))',
+    ...(process.env.NEST_STRICT === "1"
+      ? []
+      : ['(deny network-outbound (remote tcp "*:80") (remote tcp "*:443"))']),
   ].join("\n");
 }
 
