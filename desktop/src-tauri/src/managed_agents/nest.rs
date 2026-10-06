@@ -829,6 +829,8 @@ pub fn try_regenerate_nest<R: tauri::Runtime>(app: &AppHandle<R>) {
 }
 
 #[cfg(test)]
+mod brand_guard_tests;
+#[cfg(test)]
 mod render_tests;
 #[cfg(test)]
 mod tests;

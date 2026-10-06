@@ -6,6 +6,9 @@ mod help_tree;
 mod links;
 mod validate;
 
+#[cfg(test)]
+mod brand_guard_tests;
+
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use client::BuzzClient;
 use error::CliError;

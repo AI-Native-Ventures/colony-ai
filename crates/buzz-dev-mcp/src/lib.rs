@@ -20,6 +20,9 @@ mod todo;
 mod tree;
 mod view_image;
 
+#[cfg(test)]
+mod brand_guard_tests;
+
 #[derive(Clone)]
 struct DevMcp {
     state: Arc<shell::SharedState>,

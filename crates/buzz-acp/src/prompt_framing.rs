@@ -1,5 +1,12 @@
 //! Shared framing for standing prompt context.
 
+/// Base prompt every agent receives when no custom base file is configured.
+///
+/// The one production read of `base_prompt.md`: both the runtime and the brand
+/// guard (`brand_guard_tests.rs`) go through this constant, so the guard scans
+/// exactly what agents are given.
+pub(crate) const DEFAULT_BASE_PROMPT: &str = include_str!("base_prompt.md");
+
 /// Wrap one standing-context body in an explicit paired boundary.
 ///
 /// The body is intentionally preserved verbatim: agent-definition review

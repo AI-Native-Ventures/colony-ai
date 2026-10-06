@@ -73,13 +73,19 @@ impl SharedState {
 }
 
 fn build_bootstrap(cwd: &Path, shell_hint: &str) -> String {
+    let configured =
+        std::env::var("BUZZ_RELAY_URL").is_ok() && std::env::var("BUZZ_PRIVATE_KEY").is_ok();
+    build_bootstrap_with(cwd, shell_hint, configured)
+}
+
+/// Baseline-only seam so the brand guard can render both bootstrap variants.
+pub(crate) fn build_bootstrap_with(cwd: &Path, shell_hint: &str, configured: bool) -> String {
     let stack = detect_stack(cwd);
-    let buzz_hint =
-        if std::env::var("BUZZ_RELAY_URL").is_ok() && std::env::var("BUZZ_PRIVATE_KEY").is_ok() {
-            "\nBuzz relay configured. Run `buzz --help` to see available commands.\n"
-        } else {
-            ""
-        };
+    let buzz_hint = if configured {
+        "\nBuzz relay configured. Run `buzz --help` to see available commands.\n"
+    } else {
+        ""
+    };
     format!(
         "Working directory: {}\n\
          Detected stack: {}\n\
