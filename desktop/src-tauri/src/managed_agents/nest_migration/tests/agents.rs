@@ -86,7 +86,7 @@ fn only_live_receipts_of_this_install_count() {
     );
     let missing =
         boot::live_agent_pids_in(&dir.path().join("missing"), INSTANCE, &|_| true, &|_, _| {
-            true
+            MarkerProbe::Ours
         });
     assert_eq!(missing, boot::LiveAgents::default());
 }
