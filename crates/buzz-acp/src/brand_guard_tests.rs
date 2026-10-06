@@ -80,8 +80,8 @@ fn batch_of(
     FlushBatch {
         channel_id,
         scope,
-        events: events.iter().map(|e| wrap(*e)).collect(),
-        cancelled_events: cancelled.iter().map(|e| wrap(*e)).collect(),
+        events: events.iter().copied().map(&wrap).collect(),
+        cancelled_events: cancelled.iter().copied().map(&wrap).collect(),
         cancel_reason: reason,
     }
 }
