@@ -71,8 +71,11 @@ try {
   // Files tab: read the DOM
   let filesText = "";
   try {
-    await page.getByTestId("channel-welcome").first().click({ timeout: 8000 }).catch(() => undefined);
-    await page.getByTestId("channel-work-area-trigger").click({ timeout: 8000 });
+    await page.keyboard.press("Escape").catch(() => undefined);
+    await page.getByText(/^Welcome$/u).first().click({ timeout: 15000 });
+    await page.getByTestId("message-timeline").waitFor({ timeout: 15000 });
+    await sleep(1500);
+    await page.getByTestId("channel-work-area-trigger").click({ timeout: 15000 });
     await page.getByTestId("work-area-panel").waitFor({ timeout: 8000 });
     const empty = page.getByTestId("work-area-open-files");
     if (await empty.isVisible().catch(() => false)) await empty.click();
@@ -97,6 +100,18 @@ try {
   );
   // Restored agent: processes carrying the managed-agent marker, with their cwd.
   const agents = [];
+  // The agent is started after the workspace opens and the relay answers; wait up to 120 s for its process to appear.
+  const agentDeadline = Date.now() + 120000;
+  let agentPids = [];
+  while (Date.now() < agentDeadline) {
+    agentPids = [];
+    for (const pid of await descendants(app.pid)) {
+      const env = await run("ps", ["eww", "-p", String(pid)]).then((r) => r.stdout, () => "");
+      if (/BUZZ_MANAGED_AGENT=/u.test(env)) agentPids.push(pid);
+    }
+    if (agentPids.length) break;
+    await sleep(5000);
+  }
   for (const pid of await descendants(app.pid)) {
     const env = await run("ps", ["eww", "-p", String(pid)]).then((r) => r.stdout, () => "");
     if (!/BUZZ_MANAGED_AGENT=/u.test(env)) continue;
@@ -107,7 +122,7 @@ try {
   // The fake-model Scout answers after the migration; its tools show the nest it works in.
   const count = () => page.evaluate(() => [...document.body.innerText.matchAll(/(\d+) repl(?:y|ies)/gu)].map((m) => Number(m[1])).reduce((a, b) => a + b, 0));
   await page.keyboard.press("Escape").catch(() => undefined);
-  await page.getByTestId("channel-welcome").first().click({ timeout: 8000 }).catch(() => undefined);
+  await page.getByText(/^Welcome$/u).first().click({ timeout: 15000 }).catch(() => undefined);
   await page.getByTestId("message-timeline").waitFor({ timeout: 15000 });
   const repliesBefore = await count();
   const composer = page.getByTestId("message-composer").locator('[contenteditable="true"]').first();

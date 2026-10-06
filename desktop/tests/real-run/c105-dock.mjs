@@ -165,6 +165,25 @@ try {
     version === "1.0.5" ? "PASS" : "FAIL",
     `app.getVersion() = ${version}`,
   );
+  // Delta gate: this profile's dock state persisted from the first gate (tabs already open), which makes the first-open steps
+  // meaningless. DOCK_RESET=1 clears the persisted work-area keys and reloads so the dock starts as for a new user.
+  if (process.env.DOCK_RESET === "1") {
+    const removed = await page.evaluate(() => {
+      const keys = [];
+      for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+        const key = localStorage.key(i);
+        if (key && /work.?area/iu.test(key)) {
+          keys.push(key);
+          localStorage.removeItem(key);
+        }
+      }
+      return keys;
+    });
+    await page.reload();
+    await page.getByTestId("app-sidebar").waitFor({ timeout: 60000 });
+    await sleep(3000);
+    await progress(`[DOCK] persisted dock state cleared: ${removed.length} key(s) ${removed.map((k) => k.slice(0, 40)).join(", ")}`);
+  }
   // Persisted avatar from A2: item 5 relaunch persistence.
   const av = await page.evaluate(() => {
     const img = document.querySelector(
