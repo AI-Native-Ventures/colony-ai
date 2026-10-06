@@ -457,12 +457,12 @@ fn resolve_bash(path_env: &str) -> Result<(PathBuf, String), String> {
 
     Err(
         "Git for Windows (Git Bash) is required but was not found. Checked \\
-         BUZZ_SHELL, GIT_BASH, bash.exe and git.exe on PATH, the standard Git install locations, \\
+         the shell override, GIT_BASH, bash.exe and git.exe on PATH, the standard Git install locations, \\
          and HKLM/HKCU\\\\SOFTWARE\\\\GitForWindows. Git's \"Cmd\" PATH option adds \\
-         Git\\\\cmd\\\\git.exe but not Git\\\\bin\\\\bash.exe; Buzz normally derives Git Bash from that git.exe. \\
+         Git\\\\cmd\\\\git.exe but not Git\\\\bin\\\\bash.exe; Colony normally derives Git Bash from that git.exe. \\
          Install it from https://git-scm.com/download/win and select \"Git from the command line \\
-         and also from 3rd-party software\", then relaunch Buzz. You can also set \\
-         BUZZ_SHELL to a shell executable."
+         and also from 3rd-party software\", then relaunch Colony. You can also point \\
+         the shell override environment variable at a shell executable."
             .into(),
     )
 }

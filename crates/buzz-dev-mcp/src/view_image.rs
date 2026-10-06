@@ -352,8 +352,8 @@ async fn fetch_url(url: &str) -> Result<Vec<u8>, ErrorData> {
         let status = resp.status();
         if matches!(status.as_u16(), 401 | 403) && !authed {
             return Err(invalid_params(format!(
-                "fetch {url} returned HTTP {status} — this relay requires authenticated media \
-                 reads; set BUZZ_PRIVATE_KEY (and BUZZ_RELAY_URL) to a member identity"
+                "fetch {url} returned HTTP {status}. This relay requires authenticated media \
+                 reads, so run this from a Colony agent signed in as a member"
             )));
         }
         return Err(invalid_params(format!(

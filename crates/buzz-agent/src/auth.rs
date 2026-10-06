@@ -2033,8 +2033,8 @@ fn callback_outcome(
             .unwrap_or_else(|| "missing code".into())),
     };
     let page = match result {
-        Ok(_) => "<h2>Buzz: signed in</h2><p>You can close this window.</p>",
-        Err(_) => "<h2>Buzz auth failed</h2><p>You can close this window and try again.</p>",
+        Ok(_) => "<h2>Colony: signed in</h2><p>You can close this window.</p>",
+        Err(_) => "<h2>Colony auth failed</h2><p>You can close this window and try again.</p>",
     }
     .to_string();
     (result, page)
@@ -2762,6 +2762,23 @@ mod tests {
         );
         // The success page is a fixed literal — no request data in it.
         assert!(!page.contains("auth-code-123"));
+    }
+
+    #[test]
+    fn test_callback_pages_name_colony_not_the_old_product() {
+        let mut ok = std::collections::HashMap::new();
+        ok.insert("code".to_string(), "c".to_string());
+        ok.insert("state".to_string(), "s".to_string());
+        let (_, success) = callback_outcome(&ok, "s");
+        let (_, failure) = callback_outcome(&std::collections::HashMap::new(), "s");
+
+        for page in [success, failure] {
+            assert!(page.contains("Colony"), "page should name Colony: {page}");
+            assert!(
+                !page.to_ascii_lowercase().contains("buzz"),
+                "page leaks the old name: {page}"
+            );
+        }
     }
 
     // ---- private atomic cache write --------------------------------------
