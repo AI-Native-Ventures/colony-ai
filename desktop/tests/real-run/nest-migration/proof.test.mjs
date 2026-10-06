@@ -105,6 +105,18 @@ test("the full proof against a correct fake app: no FAIL anywhere, and only the 
 test("falsifiable: the runner turns each migration defect into a FAIL on the right check", async () => {
   const copy = await proof(["owner"], { FAKE_BREAK: "copy" });
   assert.equal(copy.status("owner", "RENAME-NOT-COPY"), FAIL);
+  // The runner pins every file with a hard link while the case runs, so a copy cannot reuse an inode number
+  // on filesystems that recycle them (ext4), and removes the pins afterwards.
+  assert.match(
+    copy.byCase.owner.timeline.join("\n"),
+    /pinned [1-9]\d* files with hard links/u,
+  );
+  const { existsSync } = await import("node:fs");
+  assert.equal(
+    existsSync(path.join(copy.base, "work", "owner", "fixture", ".pins")),
+    false,
+    "pins are removed",
+  );
   const touch = await proof(["owner"], { FAKE_BREAK: "touch-foreign" });
   assert.equal(touch.status("owner", "FOREIGN-IDENTICAL"), FAIL);
   const lost = await proof(["owner"], { FAKE_BREAK: "delete-owned" });
@@ -303,12 +315,17 @@ test("parseLsofCwd keeps the n lines, and findManagedAgents sees only descendant
   const other = spawnSleeper({ BUZZ_MANAGED_AGENT: "another.install" });
   const plain = spawnSleeper({});
   try {
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    const found = await findManagedAgents(
-      process.pid,
-      "BUZZ_MANAGED_AGENT",
-      "xyz.test.id",
-    );
+    // Poll until the children exist as processes with their environment, no fixed sleep.
+    let found = [];
+    for (let attempt = 0; attempt < 100 && found.length === 0; attempt++) {
+      found = await findManagedAgents(
+        process.pid,
+        "BUZZ_MANAGED_AGENT",
+        "xyz.test.id",
+      );
+      if (found.length === 0)
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
     assert.deepEqual(
       found.map((a) => a.pid),
       [marked.pid],

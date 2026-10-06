@@ -5,7 +5,8 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { defaultContract } from "./contract.mjs";
-import { attachDatabases, buildManifest } from "./manifest.mjs";
+import { isVolatile, splitNestPath } from "./diff.mjs";
+import { attachDatabases, buildManifest, pinFiles } from "./manifest.mjs";
 
 const run = promisify(execFile);
 const RECORD_LIMIT = 256 * 1024;
@@ -138,4 +139,25 @@ export async function runForeignScripts(home, relativeScripts) {
     }
   }
   return results;
+}
+
+/**
+ * Pin every regular file of a fixture's nest folders (except the volatile archive) so inode comparison is sound.
+ * Call before the first snapshot. The pins live in the fixture root, outside the HOME the app sees.
+ */
+export async function pinFixture(
+  fixture,
+  contract = defaultContract(),
+  pinDir = path.join(fixture.root, ".pins"),
+) {
+  const skip = (relative) => {
+    const split = splitNestPath(relative, contract);
+    return Boolean(split && isVolatile(split.rel));
+  };
+  return pinFiles(
+    fixture.home,
+    [contract.oldNest, contract.newNest],
+    pinDir,
+    skip,
+  );
 }

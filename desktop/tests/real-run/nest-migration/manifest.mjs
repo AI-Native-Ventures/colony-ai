@@ -2,7 +2,16 @@
 // never followed. A manifest taken before a run and one taken after are compared by diff.mjs.
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { lstat, readdir, readlink, realpath, stat } from "node:fs/promises";
+import {
+  link,
+  lstat,
+  mkdir,
+  readdir,
+  readlink,
+  realpath,
+  rm,
+  stat,
+} from "node:fs/promises";
 import path from "node:path";
 import { readDatabase } from "./sqlite.mjs";
 
@@ -39,7 +48,8 @@ export async function recordEntry(home, relative, { hash = true } = {}) {
   const absolute = path.join(home, relative);
   let stats;
   try {
-    stats = await lstat(absolute);
+    // bigint stats: nanosecond timestamps and exact inode numbers, so a rewrite is visible at any granularity.
+    stats = await lstat(absolute, { bigint: true });
   } catch (error) {
     if (error.code === "ENOENT") return null;
     throw error;
@@ -48,12 +58,15 @@ export async function recordEntry(home, relative, { hash = true } = {}) {
   const entry = {
     path: relative,
     type,
-    mode: octal(stats.mode),
-    ino: stats.ino,
-    dev: stats.dev,
-    // A directory's size is filesystem bookkeeping and changes when children move, so it is not recorded.
-    size: type === "dir" ? null : stats.size,
-    mtimeMs: type === "dir" ? null : Math.round(stats.mtimeMs),
+    mode: octal(Number(stats.mode)),
+    ino: stats.ino.toString(),
+    dev: stats.dev.toString(),
+    // A directory's size, link count and times are filesystem bookkeeping that change when children move, so
+    // they are not recorded for directories.
+    size: type === "dir" ? null : Number(stats.size),
+    nlink: type === "dir" ? null : Number(stats.nlink),
+    mtimeNs: type === "dir" ? null : stats.mtimeNs.toString(),
+    ctimeNs: type === "dir" ? null : stats.ctimeNs.toString(),
   };
   if (type === "symlink") {
     entry.target = await readlink(absolute);
@@ -135,4 +148,44 @@ export function treeHash(entries) {
       ].join("\u0000"),
     );
   return hash.digest("hex");
+}
+
+/**
+ * Pin every regular file under `roots` with a hard link in `pinDir` (inside the proof's own temp root, outside
+ * the nest). While a pin exists its inode number cannot be handed to another file, so the manifest's inode
+ * comparison is sound on filesystems that reuse freed inodes at once (ext4 does): a copy-then-delete or a
+ * delete-then-write can never keep the original inode number, and the original's link count (nest path plus
+ * pin) differs from the copy's. Files under `skip` (volatile paths such as the archive) are not pinned.
+ * Take the "before" manifest after pinning, because creating a link also updates the file's ctime.
+ * @returns {Promise<number>} how many files were pinned
+ */
+export async function pinFiles(home, roots, pinDir, skip = () => false) {
+  await mkdir(pinDir, { recursive: true });
+  let count = 0;
+  const visit = async (relative) => {
+    let stats;
+    try {
+      stats = await lstat(path.join(home, relative));
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      throw error;
+    }
+    if (stats.isDirectory()) {
+      for (const child of (await readdir(path.join(home, relative))).sort())
+        await visit(`${relative}/${child}`);
+    } else if (stats.isFile() && !skip(relative)) {
+      await link(path.join(home, relative), path.join(pinDir, String(count)));
+      count += 1;
+    }
+  };
+  for (const root of roots) await visit(root);
+  // Kernel timestamps come from a coarse clock (a tick of up to 10 ms). Let it advance past the links' own
+  // ctime stamps, so any later touch of a pinned file gets a strictly later ctime and cannot tie.
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  return count;
+}
+
+/** Remove the pins. Call after the "after" manifest is taken, because removing a link updates ctime. */
+export async function unpinFiles(pinDir) {
+  await rm(pinDir, { recursive: true, force: true });
 }

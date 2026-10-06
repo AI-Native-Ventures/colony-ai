@@ -115,6 +115,7 @@ async function migrate() {
   if (broken === "copy") {
     const file = path.join(newRoot, "OUTBOX", "DAY1_VIDEO_PACK.md");
     if (present(file)) {
+      // A copy-then-delete migration: the bytes come back, the inode does not.
       const bytes = readFileSync(file);
       rmSync(file);
       writeFileSync(file, bytes);

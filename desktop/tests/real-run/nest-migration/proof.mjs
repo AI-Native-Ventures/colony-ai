@@ -24,8 +24,9 @@ import {
   preparePrivateDirs,
   sleep,
 } from "./launch.mjs";
-import { buildManifest, treeHash } from "./manifest.mjs";
+import { buildManifest, treeHash, unpinFiles } from "./manifest.mjs";
 import {
+  pinFixture,
   readMigrationRecords,
   runForeignScripts,
   snapshot,
@@ -338,6 +339,11 @@ async function newState(ctx, id, spec) {
     appData: hostAppDataDir(fixture.home, priv.userDataDir),
   };
   state.log(`fixture ${spec.variant} at ${fixture.home}`);
+  state.pinDir = path.join(fixture.root, ".pins");
+  state.pinned = await pinFixture(fixture, ctx.contract, state.pinDir);
+  state.log(
+    `pinned ${state.pinned} files with hard links so inode numbers cannot be reused`,
+  );
   return state;
 }
 
@@ -733,6 +739,9 @@ export async function runCase(ctx, id) {
   } catch (error) {
     blocked = `The flow stopped: ${String(error.message ?? error).slice(0, 400)}`;
     state.log(blocked);
+  } finally {
+    // Removing a pin updates the file's ctime, so it happens only after the last manifest was taken.
+    await unpinFiles(state.pinDir);
   }
   if (!evidence) {
     return {

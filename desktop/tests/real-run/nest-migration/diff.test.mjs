@@ -22,6 +22,7 @@ import {
 } from "./diff.mjs";
 import { buildFixture } from "./fixture.mjs";
 import { buildManifest } from "./manifest.mjs";
+import { pinFixture } from "./observe.mjs";
 import { simulateMigration } from "./simulate.mjs";
 
 const ROOTS = [".buzz", ".colony", ".colony.staging"];
@@ -51,6 +52,7 @@ async function scenario(variant, act) {
     root: path.join(dir, "fixture"),
     variant,
   });
+  await pinFixture(fixture, contract);
   const before = await buildManifest(fixture.home, ROOTS);
   let result;
   try {

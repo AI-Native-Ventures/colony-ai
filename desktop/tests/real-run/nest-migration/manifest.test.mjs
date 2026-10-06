@@ -3,7 +3,9 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  readFile,
   rm,
+  stat,
   symlink,
   utimes,
   writeFile,
@@ -15,12 +17,20 @@ import {
   attachDatabases,
   buildManifest,
   indexManifest,
+  pinFiles,
   recordEntry,
   sha256File,
   treeHash,
+  unpinFiles,
 } from "./manifest.mjs";
 
 const scratch = [];
+/** A pin folder of its own, outside the tree, so tests never share pins. */
+const pinFolder = async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "colony-nest-proof-pins-"));
+  scratch.push(dir);
+  return path.join(dir, "pins");
+};
 const tree = async () => {
   const home = await mkdtemp(
     path.join(os.tmpdir(), "colony-nest-proof-manifest-"),
@@ -128,23 +138,87 @@ test("sha256File streams the same digest as the manifest", async () => {
   );
 });
 
-test("mtime is recorded for files, so a rewrite with identical bytes is still visible", async () => {
+test("times are recorded in nanoseconds as strings, with the inode and link count, for files only", async () => {
+  const home = await tree();
+  const entries = indexManifest(await buildManifest(home, [".buzz"]));
+  const file = entries.get(".buzz/dir/file.txt");
+  const real = await stat(path.join(home, ".buzz/dir/file.txt"), {
+    bigint: true,
+  });
+  assert.equal(file.mtimeNs, real.mtimeNs.toString());
+  assert.equal(file.ctimeNs, real.ctimeNs.toString());
+  assert.equal(file.ino, real.ino.toString());
+  assert.equal(file.nlink, 1);
+  const dir = entries.get(".buzz/dir");
+  assert.equal(dir.mtimeNs, null);
+  assert.equal(dir.ctimeNs, null);
+  assert.equal(dir.nlink, null);
+});
+
+test("a rewrite with identical bytes is visible through mtime, and through ctime even when mtime is put back", async () => {
   const home = await tree();
   const file = path.join(home, ".buzz/dir/file.txt");
-  await utimes(
-    file,
-    new Date("2026-01-01T00:00:00Z"),
-    new Date("2026-01-01T00:00:00Z"),
-  );
-  const first = indexManifest(await buildManifest(home, [".buzz"])).get(
-    ".buzz/dir/file.txt",
-  );
-  await writeFile(file, "hello\n");
-  const second = indexManifest(await buildManifest(home, [".buzz"])).get(
-    ".buzz/dir/file.txt",
-  );
+  const old = new Date("2020-01-01T00:00:00Z");
+  await utimes(file, old, old);
+  const at = async () =>
+    indexManifest(await buildManifest(home, [".buzz"])).get(
+      ".buzz/dir/file.txt",
+    );
+  const first = await at();
+  await writeFile(file, await readFile(file));
+  const second = await at();
   assert.equal(first.sha256, second.sha256);
-  assert.notEqual(first.mtimeMs, second.mtimeMs);
+  assert.notEqual(first.mtimeNs, second.mtimeNs);
+  await utimes(file, old, old);
+  const third = await at();
+  assert.equal(third.mtimeNs, first.mtimeNs, "mtime was restored");
+  assert.notEqual(third.ctimeNs, first.ctimeNs, "ctime cannot be restored");
+});
+
+test("pinning: every regular file gets a hard link outside the tree, volatile paths are skipped, the pins can be removed", async () => {
+  const home = await tree();
+  await mkdir(path.join(home, ".buzz/archive"), { recursive: true });
+  await writeFile(path.join(home, ".buzz/archive/archive.db"), "db");
+  const pinDir = await pinFolder();
+  const count = await pinFiles(home, [".buzz"], pinDir, (relative) =>
+    relative.startsWith(".buzz/archive"),
+  );
+  assert.equal(
+    count,
+    2,
+    "file.txt and script.sh; not the archive, not the links, not the directories",
+  );
+  const entries = indexManifest(await buildManifest(home, [".buzz"]));
+  assert.equal(entries.get(".buzz/dir/file.txt").nlink, 2);
+  assert.equal(entries.get(".buzz/script.sh").nlink, 2);
+  assert.equal(entries.get(".buzz/archive/archive.db").nlink, 1);
+  await unpinFiles(pinDir);
+  const after = indexManifest(await buildManifest(home, [".buzz"]));
+  assert.equal(after.get(".buzz/dir/file.txt").nlink, 1);
+});
+
+test("pinning makes delete-then-write and copy-then-delete change the inode on every filesystem", async () => {
+  const home = await tree();
+  const pinDir = await pinFolder();
+  await pinFiles(home, [".buzz"], pinDir);
+  const file = path.join(home, ".buzz/dir/file.txt");
+  const at = async () =>
+    indexManifest(await buildManifest(home, [".buzz"])).get(
+      ".buzz/dir/file.txt",
+    );
+  const before = await at();
+  const bytes = await readFile(file);
+  await rm(file);
+  await writeFile(file, bytes);
+  await chmod(file, 0o640);
+  const after = await at();
+  assert.notEqual(
+    after.ino,
+    before.ino,
+    "the original inode is held by its pin and cannot be reused",
+  );
+  assert.equal(after.nlink, 1);
+  assert.equal(before.nlink, 2);
 });
 
 test("attachDatabases records an absent database as absent rather than failing", async () => {

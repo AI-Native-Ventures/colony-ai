@@ -6,6 +6,8 @@ import {
   readFile,
   rename,
   rm,
+  stat,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
@@ -23,6 +25,7 @@ import { defaultContract } from "./contract.mjs";
 import { buildFixture } from "./fixture.mjs";
 import {
   parseMigrationLines,
+  pinFixture,
   readMigrationRecords,
   runForeignScripts,
   snapshot,
@@ -34,6 +37,13 @@ const scratch = [];
 after(async () => {
   for (const dir of scratch) await rm(dir, { recursive: true, force: true });
 });
+
+/** Build a fixture and pin its files, as the runner does, so inode numbers cannot be reused. */
+async function buildPinned(options) {
+  const fixture = await buildFixture(options);
+  await pinFixture(fixture, contract);
+  return fixture;
+}
 
 const appDataOf = (home) =>
   path.join(home, "Library", "Application Support", "xyz.block.buzz.app");
@@ -75,7 +85,7 @@ async function build(kind, variant, { act, second, chosen } = {}) {
     path.join(os.tmpdir(), "colony-nest-proof-checks-"),
   );
   scratch.push(dir);
-  const fixture = await buildFixture({
+  const fixture = await buildPinned({
     root: path.join(dir, "fixture"),
     variant,
   });
@@ -287,6 +297,20 @@ test("falsifiable: .scratch moved, a deleted old generated skill entry, a lost o
   assert.equal(statuses(copied.rows)["RENAME-NOT-COPY"], FAIL);
 });
 
+test("falsifiable: a foreign file rewritten in place with its own bytes and its old mtime restored is caught by ctime", async () => {
+  const { rows } = await run("migrate", "owner", {
+    act: async (home) => {
+      const out = await launch(home);
+      const file = path.join(home, ".buzz/gate-note.md");
+      const { mtime, atime } = await stat(file);
+      await writeFile(file, await readFile(file));
+      await utimes(file, atime, mtime);
+      return out;
+    },
+  });
+  assert.equal(statuses(rows)["FOREIGN-IDENTICAL"], FAIL);
+});
+
 test("falsifiable: archive.db moved without its -wal loses history, archive files left behind split it", async () => {
   const lostWal = await run("migrate", "owner", {
     act: async (home) => {
@@ -476,7 +500,7 @@ test("the stale-version case allows only AGENTS.md and its stamp to change, and 
 test("crash: a stop after four entries are staged, then a resume, passes; the kill is recognised as mid-migration", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "colony-nest-proof-crash-"));
   scratch.push(dir);
-  const fixture = await buildFixture({
+  const fixture = await buildPinned({
     root: path.join(dir, "fixture"),
     variant: "owner",
   });
@@ -751,7 +775,7 @@ test("read-only parent: the migration aborts with nothing touched, the app keeps
 }, async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "colony-nest-proof-ro-"));
   scratch.push(dir);
-  const fixture = await buildFixture({
+  const fixture = await buildPinned({
     root: path.join(dir, "fixture"),
     variant: "owner",
   });
@@ -811,7 +835,7 @@ test("read-only parent: the migration aborts with nothing touched, the app keeps
 test("running agent: nothing moves while the agent is alive and the host defers; moving under it is caught", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "colony-nest-proof-agent-"));
   scratch.push(dir);
-  const fixture = await buildFixture({
+  const fixture = await buildPinned({
     root: path.join(dir, "fixture"),
     variant: "owner",
   });
@@ -908,7 +932,7 @@ test("kill switch off rolls back an interrupted run: entries return to the old f
     path.join(os.tmpdir(), "colony-nest-proof-rollback-"),
   );
   scratch.push(dir);
-  const fixture = await buildFixture({
+  const fixture = await buildPinned({
     root: path.join(dir, "fixture"),
     variant: "owner",
   });

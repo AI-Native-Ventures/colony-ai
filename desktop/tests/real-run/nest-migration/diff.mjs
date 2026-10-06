@@ -19,7 +19,17 @@ export function splitNestPath(entryPath, contract = defaultContract()) {
   return null;
 }
 
-function fieldDifferences(before, after, { strict, skipContent = false }) {
+/**
+ * Compare two records of the same entry.
+ * - `strict` also compares the inode, device, link count and modification time (nanoseconds) of files and links.
+ * - `untouched` also compares the change time (nanoseconds): any write, chmod, rename or link change bumps it,
+ *   so it proves a file was not touched at all. Not used for entries that were moved on purpose.
+ */
+function fieldDifferences(
+  before,
+  after,
+  { strict, untouched = false, skipContent = false },
+) {
   const differences = [];
   const compare = (field) => {
     if (before[field] !== after[field])
@@ -35,7 +45,11 @@ function fieldDifferences(before, after, { strict, skipContent = false }) {
   if (strict) {
     compare("ino");
     compare("dev");
-    if (before.type !== "dir" && !skipContent) compare("mtimeMs");
+    if (before.type !== "dir" && !skipContent) {
+      compare("nlink");
+      compare("mtimeNs");
+      if (untouched) compare("ctimeNs");
+    }
   }
   return differences;
 }
@@ -124,6 +138,7 @@ export function diffNests({ before, after, contract = defaultContract() }) {
       }
       const differences = fieldDifferences(entry, now, {
         strict: !isVolatile(rel),
+        untouched: !isVolatile(rel),
         skipContent: isVolatile(rel),
       });
       if (differences.length)
@@ -141,7 +156,10 @@ export function diffNests({ before, after, contract = defaultContract() }) {
         result.foreign.missing.push(entry.path);
         continue;
       }
-      const differences = fieldDifferences(entry, now, { strict: true });
+      const differences = fieldDifferences(entry, now, {
+        strict: true,
+        untouched: true,
+      });
       if (differences.length)
         result.foreign.differences.push({ path: entry.path, differences });
       else result.foreign.identical += 1;
@@ -238,11 +256,11 @@ export function diffNests({ before, after, contract = defaultContract() }) {
         target: destination.target,
       });
     const copiedFields = differences.filter((difference) =>
-      ["ino", "dev"].includes(difference.field),
+      ["ino", "dev", "nlink"].includes(difference.field),
     );
     if (copiedFields.length && !volatile) result.owned.copied.push(landedAt);
     const content = differences.filter(
-      (difference) => !["ino", "dev"].includes(difference.field),
+      (difference) => !["ino", "dev", "nlink"].includes(difference.field),
     );
     movedPaths.add(landedAt);
     if (content.length)
@@ -329,6 +347,7 @@ export function compareStable(first, second, contract = defaultContract()) {
     const volatile = split ? isVolatile(split.rel) : false;
     const differences = fieldDifferences(entry, other, {
       strict: !volatile,
+      untouched: !volatile,
       skipContent: volatile,
     });
     if (differences.length) changed.push({ path: entryPath, differences });
