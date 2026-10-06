@@ -23,7 +23,8 @@ const [label, mode = "one", secondInviteFile] = process.argv.slice(2);
 const rec = new Rec(`D3-${label}-${mode}`);
 const state = await loadState();
 const profile = { privateDir: state[label].privateDir, userDataDir: state[label].userDataDir };
-const RAW = /relay returned 403|Forbidden|You must be a relay member/iu;
+// Same pattern as the product e2e spec (removed-member-escape.spec.ts RAW_RELAY_TEXT) plus the wrapper text seen after Retry.
+const RAW = /relay returned \d{3}|owned-agent query failed|403 Forbidden/iu;
 await waitForLoad();
 await progress(`[D3-${label}-${mode}] relaunching profile ${label}`);
 let { application, page, version } = await launch(profile);
@@ -75,7 +76,8 @@ try {
       await screen().getByRole("button", { name: "Retry" }).click({ timeout: 8000 });
       await sleep(6000);
       const still = await screen().isVisible().catch(() => false);
-      rec.row("D3-retry-refused", "Retry while still refused keeps the escape screen", still ? "PASS" : "FAIL", `Escape screen still visible: ${still}. Page: ${await body(300)}`, { screenshot: await shot(page, rec, "d3-one-retry") });
+      const rawAfterRetry = RAW.test(await page.locator("body").innerText().catch(() => ""));
+      rec.row("D3-retry-refused", "Retry while still refused keeps the escape screen, without raw relay text", still && !rawAfterRetry ? "PASS" : "FAIL", `Escape screen still visible: ${still}. Raw relay text (relay returned NNN) visible after Retry: ${rawAfterRetry}. Details line: ${redact(await page.getByTestId("community-apply-error-details").innerText().catch(() => "(none)"))}. Page: ${await body(400)}`, { screenshot: await shot(page, rec, "d3-one-retry") });
     });
     await guard("D3-remove", "Remove this community from this device works with one community and lands on the join or create screen", async () => {
       await screen().getByRole("button", { name: /^Remove this community from this device/ }).click({ timeout: 8000 });
