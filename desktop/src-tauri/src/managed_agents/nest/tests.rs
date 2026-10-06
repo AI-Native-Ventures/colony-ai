@@ -1,14 +1,19 @@
 use super::*;
 
+fn is_known_nest_name(name: &str) -> bool {
+    crate::build_identity::production_nest_names().contains(&name)
+        || name == crate::build_identity::nest_name(true)
+}
+
 #[test]
 fn nest_dir_is_under_home() {
     if let Some(dir) = nest_dir() {
-        // Accepts both .buzz (prod) and .buzz-dev (dev) depending on
+        // Accepts .colony or .buzz (prod) and .buzz-dev (dev) depending on
         // whether init_nest_dir was called before this test ran.
         let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
         assert!(
-            name == NEST_DIR_PROD || name == crate::build_identity::nest_name(true),
-            "nest_dir must end with .buzz or .buzz-dev, got {dir:?}"
+            is_known_nest_name(name),
+            "nest_dir must end with .colony, .buzz or .buzz-dev, got {dir:?}"
         );
     }
 }
@@ -23,8 +28,8 @@ fn init_nest_dir_prod_sets_buzz() {
     if let Some(d) = dir {
         let name = d.file_name().and_then(|n| n.to_str()).unwrap_or("");
         assert!(
-            name == NEST_DIR_PROD || name == crate::build_identity::nest_name(true),
-            "nest_dir suffix must be .buzz or .buzz-dev, got {d:?}"
+            is_known_nest_name(name),
+            "nest_dir suffix must be .colony, .buzz or .buzz-dev, got {d:?}"
         );
     }
 }

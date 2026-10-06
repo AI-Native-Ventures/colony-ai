@@ -159,11 +159,16 @@ fn default_repos_root_candidates_for(
 ) -> Vec<std::path::PathBuf> {
     let mut candidates = Vec::new();
     candidates.extend(nest.map(|path| path.join("REPOS")));
-    if !is_demo_build {
-        candidates.extend(
-            home.map(|home| home.join(".buzz").join("REPOS"))
-                .filter(|path| !candidates.iter().any(|candidate| candidate == path)),
-        );
+    if let (false, Some(home)) = (is_demo_build, home) {
+        // Whichever folder name this install chose, an installed production app
+        // may have cloned into the other one (a dev build, or an install that
+        // moved folders). Roots that do not exist are skipped by the caller.
+        for name in crate::build_identity::production_nest_names() {
+            let path = home.join(name).join("REPOS");
+            if !candidates.contains(&path) {
+                candidates.push(path);
+            }
+        }
     }
     candidates
 }
@@ -218,8 +223,48 @@ mod tests {
                 Some(home.clone()),
                 false,
             ),
-            vec![home.join(".buzz-dev/REPOS"), home.join(".buzz/REPOS")]
+            vec![
+                home.join(".buzz-dev/REPOS"),
+                home.join(".colony/REPOS"),
+                home.join(".buzz/REPOS"),
+            ]
         );
+    }
+
+    #[test]
+    fn a_new_install_searches_its_own_folder_then_the_legacy_one() {
+        let home = PathBuf::from("/Users/example");
+        assert_eq!(
+            default_repos_root_candidates_for(
+                Some(home.join(".colony")),
+                Some(home.clone()),
+                false,
+            ),
+            vec![home.join(".colony/REPOS"), home.join(".buzz/REPOS")]
+        );
+    }
+
+    #[test]
+    fn an_existing_install_searches_its_own_folder_then_the_new_one() {
+        let home = PathBuf::from("/Users/example");
+        assert_eq!(
+            default_repos_root_candidates_for(Some(home.join(".buzz")), Some(home.clone()), false),
+            vec![home.join(".buzz/REPOS"), home.join(".colony/REPOS")]
+        );
+    }
+
+    #[test]
+    fn candidates_never_repeat_a_root() {
+        let home = PathBuf::from("/Users/example");
+        for nest in [".colony", ".buzz"] {
+            let candidates =
+                default_repos_root_candidates_for(Some(home.join(nest)), Some(home.clone()), false);
+            let mut unique = candidates.clone();
+            unique.sort();
+            unique.dedup();
+            assert_eq!(unique.len(), candidates.len(), "{candidates:?}");
+            assert_eq!(candidates.len(), 2);
+        }
     }
 
     #[test]

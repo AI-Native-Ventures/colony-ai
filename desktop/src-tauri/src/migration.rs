@@ -345,7 +345,9 @@ pub(crate) fn should_migrate_dev_repos_dir(is_dev: bool, reset_completed: bool) 
 }
 
 /// Injectable core: copy `.repos-dir` from `<home>/.buzz/` into `dev_nest`,
-/// non-destructively. Extracted so tests can inject temp paths without
+/// non-destructively. The source stays the literal legacy `.buzz`: this imports
+/// from an installed pre-namespacing app, and a `.colony` install never had that
+/// shared folder. Extracted so tests can inject temp paths without
 /// touching `dirs::home_dir()` or the global `nest_dir()` OnceLock.
 pub(crate) fn migrate_dev_repos_dir_at(home: &Path, dev_nest: &Path) {
     let src = home.join(".buzz").join(".repos-dir");
@@ -415,6 +417,9 @@ pub(crate) fn maybe_migrate_dev_repos_dir(
 ///
 /// Only runs on dev builds (checked by the caller). Returns `true` when
 /// contents were copied (useful for a one-time log message, not required).
+///
+/// The source is the literal legacy `~/.buzz` on purpose: it is the shared
+/// pre-namespacing nest, which a `~/.colony` install never had.
 pub fn migrate_dev_nest() -> bool {
     let Some(home) = dirs::home_dir() else {
         eprintln!("buzz-desktop: dev-nest-migration: cannot resolve home directory");

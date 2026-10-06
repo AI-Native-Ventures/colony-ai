@@ -1,4 +1,5 @@
-//! Buzz Nest — persistent agent workspace at `~/.buzz`.
+//! Colony nest: persistent agent workspace at `~/.colony` for new installs
+//! (existing installs keep `~/.buzz`, see [`super::nest_folder`]).
 //!
 //! Creates a shared knowledge directory on first launch so every
 //! Buzz-spawned agent starts with orientation (AGENTS.md) and a
@@ -20,6 +21,7 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 
 use crate::managed_agents::discovery::known_skill_dirs;
+use crate::managed_agents::nest_folder;
 #[cfg(unix)]
 use crate::util::create_symlink;
 
@@ -60,16 +62,13 @@ const END_MARKER: &str = "<!-- END BUZZ MANAGED -->";
 /// Canonical skill directory path relative to the nest root.
 const CANONICAL_SKILL_DIR: &str = ".agents/skills/buzz-cli";
 
-/// Nest directory name for production builds.
-const NEST_DIR_PROD: &str = ".buzz";
-
 /// Process-lifetime nest directory. Initialized once at startup via
 /// [`init_nest_dir`] before any call to [`nest_dir`].
 ///
 /// `None` inside the `OnceLock` means "home dir was unresolvable at init time".
 /// The outer `None` from `OnceLock::get` means "not initialized yet" —
-/// [`nest_dir`] falls back to the prod path in that case, ensuring test code
-/// that never calls [`init_nest_dir`] still works.
+/// [`nest_dir`] falls back to the production choice in that case, ensuring
+/// test code that never calls [`init_nest_dir`] still works.
 static NEST_DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
 
 /// Initialize the process-lifetime nest directory.
@@ -81,28 +80,40 @@ static NEST_DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new
 /// `is_dev` should be `true` when the running binary is a dev build — i.e.
 /// when the Tauri app-data directory name starts with `"xyz.block.buzz.app.dev"`.
 /// Pass `false` for production (signed DMG) builds.
-pub fn init_nest_dir(is_dev: bool) {
-    let suffix = crate::build_identity::nest_name(is_dev);
-    let path = dirs::home_dir().map(|h| h.join(suffix.as_ref()));
-    // set() is a no-op when already initialized, which is correct: only the
-    // first call (at boot, before any filesystem work) should win.
-    let _ = NEST_DIR.set(path);
-}
-
-/// Returns the nest root path (`~/.buzz` for prod, `~/.buzz-dev` for dev),
-/// or `None` if the home directory cannot be resolved.
 ///
-/// If [`init_nest_dir`] has not been called yet (e.g. in unit tests), falls
-/// back to the production path `~/.buzz`.
-pub fn nest_dir() -> Option<PathBuf> {
-    match NEST_DIR.get() {
-        Some(path) => path.clone(),
-        // Not yet initialized — fall back to prod path. Covers test code.
-        None => dirs::home_dir().map(|h| h.join(NEST_DIR_PROD)),
+/// Production builds pick `~/.colony` for a new install and keep an existing
+/// `~/.buzz` (see [`nest_folder`]). The choice only reads the filesystem and
+/// is logged once, on the call that sets it.
+pub fn init_nest_dir(is_dev: bool) {
+    let Some(home) = dirs::home_dir() else {
+        let _ = NEST_DIR.set(None);
+        return;
+    };
+    let (path, choice) = nest_folder::resolve_nest_dir(&home, is_dev);
+    // set() is a no-op when already initialized, which is correct: only the
+    // first call (at boot, before any filesystem work) should win. Log only
+    // the call that wins so the line always names the folder actually used.
+    if NEST_DIR.set(Some(path)).is_ok() {
+        eprintln!("{}", choice.log_line(&home));
     }
 }
 
-/// Creates the Buzz nest at `~/.buzz` if it doesn't already exist.
+/// Returns the nest root path (`~/.colony` for a new production install,
+/// `~/.buzz` for an existing one, `~/.buzz-dev` for dev), or `None` if the
+/// home directory cannot be resolved.
+///
+/// If [`init_nest_dir`] has not been called yet (e.g. in unit tests), falls
+/// back to the production choice for the current home directory.
+pub fn nest_dir() -> Option<PathBuf> {
+    match NEST_DIR.get() {
+        Some(path) => path.clone(),
+        // Not yet initialized: fall back to the production choice. Covers
+        // test code.
+        None => dirs::home_dir().map(|home| nest_folder::resolve_nest_dir(&home, false).0),
+    }
+}
+
+/// Creates the nest folder (see [`nest_dir`]) if it doesn't already exist.
 ///
 /// Delegates to [`ensure_nest_at`] with the resolved nest directory.
 /// Returns an error string if the home directory cannot be resolved.
