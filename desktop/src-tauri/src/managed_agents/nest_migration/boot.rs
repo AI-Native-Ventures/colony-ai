@@ -60,6 +60,35 @@ pub(super) fn live_agent_pids_in(
     pids
 }
 
+/// Why this launch runs no migration, when it does not.
+pub(super) const SKIP_RESET_PENDING: &str = "reset-pending";
+/// There is no old folder and no unfinished run: a fresh install, or one that
+/// already finished and left nothing behind to look at.
+pub(super) const SKIP_NOTHING_TO_DO: &str = "nothing-to-do";
+
+/// Decide before touching anything whether this launch has any migration work.
+///
+/// A pending reset wipes the chosen folder at this same launch, so moving it
+/// first would only be wasted work. A home with no old folder and no journal
+/// is left completely alone: no read of agent receipts, nothing created.
+pub(super) fn skip_reason(
+    home: &Path,
+    from_name: &str,
+    app_data_dir: &Path,
+    journal_dir: &Path,
+) -> Option<&'static str> {
+    if crate::reset::check_sentinel(app_data_dir) {
+        return Some(SKIP_RESET_PENDING);
+    }
+    let has_old_folder = fs::symlink_metadata(home.join(from_name)).is_ok();
+    let has_journal = fs::symlink_metadata(journal_dir.join(super::journal::JOURNAL_FILE)).is_ok();
+    if has_old_folder || has_journal {
+        None
+    } else {
+        Some(SKIP_NOTHING_TO_DO)
+    }
+}
+
 fn crash_now() -> ! {
     eprintln!("{LOG_PREFIX} crash seam: ending the process");
     std::process::exit(86)
@@ -83,16 +112,10 @@ pub(crate) fn run_at_boot(app: &tauri::AppHandle, app_data_dir: &Path, is_dev: b
     let journal_dir = state_dir(app_data_dir);
     let enabled = migration_enabled(std::env::var(ENV_FLAG).ok().as_deref());
 
-    // A pending reset wipes the chosen folder at this same launch; moving it
-    // first would only be wasted work.
-    if crate::reset::check_sentinel(app_data_dir) {
-        eprintln!("{LOG_PREFIX} skipped: a reset is pending");
-        return;
-    }
-    // Fresh installs and homes that never had the old folder: touch nothing.
-    let has_work = fs::symlink_metadata(home.join(from_name)).is_ok()
-        || fs::symlink_metadata(journal_dir.join(super::journal::JOURNAL_FILE)).is_ok();
-    if !has_work {
+    if let Some(reason) = skip_reason(&home, from_name, app_data_dir, &journal_dir) {
+        if reason == SKIP_RESET_PENDING {
+            eprintln!("{LOG_PREFIX} skipped: a reset is pending");
+        }
         return;
     }
 

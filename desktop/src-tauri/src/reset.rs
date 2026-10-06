@@ -861,6 +861,52 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_reset_of_a_shared_folder_wipes_only_colony_owned_entries() {
+        if crate::build_identity::is_demo_build() {
+            return;
+        }
+        for folder in [".buzz", ".colony"] {
+            let tmp = TempDir::new().unwrap();
+            let home = tmp.path();
+            seed_folder(home, folder, Seed::Nest);
+            let nest = home.join(folder);
+            // Entries Colony never wrote, sitting next to the nest.
+            let python = nest.join(".venv-tts").join("bin").join("python");
+            std::fs::create_dir_all(python.parent().unwrap()).unwrap();
+            let script = format!("#!{}/bin/python3\n", nest.join(".venv-tts").display());
+            std::fs::write(&python, &script).unwrap();
+            std::fs::write(nest.join("notes.md"), "keep me").unwrap();
+            // A generated skill folder beside another tool's file.
+            std::fs::create_dir_all(nest.join(".claude").join("skills").join("buzz-cli")).unwrap();
+            std::fs::write(nest.join(".claude").join("settings.local.json"), "{}").unwrap();
+
+            let (chosen, outcome) = reset_with_chosen_folder(home);
+
+            assert!(outcome.completed, "{folder}: reset must complete");
+            assert_eq!(chosen, folder);
+            for owned in ["RESEARCH", "AGENTS.md", ".nest-agents-version"] {
+                assert!(
+                    !nest.join(owned).exists(),
+                    "{folder}: {owned} must be wiped"
+                );
+            }
+            assert!(
+                !nest.join(".claude").join("skills").exists(),
+                "{folder}: generated skill folder must be wiped"
+            );
+            assert_eq!(std::fs::read_to_string(&python).unwrap(), script);
+            assert_eq!(
+                std::fs::read_to_string(nest.join("notes.md")).unwrap(),
+                "keep me"
+            );
+            assert_eq!(
+                std::fs::read_to_string(nest.join(".claude").join("settings.local.json")).unwrap(),
+                "{}"
+            );
+        }
+    }
+
     // ── Test 8: legacy app-data removed on reset ──────────────────────────────
 
     #[test]

@@ -335,3 +335,35 @@ fn the_allow_list_is_closed_and_the_markers_move_last() {
         assert_eq!(kind, expected, "{name}");
     }
 }
+
+#[test]
+fn the_state_folder_sits_in_the_app_data_folder_not_in_the_home_folder() {
+    let env = Env::new();
+    assert_eq!(boot::state_dir(&env.data), env.data.join("nest-migration"));
+    assert!(!boot::state_dir(&env.data).starts_with(&env.home));
+}
+
+#[test]
+fn a_launch_only_has_work_when_there_is_an_old_folder_or_an_unfinished_run() {
+    // Fresh install: nothing to look at.
+    let env = Env::new();
+    let skip = |env: &Env| boot::skip_reason(&env.home, OLD, &env.data, &env.state);
+    assert_eq!(skip(&env), Some(boot::SKIP_NOTHING_TO_DO));
+    // An old folder is work.
+    fs::create_dir_all(env.old()).unwrap();
+    assert_eq!(skip(&env), None);
+    // So is an unfinished run, even if the old folder is gone.
+    fs::remove_dir_all(env.old()).unwrap();
+    write(&env.journal_file(), b"{}");
+    assert_eq!(skip(&env), None);
+}
+
+#[test]
+fn a_pending_reset_skips_the_migration_before_anything_is_read() {
+    let env = Env::owner_shaped();
+    crate::reset::write_sentinel(&env.data).unwrap();
+    assert_eq!(
+        boot::skip_reason(&env.home, OLD, &env.data, &env.state),
+        Some(boot::SKIP_RESET_PENDING)
+    );
+}
