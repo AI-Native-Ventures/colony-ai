@@ -62,6 +62,7 @@ import { pathToFileURL } from "node:url";
 // ---------------------------------------------------------------------------
 
 export const PROBE_VERSION = "1";
+const USER_AGENT = "colony-siwc-probe/1";
 export const AUTH_ORIGIN = "https://auth.openai.com";
 export const API_ORIGIN = "https://api.openai.com";
 export const DEFAULT_ENDPOINTS = Object.freeze({
@@ -324,7 +325,7 @@ export function checkOwnerRun({ env, stdin }) {
       reason: `Refusing to run: ${REQUIRED_OWNER_ENV}=1 is not set. This probe signs in to a real ChatGPT account, so only the account owner runs it.`,
     };
   }
-  if (!stdin || stdin.isTTY !== true) {
+  if (stdin?.isTTY !== true) {
     return {
       ok: false,
       reason:
@@ -400,6 +401,24 @@ export function installCleanupHandlers(
     proc.off("exit", onExit);
     for (const [signal, handler] of handlers) proc.off(signal, handler);
   };
+}
+
+/**
+ * Run `fn` with a scratch directory that is removed afterwards, whether `fn`
+ * returns, throws, or the process receives SIGINT, SIGTERM or SIGHUP.
+ */
+export async function withScratch(
+  fn,
+  { parent, prefix, proc = process, exit = process.exit } = {},
+) {
+  const scratch = createScratch({ parent, prefix });
+  const uninstall = installCleanupHandlers(scratch, { proc, exit });
+  try {
+    return await fn(scratch);
+  } finally {
+    uninstall();
+    scratch.removeSync();
+  }
 }
 
 /** Remove leftovers of a previous run that was killed hard (SIGKILL, power loss). */
@@ -626,7 +645,9 @@ export async function startCallbackListener({
     // Let the success page flush, then drop every connection.
     setImmediate(() => {
       server.close();
-      server.closeAllConnections?.();
+      server.closeIdleConnections?.();
+      // `connection: close` ends the page response; this only reaps stragglers.
+      setTimeout(() => server.closeAllConnections?.(), 500).unref();
     });
     settle(outcome);
   }
@@ -729,10 +750,15 @@ export function createHttp({
     }
   };
 
+  const withAgent = (init = {}) => ({
+    ...init,
+    headers: { "user-agent": USER_AGENT, ...(init.headers ?? {}) },
+  });
+
   async function text(url, init = {}) {
     guard(url);
     const res = await fetchImpl(url, {
-      ...init,
+      ...withAgent(init),
       redirect: "error",
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -752,7 +778,7 @@ export function createHttp({
     const total = setTimeout(() => controller.abort(), streamTotalMs);
     try {
       const res = await fetchImpl(url, {
-        ...init,
+        ...withAgent(init),
         redirect: "error",
         signal: controller.signal,
       });
@@ -989,6 +1015,7 @@ export function readTokenResponse(reply, registry, now = Date.now()) {
       ok: false,
       status: reply.status,
       code: typeof errorCode === "string" ? errorCode : null,
+      nonJson: reply.json === null,
     };
   }
   const tokens = {
@@ -1092,15 +1119,16 @@ async function loadDiscovery(client, endpoints) {
   if (reply.status !== 200 || !doc || typeof doc !== "object") {
     return { ok: false, status: reply.status, reason: "no_discovery_document" };
   }
-  if (doc.issuer !== endpoints.issuer)
-    return { ok: false, status: reply.status, reason: "bad_issuer" };
   const algs = Array.isArray(doc.id_token_signing_alg_values_supported)
     ? doc.id_token_signing_alg_values_supported.filter(
         (a) => typeof a === "string",
       )
     : [];
+  const issuerOk = doc.issuer === endpoints.issuer;
   return {
-    ok: true,
+    ok: issuerOk,
+    reason: issuerOk ? null : "bad_issuer",
+    observedIssuer: typeof doc.issuer === "string" ? doc.issuer : null,
     status: reply.status,
     jwksUri: typeof doc.jwks_uri === "string" ? doc.jwks_uri : null,
     revocationEndpoint:
@@ -1342,7 +1370,7 @@ function interestingHeaders(headers) {
   const out = [];
   for (const [name, value] of headers) {
     if (
-      /limit|usage|plan|reset|remaining|quota/i.test(name) &&
+      /limit|usage|plan|reset|remaining|quota|retry/i.test(name) &&
       /^[a-z0-9-]{1,48}$/.test(name)
     ) {
       out.push(/^[0-9.]{1,12}$/.test(value) ? `${name}=${value}` : name);
@@ -1389,6 +1417,8 @@ function createInferenceRunner({ client, endpoints, clock, maxRequests }) {
           streamed: reply.streamed,
           truncated: reply.truncated,
           error: reply.streamed ? null : extractError(reply.json),
+          jsonBody: reply.streamed ? true : reply.json !== null,
+          bodyLength: reply.text?.length ?? 0,
           summary,
           ms: clock() - started,
         };
@@ -1438,6 +1468,9 @@ export function describeInference(result, { expectCall = false } = {}) {
   if (summary.incomplete) notes.push("response.incomplete seen");
   if (result.truncated) notes.push("stream cut at size cap");
   if (error.detail) notes.push(`detail: ${error.detail}`);
+  if (result.status && result.status !== 200 && result.jsonBody === false) {
+    notes.push(`non-JSON body, ${result.bodyLength} chars`);
+  }
   const headers = result.headers ? interestingHeaders(result.headers) : [];
   if (headers.length > 0) notes.push(`headers: ${headers.join(" ")}`);
   const call = findCallItem(summary);
@@ -1572,6 +1605,12 @@ export async function runProbe(deps) {
   } catch (error) {
     discovery = { ok: false, status: null, reason: errorLabel(error) };
   }
+  const known = discovery.algs !== undefined;
+  const safeIssuer = /^https?:\/\/[A-Za-z0-9.:/-]{1,60}$/.test(
+    discovery.observedIssuer ?? "",
+  )
+    ? discovery.observedIssuer
+    : "(odd)";
   add({
     id: "D1",
     title: "Discovery document",
@@ -1579,16 +1618,25 @@ export async function runProbe(deps) {
     http: discovery.status,
     code: discovery.ok ? null : discovery.reason,
     ms: clock() - discStart,
-    note: discovery.ok
-      ? `jwks_uri: ${discovery.jwksUri ? "yes" : "no"}; revocation_endpoint: ${discovery.revocationEndpoint ? "yes" : "no"}; token endpoint matches docs: ${discovery.tokenEndpointMatches ? "yes" : "no"}; authorize endpoint matches docs: ${discovery.authorizeEndpointMatches ? "yes" : "no"}; algs: ${discovery.algs.join(",") || "none listed"}`
-      : "",
+    note: known
+      ? `${discovery.ok ? "" : `observed issuer: ${safeIssuer}; `}jwks_uri: ${discovery.jwksUri ? "yes" : "no"}; revocation_endpoint: ${discovery.revocationEndpoint ? "yes" : "no"}; token endpoint matches docs: ${discovery.tokenEndpointMatches ? "yes" : "no"}; authorize endpoint matches docs: ${discovery.authorizeEndpointMatches ? "yes" : "no"}; algs: ${discovery.algs.join(",") || "none listed"}${discovery.ok ? "" : "; continuing with the documented endpoints"}`
+      : "continuing with the documented endpoints",
   });
-  if (!discovery.ok) return finish("stopped: no discovery document");
+  if (!known) {
+    discovery = {
+      ...discovery,
+      jwksUri: null,
+      revocationEndpoint: null,
+      algs: [],
+    };
+  }
 
   let jwksCache = null;
   const getJwks = async (force) => {
     if (jwksCache && !force) return jwksCache;
-    if (!discovery.jwksUri) throw new Error("no jwks_uri");
+    if (!discovery.jwksUri) {
+      throw Object.assign(new Error("no jwks_uri"), { name: "NoJwksUri" });
+    }
     const reply = await client.text(discovery.jwksUri, {
       headers: { accept: "application/json" },
     });
@@ -1730,6 +1778,7 @@ export async function runProbe(deps) {
       http: exchange.status,
       code: exchange.code,
       ms: clock() - exchangeStart,
+      note: exchange.nonJson ? "non-JSON body" : "",
     });
     return finish("stopped: code exchange failed");
   }
@@ -2139,6 +2188,7 @@ export async function runProbe(deps) {
         http: refreshed.status,
         code: refreshed.code,
         ms: clock() - refreshStart,
+        note: refreshed.nonJson ? "non-JSON body" : "",
       });
     }
   } else if (!refreshToken) {
@@ -2230,43 +2280,38 @@ async function main() {
     process.stdout.write(`${sanitizeText(line, registry, 240)}\n`);
 
   sweepStaleScratch();
-  const scratch = createScratch();
-  installCleanupHandlers(scratch);
   const client = createHttp();
   try {
-    const host = loadOrCreateHostId(defaultHome());
-    say(
-      `Host id ${host.created ? "created" : "reused"} (not a secret). Scratch folder is removed when the probe ends.`,
-    );
-    const report = await runProbe({
-      client,
-      registry,
-      scratch,
-      hostId: host.id,
-      openBrowser: openInBrowser,
-      enterSignal: () => waitForEnter(process.stdin),
-      say,
-      // Deliberate raw write: the owner may need to paste this address into a browser.
-      printUrl: (url) =>
-        process.stdout.write(
-          `\nIf your browser did not open, paste this address into it:\n${url}\n\n`,
-        ),
+    await withScratch(async (scratch) => {
+      const host = loadOrCreateHostId(defaultHome());
+      say(
+        `Host id ${host.created ? "created" : "reused"} (not a secret). Scratch folder is removed when the probe ends.`,
+      );
+      const report = await runProbe({
+        client,
+        registry,
+        scratch,
+        hostId: host.id,
+        openBrowser: openInBrowser,
+        enterSignal: () => waitForEnter(process.stdin),
+        say,
+        // Deliberate raw write: the owner may need to paste this address into a browser.
+        printUrl: (url) =>
+          process.stdout.write(
+            `\nIf your browser did not open, paste this address into it:\n${url}\n\n`,
+          ),
+      });
+      process.stdout.write("\n=== PASTE EVERYTHING BELOW THIS LINE BACK ===\n");
+      process.stdout.write(`${renderReport(report, registry)}\n`);
+      process.stdout.write("=== END ===\n");
     });
-    process.stdout.write("\n=== PASTE EVERYTHING BELOW THIS LINE BACK ===\n");
-    process.stdout.write(`${renderReport(report, registry)}\n`);
-    process.stdout.write("=== END ===\n");
+    process.stdout.write("Scratch folder removed. No tokens remain on disk.\n");
   } catch (error) {
     process.stderr.write(
       `Probe stopped: ${sanitizeText(errorLabel(error), registry)}\n`,
     );
     process.exitCode = 1;
   } finally {
-    const gone = scratch.removeSync();
-    process.stdout.write(
-      gone
-        ? "Scratch folder removed. No tokens remain on disk.\n"
-        : "WARNING: scratch folder could not be removed.\n",
-    );
     process.stdin.pause();
   }
 }
