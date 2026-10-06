@@ -2104,7 +2104,7 @@ pub(crate) fn prepend_standing_for_legacy(
 /// agent instructions. A persona-only agent still yields
 /// `<agent-instructions>…</agent-instructions>` rather than an unlabeled blob that would be mistaken
 /// for `<base>`.
-fn framed_system_prompt(
+pub(crate) fn framed_system_prompt(
     cwd: &str,
     base_prompt: Option<&str>,
     system_prompt: Option<&str>,
@@ -2129,7 +2129,7 @@ fn framed_system_prompt(
     }
 }
 
-fn workspace_section(cwd: &str) -> String {
+pub(crate) fn workspace_section(cwd: &str) -> String {
     crate::prompt_framing::semantic_section(
         "workspace",
         &format!("Current working directory: {cwd}"),
