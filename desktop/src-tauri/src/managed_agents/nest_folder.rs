@@ -372,9 +372,13 @@ mod tests {
             name: Cow::Borrowed(NEW),
             reason: NestFolderReason::FreshInstall,
         };
+        // The path is built with `join`, so the separator is the platform's.
         assert_eq!(
             fresh.log_line(&home),
-            "buzz-desktop: nest-folder: chosen=.colony reason=fresh-install path=/tmp/seeded home/.colony"
+            format!(
+                "buzz-desktop: nest-folder: chosen=.colony reason=fresh-install path={}",
+                home.join(".colony").display()
+            )
         );
         let kept = NestFolderChoice {
             name: Cow::Borrowed(OLD),
@@ -382,8 +386,12 @@ mod tests {
         };
         assert_eq!(
             kept.log_line(&home),
-            "buzz-desktop: nest-folder: chosen=.buzz reason=legacy-folder-kept path=/tmp/seeded home/.buzz"
+            format!(
+                "buzz-desktop: nest-folder: chosen=.buzz reason=legacy-folder-kept path={}",
+                home.join(".buzz").display()
+            )
         );
+        assert!(fresh.log_line(&home).starts_with(LOG_PREFIX));
         assert!(!fresh.log_line(&home).contains('\n'));
     }
 
