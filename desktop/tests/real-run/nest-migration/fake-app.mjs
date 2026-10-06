@@ -20,7 +20,11 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { defaultContract } from "./contract.mjs";
-import { provisionSkill, simulateMigration } from "./simulate.mjs";
+import {
+  provisionSkill,
+  resolveReposAtBoot,
+  simulateMigration,
+} from "./simulate.mjs";
 
 const contract = defaultContract();
 const broken = process.env.FAKE_BREAK ?? "";
@@ -194,6 +198,7 @@ async function provision(chosen) {
   }
   refreshAgentsMd(folder);
   await provisionSkill(folder);
+  await resolveReposAtBoot(folder);
 }
 
 /** Reset: remove exactly the owned entries and generated skills of the chosen folder, then the folder if empty. */

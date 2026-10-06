@@ -411,6 +411,18 @@ pub fn run() {
             // not be resolved (transiently unavailable external volume), it
             // returns false so we skip restore this launch rather than let an
             // agent clone into the wrong REPOS. See managed_agents::repos.
+            // A repositories pointer the nest migration wrote (it left the old
+            // REPOS behind) must not outlive that folder: if the person moved
+            // it away, drop the pointer so the default REPOS is used instead of
+            // skipping agent restore at every launch. Never fails the launch.
+            if let (Some(nest), Ok(data_dir)) =
+                (managed_agents::nest_dir(), app_handle.path().app_data_dir())
+            {
+                managed_agents::nest_migration::heal_repos_pointer(
+                    &nest,
+                    &managed_agents::nest_migration::state_dir(&data_dir),
+                );
+            }
             let restore_agents = match managed_agents::nest_dir() {
                 Some(nest) => managed_agents::resolve_repos_at_boot(&nest),
                 None => true,

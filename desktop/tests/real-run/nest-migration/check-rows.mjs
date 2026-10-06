@@ -720,6 +720,67 @@ export function crashRows(result, contract, observations) {
   return rows;
 }
 
+/**
+ * A REPOS that stays in the old folder must stay in use: the new folder holds a `.repos-dir` naming the old
+ * REPOS, and once the host has booted, its REPOS is a link to those clones. A new folder with an empty REPOS
+ * beside clones left behind is the split state this row exists to catch.
+ */
+export function reposPointerRows(after, observations, contract) {
+  const label =
+    "The new folder points at the REPOS that stayed behind, so agents keep their clones";
+  const pointer = after.files?.[`${contract.newNest}/.repos-dir`];
+  const named = typeof pointer === "string" ? pointer.trim() : "";
+  const oldRepos = `/${contract.oldNest}/REPOS`;
+  const pointed = named.startsWith("/") && named.endsWith(oldRepos);
+  const link = after.entries.find(
+    (e) => e.path === `${contract.newNest}/REPOS`,
+  );
+  const message = String(observations.notice?.json?.message ?? "");
+  return [
+    pointed
+      ? pass(
+          "REPOS-POINTER",
+          label,
+          `${contract.newNest}/.repos-dir names ${named}.`,
+        )
+      : fail(
+          "REPOS-POINTER",
+          label,
+          pointer === undefined
+            ? `${contract.newNest}/.repos-dir is missing: the new nest would start with an empty REPOS.`
+            : `${contract.newNest}/.repos-dir holds ${JSON.stringify(named)}, not the old REPOS.`,
+        ),
+    !link
+      ? unseen(
+          "REPOS-IN-USE",
+          "After the host booted, the new folder's REPOS is the old clones",
+          `${contract.newNest}/REPOS does not exist (the host's REPOS boot step was not observed).`,
+        )
+      : link.target?.endsWith(oldRepos) && link.resolves
+        ? pass(
+            "REPOS-IN-USE",
+            "After the host booted, the new folder's REPOS is the old clones",
+            `${link.path} -> ${link.target} resolves.`,
+          )
+        : fail(
+            "REPOS-IN-USE",
+            "After the host booted, the new folder's REPOS is the old clones",
+            `${link.path} is ${link.target ? `a link to ${link.target}` : "not a link"}: an empty REPOS beside clones that stayed behind.`,
+          ),
+    /repositories/iu.test(message) && /still use/iu.test(message)
+      ? pass(
+          "NOTICE-HONEST",
+          "The notice says the repositories folder stayed and is still used",
+          message,
+        )
+      : fail(
+          "NOTICE-HONEST",
+          "The notice says the repositories folder stayed and is still used",
+          `Notice reads: ${message || "(none)"}`,
+        ),
+  ];
+}
+
 export function heldBackRows(
   diff,
   after,
@@ -769,10 +830,11 @@ export function heldBackRows(
     pollutionChecks(diff),
     archiveChecks(before, after, contract),
     journalChecks(observations, diff, "done"),
+    reposPointerRows(after, observations, contract),
     noticeChecks(
       observations,
-      "left:REPOS",
-      "A plain-language notice says some items stayed where they were",
+      "migrated-repos-in-place",
+      "A plain-language notice says the repositories folder stayed and agents still use it",
     ),
     outcomeChecks(lines, "migrated", { skipped: 1, moved: names.length - 1 }),
     reportedChecks(observations, ".colony", contract),
@@ -780,8 +842,8 @@ export function heldBackRows(
       after,
       observations.after2,
       observations.hostLogLines2,
-      ["left-in-place"],
+      ["already-migrated"],
       contract,
     ),
-  ];
+  ].flat();
 }
