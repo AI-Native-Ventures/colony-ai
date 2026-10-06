@@ -17,6 +17,7 @@ import {
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { ChatGptError, validClientId } from "./policy.mjs";
+import { inspectWindowsAcl } from "./windows-acl.mjs";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 const EMPTY = () => ({
@@ -43,7 +44,14 @@ export function accountId(clientId, subject) {
 }
 
 /** Private atomic snapshots with one installation-wide cross-process writer lock. */
-export function createChatGptStore(userData, { lockTimeoutMs = 15_000 } = {}) {
+export function createChatGptStore(
+  userData,
+  {
+    lockTimeoutMs = 15_000,
+    platform = process.platform,
+    inspectAcl = inspectWindowsAcl,
+  } = {},
+) {
   const root = path.join(userData, "chatgpt");
   const lockPath = path.join(root, "writer.lock");
   const lockOwner = `${process.pid}-${randomUUID()}.json`;
@@ -53,7 +61,7 @@ export function createChatGptStore(userData, { lockTimeoutMs = 15_000 } = {}) {
     if (directory ? !stat.isDirectory() : !stat.isFile())
       throw new ChatGptError("unsafe_storage");
     if (
-      process.platform !== "win32" &&
+      platform !== "win32" &&
       ((stat.mode & 0o777) !== (directory ? 0o700 : 0o600) ||
         stat.uid !== process.getuid())
     )
@@ -61,11 +69,21 @@ export function createChatGptStore(userData, { lockTimeoutMs = 15_000 } = {}) {
     if (!directory && stat.nlink !== 1)
       throw new ChatGptError("unsafe_storage");
   }
+  function assertWindowsPrivate(target) {
+    if (platform !== "win32") return;
+    const found = inspectAcl(target);
+    if (found.length > 0) {
+      const error = new ChatGptError("unsafe_storage");
+      error.message = `unsafe_storage: broad principals found: ${found.join(", ")}`;
+      throw error;
+    }
+  }
   function prepare() {
     mkdirSync(root, { recursive: true, mode: 0o700 });
     const stat = lstatSync(root);
     if (stat.isSymbolicLink()) throw new ChatGptError("unsafe_storage");
     assertPrivate(stat, true);
+    assertWindowsPrivate(root);
   }
   function read(name) {
     let fd;
@@ -76,6 +94,7 @@ export function createChatGptStore(userData, { lockTimeoutMs = 15_000 } = {}) {
       );
       const stat = fstatSync(fd);
       assertPrivate(stat);
+      assertWindowsPrivate(path.join(root, name));
       if (stat.size > MAX_BYTES) throw new ChatGptError("storage_too_large");
       return JSON.parse(readFileSync(fd, "utf8"));
     } catch (error) {
@@ -96,12 +115,15 @@ export function createChatGptStore(userData, { lockTimeoutMs = 15_000 } = {}) {
     let failure;
     try {
       fd = openSync(temp, "wx", 0o600);
+      // Check the empty file before any secret bytes are written. Failure leaves
+      // the previous snapshot intact and cleanup removes the empty temporary.
+      assertWindowsPrivate(temp);
       writeFileSync(fd, contents);
       fsyncSync(fd);
       closeSync(fd);
       fd = undefined;
       renameSync(temp, path.join(root, name));
-      if (process.platform !== "win32") {
+      if (platform !== "win32") {
         const directory = openSync(root, "r");
         try {
           fsyncSync(directory);
@@ -109,8 +131,11 @@ export function createChatGptStore(userData, { lockTimeoutMs = 15_000 } = {}) {
           closeSync(directory);
         }
       }
-    } catch {
-      failure = new ChatGptError("storage_write_failed");
+    } catch (error) {
+      failure =
+        error instanceof ChatGptError
+          ? error
+          : new ChatGptError("storage_write_failed");
     } finally {
       if (fd !== undefined) closeSync(fd);
       try {

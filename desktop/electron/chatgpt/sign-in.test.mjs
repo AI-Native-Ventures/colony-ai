@@ -1,43 +1,28 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createServer } from "node:http";
-import { execFileSync } from "node:child_process";
 import { chmod, lstat, readFile, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fixture } from "./test-support.mjs";
 import { chatGptPolicy } from "./policy.mjs";
+import { inspectWindowsAcl } from "./windows-acl.mjs";
 
 test("Windows private profile does not grant broad principals credential access", {
   skip: process.platform !== "win32",
 }, async (t) => {
   const f = await fixture(t);
   await f.connect();
-  const script =
-    "$acl = Get-Acl -LiteralPath $env:COLONY_CHATGPT_TEST_FILE; @($acl.Access | ForEach-Object { @{ sid = $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value; type = [string]$_.AccessControlType; rights = [int]$_.FileSystemRights } }) | ConvertTo-Json -Compress";
-  const output = execFileSync(
-    "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-Command", script],
-    {
-      encoding: "utf8",
-      windowsHide: true,
-      timeout: 5000,
-      maxBuffer: 8192,
-      env: {
-        ...process.env,
-        COLONY_CHATGPT_TEST_FILE: path.join(f.store.root, "accounts.json"),
-      },
-    },
-  );
-  const rules = JSON.parse(output);
-  const broad = new Set(["S-1-1-0", "S-1-5-11", "S-1-5-32-545"]);
-  assert.ok(Array.isArray(rules) && rules.length > 0);
-  assert.equal(
-    rules.some(
-      (rule) =>
-        broad.has(rule.sid) && rule.type === "Allow" && (rule.rights & 3) !== 0,
-    ),
-    false,
-  );
+  for (const target of [
+    f.store.root,
+    path.join(f.store.root, "accounts.json"),
+  ]) {
+    const found = inspectWindowsAcl(target);
+    assert.deepEqual(
+      found,
+      [],
+      `${target}: broad principals found: ${found.join(", ")}`,
+    );
+  }
 });
 
 test("production ignores origin overrides; test builds allow only explicit loopback origins", () => {

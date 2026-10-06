@@ -28,6 +28,15 @@ The owner controls enablement after OpenAI responds and the owner agrees.
 Credentials use a 0600 file inside a 0700 app-data folder on Unix. This avoids
 Keychain and Electron safeStorage entirely, including automated runs. The file
 is not encrypted at rest: another process acting as the same OS user can read
-it. Windows protection depends on the private user-profile ACL, since Unix
-mode bits do not establish a Windows security boundary. Packaged ACL proof
+it. Windows inherits the private user-profile ACL and uses bounded icacls.exe
+inspection to reject broad grants before credential reads or writes, since Unix
+mode bits do not establish a Windows security boundary. The ACL inspection was
+written from Microsoft's icacls, ACE Strings and SID Strings documentation.
+Neither production nor tests use PowerShell for this inspection. Packaged ACL proof
 belongs to the later platform harness and is not claimed by P1.
+
+Windows ACL protocol references:
+
+- https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/icacls
+- https://learn.microsoft.com/en-us/windows/win32/secauthz/ace-strings
+- https://learn.microsoft.com/en-us/windows/win32/secauthz/sid-strings

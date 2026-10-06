@@ -29,8 +29,14 @@ Storage under `<userData>/chatgpt`:
 All writes use a same-directory exclusive temporary file, fsync, rename and
 Unix directory sync. Files are 0600 and the folder is 0700 on Unix. Symlinks,
 hard-linked files, unexpected ownership/modes and oversized state fail closed.
-Windows uses its private user-profile ACL; the existing Windows build job runs
-the focused protocol tests and checks that broad principals lack file access.
+Windows inherits its private user-profile ACL and checks it with `icacls.exe`
+before folder use, credential reads and writes to empty temporary files. SID-based
+SDDL inspection rejects grants to Everyone, Authenticated Users and
+Users / BUILTIN\\Users, including inherited grants and read-control rights.
+Inspection has a 30 second deadline and one timeout retry, bounded output and
+scratch cleanup. A failed check propagates before secret bytes are written;
+the previous snapshot and durable rotation/revocation journals remain intact.
+The existing Windows build job checks both the folder and credential file.
 No Keychain or safeStorage code is called. See the at-rest trade-off in
 [CLEAN-ROOM.md](../../../CLEAN-ROOM.md).
 
