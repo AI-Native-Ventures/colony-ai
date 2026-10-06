@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 
 // What the production relay returns to a person who was removed from the
@@ -252,4 +253,28 @@ test.describe("removed member escape", () => {
     await page.getByTestId("sidebar-relay-error-retry").click();
     await expect(notice).toHaveCount(0, { timeout: 15_000 });
   });
+
+  // Skipped in CI. Set REMOVED_MEMBER_SHOTS_DIR to capture the PR screenshots
+  // at the two window sizes the design review uses.
+  for (const scenario of [
+    { name: "one-community", communities: [COLONY] },
+    { name: "two-communities", communities: [COLONY, COLONY_AI] },
+  ]) {
+    test(`captures the escape screen (${scenario.name})`, async ({ page }) => {
+      const outDir = process.env.REMOVED_MEMBER_SHOTS_DIR;
+      test.skip(!outDir, "set REMOVED_MEMBER_SHOTS_DIR to capture screenshots");
+      await page.setViewportSize({ width: 1728, height: 1117 });
+      await openAsRemovedMember(page, scenario.communities);
+      for (const [width, height] of [
+        [1728, 1117],
+        [1440, 900],
+      ]) {
+        await page.setViewportSize({ width, height });
+        await waitForAnimations(page);
+        await page.screenshot({
+          path: `${outDir}/escape-${scenario.name}-${width}x${height}.png`,
+        });
+      }
+    });
+  }
 });
