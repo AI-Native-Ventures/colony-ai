@@ -59,6 +59,8 @@ function clearTokens(account, retainHint = false) {
   delete account.refresh_expires_at;
   delete account.earliest_refresh_at;
   delete account.refresh_inflight;
+  delete account.rotation_id_token;
+  delete account.next_attempt_at;
   account.scopes = [];
 }
 
@@ -132,6 +134,12 @@ export function createChatGptService({
       let changed = false;
       for (const a of state.accounts) {
         if (a.refresh_inflight) {
+          if (a.refresh_token)
+            a.pending_revoke = {
+              token: a.refresh_token,
+              expires_at: a.refresh_expires_at,
+              retry_count: 0,
+            };
           clearTokens(a, true);
           a.state = "needs_sign_in";
           a.last_error = "refresh_interrupted";
@@ -245,6 +253,7 @@ export function createChatGptService({
           token: tokens.refresh_token,
           expires_at: tokens.refresh_expires_at,
           retry_count: 0,
+          next_attempt_at: 0,
         };
         store.save(state);
       });
@@ -350,7 +359,10 @@ export function createChatGptService({
           const tokens = tokenFields(data, now());
           // Save rotated material before any subsequent network validation.
           // A crash here remains fenced by the durable refresh_inflight marker.
-          Object.assign(a, tokens);
+          Object.assign(a, tokens, {
+            id_token: a.id_token,
+            rotation_id_token: tokens.id_token,
+          });
           store.save(state);
           if (stopped || epoch(id) !== fence) {
             // A retired result must not reactivate the selected account. On a
@@ -373,6 +385,8 @@ export function createChatGptService({
           if (stopped || epoch(id) !== fence)
             throw new ChatGptError("stale_result");
           a.email = identity.email;
+          a.id_token = tokens.id_token;
+          delete a.rotation_id_token;
           a.state = tokens.scopes.includes(PLAN_SCOPE)
             ? "active"
             : "plan_use_off";
@@ -468,7 +482,10 @@ export function createChatGptService({
           },
         });
         delete a.pending_revoke;
-        a.state = state.pending.includes(a) ? "needs_sign_in" : "disconnected";
+        a.state =
+          state.pending.includes(a) || a.state === "needs_sign_in"
+            ? "needs_sign_in"
+            : "disconnected";
         a.last_error = null;
       } catch (error) {
         pending.retry_count++;
@@ -496,6 +513,10 @@ export function createChatGptService({
           expires_at: a.refresh_expires_at,
           retry_count: 0,
         };
+      else if (a.pending_revoke) {
+        a.pending_revoke.retry_count = 0;
+        a.pending_revoke.next_attempt_at = 0;
+      }
       clearTokens(a);
       a.generation++;
       a.state = a.pending_revoke ? "pending_revoke" : "disconnected";
@@ -562,6 +583,14 @@ export function createChatGptService({
     await tick();
     return status();
   }
+  async function wake() {
+    try {
+      await tick();
+    } catch (error) {
+      backgroundError =
+        error instanceof ChatGptError ? error.code : "storage_failed";
+    }
+  }
   function stop() {
     stopped = true;
     cancel();
@@ -577,6 +606,7 @@ export function createChatGptService({
     refresh,
     start,
     resume: tick,
+    wake,
     stop,
     policy,
   };
