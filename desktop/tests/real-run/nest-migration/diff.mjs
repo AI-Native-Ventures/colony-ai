@@ -75,6 +75,7 @@ export function diffNests({ before, after, contract = defaultContract() }) {
       altered: [],
       copied: [],
       rewrittenLinks: [],
+      rewrittenFiles: [],
       unresolvedLinks: [],
     },
     newSideExisting: { total: 0, differences: [], missing: [] },
@@ -194,7 +195,9 @@ export function diffNests({ before, after, contract = defaultContract() }) {
         // A rewritten link is a new link: its target text and inode differ by design.
         differences = differences.filter(
           (difference) =>
-            !["target", "ino", "dev", "mtimeMs"].includes(difference.field),
+            !["target", "size", "ino", "dev", "mtimeMs"].includes(
+              difference.field,
+            ),
         );
       }
     }
@@ -207,6 +210,30 @@ export function diffNests({ before, after, contract = defaultContract() }) {
         path: destinationPath,
         target: destination.target,
       });
+    if (rel === ".repos-dir" && entry.type === "file") {
+      // .repos-dir holds an absolute path. A rewrite from the old nest to the new one is expected.
+      const wasText = before.files?.[entry.path];
+      const nowText = after.files?.[destinationPath];
+      if (
+        wasText !== undefined &&
+        nowText !== undefined &&
+        wasText !== nowText &&
+        nowText.trim() === (expectedRewrite(wasText.trim()) ?? wasText.trim())
+      ) {
+        rewritten = true;
+        result.owned.rewrittenFiles.push({
+          path: destinationPath,
+          before: wasText.trim(),
+          after: nowText.trim(),
+        });
+        differences = differences.filter(
+          (difference) =>
+            !["size", "sha256", "mtimeMs", "ino", "dev"].includes(
+              difference.field,
+            ),
+        );
+      }
+    }
     const copiedFields = differences.filter((difference) =>
       ["ino", "dev"].includes(difference.field),
     );
@@ -276,4 +303,34 @@ export function summarizeDiff(diff) {
     `${diff.owned.altered.length} altered`,
     `${diff.owned.copied.length} copied`,
   ].join(", ");
+}
+
+/**
+ * Compare two manifests of the same HOME taken at different times, to prove a later launch changed nothing.
+ * Volatile entries (the archive) are compared by existence only. Directory mtimes are ignored.
+ * Returns what was added, removed and changed, each as a list of paths.
+ */
+export function compareStable(first, second, contract = defaultContract()) {
+  const a = indexManifest(first);
+  const b = indexManifest(second);
+  const added = [];
+  const removed = [];
+  const changed = [];
+  for (const [entryPath, entry] of a) {
+    const other = b.get(entryPath);
+    if (!other) {
+      removed.push(entryPath);
+      continue;
+    }
+    const split = splitNestPath(entryPath, contract);
+    const volatile = split ? isVolatile(split.rel) : false;
+    const differences = fieldDifferences(entry, other, {
+      strict: !volatile,
+      skipContent: volatile,
+    });
+    if (differences.length) changed.push({ path: entryPath, differences });
+  }
+  for (const entryPath of b.keys())
+    if (!a.has(entryPath)) added.push(entryPath);
+  return { added, removed, changed };
 }

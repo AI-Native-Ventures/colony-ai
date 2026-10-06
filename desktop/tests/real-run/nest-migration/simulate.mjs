@@ -110,10 +110,9 @@ export async function simulateMigration(home, options = {}) {
   );
   for (const harness of [".claude", ".codex", ".goose"]) {
     await mkdir(path.join(newRoot, harness, "skills"), { recursive: true });
-    await symlink(
-      "../../.agents/skills/colony-cli",
-      path.join(newRoot, harness, "skills/colony-cli"),
-    );
+    const link = path.join(newRoot, harness, "skills/colony-cli");
+    await rm(link, { force: true });
+    await symlink("../../.agents/skills/colony-cli", link);
   }
 
   if (options.sentinel !== false)
