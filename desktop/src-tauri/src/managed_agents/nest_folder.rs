@@ -7,13 +7,20 @@
 //!
 //! # Rule
 //!
-//! | `~/.colony`          | `~/.buzz`  | chosen    | reason                 |
-//! |----------------------|------------|-----------|------------------------|
-//! | absent               | absent     | `.colony` | `fresh-install`        |
-//! | present              | absent     | `.colony` | `colony-folder-only`   |
-//! | absent               | present    | `.buzz`   | `legacy-folder-kept`   |
-//! | present, has a nest  | present    | `.colony` | `both-colony-has-nest` |
-//! | present, no nest     | present    | `.buzz`   | `both-legacy-kept`     |
+//! | `~/.colony`          | `~/.buzz`                  | chosen    | reason                       |
+//! |----------------------|----------------------------|-----------|------------------------------|
+//! | absent               | absent                     | `.colony` | `fresh-install`              |
+//! | present              | absent                     | `.colony` | `colony-folder-only`         |
+//! | absent               | holds Colony data          | `.buzz`   | `legacy-folder-kept`         |
+//! | absent               | foreign entries only       | `.colony` | `legacy-folder-foreign-only` |
+//! | present, has a nest  | present                    | `.colony` | `both-colony-has-nest`       |
+//! | present, no nest     | holds Colony data          | `.buzz`   | `both-legacy-kept`           |
+//! | present, no nest     | foreign entries only       | `.colony` | `legacy-folder-foreign-only` |
+//!
+//! "Colony data" is any entry on the migration allow-list
+//! (`nest_migration::owned_entries`). A `~/.buzz` that holds only things Colony
+//! never wrote (other tools' environments, loose notes), as it does after a
+//! migration or a Reset, must not capture a new install.
 //!
 //! Dev and demo builds were always namespaced (`.buzz-dev`, `.buzz-demo-<slug>`)
 //! and are never probed (`build-scoped`).
@@ -72,6 +79,9 @@ pub(crate) enum NestFolderReason {
     BothColonyHasNest,
     /// Both exist but the new folder holds no nest: the legacy one is kept.
     BothLegacyKept,
+    /// The legacy folder holds only things Colony never wrote, so it cannot be
+    /// an install's nest and does not capture this one.
+    LegacyFolderForeignOnly,
 }
 
 impl NestFolderReason {
@@ -84,6 +94,7 @@ impl NestFolderReason {
             Self::LegacyFolderKept => "legacy-folder-kept",
             Self::BothColonyHasNest => "both-colony-has-nest",
             Self::BothLegacyKept => "both-legacy-kept",
+            Self::LegacyFolderForeignOnly => "legacy-folder-foreign-only",
         }
     }
 }
@@ -111,19 +122,38 @@ impl NestFolderChoice {
 /// What the filesystem says about one candidate folder.
 enum Presence {
     Absent,
-    Present { holds_nest: bool },
+    Present {
+        /// Holds one of [`NEST_MARKERS`].
+        holds_nest: bool,
+        /// Holds any Colony-owned entry (see `nest_migration::owned_entries`).
+        holds_data: bool,
+    },
+}
+
+/// True when `folder` holds one of [`NEST_MARKERS`].
+pub(crate) fn holds_nest_marker(folder: &Path) -> bool {
+    NEST_MARKERS
+        .iter()
+        .any(|marker| folder.join(marker).symlink_metadata().is_ok())
 }
 
 fn probe(folder: &Path) -> Presence {
     match folder.symlink_metadata() {
         Err(error) if error.kind() == io::ErrorKind::NotFound => Presence::Absent,
-        // Present but unreadable still counts as present: guessing "absent"
-        // could pick a new folder next to data this install already has.
-        Err(_) => Presence::Present { holds_nest: false },
+        // Present but unreadable, or a symlink that may point at data we cannot
+        // see: guessing "no data" could pick a new folder next to data this
+        // install already has.
+        Err(_) => Presence::Present {
+            holds_nest: false,
+            holds_data: true,
+        },
+        Ok(meta) if meta.file_type().is_symlink() => Presence::Present {
+            holds_nest: holds_nest_marker(folder),
+            holds_data: true,
+        },
         Ok(_) => Presence::Present {
-            holds_nest: NEST_MARKERS
-                .iter()
-                .any(|marker| folder.join(marker).symlink_metadata().is_ok()),
+            holds_nest: holds_nest_marker(folder),
+            holds_data: super::nest_migration::holds_colony_data(folder),
         },
     }
 }
@@ -163,15 +193,27 @@ fn choose_nest_folder_for(
         (Presence::Present { .. }, Presence::Absent) => {
             (preferred, NestFolderReason::ColonyFolderOnly)
         }
+        (
+            Presence::Present {
+                holds_nest: true, ..
+            },
+            Presence::Present { .. },
+        ) => (preferred, NestFolderReason::BothColonyHasNest),
+        (
+            _,
+            Presence::Present {
+                holds_data: false, ..
+            },
+        ) => (preferred, NestFolderReason::LegacyFolderForeignOnly),
         (Presence::Absent, Presence::Present { .. }) => {
             (Cow::Borrowed(legacy), NestFolderReason::LegacyFolderKept)
         }
-        (Presence::Present { holds_nest: true }, Presence::Present { .. }) => {
-            (preferred, NestFolderReason::BothColonyHasNest)
-        }
-        (Presence::Present { holds_nest: false }, Presence::Present { .. }) => {
-            (Cow::Borrowed(legacy), NestFolderReason::BothLegacyKept)
-        }
+        (
+            Presence::Present {
+                holds_nest: false, ..
+            },
+            Presence::Present { .. },
+        ) => (Cow::Borrowed(legacy), NestFolderReason::BothLegacyKept),
     };
     NestFolderChoice { name, reason }
 }
@@ -240,12 +282,33 @@ mod tests {
     }
 
     #[test]
-    fn empty_legacy_folder_is_still_kept() {
-        // An old install whose nest was never initialised must not be left
-        // behind: the rule is "exists", not "looks healthy".
+    fn empty_legacy_folder_does_not_capture_a_new_install() {
+        // An empty `.buzz` holds nothing of Colony's, so it cannot be an
+        // install's nest. Keeping it would pin a fresh install to the old name.
         let home = TempDir::new().unwrap();
         fs::create_dir(home.path().join(OLD)).unwrap();
-        assert_chose(home.path(), OLD, NestFolderReason::LegacyFolderKept);
+        assert_chose(home.path(), NEW, NestFolderReason::LegacyFolderForeignOnly);
+    }
+
+    #[test]
+    fn legacy_folder_with_only_foreign_entries_does_not_capture_a_new_install() {
+        // What is left after a migration or a Reset: other tools' folders.
+        let home = TempDir::new().unwrap();
+        fs::create_dir_all(home.path().join(OLD).join(".venv-tts")).unwrap();
+        fs::write(home.path().join(OLD).join("notes.md"), "mine").unwrap();
+        assert_chose(home.path(), NEW, NestFolderReason::LegacyFolderForeignOnly);
+        // The same holds when an unrelated `.colony` is already there.
+        fs::create_dir(home.path().join(NEW)).unwrap();
+        assert_chose(home.path(), NEW, NestFolderReason::LegacyFolderForeignOnly);
+    }
+
+    #[test]
+    fn any_owned_entry_makes_the_legacy_folder_an_install() {
+        for name in crate::managed_agents::nest_migration::owned_entries() {
+            let home = TempDir::new().unwrap();
+            fs::create_dir_all(home.path().join(OLD).join(name)).unwrap();
+            assert_chose(home.path(), OLD, NestFolderReason::LegacyFolderKept);
+        }
     }
 
     #[test]
@@ -404,6 +467,7 @@ mod tests {
             NestFolderReason::LegacyFolderKept,
             NestFolderReason::BothColonyHasNest,
             NestFolderReason::BothLegacyKept,
+            NestFolderReason::LegacyFolderForeignOnly,
         ];
         let mut spellings: Vec<_> = all.iter().map(|reason| reason.as_str()).collect();
         spellings.sort_unstable();
@@ -421,7 +485,7 @@ mod tests {
         assert_eq!(path, home.path().join(".colony"));
         assert_eq!(choice.reason, NestFolderReason::FreshInstall);
 
-        fs::create_dir(home.path().join(".buzz")).unwrap();
+        seed_nest(&home.path().join(".buzz"));
         let (path, choice) = resolve_nest_dir(home.path(), false);
         assert_eq!(path, home.path().join(".buzz"));
         assert_eq!(choice.reason, NestFolderReason::LegacyFolderKept);
@@ -441,7 +505,7 @@ mod tests {
         }
         let home = TempDir::new().unwrap();
         assert_eq!(choose_nest_folder(home.path(), false).name, ".colony");
-        fs::create_dir(home.path().join(".buzz")).unwrap();
+        seed_nest(&home.path().join(".buzz"));
         assert_eq!(choose_nest_folder(home.path(), false).name, ".buzz");
         // A dev build ignores both production folders.
         let dev = choose_nest_folder(home.path(), true);

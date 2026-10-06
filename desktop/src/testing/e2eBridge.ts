@@ -22610,6 +22610,11 @@ export function maybeInstallE2eTauriMocks() {
         return activeConfig?.mock?.agentMetricArchiveDefaultEnabled ?? true;
       case "set_prevent_sleep_active":
         return null;
+      // The agents' folder move runs before the window exists and stores a
+      // notice; the mock install never moved anything, so there is none.
+      case "get_nest_migration_notice":
+      case "acknowledge_nest_migration_notice":
+        return null;
       case "set_window_vibrancy":
         return null;
       case "plugin:window|is_fullscreen":
