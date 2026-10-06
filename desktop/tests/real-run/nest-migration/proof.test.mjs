@@ -224,6 +224,14 @@ test("launch environment: HOME is the fixture, inherited credentials stay out, t
     /deny file-read\* file-write\* \(subpath "\/Users\/real\/\.colony"\)/u,
   );
   assert.match(policy, /Keychains/u);
+  assert.match(
+    policy,
+    /regex #"\^\/Users\/real\/Library\/Application Support\/xyz\\\.block\\\.buzz\\\.app\\\.electron\\\."/u,
+  );
+  assert.match(
+    policy,
+    /deny file-write\* \(literal "\/Users\/real\/\.local\/bin\/buzz"\)/u,
+  );
   assert.match(policy, /securityd/u);
 });
 
@@ -313,4 +321,41 @@ test("parseLsofCwd keeps the n lines, and findManagedAgents sees only descendant
   } finally {
     for (const child of [marked, other, plain]) child.kill("SIGKILL");
   }
+});
+
+test("on macOS the sandbox policy parses and really blocks a stand-in real home's nest folders", {
+  skip: process.platform === "darwin" ? false : "sandbox-exec is macOS only",
+}, async () => {
+  const { writeFile, mkdir, realpath } = await import("node:fs/promises");
+  const base = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "colony-nest-proof-sbx-")),
+  );
+  scratch.push(base);
+  const standIn = path.join(base, "realhome");
+  await mkdir(path.join(standIn, ".buzz"), { recursive: true });
+  await mkdir(path.join(standIn, ".colony"), { recursive: true });
+  await mkdir(
+    path.join(
+      standIn,
+      "Library/Application Support/xyz.block.buzz.app.electron.0123456789abcdef",
+    ),
+    { recursive: true },
+  );
+  await mkdir(path.join(standIn, "other"), { recursive: true });
+  const policy = path.join(base, "policy.sb");
+  await writeFile(policy, sandboxPolicy(standIn));
+  const sandboxed = (...args) =>
+    run("/usr/bin/sandbox-exec", ["-f", policy, ...args]);
+  await sandboxed("/usr/bin/true");
+  await sandboxed("/bin/ls", path.join(standIn, "other"));
+  for (const blocked of [
+    ".buzz",
+    ".colony",
+    "Library/Application Support/xyz.block.buzz.app.electron.0123456789abcdef",
+  ])
+    await assert.rejects(
+      sandboxed("/bin/ls", path.join(standIn, blocked)),
+      /Operation not permitted/u,
+      blocked,
+    );
 });

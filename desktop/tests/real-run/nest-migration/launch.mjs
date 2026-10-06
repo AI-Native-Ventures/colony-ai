@@ -59,10 +59,13 @@ export function buildLaunchEnv({
   };
 }
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+
 /** sandbox-exec policy that keeps the child away from the real home's nest folders and the keychain. */
 export function sandboxPolicy(realHome = os.homedir()) {
   const q = (value) => JSON.stringify(value);
   const support = path.join(realHome, "Library", "Application Support");
+  const profileFolders = `${escapeRegex(support)}/xyz\\.block\\.buzz\\.app\\.electron\\.`;
   const forbidden = [
     path.join(realHome, OLD_NEST),
     path.join(realHome, NEW_NEST),
@@ -78,6 +81,12 @@ export function sandboxPolicy(realHome = os.homedir()) {
     "(version 1)",
     "(allow default)",
     ...forbidden.map((p) => `(deny file-read* file-write* (subpath ${q(p)}))`),
+    // Every Electron profile's native-host folder under the real home, and the real CLI links the host makes.
+    `(deny file-read* file-write* (regex #"^${profileFolders}"))`,
+    ...["buzz", "buzz-dev", "colony"].map(
+      (name) =>
+        `(deny file-write* (literal ${q(path.join(realHome, ".local", "bin", name))}))`,
+    ),
     '(deny mach-lookup (global-name "com.apple.securityd") (global-name "com.apple.SecurityServer") (global-name "com.apple.security.agent") (global-name "com.apple.SecurityAgent") (global-name-regex #"^com\\.apple\\.(securityd|SecurityServer|SecurityAgent|security\\.agent)(\\.|$)"))',
     '(deny process-exec (literal "/usr/bin/security") (literal "/System/Library/CoreServices/SecurityAgent.app/Contents/MacOS/SecurityAgent"))',
   ].join("\n");
