@@ -134,7 +134,9 @@ export function scanCapture(capture) {
     }
   }
   for (const entry of Object.values(groups)) {
-    const failing = entry.findings.some((finding) => finding.severity === "fail");
+    const failing = entry.findings.some(
+      (finding) => finding.severity === "fail",
+    );
     entry.status = failing
       ? "FAIL"
       : entry.observed === 0
@@ -205,5 +207,45 @@ export function promptCoverage(promptLog) {
   return {
     status: worked.length === promptLog.length ? "PASS" : "INCOMPLETE",
     detail: `${worked.length} of ${promptLog.length} prompts made Scout use a tool and show activity.`,
+  };
+}
+
+/**
+ * Judge the one-line record of the folder choice the app logs at boot:
+ * `buzz-desktop: nest-folder: chosen=<name> reason=<reason> path=<absolute path>`.
+ * On a fresh HOME the choice must be `.colony` for reason `fresh-install`, under that HOME.
+ */
+export function nestFolderVerdict(logText, home) {
+  const line = String(logText ?? "")
+    .split("\n")
+    .find((entry) => entry.includes("nest-folder:"));
+  if (!line)
+    return {
+      status: "NOT OBSERVED",
+      detail:
+        "The host log has no nest-folder line (a build without the fresh-install folder choice, or no host log).",
+    };
+  const match = /chosen=(\S+)\s+reason=(\S+)\s+path=(.*)$/u.exec(line.trim());
+  if (!match)
+    return {
+      status: "FAIL",
+      detail: `Unreadable nest-folder line: ${line.trim()}`,
+    };
+  const [, chosen, reason, folder] = match;
+  const underHome =
+    folder === `${home}/${chosen}` || folder.startsWith(`${home}/`);
+  if (chosen !== ".colony" || reason !== "fresh-install")
+    return {
+      status: "FAIL",
+      detail: `A fresh HOME chose ${chosen} (reason ${reason}), expected .colony (reason fresh-install). Line: ${line.trim()}`,
+    };
+  if (!underHome)
+    return {
+      status: "FAIL",
+      detail: `The chosen folder ${folder} is not under the throwaway HOME ${home}.`,
+    };
+  return {
+    status: "PASS",
+    detail: `chosen=${chosen} reason=${reason} path=${folder}`,
   };
 }

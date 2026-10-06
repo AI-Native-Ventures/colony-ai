@@ -11,24 +11,13 @@
       "buzz --format compact messages send --channel 11111111-1111-4111-8111-111111111111 --content hi",
       "Checking channels"
     ],
-    "session-panel": [
-      "ls ~/.colony | head -5",
-      "Scout is working"
-    ],
-    "activity-page": [
-      "Activity",
-      "Scout ran Buzz Desktop checks"
-    ],
-    "activity-strip": [
-      "Running a command",
-      "BUZZ relay lookup"
-    ],
+    "session-panel": ["ls ~/.colony | head -5", "Scout is working"],
+    "activity-page": ["Activity", "Scout ran Buzz Desktop checks"],
+    "activity-strip": ["Running a command", "BUZZ relay lookup"],
     "details-popover": [
       "buzz channels list --format compact",
       "colony channels list --format compact"
     ],
-    "transcript-expanded": [
-      "colony mem get core"
-    ]
+    "transcript-expanded": ["colony mem get core"]
   }
 }

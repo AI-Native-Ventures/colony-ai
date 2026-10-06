@@ -85,7 +85,10 @@ test("a leaky run renders FAIL and lists each finding with its surface and match
   const html = buildBrandReport(model(fixture("brand-capture-leaky.json")));
   assert.match(html, /<p class="verdict fail">FAIL<\/p>/u);
   assert.match(html, /<code>chat<\/code>/u);
-  assert.match(html, /<td class="fail">buzz<\/td><td><code>buzz<\/code><\/td>/u);
+  assert.match(
+    html,
+    /<td class="fail">buzz<\/td><td><code>buzz<\/code><\/td>/u,
+  );
   assert.match(html, /<td class="fail">uuid<\/td>/u);
   assert.match(html, /Findings \(13\)/u);
 });

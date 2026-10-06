@@ -24,11 +24,7 @@
       "Scout checked channels",
       "Scout posted in general"
     ],
-    "activity-strip": [
-      "Checking channels",
-      "Saving a note",
-      "Writing a file"
-    ],
+    "activity-strip": ["Checking channels", "Saving a note", "Writing a file"],
     "activity-strip.attr.aria-label": ["Show what Scout is doing"],
     "details-popover": [
       "colony --format compact channels list",

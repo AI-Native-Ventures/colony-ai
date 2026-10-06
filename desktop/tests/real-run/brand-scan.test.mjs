@@ -7,6 +7,7 @@ import {
   REQUIRED_SURFACES,
   failingFindings,
   homeVerdict,
+  nestFolderVerdict,
   promptCoverage,
   scanCapture,
   scanText,
@@ -66,9 +67,10 @@ test("the leaks the 1.0.5 gate found are all caught, with exact kinds per surfac
     kinds(failing.filter((f) => f.surface === "session-panel")),
     ["pipe"],
   );
-  assert.deepEqual(kinds(failing.filter((f) => f.surface === "activity-page")), [
-    "buzz",
-  ]);
+  assert.deepEqual(
+    kinds(failing.filter((f) => f.surface === "activity-page")),
+    ["buzz"],
+  );
   assert.deepEqual(
     kinds(failing.filter((f) => f.surface === "activity-strip")),
     ["buzz"],
@@ -100,9 +102,10 @@ test("the old name is caught in any case and in paths, attributes and window tit
     "buzz-agent",
     "xbuzzx",
   ]) {
-    assert.deepEqual(kinds(scanText(text, "chat").filter((f) => f.kind === "buzz")), [
-      "buzz",
-    ]);
+    assert.deepEqual(
+      kinds(scanText(text, "chat").filter((f) => f.kind === "buzz")),
+      ["buzz"],
+    );
   }
   const scan = scanCapture({
     surfaces: {
@@ -175,7 +178,11 @@ test("flags are commands, not hyphens: file names, bullets and words with hyphen
     "range 1 - 5",
   ])
     assert.deepEqual(scanText(text, "chat"), [], text);
-  for (const text of ["run colony --help", "use -h for help", "--format compact"])
+  for (const text of [
+    "run colony --help",
+    "use -h for help",
+    "--format compact",
+  ])
     assert.ok(
       scanText(text, "chat").some((f) => f.kind === "flag"),
       text,
@@ -186,17 +193,23 @@ test("UUIDs, pipes and redirects are caught on plain surfaces in any case", () =
   const id = "11111111-1111-4111-8111-111111111111";
   assert.ok(scanText(`channel ${id}`, "chat").some((f) => f.kind === "uuid"));
   assert.ok(
-    scanText(`channel ${id.toUpperCase()}`, "chat").some((f) => f.kind === "uuid"),
+    scanText(`channel ${id.toUpperCase()}`, "chat").some(
+      (f) => f.kind === "uuid",
+    ),
   );
   assert.ok(scanText("a | b", "activity-strip").some((f) => f.kind === "pipe"));
   assert.ok(
-    scanText("run it 2>&1 now", "transcript").some((f) => f.kind === "redirect"),
+    scanText("run it 2>&1 now", "transcript").some(
+      (f) => f.kind === "redirect",
+    ),
   );
   assert.deepEqual(scanText(`channel ${id}`, "details-popover"), []);
 });
 
 test("every failing pattern kind is exercised by a fixture so none can rot silently", () => {
-  const seen = new Set(failingFindings(scanCapture(leaky())).map((f) => f.kind));
+  const seen = new Set(
+    failingFindings(scanCapture(leaky())).map((f) => f.kind),
+  );
   seen.add("redirect");
   for (const pattern of PATTERNS.filter((p) => p.severity === "fail"))
     assert.ok(seen.has(pattern.kind), `no fixture exercises ${pattern.kind}`);
@@ -221,10 +234,7 @@ test("home verdict: a fresh install creates .colony and never .buzz", () => {
     homeVerdict({ before: [], after: [".colony", ".buzz"] }).status,
     "FAIL",
   );
-  assert.equal(
-    homeVerdict({ before: [], after: [".buzz"] }).status,
-    "FAIL",
-  );
+  assert.equal(homeVerdict({ before: [], after: [".buzz"] }).status, "FAIL");
   assert.equal(
     homeVerdict({ before: [], after: ["Library"] }).status,
     "NOT OBSERVED",
@@ -253,5 +263,43 @@ test("prompt coverage: tool activity must have been seen before silence reads as
   assert.equal(
     promptCoverage([{ firstRowMs: 900 }, { firstRowMs: 1200 }]).status,
     "PASS",
+  );
+});
+
+test("nest folder log: a fresh HOME must choose .colony for reason fresh-install under that HOME", () => {
+  const home = "/private/tmp/colony-fresh-home-abc";
+  const line = (chosen, reason, folder) =>
+    `noise\nbuzz-desktop: nest-folder: chosen=${chosen} reason=${reason} path=${folder}\nmore`;
+  assert.equal(
+    nestFolderVerdict(line(".colony", "fresh-install", `${home}/.colony`), home)
+      .status,
+    "PASS",
+  );
+  assert.equal(
+    nestFolderVerdict(
+      line(".buzz", "legacy-folder-kept", `${home}/.buzz`),
+      home,
+    ).status,
+    "FAIL",
+  );
+  assert.equal(
+    nestFolderVerdict(
+      line(".colony", "colony-folder-only", `${home}/.colony`),
+      home,
+    ).status,
+    "FAIL",
+  );
+  assert.equal(
+    nestFolderVerdict(
+      line(".colony", "fresh-install", "/Users/real/.colony"),
+      home,
+    ).status,
+    "FAIL",
+  );
+  assert.equal(nestFolderVerdict("no line here", home).status, "NOT OBSERVED");
+  assert.equal(nestFolderVerdict(undefined, home).status, "NOT OBSERVED");
+  assert.equal(
+    nestFolderVerdict("buzz-desktop: nest-folder: garbled", home).status,
+    "FAIL",
   );
 });
