@@ -50,7 +50,7 @@ application
     lifecycle.push({ sinceLaunchMs: Date.now() - launchedAt, code, signal }),
   );
 const guard = async (id, label, fn) => {
-  if (only === "retry" && !["A5-retry"].includes(id)) return undefined;
+  if (only === "retry" && !["A5-retry", "A2-relaunch"].includes(id)) return undefined;
   try {
     return await fn();
   } catch (error) {
@@ -484,7 +484,7 @@ try {
         await sleep(1500);
       }
       await page.getByTestId("avatar-save").waitFor({ timeout: 6000 });
-      let blockMedia = true;
+      let blockMedia = false;
       const aborted = [];
       const routeFn = (route) => {
         const req = route.request();
@@ -494,28 +494,48 @@ try {
         }
         return route.continue();
       };
-      await page.route(/127\.0\.0\.1:\d+\/media|\/upload|blossom/iu, routeFn);
-      await page.getByTestId("avatar-save").click();
-      await sleep(8000);
-      const text = await dialogText();
-      const retry = page.getByTestId("avatar-retry");
-      const retryVisible = await retry.isVisible().catch(() => false);
-      const retryLabel = retryVisible ? (await retry.innerText()).trim() : "";
-      await shot(page, rec, "a5-10-failed-upload");
-      rec.notes.netfail = { mode: "page.route abort of non-GET media/upload requests", aborted: aborted.slice(0, 6), abortedCount: aborted.length };
-      blockMedia = false;
+      const routePattern = /127\.0\.0\.1:\d+\/media|\/upload|blossom/iu;
+      await page.route(routePattern, routeFn);
+      const modes = [];
+      let retryVisible = false;
+      let retryLabel = "";
+      let text = "";
       let recovered = false;
-      if (retryVisible) {
-        await sleep(1500);
-        await retry.click();
-        await page
-          .getByTestId("profile-avatar-dialog")
-          .waitFor({ state: "hidden", timeout: 40000 })
-          .then(() => {
-            recovered = true;
-          })
-          .catch(() => undefined);
+      // Attempt 1: break the host to relay hop (reqwest) through the local proxy the app was launched against.
+      // Attempt 2 (only if attempt 1 produced no failure): break the renderer to host hop with route.abort.
+      for (const mode of proxy ? ["host-proxy", "renderer-abort"] : ["renderer-abort"]) {
+        if (mode === "host-proxy") proxy.block(true);
+        else blockMedia = true;
+        await page.getByTestId("avatar-save").click();
+        await sleep(12000);
+        text = await dialogText();
+        const retry = page.getByTestId("avatar-retry");
+        retryVisible = await retry.isVisible().catch(() => false);
+        retryLabel = retryVisible ? (await retry.innerText()).trim() : "";
+        await shot(page, rec, `a5-10-failed-upload-${mode}`);
+        modes.push({ mode, retryVisible, proxy: proxy ? proxy.stats() : null, aborted: aborted.slice(0, 4), abortedCount: aborted.length });
+        if (proxy && mode === "host-proxy") proxy.block(false);
+        blockMedia = false;
+        if (retryVisible) {
+          await sleep(1500);
+          await retry.click();
+          await page
+            .getByTestId("profile-avatar-dialog")
+            .waitFor({ state: "hidden", timeout: 40000 })
+            .then(() => {
+              recovered = true;
+            })
+            .catch(() => undefined);
+          break;
+        }
+        // No failure seen: the upload went through (dialog closed) or nothing happened. Reopen for the next attempt.
+        if (!(await page.getByTestId("profile-avatar-dialog").isVisible().catch(() => false))) {
+          await openAvatarDialogFrom("sidebar");
+          await chooseFile(png);
+          await page.getByTestId("avatar-save").waitFor({ timeout: 6000 });
+        }
       }
+      rec.notes.netfail = { modes, abortedCount: aborted.length, aborted: aborted.slice(0, 6) };
       await page.unroute(/127\.0\.0\.1:\d+\/media|\/upload|blossom/iu, routeFn).catch(() => undefined);
       rec.row(
         "A5-retry",
@@ -525,7 +545,7 @@ try {
           : retryVisible
             ? "FAIL"
             : "NOT OBSERVED",
-        `Failure injected by aborting ${rec.notes.netfail.abortedCount} upload request(s) at the network layer (${rec.notes.netfail.aborted.join("; ")}). Retry control visible: ${retryVisible} ("${retryLabel}"). Dialog text while failed: ${text}. Retry succeeded after going back online: ${recovered}.`,
+        `Attempts: ${JSON.stringify(rec.notes.netfail.modes)}. Retry control visible: ${retryVisible} ("${retryLabel}"). Dialog text while failed: ${text}. Retry succeeded after going back online: ${recovered}.`,
         { screenshot: await shot(page, rec, "a5-11-after-retry") },
       );
       if (!recovered)

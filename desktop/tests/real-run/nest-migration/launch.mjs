@@ -90,6 +90,10 @@ export function sandboxPolicy(realHome = os.homedir()) {
     ),
     '(deny mach-lookup (global-name "com.apple.securityd") (global-name "com.apple.SecurityServer") (global-name "com.apple.security.agent") (global-name "com.apple.SecurityAgent") (global-name-regex #"^com\\.apple\\.(securityd|SecurityServer|SecurityAgent|security\\.agent)(\\.|$)"))',
     '(deny process-exec (literal "/usr/bin/security") (literal "/System/Library/CoreServices/SecurityAgent.app/Contents/MacOS/SecurityAgent"))',
+    // Final 1.0.5 gate: no outbound web traffic. The host starts a real Pocket TTS model download at every boot; its files
+    // appearing between two launches made SECOND-LAUNCH-NOOP and MODELS-INTACT fail for a reason unrelated to the move.
+    // The relay is loopback in this harness, so nothing else needs the web. Strengthens the sandbox, never weakens it.
+    '(deny network-outbound (remote tcp "*:80") (remote tcp "*:443"))',
   ].join("\n");
 }
 

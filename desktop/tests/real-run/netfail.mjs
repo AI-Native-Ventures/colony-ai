@@ -8,7 +8,11 @@ import net from "node:net";
 
 export async function startToggleProxy() {
   let blocked = false;
-  const stats = { tunnels: 0, blockedTunnels: 0, plain: 0, blockedPlain: 0 };
+  const stats = { tunnels: 0, blockedTunnels: 0, plain: 0, blockedPlain: 0, destroyed: 0 };
+  // Open tunnels: a keep-alive connection that the host pooled before the block is reused without a new CONNECT,
+  // so blocking only new tunnels never hit the upload in the first attempt (0 blocked requests). block(true)
+  // therefore also destroys every open tunnel.
+  const active = new Set();
   const server = http.createServer((req, res) => {
     // Plain HTTP request through the proxy.
     if (blocked) {
@@ -49,12 +53,16 @@ export async function startToggleProxy() {
     stats.tunnels += 1;
     const [host, port] = req.url.split(":");
     const upstream = net.connect(Number(port) || 443, host, () => {
+      active.add(clientSocket);
+      active.add(upstream);
       clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
       upstream.write(head);
       upstream.pipe(clientSocket);
       clientSocket.pipe(upstream);
     });
     const close = () => {
+      active.delete(clientSocket);
+      active.delete(upstream);
       upstream.destroy();
       clientSocket.destroy();
     };
@@ -77,6 +85,13 @@ export async function startToggleProxy() {
     },
     block(value) {
       blocked = Boolean(value);
+      if (blocked) {
+        for (const socket of active) {
+          stats.destroyed += 1;
+          socket.destroy();
+        }
+        active.clear();
+      }
     },
     stats: () => ({ ...stats, blocked }),
     close: () => new Promise((resolve) => server.close(resolve)),
