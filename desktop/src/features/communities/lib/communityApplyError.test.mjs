@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { isRelayMembershipDeniedError } from "../../../shared/lib/relayMembershipDenied.ts";
 import { describeCommunityApplyError } from "./communityApplyError.ts";
 
 const MEMBERSHIP_ERROR =
@@ -52,4 +53,22 @@ test("other errors keep their original text and show no details line", () => {
   assert.equal(copy.message, "Temporary community connection failure.");
   assert.equal(copy.detail, null);
   assert.equal(copy.isMembershipError, false);
+});
+
+test("every refusal the workspace detects gets the plain membership copy", () => {
+  for (const shape of [
+    "You must be a relay member to access this relay",
+    "relay_membership_required",
+    "restricted: not a relay member",
+    "invalid: you are not a relay member",
+  ]) {
+    assert.equal(isRelayMembershipDeniedError(shape), true, shape);
+    const copy = describeCommunityApplyError({
+      communityName: "Colony",
+      error: shape,
+      hasOtherCommunities: false,
+    });
+    assert.equal(copy.isMembershipError, true, shape);
+    assert.match(copy.message, /^This sign-in is not a member of Colony\./);
+  }
 });

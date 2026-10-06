@@ -589,6 +589,13 @@ type E2eConfig = {
     /** Reject the mock delete_message command before changing its message store. */
     deleteMessageError?: string;
     channelsReadError?: string;
+    /**
+     * Reject `get_channels` with the message mapped to the relay URL last
+     * applied, so one community can refuse a removed member (the relay's 403
+     * membership text) while another still loads. Tests clear the entry at run
+     * time to simulate the person being added back.
+     */
+    channelsReadErrorByRelayUrl?: Record<string, string>;
     /** Reject successive mock `get_channels` calls, then resume. */
     channelsReadErrors?: (string | null)[];
     /** Reject successive mock `create_channel` calls, then resume. */
@@ -5644,6 +5651,8 @@ function getRelayCommunityUrl(config: E2eConfig | undefined): string | null {
 }
 
 let appliedRelayWsUrl: string | null = null;
+// The relay the mock backend was last pointed at, in every bridge mode.
+let appliedMockRelayUrl: string | null = null;
 
 function getRelayHttpUrl(config: E2eConfig | undefined): string {
   const activeRelayWsUrl = appliedRelayWsUrl ?? getRelayCommunityUrl(config);
@@ -12746,6 +12755,14 @@ async function handleGetChannels(
     );
   }
 
+  const channelsReadErrorByRelayUrl = config?.mock?.channelsReadErrorByRelayUrl;
+  if (
+    channelsReadErrorByRelayUrl &&
+    appliedMockRelayUrl !== null &&
+    Object.hasOwn(channelsReadErrorByRelayUrl, appliedMockRelayUrl)
+  ) {
+    throw new Error(channelsReadErrorByRelayUrl[appliedMockRelayUrl]);
+  }
   const channelsReadError =
     config?.mock?.channelsReadErrors?.shift() ??
     config?.mock?.channelsReadError;
@@ -19937,6 +19954,7 @@ export function maybeInstallE2eTauriMocks() {
         ) {
           throw new Error(applyErrorByRelayUrl[relayUrl]);
         }
+        if (typeof relayUrl === "string") appliedMockRelayUrl = relayUrl;
         if (
           isRelayMode(activeConfig) &&
           typeof relayUrl === "string" &&

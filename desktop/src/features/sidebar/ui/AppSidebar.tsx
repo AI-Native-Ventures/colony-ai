@@ -68,6 +68,7 @@ import type {
   CreateChannelKind,
 } from "@/features/sidebar/ui/AppSidebar.types";
 import { SidebarRelayConnectionCard } from "@/features/sidebar/ui/SidebarRelayConnectionCard";
+import { SidebarRelayErrorNotice } from "@/features/sidebar/ui/SidebarRelayErrorNotice";
 import {
   SidebarLoadingContent,
   useSidebarLoadingShape,
@@ -988,9 +989,7 @@ export function AppSidebar({
 
                   {errorMessage &&
                   !relayConnectionCard.hasRelayUnreachableError ? (
-                    <div className="px-3 py-2 text-sm text-destructive">
-                      {errorMessage}
-                    </div>
+                    <SidebarRelayErrorNotice message={errorMessage} />
                   ) : null}
                 </>
               ) : null}

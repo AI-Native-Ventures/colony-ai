@@ -10,6 +10,7 @@ import {
   useReducer,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 
 import { router } from "@/app/router";
@@ -56,6 +57,10 @@ import {
 } from "@/features/communities/addCommunityPrefill";
 import { WelcomeSetup } from "@/features/communities/ui/WelcomeSetup";
 import { CommunityApplyErrorScreen } from "@/features/communities/ui/CommunityApplyErrorScreen";
+import {
+  getMembershipDenial,
+  subscribeMembershipDenial,
+} from "@/features/communities/membershipDenialGate";
 import { CommunityChangeOverlay } from "@/features/communities/ui/CommunityChangeOverlay";
 import { prepareCommunitySwitchFromFailure } from "@/app/prepareCommunitySwitch";
 import { setAvatarProfileSyncQueryClient } from "@/features/profile/avatarProfileSync";
@@ -534,6 +539,20 @@ function CommunityApp({
   const showBootSplashOverlay =
     bootSplashPhase !== "done" && !isCommunitySwitch && !isContinuingOnboarding;
 
+  // A denial is only this community's while it is the active one, so a late
+  // refusal from the community the person just left never shows here.
+  const membershipDenial = useSyncExternalStore(
+    subscribeMembershipDenial,
+    getMembershipDenial,
+    getMembershipDenial,
+  );
+  const failureError =
+    "error" in community && community.error
+      ? community.error
+      : membershipDenial && membershipDenial.communityId === activeCommunity?.id
+        ? membershipDenial.detail
+        : null;
+
   let appContent: ReactNode = null;
   if (!transaction) {
     if (community.needsSetup) {
@@ -545,12 +564,13 @@ function CommunityApp({
           }
         />
       );
-    } else if ("error" in community && community.error) {
-      // Surface apply failures so the user can retry or change community.
+    } else if (failureError !== null) {
+      // Surface apply failures, and a membership refusal that reached the open
+      // workspace, so the user can retry, switch, or drop this community.
       appContent = (
         <>
           <CommunityApplyErrorScreen
-            error={community.error}
+            error={failureError}
             onEditCommunity={() => setIsCommunityChangeOpen(true)}
             onPrepareLanding={prepareLanding}
             onRetry={reconnectCommunity}

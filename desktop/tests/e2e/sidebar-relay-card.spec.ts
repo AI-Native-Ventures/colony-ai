@@ -251,7 +251,11 @@ test("sidebar application auth disconnects stay on the error path", async ({
   await page.goto("/");
   await setRelayConnectionState(page, "disconnected");
 
-  await expect(page.getByText(RELAY_AUTH_ERROR)).toBeVisible();
+  // People read a plain sentence; the relay's own text stays out of the UI.
+  await expect(page.getByTestId("sidebar-relay-error")).toContainText(
+    "Colony could not reach this community. Try again.",
+  );
+  await expect(page.getByText(RELAY_AUTH_ERROR)).toHaveCount(0);
   await expect(page.getByTestId("sidebar-relay-unreachable")).toHaveCount(0);
 });
 

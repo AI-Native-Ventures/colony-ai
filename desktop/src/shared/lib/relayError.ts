@@ -32,3 +32,17 @@ export function isRelayUnreachableError(error: unknown): boolean {
   }
   return false;
 }
+
+export const RELAY_GENERIC_ERROR_MESSAGE =
+  "Colony could not reach this community. Try again.";
+
+/**
+ * The sentence a person sees for any relay failure. Raw relay text ("relay
+ * returned 403 Forbidden: ...") is technical and stays in logs and the
+ * escape screen's details line, never in the workspace.
+ */
+export function plainRelayErrorMessage(error: unknown): string {
+  return isRelayUnreachableError(error)
+    ? RELAY_UNREACHABLE_SHORT
+    : RELAY_GENERIC_ERROR_MESSAGE;
+}

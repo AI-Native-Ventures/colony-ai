@@ -50,6 +50,7 @@ import { resetMessageLinkMetadataCache } from "@/shared/ui/markdown/useMessageLi
 import { resetVideoPlayerState } from "@/shared/ui/videoPlayerState";
 import { initWorkAreaStore } from "@/features/workarea/dock/workAreaStore";
 import { resetWorkAreaState } from "@/features/workarea/dock/resetWorkAreaState";
+import { resetMembershipDenialGate } from "./membershipDenialGate";
 
 import {
   initFirstCommunity,
@@ -87,6 +88,7 @@ async function resetCommunityState({
     resetAvatarPresentations();
   }
   resetSidebarRelayConnectionCardState();
+  resetMembershipDenialGate();
   resetFactorySessionRequests();
   resetWorkAreaState();
   resetMediaCaches();
