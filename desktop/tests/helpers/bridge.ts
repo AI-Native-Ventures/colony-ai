@@ -432,6 +432,8 @@ type MockBridgeOptions = {
   addChannelMembersErrors?: (string | null)[];
   channelMembersReadDelayMs?: number;
   channelsReadError?: string;
+  /** Reject `get_channels` per applied relay URL; see e2eBridge mock config. */
+  channelsReadErrorByRelayUrl?: Record<string, string>;
   /** Reject successive mock `get_channels` calls, then resume. */
   channelsReadErrors?: (string | null)[];
   /** Reject successive mock `create_channel` calls, then resume. */

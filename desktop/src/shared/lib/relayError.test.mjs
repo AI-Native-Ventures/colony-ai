@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { isRelayUnreachableError } from "./relayError.ts";
+import {
+  isRelayUnreachableError,
+  plainRelayErrorMessage,
+  RELAY_GENERIC_ERROR_MESSAGE,
+  RELAY_UNREACHABLE_SHORT,
+} from "./relayError.ts";
 
 test("isRelayUnreachableError: Error with prefix returns true", () => {
   assert.equal(
@@ -53,5 +58,28 @@ test("isRelayUnreachableError: plain object returns false", () => {
   assert.equal(
     isRelayUnreachableError({ message: "relay unreachable: oops" }),
     false,
+  );
+});
+
+test("plainRelayErrorMessage never exposes raw relay text", () => {
+  for (const raw of [
+    "relay returned 403 Forbidden: You must be a relay member to access this relay",
+    "relay returned 500 Internal Server Error: boom",
+    "something unexpected",
+  ]) {
+    const plain = plainRelayErrorMessage(raw);
+    assert.equal(plain, RELAY_GENERIC_ERROR_MESSAGE);
+    assert.doesNotMatch(plain, /relay returned|403|500/);
+  }
+  assert.equal(
+    RELAY_GENERIC_ERROR_MESSAGE,
+    "Colony could not reach this community. Try again.",
+  );
+});
+
+test("plainRelayErrorMessage keeps the unreachable wording for unreachable errors", () => {
+  assert.equal(
+    plainRelayErrorMessage("relay unreachable: connection refused"),
+    RELAY_UNREACHABLE_SHORT,
   );
 });
