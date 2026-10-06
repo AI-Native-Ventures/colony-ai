@@ -1,6 +1,6 @@
-//! Agent-friendly rendering of the `buzz` command tree.
+//! Agent-friendly rendering of the `colony` command tree.
 //!
-//! `buzz --help` lists every group *and* the subcommands under it, so a caller
+//! `colony --help` lists every group *and* the subcommands under it, so a caller
 //! learns the whole surface in one invocation instead of one `--help` call per
 //! group. The tree is walked from clap's own command definition, so it cannot
 //! drift from the commands that actually exist.
@@ -136,7 +136,7 @@ mod tests {
             "subcommand line missing or misaligned:\n{help}"
         );
         assert!(
-            help.contains("\n    draft-create                Open a prefilled create-agent form in the owner's Buzz Desktop\n"),
+            help.contains("\n    draft-create                Open a prefilled create-agent form in the owner's Colony app\n"),
             "subcommand line missing or misaligned:\n{help}"
         );
     }

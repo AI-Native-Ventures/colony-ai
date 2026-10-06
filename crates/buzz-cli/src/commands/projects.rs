@@ -1,4 +1,4 @@
-//! `buzz projects` commands — NIP-MP kind:30621 write path.
+//! `colony projects` commands — NIP-MP kind:30621 write path.
 //!
 //! All mutations follow a read-modify-write pattern:
 //!   1. Fetch the caller's own live head via `kinds:[30621] + authors:[self] + #d:[slug]`.
@@ -41,9 +41,12 @@ async fn cmd_add_channel_draft(
     ttl_seconds: Option<u64>,
     template_name: Option<String>,
 ) -> Result<(), CliError> {
-    let owner_hex = client
-        .auth_tag_owner_hex()
-        .ok_or_else(|| CliError::Auth("project channel requests require BUZZ_AUTH_TAG".into()))?;
+    let owner_hex = client.auth_tag_owner_hex().ok_or_else(|| {
+        CliError::Auth(
+            "project channel requests need the owner attestation Colony gives managed agents"
+                .into(),
+        )
+    })?;
     let owner = PublicKey::parse(&owner_hex)
         .map_err(|error| CliError::Auth(format!("invalid owner attestation: {error}")))?;
     let built = build_project_channel(
@@ -67,7 +70,7 @@ async fn cmd_add_channel_draft(
         object.insert("saved".into(), false.into());
         object.insert(
             "message".into(),
-            "Project channel draft sent to Buzz Desktop for owner review. The channel is not created until the owner approves it."
+            "Project channel draft sent to Colony for owner review. The channel is not created until the owner approves it."
                 .into(),
         );
     }
@@ -299,7 +302,7 @@ fn make_tag(parts: &[&str]) -> Result<Tag, CliError> {
 ///
 /// `link_slug` carries the project's d-tag on creates whose slug fits the
 /// `buzz://` link charset; the response then also carries a `link` field,
-/// which renders as a rich preview card in Buzz Desktop when included in a
+/// which renders as a rich preview card in Colony when included in a
 /// chat message — agents announce projects with it (see base_prompt.md).
 async fn submit_project(
     client: &BuzzClient,
@@ -356,7 +359,7 @@ fn rebuild_project(
 
 // ── Command implementations ───────────────────────────────────────────────────
 
-/// `buzz projects create`
+/// `colony projects create`
 pub async fn cmd_create(
     client: &BuzzClient,
     slug: &str,
@@ -414,7 +417,7 @@ pub async fn cmd_create(
     // ── Network: collision preflight ──────────────────────────────────────
     if fetch_own_project(client, slug).await?.is_some() {
         return Err(CliError::Conflict(format!(
-            "project {slug:?} already exists; use 'buzz projects update' to modify it"
+            "project {slug:?} already exists; use 'colony projects update' to modify it"
         )));
     }
     if let Some(channel) = channel {
@@ -458,7 +461,7 @@ pub async fn cmd_create(
     .await
 }
 
-/// `buzz projects get`
+/// `colony projects get`
 pub async fn cmd_get(client: &BuzzClient, slug: &str, owner: Option<&str>) -> Result<(), CliError> {
     validate_project_slug(slug)?;
     let resp = match fetch_project(client, slug, owner).await? {
@@ -481,7 +484,7 @@ pub async fn cmd_get(client: &BuzzClient, slug: &str, owner: Option<&str>) -> Re
     Ok(())
 }
 
-/// `buzz projects list`
+/// `colony projects list`
 pub async fn cmd_list(
     client: &BuzzClient,
     owner: Option<&str>,
@@ -506,7 +509,7 @@ pub async fn cmd_list(
     Ok(())
 }
 
-/// `buzz projects add-repo`
+/// `colony projects add-repo`
 pub async fn cmd_add_repo(
     client: &BuzzClient,
     slug: &str,
@@ -518,7 +521,7 @@ pub async fn cmd_add_repo(
     Ok(())
 }
 
-/// `buzz projects remove-repo`
+/// `colony projects remove-repo`
 pub async fn cmd_remove_repo(
     client: &BuzzClient,
     slug: &str,
@@ -581,7 +584,7 @@ pub async fn cmd_remove_repo(
     submit_project(client, builder, None).await
 }
 
-/// `buzz projects update`
+/// `colony projects update`
 ///
 /// Requires at least one setter or clearer; a no-op call is a usage error.
 #[allow(clippy::too_many_arguments)]
@@ -611,7 +614,7 @@ pub async fn cmd_update(
         || clear_visibility;
     if !has_mutation {
         return Err(CliError::Usage(
-            "buzz projects update requires at least one of: \
+            "colony projects update requires at least one of: \
              --name, --clear-name, --description, --clear-description, \
              --channel, --clear-channel, --visibility, --clear-visibility"
                 .into(),
@@ -682,7 +685,7 @@ pub async fn cmd_update(
     submit_project(client, builder, None).await
 }
 
-/// `buzz projects delete`
+/// `colony projects delete`
 ///
 /// Head-based and verified:
 ///   1. Fetch own live head — `NotFound` if absent.

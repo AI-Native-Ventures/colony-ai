@@ -20,6 +20,9 @@ mod todo;
 mod tree;
 mod view_image;
 
+#[cfg(test)]
+mod brand_tests;
+
 #[derive(Clone)]
 struct DevMcp {
     state: Arc<shell::SharedState>,
@@ -165,8 +168,9 @@ async fn async_main(cmd: String) -> Result<(), Box<dyn std::error::Error>> {
     // repeated installation is harmless.
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    // buzz CLI needs tokio (async HTTP client).
-    if cmd == "buzz" {
+    // The Colony CLI needs tokio (async HTTP client). It answers to `colony`
+    // (the name agents are taught) and to the legacy `buzz`.
+    if shim::is_cli_name(&cmd) {
         std::process::exit(buzz_cli::run_from_args(std::env::args()).await);
     }
 

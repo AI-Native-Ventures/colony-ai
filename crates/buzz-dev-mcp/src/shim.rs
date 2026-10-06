@@ -3,6 +3,26 @@ use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use zeroize::Zeroize;
 
+/// Names this binary answers to as a multicall personality. Each one becomes a
+/// symlink in the shim directory.
+///
+/// `colony` is the name agents are taught. `buzz` stays so older agents,
+/// scripts, and saved memory that still say `buzz` keep working.
+pub(crate) const MULTICALL_NAMES: [&str; 6] = [
+    "rg",
+    "tree",
+    "buzz",
+    "colony",
+    "git-credential-nostr",
+    "git-sign-nostr",
+];
+
+/// True when a multicall name selects the Colony CLI personality, under either
+/// its current name (`colony`) or its legacy name (`buzz`).
+pub(crate) fn is_cli_name(name: &str) -> bool {
+    matches!(name, "colony" | "buzz")
+}
+
 /// Session-scoped shim directory providing tools and git config to shell children.
 ///
 /// On install:
@@ -29,15 +49,7 @@ impl Shim {
         let self_exe = std::env::current_exe()?;
 
         // Multicall symlinks — all resolve back to this binary.
-        for name in [
-            "rg",
-            "tree",
-            "buzz",
-            "git-credential-nostr",
-            "git-sign-nostr",
-        ] {
-            symlink(&self_exe, &dir.path().join(name))?;
-        }
+        link_multicall_names(dir.path(), &self_exe)?;
 
         let original = std::env::var_os("PATH").unwrap_or_default();
         let mut entries = vec![PathBuf::from(dir.path())];
@@ -73,6 +85,14 @@ impl Shim {
             git_env,
         })
     }
+}
+
+/// Link every multicall name in [`MULTICALL_NAMES`] inside `dir` back to `target`.
+pub(crate) fn link_multicall_names(dir: &Path, target: &Path) -> std::io::Result<()> {
+    for name in MULTICALL_NAMES {
+        symlink(target, &dir.join(name))?;
+    }
+    Ok(())
 }
 
 struct KeyInfo {
