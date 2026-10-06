@@ -203,8 +203,11 @@ test.describe("agent session shows plain tool names", () => {
     const live = panel.locator('[role="log"][aria-live="polite"]').first();
     const shellRow = live.getByTestId("transcript-tool-item").first();
     await expect(shellRow).toBeVisible();
-    // Closed: the command is not rendered.
-    expect(await visibleTextAndNames(shellRow)).not.toContain(COMMAND);
+    // Closed: the command is in the DOM but not rendered, so innerText is
+    // what a person sees.
+    expect(
+      await shellRow.evaluate((n) => (n as HTMLElement).innerText),
+    ).not.toContain(COMMAND);
 
     await shellRow.locator("summary").click();
     await expect(shellRow).toContainText(COMMAND);
