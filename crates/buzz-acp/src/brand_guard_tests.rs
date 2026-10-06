@@ -28,9 +28,10 @@ use crate::scope::{SessionPolicy, SessionScope};
 
 /// The only places the old name may still appear in agent-visible text.
 ///
-/// Both groups are machine contracts that existing agents, relays and scripts
-/// already depend on, so they cannot be renamed in the same release that stops
-/// the name appearing in prose. Each entry says why and when it can go.
+/// The two turn tags are a machine contract that running agents already parse,
+/// so they cannot be renamed in the same release that stops the name appearing
+/// in prose. Environment variable names are not allowed here: the prompts no
+/// longer name them. Each entry says why and when it can go.
 const ALLOW: &[Allow] = &[
     Allow {
         text: "buzz-event",
@@ -44,27 +45,6 @@ const ALLOW: &[Allow] = &[
         kind: Match::XmlTag,
         reason: "Structural turn tag that wraps a batch of incoming messages, the plural twin of \
                  the single-event tag. Removal: later track, together with the single-event tag.",
-    },
-    Allow {
-        text: "BUZZ_RELAY_URL",
-        kind: Match::Token,
-        reason: "Environment variable name the harness sets for the agent process and the CLI \
-                 reads. Renaming needs dual-read in the CLI, harness and desktop spawn code. \
-                 Removal: later track, COLONY_* aliases.",
-    },
-    Allow {
-        text: "BUZZ_PRIVATE_KEY",
-        kind: Match::Token,
-        reason: "Environment variable name carrying the agent identity, read by the CLI and the \
-                 dev tools. Renaming needs dual-read everywhere it is consumed. \
-                 Removal: later track, COLONY_* aliases.",
-    },
-    Allow {
-        text: "BUZZ_AUTH_TAG",
-        kind: Match::Token,
-        reason: "Environment variable name carrying the owner attestation, read by the CLI when \
-                 opening owner-reviewed drafts. Renaming needs dual-read everywhere it is read. \
-                 Removal: later track, COLONY_* aliases.",
     },
 ];
 
@@ -278,6 +258,10 @@ fn surfaces() -> Vec<Surface> {
         .join("\n\n"),
     ));
     out.push(Surface::new("core memory nudge", ONBOARDING_NUDGE));
+    out.push(Surface::new(
+        "default heartbeat prompt",
+        crate::default_heartbeat_prompt(),
+    ));
     out.push(Surface::new(
         "channel canvas section",
         render_canvas_section(&"e".repeat(64), "2026-10-06T08:00:00+00:00", CHANNEL_ID),

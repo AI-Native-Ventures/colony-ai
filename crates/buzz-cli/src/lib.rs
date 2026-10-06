@@ -7,6 +7,8 @@ mod links;
 mod validate;
 
 #[cfg(test)]
+mod brand_guard_tests;
+#[cfg(test)]
 mod brand_tests;
 
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};

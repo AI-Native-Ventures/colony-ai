@@ -21,6 +21,8 @@ mod tree;
 mod view_image;
 
 #[cfg(test)]
+mod brand_guard_tests;
+#[cfg(test)]
 mod brand_tests;
 
 #[derive(Clone)]
