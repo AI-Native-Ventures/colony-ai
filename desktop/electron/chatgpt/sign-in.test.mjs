@@ -276,6 +276,15 @@ test("port in use fails before opening browser", async (t) => {
   assert.equal(opened, false);
 });
 
+test("a hung browser opener does not suppress listener timeout", async (t) => {
+  const f = await fixture(t, {
+    listenerTimeoutMs: 20,
+    openExternal: () => new Promise(() => {}),
+  });
+  await assert.rejects(f.service.connect(), /listener_timeout/);
+  assert.equal(f.fake.counters.exchange, 0);
+});
+
 test("accounts with the same email stay distinct; mismatch cannot overwrite", async (t) => {
   const f = await fixture(t);
   const first = await f.connect();

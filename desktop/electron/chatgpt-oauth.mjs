@@ -214,8 +214,12 @@ export function createChatGptService({
         port: callbackPort,
       });
       check();
-      await openExternal(listener.url);
-      const callback = await listener.result;
+      const browser = Promise.resolve().then(() => openExternal(listener.url));
+      // A hung browser launch cannot prevent timeout or cancellation settling.
+      const callback = await Promise.race([
+        listener.result,
+        browser.then(() => listener.result),
+      ]);
       check();
       if (!callback)
         return { outcome: "cancelled", ...(await status()), connecting: false };
@@ -330,6 +334,7 @@ export function createChatGptService({
     const flight = (async () => {
       await initialize();
       await store.locked(async () => {
+        if (stopped || epoch(id) !== fence) return;
         const state = store.snapshot();
         const a = find(state, id);
         if (a.state !== "active" && a.state !== "plan_use_off") return;
