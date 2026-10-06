@@ -48,7 +48,10 @@ const body = async (n = 700) =>
       .replace(/\s+/gu, " ")
       .slice(0, n),
   );
+const onlyMode = process.env.ONLY ?? "all";
 const guard = async (id, name, fn) => {
+  // ONLY=remove: second run after the first run proved Switch; skip straight to Remove (store already holds both).
+  if (onlyMode === "remove" && ["G8-screen", "G8-overlay", "G8-switch", "G8-back"].includes(id)) return undefined;
   try {
     return await fn();
   } catch (error) {

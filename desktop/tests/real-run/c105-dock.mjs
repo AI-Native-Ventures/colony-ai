@@ -677,20 +677,33 @@ try {
     await channel("welcome").click({ timeout: 8000 });
     await page.getByTestId("message-timeline").waitFor({ timeout: 15000 });
     const composer = page.getByTestId("message-composer").locator('[contenteditable="true"]').first();
+    const repliesBefore = await page.evaluate(() =>
+      [...document.body.innerText.matchAll(/(\d+) repl(?:y|ies)/gu)]
+        .map((m) => Number(m[1]))
+        .reduce((a, b) => a + b, 0),
+    );
     await composer.click();
     await composer.fill("@");
     const menu = page.getByTestId("mention-autocomplete");
     await menu.waitFor({ timeout: 15000 });
     await menu.locator("[data-mention-suggestion-index]").filter({ hasText: /Scout/u }).first().click();
     await composer.press("End");
-    await composer.pressSequentially(" please create a file named dock-check.md in your working folder with one heading and two bullets, then reply in the thread with its full path.");
+    await composer.pressSequentially(" please create a file named dock-check.md in your working folder with one heading and two bullets, then reply in the thread with its full path written inside backticks.");
     await composer.press("Enter");
     const t0 = Date.now();
     let seen = false;
+    // Done when the thread reply counter rises (Scout answered in the thread under the request), not when my own text shows.
+    const replies = () =>
+      page.evaluate(() =>
+        [...document.body.innerText.matchAll(/(\d+) repl(?:y|ies)/gu)]
+          .map((m) => Number(m[1]))
+          .reduce((a, b) => a + b, 0),
+      );
     while (Date.now() - t0 < 170000 && !seen) {
       await sleep(3000);
-      seen = (await page.getByText(/dock-check\.md/u).count()) > 1;
+      seen = (await replies()) > repliesBefore;
     }
+    if (seen) await sleep(6000);
     rec.row("DOCK-author", "Scout writes dock-check.md and replies with its path", seen ? "PASS" : "NOT OBSERVED", `dock-check.md mentioned after ${Date.now() - t0} ms: ${seen}`, { screenshot: await shot(page, rec, "d10-authored") });
   });
 
