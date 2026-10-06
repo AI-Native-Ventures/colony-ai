@@ -559,8 +559,17 @@ export function tokenizeShellCommand(command: string): string[] {
   return tokens;
 }
 
+/**
+ * Names the bundled agent CLI is invoked as. `colony` is the name agents are
+ * taught; `buzz` keeps working for older agents, scripts and saved transcripts.
+ * Both must map to the same plain labels, or activity rows degrade to
+ * "Running a command".
+ */
+const AGENT_CLI_EXECUTABLES = new Set(["buzz", "colony"]);
+
 function isBuzzExecutable(token: string) {
-  return token === "buzz" || token.split(/[\\/]/).pop() === "buzz";
+  const name = token.split(/[\\/]/).pop() ?? "";
+  return AGENT_CLI_EXECUTABLES.has(name);
 }
 
 function isCommandSeparator(token: string) {
