@@ -3,6 +3,8 @@
 mod business_context;
 
 mod acp;
+#[cfg(test)]
+mod brand_guard_tests;
 mod config;
 mod connection_test;
 mod engram_fetch;
@@ -2796,7 +2798,7 @@ async fn tokio_main() -> Result<()> {
                 config.session_policy.append_session_model(
                     base_prompt_content
                         .as_deref()
-                        .unwrap_or(include_str!("base_prompt.md")),
+                        .unwrap_or(prompt_framing::DEFAULT_BASE_PROMPT),
                 ),
             )
         },
