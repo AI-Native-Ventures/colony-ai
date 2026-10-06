@@ -30,7 +30,11 @@ import {
   runForeignScripts,
   snapshot,
 } from "./observe.mjs";
-import { provisionSkill, simulateMigration } from "./simulate.mjs";
+import {
+  provisionSkill,
+  resolveReposAtBoot,
+  simulateMigration,
+} from "./simulate.mjs";
 
 const contract = defaultContract();
 const scratch = [];
@@ -71,8 +75,10 @@ async function launch(home, options = {}) {
       crashed: true,
     };
   }
-  if (provision && chosen === ".colony")
+  if (provision && chosen === ".colony") {
     await provisionSkill(path.join(home, ".colony"));
+    await resolveReposAtBoot(path.join(home, ".colony"));
+  }
   return { report, lines: [report.logLine, nestLine(chosen)] };
 }
 
@@ -702,6 +708,9 @@ test("held back (REPOS with an absolute link into the old nest): REPOS stays who
   for (const id of [
     "HELD-BACK",
     "LINKS-MEANING",
+    "REPOS-POINTER",
+    "REPOS-IN-USE",
+    "NOTICE-HONEST",
     "NOTICE",
     "OUTCOME",
     "JOURNAL-DURABLE",
@@ -717,6 +726,17 @@ test("held back (REPOS with an absolute link into the old nest): REPOS stays who
     },
   });
   assert.equal(statuses(broken.rows)["HELD-BACK"], FAIL);
+  // A migration that held REPOS back but forgot the pointer: the new nest would start with an empty
+  // REPOS beside clones that stayed behind.
+  const split = await run("held-back", "repos-link-into-nest", {
+    act: async (home) => {
+      const out = await launch(home);
+      await rm(path.join(home, ".colony/.repos-dir"));
+      await rm(path.join(home, ".colony/REPOS"), { force: true });
+      return out;
+    },
+  });
+  assert.equal(statuses(split.rows)["REPOS-POINTER"], FAIL);
 });
 
 test("colony-only and empty HOME: no migration, nothing created in ~/.buzz, no journal", async () => {

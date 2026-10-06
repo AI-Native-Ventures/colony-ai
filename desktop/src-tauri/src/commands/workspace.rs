@@ -210,6 +210,21 @@ pub async fn apply_workspace(
         // persisted value. `nest` is resolved softly: when absent there is nothing
         // to persist or symlink, and relay/keys must still apply unconditionally.
         let nest = nest_dir();
+        // No folder chosen for this workspace: keep the one the nest migration
+        // left in use (it left the old REPOS behind and pointed the new folder at
+        // it), otherwise this apply would erase that pointer and bring back an
+        // empty REPOS beside clones that stayed behind. A folder the person
+        // chose always wins.
+        let repos_dir = match (nest.as_deref(), app.path().app_data_dir()) {
+            (Some(nest), Ok(data_dir)) => {
+                crate::managed_agents::nest_migration::effective_candidate(
+                    nest,
+                    &crate::managed_agents::nest_migration::state_dir(&data_dir),
+                    repos_dir.as_deref(),
+                )
+            }
+            _ => repos_dir,
+        };
         let effective_repos_dir = match nest.as_deref() {
             Some(nest) => match effective_repos_dir(nest, repos_dir.as_deref()) {
                 Ok(value) => value,

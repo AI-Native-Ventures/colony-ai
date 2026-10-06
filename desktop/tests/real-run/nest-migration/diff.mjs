@@ -221,6 +221,19 @@ export function diffNests({ before, after, contract = defaultContract() }) {
       });
       continue;
     }
+    // The host's own link to a folder that stayed behind (REPOS, pointed at by the new nest's `.repos-dir`) is
+    // not a copy of it: the source stayed where it was and the new nest reaches it through the link.
+    const link = destination;
+    if (
+      link &&
+      source &&
+      link.type === "symlink" &&
+      link.resolves &&
+      link.target?.endsWith(`/${contract.oldNest}/${rel}`)
+    ) {
+      result.owned.leftInPlace.push(entry.path);
+      continue;
+    }
     if (destination && source) {
       // Present at both places although it existed only at the old one: a copy that was not cleaned up.
       result.owned.altered.push({

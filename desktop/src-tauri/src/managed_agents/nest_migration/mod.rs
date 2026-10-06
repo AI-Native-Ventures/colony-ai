@@ -30,6 +30,12 @@
 //!   the rest would split history from the data it belongs to.
 //! * **Links keep their meaning.** An entry that holds a link or pointer that
 //!   names the old folder (see [`scan`]) is held back, not rewritten.
+//! * **A held-back `REPOS` stays in use.** When `REPOS` stays behind while the
+//!   rest moves, the new folder would start with an empty `REPOS` beside clones
+//!   that stayed in the old one. The run writes a `.repos-dir` pointer naming the
+//!   old `REPOS` as one more journaled step of the same publish (see [`pointer`]);
+//!   if it cannot be written, read back and validated like the host will, the
+//!   whole run is rolled back instead.
 //! * **Never under a running agent.** The caller passes the pids of live
 //!   agents; while any is alive nothing moves forward.
 //! * **Kill switch.** Off by default. [`ENV_FLAG`] turns it on or off without a
@@ -48,6 +54,7 @@ use std::path::{Path, PathBuf};
 
 mod boot;
 mod journal;
+mod pointer;
 mod scan;
 #[cfg(all(test, unix))]
 mod tests;
@@ -55,6 +62,7 @@ mod tests;
 pub(crate) use boot::{run_at_boot, state_dir};
 pub(crate) use journal::{acknowledge_notice, pending_notice, NestMigrationNotice};
 use journal::{Journal, Loaded, Phase, Step, StepKind, StepStatus};
+pub(crate) use pointer::{effective_candidate, heal_repos_pointer};
 
 /// Environment variable that overrides [`DEFAULT_ENABLED`]: `1`, `true`, `on`
 /// or `yes` enables; `0`, `false`, `off` or `no` disables.
@@ -102,6 +110,12 @@ const MSG_MIGRATED: &str = "Colony moved your agents' files to a new folder, ~/.
 Other files and tools in your old folder were left exactly as they were.";
 const MSG_MIGRATED_WITH_SKIPS: &str = "Colony moved your agents' files to ~/.colony. \
 Some items stayed where they were because moving them was not safe. Everything keeps working.";
+const MSG_MIGRATED_REPOS_IN_PLACE: &str = "Colony moved your agents' files to ~/.colony. \
+Your repositories folder stayed in your old agents folder and agents still use it.";
+const MSG_MIGRATED_REPOS_IN_PLACE_WITH_SKIPS: &str =
+    "Colony moved your agents' files to ~/.colony. \
+Your repositories folder stayed in your old agents folder and agents still use it. \
+Some other items stayed where they were because moving them was not safe.";
 const MSG_LEFT_IN_PLACE: &str = "Colony left some of your agents' files where they were \
 because moving them was not safe. Everything keeps working.";
 const MSG_ABORTED: &str = "Colony could not move your agents' files to the new folder yet, \
@@ -259,6 +273,11 @@ pub(crate) trait Fs {
     fn create_dir(&self, path: &Path) -> io::Result<()>;
     /// Rename `from` to `to` (a move within one volume; never a copy).
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()>;
+    /// Write `bytes` as the whole content of `path`: the repositories pointer
+    /// the run generates itself.
+    fn write_file(&self, path: &Path, bytes: &[u8]) -> io::Result<()>;
+    /// Remove one file the run generated itself (never anything of the person's).
+    fn remove_file(&self, path: &Path) -> io::Result<()>;
 }
 
 /// The real filesystem.
@@ -277,6 +296,14 @@ impl Fs for RealFs {
 
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
         fs::rename(from, to)
+    }
+
+    fn write_file(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
+        fs::write(path, bytes)
+    }
+
+    fn remove_file(&self, path: &Path) -> io::Result<()> {
+        fs::remove_file(path)
     }
 }
 
@@ -322,6 +349,14 @@ impl Fs for CrashAtFs {
 
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
         self.step(|| RealFs.rename(from, to))
+    }
+
+    fn write_file(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
+        self.step(|| RealFs.write_file(path, bytes))
+    }
+
+    fn remove_file(&self, path: &Path) -> io::Result<()> {
+        self.step(|| RealFs.remove_file(path))
     }
 }
 
@@ -408,6 +443,9 @@ pub(crate) struct Report {
     pub(crate) moved: Vec<String>,
     /// Names left in the old folder on purpose, with the reason.
     pub(crate) skipped: Vec<(String, String)>,
+    /// `REPOS` stayed in the old folder and the new folder points at it, so
+    /// agents still use the same clones.
+    pub(crate) repos_in_place: bool,
 }
 
 impl Report {
@@ -416,6 +454,7 @@ impl Report {
             outcome,
             moved: Vec::new(),
             skipped: Vec::new(),
+            repos_in_place: false,
         }
     }
 
@@ -450,6 +489,27 @@ fn notice_for(report: &Report) -> Option<(String, &'static str)> {
     skipped.sort_unstable();
     let skipped = skipped.join(",");
     match &report.outcome {
+        Outcome::Migrated if report.repos_in_place => {
+            let others: Vec<&str> = report
+                .skipped
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .filter(|name| *name != "REPOS")
+                .collect();
+            if others.is_empty() {
+                Some((
+                    "migrated-repos-in-place".to_string(),
+                    MSG_MIGRATED_REPOS_IN_PLACE,
+                ))
+            } else {
+                let mut others = others;
+                others.sort_unstable();
+                Some((
+                    format!("migrated-repos-in-place:left:{}", others.join(",")),
+                    MSG_MIGRATED_REPOS_IN_PLACE_WITH_SKIPS,
+                ))
+            }
+        }
         Outcome::Migrated if report.skipped.is_empty() => {
             Some(("migrated".to_string(), MSG_MIGRATED))
         }
@@ -567,6 +627,17 @@ impl Run<'_> {
             if entry_exists(&home) {
                 continue;
             }
+            if name == pointer::POINTER_NAME
+                && self.repos_dir_points_inside(&self.staging.join(&name))
+            {
+                // The repositories pointer this run generated (the person's own
+                // never names the old folder: that holds the migration back).
+                // It is not theirs to get back; remove it.
+                if let Err(error) = self.fs.remove_file(&self.staging.join(&name)) {
+                    eprintln!("{LOG_PREFIX} could not remove the generated pointer: {error}");
+                }
+                continue;
+            }
             if let Err(error) = self.fs.rename(&self.staging.join(&name), &home) {
                 eprintln!("{LOG_PREFIX} could not hand {name} back: {error}");
             }
@@ -616,12 +687,19 @@ impl Run<'_> {
         if !steps.iter().any(|step| step.status == StepStatus::Pending) {
             let skipped = skipped_of(&steps);
             if skipped.is_empty() {
-                return Report::of(Outcome::NothingToMigrate);
+                // Nothing to move. After a finished run this includes a `REPOS`
+                // the new folder already points at.
+                return Report::of(if finished_before {
+                    Outcome::AlreadyMigrated
+                } else {
+                    Outcome::NothingToMigrate
+                });
             }
             return Report {
                 outcome: Outcome::LeftInPlace,
                 moved: Vec::new(),
                 skipped,
+                repos_in_place: false,
             };
         }
         let mut journal = Journal::new(
@@ -630,6 +708,13 @@ impl Run<'_> {
             &self.staging_name,
             steps,
         );
+        // A `REPOS` left behind must stay in use: point the new folder at it as
+        // one more step of this run, or do not run at all.
+        if self.pointer_wanted(&journal.steps) {
+            if let Err(reason) = self.with_pointer(&mut journal, false) {
+                return Report::of(Outcome::Aborted(reason));
+            }
+        }
         // Fail closed: without a durable journal nothing is moved.
         if let Err(error) = self.save(&journal) {
             return Report::of(Outcome::Aborted(format!("journal-unwritable:{error}")));
@@ -646,6 +731,10 @@ impl Run<'_> {
         for (name, kind) in plan_order() {
             let src = self.from.join(name);
             if !entry_exists(&src) {
+                continue;
+            }
+            if name == "REPOS" && pointer::serves(&self.to, &src) {
+                // The new folder already points at it: nothing left to move.
                 continue;
             }
             if !can_place(&src, &self.to.join(name)) {
@@ -712,6 +801,130 @@ impl Run<'_> {
         !self.input.live_agent_pids.is_empty() || self.input.unreadable_agent_records > 0
     }
 
+    /// True when `REPOS` stays behind (held back by a link, or failed to move)
+    /// while the rest moves, and the new folder can be pointed at it: it has no
+    /// repositories pointer of its own and no `REPOS` that holds anything. A
+    /// `REPOS` that stays because the new folder already has one is the person's
+    /// own situation and is left alone.
+    fn pointer_wanted(&self, steps: &[Step]) -> bool {
+        if steps.iter().any(|step| step.generated) {
+            return false;
+        }
+        let repos_left_behind = steps.iter().any(|step| {
+            step.name == "REPOS"
+                && step.status == StepStatus::Skipped
+                && step
+                    .detail
+                    .as_deref()
+                    .is_some_and(|why| why != "target-exists")
+        });
+        let has_work = steps.iter().any(|step| {
+            matches!(
+                step.status,
+                StepStatus::Pending | StepStatus::Moving | StepStatus::Staged
+            )
+        });
+        // A pointer of the person's, moving with the rest or already there,
+        // already decides where `REPOS` is.
+        let pointer_decided = steps
+            .iter()
+            .any(|step| step.name == pointer::POINTER_NAME && step.status != StepStatus::Skipped)
+            || entry_exists(&self.to.join(pointer::POINTER_NAME));
+        if !repos_left_behind || !has_work || pointer_decided {
+            return false;
+        }
+        let new_repos = self.to.join("REPOS");
+        match fs::symlink_metadata(&new_repos) {
+            Err(error) => error.kind() == io::ErrorKind::NotFound,
+            Ok(meta) => meta.is_dir() && dir_is_empty(&new_repos),
+        }
+    }
+
+    /// Record the pointer for the old `REPOS` in the journal as one more step.
+    /// It goes before the nest markers so they still publish last.
+    fn with_pointer(&self, journal: &mut Journal, at_end: bool) -> Result<(), String> {
+        let target = pointer::target_for(&self.from.join("REPOS"), &self.to)?;
+        journal.repos_pointer = Some(target);
+        let at = if at_end {
+            journal.steps.len()
+        } else {
+            journal
+                .steps
+                .iter()
+                .position(|step| MARKER_ENTRIES.contains(&step.name.as_str()))
+                .unwrap_or(journal.steps.len())
+        };
+        journal
+            .steps
+            .insert(at, Step::generated_pointer(pointer::POINTER_NAME));
+        Ok(())
+    }
+
+    /// Write the pointer into the staging folder, journal first, then read it
+    /// back and validate it the way the host will. Any failure sends the run back.
+    fn stage_pointer(&self, journal: &mut Journal, index: usize) -> Result<(), String> {
+        let target = journal
+            .repos_pointer
+            .clone()
+            .ok_or_else(|| "repos-pointer-missing".to_string())?;
+        journal.steps[index].status = StepStatus::Moving;
+        self.save(journal)?;
+        pointer::validate(&self.to, &target)?;
+        let staged = self.staging.join(pointer::POINTER_NAME);
+        let bytes = pointer::pointer_bytes(&target);
+        self.fs
+            .write_file(&staged, &bytes)
+            .map_err(|error| format!("repos-pointer-write-failed:{error}"))?;
+        match fs::read(&staged) {
+            Ok(read) if read == bytes => {}
+            _ => return Err("repos-pointer-unverified".to_string()),
+        }
+        journal.steps[index].status = StepStatus::Staged;
+        self.save(journal)
+    }
+
+    /// Just before publish: the staged pointer must still name a usable folder.
+    fn revalidate_pointer(&self, journal: &Journal) -> Result<(), String> {
+        let staged = journal.steps.iter().any(|step| {
+            step.generated && matches!(step.status, StepStatus::Staged | StepStatus::Publishing)
+        });
+        if !staged {
+            return Ok(());
+        }
+        let target = journal
+            .repos_pointer
+            .as_deref()
+            .ok_or_else(|| "repos-pointer-missing".to_string())?;
+        pointer::validate(&self.to, target)
+    }
+
+    /// Rollback of the generated pointer: remove the staged file, and the
+    /// published one only if it still holds exactly what this run wrote.
+    fn remove_generated_pointer(
+        &self,
+        journal: &Journal,
+        status: StepStatus,
+    ) -> Result<(), String> {
+        let staged = self.staging.join(pointer::POINTER_NAME);
+        if entry_exists(&staged) {
+            self.fs
+                .remove_file(&staged)
+                .map_err(|error| format!("{}:{error}", pointer::POINTER_NAME))?;
+        }
+        if matches!(status, StepStatus::Publishing | StepStatus::Published) {
+            let placed = self.to.join(pointer::POINTER_NAME);
+            let written = journal.repos_pointer.as_deref().map(pointer::pointer_bytes);
+            let ours =
+                written.is_some_and(|bytes| fs::read(&placed).is_ok_and(|read| read == bytes));
+            if ours {
+                self.fs
+                    .remove_file(&placed)
+                    .map_err(|error| format!("{}:{error}", pointer::POINTER_NAME))?;
+            }
+        }
+        Ok(())
+    }
+
     /// `.repos-dir` holds one absolute path. If it names a place inside the old
     /// folder it would dangle after the move, and Colony does not rewrite it.
     fn repos_dir_points_inside(&self, file: &Path) -> bool {
@@ -754,6 +967,10 @@ impl Run<'_> {
                 journal.steps[index].status,
                 StepStatus::Pending | StepStatus::Moving
             ) {
+                continue;
+            }
+            if journal.steps[index].generated {
+                self.stage_pointer(journal, index)?;
                 continue;
             }
             let name = journal.steps[index].name.clone();
@@ -799,6 +1016,13 @@ impl Run<'_> {
                 }
             }
         }
+        // `REPOS` may have just failed to move: it must stay in use all the same.
+        if self.pointer_wanted(&journal.steps) {
+            self.with_pointer(journal, true)?;
+            self.save(journal)?;
+            let index = journal.steps.len() - 1;
+            self.stage_pointer(journal, index)?;
+        }
         Ok(())
     }
 
@@ -823,6 +1047,9 @@ impl Run<'_> {
             let _ = fs::remove_dir(&self.staging);
             return Ok(());
         }
+        // The pointer was valid when staged; the old `REPOS` must still be
+        // there now, or the new folder would start with a dangling pointer.
+        self.revalidate_pointer(journal)?;
         if !entry_exists(&self.to) {
             journal.publish_whole = true;
             self.save(journal)?;
@@ -896,7 +1123,7 @@ impl Run<'_> {
         let moved: Vec<String> = journal
             .steps
             .iter()
-            .filter(|step| step.status == StepStatus::Published)
+            .filter(|step| step.status == StepStatus::Published && !step.generated)
             .map(|step| step.name.clone())
             .collect();
         let skipped = skipped_of(&journal.steps);
@@ -906,10 +1133,15 @@ impl Run<'_> {
         } else {
             Outcome::Migrated
         };
+        let repos_in_place = journal
+            .steps
+            .iter()
+            .any(|step| step.generated && step.status == StepStatus::Published);
         Report {
             outcome,
             moved,
             skipped,
+            repos_in_place,
         }
     }
 
@@ -924,6 +1156,16 @@ impl Run<'_> {
         for index in (0..journal.steps.len()).rev() {
             let status = journal.steps[index].status;
             if matches!(status, StepStatus::Skipped | StepStatus::RolledBack) {
+                continue;
+            }
+            if journal.steps[index].generated {
+                // Generated here, with no source in the old folder: remove it,
+                // never hand it back.
+                match self.remove_generated_pointer(journal, status) {
+                    Ok(()) => journal.steps[index].status = StepStatus::RolledBack,
+                    Err(error) => stuck.push(error),
+                }
+                let _ = self.save(journal);
                 continue;
             }
             let name = journal.steps[index].name.clone();
