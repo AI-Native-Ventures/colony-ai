@@ -41,6 +41,69 @@ import {
   unseen,
 } from "./check-rows.mjs";
 
+
+// ---- Delta gate: precise AGENTS.md assertions (coordinator 00:34) ----
+const COLONY_BEGIN = /<!--\s*BEGIN\s+COLONY\s+MANAGED/gu;
+const COLONY_END = /<!--\s*END\s+COLONY\s+MANAGED/gu;
+const BUZZ_MARK = /<!--\s*(BEGIN|END)\s+BUZZ\s+MANAGED/gu;
+const countOf = (text, re) => (text.match(re) ?? []).length;
+
+/** Text above the first BEGIN marker, below the last END marker, and the marker counts. */
+export function managedParts(text) {
+  const begin = text.search(/<!--\s*BEGIN\s+(COLONY|BUZZ)\s+MANAGED/u);
+  const ends = [...text.matchAll(/<!--\s*END\s+(COLONY|BUZZ)\s+MANAGED\s*-->/gu)];
+  const last = ends[ends.length - 1];
+  return {
+    above: begin >= 0 ? text.slice(0, begin) : null,
+    below: last ? text.slice(last.index + last[0].length) : null,
+    colonyBegin: countOf(text, COLONY_BEGIN),
+    colonyEnd: countOf(text, COLONY_END),
+    buzzMarkers: countOf(text, BUZZ_MARK),
+  };
+}
+
+/** Plain line diff (LCS), enough for a 70 line file. Lines only in `a` start with "- ", only in `b` with "+ ". */
+export function lineDiff(a, b) {
+  const x = a.split("\n");
+  const y = b.split("\n");
+  const table = Array.from({ length: x.length + 1 }, () => new Array(y.length + 1).fill(0));
+  for (let i = x.length - 1; i >= 0; i -= 1)
+    for (let j = y.length - 1; j >= 0; j -= 1)
+      table[i][j] = x[i] === y[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+  const out = [];
+  let i = 0;
+  let j = 0;
+  while (i < x.length && j < y.length) {
+    if (x[i] === y[j]) { i += 1; j += 1; }
+    else if (table[i + 1][j] >= table[i][j + 1]) { out.push(`- ${x[i]}`); i += 1; }
+    else { out.push(`+ ${y[j]}`); j += 1; }
+  }
+  while (i < x.length) { out.push(`- ${x[i]}`); i += 1; }
+  while (j < y.length) { out.push(`+ ${y[j]}`); j += 1; }
+  return out.join("\n");
+}
+
+/**
+ * Precise verdict for an AGENTS.md the host refreshed: owner text above the managed section and below it byte identical to
+ * the original, exactly one managed section with COLONY markers, no old marker. The change itself is printed as a line diff.
+ */
+export function agentsMdVerdict(originalText, nowText) {
+  if (typeof originalText !== "string" || typeof nowText !== "string")
+    return { ok: false, seen: false, detail: "AGENTS.md text was not captured before or after." };
+  const a = managedParts(originalText);
+  const b = managedParts(nowText);
+  const aboveSame = a.above !== null && a.above === b.above;
+  const belowSame = a.below !== null && a.below === b.below;
+  const one = b.colonyBegin === 1 && b.colonyEnd === 1 && b.buzzMarkers === 0;
+  const ok = aboveSame && belowSame && one;
+  const quote = (t) => JSON.stringify((t ?? "").slice(0, 400));
+  return {
+    ok,
+    seen: true,
+    detail: `Text above the managed section byte identical: ${aboveSame}; text below it byte identical: ${belowSame}; COLONY section count ${b.colonyBegin} begin and ${b.colonyEnd} end, old BUZZ markers ${b.buzzMarkers}. Notes above, quoted: ${quote(b.above)}. Notes below, quoted: ${quote(b.below)}. Before/after line diff of the whole file:\n${lineDiff(originalText, nowText)}`,
+  };
+}
+const STRICT_CHECKS = process.env.NEST_STRICT === "1";
 export { FAIL, NOT_OBSERVED, PASS, parseNestFolderLine };
 
 /**
@@ -176,6 +239,15 @@ export function evaluateCase(result, baseContract = defaultContract()) {
       stagingChecks(diff, contract),
       pollutionChecks(diff),
       provisionedChecks(diff),
+      (() => {
+        const v = agentsMdVerdict(
+          before.files?.[`${contract.oldNest}/AGENTS.md`],
+          after.files?.[`${contract.newNest}/AGENTS.md`],
+        );
+        const label =
+          "AGENTS.md after the move: owner notes above and below the managed section byte identical, one COLONY section, no old marker";
+        return !v.seen ? unseen("AGENTS-NOTES-BYTES", label, v.detail) : v.ok ? pass("AGENTS-NOTES-BYTES", label, v.detail) : fail("AGENTS-NOTES-BYTES", label, v.detail);
+      })(),
       archiveChecks(before, after, contract),
       linkChecks(diff, after),
       reposDirChecks(before, after, contract),
@@ -291,6 +363,22 @@ export function evaluateCase(result, baseContract = defaultContract()) {
     const conflictNames = diff.owned.conflicts.map((c) => c.path.split("/")[1]);
     const keptLabel =
       "Entries that exist in both folders are never overwritten";
+    // Delta gate: the destination AGENTS.md may have its managed block refreshed by the host (markers rewritten in place)
+    // only if everything outside the managed section is byte identical, and the migration itself overwrote nothing.
+    const destAgents = `${contract.newNest}/AGENTS.md`;
+    const destVerdict = agentsMdVerdict(before.files?.[destAgents], after.files?.[destAgents]);
+    const journalSteps = observations.journal?.json?.steps ?? [];
+    const agentsStep = journalSteps.find((step) => step.name === "AGENTS.md");
+    const migrationOverwroteNothing = sourceBad.length === 0 && (!agentsStep || agentsStep.status !== "published");
+    const narrowedDiffs = STRICT_CHECKS
+      ? diff.newSideExisting.differences
+      : diff.newSideExisting.differences.filter(
+          (item) => !(item.path === destAgents && destVerdict.ok && migrationOverwroteNothing),
+        );
+    const refreshedNote =
+      !STRICT_CHECKS && destVerdict.seen && narrowedDiffs.length !== diff.newSideExisting.differences.length
+        ? ` The destination ${destAgents} was refreshed by the host, not overwritten by the migration (journal step AGENTS.md: ${agentsStep?.status ?? "none"}, conflicts with source intact and destination kept: ${diff.owned.conflicts.length}). ${destVerdict.detail}`
+        : "";
     const movedLabel =
       "Entries without a conflict still move, an empty placeholder is replaced";
     rows.push(
@@ -301,7 +389,7 @@ export function evaluateCase(result, baseContract = defaultContract()) {
             "The fixture produced no conflicting entry.",
           )
         : sourceBad.length ||
-            diff.newSideExisting.differences.length ||
+            narrowedDiffs.length ||
             diff.newSideExisting.missing.length
           ? fail(
               "CONFLICTS-KEPT",
@@ -310,14 +398,14 @@ export function evaluateCase(result, baseContract = defaultContract()) {
                 ...sourceBad.map(
                   (c) => `${c.path} (source or destination gone)`,
                 ),
-                ...diff.newSideExisting.differences.map(describeDifference),
+                ...narrowedDiffs.map(describeDifference),
                 ...diff.newSideExisting.missing,
               ]),
             )
           : pass(
               "CONFLICTS-KEPT",
               keptLabel,
-              `${diff.owned.conflicts.length} conflicting entries (${first(conflictNames, 3)}): the new folder's bytes unchanged, the old source intact.`,
+              `${diff.owned.conflicts.length} conflicting entries (${first(conflictNames, 3)}): the new folder's bytes unchanged, the old source intact.${refreshedNote}`,
             ),
       diff.owned.movedClean.length > 0
         ? pass(
