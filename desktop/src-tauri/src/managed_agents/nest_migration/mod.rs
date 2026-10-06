@@ -772,6 +772,16 @@ impl Run<'_> {
             mark_published(journal);
             return Ok(());
         }
+        if !journal
+            .steps
+            .iter()
+            .any(|step| matches!(step.status, StepStatus::Staged | StepStatus::Publishing))
+        {
+            // Nothing was staged (every entry was held back): do not leave an
+            // empty new folder behind. Succeeds only when empty.
+            let _ = fs::remove_dir(&self.staging);
+            return Ok(());
+        }
         if !entry_exists(&self.to) {
             journal.publish_whole = true;
             self.save(journal)?;
@@ -842,15 +852,23 @@ impl Run<'_> {
             // reconciles the stale journal from them.
             eprintln!("{LOG_PREFIX} could not record completion: {error}");
         }
+        let moved: Vec<String> = journal
+            .steps
+            .iter()
+            .filter(|step| step.status == StepStatus::Published)
+            .map(|step| step.name.clone())
+            .collect();
+        let skipped = skipped_of(&journal.steps);
+        // A run that moved nothing and held everything back did not migrate.
+        let outcome = if moved.is_empty() && !skipped.is_empty() {
+            Outcome::LeftInPlace
+        } else {
+            Outcome::Migrated
+        };
         Report {
-            outcome: Outcome::Migrated,
-            moved: journal
-                .steps
-                .iter()
-                .filter(|step| step.status == StepStatus::Published)
-                .map(|step| step.name.clone())
-                .collect(),
-            skipped: skipped_of(&journal.steps),
+            outcome,
+            moved,
+            skipped,
         }
     }
 

@@ -198,3 +198,28 @@ fn the_archive_database_moves_with_its_wal_and_shm_or_not_at_all() {
     assert_eq!(manifest(&env.old().join("archive")), trio_before);
     assert_eq!(archive_rows(&env.old().join("archive")), DB_ROWS);
 }
+
+#[test]
+fn when_every_entry_is_held_back_no_empty_new_folder_is_left_behind() {
+    let env = Env::new();
+    write(&env.old().join("REPOS/proj/README.md"), b"proj");
+    write(&env.old().join("models/stt/model.bin"), &[1u8; 64]);
+    let original = manifest(&env.home);
+    let fs_ops = FailFs::on_rename(|from, to| {
+        let into_staging = to.parent().is_some_and(is_staging_path);
+        let big = from
+            .file_name()
+            .is_some_and(|name| name == "REPOS" || name == "models");
+        (into_staging && big).then(|| io::Error::from_raw_os_error(18))
+    });
+
+    let report = env.run_with(&fs_ops);
+
+    assert_eq!(report.outcome, Outcome::LeftInPlace);
+    assert!(report.moved.is_empty());
+    assert_eq!(report.skipped.len(), 2);
+    assert_eq!(manifest(&env.home), original);
+    assert!(!env.new_dir().exists());
+    assert!(!env.staging().exists());
+    assert_eq!(env.journal().phase, Phase::Done);
+}
