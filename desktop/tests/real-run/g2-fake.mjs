@@ -291,9 +291,11 @@ const shot = async (name) => {
   try {
     await page.screenshot({
       path: path.join(OUT, "screenshots", `${name}.png`),
+      timeout: 15000,
     });
     return `screenshots/${name}.png`;
-  } catch {
+  } catch (error) {
+    await progress(`[shot] ${name} failed: ${redact(String(error.message)).split("\n")[0]}`);
     return null;
   }
 };
@@ -334,6 +336,8 @@ notes.nativeNotificationHook = nativeHook;
 // ---- onboarding (copied recipes from ai-lib.mjs, proven in the 1.0.4 and 1.0.5 gates) ----
 async function signUp() {
   const inbox = await createSmokeInbox();
+  // Resume support (final gate): keep the smoke mailbox credentials 0600 in the profile's private dir, never in the report.
+  await writeFile(path.join(privateDir, "inbox.json"), JSON.stringify({ email: inbox.email, password: inbox.password }), { mode: 0o600 });
   accounts.push({
     email: inbox.email,
     role: "smoke owner, disposable inbox, not deleted",
@@ -423,11 +427,17 @@ async function enterApp() {
       await sleep(2500);
       continue;
     }
-    const go = page.getByRole("button", { name: /^(Connect .+|Test connection|Continue)$/iu }).last();
+    const go = page.locator("button").filter({ hasText: /^\s*(Connect\b.*|Test connection|Continue)\s*$/iu }).last();
     if (await go.isVisible().catch(() => false)) {
       note("continue");
       await go.scrollIntoViewIfNeeded().catch(() => undefined);
-      await go.click().catch(() => undefined);
+      await go.click({ timeout: 5000 }).catch(() => undefined);
+    }
+    if (Date.now() % 30000 < 3200) {
+      const text = redact((await page.locator("body").innerText().catch(() => "")).replace(/\s+/gu, " ").slice(0, 600));
+      const buttons = (await page.locator("button").allInnerTexts().catch(() => [])).map((t) => t.trim()).filter(Boolean).join(" | ");
+      await progress(`[enter] waiting: buttons: ${buttons.slice(0, 300)} body: ${text}`);
+      await shot(`enter-wait-${Math.floor(Date.now() / 30000) % 100}`);
     }
     await sleep(3000);
   }
@@ -753,6 +763,36 @@ async function drive() {
         );
       }
       await closePanel();
+
+      // Final gate D3 needs a second community to invite a member into (no new business): mint the default invite here.
+      await guard("INV", "Mint the default invite of this business (for the two-community removed-member test)", async () => {
+        await setMode("settings");
+        await page.getByTestId("open-settings").click({ timeout: 8000 });
+        await page.getByTestId("profile-popover-settings").click({ timeout: 8000 });
+        await page.getByTestId("settings-view").waitFor({ timeout: 15000 });
+        await page.getByTestId("settings-group-business").click();
+        await sleep(500);
+        await page.getByTestId("settings-inner-people").click();
+        await page.getByTestId("settings-community-members").waitFor({ timeout: 15000 });
+        await sleep(1200);
+        await page.getByTestId("community-invite-dialog-trigger").click({ timeout: 10000 });
+        await page.getByTestId("community-invite-dialog").waitFor({ timeout: 8000 });
+        await page.waitForFunction(
+          () => /\/invite\/v2\./u.test(document.querySelector('[data-testid="invite-link-url"]')?.value ?? ""),
+          null,
+          { timeout: 30000 },
+        );
+        const link = (await page.getByTestId("invite-link-url").inputValue()).trim();
+        await writeFile(path.join(privateDir, "invite.json"), JSON.stringify({ link, business: businessName }), { mode: 0o600 });
+        if (process.env.G2_INVITE_OUT)
+          await writeFile(process.env.G2_INVITE_OUT, JSON.stringify({ link, business: businessName }), { mode: 0o600 });
+        row("INV", "Default invite minted", "PASS", `Shape: ${link.replace(/invite\/v2\.[A-Za-z0-9._-]+/u, "invite/v2.XXXX")}`);
+        await page.keyboard.press("Escape");
+        await sleep(500);
+        await page.keyboard.press("Escape");
+        await sleep(500);
+        await setMode("channel");
+      });
 
       // Team page, Scout's profile activity and the Activity page.
       await guard(

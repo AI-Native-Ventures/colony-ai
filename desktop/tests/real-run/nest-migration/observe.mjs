@@ -42,12 +42,13 @@ export async function snapshot({
   let manifest = await buildManifest(home, roots);
   // Final 1.0.5 gate: the host starts a real model download at every boot (huggingface), whose in-flight temp
   // folder is not part of the nest the migration moves. The strict first run recorded it as a failure.
-  manifest = {
-    ...manifest,
-    entries: manifest.entries.filter(
-      (entry) => !/(^|\/)models\/[^/]+\.tmp(\/|$)/u.test(entry.path),
-    ),
-  };
+  if (process.env.NEST_STRICT !== "1")
+    manifest = {
+      ...manifest,
+      entries: manifest.entries.filter(
+        (entry) => !/(^|\/)models\/[^/]+\.tmp(\/|$)/u.test(entry.path),
+      ),
+    };
   manifest = await attachDatabases(manifest, databases);
   return attachFiles(manifest, files);
 }
