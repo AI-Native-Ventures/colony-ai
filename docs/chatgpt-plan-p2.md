@@ -32,10 +32,14 @@ inventing a weekly reset time. Retired accounts lose derived metadata on read;
 the durable credential registry makes interrupted cleanup retryable.
 
 Implemented here: OAuth authorization leases, relay, model discovery, circuit
-state, SSE validation and launch preparation. These functions are exercised by
-focused Node tests against the P1 fake. The feature stays off by default.
+state, SSE validation, launch preparation and Electron relay lifecycle. The
+private native-host transport has bounded, replay-fenced parent requests;
+capability replies bypass renderer events, and renderer calls cannot forge
+them. Rust has not yet been connected to that exchange. These functions are
+exercised by focused Node tests against the P1 fake. The feature stays off by
+default.
 
-Remaining P2 integration gates: Electron boot wiring, local managed-agent launch
+Remaining P2 integration gates: private native-host launch handler, local managed-agent launch
 projection and attribution, ACP queue/terminal behavior, bundled adapter/Codex
 availability, actual adapter tool and resume proof against the fake. Node wiring
 does not prove those paths. Rust compilation belongs to CI after PR permission.

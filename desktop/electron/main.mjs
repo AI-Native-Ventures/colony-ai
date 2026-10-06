@@ -37,7 +37,7 @@ import { NativeHost } from "./native-host.mjs";
 import { createBuzzMediaProtocolHandler } from "./protocols.mjs";
 import { revealElectronWindow } from "./window-activation.mjs";
 import { runtimePaths } from "./runtime-paths.mjs";
-import { createChatGptService } from "./chatgpt-oauth.mjs";
+import { createChatGptRuntime } from "./chatgpt/runtime.mjs";
 const updaterRuntimeModule = await import(
   app.isPackaged
     ? "./electron-updater-runtime.cjs"
@@ -139,6 +139,7 @@ let mainWindow = null;
 let updaterService = null;
 let chatGpt = null;
 let browserAgentHost = null;
+let chatGptRuntime = null;
 let quitApp = async () => app.quit();
 
 const deepLinks = createDeepLinkRouter({
@@ -250,12 +251,13 @@ async function boot() {
       return result.canceled ? null : result.filePaths[0];
     },
   });
-  chatGpt = createChatGptService({
+  chatGptRuntime = createChatGptRuntime({
     userData: app.getPath("userData"),
     openExternal: (url) => shell.openExternal(url),
     bringToFront: revealWindow,
   });
-  await chatGpt.start();
+  chatGpt = chatGptRuntime.service;
+  await chatGptRuntime.start();
   powerMonitor.on("resume", () => {
     if (chatGpt.policy.enabled) void chatGpt.wake();
   });
@@ -453,7 +455,6 @@ async function boot() {
   quitApp = async () => {
     if (quitting) return;
     quitting = true;
-    chatGpt.stop();
     updaterService?.stop();
     browserHost.disposeAll();
     await Promise.allSettled([...windows.values()].map((e) => e.dispose()));
@@ -547,15 +548,23 @@ async function boot() {
 }
 
 async function shutdown() {
-  if (browserAgentHost) await browserAgentHost.stop();
-  if (!host) return;
   try {
-    await host.close();
-  } catch (error) {
-    console.error(
-      "Colony native host shutdown:",
-      error instanceof Error ? error.message : error,
-    );
+    await browserAgentHost?.stop();
+  } finally {
+    try {
+      await chatGptRuntime?.close();
+    } finally {
+      if (host) {
+        try {
+          await host.close();
+        } catch (error) {
+          console.error(
+            "Colony native host shutdown:",
+            error instanceof Error ? error.message : error,
+          );
+        }
+      }
+    }
   }
 }
 

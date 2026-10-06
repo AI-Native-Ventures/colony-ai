@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import { NativeHost, nativeRequestTimeout } from "./native-host.mjs";
+import { RendererHost } from "./renderer-host.mjs";
 
 test("long native commands receive a longer deadline", () => {
   assert.equal(
@@ -31,7 +32,7 @@ test("long native commands receive a longer deadline", () => {
     60_000,
   );
 });
-function fixture(t) {
+function fixture(t, options = {}) {
   const child = new EventEmitter();
   const requests = [];
   child.stdout = new PassThrough();
@@ -49,6 +50,7 @@ function fixture(t) {
   const host = new NativeHost("test", {
     spawnProcess: () => child,
     timeout: 1000,
+    ...options,
   });
   const send = (message) =>
     child.stdout.write(`@colony-native:${JSON.stringify(message)}\n`);
@@ -161,4 +163,163 @@ test("installation response survives the ordinary RPC deadline", async (t) => {
   assert.equal(host.pending.has(request.id), true);
   send({ type: "response", id: request.id, result: { success: true } });
   assert.deepEqual(await install, { value: { success: true } });
+});
+
+test("private launch replies never become renderer events and can finish out of order", async (t) => {
+  const completions = [];
+  const { host, requests, send } = fixture(t, {
+    onPrivateRequest: (name, payload, signal) =>
+      new Promise((resolve) => {
+        assert.equal(name, "chatgpt_plan_prepare");
+        assert.equal(signal.aborted, false);
+        completions.push(() =>
+          resolve({ key: `local-capability-${payload.agentId}` }),
+        );
+      }),
+  });
+  for (const type of ["event", "channel", "private_request"])
+    host.on(type, () => assert.fail("private request became an event"));
+  send({
+    type: "private_request",
+    id: 1,
+    name: "chatgpt_plan_prepare",
+    payload: { agentId: "a" },
+  });
+  send({
+    type: "private_request",
+    id: 2,
+    name: "chatgpt_plan_prepare",
+    payload: { agentId: "b" },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  completions[1]();
+  completions[0]();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(requests, [
+    { type: "private_response", id: 2, result: { key: "local-capability-b" } },
+    { type: "private_response", id: 1, result: { key: "local-capability-a" } },
+  ]);
+  assert.equal(host.privatePending.size, 0);
+});
+
+test("renderer cannot forge a parent response or request a private launch", async (t) => {
+  const { host, requests } = fixture(t, {
+    onPrivateRequest: () => assert.fail("renderer invoked private handler"),
+  });
+  const renderer = new RendererHost(host);
+  for (const type of ["private_request", "private_response"])
+    await assert.rejects(
+      renderer.request(type, {
+        id: 1,
+        name: "chatgpt_plan_prepare",
+        payload: {},
+      }),
+      /Unsupported native renderer request/,
+    );
+  assert.deepEqual(requests, []);
+});
+
+test("private failures hide exception text and reject duplicate ids", async (t) => {
+  const { host, requests, send } = fixture(t, {
+    onPrivateRequest: () => {
+      throw new Error("secret-fixture-value");
+    },
+  });
+  const frame = {
+    type: "private_request",
+    id: 1,
+    name: "chatgpt_plan_prepare",
+    payload: {},
+  };
+  send(frame);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(requests, [
+    { type: "private_response", id: 1, error: "private_request_failed" },
+  ]);
+  send(frame);
+  assert.equal(host.ended, true);
+  assert.equal(host.disconnectReason, "Invalid private native request");
+});
+
+test("private deadlines abort and retain bounded slots until handlers retire", async (t) => {
+  const handlers = [];
+  const { host, requests, send } = fixture(t, {
+    privateTimeout: 5,
+    onPrivateRequest: (_name, _payload, signal) =>
+      new Promise((resolve) => handlers.push({ resolve, signal })),
+  });
+  for (let id = 1; id <= 17; id++)
+    send({
+      type: "private_request",
+      id,
+      name: "chatgpt_plan_prepare",
+      payload: {},
+    });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(handlers.length, 16);
+  assert.equal(host.privatePending.size, 16);
+  assert.equal(
+    handlers.every(({ signal }) => signal.aborted),
+    true,
+  );
+  assert.equal(
+    requests.filter((r) => r.error === "private_request_timeout").length,
+    16,
+  );
+  assert.equal(
+    requests.find((r) => r.id === 17).error,
+    "private_request_unavailable",
+  );
+  for (const handler of handlers) handler.resolve({ key: "late-capability" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(host.privatePending.size, 0);
+  assert.equal(
+    requests.some((r) => r.result),
+    false,
+  );
+});
+
+test("host disconnect aborts private work and suppresses late replies", async (t) => {
+  let complete;
+  let signal;
+  const { host, requests, send } = fixture(t, {
+    onPrivateRequest: (_name, _payload, abort) =>
+      new Promise((resolve) => {
+        signal = abort;
+        complete = resolve;
+      }),
+  });
+  send({
+    type: "private_request",
+    id: 1,
+    name: "chatgpt_plan_prepare",
+    payload: {},
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  host.fail("fixture disconnect");
+  assert.equal(signal.aborted, true);
+  complete({ key: "late-capability" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(requests, []);
+});
+
+test("private request and response frames have a smaller strict bound", async (t) => {
+  const { host, send, requests } = fixture(t, {
+    onPrivateRequest: () => ({ value: "x".repeat(64 * 1024) }),
+  });
+  send({
+    type: "private_request",
+    id: 1,
+    name: "chatgpt_plan_prepare",
+    payload: {},
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(requests[0].error, "private_result_invalid");
+  send({
+    type: "private_request",
+    id: 2,
+    name: "chatgpt_plan_prepare",
+    payload: { value: "x".repeat(64 * 1024) },
+  });
+  assert.equal(host.ended, true);
 });
