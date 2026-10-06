@@ -47,7 +47,7 @@
 
 use std::borrow::Cow;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Files whose presence marks a folder as an initialised Colony nest. Either one
 /// is enough, so a run that stopped between the two writes still counts.
@@ -137,6 +137,14 @@ pub(crate) fn choose_nest_folder(home: &Path, is_dev: bool) -> NestFolderChoice 
     )
 }
 
+/// The nest path under `home` for this build, plus the choice behind it.
+/// `init_nest_dir` and the uninitialised `nest_dir` fallback both go through
+/// here, so the folder a process uses is always the one that was logged.
+pub(crate) fn resolve_nest_dir(home: &Path, is_dev: bool) -> (PathBuf, NestFolderChoice) {
+    let choice = choose_nest_folder(home, is_dev);
+    (home.join(choice.name.as_ref()), choice)
+}
+
 fn choose_nest_folder_for(
     home: &Path,
     preferred: Cow<'static, str>,
@@ -172,7 +180,6 @@ fn choose_nest_folder_for(
 mod tests {
     use super::*;
     use std::fs;
-    use std::path::PathBuf;
     use tempfile::TempDir;
 
     const NEW: &str = ".colony";
@@ -394,6 +401,29 @@ mod tests {
         spellings.sort_unstable();
         spellings.dedup();
         assert_eq!(spellings.len(), all.len());
+    }
+
+    #[test]
+    fn resolve_nest_dir_joins_the_chosen_name_under_home() {
+        if crate::build_identity::is_demo_build() {
+            return;
+        }
+        let home = TempDir::new().unwrap();
+        let (path, choice) = resolve_nest_dir(home.path(), false);
+        assert_eq!(path, home.path().join(".colony"));
+        assert_eq!(choice.reason, NestFolderReason::FreshInstall);
+
+        fs::create_dir(home.path().join(".buzz")).unwrap();
+        let (path, choice) = resolve_nest_dir(home.path(), false);
+        assert_eq!(path, home.path().join(".buzz"));
+        assert_eq!(choice.reason, NestFolderReason::LegacyFolderKept);
+        // The log line names the very folder the path points at.
+        assert!(choice
+            .log_line(home.path())
+            .ends_with(&format!("path={}", path.display())));
+
+        let (dev_path, _) = resolve_nest_dir(home.path(), true);
+        assert_eq!(dev_path, home.path().join(".buzz-dev"));
     }
 
     #[test]

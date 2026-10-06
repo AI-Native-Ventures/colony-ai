@@ -89,11 +89,11 @@ pub fn init_nest_dir(is_dev: bool) {
         let _ = NEST_DIR.set(None);
         return;
     };
-    let choice = nest_folder::choose_nest_folder(&home, is_dev);
+    let (path, choice) = nest_folder::resolve_nest_dir(&home, is_dev);
     // set() is a no-op when already initialized, which is correct: only the
     // first call (at boot, before any filesystem work) should win. Log only
     // the call that wins so the line always names the folder actually used.
-    if NEST_DIR.set(Some(home.join(choice.name.as_ref()))).is_ok() {
+    if NEST_DIR.set(Some(path)).is_ok() {
         eprintln!("{}", choice.log_line(&home));
     }
 }
@@ -109,8 +109,7 @@ pub fn nest_dir() -> Option<PathBuf> {
         Some(path) => path.clone(),
         // Not yet initialized: fall back to the production choice. Covers
         // test code.
-        None => dirs::home_dir()
-            .map(|home| home.join(nest_folder::choose_nest_folder(&home, false).name.as_ref())),
+        None => dirs::home_dir().map(|home| nest_folder::resolve_nest_dir(&home, false).0),
     }
 }
 
