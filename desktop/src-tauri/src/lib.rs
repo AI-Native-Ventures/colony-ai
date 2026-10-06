@@ -270,6 +270,14 @@ pub fn run() {
                     .and_then(|n| n.to_str())
                     .map(crate::migration::is_dev_data_dir_name)
                     .unwrap_or(false);
+                // Move an existing ~/.buzz to ~/.colony (behind a kill switch,
+                // off by default) before the nest folder is chosen and before
+                // anything reads or creates it. Never fails the launch.
+                crate::managed_agents::nest_migration::run_at_boot(
+                    &app_handle,
+                    &data_dir,
+                    is_dev_for_reset,
+                );
                 crate::managed_agents::init_nest_dir(is_dev_for_reset);
                 crate::reset::run_boot_reset(&data_dir)
             } else {
@@ -630,6 +638,8 @@ pub fn run() {
             get_relay_ws_url,
             get_relay_http_url,
             get_media_proxy_port,
+            get_nest_migration_notice,
+            acknowledge_nest_migration_notice,
             fetch_link_preview_metadata,
             read_business_website,
             cancel_link_preview_metadata,

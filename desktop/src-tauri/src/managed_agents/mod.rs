@@ -25,6 +25,7 @@ pub(crate) mod global_config;
 mod managed_node_paths;
 mod nest;
 pub(crate) mod nest_folder;
+pub(crate) mod nest_migration;
 pub(crate) mod parallelism;
 mod persona_avatars;
 pub(crate) mod persona_events;

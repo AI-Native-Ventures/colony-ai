@@ -1,0 +1,122 @@
+//! Boot-time glue: decides whether the migration applies to this launch,
+//! gathers its inputs from the running app, runs it, and logs one line.
+
+use super::{
+    migration_enabled, parse_crash_at, run_migration, CrashAtFs, MigrationInput, RealFs,
+    ENV_CRASH_AT, ENV_FLAG, LOG_PREFIX, STATE_DIR,
+};
+use crate::managed_agents::ManagedAgentRuntimeReceipt;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+/// Where the journal and notice live for this install.
+pub(crate) fn state_dir(app_data_dir: &Path) -> PathBuf {
+    app_data_dir.join(STATE_DIR)
+}
+
+/// Where running agents leave their receipts (read-only here: nothing is
+/// created on a launch that has nothing to migrate).
+fn agent_receipts_dir(app_data_dir: &Path) -> PathBuf {
+    app_data_dir.join("agents").join("agent-pids")
+}
+
+/// Pids of Colony-managed agents that are alive and belong to `instance_id`.
+///
+/// Reads the receipts the app writes for every agent it spawns (`*.json`) and
+/// the older pid files (`*.pid`). A pid only counts while the process is
+/// running and still carries this install's ownership marker, so a stale file
+/// whose pid was reused by something else never blocks the migration.
+pub(super) fn live_agent_pids_in(
+    dir: &Path,
+    instance_id: &str,
+    is_running: &dyn Fn(u32) -> bool,
+    has_marker: &dyn Fn(u32, &str) -> bool,
+) -> Vec<u32> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut pids: Vec<u32> = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let pid = match path.extension().and_then(|ext| ext.to_str()) {
+            Some("json") => fs::read(&path)
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<ManagedAgentRuntimeReceipt>(&bytes).ok())
+                .filter(|receipt| receipt.desktop_instance_id == instance_id)
+                .map(|receipt| receipt.pid),
+            Some("pid") => fs::read_to_string(&path)
+                .ok()
+                .and_then(|text| text.trim().parse::<u32>().ok()),
+            _ => None,
+        };
+        if let Some(pid) = pid {
+            if is_running(pid) && has_marker(pid, instance_id) {
+                pids.push(pid);
+            }
+        }
+    }
+    pids.sort_unstable();
+    pids.dedup();
+    pids
+}
+
+fn crash_now() -> ! {
+    eprintln!("{LOG_PREFIX} crash seam: ending the process");
+    std::process::exit(86)
+}
+
+/// Run the migration for this launch. Must be called before the nest folder is
+/// chosen (`init_nest_dir`) and before anything reads or creates it.
+///
+/// Does nothing for dev and demo builds (their folders were always namespaced),
+/// for a launch that will reset the nest anyway, and for a home folder with no
+/// old folder to move. Never fails the launch: every outcome is a log line, and
+/// the app keeps working from whichever folder holds its data.
+pub(crate) fn run_at_boot(app: &tauri::AppHandle, app_data_dir: &Path, is_dev: bool) {
+    let Some(from_name) = crate::build_identity::legacy_nest_name(is_dev) else {
+        return;
+    };
+    let Some(home) = dirs::home_dir() else {
+        return;
+    };
+    let to_name = crate::build_identity::nest_name(is_dev);
+    let journal_dir = state_dir(app_data_dir);
+    let enabled = migration_enabled(std::env::var(ENV_FLAG).ok().as_deref());
+
+    // A pending reset wipes the chosen folder at this same launch; moving it
+    // first would only be wasted work.
+    if crate::reset::check_sentinel(app_data_dir) {
+        eprintln!("{LOG_PREFIX} skipped: a reset is pending");
+        return;
+    }
+    // Fresh installs and homes that never had the old folder: touch nothing.
+    let has_work = fs::symlink_metadata(home.join(from_name)).is_ok()
+        || fs::symlink_metadata(journal_dir.join(super::journal::JOURNAL_FILE)).is_ok();
+    if !has_work {
+        return;
+    }
+
+    let live_agents = live_agent_pids_in(
+        &agent_receipts_dir(app_data_dir),
+        &crate::managed_agents::current_instance_id(app),
+        &crate::managed_agents::process_is_running,
+        &crate::managed_agents::process_has_buzz_marker,
+    );
+    let input = MigrationInput {
+        home: &home,
+        journal_dir: &journal_dir,
+        from_name,
+        to_name: &to_name,
+        enabled,
+        live_agent_pids: &live_agents,
+    };
+    let report = match std::env::var(ENV_CRASH_AT)
+        .ok()
+        .as_deref()
+        .and_then(parse_crash_at)
+    {
+        Some((at, before)) => run_migration(&input, &CrashAtFs::new(at, before, crash_now)),
+        None => run_migration(&input, &RealFs),
+    };
+    eprintln!("{}", report.log_line());
+}

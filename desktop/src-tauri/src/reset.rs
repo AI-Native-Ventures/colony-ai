@@ -182,6 +182,35 @@ fn rename_to_trash(src: &Path) -> Result<PathBuf, String> {
     Ok(dst)
 }
 
+/// True for `~/.buzz` and `~/.colony`. A production nest folder can sit next to
+/// things Colony never wrote (other tools' environments, loose notes), so Reset
+/// removes only the entries Colony owns. Dev and demo folders are namespaced and
+/// entirely Colony's, so they are removed whole.
+fn is_production_nest_folder(nest: &Path) -> bool {
+    nest.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| crate::build_identity::production_nest_names().contains(&name))
+}
+
+fn wipe_nest_folder(nest: &Path) {
+    if is_production_nest_folder(nest) {
+        if let Err(error) = crate::managed_agents::nest_migration::wipe_owned_entries(nest) {
+            eprintln!("buzz-desktop reset: {error}");
+        }
+    } else {
+        let _ = std::fs::remove_dir_all(nest);
+    }
+}
+
+/// True once nothing Colony owns is left in the nest folder.
+fn nest_wiped(nest: &Path) -> bool {
+    if is_production_nest_folder(nest) {
+        !crate::managed_agents::nest_migration::owned_entries_remain(nest)
+    } else {
+        !nest.exists()
+    }
+}
+
 /// Core wipe logic — separated for testing.
 pub(crate) fn run_boot_reset_with_keychain(ctx: ResetContext<'_>) -> ResetOutcome {
     // An unknown demo credential root is not evidence of an absent root. Refuse
@@ -243,7 +272,7 @@ pub(crate) fn run_boot_reset_with_keychain(ctx: ResetContext<'_>) -> ResetOutcom
     // never owns these shared roots, so signing out of one must leave them
     // available to production and every other demo.
     if let Some(ref nest) = ctx.nest_dir {
-        let _ = std::fs::remove_dir_all(nest);
+        wipe_nest_folder(nest);
     }
     // A demo owns credentials here. Failure to remove them must keep the reset
     // pending, even if the app data and keychain were successfully wiped.
@@ -320,7 +349,7 @@ pub(crate) fn run_boot_reset_with_keychain(ctx: ResetContext<'_>) -> ResetOutcom
         .as_ref()
         .map(|p| !p.exists())
         .unwrap_or(true);
-    let nest_gone = ctx.nest_dir.as_ref().map(|n| !n.exists()).unwrap_or(true);
+    let nest_gone = ctx.nest_dir.as_deref().map(nest_wiped).unwrap_or(true);
     // `exists()` treats metadata errors as absence. Only NotFound establishes
     // that credentials are gone; a dangling symlink is not an absent root.
     let demo_config_gone = ctx.demo_config_dir.as_ref().is_none_or(|path| {
