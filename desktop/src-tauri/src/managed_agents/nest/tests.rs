@@ -569,9 +569,36 @@ fn nest_skill_template_is_colony_cli_and_never_says_buzz() {
 
 #[test]
 fn skill_version_was_bumped_for_the_colony_cli_rename() {
-    assert!(
-        NEST_SKILL_VERSION >= 7,
-        "renaming the skill must bump NEST_SKILL_VERSION so existing nests regenerate it"
+    // Version 6 is what the previous release recorded next to the buzz-cli skill.
+    const {
+        assert!(
+            NEST_SKILL_VERSION > 6,
+            "renaming the skill must bump NEST_SKILL_VERSION so existing nests regenerate it"
+        );
+    }
+}
+
+#[test]
+fn colony_cli_skill_recorded_at_the_previous_version_is_regenerated() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join(".buzz");
+    ensure_nest_at(&root).unwrap();
+
+    let skill_dir = root.join(".agents/skills/colony-cli");
+    fs::write(skill_dir.join("SKILL.md"), "stale skill content").unwrap();
+    fs::write(skill_dir.join(".skill-version"), "6\n").unwrap();
+
+    ensure_nest_at(&root).unwrap();
+
+    assert_eq!(
+        fs::read_to_string(skill_dir.join("SKILL.md")).unwrap(),
+        COLONY_CLI_SKILL_MD
+    );
+    assert_eq!(
+        fs::read_to_string(skill_dir.join(".skill-version"))
+            .unwrap()
+            .trim(),
+        NEST_SKILL_VERSION.to_string()
     );
 }
 
