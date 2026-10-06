@@ -142,6 +142,16 @@ test("missing plan scope saves identity with inference disabled", async (t) => {
   assert.equal((await f.service.status()).accounts[0].state, "plan_use_off");
 });
 
+test("identity-only grant without offline_access remains signed in with plan use off", async (t) => {
+  const f = await fixture(t);
+  f.fake.faults.noPlan = true;
+  f.fake.faults.noOffline = true;
+  await f.connect();
+  assert.equal((await f.service.status()).accounts[0].state, "plan_use_off");
+  assert.equal((await f.read()).accounts[0].refresh_token, undefined);
+  assert.ok((await f.read()).accounts[0].id_token);
+});
+
 for (const [name, claims, error] of [
   ["wrong nonce", { nonce: "wrong" }, "invalid_nonce"],
   ["wrong issuer", { iss: "https://evil.example" }, "invalid_issuer"],

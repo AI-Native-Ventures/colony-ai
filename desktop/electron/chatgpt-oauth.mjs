@@ -17,7 +17,6 @@ function tokenFields(data, now) {
     typeof value === "string" && value.length > 0 && value.length <= 65536;
   if (
     !text(data?.access_token) ||
-    !text(data.refresh_token) ||
     !text(data.id_token) ||
     data.token_type?.toLowerCase() !== "bearer" ||
     !Number.isFinite(data.expires_in) ||
@@ -25,6 +24,15 @@ function tokenFields(data, now) {
     data.expires_in > 86400 ||
     typeof data.scope !== "string" ||
     data.scope.length > 4096
+  )
+    throw new ChatGptError("invalid_token_response");
+  const scopes = data.scope.split(/\s+/).filter(Boolean);
+  // A valid identity-only grant may omit offline_access and a refresh token.
+  if (
+    (scopes.includes("offline_access") ||
+      scopes.includes(PLAN_SCOPE) ||
+      data.refresh_token !== undefined) &&
+    !text(data.refresh_token)
   )
     throw new ChatGptError("invalid_token_response");
   let earliest = now;
@@ -46,7 +54,7 @@ function tokenFields(data, now) {
     expires_at: now + data.expires_in * 1000,
     earliest_refresh_at: earliest,
     refresh_expires_at: now + REFRESH_LIFETIME_MS,
-    scopes: data.scope.split(/\s+/).filter(Boolean),
+    scopes,
     saved_at: now,
   };
 }
@@ -256,12 +264,13 @@ export function createChatGptService({
         const state = store.snapshot();
         const pending = state.pending.find((p) => p.id === pendingId);
         if (!pending) throw new ChatGptError("stale_result");
-        pending.pending_revoke = {
-          token: tokens.refresh_token,
-          expires_at: tokens.refresh_expires_at,
-          retry_count: 0,
-          next_attempt_at: 0,
-        };
+        if (tokens.refresh_token)
+          pending.pending_revoke = {
+            token: tokens.refresh_token,
+            expires_at: tokens.refresh_expires_at,
+            retry_count: 0,
+            next_attempt_at: 0,
+          };
         store.save(state);
       });
       check();

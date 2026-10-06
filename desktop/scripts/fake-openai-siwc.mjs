@@ -58,9 +58,8 @@ export async function createFakeOpenAi({
   function tokens(registration) {
     const access = opaque();
     const refresh = opaque();
-    const scope = faults.noPlan
-      ? SCOPES.replace(PLAN_SCOPE, "").trim()
-      : SCOPES;
+    let scope = faults.noPlan ? SCOPES.replace(PLAN_SCOPE, "").trim() : SCOPES;
+    if (faults.noOffline) scope = scope.replace("offline_access", "").trim();
     const claims = {
       iss: ISSUER,
       aud: registration.clientId,
@@ -80,6 +79,7 @@ export async function createFakeOpenAi({
       expires_in: faults.expiresIn ?? 3600,
       earliest_refresh_at: faults.earliestRefreshAt ?? Math.floor(now() / 1000),
     };
+    if (faults.noOffline) delete data.refresh_token;
     if (faults.badSignature)
       data.id_token = `${data.id_token.slice(0, -10)}AAAAAAAAAA`;
     const session = { registration, access, refresh, valid: true, used: false };
