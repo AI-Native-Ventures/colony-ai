@@ -100,9 +100,21 @@ const RECORDER = () => {
   ];
   const LEGACY = /(buzz|fizz|honey|pollen|\bbees?\b|\u{1f41d})/iu;
   const ms = () => Date.now() - R.t0;
+  // Text inside a closed <details> (outside its summary) is not shown: Chromium still reports client
+  // rects for it, so test the ancestors explicitly.
+  const inClosedDetails = (el) => {
+    for (let a = el.parentElement; a; a = a.parentElement) {
+      if (a.tagName === "DETAILS" && !a.open) {
+        const summary = Array.from(a.children).find((c) => c.tagName === "SUMMARY");
+        if (!(summary && summary.contains(el))) return true;
+      }
+    }
+    return false;
+  };
   const vis = (el) => {
     if (!el || !el.getClientRects || el.getClientRects().length === 0)
       return false;
+    if (inClosedDetails(el)) return false;
     const s = getComputedStyle(el);
     return s.visibility !== "hidden" && s.display !== "none";
   };
@@ -471,10 +483,14 @@ const closePanel = async () => {
   await sleep(500);
 };
 const openPanel = async () => {
-  await page.getByTestId("bot-activity-composer-trigger").click({ timeout: 4000 });
+  // The trigger shimmers and sits at the window edge, so Playwright actionability can time out:
+  // dispatch the DOM click directly (same handler a pointer click reaches).
+  await page
+    .getByTestId("bot-activity-composer-trigger")
+    .evaluate((el) => el.click());
   const item = page.locator('[data-testid^="bot-activity-composer-item-"]').first();
   await item.waitFor({ timeout: 4000 });
-  await item.click();
+  await item.evaluate((el) => el.click());
   await page
     .getByTestId("agent-session-thread-panel")
     .waitFor({ state: "visible", timeout: 6000 });
@@ -550,6 +566,14 @@ PROMPTS.push(
     max: 100,
   },
 );
+PROMPTS.push({
+  id: 11,
+  name: "multi-step D with session panel",
+  text: " please do these in order: check the channels, look up who is on our team, read the file gate-note.md in your workspace, then post a third hello in the general channel and tell me when done.",
+  max: 115,
+  panel: true,
+  mouse: true,
+});
 const wantedPrompts = (process.env.PROMPTS ?? "1,2,3,4,5,6,7")
   .split(",")
   .map(Number);
@@ -570,6 +594,20 @@ const ask = async (prompt) => {
   await box.press("End");
   await box.pressSequentially(prompt.text);
   await box.press("Enter");
+  // Seen once: Enter left the text in the composer. Retry with the send shortcut so the ask is never lost.
+  await sleep(1200);
+  if (
+    (await box.innerText().catch(() => "")).trim().length > 20 &&
+    !(await page
+      .getByTestId("message-composer")
+      .getByText(/Scout/u)
+      .first()
+      .isHidden()
+      .catch(() => true))
+  ) {
+    rec.notes.enterRetries = (rec.notes.enterRetries ?? 0) + 1;
+    await box.press("Meta+Enter");
+  }
 };
 
 const runPrompt = async (prompt) => {
@@ -613,6 +651,48 @@ const runPrompt = async (prompt) => {
           await openPanel();
           await sleep(2500);
           await shot(page, rec, `p${prompt.id}-session-panel`);
+          // Default state: how many raw-command blocks are rendered, and are tool groups collapsed?
+          const rawVisible = () =>
+            page.evaluate(() => {
+              const panel = document.querySelector('[data-testid="agent-session-thread-panel"]');
+              if (!panel) return null;
+              const closed = (el) => {
+                for (let a = el.parentElement; a; a = a.parentElement)
+                  if (a.tagName === "DETAILS" && !a.open) {
+                    const sm = Array.from(a.children).find((c) => c.tagName === "SUMMARY");
+                    if (!(sm && sm.contains(el))) return true;
+                  }
+                return false;
+              };
+              const blocks = [...panel.querySelectorAll("pre, code")].filter(
+                (el) => /buzz/iu.test(el.textContent ?? ""),
+              );
+              return {
+                inDom: blocks.length,
+                rendered: blocks.filter((el) => !closed(el) && el.getClientRects().length > 0).length,
+                groups: [...panel.querySelectorAll('[data-testid="transcript-same-kind-summary"]')].map((d) => d.open),
+                items: [...panel.querySelectorAll('[data-testid="transcript-tool-item"]')].length,
+                itemDetailsOpen: [...panel.querySelectorAll('[data-testid="transcript-tool-item"] details, details[data-testid="transcript-tool-item"]')].map((d) => d.open),
+              };
+            });
+          const panelDefault = await rawVisible();
+          // Opt-in: expand the first collapsed tool group, record, collapse again.
+          let afterExpand = null;
+          let afterCollapse = null;
+          const summary = page
+            .locator('[data-testid="agent-session-thread-panel"] summary')
+            .filter({ hasText: /tool call/iu })
+            .first();
+          if (await summary.isVisible().catch(() => false)) {
+            await summary.evaluate((el) => el.click());
+            await sleep(600);
+            afterExpand = await rawVisible();
+            await shot(page, rec, `p${prompt.id}-panel-expanded`);
+            await summary.evaluate((el) => el.click());
+            await sleep(600);
+            afterCollapse = await rawVisible();
+          }
+          rec.notes.panelDefault = { panelDefault, afterExpand, afterCollapse };
         });
       }
       if (prompt.mouse && !log.mouseDone && s.details) {
