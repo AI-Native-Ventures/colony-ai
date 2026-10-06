@@ -1,0 +1,14 @@
+import { chromium } from "@playwright/test";
+const port = process.argv[2];
+const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+const page = browser.contexts()[0].pages()[0];
+console.log("page", page.url().slice(0, 60));
+console.log((await page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 300));
+await page.getByRole("radio", { name: /Bring your own key/i }).click({ timeout: 15000 });
+const key = page.getByTestId("onboarding-provider-key");
+await key.waitFor({ timeout: 15000 });
+await key.fill("fake-gate-key-not-a-credential");
+await page.getByRole("button", { name: /^Check key/i }).click({ timeout: 10000 });
+await page.getByText(/AI connected and saved as your default/i).waitFor({ timeout: 60000 });
+console.log("key checked and saved");
+await browser.close();

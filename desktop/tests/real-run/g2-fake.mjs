@@ -228,6 +228,11 @@ if (!RESUME_PRIVATE) {
     { mode: 0o600 },
   );
 }
+await writeFile(
+  path.join(OUT, "profile.json"),
+  JSON.stringify({ privateDir, home, userDataDir, seededPath, fakeUrl: fake.url, fakePort: Number(new URL(fake.url).port) }, null, 1),
+  { mode: 0o600 },
+);
 await progress(`fake provider at ${fake.url}; config ${seededPath} (no key, no credential); resume=${Boolean(RESUME_PRIVATE)}`);
 const application = await electron.launch({
   executablePath: launcher,
@@ -425,6 +430,13 @@ async function enterApp() {
       note("businesses");
       await list.getByRole("button").first().click().catch(() => undefined);
       await sleep(2500);
+      continue;
+    }
+    const again = page.getByRole("button", { name: /^Try again/iu }).first();
+    if (await again.isVisible().catch(() => false)) {
+      note("try-again");
+      await again.click({ timeout: 5000 }).catch(() => undefined);
+      await sleep(4000);
       continue;
     }
     const go = page.locator("button").filter({ hasText: /^\s*(Connect\b.*|Test connection|Continue)\s*$/iu }).last();

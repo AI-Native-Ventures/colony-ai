@@ -31,7 +31,16 @@ export function scenarioFor(human, ctx) {
   if (/post a one line hello/u.test(t))
     return {
       name: "post",
-      cmds: [`colony messages send --channel ${channel} --content "Hello team, Scout here."`],
+      cmds: [
+        "colony channels list",
+        (res) => {
+          const line = String(res[0] ?? "").split("\n").find((l) => /general/iu.test(l) && UUID.test(l));
+          UUID.lastIndex = 0;
+          const id = line?.match(UUID)?.[0] ?? channel;
+          UUID.lastIndex = 0;
+          return `colony messages send --channel ${id} --content "Hello team, Scout here."`;
+        },
+      ],
     };
   if (/create a file called gate-check/u.test(t))
     return {
@@ -122,7 +131,7 @@ export async function startFakeProvider({ logFile, port = 0 } = {}) {
           }
         })
         .filter(Boolean);
-      const humanMatch = userText.match(/body[^\n]*\n([\s\S]{0,600})/iu);
+      const humanMatch = [...userText.matchAll(/Content:\s*([^\n]+)/gu)].pop();
       const human = (humanMatch ? humanMatch[1] : userText).slice(0, 800);
       const replyTo = userText.match(/--reply-to ([0-9a-f]{64})/u)?.[1] ?? userText.match(HEX64)?.[0] ?? null;
       const ids = userText.match(UUID) ?? [];
@@ -168,7 +177,7 @@ export async function startFakeProvider({ logFile, port = 0 } = {}) {
           },
           "tool_calls",
         );
-      const cmds = scenario.cmds.map((c) => c.replace("null", ctx.generalId ?? "null"));
+      const cmds = scenario.cmds.map((c) => (typeof c === "function" ? c(results) : c));
       if (step < cmds.length) return call(cmds[step]);
       if (step === cmds.length) {
         // Compose the plain text reply that echoes what the tools printed, and post it the way a real model would.

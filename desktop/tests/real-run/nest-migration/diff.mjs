@@ -145,10 +145,13 @@ export function diffNests({ before, after, contract = defaultContract() }) {
         result.newSideExisting.missing.push(entry.path);
         continue;
       }
+      // The destination's AGENTS.md is NOT existence-only here: the host may refresh its managed section, and the check that
+      // allows it (checks.mjs agentsMdVerdict) needs the difference to be visible, with the bytes outside the section compared.
+      const archiveOnly = rel === "archive" || rel.startsWith("archive/");
       const differences = fieldDifferences(entry, now, {
-        strict: !isVolatile(rel),
-        untouched: !isVolatile(rel),
-        skipContent: isVolatile(rel),
+        strict: !archiveOnly,
+        untouched: !archiveOnly,
+        skipContent: archiveOnly,
       });
       if (differences.length)
         result.newSideExisting.differences.push({
