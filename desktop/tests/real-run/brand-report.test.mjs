@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+
+const EM_DASH = String.fromCodePoint(0x2014);
 import { buildBrandReport, esc, statusClass } from "./brand-report.mjs";
 import { scanCapture } from "./brand-scan.mjs";
 
@@ -105,14 +107,16 @@ test("an unobserved surface renders NOT OBSERVED and the verdict is not PASS", (
 test("everything printed is escaped, and no em dash survives", () => {
   const html = buildBrandReport(
     model(
-      { surfaces: { chat: ['<script>alert("x")</script> — done'] } },
-      { verdict: { status: "FAIL", headline: "a <b>bold</b> — claim" } },
+      { surfaces: { chat: [`<script>alert("x")</script> ${EM_DASH} done`] } },
+      {
+        verdict: { status: "FAIL", headline: `a <b>bold</b> ${EM_DASH} claim` },
+      },
     ),
   );
   assert.doesNotMatch(html, /<script>alert/u);
   assert.match(html, /&lt;script&gt;alert/u);
   assert.match(html, /&lt;b&gt;bold&lt;\/b&gt;/u);
-  assert.equal(html.includes("—"), false);
+  assert.equal(html.includes(EM_DASH), false);
   assert.equal(esc("<&>"), "&lt;&amp;&gt;");
 });
 

@@ -3,6 +3,9 @@
 // evidence tables with PASS / FAIL / NOT OBSERVED classes, verbatim texts, accounts to clean up.
 // Pure: takes a model, returns a string. Escapes everything it prints.
 
+// Built from the code point so this source never contains the character the report strips.
+const EM_DASH = String.fromCodePoint(0x2014);
+
 export const esc = (value) =>
   String(value ?? "")
     .replace(/&/gu, "&amp;")
@@ -118,5 +121,5 @@ ${model.knownRemainder?.length ? `<div class="card"><h2>Known remainder (expecte
 ${home}
 <section><h2>Smoke accounts to clean up</h2>${accounts ? `<table><thead><tr><th>Email</th><th>Role</th></tr></thead><tbody>${accounts}</tbody></table>` : "<p>None created.</p>"}<p>Nothing was deleted.</p></section>
 </main></body></html>`;
-  return html.replaceAll("—", " - ");
+  return html.replaceAll(EM_DASH, " - ");
 }
