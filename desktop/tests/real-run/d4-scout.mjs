@@ -35,10 +35,10 @@ try {
   await page.getByTestId("app-sidebar").waitFor({ timeout: 90000 });
   await sleep(3000);
   await guard("D4-reply", "Scout answers the business question in the thread within 180 s", async () => {
-    await page.getByTestId("channel-welcome").first().click({ timeout: 8000 });
+    await page.keyboard.press("Escape").catch(() => undefined);
+    await page.getByText(/^Welcome$/u).first().click({ timeout: 15000 });
     await page.getByTestId("message-timeline").waitFor({ timeout: 15000 });
-    const count = () => page.evaluate(() => [...document.body.innerText.matchAll(/(\d+) repl(?:y|ies)/gu)].map((m) => Number(m[1])).reduce((a, b) => a + b, 0));
-    const before = await count();
+    const marker = `what do you know about our business? ${Date.now() % 100000}`;
     const composer = page.getByTestId("message-composer").locator('[contenteditable="true"]').first();
     await composer.click();
     await composer.fill("@");
@@ -46,15 +46,22 @@ try {
     await menu.waitFor({ timeout: 15000 });
     await menu.locator("[data-mention-suggestion-index]").filter({ hasText: /Scout/u }).first().click();
     await composer.press("End");
-    await composer.pressSequentially(" what do you know about our business?");
+    await composer.pressSequentially(` ${marker}`);
     await composer.press("Enter");
     const t0 = Date.now();
     let ms = null;
+    // The reply counter of THIS message row (its own thread chip), not a page-wide counter.
     while (Date.now() - t0 < 180000) {
       await sleep(2000);
-      if ((await count()) > before) { ms = Date.now() - t0; break; }
+      const chip = await page.evaluate((m) => {
+        const text = document.body.innerText;
+        const i = text.lastIndexOf(m);
+        if (i < 0) return null;
+        return text.slice(i, i + 160).match(/(\d+) repl(?:y|ies)/u)?.[0] ?? "";
+      }, marker);
+      if (chip) { ms = Date.now() - t0; break; }
     }
-    rec.row("D4-reply", "Scout answers the business question in the thread within 180 s", ms === null ? "FAIL" : "PASS", ms === null ? "No reply within 180 s" : `Thread reply counter rose after ${(ms / 1000).toFixed(1)} s`, { screenshot: await shot(page, rec, "d4-reply") });
+    rec.row("D4-reply", "Scout answers the business question in the thread within 180 s", ms === null ? "FAIL" : "PASS", ms === null ? "No reply within 180 s" : `Thread chip under the sent message appeared after ${(ms / 1000).toFixed(1)} s`, { screenshot: await shot(page, rec, "d4-reply") });
   });
   await guard("D4-appearance", "Settings Appearance Apply and Revert", async () => {
     await page.getByTestId("open-settings").click({ timeout: 10000 });
