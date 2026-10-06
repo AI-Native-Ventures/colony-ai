@@ -89,7 +89,7 @@ ${verdicts
 <div class="card"><h2>Interface assumed with the migration (contract.mjs)</h2><pre>${esc(JSON.stringify(data.contract, null, 1))}</pre></div>
 ${verdicts.map(caseSection).join("\n")}
 </main></body></html>`;
-  return html.replaceAll("—", " - ");
+  return html.replaceAll("\u2014", " - ");
 }
 
 /** Write index.html and results.json into `dir`. */

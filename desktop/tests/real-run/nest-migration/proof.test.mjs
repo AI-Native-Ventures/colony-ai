@@ -253,7 +253,7 @@ test("the report escapes markup, never prints an em dash, and ranks FAIL over NO
     app: { path: "/a<b>", version: "1" },
     startedAt: "s",
     finishedAt: "f",
-    method: ["m — dash"],
+    method: ["m \u2014 dash"],
     contract: { x: "<script>" },
     cases: [
       {
@@ -275,7 +275,7 @@ test("the report escapes markup, never prints an em dash, and ranks FAIL over NO
       },
     ],
   });
-  assert.equal(html.includes("—"), false);
+  assert.equal(html.includes("\u2014"), false);
   assert.equal(html.includes("<script>"), false);
   assert.match(html, /class="verdict fail">FAIL/u);
   assert.match(html, /&lt;b&gt;bad&lt;\/b&gt;/u);
