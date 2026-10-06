@@ -85,22 +85,34 @@ fn only_live_receipts_of_this_install_count() {
 
 #[test]
 fn a_real_running_agent_is_found_by_its_receipt_and_blocks_the_move() {
+    use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
 
     let env = Env::owner_shaped();
     let receipts = env.data.join("agents").join("agent-pids");
     // An agent the way the app starts one: working folder is the nest, marked
-    // with the install's ownership variable.
-    let mut child = Command::new("/bin/sleep")
-        .arg("30")
+    // with the install's ownership variable. The shell prints only once it is
+    // fully started and then waits on its stdin, so it stays alive until it is
+    // killed. Scanning straight after `spawn` would be a race: until `execve`
+    // has finished building the new process image, `/proc/<pid>/environ` reads
+    // empty and the ownership marker cannot be seen.
+    let mut child = Command::new("/bin/sh")
+        .args(["-c", "echo ready; read _line"])
         .env("BUZZ_MANAGED_AGENT", INSTANCE)
         .current_dir(env.old())
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .expect("spawn sleep");
-    write_receipt(&receipts, 1, child.id(), INSTANCE);
+        .expect("spawn sh");
+    let mut ready = String::new();
+    BufReader::new(child.stdout.take().expect("piped stdout"))
+        .read_line(&mut ready)
+        .expect("read the ready line");
+    assert_eq!(ready.trim(), "ready", "the agent stand-in did not start");
+    let pid = child.id();
+    write_receipt(&receipts, 1, pid, INSTANCE);
     let find = || {
         boot::live_agent_pids_in(
             &receipts,
@@ -110,8 +122,21 @@ fn a_real_running_agent_is_found_by_its_receipt_and_blocks_the_move() {
         )
     };
 
-    let live = find();
-    assert_eq!(live.pids, vec![child.id()]);
+    // Bounded wait for the scan to see the live agent; a real miss still fails.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut live = find();
+    while !live.pids.contains(&pid) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+        live = find();
+    }
+    assert_eq!(
+        live.pids,
+        vec![pid],
+        "running={} marker={} unreadable={}",
+        crate::managed_agents::process_is_running(pid),
+        crate::managed_agents::process_has_buzz_marker(pid, INSTANCE),
+        live.unreadable
+    );
     let before = manifest(&env.home);
     let report = run_migration(&env.input(true, &live.pids), &RealFs);
     assert_eq!(report.outcome, Outcome::DeferredRunningAgents);
