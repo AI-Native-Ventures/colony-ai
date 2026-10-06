@@ -55,15 +55,22 @@ function fieldDifferences(before, after, { strict, skipContent = false }) {
 export function diffNests({ before, after, contract = defaultContract() }) {
   const beforeIndex = indexManifest(before);
   const afterIndex = indexManifest(after);
-  const home = before.home;
-  const oldPrefix = `${home}/${contract.oldNest}`;
-  const newPrefix = `${home}/${contract.newNest}`;
-  const expectedRewrite = (target) =>
-    target === oldPrefix || target.startsWith(`${oldPrefix}/`)
-      ? `${newPrefix}${target.slice(oldPrefix.length)}`
-      : null;
-
   const movedPaths = new Set();
+  const hasChildren = (entryPath) =>
+    before.entries.some((candidate) =>
+      candidate.path.startsWith(`${entryPath}/`),
+    );
+  // An empty directory the host provisioned in the new nest (a placeholder). A source directory of the same
+  // name may be renamed over it, which is how the migration places REPOS or PLANS next to an existing nest.
+  const placeholderFor = (destinationPath, entry) => {
+    const existing = beforeIndex.get(destinationPath);
+    return existing &&
+      existing.type === "dir" &&
+      entry.type === "dir" &&
+      !hasChildren(destinationPath)
+      ? existing
+      : null;
+  };
   const result = {
     foreign: { total: 0, identical: 0, differences: [], missing: [] },
     owned: {
@@ -74,15 +81,15 @@ export function diffNests({ before, after, contract = defaultContract() }) {
       lost: [],
       altered: [],
       copied: [],
-      rewrittenLinks: [],
-      rewrittenFiles: [],
       unresolvedLinks: [],
+      staged: [],
     },
     newSideExisting: { total: 0, differences: [], missing: [] },
     generated: { removed: [], kept: [], regenerated: [] },
     addedToOld: [],
     unexpectedInNew: [],
     createdInNew: [],
+    stagingLeft: afterIndex.has(contract.stagingName),
     oldRoot: {
       before: beforeIndex.has(contract.oldNest),
       after: afterIndex.has(contract.oldNest),
@@ -100,6 +107,14 @@ export function diffNests({ before, after, contract = defaultContract() }) {
     const kind = classifyNestPath(rel, contract);
 
     if (nest === contract.newNest) {
+      // An empty placeholder directory that the old nest's directory of the same name may replace.
+      const pairedOld = beforeIndex.get(`${contract.oldNest}/${rel}`);
+      if (
+        pairedOld &&
+        classifyNestPath(rel, contract) === "owned" &&
+        placeholderFor(entry.path, pairedOld)
+      )
+        continue;
       // Entries the new nest already had: must survive untouched.
       const now = afterIndex.get(entry.path);
       result.newSideExisting.total += 1;
@@ -133,6 +148,21 @@ export function diffNests({ before, after, contract = defaultContract() }) {
       continue;
     }
 
+    if (kind === "generated-parent") {
+      // Present: must be unchanged. Missing: only fine when nothing foreign lived below it.
+      const now = afterIndex.get(entry.path);
+      const heldForeign = before.entries.some(
+        (other) =>
+          other.path.startsWith(`${entry.path}/`) &&
+          classifyNestPath(
+            other.path.slice(contract.oldNest.length + 1),
+            contract,
+          ) === "foreign",
+      );
+      if (!now && heldForeign) result.foreign.missing.push(entry.path);
+      continue;
+    }
+
     if (kind === "generated") {
       const stillThere = afterIndex.has(entry.path);
       const bucket = stillThere ? "kept" : "removed";
@@ -145,15 +175,31 @@ export function diffNests({ before, after, contract = defaultContract() }) {
     // Owned entry in the old nest.
     result.owned.total += 1;
     const destinationPath = `${contract.newNest}/${rel}`;
-    const destination = afterIndex.get(destinationPath);
+    const stagingPath = `${contract.stagingName}/${rel}`;
+    const placeholder = placeholderFor(destinationPath, entry);
+    let destination = afterIndex.get(destinationPath);
+    // A placeholder that is still the same directory was not replaced: the source did not move.
+    if (placeholder && destination && destination.ino === placeholder.ino)
+      destination = undefined;
+    let landedAt = destinationPath;
+    let inFlight = false;
+    if (
+      !destination &&
+      afterIndex.has(stagingPath) &&
+      !afterIndex.has(entry.path)
+    ) {
+      destination = afterIndex.get(stagingPath);
+      landedAt = stagingPath;
+      inFlight = true;
+    }
     const source = afterIndex.get(entry.path);
-    const conflicted = beforeIndex.has(destinationPath);
+    const conflicted = beforeIndex.has(destinationPath) && !placeholder;
 
     if (conflicted) {
       result.owned.conflicts.push({
         path: entry.path,
         sourceIntact: Boolean(source),
-        destinationKept: Boolean(destination),
+        destinationKept: afterIndex.has(destinationPath),
       });
       continue;
     }
@@ -176,79 +222,36 @@ export function diffNests({ before, after, contract = defaultContract() }) {
       continue;
     }
 
-    // Moved. Judge it.
+    // Moved (or staged, while a run is in flight). Judge it.
     const volatile = isVolatile(rel);
-    let rewritten = false;
-    let differences = fieldDifferences(entry, destination, {
+    const differences = fieldDifferences(entry, destination, {
       strict: !volatile,
       skipContent: volatile,
     });
-    if (entry.type === "symlink" && entry.target !== destination.target) {
-      const wanted = expectedRewrite(entry.target);
-      if (wanted !== null && wanted === destination.target) {
-        rewritten = true;
-        result.owned.rewrittenLinks.push({
-          path: destinationPath,
-          before: entry.target,
-          after: destination.target,
-        });
-        // A rewritten link is a new link: its target text and inode differ by design.
-        differences = differences.filter(
-          (difference) =>
-            !["target", "size", "ino", "dev", "mtimeMs"].includes(
-              difference.field,
-            ),
-        );
-      }
-    }
     if (
       entry.type === "symlink" &&
       destination.resolves === false &&
       entry.resolves
     )
       result.owned.unresolvedLinks.push({
-        path: destinationPath,
+        path: landedAt,
         target: destination.target,
       });
-    if (rel === ".repos-dir" && entry.type === "file") {
-      // .repos-dir holds an absolute path. A rewrite from the old nest to the new one is expected.
-      const wasText = before.files?.[entry.path];
-      const nowText = after.files?.[destinationPath];
-      if (
-        wasText !== undefined &&
-        nowText !== undefined &&
-        wasText !== nowText &&
-        nowText.trim() === (expectedRewrite(wasText.trim()) ?? wasText.trim())
-      ) {
-        rewritten = true;
-        result.owned.rewrittenFiles.push({
-          path: destinationPath,
-          before: wasText.trim(),
-          after: nowText.trim(),
-        });
-        differences = differences.filter(
-          (difference) =>
-            !["size", "sha256", "mtimeMs", "ino", "dev"].includes(
-              difference.field,
-            ),
-        );
-      }
-    }
     const copiedFields = differences.filter((difference) =>
       ["ino", "dev"].includes(difference.field),
     );
-    if (copiedFields.length && !rewritten && !volatile)
-      result.owned.copied.push(destinationPath);
+    if (copiedFields.length && !volatile) result.owned.copied.push(landedAt);
     const content = differences.filter(
       (difference) => !["ino", "dev"].includes(difference.field),
     );
-    movedPaths.add(destinationPath);
+    movedPaths.add(landedAt);
     if (content.length)
       result.owned.altered.push({
-        path: destinationPath,
+        path: landedAt,
         differences: content,
       });
-    else result.owned.movedClean.push(destinationPath);
+    else if (inFlight) result.owned.staged.push(landedAt);
+    else result.owned.movedClean.push(landedAt);
   }
 
   // Regenerated skill entries in the new nest.

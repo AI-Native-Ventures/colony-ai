@@ -1,7 +1,11 @@
-// Fake app used ONLY to prove this harness end to end (proof.test.mjs). It plays the host's part: reads HOME,
-// logs the folder choice in the host's format, runs the simulated migration (honouring the kill switch, the
-// crash hook, running agents and a read-only HOME), and performs the boot reset. FAKE_BREAK makes it misbehave
-// in one named way so the tests can show the runner turns each defect into a FAIL. It is not the product.
+// Fake app used ONLY to prove this harness end to end (proof.test.mjs). It plays the host's part with the same
+// observable contract as the product: reads HOME, runs the simulated migration before choosing the nest folder
+// (kill switch, crash seam, running agents recognised by the BUZZ_MANAGED_AGENT marker, a pending reset),
+// logs the migration outcome and the folder choice in the host's formats, provisions the chosen folder and
+// performs the boot reset. FAKE_BREAK makes it misbehave in one named way so the tests can show the runner
+// turns each defect into a FAIL. It is not the product.
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   appendFileSync,
   existsSync,
@@ -9,23 +13,23 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
+  rmdirSync,
   writeFileSync,
 } from "node:fs";
-import { createHash } from "node:crypto";
 import path from "node:path";
 import { defaultContract } from "./contract.mjs";
-import { simulateMigration } from "./simulate.mjs";
+import { provisionSkill, simulateMigration } from "./simulate.mjs";
 
 const contract = defaultContract();
+const broken = process.env.FAKE_BREAK ?? "";
 const home = process.env.HOME;
 const userData = process.env.COLONY_ELECTRON_USER_DATA;
 const logFile = process.env.COLONY_NATIVE_HOST_LOG;
-const broken = process.env.FAKE_BREAK ?? "";
-const flagOn =
-  broken === "ignore-flag" ||
-  process.env[contract.env.flag] === contract.env.flagOn;
-const crashAfter = process.env[contract.env.crashAfter];
+const flagValue = process.env[contract.env.flag];
+const enabled = broken === "ignore-flag" || flagValue === contract.env.flagOn;
+const crashRaw = process.env[contract.env.crashAt];
 const oldRoot = path.join(home, contract.oldNest);
 const newRoot = path.join(home, contract.newNest);
 
@@ -38,108 +42,87 @@ const present = (file) => {
     return false;
   }
 };
-const holdsNest = (folder) =>
-  [".nest-agents-version", "AGENTS.md"].some((marker) =>
-    present(path.join(folder, marker)),
+const holdsNestMarker = (folder) =>
+  [".nest-agents-version", "AGENTS.md"].some((name) =>
+    present(path.join(folder, name)),
   );
+const holdsOwned = (folder) =>
+  contract.ownedTopLevel.some((name) => present(path.join(folder, name)));
 
-const profile = createHash("sha256")
-  .update(userData)
-  .digest("hex")
-  .slice(0, 16);
-const appData = path.join(
-  home,
-  "Library",
-  "Application Support",
-  `xyz.block.buzz.app.electron.${profile}`,
-);
+const identifier = `xyz.block.buzz.app.electron.${createHash("sha256").update(userData).digest("hex").slice(0, 16)}`;
+const appData = path.join(home, "Library", "Application Support", identifier);
 const sentinel = path.join(
   path.dirname(appData),
-  `.${path.basename(appData)}.reset-pending`,
+  `.${identifier}.reset-pending`,
 );
 
-function liveAgent() {
+function hasMarker(pid) {
+  const marker = `${contract.agentMarkerEnv}=${identifier}`;
+  try {
+    if (existsSync(`/proc/${pid}/environ`))
+      return readFileSync(`/proc/${pid}/environ`, "utf8")
+        .split("\0")
+        .includes(marker);
+    return execFileSync("ps", ["eww", "-p", String(pid)], {
+      encoding: "utf8",
+    }).includes(marker);
+  } catch {
+    return false;
+  }
+}
+
+function liveAgentPids() {
+  if (broken === "ignore-agent") return [];
   const dir = path.join(appData, "agents", "agent-pids");
-  if (!existsSync(dir)) return null;
+  if (!existsSync(dir)) return [];
+  const pids = [];
   for (const name of readdirSync(dir).filter((n) => n.endsWith(".pid"))) {
     const pid = Number(readFileSync(path.join(dir, name), "utf8").trim());
     try {
       process.kill(pid, 0);
-      return pid;
     } catch {
-      /* dead */
+      continue;
     }
+    if (hasMarker(pid)) pids.push(pid);
   }
-  return null;
+  return pids;
 }
 
-function choose() {
-  const oldThere = present(oldRoot);
-  const newThere = present(newRoot);
-  if (!oldThere && !newThere)
-    return { chosen: contract.newNest, reason: "fresh-install" };
-  if (newThere && !oldThere)
-    return { chosen: contract.newNest, reason: "colony-folder-only" };
-  if (!newThere)
-    return { chosen: contract.oldNest, reason: "legacy-folder-kept" };
-  return holdsNest(newRoot)
-    ? { chosen: contract.newNest, reason: "both-colony-has-nest" }
-    : { chosen: contract.oldNest, reason: "both-legacy-kept" };
+function parseCrash(raw) {
+  const match = /^(\d+):(before|after)$/u.exec((raw ?? "").trim());
+  return match ? { n: Number(match[1]), before: match[2] === "before" } : null;
 }
 
 async function migrate() {
-  if (!flagOn) return;
-  if (!present(oldRoot)) return;
-  if (present(path.join(home, contract.sentinelPaths[0]))) return;
-  // Resume after a crash: the journal exists without a sentinel, even if the nest markers already moved.
-  const resuming = present(path.join(home, contract.journalPaths[0]));
-  if (!holdsNest(oldRoot) && !resuming) return;
-  const agent = broken === "ignore-agent" ? null : liveAgent();
-  if (agent) {
-    log(
-      `${contract.migrationLogPrefix} deferred, agent running (pid ${agent}), the move will finish next launch`,
-    );
+  if (existsSync(sentinel)) {
+    log(`${contract.migrationLogPrefix} skipped: a reset is pending`);
     return;
   }
-  try {
-    const probe = path.join(home, ".colony-write-probe");
-    writeFileSync(probe, "");
-    rmSync(probe);
-  } catch (error) {
-    log(
-      `${contract.migrationLogPrefix} could not start (${error.code}), Colony stays on ${contract.oldNest}`,
-    );
-    return;
-  }
-  const stopAfter = crashAfter === undefined ? undefined : Number(crashAfter);
-  const result = await simulateMigration(home, {
+  const journalFile = path.join(appData, contract.stateDir, "journal.json");
+  if (!present(oldRoot) && !present(journalFile)) return;
+  const report = await simulateMigration(home, {
     contract,
-    stopAfter,
-    journal: broken !== "no-journal",
-    sentinel: broken !== "no-journal",
+    appDataDir: appData,
+    enabled,
+    liveAgentPids: liveAgentPids(),
+    crashAt: parseCrash(crashRaw),
+    die: () => {
+      log(`${contract.migrationLogPrefix} crash seam: ending the process`);
+      process.exit(contract.env.crashExitCode);
+    },
   });
-  if (stopAfter !== undefined) {
-    log(
-      `${contract.migrationLogPrefix} crash hook after ${result.moved.length} entries`,
-    );
-    process.kill(process.pid, "SIGKILL");
-  }
-  log(
-    `${contract.migrationLogPrefix} moved ${result.moved.join(", ")}; left ${result.left.join(", ") || "none"}`,
-  );
-  for (const name of result.left)
-    log(
-      `${contract.migrationLogPrefix} skipped ${name}: already in ${contract.newNest}, kept both`,
-    );
+  log(report.logLine);
   if (broken === "copy") {
     const file = path.join(newRoot, "OUTBOX", "DAY1_VIDEO_PACK.md");
-    const bytes = readFileSync(file);
-    rmSync(file);
-    writeFileSync(file, bytes);
+    if (present(file)) {
+      const bytes = readFileSync(file);
+      rmSync(file);
+      writeFileSync(file, bytes);
+    }
   }
   if (broken === "touch-foreign") {
     const file = path.join(oldRoot, "gate-note.md");
-    writeFileSync(file, readFileSync(file));
+    if (present(file)) writeFileSync(file, readFileSync(file));
   }
   if (broken === "overwrite" && present(path.join(newRoot, "AGENTS.md")))
     writeFileSync(
@@ -150,19 +133,74 @@ async function migrate() {
     rmSync(path.join(newRoot, "RESEARCH", "TELEMETRY_TEARDOWN.md"), {
       force: true,
     });
+  if (broken === "no-journal") rmSync(journalFile, { force: true });
+  if (
+    broken === "move-scratch" &&
+    present(path.join(oldRoot, ".scratch")) &&
+    present(newRoot)
+  )
+    renameSync(path.join(oldRoot, ".scratch"), path.join(newRoot, ".scratch"));
 }
 
+function choose() {
+  if (holdsNestMarker(newRoot))
+    return {
+      chosen: contract.newNest,
+      reason: present(oldRoot) ? "both-colony-has-nest" : "colony-folder-only",
+    };
+  if (holdsOwned(oldRoot))
+    return {
+      chosen: contract.oldNest,
+      reason: present(newRoot) ? "both-legacy-kept" : "legacy-folder-kept",
+    };
+  return {
+    chosen: contract.newNest,
+    reason: present(newRoot) ? "colony-folder-only" : "fresh-install",
+  };
+}
+
+/** What ensure_nest does for the chosen folder: markers on a new folder, the skill the new folder owns. */
+async function provision(chosen) {
+  const folder = path.join(home, chosen);
+  if (chosen === contract.oldNest) return;
+  if (!present(folder)) {
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(path.join(folder, ".nest-agents-version"), "999\n");
+  }
+  await provisionSkill(folder);
+}
+
+/** Reset: remove exactly the owned entries and generated skills of the chosen folder, then the folder if empty. */
 function reset(chosen) {
   if (!existsSync(sentinel)) return;
   const folder = path.join(home, chosen);
   for (const name of contract.ownedTopLevel)
     rmSync(path.join(folder, name), { recursive: true, force: true });
-  for (const link of contract.generatedSkillLinks)
-    rmSync(path.join(folder, link), { recursive: true, force: true });
+  for (const dir of contract.sharedHarnessDirs) {
+    for (const skill of ["buzz-cli", "colony-cli"]) {
+      const target = path.join(folder, dir, "skills", skill);
+      if (!present(target)) continue;
+      rmSync(target, { recursive: true, force: true });
+      for (const parent of [
+        path.join(folder, dir, "skills"),
+        path.join(folder, dir),
+      ]) {
+        try {
+          rmdirSync(parent);
+        } catch {
+          break;
+        }
+      }
+    }
+  }
   if (broken === "reset-wipes-all")
     rmSync(path.join(folder, ".venv-tts"), { recursive: true, force: true });
+  try {
+    rmdirSync(folder);
+  } catch {
+    /* foreign entries remain */
+  }
   rmSync(sentinel, { force: true });
-  // The product's verification reports the nest as not gone while foreign entries remain: mimic it when asked.
   if (broken === "reset-never-completes")
     log(
       "buzz-desktop reset: verification failed (keychain_wiped=true, app_data_gone=true, legacy_gone=true, nest_gone=false)",
@@ -172,17 +210,10 @@ function reset(chosen) {
 
 await migrate();
 const choice = choose();
+await provision(choice.chosen);
 log(
   `${contract.nestFolderLogPrefix} chosen=${choice.chosen} reason=${choice.reason} path=${path.join(home, choice.chosen)}`,
 );
-if (!present(path.join(home, choice.chosen))) {
-  // A fresh install: the host creates the nest with its markers.
-  mkdirSync(path.join(home, choice.chosen), { recursive: true });
-  writeFileSync(
-    path.join(home, choice.chosen, ".nest-agents-version"),
-    "999\n",
-  );
-}
 reset(choice.chosen);
 process.on("SIGTERM", () => process.exit(0));
 setInterval(() => {}, 1000);

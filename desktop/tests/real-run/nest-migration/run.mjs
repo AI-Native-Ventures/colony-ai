@@ -29,7 +29,7 @@ function parseArgs(argv) {
 
 const usage = `usage: node run.mjs --app <Buzz.app|Colony.app> --out <report dir> [--cases ${DEFAULT_CASES.join(",")}]
   [--work <dir>] [--profile-dir <signed-in user-data dir>] [--relay <ws url>] [--flag env|default]
-  [--crash-after <n>] [--contract <json override>] [--progress <file>] [--strict]`;
+  [--crash-at <n>:<before|after>] [--contract <json override>] [--progress <file>] [--strict]`;
 
 const args = parseArgs(process.argv.slice(2));
 if (!args.out || (!args.app && !args["fake-app"])) {
@@ -68,7 +68,7 @@ const { file, data } = await runProof({
     : undefined,
   relayUrl: args.relay,
   flagMode: args.flag ?? "env",
-  crashAfter: args["crash-after"] ? Number(args["crash-after"]) : undefined,
+  crashAt: args["crash-at"],
   contract: args.contract
     ? JSON.parse(await readFile(args.contract, "utf8"))
     : undefined,

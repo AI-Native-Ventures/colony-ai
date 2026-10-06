@@ -38,7 +38,9 @@ export const VARIANTS = Object.freeze({
   "repos-symlinked":
     "Like owner, but REPOS is a symlink to a folder outside HOME and .repos-dir records that folder.",
   "repos-dir-inside":
-    "Like owner, but .repos-dir holds an absolute path inside the old nest, which the migration must rewrite.",
+    "Like owner, but .repos-dir holds an absolute path inside the old nest. The migration must not move under it: it waits and says so.",
+  "repos-link-into-nest":
+    "Like owner, but REPOS holds an absolute symlink into the old nest. That entry is held back, everything else moves.",
   "both-colony-has-nest":
     "Both ~/.buzz and ~/.colony exist, and ~/.colony already holds a nest with entries that conflict.",
   "both-unrelated-colony":
@@ -303,22 +305,21 @@ async function writeOwned(w, home, { stamp, repos }) {
     await w.dir(`${nest}/REPOS`, 0o700);
     await writeRepo(w, `${nest}/REPOS/colony-social-kit`);
     await writeRepo(w, `${nest}/REPOS/colony-social-kit-day-one-film`);
-    // Relative link: stays valid wherever the folder moves.
+    // Relative link inside REPOS: stays valid wherever the folder moves.
     await w.link(`${nest}/REPOS/kit-latest`, "colony-social-kit");
-    // Absolute link into the tree that is about to move: must be rewritten, or its entry left in place.
-    await w.link(
-      `${nest}/REPOS/kit-absolute`,
-      `${home}/${nest}/REPOS/colony-social-kit`,
-    );
-    // Absolute link to a folder outside the nest: must be carried over unchanged.
+    // A symlinked repository outside the nest: an absolute target that does not name the old folder.
     await w.dir("external/shared-assets", 0o755);
     await w.file("external/shared-assets/logo.svg", "<svg/>\n", 0o644);
     await w.link(
       `${nest}/REPOS/shared-assets`,
       `${home}/external/shared-assets`,
     );
-    // Dangling relative link: must survive the move as a link with the same text.
-    await w.link(`${nest}/REPOS/old-checkout`, "../nowhere/old-checkout");
+    // An absolute link into the tree that is about to move cannot keep its meaning after a rename.
+    if (repos === "link-into-nest")
+      await w.link(
+        `${nest}/REPOS/kit-absolute`,
+        `${home}/${nest}/REPOS/colony-social-kit`,
+      );
     if (repos === "dir-inside")
       await w.file(`${nest}/.repos-dir`, `${home}/${nest}/REPOS\n`, 0o644);
   }
@@ -347,6 +348,7 @@ async function writeRepo(w, base) {
   await w.file(`${base}/run.sh`, "#!/bin/sh\necho run\n", 0o755);
 }
 
+/** The folder the host provisions in a new nest: empty placeholders it may later replace, and the markers. */
 async function writeColonyNest(w, stamp, extra) {
   const nest = NEW_NEST;
   await w.dir(nest, 0o700);
@@ -358,7 +360,8 @@ async function writeColonyNest(w, stamp, extra) {
   await w.file(`${nest}/.nest-agents-version`, stamp, 0o644);
   await w.dir(`${nest}/GUIDES`, 0o700);
   await w.file(`${nest}/GUIDES/welcome.md`, "# Welcome (new folder)\n", 0o644);
-  await w.dir(`${nest}/REPOS`, 0o700);
+  for (const placeholder of ["REPOS", "PLANS"])
+    await w.dir(`${nest}/${placeholder}`, 0o700);
   if (extra) await w.file(`${nest}/${extra}`, 256, 0o644);
 }
 
@@ -387,6 +390,10 @@ export async function buildFixture({
   const home = path.join(resolvedRoot, "home");
   await mkdir(home, { recursive: true });
   await chmod(home, 0o755);
+  // macOS always has this folder, and the host keeps its journal under it.
+  await mkdir(path.join(home, "Library", "Application Support"), {
+    recursive: true,
+  });
   const w = writer(home, seed);
 
   const stale = variant === "owner-stale-version";
@@ -412,7 +419,9 @@ export async function buildFixture({
         ? "symlink"
         : variant === "repos-dir-inside"
           ? "dir-inside"
-          : "dir";
+          : variant === "repos-link-into-nest"
+            ? "link-into-nest"
+            : "dir";
     await writeOwned(w, home, { stamp, repos });
     spec.nests.push(OLD_NEST);
     await writeForeign(w, home);

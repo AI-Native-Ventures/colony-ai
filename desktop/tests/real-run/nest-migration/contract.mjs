@@ -2,8 +2,11 @@
 // seeded-HOME proof harness. Every name, path, environment variable and log prefix the harness depends on is
 // declared here and nowhere else, so a change on the migration side is a one-file change on this side.
 //
-// Source of truth for the allow-list: design page "PR 2 design: what Colony owns inside ~/.buzz"
-// (/Users/mac/worktrees/.lanes/phase2/buzz-naming-20261006/index.html) and the host code:
+// Agreed with Worker M1 (branch feat/nest-migration, contract note briefs-20261004/nest-migration-contract-M1.md,
+// code desktop/src-tauri/src/managed_agents/nest_migration/). Where M1 deviates from the design page the contract
+// follows M1 and the deviation is listed in the PR: .scratch is foreign and is not moved; the old generated
+// buzz-cli skill entries stay in the old folder; references that name the old folder hold an entry back instead
+// of being rewritten. Host code the names come from:
 //   NEST_DIRS and the skill link names   desktop/src-tauri/src/managed_agents/nest.rs
 //   REPOS, .repos-dir                    desktop/src-tauri/src/managed_agents/repos.rs
 //   archive/archive.db (+ -wal, -shm)    desktop/src-tauri/src/archive/store.rs
@@ -16,28 +19,28 @@ export const OLD_NEST = ".buzz";
 export const NEW_NEST = ".colony";
 
 /**
- * Colony-owned top-level names inside the nest: the closed allow-list. Anything else in the folder is
- * foreign and must be left byte-for-byte alone. Twelve names.
+ * Colony-owned top-level names inside the nest: the closed allow-list, in the migration's move order
+ * (nest_migration/mod.rs DATA_ENTRIES, BEST_EFFORT_ENTRIES, MARKER_ENTRIES). Anything else in the folder is
+ * foreign and must be left byte-for-byte alone, including .scratch.
  */
 export const OWNED_TOP_LEVEL = Object.freeze([
-  "AGENTS.md",
-  ".nest-agents-version",
+  "archive",
   "GUIDES",
   "RESEARCH",
   "PLANS",
   "WORK_LOGS",
   "OUTBOX",
-  ".scratch",
-  "archive",
   ".repos-dir",
   "REPOS",
   "models",
+  "AGENTS.md",
+  ".nest-agents-version",
 ]);
 
 /**
- * Entries Colony generates inside harness folders it shares with other tools. They are not moved: the
- * migration removes exactly these old entries and regenerates them under the new name in the new folder.
- * The parent folders (.agents, .claude, .codex, .goose) stay in the old nest because other tools write there.
+ * Entries Colony generates inside harness folders it shares with other tools. The migration leaves them where
+ * they are (never delete) and the new folder generates its own. Under the default policy "leave" they are
+ * compared like foreign entries, so any change to them fails the run. Reset is the one flow that removes them.
  */
 export const GENERATED_SKILL_LINKS = Object.freeze([
   ".agents/skills/buzz-cli",
@@ -46,13 +49,13 @@ export const GENERATED_SKILL_LINKS = Object.freeze([
   ".goose/skills/buzz-cli",
 ]);
 
-/** What the generated skill entries are called after regeneration in the new folder. */
-export const REGENERATED_SKILL_LINKS = Object.freeze([
-  ".agents/skills/colony-cli",
-  ".claude/skills/colony-cli",
-  ".codex/skills/colony-cli",
-  ".goose/skills/colony-cli",
-]);
+/** What the generated skill entries are called when the new folder provisions its own (either spelling). */
+export const REGENERATED_SKILL_LINKS = Object.freeze(
+  [".agents", ".claude", ".codex", ".goose"].flatMap((dir) => [
+    `${dir}/skills/buzz-cli`,
+    `${dir}/skills/colony-cli`,
+  ]),
+);
 
 /** Harness folders shared with other tools: never moved, never deleted. */
 export const SHARED_HARNESS_DIRS = Object.freeze([
@@ -71,52 +74,53 @@ export const NO_REFRESH_VERSION = "999\n";
  */
 export const NEST_FOLDER_LOG_PREFIX = "buzz-desktop: nest-folder:";
 
-/** Prefix of migration progress lines in the native host log. */
+/**
+ * Prefix of the migration's result line: `<prefix> outcome=<kebab> moved=<n> skipped=<n> detail=<text>`
+ * (nest_migration/mod.rs LOG_PREFIX). Outcomes: disabled, not-applicable, nothing-to-migrate,
+ * already-migrated, deferred-running-agents, migrated, left-in-place, aborted, rolled-back, failed.
+ */
 export const MIGRATION_LOG_PREFIX = "buzz-desktop: nest-migration:";
 
 /**
- * Environment variables the migration reads. FLAG turns it on or off without a rebuild. CRASH_AFTER makes the
- * process abort after that many journal entries have been written and their moves done, so a packaged run can
- * kill the migration exactly between two entries.
+ * Environment variables the migration reads. FLAG turns it on or off without a rebuild (unset means the
+ * build's compiled default, OFF until the release commit flips it). CRASH_AT=<n>:<before|after> makes the
+ * process exit with code CRASH_EXIT_CODE just before or after the n-th filesystem operation (operation 1
+ * creates the staging folder, then one rename per entry), so a packaged run can stop the migration exactly
+ * between two entries.
  */
 export const MIGRATION_ENV = Object.freeze({
   flag: "COLONY_NEST_MIGRATION",
   flagOn: "1",
   flagOff: "0",
-  crashAfter: "COLONY_NEST_MIGRATION_CRASH_AFTER",
+  crashAt: "COLONY_NEST_MIGRATION_CRASH_AT",
+  crashExitCode: 86,
 });
+
+/** Folder under the host's app-data directory that holds journal.json and notice.json. */
+export const STATE_DIR = "nest-migration";
+
+/** Environment entry that marks a process as one of this install's managed agents (runtime/process.rs). */
+export const AGENT_MARKER_ENV = "BUZZ_MANAGED_AGENT";
 
 /** The shape of the contract, so a coordinator can override single fields from a JSON file. */
 export function defaultContract() {
   return {
     oldNest: OLD_NEST,
     newNest: NEW_NEST,
+    stagingName: `${NEW_NEST}.staging`,
     ownedTopLevel: [...OWNED_TOP_LEVEL],
     generatedSkillLinks: [...GENERATED_SKILL_LINKS],
     regeneratedSkillLinks: [...REGENERATED_SKILL_LINKS],
     sharedHarnessDirs: [...SHARED_HARNESS_DIRS],
+    generatedPolicy: "leave",
     nestFolderLogPrefix: NEST_FOLDER_LOG_PREFIX,
     migrationLogPrefix: MIGRATION_LOG_PREFIX,
+    stateDir: STATE_DIR,
+    agentMarkerEnv: AGENT_MARKER_ENV,
     env: { ...MIGRATION_ENV },
-    // Paths relative to the HOME folder where the migration keeps its durable records. Several candidates
-    // are listed because staging, journal and sentinel placement is the migration's choice. The first that
-    // exists is read.
-    journalPaths: [
-      ".colony.staging/journal.jsonl",
-      ".colony/.nest-migration/journal.jsonl",
-      ".colony/.nest-migration-journal.jsonl",
-    ],
-    sentinelPaths: [
-      ".colony/.nest-migration.json",
-      ".colony/.nest-migration/sentinel.json",
-    ],
-    // Names the migration may add that are neither owned entries nor user data: staging and records.
-    allowedNewArtifacts: [
-      ".colony.staging",
-      ".colony/.nest-migration",
-      ".colony/.nest-migration.json",
-      ".colony/.nest-migration-journal.jsonl",
-    ],
+    // Names the migration may add that are neither owned entries nor user data. The staging folder exists only
+    // while a run is in flight, and the proof checks it is gone afterwards.
+    allowedNewArtifacts: [`${NEW_NEST}.staging`],
   };
 }
 
@@ -133,15 +137,24 @@ export function loadContract(override = {}) {
 /**
  * Classify a path relative to the nest root.
  * - "owned": a top-level allow-list name, or anything below one.
- * - "generated": an old generated skill entry, or anything below one.
- * - "foreign": everything else, including the contents of the shared harness folders.
+ * - "generated": an old generated skill entry, or anything below one, when the policy is "remove".
+ * - "generated-parent": a folder that only exists to hold generated entries (.codex/skills), when the policy is
+ *   "remove". Reset prunes such a folder once the link in it is gone and the folder is empty.
+ * - "foreign": everything else, including the contents of the shared harness folders, .scratch and, under
+ *   the default policy "leave", the old generated skill entries.
  */
 export function classifyNestPath(relativePath, contract = defaultContract()) {
   const parts = relativePath.split("/").filter(Boolean);
   if (parts.length === 0) return "root";
-  for (const generated of contract.generatedSkillLinks) {
-    if (relativePath === generated || relativePath.startsWith(`${generated}/`))
-      return "generated";
+  if (contract.generatedPolicy === "remove") {
+    for (const generated of contract.generatedSkillLinks) {
+      if (
+        relativePath === generated ||
+        relativePath.startsWith(`${generated}/`)
+      )
+        return "generated";
+      if (generated.startsWith(`${relativePath}/`)) return "generated-parent";
+    }
   }
   return contract.ownedTopLevel.includes(parts[0]) ? "owned" : "foreign";
 }

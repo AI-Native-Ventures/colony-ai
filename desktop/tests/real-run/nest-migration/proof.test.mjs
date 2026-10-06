@@ -51,7 +51,7 @@ async function proof(cases, extraEnv = {}) {
 }
 
 test("every case is described and has a flow", () => {
-  assert.equal(DEFAULT_CASES.length, 14);
+  assert.equal(DEFAULT_CASES.length, 15);
   for (const [id, spec] of Object.entries(CASES)) {
     assert.ok(spec.title && spec.description && spec.variant && spec.kind, id);
   }
@@ -74,11 +74,8 @@ test("the full proof against a correct fake app: no FAIL anywhere, and only the 
     "owner/FILES-TAB",
     "owner/AGENTS-RESTORE",
     "owner/REPOS-DIR",
-    "both-unrelated/NOTICE",
     "repos-symlinked/FILES-TAB",
     "repos-symlinked/AGENTS-RESTORE",
-    "repos-dir-inside/FILES-TAB",
-    "repos-dir-inside/AGENTS-RESTORE",
   ]);
   const unexpected = gaps.filter((gap) => !allowed.has(gap));
   assert.deepEqual(
@@ -109,6 +106,8 @@ test("falsifiable: the runner turns each migration defect into a FAIL on the rig
   assert.equal(lost.status("owner", "NO-LOSS"), FAIL);
   const noJournal = await proof(["owner"], { FAKE_BREAK: "no-journal" });
   assert.equal(noJournal.status("owner", "JOURNAL-DURABLE"), FAIL);
+  const scratch = await proof(["owner"], { FAKE_BREAK: "move-scratch" });
+  assert.equal(scratch.status("owner", "FOREIGN-IDENTICAL"), FAIL);
   const overwrite = await proof(["both"], { FAKE_BREAK: "overwrite" });
   assert.equal(overwrite.status("both", "CONFLICTS-KEPT"), FAIL);
   assert.equal(verdictOf(overwrite.byCase.both.rows), FAIL);

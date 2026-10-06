@@ -86,8 +86,9 @@ test("owner fixture has exactly the top-level names of the owner's real folder",
   );
 });
 
-test("the allow-list is twelve closed names and the fixture covers eleven of them (.repos-dir only when REPOS is a link)", async () => {
-  assert.equal(OWNED_TOP_LEVEL.length, 12);
+test("the allow-list is eleven closed names (.scratch is foreign) and the fixture covers ten of them (.repos-dir only in some variants)", async () => {
+  assert.equal(OWNED_TOP_LEVEL.length, 11);
+  assert.equal(OWNED_TOP_LEVEL.includes(".scratch"), false);
   const present = await names(path.join(owner.home, OLD_NEST));
   const covered = OWNED_TOP_LEVEL.filter((name) => present.includes(name));
   assert.deepEqual(
@@ -162,14 +163,12 @@ test("reading the database never modifies it: main, -wal and -shm are byte-ident
   assert.equal(second.idsSha256, owner.database.idsSha256);
 });
 
-test("REPOS holds a relative link, an absolute link into the nest, one outside it and a dangling one", async () => {
+test("REPOS holds real repositories, a relative link inside REPOS and a symlinked repository outside the nest", async () => {
   const repos = path.join(owner.home, OLD_NEST, "REPOS");
   assert.deepEqual(await names(repos), [
     "colony-social-kit",
     "colony-social-kit-day-one-film",
-    "kit-absolute",
     "kit-latest",
-    "old-checkout",
     "shared-assets",
   ]);
   assert.equal(
@@ -177,21 +176,37 @@ test("REPOS holds a relative link, an absolute link into the nest, one outside i
     "colony-social-kit",
   );
   assert.equal(
-    await readlink(path.join(repos, "kit-absolute")),
-    `${owner.home}/${OLD_NEST}/REPOS/colony-social-kit`,
-  );
-  assert.equal(
     await readlink(path.join(repos, "shared-assets")),
     `${owner.home}/external/shared-assets`,
   );
   assert.equal(
-    await readlink(path.join(repos, "old-checkout")),
-    "../nowhere/old-checkout",
-  );
-  await assert.rejects(readFile(path.join(repos, "old-checkout", "x")));
-  assert.equal(
     await readFile(path.join(repos, "kit-latest", "README.md"), "utf8"),
     "# Synthetic repository\n",
+  );
+});
+
+test("repos-link-into-nest adds an absolute link into the old nest, which the migration must hold back", async () => {
+  const fixture = await buildFixture({
+    root: await fresh(),
+    variant: "repos-link-into-nest",
+  });
+  assert.equal(
+    await readlink(path.join(fixture.home, OLD_NEST, "REPOS", "kit-absolute")),
+    `${fixture.home}/${OLD_NEST}/REPOS/colony-social-kit`,
+  );
+});
+
+test(".scratch is a foreign folder with notes in it, as in the owner's real folder", async () => {
+  const scratch = path.join(owner.home, OLD_NEST, ".scratch");
+  assert.equal(await kind(scratch), "dir");
+  assert.ok((await names(scratch)).length > 5);
+  assert.equal(OWNED_TOP_LEVEL.includes(".scratch"), false);
+});
+
+test("the host's Library/Application Support folder exists so the journal can be written under a read-only HOME", async () => {
+  assert.equal(
+    await kind(path.join(owner.home, "Library", "Application Support")),
+    "dir",
   );
 });
 
@@ -287,6 +302,9 @@ test("both-colony-has-nest, both-unrelated-colony, colony-only and empty have th
     await kind(path.join(both.home, ".colony/GUIDES/welcome.md")),
     "file",
   );
+  // Empty placeholders the host provisioned: a source directory may replace them.
+  assert.deepEqual(await names(path.join(both.home, ".colony/REPOS")), []);
+  assert.deepEqual(await names(path.join(both.home, ".colony/PLANS")), []);
   const unrelated = await buildFixture({
     root: await fresh(),
     variant: "both-unrelated-colony",
@@ -298,9 +316,9 @@ test("both-colony-has-nest, both-unrelated-colony, colony-only and empty have th
     root: await fresh(),
     variant: "colony-only",
   });
-  assert.deepEqual(await names(only.home), [".colony"]);
+  assert.deepEqual(await names(only.home), [".colony", "Library"]);
   const empty = await buildFixture({ root: await fresh(), variant: "empty" });
-  assert.deepEqual(await names(empty.home), []);
+  assert.deepEqual(await names(empty.home), ["Library"]);
   assert.equal(empty.database, null);
 });
 

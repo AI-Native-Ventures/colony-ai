@@ -48,10 +48,18 @@ export const CASES = Object.freeze({
       "REPOS moves as a link with the same target and .repos-dir stays valid.",
   },
   "repos-dir-inside": {
-    kind: "migrate",
+    kind: "aborted",
     variant: "repos-dir-inside",
     title: ".repos-dir points inside the old nest",
-    description: ".repos-dir is rewritten to the new folder.",
+    description:
+      "A pointer that would dangle after the move holds the whole small set back: nothing moves, the app stays on ~/.buzz and a notice says so.",
+  },
+  "held-back": {
+    kind: "held-back",
+    variant: "repos-link-into-nest",
+    title: "REPOS holds an absolute link into the old nest",
+    description:
+      "REPOS is held back whole and intact, everything else moves, and a notice says some items stayed where they were.",
   },
   crash: {
     kind: "crash",
@@ -174,7 +182,11 @@ export function resetSentinelPath(appDataDir) {
 }
 
 /** Start a process that stands in for a running agent: working directory is the nest, one file held open. */
-export async function startStandInAgent({ nest, appDataDir }) {
+export async function startStandInAgent({
+  nest,
+  appDataDir,
+  markerEnv = "BUZZ_MANAGED_AGENT",
+}) {
   const script = `
     const fs = require("node:fs");
     fs.mkdirSync(".scratch", { recursive: true });
@@ -182,8 +194,10 @@ export async function startStandInAgent({ nest, appDataDir }) {
     process.stdout.write("ready\\n");
     setInterval(() => {}, 1000);
   `;
+  // The migration only counts a process as an agent when it carries this install's ownership marker.
   const child = spawn(process.execPath, ["-e", script], {
     cwd: nest,
+    env: { PATH: process.env.PATH, [markerEnv]: path.basename(appDataDir) },
     stdio: ["ignore", "pipe", "ignore"],
   });
   await new Promise((resolve, reject) => {
@@ -225,7 +239,7 @@ function makeContext(options) {
     work: options.work,
     relayUrl: options.relayUrl ?? "ws://127.0.0.1:9",
     flagMode: options.flagMode ?? "env",
-    crashAfter: options.crashAfter ?? 3,
+    crashAt: options.crashAt ?? "5:after",
     profileDir: options.profileDir ?? null,
     driver: options.driver,
     extraEnv: options.extraEnv ?? {},
@@ -406,33 +420,33 @@ async function flowCrash(ctx, state) {
   );
   const env = {
     ...flagEnv(ctx, true),
-    [ctx.contract.env.crashAfter]: String(ctx.crashAfter),
+    [ctx.contract.env.crashAt]: ctx.crashAt,
   };
-  const app = await startApp(ctx, state, "1 (crash hook set)", env);
-  // The crash hook aborts the process by itself. As a fallback for a host without the hook, kill the tree as
-  // soon as the journal has a line and the sentinel does not exist yet.
-  let killedBy = "not killed";
-  const exited = app.exited.then(() => "crash hook");
-  const watcher = (async () => {
-    const end = Date.now() + ctx.nestLineTimeoutMs;
-    while (Date.now() < end && app.isRunning()) {
-      const records = await readMigrationRecords(home, ctx.contract);
-      if (records.journal && records.journal.lines >= 1 && !records.sentinel) {
-        await app.kill();
-        return "poll kill";
-      }
-      await sleep(5);
-    }
-    return null;
-  })();
-  killedBy = (await Promise.race([exited, watcher])) ?? killedBy;
-  await app.exited;
-  state.log(`launch 1 ended by: ${killedBy}`);
+  const app = await startApp(ctx, state, `1 (crash seam ${ctx.crashAt})`, env);
+  // The seam ends the host process by itself (exit code 86) and logs a line first. Under Electron the host is a
+  // child of the app, so wait for the line or the exit, then stop whatever is left of the app.
+  const seamSeen = await waitFor(
+    async () =>
+      !app.isRunning() ||
+      (await app.hostLogLines()).some((l) => l.includes("crash seam")),
+    { timeoutMs: ctx.nestLineTimeoutMs, intervalMs: 20 },
+  );
+  const crashLines = await app.hostLogLines();
+  const seamLine = crashLines.some((l) => l.includes("crash seam"));
+  let exitCode = null;
+  if (!app.isRunning()) exitCode = (await app.exited).code;
+  else await app.kill();
+  state.log(
+    `launch 1 ended: seam line ${seamLine}, exit code ${exitCode}, waited ${seamSeen ? "ok" : "timeout"}`,
+  );
   const killRecords = await readMigrationRecords(home, ctx.contract);
   const afterKill = await snapshot({ home });
   const killed = {
-    by: killedBy,
-    journalLines: killRecords.journal?.lines ?? 0,
+    by: seamLine ? "crash seam" : "not stopped by the seam",
+    exitCode,
+    seamLine,
+    crashAt: ctx.crashAt,
+    journal: killRecords.journal,
   };
   const second = await startApp(ctx, state, "2 (resume)", flagEnv(ctx, true));
   await settle(ctx, state, second, "launch 2");
@@ -441,6 +455,7 @@ async function flowCrash(ctx, state) {
   const after = await snapshot({ home });
   const third = await startApp(ctx, state, "3", flagEnv(ctx, true));
   await settle(ctx, state, third, "launch 3");
+  const lines3 = await third.hostLogLines();
   await third.quit();
   const after2 = await snapshot({ home });
   const scriptsAfter = await runForeignScripts(
@@ -454,6 +469,7 @@ async function flowCrash(ctx, state) {
     afterKill,
     observations: {
       hostLogLines: resumed.lines,
+      hostLogLines2: lines3,
       ...resumed.records,
       killed,
       foreignScripts: { before: scriptsBefore, after: scriptsAfter },
@@ -510,7 +526,11 @@ async function flowRunningAgent(ctx, state) {
     home,
     state.fixture.foreignScripts,
   );
-  const agent = await startStandInAgent({ nest, appDataDir: state.appData });
+  const agent = await startStandInAgent({
+    nest,
+    appDataDir: state.appData,
+    markerEnv: ctx.contract.agentMarkerEnv,
+  });
   state.log(
     `stand-in agent pid ${agent.pid}, cwd ${nest}, holding .scratch/held.lock`,
   );
@@ -562,7 +582,12 @@ async function flowRunningAgent(ctx, state) {
     observations: {
       hostLogLines: [...firstLines, ...resumed.lines],
       ...resumed.records,
-      agent: { pid: agent.pid, aliveAtManifest, strategyLine },
+      agent: {
+        pid: agent.pid,
+        aliveAtManifest,
+        strategyLine,
+        firstLaunchLines: firstLines,
+      },
       foreignScripts: { before: scriptsBefore, after: scriptsAfter },
     },
   };
@@ -620,6 +645,8 @@ const FLOWS = {
   migrate: flowMigrate,
   crash: flowCrash,
   "migrate-stale": flowMigrate,
+  aborted: flowMigrate,
+  "held-back": flowMigrate,
   both: flowMigrate,
   "both-unrelated": flowMigrate,
   "colony-only": (ctx, state) => flowSingle(ctx, state, { on: true }),
@@ -689,7 +716,7 @@ export async function runCase(ctx, id) {
       },
       hostLogLines: (evidence.observations.hostLogLines ?? []).slice(-60),
       journal: evidence.observations.journal,
-      sentinel: evidence.observations.sentinel,
+      notice: evidence.observations.notice,
       database: state.fixture.database,
     },
   };
