@@ -1,4 +1,4 @@
-//! Colony nest — persistent agent workspace at `~/.colony` for new installs
+//! Colony nest: persistent agent workspace at `~/.colony` for new installs
 //! (existing installs keep `~/.buzz`, see [`super::nest_folder`]).
 //!
 //! Creates a shared knowledge directory on first launch so every
@@ -107,7 +107,7 @@ pub fn init_nest_dir(is_dev: bool) {
 pub fn nest_dir() -> Option<PathBuf> {
     match NEST_DIR.get() {
         Some(path) => path.clone(),
-        // Not yet initialized — fall back to the production choice. Covers
+        // Not yet initialized: fall back to the production choice. Covers
         // test code.
         None => dirs::home_dir()
             .map(|home| home.join(nest_folder::choose_nest_folder(&home, false).name.as_ref())),

@@ -185,7 +185,7 @@ mod tests {
     fn assert_chose(home: &Path, name: &str, reason: NestFolderReason) {
         let choice = choose(home);
         assert_eq!(
-            (choice.name.as_ref(), choice.reason),
+            (&*choice.name, choice.reason),
             (name, reason),
             "unexpected choice for {home:?}"
         );
