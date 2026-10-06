@@ -140,3 +140,22 @@ The dry run executes the real driver against a stubbed Electron and scripted pag
 a clean script must end PASS and a leaky one FAIL with the old name listed. It proves the
 driver's orchestration, judging and report writing, never the product.
 
+
+## Final 1.0.5 gate additions (6 October 2026)
+
+- `safety.mjs` `realEnvironment` and `assertHomeMigrationGuard`: a launcher guard that refuses to start when HOME is the real
+  home and `COLONY_NEST_MIGRATION` is not exactly `0`; `GATE_REAL_HOME=1` selects the real HOME (default is a throwaway HOME
+  next to the profile), `GATE_HOME_SEED_FROM` moves a pre-built owner-shaped fixture in as that HOME. The HOME and the flag
+  value are printed before every launch.
+- A throwaway HOME cannot sign Claude Code in under the keychain-deny sandbox (the login keychain is resolved from HOME):
+  `claude auth status` reports `loggedIn: false` there and `true` with the real HOME. The fresh-HOME Scout run therefore needs
+  an interactive sign-in inside the throwaway HOME (`--pause-before-launch`).
+- `netfail.mjs` and `c105-a2.mjs` (`ONLY=retry`, `NETFAIL=proxy`): breaks the avatar upload at the host to relay hop. reqwest
+  reuses a pooled keep-alive connection, so the proxy also destroys open tunnels when it blocks.
+- `nest-migration`: per-case `case-<id>.json` files are written as soon as a case ends; four documented expectation
+  relaxations (checkpointed WAL and SHM, regenerated AGENTS.md managed block, host-provisioned `.scratch` and empty
+  placeholders, retired generated `buzz-cli` skill entries, in-flight model download folder) and a no-web sandbox rule.
+  Strict and narrowed results are published side by side in the gate report.
+- `g2-existing.mjs`: the PR 240 collector, prompts and scanner against an existing signed-in profile (real HOME, migration off).
+- `c105f-g8.mjs`, `c105f-misc.mjs`, `c105f-g3.mjs`, `c105f-g4live.mjs`, `gate-manifest.mjs`: escape screen with Switch and
+  Remove, window title and Settings text scan, seeded-HOME views.

@@ -566,7 +566,8 @@ async function drive() {
     if (done) row(id, label, "PASS", detail);
     return done;
   };
-  // onboarding skipped: profile A is already signed in
+  // onboarding skipped: profile A is already signed in; wait for the workspace before driving
+  await page.getByTestId("app-sidebar").waitFor({ timeout: 90000 });
   if (
     await page
       .getByTestId("app-sidebar")
