@@ -12,7 +12,9 @@ import {
   readFile,
   readdir,
   readlink,
+  realpath,
   rename,
+  rm,
   rmdir,
   writeFile,
 } from "node:fs/promises";
@@ -27,6 +29,10 @@ export const MESSAGES = Object.freeze({
     "Colony moved your agents' files to a new folder, ~/.colony. Other files and tools in your old folder were left exactly as they were.",
   migratedWithSkips:
     "Colony moved your agents' files to ~/.colony. Some items stayed where they were because moving them was not safe. Everything keeps working.",
+  migratedReposInPlace:
+    "Colony moved your agents' files to ~/.colony. Your repositories folder stayed in your old agents folder and agents still use it.",
+  migratedReposInPlaceWithSkips:
+    "Colony moved your agents' files to ~/.colony. Your repositories folder stayed in your old agents folder and agents still use it. Some other items stayed where they were because moving them was not safe.",
   leftInPlace:
     "Colony left some of your agents' files where they were because moving them was not safe. Everything keeps working.",
   aborted:
@@ -166,6 +172,19 @@ export async function simulateMigration(home, options) {
         !["moving", "staged", "publishing", "published"].includes(step.status)
       )
         continue;
+      if (step.generated) {
+        // The pointer has no source in the old folder: remove it, never hand it back.
+        await rm(path.join(staging, step.name), { force: true });
+        const placed = path.join(to, step.name);
+        const written = `${journal.repos_pointer}\n`;
+        if (
+          ["publishing", "published"].includes(step.status) &&
+          (await readFile(placed, "utf8").catch(() => null)) === written
+        )
+          await rm(placed, { force: true });
+        step.status = "rolled_back";
+        continue;
+      }
       for (const place of [
         path.join(staging, step.name),
         path.join(to, step.name),
@@ -202,6 +221,19 @@ export async function simulateMigration(home, options) {
       }
       for (const step of journal.steps) {
         if (!["pending", "moving"].includes(step.status)) continue;
+        if (step.generated) {
+          step.status = "moving";
+          await saveJson("journal.json", journal);
+          await op(() =>
+            writeFile(
+              path.join(staging, step.name),
+              `${journal.repos_pointer}\n`,
+            ),
+          );
+          step.status = "staged";
+          await saveJson("journal.json", journal);
+          continue;
+        }
         const src = path.join(from, step.name);
         const dst = path.join(staging, step.name);
         const [haveSrc, haveDst] = [await exists(src), await exists(dst)];
@@ -260,20 +292,37 @@ export async function simulateMigration(home, options) {
     journal.finished_at = new Date().toISOString();
     await saveJson("journal.json", journal);
     const moved = journal.steps
-      .filter((step) => step.status === "published")
+      .filter((step) => step.status === "published" && !step.generated)
       .map((step) => step.name);
     const skipped = journal.steps
       .filter((step) => step.status === "skipped")
       .map((step) => [step.name, step.detail ?? ""]);
-    await notice(
-      skipped.length
-        ? `left:${skipped
-            .map(([name]) => name)
-            .sort()
-            .join(",")}`
-        : "migrated",
-      skipped.length ? MESSAGES.migratedWithSkips : MESSAGES.migrated,
+    const reposInPlace = journal.steps.some(
+      (step) => step.generated && step.status === "published",
     );
+    const others = skipped
+      .map(([name]) => name)
+      .filter((name) => name !== "REPOS")
+      .sort();
+    if (reposInPlace)
+      await notice(
+        others.length
+          ? `migrated-repos-in-place:left:${others.join(",")}`
+          : "migrated-repos-in-place",
+        others.length
+          ? MESSAGES.migratedReposInPlaceWithSkips
+          : MESSAGES.migratedReposInPlace,
+      );
+    else
+      await notice(
+        skipped.length
+          ? `left:${skipped
+              .map(([name]) => name)
+              .sort()
+              .join(",")}`
+          : "migrated",
+        skipped.length ? MESSAGES.migratedWithSkips : MESSAGES.migrated,
+      );
     return report("migrated", moved, skipped, moved.join(","));
   };
 
@@ -305,8 +354,19 @@ export async function simulateMigration(home, options) {
   // Plan.
   const colonyHasNest = await holdsNestMarker(to);
   const present = [];
-  for (const name of contract.ownedTopLevel)
-    if (await exists(path.join(from, name))) present.push(name);
+  // A REPOS the new folder already points at has nothing left to move.
+  const pointerText = (
+    await readFile(path.join(to, ".repos-dir"), "utf8").catch(() => "")
+  ).trim();
+  const servedByPointer = async () =>
+    pointerText !== "" &&
+    (await realpath(pointerText).catch(() => null)) ===
+      (await realpath(path.join(from, "REPOS")).catch(() => undefined));
+  for (const name of contract.ownedTopLevel) {
+    if (!(await exists(path.join(from, name)))) continue;
+    if (name === "REPOS" && (await servedByPointer())) continue;
+    present.push(name);
+  }
   const steps = [];
   for (const name of present) {
     const kind = BEST_EFFORT.has(name) ? "best_effort" : "atomic";
@@ -353,7 +413,10 @@ export async function simulateMigration(home, options) {
     const skipped = steps
       .filter((step) => step.status === "skipped")
       .map((step) => [step.name, step.detail]);
-    if (!skipped.length) return report("nothing-to-migrate");
+    if (!skipped.length)
+      return report(
+        existing?.phase === "done" ? "already-migrated" : "nothing-to-migrate",
+      );
     await notice(
       `left:${skipped
         .map(([name]) => name)
@@ -368,8 +431,41 @@ export async function simulateMigration(home, options) {
       skipped.map(([name, why]) => `${name}(${why})`).join(","),
     );
   }
+  // A REPOS left behind must stay in use: point the new folder at it as one more step, or do not run.
+  let reposPointer;
+  const reposLeft = steps.find(
+    (step) =>
+      step.name === "REPOS" &&
+      step.status === "skipped" &&
+      step.detail !== "target-exists",
+  );
+  const pointerDecided =
+    steps.some(
+      (step) => step.name === ".repos-dir" && step.status !== "skipped",
+    ) || (await exists(path.join(to, ".repos-dir")));
+  const newRepos = path.join(to, "REPOS");
+  if (
+    reposLeft &&
+    !pointerDecided &&
+    (!(await exists(newRepos)) || (await isEmptyDir(newRepos)))
+  ) {
+    try {
+      reposPointer = await realpath(path.join(from, "REPOS"));
+    } catch (error) {
+      return abortFresh(`repos-pointer-target-unreadable:${error.code ?? ""}`);
+    }
+    const at = steps.findIndex((step) => MARKERS.includes(step.name));
+    steps.splice(at < 0 ? steps.length : at, 0, {
+      name: ".repos-dir",
+      kind: "atomic",
+      status: "pending",
+      detail: "generated-pointer",
+      generated: true,
+    });
+  }
   const journal = {
     version: 1,
+    ...(reposPointer ? { repos_pointer: reposPointer } : {}),
     phase: "staging",
     from: contract.oldNest,
     to: contract.newNest,
@@ -401,4 +497,20 @@ export async function provisionSkill(folder) {
       path.join(folder, harness, "skills", "colony-cli"),
     );
   }
+}
+
+/**
+ * What resolve_repos_at_boot does for a nest folder: a `.repos-dir` naming an existing absolute folder makes REPOS
+ * a link to it (when REPOS is not already there). Shared by the fake app and the unit tests.
+ */
+export async function resolveReposAtBoot(folder) {
+  const pointerFile = path.join(folder, ".repos-dir");
+  if (
+    !(await exists(pointerFile)) ||
+    (await exists(path.join(folder, "REPOS")))
+  )
+    return;
+  const target = (await readFile(pointerFile, "utf8")).trim();
+  if (path.isAbsolute(target) && (await exists(target)))
+    await symlink(target, path.join(folder, "REPOS"));
 }

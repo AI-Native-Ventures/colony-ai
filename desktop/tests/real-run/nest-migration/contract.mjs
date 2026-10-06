@@ -118,6 +118,9 @@ export function defaultContract() {
     stateDir: STATE_DIR,
     agentMarkerEnv: AGENT_MARKER_ENV,
     env: { ...MIGRATION_ENV },
+    // In the held-back case the migration also writes `.colony/.repos-dir` (an owned name) naming the REPOS that
+    // stayed in the old folder, and the host then links `.colony/REPOS` to it: neither is a new artifact to flag,
+    // and the differ treats that link as the way the new nest reaches the left-behind folder, not as a copy.
     // Names the migration may add that are neither owned entries nor user data. The staging folder exists only
     // while a run is in flight, and the proof checks it is gone afterwards.
     allowedNewArtifacts: [`${NEW_NEST}.staging`],

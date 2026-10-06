@@ -36,7 +36,7 @@ Run it through `/Users/mac/worktrees/.lanes/tools/heavy.sh`, after the 1 minute 
 | owner | only `~/.buzz`, owner-shaped, archive.db with a real WAL | foreign identical, 10 entries moved by rename, journal done, notice, second launch already-migrated |
 | repos-symlinked | REPOS is a link outside HOME, `.repos-dir` names it | link moves with the same target |
 | repos-dir-inside | `.repos-dir` names a path inside the old nest | outcome aborted, nothing moves, notice, app stays on `.buzz` |
-| held-back | REPOS holds an absolute link into the old nest | REPOS stays whole, the rest moves, notice |
+| held-back | REPOS holds an absolute link into the old nest | REPOS stays whole in the old folder, the rest moves, the new folder gets a `.repos-dir` naming it (REPOS-POINTER, REPOS-IN-USE), the notice says the repositories folder stayed and is still used |
 | stale | old version stamps | AGENTS.md may be refreshed, owner notes below the markers survive |
 | crash | `COLONY_NEST_MIGRATION_CRASH_AT=<n>:<before\|after>` | kill lands between two entries, journal written first, no loss, resume completes, then a no-op |
 | both | `~/.colony` already has a nest | conflicts kept both sides, empty placeholders replaced, notice |
