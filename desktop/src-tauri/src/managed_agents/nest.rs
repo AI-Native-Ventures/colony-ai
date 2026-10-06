@@ -60,6 +60,7 @@ const END_MARKER: &str = "<!-- END BUZZ MANAGED -->";
 
 /// Directory name of the generated CLI skill, under the canonical skills
 /// directory and under every harness-specific skills directory.
+#[cfg_attr(not(unix), allow(dead_code))]
 const SKILL_NAME: &str = "colony-cli";
 
 /// Canonical skill directory path relative to the nest root.

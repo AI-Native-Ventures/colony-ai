@@ -2913,8 +2913,9 @@ pub enum PackCmd {
 /// Community moderation commands.
 ///
 /// The community (tenant) is selected by the relay host in `--relay`.
-/// Moderation commands are community-global and carry no channel scope. The signing key must be a community owner/admin; the relay
-/// authorizes every command.
+/// Moderation commands are community-global and carry no channel scope. The
+/// signing key must be a community owner/admin; the relay authorizes every
+/// command.
 #[derive(Subcommand)]
 pub enum ModerationCmd {
     /// List reports in the moderation queue (newest first)
