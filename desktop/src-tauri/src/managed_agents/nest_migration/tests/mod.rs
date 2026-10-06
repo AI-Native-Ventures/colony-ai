@@ -77,6 +77,7 @@ impl Env {
             to_name: NEW,
             enabled,
             live_agent_pids: agents,
+            unreadable_agent_records: 0,
         }
     }
 
@@ -380,10 +381,13 @@ pub(super) fn count_operations(env: &Env) -> usize {
     counter.ops.get()
 }
 
+/// Picks the renames that fail: `Some(error)` for `(from, to)` makes it fail.
+pub(super) type RenameRule = Box<dyn Fn(&Path, &Path) -> Option<io::Error>>;
+
 /// Fails the renames and directory creations a rule selects; everything else is
 /// the real filesystem.
 pub(super) struct FailFs {
-    pub(super) rename_error: Box<dyn Fn(&Path, &Path) -> Option<io::Error>>,
+    pub(super) rename_error: RenameRule,
     pub(super) create_dir_error: bool,
 }
 

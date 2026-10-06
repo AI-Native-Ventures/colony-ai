@@ -108,15 +108,57 @@ fn a_real_running_agent_is_found_by_its_receipt_and_blocks_the_move() {
     };
 
     let live = find();
-    assert_eq!(live, vec![child.id()]);
+    assert_eq!(live.pids, vec![child.id()]);
     let before = manifest(&env.home);
-    let report = run_migration(&env.input(true, &live), &RealFs);
+    let report = run_migration(&env.input(true, &live.pids), &RealFs);
     assert_eq!(report.outcome, Outcome::DeferredRunningAgents);
     assert_eq!(manifest(&env.home), before);
 
     child.kill().unwrap();
     child.wait().unwrap();
-    assert!(find().is_empty(), "a dead agent no longer blocks the move");
-    let report = run_migration(&env.input(true, &find()), &RealFs);
+    let gone = find();
+    assert_eq!(
+        gone,
+        boot::LiveAgents::default(),
+        "a dead agent no longer blocks the move"
+    );
+    let report = run_migration(&env.input(true, &gone.pids), &RealFs);
     assert_eq!(report.outcome, Outcome::Migrated);
+}
+
+#[test]
+fn an_agent_record_that_cannot_be_read_defers_the_move() {
+    let env = Env::owner_shaped();
+    let receipts = env.data.join("agents").join("agent-pids");
+    write(&receipts.join("locked.json"), b"{}");
+    fs::set_permissions(
+        receipts.join("locked.json"),
+        fs::Permissions::from_mode(0o000),
+    )
+    .unwrap();
+    // Root reads anything; only assert where the mode bites.
+    let bites = fs::read(receipts.join("locked.json")).is_err();
+
+    let live = boot::live_agent_pids_in(&receipts, INSTANCE, &|_| false, &|_, _| false);
+    fs::set_permissions(
+        receipts.join("locked.json"),
+        fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
+    if !bites {
+        return;
+    }
+    assert_eq!(live.unreadable, 1);
+    assert!(live.pids.is_empty());
+
+    let before = manifest(&env.home);
+    let input = MigrationInput {
+        unreadable_agent_records: live.unreadable,
+        ..env.input(true, &[])
+    };
+    assert_eq!(
+        run_migration(&input, &RealFs).outcome,
+        Outcome::DeferredRunningAgents
+    );
+    assert_eq!(manifest(&env.home), before);
 }

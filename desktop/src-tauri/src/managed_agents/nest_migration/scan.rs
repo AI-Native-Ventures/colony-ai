@@ -73,6 +73,11 @@ pub(super) fn find_broken_reference(
             if is_git_pointer && file_names_root(&path, old_root, canonical_root.as_deref()) {
                 return Some(format!("git-pointer:{}", relative(&path, old_root)));
             }
+            if is_git_pointer
+                && worktree_record_names_root(&path, old_root, canonical_root.as_deref())
+            {
+                return Some(format!("git-worktree-record:{}", relative(&path, old_root)));
+            }
         } else if file_type.is_dir() {
             if path.file_name().is_some_and(|name| name == ".git") {
                 if has_linked_worktrees(&path) {
@@ -142,7 +147,37 @@ fn symlink_problem(
     }
 }
 
+/// A linked worktree's `.git` file names its repository's record of it, and
+/// that record points back at the worktree's own path. When the worktree sits
+/// inside the old folder and the repository does not, the record goes stale.
+fn worktree_record_names_root(
+    pointer: &Path,
+    old_root: &Path,
+    canonical_root: Option<&Path>,
+) -> bool {
+    let Ok(bytes) = fs::read(pointer) else {
+        return false;
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    let Some(target) = text.trim().strip_prefix("gitdir:") else {
+        return false;
+    };
+    let target = Path::new(target.trim());
+    let record = if target.is_absolute() {
+        target.to_path_buf()
+    } else {
+        pointer
+            .parent()
+            .map(|dir| dir.join(target))
+            .unwrap_or_else(|| target.to_path_buf())
+    };
+    file_names_root(&record.join("gitdir"), old_root, canonical_root)
+}
+
 fn file_names_root(file: &Path, old_root: &Path, canonical_root: Option<&Path>) -> bool {
+    if fs::metadata(file).map_or(true, |meta| meta.len() > GIT_POINTER_MAX_BYTES) {
+        return false;
+    }
     let Ok(bytes) = fs::read(file) else {
         return false;
     };

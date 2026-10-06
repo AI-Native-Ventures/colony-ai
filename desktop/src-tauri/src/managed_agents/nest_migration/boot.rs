@@ -20,44 +20,66 @@ fn agent_receipts_dir(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join("agents").join("agent-pids")
 }
 
-/// Pids of Colony-managed agents that are alive and belong to `instance_id`.
+/// Agents found alive, and agent records that could not be read at all.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(super) struct LiveAgents {
+    /// Pids of Colony-managed agents alive and owned by this install.
+    pub(super) pids: Vec<u32>,
+    /// Records (or the folder holding them) that failed to read. Whether an
+    /// agent is alive is unknown for these, so they count like a live agent.
+    pub(super) unreadable: usize,
+}
+
+/// Find the Colony-managed agents that are alive and belong to `instance_id`.
 ///
 /// Reads the receipts the app writes for every agent it spawns (`*.json`) and
 /// the older pid files (`*.pid`). A pid only counts while the process is
 /// running and still carries this install's ownership marker, so a stale file
-/// whose pid was reused by something else never blocks the migration.
+/// whose pid was reused by something else never blocks the migration. A file
+/// that is readable but not a receipt is stale, not an agent. A file that
+/// cannot be read at all is reported, never skipped silently.
 pub(super) fn live_agent_pids_in(
     dir: &Path,
     instance_id: &str,
     is_running: &dyn Fn(u32) -> bool,
     has_marker: &dyn Fn(u32, &str) -> bool,
-) -> Vec<u32> {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return Vec::new();
+) -> LiveAgents {
+    let mut found = LiveAgents::default();
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return found,
+        Err(_) => {
+            found.unreadable = 1;
+            return found;
+        }
     };
-    let mut pids: Vec<u32> = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
-        let pid = match path.extension().and_then(|ext| ext.to_str()) {
-            Some("json") => fs::read(&path)
+        let kind = path.extension().and_then(|ext| ext.to_str());
+        if !matches!(kind, Some("json" | "pid")) {
+            continue;
+        }
+        let Ok(bytes) = fs::read(&path) else {
+            found.unreadable += 1;
+            continue;
+        };
+        let pid = if kind == Some("json") {
+            serde_json::from_slice::<ManagedAgentRuntimeReceipt>(&bytes)
                 .ok()
-                .and_then(|bytes| serde_json::from_slice::<ManagedAgentRuntimeReceipt>(&bytes).ok())
                 .filter(|receipt| receipt.desktop_instance_id == instance_id)
-                .map(|receipt| receipt.pid),
-            Some("pid") => fs::read_to_string(&path)
-                .ok()
-                .and_then(|text| text.trim().parse::<u32>().ok()),
-            _ => None,
+                .map(|receipt| receipt.pid)
+        } else {
+            String::from_utf8_lossy(&bytes).trim().parse::<u32>().ok()
         };
         if let Some(pid) = pid {
             if is_running(pid) && has_marker(pid, instance_id) {
-                pids.push(pid);
+                found.pids.push(pid);
             }
         }
     }
-    pids.sort_unstable();
-    pids.dedup();
-    pids
+    found.pids.sort_unstable();
+    found.pids.dedup();
+    found
 }
 
 /// Why this launch runs no migration, when it does not.
@@ -105,6 +127,12 @@ pub(crate) fn run_at_boot(app: &tauri::AppHandle, app_data_dir: &Path, is_dev: b
     let Some(from_name) = crate::build_identity::legacy_nest_name(is_dev) else {
         return;
     };
+    // Whether an agent is alive cannot be told on this platform yet, so the
+    // "never move under a running agent" rule could not be kept.
+    if cfg!(not(unix)) {
+        eprintln!("{LOG_PREFIX} skipped: not supported on this platform");
+        return;
+    }
     let Some(home) = dirs::home_dir() else {
         return;
     };
@@ -131,7 +159,8 @@ pub(crate) fn run_at_boot(app: &tauri::AppHandle, app_data_dir: &Path, is_dev: b
         from_name,
         to_name: &to_name,
         enabled,
-        live_agent_pids: &live_agents,
+        live_agent_pids: &live_agents.pids,
+        unreadable_agent_records: live_agents.unreadable,
     };
     let report = match std::env::var(ENV_CRASH_AT)
         .ok()

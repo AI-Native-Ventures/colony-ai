@@ -171,6 +171,29 @@ fn a_linked_worktree_pointer_holds_repos_back() {
 }
 
 #[test]
+fn a_linked_worktree_whose_repository_lives_outside_holds_repos_back() {
+    let env = Env::owner_shaped();
+    // The repository is outside the old folder, so the worktree's own pointer
+    // does not name it, but the repository's record of the worktree does.
+    let record = env.home.join("Development/main/.git/worktrees/wt");
+    write(
+        &record.join("gitdir"),
+        format!("{}/REPOS/wt/.git\n", env.old().display()).as_bytes(),
+    );
+    write(
+        &env.old().join("REPOS/wt/.git"),
+        format!("gitdir: {}\n", record.display()).as_bytes(),
+    );
+
+    let report = env.run();
+
+    skipped_repos_with(
+        &report,
+        "would-break-link:git-worktree-record:REPOS/wt/.git",
+    );
+}
+
+#[test]
 fn a_repository_with_linked_worktrees_holds_repos_back() {
     let env = Env::owner_shaped();
     write(
@@ -217,4 +240,21 @@ fn old_generated_skill_entries_stay_put_and_keep_resolving() {
     // The new folder gets its own skill links from the nest setup, not these.
     assert!(!env.new_dir().join(".agents").exists());
     assert!(!env.new_dir().join(".claude").exists());
+}
+
+#[test]
+fn a_link_into_an_entry_that_is_held_back_is_checked_against_what_really_moves() {
+    // GUIDES/x points at REPOS/proj, but REPOS is held back (it holds a link
+    // into the old folder), so GUIDES/x would dangle after the move.
+    let env = Env::owner_shaped();
+    symlink(
+        env.old().join("models"),
+        env.old().join("REPOS/proj/models-link"),
+    )
+    .unwrap();
+    symlink("../REPOS/proj", env.old().join("GUIDES/x")).unwrap();
+    let before = manifest(&env.home);
+
+    aborted_with(&env.run(), "would-break-link:relative-link:GUIDES/x");
+    assert_eq!(manifest(&env.home), before);
 }

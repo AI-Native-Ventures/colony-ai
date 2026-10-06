@@ -177,6 +177,11 @@ fn generated_skill_paths(folder: &Path) -> Vec<PathBuf> {
 /// True when `folder` still holds anything Colony owns: an allow-listed entry
 /// or a generated skill link. Used to verify a Reset.
 pub(crate) fn owned_entries_remain(folder: &Path) -> bool {
+    // A symlinked or missing root holds nothing Colony wrote: Reset leaves it
+    // alone, so verifying it must not look through it.
+    if !fs::symlink_metadata(folder).is_ok_and(|meta| meta.is_dir()) {
+        return false;
+    }
     holds_colony_data(folder)
         || generated_skill_paths(folder)
             .iter()
@@ -323,7 +328,7 @@ impl Fs for CrashAtFs {
 /// Parse the value of [`ENV_CRASH_AT`]: `<n>:<before|after>`, n at least 1.
 pub(crate) fn parse_crash_at(raw: &str) -> Option<(usize, bool)> {
     let (count, when) = raw.trim().split_once(':')?;
-    let count: usize = count.trim().parse().ok().filter(|n| *n >= 1)?;
+    let count = count.trim().parse::<usize>().ok().filter(|n| *n >= 1)?;
     match when.trim() {
         "before" => Some((count, true)),
         "after" => Some((count, false)),
@@ -347,6 +352,9 @@ pub(crate) struct MigrationInput<'a> {
     pub(crate) enabled: bool,
     /// Pids of Colony-managed agents that are alive right now.
     pub(crate) live_agent_pids: &'a [u32],
+    /// Agent records that could not be read at all, so whether an agent is
+    /// alive is unknown. Treated like a live agent: nothing moves forward.
+    pub(crate) unreadable_agent_records: usize,
 }
 
 /// How a run ended.
@@ -593,7 +601,12 @@ impl Run<'_> {
                 Outcome::NothingToMigrate
             });
         }
-        if !self.input.live_agent_pids.is_empty() {
+        if entry_exists(&self.staging) {
+            // Recovery above hands back what is ours; anything left in there
+            // (or a file in its place) is not something to publish as a nest.
+            return Report::of(Outcome::NotApplicable("staging-exists"));
+        }
+        if self.agents_alive() {
             return Report::of(Outcome::DeferredRunningAgents);
         }
         let steps = match self.plan() {
@@ -628,47 +641,75 @@ impl Run<'_> {
     /// `Err(reason)` means the whole migration must wait.
     fn plan(&self) -> Result<Vec<Step>, String> {
         let colony_has_nest = nest_folder::holds_nest_marker(&self.to);
-        let present: Vec<(&'static str, StepKind)> = plan_order()
-            .into_iter()
-            .filter(|(name, _)| entry_exists(&self.from.join(name)))
-            .collect();
-        let moving: Vec<String> = present
-            .iter()
-            .map(|(name, _)| (*name).to_string())
-            .collect();
-        let mut steps = Vec::new();
-        for (name, kind) in present {
+        // (name, kind, why it stays) in move order, for entries that exist.
+        let mut entries: Vec<(&'static str, StepKind, Option<String>)> = Vec::new();
+        for (name, kind) in plan_order() {
             let src = self.from.join(name);
+            if !entry_exists(&src) {
+                continue;
+            }
             if !can_place(&src, &self.to.join(name)) {
                 // The destination wins. If the new folder is not a nest yet,
                 // moving the rest would split data from what belongs with it.
                 if kind == StepKind::Atomic && !colony_has_nest {
                     return Err(format!("target-exists:{name}"));
                 }
-                steps.push(Step::skipped(name, kind, "target-exists"));
+                entries.push((name, kind, Some("target-exists".to_string())));
                 continue;
             }
-            let hold = if name == ".repos-dir" && self.repos_dir_points_inside(&src) {
-                Some("repos-dir-inside-old-folder".to_string())
-            } else {
+            if name == ".repos-dir" && self.repos_dir_points_inside(&src) {
+                return Err("repos-dir-inside-old-folder".to_string());
+            }
+            entries.push((name, kind, None));
+        }
+        // Look inside what will move. An entry held back no longer moves, so
+        // links into it from entries that do move are checked again.
+        loop {
+            let moving: Vec<String> = entries
+                .iter()
+                .filter(|(_, _, stays)| stays.is_none())
+                .map(|(name, _, _)| (*name).to_string())
+                .collect();
+            let mut changed = false;
+            for entry in entries.iter_mut() {
+                if entry.2.is_some() {
+                    continue;
+                }
+                let (name, kind) = (entry.0, entry.1);
                 let limits = if name == "REPOS" {
                     &scan::SHALLOW
                 } else {
                     &scan::FULL
                 };
-                scan::find_broken_reference(&src, &self.from, name, &moving, limits)
-                    .map(|found| format!("would-break-link:{found}"))
-            };
-            if let Some(reason) = hold {
+                let src = self.from.join(name);
+                let Some(found) =
+                    scan::find_broken_reference(&src, &self.from, name, &moving, limits)
+                else {
+                    continue;
+                };
+                let reason = format!("would-break-link:{found}");
                 if kind == StepKind::Atomic {
                     return Err(reason);
                 }
-                steps.push(Step::skipped(name, kind, &reason));
-                continue;
+                entry.2 = Some(reason);
+                changed = true;
             }
-            steps.push(Step::pending(name, kind));
+            if !changed {
+                break;
+            }
         }
-        Ok(steps)
+        Ok(entries
+            .into_iter()
+            .map(|(name, kind, stays)| match stays {
+                Some(why) => Step::skipped(name, kind, &why),
+                None => Step::pending(name, kind),
+            })
+            .collect())
+    }
+
+    /// A live agent, or an agent record too unreadable to rule one out.
+    fn agents_alive(&self) -> bool {
+        !self.input.live_agent_pids.is_empty() || self.input.unreadable_agent_records > 0
     }
 
     /// `.repos-dir` holds one absolute path. If it names a place inside the old
@@ -876,6 +917,8 @@ impl Run<'_> {
     fn rollback(&self, journal: &mut Journal, reason: &str) -> Report {
         journal.phase = Phase::RollingBack;
         journal.reason = Some(reason.to_string());
+        // A rollback is never a finished whole-folder publish.
+        journal.publish_whole = false;
         let _ = self.save(journal);
         let mut stuck: Vec<String> = Vec::new();
         for index in (0..journal.steps.len()).rev() {
@@ -887,11 +930,6 @@ impl Run<'_> {
             let home = self.from.join(&name);
             let staged = self.staging.join(&name);
             let placed = self.to.join(&name);
-            if entry_exists(&home) {
-                // Never left, or already back.
-                journal.steps[index].status = StepStatus::RolledBack;
-                continue;
-            }
             let ours_in_place = matches!(status, StepStatus::Publishing | StepStatus::Published);
             let current = if entry_exists(&staged) {
                 Some(staged)
@@ -901,11 +939,21 @@ impl Run<'_> {
                 None
             };
             match current {
+                // It never left, is already back, or has nothing left to return.
                 None => journal.steps[index].status = StepStatus::RolledBack,
-                Some(path) => match self.fs.rename(&path, &home) {
-                    Ok(()) => journal.steps[index].status = StepStatus::RolledBack,
-                    Err(error) => stuck.push(format!("{name}:{error}")),
-                },
+                Some(path) => {
+                    // Something may sit at home now (a placeholder an older
+                    // build created). Only an empty folder gives way; a file or
+                    // a folder with content is never overwritten.
+                    if !can_place(&path, &home) {
+                        stuck.push(format!("{name}:target-exists"));
+                    } else {
+                        match self.fs.rename(&path, &home) {
+                            Ok(()) => journal.steps[index].status = StepStatus::RolledBack,
+                            Err(error) => stuck.push(format!("{name}:{error}")),
+                        }
+                    }
+                }
             }
             let _ = self.save(journal);
         }
@@ -930,7 +978,20 @@ impl Run<'_> {
             mark_published(&mut journal);
             return self.complete(&mut journal);
         }
-        let agents_alive = !self.input.live_agent_pids.is_empty();
+        let drained = !entry_exists(&self.staging) || dir_is_empty(&self.staging);
+        if journal.phase == Phase::Publishing
+            && drained
+            && journal
+                .steps
+                .iter()
+                .all(|step| matches!(step.status, StepStatus::Published | StepStatus::Skipped))
+        {
+            // Every entry is in place; only the journal is behind. Succeeds
+            // only when empty.
+            let _ = fs::remove_dir(&self.staging);
+            return self.complete(&mut journal);
+        }
+        let agents_alive = self.agents_alive();
         if journal.phase == Phase::RollingBack || !self.input.enabled || agents_alive {
             let reason = journal.reason.clone().unwrap_or_else(|| {
                 if !self.input.enabled {
