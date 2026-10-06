@@ -38,13 +38,16 @@ pub(crate) use sweep::sweep_untracked_bundle_harnesses;
 
 mod process;
 #[cfg(test)]
+pub(crate) use process::classify_environ;
+#[cfg(test)]
 use process::{
     buzz_marker_entry, name_matches_interpreter, name_matches_known_binary,
     terminate_runtime_receipt_with, valid_agent_runtime_receipt_with,
 };
 pub(crate) use process::{
-    current_instance_id, process_belongs_to_us, process_has_buzz_marker, process_is_running,
-    terminate_process, terminate_untracked_pair_runtime, valid_agent_runtime_receipt,
+    current_instance_id, probe_buzz_marker, process_belongs_to_us, process_has_buzz_marker,
+    process_is_running, terminate_process, terminate_untracked_pair_runtime,
+    valid_agent_runtime_receipt, MarkerProbe,
 };
 
 mod orphan_sweep;

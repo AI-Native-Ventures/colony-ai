@@ -5,7 +5,7 @@ use super::{
     migration_enabled, parse_crash_at, run_migration, CrashAtFs, MigrationInput, RealFs,
     ENV_CRASH_AT, ENV_FLAG, LOG_PREFIX, STATE_DIR,
 };
-use crate::managed_agents::ManagedAgentRuntimeReceipt;
+use crate::managed_agents::{ManagedAgentRuntimeReceipt, MarkerProbe};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -30,19 +30,44 @@ pub(super) struct LiveAgents {
     pub(super) unreadable: usize,
 }
 
-/// Find the Colony-managed agents that are alive and belong to `instance_id`.
+/// Whether one pid named by an agent record must stop the move. Fails CLOSED:
+/// only a pid that is dead, or alive with an environment that was read in full
+/// and is clearly not this install's, may be ignored.
+///
+/// | alive (`kill(pid, 0)`) | environment probe                      | blocks the move |
+/// |------------------------|----------------------------------------|-----------------|
+/// | no (dead, or another user's pid) | any                          | no              |
+/// | yes                    | `Ours` (marker present)                | **yes**         |
+/// | yes                    | `Unknown` (empty: mid-`execve`/zombie; read error; unsupported platform) | **yes** |
+/// | yes                    | `Foreign` (read in full, no marker: pid reused) | no     |
+/// | yes                    | `Gone` (exited between the two checks) | no              |
+pub(super) fn agent_blocks_move(
+    pid: u32,
+    instance_id: &str,
+    is_running: &dyn Fn(u32) -> bool,
+    probe: &dyn Fn(u32, &str) -> MarkerProbe,
+) -> bool {
+    if !is_running(pid) {
+        return false;
+    }
+    match probe(pid, instance_id) {
+        MarkerProbe::Ours | MarkerProbe::Unknown => true,
+        MarkerProbe::Foreign | MarkerProbe::Gone => false,
+    }
+}
+
+/// Find the Colony-managed agents that must stop the move: those named by a
+/// record of `instance_id` for which [`agent_blocks_move`] says yes.
 ///
 /// Reads the receipts the app writes for every agent it spawns (`*.json`) and
-/// the older pid files (`*.pid`). A pid only counts while the process is
-/// running and still carries this install's ownership marker, so a stale file
-/// whose pid was reused by something else never blocks the migration. A file
-/// that is readable but not a receipt is stale, not an agent. A file that
-/// cannot be read at all is reported, never skipped silently.
+/// the older pid files (`*.pid`). A file that is readable but not a receipt is
+/// stale, not an agent. A file that cannot be read at all is reported, never
+/// skipped silently.
 pub(super) fn live_agent_pids_in(
     dir: &Path,
     instance_id: &str,
     is_running: &dyn Fn(u32) -> bool,
-    has_marker: &dyn Fn(u32, &str) -> bool,
+    probe: &dyn Fn(u32, &str) -> MarkerProbe,
 ) -> LiveAgents {
     let mut found = LiveAgents::default();
     let entries = match fs::read_dir(dir) {
@@ -72,7 +97,7 @@ pub(super) fn live_agent_pids_in(
             String::from_utf8_lossy(&bytes).trim().parse::<u32>().ok()
         };
         if let Some(pid) = pid {
-            if is_running(pid) && has_marker(pid, instance_id) {
+            if agent_blocks_move(pid, instance_id, is_running, probe) {
                 found.pids.push(pid);
             }
         }
@@ -151,8 +176,14 @@ pub(crate) fn run_at_boot(app: &tauri::AppHandle, app_data_dir: &Path, is_dev: b
         &agent_receipts_dir(app_data_dir),
         &crate::managed_agents::current_instance_id(app),
         &crate::managed_agents::process_is_running,
-        &crate::managed_agents::process_has_buzz_marker,
+        &crate::managed_agents::probe_buzz_marker,
     );
+    if !live_agents.pids.is_empty() || live_agents.unreadable > 0 {
+        eprintln!(
+            "{LOG_PREFIX} agents to wait for: pids={:?} unreadable_records={}",
+            live_agents.pids, live_agents.unreadable
+        );
+    }
     let input = MigrationInput {
         home: &home,
         journal_dir: &journal_dir,
