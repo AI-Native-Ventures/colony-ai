@@ -133,6 +133,7 @@ export function createChatGptService({
       const state = store.snapshot();
       let changed = false;
       for (const a of state.accounts) {
+        if (!epochs.has(a.id)) epochs.set(a.id, 0);
         if (a.refresh_inflight) {
           if (a.refresh_token)
             a.pending_revoke = {
@@ -161,6 +162,7 @@ export function createChatGptService({
       };
     await initialize();
     const state = await store.locked(() => store.snapshot());
+    for (const a of state.accounts) if (!epochs.has(a.id)) epochs.set(a.id, 0);
     return {
       ...publicChatGptState(state, Boolean(attempt)),
       serviceError: backgroundError,
@@ -518,6 +520,7 @@ export function createChatGptService({
   }
   async function disconnect(id) {
     await initialize();
+    if (!epochs.has(id)) throw new ChatGptError("unknown_account");
     bump(id);
     cancel();
     await store.locked(() => {

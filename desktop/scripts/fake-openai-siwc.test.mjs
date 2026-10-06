@@ -131,6 +131,30 @@ test("fake models and Responses exercise success, terminal failures and policy r
       .status,
     400,
   );
+  assert.equal(
+    (
+      await post({
+        ...base,
+        tools: [
+          {
+            type: "namespace",
+            name: "colony",
+            tools: [{ type: "image_generation" }],
+          },
+        ],
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await post({
+        ...base,
+        input: [{ type: "additional_tools", tools: [{ type: "mcp" }] }],
+      })
+    ).status,
+    400,
+  );
   const tool = await (
     await post({
       ...base,

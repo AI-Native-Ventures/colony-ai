@@ -276,9 +276,14 @@ export async function createFakeOpenAi({
         data.tools?.some(
           (tool) =>
             tools === "none" ||
+            tools === "additional" ||
             (tools === "namespace"
-              ? tool.type !== "namespace"
-              : tool.type !== "function"),
+              ? tool.type !== "namespace" ||
+                !Array.isArray(tool.tools) ||
+                tool.tools.some(
+                  (nested) => !["function", "custom"].includes(nested.type),
+                )
+              : !["function", "custom"].includes(tool.type)),
         )
       )
         return fail(
@@ -286,6 +291,23 @@ export async function createFakeOpenAi({
           "subscription_sharing_unsupported_capability",
           400,
           "tools",
+        );
+      if (
+        data.input.some(
+          (item) =>
+            item.type === "additional_tools" &&
+            (tools === "none" ||
+              !Array.isArray(item.tools) ||
+              item.tools.some(
+                (tool) => !["function", "custom"].includes(tool.type),
+              )),
+        )
+      )
+        return fail(
+          response,
+          "subscription_sharing_unsupported_capability",
+          400,
+          "input",
         );
       const input = JSON.stringify(data.input);
       if (input.includes("[[revoked]]")) {

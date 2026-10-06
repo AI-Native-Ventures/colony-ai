@@ -48,6 +48,7 @@ export function createChatGptStore(userData, { lockTimeoutMs = 15_000 } = {}) {
   const lockPath = path.join(root, "writer.lock");
   const lockOwner = `${process.pid}-${randomUUID()}.json`;
   let queue = Promise.resolve();
+  let queued = 0;
   function assertPrivate(stat, directory = false) {
     if (directory ? !stat.isDirectory() : !stat.isFile())
       throw new ChatGptError("unsafe_storage");
@@ -216,6 +217,8 @@ export function createChatGptStore(userData, { lockTimeoutMs = 15_000 } = {}) {
     }
   }
   function locked(operation) {
+    if (queued >= 64) return Promise.reject(new ChatGptError("storage_busy"));
+    queued++;
     const next = queue.then(async () => {
       await acquire();
       try {
@@ -226,6 +229,11 @@ export function createChatGptStore(userData, { lockTimeoutMs = 15_000 } = {}) {
       }
     });
     queue = next.catch(() => {});
+    void next
+      .finally(() => {
+        queued--;
+      })
+      .catch(() => {});
     return next;
   }
   function hostId() {

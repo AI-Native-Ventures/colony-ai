@@ -324,3 +324,43 @@ test("dead writer lock is reclaimed, live lock has a bounded wait", async (t) =>
     /storage_busy/,
   );
 });
+
+test("writer work queue is bounded before accepting more renderer operations", async (t) => {
+  const f = await fixture(t);
+  await f.service.status();
+  const hold = deferred();
+  const pending = Array.from({ length: 64 }, () =>
+    f.store.locked(() => hold.promise),
+  );
+  const overflow = f.store.locked(() => {});
+  const refused = await Promise.race([
+    overflow.then(
+      () => false,
+      (error) => error.code === "storage_busy",
+    ),
+    new Promise((resolve) => setTimeout(() => resolve(false), 50)),
+  ]);
+  hold.resolve();
+  await Promise.allSettled([...pending, overflow]);
+  assert.equal(refused, true);
+  await f.store.locked(() => {});
+});
+
+test("unknown disconnect cannot allocate retirement generations or writer work", async (t) => {
+  const f = await fixture(t);
+  const id = await f.connect();
+  const locked = f.store.locked;
+  let operations = 0;
+  f.store.locked = (work) => {
+    operations++;
+    return locked(work);
+  };
+  for (let i = 0; i < 100; i++)
+    await assert.rejects(
+      f.service.disconnect(i.toString(16).padStart(64, "0")),
+      /unknown_account/,
+    );
+  assert.equal(operations, 0);
+  await f.service.disconnect(id);
+  assert.equal((await f.read()).accounts[0].state, "disconnected");
+});
