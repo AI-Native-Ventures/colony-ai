@@ -237,12 +237,15 @@ test("falsifiable: an owned entry deleted, or its bytes altered, is reported", a
   assert.deepEqual(lost.diff.owned.lost, [".buzz/OUTBOX/DAY1_VIDEO_PACK.md"]);
   const altered = await scenario("owner", async (home) => {
     await migrate()(home);
-    await writeFile(path.join(home, ".colony/AGENTS.md"), "# replaced\n");
+    await writeFile(
+      path.join(home, ".colony/OUTBOX/DAY1_VIDEO_PACK.md"),
+      "# replaced\n",
+    );
   });
   assert.ok(
     altered.diff.owned.altered.some(
       (item) =>
-        item.path === ".colony/AGENTS.md" &&
+        item.path === ".colony/OUTBOX/DAY1_VIDEO_PACK.md" &&
         item.differences.some((d) => d.field === "sha256"),
     ),
   );
@@ -379,20 +382,21 @@ test("conflicts: entries the new folder already has are kept, an empty placehold
 
   const overwritten = await scenario("both-colony-has-nest", async (home) => {
     await migrate()(home);
-    await rm(path.join(home, ".colony/AGENTS.md"));
+    await rm(path.join(home, ".colony/.nest-agents-version"));
     await rename(
-      path.join(home, ".buzz/AGENTS.md"),
-      path.join(home, ".colony/AGENTS.md"),
+      path.join(home, ".buzz/.nest-agents-version"),
+      path.join(home, ".colony/.nest-agents-version"),
     );
   });
   assert.ok(
     overwritten.diff.newSideExisting.differences.some(
-      (item) => item.path === ".colony/AGENTS.md",
+      (item) => item.path === ".colony/.nest-agents-version",
     ),
   );
   assert.ok(
     overwritten.diff.owned.conflicts.some(
-      (item) => item.path === ".buzz/AGENTS.md" && !item.sourceIntact,
+      (item) =>
+        item.path === ".buzz/.nest-agents-version" && !item.sourceIntact,
     ),
   );
 });

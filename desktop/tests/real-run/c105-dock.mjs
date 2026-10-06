@@ -236,7 +236,7 @@ try {
       "DOCK-canvas-offered",
       "Canvas tab is offered in the dock",
       choices.some((c) => /Canvas/u.test(c)) ? "PASS" : "FAIL",
-      `Dock offers: ${choices.join(" | ")}. (workAreaTabRegistry.tsx marks canvas available: false)`,
+      `Dock offers: ${choices.join(" | ")}.`,
       {},
     );
   });
@@ -600,6 +600,99 @@ try {
       );
     },
   );
+
+  // Canvas tab (new in this build): open, edit, save, survive closing the dock and a reload.
+  await guard(
+    "DOCK-canvas",
+    "Canvas tab: open, edit, save, survive a reload",
+    async () => {
+      await channel("general").click({ timeout: 8000 });
+      await sleep(800);
+      await openDock();
+      const offered = await page
+        .getByTestId("work-area-open-canvas")
+        .isVisible()
+        .catch(() => false);
+      if (offered) await addTab("canvas");
+      else {
+        await page.getByTestId("work-area-add-tab").click({ timeout: 6000 });
+        await sleep(300);
+        await page.getByTestId("work-area-add-canvas").click({ timeout: 6000 });
+        await sleep(900);
+      }
+      await page.getByTestId("work-area-canvas").waitFor({ timeout: 10000 });
+      await sleep(1500);
+      const initial = redact(
+        (await page.getByTestId("work-area-canvas").innerText().catch(() => "")).replace(/\s+/gu, " "),
+      ).slice(0, 200);
+      await shot(page, rec, "d5-canvas-initial");
+      const editBtn = page.getByTestId("channel-canvas-edit");
+      const canEdit = await editBtn.isVisible().catch(() => false);
+      if (!canEdit) {
+        rec.row("DOCK-canvas", "Canvas tab: open, edit, save, survive a reload", "FAIL", `Canvas tab opened but no Edit control for the owner. Panel text: ${initial}`, { screenshot: await shot(page, rec, "d5-canvas-no-edit") });
+        return;
+      }
+      await editBtn.click();
+      const editor = page.getByTestId("channel-canvas-editor");
+      await editor.waitFor({ timeout: 6000 });
+      const stamp = `Gate canvas ${Date.now() % 100000}`;
+      await editor.fill(`# ${stamp}\n\n- first gate line\n- second gate line\n`);
+      // An edit in progress survives closing the dock.
+      await closeDock();
+      await openDock();
+      const draftKept = await page.getByTestId("channel-canvas-editor").inputValue().catch(() => "");
+      await shot(page, rec, "d6-canvas-editing");
+      await page.getByTestId("channel-canvas-save").click({ timeout: 6000 });
+      await page.getByTestId("channel-canvas-content").waitFor({ timeout: 15000 });
+      const savedText = redact((await page.getByTestId("channel-canvas-content").innerText().catch(() => "")).replace(/\s+/gu, " "));
+      await shot(page, rec, "d7-canvas-saved");
+      await page.reload();
+      await page.getByTestId("app-sidebar").waitFor({ timeout: 60000 });
+      await sleep(3000);
+      await channel("general").click({ timeout: 8000 });
+      await sleep(1200);
+      const reopened = await dockOpen();
+      if (!reopened) await openDock();
+      const tabsAfter = await tabIds();
+      if (!(await page.getByTestId("work-area-canvas").isVisible().catch(() => false)))
+        await page.getByTestId("work-area-tab-canvas").click({ timeout: 6000 }).catch(() => undefined);
+      await sleep(2500);
+      const afterReload = redact(
+        (await page.getByTestId("work-area-canvas").innerText().catch(() => "")).replace(/\s+/gu, " "),
+      );
+      await shot(page, rec, "d8-canvas-after-reload");
+      rec.row(
+        "DOCK-canvas",
+        "Canvas tab: open, edit, save, survive a reload",
+        afterReload.includes(stamp) && draftKept.includes(stamp) ? "PASS" : afterReload.includes(stamp) ? "FAIL" : "FAIL",
+        `Initial: "${initial}". Editor draft after closing and reopening the dock contained the stamp: ${draftKept.includes(stamp)}. After save the content read: "${savedText.slice(0, 160)}". Dock still open after reload: ${reopened}; tabs after reload: ${JSON.stringify(tabsAfter)}. After reload the Canvas tab read: "${afterReload.slice(0, 200)}". Stamp present after reload: ${afterReload.includes(stamp)}`,
+        { screenshot: await shot(page, rec, "d9-canvas-end") },
+      );
+    },
+  );
+
+  // Scout authors dock-check.md so the Files step has a real link to click (in-run, new profile).
+  await guard("DOCK-author", "Scout writes dock-check.md and replies with its path", async () => {
+    await closeDock();
+    await channel("welcome").click({ timeout: 8000 });
+    await page.getByTestId("message-timeline").waitFor({ timeout: 15000 });
+    const composer = page.getByTestId("message-composer").locator('[contenteditable="true"]').first();
+    await composer.click();
+    await composer.fill("@");
+    const menu = page.getByTestId("mention-autocomplete");
+    await menu.waitFor({ timeout: 15000 });
+    await menu.locator("[data-mention-suggestion-index]").filter({ hasText: /Scout/u }).first().click();
+    await composer.press("End");
+    await composer.pressSequentially(" please create a file named dock-check.md in your working folder with one heading and two bullets, then reply in the thread with its full path.");
+    await composer.press("Enter");
+    const t0 = Date.now();
+    let seen = false;
+    while (Date.now() - t0 < 170000 && !seen) {
+      await sleep(3000);
+      seen = (await page.getByText(/dock-check\.md/u).count()) > 1;
+    }
+    rec.row("DOCK-author", "Scout writes dock-check.md and replies with its path", seen ? "PASS" : "NOT OBSERVED", `dock-check.md mentioned after ${Date.now() - t0} ms: ${seen}`, { screenshot: await shot(page, rec, "d10-authored") });
+  });
 
   // Files tab: a file link from chat. Scout already authored dock-check.md and replied in a thread under the
   // request (earlier runs); open that thread and click the path in Scout's reply.

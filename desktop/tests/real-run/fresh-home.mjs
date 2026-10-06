@@ -19,6 +19,7 @@ import {
 import { realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { assertHomeMigrationGuard } from "./safety.mjs";
 
 /** Entries under the REAL home that the app tree must never reach. */
 export const REAL_HOME_FORBIDDEN = [
@@ -57,14 +58,21 @@ export function freshHomeEnvironment(
     throw new Error("freshHomeEnvironment needs an absolute throwaway HOME");
   const env = {};
   for (const key of FORWARDED) if (source[key]) env[key] = source[key];
-  return {
+  // The migration flag is always explicit (final 1.0.5 gate): "0" unless the operator sets it.
+  const launchEnv = {
     ...env,
     HOME: home,
     BUZZ_RELAY_URL: relayUrl,
     COLONY_ELECTRON_USER_DATA: userDataDir,
     COLONY_ELECTRON_BACKGROUND: "1",
+    COLONY_NEST_MIGRATION: source.COLONY_NEST_MIGRATION ?? "0",
     ...(claudeConfigDir ? { CLAUDE_CONFIG_DIR: claudeConfigDir } : {}),
   };
+  assertHomeMigrationGuard(launchEnv);
+  console.log(
+    `LAUNCH GUARD HOME=${launchEnv.HOME} COLONY_NEST_MIGRATION=${launchEnv.COLONY_NEST_MIGRATION}`,
+  );
+  return launchEnv;
 }
 
 const quote = (value) => JSON.stringify(value);

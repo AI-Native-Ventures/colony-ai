@@ -7,6 +7,7 @@
 //     with Retry (network cut), owner role caption
 //  4. ask Scout again while watching for legacy names (reproduces the brand-scan hit of the first run)
 import { writeFile } from "node:fs/promises";
+import { startToggleProxy } from "./netfail.mjs";
 import path from "node:path";
 import {
   OUT,
@@ -30,11 +31,14 @@ const rec = new Rec("A2");
 const state = await loadState();
 if (!state.A?.userDataDir) throw new Error("no profile A in state");
 const only = process.env.ONLY ?? "all";
+// NETFAIL=proxy: launch against a local toggleable proxy so the avatar upload can be made to fail for real.
+const proxy = process.env.NETFAIL === "proxy" ? await startToggleProxy() : null;
 const load = await waitForLoad();
 await progress(`[A2] load ${load.toFixed(1)} ok, relaunching profile A`);
 const { application, page, version } = await launch({
   privateDir: state.A.privateDir,
   userDataDir: state.A.userDataDir,
+  extraEnv: proxy ? proxy.env : {},
 });
 rec.notes.version = version;
 instrument(page, rec, "A");
@@ -46,6 +50,7 @@ application
     lifecycle.push({ sinceLaunchMs: Date.now() - launchedAt, code, signal }),
   );
 const guard = async (id, label, fn) => {
+  if (only === "retry" && !["A5-retry"].includes(id)) return undefined;
   try {
     return await fn();
   } catch (error) {
@@ -144,6 +149,7 @@ const sidebarAvatar = () =>
       src: img?.currentSrc?.slice(0, 40) ?? null,
     };
   });
+const cleanUrlLite = (u) => redact(String(u).replace(/\?.*$/u, "").slice(0, 90));
 const png = path.join(state.A.privateDir, "avatar-256.png");
 await writeFile(png, makePng(256));
 const bad = path.join(state.A.privateDir, "not-an-image.txt");
@@ -283,7 +289,7 @@ try {
   });
 
   // ---- avatar ----
-  if (only === "all" || only === "avatar") {
+  if (only === "all" || only === "avatar" || only === "retry") {
     await guard(
       "A5-entry-settings",
       "Settings Profile shows Change photo",
@@ -467,19 +473,37 @@ try {
       );
     });
     await guard("A5-retry", "Failed upload offers Retry", async () => {
-      // Valid image, network cut during save: stage "failed" with a Try again control.
-      await page.getByTestId("avatar-file-input").setInputFiles(png);
-      await sleep(1500);
+      // Real failure at the network layer: the renderer's upload request to the app's local media proxy is aborted
+      // (page.route -> route.abort). Playwright's setOffline and an HTTPS proxy env never reached the host upload
+      // in the earlier runs (zero blocked requests), so those rows stayed NOT OBSERVED.
+      if (only === "retry") {
+        await openAvatarDialogFrom("sidebar");
+        await chooseFile(png);
+      } else {
+        await page.getByTestId("avatar-file-input").setInputFiles(png);
+        await sleep(1500);
+      }
       await page.getByTestId("avatar-save").waitFor({ timeout: 6000 });
-      await application.context().setOffline(true);
+      let blockMedia = true;
+      const aborted = [];
+      const routeFn = (route) => {
+        const req = route.request();
+        if (blockMedia && req.method() !== "GET") {
+          aborted.push(`${req.method()} ${cleanUrlLite(req.url())}`);
+          return route.abort("failed");
+        }
+        return route.continue();
+      };
+      await page.route(/127\.0\.0\.1:\d+\/media|\/upload|blossom/iu, routeFn);
       await page.getByTestId("avatar-save").click();
-      await sleep(6000);
+      await sleep(8000);
       const text = await dialogText();
       const retry = page.getByTestId("avatar-retry");
       const retryVisible = await retry.isVisible().catch(() => false);
       const retryLabel = retryVisible ? (await retry.innerText()).trim() : "";
       await shot(page, rec, "a5-10-failed-upload");
-      await application.context().setOffline(false);
+      rec.notes.netfail = { mode: "page.route abort of non-GET media/upload requests", aborted: aborted.slice(0, 6), abortedCount: aborted.length };
+      blockMedia = false;
       let recovered = false;
       if (retryVisible) {
         await sleep(1500);
@@ -492,6 +516,7 @@ try {
           })
           .catch(() => undefined);
       }
+      await page.unroute(/127\.0\.0\.1:\d+\/media|\/upload|blossom/iu, routeFn).catch(() => undefined);
       rec.row(
         "A5-retry",
         "Failed upload shows an inline error with Retry, and Retry works once online",
@@ -500,7 +525,7 @@ try {
           : retryVisible
             ? "FAIL"
             : "NOT OBSERVED",
-        `Retry control visible: ${retryVisible} ("${retryLabel}"). Dialog text while failed: ${text}. Retry succeeded after going back online: ${recovered}.`,
+        `Failure injected by aborting ${rec.notes.netfail.abortedCount} upload request(s) at the network layer (${rec.notes.netfail.aborted.join("; ")}). Retry control visible: ${retryVisible} ("${retryLabel}"). Dialog text while failed: ${text}. Retry succeeded after going back online: ${recovered}.`,
         { screenshot: await shot(page, rec, "a5-11-after-retry") },
       );
       if (!recovered)
@@ -579,6 +604,7 @@ try {
   rec.notes.endedAt = new Date().toISOString();
   await rec.write();
   await closeApp(application);
+  if (proxy) await proxy.close();
   await progress(`[A2] done, ${rec.rows.length} rows`);
   void OUT;
   void legacyRe;

@@ -24,6 +24,7 @@ import { createInterface } from "node:readline";
 import { promisify } from "node:util";
 import { NEW_NEST, OLD_NEST } from "./contract.mjs";
 import { assertThrowawayRoot } from "./fixture.mjs";
+import { assertHomeMigrationGuard } from "../safety.mjs";
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -191,16 +192,22 @@ export async function launchPackaged({
     { mode: 0o700 },
   );
   const lines = [];
+  const launchEnv = buildLaunchEnv({
+    home,
+    userDataDir,
+    relayUrl,
+    hostLog,
+    extra: extraEnv,
+  });
+  // Final 1.0.5 gate guard: never start with the real HOME unless the migration flag is exactly 0.
+  assertHomeMigrationGuard(launchEnv);
+  console.log(
+    `LAUNCH GUARD HOME=${launchEnv.HOME} COLONY_NEST_MIGRATION=${launchEnv.COLONY_NEST_MIGRATION ?? "(build default)"}`,
+  );
   const application = await electron.launch({
     executablePath: launcher,
     args: ["--no-sandbox", `--user-data-dir=${userDataDir}`],
-    env: buildLaunchEnv({
-      home,
-      userDataDir,
-      relayUrl,
-      hostLog,
-      extra: extraEnv,
-    }),
+    env: launchEnv,
     timeout: 60000,
   });
   const child = application.process();
