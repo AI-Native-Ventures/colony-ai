@@ -9,6 +9,7 @@ import {
   formatToolTitle,
   getBuzzToolInfo,
   normalizeToolNameText,
+  plainifyToolIds,
 } from "./agentSessionToolCatalog";
 import {
   asRecord,
@@ -615,7 +616,7 @@ function genericPreview(input: ToolClassificationInput): string | null {
       "name",
       "content",
       "message",
-    ]) ?? (input.title ? input.title : null)
+    ]) ?? (input.title ? plainifyToolIds(input.title) : null)
   );
 }
 

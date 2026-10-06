@@ -214,7 +214,7 @@ test("buildTranscript keeps read_file activity categorized by the actual tool wh
   assert.equal(item.toolName, "read_file");
   assert.equal(item.buzzToolName, null);
   assert.equal(item.title, "read_file");
-  assert.equal(activityTitle(item), "read_file");
+  assert.equal(activityTitle(item), "Read a file");
   assert.equal(item.status, "completed");
   assert.match(item.result, /get_feed/);
   assert.match(item.result, /delete_message/);
@@ -249,7 +249,7 @@ test("buildTranscript keeps shell activity categorized by the actual tool when g
 
   assert.equal(item.toolName, "shell");
   assert.equal(item.buzzToolName, null);
-  assert.equal(activityTitle(item), "shell");
+  assert.equal(activityTitle(item), "Run a command");
   assert.equal(item.status, "completed");
   assert.match(item.result, /get_event/);
   assert.match(item.result, /delete_message/);
