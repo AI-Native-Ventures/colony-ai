@@ -88,7 +88,7 @@ fn a_real_running_agent_is_found_by_its_receipt_and_blocks_the_move() {
     let receipts = env.data.join("agents").join("agent-pids");
     // An agent the way the app starts one: working folder is the nest, marked
     // with the install's ownership variable.
-    let mut child = Command::new("sleep")
+    let mut child = Command::new("/bin/sleep")
         .arg("30")
         .env("BUZZ_MANAGED_AGENT", INSTANCE)
         .current_dir(env.old())

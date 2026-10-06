@@ -125,7 +125,7 @@ pub(super) fn write_mode(path: &Path, bytes: &[u8], mode: u32) {
 pub(super) fn seed_wal_archive(dir: &Path) {
     let live = TempDir::new().unwrap();
     let live_db = live.path().join("archive.db");
-    let conn = rusqlite::Connection::open(&live_db).unwrap();
+    let conn = rusqlite::Connection::open(live_db).unwrap();
     let _mode: String = conn
         .query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))
         .unwrap();
