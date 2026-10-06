@@ -207,6 +207,11 @@ export function evaluateCase(result, baseContract = defaultContract()) {
       "Every owned entry moved; only AGENTS.md and its version stamp may be refreshed by the host";
     const notesLabel =
       "Notes the owner wrote below the managed markers survive the move and the refresh";
+    const markersLabel =
+      "After the refresh AGENTS.md holds one managed section with the Colony markers and no old marker";
+    const endMarker = "<!-- END COLONY MANAGED -->";
+    const beginMarker = "<!-- BEGIN COLONY MANAGED";
+    const count = (text, needle) => text.split(needle).length - 1;
     rows.push(
       problems.length
         ? fail("MOVED-ALL-EXCEPT-REFRESHED", movedLabel, first(problems))
@@ -222,7 +227,8 @@ export function evaluateCase(result, baseContract = defaultContract()) {
             "AGENTS.md or the note text was not captured.",
           )
         : agents.includes(note) &&
-            agents.indexOf(note) > agents.indexOf("<!-- END BUZZ MANAGED")
+            agents.indexOf(endMarker) >= 0 &&
+            agents.indexOf(note) > agents.indexOf(endMarker)
           ? pass(
               "USER-NOTES-KEPT",
               notesLabel,
@@ -232,6 +238,25 @@ export function evaluateCase(result, baseContract = defaultContract()) {
               "USER-NOTES-KEPT",
               notesLabel,
               "The owner's note is missing or moved above the end marker.",
+            ),
+      agents === undefined
+        ? unseen(
+            "COLONY-MARKERS-ONLY",
+            markersLabel,
+            "AGENTS.md was not captured.",
+          )
+        : count(agents, beginMarker) === 1 &&
+            count(agents, endMarker) === 1 &&
+            !/<!-- (BEGIN|END) BUZZ MANAGED/.test(agents)
+          ? pass(
+              "COLONY-MARKERS-ONLY",
+              markersLabel,
+              "One Colony section, no old marker left behind.",
+            )
+          : fail(
+              "COLONY-MARKERS-ONLY",
+              markersLabel,
+              `Colony begin markers ${count(agents, beginMarker)}, end markers ${count(agents, endMarker)}, old marker present ${/<!-- (BEGIN|END) BUZZ MANAGED/.test(agents)}.`,
             ),
       archiveChecks(before, after, contract),
       stagingChecks(diff, contract),

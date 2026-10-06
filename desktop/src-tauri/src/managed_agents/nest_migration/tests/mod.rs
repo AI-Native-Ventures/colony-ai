@@ -16,6 +16,7 @@ mod basics;
 mod crash;
 mod faults;
 mod links;
+mod markers;
 mod wipe;
 
 pub(super) const OLD: &str = ".buzz";

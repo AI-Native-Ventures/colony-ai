@@ -474,12 +474,19 @@ test("the stale-version case allows only AGENTS.md and its stamp to change, and 
       // The host refreshes the managed region and stamp after the move, keeping what follows the end marker.
       const file = path.join(home, ".colony/AGENTS.md");
       const text = await readFile(file, "utf8");
+      // It also rewrites the markers of the section: the old name does not survive the refresh.
       await writeFile(
         file,
-        text.replace(
-          "Agents read this file at the start of every session.",
-          "Refreshed text.",
-        ),
+        text
+          .replace(
+            "Agents read this file at the start of every session.",
+            "Refreshed text.",
+          )
+          .replace(
+            /<!-- BEGIN BUZZ MANAGED[^\n]*-->/,
+            "<!-- BEGIN COLONY MANAGED - regenerated automatically, do not edit below -->",
+          )
+          .replace("<!-- END BUZZ MANAGED -->", "<!-- END COLONY MANAGED -->"),
       );
       await writeFile(path.join(home, ".colony/.nest-agents-version"), "7\n");
       return out;
@@ -489,7 +496,16 @@ test("the stale-version case allows only AGENTS.md and its stamp to change, and 
   const byId = statuses(evaluateCase(result, contract).rows);
   assert.equal(byId["MOVED-ALL-EXCEPT-REFRESHED"], PASS);
   assert.equal(byId["USER-NOTES-KEPT"], PASS);
+  assert.equal(byId["COLONY-MARKERS-ONLY"], PASS);
   assert.equal(byId["FOREIGN-IDENTICAL"], PASS);
+  // A refresh that leaves the old markers in place must fail the marker row, and the notes row with it.
+  const kept = result.after.files[".colony/AGENTS.md"];
+  result.after.files[".colony/AGENTS.md"] = kept
+    .replace("<!-- BEGIN COLONY MANAGED", "<!-- BEGIN BUZZ MANAGED")
+    .replace("<!-- END COLONY MANAGED -->", "<!-- END BUZZ MANAGED -->");
+  const legacy = statuses(evaluateCase(result, contract).rows);
+  assert.equal(legacy["COLONY-MARKERS-ONLY"], FAIL);
+  assert.equal(legacy["USER-NOTES-KEPT"], FAIL);
   result.after.files[".colony/AGENTS.md"] = "# replaced entirely\n";
   assert.equal(
     statuses(evaluateCase(result, contract).rows)["USER-NOTES-KEPT"],

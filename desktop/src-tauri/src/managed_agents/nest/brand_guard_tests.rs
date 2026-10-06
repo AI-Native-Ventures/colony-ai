@@ -13,28 +13,17 @@ mod brand_guard;
 use super::*;
 use crate::managed_agents::nest_folder::{resolve_nest_dir, NestFolderReason};
 use crate::managed_agents::personas::{built_in_persona_definition, POLLEN_PERSONA_ID};
-use brand_guard::{Allow, Match, Surface};
+use brand_guard::{Allow, Surface};
 
-/// The only places the old name may still appear in the working folder.
+/// Nothing in the working folder may say the old name, so nothing is allowed.
 ///
-/// The skill no longer names environment variables, so no `BUZZ_*` entry is allowed here.
-const ALLOW: &[Allow] = &[
-    Allow {
-        text: "<!-- BEGIN BUZZ MANAGED",
-        kind: Match::Literal,
-        reason: "Opening marker of the managed AGENTS.md section. Every existing install carries \
-                 it and the refresh code finds the section by it, so renaming it without a \
-                 migration would duplicate the section. Removal: the nest migration PR, with \
-                 dual-marker matching.",
-    },
-    Allow {
-        text: "<!-- END BUZZ MANAGED -->",
-        kind: Match::Literal,
-        reason: "Closing marker of the managed AGENTS.md section, paired with the opening marker \
-                 and kept for the same reason. Removal: the nest migration PR, with dual-marker \
-                 matching.",
-    },
-];
+/// The managed-section markers of AGENTS.md used to be the one exception. They
+/// now read Colony, and the legacy markers that older files still carry live
+/// only in `nest.rs` as match patterns for finding and replacing them: they are
+/// never written, so no surface here contains them. Keep this empty. An entry
+/// would need a written reason and would fail the stale check the moment no
+/// surface used it.
+const ALLOW: &[Allow] = &[];
 
 /// Record every entry under `dir`: file contents as surfaces, names in `tree`.
 ///
@@ -130,6 +119,28 @@ fn surfaces() -> Vec<Surface> {
 #[test]
 fn working_folder_text_never_says_buzz() {
     brand_guard::assert_clean(&surfaces(), ALLOW);
+}
+
+/// The AGENTS.md a fresh nest ends up with, as an agent reads it, must not say
+/// the old name in any case, markers included. This does not consult the
+/// allow-list, so adding an entry later cannot let a marker back in.
+#[test]
+fn a_fresh_nests_agents_md_never_says_buzz_in_any_case() {
+    let all = surfaces();
+    let agents = all
+        .iter()
+        .find(|s| s.name == "nest file AGENTS.md")
+        .expect("AGENTS.md surface");
+    let offending: Vec<&str> = agents
+        .text
+        .lines()
+        .filter(|line| line.to_ascii_lowercase().contains("buzz"))
+        .collect();
+    assert!(
+        offending.is_empty(),
+        "AGENTS.md says the old name:\n{}",
+        offending.join("\n")
+    );
 }
 
 #[test]
