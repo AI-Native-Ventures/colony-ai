@@ -16,6 +16,7 @@ mod basics;
 mod crash;
 mod faults;
 mod links;
+mod pointer;
 mod wipe;
 
 pub(super) const OLD: &str = ".buzz";
@@ -389,6 +390,19 @@ pub(super) type RenameRule = Box<dyn Fn(&Path, &Path) -> Option<io::Error>>;
 pub(super) struct FailFs {
     pub(super) rename_error: RenameRule,
     pub(super) create_dir_error: bool,
+    pub(super) write_fault: WriteFault,
+}
+
+/// What writing a generated file does.
+#[derive(Clone, Copy)]
+pub(super) enum WriteFault {
+    /// The real write.
+    None,
+    /// The write fails (disk full).
+    Fail,
+    /// The write reports success and writes nothing: the pointer is "written"
+    /// but never lands, which the read-back must catch.
+    Swallow,
 }
 
 impl FailFs {
@@ -396,6 +410,7 @@ impl FailFs {
         Self {
             rename_error: Box::new(rule),
             create_dir_error: false,
+            write_fault: WriteFault::None,
         }
     }
 }
@@ -413,6 +428,18 @@ impl Fs for FailFs {
             return Err(error);
         }
         RealFs.rename(from, to)
+    }
+
+    fn write_file(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
+        match self.write_fault {
+            WriteFault::None => RealFs.write_file(path, bytes),
+            WriteFault::Fail => Err(io::Error::from_raw_os_error(28)),
+            WriteFault::Swallow => Ok(()),
+        }
+    }
+
+    fn remove_file(&self, path: &Path) -> io::Result<()> {
+        RealFs.remove_file(path)
     }
 }
 
@@ -479,5 +506,27 @@ impl Fs for JournalFirstFs<'_> {
             );
         }
         RealFs.rename(from, to)
+    }
+
+    fn write_file(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
+        let journal = match journal::load(self.state) {
+            Loaded::Valid(journal) => *journal,
+            _ => panic!("write {path:?} happened without a journal"),
+        };
+        let step = journal
+            .steps
+            .iter()
+            .find(|step| step.generated)
+            .unwrap_or_else(|| panic!("{path:?} written but no generated step is journaled"));
+        assert_eq!(
+            step.status,
+            StepStatus::Moving,
+            "the pointer was written before its intent was journaled"
+        );
+        RealFs.write_file(path, bytes)
+    }
+
+    fn remove_file(&self, path: &Path) -> io::Result<()> {
+        RealFs.remove_file(path)
     }
 }

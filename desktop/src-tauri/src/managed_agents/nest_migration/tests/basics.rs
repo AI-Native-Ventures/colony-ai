@@ -265,6 +265,8 @@ fn notices_never_name_the_old_folder_and_use_no_em_dash() {
     for message in [
         MSG_MIGRATED,
         MSG_MIGRATED_WITH_SKIPS,
+        MSG_MIGRATED_REPOS_IN_PLACE,
+        MSG_MIGRATED_REPOS_IN_PLACE_WITH_SKIPS,
         MSG_LEFT_IN_PLACE,
         MSG_ABORTED,
         MSG_FAILED,

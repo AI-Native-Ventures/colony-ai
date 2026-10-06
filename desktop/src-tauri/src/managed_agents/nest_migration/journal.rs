@@ -81,6 +81,15 @@ pub(super) struct Step {
     pub(super) status: StepStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) detail: Option<String>,
+    /// A file this run writes itself (the repositories pointer) rather than an
+    /// entry it moves. It has no source in the old folder, so a rollback
+    /// removes it instead of handing it back.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub(super) generated: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 impl Step {
@@ -90,6 +99,7 @@ impl Step {
             kind,
             status: StepStatus::Pending,
             detail: None,
+            generated: false,
         }
     }
 
@@ -99,6 +109,18 @@ impl Step {
             kind,
             status: StepStatus::Skipped,
             detail: Some(why.to_string()),
+            generated: false,
+        }
+    }
+
+    /// The pointer file that keeps a held-back `REPOS` in use.
+    pub(super) fn generated_pointer(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            kind: StepKind::Atomic,
+            status: StepStatus::Pending,
+            detail: Some("generated-pointer".to_string()),
+            generated: true,
         }
     }
 
@@ -123,6 +145,11 @@ pub(super) struct Journal {
     /// A run that finds this set, staging gone and the new folder present knows
     /// the commit happened even if its last journal write was lost.
     pub(super) publish_whole: bool,
+    /// Absolute folder the generated `.repos-dir` pointer names, when this run
+    /// left `REPOS` behind and pointed the new folder at it. Later launches read
+    /// it to tell this pointer from one the person chose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) repos_pointer: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) reason: Option<String>,
     pub(super) started_at: String,
@@ -140,6 +167,7 @@ impl Journal {
             to: to.to_string(),
             staging: staging.to_string(),
             publish_whole: false,
+            repos_pointer: None,
             reason: None,
             started_at: chrono::Utc::now().to_rfc3339(),
             finished_at: None,
