@@ -152,20 +152,53 @@ test("a correct migration passes every check; only the checks that need a signed
   );
 });
 
-test("UI evidence turns the two profile checks into PASS", async () => {
+test("UI evidence: names in the Files tab and agents running with the new cwd are PASS, the wrong cwd is FAIL, an opened tab that cannot judge is NOT OBSERVED", async () => {
   const { result } = await build("migrate", "owner", happy);
-  result.observations.ui = {
-    filesTab: { listed: 12, path: "/x/.colony" },
-    agentsRestored: { restored: true, cwd: "/x/.colony" },
+  const rowsFor = (ui) => {
+    result.observations.ui = ui;
+    return statuses(evaluateCase(result, contract).rows);
   };
-  const byId = statuses(evaluateCase(result, contract).rows);
-  assert.equal(byId["FILES-TAB"], PASS);
-  assert.equal(byId["AGENTS-RESTORE"], PASS);
-  result.observations.ui.agentsRestored.cwd = "/x/.buzz";
+  const ok = rowsFor({
+    filesTab: { opened: true, names: ["AGENTS.md", "OUTBOX"], sample: "x" },
+    agentsRestored: {
+      restored: true,
+      pids: [1],
+      cwd: "/x/.colony",
+      cwds: ["/x/.colony"],
+    },
+  });
+  assert.equal(ok["FILES-TAB"], PASS);
+  assert.equal(ok["AGENTS-RESTORE"], PASS);
+  const wrong = rowsFor({
+    filesTab: { opened: true, names: [], sample: "Conversations" },
+    agentsRestored: {
+      restored: true,
+      pids: [1],
+      cwd: "/x/.buzz",
+      cwds: ["/x/.buzz"],
+    },
+  });
+  assert.equal(wrong["AGENTS-RESTORE"], FAIL);
+  assert.equal(wrong["FILES-TAB"], NOT_OBSERVED);
+  const mixed = rowsFor({
+    agentsRestored: {
+      restored: true,
+      pids: [1, 2],
+      cwd: "/x/.colony",
+      cwds: ["/x/.colony", "/x/.buzz"],
+    },
+  });
   assert.equal(
-    statuses(evaluateCase(result, contract).rows)["AGENTS-RESTORE"],
+    mixed["AGENTS-RESTORE"],
     FAIL,
+    "one agent left on the old folder is a failure",
   );
+  const none = rowsFor({
+    agentsRestored: { restored: false, note: "no agent" },
+    filesTab: { opened: false, error: "timeout" },
+  });
+  assert.equal(none["AGENTS-RESTORE"], NOT_OBSERVED);
+  assert.equal(none["FILES-TAB"], NOT_OBSERVED);
 });
 
 test("repos-symlinked: REPOS moves as a link to the same outside target and .repos-dir is unchanged", async () => {

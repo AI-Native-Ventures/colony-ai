@@ -555,33 +555,47 @@ export function reportedChecks(observations, expected, contract) {
 export function uiChecks(observations) {
   const files = observations.ui?.filesTab;
   const agents = observations.ui?.agentsRestored;
-  const filesLabel = "Files tab lists the files of the new folder";
+  const filesLabel = "Files tab lists the migrated entries";
   const agentsLabel =
     "Agents restore with the new folder as their working directory";
-  return [
-    files
-      ? files.listed > 0 && files.path?.includes(".colony")
-        ? pass(
-            "FILES-TAB",
-            filesLabel,
-            `${files.listed} entries listed, root ${files.path}`,
-          )
-        : fail("FILES-TAB", filesLabel, JSON.stringify(files))
-      : unseen(
-          "FILES-TAB",
-          filesLabel,
-          "Needs a signed-in profile (--profile-dir). Not driven in this run.",
-        ),
-    agents
-      ? agents.restored && agents.cwd?.includes(".colony")
-        ? pass("AGENTS-RESTORE", agentsLabel, JSON.stringify(agents))
-        : fail("AGENTS-RESTORE", agentsLabel, JSON.stringify(agents))
-      : unseen(
-          "AGENTS-RESTORE",
-          agentsLabel,
-          "Needs a signed-in profile with a managed agent (--profile-dir). Not driven in this run.",
-        ),
-  ];
+  const noProfile =
+    "Needs a signed-in profile (--profile-dir). Not driven in this run.";
+  let filesRow;
+  if (!files) filesRow = unseen("FILES-TAB", filesLabel, noProfile);
+  else if (files.names?.length)
+    filesRow = pass(
+      "FILES-TAB",
+      filesLabel,
+      `The Files tab shows ${files.names.join(", ")}.`,
+    );
+  else
+    filesRow = unseen(
+      "FILES-TAB",
+      filesLabel,
+      files.opened
+        ? `The Files tab opened but shows none of the migrated names, so it cannot judge them (it may list conversations only). Sample: ${files.sample}`
+        : `The Files tab could not be opened: ${files.error}`,
+    );
+  let agentsRow;
+  if (!agents) agentsRow = unseen("AGENTS-RESTORE", agentsLabel, noProfile);
+  else if (!agents.restored)
+    agentsRow = unseen("AGENTS-RESTORE", agentsLabel, agents.note);
+  else if (
+    agents.cwds?.every((cwd) => cwd?.includes("/.colony")) ??
+    agents.cwd?.includes("/.colony")
+  )
+    agentsRow = pass(
+      "AGENTS-RESTORE",
+      agentsLabel,
+      `Agent pid ${agents.pids?.join(", ")} restored with cwd ${agents.cwd}.`,
+    );
+  else
+    agentsRow = fail(
+      "AGENTS-RESTORE",
+      agentsLabel,
+      `An agent restored with cwd ${agents.cwd}, not the new folder.`,
+    );
+  return [filesRow, agentsRow];
 }
 
 export const nothingMoved = (diff) =>

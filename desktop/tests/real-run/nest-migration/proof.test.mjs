@@ -7,7 +7,12 @@ import test, { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { FAIL, NOT_OBSERVED, PASS, verdictOf } from "./checks.mjs";
-import { buildLaunchEnv, sandboxPolicy } from "./launch.mjs";
+import {
+  buildLaunchEnv,
+  findManagedAgents,
+  parseLsofCwd,
+  sandboxPolicy,
+} from "./launch.mjs";
 import {
   CASES,
   DEFAULT_CASES,
@@ -266,4 +271,46 @@ test("the report escapes markup, never prints an em dash, and ranks FAIL over NO
   assert.equal(html.includes("<script>"), false);
   assert.match(html, /class="verdict fail">FAIL/u);
   assert.match(html, /&lt;b&gt;bad&lt;\/b&gt;/u);
+});
+
+test("parseLsofCwd keeps the n lines, and findManagedAgents sees only descendants that carry the ownership marker, with their cwd", async () => {
+  assert.deepEqual(parseLsofCwd("p123\nfcwd\nn/Users/a b/.colony\n"), [
+    "/Users/a b/.colony",
+  ]);
+  const { spawn } = await import("node:child_process");
+  const { realpath, mkdir } = await import("node:fs/promises");
+  const base = await mkdtemp(
+    path.join(os.tmpdir(), "colony-nest-proof-agents-"),
+  );
+  scratch.push(base);
+  const cwd = path.join(base, ".colony");
+  await mkdir(cwd);
+  const spawnSleeper = (env) =>
+    spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      cwd,
+      env: { PATH: process.env.PATH, ...env },
+      stdio: "ignore",
+    });
+  const marked = spawnSleeper({ BUZZ_MANAGED_AGENT: "xyz.test.id" });
+  const other = spawnSleeper({ BUZZ_MANAGED_AGENT: "another.install" });
+  const plain = spawnSleeper({});
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const found = await findManagedAgents(
+      process.pid,
+      "BUZZ_MANAGED_AGENT",
+      "xyz.test.id",
+    );
+    assert.deepEqual(
+      found.map((a) => a.pid),
+      [marked.pid],
+    );
+    assert.equal(found[0].cwd, await realpath(cwd));
+    assert.deepEqual(
+      await findManagedAgents(process.pid, "BUZZ_MANAGED_AGENT", "nobody"),
+      [],
+    );
+  } finally {
+    for (const child of [marked, other, plain]) child.kill("SIGKILL");
+  }
 });

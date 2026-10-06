@@ -9,7 +9,7 @@
 //   the keychain services and the shared app-data folders. If anything ever resolved the real home, the
 //   sandbox blocks it, and the run shows a failure instead of touching private data.
 // - Only an allow-list of environment variables is forwarded, so inherited credentials stay out.
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import {
   chmod,
   mkdir,
@@ -21,6 +21,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import { promisify } from "node:util";
 import { NEW_NEST, OLD_NEST } from "./contract.mjs";
 import { assertThrowawayRoot } from "./fixture.mjs";
 
@@ -296,4 +297,64 @@ export async function preparePrivateDirs(base, label, profileDir) {
   }
   await chmod(userDataDir, 0o700);
   return { privateDir, userDataDir };
+}
+
+const execFileAsync = promisify(execFile);
+
+/** Paths from `lsof -Fn` output: every line that starts with `n`. */
+export function parseLsofCwd(output) {
+  return String(output)
+    .split("\n")
+    .filter((line) => line.startsWith("n"))
+    .map((line) => line.slice(1));
+}
+
+async function processEnvironment(pid) {
+  try {
+    return (await readFile(`/proc/${pid}/environ`, "utf8")).split("\0");
+  } catch {
+    /* not Linux */
+  }
+  try {
+    // macOS: `ps eww` prints the environment after the command line.
+    const { stdout } = await execFileAsync("ps", ["eww", "-p", String(pid)]);
+    return stdout.split(/\s+/u);
+  } catch {
+    return [];
+  }
+}
+
+async function processCwd(pid) {
+  try {
+    return await realpath(`/proc/${pid}/cwd`);
+  } catch {
+    /* not Linux */
+  }
+  try {
+    const { stdout } = await execFileAsync("lsof", [
+      "-a",
+      "-d",
+      "cwd",
+      "-Fn",
+      "-p",
+      String(pid),
+    ]);
+    return parseLsofCwd(stdout)[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Managed agent processes below `rootPid`: descendants whose environment carries `<markerEnv>=<identifier>`,
+ * with their working directory. This is how a restored agent is observed from outside the app.
+ */
+export async function findManagedAgents(rootPid, markerEnv, identifier) {
+  const marker = `${markerEnv}=${identifier}`;
+  const found = [];
+  for (const pid of await descendants(rootPid)) {
+    if (!(await processEnvironment(pid)).includes(marker)) continue;
+    found.push({ pid, cwd: await processCwd(pid) });
+  }
+  return found;
 }

@@ -18,6 +18,7 @@ import { evaluateCase } from "./checks.mjs";
 import { loadContract } from "./contract.mjs";
 import { buildFixture } from "./fixture.mjs";
 import {
+  findManagedAgents,
   launchFake,
   launchPackaged,
   preparePrivateDirs,
@@ -366,7 +367,7 @@ async function flowMigrate(ctx, state) {
   await settle(ctx, state, app, "launch 1");
   const windowReached = await observeWindow(app);
   const first = await observe(ctx, state, app);
-  const ui = await collectUi(ctx, app);
+  const ui = await collectUi(ctx, state, app);
   await app.quit();
   const after = await snapshot({ home });
   const second = await startApp(ctx, state, "2", flowEnvFor(ctx, state, true));
@@ -398,8 +399,12 @@ function flowEnvFor(ctx, state, on) {
   return state.spec.flagOff || !on ? flagEnv(ctx, false) : flagEnv(ctx, true);
 }
 
-/** UI evidence needs a signed-in profile. Without one nothing is driven and the checks stay NOT OBSERVED. */
-async function collectUi(ctx, app) {
+/**
+ * UI and process evidence needs a signed-in profile. Without one nothing is driven and the checks stay NOT
+ * OBSERVED. With one: wait for the sidebar, look for managed agent processes below the app and read their
+ * working directory (agents restore at boot), and try the Files tab of the work area for the migrated names.
+ */
+async function collectUi(ctx, state, app) {
   if (!ctx.profileDir || !app.page) return undefined;
   const ui = {};
   try {
@@ -407,6 +412,64 @@ async function collectUi(ctx, app) {
     ui.sidebar = true;
   } catch {
     ui.sidebar = false;
+    return ui;
+  }
+  const identifier = path.basename(state.appData);
+  const agents = await waitFor(
+    async () => {
+      const found = await findManagedAgents(
+        app.pid,
+        ctx.contract.agentMarkerEnv,
+        identifier,
+      );
+      return found.length ? found : null;
+    },
+    { timeoutMs: 60000, intervalMs: 1000 },
+  );
+  ui.agentsRestored = agents
+    ? {
+        restored: true,
+        pids: agents.map((a) => a.pid),
+        cwd: agents[0].cwd,
+        cwds: agents.map((a) => a.cwd),
+      }
+    : {
+        restored: false,
+        note: "no managed agent process appeared within 60 s",
+      };
+  try {
+    await app.page
+      .locator('[data-testid="channel-welcome" i]')
+      .first()
+      .click({ timeout: 8000 });
+    await app.page
+      .getByTestId("channel-work-area-trigger")
+      .click({ timeout: 8000 });
+    await app.page.getByTestId("work-area-panel").waitFor({ timeout: 8000 });
+    if (
+      !(await app.page
+        .getByTestId("work-area-files")
+        .isVisible()
+        .catch(() => false))
+    ) {
+      await app.page.getByTestId("work-area-add-tab").click({ timeout: 6000 });
+      await app.page
+        .getByTestId("work-area-add-files")
+        .click({ timeout: 6000 });
+    }
+    await app.page.getByTestId("work-area-files").waitFor({ timeout: 8000 });
+    const text = (
+      await app.page.getByTestId("work-area-files").innerText()
+    ).replace(/\s+/gu, " ");
+    const names = ctx.contract.ownedTopLevel.filter((name) =>
+      text.includes(name),
+    );
+    ui.filesTab = { opened: true, names, sample: text.slice(0, 200) };
+  } catch (error) {
+    ui.filesTab = {
+      opened: false,
+      error: String(error.message ?? error).slice(0, 160),
+    };
   }
   return ui;
 }
