@@ -114,7 +114,7 @@ async fn cmd_update(
     let current = current_work_item(client, work_item_id).await?;
     if input.status != current.head.status {
         return Err(CliError::Usage(
-            "status changes require `buzz work status`".into(),
+            "status changes require `colony work status`".into(),
         ));
     }
     let action = CompanyWorkItemAction {

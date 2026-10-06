@@ -283,7 +283,7 @@ async fn resolve_issue_repo_target(
                 .or_else(|| std::env::var(GIT_ORIGIN_CHANNEL_ENV).ok());
             let Some(channel) = channel else {
                 return Err(CliError::Usage(
-                    "provide --repo-owner and --repo-id, or --channel (or set BUZZ_GIT_ORIGIN_CHANNEL_ID)".into(),
+                    "provide --repo-owner and --repo-id, or --channel".into(),
                 ));
             };
             let resolved = crate::commands::project_channel::resolve_or_ensure_repo_for_channel(
@@ -556,7 +556,7 @@ pub async fn cmd_issue_status(
         }
     };
 
-    // Mirrors `buzz patches status`: default a `p` tag to the repo owner
+    // Mirrors `colony patches status`: default a `p` tag to the repo owner
     // for discoverability, plus a `--to` escape hatch for the issue author
     // or anyone else who should be notified of the status change.
     let mut recipients = Vec::new();

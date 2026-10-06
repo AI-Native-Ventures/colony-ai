@@ -73,19 +73,26 @@ impl SharedState {
 }
 
 fn build_bootstrap(cwd: &Path, shell_hint: &str) -> String {
+    let colony_ready =
+        std::env::var("BUZZ_RELAY_URL").is_ok() && std::env::var("BUZZ_PRIVATE_KEY").is_ok();
+    build_bootstrap_with(cwd, shell_hint, colony_ready)
+}
+
+/// The bootstrap text the model reads, with the environment lookup done by the
+/// caller so the exact wording can be tested without touching process env.
+pub(crate) fn build_bootstrap_with(cwd: &Path, shell_hint: &str, colony_ready: bool) -> String {
     let stack = detect_stack(cwd);
-    let buzz_hint =
-        if std::env::var("BUZZ_RELAY_URL").is_ok() && std::env::var("BUZZ_PRIVATE_KEY").is_ok() {
-            "\nBuzz relay configured. Run `buzz --help` to see available commands.\n"
-        } else {
-            ""
-        };
+    let colony_hint = if colony_ready {
+        "\nColony is connected. Run `colony --help` to see available commands.\n"
+    } else {
+        ""
+    };
     format!(
         "Working directory: {}\n\
          Detected stack: {}\n\
-         Shell: {shell_hint} (set BUZZ_SHELL to override) — write command strings in that shell's syntax.\n\
+         Shell: {shell_hint}. Write command strings in that shell's syntax.\n\
          Pass `workdir` per call rather than `cd`.\n\
-         {buzz_hint}",
+         {colony_hint}",
         cwd.display(),
         stack,
     )
@@ -450,12 +457,12 @@ fn resolve_bash(path_env: &str) -> Result<(PathBuf, String), String> {
 
     Err(
         "Git for Windows (Git Bash) is required but was not found. Checked \\
-         BUZZ_SHELL, GIT_BASH, bash.exe and git.exe on PATH, the standard Git install locations, \\
+         the shell override, GIT_BASH, bash.exe and git.exe on PATH, the standard Git install locations, \\
          and HKLM/HKCU\\\\SOFTWARE\\\\GitForWindows. Git's \"Cmd\" PATH option adds \\
-         Git\\\\cmd\\\\git.exe but not Git\\\\bin\\\\bash.exe; Buzz normally derives Git Bash from that git.exe. \\
+         Git\\\\cmd\\\\git.exe but not Git\\\\bin\\\\bash.exe; Colony normally derives Git Bash from that git.exe. \\
          Install it from https://git-scm.com/download/win and select \"Git from the command line \\
-         and also from 3rd-party software\", then relaunch Buzz. You can also set \\
-         BUZZ_SHELL to a shell executable."
+         and also from 3rd-party software\", then relaunch Colony. You can also point \\
+         the shell override environment variable at a shell executable."
             .into(),
     )
 }

@@ -36,7 +36,7 @@ pub async fn dispatch(command: AgentsCmd, client: &BuzzClient) -> Result<(), Cli
                 obj.insert("saved".into(), false.into());
                 obj.insert(
                     "message".into(),
-                    "Draft sent to Buzz Desktop for owner review. Nothing changes until the owner saves it."
+                    "Draft sent to Colony for owner review. Nothing changes until the owner saves it."
                         .into(),
                 );
             }
@@ -78,7 +78,7 @@ pub async fn dispatch(command: AgentsCmd, client: &BuzzClient) -> Result<(), Cli
                 obj.insert("saved".into(), false.into());
                 obj.insert(
                     "message".into(),
-                    "Draft sent to Buzz Desktop for owner review. Nothing changes until the owner saves it."
+                    "Draft sent to Colony for owner review. Nothing changes until the owner saves it."
                         .into(),
                 );
             }
@@ -178,9 +178,11 @@ pub async fn dispatch(command: AgentsCmd, client: &BuzzClient) -> Result<(), Cli
 /// Require `BUZZ_AUTH_TAG` and parse the owner pubkey from it. Used only by
 /// the `draft-create` and `draft-update` paths.
 fn require_owner(client: &BuzzClient) -> Result<PublicKey, CliError> {
-    let hex = client
-        .auth_tag_owner_hex()
-        .ok_or_else(|| CliError::Auth("agent draft requests require BUZZ_AUTH_TAG".into()))?;
+    let hex = client.auth_tag_owner_hex().ok_or_else(|| {
+        CliError::Auth(
+            "agent draft requests need the owner attestation Colony gives managed agents".into(),
+        )
+    })?;
     PublicKey::parse(&hex).map_err(|e| CliError::Auth(format!("invalid owner attestation: {e}")))
 }
 
@@ -459,7 +461,7 @@ pub(crate) async fn fetch_archived_snapshot(client: &BuzzClient) -> Result<Vec<S
     Ok(archived.into_iter().map(str::to_string).collect())
 }
 
-/// `buzz agents archived`: read path over [`fetch_archived_snapshot`] for
+/// `colony agents archived`: read path over [`fetch_archived_snapshot`] for
 /// direct invocation — a trust failure (state 3) is fatal here so a
 /// verification command can never look like success.
 async fn cmd_archived(client: &BuzzClient) -> Result<(), CliError> {

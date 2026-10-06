@@ -442,6 +442,12 @@ pub fn run() {
                     if let Err(error) = managed_agents::ensure_cli_symlink(parent, is_dev_nest) {
                         eprintln!("buzz-desktop: failed to create CLI symlink: {error}");
                     }
+                    // The `colony` command agents are taught, linked to the same CLI.
+                    if let Err(error) =
+                        managed_agents::ensure_agent_command_link(parent, is_dev_nest)
+                    {
+                        eprintln!("buzz-desktop: failed to link the colony command: {error}");
+                    }
                 }
             }
 

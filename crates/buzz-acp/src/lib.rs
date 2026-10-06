@@ -5281,9 +5281,9 @@ mod agent_draft_prompt_tests {
     fn shared_base_prompt_teaches_portable_agent_drafts() {
         let prompt = include_str!("base_prompt.md");
         assert!(prompt.starts_with(
-            "You are an agent operating inside Buzz — a Nostr-based messaging platform for human-agent collaboration.\nBuzz is a desktop and mobile collaboration app organized around channels, conversations, and shared work."
+            "You are an agent operating inside Colony, a Nostr-based messaging platform for human-agent collaboration.\nColony is a desktop and mobile collaboration app organized around channels, conversations, and shared work."
         ));
-        assert!(prompt.contains("buzz agents draft-create"));
+        assert!(prompt.contains("colony agents draft-create"));
         assert!(prompt.contains("ask for at most two things"));
         assert!(prompt.contains("what it should do day-to-day"));
         assert!(prompt.contains("owner saves it"));
@@ -5313,7 +5313,7 @@ mod agent_draft_prompt_tests {
         let prompt = include_str!("base_prompt.md");
         assert!(prompt.contains("pass real newline bytes through stdin"));
         assert!(prompt.contains("single-quoted shell strings preserve `\\n` literally"));
-        assert!(prompt.contains("buzz messages send ... --content -"));
+        assert!(prompt.contains("colony messages send ... --content -"));
     }
 
     #[test]
@@ -5332,15 +5332,15 @@ mod agent_draft_prompt_tests {
     #[test]
     fn shared_base_prompt_teaches_not_to_duplicate_projects() {
         let prompt = include_str!("base_prompt.md");
-        assert!(prompt.contains("do **not** run `buzz projects create`"));
-        assert!(prompt.contains("buzz issues create --channel"));
-        assert!(prompt.contains("is not a Buzz repository"));
+        assert!(prompt.contains("do **not** run `colony projects create`"));
+        assert!(prompt.contains("colony issues create --channel"));
+        assert!(prompt.contains("is not a Colony repository"));
     }
 
     #[test]
     fn shared_base_prompt_teaches_single_command_mentions_and_preflight() {
         let prompt = include_str!("base_prompt.md");
-        assert!(prompt.contains("use the person's **exact display name as shown in Buzz**"));
+        assert!(prompt.contains("use the person's **exact display name as shown in Colony**"));
         assert!(prompt.contains("Do not expand a short display name, infer a surname"));
         assert!(prompt.contains("Preserve it exactly; do not infer, expand, or look up a surname"));
         assert!(prompt.contains("--mention <hex-or-npub>"));
@@ -5351,8 +5351,9 @@ mod agent_draft_prompt_tests {
         assert!(prompt.contains("success JSON's `mention_pubkeys`"));
         assert!(prompt.contains("no follow-up verification command is needed"));
         assert!(prompt.contains("stops before sending"));
-        assert!(prompt
-            .contains("add them explicitly with `buzz channels add-member` only when authorized"));
+        assert!(prompt.contains(
+            "add them explicitly with `colony channels add-member` only when authorized"
+        ));
         assert!(prompt.contains("never changes membership automatically"));
     }
 }
@@ -5364,15 +5365,15 @@ fn default_heartbeat_prompt() -> String {
          You have been awakened for a routine heartbeat. You have NO incoming messages or\n\
          active channel context for this turn.\n\n\
          Your tasks:\n\
-         1. Run `buzz feed get --types needs_action` to check for pending workflow approvals or\n\
+         1. Run `colony feed get --types needs_action` to check for pending workflow approvals or\n\
             high-priority requests addressed to you.\n\
-         2. Run `buzz feed get --types mentions` to check for unanswered @mentions.\n\
+         2. Run `colony feed get --types mentions` to check for unanswered @mentions.\n\
          3. If you find actionable items, address them using the appropriate CLI commands\n\
-            (e.g., `buzz workflows approve --token <UUID>`, `buzz messages send`,\n\
-            `buzz messages send --reply-to <event-id>`).\n\
+            (e.g., `colony workflows approve --token <UUID>`, `colony messages send`,\n\
+            `colony messages send --reply-to <event-id>`).\n\
          4. If there are no pending actions or mentions, end your turn immediately.\n\n\
-         Do not run `buzz channels list` or `buzz messages search` unless you have a specific reason.\n\
-         Do not invent work — only act on items surfaced by the feed commands."
+         Do not run `colony channels list` or `colony messages search` unless you have a specific reason.\n\
+         Do not invent work. Only act on items surfaced by the feed commands."
     )
 }
 

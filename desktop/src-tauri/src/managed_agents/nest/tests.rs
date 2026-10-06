@@ -36,14 +36,14 @@ fn init_nest_dir_prod_sets_buzz() {
 
 #[test]
 fn nest_skill_contains_safe_mention_workflow() {
-    assert!(BUZZ_CLI_SKILL_MD.contains("--mention <hex-or-npub>"));
-    assert!(BUZZ_CLI_SKILL_MD.contains("every presentation-only name that should notify"));
-    assert!(BUZZ_CLI_SKILL_MD
+    assert!(COLONY_CLI_SKILL_MD.contains("--mention <hex-or-npub>"));
+    assert!(COLONY_CLI_SKILL_MD.contains("every presentation-only name that should notify"));
+    assert!(COLONY_CLI_SKILL_MD
         .contains("permits unresolved or ambiguous `@Name` text as presentation-only"));
-    assert!(BUZZ_CLI_SKILL_MD.contains("signed event's `mention_pubkeys`"));
-    assert!(BUZZ_CLI_SKILL_MD.contains("no follow-up verification command is needed"));
-    assert!(BUZZ_CLI_SKILL_MD.contains("Add membership separately only when authorized"));
-    assert!(BUZZ_CLI_SKILL_MD.contains("never changes membership automatically"));
+    assert!(COLONY_CLI_SKILL_MD.contains("signed event's `mention_pubkeys`"));
+    assert!(COLONY_CLI_SKILL_MD.contains("no follow-up verification command is needed"));
+    assert!(COLONY_CLI_SKILL_MD.contains("Add membership separately only when authorized"));
+    assert!(COLONY_CLI_SKILL_MD.contains("never changes membership automatically"));
 }
 
 #[test]
@@ -146,23 +146,23 @@ fn ensure_nest_creates_skill_file() {
     ensure_nest_at(&root).unwrap();
 
     // Canonical location under .agents.
-    let skill = root.join(".agents/skills/buzz-cli/SKILL.md");
+    let skill = root.join(".agents/skills/colony-cli/SKILL.md");
     assert!(skill.exists(), "SKILL.md should exist at .agents path");
     let content = fs::read_to_string(&skill).unwrap();
-    assert_eq!(content, BUZZ_CLI_SKILL_MD);
+    assert_eq!(content, COLONY_CLI_SKILL_MD);
 
     // On unix, harness-specific symlinks should resolve to the canonical dir.
     #[cfg(unix)]
     {
         for dir in [".goose/skills", ".claude/skills", ".codex/skills"] {
-            let link = root.join(dir).join("buzz-cli");
+            let link = root.join(dir).join("colony-cli");
             assert!(
                 link.symlink_metadata().unwrap().file_type().is_symlink(),
-                "{dir}/buzz-cli should be a symlink"
+                "{dir}/colony-cli should be a symlink"
             );
             assert!(
                 link.join("SKILL.md").exists(),
-                "symlink at {dir}/buzz-cli should resolve to dir with SKILL.md"
+                "symlink at {dir}/colony-cli should resolve to dir with SKILL.md"
             );
         }
     }
@@ -174,7 +174,7 @@ fn ensure_nest_does_not_overwrite_skill_file() {
     let root = tmp.path().join(".buzz");
     ensure_nest_at(&root).unwrap();
 
-    let skill = root.join(".agents/skills/buzz-cli/SKILL.md");
+    let skill = root.join(".agents/skills/colony-cli/SKILL.md");
     fs::write(&skill, "custom skill content").unwrap();
 
     ensure_nest_at(&root).unwrap();
@@ -189,11 +189,11 @@ fn ensure_nest_skill_dir_has_700_permissions() {
     let root = tmp.path().join(".buzz");
     ensure_nest_at(&root).unwrap();
     // Canonical path and all provider parent dirs should be locked down.
-    // Symlinks (e.g. .goose/skills/buzz-cli) are skipped by the chmod loop.
+    // Symlinks (e.g. .goose/skills/colony-cli) are skipped by the chmod loop.
     for dir in [
         ".agents",
         ".agents/skills",
-        ".agents/skills/buzz-cli",
+        ".agents/skills/colony-cli",
         ".goose",
         ".goose/skills",
         ".claude",
@@ -238,42 +238,37 @@ fn ensure_nest_skips_permissions_on_symlinked_child() {
 
 #[cfg(unix)]
 #[test]
-fn ensure_nest_migrates_old_skill_dir() {
+fn ensure_nest_retires_pre_agents_skill_dir_and_installs_colony_cli() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join(".buzz");
-
-    // Simulate a pre-migration install: real directory at old path.
-    // Create the nest first to get all dirs, then simulate old layout.
     ensure_nest_at(&root).unwrap();
 
-    // Remove the symlink and new skill dir, recreate old real dir.
-    let _ = fs::remove_file(root.join(".claude/skills/buzz-cli"));
-    let _ = fs::remove_dir_all(root.join(".agents/skills/buzz-cli"));
+    // Simulate a pre-migration install: the skill lives as a real directory at
+    // the old Claude path under its old name, and nothing exists under .agents.
+    let _ = fs::remove_file(root.join(".claude/skills/colony-cli"));
+    let _ = fs::remove_dir_all(root.join(".agents/skills/colony-cli"));
     let old_skill_dir = root.join(".claude/skills/buzz-cli");
     fs::create_dir_all(&old_skill_dir).unwrap();
-    fs::write(old_skill_dir.join("SKILL.md"), "user edited skill").unwrap();
+    fs::write(old_skill_dir.join("SKILL.md"), "old buzz skill").unwrap();
 
-    // Delete version file to force refresh.
-    let _ = fs::remove_file(root.join(".agents/skills/buzz-cli/.skill-version"));
-
-    // Re-run ensure_nest_at — should trigger migration in refresh_skill_md_if_stale.
     ensure_nest_at(&root).unwrap();
 
-    // New canonical location exists with user's content preserved.
-    let new_skill = root.join(".agents/skills/buzz-cli/SKILL.md");
-    assert!(new_skill.exists(), "SKILL.md should exist at new path");
-    assert_eq!(fs::read_to_string(&new_skill).unwrap(), "user edited skill");
+    // The new canonical skill is the current template, not the old copy.
+    let new_skill = root.join(".agents/skills/colony-cli/SKILL.md");
+    assert_eq!(fs::read_to_string(&new_skill).unwrap(), COLONY_CLI_SKILL_MD);
 
-    // Old path is now a symlink, not a real directory.
-    let old_path = root.join(".claude/skills/buzz-cli");
+    // The old real directory is gone and the Claude path holds the new symlink.
     assert!(
-        old_path
-            .symlink_metadata()
-            .unwrap()
-            .file_type()
-            .is_symlink(),
-        "old path should now be a symlink"
+        old_skill_dir.symlink_metadata().is_err(),
+        "legacy .claude/skills/buzz-cli should be retired"
     );
+    let claude_link = root.join(".claude/skills/colony-cli");
+    assert!(claude_link
+        .symlink_metadata()
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert!(claude_link.join("SKILL.md").exists());
 }
 
 #[cfg(unix)]
@@ -286,17 +281,17 @@ fn ensure_skill_symlinks_are_idempotent() {
     ensure_nest_at(&root).unwrap();
     // All symlinks still valid and point to relative targets.
     for dir in [".goose/skills", ".claude/skills", ".codex/skills"] {
-        let link = root.join(dir).join("buzz-cli");
+        let link = root.join(dir).join("colony-cli");
         assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
         assert!(
             link.join("SKILL.md").exists(),
-            "symlink at {dir}/buzz-cli should resolve to dir with SKILL.md"
+            "symlink at {dir}/colony-cli should resolve to dir with SKILL.md"
         );
         let target = fs::read_link(&link).unwrap();
         assert_eq!(
             target.to_str().unwrap(),
             format!("../../{CANONICAL_SKILL_DIR}"),
-            "symlink at {dir}/buzz-cli should use relative target"
+            "symlink at {dir}/colony-cli should use relative target"
         );
     }
 }
@@ -304,34 +299,23 @@ fn ensure_skill_symlinks_are_idempotent() {
 #[cfg(unix)]
 #[test]
 fn ensure_skill_symlinks_skips_existing_path_during_initial_pass() {
-    // ensure_skill_symlinks skips any path where symlink_metadata succeeds.
-    // However, refresh_skill_md_if_stale (called after ensure_skill_symlinks)
-    // migrates pre-existing real directories at .claude/skills/buzz-cli to
-    // symlinks. This test verifies the end-to-end behavior: a pre-existing real
-    // dir at the claude path is migrated to a symlink.
+    // ensure_skill_symlinks skips any path where symlink_metadata succeeds, so a
+    // pre-existing real directory at the colony-cli link path is never replaced
+    // by the symlink pass.
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join(".buzz");
-    // Pre-create a real directory where a symlink would go.
-    let real_dir = root.join(".claude/skills/buzz-cli");
+    let real_dir = root.join(".goose/skills/colony-cli");
     fs::create_dir_all(&real_dir).unwrap();
-    // Place SKILL.md so migration preserves it.
     fs::write(real_dir.join("SKILL.md"), "custom skill content").unwrap();
 
     ensure_nest_at(&root).unwrap();
 
-    // Migration converts the real dir to a symlink; content is moved to canonical path.
     assert!(
-        real_dir
-            .symlink_metadata()
-            .unwrap()
-            .file_type()
-            .is_symlink(),
-        ".claude/skills/buzz-cli should be migrated to a symlink"
+        real_dir.symlink_metadata().unwrap().file_type().is_dir(),
+        "an existing real directory must be left alone"
     );
-    // The canonical path now holds the migrated content.
-    let canonical = root.join(".agents/skills/buzz-cli/SKILL.md");
     assert_eq!(
-        fs::read_to_string(&canonical).unwrap(),
+        fs::read_to_string(real_dir.join("SKILL.md")).unwrap(),
         "custom skill content"
     );
 }
@@ -344,7 +328,7 @@ fn ensure_skill_symlinks_skip_dangling_symlink() {
     // Pre-create a dangling symlink where the .codex link would go.
     let codex_skills = root.join(".codex/skills");
     fs::create_dir_all(&codex_skills).unwrap();
-    let dangling = codex_skills.join("buzz-cli");
+    let dangling = codex_skills.join("colony-cli");
     std::os::unix::fs::symlink("/nonexistent/target", &dangling).unwrap();
 
     ensure_nest_at(&root).unwrap();
@@ -490,7 +474,8 @@ fn refresh_skill_md_writes_version_file() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join(".buzz");
     ensure_nest_at(&root).unwrap();
-    let version = fs::read_to_string(root.join(".agents/skills/buzz-cli/.skill-version")).unwrap();
+    let version =
+        fs::read_to_string(root.join(".agents/skills/colony-cli/.skill-version")).unwrap();
     assert_eq!(version.trim(), NEST_SKILL_VERSION.to_string());
 }
 
@@ -555,17 +540,234 @@ fn refresh_skill_overwrites_on_version_bump() {
     let root = tmp.path().join(".buzz");
     ensure_nest_at(&root).unwrap();
 
-    let skill_md = root.join(".agents/skills/buzz-cli/SKILL.md");
+    let skill_md = root.join(".agents/skills/colony-cli/SKILL.md");
     fs::write(&skill_md, "stale skill content").unwrap();
 
     // Remove version file to simulate upgrade.
-    let _ = fs::remove_file(root.join(".agents/skills/buzz-cli/.skill-version"));
+    let _ = fs::remove_file(root.join(".agents/skills/colony-cli/.skill-version"));
 
     ensure_nest_at(&root).unwrap();
 
     let content = fs::read_to_string(&skill_md).unwrap();
     assert_eq!(
-        content, BUZZ_CLI_SKILL_MD,
+        content, COLONY_CLI_SKILL_MD,
         "SKILL.md must be refreshed on version bump"
+    );
+}
+
+#[test]
+fn nest_skill_template_is_colony_cli_and_never_says_buzz() {
+    assert!(
+        COLONY_CLI_SKILL_MD.starts_with("---\nname: colony-cli\n"),
+        "skill frontmatter must name the skill colony-cli"
+    );
+    assert!(COLONY_CLI_SKILL_MD.contains("colony messages send --channel <UUID>"));
+    let lowered = COLONY_CLI_SKILL_MD.to_ascii_lowercase();
+    let leak = lowered
+        .find("buzz")
+        .map(|at| &COLONY_CLI_SKILL_MD[at.saturating_sub(40)..at + 40]);
+    assert!(
+        leak.is_none(),
+        "skill text leaks the old name near: {leak:?}"
+    );
+}
+
+#[test]
+fn skill_version_was_bumped_for_the_colony_cli_rename() {
+    // Version 6 is what the previous release recorded next to the buzz-cli skill.
+    const {
+        assert!(
+            NEST_SKILL_VERSION > 6,
+            "renaming the skill must bump NEST_SKILL_VERSION so existing nests regenerate it"
+        );
+    }
+}
+
+#[test]
+fn colony_cli_skill_recorded_at_the_previous_version_is_regenerated() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join(".buzz");
+    ensure_nest_at(&root).unwrap();
+
+    let skill_dir = root.join(".agents/skills/colony-cli");
+    fs::write(skill_dir.join("SKILL.md"), "stale skill content").unwrap();
+    fs::write(skill_dir.join(".skill-version"), "6\n").unwrap();
+
+    ensure_nest_at(&root).unwrap();
+
+    assert_eq!(
+        fs::read_to_string(skill_dir.join("SKILL.md")).unwrap(),
+        COLONY_CLI_SKILL_MD
+    );
+    assert_eq!(
+        fs::read_to_string(skill_dir.join(".skill-version"))
+            .unwrap()
+            .trim(),
+        NEST_SKILL_VERSION.to_string()
+    );
+}
+
+#[test]
+fn fresh_nest_installs_only_the_colony_cli_skill() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join(".buzz");
+    ensure_nest_at(&root).unwrap();
+
+    let names: Vec<String> = fs::read_dir(root.join(".agents/skills"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, vec!["colony-cli".to_string()]);
+}
+
+/// Lay down the entries a Colony build from before the rename generated: the
+/// canonical `buzz-cli` skill plus one relative symlink per harness.
+#[cfg(unix)]
+fn seed_legacy_buzz_cli_skill(root: &Path) {
+    let legacy = root.join(".agents/skills/buzz-cli");
+    fs::create_dir_all(&legacy).unwrap();
+    fs::write(legacy.join("SKILL.md"), "old skill: run buzz mem get core").unwrap();
+    fs::write(legacy.join(".skill-version"), "6\n").unwrap();
+    for dir in [".goose/skills", ".claude/skills", ".codex/skills"] {
+        let parent = root.join(dir);
+        fs::create_dir_all(&parent).unwrap();
+        let depth = Path::new(dir).components().count();
+        let target = format!("{}.agents/skills/buzz-cli", "../".repeat(depth));
+        std::os::unix::fs::symlink(target, parent.join("buzz-cli")).unwrap();
+    }
+}
+
+/// A nest as the previous release left it: current layout, but the skill still
+/// generated under its old name and no colony-cli entries yet.
+#[cfg(unix)]
+fn previous_release_nest(root: &Path) {
+    ensure_nest_at(root).unwrap();
+    fs::remove_dir_all(root.join(".agents/skills/colony-cli")).unwrap();
+    for dir in [".goose/skills", ".claude/skills", ".codex/skills"] {
+        fs::remove_file(root.join(dir).join("colony-cli")).unwrap();
+    }
+    seed_legacy_buzz_cli_skill(root);
+}
+
+#[cfg(unix)]
+#[test]
+fn upgrade_replaces_the_buzz_cli_skill_with_colony_cli() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join(".buzz");
+    previous_release_nest(&root);
+
+    ensure_nest_at(&root).unwrap();
+
+    let skill = root.join(".agents/skills/colony-cli");
+    assert_eq!(
+        fs::read_to_string(skill.join("SKILL.md")).unwrap(),
+        COLONY_CLI_SKILL_MD
+    );
+    assert_eq!(
+        fs::read_to_string(skill.join(".skill-version"))
+            .unwrap()
+            .trim(),
+        NEST_SKILL_VERSION.to_string()
+    );
+    for dir in [".goose/skills", ".claude/skills", ".codex/skills"] {
+        let link = root.join(dir).join("colony-cli");
+        assert!(
+            link.join("SKILL.md").exists(),
+            "{dir}/colony-cli should resolve"
+        );
+        assert!(
+            root.join(dir).join("buzz-cli").symlink_metadata().is_err(),
+            "{dir}/buzz-cli should be retired"
+        );
+    }
+    assert!(
+        root.join(".agents/skills/buzz-cli")
+            .symlink_metadata()
+            .is_err(),
+        "the legacy canonical skill directory should be retired"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn retiring_the_legacy_skill_keeps_everything_colony_did_not_generate() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join(".buzz");
+    previous_release_nest(&root);
+
+    // A note someone left in the legacy skill folder.
+    let legacy = root.join(".agents/skills/buzz-cli");
+    fs::write(legacy.join("notes.md"), "mine").unwrap();
+    // A harness link the user repointed at their own skill.
+    let codex_link = root.join(".codex/skills/buzz-cli");
+    fs::remove_file(&codex_link).unwrap();
+    std::os::unix::fs::symlink("/somewhere/else", &codex_link).unwrap();
+    // A skill of their own next to ours.
+    let own_skill = root.join(".claude/skills/my-skill");
+    fs::create_dir_all(&own_skill).unwrap();
+    fs::write(own_skill.join("SKILL.md"), "my skill").unwrap();
+
+    ensure_nest_at(&root).unwrap();
+
+    assert_eq!(fs::read_to_string(legacy.join("notes.md")).unwrap(), "mine");
+    assert!(
+        !legacy.join("SKILL.md").exists(),
+        "generated file is retired"
+    );
+    assert_eq!(
+        fs::read_link(&codex_link).unwrap().to_str().unwrap(),
+        "/somewhere/else"
+    );
+    assert_eq!(
+        fs::read_to_string(own_skill.join("SKILL.md")).unwrap(),
+        "my skill"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn retiring_never_deletes_through_a_symlinked_legacy_skill_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join(".buzz");
+    ensure_nest_at(&root).unwrap();
+
+    // The user keeps their own skill elsewhere and links it under the old name.
+    let external = tmp.path().join("external-skill");
+    fs::create_dir_all(&external).unwrap();
+    fs::write(external.join("SKILL.md"), "keep me").unwrap();
+    std::os::unix::fs::symlink(&external, root.join(".agents/skills/buzz-cli")).unwrap();
+
+    ensure_nest_at(&root).unwrap();
+
+    assert_eq!(
+        fs::read_to_string(external.join("SKILL.md")).unwrap(),
+        "keep me"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn legacy_skill_entries_recreated_by_an_older_build_are_retired_again() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join(".buzz");
+    previous_release_nest(&root);
+    ensure_nest_at(&root).unwrap();
+
+    // Downgrade, launch the old release once, then upgrade again: the old
+    // release regenerates the buzz-cli entries while colony-cli is current.
+    seed_legacy_buzz_cli_skill(&root);
+    ensure_nest_at(&root).unwrap();
+
+    assert!(root
+        .join(".agents/skills/buzz-cli")
+        .symlink_metadata()
+        .is_err());
+    assert!(root
+        .join(".claude/skills/buzz-cli")
+        .symlink_metadata()
+        .is_err());
+    assert_eq!(
+        fs::read_to_string(root.join(".agents/skills/colony-cli/SKILL.md")).unwrap(),
+        COLONY_CLI_SKILL_MD
     );
 }

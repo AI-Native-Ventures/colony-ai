@@ -1772,7 +1772,7 @@ async fn reply_guard_nags_twice_then_lets_the_turn_end() {
         .expect("reminder body");
     let text = nag["text"].as_str().unwrap_or("");
     assert!(
-        text.contains("buzz messages send"),
+        text.contains("colony messages send"),
         "reminder should name the command: {text}"
     );
     assert!(
