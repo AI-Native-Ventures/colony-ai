@@ -1,0 +1,340 @@
+/*
+ * The work area's Browser tab. It sits inside the dock panel and reuses the
+ * dock's tokens and icon-button style; it adds no colour of its own. The page
+ * is an Electron view drawn above the window, so the slot only reserves space.
+ * Text sizes come from the shared rem ramp so Cmd +/- zoom scales the chrome.
+ */
+@layer components {
+  .colony-browser {
+    display: flex;
+    min-height: 0;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    background: hsl(var(--background));
+  }
+
+  .colony-browser-pagetabs {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 0.1875rem;
+    padding: 0.25rem 0.375rem;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  .colony-browser-pagetablist {
+    display: flex;
+    min-width: 0;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: 0.1875rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .colony-browser-pagetablist::-webkit-scrollbar {
+    display: none;
+  }
+
+  .colony-browser-pagetab {
+    display: flex;
+    min-width: 4.5rem;
+    max-width: 11rem;
+    flex-shrink: 0;
+    align-items: center;
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+  }
+
+  .colony-browser-pagetab[data-selected="true"] {
+    border-color: hsl(var(--border));
+    background: hsl(var(--foreground) / 0.04);
+  }
+
+  .colony-browser-pagetab-select {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    gap: 0.375rem;
+    border: 0;
+    border-radius: 0.3125rem;
+    background: none;
+    padding: 0.25rem 0.25rem 0.25rem 0.5rem;
+    color: hsl(var(--muted-foreground));
+    font-size: var(--text-xs);
+  }
+
+  .colony-browser-pagetab[data-selected="true"] .colony-browser-pagetab-select {
+    color: hsl(var(--foreground));
+  }
+
+  .colony-browser-pagetab-select > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .colony-browser-pagetab-select:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: -2px;
+  }
+
+  .colony-browser-pagetab-select svg,
+  .colony-browser-pagetab .colony-work-area-icon-button svg {
+    width: 0.8125rem;
+    height: 0.8125rem;
+    flex: none;
+  }
+
+  .colony-browser-pagetab .colony-work-area-icon-button {
+    width: 1.375rem;
+    height: 1.375rem;
+  }
+
+  .colony-browser-toolbar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.375rem;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  .colony-browser-toolbar .colony-work-area-icon-button:disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  .colony-browser-address {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+  }
+
+  .colony-browser-security {
+    position: absolute;
+    inset-inline-start: 0.5rem;
+    display: grid;
+    place-content: center;
+    color: hsl(var(--muted-foreground));
+    pointer-events: none;
+  }
+
+  .colony-browser-security[data-protocol="http"] {
+    color: hsl(var(--destructive, var(--foreground)));
+  }
+
+  .colony-browser-security svg {
+    width: 0.8125rem;
+    height: 0.8125rem;
+  }
+
+  .colony-browser-address-input {
+    width: 100%;
+    min-width: 0;
+    height: 1.75rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.4375rem;
+    background: hsl(var(--foreground) / 0.04);
+    padding: 0 0.5rem 0 1.75rem;
+    color: hsl(var(--foreground));
+    font-size: var(--text-sm);
+    text-overflow: ellipsis;
+  }
+
+  .colony-browser-address-input:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: -1px;
+    background: hsl(var(--background));
+  }
+
+  .colony-browser-address-input[aria-invalid="true"] {
+    border-color: hsl(var(--destructive, var(--foreground)));
+  }
+
+  .colony-browser-address-error {
+    flex: none;
+    margin: 0;
+    padding: 0.25rem 0.5rem;
+    border-bottom: 1px solid hsl(var(--border));
+    color: hsl(var(--destructive, var(--foreground)));
+    font-size: var(--text-xs);
+  }
+
+  .colony-browser-notices {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+  }
+
+  .colony-browser-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.375rem 0.25rem 0.5rem;
+    border-bottom: 1px solid hsl(var(--border));
+    background: hsl(var(--foreground) / 0.04);
+    color: hsl(var(--foreground));
+    font-size: var(--text-xs);
+  }
+
+  .colony-browser-notice > svg {
+    width: 0.8125rem;
+    height: 0.8125rem;
+    flex: none;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .colony-browser-notice-text {
+    min-width: 0;
+    flex: 1;
+    overflow-wrap: anywhere;
+  }
+
+  .colony-browser-notice-action {
+    flex: none;
+    border: 0;
+    border-radius: 0.3125rem;
+    background: none;
+    padding: 0.1875rem 0.375rem;
+    color: hsl(var(--foreground));
+    font-size: var(--text-xs);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .colony-browser-notice-action:hover {
+    background: hsl(var(--foreground) / 0.06);
+  }
+
+  .colony-browser-notice-action:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: -1px;
+  }
+
+  .colony-browser-viewport {
+    position: relative;
+    display: flex;
+    min-height: 0;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  /* The outer box takes focus and draws the ring in its padding; the inner box
+     is what the native page view is fitted to, so the ring is never covered. */
+  .colony-browser-slot {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    border: 0;
+    background: none;
+    padding: 2px;
+    cursor: default;
+  }
+
+  .colony-browser-slot:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: -2px;
+  }
+
+  .colony-browser-slot-fill {
+    display: block;
+    min-height: 0;
+    min-width: 0;
+    flex: 1;
+    background: hsl(var(--background));
+  }
+
+  .colony-browser-state {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 2rem;
+    text-align: center;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .colony-browser-state h2 {
+    color: hsl(var(--foreground));
+    font-size: var(--text-lg);
+    font-weight: 600;
+  }
+
+  .colony-browser-state p {
+    max-width: 25rem;
+    font-size: var(--text-sm);
+  }
+
+  .colony-browser-state-mark {
+    display: grid;
+    width: 2.25rem;
+    height: 2.25rem;
+    place-content: center;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .colony-browser-state-mark svg {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+
+  .colony-browser-state-url {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: var(--text-xs);
+    overflow-wrap: anywhere;
+  }
+
+  .colony-browser-state-note {
+    font-size: var(--text-xs);
+  }
+
+  .colony-browser-status {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.25rem 0.625rem;
+    border-top: 1px solid hsl(var(--border));
+    color: hsl(var(--muted-foreground));
+    font-size: var(--text-xs);
+  }
+
+  .colony-browser-status > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .colony-browser-spinner {
+    animation: colony-browser-spin 0.9s linear infinite;
+  }
+
+  .colony-browser-spinner-large {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .colony-browser-spinner {
+      animation: none;
+    }
+  }
+}
+
+@keyframes colony-browser-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

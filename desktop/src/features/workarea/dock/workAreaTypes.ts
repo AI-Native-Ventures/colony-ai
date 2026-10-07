@@ -1,16 +1,26 @@
 /**
  * Tab kinds the work area dock can host.
  *
- * EXTENSION POINT (phase 3, browser tab): add `"browser"` to this list, give it
- * a definition in `workAreaTabRegistry.tsx`, and decide whether it is a
- * singleton. Nothing else in the dock (strip, panels, persistence, shortcuts)
- * needs to change; persisted snapshots drop kinds they do not recognise.
+ * Adding a kind: add it to this list, give it a definition in
+ * `workAreaTabRegistry.tsx`, and decide whether it is a singleton. Nothing else
+ * in the dock (strip, panels, persistence, shortcuts) needs to change;
+ * persisted snapshots drop kinds they do not recognise.
+ *
+ * The browser is a singleton dock tab. Its own pages (several, each a real
+ * browser tab) live inside it and are remembered by the browser's own store,
+ * `features/workarea/browser/browserTabsStore.ts`.
  */
-export const WORK_AREA_TAB_KINDS = ["terminal", "files", "canvas"] as const;
+export const WORK_AREA_TAB_KINDS = [
+  "browser",
+  "terminal",
+  "files",
+  "canvas",
+] as const;
 export type WorkAreaTabKind = (typeof WORK_AREA_TAB_KINDS)[number];
 
 /** Kinds that may exist at most once per channel. Their tab id is the kind. */
 export const WORK_AREA_SINGLETON_KINDS: readonly WorkAreaTabKind[] = [
+  "browser",
   "terminal",
   "files",
   "canvas",

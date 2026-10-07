@@ -89,10 +89,16 @@ app.setPath(
       app.isPackaged ? "Colony Electron" : "Colony Electron Dev",
     ),
 );
+// Kill switch for the visible browser tab. It is on by default; setting
+// COLONY_DISABLE_BROWSER_TAB=1 removes the renderer bridge and refuses tabs.
+const browserTabEnabled = process.env.COLONY_DISABLE_BROWSER_TAB !== "1";
 const browserHost = createBrowserHost({
   WebContentsView,
   session,
   userDataPath: app.getPath("userData"),
+  downloadsPath: app.getPath("downloads"),
+  showItemInFolder: (target) => shell.showItemInFolder(target),
+  enabled: browserTabEnabled,
 });
 const primaryInstance = smoke || app.requestSingleInstanceLock();
 if (!primaryInstance) app.quit();
@@ -276,6 +282,7 @@ async function boot() {
       onUntrustedOpen: openExternal,
       browserOptions,
       chatGpt,
+      browserTabEnabled,
     });
     const id = entry.window.webContents.id;
     windows.set(id, entry);

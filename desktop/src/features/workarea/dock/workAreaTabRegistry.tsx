@@ -1,11 +1,15 @@
 import {
   FileText,
+  Globe,
   Pencil,
   SquareTerminal,
   type LucideIcon,
 } from "lucide-react";
 import type * as React from "react";
 
+import { isBrowserHostAvailable } from "@/shared/api/browserHost";
+
+import { WorkAreaBrowserTab } from "./tabs/WorkAreaBrowserTab";
 import { WorkAreaCanvasTab } from "./tabs/WorkAreaCanvasTab";
 import { WorkAreaFilesTab } from "./tabs/WorkAreaFilesTab";
 import { WorkAreaTerminalTab } from "./tabs/WorkAreaTerminalTab";
@@ -22,19 +26,30 @@ export type WorkAreaTabDefinition = {
   /** Shown on the tab, in the add menu and as the panel's accessible name. */
   label: string;
   icon: LucideIcon;
-  /** Offered by the add menu and the empty state. False until its content ships. */
-  available: boolean;
+  /**
+   * Offered by the add menu and the empty state, and shown if remembered. False
+   * when the tab cannot work in this runtime (the browser needs the desktop
+   * host, and is off under its kill switch).
+   */
+  readonly available: boolean;
   Panel: React.ComponentType<WorkAreaTabPanelProps>;
 };
 
 /**
  * The typed registry. `Record<WorkAreaTabKind, ...>` makes the compiler demand
- * a definition for every kind in `workAreaTypes.ts`.
- *
- * EXTENSION POINT (phase 3, browser tab): add the kind in `workAreaTypes.ts`,
- * add its definition here, and nothing else in the dock changes.
+ * a definition for every kind in `workAreaTypes.ts`. Object order is the order
+ * of the add menu and the empty state, as in the r15 reference (Browser first).
  */
 const DEFINITIONS: Record<WorkAreaTabKind, WorkAreaTabDefinition> = {
+  browser: {
+    kind: "browser",
+    label: "Browser",
+    icon: Globe,
+    get available() {
+      return isBrowserHostAvailable();
+    },
+    Panel: WorkAreaBrowserTab,
+  },
   terminal: {
     kind: "terminal",
     label: "Terminal",

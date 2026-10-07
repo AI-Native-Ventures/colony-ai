@@ -1,5 +1,7 @@
 import { X } from "lucide-react";
 
+import { isBrowserHostAvailable } from "@/shared/api/browserHost";
+
 import {
   getWorkAreaTabDefinition,
   listOpenableWorkAreaTabs,
@@ -83,7 +85,11 @@ export function WorkAreaPanel({
         {tabs.length === 0 ? (
           <div className="colony-work-area-empty" data-testid="work-area-empty">
             <h2>Keep the work beside the conversation.</h2>
-            <p>Open a terminal or inspect a file.</p>
+            <p>
+              {isBrowserHostAvailable()
+                ? "Open a page, inspect a file, or open a terminal."
+                : "Open a terminal or inspect a file."}
+            </p>
             <div className="colony-work-area-choices">
               {listOpenableWorkAreaTabs().map((definition) => {
                 const Icon = definition.icon;

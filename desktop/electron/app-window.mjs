@@ -38,6 +38,7 @@ export function createAppWindow({
   onUntrustedOpen,
   browserOptions = {},
   chatGpt,
+  browserTabEnabled = true,
 }) {
   if (!validWindowLabel(label)) throw new Error("Invalid window label");
   const main = label === "main";
@@ -54,7 +55,10 @@ export function createAppWindow({
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      additionalArguments: [`--colony-window-label=${label}`],
+      additionalArguments: [
+        `--colony-window-label=${label}`,
+        ...(browserTabEnabled ? [] : ["--colony-browser-tab=0"]),
+      ],
     },
   });
   const rendererHost = new RendererHost(

@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -62,13 +69,22 @@ function fakeElectronSessionApi() {
   };
 }
 
-function createStore({ userDataPath, session, maxProfiles }) {
+function createStore({
+  userDataPath,
+  session,
+  maxProfiles,
+  downloadsPath = path.join(userDataPath, "Downloads"),
+  emitTabEvent = () => {},
+  showItemInFolder,
+}) {
   return createBrowserSessionStore({
     session,
     userDataPath,
     maxProfiles,
+    downloadsPath,
+    showItemInFolder,
     getTabForContents: () => ({ id: "tab-a" }),
-    emitTabEvent: () => {},
+    emitTabEvent,
     hasTab: () => true,
   });
 }
@@ -172,19 +188,11 @@ test("only explicitly forgets inactive profiles and keeps session capacity bound
   assert.equal(profile.session.clearedStorage, 1);
   assert.equal(profile.session.clearedCache, 1);
   assert.equal(profile.session.clearedAuthCache, 1);
-  const downloadDirectory = path.join(
-    userDataPath,
-    "browser-downloads",
-    profile.profileHash,
-  );
-  await assert.rejects(stat(downloadDirectory), { code: "ENOENT" });
 
   const reopenedProfile = await store.forScope("business-a", "client-a");
   assert.equal(reopenedProfile.session, profile.session);
-  await stat(downloadDirectory);
   assert.equal(profile.session.listenerCount("will-download"), 1);
   await store.forgetClient("business-a", "client-a");
-  await assert.rejects(stat(downloadDirectory), { code: "ENOENT" });
 
   const manifest = JSON.parse(
     await readFile(path.join(userDataPath, "browser-profiles.json"), "utf8"),
@@ -197,4 +205,123 @@ test("only explicitly forgets inactive profiles and keeps session capacity bound
     /Browser session limit reached/u,
   );
   assert.equal(electronSession.allocations.length, 1);
+});
+
+function fakeDownloadItem({ name = "report.pdf", total = 10 } = {}) {
+  const item = new EventEmitter();
+  item.getTotalBytes = () => total;
+  item.getReceivedBytes = () => total;
+  item.getFilename = () => name;
+  item.setSavePath = (target) => {
+    item.savePath = target;
+  };
+  item.cancel = () => {
+    item.cancelled = true;
+  };
+  return item;
+}
+
+async function startDownload(profile, item) {
+  let prevented = false;
+  profile.session.emit(
+    "will-download",
+    {
+      preventDefault() {
+        prevented = true;
+      },
+    },
+    item,
+    { id: 1 },
+  );
+  return { prevented };
+}
+
+test("saves downloads to the Downloads folder with a visible result and never overwrites", async (t) => {
+  const userDataPath = await makeUserDataDir(t);
+  const downloadsPath = path.join(userDataPath, "Downloads");
+  await mkdir(downloadsPath, { recursive: true });
+  await writeFile(path.join(downloadsPath, "report.pdf"), "existing");
+  const events = [];
+  const revealed = [];
+  const store = createStore({
+    userDataPath,
+    session: fakeElectronSessionApi(),
+    downloadsPath,
+    emitTabEvent: (_tab, type, detail) => events.push({ type, ...detail }),
+    showItemInFolder: (target) => revealed.push(target),
+  });
+  const profile = await store.forScope("business-a", null, "tab-a");
+
+  const item = fakeDownloadItem({ name: "../../etc/report.pdf" });
+  assert.equal((await startDownload(profile, item)).prevented, false);
+  // Next to, never over, the existing file; never outside the folder.
+  assert.equal(item.savePath, path.join(downloadsPath, "report (1).pdf"));
+  assert.equal(
+    await readFile(path.join(downloadsPath, "report.pdf"), "utf8"),
+    "existing",
+  );
+  assert.deepEqual(events.at(-1), {
+    type: "download",
+    state: "started",
+    downloadId: events.at(-1).downloadId,
+    fileName: "report (1).pdf",
+  });
+
+  const { downloadId } = events.at(-1);
+  item.emit("done", {}, "completed");
+  assert.deepEqual(events.at(-1), {
+    type: "download",
+    state: "completed",
+    downloadId,
+    fileName: "report (1).pdf",
+  });
+  assert.deepEqual(store.revealDownload(downloadId), { revealed: true });
+  assert.deepEqual(revealed, [path.join(downloadsPath, "report (1).pdf")]);
+  assert.throws(() => store.revealDownload("not-a-download"), /no longer/u);
+  assert.throws(() => store.revealDownload(undefined), /no longer/u);
+
+  // A second download of the same name gets the next free spelling.
+  const second = fakeDownloadItem({ name: "report.pdf" });
+  await startDownload(profile, second);
+  assert.equal(second.savePath, path.join(downloadsPath, "report (2).pdf"));
+  // A cancelled download leaves nothing behind in Downloads.
+  second.emit("done", {}, "cancelled");
+  assert.equal(events.at(-1).state, "cancelled");
+  assert.deepEqual((await readdir(downloadsPath)).sort(), [
+    "report (1).pdf",
+    "report.pdf",
+  ]);
+  assert.throws(() => store.revealDownload(events.at(-1).downloadId));
+});
+
+test("forgetting a profile never deletes files the person downloaded", async (t) => {
+  const userDataPath = await makeUserDataDir(t);
+  const downloadsPath = path.join(userDataPath, "Downloads");
+  await mkdir(downloadsPath, { recursive: true });
+  const store = createStore({
+    userDataPath,
+    session: fakeElectronSessionApi(),
+    downloadsPath,
+  });
+  const profile = await store.forScope("business-a", null, "tab-a");
+  const item = fakeDownloadItem({ name: "keep.txt" });
+  await startDownload(profile, item);
+  await writeFile(item.savePath, "kept");
+  item.emit("done", {}, "completed");
+  store.releaseTab(profile.profileHash, "tab-a");
+  await store.forgetBusiness("business-a");
+  assert.equal(await readFile(item.savePath, "utf8"), "kept");
+});
+
+test("refuses relative or missing downloads folders", async (t) => {
+  const userDataPath = await makeUserDataDir(t);
+  assert.throws(
+    () =>
+      createStore({
+        userDataPath,
+        session: fakeElectronSessionApi(),
+        downloadsPath: "relative/Downloads",
+      }),
+    /absolute downloads folder/u,
+  );
 });

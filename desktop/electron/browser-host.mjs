@@ -6,6 +6,7 @@ import {
   MAX_BROWSER_TABS,
   checkedBounds,
   checkedScopeId,
+  browserShortcutAction,
   checkedUrl,
   isAllowedFrameUrl,
   isAllowedWebUrl,
@@ -23,6 +24,13 @@ export function createBrowserHost({
   maxProfiles,
   maxActiveDownloads,
   maxDownloadBytes,
+  /** The person's Downloads folder (`app.getPath("downloads")`). */
+  downloadsPath,
+  /** Reveal a saved download in the file manager (`shell.showItemInFolder`). */
+  showItemInFolder,
+  /** False when the kill switch is set: no tab can be created. */
+  enabled = true,
+  platform = process.platform,
 }) {
   const tabs = new Map();
   const tabsByContents = new Map();
@@ -69,6 +77,8 @@ export function createBrowserHost({
     maxProfiles,
     maxActiveDownloads,
     maxDownloadBytes,
+    downloadsPath,
+    showItemInFolder,
     getTabForContents: (contentsId) => tabsByContents.get(contentsId),
     emitTabEvent: sendTabEvent,
     hasTab: (tabId) => tabs.has(tabId),
@@ -79,6 +89,10 @@ export function createBrowserHost({
     tab.error = String(message).slice(0, MAX_BROWSER_ERROR_LENGTH);
     tab.loading = false;
     sendState(tab);
+  }
+
+  function focusAppWindow(tab) {
+    if (!tab.appWebContents.isDestroyed()) tab.appWebContents.focus();
   }
 
   function beginRendererNavigation(tab, url) {
@@ -193,6 +207,18 @@ export function createBrowserHost({
         sendTabEvent(tab, "navigation-blocked", {
           reason: "unsupported-redirect",
         });
+    });
+    // A native page view takes key events before the app window sees them, so
+    // the few browser shortcuts (address bar, tabs, history, reload, dock) are
+    // relayed to the app window and the page never receives them.
+    contents.on("before-input-event", (event, input) => {
+      const action = browserShortcutAction(input, platform);
+      if (!action || !tabs.has(tab.id)) return;
+      event.preventDefault();
+      // Reload and history keep the page focused; the rest move the person to
+      // the app's own controls, which only work if the app window has focus.
+      if (!["reload", "back", "forward"].includes(action)) focusAppWindow(tab);
+      sendTabEvent(tab, "shortcut", { action });
     });
     contents.setWindowOpenHandler(({ url }) => {
       if (!isAllowedWebUrl(url)) {
@@ -329,11 +355,14 @@ export function createBrowserHost({
     if (!tab.attached) tab.ownerWindow.contentView.addChildView(tab.view);
     tab.attached = true;
     tab.bounds = bounds;
+    if (!visible && tab.attached && tab.visible && tab.webContents.isFocused())
+      focusAppWindow(tab);
     if (visible) {
       for (const other of tabs.values()) {
         if (other.id === tab.id || other.ownerWindow !== tab.ownerWindow)
           continue;
         if (other.attached && other.visible) {
+          if (other.webContents.isFocused()) focusAppWindow(other);
           other.view.setVisible(false);
           other.visible = false;
           sendState(other);
@@ -348,6 +377,7 @@ export function createBrowserHost({
   }
 
   function detachTab(tab) {
+    if (tab.webContents.isFocused()) focusAppWindow(tab);
     if (tab.attached && !tab.ownerWindow.isDestroyed())
       tab.ownerWindow.contentView.removeChildView(tab.view);
     tab.attached = false;
@@ -412,6 +442,7 @@ export function createBrowserHost({
       throw new Error("Invalid browser request");
 
     if (action === "create") {
+      if (!enabled) throw new Error("The embedded browser is turned off");
       if (!ownerWindow || ownerWindow.isDestroyed())
         throw new Error("The main app window is unavailable");
       return createTabInternal(sender, ownerWindow, payload);
@@ -445,6 +476,9 @@ export function createBrowserHost({
       }
       return { closedTabs };
     }
+
+    if (action === "reveal-download")
+      return browserSessions.revealDownload(payload.downloadId);
 
     if (action === "forget-business") {
       const businessId = checkedScopeId(payload.businessId, "business id");
@@ -498,6 +532,9 @@ export function createBrowserHost({
         tab.activeNavigationUrl = null;
         tab.activeNavigationGeneration = null;
         tab.webContents.stop();
+        return snapshot(tab);
+      case "focus":
+        tab.webContents.focus();
         return snapshot(tab);
       case "control-owner":
         if (!["human", "agent"].includes(payload.controlOwner))
