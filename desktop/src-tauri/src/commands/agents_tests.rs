@@ -818,14 +818,8 @@ fn remote_launch_never_exports_local_browser_authority() {
     descriptor
         .env
         .insert("USER_KEY".into(), "retained-user-value".into());
-    let launch = super::deploy::build_launch_block(
-        &record,
-        &descriptor,
-        &[],
-        None,
-        None,
-        &"a".repeat(64),
-    );
+    let launch =
+        super::deploy::build_launch_block(&record, &descriptor, &[], None, None, &"a".repeat(64));
     assert_eq!(launch["env"]["USER_KEY"], "retained-user-value");
     let wire = launch.to_string();
     assert!(!wire.contains("fixture-local-only-authority"));
