@@ -356,16 +356,22 @@ function Confirmation({
   onReject: () => void;
 }) {
   const rejectRef = React.useRef<HTMLButtonElement>(null);
-  React.useEffect(() => {
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  const ownedFocus = React.useRef(false);
+  React.useLayoutEffect(() => {
     if (!active) return;
     const previous = document.activeElement;
+    const dialog = dialogRef.current;
+    ownedFocus.current = false;
     const handle = window.requestAnimationFrame(() =>
       rejectRef.current?.focus(),
     );
     return () => {
       window.cancelAnimationFrame(handle);
       if (
-        document.activeElement === rejectRef.current &&
+        (dialog?.contains(document.activeElement) ||
+          // Disabling an in-flight action can blur its button before removal.
+          (ownedFocus.current && document.activeElement === document.body)) &&
         previous instanceof HTMLElement &&
         previous.isConnected
       )
@@ -381,6 +387,10 @@ function Confirmation({
       className="flex flex-col gap-2 rounded border border-border p-2"
       role="alertdialog"
       data-colony-inline-browser-confirmation="true"
+      ref={dialogRef}
+      onFocusCapture={() => {
+        ownedFocus.current = true;
+      }}
     >
       <p className="font-medium" id={titleId}>
         {title}

@@ -220,3 +220,35 @@ test("failed native Stop keeps access revoked and exposes control recovery", asy
     controls(page).getByRole("button", { name: "Allow an agent" }),
   ).toBeEnabled();
 });
+
+test("confirmation restores keyboard focus after rejection and confirmation", async ({
+  page,
+}) => {
+  await boot(page);
+  await allow(page);
+  const takeover = controls(page).getByRole("button", {
+    name: "Take over",
+    exact: true,
+  });
+  for (const approve of [false, true]) {
+    await takeover.focus();
+    await page.evaluate(() =>
+      window.colonyBrowserControlFixture?.confirmation(
+        "send_or_post",
+        "Fixture message",
+      ),
+    );
+    const dialog = controls(page).getByRole("alertdialog");
+    await expect(
+      dialog.getByRole("button", { name: "Reject", exact: true }),
+    ).toBeFocused();
+    if (approve)
+      await dialog.getByRole("button", { name: "Confirm action" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(dialog).toHaveCount(0);
+    await expect(takeover).toBeFocused();
+  }
+  expect(
+    await page.evaluate(() => window.colonyBrowserControlFixture?.confirmed()),
+  ).toBe(1);
+});
