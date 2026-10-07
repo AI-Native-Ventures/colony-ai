@@ -14,7 +14,11 @@ import {
   openWorkAreaFrom,
   toggleWorkAreaFrom,
 } from "./workAreaActions";
-import { listenForWorkAreaTabRequests } from "./workAreaRequests";
+import {
+  listenForCloseWorkAreaTabRequests,
+  listenForNewWorkAreaTabRequests,
+  listenForWorkAreaTabRequests,
+} from "./workAreaRequests";
 import { setWorkAreaFileReference } from "./workAreaFilesStore";
 import {
   type WorkAreaChannel,
@@ -22,6 +26,8 @@ import {
 } from "./workAreaChannelContext";
 import { getWorkAreaTabDefinition } from "./workAreaTabRegistry";
 import {
+  getWorkAreaState,
+  MAX_TABS_PER_CHANNEL,
   openWorkArea,
   resetWorkAreaWidth,
   selectWorkAreaTab,
@@ -136,13 +142,50 @@ export function WorkAreaLayout({
     [channelId],
   );
 
-  // Controls outside the dock (the channel's Canvas label) ask for a tab.
+  // Controls outside the dock (the channel's Canvas label, the toolbar's
+  // globe) ask for a tab. A kind that can be open several times focuses the
+  // one the person was last on (the active one if it is that kind), or opens
+  // the first.
   React.useEffect(
     () =>
       listenForWorkAreaTabRequests((kind) => {
-        if (channelId) {
+        if (!channelId) return;
+        const definition = getWorkAreaTabDefinition(kind);
+        if (!definition.multiple) {
           openWorkAreaFrom(channelId, kind, document.activeElement);
+          return;
         }
+        const current = getWorkAreaState(channelId);
+        const existing =
+          current.tabs.find(
+            (tab) => tab.kind === kind && tab.id === current.activeTabId,
+          ) ?? [...current.tabs].reverse().find((tab) => tab.kind === kind);
+        const tabId =
+          existing?.id ??
+          (current.tabs.length < MAX_TABS_PER_CHANNEL
+            ? definition.newTabId?.(channelId)
+            : null);
+        if (tabId)
+          openWorkAreaFrom(channelId, kind, document.activeElement, tabId);
+      }),
+    [channelId],
+  );
+
+  // Tabs inside the dock (a page asking for a new page, a browser shortcut)
+  // go through the dock, so it stays the only place that adds and removes tabs.
+  React.useEffect(
+    () =>
+      listenForNewWorkAreaTabRequests((kind) => {
+        if (!channelId) return;
+        const definition = getWorkAreaTabDefinition(kind);
+        if (
+          !definition.multiple ||
+          getWorkAreaState(channelId).tabs.length >= MAX_TABS_PER_CHANNEL
+        )
+          return;
+        const tabId = definition.newTabId?.(channelId);
+        if (tabId)
+          openWorkAreaFrom(channelId, kind, document.activeElement, tabId);
       }),
     [channelId],
   );
@@ -189,9 +232,35 @@ export function WorkAreaLayout({
   );
   const openKind = React.useCallback(
     (kind: WorkAreaTabKind) => {
-      if (channelId) openWorkArea(channelId, kind);
+      if (!channelId) return;
+      const definition = getWorkAreaTabDefinition(kind);
+      if (!definition.multiple) {
+        openWorkArea(channelId, kind);
+        return;
+      }
+      // Every choice of a kind that can be open often is one more tab.
+      if (getWorkAreaState(channelId).tabs.length >= MAX_TABS_PER_CHANNEL)
+        return;
+      const tabId = definition.newTabId?.(channelId);
+      if (tabId) openWorkArea(channelId, kind, tabId);
     },
     [channelId],
+  );
+  const closeTab = React.useCallback(
+    (tabId: string) => {
+      if (!channelId) return;
+      const tab = getWorkAreaState(channelId).tabs.find(
+        (entry) => entry.id === tabId,
+      );
+      closeWorkAreaTabRestoringFocus(channelId, tabId);
+      // Let the kind release what the tab held (a page's host tab and memory).
+      if (tab) getWorkAreaTabDefinition(tab.kind).onTabClosed?.(channelId, tab);
+    },
+    [channelId],
+  );
+  React.useEffect(
+    () => listenForCloseWorkAreaTabRequests(closeTab),
+    [closeTab],
   );
 
   return (
@@ -228,9 +297,7 @@ export function WorkAreaLayout({
             activeTabId={activeTabId}
             channelId={openChannelId}
             onClose={() => closeWorkAreaRestoringFocus(openChannelId)}
-            onCloseTab={(tabId) =>
-              closeWorkAreaTabRestoringFocus(openChannelId, tabId)
-            }
+            onCloseTab={closeTab}
             onOpenKind={openKind}
             onSelect={(tabId) => selectWorkAreaTab(openChannelId, tabId)}
             tabs={tabs}

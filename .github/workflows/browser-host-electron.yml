@@ -1,0 +1,93 @@
+name: Browser host (real Electron)
+
+# Drives the real browser host (desktop/electron/browser-host.mjs) in real
+# Electron over a local fixture site: business profile isolation (cookies,
+# localStorage, IndexedDB), denied permissions and no desktop bridge in pages,
+# refused schemes, window.open handling, downloads into the Downloads folder,
+# forgetting a profile, and the kill switch. It needs no relay, native host or
+# build, so it is quick. The mock-bridge Playwright specs cannot prove any of
+# this because they have no real Chromium session.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/browser-host-electron.yml"
+      - "desktop/electron/**"
+      - "desktop/package.json"
+      - "desktop/tests/electron/browser-smoke-main.mjs"
+      - "desktop/tests/electron/run-browser-smoke.mjs"
+      - "pnpm-lock.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  browser-host:
+    name: Browser host real Electron (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - macos-14
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Check out the reviewed commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Activate the pinned toolchain
+        uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+
+      - name: Install Linux display dependencies
+        if: runner.os == 'Linux'
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=30 \
+            -o Acquire::https::Timeout=30
+          sudo apt-get install -y --no-install-recommends \
+            -o Acquire::Retries=3 \
+            -o DPkg::Lock::Timeout=120 \
+            xvfb
+
+      - name: Install desktop JavaScript dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm install --frozen-lockfile --filter buzz
+
+      - name: Make sure the Electron binary is installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          node desktop/node_modules/electron/install.js
+          node -e 'console.log("electron binary:", require("./desktop/node_modules/electron"))'
+
+      - name: Install Linux Electron runtime libraries
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          pnpm --dir desktop exec playwright install-deps chromium
+
+      - name: Run the browser host smoke in real Electron
+        shell: bash
+        run: |
+          set -euo pipefail
+          . ./bin/activate-hermit
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            xvfb-run -a pnpm --dir desktop test:browser-smoke
+          else
+            pnpm --dir desktop test:browser-smoke
+          fi

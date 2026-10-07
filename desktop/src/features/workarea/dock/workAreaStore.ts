@@ -32,7 +32,8 @@ const STORAGE_PREFIX = "colony-work-area.v1:";
 const SNAPSHOT_VERSION = 1;
 /** Bound the snapshot: the least recently touched channels are dropped. */
 const MAX_REMEMBERED_CHANNELS = 200;
-const MAX_TABS_PER_CHANNEL = 12;
+/** Most tabs one channel's dock can hold; the browser's host allows as many. */
+export const MAX_TABS_PER_CHANNEL = 12;
 
 let scope: string | null = null;
 let snapshot: Snapshot = Object.freeze({});
@@ -232,11 +233,18 @@ function withTab(
   };
 }
 
-/** Open the dock. With a kind, also add (or focus) that tab. */
-export function openWorkArea(channelId: string, kind?: WorkAreaTabKind) {
+/**
+ * Open the dock. With a kind, also add (or focus) that tab: a singleton kind's
+ * id is the kind; a kind that can be open several times passes the tab's id.
+ */
+export function openWorkArea(
+  channelId: string,
+  kind?: WorkAreaTabKind,
+  tabId?: string,
+) {
   commit(channelId, (current) =>
     kind
-      ? withTab(current, kind, kind)
+      ? withTab(current, kind, tabId ?? kind)
       : {
           ...current,
           open: true,

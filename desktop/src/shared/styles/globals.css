@@ -13,6 +13,7 @@
 @import "./globals/components.css";
 @import "./globals/terminal.css";
 @import "./globals/colony-work-area.css";
+@import "./globals/colony-work-area-browser.css";
 @import "./globals/utilities.css";
 @import "./globals/media-controls.css";
 @import "./globals/avatar-framing.css";

@@ -159,6 +159,7 @@ import {
   KIND_REPO_STATE,
   KIND_STREAM_MESSAGE,
   KIND_STREAM_MESSAGE_EDIT,
+  KIND_STREAM_MESSAGE_PINNED,
   KIND_STREAM_MESSAGE_V2,
   KIND_SYSTEM_MESSAGE,
   KIND_TEXT_NOTE,
@@ -578,10 +579,24 @@ type E2eConfig = {
     huddle?: MockHuddleSeed;
     agentListDelayMs?: number;
     agentMemory?: RawAgentMemoryListing | Record<string, RawAgentMemoryListing>;
+    /** Fail successive `get_agent_memory` calls with these messages, then answer. */
+    agentMemoryErrors?: string[];
+    /** Reject successive pin publishes (kind 40004) with these messages, then accept. */
+    pinPublishErrors?: string[];
+    /** Fail successive pin list reads (kind 40004 REQ) with these messages, then answer. */
+    pinReadErrors?: string[];
+    /** Hold successive pin list reads this long (ms) before answering. */
+    pinReadDelaysMs?: number[];
+    /** Hold successive `get_agent_memory` calls this long (ms) before answering. */
+    agentMemoryDelaysMs?: number[];
     addChannelMembersDelayMs?: number;
     /** Sequenced add-member failures. A string fails that call; null succeeds. */
     addChannelMembersErrors?: (string | null)[];
     channelMembersReadDelayMs?: number;
+    /** Hold every `get_channel_members` read until
+     *  `__BUZZ_E2E_RELEASE_CHANNEL_MEMBERS_READS__()` runs, so a spec can assert
+     *  the loading state without racing a timer against runner speed. */
+    holdChannelMembersReads?: boolean;
     createManagedAgentDelayMs?: number;
     channelTemplates?: ChannelTemplate[];
     /** Override display names for visual fixtures without changing channel IDs. */
@@ -615,6 +630,8 @@ type E2eConfig = {
     /** Reference records for the visual comparison harness only. */
     visualFixture?: VisualFixtureSeed;
     canvasReadError?: string;
+    /** Canvas Markdown returned by `get_canvas` per channel id (mock mode only). */
+    canvasContentByChannelId?: Record<string, string>;
     /** Delay (ms) for `apply_workspace` so e2e tests can observe the
      *  community-switch gate. 0/undefined = instant. */
     applyCommunityDelayMs?: number;
@@ -790,6 +807,8 @@ type E2eConfig = {
     companyWorkEvents?: RelayEvent[];
     /** Reject successive company work head reads in order, then accept them. */
     companyWorkReadErrors?: string[];
+    /** Hold successive company work head reads for this long (ms), then answer. */
+    companyWorkReadDelaysMs?: number[];
     /** Synthetic relay key used to broker company work actions in focused E2E tests. */
     companyWorkRelayPrivateKey?: string;
     /** Reject company work action publishes in order, then accept them. */
@@ -1729,6 +1748,13 @@ declare global {
       /** 64-hex id required for the event to be a valid reaction target. */
       id?: string;
     }) => RelayEvent;
+    /** Seed and live-publish one pin (kind 40004) made by `pubkey`. */
+    __BUZZ_E2E_EMIT_MOCK_PIN__?: (input: {
+      channelName: string;
+      targetId: string;
+      pubkey?: string;
+      createdAt?: number;
+    }) => RelayEvent;
     /** Seed and live-publish one signed company work tracking head. */
     __BUZZ_E2E_SEED_COMPANY_WORK_TRACKING_HEAD__?: (event: RelayEvent) => void;
     /** Sign and publish a mock relay ask head with the per-test relay key. */
@@ -2056,6 +2082,9 @@ declare global {
     __BUZZ_E2E_HOLD_USERS_BATCH__?: (hold: boolean) => number;
     /** Number of `get_users_batch` calls currently held. */
     __BUZZ_E2E_USERS_BATCH_PENDING__?: () => number;
+    /** Release every `get_channel_members` read held by `holdChannelMembersReads`
+     *  and let later reads through. Returns the number released. */
+    __BUZZ_E2E_RELEASE_CHANNEL_MEMBERS_READS__?: () => number;
     /** Release every `get_profile` response held by `deferProfileReads`. */
     __BUZZ_E2E_RELEASE_PROFILE_READS__?: () => number;
     /** Number of `get_profile` responses currently held. */
@@ -2198,6 +2227,10 @@ let profileReadsReleased = false;
 // second paste of the same label is provably still deciding).
 let holdUsersBatch = false;
 let heldUsersBatchReleases: Array<() => void> = [];
+// `get_channel_members` reads pinned by `holdChannelMembersReads` until the
+// spec releases them; after the release, reads pass straight through.
+let channelMembersReadsReleased = false;
+let heldChannelMembersReadReleases: Array<() => void> = [];
 // Starts currently held behind `startManagedAgentDelayMs`, releasable early
 // via `__BUZZ_E2E_RELEASE_MANAGED_AGENT_STARTS__()`: a spec that holds a
 // start across a community round-trip needs the hold long enough to be
@@ -13659,6 +13692,11 @@ async function handleGetChannelMembers(
   if (delayMs > 0) {
     await new Promise((resolve) => window.setTimeout(resolve, delayMs));
   }
+  if (config?.mock?.holdChannelMembersReads && !channelMembersReadsReleased) {
+    await new Promise<void>((resolve) => {
+      heldChannelMembersReadReleases.push(resolve);
+    });
+  }
 
   const identity = getIdentity(config);
   if (!identity) {
@@ -13804,6 +13842,15 @@ async function handleGetCanvas(
     const canvasReadError = config?.mock?.canvasReadError;
     if (canvasReadError) {
       throw new Error(canvasReadError);
+    }
+    const seeded = config?.mock?.canvasContentByChannelId?.[args.channelId];
+    if (seeded !== undefined) {
+      return {
+        content: seeded,
+        event_id: null,
+        updated_at: Math.floor(Date.now() / 1000),
+        author: null,
+      };
     }
     // The no-canvas success shape: content null means no canvas set.
     return { content: null, updated_at: null, author: null };
@@ -15092,6 +15139,13 @@ async function handleGetAgentMemory(
   if (!isManagedAgent) {
     throw new Error(`mock get_agent_memory: unmanaged agent ${pubkey}`);
   }
+
+  const queuedError = config?.mock?.agentMemoryErrors?.shift();
+  const queuedDelayMs = config?.mock?.agentMemoryDelaysMs?.shift() ?? 0;
+  if (queuedDelayMs > 0) {
+    await new Promise((resolve) => window.setTimeout(resolve, queuedDelayMs));
+  }
+  if (queuedError) throw new Error(queuedError);
 
   const configuredMemory = config?.mock?.agentMemory;
   if (!configuredMemory) {
@@ -17293,14 +17347,21 @@ function sendToMockSocket(args: {
       const readError = companyWorkHeadQuery
         ? getConfig()?.mock?.companyWorkReadErrors?.shift()
         : undefined;
-      if (readError) {
-        sendWsText(socket.handler, ["CLOSED", subId, readError]);
-        return;
-      }
-      for (const event of filterMockCompanyWorkEvents(filter)) {
-        sendWsText(socket.handler, ["EVENT", subId, event]);
-      }
-      sendWsText(socket.handler, ["EOSE", subId]);
+      const readDelayMs = companyWorkHeadQuery
+        ? (getConfig()?.mock?.companyWorkReadDelaysMs?.shift() ?? 0)
+        : 0;
+      const answer = () => {
+        if (readError) {
+          sendWsText(socket.handler, ["CLOSED", subId, readError]);
+          return;
+        }
+        for (const event of filterMockCompanyWorkEvents(filter)) {
+          sendWsText(socket.handler, ["EVENT", subId, event]);
+        }
+        sendWsText(socket.handler, ["EOSE", subId]);
+      };
+      if (readDelayMs > 0) window.setTimeout(answer, readDelayMs);
+      else answer();
       return;
     }
 
@@ -17504,6 +17565,22 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_STREAM_MESSAGE_PINNED) && !filter.ids) {
+      // The pin list read: scriptable failures and delays, like company work.
+      const readError = getConfig()?.mock?.pinReadErrors?.shift();
+      const readDelayMs = getConfig()?.mock?.pinReadDelaysMs?.shift() ?? 0;
+      const answer = () => {
+        if (readError) {
+          sendWsText(socket.handler, ["CLOSED", subId, readError]);
+          return;
+        }
+        emitMockHistory(socket, subId, channelIds, filter);
+      };
+      if (readDelayMs > 0) window.setTimeout(answer, readDelayMs);
+      else answer();
+      return;
+    }
+
     emitMockHistory(socket, subId, channelIds, filter);
     return;
   }
@@ -17548,6 +17625,26 @@ function sendToMockSocket(args: {
       } else {
         acknowledge();
       }
+      return;
+    }
+
+    if (event.kind === KIND_STREAM_MESSAGE_PINNED) {
+      const pinError = getConfig()?.mock?.pinPublishErrors?.shift();
+      const pinChannelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+      if (pinError || !pinChannelId) {
+        sendWsText(socket.handler, [
+          "OK",
+          event.id,
+          false,
+          pinError ?? "invalid: pin needs a channel",
+        ]);
+        return;
+      }
+      // Stored like any channel event, so a pin is read back, deleted by the
+      // same `delete_message` mock, and delivered live like the relay does.
+      recordMockMessage(pinChannelId, event);
+      emitMockLiveEvent(pinChannelId, event);
+      sendWsText(socket.handler, ["OK", event.id, true, ""]);
       return;
     }
 
@@ -18313,6 +18410,8 @@ export function maybeInstallE2eTauriMocks() {
   profileReadsReleased = false;
   holdUsersBatch = false;
   heldUsersBatchReleases = [];
+  channelMembersReadsReleased = false;
+  heldChannelMembersReadReleases = [];
   cancelledMediaUploadIds = new Set<string>();
   for (const controller of mockMediaFetchControllers.values()) {
     controller.abort();
@@ -18357,6 +18456,12 @@ export function maybeInstallE2eTauriMocks() {
     return queued.length;
   };
   window.__BUZZ_E2E_USERS_BATCH_PENDING__ = () => heldUsersBatchReleases.length;
+  window.__BUZZ_E2E_RELEASE_CHANNEL_MEMBERS_READS__ = () => {
+    channelMembersReadsReleased = true;
+    const queued = heldChannelMembersReadReleases.splice(0);
+    for (const release of queued) release();
+    return queued.length;
+  };
   mockGlobalAgentConfig = config.mock?.globalAgentConfig
     ? { ...config.mock.globalAgentConfig }
     : null;
@@ -18594,6 +18699,32 @@ export function maybeInstallE2eTauriMocks() {
       pending,
       id,
     );
+  };
+  window.__BUZZ_E2E_EMIT_MOCK_PIN__ = ({
+    channelName,
+    targetId,
+    pubkey,
+    createdAt,
+  }) => {
+    const channel = mockChannels.find(
+      (candidate) => candidate.name === channelName,
+    );
+    if (!channel) {
+      throw new Error(`Mock channel ${channelName} not found.`);
+    }
+    const event = createMockEvent(
+      KIND_STREAM_MESSAGE_PINNED,
+      "",
+      [
+        ["h", channel.id],
+        ["e", targetId],
+      ],
+      pubkey,
+      createdAt,
+    );
+    recordMockMessage(channel.id, event);
+    emitMockLiveEvent(channel.id, event);
+    return event;
   };
   window.__BUZZ_E2E_SEED_COMPANY_WORK_TRACKING_HEAD__ = (event) => {
     if (!verifyEvent(event) || event.kind !== KIND_COMPANY_WORK_TRACKING_HEAD) {
