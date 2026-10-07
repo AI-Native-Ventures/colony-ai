@@ -1,4 +1,5 @@
 import {
+  Diamond,
   FileText,
   Globe,
   Pencil,
@@ -18,6 +19,7 @@ import { WorkAreaBrowserTab } from "./tabs/WorkAreaBrowserTab";
 import { WorkAreaCanvasTab } from "./tabs/WorkAreaCanvasTab";
 import { WorkAreaFilesTab } from "./tabs/WorkAreaFilesTab";
 import { WorkAreaTerminalTab } from "./tabs/WorkAreaTerminalTab";
+import { WorkAreaWorkTab } from "./tabs/WorkAreaWorkTab";
 import type { WorkAreaTab, WorkAreaTabKind } from "./workAreaTypes";
 
 export type WorkAreaTabPanelProps = {
@@ -95,6 +97,13 @@ const DEFINITIONS: Record<WorkAreaTabKind, WorkAreaTabDefinition> = {
     icon: Pencil,
     available: true,
     Panel: WorkAreaCanvasTab,
+  },
+  work: {
+    kind: "work",
+    label: "Work",
+    icon: Diamond,
+    available: true,
+    Panel: WorkAreaWorkTab,
   },
 };
 

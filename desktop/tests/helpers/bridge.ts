@@ -292,6 +292,8 @@ type MockBridgeOptions = {
   companyWorkEvents?: RelayEvent[];
   /** Reject successive company work head reads in order, then accept them. */
   companyWorkReadErrors?: string[];
+  /** Hold successive company work head reads for this long (ms), then answer. */
+  companyWorkReadDelaysMs?: number[];
   /** Synthetic relay key used to broker company work actions in focused E2E tests. */
   companyWorkRelayPrivateKey?: string;
   /** Reject company work action publishes in order, then accept them. */
