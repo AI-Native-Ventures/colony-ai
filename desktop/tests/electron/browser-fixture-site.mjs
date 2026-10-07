@@ -3,7 +3,8 @@
 // (tests/real-run/browser-tab.mjs). `/probe` stores what `?set=` says in a
 // cookie, localStorage and IndexedDB and reports what the page can see in its
 // title; `/popup` opens a web window and a file: window; `/download.txt` is an
-// attachment named report.txt; `/redirect-metadata` redirects to the cloud
+// attachment named report.txt; `/download-traversal` is one named
+// `../../colony-real-run-escape.txt`; `/redirect-file` redirects to a file: URL; `/redirect-metadata` redirects to the cloud
 // metadata address; `/metadata-page` reaches for that address from a page (a
 // fetch and a window) and reports what happened in its title.
 import { createServer } from "node:http";
@@ -18,6 +19,22 @@ export function startFixtureSite() {
         "content-disposition": 'attachment; filename="report.txt"',
       });
       response.end("fixture download body");
+      return;
+    }
+    if (url.pathname === "/download-traversal") {
+      // A hostile file name: it must land inside the Downloads folder under a
+      // bare name, never above it.
+      response.writeHead(200, {
+        "content-type": "text/plain",
+        "content-disposition":
+          'attachment; filename="../../colony-real-run-escape.txt"',
+      });
+      response.end("traversal body");
+      return;
+    }
+    if (url.pathname === "/redirect-file") {
+      response.writeHead(302, { location: "file:///etc/hosts" });
+      response.end();
       return;
     }
     if (url.pathname === "/redirect-metadata") {

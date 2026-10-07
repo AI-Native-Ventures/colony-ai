@@ -162,24 +162,67 @@ driver's orchestration, judging and report writing, never the product.
 
 ## Browser tab proof on the packaged app
 
-`browser-tab.mjs` runs the visible browser tab's host proof against the
-unchanged packaged app, under the same no-keychain process sandbox, using the
-app's real preload bridge (`window.colonyBrowserHost`) and a local fixture site
-(`tests/electron/browser-fixture-site.mjs`):
+Two scripts, prepared and NOT yet run on a candidate (the 1.0.6 candidate must contain PR 263, because
+the forget-everything and metadata rows need its host). Both refuse CI, run only under the keychain-deny
+sandbox, and sign in to nothing.
+
+### `browser-tab.mjs`: the host proof, on a throwaway HOME
+
+Launches the packaged app with the throwaway HOME `privateDir/home` (`GATE_REAL_HOME=1` is refused), a
+throwaway profile, a relay address that does not exist, and drives the app's real preload bridge
+(`window.colonyBrowserHost`) against a local fixture site (`tests/electron/browser-fixture-site.mjs`).
+Downloads go to the throwaway HOME's Downloads folder, never the owner's, and the whole throwaway tree is
+removed at the end (only folders this run made under the system temp directory).
 
 ```sh
 cd desktop
 COLONY_REAL_RUN=1 node tests/real-run/browser-tab.mjs \
-  --app '/Applications/Colony.app' \
+  --app '/path/to/Colony.app' \
   --output /Users/mac/worktrees/.lanes/phase2/real-run-browser-tab
 ```
 
-It checks that two businesses share no cookie, localStorage or IndexedDB (and
-that one business keeps them across tabs and a window opened by a page), that
-pages see no desktop bridge and every permission is denied, that `file:`,
-`javascript:`, `data:` and credentialed addresses are refused, that a download
-lands in the real Downloads folder under a collision-free name (the files it
-made are removed afterwards), and that forgetting a business clears its storage
-but never the person's files. The same checks run on every pull request in real
-Electron in `.github/workflows/browser-host-electron.yml`; this script is the
-proof on the shipped artifact. It signs in to nothing and contacts no relay.
+Rows (PASS, FAIL, or BLOCKED; exit 1 on any FAIL or BLOCKED):
+
+1. App is packaged, on a throwaway profile, on a throwaway HOME whose Downloads folder is not the owner's;
+   the keychain-deny sandbox refuses a probe folder.
+2. Two businesses share no cookie, localStorage or IndexedDB; one business keeps them across tabs.
+3. **Visible browser vs app session:** a cookie set in the visible browser is not in the app's own session
+   (`session.defaultSession`) or its window storage, and a cookie in the app session never reaches the browser.
+4. Pages see no desktop bridge; every permission is denied.
+5. **Refusals:** `file:`, `javascript:`, `data:`, `chrome:`, `devtools:`, `view-source:`, `ftp:`, `blob:`,
+   `buzz:`, `colony:` and credentialed addresses are refused for create and for navigate (the open page stays);
+   a redirect to `file:` does not land; `file:` and `ftp:` windows opened by a page never become tabs.
+6. **Metadata and link-local (PR 263):** 10 spellings (169.254.x, decimal and hex IPv4, `fd00:ec2::254`,
+   IPv4-mapped IPv6, `fe80::`, `metadata.google.internal`) are refused for create and navigate; a redirect to
+   one fails at once; a page's `fetch` to one is cancelled and its window never opens; loopback stays open
+   (ordinary private ranges are deliberately not probed, to send no LAN traffic).
+7. **Downloads:** land only in the throwaway HOME's Downloads under bare, collision-free names; a download
+   named `../../colony-real-run-escape.txt` lands inside it; a tree scan of the whole private folder and the
+   temp folder finds nothing outside Downloads, no partial or empty file.
+8. Forgetting a business, and forgetting everything (sign out, account delete), clear storage and end tabs
+   but never delete downloaded files.
+
+### `browser-tab-ui.mjs`: the two rows that need a signed-in workspace
+
+Relaunches a throwaway profile the gate already holds (label from `state.json`, as `c105-dock.mjs` does) and
+drives the real dock. It creates no account and types into no form.
+
+```sh
+cd desktop
+COLONY_REAL_RUN=1 AI_APP='/path/to/Colony.app' AI_OUT=/Users/mac/worktrees/.lanes/phase2/real-run-browser-ui \
+  node tests/real-run/browser-tab-ui.mjs A
+```
+
+- `BT-reload`: open a browser page in the dock, load it, reload the app; the dock still shows the same page
+  tab, selected, at the same address, and the page loads again (live pages end at reload by design; the tab stays).
+- `BT-remove-forget`: a cookie is set in a community's visible browser; one stuck community entry is seeded into
+  the profile's list (relay `ws://127.0.0.1:1`, nothing listens, no relay contacted: the only state written);
+  the real escape screen's "Remove this community from this device" is pressed; afterwards the list no longer
+  holds it, no retry record is left, no tab of it is live, and a fresh tab of that community sees no cookie.
+  A row whose precondition is not reached is BLOCKED with the screen text, never PASS.
+
+### Tests of the judgements
+
+`node --test tests/real-run/browser-tab-rows.test.mjs` (no Electron): every address the proof expects refused
+is refused by the real host policy, the ordinary ones are not, `isInside` is strict, the downloads verdict
+rejects strays, partial and empty files and a wrong count, and the tree scan is bounded and ignores symlinks.
