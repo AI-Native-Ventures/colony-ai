@@ -96,6 +96,7 @@ export default defineConfig({
       testMatch: [
         "**/avatar-discoverability.spec.ts",
         "**/activity-row-plain-labels.spec.ts",
+        "**/tool-names-plain.spec.ts",
         "**/scout-branding.spec.ts",
         "**/workspace-file-links.spec.ts",
         "**/work-area-dock.spec.ts",
@@ -315,6 +316,7 @@ export default defineConfig({
       testMatch: [
         "**/avatar-discoverability.spec.ts",
         "**/activity-row-plain-labels.spec.ts",
+        "**/tool-names-plain.spec.ts",
         "**/workspace-file-links.spec.ts",
         "**/work-area-dock.spec.ts",
         "**/work-area-dock-screenshots.spec.ts",

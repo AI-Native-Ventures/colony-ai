@@ -263,10 +263,53 @@ export function isGenericToolTitle(value: string): boolean {
   );
 }
 
+/** Plain wording for the developer tools the bundled runtime exposes. */
+const PLAIN_DEV_TOOL_TITLES: Record<string, string> = {
+  shell: "Run a command",
+  read_file: "Read a file",
+  str_replace: "Edit a file",
+  todo: "Update the to-do list",
+  view_image: "View an image",
+};
+
+export const PLAIN_UNKNOWN_TOOL_TITLE = "Use a tool";
+
+/** The bundled dev server's prefix, before and after id normalisation. */
+const DEV_MCP_PREFIX_PATTERN = /^(buzz_)?dev_mcp_/;
+
+/** A raw MCP id: `<server>__<tool>`, or the bundled dev server's own prefix. */
+const RAW_TOOL_ID_PATTERN = /[A-Za-z0-9][\w-]*__[\w-]+/g;
+
+function isRawToolId(value: string): boolean {
+  const trimmed = value.trim();
+  return (
+    /^[A-Za-z0-9][\w-]*__[\w-]+$/.test(trimmed) ||
+    DEV_MCP_PREFIX_PATTERN.test(normalizeToolNameText(trimmed))
+  );
+}
+
+function plainDevToolTitle(value: string): string | null {
+  const afterServer = value.trim().toLowerCase().split("__").pop() ?? "";
+  const base = normalizeToolNameText(afterServer).replace(
+    DEV_MCP_PREFIX_PATTERN,
+    "",
+  );
+  return PLAIN_DEV_TOOL_TITLES[base] ?? null;
+}
+
+/**
+ * The one display name for a tool in default views (rows, group headers,
+ * tooltips, aria text, live announcements). Raw ids such as a server-prefixed
+ * `<server>__shell` never come back out of here. The raw id stays on the
+ * transcript item for opt-in details; this is UI text only.
+ */
 export function formatToolTitle(
   toolName: string,
   fallbackTitle?: string,
 ): string {
+  const dev = plainDevToolTitle(toolName);
+  if (dev) return dev;
+
   const name = normalizeToolName(toolName);
   if (BUZZ_READ_TOOLS.has(name) || BUZZ_WRITE_TOOLS.has(name)) {
     return name
@@ -275,7 +318,17 @@ export function formatToolTitle(
       .join(" ");
   }
   if (fallbackTitle && !isGenericToolTitle(fallbackTitle)) {
-    return fallbackTitle;
+    return isRawToolId(fallbackTitle)
+      ? (plainDevToolTitle(fallbackTitle) ?? PLAIN_UNKNOWN_TOOL_TITLE)
+      : fallbackTitle;
   }
-  return toolName;
+  return isRawToolId(toolName) ? PLAIN_UNKNOWN_TOOL_TITLE : toolName;
+}
+
+/**
+ * Replace any raw tool id embedded in free text (a permission title such as
+ * "Allow <server>__shell?") with its plain display name.
+ */
+export function plainifyToolIds(text: string): string {
+  return text.replace(RAW_TOOL_ID_PATTERN, (id) => formatToolTitle(id));
 }
