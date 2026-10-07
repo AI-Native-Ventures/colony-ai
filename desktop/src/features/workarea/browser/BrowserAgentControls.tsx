@@ -95,10 +95,10 @@ export function BrowserAgentControls({
   return (
     <section
       aria-label="Agent browser controls"
-      className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2 text-xs"
+      className="flex max-h-80 shrink-0 flex-col gap-2 overflow-y-auto border-b border-border px-3 py-2 text-xs"
       data-testid="browser-agent-controls"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 bg-background">
         <span aria-live="polite" role="status" data-testid="browser-controller">
           {grant
             ? `${name} has control`
@@ -380,6 +380,7 @@ function Confirmation({
       aria-labelledby={titleId}
       className="flex flex-col gap-2 rounded border border-border p-2"
       role="alertdialog"
+      data-colony-inline-browser-confirmation="true"
     >
       <p className="font-medium" id={titleId}>
         {title}

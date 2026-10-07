@@ -101,6 +101,9 @@ test("person approves task and site, confirms consequences, and takeover fences 
     ["send_or_post", "Publish post", "Send or publish this content?"],
     ["permission", "Allow notifications", "Change site permissions?"],
   ]) {
+    const nativeCallsBefore = await page.evaluate(
+      () => window.__browserFake?.calls.length ?? 0,
+    );
     await page.evaluate(
       ({ category, summary }) =>
         window.colonyBrowserControlFixture?.confirmation(category, summary),
@@ -111,6 +114,17 @@ test("person approves task and site, confirms consequences, and takeover fences 
     await expect(
       dialog.getByRole("button", { name: "Reject", exact: true }),
     ).toBeFocused();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (before) =>
+            window.__browserFake?.calls
+              .slice(before)
+              .some((call) => call.op === "attach"),
+          nativeCallsBefore,
+        ),
+      )
+      .toBe(true);
     if (category === "payment") {
       await waitForAnimations(page);
       await controls(page).screenshot({
