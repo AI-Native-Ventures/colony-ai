@@ -75,6 +75,7 @@ export async function createBrowserAgentHost({
       throw new Error("Invalid agent browser request");
     switch (action) {
       case "agent-grant": {
+        await broker.recoverControl(text(payload.tabId, "tab id"));
         const grant = server.issueGrant({
           agentId: text(payload.agentId, "agent id"),
           taskId: text(payload.taskId, "task id"),
@@ -93,17 +94,18 @@ export async function createBrowserAgentHost({
         }
         return grant;
       }
-      case "agent-revoke":
-        return {
-          revoked: broker.revoke(
-            text(payload.grantId, "grant id"),
-            "person revoked",
-          ),
-        };
-      case "agent-take-over":
-        return {
-          takenOver: broker.takeOver(text(payload.grantId, "grant id")),
-        };
+      case "agent-revoke": {
+        const grantId = text(payload.grantId, "grant id");
+        const revoked = broker.revoke(grantId, "person revoked");
+        await broker.completeControlRelease(grantId);
+        return { revoked };
+      }
+      case "agent-take-over": {
+        const grantId = text(payload.grantId, "grant id");
+        const takenOver = broker.takeOver(grantId);
+        await broker.completeControlRelease(grantId);
+        return { takenOver };
+      }
       case "agent-approve-origin":
         return broker.approveOrigin(
           text(payload.grantId, "grant id"),

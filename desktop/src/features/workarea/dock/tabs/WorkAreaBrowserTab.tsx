@@ -4,6 +4,7 @@ import { useCommunities } from "@/features/communities/useCommunities";
 import type { BrowserShortcutAction } from "@/shared/api/browserHost";
 import { isMacPlatform } from "@/shared/lib/platform";
 
+import { BrowserAgentControls } from "../../browser/BrowserAgentControls";
 import { BrowserNotices } from "../../browser/BrowserNotices";
 import {
   BrowserToolbar,
@@ -36,7 +37,7 @@ import type { WorkAreaTabPanelProps } from "../workAreaTabRegistry";
  * conversation. The page is an Electron view (never an iframe) in a profile
  * that belongs to this business alone, so cookies and storage are not shared
  * with any other community. The person signs in to sites themselves, and
- * nothing in this tab is visible to agents.
+ * agents see it only after the person approves a task and its sites.
  *
  * Keyboard and pointer reach every control: the toolbar, the address bar,
  * notices and the page itself (Enter on the page region hands it the keyboard;
@@ -54,6 +55,7 @@ export function WorkAreaBrowserTab({
   const notices = useBrowserNotices(pageKey);
   const { activeCommunity } = useCommunities();
   const toolbarRef = React.useRef<BrowserToolbarHandle>(null);
+  const [sharedWithAgent, setSharedWithAgent] = React.useState(false);
   const hasPage = page !== null;
 
   // A page the person just made takes the address bar, once its tab is shown.
@@ -135,13 +137,24 @@ export function WorkAreaBrowserTab({
       onKeyDown={onChromeKeyDown}
     >
       <BrowserToolbar page={page} ref={toolbarRef} />
+      <BrowserAgentControls
+        active={active}
+        channelId={channelId}
+        hostId={page.hostId}
+        url={page.url}
+        onSharingChange={setSharedWithAgent}
+      />
       <BrowserNotices notices={notices} pageKey={pageKey} />
       <BrowserViewport active={active} page={page} />
       <footer className="colony-browser-status" data-testid="browser-status">
         <span>
           {activeCommunity?.name ?? "This business"} · Separate browser profile
         </span>
-        <span>Not shared with agents</span>
+        <span>
+          {sharedWithAgent
+            ? "Shared for an approved task"
+            : "Not shared with agents"}
+        </span>
       </footer>
     </div>
   );

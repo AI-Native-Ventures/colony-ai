@@ -61,6 +61,7 @@ async function fixture(t, options = {}) {
       if (options.failProxy) throw new Error("failed");
     },
     async closeAllConnections() {
+      if (options.failDrain) throw new Error("cleanup failed password=hunter2");
       network.push("drain");
     },
     async clearCache() {
@@ -273,5 +274,103 @@ test("history checks the target entry before dispatch and navigation failures pr
   await assert.rejects(
     f.browser.agentAdapter.loadUrl(f.tab.id, "https://example.com/"),
     /failed/u,
+  );
+});
+
+test("native Stop failure propagates with revoked access and recovery is window owned", async (t) => {
+  const f = await fixture(t);
+  const grant = await f.grant();
+  const contents = f.browser.agentAdapter.webContents(f.tab.id);
+  let unavailable = true;
+  contents.stop = () => {
+    if (unavailable) throw new Error("native failure");
+  };
+  await assert.rejects(
+    f.host.handleRequest("agent-revoke", { grantId: grant.id }, f.sender.id),
+    /recovery/iu,
+  );
+  assert.equal(f.host.capabilities.getGrant(grant.id).state, "revoked");
+  assert.deepEqual(
+    await f.host.handleRequest(
+      "agent-status",
+      { tabId: f.tab.id },
+      f.sender.id,
+    ),
+    { enabled: true, recoveryRequired: true },
+  );
+  await assert.rejects(
+    f.host.handleRequest(
+      "agent-recover-control",
+      { tabId: f.tab.id },
+      f.sender.id + 1000,
+    ),
+    /unavailable/iu,
+  );
+  await assert.rejects(f.grant(), /recovery/iu);
+  assert.equal(
+    f.network.some((item) => item?.mode === "direct"),
+    false,
+  );
+  unavailable = false;
+  await f.host.handleRequest(
+    "agent-recover-control",
+    { tabId: f.tab.id },
+    f.sender.id,
+  );
+  assert.deepEqual(
+    await f.host.handleRequest(
+      "agent-status",
+      { tabId: f.tab.id },
+      f.sender.id,
+    ),
+    { enabled: true, recoveryRequired: false },
+  );
+  assert.equal((await f.grant()).state, "active");
+});
+
+test("failed network cleanup is visible and retained for explicit person recovery", async (t) => {
+  const options = {};
+  const f = await fixture(t, options);
+  const grant = await f.grant();
+  options.failDrain = true;
+  await f.host.handleRequest(
+    "agent-revoke",
+    { grantId: grant.id },
+    f.sender.id,
+  );
+  assert.equal(f.host.capabilities.getGrant(grant.id).state, "revoked");
+  assert.deepEqual(
+    await f.host.handleRequest(
+      "agent-status",
+      { tabId: f.tab.id },
+      f.sender.id,
+    ),
+    { enabled: true, recoveryRequired: true },
+  );
+  assert.equal(
+    f.network.some((item) => item?.mode === "direct"),
+    false,
+  );
+  assert.equal(
+    JSON.stringify(f.host.broker.getLog()).includes("hunter2"),
+    false,
+  );
+  options.failDrain = false;
+  await f.host.handleRequest(
+    "agent-recover-control",
+    { tabId: f.tab.id },
+    f.sender.id,
+  );
+  assert.equal(
+    f.network.some((item) => item?.mode === "direct"),
+    true,
+  );
+  assert.deepEqual(
+    await f.host.handleRequest(
+      "agent-status",
+      { tabId: f.tab.id },
+      f.sender.id,
+    ),
+    { enabled: true, recoveryRequired: false },
   );
 });

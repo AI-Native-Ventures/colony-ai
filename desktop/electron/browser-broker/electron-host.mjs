@@ -99,7 +99,9 @@ export async function createElectronBrowserAgentHost({
       .tabIds()
       .some(
         (id) =>
-          adapter.session(id) === session && host.capabilities.grantForTab(id),
+          adapter.session(id) === session &&
+          (host.capabilities.grantForTab(id) ||
+            host.broker.controlRecoveryRequired(id)),
       );
   }
 
@@ -109,10 +111,21 @@ export async function createElectronBrowserAgentHost({
     await profile.session.setProxy({ mode: "direct" });
     await profile.proxy.stop();
     profiles.delete(profile.session);
+    for (const id of adapter.tabIds()) {
+      if (adapter.session(id) === profile.session)
+        host.broker.notifyContainmentRecovery(id, false);
+    }
   }
 
-  const unsubscribe = host.capabilities.onChange((event) => {
-    if (!["revoked", "expired", "taken-over"].includes(event.type)) return;
+  const unsubscribe = host.onEvent((event) => {
+    if (
+      !(
+        event.type === "grant-changed" &&
+        ["revoked", "expired", "taken-over"].includes(event.state)
+      ) &&
+      !(event.type === "control-recovery" && event.required === false)
+    )
+      return;
     void serialize(async () => {
       for (const profile of profiles.values()) {
         if (profileActive(profile.session)) continue;
@@ -121,6 +134,10 @@ export async function createElectronBrowserAgentHost({
         } catch (error) {
           // Retain the cleanup record and restrictive proxy for the next retry.
           profile.failure = error;
+          for (const id of adapter.tabIds()) {
+            if (adapter.session(id) === profile.session)
+              host.broker.notifyContainmentRecovery(id, true);
+          }
         }
       }
     });
@@ -132,9 +149,32 @@ export async function createElectronBrowserAgentHost({
 
   async function handleRequest(action, payload, senderId) {
     if (stopped) throw new Error("The agent browser is stopped");
-    if (action === "agent-status") return { enabled: true };
     if (!payload || typeof payload !== "object" || Array.isArray(payload))
       throw new Error("Invalid agent browser request");
+    if (action === "agent-status") {
+      if (!payload.tabId) return { enabled: true };
+      const tab = ownedTab(payload, senderId);
+      return {
+        enabled: true,
+        recoveryRequired:
+          host.broker.controlRecoveryRequired(tab.id) ||
+          Boolean(profiles.get(adapter.session(tab.id))?.failure),
+      };
+    }
+    if (action === "agent-recover-control") {
+      const tab = ownedTab(payload, senderId);
+      await host.broker.recoverControl(tab.id);
+      await serialize(async () => {
+        const profile = profiles.get(adapter.session(tab.id));
+        if (!profile?.failure) return;
+        if (profileActive(profile.session))
+          throw new Error(
+            "Stop the other browser tasks before recovering this profile",
+          );
+        await cleanup(profile);
+      });
+      return { recovered: true };
+    }
     if (action === "agent-grant")
       return serialize(async () => {
         const tab = ownedTab(payload, senderId);
@@ -223,7 +263,8 @@ export function createBrowserBrokerIpcHandler({ windows, trusted, getHost }) {
     )
       throw new Error("Untrusted agent browser caller");
     const host = getHost();
-    if (action === "agent-status") return { enabled: host.enabled };
+    if (action === "agent-status" && (!host.enabled || !payload?.tabId))
+      return { enabled: host.enabled };
     return host.handleRequest(action, payload, event.sender.id);
   };
 }
