@@ -110,6 +110,25 @@ test.describe("work area Browser tab", () => {
     await expect(page.getByTestId("browser-reload")).toBeDisabled();
   });
 
+  test("the globe on the conversation toolbar opens the browser, as in the reference", async ({
+    page,
+  }) => {
+    await boot(page);
+    await expect(dock(page)).toHaveCount(0);
+    const globe = page.getByRole("button", { name: "Open browser" });
+    await globe.focus();
+    await page.keyboard.press("Enter");
+    await expect(
+      dock(page).getByRole("tab", { name: "Browser", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("browser-start")).toBeVisible();
+    // Pressing it again with the dock open keeps the one Browser tab.
+    await globe.click();
+    await expect(dock(page).getByRole("tab", { name: "Browser" })).toHaveCount(
+      1,
+    );
+  });
+
   test("navigates in this business's profile, shows the real address, and history drives the host", async ({
     page,
   }) => {
@@ -565,6 +584,9 @@ test.describe("work area Browser tab", () => {
     page,
   }) => {
     await boot(page, { fake: false });
+    await expect(
+      page.getByRole("button", { name: "Open browser" }),
+    ).toHaveCount(0);
     await trigger(page).click();
     await expect(page.getByTestId("work-area-open-browser")).toHaveCount(0);
     await expect(page.getByTestId("work-area-empty")).toContainText(
