@@ -14,15 +14,19 @@ import {
  * them (restored from disk, or one blank page), so a channel nobody opened the
  * browser in costs nothing.
  */
-export function useBrowserChannel(channelId: string): BrowserChannelState {
+export function useBrowserChannel(
+  channelId: string,
+  /** The pages are only created once the tab has been on screen. */
+  shown: boolean,
+): BrowserChannelState {
   const state = React.useSyncExternalStore(
     subscribeBrowserTabs,
     () => getBrowserChannelState(channelId),
     () => EMPTY_BROWSER_CHANNEL,
   );
   React.useEffect(() => {
-    ensureBrowserChannel(channelId);
-  }, [channelId]);
+    if (shown) ensureBrowserChannel(channelId);
+  }, [channelId, shown]);
   return state;
 }
 

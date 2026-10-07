@@ -140,3 +140,27 @@ The dry run executes the real driver against a stubbed Electron and scripted pag
 a clean script must end PASS and a leaky one FAIL with the old name listed. It proves the
 driver's orchestration, judging and report writing, never the product.
 
+
+## Browser tab proof on the packaged app
+
+`browser-tab.mjs` runs the visible browser tab's host proof against the
+unchanged packaged app, under the same no-keychain process sandbox, using the
+app's real preload bridge (`window.colonyBrowserHost`) and a local fixture site
+(`tests/electron/browser-fixture-site.mjs`):
+
+```sh
+cd desktop
+COLONY_REAL_RUN=1 node tests/real-run/browser-tab.mjs \
+  --app '/Applications/Colony.app' \
+  --output /Users/mac/worktrees/.lanes/phase2/real-run-browser-tab
+```
+
+It checks that two businesses share no cookie, localStorage or IndexedDB (and
+that one business keeps them across tabs and a window opened by a page), that
+pages see no desktop bridge and every permission is denied, that `file:`,
+`javascript:`, `data:` and credentialed addresses are refused, that a download
+lands in the real Downloads folder under a collision-free name (the files it
+made are removed afterwards), and that forgetting a business clears its storage
+but never the person's files. The same checks run on every pull request in real
+Electron in `.github/workflows/browser-host-electron.yml`; this script is the
+proof on the shipped artifact. It signs in to nothing and contacts no relay.

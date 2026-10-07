@@ -46,7 +46,7 @@ export function WorkAreaBrowserTab({
   active,
 }: WorkAreaTabPanelProps) {
   const ready = useBrowserBusinessReady();
-  const state = useBrowserChannel(channelId);
+  const state = useBrowserChannel(channelId, active);
   const { activeCommunity } = useCommunities();
   const toolbarRef = React.useRef<BrowserToolbarHandle>(null);
   const page =

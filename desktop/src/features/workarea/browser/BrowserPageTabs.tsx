@@ -106,7 +106,16 @@ export function BrowserPageTabs({
                 aria-label={`Close ${label}`}
                 className="colony-work-area-icon-button"
                 data-testid="browser-page-tab-close"
-                onClick={() => onClose(page.key)}
+                onClick={(event) => {
+                  const neighbour = pages[index + 1] ?? pages[index - 1];
+                  onClose(page.key);
+                  // A keyboard activation (no pointer) keeps focus in the strip.
+                  if (event.detail === 0 && neighbour) {
+                    window.requestAnimationFrame(() =>
+                      refs.current.get(neighbour.key)?.focus(),
+                    );
+                  }
+                }}
                 tabIndex={selected ? 0 : -1}
                 type="button"
               >

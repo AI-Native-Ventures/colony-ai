@@ -349,6 +349,7 @@ export function initBrowserTabsStore(communityScope: string) {
   channels = new Map();
   hostIndex.clear();
   pendingStates.clear();
+  reportedBlockedLinks.clear();
   let raw: string | null = null;
   try {
     raw = window.localStorage.getItem(browserStorageKey(communityScope));
@@ -397,6 +398,7 @@ export function resetBrowserTabsStore() {
   stored = {};
   hostIndex.clear();
   pendingStates.clear();
+  reportedBlockedLinks.clear();
   orphans.clear();
   if (closing !== null) {
     void callHost(() => host.closeBusiness(closing)).catch(() => {
