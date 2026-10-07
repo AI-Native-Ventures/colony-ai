@@ -578,6 +578,10 @@ type E2eConfig = {
     huddle?: MockHuddleSeed;
     agentListDelayMs?: number;
     agentMemory?: RawAgentMemoryListing | Record<string, RawAgentMemoryListing>;
+    /** Fail successive `get_agent_memory` calls with these messages, then answer. */
+    agentMemoryErrors?: string[];
+    /** Hold successive `get_agent_memory` calls this long (ms) before answering. */
+    agentMemoryDelaysMs?: number[];
     addChannelMembersDelayMs?: number;
     /** Sequenced add-member failures. A string fails that call; null succeeds. */
     addChannelMembersErrors?: (string | null)[];
@@ -15094,6 +15098,13 @@ async function handleGetAgentMemory(
   if (!isManagedAgent) {
     throw new Error(`mock get_agent_memory: unmanaged agent ${pubkey}`);
   }
+
+  const queuedError = config?.mock?.agentMemoryErrors?.shift();
+  const queuedDelayMs = config?.mock?.agentMemoryDelaysMs?.shift() ?? 0;
+  if (queuedDelayMs > 0) {
+    await new Promise((resolve) => window.setTimeout(resolve, queuedDelayMs));
+  }
+  if (queuedError) throw new Error(queuedError);
 
   const configuredMemory = config?.mock?.agentMemory;
   if (!configuredMemory) {

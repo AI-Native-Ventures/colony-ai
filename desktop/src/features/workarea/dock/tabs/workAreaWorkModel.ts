@@ -3,16 +3,19 @@ import type {
   CompanyWorkStatus,
 } from "@/features/company-work/companyWorkModels";
 
+import {
+  type GateChannel,
+  type QueryProgress,
+  resolveChannelGate,
+} from "./workAreaChannelGate";
+
 /**
  * What the Work tab shows for one channel. One pure function decides it, so
  * every state is a table row in the unit test instead of a branch in a
  * component.
  *
- * Why `denied` is the channel's, not the community's: a person the relay
- * refuses as a community member never reaches this tab, because the shell's
- * membership watcher replaces the whole workspace with the community escape
- * screen. What is left for the tab is the channel gate: the Company Work reader
- * lists work only for channels the person belongs to.
+ * `denied` is the channel gate (see `workAreaChannelGate.ts`). The Company
+ * Work reader lists work only for the member stream channels it is given.
  */
 export type WorkTabView =
   | { state: "loading" }
@@ -23,17 +26,7 @@ export type WorkTabView =
   | { state: "empty" }
   | { state: "ready"; records: CompanyWorkHeadRecord[] };
 
-type QueryProgress = {
-  status: "pending" | "error" | "success";
-  error: unknown;
-};
-
-export type WorkTabChannel = {
-  id: string;
-  channelType: string;
-  isMember: boolean;
-  archivedAt: string | null;
-};
+export type WorkTabChannel = GateChannel;
 
 export type WorkTabInput = {
   channelId: string;
@@ -69,16 +62,9 @@ export function resolveWorkTabView({
   channels,
   heads,
 }: WorkTabInput): WorkTabView {
-  if (channels.status === "error") {
-    return { state: "failed", error: channels.error };
-  }
-  if (channels.status === "pending") return { state: "loading" };
-
-  const id = channelId.toLowerCase();
-  const channel = (channels.data ?? []).find(
-    (candidate) => candidate.id.toLowerCase() === id,
-  );
-  if (!channel?.isMember) return { state: "denied" };
+  const gate = resolveChannelGate(channelId, channels);
+  if (gate.state !== "open") return gate;
+  const { channel } = gate;
   if (channel.channelType !== "stream") {
     return { state: "unlisted", reason: "not-a-channel" };
   }
@@ -89,6 +75,7 @@ export function resolveWorkTabView({
   if (heads.status === "error") return { state: "failed", error: heads.error };
   if (heads.status === "pending") return { state: "loading" };
 
+  const id = channelId.toLowerCase();
   const records = sortChannelWork(
     (heads.data ?? []).filter(
       (record) => record.channelId.toLowerCase() === id,
