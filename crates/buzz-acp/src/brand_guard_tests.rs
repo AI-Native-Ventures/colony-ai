@@ -8,7 +8,7 @@
 //! for the matching rules and the falsifiability check.
 
 #[path = "../../../test-support/brand_guard.rs"]
-mod brand_guard;
+pub(crate) mod brand_guard;
 
 use std::time::Instant;
 

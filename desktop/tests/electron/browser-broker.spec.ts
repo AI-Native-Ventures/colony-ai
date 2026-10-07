@@ -63,6 +63,11 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
     throw new Error("Fixture server failed");
   const origin = `http://127.0.0.1:${address.port}`;
   const dir = await mkdtemp(path.join(os.tmpdir(), "colony-broker-proof-"));
+  const context = {
+    agentId: "a".repeat(64),
+    taskId: "conversation:11111111-1111-4111-8111-111111111111",
+    communityOrigin: "https://fixture-relay.example",
+  };
   let application: Awaited<ReturnType<typeof electron.launch>> | undefined;
   let client: ReturnType<typeof createBrokerClient> | undefined;
   try {
@@ -96,25 +101,32 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
       return tab;
     });
     const grant = await request<BrowserGrant>("agent-grant", {
-      agentId: "fixture-agent",
-      taskId: "fixture-task",
+      ...context,
       businessId: "fixture-business",
       tabId: tab.id,
       allowedOrigins: [origin],
     });
     expect(JSON.stringify(grant)).not.toMatch(/token|secret/i);
-    const env = await application.evaluate(
-      () =>
+    const credential = await application.evaluate(
+      (_electron, context) =>
         (
           globalThis as typeof globalThis & {
-            colonyBrowserFixture: { env: Record<string, string> };
+            colonyBrowserFixture: {
+              credential(context: {
+                agentId: string;
+                taskId: string;
+                communityOrigin: string;
+              }): { socketPath: string; secret: string };
+            };
           }
-        ).colonyBrowserFixture.env,
+        ).colonyBrowserFixture.credential(context),
+      context,
     );
     client = createBrokerClient({
-      socketPath: env.COLONY_BROWSER_BROKER_SOCKET,
-      secret: env.COLONY_BROWSER_BROKER_SECRET,
-      agent: "fixture-agent",
+      ...credential,
+      agent: context.agentId,
+      taskId: context.taskId,
+      communityOrigin: context.communityOrigin,
     });
     client.start();
     await expect.poll(() => client?.isReady()).toBe(true);
@@ -122,6 +134,14 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
     const call = (tool: string, args: object) =>
       connectedClient.callTool(tool, { tab: tab.id, ...args });
     expect((await call("browser_navigate", { url: origin })).ok).toBe(true);
+    const connection = await connectedClient.callTool("browser_connect", {});
+    expect(connection.ok).toBe(true);
+    expect(connection.connected).toBe(true);
+    expect(connection.primaryTab.id).toBe(tab.id);
+    expect(connection.primaryTab.url).toBe(`${origin}/`);
+    expect(connection.approvedSites).toEqual([origin]);
+    expect(connection.expiresAt).toBe(grant.expiresAt);
+
     const snapshot = await call("browser_snapshot", {});
     expect(snapshot.ok).toBe(true);
     expect(snapshot.snapshot).toContain("untrusted-page-content");
@@ -260,6 +280,10 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
       (await call("browser_navigate", { url: `${origin}/redirect` })).code,
     ).toBe("private_network_denied");
     expect((await call("browser_navigate", { url: origin })).ok).toBe(true);
+    expect(
+      (await connectedClient.callTool("browser_connect", {})).connected,
+    ).toBe(true);
+
     const fresh = await call("browser_snapshot", {});
     const sendLine = fresh.snapshot
       .split("\n")
@@ -323,6 +347,10 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
       )
       .toBe(true);
     await request("agent-revoke", { grantId: grant.id });
+    expect((await connectedClient.callTool("browser_connect", {})).code).toBe(
+      "no_grant",
+    );
+
     expect((await waiting).ok).toBe(false);
     await expect
       .poll(async () => (await connectedClient.listTools()).length)

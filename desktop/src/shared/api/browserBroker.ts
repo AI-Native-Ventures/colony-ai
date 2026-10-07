@@ -17,6 +17,7 @@ export type BrowserGrant = {
 export type BrowserGrantRequest = {
   agentId: string;
   taskId: string;
+  communityOrigin: string;
   businessId: string;
   clientId?: string | null;
   tabId: string;

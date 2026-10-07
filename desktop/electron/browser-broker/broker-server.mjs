@@ -3,6 +3,12 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { createJsonLines, MAX_QUEUED_OUTPUT_BYTES } from "./json-lines.mjs";
+import {
+  browserSessionCredential,
+  browserSessionKey,
+  checkedBrowserSession,
+} from "./session-identity.mjs";
 
 /**
  * Local channel between the Electron main process (broker) and the stdio MCP
@@ -11,14 +17,13 @@ import path from "node:path";
  *
  * Authentication has three layers:
  *   1. the socket lives in a 0700 directory and is 0600 (same OS user only)
- *   2. `hello` must carry the per-launch broker secret (constant time compare)
+ *   2. `hello` carries a derived credential for its agent/task/community tuple
  *   3. every action still needs a capability token the person created; the
- *      server keeps tokens in memory, keyed by the authenticated agent id, and
+ *      server keeps tokens in memory, keyed by that immutable tuple, and
  *      never sends one over the wire.
  *
- * Residual risk (documented in the design): the agent id is asserted by the
- * runtime that starts the MCP server, so a hostile sibling agent that can read
- * another agent's environment could impersonate it.
+ * The launch master stays in main and the trusted native harness. Same-user
+ * arbitrary process inspection remains outside the broker's site boundary.
  */
 
 export const MAX_FRAME_BYTES = 8 * 1024 * 1024;
@@ -58,8 +63,16 @@ export function prepareSocketDir(socketPath) {
 }
 
 function write(socket, message) {
-  if (socket.destroyed) return;
-  socket.write(`${JSON.stringify(message)}\n`);
+  if (socket.destroyed || socket.writableEnded) return;
+  const line = `${JSON.stringify(message)}\n`;
+  if (
+    socket.writableLength + Buffer.byteLength(line) >
+    MAX_QUEUED_OUTPUT_BYTES
+  ) {
+    socket.destroy();
+    return;
+  }
+  socket.write(line);
 }
 
 export function createBrokerServer({
@@ -70,34 +83,42 @@ export function createBrokerServer({
   maxConnections = MAX_CONNECTIONS,
   maxFrame = MAX_FRAME_BYTES,
   helloTimeoutMs = HELLO_TIMEOUT_MS,
+  maxPending = 16,
 } = {}) {
-  if (typeof secret !== "string" || secret.length < 16)
+  if (typeof secret !== "string" || secret.length < 16 || secret.length > 256)
     throw new Error("A broker secret of at least 16 characters is required");
   const connections = new Set();
   const tokens = new Map();
+  const grantKeys = new Map();
   let server = null;
 
-  function connectionsFor(agent) {
-    return [...connections].filter((connection) => connection.agent === agent);
+  function connectionsFor(key) {
+    return [...connections].filter((connection) => connection.key === key);
   }
 
-  function pushToolsChanged(agent) {
-    for (const connection of connectionsFor(agent))
+  function pushToolsChanged(key) {
+    for (const connection of connectionsFor(key))
       write(connection.socket, { type: "tools-changed" });
   }
 
   capabilities.onChange((event) => {
     if (["revoked", "expired", "taken-over"].includes(event.type)) {
-      if (tokens.get(event.agentId) !== undefined) tokens.delete(event.agentId);
-      pushToolsChanged(event.agentId);
+      const key = grantKeys.get(event.grantId);
+      if (key === undefined) return;
+      grantKeys.delete(event.grantId);
+      if (tokens.get(key)?.grantId === event.grantId) tokens.delete(key);
+      pushToolsChanged(key);
     }
   });
 
   /** Host API: create the grant and hand its token to the agent's channel. */
   function issueGrant(request) {
+    const context = checkedBrowserSession(request);
+    const key = browserSessionKey(context);
     const { grant, token } = capabilities.issue(request);
-    tokens.set(grant.agentId, token);
-    pushToolsChanged(grant.agentId);
+    tokens.set(key, { token, grantId: grant.id });
+    grantKeys.set(grant.id, key);
+    pushToolsChanged(key);
     return grant;
   }
 
@@ -110,14 +131,23 @@ export function createBrokerServer({
       Array.isArray(message)
     )
       throw new Error("bad frame");
-    if (!connection.agent) {
+    if (!connection.context) {
       if (message.type !== "hello") throw new Error("hello required");
-      const agent = message.agent;
+      let context;
+      try {
+        context = checkedBrowserSession({
+          agentId: message.agent,
+          taskId: message.taskId,
+          communityOrigin: message.communityOrigin,
+        });
+      } catch {
+        context = null;
+      }
       if (
-        typeof agent !== "string" ||
-        agent.length === 0 ||
-        agent.length > 256 ||
-        !safeEqual(message.secret ?? "", secret)
+        !context ||
+        typeof message.secret !== "string" ||
+        message.secret.length !== 64 ||
+        !safeEqual(message.secret, browserSessionCredential(secret, context))
       ) {
         connection.failures += 1;
         write(socket, { id, ok: false, code: "auth" });
@@ -125,12 +155,20 @@ export function createBrokerServer({
         else socket.end();
         return;
       }
-      connection.agent = agent;
+      connection.context = Object.freeze(context);
+      connection.key = browserSessionKey(context);
       clearTimeout(connection.helloTimer);
       write(socket, { id, type: "hello", ok: true });
       return;
     }
-    const token = tokens.get(connection.agent);
+    const entry = tokens.get(connection.key);
+    const grant = entry && capabilities.getGrant(entry.grantId);
+    const token =
+      grant?.state === "active" &&
+      grant.agentId === connection.context.agentId &&
+      grant.taskId === connection.context.taskId
+        ? entry.token
+        : null;
     if (message.type === "tools") {
       write(socket, {
         id,
@@ -166,41 +204,47 @@ export function createBrokerServer({
     }
     const connection = {
       socket,
-      agent: null,
+      context: null,
+      key: null,
       failures: 0,
-      buffer: "",
+      pending: 0,
       helloTimer: setTimeout(() => socket.destroy(), helloTimeoutMs),
     };
     connection.helloTimer.unref?.();
     connections.add(connection);
-    socket.setEncoding("utf8");
-    socket.on("data", (chunk) => {
-      connection.buffer += chunk;
-      if (connection.buffer.length > maxFrame) {
-        socket.destroy();
-        return;
-      }
-      let newline = connection.buffer.indexOf("\n");
-      while (newline !== -1) {
-        const line = connection.buffer.slice(0, newline);
-        connection.buffer = connection.buffer.slice(newline + 1);
-        newline = connection.buffer.indexOf("\n");
-        if (line.trim().length === 0) continue;
+    const lines = createJsonLines({
+      maxBytes: maxFrame,
+      onError: () => socket.destroy(),
+      onLine(line) {
+        if (line.trim().length === 0) return true;
         let message;
         try {
           message = JSON.parse(line);
         } catch {
           write(socket, { ok: false, code: "bad_frame" });
           socket.destroy();
-          return;
+          return false;
         }
-        handle(connection, message).catch(() => {
-          write(socket, { id: message?.id, ok: false, code: "bad_frame" });
-          socket.destroy();
-        });
-      }
+        if (connection.pending >= maxPending) {
+          write(socket, { id: message?.id, ok: false, code: "resource_limit" });
+          socket.end();
+          return false;
+        }
+        connection.pending += 1;
+        void handle(connection, message)
+          .catch(() => {
+            write(socket, { id: message?.id, ok: false, code: "bad_frame" });
+            socket.destroy();
+          })
+          .finally(() => {
+            connection.pending -= 1;
+          });
+        return true;
+      },
     });
+    socket.on("data", (chunk) => lines.push(chunk));
     const close = () => {
+      lines.stop();
       clearTimeout(connection.helloTimer);
       connections.delete(connection);
     };
@@ -227,6 +271,7 @@ export function createBrokerServer({
 
   async function stop() {
     tokens.clear();
+    grantKeys.clear();
     for (const connection of connections) connection.socket.destroy();
     connections.clear();
     if (server) {

@@ -14,6 +14,7 @@ import {
   createBrowserBrokerIpcHandler,
   BROWSER_BROKER_EVENT_CHANNEL,
 } from "../../../electron/browser-broker/electron-host.mjs";
+import { browserSessionCredential } from "../../../electron/browser-broker/session-identity.mjs";
 app.setPath("userData", process.env.COLONY_ELECTRON_USER_DATA);
 app.commandLine.appendSwitch("disable-quic");
 async function boot() {
@@ -76,8 +77,18 @@ async function boot() {
   host.onEvent((event) =>
     window.webContents.send(BROWSER_BROKER_EVENT_CHANNEL, event),
   );
-  // Only Playwright's main-process test connection can obtain the client environment.
-  globalThis.colonyBrowserFixture = { env: host.env, browser };
+  // Only Playwright's main test connection can request a scoped fixture credential.
+  // The master stays in the fixture main process, with no renderer IPC route.
+  globalThis.colonyBrowserFixture = {
+    browser,
+    credential: (context) => ({
+      socketPath: host.env.COLONY_BROWSER_BROKER_SOCKET,
+      secret: browserSessionCredential(
+        host.env.COLONY_BROWSER_BROKER_MASTER,
+        context,
+      ),
+    }),
+  };
   await window.loadURL(appUrl);
   window.showInactive();
   let closing = false;

@@ -3,9 +3,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { browserSessionCredential } from "./session-identity.mjs";
 import { createBrokerClient } from "./broker-client.mjs";
 import { createBrowserAgentHost } from "./browser-agent-host.mjs";
 import { createFakePageDriver, until } from "./fake-page-driver.test.mjs";
+
+const AGENT = "a".repeat(64);
+const TASK = "conversation:11111111-1111-4111-8111-111111111111";
+const COMMUNITY = "https://relay.example";
 
 function tmpSocket() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bah-"));
@@ -38,7 +43,7 @@ test("enabled host exports exactly the Colony ACP environment contract", async (
     secret: "k".repeat(32),
   });
   assert.deepEqual(Object.keys(host.env).sort(), [
-    "COLONY_BROWSER_BROKER_SECRET",
+    "COLONY_BROWSER_BROKER_MASTER",
     "COLONY_BROWSER_BROKER_SOCKET",
     "COLONY_BROWSER_MCP_COMMAND",
     "COLONY_BROWSER_MCP_RUN_AS_NODE",
@@ -79,14 +84,25 @@ test("the person facing API creates, widens, confirms and revokes grants", async
   });
   const events = [];
   host.onEvent((event) => events.push(event));
-  const client = createBrokerClient({ socketPath, secret, agent: "agent-a" });
+  const client = createBrokerClient({
+    socketPath,
+    secret: browserSessionCredential(secret, {
+      agentId: AGENT,
+      taskId: TASK,
+      communityOrigin: COMMUNITY,
+    }),
+    agent: AGENT,
+    taskId: TASK,
+    communityOrigin: COMMUNITY,
+  });
   client.start();
   await until(() => client.isReady());
   assert.deepEqual(await client.listTools(), []);
 
   const grant = await host.handleRequest("agent-grant", {
-    agentId: "agent-a",
-    taskId: "task-1",
+    agentId: AGENT,
+    taskId: TASK,
+    communityOrigin: COMMUNITY,
     businessId: "biz-1",
     tabId: "tab-1",
     allowedOrigins: ["https://shop.example"],
@@ -206,8 +222,9 @@ test("stopping the host revokes every grant and closes the channel", async () =>
     secret: "k".repeat(32),
   });
   const grant = await host.handleRequest("agent-grant", {
-    agentId: "agent-a",
-    taskId: "t",
+    agentId: AGENT,
+    taskId: TASK,
+    communityOrigin: COMMUNITY,
     businessId: "biz-1",
     tabId: "tab-1",
     allowedOrigins: ["https://shop.example"],

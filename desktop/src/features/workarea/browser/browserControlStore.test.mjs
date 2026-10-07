@@ -31,7 +31,7 @@ const deferred = () => {
   return { promise, resolve };
 };
 
-function fixture() {
+function fixture(communityOrigin = "https://relay.example") {
   const listeners = new Set();
   const calls = [];
   let grants = [structuredClone(grant)];
@@ -98,6 +98,7 @@ function fixture() {
     for (const listener of listeners) listener(event);
   };
   const store = createBrowserControlStore({
+    communityOrigin,
     api,
     businessId: "business-one",
     tabId: "tab-one",
@@ -334,4 +335,22 @@ test("a stale status response cannot clear a live native recovery failure", asyn
   await pending;
   assert.equal(f.store.getSnapshot().recoveryRequired, true);
   f.store.dispose();
+});
+
+test("person approval carries the trusted community and missing community cannot grant", async () => {
+  const f = fixture();
+  f.setGrants([]);
+  await f.store.start();
+  await f.store.approve("agent-one", "https://example.com");
+  assert.equal(f.calls[0][1].communityOrigin, "https://relay.example");
+  assert.equal(f.calls[0][1].taskId, taskId);
+  f.store.dispose();
+  const missing = fixture(null);
+  missing.setGrants([]);
+  await missing.store.start();
+  await assert.rejects(
+    missing.store.approve("agent-one", "https://example.com"),
+  );
+  assert.deepEqual(missing.calls, []);
+  missing.store.dispose();
 });

@@ -106,8 +106,9 @@ async function fixture(t, options = {}) {
     host.handleRequest(
       "agent-grant",
       {
-        agentId: "agent-a",
-        taskId: "task-a",
+        agentId: "a".repeat(64),
+        taskId: "conversation:11111111-1111-4111-8111-111111111111",
+        communityOrigin: "https://relay.example",
         businessId: "business-a",
         tabId: tab.id,
         allowedOrigins: ["https://example.com"],

@@ -28,11 +28,13 @@ export function createBrowserControlStore({
   businessId,
   tabId,
   taskId,
+  communityOrigin,
   api = browserBroker,
 }: {
   businessId: string;
   tabId: string;
   taskId: string | null;
+  communityOrigin: string | null;
   api?: typeof browserBroker;
 }) {
   let state: BrowserControlState = {
@@ -286,7 +288,13 @@ export function createBrowserControlStore({
     },
     approve(agentId: string, origin: string) {
       const site = browserApprovalOrigin(origin);
-      if (!taskId || !site || state.grant || state.recoveryRequired)
+      if (
+        !taskId ||
+        !communityOrigin ||
+        !site ||
+        state.grant ||
+        state.recoveryRequired
+      )
         return Promise.reject(
           new Error("No browser task is ready for approval"),
         );
@@ -294,6 +302,7 @@ export function createBrowserControlStore({
         api.grant({
           agentId,
           taskId,
+          communityOrigin,
           businessId,
           tabId,
           allowedOrigins: [site],

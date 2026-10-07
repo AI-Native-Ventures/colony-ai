@@ -1531,6 +1531,13 @@ async fn create_session_and_apply_model(
         channel.channel_type,
         ctx.session_title.as_deref(),
     );
+    let mcp_servers = crate::browser_runtime::mcp_servers_with_browser(
+        mcp_servers,
+        channel.scope,
+        channel.channel_type,
+        &ctx.agent_keys.public_key().to_hex(),
+        &ctx.relay_url,
+    )?;
 
     let resp = agent
         .acp

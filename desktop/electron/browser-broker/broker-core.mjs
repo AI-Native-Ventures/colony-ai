@@ -592,6 +592,18 @@ export function createBroker({
   // ---- tools ---------------------------------------------------------------
 
   const TOOL_IMPL = {
+    async browser_connect(ctx) {
+      const tabId = ctx.grant.primaryTabId;
+      const info = await resolveTab(ctx, tabId);
+      requireApprovedPage(ctx, tabId, info);
+      return {
+        connected: true,
+        primaryTab: tabView(info, ctx.grant),
+        approvedSites: [...ctx.grant.allowedOrigins],
+        expiresAt: ctx.grant.expiresAt,
+      };
+    },
+
     async browser_tabs(ctx) {
       const tabs = [];
       for (const tabId of ctx.grant.tabIds) {

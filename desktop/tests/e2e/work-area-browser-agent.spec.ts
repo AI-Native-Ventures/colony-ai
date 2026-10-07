@@ -91,6 +91,20 @@ test("person approves task and site, confirms consequences, and takeover fences 
 }, testInfo) => {
   await boot(page);
   await allow(page);
+  const approval = await page.evaluate(
+    () =>
+      window.colonyBrowserControlFixture?.calls
+        .filter((call) => call.action === "agent-grant")
+        .at(-1)?.payload,
+  );
+  expect(approval).toMatchObject({
+    agentId,
+    communityOrigin: "http://localhost:3000",
+    allowedOrigins: ["https://example.com"],
+  });
+  expect(approval?.taskId).toMatch(
+    /^conversation:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u,
+  );
   await waitForAnimations(page);
   await controls(page).screenshot({
     path: testInfo.outputPath("browser-controls-approved.png"),

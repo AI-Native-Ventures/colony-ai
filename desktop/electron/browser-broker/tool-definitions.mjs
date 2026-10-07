@@ -38,6 +38,13 @@ const object = (properties, required = []) => ({
 
 export const TOOLS = Object.freeze([
   {
+    name: "browser_connect",
+    description:
+      "Report the existing browser connection approved by the person for this task: primary tab, approved sites and expiry. This does not grant access or open a new profile." +
+      UNTRUSTED,
+    inputSchema: object({}),
+  },
+  {
     name: "browser_tabs",
     description:
       "List the browser tabs this task may use: id, url, title, loading state.",

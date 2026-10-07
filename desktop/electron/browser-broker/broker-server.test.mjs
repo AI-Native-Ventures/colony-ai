@@ -15,8 +15,27 @@ import {
 import { createCapabilityStore } from "./capability.mjs";
 import { createFakePageDriver, until } from "./fake-page-driver.test.mjs";
 import { toolNames } from "./tool-definitions.mjs";
+import { browserSessionCredential } from "./session-identity.mjs";
 
 const SECRET = "s".repeat(32);
+const AGENT_A = "a".repeat(64);
+const AGENT_B = "b".repeat(64);
+const TASK = "conversation:11111111-1111-4111-8111-111111111111";
+const COMMUNITY = "https://relay.example";
+function hello(agent = AGENT_A, id = 1) {
+  return {
+    id,
+    type: "hello",
+    agent,
+    taskId: TASK,
+    communityOrigin: COMMUNITY,
+    secret: browserSessionCredential(SECRET, {
+      agentId: agent,
+      taskId: TASK,
+      communityOrigin: COMMUNITY,
+    }),
+  };
+}
 
 async function start(options = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cb-"));
@@ -52,10 +71,11 @@ async function start(options = {}) {
     await server.stop();
     fs.rmSync(dir, { recursive: true, force: true });
   };
-  const grant = (agentId = "agent-a") =>
+  const grant = (agentId = AGENT_A) =>
     server.issueGrant({
       agentId,
-      taskId: "task-1",
+      taskId: TASK,
+      communityOrigin: COMMUNITY,
       businessId: "biz-1",
       tabId: "tab-1",
       allowedOrigins: ["https://shop.example"],
@@ -95,12 +115,18 @@ function raw(socketPath) {
   };
 }
 
-function connectClient(socketPath, agent = "agent-a", secret = SECRET) {
+function connectClient(
+  socketPath,
+  agent = AGENT_A,
+  secret = hello(agent).secret,
+) {
   const changes = { count: 0 };
   const client = createBrokerClient({
     socketPath,
     secret,
     agent,
+    taskId: TASK,
+    communityOrigin: COMMUNITY,
     onToolsChanged: () => {
       changes.count += 1;
     },
@@ -162,7 +188,9 @@ test("a wrong secret is rejected and the connection closes", async () => {
   client.send({
     id: 1,
     type: "hello",
-    agent: "agent-a",
+    agent: AGENT_A,
+    taskId: TASK,
+    communityOrigin: COMMUNITY,
     secret: "x".repeat(32),
   });
   const reply = await client.next((frame) => frame.id === 1);
@@ -203,8 +231,8 @@ test("the connection cap holds", async () => {
   const env = await start({ maxConnections: 2 });
   const a = raw(env.socketPath);
   const b = raw(env.socketPath);
-  a.send({ id: 1, type: "hello", agent: "x", secret: SECRET });
-  b.send({ id: 1, type: "hello", agent: "y", secret: SECRET });
+  a.send(hello(AGENT_A));
+  b.send(hello(AGENT_B));
   await a.next((f) => f.type === "hello");
   await b.next((f) => f.type === "hello");
   const c = raw(env.socketPath);
@@ -240,10 +268,10 @@ test("tools are empty until a grant, appear with a push, and vanish on revoke", 
 
 test("a grant for one agent is invisible to every other agent", async () => {
   const env = await start();
-  const a = connectClient(env.socketPath, "agent-a");
-  const b = connectClient(env.socketPath, "agent-b");
+  const a = connectClient(env.socketPath, AGENT_A);
+  const b = connectClient(env.socketPath, AGENT_B);
   await until(() => a.client.isReady() && b.client.isReady());
-  env.grant("agent-a");
+  env.grant(AGENT_A);
   await until(async () => (await a.client.listTools()).length > 0);
   assert.deepEqual(await b.client.listTools(), []);
   assert.equal((await b.client.callTool("browser_tabs", {})).code, "no_grant");
@@ -270,7 +298,7 @@ test("take over and expiry also remove the tools and push the change", async () 
 test("tokens never cross the wire", async () => {
   const env = await start();
   const client = raw(env.socketPath);
-  client.send({ id: 1, type: "hello", agent: "agent-a", secret: SECRET });
+  client.send(hello());
   await client.next((f) => f.type === "hello");
   env.grant();
   client.send({ id: 2, type: "tools" });
@@ -302,4 +330,39 @@ test("the client reconnects after the server restarts and never retries a call",
     recursive: true,
     force: true,
   });
+});
+
+test("production socket entrypoint bounds complete concurrent frames before dispatch", async (t) => {
+  const env = await start({ maxPending: 2 });
+  const client = raw(env.socketPath);
+  let calls = 0;
+  const held = [];
+  env.broker.call = () => {
+    calls += 1;
+    return new Promise((resolve) => held.push(resolve));
+  };
+  t.after(async () => {
+    for (const resolve of held) resolve({ ok: false, code: "fenced" });
+    client.socket.destroy();
+    await env.cleanup();
+  });
+  client.send(hello(AGENT_A, 0));
+  await client.next((frame) => frame.type === "hello");
+  env.grant();
+  client.socket.write(
+    [1, 2, 3]
+      .map((id) =>
+        JSON.stringify({
+          id,
+          type: "call",
+          tool: "browser_tabs",
+          args: {},
+        }),
+      )
+      .join("\n") + "\n",
+  );
+  const result = await client.next((frame) => frame.id === 3);
+  assert.equal(result.code, "resource_limit");
+  assert.equal(calls, 2);
+  await client.waitClosed();
 });

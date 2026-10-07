@@ -7,10 +7,11 @@ import { PassThrough } from "node:stream";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createBroker } from "./broker-core.mjs";
+import { browserSessionCredential } from "./session-identity.mjs";
 import { createBrokerServer } from "./broker-server.mjs";
 import { createCapabilityStore } from "./capability.mjs";
 import { createFakePageDriver, until } from "./fake-page-driver.test.mjs";
-import { createMcpServer, toMcpResult } from "./mcp-server.mjs";
+import { createMcpServer, main, toMcpResult } from "./mcp-server.mjs";
 import { toolDescriptors } from "./tool-definitions.mjs";
 
 const SERVER_FILE = fileURLToPath(new URL("./mcp-server.mjs", import.meta.url));
@@ -250,6 +251,11 @@ test("end to end over a real socket and a real child process", {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-"));
   const socketPath = path.join(dir, "sock", "b.sock");
   const secret = "e".repeat(32);
+  const context = {
+    agentId: "a".repeat(64),
+    taskId: "conversation:11111111-1111-4111-8111-111111111111",
+    communityOrigin: "https://relay.example",
+  };
   const capabilities = createCapabilityStore();
   const driver = createFakePageDriver();
   const broker = createBroker({
@@ -280,8 +286,10 @@ test("end to end over a real socket and a real child process", {
     env: {
       PATH: process.env.PATH,
       COLONY_BROWSER_BROKER_SOCKET: socketPath,
-      COLONY_BROWSER_BROKER_SECRET: secret,
-      COLONY_BROWSER_AGENT_ID: "agent-a",
+      COLONY_BROWSER_BROKER_SECRET: browserSessionCredential(secret, context),
+      COLONY_BROWSER_AGENT_ID: context.agentId,
+      COLONY_BROWSER_TASK_ID: context.taskId,
+      COLONY_BROWSER_COMMUNITY_ORIGIN: context.communityOrigin,
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -312,8 +320,7 @@ test("end to end over a real socket and a real child process", {
     );
 
     server.issueGrant({
-      agentId: "agent-a",
-      taskId: "t",
+      ...context,
       businessId: "biz-1",
       tabId: "tab-1",
       allowedOrigins: ["https://shop.example"],
@@ -384,4 +391,103 @@ test("without broker environment the server still starts and offers no tools", {
   assert.deepEqual(listed.result.tools, []);
   child.stdin.end();
   await new Promise((resolve) => child.once("exit", resolve));
+});
+
+function streamHarness(options = {}) {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const writes = [];
+  output.on("data", (chunk) => writes.push(chunk.toString()));
+  const exits = [];
+  const resolvers = [];
+  const calls = [];
+  let closes = 0;
+  const client = {
+    start() {},
+    close() {
+      closes += 1;
+    },
+    listTools: async () => [],
+    callTool(name, args) {
+      calls.push({ name, args });
+      return new Promise((resolve) => resolvers.push(resolve));
+    },
+  };
+  const runtime = main({
+    env: {},
+    input,
+    output,
+    createClient: () => client,
+    exit: (code) => exits.push(code),
+    ...options,
+  });
+  return {
+    input,
+    calls,
+    writes,
+    exits,
+    resolvers,
+    closes: () => closes,
+    stop() {
+      runtime.stop?.();
+      runtime.client.close();
+      // The pre-fix entrypoint owns an EOF process.exit listener, so do not
+      // send EOF while proving the baseline failure inside this test runner.
+      input.removeAllListeners();
+      input.pause();
+    },
+  };
+}
+
+test("production stdio entrypoint caps concurrent requests and fences late output", async () => {
+  const h = streamHarness({ maxPending: 2 });
+  try {
+    h.input.write(
+      [1, 2, 3]
+        .map((id) =>
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id,
+            method: "tools/call",
+            params: { name: "browser_tabs", arguments: {} },
+          }),
+        )
+        .join("\n") + "\n",
+    );
+    assert.equal(h.calls.length, 2);
+    assert.deepEqual(h.exits, [1]);
+    assert.equal(h.closes(), 1);
+    for (const resolve of h.resolvers) resolve({ ok: true, tabs: [] });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(h.writes, [], "retired results never reach stdout");
+  } finally {
+    h.stop();
+  }
+});
+
+test("production stdio entrypoint counts unfinished frames in UTF8 bytes", () => {
+  const h = streamHarness({ maxFrame: 128 });
+  try {
+    h.input.write("é".repeat(70));
+    assert.deepEqual(h.exits, [1]);
+    assert.equal(h.closes(), 1);
+    assert.equal(h.calls.length, 0);
+    h.input.write("more invalid input\n");
+    assert.deepEqual(h.exits, [1], "termination is idempotent");
+  } finally {
+    h.stop();
+  }
+});
+
+test("production stdio entrypoint bounds output before queuing a large reply", async () => {
+  const h = streamHarness({ maxQueuedOutputBytes: 64 });
+  try {
+    h.input.write(`${JSON.stringify(initialize())}\n`);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(h.exits, [1]);
+    assert.deepEqual(h.writes, []);
+    assert.equal(h.closes(), 1);
+  } finally {
+    h.stop();
+  }
 });

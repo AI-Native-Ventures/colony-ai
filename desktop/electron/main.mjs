@@ -279,6 +279,7 @@ async function boot() {
     .digest("hex")
     .slice(0, 16);
   host = new NativeHost(runtime.nativeHost, {
+    browserAgentHost,
     env: {
       ...process.env,
       COLONY_ELECTRON_PACKAGED: app.isPackaged ? "1" : "0",

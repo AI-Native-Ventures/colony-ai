@@ -3,6 +3,7 @@ import * as React from "react";
 import { useManagedAgentsQuery } from "@/features/agents/hooks";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { sanitizeUntrusted } from "../../../../electron/browser-broker/redaction.mjs";
+import { browserCommunityOrigin } from "../../../../electron/browser-broker/session-context.mjs";
 import { useWorkAreaChannel } from "../dock/workAreaChannelContext";
 import { createBrowserControlStore } from "./browserControlStore";
 import { getBrowserBusinessId } from "./browserTabsStore";
@@ -27,6 +28,13 @@ export function BrowserAgentControls({
   onSharingChange?: (shared: boolean) => void;
 }) {
   const channel = useWorkAreaChannel();
+  const { activeCommunity } = useCommunities();
+  let communityOrigin: string | null = null;
+  try {
+    communityOrigin = browserCommunityOrigin(activeCommunity?.relayUrl ?? "");
+  } catch {
+    // A missing community cannot authorize a browser task.
+  }
   const businessId = getBrowserBusinessId();
   const taskId = browserTaskScope(
     channelId,
@@ -39,15 +47,15 @@ export function BrowserAgentControls({
         businessId: businessId ?? "",
         tabId: hostId ?? "",
         taskId,
+        communityOrigin,
       }),
-    [businessId, hostId, taskId],
+    [businessId, hostId, taskId, communityOrigin],
   );
   const state = React.useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
     store.getSnapshot,
   );
-  const { activeCommunity } = useCommunities();
   const agents = useManagedAgentsQuery({ enabled: state.enabled });
   const [selectedAgent, setSelectedAgent] = React.useState("");
   const [approving, setApproving] = React.useState(false);

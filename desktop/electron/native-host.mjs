@@ -22,6 +22,52 @@ export function nativeRequestTimeout(type, command, fallback) {
   return Math.max(fallback, LONG_COMMANDS.get(command) ?? 0);
 }
 
+/**
+ * Browser launch authority belongs to the live main-process host. Ambient
+ * browser fields never configure the native harness or survive a disabled host.
+ */
+export function browserNativeEnvironment(env, browserAgentHost) {
+  const clean = Object.fromEntries(
+    Object.entries(env).filter(
+      ([key]) => !key.toUpperCase().startsWith("COLONY_BROWSER_"),
+    ),
+  );
+  if (env.COLONY_BROWSER_AGENT !== "1" || browserAgentHost?.enabled !== true)
+    return clean;
+  const generated = browserAgentHost.env;
+  const keys = [
+    "COLONY_BROWSER_MCP_COMMAND",
+    "COLONY_BROWSER_MCP_SCRIPT",
+    "COLONY_BROWSER_MCP_RUN_AS_NODE",
+    "COLONY_BROWSER_BROKER_SOCKET",
+    "COLONY_BROWSER_BROKER_MASTER",
+  ];
+  if (
+    !generated ||
+    keys.some((key) => {
+      const value = generated[key];
+      return (
+        typeof value !== "string" ||
+        value.length === 0 ||
+        value.length > 4096 ||
+        [...value].some((character) => {
+          const code = character.charCodeAt(0);
+          return code < 0x20 || code === 0x7f;
+        })
+      );
+    }) ||
+    !["0", "1"].includes(generated.COLONY_BROWSER_MCP_RUN_AS_NODE) ||
+    generated.COLONY_BROWSER_BROKER_MASTER.length < 16 ||
+    generated.COLONY_BROWSER_BROKER_MASTER.length > 256
+  )
+    throw new Error("Invalid main-owned browser launch configuration");
+  return {
+    ...clean,
+    COLONY_BROWSER_AGENT: "1",
+    ...Object.fromEntries(keys.map((key) => [key, generated[key]])),
+  };
+}
+
 /** Private stdio client. Native payloads are never echoed to logs. */
 export class NativeHost extends EventEmitter {
   pending = new Map();
@@ -36,6 +82,7 @@ export class NativeHost extends EventEmitter {
     executable,
     {
       env = process.env,
+      browserAgentHost,
       spawnProcess = spawn,
       timeout = 60000,
       shutdownGrace = 5000,
@@ -57,7 +104,10 @@ export class NativeHost extends EventEmitter {
     this.timeout = timeout;
     this.shutdownGrace = shutdownGrace;
     this.child = spawnProcess(executable, [], {
-      env: { ...env, COLONY_ELECTRON_HOST: "1" },
+      env: {
+        ...browserNativeEnvironment(env, browserAgentHost),
+        COLONY_ELECTRON_HOST: "1",
+      },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
