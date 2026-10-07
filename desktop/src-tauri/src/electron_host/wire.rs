@@ -77,8 +77,7 @@ pub(super) fn read(reader: &mut impl BufRead) -> Result<Option<Request>, &'stati
     if bytes.len() > MAX_FRAME || bytes.last() != Some(&b'\n') {
         return Err("Invalid native frame length");
     }
-    let request: Request =
-        serde_json::from_slice(&bytes).map_err(|_| "Invalid native request")?;
+    let request: Request = serde_json::from_slice(&bytes).map_err(|_| "Invalid native request")?;
     if matches!(&request, Request::PrivateResponse { .. }) && bytes.len() > MAX_PRIVATE_FRAME {
         return Err("Invalid private native frame length");
     }

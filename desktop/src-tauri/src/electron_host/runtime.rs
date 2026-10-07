@@ -191,7 +191,9 @@ pub(super) fn start(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
                 };
                 match request {
                     Request::Shutdown {} => break,
-                    Request::PrivateResponse { id, result, error } => broker.reply(id, result, error),
+                    Request::PrivateResponse { id, result, error } => {
+                        broker.reply(id, result, error)
+                    }
                     Request::Invoke {
                         id,
                         command,
