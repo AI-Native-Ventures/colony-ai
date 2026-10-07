@@ -63,6 +63,11 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
     throw new Error("Fixture server failed");
   const origin = `http://127.0.0.1:${address.port}`;
   const dir = await mkdtemp(path.join(os.tmpdir(), "colony-broker-proof-"));
+  const context = {
+    agentId: "a".repeat(64),
+    taskId: "conversation:11111111-1111-4111-8111-111111111111",
+    communityOrigin: "https://fixture-relay.example",
+  };
   let application: Awaited<ReturnType<typeof electron.launch>> | undefined;
   let client: ReturnType<typeof createBrokerClient> | undefined;
   try {
@@ -96,25 +101,32 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
       return tab;
     });
     const grant = await request<BrowserGrant>("agent-grant", {
-      agentId: "fixture-agent",
-      taskId: "fixture-task",
+      ...context,
       businessId: "fixture-business",
       tabId: tab.id,
       allowedOrigins: [origin],
     });
     expect(JSON.stringify(grant)).not.toMatch(/token|secret/i);
-    const env = await application.evaluate(
-      () =>
+    const credential = await application.evaluate(
+      (_electron, context) =>
         (
           globalThis as typeof globalThis & {
-            colonyBrowserFixture: { env: Record<string, string> };
+            colonyBrowserFixture: {
+              credential(context: {
+                agentId: string;
+                taskId: string;
+                communityOrigin: string;
+              }): { socketPath: string; secret: string };
+            };
           }
-        ).colonyBrowserFixture.env,
+        ).colonyBrowserFixture.credential(context),
+      context,
     );
     client = createBrokerClient({
-      socketPath: env.COLONY_BROWSER_BROKER_SOCKET,
-      secret: env.COLONY_BROWSER_BROKER_SECRET,
-      agent: "fixture-agent",
+      ...credential,
+      agent: context.agentId,
+      taskId: context.taskId,
+      communityOrigin: context.communityOrigin,
     });
     client.start();
     await expect.poll(() => client?.isReady()).toBe(true);

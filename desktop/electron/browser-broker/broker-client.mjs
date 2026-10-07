@@ -22,6 +22,8 @@ export function createBrokerClient({
   socketPath,
   secret,
   agent,
+  taskId,
+  communityOrigin,
   connectSocket = (target) => net.connect(target),
   onToolsChanged = () => {},
   requestTimeoutMs = REQUEST_TIMEOUT_MS,
@@ -124,7 +126,7 @@ export function createBrokerClient({
       if (!isCurrent()) return;
       try {
         current.write(
-          `${JSON.stringify({ id: 0, type: "hello", agent, secret })}\n`,
+          `${JSON.stringify({ id: 0, type: "hello", agent, taskId, communityOrigin, secret })}\n`,
         );
       } catch {
         lost();

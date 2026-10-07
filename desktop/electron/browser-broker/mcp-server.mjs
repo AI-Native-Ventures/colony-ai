@@ -196,6 +196,8 @@ export function main({
     socketPath: env.COLONY_BROWSER_BROKER_SOCKET,
     secret: env.COLONY_BROWSER_BROKER_SECRET,
     agent: env.COLONY_BROWSER_AGENT_ID,
+    taskId: env.COLONY_BROWSER_TASK_ID,
+    communityOrigin: env.COLONY_BROWSER_COMMUNITY_ORIGIN,
     onToolsChanged: () => server?.notifyToolsChanged(),
   });
   server = createMcpServer({

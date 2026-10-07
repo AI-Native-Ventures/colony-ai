@@ -7,6 +7,7 @@ import { PassThrough } from "node:stream";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createBroker } from "./broker-core.mjs";
+import { browserSessionCredential } from "./session-identity.mjs";
 import { createBrokerServer } from "./broker-server.mjs";
 import { createCapabilityStore } from "./capability.mjs";
 import { createFakePageDriver, until } from "./fake-page-driver.test.mjs";
@@ -250,6 +251,11 @@ test("end to end over a real socket and a real child process", {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-"));
   const socketPath = path.join(dir, "sock", "b.sock");
   const secret = "e".repeat(32);
+  const context = {
+    agentId: "a".repeat(64),
+    taskId: "conversation:11111111-1111-4111-8111-111111111111",
+    communityOrigin: "https://relay.example",
+  };
   const capabilities = createCapabilityStore();
   const driver = createFakePageDriver();
   const broker = createBroker({
@@ -280,8 +286,10 @@ test("end to end over a real socket and a real child process", {
     env: {
       PATH: process.env.PATH,
       COLONY_BROWSER_BROKER_SOCKET: socketPath,
-      COLONY_BROWSER_BROKER_SECRET: secret,
-      COLONY_BROWSER_AGENT_ID: "agent-a",
+      COLONY_BROWSER_BROKER_SECRET: browserSessionCredential(secret, context),
+      COLONY_BROWSER_AGENT_ID: context.agentId,
+      COLONY_BROWSER_TASK_ID: context.taskId,
+      COLONY_BROWSER_COMMUNITY_ORIGIN: context.communityOrigin,
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -312,8 +320,7 @@ test("end to end over a real socket and a real child process", {
     );
 
     server.issueGrant({
-      agentId: "agent-a",
-      taskId: "t",
+      ...context,
       businessId: "biz-1",
       tabId: "tab-1",
       allowedOrigins: ["https://shop.example"],

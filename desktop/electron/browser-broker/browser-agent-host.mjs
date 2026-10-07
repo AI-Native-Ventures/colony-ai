@@ -67,7 +67,7 @@ export async function createBrowserAgentHost({
     COLONY_BROWSER_MCP_SCRIPT: scriptPath,
     COLONY_BROWSER_MCP_RUN_AS_NODE: runAsNode ? "1" : "0",
     COLONY_BROWSER_BROKER_SOCKET: socketPath,
-    COLONY_BROWSER_BROKER_SECRET: secret,
+    COLONY_BROWSER_BROKER_MASTER: secret,
   };
 
   async function handleRequest(action, payload) {
@@ -79,6 +79,7 @@ export async function createBrowserAgentHost({
         const grant = server.issueGrant({
           agentId: text(payload.agentId, "agent id"),
           taskId: text(payload.taskId, "task id"),
+          communityOrigin: payload.communityOrigin,
           businessId: text(payload.businessId, "business id"),
           clientId: payload.clientId ?? null,
           tabId: text(payload.tabId, "tab id"),
