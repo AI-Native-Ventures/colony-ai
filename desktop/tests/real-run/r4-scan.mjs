@@ -145,8 +145,8 @@ if (toldFile) {
   const text = await readFile(toldFile, "utf8").catch(() => "");
   // Token level: every distinct word that contains the old name, so a long JSON line cannot hide a bad token behind an allowed one.
   const tokens = {};
-  for (const m of text.matchAll(/[\w<\/.-]*buzz[\w>.-]*/giu)) tokens[m[0]] = (tokens[m[0]] ?? 0) + 1;
-  const isAllowedToken = (t) => /^BUZZ_[A-Z0-9_]+$/u.test(t) || /^<\/?buzz-events?>$/u.test(t);
+  for (const m of text.replace(/\\[ntr"]/gu, " ").matchAll(/[\w<\/.-]*buzz[\w>.-]*/giu)) tokens[m[0]] = (tokens[m[0]] ?? 0) + 1;
+  const isAllowedToken = (t) => /^BUZZ_[A-Z0-9_]+$/u.test(t) || /^<\/?buzz-events?>?$/u.test(t);
   const isKnownId = (t) => /^buzz-dev-mcp__\w+$/u.test(t);
   const ids = Object.keys(tokens).filter(isKnownId);
   const machine = Object.keys(tokens).filter(isAllowedToken);
