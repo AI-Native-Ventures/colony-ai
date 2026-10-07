@@ -38,7 +38,7 @@
 //!   whole run is rolled back instead.
 //! * **Never under a running agent.** The caller passes the pids of live
 //!   agents; while any is alive nothing moves forward.
-//! * **Kill switch.** Off by default. [`ENV_FLAG`] turns it on or off without a
+//! * **Kill switch.** On by default. [`ENV_FLAG`] turns it on or off without a
 //!   rebuild; [`DEFAULT_ENABLED`] is the compiled default. Turning it off never
 //!   strands a half-done run: an interrupted run is rolled back, not resumed.
 //!
@@ -72,9 +72,9 @@ pub(crate) const ENV_FLAG: &str = "COLONY_NEST_MIGRATION";
 /// just before or after the n-th filesystem operation of a run.
 pub(crate) const ENV_CRASH_AT: &str = "COLONY_NEST_MIGRATION_CRASH_AT";
 
-/// Whether the migration runs when [`ENV_FLAG`] is not set. The release commit
-/// flips this once the packaged-app gate has passed.
-pub(crate) const DEFAULT_ENABLED: bool = false;
+/// Whether the migration runs when [`ENV_FLAG`] is not set. On since 1.0.5, after
+/// the packaged-app gate passed; `COLONY_NEST_MIGRATION=0` turns it off.
+pub(crate) const DEFAULT_ENABLED: bool = true;
 
 /// Stable prefix of the log lines a packaged-app harness greps.
 pub(crate) const LOG_PREFIX: &str = "buzz-desktop: nest-migration:";
