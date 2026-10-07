@@ -16,6 +16,7 @@ const windowLabel =
     ?.slice(LABEL_ARG.length) ?? "main";
 const listeners = new Map();
 const browserListeners = new Set();
+const browserBrokerListeners = new Set();
 const updaterListeners = new Set();
 let sequence = 0;
 
@@ -47,6 +48,27 @@ ipcRenderer.on("colony:updater-status", (_event, status) => {
       // A throwing renderer listener must not starve the others.
     }
   }
+});
+
+ipcRenderer.on("colony:browser-broker-event", (_event, message) => {
+  for (const callback of browserBrokerListeners) {
+    try {
+      callback(message);
+    } catch {
+      /* Isolate renderer observers. */
+    }
+  }
+});
+
+contextBridge.exposeInMainWorld("colonyBrowserBroker", {
+  request: (action, payload = {}) =>
+    ipcRenderer.invoke("colony:browser-broker", action, payload),
+  onEvent: (callback) => {
+    if (typeof callback !== "function")
+      throw new Error("Invalid browser task listener");
+    browserBrokerListeners.add(callback);
+    return () => browserBrokerListeners.delete(callback);
+  },
 });
 
 async function browserRequest(action, payload = {}) {

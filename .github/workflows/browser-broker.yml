@@ -1,0 +1,60 @@
+name: Colony browser broker
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - desktop/electron/browser-broker/**
+      - desktop/electron/browser-host.mjs
+      - desktop/electron/browser-session.mjs
+      - desktop/electron/preload.cjs
+      - desktop/electron/main.mjs
+      - desktop/tests/electron/browser-broker.spec.ts
+      - desktop/tests/electron/fixtures/browser-broker.*
+      - .github/workflows/browser-broker.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-broker-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  browser-broker:
+    name: Browser broker fixture (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Production broker and Electron adapter Node tests
+        run: node --test --test-timeout=30000 desktop/electron/browser-broker/*.test.mjs
+      - name: Install desktop dependencies
+        run: just desktop-install-ci
+      - name: Install Electron system dependencies
+        if: runner.os == 'Linux'
+        run: pnpm -C desktop exec playwright install-deps chromium
+      - name: Real Electron Chromium fixture
+        working-directory: desktop
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a pnpm exec playwright test --config=playwright.electron-app.config.ts tests/electron/browser-broker.spec.ts
+          else
+            pnpm exec playwright test --config=playwright.electron-app.config.ts tests/electron/browser-broker.spec.ts
+          fi
+      - name: Upload fixture evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: browser-broker-${{ matrix.os }}
+          path: |
+            desktop/test-results-electron
+            desktop/playwright-electron-app-report
+          if-no-files-found: ignore
