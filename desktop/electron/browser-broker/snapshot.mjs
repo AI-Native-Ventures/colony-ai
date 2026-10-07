@@ -393,7 +393,10 @@ export function buildSnapshot({
       if (asksConfirmation) parts.push("consequential");
       line = `${"  ".repeat(Math.min(depth, maxDepth))}${parts.join(" ")}`;
       emits = true;
-      pushChildren(depth + 1, suppressText || NAMED_FROM_CONTENT.has(role));
+      // Chromium can repeat an input value in nested StaticText nodes.
+      // Neither credential nor unknown-input descendants may expose that value.
+      if (!credential && !(INPUT_LIKE.has(role) && extra === undefined))
+        pushChildren(depth + 1, suppressText || NAMED_FROM_CONTENT.has(role));
     } else {
       // Unknown role: keep walking so nothing below it is lost.
       pushChildren(depth, suppressText);

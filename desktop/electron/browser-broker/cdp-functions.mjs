@@ -5,12 +5,17 @@
  * declaration that is not in this table. In an isolated world the page cannot
  * override the built-ins these functions rely on.
  *
- * Status: written against the CDP and DOM specs but NOT yet exercised in real
- * Chromium (Electron runs are on hold). They are compile-checked by node tests.
+ * The fixture spec exercises these functions in real Electron Chromium.
+ * Packaged runtime and live agent proof remain separate gates.
  */
 
-const CREDENTIAL_AUTOCOMPLETE =
-  "cc-number cc-csc cc-exp cc-exp-month cc-exp-year cc-name cc-type current-password new-password one-time-code";
+import {
+  CREDENTIAL_AUTOCOMPLETE,
+  CREDENTIAL_NAME,
+  CONFUSABLES,
+} from "./classifier.mjs";
+
+import { INVISIBLE } from "./redaction.mjs";
 
 export const FUNCTIONS = Object.freeze({
   /** this = element. Facts the classifier needs, as plain JSON. */
@@ -122,14 +127,26 @@ export const FUNCTIONS = Object.freeze({
 
   /** this = document. Hide credential and card inputs for a screenshot. */
   maskCredentials: `function () {
-    const sensitive = new Set(${JSON.stringify(CREDENTIAL_AUTOCOMPLETE.split(" "))});
+    const sensitive = new Set(${JSON.stringify([...CREDENTIAL_AUTOCOMPLETE])});
+    const credentialName = new RegExp(${JSON.stringify(CREDENTIAL_NAME.source)}, "iu");
+    const folds = ${JSON.stringify(Object.fromEntries(CONFUSABLES))};
     let count = 0;
-    for (const input of this.querySelectorAll("input, textarea")) {
+    const fields = this.querySelectorAll("input, textarea");
+    if (fields.length > 10000) throw new Error("Too many fields to mask");
+    for (const input of fields) {
       const type = String(input.type || "").toLowerCase();
       const tokens = String(input.getAttribute("autocomplete") || "").toLowerCase().split(/\\s+/);
-      if (type === "password" || tokens.some((token) => sensitive.has(token))) {
+      if ((input.labels?.length || 0) > 64) throw new Error("Too many field labels");
+      const names = [...Array.from(input.labels || [], (label) => String(label.textContent || "").slice(0, 1000))];
+      for (const attr of ["aria-label", "placeholder", "name", "id"]) names.push(input.getAttribute(attr));
+      for (const id of String(input.getAttribute("aria-labelledby") || "").split(/\\s+/)) {
+        names.push(this.getElementById?.(id)?.textContent);
+      }
+      const label = names.filter(Boolean).join(" ").normalize("NFKC").replace(new RegExp(${JSON.stringify(INVISIBLE.source)}, "gu"), "").toLowerCase();
+      const folded = Array.from(label, (character) => folds[character] || character).join("");
+      if (type === "password" || tokens.some((token) => sensitive.has(token)) || credentialName.test(folded)) {
         if (!("__colonyMask" in input)) {
-          input.__colonyMask = input.style.getPropertyValue("visibility");
+          input.__colonyMask = { value: input.style.getPropertyValue("visibility"), priority: input.style.getPropertyPriority("visibility") };
           input.style.setProperty("visibility", "hidden", "important");
           count += 1;
         }
@@ -143,7 +160,7 @@ export const FUNCTIONS = Object.freeze({
     for (const input of this.querySelectorAll("input, textarea")) {
       if ("__colonyMask" in input) {
         const previous = input.__colonyMask;
-        if (previous) input.style.setProperty("visibility", previous); else input.style.removeProperty("visibility");
+        if (previous.value) input.style.setProperty("visibility", previous.value, previous.priority); else input.style.removeProperty("visibility");
         delete input.__colonyMask;
       }
     }

@@ -662,8 +662,8 @@ export function createPageDriver({
       try {
         if (maskCredentialFields) {
           // Fail closed: no mask, no screenshot.
-          await call(session, objectId, "maskCredentials", [], signal);
           masked = true;
+          await call(session, objectId, "maskCredentials", [], signal);
         }
         let clip;
         if (backendNodeId !== undefined) {

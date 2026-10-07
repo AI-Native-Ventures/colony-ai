@@ -1002,3 +1002,39 @@ test("revocation after mouse movement fences the press and release", async () =>
     ["mouseMoved"],
   );
 });
+
+test("the production screenshot function masks labelled card and API fields without autocomplete", () => {
+  const input = (label, attrs = {}) => {
+    const style = new Map();
+    return {
+      type: "text",
+      labels: [{ textContent: label }],
+      getAttribute: (key) => attrs[key] ?? null,
+      style: {
+        getPropertyValue: (key) => style.get(key)?.value ?? "",
+        getPropertyPriority: (key) => style.get(key)?.priority ?? "",
+        setProperty: (key, value, priority) =>
+          style.set(key, { value, priority }),
+        removeProperty: (key) => style.delete(key),
+      },
+    };
+  };
+  const fields = [
+    input("Card number"),
+    input("API key"),
+    input("Name on card"),
+    input("Note"),
+  ];
+  const doc = { querySelectorAll: () => fields };
+  const mask = vm.runInNewContext(`(${FUNCTIONS.maskCredentials})`);
+  const unmask = vm.runInNewContext(`(${FUNCTIONS.unmaskCredentials})`);
+  mask.call(doc);
+  assert.deepEqual(
+    fields.map((field) => field.style.getPropertyValue("visibility")),
+    ["hidden", "hidden", "hidden", ""],
+  );
+  unmask.call(doc);
+  assert.ok(
+    fields.every((field) => field.style.getPropertyValue("visibility") === ""),
+  );
+});

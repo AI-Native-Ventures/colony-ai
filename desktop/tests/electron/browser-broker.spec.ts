@@ -48,7 +48,9 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
       <select aria-label="Choice"><option value="one">One</option><option value="two">Two</option></select>
       <button type="button" onclick="document.querySelector('#status').textContent='Changed'">Change</button><p id="status">Ready</p>
       <form action="/submit" method="post"><button>Send message</button></form>
-      <input type="password" value="credential-do-not-leak">
+      <input id="password" type="password" value="credential-do-not-leak">
+      <label>Card number<input id="card" value="4111111111111111"></label>
+      <label>API key<input id="api" value="fixture-api-secret"></label>
       <a href="https://other.example/">Other site</a>
       <a href="file:///private/secret">Local file</a>
       <iframe src="${deniedOrigin}/forbidden" title="Denied frame"></iframe>
@@ -124,6 +126,8 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
     expect(snapshot.ok).toBe(true);
     expect(snapshot.snapshot).toContain("untrusted-page-content");
     expect(snapshot.snapshot).not.toContain("credential-do-not-leak");
+    expect(snapshot.snapshot).not.toContain("fixture-api-secret");
+    expect(snapshot.snapshot).not.toContain("4111111111111111");
     const ref = (name: string) => {
       const line = snapshot.snapshot
         .split("\n")
@@ -149,9 +153,54 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
     expect(
       (await call("browser_scroll", { direction: "down", amount: 100 })).ok,
     ).toBe(true);
+    await application.evaluate((_electron, id) => {
+      const fixture = (
+        globalThis as typeof globalThis & {
+          colonyBrowserFixture: {
+            browser: {
+              agentAdapter: {
+                webContents(id: string): {
+                  executeJavaScript(code: string): Promise<unknown>;
+                  debugger: {
+                    sendCommand(
+                      method: string,
+                      params: unknown,
+                    ): Promise<unknown>;
+                  };
+                };
+              };
+            };
+            screenshotProbe?: unknown;
+          };
+        }
+      ).colonyBrowserFixture;
+      const contents = fixture.browser.agentAdapter.webContents(id);
+      const original = contents.debugger.sendCommand.bind(contents.debugger);
+      contents.debugger.sendCommand = async (method, params) => {
+        if (method === "Page.captureScreenshot")
+          fixture.screenshotProbe = await contents.executeJavaScript(
+            `({ broker: typeof window.colonyBrowserBroker, desktop: typeof window.colonyDesktop, masked: ['password','card','api'].map(id => getComputedStyle(document.getElementById(id)).visibility) })`,
+          );
+        return original(method, params);
+      };
+    }, tab.id);
     const shot = await call("browser_screenshot", {});
     expect(shot.ok).toBe(true);
     expect(shot.bytes).toBeGreaterThan(100);
+    expect(
+      await application.evaluate(
+        () =>
+          (
+            globalThis as typeof globalThis & {
+              colonyBrowserFixture: { screenshotProbe: unknown };
+            }
+          ).colonyBrowserFixture.screenshotProbe,
+      ),
+    ).toEqual({
+      broker: "undefined",
+      desktop: "undefined",
+      masked: ["hidden", "hidden", "hidden"],
+    });
     for (const [url, code] of [
       ["https://other.example/", "origin_approval_required"],
       [`${deniedOrigin}/forbidden`, "private_network_denied"],

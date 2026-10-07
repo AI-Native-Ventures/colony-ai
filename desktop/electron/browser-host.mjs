@@ -634,7 +634,8 @@ export function createBrowserHost({
       const tab = tabs.get(id);
       if (!tab) throw new Error("Browser tab closed");
       const result = await loadTab(tab, url);
-      if (result.error && !blockedNavigations.has(id)) throw new Error("Browser navigation failed");
+      if (result.error && !blockedNavigations.has(id))
+        throw new Error("Browser navigation failed");
       return result;
     },
     history(id, action) {

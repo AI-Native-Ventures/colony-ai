@@ -493,3 +493,30 @@ test("snapshot URLs are credential free", () => {
   assert.ok(!text.includes("abc"));
   assert.ok(!text.includes("def"));
 });
+
+test("credential input descendants cannot reveal their value as ordinary AX text", () => {
+  const nodes = axTree(
+    page([
+      {
+        role: "textbox",
+        name: "API key",
+        backend: 20,
+        value: "fixture-api-secret",
+        children: [
+          {
+            role: "generic",
+            children: [{ role: "StaticText", name: "fixture-api-secret" }],
+          },
+        ],
+      },
+    ]),
+  );
+  const { text } = buildSnapshot({
+    nodes,
+    extras: baseExtras,
+    registry: createRefRegistry(),
+  });
+  assert.ok(text.includes('textbox "API key"'));
+  assert.ok(text.includes("credential"));
+  assert.ok(!text.includes("fixture-api-secret"));
+});

@@ -31,7 +31,8 @@ const READ_ONLY_ACTIONS = new Set([
   "tabs",
 ]);
 
-const CREDENTIAL_AUTOCOMPLETE = new Set([
+/** Credential autocomplete tokens shared with the fixed screenshot function. */
+export const CREDENTIAL_AUTOCOMPLETE = new Set([
   "cc-number",
   "cc-csc",
   "cc-exp",
@@ -62,7 +63,8 @@ const NAME_CAP = 300;
 
 // Cyrillic and Greek look-alikes folded to Latin so "Pay" cannot be spelled
 // with borrowed letters to dodge the name patterns.
-const CONFUSABLES = new Map(
+/** Fixed character folds shared with the isolated screenshot masking function. */
+export const CONFUSABLES = new Map(
   Object.entries({
     а: "a",
     е: "e",
@@ -104,7 +106,8 @@ const words = (list) =>
     "iu",
   );
 
-const CREDENTIAL_NAME = words([
+/** Credential label pattern shared by action policy and screenshot masking. */
+export const CREDENTIAL_NAME = words([
   "pass(?:word|code|phrase|wd)?",
   "pwd",
   "pin(?: code| number)?",

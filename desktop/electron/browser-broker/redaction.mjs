@@ -171,7 +171,8 @@ export function redactRecord(value, depth = 0) {
 // Invisible characters used to smuggle instructions past a reader:
 // zero width, bidi controls, soft hyphen, word joiner, BOM and the Unicode
 // "tag" block (U+E0000 to U+E007F).
-const INVISIBLE =
+/** Invisible character pattern shared with fixed screenshot label normalization. */
+export const INVISIBLE =
   // biome-ignore lint/suspicious/noMisleadingCharacterClass: stripping combining and invisible code points is the point
   /[\u00ad\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]/gu;
 // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping controls is the point
