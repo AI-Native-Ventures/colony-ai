@@ -34,7 +34,18 @@ pub(super) enum Request {
         #[serde(default)]
         payload: Value,
     },
+    PrivateResponse {
+        id: u64,
+        #[serde(default, deserialize_with = "present_value")]
+        result: Option<Value>,
+        #[serde(default)]
+        error: Option<String>,
+    },
     Shutdown {},
+}
+
+fn present_value<'de, D: serde::Deserializer<'de>>(decoder: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(decoder).map(Some)
 }
 
 /// Read one newline-terminated message without allocating beyond the limit.
@@ -146,6 +157,24 @@ mod tests {
         .is_err());
         assert!(read(&mut Cursor::new(
             b"{\"type\":\"invoke\",\"id\":1,\"command\":false}\n"
+        ))
+        .is_err());
+    }
+
+    #[test]
+    fn private_replies_preserve_explicit_null_and_reject_unknown_fields() {
+        assert!(matches!(
+            read(&mut Cursor::new(
+                b"{\"type\":\"private_response\",\"id\":1,\"result\":null}\n"
+            )),
+            Ok(Some(Request::PrivateResponse {
+                id: 1,
+                result: Some(Value::Null),
+                error: None
+            }))
+        ));
+        assert!(read(&mut Cursor::new(
+            b"{\"type\":\"private_response\",\"id\":1,\"result\":{},\"secret\":true}\n"
         ))
         .is_err());
     }
