@@ -29,13 +29,13 @@ export type BrowserConfirmation = {
   grantId: string;
   tabId: string;
   summary: string;
-  category?: string;
+  category?: string | null;
   expiresAt?: number;
 };
 
 export type BrowserActionEntry = {
   seq: number;
-  timestamp: number;
+  ts: number;
   grantId?: string;
   agentId?: string;
   taskId?: string;

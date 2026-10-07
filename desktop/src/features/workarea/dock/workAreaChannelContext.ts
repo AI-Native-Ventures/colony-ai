@@ -6,6 +6,8 @@ export type WorkAreaChannel = {
   channelType: string;
   isArchived: boolean;
   currentPubkey?: string;
+  /** Canonical active thread root for per-task browser approvals. */
+  threadRootId?: string | null;
 };
 
 export const WorkAreaChannelContext =

@@ -258,6 +258,8 @@ export function createBroker({
         resolve,
         timer,
         summary,
+        category: result.category,
+        expiresAt: now() + confirmationTimeoutMs,
       });
       void Promise.resolve(
         driver.setControl?.(tabId, "agent-awaiting-confirmation"),
@@ -897,6 +899,8 @@ export function createBroker({
         grantId: entry.grantId,
         tabId: entry.tabId,
         summary: entry.summary,
+        category: entry.category,
+        expiresAt: entry.expiresAt,
       }));
     },
     approveOrigin: (grantId, url, options) =>

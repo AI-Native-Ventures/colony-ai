@@ -405,6 +405,8 @@ test("a consequential click waits for the person and runs once after confirm", a
     "agent-awaiting-confirmation",
   );
   assert.equal(env.broker.pendingConfirmations().length, 1);
+  assert.equal(env.broker.pendingConfirmations()[0].category, "payment");
+  assert.ok(env.broker.pendingConfirmations()[0].expiresAt > 0);
   assert.equal(env.broker.confirm(request.actionId), true);
   const result = await pending;
   assert.equal(result.ok, true, JSON.stringify(result));
