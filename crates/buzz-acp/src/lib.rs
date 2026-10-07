@@ -1,6 +1,7 @@
 #![deny(unsafe_code)]
 
 mod business_context;
+mod browser_runtime;
 
 mod acp;
 #[cfg(test)]

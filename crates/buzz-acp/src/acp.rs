@@ -560,6 +560,10 @@ impl AcpClient {
             cmd.env("CODEX_CONFIG", merged);
         }
 
+        // Browser launch fields belong to the native harness, never to a
+        // general agent child, including explicit persona overrides.
+        crate::browser_runtime::remove_browser_agent_env(&mut cmd, extra_env);
+
         // Spawn the agent in its own process group so SIGKILL doesn't propagate
         // to the harness's own process group on Unix.
         // tokio::process::Command::process_group is a stable tokio API (no extra imports needed).
@@ -1176,7 +1180,10 @@ impl AcpClient {
         .await
         .map_err(|_| AcpError::WriteTimeout(WRITE_TIMEOUT))?
         .map_err(AcpError::Io)?;
-        self.observe("acp_write", value.clone());
+        self.observe(
+            "acp_write",
+            crate::browser_runtime::observer_safe_browser_request(value),
+        );
         Ok(())
     }
 
@@ -3345,6 +3352,148 @@ mod tests {
         client.shutdown().await;
         std::fs::remove_dir_all(&dir).expect("remove env probe dir");
         observed
+    }
+
+    #[cfg(unix)]
+    const BROWSER_CHILD_KEYS: &[&str] = &[
+        "COLONY_BROWSER_AGENT",
+        "COLONY_BROWSER_MCP_COMMAND",
+        "COLONY_BROWSER_MCP_SCRIPT",
+        "COLONY_BROWSER_MCP_RUN_AS_NODE",
+        "COLONY_BROWSER_BROKER_SOCKET",
+        "COLONY_BROWSER_BROKER_MASTER",
+        "COLONY_BROWSER_BROKER_SECRET",
+        "COLONY_BROWSER_AGENT_ID",
+        "COLONY_BROWSER_TASK_ID",
+        "COLONY_BROWSER_COMMUNITY_ORIGIN",
+        "colony_browser_unknown",
+    ];
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn browser_explicit_overrides_never_reach_general_agent() {
+        let env: Vec<_> = BROWSER_CHILD_KEYS
+            .iter()
+            .map(|key| ((*key).into(), "fixture-must-not-inherit".into()))
+            .collect();
+        for key in BROWSER_CHILD_KEYS {
+            assert_eq!(
+                spawn_named_and_read_child_env("browser-probe", key, &env).await,
+                "<unset>",
+                "browser override {key} reached the general agent"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn browser_inherited_env_is_removed_in_isolated_process() {
+        let mut command = std::process::Command::new(std::env::current_exe().expect("test binary"));
+        command.args([
+            "--exact",
+            "acp::tests::browser_inherited_env_probe_child",
+            "--nocapture",
+        ]);
+        command.env("COLONY_BROWSER_TEST_INHERITED_PROBE", "1");
+        for key in BROWSER_CHILD_KEYS {
+            command.env(key, "fixture-inherited-authority");
+        }
+        let output = command.output().expect("isolated environment probe");
+        assert!(
+            output.status.success(),
+            "isolated probe failed: {} {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("BROWSER_INHERITED_PROBE_PASSED")
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn browser_inherited_env_probe_child() {
+        if std::env::var("COLONY_BROWSER_TEST_INHERITED_PROBE").as_deref() != Ok("1") {
+            return;
+        }
+        for key in BROWSER_CHILD_KEYS {
+            assert_eq!(
+                std::env::var(key).as_deref(),
+                Ok("fixture-inherited-authority")
+            );
+            assert_eq!(
+                spawn_named_and_read_child_env("browser-probe", key, &[]).await,
+                "<unset>"
+            );
+        }
+        println!("BROWSER_INHERITED_PROBE_PASSED");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn browser_session_wire_retains_credential_but_observer_masks_it() {
+        let path = std::env::temp_dir().join(format!("colony-browser-wire-{}", uuid::Uuid::new_v4()));
+        let script = r#"
+            read -t 2 _init
+            echo '{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":1,"agentCapabilities":{}}}'
+            read -t 2 REQ
+            printf '%s' "$REQ" > "$1"
+            echo '{"jsonrpc":"2.0","id":1,"result":{"sessionId":"browser-fixture-session"}}'
+            sleep 1
+        "#;
+        let mut client = AcpClient::spawn(
+            "bash",
+            &[
+                "-c".into(),
+                script.into(),
+                "fixture".into(),
+                path.to_string_lossy().into_owned(),
+            ],
+            &[],
+            false,
+        )
+        .await
+        .expect("wire fixture agent");
+        let observer = ObserverHandle::in_process();
+        client.set_observer(Some(observer.clone()), 0);
+        client.initialize().await.expect("initialize fixture");
+        let secret = "fixture-derived-credential-never-real";
+        client
+            .session_new_full(
+                "/tmp",
+                vec![McpServer {
+                    name: "colony-browser".into(),
+                    command: "/fixture/mcp".into(),
+                    args: vec![],
+                    env: vec![EnvVar {
+                        name: "COLONY_BROWSER_BROKER_SECRET".into(),
+                        value: secret.into(),
+                    }],
+                }],
+                None,
+                None,
+            )
+            .await
+            .expect("browser session/new");
+        let wire: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).expect("wire file")).expect("wire JSON");
+        assert_eq!(wire["params"]["mcpServers"][0]["env"][0]["value"], secret);
+        let events = observer.snapshot();
+        let write = events
+            .iter()
+            .find(|event| event.kind == "acp_write" && event.payload["method"] == "session/new")
+            .expect("session observer write");
+        assert_eq!(
+            write.payload["params"]["mcpServers"][0]["env"][0]["value"],
+            "[redacted]"
+        );
+        assert!(
+            !serde_json::to_string(&events)
+                .expect("observer JSON")
+                .contains(secret)
+        );
+        client.shutdown().await;
+        std::fs::remove_file(path).expect("remove owned wire fixture");
     }
 
     /// Buzz-owned Hermes processes get the configured-MCP isolation default,

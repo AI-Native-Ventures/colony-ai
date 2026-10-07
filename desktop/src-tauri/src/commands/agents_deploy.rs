@@ -136,7 +136,8 @@ fn build_launch_block_for_policy(
     // so launch.env carries the authority directly (see the effort note above).
     let is_claude = runtime.map(|r| r.id == "claude").unwrap_or(false);
     let strip_key = |k: &str| {
-        k.eq_ignore_ascii_case(crate::managed_agents::ACP_SESSION_POLICY_ENV_VAR)
+        k.to_ascii_uppercase().starts_with("COLONY_BROWSER_")
+            || k.eq_ignore_ascii_case(crate::managed_agents::ACP_SESSION_POLICY_ENV_VAR)
             || (is_claude
                 && (k.eq_ignore_ascii_case("BUZZ_ACP_MODEL")
                     || k.eq_ignore_ascii_case("ANTHROPIC_MODEL")))
