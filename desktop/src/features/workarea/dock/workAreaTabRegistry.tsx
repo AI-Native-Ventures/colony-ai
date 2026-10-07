@@ -9,14 +9,21 @@ import type * as React from "react";
 
 import { isBrowserHostAvailable } from "@/shared/api/browserHost";
 
+import {
+  browserTabLabels,
+  closeBrowserTab,
+  newBrowserTabId,
+} from "../browser/browserTabKind";
 import { WorkAreaBrowserTab } from "./tabs/WorkAreaBrowserTab";
 import { WorkAreaCanvasTab } from "./tabs/WorkAreaCanvasTab";
 import { WorkAreaFilesTab } from "./tabs/WorkAreaFilesTab";
 import { WorkAreaTerminalTab } from "./tabs/WorkAreaTerminalTab";
-import type { WorkAreaTabKind } from "./workAreaTypes";
+import type { WorkAreaTab, WorkAreaTabKind } from "./workAreaTypes";
 
 export type WorkAreaTabPanelProps = {
   channelId: string;
+  /** This tab's id: the kind for a singleton, `kind:<key>` for a kind opened often. */
+  tabId: string;
   /** True while this tab is the one on screen. Panels stay mounted when not. */
   active: boolean;
 };
@@ -32,6 +39,20 @@ export type WorkAreaTabDefinition = {
    * host, and is off under its kill switch).
    */
   readonly available: boolean;
+  /**
+   * Kinds that may be open several times in one channel (browser pages). The
+   * add menu always offers them, and `newTabId` mints each one's id.
+   */
+  readonly multiple?: boolean;
+  /** Prepare a new tab of a `multiple` kind and return its id; null if it cannot be made. */
+  readonly newTabId?: (channelId: string) => string | null;
+  /** The person closed one of these tabs: release what it held. */
+  readonly onTabClosed?: (channelId: string, tab: WorkAreaTab) => void;
+  /** A tab's own label (a page's title) instead of the kind's `label`. */
+  readonly tabLabels?: {
+    subscribe: (listener: () => void) => () => void;
+    get: (tab: WorkAreaTab) => string;
+  };
   Panel: React.ComponentType<WorkAreaTabPanelProps>;
 };
 
@@ -48,6 +69,10 @@ const DEFINITIONS: Record<WorkAreaTabKind, WorkAreaTabDefinition> = {
     get available() {
       return isBrowserHostAvailable();
     },
+    multiple: true,
+    newTabId: newBrowserTabId,
+    onTabClosed: closeBrowserTab,
+    tabLabels: browserTabLabels,
     Panel: WorkAreaBrowserTab,
   },
   terminal: {

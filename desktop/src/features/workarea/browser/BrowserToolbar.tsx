@@ -25,7 +25,6 @@ export type BrowserToolbarHandle = {
 };
 
 type BrowserToolbarProps = {
-  channelId: string;
   page: BrowserPage;
 };
 
@@ -41,7 +40,7 @@ const ADDRESS_ERROR_ID = "colony-browser-address-error";
 export const BrowserToolbar = React.forwardRef<
   BrowserToolbarHandle,
   BrowserToolbarProps
->(function BrowserToolbar({ channelId, page }, handleRef) {
+>(function BrowserToolbar({ page }, handleRef) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [draft, setDraft] = React.useState<string | null>(null);
   const [problem, setProblem] = React.useState<string | null>(null);
@@ -71,7 +70,7 @@ export const BrowserToolbar = React.forwardRef<
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    const result = navigateBrowserPage(channelId, page.key, value);
+    const result = navigateBrowserPage(page.key, value);
     if (!result.ok) {
       setProblem(result.message);
       return;
@@ -89,7 +88,7 @@ export const BrowserToolbar = React.forwardRef<
       setDraft(null);
       setProblem(null);
     } else if (page.loading) {
-      stopBrowserPage(channelId, page.key);
+      stopBrowserPage(page.key);
     }
   };
 
@@ -114,7 +113,7 @@ export const BrowserToolbar = React.forwardRef<
           className="colony-work-area-icon-button"
           data-testid="browser-back"
           disabled={!page.canGoBack}
-          onClick={() => goBackBrowserPage(channelId, page.key)}
+          onClick={() => goBackBrowserPage(page.key)}
           title="Back"
           type="button"
         >
@@ -125,7 +124,7 @@ export const BrowserToolbar = React.forwardRef<
           className="colony-work-area-icon-button"
           data-testid="browser-forward"
           disabled={!page.canGoForward}
-          onClick={() => goForwardBrowserPage(channelId, page.key)}
+          onClick={() => goForwardBrowserPage(page.key)}
           title="Forward"
           type="button"
         >
@@ -137,9 +136,7 @@ export const BrowserToolbar = React.forwardRef<
           data-testid="browser-reload"
           disabled={!canReload}
           onClick={() =>
-            busy
-              ? stopBrowserPage(channelId, page.key)
-              : reloadBrowserPage(channelId, page.key)
+            busy ? stopBrowserPage(page.key) : reloadBrowserPage(page.key)
           }
           title={busy ? "Stop loading" : "Reload"}
           type="button"

@@ -1,4 +1,9 @@
 import {
+  getWorkAreaState,
+  MAX_TABS_PER_CHANNEL,
+  openWorkArea,
+} from "@/features/workarea/dock/workAreaStore";
+import {
   type BrowserDownloadState,
   type BrowserHostApi,
   type BrowserHostEvent,
@@ -11,6 +16,7 @@ import { setLocalStorageItemWithRecovery } from "@/shared/lib/localStorageQuota"
 import {
   type BrowserAddressResult,
   normalizeBrowserAddress,
+  pageLabel,
 } from "./browserAddress";
 import {
   BLOCKED_ADDRESS_NOTICE,
@@ -19,18 +25,22 @@ import {
   describeNavigationBlock,
   isBlockedNavigationError,
 } from "./browserPageError";
+import { browserTabId } from "./browserTabId";
 
 /**
- * The browser tab's pages, per channel, for the active community (the
- * business). It joins two things that live in different processes:
+ * The browser's pages for the active community (the business). Every page is a
+ * tab in a channel's work area dock; this store holds what the dock does not:
+ * each page's address, title and history state, its notices, and the link to
+ * the Electron host's live tab (`window.colonyBrowserHost`). The two live in
+ * different processes:
  *
- * - the renderer's remembered list of pages (URL, title, which is active),
- *   persisted as one snapshot per community so a restart restores the tabs, and
- * - the Electron host's live tabs (`window.colonyBrowserHost`), which die with
- *   the app and are created lazily, one per page, only when a page is shown.
+ * - the renderer remembers each channel's pages (address and title), persisted
+ *   as one snapshot per community, so a restart restores the tabs, and
+ * - the host's live tabs die with the app and are created lazily, one per page,
+ *   only when that page's tab is on screen.
  *
- * A page restored from disk is "dormant": it has a URL and no host tab until
- * the person selects it, so reopening a channel never loads a dozen sites.
+ * A page restored from disk is "dormant": it has an address and no host tab
+ * until its tab is shown, so reopening a channel never loads a dozen sites.
  *
  * This is a community-scoped module singleton: `resetBrowserTabsStore` is wired
  * into `resetWorkAreaState()` (and so `resetCommunityState()`), closes every
@@ -40,8 +50,9 @@ import {
  */
 
 export type BrowserPage = {
-  /** Stable id for this page in the renderer, persisted. */
+  /** Stable id for this page; the dock tab is `browser:<key>`. Persisted. */
   key: string;
+  channelId: string;
   /** The live host tab, or null while dormant, blank or being opened. */
   hostId: string | null;
   /** The current address ("" for a new tab with nothing loaded). */
@@ -65,12 +76,6 @@ export type BrowserNotice = {
   fileName?: string;
 };
 
-export type BrowserChannelState = {
-  pages: readonly BrowserPage[];
-  activeKey: string | null;
-  notices: readonly BrowserNotice[];
-};
-
 export type BrowserShortcutRequest = {
   channelId: string;
   pageKey: string;
@@ -78,27 +83,21 @@ export type BrowserShortcutRequest = {
 };
 
 type StoredPage = { key: string; url: string; title: string };
-type StoredChannel = {
-  pages: StoredPage[];
-  activeKey: string | null;
-  touchedAt: number;
-};
+type StoredChannel = { pages: StoredPage[]; touchedAt: number };
 
 const STORAGE_PREFIX = "colony-work-area-browser.v1:";
 const SNAPSHOT_VERSION = 1;
-/** The host allows 12 live tabs in all; one channel can remember as many. */
-export const MAX_BROWSER_PAGES_PER_CHANNEL = 12;
+/** The host allows 12 live tabs in all; the dock allows as many tabs a channel. */
+export const MAX_BROWSER_PAGES_PER_CHANNEL = MAX_TABS_PER_CHANNEL;
 const MAX_REMEMBERED_CHANNELS = 200;
 const MAX_NOTICES = 5;
 const MAX_PENDING_STATES = 24;
 const MAX_STORED_URL = 2_048;
 const MAX_STORED_TITLE = 200;
 
-export const EMPTY_BROWSER_CHANNEL: BrowserChannelState = Object.freeze({
-  pages: Object.freeze([]) as readonly BrowserPage[],
-  activeKey: null,
-  notices: Object.freeze([]) as readonly BrowserNotice[],
-});
+export const EMPTY_BROWSER_NOTICES: readonly BrowserNotice[] = Object.freeze(
+  [],
+);
 
 let host: BrowserHostApi = browserHost;
 let scope: string | null = null;
@@ -107,12 +106,17 @@ let generation = 0;
 let ready: Promise<void> = Promise.resolve();
 let stored: Record<string, StoredChannel> = {};
 let persistDirty = false;
-let channels = new Map<string, BrowserChannelState>();
+let pages = new Map<string, BrowserPage>();
+let notices = new Map<string, readonly BrowserNotice[]>();
 const hostIndex = new Map<string, string>();
 /** Host states that arrived before `createTab` returned the tab's id. */
 const pendingStates = new Map<string, BrowserTabState>();
 /** Host tabs a failed close left behind; closed again on the next action. */
 const orphans = new Set<string>();
+/** Last blocked-link error already reported, per host tab. */
+const reportedBlockedLinks = new Map<string, string>();
+/** Pages whose address bar should take focus when their tab is shown. */
+const addressFocusRequests = new Set<string>();
 let unsubscribeHost: (() => void) | null = null;
 let now: () => number = () => Date.now();
 let newKey: () => string = () => crypto.randomUUID();
@@ -130,13 +134,29 @@ export function subscribeBrowserTabs(listener: () => void): () => void {
   };
 }
 
-export function getBrowserChannelState(channelId: string): BrowserChannelState {
-  return channels.get(channelId) ?? EMPTY_BROWSER_CHANNEL;
+/** The page once its tab has been shown, else null. Stable between changes. */
+export function getBrowserPage(key: string): BrowserPage | null {
+  return pages.get(key) ?? null;
+}
+
+export function getBrowserNotices(key: string): readonly BrowserNotice[] {
+  return notices.get(key) ?? EMPTY_BROWSER_NOTICES;
 }
 
 /** The active community's business id, or null before `initBrowserTabsStore`. */
 export function getBrowserBusinessId(): string | null {
   return scope;
+}
+
+/** A tab's label: its page's title, else the site, else "New tab". */
+export function getBrowserPageLabel(key: string): string {
+  const live = pages.get(key);
+  if (live) return pageLabel(live);
+  for (const channel of Object.values(stored)) {
+    const remembered = channel.pages.find((page) => page.key === key);
+    if (remembered) return pageLabel(remembered);
+  }
+  return "New tab";
 }
 
 export function onBrowserShortcut(
@@ -146,6 +166,11 @@ export function onBrowserShortcut(
   return () => {
     shortcutListeners.delete(listener);
   };
+}
+
+/** True once, if the page's address bar should take focus as its tab opens. */
+export function takeBrowserAddressFocus(key: string): boolean {
+  return addressFocusRequests.delete(key);
 }
 
 export function browserStorageKey(communityScope: string): string {
@@ -167,18 +192,19 @@ function parseStored(raw: string | null): Record<string, StoredChannel> {
     const source = (parsed as Record<string, unknown>).channels;
     if (typeof source !== "object" || source === null) return {};
     const result: Record<string, StoredChannel> = {};
+    const seen = new Set<string>();
     for (const [channelId, value] of Object.entries(source)) {
       if (typeof value !== "object" || value === null) continue;
       const record = value as Record<string, unknown>;
-      const pages: StoredPage[] = [];
+      const remembered: StoredPage[] = [];
       if (Array.isArray(record.pages)) {
         for (const entry of record.pages) {
           if (typeof entry !== "object" || entry === null) continue;
           const page = entry as Record<string, unknown>;
           if (typeof page.key !== "string" || page.key.length === 0) continue;
-          if (page.key.length > 64) continue;
-          if (pages.some((existing) => existing.key === page.key)) continue;
-          pages.push({
+          if (page.key.length > 64 || seen.has(page.key)) continue;
+          seen.add(page.key);
+          remembered.push({
             key: page.key,
             url:
               typeof page.url === "string" && page.url.length <= MAX_STORED_URL
@@ -189,17 +215,12 @@ function parseStored(raw: string | null): Record<string, StoredChannel> {
                 ? page.title.slice(0, MAX_STORED_TITLE)
                 : "",
           });
-          if (pages.length >= MAX_BROWSER_PAGES_PER_CHANNEL) break;
+          if (remembered.length >= MAX_BROWSER_PAGES_PER_CHANNEL) break;
         }
       }
-      if (pages.length === 0) continue;
+      if (remembered.length === 0) continue;
       result[channelId] = {
-        pages,
-        activeKey:
-          typeof record.activeKey === "string" &&
-          pages.some((page) => page.key === record.activeKey)
-            ? record.activeKey
-            : pages[0].key,
+        pages: remembered,
         touchedAt: typeof record.touchedAt === "number" ? record.touchedAt : 0,
       };
     }
@@ -224,28 +245,26 @@ function pruneStored(next: Record<string, StoredChannel>) {
 }
 
 /**
- * One write path, one snapshot: every user action that changes what is
- * remembered ends here, so the stored value is always complete (rule 5). A
- * failed write leaves the store dirty and the next change rewrites it (rule 1).
+ * One write path, one snapshot: every change to what is remembered ends here,
+ * so the stored value is always complete (rule 5). A failed write leaves the
+ * store dirty and the next change rewrites it (rule 1).
  */
-function persistChannel(channelId: string) {
+function persistRemembered(
+  channelId: string,
+  update: (current: StoredPage[]) => StoredPage[],
+) {
   if (scope === null) return;
-  const state = channels.get(channelId);
+  const remembered = update(stored[channelId]?.pages ?? []);
   const next = { ...stored };
-  if (state && state.pages.length > 0) {
-    next[channelId] = {
-      pages: state.pages.map((page) => ({
-        key: page.key,
-        url: page.url.slice(0, MAX_STORED_URL),
-        title: page.title.slice(0, MAX_STORED_TITLE),
-      })),
-      activeKey: state.activeKey,
-      touchedAt: now(),
-    };
-  } else {
-    delete next[channelId];
-  }
+  if (remembered.length > 0)
+    next[channelId] = { pages: remembered, touchedAt: now() };
+  else delete next[channelId];
   stored = pruneStored(next);
+  writeSnapshot();
+}
+
+function writeSnapshot() {
+  if (scope === null) return;
   const ok = setLocalStorageItemWithRecovery(
     browserStorageKey(scope),
     JSON.stringify({ version: SNAPSHOT_VERSION, channels: stored }),
@@ -258,15 +277,35 @@ function persistChannel(channelId: string) {
   }
 }
 
+function rememberPage(page: BrowserPage) {
+  persistRemembered(page.channelId, (current) => {
+    const entry: StoredPage = {
+      key: page.key,
+      url: page.url.slice(0, MAX_STORED_URL),
+      title: page.title.slice(0, MAX_STORED_TITLE),
+    };
+    return current.some((item) => item.key === page.key)
+      ? current.map((item) => (item.key === page.key ? entry : item))
+      : [...current, entry].slice(-MAX_BROWSER_PAGES_PER_CHANNEL);
+  });
+}
+
+function forgetPage(channelId: string, key: string) {
+  persistRemembered(channelId, (current) =>
+    current.filter((item) => item.key !== key),
+  );
+}
+
 export function getBrowserPersistDirtyForTests() {
   return persistDirty;
 }
 
 // ------------------------------------------------------------------ lifecycle
 
-function blankPage(): BrowserPage {
+function blankPage(key: string, channelId: string): BrowserPage {
   return {
-    key: newKey(),
+    key,
+    channelId,
     hostId: null,
     url: "",
     title: "",
@@ -278,48 +317,22 @@ function blankPage(): BrowserPage {
   };
 }
 
-function setChannel(
-  channelId: string,
-  next: BrowserChannelState,
-  options: { persist: boolean },
-) {
-  channels = new Map(channels).set(channelId, next);
-  if (options.persist || persistDirty) persistChannel(channelId);
+function setPage(page: BrowserPage, options: { persist: boolean }) {
+  pages = new Map(pages).set(page.key, page);
+  if (options.persist || persistDirty) rememberPage(page);
   notify();
 }
 
-function updateChannel(
-  channelId: string,
-  update: (current: BrowserChannelState) => BrowserChannelState,
-  options: { persist: boolean } = { persist: false },
-) {
-  const current = channels.get(channelId);
-  if (!current) return;
-  const next = update(current);
-  if (next === current) return;
-  setChannel(channelId, next, options);
-}
-
 function updatePage(
-  channelId: string,
   key: string,
   update: (page: BrowserPage) => BrowserPage,
   options: { persist: boolean } = { persist: false },
 ) {
-  updateChannel(
-    channelId,
-    (current) => {
-      let changed = false;
-      const pages = current.pages.map((page) => {
-        if (page.key !== key) return page;
-        const next = update(page);
-        if (next !== page) changed = true;
-        return next;
-      });
-      return changed ? { ...current, pages } : current;
-    },
-    options,
-  );
+  const current = pages.get(key);
+  if (!current) return;
+  const next = update(current);
+  if (next === current) return;
+  setPage(next, options);
 }
 
 /** Run a host call so a synchronous throw (no bridge) is a rejection too. */
@@ -346,10 +359,12 @@ export function initBrowserTabsStore(communityScope: string) {
   generation += 1;
   scope = communityScope;
   persistDirty = false;
-  channels = new Map();
+  pages = new Map();
+  notices = new Map();
   hostIndex.clear();
   pendingStates.clear();
   reportedBlockedLinks.clear();
+  addressFocusRequests.clear();
   let raw: string | null = null;
   try {
     raw = window.localStorage.getItem(browserStorageKey(communityScope));
@@ -394,11 +409,13 @@ export function resetBrowserTabsStore() {
   persistDirty = false;
   unsubscribeHost?.();
   unsubscribeHost = null;
-  channels = new Map();
+  pages = new Map();
+  notices = new Map();
   stored = {};
   hostIndex.clear();
   pendingStates.clear();
   reportedBlockedLinks.clear();
+  addressFocusRequests.clear();
   orphans.clear();
   if (closing !== null) {
     void callHost(() => host.closeBusiness(closing)).catch(() => {
@@ -408,30 +425,27 @@ export function resetBrowserTabsStore() {
   notify();
 }
 
-/** Make this channel's pages exist: restored from disk, or one blank page. */
-export function ensureBrowserChannel(channelId: string) {
-  if (scope === null || channels.has(channelId)) return;
-  const remembered = stored[channelId];
-  const pages: BrowserPage[] = remembered
-    ? remembered.pages.map((page) => ({
-        ...blankPage(),
-        key: page.key,
-        url: page.url,
-        title: page.title,
-      }))
-    : [blankPage()];
-  const activeKey =
-    remembered?.activeKey && pages.some((p) => p.key === remembered.activeKey)
-      ? remembered.activeKey
-      : pages[0].key;
-  channels = new Map(channels).set(channelId, {
-    pages,
-    activeKey,
-    notices: EMPTY_BROWSER_CHANNEL.notices,
-  });
-  notify();
-  const active = pages.find((page) => page.key === activeKey);
-  if (active?.url) void startHostTab(channelId, active.key, active.url);
+/**
+ * Make a page exist in memory when its tab is shown: restored from disk, or
+ * blank if nothing was remembered. A restored page with an address loads now,
+ * and only now.
+ */
+export function ensureBrowserPage(channelId: string, key: string) {
+  if (scope === null) return;
+  let page = pages.get(key);
+  if (!page) {
+    const remembered = stored[channelId]?.pages.find(
+      (item) => item.key === key,
+    );
+    page = {
+      ...blankPage(key, channelId),
+      url: remembered?.url ?? "",
+      title: remembered?.title ?? "",
+    };
+    setPage(page, { persist: !remembered });
+  }
+  if (page.url && !page.hostId && !page.opening && !page.error)
+    void startHostTab(key, page.url);
 }
 
 // ------------------------------------------------------------------ host tabs
@@ -442,13 +456,13 @@ function applyTabState(page: BrowserPage, tab: BrowserTabState): BrowserPage {
     ...page,
     hostId: tab.id,
     opening: false,
-    // A blocked link leaves the current page on screen; it is a notice, not
-    // an error page, and is reported once through `applyBlockedLinkNotice`.
     url: tab.url === "about:blank" ? page.url : tab.url,
     title: tab.title,
     loading: tab.loading,
     canGoBack: tab.canGoBack,
     canGoForward: tab.canGoForward,
+    // A blocked link leaves the current page on screen; it is a notice, not
+    // an error page, and is reported once through `applyBlockedLinkNotice`.
     error: blockedLink ? null : tab.error,
   };
   return samePage(page, next) ? page : next;
@@ -467,37 +481,30 @@ function samePage(a: BrowserPage, b: BrowserPage) {
   );
 }
 
-function pushNotice(channelId: string, notice: BrowserNotice) {
-  updateChannel(channelId, (current) => {
-    const rest = current.notices.filter((entry) => entry.id !== notice.id);
-    const notices = [...rest, notice].slice(-MAX_NOTICES);
-    return { ...current, notices };
-  });
+function pushNotice(key: string, notice: BrowserNotice) {
+  const current = notices.get(key) ?? EMPTY_BROWSER_NOTICES;
+  const rest = current.filter((entry) => entry.id !== notice.id);
+  notices = new Map(notices).set(key, [...rest, notice].slice(-MAX_NOTICES));
+  notify();
 }
 
-/** Last blocked-link error already reported, per host tab. */
-const reportedBlockedLinks = new Map<string, string>();
-
-function applyBlockedLinkNotice(channelId: string, tab: BrowserTabState) {
+function applyBlockedLinkNotice(key: string, tab: BrowserTabState) {
   if (!isBlockedNavigationError(tab.error)) {
     reportedBlockedLinks.delete(tab.id);
     return;
   }
   if (reportedBlockedLinks.get(tab.id) === tab.error) return;
   reportedBlockedLinks.set(tab.id, tab.error ?? "");
-  pushNotice(channelId, {
+  pushNotice(key, {
     id: "blocked-address",
     kind: "blocked",
     message: BLOCKED_ADDRESS_NOTICE,
   });
 }
 
-function findPageByHostId(hostId: string) {
-  const channelId = hostIndex.get(hostId);
-  if (!channelId) return null;
-  const state = channels.get(channelId);
-  const page = state?.pages.find((entry) => entry.hostId === hostId);
-  return page ? { channelId, page } : null;
+function pageForHost(hostId: string): BrowserPage | null {
+  const key = hostIndex.get(hostId);
+  return key ? (pages.get(key) ?? null) : null;
 }
 
 function rememberPendingState(tab: BrowserTabState) {
@@ -508,19 +515,18 @@ function rememberPendingState(tab: BrowserTabState) {
 }
 
 function handleTabState(tab: BrowserTabState) {
-  const found = findPageByHostId(tab.id);
+  const found = pageForHost(tab.id);
   if (!found) {
     rememberPendingState(tab);
     return;
   }
-  const urlChanged = tab.url !== found.page.url && tab.url !== "about:blank";
-  updatePage(
-    found.channelId,
-    found.page.key,
-    (page) => applyTabState(page, tab),
-    { persist: urlChanged },
-  );
-  applyBlockedLinkNotice(found.channelId, tab);
+  // The tab's remembered label is its title, so a new title is worth saving too.
+  const urlChanged = tab.url !== found.url && tab.url !== "about:blank";
+  const titleChanged = tab.title !== "" && tab.title !== found.title;
+  updatePage(found.key, (page) => applyTabState(page, tab), {
+    persist: urlChanged || titleChanged,
+  });
+  applyBlockedLinkNotice(found.key, tab);
 }
 
 function downloadMessage(state: BrowserDownloadState, fileName: string) {
@@ -545,9 +551,7 @@ function handleHostEvent(event: BrowserHostEvent) {
       handleTabState(event.tab);
       return;
     case "new-tab": {
-      const opener = event.openedFrom
-        ? findPageByHostId(event.openedFrom)
-        : null;
+      const opener = event.openedFrom ? pageForHost(event.openedFrom) : null;
       if (!opener) {
         closeHostTab(event.tab.id);
         return;
@@ -556,12 +560,12 @@ function handleHostEvent(event: BrowserHostEvent) {
       return;
     }
     case "closed": {
-      const found = findPageByHostId(event.tabId);
+      const found = pageForHost(event.tabId);
       hostIndex.delete(event.tabId);
       reportedBlockedLinks.delete(event.tabId);
       if (!found) return;
       // The host ended this tab (not us): keep the page, dormant.
-      updatePage(found.channelId, found.page.key, (page) => ({
+      updatePage(found.key, (page) => ({
         ...page,
         hostId: null,
         loading: false,
@@ -571,9 +575,9 @@ function handleHostEvent(event: BrowserHostEvent) {
       return;
     }
     case "navigation-blocked": {
-      const found = findPageByHostId(event.tabId);
+      const found = pageForHost(event.tabId);
       if (!found) return;
-      pushNotice(found.channelId, {
+      pushNotice(found.key, {
         id: `blocked-${event.reason}`,
         kind: "blocked",
         message: describeNavigationBlock(event.reason),
@@ -581,9 +585,9 @@ function handleHostEvent(event: BrowserHostEvent) {
       return;
     }
     case "download-blocked": {
-      const found = findPageByHostId(event.tabId);
+      const found = pageForHost(event.tabId);
       if (!found) return;
-      pushNotice(found.channelId, {
+      pushNotice(found.key, {
         id: `download-blocked-${event.reason}`,
         kind: "blocked",
         message: describeDownloadBlock(event.reason),
@@ -591,9 +595,9 @@ function handleHostEvent(event: BrowserHostEvent) {
       return;
     }
     case "download": {
-      const found = findPageByHostId(event.tabId);
+      const found = pageForHost(event.tabId);
       if (!found) return;
-      pushNotice(found.channelId, {
+      pushNotice(found.key, {
         id: event.downloadId,
         kind: "download",
         state: event.state,
@@ -604,33 +608,31 @@ function handleHostEvent(event: BrowserHostEvent) {
       return;
     }
     case "shortcut": {
-      const found = findPageByHostId(event.tabId);
+      const found = pageForHost(event.tabId);
       if (!found) return;
       for (const listener of shortcutListeners)
         listener({
           channelId: found.channelId,
-          pageKey: found.page.key,
+          pageKey: found.key,
           action: event.action,
         });
     }
   }
 }
 
+/** A window a page opened: a new page and dock tab beside it, in front. */
 function adoptPopup(channelId: string, tab: BrowserTabState) {
-  const current = channels.get(channelId);
-  if (!current || current.pages.length >= MAX_BROWSER_PAGES_PER_CHANNEL) {
+  if (getWorkAreaState(channelId).tabs.length >= MAX_TABS_PER_CHANNEL) {
     closeHostTab(tab.id);
     return;
   }
   const latest = pendingStates.get(tab.id) ?? tab;
   pendingStates.delete(tab.id);
-  const page = applyTabState({ ...blankPage() }, latest);
-  hostIndex.set(tab.id, channelId);
-  setChannel(
-    channelId,
-    { ...current, pages: [...current.pages, page], activeKey: page.key },
-    { persist: true },
-  );
+  const key = newKey();
+  const page = applyTabState(blankPage(key, channelId), latest);
+  hostIndex.set(tab.id, key);
+  setPage(page, { persist: true });
+  openWorkArea(channelId, "browser", browserTabId(key));
 }
 
 /**
@@ -638,12 +640,12 @@ function adoptPopup(channelId: string, tab: BrowserTabState) {
  * re-checks that the community, the page and its intent are still current
  * (rule 2): a stale result closes the tab it created instead of attaching it.
  */
-async function startHostTab(channelId: string, pageKey: string, url: string) {
+async function startHostTab(key: string, url: string) {
   const mine = generation;
   const businessId = scope;
   if (businessId === null) return;
   retryOrphans();
-  updatePage(channelId, pageKey, (page) =>
+  updatePage(key, (page) =>
     page.opening ? page : { ...page, opening: true, error: null },
   );
   let tab: BrowserTabState;
@@ -652,7 +654,7 @@ async function startHostTab(channelId: string, pageKey: string, url: string) {
     tab = await host.createTab({ businessId, url });
   } catch (error) {
     if (mine !== generation) return;
-    updatePage(channelId, pageKey, (page) => ({
+    updatePage(key, (page) => ({
       ...page,
       opening: false,
       loading: false,
@@ -660,144 +662,119 @@ async function startHostTab(channelId: string, pageKey: string, url: string) {
     }));
     return;
   }
-  const page = channels
-    .get(channelId)
-    ?.pages.find((entry) => entry.key === pageKey);
+  const page = pages.get(key);
   if (mine !== generation || !page || !page.opening) {
     closeHostTab(tab.id);
     return;
   }
-  hostIndex.set(tab.id, channelId);
+  hostIndex.set(tab.id, key);
   const latest = pendingStates.get(tab.id) ?? tab;
   pendingStates.delete(tab.id);
-  updatePage(channelId, pageKey, (current) => applyTabState(current, latest), {
+  updatePage(key, (current) => applyTabState(current, latest), {
     persist: true,
   });
-  applyBlockedLinkNotice(channelId, latest);
+  applyBlockedLinkNotice(key, latest);
 }
 
 // -------------------------------------------------------------------- actions
 
-function requirePage(channelId: string, pageKey: string) {
-  return (
-    channels.get(channelId)?.pages.find((page) => page.key === pageKey) ?? null
-  );
-}
+export type CreatedBrowserPage =
+  | { ok: true; key: string; url: string }
+  | { ok: false; message: string };
 
-/** Open a new page (blank, or at `address`) and make it the active one. */
-export function openBrowserPage(
+/**
+ * Make a new page for a channel (blank, or at `address`). The caller adds the
+ * dock tab, `browser:<key>`; the dock is the only place tabs are added.
+ */
+export function createBrowserPage(
   channelId: string,
-  address?: string,
-): BrowserAddressResult {
-  ensureBrowserChannel(channelId);
-  const current = channels.get(channelId);
-  if (!current) return { ok: false, message: "The browser is not ready yet." };
-  const target = address ? normalizeBrowserAddress(address) : null;
+  options: { address?: string; focusAddress?: boolean } = {},
+): CreatedBrowserPage {
+  if (scope === null)
+    return { ok: false, message: "The browser is not ready yet." };
+  const target = options.address
+    ? normalizeBrowserAddress(options.address)
+    : null;
   if (target && !target.ok) return target;
-  if (current.pages.length >= MAX_BROWSER_PAGES_PER_CHANNEL) {
+  if ((stored[channelId]?.pages.length ?? 0) >= MAX_BROWSER_PAGES_PER_CHANNEL) {
     return {
       ok: false,
       message: "Too many browser tabs are open. Close one to open another.",
     };
   }
-  const page = blankPage();
-  setChannel(
-    channelId,
-    { ...current, pages: [...current.pages, page], activeKey: page.key },
-    { persist: true },
-  );
-  if (target?.ok) void startHostTab(channelId, page.key, target.url);
-  return { ok: true, url: target?.ok ? target.url : "" };
+  const key = newKey();
+  setPage(blankPage(key, channelId), { persist: true });
+  if (options.focusAddress) addressFocusRequests.add(key);
+  if (target?.ok) void startHostTab(key, target.url);
+  return { ok: true, key, url: target?.ok ? target.url : "" };
 }
 
 /** Navigate a page to what the person typed. Refusals come back as a message. */
 export function navigateBrowserPage(
-  channelId: string,
-  pageKey: string,
+  key: string,
   address: string,
 ): BrowserAddressResult {
-  const page = requirePage(channelId, pageKey);
+  const page = pages.get(key);
   if (!page) return { ok: false, message: "That tab is no longer open." };
   const result = normalizeBrowserAddress(address);
   if (!result.ok) return result;
   retryOrphans();
   if (page.hostId) {
-    updatePage(channelId, pageKey, (current) => ({
-      ...current,
-      error: null,
-      loading: true,
-    }));
+    updatePage(key, (current) => ({ ...current, error: null, loading: true }));
     const hostId = page.hostId;
     void callHost(() => host.navigate(hostId, result.url)).catch((error) => {
-      updatePage(channelId, pageKey, (current) => ({
+      updatePage(key, (current) => ({
         ...current,
         loading: false,
         error: describeHostFailure(error),
       }));
     });
   } else if (!page.opening) {
-    updatePage(
-      channelId,
-      pageKey,
-      (current) => ({ ...current, url: result.url }),
-      {
-        persist: true,
-      },
-    );
-    void startHostTab(channelId, pageKey, result.url);
+    updatePage(key, (current) => ({ ...current, url: result.url }), {
+      persist: true,
+    });
+    void startHostTab(key, result.url);
   }
   return result;
 }
 
-export function selectBrowserPage(channelId: string, pageKey: string) {
-  const page = requirePage(channelId, pageKey);
-  if (!page) return;
-  updateChannel(
-    channelId,
-    (current) =>
-      current.activeKey === pageKey
-        ? current
-        : { ...current, activeKey: pageKey },
-    { persist: true },
-  );
-  // A page restored from disk loads only now that it is on screen.
-  if (!page.hostId && !page.opening && page.url)
-    void startHostTab(channelId, pageKey, page.url);
-}
-
-/** Close a page. Closing the last one leaves a blank page, never an empty dock. */
-export function closeBrowserPage(channelId: string, pageKey: string) {
-  const current = channels.get(channelId);
-  const index = current?.pages.findIndex((page) => page.key === pageKey) ?? -1;
-  if (!current || index < 0) return;
-  const closing = current.pages[index];
-  let pages = current.pages.filter((page) => page.key !== pageKey);
-  if (pages.length === 0) pages = [blankPage()];
-  const activeKey =
-    current.activeKey === pageKey
-      ? pages[Math.max(0, index - 1)].key
-      : current.activeKey;
-  if (closing.hostId) {
-    hostIndex.delete(closing.hostId);
-    reportedBlockedLinks.delete(closing.hostId);
-    closeHostTab(closing.hostId);
+/**
+ * Release a page whose dock tab the person closed: its host tab, notices and
+ * remembered address. The dock has already removed the tab.
+ */
+export function closeBrowserPage(key: string) {
+  const page = pages.get(key);
+  let channelId = page?.channelId;
+  if (!channelId) {
+    for (const [id, channel] of Object.entries(stored))
+      if (channel.pages.some((item) => item.key === key)) channelId = id;
   }
-  setChannel(channelId, { ...current, pages, activeKey }, { persist: true });
-  const next = pages.find((page) => page.key === activeKey);
-  if (next && !next.hostId && !next.opening && next.url)
-    void startHostTab(channelId, next.key, next.url);
+  if (page?.hostId) {
+    hostIndex.delete(page.hostId);
+    reportedBlockedLinks.delete(page.hostId);
+    closeHostTab(page.hostId);
+  }
+  if (page) {
+    const next = new Map(pages);
+    next.delete(key);
+    pages = next;
+  }
+  if (notices.has(key)) {
+    const next = new Map(notices);
+    next.delete(key);
+    notices = next;
+  }
+  addressFocusRequests.delete(key);
+  if (channelId) forgetPage(channelId, key);
+  notify();
 }
 
-function hostCall(
-  channelId: string,
-  pageKey: string,
-  run: (hostId: string) => Promise<unknown>,
-) {
-  const page = requirePage(channelId, pageKey);
+function hostCall(key: string, run: (hostId: string) => Promise<unknown>) {
+  const page = pages.get(key);
   if (!page?.hostId) return;
   const hostId = page.hostId;
   void callHost(() => run(hostId)).catch((error) => {
-    updatePage(channelId, pageKey, (current) => ({
+    updatePage(key, (current) => ({
       ...current,
       loading: false,
       error: describeHostFailure(error),
@@ -805,42 +782,41 @@ function hostCall(
   });
 }
 
-export const goBackBrowserPage = (channelId: string, pageKey: string) =>
-  hostCall(channelId, pageKey, (hostId) => host.back(hostId));
-export const goForwardBrowserPage = (channelId: string, pageKey: string) =>
-  hostCall(channelId, pageKey, (hostId) => host.forward(hostId));
-export const stopBrowserPage = (channelId: string, pageKey: string) =>
-  hostCall(channelId, pageKey, (hostId) => host.stop(hostId));
-export const focusBrowserPage = (channelId: string, pageKey: string) =>
-  hostCall(channelId, pageKey, (hostId) => host.focus(hostId));
+export const goBackBrowserPage = (key: string) =>
+  hostCall(key, (hostId) => host.back(hostId));
+export const goForwardBrowserPage = (key: string) =>
+  hostCall(key, (hostId) => host.forward(hostId));
+export const stopBrowserPage = (key: string) =>
+  hostCall(key, (hostId) => host.stop(hostId));
+export const focusBrowserPage = (key: string) =>
+  hostCall(key, (hostId) => host.focus(hostId));
 
 /** Reload a live page, or load a page that has an address but no live tab. */
-export function reloadBrowserPage(channelId: string, pageKey: string) {
-  const page = requirePage(channelId, pageKey);
+export function reloadBrowserPage(key: string) {
+  const page = pages.get(key);
   if (!page) return;
   if (page.hostId) {
-    updatePage(channelId, pageKey, (current) => ({ ...current, error: null }));
-    hostCall(channelId, pageKey, (hostId) => host.reload(hostId));
+    updatePage(key, (current) => ({ ...current, error: null }));
+    hostCall(key, (hostId) => host.reload(hostId));
   } else if (page.url && !page.opening) {
-    void startHostTab(channelId, pageKey, page.url);
+    void startHostTab(key, page.url);
   }
 }
 
-export function dismissBrowserNotice(channelId: string, noticeId: string) {
-  updateChannel(channelId, (current) =>
-    current.notices.some((notice) => notice.id === noticeId)
-      ? {
-          ...current,
-          notices: current.notices.filter((notice) => notice.id !== noticeId),
-        }
-      : current,
+export function dismissBrowserNotice(key: string, noticeId: string) {
+  const current = notices.get(key);
+  if (!current?.some((notice) => notice.id === noticeId)) return;
+  notices = new Map(notices).set(
+    key,
+    current.filter((notice) => notice.id !== noticeId),
   );
+  notify();
 }
 
 /** Show a finished download in the file manager; say so if that fails. */
-export function revealBrowserDownload(channelId: string, downloadId: string) {
+export function revealBrowserDownload(key: string, downloadId: string) {
   void callHost(() => host.revealDownload(downloadId)).catch(() => {
-    pushNotice(channelId, {
+    pushNotice(key, {
       id: downloadId,
       kind: "download",
       state: "completed",

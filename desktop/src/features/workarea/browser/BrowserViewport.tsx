@@ -2,7 +2,6 @@ import { Globe, LoaderCircle, TriangleAlert } from "lucide-react";
 import * as React from "react";
 
 import { BrowserNativeSlot } from "./BrowserNativeSlot";
-import { BROWSER_VIEWPORT_ID, browserPageTabDomId } from "./BrowserPageTabs";
 import { describePageError } from "./browserPageError";
 import {
   focusBrowserPage,
@@ -12,7 +11,6 @@ import {
 } from "./browserTabsStore";
 
 type BrowserViewportProps = {
-  channelId: string;
   page: BrowserPage;
   /** True while the Browser dock tab is the one on screen. */
   active: boolean;
@@ -24,11 +22,7 @@ type BrowserViewportProps = {
  * start, opening and error states. The native view is only attached while the
  * page is loadable and on screen, so an error never hides behind a blank view.
  */
-export function BrowserViewport({
-  channelId,
-  page,
-  active,
-}: BrowserViewportProps) {
+export function BrowserViewport({ page, active }: BrowserViewportProps) {
   const hintId = React.useId();
   const [viewFailure, setViewFailure] = React.useState<{
     hostId: string;
@@ -43,18 +37,13 @@ export function BrowserViewport({
   const showPage = Boolean(page.hostId) && !error;
 
   return (
-    <div
-      aria-labelledby={browserPageTabDomId(page.key)}
-      className="colony-browser-viewport"
-      id={BROWSER_VIEWPORT_ID}
-      role="tabpanel"
-    >
+    <div className="colony-browser-viewport">
       {showPage ? (
         <>
           <BrowserNativeSlot
             hintId={hintId}
             hostId={page.hostId}
-            onEnterPage={() => focusBrowserPage(channelId, page.key)}
+            onEnterPage={() => focusBrowserPage(page.key)}
             onFailure={(message) =>
               page.hostId && setViewFailure({ hostId: page.hostId, message })
             }
@@ -98,10 +87,10 @@ export function BrowserViewport({
         <PageError
           canGoBack={page.canGoBack}
           error={error}
-          onBack={() => goBackBrowserPage(channelId, page.key)}
+          onBack={() => goBackBrowserPage(page.key)}
           onRetry={() => {
             setViewFailure(null);
-            reloadBrowserPage(channelId, page.key);
+            reloadBrowserPage(page.key);
           }}
           url={page.url}
         />

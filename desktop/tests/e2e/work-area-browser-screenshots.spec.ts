@@ -14,12 +14,17 @@ const OUT =
   process.env.COLONY_BROWSER_SHOTS ?? "test-results/work-area-browser";
 
 const dock = (page: Page) => page.getByTestId("work-area-panel");
-const address = (page: Page) => page.getByTestId("browser-address");
+// Every tab's panel stays mounted; only the shown one is not [hidden]. Browser
+// controls are always asked of the shown page.
+const panelTid = (page: Page, id: string) =>
+  dock(page).locator('section[role="tabpanel"]:not([hidden])').getByTestId(id);
+const address = (page: Page) => panelTid(page, "browser-address");
 
 async function standIn(page: Page, heading: string) {
   await page.evaluate((text) => {
+    // Every tab's panel stays mounted; the shown one is not [hidden].
     const fill = document.querySelector<HTMLElement>(
-      ".colony-browser-slot-fill",
+      'section[role="tabpanel"]:not([hidden]) .colony-browser-slot-fill',
     );
     if (!fill) return;
     const rect = fill.getBoundingClientRect();
@@ -53,7 +58,7 @@ for (const viewport of [
 
     // Start page.
     await page.getByTestId("work-area-open-browser").click();
-    await expect(page.getByTestId("browser-start")).toBeVisible();
+    await expect(panelTid(page, "browser-start")).toBeVisible();
     await waitForAnimations(page);
     await page.screenshot({
       path: `${OUT}/browser-start-${viewport.width}.png`,
@@ -63,19 +68,20 @@ for (const viewport of [
     await address(page).fill("olivehouse.test");
     await address(page).press("Enter");
     await expect(address(page)).toHaveValue("https://olivehouse.test/");
-    await page.getByTestId("browser-new-tab").click();
+    await page.getByTestId("work-area-add-tab").click();
+    await page.getByTestId("work-area-add-browser").click();
     await address(page).fill("olivehouse.test/collection");
     await address(page).press("Enter");
     await expect(address(page)).toHaveValue(
       "https://olivehouse.test/collection",
     );
-    await expect(page.getByTestId("browser-page-slot")).toBeVisible();
+    await expect(panelTid(page, "browser-page-slot")).toBeVisible();
     await page.evaluate(() => {
       const tab = window.__browserFake?.tabs().at(-1);
       if (tab)
         window.__browserFake?.download(tab.id, "spring-brief.pdf", "completed");
     });
-    await expect(page.getByTestId("browser-notice-download")).toBeVisible();
+    await expect(panelTid(page, "browser-notice-download")).toBeVisible();
     await page.mouse.move(5, 5);
     await standIn(page, "the olive house");
     await waitForAnimations(page);
@@ -87,10 +93,11 @@ for (const viewport of [
     await page
       .locator("[data-testid=page-stand-in]")
       .evaluate((node) => node.remove());
-    await page.getByTestId("browser-new-tab").click();
+    await page.getByTestId("work-area-add-tab").click();
+    await page.getByTestId("work-area-add-browser").click();
     await address(page).fill("unreachable.test");
     await address(page).press("Enter");
-    await expect(page.getByTestId("browser-error")).toBeVisible();
+    await expect(panelTid(page, "browser-error")).toBeVisible();
     await waitForAnimations(page);
     await page.screenshot({
       path: `${OUT}/browser-error-${viewport.width}.png`,
@@ -99,7 +106,7 @@ for (const viewport of [
     // A refused address.
     await address(page).fill("file:///etc/passwd");
     await address(page).press("Enter");
-    await expect(page.getByTestId("browser-address-error")).toBeVisible();
+    await expect(panelTid(page, "browser-address-error")).toBeVisible();
     await expect(dock(page)).toBeVisible();
     await waitForAnimations(page);
     await page.screenshot({

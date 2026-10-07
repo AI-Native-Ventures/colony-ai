@@ -2,28 +2,36 @@ import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 
 import {
+  getWorkAreaState,
+  initWorkAreaStore,
+  resetWorkAreaStore,
+} from "../dock/workAreaStore.ts";
+import {
   browserStorageKey,
   closeBrowserPage,
+  createBrowserPage,
   dismissBrowserNotice,
-  ensureBrowserChannel,
+  ensureBrowserPage,
   getBrowserBusinessId,
-  getBrowserChannelState,
+  getBrowserNotices,
   getBrowserOrphansForTests,
+  getBrowserPage,
+  getBrowserPageLabel,
   getBrowserPersistDirtyForTests,
   goBackBrowserPage,
   initBrowserTabsStore,
   navigateBrowserPage,
   onBrowserShortcut,
-  openBrowserPage,
   parseBrowserSnapshotForTests,
   reloadBrowserPage,
   resetBrowserTabsStore,
   revealBrowserDownload,
-  selectBrowserPage,
   setBrowserHostForTests,
   setBrowserKeysForTests,
   setBrowserStoreClockForTests,
+  takeBrowserAddressFocus,
 } from "./browserTabsStore.ts";
+import { browserPageKeyOf, browserTabId } from "./browserTabId.ts";
 
 class MemoryStorage {
   data = new Map();
@@ -116,13 +124,13 @@ function fakeHost() {
 }
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
-const ids = (state) => state.pages.map((page) => page.key);
 let storage;
 let host;
 let counter;
 
 beforeEach(() => {
   resetBrowserTabsStore();
+  resetWorkAreaStore();
   storage = new MemoryStorage();
   globalThis.window = { localStorage: storage };
   host = fakeHost();
@@ -132,14 +140,26 @@ beforeEach(() => {
   setBrowserStoreClockForTests(() => counter);
 });
 
-test("a channel starts with one blank page and touches no host tab", async () => {
+/** A page in a channel, created the way the dock does: record first, then shown. */
+function openPage(channelId, address) {
+  const created = createBrowserPage(channelId, { address });
+  assert.equal(created.ok, true);
+  ensureBrowserPage(channelId, created.key);
+  return created.key;
+}
+
+test("a new tab is a blank page in memory and touches no host tab", async () => {
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
+  const created = createBrowserPage("chan", { focusAddress: true });
+  assert.deepEqual(created, { ok: true, key: "page-1", url: "" });
+  ensureBrowserPage("chan", "page-1");
   await settle();
-  const state = getBrowserChannelState("chan");
-  assert.equal(state.pages.length, 1);
-  assert.equal(state.pages[0].url, "");
-  assert.equal(state.pages[0].hostId, null);
+  const page = getBrowserPage("page-1");
+  assert.equal(page.url, "");
+  assert.equal(page.hostId, null);
+  assert.equal(getBrowserPageLabel("page-1"), "New tab");
+  assert.equal(takeBrowserAddressFocus("page-1"), true, "asked for once");
+  assert.equal(takeBrowserAddressFocus("page-1"), false);
   assert.deepEqual(
     host.calls.filter(([name]) => name === "createTab"),
     [],
@@ -148,9 +168,8 @@ test("a channel starts with one blank page and touches no host tab", async () =>
 
 test("navigating a blank page opens a host tab in this business's profile", async () => {
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
-  const key = getBrowserChannelState("chan").activeKey;
-  const result = navigateBrowserPage("chan", key, "example.com");
+  const key = openPage("chan");
+  const result = navigateBrowserPage(key, "example.com");
   assert.deepEqual(result, { ok: true, url: "https://example.com/" });
   await settle();
   const create = host.calls.find(([name]) => name === "createTab");
@@ -158,7 +177,7 @@ test("navigating a blank page opens a host tab in this business's profile", asyn
     businessId: "community-a",
     url: "https://example.com/",
   });
-  const page = getBrowserChannelState("chan").pages[0];
+  const page = getBrowserPage(key);
   assert.equal(page.hostId, "host-1");
   assert.equal(page.url, "https://example.com/");
   assert.equal(page.opening, false);
@@ -172,48 +191,56 @@ test("navigating a blank page opens a host tab in this business's profile", asyn
       canGoBack: true,
     }),
   });
-  const updated = getBrowserChannelState("chan").pages[0];
+  const updated = getBrowserPage(key);
   assert.equal(updated.url, "https://example.com/next");
   assert.equal(updated.title, "Example");
   assert.equal(updated.loading, true);
   assert.equal(updated.canGoBack, true);
+  assert.equal(
+    getBrowserPageLabel(key),
+    "Example",
+    "the dock tab is titled by the page",
+  );
   // The remembered address follows the page, in one stored snapshot.
   const saved = parseBrowserSnapshotForTests(
     storage.getItem(browserStorageKey("community-a")),
   );
   assert.equal(saved.chan.pages[0].url, "https://example.com/next");
+  assert.equal(saved.chan.pages[0].title, "Example");
 });
 
 test("an address the browser refuses never reaches the host", async () => {
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
-  const key = getBrowserChannelState("chan").activeKey;
+  const key = openPage("chan");
   for (const input of [
     "file:///etc/passwd",
     "javascript:alert(1)",
     "data:text/html,x",
   ]) {
-    const result = navigateBrowserPage("chan", key, input);
-    assert.equal(result.ok, false);
+    assert.equal(navigateBrowserPage(key, input).ok, false);
   }
-  assert.equal(openBrowserPage("chan", "file:///x").ok, false);
+  assert.equal(createBrowserPage("chan", { address: "file:///x" }).ok, false);
   await settle();
   assert.deepEqual(
     host.calls.filter(([name]) => ["createTab", "navigate"].includes(name)),
     [],
   );
-  assert.equal(getBrowserChannelState("chan").pages.length, 1);
+  assert.deepEqual(
+    parseBrowserSnapshotForTests(
+      storage.getItem(browserStorageKey("community-a")),
+    ).chan.pages.map((page) => page.key),
+    [key],
+    "a refused address makes no page",
+  );
 });
 
 test("a live page navigates through the host and back and reload are forwarded", async () => {
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
-  const key = getBrowserChannelState("chan").activeKey;
-  navigateBrowserPage("chan", key, "example.com");
+  const key = openPage("chan", "example.com");
   await settle();
-  navigateBrowserPage("chan", key, "https://example.org/");
-  goBackBrowserPage("chan", key);
-  reloadBrowserPage("chan", key);
+  navigateBrowserPage(key, "https://example.org/");
+  goBackBrowserPage(key);
+  reloadBrowserPage(key);
   await settle();
   assert.deepEqual(
     host.calls.filter(([name]) =>
@@ -229,13 +256,12 @@ test("a live page navigates through the host and back and reload are forwarded",
 
 test("a state that arrives before createTab returns is not lost", async () => {
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
-  const key = getBrowserChannelState("chan").activeKey;
+  const key = openPage("chan");
   let release;
   host.holdCreate = new Promise((resolve) => {
     release = resolve;
   });
-  navigateBrowserPage("chan", key, "example.com");
+  navigateBrowserPage(key, "example.com");
   await settle();
   host.emit({
     type: "state",
@@ -243,10 +269,10 @@ test("a state that arrives before createTab returns is not lost", async () => {
   });
   release();
   await settle();
-  assert.equal(getBrowserChannelState("chan").pages[0].title, "Early");
+  assert.equal(getBrowserPage(key).title, "Early");
 });
 
-test("restored pages are dormant: only the active one loads, the rest on selection", async () => {
+test("restored pages are dormant: a tab's page loads only when it is shown", async () => {
   storage.setItem(
     browserStorageKey("community-a"),
     JSON.stringify({
@@ -258,94 +284,134 @@ test("restored pages are dormant: only the active one loads, the rest on selecti
             { key: "p2", url: "https://two.test/", title: "Two" },
             { key: "p3", url: "", title: "" },
           ],
-          activeKey: "p2",
           touchedAt: 1,
         },
       },
     }),
   );
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
+  // Labels come from the remembered pages before any tab is shown.
+  assert.equal(getBrowserPageLabel("p1"), "One");
+  assert.equal(getBrowserPageLabel("p2"), "Two");
+  assert.equal(getBrowserPage("p1"), null, "not in memory until shown");
+  ensureBrowserPage("chan", "p2");
   await settle();
   assert.deepEqual(
     host.calls.filter(([name]) => name === "createTab").map(([, o]) => o.url),
     ["https://two.test/"],
   );
-  assert.equal(getBrowserChannelState("chan").pages[0].hostId, null);
-  selectBrowserPage("chan", "p1");
+  ensureBrowserPage("chan", "p1");
   await settle();
   assert.deepEqual(
     host.calls.filter(([name]) => name === "createTab").map(([, o]) => o.url),
     ["https://two.test/", "https://one.test/"],
   );
-  selectBrowserPage("chan", "p3");
+  ensureBrowserPage("chan", "p3");
+  ensureBrowserPage("chan", "p2");
   await settle();
   assert.equal(
     host.calls.filter(([name]) => name === "createTab").length,
     2,
-    "a blank page needs no host tab",
+    "a blank page needs no host tab, and a loaded one is not loaded twice",
   );
 });
 
-test("closing pages closes host tabs, and the last page leaves a blank one", async () => {
+test("a dock tab whose page was never remembered gets a blank page", () => {
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
-  const first = getBrowserChannelState("chan").activeKey;
-  navigateBrowserPage("chan", first, "example.com");
+  ensureBrowserPage("chan", "ghost");
+  assert.equal(getBrowserPage("ghost").url, "");
+  const saved = parseBrowserSnapshotForTests(
+    storage.getItem(browserStorageKey("community-a")),
+  );
+  assert.deepEqual(
+    saved.chan.pages.map((page) => page.key),
+    ["ghost"],
+  );
+});
+
+test("closing a page closes its host tab and forgets its address", async () => {
+  initBrowserTabsStore("community-a");
+  const a = openPage("chan", "example.com");
+  const b = openPage("chan", "example.org");
   await settle();
-  openBrowserPage("chan", "example.org");
-  await settle();
-  const state = getBrowserChannelState("chan");
-  assert.equal(state.pages.length, 2);
-  assert.equal(state.activeKey, state.pages[1].key);
-  closeBrowserPage("chan", state.pages[1].key);
+  closeBrowserPage(b);
   await settle();
   assert.ok(
     host.calls.some((call) => call[0] === "closeTab" && call[1] === "host-2"),
   );
-  assert.equal(getBrowserChannelState("chan").activeKey, first);
-  closeBrowserPage("chan", first);
-  await settle();
-  const after = getBrowserChannelState("chan");
-  assert.equal(after.pages.length, 1);
-  assert.equal(after.pages[0].url, "");
-  assert.equal(after.pages[0].hostId, null);
-  assert.ok(
-    host.calls.some((call) => call[0] === "closeTab" && call[1] === "host-1"),
+  assert.equal(getBrowserPage(b), null);
+  const saved = parseBrowserSnapshotForTests(
+    storage.getItem(browserStorageKey("community-a")),
   );
+  assert.deepEqual(
+    saved.chan.pages.map((page) => page.key),
+    [a],
+  );
+  closeBrowserPage(a);
+  assert.deepEqual(
+    parseBrowserSnapshotForTests(
+      storage.getItem(browserStorageKey("community-a")),
+    ),
+    {},
+    "a channel with no pages is not kept",
+  );
+});
+
+test("a dormant page can be closed without ever loading", () => {
+  storage.setItem(
+    browserStorageKey("community-a"),
+    JSON.stringify({
+      version: 1,
+      channels: {
+        chan: {
+          pages: [{ key: "p1", url: "https://one.test/", title: "One" }],
+          touchedAt: 1,
+        },
+      },
+    }),
+  );
+  initBrowserTabsStore("community-a");
+  closeBrowserPage("p1");
+  assert.deepEqual(
+    host.calls.filter(([name]) => name === "createTab"),
+    [],
+  );
+  assert.equal(getBrowserPageLabel("p1"), "New tab");
 });
 
 test("a close the host refused is retried, not forgotten", async () => {
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
-  const key = getBrowserChannelState("chan").activeKey;
-  navigateBrowserPage("chan", key, "example.com");
+  const key = openPage("chan", "example.com");
   await settle();
   host.failClose = true;
-  closeBrowserPage("chan", key);
+  closeBrowserPage(key);
   await settle();
   assert.deepEqual(getBrowserOrphansForTests(), ["host-1"]);
   host.failClose = false;
-  openBrowserPage("chan", "example.org");
+  openPage("chan", "example.org");
   await settle();
   assert.deepEqual(getBrowserOrphansForTests(), []);
 });
 
-test("a popup from a page opens beside it; one from an unknown tab is closed", async () => {
+test("a popup opens beside its page as a dock tab in front; one from an unknown tab is closed", async () => {
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
-  const key = getBrowserChannelState("chan").activeKey;
-  navigateBrowserPage("chan", key, "example.com");
+  initWorkAreaStore("ws://a.example");
+  const key = openPage("chan", "example.com");
   await settle();
   host.emit({
     type: "new-tab",
     openedFrom: "host-1",
     tab: tabState("host-9", { url: "https://popup.test/" }),
   });
-  const state = getBrowserChannelState("chan");
-  assert.equal(state.pages.length, 2);
-  assert.equal(state.pages[1].hostId, "host-9");
-  assert.equal(state.activeKey, state.pages[1].key);
+  const dock = getWorkAreaState("chan");
+  assert.equal(dock.open, true);
+  assert.equal(dock.tabs.length, 1);
+  assert.equal(dock.tabs[0].kind, "browser");
+  assert.equal(dock.activeTabId, dock.tabs[0].id);
+  const popup = getBrowserPage(browserPageKeyOf(dock.tabs[0].id));
+  assert.equal(popup.hostId, "host-9");
+  assert.equal(popup.channelId, "chan");
+  assert.notEqual(popup.key, key);
   host.emit({
     type: "new-tab",
     openedFrom: "nobody",
@@ -355,14 +421,34 @@ test("a popup from a page opens beside it; one from an unknown tab is closed", a
   assert.ok(
     host.calls.some((call) => call[0] === "closeTab" && call[1] === "host-10"),
   );
-  assert.equal(getBrowserChannelState("chan").pages.length, 2);
+  assert.equal(getWorkAreaState("chan").tabs.length, 1);
 });
 
-test("downloads and refusals become notices with a way to show the file", async () => {
+test("a popup beyond the dock's tab limit is closed, not orphaned", async () => {
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
-  const key = getBrowserChannelState("chan").activeKey;
-  navigateBrowserPage("chan", key, "example.com");
+  initWorkAreaStore("ws://a.example");
+  const key = openPage("chan", "example.com");
+  await settle();
+  // Fill the dock to its limit with other tabs.
+  const { openWorkArea } = await import("../dock/workAreaStore.ts");
+  for (let index = 0; index < 12; index += 1)
+    openWorkArea("chan", "browser", browserTabId(`filler-${index}`));
+  host.emit({
+    type: "new-tab",
+    openedFrom: "host-1",
+    tab: tabState("host-9", { url: "https://popup.test/" }),
+  });
+  await settle();
+  assert.ok(
+    host.calls.some((call) => call[0] === "closeTab" && call[1] === "host-9"),
+  );
+  assert.equal(getBrowserPage(key).channelId, "chan");
+});
+
+test("downloads and refusals become notices on their page, with a way to show the file", async () => {
+  initBrowserTabsStore("community-a");
+  const key = openPage("chan", "example.com");
+  const other = openPage("chan", "example.org");
   await settle();
   host.emit({
     type: "download",
@@ -371,9 +457,11 @@ test("downloads and refusals become notices with a way to show the file", async 
     downloadId: "d1",
     fileName: "report.pdf",
   });
+  assert.equal(getBrowserNotices(key)[0].message, "Downloading report.pdf");
   assert.equal(
-    getBrowserChannelState("chan").notices[0].message,
-    "Downloading report.pdf",
+    getBrowserNotices(other).length,
+    0,
+    "another page's tab shows nothing",
   );
   host.emit({
     type: "download",
@@ -382,14 +470,11 @@ test("downloads and refusals become notices with a way to show the file", async 
     downloadId: "d1",
     fileName: "report.pdf",
   });
-  const notices = getBrowserChannelState("chan").notices;
-  assert.equal(notices.length, 1, "the same download updates in place");
-  assert.equal(notices[0].state, "completed");
-  assert.match(
-    notices[0].message,
-    /Saved report\.pdf to your Downloads folder/u,
-  );
-  revealBrowserDownload("chan", "d1");
+  const list = getBrowserNotices(key);
+  assert.equal(list.length, 1, "the same download updates in place");
+  assert.equal(list[0].state, "completed");
+  assert.match(list[0].message, /Saved report\.pdf to your Downloads folder/u);
+  revealBrowserDownload(key, "d1");
   await settle();
   assert.ok(
     host.calls.some((call) => call[0] === "revealDownload" && call[1] === "d1"),
@@ -404,30 +489,28 @@ test("downloads and refusals become notices with a way to show the file", async 
     tabId: "host-1",
     reason: "unsupported-link",
   });
-  assert.equal(getBrowserChannelState("chan").notices.length, 3);
-  dismissBrowserNotice("chan", "d1");
-  assert.equal(getBrowserChannelState("chan").notices.length, 2);
+  assert.equal(getBrowserNotices(key).length, 3);
+  dismissBrowserNotice(key, "d1");
+  assert.equal(getBrowserNotices(key).length, 2);
 });
 
 test("a blocked link keeps the page and reports once; a load failure is an error page", async () => {
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
-  const key = getBrowserChannelState("chan").activeKey;
-  navigateBrowserPage("chan", key, "example.com");
+  const key = openPage("chan", "example.com");
   await settle();
   const blocked = tabState("host-1", {
     url: "https://example.com/",
     error: "Navigation to an unsupported URL was blocked",
   });
   host.emit({ type: "state", tab: blocked });
-  assert.equal(getBrowserChannelState("chan").pages[0].error, null);
-  assert.equal(getBrowserChannelState("chan").notices.length, 1);
-  dismissBrowserNotice("chan", "blocked-address");
+  assert.equal(getBrowserPage(key).error, null);
+  assert.equal(getBrowserNotices(key).length, 1);
+  dismissBrowserNotice(key, "blocked-address");
   host.emit({ type: "state", tab: blocked });
   assert.equal(
-    getBrowserChannelState("chan").notices.length,
+    getBrowserNotices(key).length,
     0,
-    "the same blocked link is not reported again after the person dismissed it",
+    "not reported again after it was dismissed",
   );
   host.emit({
     type: "state",
@@ -435,32 +518,25 @@ test("a blocked link keeps the page and reports once; a load failure is an error
       error: "Navigation failed (ERR_NAME_NOT_RESOLVED)",
     }),
   });
-  assert.match(
-    getBrowserChannelState("chan").pages[0].error,
-    /ERR_NAME_NOT_RESOLVED/u,
-  );
+  assert.match(getBrowserPage(key).error, /ERR_NAME_NOT_RESOLVED/u);
 });
 
-test("when the host ends a tab the page is kept, dormant", async () => {
+test("when the host ends a tab the page is kept, dormant, and reloads on request", async () => {
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
-  const key = getBrowserChannelState("chan").activeKey;
-  navigateBrowserPage("chan", key, "example.com");
+  const key = openPage("chan", "example.com");
   await settle();
   host.emit({ type: "closed", tabId: "host-1" });
-  const page = getBrowserChannelState("chan").pages[0];
+  const page = getBrowserPage(key);
   assert.equal(page.hostId, null);
   assert.equal(page.url, "https://example.com/");
-  reloadBrowserPage("chan", key);
+  reloadBrowserPage(key);
   await settle();
   assert.equal(host.calls.filter(([name]) => name === "createTab").length, 2);
 });
 
 test("relayed page shortcuts reach the listener with the channel and page", async () => {
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
-  const key = getBrowserChannelState("chan").activeKey;
-  navigateBrowserPage("chan", key, "example.com");
+  const key = openPage("chan", "example.com");
   await settle();
   const seen = [];
   const stop = onBrowserShortcut((request) => seen.push(request));
@@ -475,16 +551,14 @@ test("relayed page shortcuts reach the listener with the channel and page", asyn
 
 test("switching business closes the old tabs and shares nothing with the next", async () => {
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
-  const keyA = getBrowserChannelState("chan").activeKey;
-  navigateBrowserPage("chan", keyA, "example.com");
+  const keyA = openPage("chan", "example.com");
   await settle();
   assert.equal(getBrowserBusinessId(), "community-a");
 
   resetBrowserTabsStore();
   await settle();
   assert.equal(getBrowserBusinessId(), null);
-  assert.deepEqual(getBrowserChannelState("chan").pages, []);
+  assert.equal(getBrowserPage(keyA), null);
   assert.ok(
     host.calls.some(
       (call) => call[0] === "closeBusiness" && call[1] === "community-a",
@@ -492,15 +566,12 @@ test("switching business closes the old tabs and shares nothing with the next", 
   );
 
   initBrowserTabsStore("community-b");
-  ensureBrowserChannel("chan");
-  const stateB = getBrowserChannelState("chan");
-  assert.equal(stateB.pages.length, 1);
   assert.equal(
-    stateB.pages[0].url,
-    "",
-    "community B does not see community A's pages",
+    getBrowserPageLabel(keyA),
+    "New tab",
+    "community B does not know community A's pages",
   );
-  navigateBrowserPage("chan", stateB.activeKey, "example.com");
+  const keyB = openPage("chan", "example.com");
   await settle();
   const creates = host.calls
     .filter(([name]) => name === "createTab")
@@ -516,51 +587,44 @@ test("switching business closes the old tabs and shares nothing with the next", 
     type: "state",
     tab: tabState("host-1", { title: "A's leftover" }),
   });
-  assert.notEqual(
-    getBrowserChannelState("chan").pages[0].title,
-    "A's leftover",
-  );
+  assert.notEqual(getBrowserPage(keyB).title, "A's leftover");
 });
 
 test("a tab created after the business changed is closed, never attached", async () => {
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
-  const key = getBrowserChannelState("chan").activeKey;
+  const key = openPage("chan");
   let release;
   host.holdCreate = new Promise((resolve) => {
     release = resolve;
   });
-  navigateBrowserPage("chan", key, "example.com");
+  navigateBrowserPage(key, "example.com");
   await settle();
   resetBrowserTabsStore();
   initBrowserTabsStore("community-b");
-  ensureBrowserChannel("chan");
+  ensureBrowserPage("chan", key);
   release();
   await settle();
   assert.ok(
     host.calls.some((call) => call[0] === "closeTab" && call[1] === "host-1"),
   );
-  assert.equal(getBrowserChannelState("chan").pages[0].hostId, null);
+  assert.equal(getBrowserPage(key).hostId, null);
 });
 
 test("a page closed while its tab was opening does not keep the tab", async () => {
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
-  const key = getBrowserChannelState("chan").activeKey;
   let release;
   host.holdCreate = new Promise((resolve) => {
     release = resolve;
   });
-  openBrowserPage("chan", "example.org");
+  const key = openPage("chan", "example.org");
   await settle();
-  const opening = getBrowserChannelState("chan").pages[1].key;
-  closeBrowserPage("chan", opening);
+  closeBrowserPage(key);
   release();
   await settle();
   assert.ok(
     host.calls.some((call) => call[0] === "closeTab" && call[1] === "host-1"),
   );
-  assert.deepEqual(ids(getBrowserChannelState("chan")), [key]);
+  assert.equal(getBrowserPage(key), null);
 });
 
 test("a host that cannot open a tab shows a sentence, not a stack", async () => {
@@ -568,24 +632,37 @@ test("a host that cannot open a tab shows a sentence, not a stack", async () => 
     throw new Error("Browser tab limit reached");
   };
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
-  const key = getBrowserChannelState("chan").activeKey;
-  navigateBrowserPage("chan", key, "example.com");
+  const key = openPage("chan");
+  navigateBrowserPage(key, "example.com");
   await settle();
-  const page = getBrowserChannelState("chan").pages[0];
+  const page = getBrowserPage(key);
   assert.equal(page.opening, false);
   assert.match(page.error, /Too many browser tabs/u);
 });
 
+test("a channel holds at most twelve pages", () => {
+  initBrowserTabsStore("community-a");
+  for (let index = 0; index < 12; index += 1)
+    assert.equal(createBrowserPage("chan").ok, true);
+  const refused = createBrowserPage("chan");
+  assert.equal(refused.ok, false);
+  assert.match(refused.message, /Too many browser tabs/u);
+  assert.equal(createBrowserPage("other-chan").ok, true);
+});
+
+test("nothing can be created before a business is active", () => {
+  const refused = createBrowserPage("chan");
+  assert.equal(refused.ok, false);
+});
+
 test("a failed save is retried on the next change (nothing is silently abandoned)", async () => {
   initBrowserTabsStore("community-a");
-  ensureBrowserChannel("chan");
-  const key = getBrowserChannelState("chan").activeKey;
+  const key = openPage("chan");
   storage.failWrites = true;
   const warn = console.warn;
   console.warn = () => {};
   try {
-    navigateBrowserPage("chan", key, "example.com");
+    navigateBrowserPage(key, "example.com");
     await settle();
   } finally {
     console.warn = warn;
@@ -620,15 +697,24 @@ test("stored snapshots from other versions or with bad rows are ignored, not tru
             { key: "a" },
             { nokey: 1 },
           ],
-          activeKey: "zzz",
         },
         empty: { pages: [] },
         junk: 7,
+        dup: { pages: [{ key: "a", url: "https://dup.test/", title: "x" }] },
       },
     }),
   );
-  assert.deepEqual(Object.keys(parsed), ["good"]);
+  assert.deepEqual(
+    Object.keys(parsed),
+    ["good"],
+    "empty, junk and a key already used are dropped",
+  );
   assert.equal(parsed.good.pages.length, 1);
   assert.equal(parsed.good.pages[0].title, "");
-  assert.equal(parsed.good.activeKey, "a");
+});
+
+test("dock tab ids and page keys round-trip", () => {
+  assert.equal(browserTabId("k1"), "browser:k1");
+  assert.equal(browserPageKeyOf("browser:k1"), "k1");
+  assert.equal(browserPageKeyOf("k2"), "k2");
 });

@@ -121,7 +121,11 @@ export function WorkAreaPanel({
               key={tab.id}
               role="tabpanel"
             >
-              <definition.Panel active={active} channelId={channelId} />
+              <definition.Panel
+                active={active}
+                channelId={channelId}
+                tabId={tab.id}
+              />
             </section>
           );
         })}

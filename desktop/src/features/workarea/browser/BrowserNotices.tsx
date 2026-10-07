@@ -7,7 +7,7 @@ import {
 } from "./browserTabsStore";
 
 type BrowserNoticesProps = {
-  channelId: string;
+  pageKey: string;
   notices: readonly BrowserNotice[];
 };
 
@@ -17,7 +17,7 @@ type BrowserNoticesProps = {
  * the browser refused. Announced politely, never stealing focus, and each can
  * be dismissed.
  */
-export function BrowserNotices({ channelId, notices }: BrowserNoticesProps) {
+export function BrowserNotices({ pageKey, notices }: BrowserNoticesProps) {
   return (
     <div
       aria-live="polite"
@@ -45,7 +45,7 @@ export function BrowserNotices({ channelId, notices }: BrowserNoticesProps) {
                 className="colony-browser-notice-action"
                 data-testid="browser-notice-reveal"
                 onClick={() =>
-                  revealBrowserDownload(channelId, notice.downloadId as string)
+                  revealBrowserDownload(pageKey, notice.downloadId as string)
                 }
                 type="button"
               >
@@ -56,7 +56,7 @@ export function BrowserNotices({ channelId, notices }: BrowserNoticesProps) {
               aria-label={`Dismiss ${subject}`}
               className="colony-work-area-icon-button"
               data-testid="browser-notice-dismiss"
-              onClick={() => dismissBrowserNotice(channelId, notice.id)}
+              onClick={() => dismissBrowserNotice(pageKey, notice.id)}
               type="button"
             >
               <X aria-hidden="true" />

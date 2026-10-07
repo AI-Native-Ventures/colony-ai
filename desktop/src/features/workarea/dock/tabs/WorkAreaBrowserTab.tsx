@@ -1,104 +1,114 @@
 import * as React from "react";
 
 import { useCommunities } from "@/features/communities/useCommunities";
+import type { BrowserShortcutAction } from "@/shared/api/browserHost";
 import { isMacPlatform } from "@/shared/lib/platform";
 
 import { BrowserNotices } from "../../browser/BrowserNotices";
-import { BrowserPageTabs } from "../../browser/BrowserPageTabs";
 import {
   BrowserToolbar,
   type BrowserToolbarHandle,
 } from "../../browser/BrowserToolbar";
 import { BrowserViewport } from "../../browser/BrowserViewport";
+import { browserPageKeyOf } from "../../browser/browserTabId";
 import { browserShortcutFromKey } from "../../browser/browserShortcuts";
 import {
-  closeBrowserPage,
-  getBrowserChannelState,
+  getBrowserPage,
   goBackBrowserPage,
   goForwardBrowserPage,
   onBrowserShortcut,
-  openBrowserPage,
   reloadBrowserPage,
-  selectBrowserPage,
+  takeBrowserAddressFocus,
 } from "../../browser/browserTabsStore";
 import {
-  useBrowserBusinessReady,
-  useBrowserChannel,
+  useBrowserNotices,
+  useBrowserPage,
 } from "../../browser/useBrowserTabs";
 import { toggleWorkAreaFrom } from "../workAreaActions";
+import {
+  requestCloseWorkAreaTab,
+  requestNewWorkAreaTab,
+} from "../workAreaRequests";
 import type { WorkAreaTabPanelProps } from "../workAreaTabRegistry";
-import type { BrowserShortcutAction } from "@/shared/api/browserHost";
 
 /**
- * The Browser tab: a real, isolated browser beside the conversation. Pages are
- * Electron views (never an iframe) in a profile that belongs to this business
- * alone, so cookies and storage are not shared with any other community. The
- * person signs in to sites themselves, and nothing in this tab is visible to
- * agents.
+ * One browser page in the dock: a real, isolated browser beside the
+ * conversation. The page is an Electron view (never an iframe) in a profile
+ * that belongs to this business alone, so cookies and storage are not shared
+ * with any other community. The person signs in to sites themselves, and
+ * nothing in this tab is visible to agents.
  *
- * Keyboard and pointer reach every control: the toolbar, the address bar, the
- * tab strip, notices and the page itself (Enter on the page region hands it the
- * keyboard; Control or Command plus L comes back). Shortcuts work from the
- * app's own controls here and from a focused page through the host relay.
+ * Keyboard and pointer reach every control: the toolbar, the address bar,
+ * notices and the page itself (Enter on the page region hands it the keyboard;
+ * Control or Command plus L comes back). Shortcuts work from the app's own
+ * controls here and from a focused page through the host relay. Opening and
+ * closing pages is the dock's: new and close go through its requests.
  */
 export function WorkAreaBrowserTab({
   channelId,
+  tabId,
   active,
 }: WorkAreaTabPanelProps) {
-  const ready = useBrowserBusinessReady();
-  const state = useBrowserChannel(channelId, active);
+  const pageKey = browserPageKeyOf(tabId);
+  const page = useBrowserPage(channelId, pageKey, active);
+  const notices = useBrowserNotices(pageKey);
   const { activeCommunity } = useCommunities();
   const toolbarRef = React.useRef<BrowserToolbarHandle>(null);
-  const page =
-    state.pages.find((entry) => entry.key === state.activeKey) ??
-    state.pages[0] ??
-    null;
+  const hasPage = page !== null;
+
+  // A page the person just made takes the address bar, once its tab is shown.
+  React.useEffect(() => {
+    if (!active || !hasPage || !takeBrowserAddressFocus(pageKey)) return;
+    // After the dock's own "focus the selected tab" has run.
+    let second = 0;
+    const first = window.requestAnimationFrame(() => {
+      second = window.requestAnimationFrame(() =>
+        toolbarRef.current?.focusAddress(),
+      );
+    });
+    return () => {
+      window.cancelAnimationFrame(first);
+      window.cancelAnimationFrame(second);
+    };
+  }, [active, hasPage, pageKey]);
 
   const run = React.useCallback(
-    (action: BrowserShortcutAction, pageKey?: string) => {
+    (action: BrowserShortcutAction) => {
       // Read the store, not render state: a relayed key may outlive a render.
-      const current = getBrowserChannelState(channelId);
-      const key = pageKey ?? current.activeKey;
-      const target = current.pages.find((entry) => entry.key === key);
+      const current = getBrowserPage(pageKey);
       switch (action) {
         case "focus-address":
           toolbarRef.current?.focusAddress();
           return;
-        case "new-tab": {
-          const result = openBrowserPage(channelId);
-          if (result.ok)
-            window.requestAnimationFrame(() =>
-              toolbarRef.current?.focusAddress(),
-            );
+        case "new-tab":
+          requestNewWorkAreaTab("browser");
           return;
-        }
         case "close-tab":
-          if (target) closeBrowserPage(channelId, target.key);
+          requestCloseWorkAreaTab(tabId);
           return;
         case "reload":
-          if (target) reloadBrowserPage(channelId, target.key);
+          reloadBrowserPage(pageKey);
           return;
         case "back":
-          if (target?.canGoBack) goBackBrowserPage(channelId, target.key);
+          if (current?.canGoBack) goBackBrowserPage(pageKey);
           return;
         case "forward":
-          if (target?.canGoForward) goForwardBrowserPage(channelId, target.key);
+          if (current?.canGoForward) goForwardBrowserPage(pageKey);
           return;
         case "toggle-dock":
           toggleWorkAreaFrom(channelId, document.activeElement);
       }
     },
-    [channelId],
+    [channelId, pageKey, tabId],
   );
 
-  // Keys relayed from a focused page (the page swallows them otherwise).
+  // Keys relayed from this page when the page, not the app, has focus.
   React.useEffect(() => {
     if (!active) return;
     return onBrowserShortcut((request) => {
-      if (request.channelId !== channelId) return;
-      run(request.action, request.pageKey);
+      if (request.pageKey === pageKey) run(request.action);
     });
-  }, [active, channelId, run]);
+  }, [active, pageKey, run]);
 
   const onChromeKeyDown = (event: React.KeyboardEvent) => {
     if (event.defaultPrevented) return;
@@ -109,7 +119,7 @@ export function WorkAreaBrowserTab({
     run(action);
   };
 
-  if (!ready || !page) {
+  if (!page) {
     return (
       <div className="colony-browser-state" data-testid="browser-not-ready">
         <p>The browser is getting ready.</p>
@@ -124,16 +134,9 @@ export function WorkAreaBrowserTab({
       data-testid="work-area-browser"
       onKeyDown={onChromeKeyDown}
     >
-      <BrowserPageTabs
-        activeKey={page.key}
-        onClose={(key) => closeBrowserPage(channelId, key)}
-        onNew={() => run("new-tab")}
-        onSelect={(key) => selectBrowserPage(channelId, key)}
-        pages={state.pages}
-      />
-      <BrowserToolbar channelId={channelId} page={page} ref={toolbarRef} />
-      <BrowserNotices channelId={channelId} notices={state.notices} />
-      <BrowserViewport active={active} channelId={channelId} page={page} />
+      <BrowserToolbar page={page} ref={toolbarRef} />
+      <BrowserNotices notices={notices} pageKey={pageKey} />
+      <BrowserViewport active={active} page={page} />
       <footer className="colony-browser-status" data-testid="browser-status">
         <span>
           {activeCommunity?.name ?? "This business"} · Separate browser profile

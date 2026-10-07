@@ -6,9 +6,10 @@
  * in the dock (strip, panels, persistence, shortcuts) needs to change;
  * persisted snapshots drop kinds they do not recognise.
  *
- * The browser is a singleton dock tab. Its own pages (several, each a real
- * browser tab) live inside it and are remembered by the browser's own store,
- * `features/workarea/browser/browserTabsStore.ts`.
+ * The browser is the one kind that is not a singleton: every page is its own
+ * dock tab (as in the r15 reference), with the id `browser:<page key>`. What a
+ * page holds (address, title, history) is remembered by the browser's own
+ * store, `features/workarea/browser/browserTabsStore.ts`.
  */
 export const WORK_AREA_TAB_KINDS = [
   "browser",
@@ -20,7 +21,6 @@ export type WorkAreaTabKind = (typeof WORK_AREA_TAB_KINDS)[number];
 
 /** Kinds that may exist at most once per channel. Their tab id is the kind. */
 export const WORK_AREA_SINGLETON_KINDS: readonly WorkAreaTabKind[] = [
-  "browser",
   "terminal",
   "files",
   "canvas",
@@ -55,6 +55,10 @@ export const EMPTY_WORK_AREA_STATE: WorkAreaChannelState = Object.freeze({
   activeTabId: null,
   width: WORK_AREA_DEFAULT_WIDTH,
 });
+
+export function isSingletonWorkAreaKind(kind: WorkAreaTabKind): boolean {
+  return WORK_AREA_SINGLETON_KINDS.includes(kind);
+}
 
 export function isWorkAreaTabKind(value: unknown): value is WorkAreaTabKind {
   return (

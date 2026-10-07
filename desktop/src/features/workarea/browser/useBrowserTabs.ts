@@ -1,34 +1,15 @@
 import * as React from "react";
 
 import {
-  type BrowserChannelState,
-  EMPTY_BROWSER_CHANNEL,
-  ensureBrowserChannel,
+  type BrowserNotice,
+  type BrowserPage,
+  EMPTY_BROWSER_NOTICES,
+  ensureBrowserPage,
   getBrowserBusinessId,
-  getBrowserChannelState,
+  getBrowserNotices,
+  getBrowserPage,
   subscribeBrowserTabs,
 } from "./browserTabsStore";
-
-/**
- * The browser pages for one channel. Mounting the browser tab is what creates
- * them (restored from disk, or one blank page), so a channel nobody opened the
- * browser in costs nothing.
- */
-export function useBrowserChannel(
-  channelId: string,
-  /** The pages are only created once the tab has been on screen. */
-  shown: boolean,
-): BrowserChannelState {
-  const state = React.useSyncExternalStore(
-    subscribeBrowserTabs,
-    () => getBrowserChannelState(channelId),
-    () => EMPTY_BROWSER_CHANNEL,
-  );
-  React.useEffect(() => {
-    if (shown) ensureBrowserChannel(channelId);
-  }, [channelId, shown]);
-  return state;
-}
 
 /** True once the active community's browser store has been initialised. */
 export function useBrowserBusinessReady(): boolean {
@@ -36,5 +17,35 @@ export function useBrowserBusinessReady(): boolean {
     subscribeBrowserTabs,
     () => getBrowserBusinessId() !== null,
     () => false,
+  );
+}
+
+/**
+ * One browser page. Showing its tab is what brings it into memory (restored
+ * from disk, or blank) and loads it, so a channel whose browser tabs nobody
+ * looks at costs nothing.
+ */
+export function useBrowserPage(
+  channelId: string,
+  pageKey: string,
+  shown: boolean,
+): BrowserPage | null {
+  const ready = useBrowserBusinessReady();
+  const page = React.useSyncExternalStore(
+    subscribeBrowserTabs,
+    () => getBrowserPage(pageKey),
+    () => null,
+  );
+  React.useEffect(() => {
+    if (shown && ready) ensureBrowserPage(channelId, pageKey);
+  }, [channelId, pageKey, shown, ready]);
+  return page;
+}
+
+export function useBrowserNotices(pageKey: string): readonly BrowserNotice[] {
+  return React.useSyncExternalStore(
+    subscribeBrowserTabs,
+    () => getBrowserNotices(pageKey),
+    () => EMPTY_BROWSER_NOTICES,
   );
 }

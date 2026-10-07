@@ -17,13 +17,18 @@ import {
 const STORAGE_PREFIX = "colony-work-area-browser.v1:";
 
 const dock = (page: Page) => page.getByTestId("work-area-panel");
+// Every tab's panel stays mounted; only the shown one is not [hidden]. Browser
+// controls are always asked of the shown page.
+const panelTid = (page: Page, id: string) =>
+  dock(page).locator('section[role="tabpanel"]:not([hidden])').getByTestId(id);
 const trigger = (page: Page) => page.getByTestId("channel-work-area-trigger");
-const address = (page: Page) => page.getByTestId("browser-address");
+const address = (page: Page) => panelTid(page, "browser-address");
+// Every browser page is a tab of the dock itself, titled by the page.
 const pageTabs = (page: Page) =>
-  dock(page).getByRole("tablist", { name: "Browser tabs" });
+  dock(page).getByRole("tablist", { name: "Work area tabs" });
 const pageTab = (page: Page, name: string | RegExp) =>
   pageTabs(page).getByRole("tab", { name });
-const notices = (page: Page) => page.getByTestId("browser-notices");
+const notices = (page: Page) => panelTid(page, "browser-notices");
 
 async function openChannel(page: Page, name: string) {
   await page.getByTestId(`channel-${name}`).click();
@@ -44,10 +49,16 @@ async function openBrowserTab(page: Page) {
   await trigger(page).click();
   await expect(dock(page)).toBeVisible();
   await page.getByTestId("work-area-open-browser").click();
-  await expect(
-    dock(page).getByRole("tab", { name: "Browser", exact: true }),
-  ).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByTestId("work-area-browser")).toBeVisible();
+  await expect(pageTab(page, "New tab")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(panelTid(page, "work-area-browser")).toBeVisible();
+}
+
+async function newBrowserTab(page: Page) {
+  await page.getByTestId("work-area-add-tab").click();
+  await page.getByTestId("work-area-add-browser").click();
 }
 
 async function go(page: Page, text: string) {
@@ -83,31 +94,29 @@ test.describe("work area Browser tab", () => {
     await expect(choices.first()).toHaveAccessibleName("Browser");
     await page.getByTestId("work-area-open-browser").click();
 
-    const tab = dock(page).getByRole("tab", { name: "Browser", exact: true });
+    // The page is a tab of the dock, titled "New tab" until it has a title.
+    const tab = pageTab(page, "New tab");
     await expect(tab).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByTestId("browser-start")).toContainText(
+    await expect(panelTid(page, "browser-start")).toContainText(
       "Where are we working?",
     );
-    await expect(pageTab(page, "New tab")).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    // The page region has a name and the tabpanel is labelled by its tab.
     await expect(
       dock(page).getByRole("tabpanel", { name: "New tab" }),
     ).toBeVisible();
-    await expect(page.getByTestId("browser-status")).toContainText(
+    await expect(panelTid(page, "browser-status")).toContainText(
       "Separate browser profile",
     );
-    await expect(page.getByTestId("browser-status")).toContainText(
+    await expect(panelTid(page, "browser-status")).toContainText(
       "Not shared with agents",
     );
     // A blank tab has no page, so the host has been asked for nothing.
     expect(await calls(page, "createTab")).toEqual([]);
     // Back, forward and reload have nothing to do yet.
-    await expect(page.getByTestId("browser-back")).toBeDisabled();
-    await expect(page.getByTestId("browser-forward")).toBeDisabled();
-    await expect(page.getByTestId("browser-reload")).toBeDisabled();
+    await expect(panelTid(page, "browser-back")).toBeDisabled();
+    await expect(panelTid(page, "browser-forward")).toBeDisabled();
+    await expect(panelTid(page, "browser-reload")).toBeDisabled();
+    // A new tab takes the address bar, so typing starts at once.
+    await expect(address(page)).toBeFocused();
   });
 
   test("the globe on the conversation toolbar opens the browser, as in the reference", async ({
@@ -118,14 +127,17 @@ test.describe("work area Browser tab", () => {
     const globe = page.getByRole("button", { name: "Open browser" });
     await globe.focus();
     await page.keyboard.press("Enter");
-    await expect(
-      dock(page).getByRole("tab", { name: "Browser", exact: true }),
-    ).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByTestId("browser-start")).toBeVisible();
-    // Pressing it again with the dock open keeps the one Browser tab.
+    await expect(pageTab(page, "New tab")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await expect(panelTid(page, "browser-start")).toBeVisible();
+    // Pressing it again focuses the browser tab that is open; it opens no more.
     await globe.click();
-    await expect(dock(page).getByRole("tab", { name: "Browser" })).toHaveCount(
-      1,
+    await expect(pageTabs(page).getByRole("tab")).toHaveCount(1);
+    await expect(pageTab(page, "New tab")).toHaveAttribute(
+      "aria-selected",
+      "true",
     );
   });
 
@@ -138,7 +150,7 @@ test.describe("work area Browser tab", () => {
 
     await expect(address(page)).toHaveValue("https://fixture.test/a");
     await expect(pageTab(page, "fixture.test/a")).toBeVisible();
-    await expect(page.getByTestId("browser-page-slot")).toBeVisible();
+    await expect(panelTid(page, "browser-page-slot")).toBeVisible();
     const [created] = await calls(page, "createTab");
     expect(created.url).toBe("https://fixture.test/a");
     // The business is the community: the id the browser store is keyed by.
@@ -154,16 +166,16 @@ test.describe("work area Browser tab", () => {
 
     await go(page, "fixture.test/b");
     await expect(address(page)).toHaveValue("https://fixture.test/b");
-    await expect(page.getByTestId("browser-back")).toBeEnabled();
-    await expect(page.getByTestId("browser-forward")).toBeDisabled();
+    await expect(panelTid(page, "browser-back")).toBeEnabled();
+    await expect(panelTid(page, "browser-forward")).toBeDisabled();
 
-    await page.getByTestId("browser-back").click();
+    await panelTid(page, "browser-back").click();
     await expect(address(page)).toHaveValue("https://fixture.test/a");
-    await expect(page.getByTestId("browser-forward")).toBeEnabled();
-    await page.getByTestId("browser-forward").click();
+    await expect(panelTid(page, "browser-forward")).toBeEnabled();
+    await panelTid(page, "browser-forward").click();
     await expect(address(page)).toHaveValue("https://fixture.test/b");
 
-    await page.getByTestId("browser-reload").click();
+    await panelTid(page, "browser-reload").click();
     await expect.poll(async () => (await calls(page, "reload")).length).toBe(1);
     // Redirects and in-page changes show up: the bar is the page's address.
     await page.evaluate(() => {
@@ -205,7 +217,7 @@ test.describe("work area Browser tab", () => {
       "https://user:secret@fixture.test/",
     ]) {
       await go(page, refused);
-      const problem = page.getByTestId("browser-address-error");
+      const problem = panelTid(page, "browser-address-error");
       await expect(problem).toBeVisible();
       await expect(problem).toHaveAttribute("role", "alert");
       await expect(address(page)).toHaveAttribute("aria-invalid", "true");
@@ -219,7 +231,7 @@ test.describe("work area Browser tab", () => {
       await expect(problem).toHaveCount(0);
     }
     await go(page, "file:///etc/passwd");
-    await expect(page.getByTestId("browser-address-error")).toContainText(
+    await expect(panelTid(page, "browser-address-error")).toContainText(
       "only opens web pages",
     );
     expect(
@@ -236,14 +248,14 @@ test.describe("work area Browser tab", () => {
     await boot(page);
     await openBrowserTab(page);
     await go(page, "unreachable.test");
-    const error = page.getByTestId("browser-error");
+    const error = panelTid(page, "browser-error");
     await expect(error).toContainText("This site can't be found");
     await expect(error).toContainText("ERR_NAME_NOT_RESOLVED");
     await expect(error).toContainText("https://unreachable.test/");
     // The page view is not left attached behind the message.
-    await expect(page.getByTestId("browser-page-slot")).toHaveCount(0);
+    await expect(panelTid(page, "browser-page-slot")).toHaveCount(0);
 
-    await page.getByTestId("browser-error-retry").click();
+    await panelTid(page, "browser-error-retry").click();
     await expect.poll(async () => (await calls(page, "reload")).length).toBe(1);
 
     await go(page, "fixture.test/ok");
@@ -253,7 +265,7 @@ test.describe("work area Browser tab", () => {
       if (tab) window.__browserFake?.crash(tab.id);
     });
     await expect(error).toContainText("This page stopped working");
-    await page.getByTestId("browser-error-back").click();
+    await panelTid(page, "browser-error-back").click();
   });
 
   test("loading shows Stop, and a stopped page returns to Reload", async ({
@@ -262,27 +274,26 @@ test.describe("work area Browser tab", () => {
     await boot(page);
     await openBrowserTab(page);
     await go(page, "slow.test");
-    const reload = page.getByTestId("browser-reload");
+    const reload = panelTid(page, "browser-reload");
     await expect(reload).toHaveAccessibleName("Stop loading");
-    await expect(
-      pageTabs(page).getByRole("tab", { name: /slow\.test.*loading/ }),
-    ).toBeVisible();
     await reload.click();
     await expect(reload).toHaveAccessibleName("Reload");
     expect((await calls(page, "stop")).length).toBe(1);
   });
 
-  test("tabs: new, select with arrows, Delete and Ctrl/Cmd+W close, the last close leaves a blank tab", async ({
+  test("tabs: add from the menu, arrows, Delete and Ctrl/Cmd+W close, and the last close closes the dock", async ({
     page,
   }) => {
     await boot(page);
     await openPage(page, "fixture.test/one");
-    await page.getByTestId("browser-new-tab").click();
+    // The menu always offers Browser, for one more page.
+    await newBrowserTab(page);
     await expect(pageTab(page, "New tab")).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    await expect(page.getByTestId("browser-start")).toBeVisible();
+    await expect(panelTid(page, "browser-start")).toBeVisible();
+    await expect(address(page)).toBeFocused();
     await go(page, "fixture.test/two");
     await expect(pageTab(page, "fixture.test/two")).toHaveAttribute(
       "aria-selected",
@@ -292,9 +303,13 @@ test.describe("work area Browser tab", () => {
     // Ctrl/Cmd+T from the address bar opens a tab and focuses its address.
     await address(page).press("ControlOrMeta+t");
     await expect(pageTabs(page).getByRole("tab")).toHaveCount(3);
+    await expect(pageTab(page, "New tab")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await expect(address(page)).toBeFocused();
 
-    // WAI-ARIA tabs with manual activation, as the dock's own strip.
+    // The dock's tab strip: manual activation, as for every other tab.
     const first = pageTab(page, "fixture.test/one");
     await first.focus();
     await page.keyboard.press("ArrowRight");
@@ -313,15 +328,17 @@ test.describe("work area Browser tab", () => {
     await expect(pageTab(page, "fixture.test/two")).toHaveCount(0);
     expect((await calls(page, "closeTab")).length).toBe(1);
 
-    // Ctrl/Cmd+W closes the tab on screen, and the browser tab never empties.
+    // Ctrl/Cmd+W closes the tab on screen.
+    await panelTid(page, "browser-reload").focus();
     await page.keyboard.press("ControlOrMeta+w");
     await expect(pageTab(page, "fixture.test/one")).toHaveCount(0);
     await expect(pageTabs(page).getByRole("tab")).toHaveCount(1);
-    await expect(pageTab(page, "New tab")).toBeVisible();
     expect(await hostTabs(page)).toEqual([]);
+
+    // The last tab's close button closes the dock, as in the reference.
     await page.getByRole("button", { name: "Close New tab" }).click();
-    await expect(pageTabs(page).getByRole("tab")).toHaveCount(1);
-    await expect(page.getByTestId("browser-start")).toBeVisible();
+    await expect(dock(page)).toHaveCount(0);
+    await expect(trigger(page)).toBeFocused();
   });
 
   test("a window opened by a page becomes a tab beside it; one the host refuses shows a notice", async ({
@@ -341,10 +358,12 @@ test.describe("work area Browser tab", () => {
     await expect(pageTabs(page).getByRole("tab")).toHaveCount(2);
 
     // window.open("file:///...") and friends: refused, said so, page stays.
+    // The notice belongs to the page that asked, so look at that page.
+    await pageTab(page, "fixture.test/home").click();
     await page.evaluate((id) => {
       window.__browserFake?.popup(id, "file:///etc/passwd");
     }, tab.id);
-    const notice = page.getByTestId("browser-notice-blocked");
+    const notice = panelTid(page, "browser-notice-blocked");
     await expect(notice).toContainText("Colony does not open");
     await expect(pageTabs(page).getByRole("tab")).toHaveCount(2);
     await page.getByRole("button", { name: "Dismiss message" }).click();
@@ -357,7 +376,7 @@ test.describe("work area Browser tab", () => {
     await boot(page);
     await openPage(page, "fixture.test/page");
     await go(page, "files.test/report.pdf");
-    const notice = page.getByTestId("browser-notice-download");
+    const notice = panelTid(page, "browser-notice-download");
     await expect(notice).toContainText(
       "Saved report.pdf to your Downloads folder",
     );
@@ -365,7 +384,7 @@ test.describe("work area Browser tab", () => {
     await expect(address(page)).toHaveValue("https://fixture.test/page");
     await expect(notices(page)).toHaveAttribute("aria-live", "polite");
 
-    await page.getByTestId("browser-notice-reveal").click();
+    await panelTid(page, "browser-notice-reveal").click();
     await expect
       .poll(() => page.evaluate(() => window.__browserFake?.revealed))
       .toEqual(["download-1"]);
@@ -438,7 +457,7 @@ test.describe("work area Browser tab", () => {
     await expect
       .poll(async () => (await hostTabs(page))[0].attached)
       .toBe(false);
-    await dock(page).getByRole("tab", { name: "Browser", exact: true }).click();
+    await pageTab(page, "fixture.test/fit").click();
     await expect.poll(async () => (await hostTabs(page))[0].visible).toBe(true);
 
     // Closing the dock keeps the page alive but detached.
@@ -458,7 +477,7 @@ test.describe("work area Browser tab", () => {
     await boot(page);
     await openPage(page, "fixture.test/keys");
 
-    await page.getByTestId("browser-reload").focus();
+    await panelTid(page, "browser-reload").focus();
     await page.keyboard.press("ControlOrMeta+l");
     await expect(address(page)).toBeFocused();
     await page.keyboard.type("draft.test");
@@ -469,7 +488,7 @@ test.describe("work area Browser tab", () => {
     await expect(dock(page)).toBeVisible();
 
     // The page is a native view; the keyboard gets in through its region.
-    const slot = page.getByTestId("browser-page-slot");
+    const slot = panelTid(page, "browser-page-slot");
     await expect(slot).toHaveAccessibleName("Move the keyboard into the page");
     await slot.focus();
     await page.keyboard.press("Enter");
@@ -491,17 +510,21 @@ test.describe("work area Browser tab", () => {
       tabId,
     );
     await expect(address(page)).toBeFocused();
+    // The dock toggle comes through the page too; the page stays alive behind it.
+    await page.evaluate(
+      (id) => window.__browserFake?.shortcut(id, "toggle-dock"),
+      tabId,
+    );
+    await expect(dock(page)).toHaveCount(0);
+    expect(await hostTabs(page)).toHaveLength(1);
+    await trigger(page).click();
+    await expect(address(page)).toHaveValue("https://fixture.test/keys");
     await page.evaluate(
       (id) => window.__browserFake?.shortcut(id, "new-tab"),
       tabId,
     );
     await expect(pageTabs(page).getByRole("tab")).toHaveCount(2);
     await expect(address(page)).toBeFocused();
-    await page.evaluate(
-      (id) => window.__browserFake?.shortcut(id, "toggle-dock"),
-      tabId,
-    );
-    await expect(dock(page)).toHaveCount(0);
   });
 
   test("pages are kept per channel, survive a reload, and only the shown one loads again", async ({
@@ -509,7 +532,7 @@ test.describe("work area Browser tab", () => {
   }) => {
     await boot(page);
     await openPage(page, "fixture.test/one");
-    await page.getByTestId("browser-new-tab").click();
+    await newBrowserTab(page);
     await go(page, "fixture.test/two");
     await expect(pageTab(page, "fixture.test/two")).toHaveAttribute(
       "aria-selected",
@@ -556,7 +579,7 @@ test.describe("work area Browser tab", () => {
     await expect(
       dock(page).getByRole("toolbar", { name: "Browser controls" }),
     ).toBeVisible();
-    for (const name of ["Back", "Forward", "Reload", "New browser tab"]) {
+    for (const name of ["Back", "Forward", "Reload"]) {
       await expect(
         dock(page).getByRole("button", { name, exact: true }),
       ).toHaveCount(1);
@@ -573,11 +596,11 @@ test.describe("work area Browser tab", () => {
       dock(page).getByRole("tabpanel", { name: "fixture.test/a11y" }),
     ).toBeVisible();
     // Tab order: back (disabled, skipped), reload, address, then the page region.
-    await page.getByTestId("browser-reload").focus();
+    await panelTid(page, "browser-reload").focus();
     await page.keyboard.press("Tab");
     await expect(address(page)).toBeFocused();
     await page.keyboard.press("Tab");
-    await expect(page.getByTestId("browser-page-slot")).toBeFocused();
+    await expect(panelTid(page, "browser-page-slot")).toBeFocused();
   });
 
   test("where there is no browser host, the tab is not offered at all", async ({
