@@ -15,8 +15,22 @@ export function ChannelWorkspaceTabs() {
       <span aria-current="page" className="text-sm">
         Discussion
       </span>
-      <span className="text-sm">Work</span>
-      <span className="text-sm">Knowledge</span>
+      <button
+        type="button"
+        className={TAB_BUTTON_CLASS}
+        data-testid="channel-view-tab-work"
+        onClick={() => requestWorkAreaTab("work")}
+      >
+        Work
+      </button>
+      <button
+        type="button"
+        className={TAB_BUTTON_CLASS}
+        data-testid="channel-view-tab-knowledge"
+        onClick={() => requestWorkAreaTab("knowledge")}
+      >
+        Knowledge
+      </button>
       <button
         type="button"
         className={TAB_BUTTON_CLASS}

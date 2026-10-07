@@ -292,6 +292,8 @@ type MockBridgeOptions = {
   companyWorkEvents?: RelayEvent[];
   /** Reject successive company work head reads in order, then accept them. */
   companyWorkReadErrors?: string[];
+  /** Hold successive company work head reads for this long (ms), then answer. */
+  companyWorkReadDelaysMs?: number[];
   /** Synthetic relay key used to broker company work actions in focused E2E tests. */
   companyWorkRelayPrivateKey?: string;
   /** Reject company work action publishes in order, then accept them. */
@@ -367,6 +369,10 @@ type MockBridgeOptions = {
    * listing for any managed agent, or a pubkey-keyed record for per-agent data.
    */
   agentMemory?: MockAgentMemoryListing | Record<string, MockAgentMemoryListing>;
+  /** Fail successive `get_agent_memory` calls with these messages, then answer. */
+  agentMemoryErrors?: string[];
+  /** Hold successive `get_agent_memory` calls this long (ms) before answering. */
+  agentMemoryDelaysMs?: number[];
   managedAgentPrereqs?: {
     acp?: MockCommandAvailability;
     mcp?: MockCommandAvailability;
@@ -431,6 +437,8 @@ type MockBridgeOptions = {
   /** Sequenced add-member failures. A string fails that call; null succeeds. */
   addChannelMembersErrors?: (string | null)[];
   channelMembersReadDelayMs?: number;
+  /** Hold `get_channel_members` reads until the spec releases them; see e2eBridge. */
+  holdChannelMembersReads?: boolean;
   channelsReadError?: string;
   /** Reject `get_channels` per applied relay URL; see e2eBridge mock config. */
   channelsReadErrorByRelayUrl?: Record<string, string>;
@@ -453,6 +461,8 @@ type MockBridgeOptions = {
   /** Exact reference records for visual comparison captures only. */
   visualFixture?: VisualFixtureSeed;
   canvasReadError?: string;
+  /** Canvas Markdown returned by `get_canvas` per channel id (mock mode only). */
+  canvasContentByChannelId?: Record<string, string>;
   /** Delay (ms) for `apply_workspace`; see e2eBridge mock config. */
   applyCommunityDelayMs?: number;
   /** Reject `apply_workspace` with this message; see e2eBridge mock config. */

@@ -374,13 +374,24 @@ test("channel context menu only shows owner actions to the owner", async ({
 test("channel context menu explains when owner actions are loading", async ({
   page,
 }) => {
-  await installMockBridge(page, { channelMembersReadDelayMs: 500 });
+  // The members read is held on a gate, not a timer: a timer races the runner's
+  // paint speed (a slow runner right-clicked after it had already resolved).
+  await installMockBridge(page, { holdChannelMembersReads: true });
   await page.goto("/");
 
   await page.getByTestId("channel-general").click({ button: "right" });
   await expect(
     page.getByRole("menuitem", { name: "Loading channel actions..." }),
   ).toBeVisible();
+  const released = await page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __BUZZ_E2E_RELEASE_CHANNEL_MEMBERS_READS__?: () => number;
+        }
+      ).__BUZZ_E2E_RELEASE_CHANNEL_MEMBERS_READS__?.() ?? 0,
+  );
+  expect(released).toBeGreaterThan(0);
   await expect(
     page.getByRole("menuitem", { name: "Archive channel" }),
   ).toBeVisible();
