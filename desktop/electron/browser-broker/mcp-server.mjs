@@ -1,6 +1,10 @@
-import readline from "node:readline";
 import { pathToFileURL } from "node:url";
 import { createBrokerClient } from "./broker-client.mjs";
+import {
+  createJsonLines,
+  MAX_JSON_LINE_BYTES,
+  MAX_QUEUED_OUTPUT_BYTES,
+} from "./json-lines.mjs";
 
 /**
  * Stdio MCP server for the agent browser. Dependency free so it runs under
@@ -54,14 +58,28 @@ export function toMcpResult(result) {
   return { content };
 }
 
-export function createMcpServer({ client, output, serverInfo = SERVER_INFO }) {
+export function createMcpServer({
+  client,
+  output,
+  serverInfo = SERVER_INFO,
+  active = () => true,
+  onOutputFailure = () => {},
+  maxQueuedOutputBytes = MAX_QUEUED_OUTPUT_BYTES,
+}) {
   let initialized = false;
 
   function send(message) {
+    if (!active()) return;
     try {
-      output.write(`${JSON.stringify(message)}\n`);
+      const line = `${JSON.stringify(message)}\n`;
+      if (
+        (output.writableLength ?? 0) + Buffer.byteLength(line) >
+        maxQueuedOutputBytes
+      )
+        throw new Error("Browser protocol output limit reached");
+      output.write(line);
     } catch {
-      // The host went away; nothing left to tell.
+      onOutputFailure();
     }
   }
 
@@ -149,28 +167,68 @@ export function main({
   env = process.env,
   input = process.stdin,
   output = process.stdout,
+  createClient = createBrokerClient,
+  exit = (code) => process.exit(code),
+  maxFrame = MAX_JSON_LINE_BYTES,
+  maxPending = 16,
+  maxQueuedOutputBytes = MAX_QUEUED_OUTPUT_BYTES,
 } = {}) {
   let server = null;
-  const client = createBrokerClient({
+  let stopped = false;
+  let pending = 0;
+  let lines;
+  const stop = (code = 0) => {
+    if (stopped) return;
+    stopped = true;
+    lines?.stop();
+    input.off("data", onData);
+    input.off("end", onEnd);
+    input.off("error", onError);
+    output.off("error", onError);
+    input.pause();
+    client.close();
+    exit(code);
+  };
+  const onData = (chunk) => lines.push(chunk);
+  const onEnd = () => stop();
+  const onError = () => stop(1);
+  const client = createClient({
     socketPath: env.COLONY_BROWSER_BROKER_SOCKET,
     secret: env.COLONY_BROWSER_BROKER_SECRET,
     agent: env.COLONY_BROWSER_AGENT_ID,
     onToolsChanged: () => server?.notifyToolsChanged(),
   });
-  server = createMcpServer({ client, output });
+  server = createMcpServer({
+    client,
+    output,
+    active: () => !stopped,
+    onOutputFailure: onError,
+    maxQueuedOutputBytes,
+  });
+  lines = createJsonLines({
+    maxBytes: maxFrame,
+    onError,
+    onLine(line) {
+      if (pending >= maxPending) {
+        stop(1);
+        return false;
+      }
+      pending += 1;
+      void server
+        .handleLine(line)
+        .catch(onError)
+        .finally(() => {
+          pending -= 1;
+        });
+      return true;
+    },
+  });
   client.start();
-  const lines = readline.createInterface({
-    input,
-    crlfDelay: Number.POSITIVE_INFINITY,
-  });
-  lines.on("line", (line) => {
-    void server.handleLine(line);
-  });
-  lines.on("close", () => {
-    client.close();
-    process.exit(0);
-  });
-  return { client, server };
+  input.on("data", onData);
+  input.on("end", onEnd);
+  input.on("error", onError);
+  output.on("error", onError);
+  return { client, server, stop };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)

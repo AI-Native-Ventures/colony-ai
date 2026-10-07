@@ -3,6 +3,7 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { createJsonLines, MAX_QUEUED_OUTPUT_BYTES } from "./json-lines.mjs";
 
 /**
  * Local channel between the Electron main process (broker) and the stdio MCP
@@ -58,8 +59,16 @@ export function prepareSocketDir(socketPath) {
 }
 
 function write(socket, message) {
-  if (socket.destroyed) return;
-  socket.write(`${JSON.stringify(message)}\n`);
+  if (socket.destroyed || socket.writableEnded) return;
+  const line = `${JSON.stringify(message)}\n`;
+  if (
+    socket.writableLength + Buffer.byteLength(line) >
+    MAX_QUEUED_OUTPUT_BYTES
+  ) {
+    socket.destroy();
+    return;
+  }
+  socket.write(line);
 }
 
 export function createBrokerServer({
@@ -70,6 +79,7 @@ export function createBrokerServer({
   maxConnections = MAX_CONNECTIONS,
   maxFrame = MAX_FRAME_BYTES,
   helloTimeoutMs = HELLO_TIMEOUT_MS,
+  maxPending = 16,
 } = {}) {
   if (typeof secret !== "string" || secret.length < 16)
     throw new Error("A broker secret of at least 16 characters is required");
@@ -168,39 +178,44 @@ export function createBrokerServer({
       socket,
       agent: null,
       failures: 0,
-      buffer: "",
+      pending: 0,
       helloTimer: setTimeout(() => socket.destroy(), helloTimeoutMs),
     };
     connection.helloTimer.unref?.();
     connections.add(connection);
-    socket.setEncoding("utf8");
-    socket.on("data", (chunk) => {
-      connection.buffer += chunk;
-      if (connection.buffer.length > maxFrame) {
-        socket.destroy();
-        return;
-      }
-      let newline = connection.buffer.indexOf("\n");
-      while (newline !== -1) {
-        const line = connection.buffer.slice(0, newline);
-        connection.buffer = connection.buffer.slice(newline + 1);
-        newline = connection.buffer.indexOf("\n");
-        if (line.trim().length === 0) continue;
+    const lines = createJsonLines({
+      maxBytes: maxFrame,
+      onError: () => socket.destroy(),
+      onLine(line) {
+        if (line.trim().length === 0) return true;
         let message;
         try {
           message = JSON.parse(line);
         } catch {
           write(socket, { ok: false, code: "bad_frame" });
           socket.destroy();
-          return;
+          return false;
         }
-        handle(connection, message).catch(() => {
-          write(socket, { id: message?.id, ok: false, code: "bad_frame" });
-          socket.destroy();
-        });
-      }
+        if (connection.pending >= maxPending) {
+          write(socket, { id: message?.id, ok: false, code: "resource_limit" });
+          socket.end();
+          return false;
+        }
+        connection.pending += 1;
+        void handle(connection, message)
+          .catch(() => {
+            write(socket, { id: message?.id, ok: false, code: "bad_frame" });
+            socket.destroy();
+          })
+          .finally(() => {
+            connection.pending -= 1;
+          });
+        return true;
+      },
     });
+    socket.on("data", (chunk) => lines.push(chunk));
     const close = () => {
+      lines.stop();
       clearTimeout(connection.helloTimer);
       connections.delete(connection);
     };

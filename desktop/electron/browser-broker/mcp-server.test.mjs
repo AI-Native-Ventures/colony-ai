@@ -10,7 +10,7 @@ import { createBroker } from "./broker-core.mjs";
 import { createBrokerServer } from "./broker-server.mjs";
 import { createCapabilityStore } from "./capability.mjs";
 import { createFakePageDriver, until } from "./fake-page-driver.test.mjs";
-import { createMcpServer, toMcpResult } from "./mcp-server.mjs";
+import { createMcpServer, main, toMcpResult } from "./mcp-server.mjs";
 import { toolDescriptors } from "./tool-definitions.mjs";
 
 const SERVER_FILE = fileURLToPath(new URL("./mcp-server.mjs", import.meta.url));
@@ -384,4 +384,103 @@ test("without broker environment the server still starts and offers no tools", {
   assert.deepEqual(listed.result.tools, []);
   child.stdin.end();
   await new Promise((resolve) => child.once("exit", resolve));
+});
+
+function streamHarness(options = {}) {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const writes = [];
+  output.on("data", (chunk) => writes.push(chunk.toString()));
+  const exits = [];
+  const resolvers = [];
+  const calls = [];
+  let closes = 0;
+  const client = {
+    start() {},
+    close() {
+      closes += 1;
+    },
+    listTools: async () => [],
+    callTool(name, args) {
+      calls.push({ name, args });
+      return new Promise((resolve) => resolvers.push(resolve));
+    },
+  };
+  const runtime = main({
+    env: {},
+    input,
+    output,
+    createClient: () => client,
+    exit: (code) => exits.push(code),
+    ...options,
+  });
+  return {
+    input,
+    calls,
+    writes,
+    exits,
+    resolvers,
+    closes: () => closes,
+    stop() {
+      runtime.stop?.();
+      runtime.client.close();
+      // The pre-fix entrypoint owns an EOF process.exit listener, so do not
+      // send EOF while proving the baseline failure inside this test runner.
+      input.removeAllListeners();
+      input.pause();
+    },
+  };
+}
+
+test("production stdio entrypoint caps concurrent requests and fences late output", async () => {
+  const h = streamHarness({ maxPending: 2 });
+  try {
+    h.input.write(
+      [1, 2, 3]
+        .map((id) =>
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id,
+            method: "tools/call",
+            params: { name: "browser_tabs", arguments: {} },
+          }),
+        )
+        .join("\n") + "\n",
+    );
+    assert.equal(h.calls.length, 2);
+    assert.deepEqual(h.exits, [1]);
+    assert.equal(h.closes(), 1);
+    for (const resolve of h.resolvers) resolve({ ok: true, tabs: [] });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(h.writes, [], "retired results never reach stdout");
+  } finally {
+    h.stop();
+  }
+});
+
+test("production stdio entrypoint counts unfinished frames in UTF8 bytes", () => {
+  const h = streamHarness({ maxFrame: 128 });
+  try {
+    h.input.write("é".repeat(70));
+    assert.deepEqual(h.exits, [1]);
+    assert.equal(h.closes(), 1);
+    assert.equal(h.calls.length, 0);
+    h.input.write("more invalid input\n");
+    assert.deepEqual(h.exits, [1], "termination is idempotent");
+  } finally {
+    h.stop();
+  }
+});
+
+test("production stdio entrypoint bounds output before queuing a large reply", async () => {
+  const h = streamHarness({ maxQueuedOutputBytes: 64 });
+  try {
+    h.input.write(`${JSON.stringify(initialize())}\n`);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(h.exits, [1]);
+    assert.deepEqual(h.writes, []);
+    assert.equal(h.closes(), 1);
+  } finally {
+    h.stop();
+  }
 });

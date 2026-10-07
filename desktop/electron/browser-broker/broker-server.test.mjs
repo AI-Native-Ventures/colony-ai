@@ -303,3 +303,38 @@ test("the client reconnects after the server restarts and never retries a call",
     force: true,
   });
 });
+
+test("production socket entrypoint bounds complete concurrent frames before dispatch", async (t) => {
+  const env = await start({ maxPending: 2 });
+  const client = raw(env.socketPath);
+  let calls = 0;
+  const held = [];
+  env.broker.call = () => {
+    calls += 1;
+    return new Promise((resolve) => held.push(resolve));
+  };
+  t.after(async () => {
+    for (const resolve of held) resolve({ ok: false, code: "fenced" });
+    client.socket.destroy();
+    await env.cleanup();
+  });
+  client.send({ id: 0, type: "hello", agent: "agent-a", secret: SECRET });
+  await client.next((frame) => frame.type === "hello");
+  env.grant();
+  client.socket.write(
+    [1, 2, 3]
+      .map((id) =>
+        JSON.stringify({
+          id,
+          type: "call",
+          tool: "browser_tabs",
+          args: {},
+        }),
+      )
+      .join("\n") + "\n",
+  );
+  const result = await client.next((frame) => frame.id === 3);
+  assert.equal(result.code, "resource_limit");
+  assert.equal(calls, 2);
+  await client.waitClosed();
+});
