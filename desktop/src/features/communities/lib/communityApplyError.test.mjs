@@ -72,3 +72,75 @@ test("every refusal the workspace detects gets the plain membership copy", () =>
     assert.match(copy.message, /^This sign-in is not a member of Colony\./);
   }
 });
+
+// Exactly what the packaged app showed in Details after Retry.
+const GATE_STRING =
+  "relay owned-agent query failed: relay returned 403 Forbidden: You must be a relay member to access this relay";
+const RAW_RELAY_TEXT = /relay returned \d{3}|query failed|relay unreachable/i;
+
+test("Retry while still refused: Details is the plain reason, never the wrapper text", () => {
+  for (const hasOtherCommunities of [true, false]) {
+    const copy = describeCommunityApplyError({
+      communityName: "Colony",
+      error: GATE_STRING,
+      hasOtherCommunities,
+    });
+    assert.equal(copy.isMembershipError, true);
+    assert.equal(
+      copy.detail,
+      "You must be a relay member to access this relay",
+    );
+    assert.doesNotMatch(copy.detail, RAW_RELAY_TEXT);
+    assert.doesNotMatch(copy.message, RAW_RELAY_TEXT);
+  }
+});
+
+test("first view and Retry show the same Details text for the same refusal", () => {
+  const firstView = describeCommunityApplyError({
+    communityName: "Colony",
+    // The gate hands the screen its already-normalised detail.
+    error: "You must be a relay member to access this relay",
+    hasOtherCommunities: true,
+  });
+  for (const retryError of [
+    GATE_STRING,
+    "relay returned 403 Forbidden: You must be a relay member to access this relay",
+    "relay_membership_required",
+  ]) {
+    const afterRetry = describeCommunityApplyError({
+      communityName: "Colony",
+      error: retryError,
+      hasOtherCommunities: true,
+    });
+    assert.equal(afterRetry.detail, firstView.detail, retryError);
+    assert.equal(afterRetry.message, firstView.message, retryError);
+  }
+});
+
+test("Retry with other relay errors shows one plain sentence and no raw text", () => {
+  for (const [raw, plain] of [
+    [
+      "relay owned-agent query failed: relay returned 500 Internal Server Error: upstream exploded",
+      "Colony could not reach this community. Try again.",
+    ],
+    [
+      "relay returned 502 Bad Gateway: nope",
+      "Colony could not reach this community. Try again.",
+    ],
+    ["relay unreachable: request timed out", "Can't reach the relay."],
+    [
+      "relay owned-agent query failed: relay unreachable: could not connect to relay",
+      "Can't reach the relay.",
+    ],
+  ]) {
+    const copy = describeCommunityApplyError({
+      communityName: "Colony",
+      error: raw,
+      hasOtherCommunities: true,
+    });
+    assert.equal(copy.message, plain, raw);
+    assert.equal(copy.detail, null, raw);
+    assert.equal(copy.isMembershipError, false, raw);
+    assert.doesNotMatch(copy.message, RAW_RELAY_TEXT, raw);
+  }
+});

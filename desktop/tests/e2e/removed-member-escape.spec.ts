@@ -8,6 +8,15 @@ import { installMockBridge } from "../helpers/bridge";
 const REMOVED_ERROR =
   "relay returned 403 Forbidden: You must be a relay member to access this relay";
 const RAW_RELAY_TEXT = /relay returned \d{3}/i;
+// Wrapper text the native layer adds around a relay failure.
+const RELAY_WRAPPER_TEXT = /query failed|relay unreachable/i;
+// What the packaged app shows after Retry: the backend re-applies the
+// community and its owned-agent query wraps the same 403.
+const NESTED_REFUSAL =
+  "relay owned-agent query failed: relay returned 403 Forbidden: You must be a relay member to access this relay";
+const PLAIN_REASON = "You must be a relay member to access this relay";
+const PLAIN_SERVER_SENTENCE =
+  "Colony could not reach this community. Try again.";
 
 const COLONY = {
   id: "community-colony",
@@ -70,6 +79,60 @@ function restoreMembership(page: Page) {
       delete mock.channelsReadErrorByRelayUrl[relayUrl];
     }
   }, COLONY.relayUrl);
+}
+
+// Makes the next community applies fail the way the real backend does on
+// Retry (pass null to stop failing). The mock reads this at call time.
+function failApplies(page: Page, error: string | null) {
+  return page.evaluate(
+    ({ relayUrl, applyError }) => {
+      const mock = (
+        window as Window & {
+          __BUZZ_E2E__?: {
+            mock?: { applyCommunityErrorByRelayUrl?: Record<string, string> };
+          };
+        }
+      ).__BUZZ_E2E__?.mock;
+      if (!mock) return;
+      const next = { ...(mock.applyCommunityErrorByRelayUrl ?? {}) };
+      if (applyError === null) delete next[relayUrl];
+      else next[relayUrl] = applyError;
+      mock.applyCommunityErrorByRelayUrl = next;
+    },
+    { relayUrl: COLONY.relayUrl, applyError: error },
+  );
+}
+
+// Presses Retry and waits until the re-apply has failed (the app logs the raw
+// error to the console, which is where raw text belongs), so assertions run
+// against the screen Retry produced and not the one it replaced.
+async function retryUntilApplyFails(page: Page) {
+  const failed = page.waitForEvent("console", {
+    predicate: (message) =>
+      message.text().includes("Failed to apply community to backend"),
+    timeout: 15_000,
+  });
+  await page
+    .getByTestId("community-apply-error")
+    .getByRole("button", { name: "Retry" })
+    .click();
+  await failed;
+}
+
+async function expectNoRawRelayText(page: Page) {
+  await expect(page.locator("body")).not.toContainText(RAW_RELAY_TEXT);
+  await expect(page.locator("body")).not.toContainText(RELAY_WRAPPER_TEXT);
+}
+
+// The small Details line: the relay's own reason in plain words, same text on
+// the first view and after every Retry.
+async function expectPlainDetails(page: Page) {
+  await expect(
+    page
+      .getByTestId("community-apply-error")
+      .getByTestId("community-apply-error-details"),
+  ).toHaveText(`Details: ${PLAIN_REASON}`);
+  await expectNoRawRelayText(page);
 }
 
 function readStorage(page: Page, key: string) {
@@ -200,12 +263,15 @@ test.describe("removed member escape", () => {
     await openAsRemovedMember(page, [COLONY, COLONY_AI]);
     const screen = page.getByTestId("community-apply-error");
 
+    await expectPlainDetails(page);
+
     // Still removed: Retry re-checks and the same screen comes back.
     await screen.getByRole("button", { name: "Retry" }).click();
     await expect(screen).toBeVisible({ timeout: 15_000 });
     await expect(
       screen.getByTestId("community-apply-error-message"),
     ).toContainText("not a member of Colony");
+    await expectPlainDetails(page);
 
     // Added back: Retry opens the workspace again.
     await restoreMembership(page);
@@ -220,6 +286,80 @@ test.describe("removed member escape", () => {
       .poll(() => readStorage(page, "buzz-active-community-id"))
       .toBe(COLONY.id);
     await expect(page.locator("body")).not.toContainText(RAW_RELAY_TEXT);
+  });
+
+  test("Retry that fails with the nested apply error keeps Details plain, then success returns to the workspace", async ({
+    page,
+  }) => {
+    await openAsRemovedMember(page, [COLONY, COLONY_AI]);
+    const screen = page.getByTestId("community-apply-error");
+    await expectPlainDetails(page);
+
+    // Still refused, twice: the wrapped backend text never reaches Details.
+    await failApplies(page, NESTED_REFUSAL);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await retryUntilApplyFails(page);
+      await expect(screen).toBeVisible({ timeout: 15_000 });
+      await expect(
+        screen.getByTestId("community-apply-error-message"),
+      ).toHaveText(
+        "This sign-in is not a member of Colony. Switch to another community or remove this one.",
+      );
+      await expectPlainDetails(page);
+    }
+
+    // Added back: Retry opens the workspace again.
+    await failApplies(page, null);
+    await restoreMembership(page);
+    await screen.getByRole("button", { name: "Retry" }).click();
+    await expect(page.getByTestId("community-apply-error")).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    await expect(
+      page.getByTestId("sidebar-profile-avatar-button"),
+    ).toBeVisible();
+    await expectNoRawRelayText(page);
+  });
+
+  test("Retry that fails with another relay error shows one plain sentence and no raw text", async ({
+    page,
+  }) => {
+    await openAsRemovedMember(page, [COLONY, COLONY_AI]);
+    const screen = page.getByTestId("community-apply-error");
+    const message = screen.getByTestId("community-apply-error-message");
+    const details = screen.getByTestId("community-apply-error-details");
+
+    // The relay is up but failing.
+    await failApplies(
+      page,
+      "relay owned-agent query failed: relay returned 500 Internal Server Error: upstream exploded",
+    );
+    await retryUntilApplyFails(page);
+    await expect(message).toHaveText(PLAIN_SERVER_SENTENCE);
+    await expect(details).toHaveCount(0);
+    await expectNoRawRelayText(page);
+    await expect(page.locator("body")).not.toContainText("upstream exploded");
+
+    // The relay cannot be reached.
+    await failApplies(
+      page,
+      "relay owned-agent query failed: relay unreachable: could not connect to relay",
+    );
+    await retryUntilApplyFails(page);
+    await expect(message).toHaveText("Can't reach the relay.");
+    await expect(details).toHaveCount(0);
+    await expectNoRawRelayText(page);
+
+    // Healthy again: Retry opens the workspace.
+    await failApplies(page, null);
+    await restoreMembership(page);
+    await screen.getByRole("button", { name: "Retry" }).click();
+    await expect(page.getByTestId("community-apply-error")).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    await expect(
+      page.getByTestId("sidebar-profile-avatar-button"),
+    ).toBeVisible();
   });
 
   test("any other relay error shows one plain sentence with Retry, not raw text", async ({
@@ -252,6 +392,21 @@ test.describe("removed member escape", () => {
     await restoreMembership(page);
     await page.getByTestId("sidebar-relay-error-retry").click();
     await expect(notice).toHaveCount(0, { timeout: 15_000 });
+  });
+
+  // Skipped in CI. The state the final gate flagged: still refused after Retry.
+  test("captures the escape screen after Retry", async ({ page }) => {
+    const outDir = process.env.REMOVED_MEMBER_SHOTS_DIR;
+    test.skip(!outDir, "set REMOVED_MEMBER_SHOTS_DIR to capture screenshots");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openAsRemovedMember(page, [COLONY, COLONY_AI]);
+    await failApplies(page, NESTED_REFUSAL);
+    await retryUntilApplyFails(page);
+    await expectPlainDetails(page);
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: `${outDir}/escape-after-retry-1440x900.png`,
+    });
   });
 
   // Skipped in CI. Set REMOVED_MEMBER_SHOTS_DIR to capture the PR screenshots

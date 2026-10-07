@@ -71,3 +71,18 @@ test("reset clears an existing denial and tells subscribers", () => {
   assert.equal(getMembershipDenial(), null);
   assert.equal(notified, 2);
 });
+
+test("a nested wrapper from the apply path is stored as the plain reason", () => {
+  const generation = currentMembershipDenialGeneration();
+  reportMembershipDenial(
+    generation,
+    "a",
+    new Error(
+      "relay owned-agent query failed: relay returned 403 Forbidden: You must be a relay member to access this relay",
+    ),
+  );
+  assert.equal(
+    getMembershipDenial()?.detail,
+    "You must be a relay member to access this relay",
+  );
+});

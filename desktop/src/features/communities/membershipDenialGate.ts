@@ -43,6 +43,8 @@ export function reportMembershipDenial(
   if (reporterGeneration !== generation) return false;
   if (!isRelayMembershipDeniedError(error)) return false;
   if (denial) return false;
+  // The screen shows the plain reason; the raw text stays in the console.
+  console.warn("Community membership refused:", error);
   denial = { communityId, detail: relayMembershipDenialDetail(error) };
   notify();
   return true;
