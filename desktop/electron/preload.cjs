@@ -109,6 +109,7 @@ if (browserTabEnabled)
       browserRequest("forget-business", { businessId }),
     forgetClient: (businessId, clientId) =>
       browserRequest("forget-client", { businessId, clientId }),
+    forgetAll: () => browserRequest("forget-all", {}),
     onEvent: (callback) => {
       if (typeof callback !== "function")
         throw new Error("Invalid browser listener");

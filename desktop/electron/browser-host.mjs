@@ -419,6 +419,17 @@ export function createBrowserHost({
     for (const resolve of pending.waiters) resolve();
   }
 
+  function waitForAllCreates() {
+    return Promise.all(
+      [...pendingScopedCreates.values()].map(
+        (entry) =>
+          new Promise((resolve) => {
+            entry.waiters.push(resolve);
+          }),
+      ),
+    );
+  }
+
   function waitForScopedCreates(businessId, clientId, allClients = false) {
     const pending = [...pendingScopedCreates.values()].filter(
       (entry) =>
@@ -484,6 +495,13 @@ export function createBrowserHost({
       const businessId = checkedScopeId(payload.businessId, "business id");
       await waitForScopedCreates(businessId, null, true);
       return browserSessions.forgetBusiness(businessId);
+    }
+
+    if (action === "forget-all") {
+      // Sign out and account delete: every page of every business ends first.
+      await waitForAllCreates();
+      for (const tab of [...tabs.values()]) closeRecord(tab);
+      return browserSessions.forgetAll();
     }
 
     if (action === "forget-client") {

@@ -7,6 +7,7 @@ import {
   MAX_BROWSER_DOWNLOAD_BYTES,
   MAX_BROWSER_PROFILES,
   browserProfileIdentity,
+  isBlockedBrowserUrl,
   numberedDownloadName,
   safeDownloadName,
 } from "./browser-host-policy.mjs";
@@ -244,6 +245,13 @@ export function createBrowserSessionStore({
         browserSession.setDisplayMediaRequestHandler?.((_request, callback) =>
           callback(null),
         );
+        // Every page load, redirect hop and subresource of this profile: link-local
+        // and cloud metadata hosts are never reachable from a page.
+        browserSession.webRequest.onBeforeRequest(
+          { urls: ["<all_urls>"] },
+          (details, callback) =>
+            callback({ cancel: isBlockedBrowserUrl(details.url) }),
+        );
         configureDownloads(browserSession, profileHash);
       });
       // Keep a rejected setup promise too. Retrying partial setup could attach
@@ -386,6 +394,32 @@ export function createBrowserSessionStore({
     });
   }
 
+  /** Wait (bounded) for cancelled downloads of these profiles to finish. */
+  async function waitForDownloadsToStop(profileHashes, timeoutMs = 3_000) {
+    const wanted = new Set(profileHashes);
+    const deadline = Date.now() + timeoutMs;
+    while (
+      [...activeDownloads.values()].some((download) =>
+        wanted.has(download.profileHash),
+      ) &&
+      Date.now() < deadline
+    )
+      await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  /**
+   * Forget every stored profile: sign out and account delete. Callers close the
+   * tabs first; downloads they cancelled get a moment to stop. Files already
+   * saved to Downloads stay, as for any forget.
+   */
+  function forgetAll() {
+    return inRegistryQueue(async () => {
+      const profileHashes = [...(await loadProfiles()).keys()];
+      await waitForDownloadsToStop(profileHashes);
+      return forgetProfilesLocked(profileHashes);
+    });
+  }
+
   async function forgetClient(businessId, clientId) {
     const { profileHash } = browserProfileIdentity(businessId, clientId);
     return forgetProfiles([profileHash]);
@@ -409,5 +443,6 @@ export function createBrowserSessionStore({
     cancelTabDownloads,
     forgetBusiness,
     forgetClient,
+    forgetAll,
   };
 }

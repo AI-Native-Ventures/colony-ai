@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   browserShortcutAction,
+  checkedUrl,
+  isAllowedFrameUrl,
+  isAllowedWebUrl,
+  isBlockedBrowserHostname,
   numberedDownloadName,
   safeDownloadName,
 } from "./browser-host-policy.mjs";
@@ -136,4 +140,69 @@ test("ignores key-up, auto-repeat, plain typing and malformed input", () => {
     browserShortcutAction(key({ key: undefined, meta: true }), "darwin"),
     null,
   );
+});
+
+const BLOCKED_ADDRESSES = [
+  "http://169.254.169.254/latest/meta-data/",
+  "https://169.254.169.254:8443/",
+  "http://169.254.0.1/",
+  "http://169.254.255.255/",
+  "http://2852039166/",
+  "http://0xa9fea9fe/",
+  "http://0251.0376.0251.0376/",
+  "http://169.254.43518/",
+  "http://169.254.169.254./",
+  "http://[fd00:ec2::254]/",
+  "http://[FD00:0EC2:0:0:0:0:0:254]/latest",
+  "http://[::ffff:169.254.169.254]/",
+  "http://[::ffff:a9fe:1]:8080/x",
+  "http://[fe80::1]/",
+  "http://[febf::abcd]/",
+  "http://metadata.google.internal/computeMetadata/v1/",
+  "https://METADATA.GOOGLE.INTERNAL/",
+  "http://metadata.google.internal./",
+  "http://metadata\u3002google\u3002internal/",
+];
+
+const OPEN_ADDRESSES = [
+  "https://example.com/",
+  "http://169.253.255.255/",
+  "http://169.255.0.0/",
+  "http://10.0.0.1/",
+  "http://172.16.0.1/",
+  "http://192.168.1.1/",
+  "http://127.0.0.1:3000/",
+  "http://localhost/",
+  "http://[::1]/",
+  "http://[fd00::1]/",
+  "http://[fd00:ec2::255]/",
+  "http://[fec0::1]/",
+  "http://[::ffff:10.0.0.1]/",
+  "http://metadata.google.internal.example.com/",
+  "http://notmetadata.google.internal/",
+  "http://metadata.google/",
+];
+
+test("link-local and cloud metadata addresses are refused however they are spelled", () => {
+  for (const url of BLOCKED_ADDRESSES) {
+    assert.throws(() => checkedUrl(url), /metadata addresses/u, url);
+    assert.equal(isAllowedWebUrl(url), false, url);
+    assert.equal(isAllowedFrameUrl(url, true), false, `${url} main frame`);
+    assert.equal(isAllowedFrameUrl(url, false), false, `${url} subframe`);
+  }
+});
+
+test("ordinary private, loopback and neighbouring addresses stay open", () => {
+  for (const url of OPEN_ADDRESSES) {
+    assert.doesNotThrow(() => checkedUrl(url), url);
+    assert.equal(isAllowedFrameUrl(url, true), true, url);
+  }
+});
+
+test("the host name check works on URL hostnames and ignores everything else", () => {
+  assert.equal(isBlockedBrowserHostname("169.254.1.1"), true);
+  assert.equal(isBlockedBrowserHostname("[fd00:ec2::254]"), true);
+  assert.equal(isBlockedBrowserHostname("example.com"), false);
+  assert.equal(isBlockedBrowserHostname("[not:an:address]"), false);
+  assert.equal(isBlockedBrowserHostname("[::1::2]"), false);
 });
