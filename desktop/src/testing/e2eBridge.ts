@@ -623,6 +623,8 @@ type E2eConfig = {
     /** Reference records for the visual comparison harness only. */
     visualFixture?: VisualFixtureSeed;
     canvasReadError?: string;
+    /** Canvas Markdown returned by `get_canvas` per channel id (mock mode only). */
+    canvasContentByChannelId?: Record<string, string>;
     /** Delay (ms) for `apply_workspace` so e2e tests can observe the
      *  community-switch gate. 0/undefined = instant. */
     applyCommunityDelayMs?: number;
@@ -13826,6 +13828,15 @@ async function handleGetCanvas(
     const canvasReadError = config?.mock?.canvasReadError;
     if (canvasReadError) {
       throw new Error(canvasReadError);
+    }
+    const seeded = config?.mock?.canvasContentByChannelId?.[args.channelId];
+    if (seeded !== undefined) {
+      return {
+        content: seeded,
+        event_id: null,
+        updated_at: Math.floor(Date.now() / 1000),
+        author: null,
+      };
     }
     // The no-canvas success shape: content null means no canvas set.
     return { content: null, updated_at: null, author: null };

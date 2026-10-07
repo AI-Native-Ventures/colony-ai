@@ -5,6 +5,7 @@ import {
   installMockBridge,
   type MockAgentMemoryListing,
 } from "../helpers/bridge";
+import { MOCK_CHANNEL_IDS } from "../helpers/companyWork";
 
 // The channel's Knowledge tab in the work area dock, bound through the real
 // App: the header Knowledge control, the memory documents of the AI employees
@@ -69,11 +70,15 @@ const MINA_NOTE = entry(
   1_796_000_000,
 );
 
+const GENERAL_CANVAS =
+  "# Spring launch plan\n\nStockists first, then the online shop.";
+
 async function boot(
   page: Page,
   options: {
     errors?: string[];
     delaysMs?: number[];
+    canvasReadError?: string;
     viewport?: { width: number; height: number };
   } = {},
 ) {
@@ -106,6 +111,8 @@ async function boot(
     },
     agentMemoryErrors: options.errors,
     agentMemoryDelaysMs: options.delaysMs,
+    canvasContentByChannelId: { [MOCK_CHANNEL_IDS.general]: GENERAL_CANVAS },
+    canvasReadError: options.canvasReadError,
   });
   await page.goto("/");
   await expect(page.getByTestId("home-inbox-list")).toBeVisible();
@@ -348,6 +355,120 @@ test.describe("work area Knowledge tab", () => {
     await expect(knowledgeState(page)).toHaveCount(0);
   });
 
+  test("channel notes list topic, purpose and canvas, and the canvas row opens the Canvas tab", async ({
+    page,
+  }) => {
+    await boot(page);
+    await openChannel(page, "general");
+    await openKnowledgeTab(page);
+
+    const notes = dock(page).getByTestId("work-area-knowledge-notes");
+    await expect(
+      notes.getByRole("heading", { name: "Channel notes" }),
+    ).toBeVisible();
+    // The mock "general" has a topic, a purpose and (seeded here) a canvas.
+    await expect(
+      notes.getByTestId("work-area-knowledge-notes-topic"),
+    ).toContainText("Company-wide updates");
+    await expect(
+      notes.getByTestId("work-area-knowledge-notes-purpose"),
+    ).toContainText("Coordinate day-to-day work and unblock the team.");
+    const canvasRow = notes.getByTestId("work-area-knowledge-notes-canvas");
+    await expect(canvasRow).toContainText("Spring launch plan");
+    await expect(
+      dock(page).getByTestId("work-area-knowledge-notes-empty"),
+    ).toHaveCount(0);
+
+    // Keyboard: Enter on the canvas row opens the Canvas tab.
+    await canvasRow.focus();
+    await page.keyboard.press("Enter");
+    await expect(
+      dock(page).getByRole("tab", { name: "Canvas", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(dock(page).getByTestId("work-area-canvas")).toContainText(
+      "Spring launch plan",
+    );
+
+    // Pointer: back on Knowledge, the same row does the same thing.
+    await dock(page)
+      .getByRole("tab", { name: "Knowledge", exact: true })
+      .click();
+    await canvasRow.click();
+    await expect(
+      dock(page).getByRole("tab", { name: "Canvas", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+  });
+
+  test("topic and purpose show together, and a channel with no notes says so", async ({
+    page,
+  }) => {
+    await boot(page);
+    await openChannel(page, "engineering");
+    await openKnowledgeTab(page);
+    const notes = dock(page).getByTestId("work-area-knowledge-notes");
+    await expect(
+      notes.getByTestId("work-area-knowledge-notes-topic"),
+    ).toContainText("Desktop release train");
+    await expect(
+      notes.getByTestId("work-area-knowledge-notes-purpose"),
+    ).toContainText("Track implementation details and release readiness.");
+    // No canvas was set for this channel: no canvas row, no invented text.
+    await expect(
+      notes.getByTestId("work-area-knowledge-notes-canvas"),
+    ).toHaveCount(0);
+
+    // "random" has no topic, purpose or canvas.
+    await openChannel(page, "random");
+    await openKnowledgeTab(page);
+    await expect(
+      dock(page).getByTestId("work-area-knowledge-notes-empty"),
+    ).toContainText("No channel notes yet");
+    await expect(
+      dock(page).getByTestId("work-area-knowledge-notes").getByRole("listitem"),
+    ).toHaveCount(0);
+  });
+
+  test("a canvas that cannot be read says so in plain words, keeps the other notes, and Retry recovers", async ({
+    page,
+  }) => {
+    await boot(page, {
+      canvasReadError: "relay returned 500: canvas exploded",
+    });
+    await openChannel(page, "general");
+    await openKnowledgeTab(page);
+
+    const failed = dock(page).getByTestId("work-area-knowledge-notes-failed");
+    await expect(failed).toBeVisible({ timeout: 20_000 });
+    await expect(failed).toContainText("The canvas could not be loaded.");
+    await expect(dock(page)).not.toContainText(
+      /canvas exploded|relay returned/i,
+    );
+    // Topic still shows, and so does the rest of the tab.
+    await expect(
+      dock(page).getByTestId("work-area-knowledge-notes-topic"),
+    ).toContainText("Company-wide updates");
+    await expect(
+      dock(page).getByTestId(doc(SCOUT, "mem/projects/launch-brief")),
+    ).toBeVisible();
+
+    // The relay recovers; Retry (keyboard) brings the canvas row in.
+    await page.evaluate(() => {
+      const mock = (
+        window as Window & {
+          __BUZZ_E2E__?: { mock?: { canvasReadError?: string } };
+        }
+      ).__BUZZ_E2E__?.mock;
+      if (mock) delete mock.canvasReadError;
+    });
+    const retry = failed.getByRole("button", { name: "Retry" });
+    await retry.focus();
+    await page.keyboard.press("Enter");
+    await expect(
+      dock(page).getByTestId("work-area-knowledge-notes-canvas"),
+    ).toContainText("Spring launch plan");
+    await expect(failed).toHaveCount(0);
+  });
+
   test("Work and Knowledge are both dock tabs: addable from the menu, one each, kept per channel", async ({
     page,
   }) => {
@@ -379,6 +500,8 @@ for (const viewport of [
   { width: 1728, height: 1117 },
 ]) {
   test(`knowledge tab screenshots at ${viewport.width}`, async ({ page }) => {
+    // Seven states in one flow, one of them waiting out a held read and a retry.
+    test.setTimeout(120_000);
     await boot(page, {
       viewport,
       delaysMs: [3_000],

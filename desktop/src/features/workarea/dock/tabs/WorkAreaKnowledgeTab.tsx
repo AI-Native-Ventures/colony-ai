@@ -11,6 +11,7 @@ import { plainRelayErrorMessage } from "@/shared/lib/relayError";
 import { Button } from "@/shared/ui/button";
 
 import type { WorkAreaTabPanelProps } from "../workAreaTabRegistry";
+import { KnowledgeChannelNotes } from "./KnowledgeChannelNotes";
 import { WorkAreaTabNotice } from "./WorkAreaTabNotice";
 import {
   agentsInChannel,
@@ -79,6 +80,15 @@ export function WorkAreaKnowledgeTab({ channelId }: WorkAreaTabPanelProps) {
       data: query.data,
     })),
   });
+
+  const channel = (channelsQuery.data ?? []).find(
+    (candidate) => candidate.id.toLowerCase() === channelId.toLowerCase(),
+  );
+  const frame = {
+    channelId,
+    topic: channel?.topic ?? null,
+    purpose: channel?.purpose ?? null,
+  };
 
   const failedError = view.state === "failed" ? view.error : null;
   React.useEffect(() => {
@@ -154,7 +164,7 @@ export function WorkAreaKnowledgeTab({ channelId }: WorkAreaTabPanelProps) {
       );
     case "no-agents":
       return (
-        <KnowledgeFrame>
+        <KnowledgeFrame {...frame}>
           <WorkAreaTabNotice
             body="Memory appears here for the AI employees you manage that are in this channel. None of yours are here yet."
             state="empty"
@@ -165,7 +175,7 @@ export function WorkAreaKnowledgeTab({ channelId }: WorkAreaTabPanelProps) {
       );
     case "empty":
       return (
-        <KnowledgeFrame>
+        <KnowledgeFrame {...frame}>
           <WorkAreaTabNotice
             body="The AI employees you manage in this channel have not written anything down yet. What they remember appears here."
             state="empty"
@@ -176,11 +186,8 @@ export function WorkAreaKnowledgeTab({ channelId }: WorkAreaTabPanelProps) {
       );
     case "ready":
       return (
-        <KnowledgeFrame>
-          <div
-            className="min-h-0 flex-1 overflow-auto"
-            data-testid={`${TEST_ID}-memory`}
-          >
+        <KnowledgeFrame {...frame}>
+          <div className="shrink-0" data-testid={`${TEST_ID}-memory`}>
             {view.unavailable.length > 0 ? (
               <div
                 className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 text-xs text-muted-foreground"
@@ -222,13 +229,31 @@ export function WorkAreaKnowledgeTab({ channelId }: WorkAreaTabPanelProps) {
   }
 }
 
-/** Pins first (an honest gap), then whatever memory content the caller renders. */
-function KnowledgeFrame({ children }: { children: React.ReactNode }) {
+/** Channel notes, then pins (an honest gap), then whatever memory content the caller renders. One scroll area. */
+function KnowledgeFrame({
+  channelId,
+  topic,
+  purpose,
+  children,
+}: {
+  channelId: string;
+  topic: string | null;
+  purpose: string | null;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid={TEST_ID}>
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-auto"
+      data-testid={TEST_ID}
+    >
+      <KnowledgeChannelNotes
+        channelId={channelId}
+        purpose={purpose}
+        topic={topic}
+      />
       <section
         aria-labelledby={`${TEST_ID}-pins-title`}
-        className="border-b border-border px-3 py-3"
+        className="shrink-0 border-b border-border px-3 py-3"
         data-testid={`${TEST_ID}-pins`}
       >
         <h2
