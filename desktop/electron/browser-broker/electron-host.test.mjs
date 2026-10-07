@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile, readdir } from "node:fs/promises";
+import * as filesystem from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -87,6 +88,9 @@ async function fixture(t, options = {}) {
   const host = await createElectronBrowserAgentHost({
     browserHost: browser,
     enabled: true,
+    uploadStagingRoot: path.join(dir, "uploads"),
+    chooseFile: options.chooseFile ?? (async () => null),
+    uploadStagingOptions: options.uploadStagingOptions ?? {},
     socketPath: path.join(dir, "s", "b.sock"),
     proxyFactory: () => ({
       start: async () => 9999,
@@ -113,7 +117,7 @@ async function fixture(t, options = {}) {
       },
       sender.id,
     );
-  return { browser, host, sender, owner, tab, grant, network };
+  return { browser, host, sender, owner, tab, grant, network, dir };
 }
 
 test("flag off creates no adapter, proxy or socket and denies grants", async () => {
@@ -371,4 +375,155 @@ test("failed network cleanup is visible and retained for explicit person recover
     ),
     { enabled: true, recoveryRequired: false },
   );
+});
+
+async function selectedCopy(f) {
+  const [id] = await readdir(path.join(f.dir, "uploads", "payloads"));
+  const directory = path.join(f.dir, "uploads", "payloads", id);
+  const [name] = await readdir(directory);
+  return path.join(directory, name);
+}
+
+test("production person selection stages immutable bytes and exposes only an opaque ID", async (t) => {
+  let selected;
+  const f = await fixture(t, { chooseFile: async () => selected });
+  selected = path.join(f.dir, "original.txt");
+  await writeFile(selected, "person-approved-original");
+  const grant = await f.grant();
+  const result = await f.host.handleRequest(
+    "agent-choose-upload",
+    { grantId: grant.id },
+    f.sender.id,
+  );
+  assert.deepEqual(Object.keys(result).sort(), ["name", "size", "uploadId"]);
+  assert.equal(result.name, "original.txt");
+  const staged = await selectedCopy(f);
+  await writeFile(selected, "replaced-after-selection");
+  assert.equal(await readFile(staged, "utf8"), "person-approved-original");
+  assert.ok(!JSON.stringify(result).includes(f.dir));
+  await f.host.handleRequest(
+    "agent-revoke",
+    { grantId: grant.id },
+    f.sender.id,
+  );
+  await assert.rejects(readFile(staged), { code: "ENOENT" });
+  assert.equal(await readFile(selected, "utf8"), "replaced-after-selection");
+  assert.deepEqual(await readdir(path.join(f.dir, "uploads", "records")), []);
+});
+
+test("failed staged cleanup survives native and network recovery events until person retries", async (t) => {
+  let selected;
+  let fail = false;
+  const f = await fixture(t, {
+    chooseFile: async () => selected,
+    uploadStagingOptions: {
+      fs: {
+        ...filesystem,
+        rmdir: async (directory) => {
+          if (fail) throw new Error("private-fixture-cleanup-error");
+          await filesystem.rmdir(directory);
+        },
+      },
+    },
+  });
+  selected = path.join(f.dir, "original.txt");
+  await writeFile(selected, "approved");
+  const grant = await f.grant();
+  await f.host.handleRequest(
+    "agent-choose-upload",
+    { grantId: grant.id },
+    f.sender.id,
+  );
+  const events = [];
+  const unsubscribe = f.host.onEvent((event) => events.push(event));
+  fail = true;
+  await f.host.handleRequest(
+    "agent-revoke",
+    { grantId: grant.id },
+    f.sender.id,
+  );
+  assert.equal(
+    (
+      await f.host.handleRequest(
+        "agent-status",
+        { tabId: f.tab.id },
+        f.sender.id,
+      )
+    ).recoveryRequired,
+    true,
+  );
+  assert.equal(
+    (await readdir(path.join(f.dir, "uploads", "records"))).length,
+    1,
+  );
+  const recovery = events.filter((event) => event.type === "control-recovery");
+  assert.equal(recovery.at(-1).required, true);
+  const failureIndex = events.findIndex(
+    (event) =>
+      event.type === "agent-action" &&
+      event.entry.code === "upload_recovery_required",
+  );
+  assert.ok(failureIndex >= 0);
+  assert.ok(
+    events
+      .slice(failureIndex)
+      .filter((event) => event.type === "control-recovery")
+      .every((event) => event.required === true),
+    "file cleanup recovery must never disappear after its failure",
+  );
+  assert.ok(
+    !JSON.stringify(f.host.broker.getLog()).includes("private-fixture"),
+  );
+  await assert.rejects(
+    f.host.handleRequest(
+      "agent-recover-control",
+      { tabId: f.tab.id },
+      f.sender.id,
+    ),
+    /upload recovery/u,
+  );
+  fail = false;
+  await f.host.handleRequest(
+    "agent-recover-control",
+    { tabId: f.tab.id },
+    f.sender.id,
+  );
+  assert.deepEqual(await readdir(path.join(f.dir, "uploads", "records")), []);
+  assert.equal(
+    (
+      await f.host.handleRequest(
+        "agent-status",
+        { tabId: f.tab.id },
+        f.sender.id,
+      )
+    ).recoveryRequired,
+    false,
+  );
+  unsubscribe();
+});
+
+test("revocation while the person chooses a file prevents staging or issuing upload authority", async (t) => {
+  let finish;
+  const f = await fixture(t, {
+    chooseFile: () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  });
+  const selected = path.join(f.dir, "original.txt");
+  await writeFile(selected, "approved");
+  const grant = await f.grant();
+  const pending = f.host.handleRequest(
+    "agent-choose-upload",
+    { grantId: grant.id },
+    f.sender.id,
+  );
+  await f.host.handleRequest(
+    "agent-revoke",
+    { grantId: grant.id },
+    f.sender.id,
+  );
+  finish(selected);
+  await assert.rejects(pending, /active grant/u);
+  assert.deepEqual(await readdir(path.join(f.dir, "uploads", "records")), []);
 });
