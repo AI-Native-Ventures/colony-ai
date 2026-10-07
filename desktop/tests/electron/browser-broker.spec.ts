@@ -201,6 +201,51 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
       desktop: "undefined",
       masked: ["hidden", "hidden", "hidden"],
     });
+    // This renderer-initiated navigation bypasses explicit loadUrl checks.
+    // Removing will-frame-navigate's gate must fail this probe.
+    await application.evaluate(async (_electron, id) => {
+      const fixture = (
+        globalThis as typeof globalThis & {
+          colonyBrowserFixture: {
+            browser: {
+              agentAdapter: {
+                webContents(id: string): {
+                  executeJavaScript(code: string): Promise<unknown>;
+                };
+              };
+            };
+          };
+        }
+      ).colonyBrowserFixture;
+      await fixture.browser.agentAdapter
+        .webContents(id)
+        .executeJavaScript(
+          `document.querySelector('a[href="https://other.example/"]').click(); true`,
+        );
+    }, tab.id);
+    await expect
+      .poll(() =>
+        application.evaluate((_electron, id) => {
+          const fixture = (
+            globalThis as typeof globalThis & {
+              colonyBrowserFixture: {
+                browser: {
+                  agentAdapter: {
+                    consumeBlocked(id: string): { code: string } | undefined;
+                    getTab(id: string): { url: string } | null;
+                  };
+                };
+              };
+            }
+          ).colonyBrowserFixture;
+          const adapter = fixture.browser.agentAdapter;
+          return {
+            code: adapter.consumeBlocked(id)?.code,
+            url: adapter.getTab(id)?.url,
+          };
+        }, tab.id),
+      )
+      .toEqual({ code: "origin_approval_required", url: `${origin}/` });
     for (const [url, code] of [
       ["https://other.example/", "origin_approval_required"],
       [`${deniedOrigin}/forbidden`, "private_network_denied"],

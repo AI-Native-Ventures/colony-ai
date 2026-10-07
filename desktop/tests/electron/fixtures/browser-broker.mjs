@@ -7,6 +7,7 @@ import {
   session,
 } from "electron";
 import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { createBrowserHost } from "../../../electron/browser-host.mjs";
 import {
   createElectronBrowserAgentHost,
@@ -34,6 +35,7 @@ async function boot() {
     WebContentsView,
     session,
     userDataPath: app.getPath("userData"),
+    downloadsPath: path.join(app.getPath("userData"), "downloads"),
   });
   const fixtureOrigin = new URL(process.env.COLONY_BROWSER_FIXTURE_URL);
   const host = await createElectronBrowserAgentHost({

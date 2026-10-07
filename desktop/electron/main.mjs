@@ -238,7 +238,7 @@ async function boot() {
   await app.whenReady();
   browserAgentHost = await createElectronBrowserAgentHost({
     browserHost,
-    enabled: process.env.COLONY_BROWSER_AGENT === "1",
+    enabled: browserTabEnabled && process.env.COLONY_BROWSER_AGENT === "1",
     execPath: process.execPath,
     scriptPath: fileURLToPath(
       new URL("./browser-broker/mcp-server.mjs", import.meta.url),

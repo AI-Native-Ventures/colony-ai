@@ -66,6 +66,7 @@ async function fixture(t, options = {}) {
   });
   const browser = createBrowserHost({
     userDataPath: dir,
+    downloadsPath: path.join(dir, "downloads"),
     session: { fromPartition: () => profile },
     WebContentsView: class {
       constructor() {
