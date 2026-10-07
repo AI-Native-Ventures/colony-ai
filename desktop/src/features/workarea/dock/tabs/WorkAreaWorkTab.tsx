@@ -124,7 +124,10 @@ function WorkList({
   const owners = React.useMemo(
     () => [
       ...new Set(
-        records.flatMap((record) => record.head.assignedPubkeys.slice(0, 1)),
+        records.flatMap((record) => {
+          const owner = record.head.assignedPubkeys[0];
+          return owner ? [owner] : [];
+        }),
       ),
     ],
     [records],
