@@ -53,8 +53,8 @@ fn credential(master: &str, agent: &str, task: &str, origin: &str) -> Result<Str
         return Err(invalid_identity());
     }
     let key = serde_json::to_string(&[agent, task, origin])?;
-    let mut mac =
-        <Hmac<Sha256> as KeyInit>::new_from_slice(master.as_bytes()).map_err(|_| invalid_identity())?;
+    let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(master.as_bytes())
+        .map_err(|_| invalid_identity())?;
     mac.update(DOMAIN);
     mac.update(key.as_bytes());
     Ok(hex::encode(mac.finalize().into_bytes()))
@@ -299,7 +299,10 @@ mod tests {
             env["COLONY_BROWSER_BROKER_SECRET"],
             "ee5fbe4ebdbe47f4a521aa6abed74298a75a20bbd986d666185de0454f7ae43e"
         );
-        assert_eq!(env["COLONY_BROWSER_COMMUNITY_ORIGIN"], "https://relay.example");
+        assert_eq!(
+            env["COLONY_BROWSER_COMMUNITY_ORIGIN"],
+            "https://relay.example"
+        );
         assert_eq!(env["ELECTRON_RUN_AS_NODE"], "1");
         assert!(!wire.to_string().contains("fixture-master-only"));
         let surfaces = vec![browser_brand_guard::Surface::new(
@@ -386,12 +389,10 @@ mod tests {
             },
         )
         .expect("native node launcher");
-        assert!(
-            !servers[0]
-                .env
-                .iter()
-                .any(|entry| entry.name == "ELECTRON_RUN_AS_NODE")
-        );
+        assert!(!servers[0]
+            .env
+            .iter()
+            .any(|entry| entry.name == "ELECTRON_RUN_AS_NODE"));
     }
 
     #[test]

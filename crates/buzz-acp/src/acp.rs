@@ -3405,9 +3405,7 @@ mod tests {
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        assert!(
-            String::from_utf8_lossy(&output.stdout).contains("BROWSER_INHERITED_PROBE_PASSED")
-        );
+        assert!(String::from_utf8_lossy(&output.stdout).contains("BROWSER_INHERITED_PROBE_PASSED"));
     }
 
     #[cfg(unix)]
@@ -3432,7 +3430,8 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn browser_session_wire_retains_credential_but_observer_masks_it() {
-        let path = std::env::temp_dir().join(format!("colony-browser-wire-{}", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("colony-browser-wire-{}", uuid::Uuid::new_v4()));
         let script = r#"
             read -t 2 _init
             echo '{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":1,"agentCapabilities":{}}}'
@@ -3487,11 +3486,9 @@ mod tests {
             write.payload["params"]["mcpServers"][0]["env"][0]["value"],
             "[redacted]"
         );
-        assert!(
-            !serde_json::to_string(&events)
-                .expect("observer JSON")
-                .contains(secret)
-        );
+        assert!(!serde_json::to_string(&events)
+            .expect("observer JSON")
+            .contains(secret));
         client.shutdown().await;
         std::fs::remove_file(path).expect("remove owned wire fixture");
     }
