@@ -865,7 +865,8 @@ export function createBroker({
         signal: ctx.signal,
         check: ctx.check,
       });
-      uploads.delete(args.uploadId);
+      // Chromium can read this File later, when the form is submitted.
+      // Keep its one-use record until grant end; main owns staged cleanup.
       ctx.check();
       return {
         tab: args.tab,
@@ -1035,6 +1036,17 @@ export function createBroker({
           summary: "Browser access revoked; network recovery required.",
         });
       emit("control-recovery", { tabId, required });
+    },
+    /** File ownership records stay in main while cleanup waits for recovery. */
+    notifyUploadRecovery(tabIds, required) {
+      for (const tabId of tabIds) {
+        if (required)
+          record(null, "browser_upload", { tab: tabId }, "error", now(), {
+            code: "upload_recovery_required",
+            summary: "Browser access revoked; file cleanup recovery required.",
+          });
+        emit("control-recovery", { tabId, required });
+      }
     },
     /** Host registers a file the person chose. The agent only gets the id. */
     registerUpload(grantId, { path, name, size }) {
