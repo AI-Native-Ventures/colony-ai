@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { useManagedAgentsQuery } from "@/features/agents/hooks";
 import {
@@ -71,6 +71,21 @@ export function useAgentMemoryQuery(
     queryKey: agentMemoryQueryKey(agentPubkey ?? ""),
     queryFn: () => getAgentMemory(agentPubkey as string),
     staleTime: 30_000,
+  });
+}
+
+/**
+ * One engram listing per agent, same query key and function as
+ * {@link useAgentMemoryQuery} so a profile panel and a channel tab that show the
+ * same agent share one fetch. Results keep the order of `agentPubkeys`.
+ */
+export function useAgentMemoriesQuery(agentPubkeys: readonly string[]) {
+  return useQueries({
+    queries: agentPubkeys.map((agentPubkey) => ({
+      queryKey: agentMemoryQueryKey(agentPubkey),
+      queryFn: () => getAgentMemory(agentPubkey),
+      staleTime: 30_000,
+    })),
   });
 }
 

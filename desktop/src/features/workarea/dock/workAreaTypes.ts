@@ -17,6 +17,7 @@ export const WORK_AREA_TAB_KINDS = [
   "files",
   "canvas",
   "work",
+  "knowledge",
 ] as const;
 export type WorkAreaTabKind = (typeof WORK_AREA_TAB_KINDS)[number];
 
@@ -26,6 +27,7 @@ export const WORK_AREA_SINGLETON_KINDS: readonly WorkAreaTabKind[] = [
   "files",
   "canvas",
   "work",
+  "knowledge",
 ];
 
 export type WorkAreaTab = {
