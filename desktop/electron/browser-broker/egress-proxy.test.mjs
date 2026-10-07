@@ -32,7 +32,7 @@ async function startUpstream() {
   };
 }
 
-async function setup({ answers, exceptions = [], maxConnections } = {}) {
+async function setup(t, { answers, exceptions = [], maxConnections } = {}) {
   const upstream = await startUpstream();
   const connects = [];
   const resolves = [];
@@ -57,6 +57,14 @@ async function setup({ answers, exceptions = [], maxConnections } = {}) {
     maxConnections,
   });
   const port = await proxy.start();
+  let closed = false;
+  const close = async () => {
+    if (closed) return;
+    await proxy.stop();
+    await upstream.close();
+    closed = true;
+  };
+  t.after(close);
   return {
     proxy,
     port,
@@ -64,10 +72,7 @@ async function setup({ answers, exceptions = [], maxConnections } = {}) {
     connects,
     resolves,
     denied,
-    close: async () => {
-      await proxy.stop();
-      await upstream.close();
-    },
+    close,
   };
 }
 
@@ -75,16 +80,34 @@ function rawConnect(port, target) {
   return new Promise((resolve, reject) => {
     const socket = net.connect(port, "127.0.0.1");
     let data = "";
+    let settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) {
+        socket.destroy();
+        reject(error);
+      } else resolve({ data, socket });
+    };
+    const timer = setTimeout(
+      () => finish(new Error("CONNECT response deadline exceeded")),
+      10_000,
+    );
     socket.setEncoding("utf8");
     socket.on("data", (chunk) => {
       data += chunk;
+      if (data.length > 16 * 1024)
+        finish(new Error("CONNECT response exceeded its bound"));
+      else if (data.includes("\r\n\r\n")) finish();
     });
-    socket.on("error", reject);
+    socket.on("error", finish);
     socket.on("connect", () =>
       socket.write(`CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\n\r\n`),
     );
-    socket.on("close", () => resolve({ data, socket }));
-    setTimeout(() => resolve({ data, socket }), 400);
+    socket.on("close", () =>
+      finish(new Error("CONNECT closed before a complete reply")),
+    );
   });
 }
 
@@ -114,8 +137,8 @@ function proxiedGet(port, url) {
   });
 }
 
-test("CONNECT to a public name tunnels bytes through the pinned IP, not the name", async () => {
-  const env = await setup();
+test("CONNECT to a public name tunnels bytes through the pinned IP, not the name", async (t) => {
+  const env = await setup(t);
   const { data, socket } = await rawConnect(env.port, "shop.example:443");
   assert.ok(data.startsWith("HTTP/1.1 200"));
   socket.destroy();
@@ -127,8 +150,8 @@ test("CONNECT to a public name tunnels bytes through the pinned IP, not the name
   await env.close();
 });
 
-test("bytes flow both ways through an allowed tunnel", async () => {
-  const env = await setup();
+test("bytes flow both ways through an allowed tunnel", async (t) => {
+  const env = await setup(t);
   const socket = net.connect(env.port, "127.0.0.1");
   socket.setEncoding("utf8");
   let data = "";
@@ -146,8 +169,8 @@ test("bytes flow both ways through an allowed tunnel", async () => {
   await env.close();
 });
 
-test("a name that resolves to a private address is refused and never connected", async () => {
-  const env = await setup({
+test("a name that resolves to a private address is refused and never connected", async (t) => {
+  const env = await setup(t, {
     answers: {
       "evil.example": [{ address: "10.0.0.9", family: 4 }],
       "meta.example": [{ address: "169.254.169.254", family: 4 }],
@@ -169,8 +192,8 @@ test("a name that resolves to a private address is refused and never connected",
   await env.close();
 });
 
-test("a mixed public and private answer is refused", async () => {
-  const env = await setup({
+test("a mixed public and private answer is refused", async (t) => {
+  const env = await setup(t, {
     answers: {
       "mixed.example": [
         { address: "93.184.216.34", family: 4 },
@@ -184,8 +207,8 @@ test("a mixed public and private answer is refused", async () => {
   await env.close();
 });
 
-test("DNS rebinding cannot change the target after the check", async () => {
-  const env = await setup({
+test("DNS rebinding cannot change the target after the check", async (t) => {
+  const env = await setup(t, {
     answers: (_host, call) =>
       call === 1
         ? [{ address: "93.184.216.34", family: 4 }]
@@ -202,8 +225,8 @@ test("DNS rebinding cannot change the target after the check", async () => {
   await env.close();
 });
 
-test("literal private addresses, localhost and bad ports are refused without resolving", async () => {
-  const env = await setup();
+test("literal private addresses, localhost and bad ports are refused without resolving", async (t) => {
+  const env = await setup(t);
   for (const target of [
     "127.0.0.1:8080",
     "[::1]:8080",
@@ -228,8 +251,8 @@ test("literal private addresses, localhost and bad ports are refused without res
   await env.close();
 });
 
-test("an explicit private exception opens exactly that host and port", async () => {
-  const env = await setup({
+test("an explicit private exception opens exactly that host and port", async (t) => {
+  const env = await setup(t, {
     exceptions: ["localhost:3000"],
     answers: { localhost: [{ address: "127.0.0.1", family: 4 }] },
   });
@@ -262,8 +285,8 @@ test("exceptions are read live so revoking one takes effect immediately", async 
   await upstream.close();
 });
 
-test("a resolver failure is a refusal, not a crash", async () => {
-  const env = await setup({
+test("a resolver failure is a refusal, not a crash", async (t) => {
+  const env = await setup(t, {
     answers: () => {
       throw new Error("ENOTFOUND");
     },
@@ -274,8 +297,8 @@ test("a resolver failure is a refusal, not a crash", async () => {
   await env.close();
 });
 
-test("plain HTTP is forwarded to the pinned address with an origin-form path", async () => {
-  const env = await setup();
+test("plain HTTP is forwarded to the pinned address with an origin-form path", async (t) => {
+  const env = await setup(t);
   const result = await proxiedGet(env.port, "http://shop.example/cart?x=1");
   assert.equal(result.status, 200);
   assert.equal(result.body, "hello /cart?x=1");
@@ -288,8 +311,8 @@ test("plain HTTP is forwarded to the pinned address with an origin-form path", a
   await env.close();
 });
 
-test("plain HTTP to a private target is refused and non http requests are rejected", async () => {
-  const env = await setup({
+test("plain HTTP to a private target is refused and non http requests are rejected", async (t) => {
+  const env = await setup(t, {
     answers: { "evil.example": [{ address: "10.1.1.1", family: 4 }] },
   });
   assert.equal(
@@ -324,8 +347,8 @@ test("plain HTTP to a private target is refused and non http requests are reject
   await env.close();
 });
 
-test("the connection cap holds", async () => {
-  const env = await setup({ maxConnections: 1 });
+test("the connection cap holds", async (t) => {
+  const env = await setup(t, { maxConnections: 1 });
   const first = await rawConnect(env.port, "a.example:443");
   assert.ok(first.data.startsWith("HTTP/1.1 200"));
   const second = await rawConnect(env.port, "b.example:443");
@@ -334,8 +357,8 @@ test("the connection cap holds", async () => {
   await env.close();
 });
 
-test("stop closes every open tunnel", async () => {
-  const env = await setup();
+test("stop closes every open tunnel", async (t) => {
+  const env = await setup(t);
   const { socket } = await rawConnect(env.port, "shop.example:443");
   let closed = false;
   socket.on("close", () => {
