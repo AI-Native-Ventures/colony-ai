@@ -14,6 +14,7 @@ import { browserApprovalOrigin } from "./browserTaskScope";
 export type BrowserControlState = {
   enabled: boolean;
   loading: boolean;
+  recoveryRequired: boolean;
   busy: string | null;
   error: string | null;
   grant: BrowserGrant | null;
@@ -37,6 +38,7 @@ export function createBrowserControlStore({
   let state: BrowserControlState = {
     enabled: false,
     loading: true,
+    recoveryRequired: false,
     busy: null,
     error: null,
     grant: null,
@@ -102,8 +104,12 @@ export function createBrowserControlStore({
         refreshAgain = false;
         const version = revision;
         try {
-          const status = await api.status();
+          const status = await api.status(tabId || undefined);
           if (!live()) return;
+          if (version !== revision) {
+            refreshAgain = true;
+            continue;
+          }
           if (!status.enabled) {
             update({ enabled: false, loading: false });
             return;
@@ -120,7 +126,12 @@ export function createBrowserControlStore({
             continue;
           }
           const grant = grants.find(belongs) ?? null;
-          update({ grant, loading: false, error: null });
+          update({
+            grant,
+            loading: false,
+            error: null,
+            recoveryRequired: status.recoveryRequired === true,
+          });
           update({
             pending: safePending(pending),
             log: mergeLog(log, [...state.log]),
@@ -150,6 +161,12 @@ export function createBrowserControlStore({
 
   function event(event: BrowserBrokerEvent) {
     if (!alive) return;
+    if (event.type === "control-recovery" && event.tabId === tabId) {
+      revision += 1;
+      if (refreshPromise) refreshAgain = true;
+      update({ recoveryRequired: event.required });
+      return;
+    }
     if (event.type === "agent-action") {
       update({ log: mergeLog([...state.log], [event.entry]) });
       return;
@@ -249,6 +266,7 @@ export function createBrowserControlStore({
         log: [],
         busy: null,
         loading: true,
+        recoveryRequired: false,
         error: null,
       });
       unsubscribe = api.onEvent((message) => {
@@ -268,7 +286,7 @@ export function createBrowserControlStore({
     },
     approve(agentId: string, origin: string) {
       const site = browserApprovalOrigin(origin);
-      if (!taskId || !site || state.grant)
+      if (!taskId || !site || state.grant || state.recoveryRequired)
         return Promise.reject(
           new Error("No browser task is ready for approval"),
         );
@@ -282,6 +300,9 @@ export function createBrowserControlStore({
           ttlMs: 15 * 60_000,
         }),
       );
+    },
+    recoverControl() {
+      return run("recover", () => api.recoverControl(tabId), true);
     },
     stop() {
       const grant = state.grant;

@@ -100,7 +100,11 @@ export function BrowserAgentControls({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span aria-live="polite" role="status" data-testid="browser-controller">
-          {grant ? `${name} has control` : "You’re browsing"}
+          {grant
+            ? `${name} has control`
+            : state.recoveryRequired
+              ? "Agent access revoked; control recovery needed"
+              : "You’re browsing"}
         </span>
         {grant ? (
           <div className="flex gap-2">
@@ -124,7 +128,14 @@ export function BrowserAgentControls({
         ) : (
           <button
             className="colony-work-area-choice"
-            disabled={!state.enabled || !hostId || !site || !taskId || busy}
+            disabled={
+              !state.enabled ||
+              !hostId ||
+              !site ||
+              !taskId ||
+              busy ||
+              state.recoveryRequired
+            }
             onClick={() => setApproving(true)}
             type="button"
           >
@@ -132,6 +143,22 @@ export function BrowserAgentControls({
           </button>
         )}
       </div>
+      {state.recoveryRequired ? (
+        <div role="alert">
+          <p>Agent access is revoked. Native browser controls need recovery.</p>
+          <button
+            type="button"
+            className="colony-work-area-choice mt-1"
+            disabled={busy}
+            onClick={() => run(store.recoverControl)}
+          >
+            Recover browser control
+          </button>
+          <p className="text-muted-foreground">
+            If recovery cannot finish, close this browser tab.
+          </p>
+        </div>
+      ) : null}
       {busy ? (
         <p aria-live="polite" role="status">
           {state.busy === "stop" || state.busy === "take-over"

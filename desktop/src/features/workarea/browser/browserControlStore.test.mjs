@@ -86,6 +86,10 @@ function fixture() {
       pending = [];
       return { resolved: true };
     },
+    async recoverControl(id) {
+      calls.push(["recover", id]);
+      return { recovered: true };
+    },
     async chooseUpload() {
       return { cancelled: true };
     },
@@ -287,5 +291,47 @@ test("failed Stop preserves the active task and exposes a retry", async () => {
   assert.equal(f.store.getSnapshot().grant.id, grant.id);
   assert.match(f.store.getSnapshot().error, /Try again/);
   assert.equal(f.store.getSnapshot().busy, null);
+  f.store.dispose();
+});
+
+test("native recovery stays explicit and blocks new approval after access was revoked", async () => {
+  const f = fixture();
+  await f.store.start();
+  f.setGrants([]);
+  f.api.status = async () => ({ enabled: true, recoveryRequired: true });
+  f.emit({ type: "grant-changed", grantId: grant.id, state: "revoked" });
+  await f.store.refresh();
+  assert.equal(f.store.getSnapshot().grant, null);
+  assert.equal(f.store.getSnapshot().recoveryRequired, true);
+  await assert.rejects(f.store.approve("agent-one", "https://example.com"));
+  assert.equal(f.calls.filter(([action]) => action === "recover").length, 0);
+  f.api.recoverControl = async (id) => {
+    f.calls.push(["recover", id]);
+    f.api.status = async () => ({ enabled: true, recoveryRequired: false });
+    return { recovered: true };
+  };
+  await f.store.recoverControl();
+  assert.equal(f.store.getSnapshot().recoveryRequired, false);
+  assert.deepEqual(f.calls.at(-1), ["recover", "tab-one"]);
+  f.store.dispose();
+});
+
+test("a stale status response cannot clear a live native recovery failure", async () => {
+  const f = fixture();
+  await f.store.start();
+  const status = deferred();
+  let first = true;
+  f.api.status = async () => {
+    if (first) {
+      first = false;
+      return status.promise;
+    }
+    return { enabled: true, recoveryRequired: true };
+  };
+  const pending = f.store.refresh();
+  f.emit({ type: "control-recovery", tabId: "tab-one", required: true });
+  status.resolve({ enabled: true, recoveryRequired: false });
+  await pending;
+  assert.equal(f.store.getSnapshot().recoveryRequired, true);
   f.store.dispose();
 });

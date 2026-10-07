@@ -16,6 +16,8 @@ export async function installBrowserBrokerFake(page: Page, enabled = true) {
       let holdConfirm = false;
       let held: ((result: { resolved: boolean }) => void) | null = null;
       let confirmed = 0;
+      let recoveryRequired = false;
+      let failStop = false;
       const emit = (event: BrowserBrokerEvent) => {
         for (const listener of listeners) listener(event);
       };
@@ -29,9 +31,17 @@ export async function installBrowserBrokerFake(page: Page, enabled = true) {
         async request(action, input = {}) {
           const payload = input as Record<string, unknown>;
           calls.push({ action, payload: structuredClone(payload) });
-          if (action === "agent-status") return { enabled };
+          if (action === "agent-status") return { enabled, recoveryRequired };
           if (!enabled) throw new Error("Agent browser is disabled");
           switch (action) {
+            case "agent-recover-control":
+              recoveryRequired = false;
+              emit({
+                type: "control-recovery",
+                tabId: String(payload.tabId),
+                required: false,
+              });
+              return { recovered: true };
             case "agent-grants":
               return grant ? [structuredClone(grant)] : [];
             case "agent-pending":
@@ -48,7 +58,8 @@ export async function installBrowserBrokerFake(page: Page, enabled = true) {
                 },
               ];
             case "agent-grant": {
-              if (grant) throw new Error("Already approved");
+              if (grant || recoveryRequired)
+                throw new Error("Control is unavailable");
               grant = {
                 ...(structuredClone(payload) as unknown as BrowserGrant),
                 id: "fixture-grant",
@@ -80,6 +91,16 @@ export async function installBrowserBrokerFake(page: Page, enabled = true) {
                 });
               held?.({ resolved: false });
               held = null;
+              if (failStop && old) {
+                failStop = false;
+                recoveryRequired = true;
+                emit({
+                  type: "control-recovery",
+                  tabId: old.primaryTabId,
+                  required: true,
+                });
+                throw new Error("Native control recovery required");
+              }
               return { revoked: true, takenOver: true };
             }
             case "agent-approve-origin": {
@@ -118,6 +139,9 @@ export async function installBrowserBrokerFake(page: Page, enabled = true) {
           calls,
           grant: () => grant,
           confirmed: () => confirmed,
+          failNextStop: () => {
+            failStop = true;
+          },
           holdConfirmation: () => {
             holdConfirm = true;
           },

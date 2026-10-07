@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { installMockBridge } from "../helpers/bridge";
+import { waitForAnimations } from "../helpers/animations";
 import { installBrowserHostFake } from "./helpers/browserHostFake";
 import { installBrowserBrokerFake } from "./helpers/browserBrokerFake";
 
@@ -9,6 +10,7 @@ type Fixture = {
   grant(): { allowedOrigins: string[] } | null;
   confirmed(): number;
   holdConfirmation(): void;
+  failNextStop(): void;
   confirmation(category: string, summary: string): void;
   site(origin: string): void;
 };
@@ -86,9 +88,13 @@ test("agent controls stay absent with the main feature off", async ({
 
 test("person approves task and site, confirms consequences, and takeover fences pending confirmation", async ({
   page,
-}) => {
+}, testInfo) => {
   await boot(page);
   await allow(page);
+  await waitForAnimations(page);
+  await controls(page).screenshot({
+    path: testInfo.outputPath("browser-controls-approved.png"),
+  });
   for (const [category, summary, title] of [
     ["payment", "Buy now", "Confirm this purchase or payment?"],
     ["send_or_post", "Send message", "Send or publish this content?"],
@@ -105,6 +111,12 @@ test("person approves task and site, confirms consequences, and takeover fences 
     await expect(
       dialog.getByRole("button", { name: "Reject", exact: true }),
     ).toBeFocused();
+    if (category === "payment") {
+      await waitForAnimations(page);
+      await controls(page).screenshot({
+        path: testInfo.outputPath("browser-controls-payment.png"),
+      });
+    }
     const before = await page.evaluate(() =>
       window.colonyBrowserControlFixture?.confirmed(),
     );
@@ -144,7 +156,8 @@ test("person approves task and site, confirms consequences, and takeover fences 
   await dialog.getByRole("button", { name: "Confirm action" }).click();
   await controls(page)
     .getByRole("button", { name: "Take over", exact: true })
-    .click();
+    .focus();
+  await page.keyboard.press("Enter");
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId("browser-controller")).toHaveText(
     "You’re browsing",
@@ -159,4 +172,37 @@ test("person approves task and site, confirms consequences, and takeover fences 
   await expect(page.getByTestId("browser-controller")).toHaveText(
     "You’re browsing",
   );
+});
+
+test("failed native Stop keeps access revoked and exposes control recovery", async ({
+  page,
+}) => {
+  await boot(page);
+  await allow(page);
+  await page.evaluate(() => window.colonyBrowserControlFixture?.failNextStop());
+  await controls(page)
+    .getByRole("button", { name: "Stop", exact: true })
+    .click();
+  await expect(
+    controls(page).getByRole("button", { name: "Recover browser control" }),
+  ).toBeVisible();
+  await expect(
+    controls(page).getByRole("button", { name: "Allow an agent" }),
+  ).toBeDisabled();
+  await expect(page.getByTestId("browser-controller")).toHaveText(
+    "Agent access revoked; control recovery needed",
+  );
+  expect(
+    await page.evaluate(() => window.colonyBrowserControlFixture?.grant()),
+  ).toBeNull();
+  await controls(page)
+    .getByRole("button", { name: "Recover browser control" })
+    .focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("browser-controller")).toHaveText(
+    "You’re browsing",
+  );
+  await expect(
+    controls(page).getByRole("button", { name: "Allow an agent" }),
+  ).toBeEnabled();
 });

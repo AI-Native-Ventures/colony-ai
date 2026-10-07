@@ -1016,3 +1016,96 @@ test("narrowing the grant while an action is in flight fences it", async () => {
   const result = await pending;
   assert.equal(result.code, "fenced");
 });
+
+test("takeover fences access even when native Stop throws and retains recovery until retry succeeds", async () => {
+  const env = setup();
+  let unavailable = true;
+  let controlCalls = 0;
+  env.driver.stopTab = () => {
+    if (unavailable) throw new Error("native details password=hunter2");
+  };
+  env.driver.setControl = async () => {
+    controlCalls += 1;
+  };
+  assert.equal(env.broker.takeOver(env.grant.id), true);
+  assert.equal(env.broker.toolsFor(env.token).length, 0);
+  await assert.rejects(
+    env.broker.completeControlRelease(env.grant.id),
+    /recovery/iu,
+  );
+  assert.equal(controlCalls, 1);
+  assert.equal(env.broker.controlRecoveryRequired("tab-1"), true);
+  assert.ok(
+    env.events.some(
+      (event) => event.type === "grant-changed" && event.state === "taken-over",
+    ),
+  );
+  assert.ok(
+    env.events.some(
+      (event) => event.type === "control-recovery" && event.required,
+    ),
+  );
+  assert.equal(JSON.stringify(env.broker.getLog()).includes("hunter2"), false);
+  unavailable = false;
+  await env.broker.recoverControl("tab-1");
+  assert.equal(env.broker.controlRecoveryRequired("tab-1"), false);
+  assert.equal(controlCalls, 2);
+});
+
+test("hung native recovery has a deadline and retries never duplicate an in-flight native operation", async () => {
+  const env = setup({ brokerOptions: { controlTimeoutMs: 20 } });
+  let resolve;
+  let calls = 0;
+  env.driver.stopTab = () => {
+    calls += 1;
+    return new Promise((done) => {
+      resolve = done;
+    });
+  };
+  env.broker.revoke(env.grant.id);
+  await assert.rejects(
+    env.broker.completeControlRelease(env.grant.id),
+    /recovery/iu,
+  );
+  await assert.rejects(env.broker.recoverControl("tab-1"), /recovery/iu);
+  assert.equal(calls, 1);
+  assert.equal(env.broker.controlRecoveryRequired("tab-1"), true);
+  resolve();
+  await env.broker.completeControlRelease(env.grant.id);
+  assert.equal(env.broker.controlRecoveryRequired("tab-1"), false);
+});
+
+test("tab closure retires native recovery and late failures cannot revive it", async () => {
+  const env = setup();
+  let reject;
+  env.driver.stopTab = () =>
+    new Promise((_, fail) => {
+      reject = fail;
+    });
+  env.broker.revoke(env.grant.id);
+  await Promise.resolve();
+  env.broker.notifyTabClosed("tab-1");
+  reject(new Error("closed tab"));
+  await env.broker.completeControlRelease(env.grant.id);
+  assert.equal(env.broker.controlRecoveryRequired("tab-1"), false);
+});
+
+test("failed awaiting-control update revokes access and cannot leave a confirmable action", async () => {
+  const env = setup();
+  const snapshot = await snapshotRefs(env);
+  env.driver.setControl = async (_, owner) => {
+    if (owner === "agent-awaiting-confirmation")
+      throw new Error("native unavailable");
+  };
+  const result = await env.call("browser_click", {
+    tab: "tab-1",
+    ref: env.refOf(snapshot, "Pay now"),
+  });
+  assert.equal(result.ok, false);
+  assert.equal(env.caps.getGrant(env.grant.id).state, "revoked");
+  assert.equal(env.broker.pendingConfirmations().length, 0);
+  assert.equal(
+    env.driver.calls.some((action) => action.op === "click"),
+    false,
+  );
+});

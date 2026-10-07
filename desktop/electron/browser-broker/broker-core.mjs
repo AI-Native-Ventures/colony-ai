@@ -124,6 +124,7 @@ export function createBroker({
   maxQueue = 4,
   maxScreenshotBytes = 2 * 1024 * 1024,
   maxActionMs = 60_000,
+  controlTimeoutMs = 5_000,
 } = {}) {
   const registries = new Map();
   const documentIds = new Map();
@@ -134,6 +135,9 @@ export function createBroker({
   const uploads = new Map();
   const listeners = new Set();
   const approvalNotices = new Map();
+  // One record per main-owned native tab, bounded by the host's tab limit.
+  // Failed or hung work is retained until a person retries or the tab closes.
+  const controlReleases = new Map();
 
   function emit(type, payload = {}) {
     for (const listener of [...listeners]) {
@@ -187,6 +191,95 @@ export function createBroker({
 
   // ---- grant lifecycle -------------------------------------------------
 
+  function releaseTabControl(tabId, grant) {
+    const entry = {
+      tabId,
+      grant,
+      settled: false,
+      failed: false,
+      reported: false,
+      job: null,
+    };
+    controlReleases.set(tabId, entry);
+    const begin = (operation) => {
+      try {
+        return Promise.resolve(operation());
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    };
+    const attempts = [
+      begin(() => driver.stopTab?.(tabId)),
+      begin(() => driver.setControl?.(tabId, "human")),
+    ];
+    entry.job = Promise.allSettled(attempts).then((results) => {
+      if (controlReleases.get(tabId) !== entry) return;
+      entry.settled = true;
+      entry.failed = results.some((result) => result.status === "rejected");
+      if (entry.failed) reportControlFailure(entry);
+      else {
+        controlReleases.delete(tabId);
+        emit("control-recovery", { tabId, required: false });
+      }
+    });
+    return entry;
+  }
+
+  function reportControlFailure(entry) {
+    if (controlReleases.get(entry.tabId) !== entry || entry.reported) return;
+    entry.reported = true;
+    record(
+      entry.grant,
+      "browser_control",
+      { tab: entry.tabId },
+      "error",
+      now(),
+      {
+        code: "control_recovery_required",
+        summary: "Browser access revoked; native control recovery required.",
+      },
+    );
+    emit("control-recovery", { tabId: entry.tabId, required: true });
+  }
+
+  async function awaitControlRelease(entry) {
+    if (controlReleases.get(entry.tabId) !== entry) return;
+    let timer;
+    try {
+      await Promise.race([
+        entry.job,
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            reportControlFailure(entry);
+            reject(
+              new BrokerError(
+                "driver_error",
+                "Browser control recovery is required.",
+              ),
+            );
+          }, controlTimeoutMs);
+        }),
+      ]);
+      if (controlReleases.get(entry.tabId) === entry && entry.failed)
+        throw new BrokerError(
+          "driver_error",
+          "Browser control recovery is required.",
+        );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function recoverControl(tabId) {
+    let entry = controlReleases.get(tabId);
+    if (!entry) return;
+    // A timed-out operation may still complete. Never duplicate it or grant
+    // new control while that old native operation could overwrite the owner.
+    if (entry.settled && entry.failed)
+      entry = releaseTabControl(tabId, entry.grant);
+    await awaitControlRelease(entry);
+  }
+
   function endGrant(event) {
     const grant = capabilities.getGrant(event.grantId);
     for (const controller of controllers.get(event.grantId) ?? [])
@@ -198,10 +291,7 @@ export function createBroker({
       if (upload.grantId === event.grantId) uploads.delete(uploadId);
     }
     for (const tabId of grant?.tabIds ?? []) {
-      void Promise.resolve(driver.stopTab?.(tabId)).catch(() => undefined);
-      void Promise.resolve(driver.setControl?.(tabId, "human")).catch(
-        () => undefined,
-      );
+      releaseTabControl(tabId, grant);
     }
     for (const tabId of grant?.tabIds ?? []) {
       // Element references never outlive the grant that created them.
@@ -261,9 +351,12 @@ export function createBroker({
         category: result.category,
         expiresAt: now() + confirmationTimeoutMs,
       });
-      void Promise.resolve(
-        driver.setControl?.(tabId, "agent-awaiting-confirmation"),
-      ).catch(() => undefined);
+      void Promise.resolve()
+        .then(() => driver.setControl?.(tabId, "agent-awaiting-confirmation"))
+        .catch(() => {
+          settle(actionId, "control_unavailable");
+          capabilities.revoke(ctx.grant.id, "native control unavailable");
+        });
       emit("confirmation-requested", {
         actionId,
         grantId: ctx.grant.id,
@@ -277,10 +370,14 @@ export function createBroker({
         once: true,
       });
     });
-    if (capabilities.getGrant(ctx.grant.id)?.state === "active")
-      void Promise.resolve(driver.setControl?.(tabId, "agent")).catch(
-        () => undefined,
-      );
+    if (capabilities.getGrant(ctx.grant.id)?.state === "active") {
+      try {
+        await driver.setControl?.(tabId, "agent");
+      } catch (error) {
+        capabilities.revoke(ctx.grant.id, "native control unavailable");
+        throw error;
+      }
+    }
     if (outcome === "approved") return;
     if (outcome === "fenced") {
       ctx.check();
@@ -907,6 +1004,25 @@ export function createBroker({
       capabilities.approveOrigin(grantId, url, options),
     revoke: (grantId, reason) => capabilities.revoke(grantId, reason),
     takeOver: (grantId) => capabilities.takeOver(grantId),
+    /** Native cleanup is separate from immediate, authoritative access fencing. */
+    completeControlRelease: (grantId) =>
+      Promise.all(
+        [...controlReleases.values()]
+          .filter((entry) => entry.grant?.id === grantId)
+          .map(awaitControlRelease),
+      ),
+    /** Person retries retained cleanup; an in-flight attempt is never duplicated. */
+    recoverControl,
+    controlRecoveryRequired: (tabId) => controlReleases.has(tabId),
+    /** Main retains network cleanup records and reports their recovery affordance. */
+    notifyContainmentRecovery(tabId, required) {
+      if (required)
+        record(null, "browser_network", { tab: tabId }, "error", now(), {
+          code: "network_recovery_required",
+          summary: "Browser access revoked; network recovery required.",
+        });
+      emit("control-recovery", { tabId, required });
+    },
     /** Host registers a file the person chose. The agent only gets the id. */
     registerUpload(grantId, { path, name, size }) {
       const grant = capabilities.getGrant(grantId);
@@ -931,6 +1047,8 @@ export function createBroker({
       if (grant?.primaryTabId === tabId)
         capabilities.revoke(grant.id, "tab closed");
       else if (grant) capabilities.unbindTab(grant.id, tabId);
+      // Closing destroys the native view. Late cleanup results cannot revive it.
+      controlReleases.delete(tabId);
     },
     /**
      * Synchronous navigation gate for the driver's will-navigate and
