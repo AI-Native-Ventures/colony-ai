@@ -3,6 +3,7 @@ import { Bell, Folder, House, Search } from "lucide-react";
 import { useAppShell } from "@/app/AppShellContext";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useChannelsQuery } from "@/features/channels/hooks";
+import { PinnedMessagesList } from "@/features/pins/ui/PinnedMessagesList";
 import { Button } from "@/shared/ui/button";
 import { WorkspaceTopBar } from "@/shared/ui/workspace-topbar";
 
@@ -61,11 +62,16 @@ export function ChannelPinsScreen({ channelId }: { channelId: string }) {
             Browse channels
           </Button>
         </header>
-        <div className="colony-channel-pins-empty" role="status">
-          <Folder aria-hidden="true" />
-          <h2>No pinned messages</h2>
-          <p>Pin a message from its menu so the team can find it.</p>
-        </div>
+        <PinnedMessagesList
+          channelId={channelId}
+          empty={
+            <div className="colony-channel-pins-empty" role="status">
+              <Folder aria-hidden="true" />
+              <h2>No pinned messages</h2>
+              <p>Pin a message from its menu so the team can find it.</p>
+            </div>
+          }
+        />
       </main>
     </div>
   );

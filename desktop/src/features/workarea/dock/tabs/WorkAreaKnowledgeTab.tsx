@@ -7,6 +7,7 @@ import {
   useChannelMembersQuery,
   useChannelsQuery,
 } from "@/features/channels/hooks";
+import { PinnedMessagesList } from "@/features/pins/ui/PinnedMessagesList";
 import { plainRelayErrorMessage } from "@/shared/lib/relayError";
 import { Button } from "@/shared/ui/button";
 
@@ -33,8 +34,9 @@ function formatUpdated(unixSeconds: number): string {
 
 /**
  * Knowledge tab: the memory documents of the AI employees you manage that are in
- * this channel, read-only. Real data only; see `workAreaKnowledgeModel.ts` for
- * the read model and for why pins are an honest gap rather than a list.
+ * this channel, read-only, under its channel notes and pinned messages. Real data
+ * only; see `workAreaKnowledgeModel.ts` for the memory read model and
+ * `features/pins/pinModels.ts` for the pin contract.
  */
 export function WorkAreaKnowledgeTab({ channelId }: WorkAreaTabPanelProps) {
   const channelsQuery = useChannelsQuery();
@@ -229,7 +231,7 @@ export function WorkAreaKnowledgeTab({ channelId }: WorkAreaTabPanelProps) {
   }
 }
 
-/** Channel notes, then pins (an honest gap), then whatever memory content the caller renders. One scroll area. */
+/** Channel notes, then pinned messages, then whatever memory content the caller renders. One scroll area. */
 function KnowledgeFrame({
   channelId,
   topic,
@@ -253,18 +255,16 @@ function KnowledgeFrame({
       />
       <section
         aria-labelledby={`${TEST_ID}-pins-title`}
-        className="shrink-0 border-b border-border px-3 py-3"
+        className="shrink-0 border-b border-border"
         data-testid={`${TEST_ID}-pins`}
       >
         <h2
-          className="text-xs font-semibold text-foreground"
+          className="px-3 pt-3 text-xs font-semibold text-foreground"
           id={`${TEST_ID}-pins-title`}
         >
           Pinned
         </h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          No pinned messages. Pinning a message is not available in Colony yet.
-        </p>
+        <PinnedMessagesList channelId={channelId} />
       </section>
       {children}
     </div>
