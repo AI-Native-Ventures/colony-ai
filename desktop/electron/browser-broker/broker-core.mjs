@@ -314,6 +314,7 @@ export function createBroker({
       },
       release() {
         set.delete(controller);
+        if (set.size === 0) controllers.delete(grant.id);
       },
     };
     return ctx;
@@ -356,22 +357,26 @@ export function createBroker({
   }
 
   async function approvedNavigationTarget(ctx, tabId, url) {
-    const guarded = await guardNavigation(url, {
-      resolver,
+    const checked = checkUrl(url, {
       privateExceptions: ctx.grant.privateExceptions,
     });
-    if (!guarded.ok) throw new BrokerError(guarded.code, guarded.reason);
-    ctx.check();
-    const authorized = capabilities.authorize(ctx.token, { url: guarded.url });
+    if (!checked.ok) throw new BrokerError(checked.code, checked.reason);
+    const authorized = capabilities.authorize(ctx.token, { url: checked.url });
     if (!authorized.ok) {
       if (authorized.code === "origin_approval_required") {
-        noticeOrigin(ctx.grant, tabId ?? "new", authorized.origin, guarded.url);
+        noticeOrigin(ctx.grant, tabId ?? "new", authorized.origin, checked.url);
         throw new BrokerError("origin_approval_required", undefined, {
           origin: authorized.origin,
         });
       }
       throw new BrokerError(authorized.code);
     }
+    const guarded = await guardNavigation(checked.url, {
+      resolver,
+      privateExceptions: ctx.grant.privateExceptions,
+    });
+    if (!guarded.ok) throw new BrokerError(guarded.code, guarded.reason);
+    ctx.check();
     return guarded;
   }
 

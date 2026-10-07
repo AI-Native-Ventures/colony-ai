@@ -593,10 +593,12 @@ export function createBrowserHost({
       const tab = tabs.get(id);
       if (tab) closeRecord(tab);
     },
-    loadUrl(id, url) {
+    async loadUrl(id, url) {
       const tab = tabs.get(id);
       if (!tab) throw new Error("Browser tab closed");
-      return loadTab(tab, url);
+      const result = await loadTab(tab, url);
+      if (result.error && !blockedNavigations.has(id)) throw new Error("Browser navigation failed");
+      return result;
     },
     history(id, action) {
       const tab = tabs.get(id);

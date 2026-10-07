@@ -969,3 +969,36 @@ test("driver errors reach the agent as their own code through the broker", async
   assert.ok(!/obj-|stack|node_modules/u.test(JSON.stringify(result)));
   assert.equal(rig.methods().includes("Input.dispatchMouseEvent"), false);
 });
+
+test("already aborted input cannot dispatch another CDP command", async () => {
+  const rig = createRig();
+  await rig.driver.snapshot("tab-1");
+  const before = rig.calls.length;
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    rig.driver.click("tab-1", 11, { signal: controller.signal }),
+  );
+  assert.equal(rig.calls.length, before);
+});
+
+test("revocation after mouse movement fences the press and release", async () => {
+  const rig = createRig();
+  await assert.rejects(
+    rig.driver.click("tab-1", 11, {
+      check() {
+        if (
+          rig.calls.some((call) => call.method === "Input.dispatchMouseEvent")
+        )
+          throw new Error("revoked");
+      },
+    }),
+    /revoked/u,
+  );
+  assert.deepEqual(
+    rig.calls
+      .filter((call) => call.method === "Input.dispatchMouseEvent")
+      .map((call) => call.params.type),
+    ["mouseMoved"],
+  );
+});

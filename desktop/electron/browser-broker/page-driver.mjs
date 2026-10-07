@@ -133,6 +133,7 @@ export function createPageDriver({
     if (!ALLOWED_CDP_METHODS.has(method))
       throw new Error(`CDP method not allowed: ${String(method).slice(0, 60)}`);
     let timer;
+    let onAbort;
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(
         () => reject(new DriverError("cdp_timeout")),
@@ -143,11 +144,8 @@ export function createPageDriver({
     const aborted = signal
       ? new Promise((_, reject) => {
           if (signal.aborted) reject(new DriverError("cdp_timeout"));
-          signal.addEventListener(
-            "abort",
-            () => reject(new DriverError("cdp_timeout")),
-            { once: true },
-          );
+          onAbort = () => reject(new DriverError("cdp_timeout"));
+          signal.addEventListener("abort", onAbort, { once: true });
         })
       : null;
     try {
@@ -160,6 +158,7 @@ export function createPageDriver({
       );
     } finally {
       clearTimeout(timer);
+      if (onAbort) signal.removeEventListener("abort", onAbort);
     }
   }
 

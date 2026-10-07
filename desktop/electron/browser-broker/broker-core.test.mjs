@@ -257,10 +257,9 @@ test("navigation policy denies bad schemes, private networks and rebinding", asy
   const env = setup({
     origins: [
       "https://shop.example",
-      "http://localhost:3000",
       "https://rebind.example",
       "https://wild.example",
-    ].slice(0, 1),
+    ],
   });
   for (const [url, code] of [
     ["file:///etc/passwd", "scheme_denied"],

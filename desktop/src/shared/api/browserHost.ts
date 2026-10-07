@@ -1,5 +1,8 @@
-/** Agent mode is visible state only and grants no browser actions or credentials. */
-export type BrowserControlOwner = "human" | "agent";
+/** Agent actions require a separate main-owned, revocable task grant. */
+export type BrowserControlOwner =
+  | "human"
+  | "agent"
+  | "agent-awaiting-confirmation";
 
 export type BrowserTabBounds = {
   x: number;

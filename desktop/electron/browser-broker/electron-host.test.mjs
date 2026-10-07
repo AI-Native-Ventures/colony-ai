@@ -239,3 +239,35 @@ test("broker IPC accepts only the registered main window main frame", async () =
     /Untrusted/u,
   );
 });
+
+test("history checks the target entry before dispatch and navigation failures propagate", async (t) => {
+  const f = await fixture(t);
+  await f.grant();
+  const contents = f.browser.agentAdapter.webContents(f.tab.id);
+  let historyCalls = 0;
+  contents.navigationHistory = {
+    canGoBack: () => true,
+    canGoForward: () => false,
+    getAllEntries: () => [
+      { url: "https://other.example/" },
+      { url: "https://example.com/" },
+    ],
+    getActiveIndex: () => 1,
+    goBack() {
+      historyCalls += 1;
+    },
+  };
+  await f.browser.agentAdapter.history(f.tab.id, "back");
+  assert.equal(historyCalls, 0);
+  assert.equal(
+    f.browser.agentAdapter.consumeBlocked(f.tab.id).code,
+    "origin_approval_required",
+  );
+  contents.loadURL = async () => {
+    throw new Error("ERR_CONNECTION_REFUSED");
+  };
+  await assert.rejects(
+    f.browser.agentAdapter.loadUrl(f.tab.id, "https://example.com/"),
+    /failed/u,
+  );
+});
