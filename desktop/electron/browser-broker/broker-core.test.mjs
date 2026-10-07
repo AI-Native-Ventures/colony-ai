@@ -746,9 +746,10 @@ test("closing the person's tab ends the task's access to it", async () => {
   env.broker.notifyTabClosed("tab-1");
   assert.equal(
     (await env.call("browser_snapshot", { tab: "tab-1" })).code,
-    "not_found",
+    "grant_revoked",
   );
-  assert.deepEqual(env.caps.getGrant(env.grant.id).tabIds, []);
+  assert.equal(env.caps.getGrant(env.grant.id).state, "revoked");
+  assert.deepEqual(env.broker.toolsFor(env.token), []);
 });
 
 test("element references do not survive into a later grant", async () => {

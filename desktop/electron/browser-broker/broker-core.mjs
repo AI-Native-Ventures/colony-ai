@@ -330,7 +330,7 @@ export function createBroker({
     if (
       !info ||
       info.businessId !== ctx.grant.businessId ||
-      (ctx.grant.clientId !== null && info.clientId !== ctx.grant.clientId)
+      (info.clientId ?? null) !== ctx.grant.clientId
     )
       throw new BrokerError("not_found");
     if (info.controlOwner === "human")
@@ -503,7 +503,7 @@ export function createBroker({
       const created = await driver.openTab({
         businessId: ctx.grant.businessId,
         clientId: ctx.grant.clientId,
-        url: target.url,
+        primaryTabId: ctx.grant.primaryTabId,
         pinned: target.pinned,
         signal: ctx.signal,
       });
@@ -518,7 +518,13 @@ export function createBroker({
       set.add(created.id);
       openedTabs.set(ctx.grant.id, set);
       await driver.setControl?.(created.id, "agent");
-      return { tab: tabView(created, ctx.grant) };
+      ctx.check();
+      const result = await driver.navigate(created.id, target.url, {
+        signal: ctx.signal,
+        check: ctx.check,
+      });
+      blocked(result);
+      return { tab: tabView(await driver.getTab(created.id), ctx.grant) };
     },
 
     async browser_close(ctx, args) {
@@ -913,7 +919,9 @@ export function createBroker({
       registries.delete(tabId);
       documentIds.delete(tabId);
       const grant = capabilities.grantForTab(tabId);
-      if (grant) capabilities.unbindTab(grant.id, tabId);
+      if (grant?.primaryTabId === tabId)
+        capabilities.revoke(grant.id, "tab closed");
+      else if (grant) capabilities.unbindTab(grant.id, tabId);
     },
     /**
      * Synchronous navigation gate for the driver's will-navigate and

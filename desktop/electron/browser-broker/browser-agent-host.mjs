@@ -85,7 +85,12 @@ export async function createBrowserAgentHost({
           privateExceptions: payload.privateExceptions,
           ttlMs: payload.ttlMs,
         });
-        await driver.setControl?.(grant.primaryTabId, "agent");
+        try {
+          await driver.setControl?.(grant.primaryTabId, "agent");
+        } catch (error) {
+          broker.revoke(grant.id, "control unavailable");
+          throw error;
+        }
         return grant;
       }
       case "agent-revoke":

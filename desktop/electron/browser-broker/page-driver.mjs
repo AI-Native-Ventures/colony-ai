@@ -129,6 +129,7 @@ export function createPageDriver({
   // ---- CDP plumbing ------------------------------------------------------
 
   async function rawSend(session, method, params, signal) {
+    if (signal?.aborted) throw new DriverError("cdp_timeout");
     if (!ALLOWED_CDP_METHODS.has(method))
       throw new Error(`CDP method not allowed: ${String(method).slice(0, 60)}`);
     let timer;
@@ -323,8 +324,12 @@ export function createPageDriver({
 
     controlOwnerOf: (tabId) => adapter.getTab(tabId)?.controlOwner,
 
-    async openTab({ businessId, clientId, url }) {
-      const created = await adapter.createTab({ businessId, clientId, url });
+    async openTab({ businessId, clientId, primaryTabId }) {
+      const created = await adapter.createTab({
+        businessId,
+        clientId,
+        primaryTabId,
+      });
       const deadline = Date.now() + loadTimeoutMs;
       while (adapter.getTab(created.id)?.loading && Date.now() < deadline)
         await sleep(pollMs);
@@ -336,7 +341,9 @@ export function createPageDriver({
       await adapter.closeTab(tabId);
     },
 
-    async navigate(tabId, url, { signal } = {}) {
+    async navigate(tabId, url, { signal, check } = {}) {
+      check?.();
+      if (signal?.aborted) throw new DriverError("cdp_timeout");
       adapter.consumeBlocked?.(tabId);
       const onAbort = () => adapter.stop(tabId);
       signal?.addEventListener("abort", onAbort, { once: true });
@@ -349,7 +356,9 @@ export function createPageDriver({
       return blocked ? { blocked } : { url: adapter.getTab(tabId)?.url };
     },
 
-    async history(tabId, action, { signal } = {}) {
+    async history(tabId, action, { signal, check } = {}) {
+      check?.();
+      if (signal?.aborted) throw new DriverError("cdp_timeout");
       adapter.consumeBlocked?.(tabId);
       const onAbort = () => adapter.stop(tabId);
       signal?.addEventListener("abort", onAbort, { once: true });
@@ -454,12 +463,14 @@ export function createPageDriver({
           { ...base, type: "mouseMoved" },
           signal,
         );
+        check?.();
         await send(
           session,
           "Input.dispatchMouseEvent",
           { ...base, type: "mousePressed", clickCount: 1 },
           signal,
         );
+        check?.();
         await send(
           session,
           "Input.dispatchMouseEvent",

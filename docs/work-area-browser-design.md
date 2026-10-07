@@ -1,7 +1,8 @@
 # Work area agent browser: design
 
-Status: draft for owner review, 4 Oct 2026. Branch `codex/105-browser-broker`.
-Priority: post-launch improvement. It must not touch the 1.0.4 launch path.
+Status: approved scoped architecture resumed 7 Oct 2026 on `feat/agent-browser`.
+Priority: launch work by owner directive, 7 Oct; reputation is already damaged.
+Default OFF behind `COLONY_BROWSER_AGENT` until slices 1 through 3 pass and the owner enables it.
 Scope of this document: the backend (tab manager, policy, broker, MCP server,
 action log). The dock UI and the safety UI are built by other lanes and talk to
 this backend through the host events and IPC listed in section 12.
