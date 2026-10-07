@@ -263,3 +263,30 @@ test("subscribers hear about real changes only", () => {
   openWorkArea("chan-1", "files");
   assert.equal(calls, 2);
 });
+
+test("a kind opened often keeps one tab per id; a singleton stays one", () => {
+  openWorkArea("chan-1", "browser", "browser:a");
+  openWorkArea("chan-1", "browser", "browser:b");
+  openWorkArea("chan-1", "files");
+  openWorkArea("chan-1", "files");
+  // The same id focuses the tab that is already open instead of adding another.
+  openWorkArea("chan-1", "browser", "browser:a");
+  const state = getWorkAreaState("chan-1");
+  assert.deepEqual(
+    state.tabs.map((tab) => tab.id),
+    ["browser:a", "browser:b", "files"],
+  );
+  assert.equal(state.activeTabId, "browser:a");
+  closeWorkAreaTab("chan-1", "browser:a");
+  assert.deepEqual(
+    getWorkAreaState("chan-1").tabs.map((tab) => tab.id),
+    ["browser:b", "files"],
+  );
+  // And they survive a reload of the store with their kind and id intact.
+  resetWorkAreaStore();
+  initWorkAreaStore(COMMUNITY_A);
+  assert.deepEqual(getWorkAreaState("chan-1").tabs, [
+    { id: "browser:b", kind: "browser" },
+    { id: "files", kind: "files" },
+  ]);
+});

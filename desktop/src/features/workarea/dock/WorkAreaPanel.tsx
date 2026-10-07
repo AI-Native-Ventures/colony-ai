@@ -1,5 +1,7 @@
 import { X } from "lucide-react";
 
+import { isBrowserHostAvailable } from "@/shared/api/browserHost";
+
 import {
   getWorkAreaTabDefinition,
   listOpenableWorkAreaTabs,
@@ -84,8 +86,9 @@ export function WorkAreaPanel({
           <div className="colony-work-area-empty" data-testid="work-area-empty">
             <h2>Keep the work beside the conversation.</h2>
             <p>
-              Open a terminal, read a file, or see this channel's work and
-              knowledge.
+              {isBrowserHostAvailable()
+                ? "Open a page, a terminal or a file, or see this channel's work and knowledge."
+                : "Open a terminal, read a file, or see this channel's work and knowledge."}
             </p>
             <div className="colony-work-area-choices">
               {listOpenableWorkAreaTabs().map((definition) => {
@@ -118,7 +121,11 @@ export function WorkAreaPanel({
               key={tab.id}
               role="tabpanel"
             >
-              <definition.Panel active={active} channelId={channelId} />
+              <definition.Panel
+                active={active}
+                channelId={channelId}
+                tabId={tab.id}
+              />
             </section>
           );
         })}

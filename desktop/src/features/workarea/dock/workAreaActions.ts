@@ -56,14 +56,17 @@ function focusDockSoon() {
 /**
  * Open the dock (optionally on a tab) on behalf of `source`, the control that
  * asked for it. Focus moves into the dock and returns to `source` on close.
+ * `tabId` is for a kind that can be open several times; it is the id of the tab
+ * to add or focus.
  */
 export function openWorkAreaFrom(
   channelId: string,
   kind: WorkAreaTabKind | undefined,
   source: Element | null | undefined,
+  tabId?: string,
 ) {
   rememberTrigger(source);
-  openWorkArea(channelId, kind);
+  openWorkArea(channelId, kind, tabId);
   focusDockSoon();
 }
 

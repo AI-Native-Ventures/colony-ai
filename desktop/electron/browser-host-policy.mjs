@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 export const MAX_BROWSER_TABS = 12;
@@ -105,7 +105,13 @@ export function checkedBounds(value, window) {
   return bounds;
 }
 
-export function downloadFileName(name) {
+/**
+ * A file name that is safe to create in the user's Downloads folder: a bare
+ * name (no directories, no leading dots, no control or reserved characters)
+ * with the stem and extension bounded. Uniqueness is the caller's job, so the
+ * person sees `report.pdf`, not a machine-made suffix.
+ */
+export function safeDownloadName(name) {
   const base = String(name)
     .replace(/\\/gu, "/")
     .split("/")
@@ -113,11 +119,20 @@ export function downloadFileName(name) {
     ?.normalize("NFKC")
     .replace(/[^\p{L}\p{N}._ -]/gu, "_")
     .replace(/^\.+/u, "")
+    .trim()
     .slice(0, 120);
   const safe = base || "download";
   const extension = path.extname(safe).slice(0, 20);
   const stem = safe.slice(0, safe.length - extension.length) || "download";
-  return `${stem}-${Date.now()}-${randomUUID().slice(0, 8)}${extension}`;
+  return `${stem}${extension}`;
+}
+
+/** The nth collision-free spelling of a download name: `report (2).pdf`. */
+export function numberedDownloadName(name, attempt) {
+  if (attempt <= 0) return name;
+  const extension = path.extname(name);
+  const stem = name.slice(0, name.length - extension.length);
+  return `${stem} (${attempt})${extension}`;
 }
 
 export function navigationFailure(error) {
@@ -142,4 +157,49 @@ export function browserProfileIdentity(businessId, clientId) {
     "persist:colony-browser-".length,
   );
   return { partition, profileHash, businessHash };
+}
+
+/**
+ * Keyboard shortcuts that must keep working while the page has focus, because
+ * a native page view swallows key events before the app window sees them.
+ * Returns the action to relay to the app window, or null to leave the key to
+ * the page. `platform` follows `process.platform`.
+ */
+export function browserShortcutAction(input, platform) {
+  if (!isRecord(input) || input.type !== "keyDown" || input.isAutoRepeat)
+    return null;
+  const mac = platform === "darwin";
+  const primary = mac ? input.meta : input.control;
+  const other = mac ? input.control : input.meta;
+  if (other) return null;
+  const key = typeof input.key === "string" ? input.key.toLowerCase() : "";
+  if (primary && !input.alt) {
+    if (input.shift) return null;
+    switch (key) {
+      case "l":
+        return "focus-address";
+      case "t":
+        return "new-tab";
+      case "w":
+        return "close-tab";
+      case "r":
+        return "reload";
+      case "[":
+        return "back";
+      case "]":
+        return "forward";
+      case "\\":
+        return "toggle-dock";
+      default:
+        return null;
+    }
+  }
+  // Option+Arrow is word movement in a macOS text field, so Alt history keys
+  // are for Windows and Linux only; macOS uses Command+[ and Command+].
+  if (!mac && !primary && input.alt && !input.shift) {
+    if (key === "arrowleft") return "back";
+    if (key === "arrowright") return "forward";
+  }
+  if (!primary && !input.alt && !input.shift && key === "f5") return "reload";
+  return null;
 }
