@@ -437,6 +437,8 @@ type MockBridgeOptions = {
   /** Sequenced add-member failures. A string fails that call; null succeeds. */
   addChannelMembersErrors?: (string | null)[];
   channelMembersReadDelayMs?: number;
+  /** Hold `get_channel_members` reads until the spec releases them; see e2eBridge. */
+  holdChannelMembersReads?: boolean;
   channelsReadError?: string;
   /** Reject `get_channels` per applied relay URL; see e2eBridge mock config. */
   channelsReadErrorByRelayUrl?: Record<string, string>;

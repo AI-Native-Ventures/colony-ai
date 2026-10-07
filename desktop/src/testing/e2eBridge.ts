@@ -586,6 +586,10 @@ type E2eConfig = {
     /** Sequenced add-member failures. A string fails that call; null succeeds. */
     addChannelMembersErrors?: (string | null)[];
     channelMembersReadDelayMs?: number;
+    /** Hold every `get_channel_members` read until
+     *  `__BUZZ_E2E_RELEASE_CHANNEL_MEMBERS_READS__()` runs, so a spec can assert
+     *  the loading state without racing a timer against runner speed. */
+    holdChannelMembersReads?: boolean;
     createManagedAgentDelayMs?: number;
     channelTemplates?: ChannelTemplate[];
     /** Override display names for visual fixtures without changing channel IDs. */
@@ -2062,6 +2066,9 @@ declare global {
     __BUZZ_E2E_HOLD_USERS_BATCH__?: (hold: boolean) => number;
     /** Number of `get_users_batch` calls currently held. */
     __BUZZ_E2E_USERS_BATCH_PENDING__?: () => number;
+    /** Release every `get_channel_members` read held by `holdChannelMembersReads`
+     *  and let later reads through. Returns the number released. */
+    __BUZZ_E2E_RELEASE_CHANNEL_MEMBERS_READS__?: () => number;
     /** Release every `get_profile` response held by `deferProfileReads`. */
     __BUZZ_E2E_RELEASE_PROFILE_READS__?: () => number;
     /** Number of `get_profile` responses currently held. */
@@ -2204,6 +2211,10 @@ let profileReadsReleased = false;
 // second paste of the same label is provably still deciding).
 let holdUsersBatch = false;
 let heldUsersBatchReleases: Array<() => void> = [];
+// `get_channel_members` reads pinned by `holdChannelMembersReads` until the
+// spec releases them; after the release, reads pass straight through.
+let channelMembersReadsReleased = false;
+let heldChannelMembersReadReleases: Array<() => void> = [];
 // Starts currently held behind `startManagedAgentDelayMs`, releasable early
 // via `__BUZZ_E2E_RELEASE_MANAGED_AGENT_STARTS__()`: a spec that holds a
 // start across a community round-trip needs the hold long enough to be
@@ -13665,6 +13676,11 @@ async function handleGetChannelMembers(
   if (delayMs > 0) {
     await new Promise((resolve) => window.setTimeout(resolve, delayMs));
   }
+  if (config?.mock?.holdChannelMembersReads && !channelMembersReadsReleased) {
+    await new Promise<void>((resolve) => {
+      heldChannelMembersReadReleases.push(resolve);
+    });
+  }
 
   const identity = getIdentity(config);
   if (!identity) {
@@ -18333,6 +18349,8 @@ export function maybeInstallE2eTauriMocks() {
   profileReadsReleased = false;
   holdUsersBatch = false;
   heldUsersBatchReleases = [];
+  channelMembersReadsReleased = false;
+  heldChannelMembersReadReleases = [];
   cancelledMediaUploadIds = new Set<string>();
   for (const controller of mockMediaFetchControllers.values()) {
     controller.abort();
@@ -18377,6 +18395,12 @@ export function maybeInstallE2eTauriMocks() {
     return queued.length;
   };
   window.__BUZZ_E2E_USERS_BATCH_PENDING__ = () => heldUsersBatchReleases.length;
+  window.__BUZZ_E2E_RELEASE_CHANNEL_MEMBERS_READS__ = () => {
+    channelMembersReadsReleased = true;
+    const queued = heldChannelMembersReadReleases.splice(0);
+    for (const release of queued) release();
+    return queued.length;
+  };
   mockGlobalAgentConfig = config.mock?.globalAgentConfig
     ? { ...config.mock.globalAgentConfig }
     : null;
