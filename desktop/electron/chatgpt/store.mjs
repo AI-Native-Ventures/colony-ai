@@ -106,8 +106,8 @@ export function createChatGptStore(
       if (fd !== undefined) closeSync(fd);
     }
   }
-  function write(name, data) {
-    const contents = JSON.stringify(data);
+  function write(name, data, text = false) {
+    const contents = text ? data : JSON.stringify(data);
     if (Buffer.byteLength(contents) > MAX_BYTES)
       throw new ChatGptError("storage_too_large");
     const temp = path.join(root, `.${randomUUID()}.tmp`);
@@ -276,5 +276,20 @@ export function createChatGptStore(
     write("host.json", { id });
     return id;
   }
-  return { root, locked, snapshot, save, hostId };
+  return {
+    root,
+    locked,
+    snapshot,
+    save,
+    hostId,
+    // Main owns this credential-free projection with the same private atomic
+    // writer as credentials. Agents must not mutate shared circuit state.
+    runtimeSnapshot: () => read("plan-runtime.json"),
+    saveRuntime: (state) => write("plan-runtime.json", state),
+    saveCodexConfig: (text) => {
+      if (typeof text !== "string")
+        throw new ChatGptError("invalid_codex_config");
+      write("config.toml", text, true);
+    },
+  };
 }

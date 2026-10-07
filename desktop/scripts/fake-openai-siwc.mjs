@@ -255,6 +255,12 @@ export async function createFakeOpenAi({
     }
     if (path === "/v1/responses" && request.method === "POST") {
       counters.responses++;
+      if (faults.responseRedirect) {
+        response
+          .writeHead(302, { Location: `${origin}/redirect-target` })
+          .end();
+        return;
+      }
       if (!session || faults.revoked)
         return fail(response, "subscription_sharing_invalid_user", 401);
       const data = JSON.parse(await body(request));

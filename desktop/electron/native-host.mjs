@@ -5,6 +5,7 @@ import { createWriteStream } from "node:fs";
 const PREFIX = "@colony-native:";
 const MAX_FRAME = 16 * 1024 * 1024;
 const MAX_NATIVE_HOST_LOG_BYTES = 2 * 1024 * 1024;
+const MAX_PRIVATE_FRAME = 64 * 1024;
 
 /** Long-running native commands get a longer deadline than ordinary calls. */
 const LONG_COMMANDS = new Map([
@@ -27,6 +28,9 @@ export class NativeHost extends EventEmitter {
   sequence = 0;
   buffer = Buffer.alloc(0);
   ended = false;
+  privatePending = new Map();
+  privateSequence = 0;
+  closingNative = false;
 
   constructor(
     executable,
@@ -35,9 +39,21 @@ export class NativeHost extends EventEmitter {
       spawnProcess = spawn,
       timeout = 60000,
       shutdownGrace = 5000,
+      onPrivateRequest,
+      privateTimeout = 60_000,
     } = {},
   ) {
     super();
+    if (
+      (onPrivateRequest !== undefined &&
+        typeof onPrivateRequest !== "function") ||
+      !Number.isInteger(privateTimeout) ||
+      privateTimeout < 1 ||
+      privateTimeout > 60_000
+    )
+      throw new Error("Invalid private native handler");
+    this.onPrivateRequest = onPrivateRequest;
+    this.privateTimeout = privateTimeout;
     this.timeout = timeout;
     this.shutdownGrace = shutdownGrace;
     this.child = spawnProcess(executable, [], {
@@ -130,6 +146,8 @@ export class NativeHost extends EventEmitter {
         clearTimeout(pending.timer);
         if (Object.hasOwn(message, "error")) pending.reject(message.error);
         else pending.resolve(message.result);
+      } else if (message.type === "private_request") {
+        this.dispatchPrivate(message);
       } else if (["event", "channel"].includes(message.type))
         this.emit(message.type, message);
       else {
@@ -139,9 +157,85 @@ export class NativeHost extends EventEmitter {
     }
   }
 
+  /** Parent-only replies use stdio directly, never event or renderer routing. */
+  replyPrivate(id, value) {
+    if (this.ended || this.closingNative) return;
+    let frame;
+    try {
+      frame = `${JSON.stringify({ type: "private_response", id, ...value })}\n`;
+      if (Buffer.byteLength(frame) > MAX_PRIVATE_FRAME) throw new Error();
+    } catch {
+      frame = `${JSON.stringify({ type: "private_response", id, error: "private_result_invalid" })}\n`;
+    }
+    this.child.stdin.write(frame, (error) => {
+      if (error) this.fail("Private native response pipe closed");
+    });
+  }
+
+  dispatchPrivate(message) {
+    if (
+      !Number.isSafeInteger(message.id) ||
+      message.id <= this.privateSequence ||
+      typeof message.name !== "string" ||
+      !/^[a-z_]{1,64}$/.test(message.name) ||
+      !message.payload ||
+      typeof message.payload !== "object" ||
+      Array.isArray(message.payload) ||
+      Object.keys(message).some(
+        (key) => !["type", "id", "name", "payload"].includes(key),
+      ) ||
+      Buffer.byteLength(JSON.stringify(message)) > MAX_PRIVATE_FRAME
+    ) {
+      this.fail("Invalid private native request");
+      return;
+    }
+    this.privateSequence = message.id;
+    if (this.ended || this.closingNative) return;
+    if (!this.onPrivateRequest || this.privatePending.size >= 16) {
+      this.replyPrivate(message.id, { error: "private_request_unavailable" });
+      return;
+    }
+    const controller = new AbortController();
+    const entry = { controller, timedOut: false };
+    this.privatePending.set(message.id, entry);
+    entry.timer = setTimeout(() => {
+      entry.timedOut = true;
+      controller.abort();
+      this.replyPrivate(message.id, { error: "private_request_timeout" });
+      // Retain the slot until the handler exits. A hung handler cannot create
+      // an unbounded family of promises by repeatedly timing out.
+    }, this.privateTimeout);
+    Promise.resolve()
+      .then(() =>
+        this.onPrivateRequest(message.name, message.payload, controller.signal),
+      )
+      .then(
+        (result) => {
+          if (!entry.timedOut && !controller.signal.aborted)
+            this.replyPrivate(message.id, { result });
+        },
+        () => {
+          if (!entry.timedOut && !controller.signal.aborted)
+            this.replyPrivate(message.id, { error: "private_request_failed" });
+        },
+      )
+      .finally(() => {
+        clearTimeout(entry.timer);
+        this.privatePending.delete(message.id);
+      });
+  }
+
+  abortPrivate() {
+    for (const entry of this.privatePending.values()) {
+      clearTimeout(entry.timer);
+      entry.controller.abort();
+    }
+  }
+
   fail(message) {
     if (this.ended) return;
     this.ended = true;
+    this.abortPrivate();
     this.disconnectReason = message;
     clearTimeout(this.readyTimer);
     const error = new Error(message);
@@ -192,6 +286,8 @@ export class NativeHost extends EventEmitter {
 
   /** Ask Rust to drain its managed processes before terminating the helper. */
   async close() {
+    this.closingNative = true;
+    this.abortPrivate();
     if (this.childExited) return;
     if (!this.ended) this.child.stdin.end('{"type":"shutdown"}\n');
     const force = setTimeout(() => {
