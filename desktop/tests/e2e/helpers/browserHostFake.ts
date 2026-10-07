@@ -50,6 +50,8 @@ export type BrowserHostFakeControls = {
     state: "completed" | "interrupted" | "cancelled",
   ) => void;
   revealed: string[];
+  /** Make the next forgets fail, as a host with a download still stopping does. */
+  failForget: boolean;
 };
 
 declare global {
@@ -327,11 +329,32 @@ export async function installBrowserHostFake(
       async closeClient() {
         return { closedTabs: 0 };
       },
-      async forgetBusiness() {
-        return { forgottenProfiles: 0 };
+      async forgetBusiness(businessId) {
+        calls.push({ op: "forgetBusiness", businessId });
+        if (controls.failForget)
+          throw new Error("Wait for browser downloads to stop");
+        return { forgottenProfiles: 1 };
       },
       async forgetClient() {
         return { forgottenProfiles: 0 };
+      },
+      async forgetAll() {
+        // Recorded with what the app had already asked the native layer to do,
+        // so a spec can prove profiles go before the sign-out is sent.
+        calls.push({
+          op: "forgetAll",
+          signOutAlreadySent:
+            window.__BUZZ_E2E_COMMANDS__?.includes("sign_out") ?? false,
+        });
+        if (controls.failForget)
+          throw new Error("Wait for browser downloads to stop");
+        let forgotten = 0;
+        for (const tab of [...tabs.values()]) {
+          tabs.delete(tab.id);
+          emit({ type: "closed", tabId: tab.id });
+          forgotten += 1;
+        }
+        return { forgottenProfiles: forgotten };
       },
       onEvent(callback) {
         listeners.add(callback);
@@ -340,6 +363,7 @@ export async function installBrowserHostFake(
     };
 
     const controls: BrowserHostFakeControls = {
+      failForget: false,
       calls,
       revealed,
       tabs: () => [...tabs.values()].map(snapshot),

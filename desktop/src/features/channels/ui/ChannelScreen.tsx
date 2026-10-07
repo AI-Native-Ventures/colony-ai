@@ -851,6 +851,7 @@ export function ChannelScreen({
                     channelType: activeChannel.channelType,
                     isArchived: Boolean(activeChannel.archivedAt),
                     currentPubkey,
+                    threadRootId: activeChannel.channelType === "forum" ? selectedForumPostId : effectiveOpenThreadHeadId,
                   }
                 : undefined
             }

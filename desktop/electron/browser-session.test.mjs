@@ -18,6 +18,12 @@ class FakeSession extends EventEmitter {
   permissionCheckHandlers = 0;
   devicePermissionHandlers = 0;
   displayMediaHandlers = 0;
+  requestFilters = [];
+  webRequest = {
+    onBeforeRequest: (filter, listener) => {
+      this.requestFilters.push({ filter, listener });
+    },
+  };
   clearedStorage = 0;
   clearedCache = 0;
   clearedAuthCache = 0;
@@ -115,6 +121,7 @@ test("caps persistent browser profiles and registers one handler set per session
   assert.equal(clientA.session.permissionCheckHandlers, 1);
   assert.equal(clientA.session.devicePermissionHandlers, 1);
   assert.equal(clientA.session.displayMediaHandlers, 1);
+  assert.equal(clientA.session.requestFilters.length, 1);
   assert.equal(electronSession.allocations.length, 2);
 
   await assert.rejects(
@@ -324,4 +331,80 @@ test("refuses relative or missing downloads folders", async (t) => {
       }),
     /absolute downloads folder/u,
   );
+});
+
+test("a profile cancels every request to link-local and cloud metadata hosts", async (t) => {
+  const userDataPath = await makeUserDataDir(t);
+  const store = createStore({
+    userDataPath,
+    session: fakeElectronSessionApi(),
+    maxProfiles: 2,
+  });
+  const { session } = await store.forScope("business-a", "client-a");
+  assert.equal(session.requestFilters.length, 1);
+  const [{ filter, listener }] = session.requestFilters;
+  assert.deepEqual(filter, { urls: ["<all_urls>"] });
+  const decide = (url) => {
+    let answer;
+    listener({ url }, (response) => {
+      answer = response;
+    });
+    return answer;
+  };
+  for (const url of [
+    "http://169.254.169.254/latest/meta-data/",
+    "https://metadata.google.internal/computeMetadata/v1/",
+    "http://[fd00:ec2::254]/latest/meta-data/",
+    "ws://169.254.169.254/socket",
+    "http://2852039166/",
+  ]) {
+    assert.deepEqual(decide(url), { cancel: true }, url);
+  }
+  for (const url of [
+    "https://example.com/",
+    "http://192.168.1.1/",
+    "http://127.0.0.1:3000/",
+    "data:text/plain,hello",
+    "not a url",
+  ]) {
+    assert.deepEqual(decide(url), { cancel: false }, url);
+  }
+});
+
+test("forgetting everything clears every profile, waits for stopping downloads, and refuses while a tab is live", async (t) => {
+  const userDataPath = await makeUserDataDir(t);
+  const electronSession = fakeElectronSessionApi();
+  const store = createStore({
+    userDataPath,
+    session: electronSession,
+    maxProfiles: 4,
+  });
+  const liveTab = "tab-live";
+  const a = await store.forScope("business-a", "client-a", liveTab);
+  const b = await store.forScope("business-b", "client-a", "tab-b");
+  store.releaseTab(b.profileHash, "tab-b");
+
+  // A tab is still live: nothing is cleared, for any profile.
+  await assert.rejects(store.forgetAll(), /Close all browser tabs/u);
+  assert.equal(a.session.clearedStorage, 0);
+  assert.equal(b.session.clearedStorage, 0);
+  store.releaseTab(a.profileHash, liveTab);
+
+  // A cancelled download is given a moment to stop before its profile goes.
+  const item = new EventEmitter();
+  item.getTotalBytes = () => 1;
+  item.getReceivedBytes = () => 1;
+  item.getFilename = () => "file.txt";
+  item.setSavePath = () => {};
+  item.cancel = () => {};
+  b.session.emit("will-download", { preventDefault() {} }, item, { id: 7 });
+  setTimeout(() => item.emit("done", {}, "cancelled"), 120);
+
+  assert.deepEqual(await store.forgetAll(), { forgottenProfiles: 2 });
+  for (const profile of [a, b]) {
+    assert.equal(profile.session.clearedStorage, 1);
+    assert.equal(profile.session.clearedCache, 1);
+    assert.equal(profile.session.clearedAuthCache, 1);
+  }
+  assert.deepEqual(await store.forgetAll(), { forgottenProfiles: 0 });
 });

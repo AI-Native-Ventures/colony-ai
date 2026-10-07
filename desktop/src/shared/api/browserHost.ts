@@ -1,5 +1,8 @@
-/** Agent mode is visible state only and grants no browser actions or credentials. */
-export type BrowserControlOwner = "human" | "agent";
+/** Agent actions require a separate main-owned, revocable task grant. */
+export type BrowserControlOwner =
+  | "human"
+  | "agent"
+  | "agent-awaiting-confirmation";
 
 export type BrowserTabBounds = {
   x: number;
@@ -39,7 +42,12 @@ export type BrowserNavigationBlockReason =
   | "unsupported-link"
   | "unsupported-redirect"
   | "tab-limit"
-  | "tab-open-failed";
+  | "tab-open-failed"
+  | "agent-popup-denied"
+  | "origin_approval_required"
+  | "private_network_denied"
+  | "scheme_denied"
+  | "invalid_input";
 
 export type BrowserDownloadBlockReason =
   | "download-limit"
@@ -128,6 +136,8 @@ export type BrowserHostApi = {
     businessId: string,
     clientId: string,
   ): Promise<{ forgottenProfiles: number }>;
+  /** Close every browser tab and clear every profile and its downloads. */
+  forgetAll(): Promise<{ forgottenProfiles: number }>;
   onEvent(callback: (event: BrowserHostEvent) => void): () => void;
 };
 
@@ -179,6 +189,7 @@ export const browserHost = {
     requireBrowserHost().forgetBusiness(businessId),
   forgetClient: (businessId: string, clientId: string) =>
     requireBrowserHost().forgetClient(businessId, clientId),
+  forgetAll: () => requireBrowserHost().forgetAll(),
   onEvent: (callback: (event: BrowserHostEvent) => void) =>
     requireBrowserHost().onEvent(callback),
 };

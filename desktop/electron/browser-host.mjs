@@ -36,6 +36,20 @@ export function createBrowserHost({
   const tabsByContents = new Map();
   const pendingScopedCreates = new Map();
   let pendingCreates = 0;
+  let navigationGate = () => ({ allow: true });
+  let onHumanAction = () => {};
+  const documentListeners = new Set();
+  const closeListeners = new Set();
+  const blockedNavigations = new Map();
+
+  function gate(tab, url, isMainFrame = true) {
+    const verdict = navigationGate(tab.id, url, isMainFrame);
+    if (!verdict.allow) {
+      blockedNavigations.set(tab.id, verdict);
+      sendTabEvent(tab, "navigation-blocked", { reason: verdict.code });
+    }
+    return verdict.allow;
+  }
 
   function emit(webContents, event) {
     if (webContents && !webContents.isDestroyed())
@@ -117,6 +131,7 @@ export function createBrowserHost({
     contents.on("did-start-navigation", (details) => {
       if (!details.isMainFrame || details.isSameDocument || !tabs.has(tab.id))
         return;
+      for (const listener of documentListeners) listener(tab.id);
       if (tab.expectedNavigationUrl !== details.url) {
         tab.navigationGeneration += 1;
       }
@@ -189,6 +204,10 @@ export function createBrowserHost({
       if (tabs.has(tab.id)) updateError(tab, "Page is not responding");
     });
     contents.on("will-frame-navigate", (details) => {
+      if (!gate(tab, details.url, details.isMainFrame)) {
+        details.preventDefault();
+        return;
+      }
       if (isAllowedFrameUrl(details.url, details.isMainFrame)) {
         if (details.isMainFrame) beginRendererNavigation(tab, details.url);
         return;
@@ -199,6 +218,10 @@ export function createBrowserHost({
         updateError(tab, "Navigation to an unsupported URL was blocked");
     });
     contents.on("will-redirect", (details) => {
+      if (!gate(tab, details.url, details.isMainFrame)) {
+        details.preventDefault();
+        return;
+      }
       if (isAllowedFrameUrl(details.url, details.isMainFrame)) return;
       details.preventDefault();
       if (details.isMainFrame)
@@ -221,6 +244,13 @@ export function createBrowserHost({
       sendTabEvent(tab, "shortcut", { action });
     });
     contents.setWindowOpenHandler(({ url }) => {
+      if (tab.controlOwner !== "human") {
+        // A popup must never acquire a new ungated tab from an agent click.
+        sendTabEvent(tab, "navigation-blocked", {
+          reason: "agent-popup-denied",
+        });
+        return { action: "deny" };
+      }
       if (!isAllowedWebUrl(url)) {
         sendTabEvent(tab, "navigation-blocked", { reason: "unsupported-link" });
         return { action: "deny" };
@@ -326,6 +356,7 @@ export function createBrowserHost({
 
   async function loadTab(tab, url) {
     const safeUrl = checkedUrl(url);
+    if (!gate(tab, safeUrl)) throw new Error("Browser navigation was blocked");
     const generation = tab.navigationGeneration + 1;
     tab.navigationGeneration = generation;
     tab.expectedNavigationUrl = safeUrl;
@@ -389,6 +420,8 @@ export function createBrowserHost({
 
   function closeRecord(tab) {
     if (!tabs.has(tab.id)) return;
+    for (const listener of closeListeners) listener(tab.id);
+    blockedNavigations.delete(tab.id);
     if (tab.attached && !tab.ownerWindow.isDestroyed())
       tab.ownerWindow.contentView.removeChildView(tab.view);
     browserSessions.cancelTabDownloads(tab.id);
@@ -417,6 +450,17 @@ export function createBrowserHost({
       JSON.stringify([pending.businessId, pending.clientId]),
     );
     for (const resolve of pending.waiters) resolve();
+  }
+
+  function waitForAllCreates() {
+    return Promise.all(
+      [...pendingScopedCreates.values()].map(
+        (entry) =>
+          new Promise((resolve) => {
+            entry.waiters.push(resolve);
+          }),
+      ),
+    );
   }
 
   function waitForScopedCreates(businessId, clientId, allClients = false) {
@@ -486,6 +530,13 @@ export function createBrowserHost({
       return browserSessions.forgetBusiness(businessId);
     }
 
+    if (action === "forget-all") {
+      // Sign out and account delete: every page of every business ends first.
+      await waitForAllCreates();
+      for (const tab of [...tabs.values()]) closeRecord(tab);
+      return browserSessions.forgetAll();
+    }
+
     if (action === "forget-client") {
       const businessId = checkedScopeId(payload.businessId, "business id");
       const clientId = checkedScopeId(payload.clientId, "client id");
@@ -494,6 +545,19 @@ export function createBrowserHost({
     }
 
     const tab = findOwnedTab(payload.tabId, sender.id);
+    if (
+      [
+        "navigate",
+        "back",
+        "forward",
+        "reload",
+        "stop",
+        "close",
+        "control-owner",
+      ].includes(action)
+    ) {
+      onHumanAction(tab.id);
+    }
     switch (action) {
       case "attach":
         return attachTab(tab, payload.bounds, payload.visible ?? true);
@@ -560,5 +624,83 @@ export function createBrowserHost({
     for (const tab of [...tabs.values()]) closeRecord(tab);
   }
 
-  return { handleRequest, disposeWindow, disposeAll };
+  /** Main-process-only adapter. Never expose this object through preload. */
+  const agentAdapter = {
+    tabIds: () => [...tabs.keys()],
+    getTab: (id) => (tabs.has(id) ? snapshot(tabs.get(id)) : null),
+    webContents: (id) => tabs.get(id)?.webContents,
+    session: (id) => tabs.get(id)?.webContents.session,
+    ownedBy: (id, senderId) => tabs.get(id)?.appWebContents.id === senderId,
+    async createTab({ businessId, clientId, primaryTabId }) {
+      const primary = tabs.get(primaryTabId);
+      if (
+        !primary ||
+        primary.businessId !== businessId ||
+        primary.clientId !== (clientId ?? null)
+      )
+        throw new Error("Browser task scope is unavailable");
+      return createTabInternal(primary.appWebContents, primary.ownerWindow, {
+        businessId,
+        clientId,
+      });
+    },
+    closeTab(id) {
+      const tab = tabs.get(id);
+      if (tab) closeRecord(tab);
+    },
+    async loadUrl(id, url) {
+      const tab = tabs.get(id);
+      if (!tab) throw new Error("Browser tab closed");
+      const result = await loadTab(tab, url);
+      if (result.error && !blockedNavigations.has(id))
+        throw new Error("Browser navigation failed");
+      return result;
+    },
+    history(id, action) {
+      const tab = tabs.get(id);
+      if (!tab) throw new Error("Browser tab closed");
+      const history = tab.webContents.navigationHistory;
+      const offset = action === "back" ? -1 : action === "forward" ? 1 : 0;
+      const target =
+        offset === 0
+          ? snapshot(tab).url
+          : history.getAllEntries()[history.getActiveIndex() + offset]?.url;
+      if (!target || !gate(tab, target)) return;
+      if (offset === 0) return loadTab(tab, target);
+      if (offset === -1 && history.canGoBack()) history.goBack();
+      if (offset === 1 && history.canGoForward()) history.goForward();
+    },
+    stop(id) {
+      const tab = tabs.get(id);
+      if (tab && !tab.webContents.isDestroyed()) tab.webContents.stop();
+    },
+    setControlOwner(id, owner) {
+      const tab = tabs.get(id);
+      if (!tab) throw new Error("Browser tab closed");
+      if (!["human", "agent", "agent-awaiting-confirmation"].includes(owner))
+        throw new Error("Invalid controller");
+      tab.controlOwner = owner;
+      sendState(tab);
+    },
+    setNavigationGate(callback) {
+      navigationGate = callback;
+    },
+    setHumanActionHandler(callback) {
+      onHumanAction = callback;
+    },
+    onDocumentChanged(callback) {
+      documentListeners.add(callback);
+      return () => documentListeners.delete(callback);
+    },
+    onTabClosed(callback) {
+      closeListeners.add(callback);
+      return () => closeListeners.delete(callback);
+    },
+    consumeBlocked(id) {
+      const verdict = blockedNavigations.get(id);
+      blockedNavigations.delete(id);
+      return verdict;
+    },
+  };
+  return { handleRequest, disposeWindow, disposeAll, agentAdapter };
 }

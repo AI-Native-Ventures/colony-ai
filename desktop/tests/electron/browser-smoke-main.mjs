@@ -11,7 +11,8 @@
 //      name, with a visible result and Show in folder, and a window opened by
 //      a page joins the same profile;
 //   5. forgetting a business clears its storage but never the person's files;
-//   6. the kill switch refuses tabs.
+//   6. forgetting everything ends every tab and clears every profile;
+//   7. the kill switch refuses tabs.
 //
 // Output is one PASS or FAIL line per check; the exit code is the verdict.
 // It never touches the user's real Downloads folder or app data: both are
@@ -189,6 +190,9 @@ async function main() {
         "data:text/html,<h1>x</h1>",
         "chrome://settings",
         `http://user:pass@127.0.0.1:${new URL(base).port}/probe`,
+        "http://169.254.169.254/latest/meta-data/",
+        "http://metadata.google.internal/computeMetadata/v1/",
+        "http://[fd00:ec2::254]/latest/meta-data/",
       ];
       for (const url of bad) {
         let refused = false;
@@ -214,6 +218,65 @@ async function main() {
       );
       assert(current.url === "about:blank", `page moved to ${current.url}`);
       await request("close", { tabId: tab.id });
+    },
+  );
+
+  await check(
+    "cloud metadata addresses are unreachable from a page: redirect, fetch and window",
+    async () => {
+      const redirected = await request("create", {
+        businessId: "smoke-business-a",
+        url: `${base}/redirect-metadata`,
+      });
+      await waitFor(async () => {
+        const [current] = (await request("list")).filter(
+          (entry) => entry.id === redirected.id,
+        );
+        return current?.error ? current : null;
+      }, "redirect to a metadata address to be refused");
+      const [afterRedirect] = (await request("list")).filter(
+        (entry) => entry.id === redirected.id,
+      );
+      assert(
+        !afterRedirect.url.includes("169.254"),
+        `redirect landed on ${afterRedirect.url}`,
+      );
+      // Whichever guard refuses the hop (the redirect handler or the profile's
+      // request filter), the page must fail at once: with neither, the load
+      // would hang connecting to the address until the wait above times out.
+      console.log(`note: redirect refused as "${afterRedirect.error}"`);
+
+      const eventsBefore = events.length;
+      const page = await request("create", {
+        businessId: "smoke-business-a",
+        url: `${base}/metadata-page`,
+      });
+      const reported = await waitFor(async () => {
+        const [current] = (await request("list")).filter(
+          (entry) => entry.id === page.id,
+        );
+        if (!current?.title || current.title === "pending") return null;
+        try {
+          return JSON.parse(current.title);
+        } catch {
+          return null;
+        }
+      }, "metadata page report");
+      assert(reported.fetched === "blocked", `fetch was ${reported.fetched}`);
+      const late = events.slice(eventsBefore);
+      assert(
+        late.some(
+          (event) =>
+            event.type === "navigation-blocked" &&
+            event.tabId === page.id &&
+            event.reason === "unsupported-link",
+        ),
+        "the page's window to a metadata address was not refused",
+      );
+      assert(
+        !(await request("list")).some((entry) => entry.url.includes("169.254")),
+        "a tab to a metadata address exists",
+      );
     },
   );
 
@@ -361,6 +424,36 @@ async function main() {
       assert(result.local === null, `localStorage survived: ${result.local}`);
       for (const saved of savedPaths)
         assert(existsSync(saved), `forgetting deleted ${saved}`);
+    },
+  );
+
+  await check(
+    "forgetting everything (sign out, account delete) ends every tab and clears every profile",
+    async () => {
+      // Business A was probed again above and B earlier: two profiles hold data
+      // and A has a live tab. Nothing is closed first, as at sign-out.
+      await openProbe("smoke-business-a", "?set=A2");
+      await openProbe("smoke-business-b", "?set=B2");
+      assert((await request("list")).length > 0, "no live tabs to end");
+      const forgotten = await request("forget-all", {});
+      assert(
+        forgotten.forgottenProfiles >= 2,
+        `forgotten ${forgotten.forgottenProfiles}`,
+      );
+      assert(
+        (await request("list")).length === 0,
+        "tabs survived forgetting everything",
+      );
+      for (const business of ["smoke-business-a", "smoke-business-b"]) {
+        const { result } = await openProbe(business);
+        assert(
+          !result.cookie.includes("scope="),
+          `${business} cookie survived: ${result.cookie}`,
+        );
+        assert(result.local === null, `${business} localStorage survived`);
+      }
+      for (const saved of savedPaths)
+        assert(existsSync(saved), `forgetting everything deleted ${saved}`);
     },
   );
 

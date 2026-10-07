@@ -20,6 +20,10 @@ import { removeSelfProfileCachesForRelay } from "@/features/profile/lib/selfProf
 import { removeUserLabelCacheForRelay } from "@/features/profile/lib/userLabelStorage";
 import { removeChannelSnapshotForRelay } from "@/features/channels/channelSnapshot";
 import { removeProjectSnapshotForRelay } from "@/features/projects/projectSnapshot";
+import {
+  forgetAllBrowserProfiles,
+  forgetBrowserBusiness,
+} from "@/shared/api/browserProfiles";
 import { clearChannelHeadCache } from "@/shared/api/tauriChannelHeadCache";
 import { getIdentity } from "@/shared/api/tauriIdentity";
 import { clearSavedCommunitySnapshot } from "@/features/agents/activeAgentTurnsStore";
@@ -217,6 +221,7 @@ function useCommunitiesInternal(): UseCommunitiesReturn {
   }, []);
 
   const clearCommunities = useCallback(() => {
+    void forgetAllBrowserProfiles();
     clearCommunityStorage();
     clearCommunityDestinations();
     setCommunitiesState([]);
@@ -249,6 +254,10 @@ function useCommunitiesInternal(): UseCommunitiesReturn {
         });
       clearSavedCommunitySnapshot(id);
       removeCommunityDestination(id);
+      // Its browser logins and cookies leave the device with it. This covers
+      // leaving a community and the stuck-community "Remove this community from
+      // this device"; a refusal is recorded and retried at the next start.
+      void forgetBrowserBusiness(removed.id);
 
       setCommunitiesState((prev) => {
         const result = resolveCommunityRemoval(prev, activeId, id);

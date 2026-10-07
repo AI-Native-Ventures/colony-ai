@@ -7,6 +7,7 @@ import {
   Menu,
   WebContentsView,
   app,
+  dialog,
   ipcMain,
   net,
   protocol,
@@ -17,6 +18,11 @@ import {
 } from "electron";
 import { installAppMenu } from "./app-menu.mjs";
 import { createBrowserHost } from "./browser-host.mjs";
+import {
+  createElectronBrowserAgentHost,
+  createBrowserBrokerIpcHandler,
+  BROWSER_BROKER_EVENT_CHANNEL,
+} from "./browser-broker/electron-host.mjs";
 import {
   applyWindowAction,
   createAppWindow,
@@ -31,7 +37,7 @@ import { NativeHost } from "./native-host.mjs";
 import { createBuzzMediaProtocolHandler } from "./protocols.mjs";
 import { revealElectronWindow } from "./window-activation.mjs";
 import { runtimePaths } from "./runtime-paths.mjs";
-import { createChatGptService } from "./chatgpt-oauth.mjs";
+import { createChatGptRuntime } from "./chatgpt/runtime.mjs";
 const updaterRuntimeModule = await import(
   app.isPackaged
     ? "./electron-updater-runtime.cjs"
@@ -43,6 +49,8 @@ const { autoUpdater, createElectronUpdaterService, UPDATE_METADATA_URL } =
 
 const desktop = fileURLToPath(new URL("..", import.meta.url));
 const smoke = process.env.COLONY_ELECTRON_SMOKE === "1";
+if (process.env.COLONY_BROWSER_AGENT === "1")
+  app.commandLine.appendSwitch("disable-quic");
 const runtime = runtimePaths({
   packaged: app.isPackaged,
   appPath: desktop,
@@ -130,6 +138,8 @@ let quitting = false;
 let mainWindow = null;
 let updaterService = null;
 let chatGpt = null;
+let browserAgentHost = null;
+let chatGptRuntime = null;
 let quitApp = async () => app.quit();
 
 const deepLinks = createDeepLinkRouter({
@@ -227,12 +237,27 @@ function openExternal(url) {
 
 async function boot() {
   await app.whenReady();
-  chatGpt = createChatGptService({
+  browserAgentHost = await createElectronBrowserAgentHost({
+    browserHost,
+    enabled: browserTabEnabled && process.env.COLONY_BROWSER_AGENT === "1",
+    execPath: process.execPath,
+    scriptPath: fileURLToPath(
+      new URL("./browser-broker/mcp-server.mjs", import.meta.url),
+    ),
+    chooseFile: async () => {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ["openFile"],
+      });
+      return result.canceled ? null : result.filePaths[0];
+    },
+  });
+  chatGptRuntime = createChatGptRuntime({
     userData: app.getPath("userData"),
     openExternal: (url) => shell.openExternal(url),
     bringToFront: revealWindow,
   });
-  await chatGpt.start();
+  chatGpt = chatGptRuntime.service;
+  await chatGptRuntime.start();
   powerMonitor.on("resume", () => {
     if (chatGpt.policy.enabled) void chatGpt.wake();
   });
@@ -303,6 +328,10 @@ async function boot() {
   });
   const window = main.window;
   mainWindow = window;
+  browserAgentHost.onEvent((event) => {
+    if (!window.isDestroyed())
+      window.webContents.send(BROWSER_BROKER_EVENT_CHANNEL, event);
+  });
 
   if (app.isPackaged && !smoke && releaseCapabilities?.release) {
     updaterService = createElectronUpdaterService({
@@ -403,6 +432,15 @@ async function boot() {
     }
   });
 
+  ipcMain.handle(
+    "colony:browser-broker",
+    createBrowserBrokerIpcHandler({
+      windows,
+      trusted,
+      getHost: () => browserAgentHost,
+    }),
+  );
+
   window.on("close", (event) => {
     if (quitting) return;
     event.preventDefault();
@@ -417,7 +455,6 @@ async function boot() {
   quitApp = async () => {
     if (quitting) return;
     quitting = true;
-    chatGpt.stop();
     updaterService?.stop();
     browserHost.disposeAll();
     await Promise.allSettled([...windows.values()].map((e) => e.dispose()));
@@ -511,14 +548,23 @@ async function boot() {
 }
 
 async function shutdown() {
-  if (!host) return;
   try {
-    await host.close();
-  } catch (error) {
-    console.error(
-      "Colony native host shutdown:",
-      error instanceof Error ? error.message : error,
-    );
+    await browserAgentHost?.stop();
+  } finally {
+    try {
+      await chatGptRuntime?.close();
+    } finally {
+      if (host) {
+        try {
+          await host.close();
+        } catch (error) {
+          console.error(
+            "Colony native host shutdown:",
+            error instanceof Error ? error.message : error,
+          );
+        }
+      }
+    }
   }
 }
 
