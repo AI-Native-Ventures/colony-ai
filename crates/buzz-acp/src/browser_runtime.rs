@@ -218,8 +218,7 @@ pub(crate) fn observer_safe_browser_request(value: &serde_json::Value) -> serde_
 }
 
 #[cfg(test)]
-#[path = "../../../test-support/brand_guard.rs"]
-mod browser_brand_guard;
+use crate::brand_guard_tests::brand_guard as browser_brand_guard;
 
 #[cfg(test)]
 mod tests {
