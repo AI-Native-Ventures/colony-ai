@@ -162,3 +162,113 @@ test("installation response survives the ordinary RPC deadline", async (t) => {
   send({ type: "response", id: request.id, result: { success: true } });
   assert.deepEqual(await install, { value: { success: true } });
 });
+
+function launchFixture(t, env, browserAgentHost) {
+  let launched;
+  const child = new EventEmitter();
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.stdin = new PassThrough();
+  child.kill = () => {
+    queueMicrotask(() => child.emit("exit"));
+    return true;
+  };
+  const host = new NativeHost("fixture", {
+    env,
+    browserAgentHost,
+    spawnProcess: (_executable, _args, options) => {
+      launched = options.env;
+      return child;
+    },
+    timeout: 1000,
+  });
+  t.after(() => host.fail("Test cleanup"));
+  child.stdout.write('@colony-native:{"type":"ready","version":1}\n');
+  return launched;
+}
+
+const browserLaunch = {
+  enabled: true,
+  env: {
+    COLONY_BROWSER_MCP_COMMAND: "/fixture/electron",
+    COLONY_BROWSER_MCP_SCRIPT: "/fixture/mcp-server.mjs",
+    COLONY_BROWSER_MCP_RUN_AS_NODE: "1",
+    COLONY_BROWSER_BROKER_SOCKET: "/fixture/browser.sock",
+    COLONY_BROWSER_BROKER_MASTER: "main-owned-fixture-master",
+    COLONY_BROWSER_BROKER_SECRET: "must-not-forward",
+  },
+};
+const ambientBrowser = {
+  PATH: "/fixture/bin",
+  COLONY_BROWSER_AGENT: "1",
+  COLONY_BROWSER_BROKER_MASTER: "stale-master",
+  colony_browser_broker_secret: "stale-credential",
+  COLONY_BROWSER_AGENT_ID: "stale-agent",
+  COLONY_BROWSER_TASK_ID: "stale-task",
+  COLONY_BROWSER_COMMUNITY_ORIGIN: "https://stale.example",
+  COLONY_BROWSER_UNKNOWN: "stale-future-field",
+};
+
+test("native launch removes ambient browser authority when disabled or missing", (t) => {
+  for (const flag of [undefined, "0", "true", "01", "1 "]) {
+    const env = { ...ambientBrowser, COLONY_BROWSER_AGENT: flag };
+    assert.deepEqual(launchFixture(t, env, browserLaunch), {
+      PATH: "/fixture/bin",
+      COLONY_ELECTRON_HOST: "1",
+    });
+  }
+  for (const host of [undefined, { enabled: false, env: browserLaunch.env }])
+    assert.deepEqual(launchFixture(t, ambientBrowser, host), {
+      PATH: "/fixture/bin",
+      COLONY_ELECTRON_HOST: "1",
+    });
+});
+
+test("native launch forwards only generated live-host fields with exact opt-in", (t) => {
+  const launched = launchFixture(t, ambientBrowser, browserLaunch);
+  const { COLONY_BROWSER_BROKER_SECRET: _omitted, ...generated } =
+    browserLaunch.env;
+  assert.deepEqual(launched, {
+    PATH: "/fixture/bin",
+    COLONY_ELECTRON_HOST: "1",
+    COLONY_BROWSER_AGENT: "1",
+    ...generated,
+  });
+  assert.equal(ambientBrowser.COLONY_BROWSER_BROKER_MASTER, "stale-master");
+});
+
+test("invalid live-host launch configuration fails before a child is spawned", () => {
+  for (const key of Object.keys(browserLaunch.env).filter(
+    (name) => !name.endsWith("SECRET"),
+  )) {
+    const env = { ...browserLaunch.env };
+    delete env[key];
+    assert.throws(
+      () =>
+        new NativeHost("fixture", {
+          env: ambientBrowser,
+          browserAgentHost: { enabled: true, env },
+          spawnProcess: () => {
+            assert.fail("invalid authority must not spawn");
+          },
+        }),
+      /Invalid main-owned browser launch/,
+    );
+  }
+  for (const value of ["", "short", "x".repeat(257), "secret\ninvalid-value"]) {
+    assert.throws(
+      () =>
+        new NativeHost("fixture", {
+          env: ambientBrowser,
+          browserAgentHost: {
+            enabled: true,
+            env: { ...browserLaunch.env, COLONY_BROWSER_BROKER_MASTER: value },
+          },
+          spawnProcess: () => {
+            assert.fail("invalid authority must not spawn");
+          },
+        }),
+      /Invalid main-owned browser launch/,
+    );
+  }
+});
