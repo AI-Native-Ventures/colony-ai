@@ -10,6 +10,7 @@ import {
   ipcMain,
   net,
   protocol,
+  powerMonitor,
   screen,
   session,
   shell,
@@ -30,6 +31,7 @@ import { NativeHost } from "./native-host.mjs";
 import { createBuzzMediaProtocolHandler } from "./protocols.mjs";
 import { revealElectronWindow } from "./window-activation.mjs";
 import { runtimePaths } from "./runtime-paths.mjs";
+import { createChatGptService } from "./chatgpt-oauth.mjs";
 const updaterRuntimeModule = await import(
   app.isPackaged
     ? "./electron-updater-runtime.cjs"
@@ -121,6 +123,7 @@ let host = null;
 let quitting = false;
 let mainWindow = null;
 let updaterService = null;
+let chatGpt = null;
 let quitApp = async () => app.quit();
 
 const deepLinks = createDeepLinkRouter({
@@ -218,6 +221,15 @@ function openExternal(url) {
 
 async function boot() {
   await app.whenReady();
+  chatGpt = createChatGptService({
+    userData: app.getPath("userData"),
+    openExternal: (url) => shell.openExternal(url),
+    bringToFront: revealWindow,
+  });
+  await chatGpt.start();
+  powerMonitor.on("resume", () => {
+    if (chatGpt.policy.enabled) void chatGpt.wake();
+  });
   installAppMenu({ Menu, app });
   registerDeepLinkSchemes(app, deepLinkSchemes, {
     isDefaultApp: process.defaultApp,
@@ -263,6 +275,7 @@ async function boot() {
       trusted,
       onUntrustedOpen: openExternal,
       browserOptions,
+      chatGpt,
     });
     const id = entry.window.webContents.id;
     windows.set(id, entry);
@@ -397,6 +410,7 @@ async function boot() {
   quitApp = async () => {
     if (quitting) return;
     quitting = true;
+    chatGpt.stop();
     updaterService?.stop();
     browserHost.disposeAll();
     await Promise.allSettled([...windows.values()].map((e) => e.dispose()));
