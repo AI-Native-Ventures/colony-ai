@@ -620,7 +620,9 @@ function adoptPopup(channelId: string, tab: BrowserTabState) {
     closeHostTab(tab.id);
     return;
   }
-  const page = applyTabState({ ...blankPage() }, tab);
+  const latest = pendingStates.get(tab.id) ?? tab;
+  pendingStates.delete(tab.id);
+  const page = applyTabState({ ...blankPage() }, latest);
   hostIndex.set(tab.id, channelId);
   setChannel(
     channelId,
