@@ -98,6 +98,15 @@ export function describeNavigationBlock(
   reason: BrowserNavigationBlockReason,
 ): string {
   switch (reason) {
+    case "origin_approval_required":
+      return "This task has no approval for that site.";
+    case "private_network_denied":
+      return "Private addresses can't be opened during agent control.";
+    case "agent-popup-denied":
+      return "The agent cannot open popups. Open a tab from the browser controls.";
+    case "scheme_denied":
+    case "invalid_input":
+      return "That address isn't allowed for this task.";
     case "tab-limit":
       return "Too many browser tabs are open. Close one to open another.";
     case "tab-open-failed":

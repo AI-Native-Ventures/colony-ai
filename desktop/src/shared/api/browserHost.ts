@@ -42,7 +42,12 @@ export type BrowserNavigationBlockReason =
   | "unsupported-link"
   | "unsupported-redirect"
   | "tab-limit"
-  | "tab-open-failed";
+  | "tab-open-failed"
+  | "agent-popup-denied"
+  | "origin_approval_required"
+  | "private_network_denied"
+  | "scheme_denied"
+  | "invalid_input";
 
 export type BrowserDownloadBlockReason =
   | "download-limit"
