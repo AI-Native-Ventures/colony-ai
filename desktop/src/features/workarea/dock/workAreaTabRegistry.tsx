@@ -1,4 +1,5 @@
 import {
+  Diamond,
   FileText,
   Pencil,
   SquareTerminal,
@@ -9,6 +10,7 @@ import type * as React from "react";
 import { WorkAreaCanvasTab } from "./tabs/WorkAreaCanvasTab";
 import { WorkAreaFilesTab } from "./tabs/WorkAreaFilesTab";
 import { WorkAreaTerminalTab } from "./tabs/WorkAreaTerminalTab";
+import { WorkAreaWorkTab } from "./tabs/WorkAreaWorkTab";
 import type { WorkAreaTabKind } from "./workAreaTypes";
 
 export type WorkAreaTabPanelProps = {
@@ -55,6 +57,13 @@ const DEFINITIONS: Record<WorkAreaTabKind, WorkAreaTabDefinition> = {
     icon: Pencil,
     available: true,
     Panel: WorkAreaCanvasTab,
+  },
+  work: {
+    kind: "work",
+    label: "Work",
+    icon: Diamond,
+    available: true,
+    Panel: WorkAreaWorkTab,
   },
 };
 

@@ -790,6 +790,8 @@ type E2eConfig = {
     companyWorkEvents?: RelayEvent[];
     /** Reject successive company work head reads in order, then accept them. */
     companyWorkReadErrors?: string[];
+    /** Hold successive company work head reads for this long (ms), then answer. */
+    companyWorkReadDelaysMs?: number[];
     /** Synthetic relay key used to broker company work actions in focused E2E tests. */
     companyWorkRelayPrivateKey?: string;
     /** Reject company work action publishes in order, then accept them. */
@@ -17293,14 +17295,21 @@ function sendToMockSocket(args: {
       const readError = companyWorkHeadQuery
         ? getConfig()?.mock?.companyWorkReadErrors?.shift()
         : undefined;
-      if (readError) {
-        sendWsText(socket.handler, ["CLOSED", subId, readError]);
-        return;
-      }
-      for (const event of filterMockCompanyWorkEvents(filter)) {
-        sendWsText(socket.handler, ["EVENT", subId, event]);
-      }
-      sendWsText(socket.handler, ["EOSE", subId]);
+      const readDelayMs = companyWorkHeadQuery
+        ? (getConfig()?.mock?.companyWorkReadDelaysMs?.shift() ?? 0)
+        : 0;
+      const answer = () => {
+        if (readError) {
+          sendWsText(socket.handler, ["CLOSED", subId, readError]);
+          return;
+        }
+        for (const event of filterMockCompanyWorkEvents(filter)) {
+          sendWsText(socket.handler, ["EVENT", subId, event]);
+        }
+        sendWsText(socket.handler, ["EOSE", subId]);
+      };
+      if (readDelayMs > 0) window.setTimeout(answer, readDelayMs);
+      else answer();
       return;
     }
 

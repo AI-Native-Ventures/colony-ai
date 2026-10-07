@@ -6,7 +6,12 @@
  * singleton. Nothing else in the dock (strip, panels, persistence, shortcuts)
  * needs to change; persisted snapshots drop kinds they do not recognise.
  */
-export const WORK_AREA_TAB_KINDS = ["terminal", "files", "canvas"] as const;
+export const WORK_AREA_TAB_KINDS = [
+  "terminal",
+  "files",
+  "canvas",
+  "work",
+] as const;
 export type WorkAreaTabKind = (typeof WORK_AREA_TAB_KINDS)[number];
 
 /** Kinds that may exist at most once per channel. Their tab id is the kind. */
@@ -14,6 +19,7 @@ export const WORK_AREA_SINGLETON_KINDS: readonly WorkAreaTabKind[] = [
   "terminal",
   "files",
   "canvas",
+  "work",
 ];
 
 export type WorkAreaTab = {
