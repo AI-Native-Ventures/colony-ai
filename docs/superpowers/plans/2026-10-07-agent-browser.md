@@ -12,10 +12,10 @@ Owner directive, 7 Oct: this is part of launch; reputation is already damaged. O
 
 - [x] Fetch develop, create feat/agent-browser and merge origin/codex/105-browser-broker preserving history. Restore ACP files to develop for the separate slice 2.
 - [x] Rerun the imported pure broker tests: node --test --test-timeout=30000 desktop/electron/browser-broker/*.test.mjs. Baseline: 223 passing.
-- [ ] Add internal browser-host adapter, synchronous will-frame-navigate/will-redirect and explicit navigation/history gates, document/closure notifications, and grant-aware takeover.
-- [ ] Compose Electron driver and broker in desktop/electron/browser-broker/electron-host.mjs. Install the per-profile pinning proxy before grant issuance, force loopback through it, close pooled connections, and fence ownership/profile changes.
-- [ ] Wire desktop/electron/main.mjs and preload.cjs with trusted main-frame IPC; expose typed browserBroker.ts without tokens or socket secrets.
-- [ ] Add falsifiable Node tests at those production seams and a single fixture-site Electron Playwright spec: allowed actions, redirects/cross-origin denial, private/file denial, revoke during wait and explicit submit confirmation. Local runs use heavy.sh, a free COLONY_E2E_PORT, and vite build --mode e2e.
+- [x] Add internal browser-host adapter, synchronous will-frame-navigate/will-redirect and explicit navigation/history gates, document/closure notifications, and grant-aware takeover.
+- [x] Compose Electron driver and broker in desktop/electron/browser-broker/electron-host.mjs. Install the per-profile pinning proxy before grant issuance, force loopback through it, close pooled connections, and fence ownership/profile changes.
+- [x] Wire desktop/electron/main.mjs and preload.cjs with trusted main-frame IPC; expose typed browserBroker.ts without tokens or socket secrets.
+- [x] Add falsifiable Node tests at those production seams and a single fixture-site Electron Playwright spec: allowed actions, redirects/cross-origin denial, private/file denial, revoke during wait and explicit submit confirmation. Local runs use heavy.sh, a free COLONY_E2E_PORT, and vite build --mode e2e.
 - [ ] Push meaningful steps, open PR to develop, watch with pr-watch.sh, fix CI failures, report DONE PR with exact status.
 
 ## Slice 2: ACP and Colony agent tools
