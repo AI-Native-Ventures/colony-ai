@@ -46,6 +46,8 @@ export type AuthServiceDeps = {
   getNsec: () => Promise<string>;
   importIdentity: (nsec: string) => Promise<{ pubkey: string }>;
   googleSignIn?: () => Promise<string>;
+  /** Clear this device's browser profiles once the account is gone. Never throws. */
+  forgetBrowserProfiles?: () => Promise<unknown>;
   fetcher?: AuthApiOptions["fetcher"];
 };
 
@@ -294,6 +296,9 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       const { api } = await apiFor();
       await api.deleteAccount(expectedPubkey);
       invalidateAccountCache();
+      // The account is deleted whatever happens next: a browser profile that
+      // cannot be cleared now is recorded by the callee and cleared later.
+      await deps.forgetBrowserProfiles?.();
     },
   };
 }
@@ -339,6 +344,12 @@ const runtimeService = createAuthService({
     return importIdentity(nsec);
   },
   googleSignIn: googleSignInFromNativeHost,
+  async forgetBrowserProfiles() {
+    const { forgetAllBrowserProfiles } = await import(
+      "@/shared/api/browserProfiles"
+    );
+    return forgetAllBrowserProfiles();
+  },
 });
 
 /** Shared service instance used by the desktop UI. */

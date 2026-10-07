@@ -242,6 +242,32 @@ test.describe("work area Browser tab", () => {
     expect(await hostTabs(page)).toEqual([]);
   });
 
+  test("refuses link-local and cloud metadata addresses in any spelling, and leaves ordinary private addresses open", async ({
+    page,
+  }) => {
+    await boot(page);
+    await openBrowserTab(page);
+    for (const refused of [
+      "169.254.169.254",
+      "http://169.254.169.254/latest/meta-data/",
+      "metadata.google.internal",
+      "http://[fd00:ec2::254]/",
+      "http://2852039166/",
+      "http://[::ffff:169.254.169.254]/",
+    ]) {
+      await go(page, refused);
+      const error = panelTid(page, "browser-error");
+      await expect(error).toContainText("This address can't be opened here");
+      await expect(error).toContainText("link-local or cloud metadata");
+      expect(await hostTabs(page)).toEqual([]);
+    }
+    // A router page is an ordinary private address: the person may open it.
+    await go(page, "192.168.1.1");
+    await expect(panelTid(page, "browser-error")).toHaveCount(0);
+    await expect.poll(async () => (await hostTabs(page)).length).toBe(1);
+    expect((await hostTabs(page))[0].url).toBe("https://192.168.1.1/");
+  });
+
   test("a page that cannot load shows an error with Try again; a crash says so", async ({
     page,
   }) => {

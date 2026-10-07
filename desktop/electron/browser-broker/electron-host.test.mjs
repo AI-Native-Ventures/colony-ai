@@ -53,6 +53,9 @@ async function fixture(t, options = {}) {
     setPermissionCheckHandler() {},
     setDevicePermissionHandler() {},
     setDisplayMediaRequestHandler() {},
+    // The profile's request filter (metadata and link-local addresses) is part
+    // of session setup, so a session without one is not a valid profile.
+    webRequest: { onBeforeRequest() {} },
     async setProxy(config) {
       network.push(config);
       if (options.failProxy) throw new Error("failed");

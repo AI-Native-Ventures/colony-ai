@@ -30,6 +30,83 @@ export function checkedScopeId(value, label) {
   return value;
 }
 
+/** Cloud metadata services that answer on a name instead of an address. */
+const METADATA_HOST_NAMES = new Set(["metadata.google.internal"]);
+
+/** The eight 16-bit groups of a normalized IPv6 host ("::" expanded). */
+function ipv6Groups(host) {
+  const [head, tail, extra] = host.split("::");
+  if (extra !== undefined) return null;
+  const parse = (part) => (part ? part.split(":") : []);
+  const first = parse(head);
+  const last = tail === undefined ? [] : parse(tail);
+  const missing = 8 - first.length - last.length;
+  if (tail === undefined ? missing !== 0 : missing < 1) return null;
+  const groups = [
+    ...first,
+    ...Array(tail === undefined ? 0 : missing).fill("0"),
+    ...last,
+  ];
+  const numbers = groups.map((group) => Number.parseInt(group, 16));
+  return numbers.length === 8 && numbers.every((n) => n >= 0 && n <= 0xffff)
+    ? numbers
+    : null;
+}
+
+function isLinkLocalIpv4(octets) {
+  return octets[0] === 169 && octets[1] === 254;
+}
+
+/**
+ * True for the addresses a person's browser must never open from here:
+ * link-local IPv4 (169.254.0.0/16, which holds the cloud metadata service),
+ * IPv6 link-local (fe80::/10), the AWS IPv6 metadata address, either of those
+ * spelled as an IPv4-mapped IPv6 address, and the metadata host names.
+ *
+ * `hostname` is a WHATWG URL hostname, which has already turned decimal, hex,
+ * octal and short IPv4 spellings into dotted decimal and compressed IPv6 into
+ * its canonical lower case form. Ordinary private and LAN addresses, loopback
+ * included, stay open: a router page is a normal thing to visit. Names are
+ * matched as written; a name that merely resolves to a blocked address is not
+ * caught here because the host does not resolve names itself.
+ */
+export function isBlockedBrowserHostname(hostname) {
+  const host = String(hostname).toLowerCase().replace(/\.+$/u, "");
+  if (METADATA_HOST_NAMES.has(host)) return true;
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/u.exec(host);
+  if (v4) return isLinkLocalIpv4(v4.slice(1).map(Number));
+  if (!host.startsWith("[") || !host.endsWith("]")) return false;
+  const groups = ipv6Groups(host.slice(1, -1));
+  if (!groups) return false;
+  if ((groups[0] & 0xffc0) === 0xfe80) return true;
+  const awsMetadata = [0xfd00, 0x0ec2, 0, 0, 0, 0, 0, 0x0254];
+  if (groups.every((group, index) => group === awsMetadata[index])) return true;
+  const mapped = groups.slice(0, 5).every((group) => group === 0);
+  return (
+    mapped &&
+    groups[5] === 0xffff &&
+    isLinkLocalIpv4([
+      groups[6] >> 8,
+      groups[6] & 0xff,
+      groups[7] >> 8,
+      groups[7] & 0xff,
+    ])
+  );
+}
+
+/**
+ * Whether a request URL of any scheme points at a blocked host. This is what
+ * the profile's request filter asks for page loads, redirect hops and every
+ * subresource; an unparseable URL is not a blocked host.
+ */
+export function isBlockedBrowserUrl(value) {
+  try {
+    return isBlockedBrowserHostname(new URL(value).hostname);
+  } catch {
+    return false;
+  }
+}
+
 export function checkedUrl(value) {
   if (
     typeof value !== "string" ||
@@ -50,6 +127,9 @@ export function checkedUrl(value) {
     url.password.length > 0
   ) {
     throw new Error("Only credential-free HTTP and HTTPS pages are allowed");
+  }
+  if (isBlockedBrowserHostname(url.hostname)) {
+    throw new Error("Link-local and cloud metadata addresses cannot be opened");
   }
   return url.href;
 }

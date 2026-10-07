@@ -71,6 +71,24 @@ test("every block reason has a plain sentence, none show internals", () => {
     describeHostFailure(new Error("The embedded browser is turned off")),
     /turned off/u,
   );
+  assert.equal(
+    describeHostFailure(
+      new Error("Link-local and cloud metadata addresses cannot be opened"),
+    ),
+    "Colony does not open link-local or cloud metadata addresses.",
+  );
+  assert.deepEqual(
+    describePageError(
+      describeHostFailure(
+        new Error("Link-local and cloud metadata addresses cannot be opened"),
+      ),
+    ),
+    {
+      title: "This address can't be opened here",
+      hint: "Colony does not open link-local or cloud metadata addresses.",
+      detail: null,
+    },
+  );
   assert.doesNotMatch(
     describeHostFailure(new Error("ENOENT /Users/x/secret")),
     /Users/u,

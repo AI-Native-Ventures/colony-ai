@@ -3,7 +3,9 @@
 // (tests/real-run/browser-tab.mjs). `/probe` stores what `?set=` says in a
 // cookie, localStorage and IndexedDB and reports what the page can see in its
 // title; `/popup` opens a web window and a file: window; `/download.txt` is an
-// attachment named report.txt.
+// attachment named report.txt; `/redirect-metadata` redirects to the cloud
+// metadata address; `/metadata-page` reaches for that address from a page (a
+// fetch and a window) and reports what happened in its title.
 import { createServer } from "node:http";
 
 export function startFixtureSite() {
@@ -18,7 +20,34 @@ export function startFixtureSite() {
       response.end("fixture download body");
       return;
     }
+    if (url.pathname === "/redirect-metadata") {
+      response.writeHead(302, {
+        location: "http://169.254.169.254/latest/meta-data/",
+      });
+      response.end();
+      return;
+    }
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    if (url.pathname === "/metadata-page") {
+      response.end(`<!doctype html><meta charset="utf-8"><title>pending</title>
+<script>
+(async () => {
+  // A request the browser cancels rejects at once; one that is sent to an
+  // address with nothing behind it would hang, so a missing guard is a timeout.
+  const settle = (run) =>
+    Promise.race([
+      run.then(() => "allowed", () => "blocked"),
+      new Promise((resolve) => setTimeout(() => resolve("timeout"), 5000)),
+    ]);
+  const fetched = await settle(
+    fetch("http://169.254.169.254/latest/meta-data/", { mode: "no-cors" }),
+  );
+  window.open("http://169.254.169.254/latest/meta-data/", "_blank");
+  document.title = JSON.stringify({ fetched });
+})();
+</script>`);
+      return;
+    }
     if (url.pathname === "/popup") {
       response.end(`<!doctype html><meta charset="utf-8"><title>popup-parent</title>
 <script>

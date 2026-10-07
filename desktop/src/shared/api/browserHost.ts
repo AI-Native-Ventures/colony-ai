@@ -136,6 +136,8 @@ export type BrowserHostApi = {
     businessId: string,
     clientId: string,
   ): Promise<{ forgottenProfiles: number }>;
+  /** Close every browser tab and clear every profile and its downloads. */
+  forgetAll(): Promise<{ forgottenProfiles: number }>;
   onEvent(callback: (event: BrowserHostEvent) => void): () => void;
 };
 
@@ -187,6 +189,7 @@ export const browserHost = {
     requireBrowserHost().forgetBusiness(businessId),
   forgetClient: (businessId: string, clientId: string) =>
     requireBrowserHost().forgetClient(businessId, clientId),
+  forgetAll: () => requireBrowserHost().forgetAll(),
   onEvent: (callback: (event: BrowserHostEvent) => void) =>
     requireBrowserHost().onEvent(callback),
 };

@@ -93,6 +93,7 @@ function createService(baseUrl, options = {}) {
     },
     googleSignIn: options.googleSignIn ?? (async () => "test.google.id.token"),
     fetcher: options.fetcher,
+    forgetBrowserProfiles: options.forgetBrowserProfiles,
   };
   return {
     service: createAuthService(deps),
@@ -518,6 +519,44 @@ test("an in-flight account lookup cannot restore cache after account deletion", 
       assert.equal(await auth.service.getAccount(), null);
       assert.equal(await auth.service.getAccount(), null);
       assert.equal(accountReads, 2);
+    },
+  );
+});
+
+test("deleting the account clears this device's browser profiles after the server accepts", async () => {
+  const order = [];
+  await withFakeServer(
+    async (request) => {
+      if (request.method === "DELETE") {
+        order.push("server delete");
+        return { status: 204 };
+      }
+      return { status: 404, body: { error: "account_not_found" } };
+    },
+    async (baseUrl) => {
+      const auth = createService(baseUrl, {
+        forgetBrowserProfiles: async () => {
+          order.push("forget browser profiles");
+        },
+      });
+      await auth.service.deleteAccount();
+      assert.deepEqual(order, ["server delete", "forget browser profiles"]);
+    },
+  );
+});
+
+test("a refused account delete leaves the browser profiles alone", async () => {
+  let forgotten = 0;
+  await withFakeServer(
+    async () => ({ status: 500, body: { error: "server_error" } }),
+    async (baseUrl) => {
+      const auth = createService(baseUrl, {
+        forgetBrowserProfiles: async () => {
+          forgotten += 1;
+        },
+      });
+      await assert.rejects(auth.service.deleteAccount());
+      assert.equal(forgotten, 0);
     },
   );
 });

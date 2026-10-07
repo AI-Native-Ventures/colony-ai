@@ -60,6 +60,11 @@ const KNOWN: ReadonlyArray<{
     hint: "Only ordinary web pages open in this browser.",
   },
   {
+    test: /metadata addresses/,
+    title: "This address can't be opened here",
+    hint: "Colony does not open link-local or cloud metadata addresses.",
+  },
+  {
     test: /Page process stopped/,
     title: "This page stopped working",
     hint: "Reload it to try again. Your other tabs are not affected.",
@@ -138,6 +143,8 @@ export function describeHostFailure(error: unknown): string {
     return "This browser has reached its limit of saved profiles. Restart Colony and try again.";
   if (/turned off/i.test(message))
     return "The browser is turned off in this copy of Colony.";
+  if (/metadata addresses/i.test(message))
+    return "Colony does not open link-local or cloud metadata addresses.";
   if (/unavailable|not available/i.test(message))
     return "The browser is not available in this window.";
   return "The browser could not do that. Try again.";
