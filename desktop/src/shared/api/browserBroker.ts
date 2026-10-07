@@ -29,13 +29,13 @@ export type BrowserConfirmation = {
   grantId: string;
   tabId: string;
   summary: string;
-  category?: string;
+  category?: string | null;
   expiresAt?: number;
 };
 
 export type BrowserActionEntry = {
   seq: number;
-  timestamp: number;
+  ts: number;
   grantId?: string;
   agentId?: string;
   taskId?: string;
@@ -61,7 +61,8 @@ export type BrowserBrokerEvent =
       url: string;
     }
   | { type: "grant-changed"; grantId: string; state: BrowserGrant["state"] }
-  | { type: "agent-action"; entry: BrowserActionEntry };
+  | { type: "agent-action"; entry: BrowserActionEntry }
+  | { type: "control-recovery"; tabId: string; required: boolean };
 
 export type BrowserBrokerBridge = {
   request(action: string, payload?: object): Promise<unknown>;
@@ -84,10 +85,17 @@ function request<T>(action: string, payload?: object): Promise<T> {
 
 /** Trusted person controls. Page content and agents have no access to this bridge. */
 export const browserBroker = {
-  status: () =>
+  status: (
+    tabId?: string,
+  ): Promise<{ enabled: boolean; recoveryRequired?: boolean }> =>
     window.colonyBrowserBroker
-      ? request<{ enabled: boolean }>("agent-status")
+      ? request<{ enabled: boolean; recoveryRequired?: boolean }>(
+          "agent-status",
+          { tabId },
+        )
       : Promise.resolve({ enabled: false }),
+  recoverControl: (tabId: string) =>
+    request<{ recovered: boolean }>("agent-recover-control", { tabId }),
   grant: (payload: BrowserGrantRequest) =>
     request<BrowserGrant>("agent-grant", payload),
   grants: () => request<BrowserGrant[]>("agent-grants"),

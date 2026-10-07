@@ -19,7 +19,7 @@ import type {
 const COVERING_OVERLAYS = [
   '[role="menu"]',
   '[role="dialog"]',
-  '[role="alertdialog"]',
+  '[role="alertdialog"]:not([data-colony-inline-browser-confirmation])',
   '[role="listbox"]',
   '[data-testid="work-area-divider"][data-dragging="true"]',
 ].join(",");

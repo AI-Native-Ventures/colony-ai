@@ -26,7 +26,7 @@ test("an enabled host requires a driver", async () => {
   await assert.rejects(createBrowserAgentHost({ enabled: true }), /driver/u);
 });
 
-test("enabled host exports exactly the environment buzz-acp expects", async () => {
+test("enabled host exports exactly the Colony ACP environment contract", async () => {
   const { dir, socketPath } = tmpSocket();
   const driver = createFakePageDriver();
   const host = await createBrowserAgentHost({
