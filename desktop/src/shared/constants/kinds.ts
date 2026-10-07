@@ -18,6 +18,12 @@ export const KIND_MODERATION_UNTIMEOUT = 9043;
 export const KIND_MODERATION_RESOLVE_REPORT = 9044;
 export const KIND_STREAM_MESSAGE_V2 = 40002;
 export const KIND_STREAM_MESSAGE_EDIT = 40003;
+/**
+ * A stream message pinned in a channel. Contract: `["h", channelId]` and one bare
+ * `["e", messageId]` (no marker, so the relay never reads it as a thread reply),
+ * signed by the pinner. Unpinning is a NIP-09 deletion by the pinner.
+ */
+export const KIND_STREAM_MESSAGE_PINNED = 40004;
 export const KIND_CHANNEL_THREAD_SUMMARY = 39005;
 export const KIND_CHANNEL_WINDOW_BOUNDS = 39006;
 export const KIND_STREAM_MESSAGE_DIFF = 40008;

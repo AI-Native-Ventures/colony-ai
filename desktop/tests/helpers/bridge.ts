@@ -371,6 +371,12 @@ type MockBridgeOptions = {
   agentMemory?: MockAgentMemoryListing | Record<string, MockAgentMemoryListing>;
   /** Fail successive `get_agent_memory` calls with these messages, then answer. */
   agentMemoryErrors?: string[];
+  /** Reject successive pin publishes (kind 40004) with these messages, then accept. */
+  pinPublishErrors?: string[];
+  /** Fail successive pin list reads (kind 40004 REQ) with these messages, then answer. */
+  pinReadErrors?: string[];
+  /** Hold successive pin list reads this long (ms) before answering. */
+  pinReadDelaysMs?: number[];
   /** Hold successive `get_agent_memory` calls this long (ms) before answering. */
   agentMemoryDelaysMs?: number[];
   managedAgentPrereqs?: {

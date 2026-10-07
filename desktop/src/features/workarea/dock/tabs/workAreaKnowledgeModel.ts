@@ -13,10 +13,10 @@ import {
  * is what its AI employees remember. Agent memory (NIP-AE engrams) is stored
  * per agent and owner, encrypted to the owner, and is not tagged with a
  * channel. So a channel's memory is the memory of the agents that are members
- * of it and that this person owns (this device manages them). Pins have no
- * data source yet: kind 40004 is reserved in the registry, no client writes it
- * and the relay gives it no meaning. Client knowledge heads (30635, 30636) are
- * reserved and rejected by ingest. The tab says so instead of inventing rows.
+ * of it and that this person owns (this device manages them). Pinned messages
+ * are separate: they come from pin events (`features/pins`). Client knowledge
+ * heads (30635, 30636) are reserved and rejected by ingest, so there is nothing
+ * to read for them yet.
  */
 export type KnowledgeAgent = { pubkey: string; name: string };
 

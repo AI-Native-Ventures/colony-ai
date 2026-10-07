@@ -40,3 +40,19 @@ Windows ACL protocol references:
 - https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/icacls
 - https://learn.microsoft.com/en-us/windows/win32/secauthz/ace-strings
 - https://learn.microsoft.com/en-us/windows/win32/secauthz/sid-strings
+
+P2's relay and launch configuration were written from the public protocol and
+Codex configuration reference. The permitted MIT OpenClaw files were read for
+behavior at commit 67fd7e910b89bac2d2e238ec700c7bc263b1afb1:
+extensions/openai/token-sharing.ts and
+extensions/codex/src/app-server/inference-proxy.ts. No source was copied or
+translated. The preview compatibility header is a fact from that reference,
+not a requirement established by OpenAI's public docs. Its value and omission
+setting live in one policy module. Reference attribution and the MIT notice are
+recorded in docs/third-party-notices/openclaw-chatgpt-reference.md.
+
+The Apache-2.0 codex-acp README, package metadata and startup/initialization
+sources were inspected at ca1d97173ad37b471d5a4e5847725a4657d34e29 to establish
+the CODEX_CONFIG, MODEL_PROVIDER, CODEX_HOME and clientInfo seams. No adapter
+source was copied or translated. Bundling and actual adapter execution have
+separate proof gates. P2 adds no artwork, fonts or visible control.

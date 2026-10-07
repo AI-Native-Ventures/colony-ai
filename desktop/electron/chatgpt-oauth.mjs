@@ -122,13 +122,17 @@ export function createChatGptService({
   const validator = createIdTokenValidator({ policy, request, now });
   const flights = new Map();
   const epochs = new Map();
+  const retireListeners = new Set();
   let attempt = null;
   let initialized = false;
   let stopped = false;
   let timer;
   let backgroundError = null;
   const epoch = (id) => epochs.get(id) ?? 0;
-  const bump = (id) => epochs.set(id, epoch(id) + 1);
+  const bump = (id) => {
+    epochs.set(id, epoch(id) + 1);
+    for (const listener of retireListeners) listener(id);
+  };
   const enabled = () => {
     if (!policy.enabled) throw new ChatGptError("feature_disabled");
     if (stopped) throw new ChatGptError("service_stopped");
@@ -422,6 +426,7 @@ export function createChatGptService({
           delete a.refresh_inflight;
           a.generation++;
           store.save(state);
+          if (a.state === "plan_use_off") bump(id);
         } catch (error) {
           const code =
             error instanceof ChatGptError ? error.code : "refresh_failed";
@@ -471,6 +476,7 @@ export function createChatGptService({
           }
           a.generation++;
           store.save(state);
+          if (a.state === "needs_sign_in") bump(id);
           // Persistence failures must propagate; callers cannot report success.
         }
       });
@@ -640,11 +646,67 @@ export function createChatGptService({
     await tick();
     return status();
   }
+  /** Main-process-only authorization lease. Never register this method with IPC. */
+  async function authorizeInference(id, { rejectedToken } = {}) {
+    await initialize();
+    const fence = epoch(id);
+    const read = () =>
+      store.locked(() => {
+        enabled();
+        if (epoch(id) !== fence) throw new ChatGptError("stale_result");
+        const a = find(store.snapshot(), id);
+        if (a.state !== "active" || !a.scopes.includes(PLAN_SCOPE))
+          throw new ChatGptError("plan_not_ready");
+        return { token: a.access_token, expiresAt: a.expires_at };
+      });
+    let credential = await read();
+    if (rejectedToken || credential.expiresAt <= now() + 30_000) {
+      await refresh(id, rejectedToken);
+      credential = await read();
+    }
+    if (
+      !credential.token ||
+      credential.expiresAt <= now() ||
+      credential.token === rejectedToken
+    )
+      throw new ChatGptError("plan_not_ready");
+    return {
+      token: credential.token,
+      // Rotation is allowed during an active stream. Retirement and grant loss
+      // are not. The durable account is checked even across main processes.
+      assertCurrent: async () => {
+        await read();
+      },
+    };
+  }
+  /** Fence a rejected grant and retain remote cleanup durably for a later retry. */
+  async function rejectInference(id, rejectedToken) {
+    await initialize();
+    await store.locked(() => {
+      const state = store.snapshot();
+      const a = find(state, id);
+      if (a.access_token !== rejectedToken || a.state !== "active") return;
+      bump(id);
+      if (a.refresh_token)
+        a.pending_revoke = {
+          token: a.refresh_token,
+          expires_at: a.refresh_expires_at,
+          retry_count: 0,
+        };
+      clearTokens(a, true);
+      a.state = "needs_sign_in";
+      a.last_error = "invalid_token";
+      a.generation++;
+      store.save(state);
+    });
+  }
   function stop() {
     stopped = true;
     cancel();
     timers.clear(timer);
     for (const id of flights.keys()) bump(id);
+    for (const listener of retireListeners) listener(null);
+    retireListeners.clear();
   }
   return {
     status,
@@ -659,5 +721,14 @@ export function createChatGptService({
     retry,
     stop,
     policy,
+    authorizeInference,
+    rejectInference,
+    onRetire(listener) {
+      enabled();
+      if (typeof listener !== "function" || retireListeners.size >= 16)
+        throw new ChatGptError("invalid_retire_listener");
+      retireListeners.add(listener);
+      return () => retireListeners.delete(listener);
+    },
   };
 }
