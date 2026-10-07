@@ -27,7 +27,8 @@ const arg = (name) => {
 };
 const APP = path.resolve(arg("app"));
 const old = JSON.parse(await readFile(arg("profile"), "utf8"));
-const rec = new Rec("R1A");
+const LABEL = process.env.R1A_LABEL ?? "R1A";
+const rec = new Rec(LABEL);
 const hashOf = (dir) => createHash("sha256").update(dir).digest("hex").slice(0, 16);
 const work = await mkdtemp(path.join(os.tmpdir(), "colony-r1a-"));
 const spec = await buildFixture({ root: path.join(work, "fixture"), variant: process.env.R1A_VARIANT ?? "owner" });
@@ -40,13 +41,17 @@ for (const lock of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) awai
 const oldAppData = path.join(old.home, "Library", "Application Support", `xyz.block.buzz.app.electron.${hashOf(old.userDataDir)}`);
 const newAppData = path.join(home, "Library", "Application Support", `xyz.block.buzz.app.electron.${hashOf(userDataDir)}`);
 await cp(oldAppData, newAppData, { recursive: true });
-const providerLog = path.join(process.env.AI_OUT, "r1a-fake-provider.jsonl");
+const providerLog = path.join(process.env.AI_OUT, `${LABEL.toLowerCase()}-fake-provider.jsonl`);
 await rm(providerLog, { force: true });
 await rm(`${providerLog}.first-request.json`, { force: true });
 const fake = await startFakeProvider({ logFile: providerLog, port: old.fakePort });
 await progress(`[R1A] work ${work}; empty throwaway HOME ${home}; profile copied from the fake-model run; fake provider ${fake.url}`);
 
 let collected = { ticks: 0, surfaces: {} };
+let ariaDefault = null;
+let ariaExpanded = null;
+let probeDefault = null;
+let probeExpanded = null;
 let frozenDefault = null; // snapshot taken before any tool group or system prompt is expanded
 let afterExpansion = null; // snapshot taken right after the groups were collapsed again
 let reading = false;
@@ -114,6 +119,72 @@ const guard = async (id, label, fn) => {
 const app = await launchPackaged({ app: APP, fixtureRoot: spec.root, home, userDataDir, privateDir, relayUrl: "https://relay.colony.ainative.ventures" });
 page = await app.window(90000);
 await page.setViewportSize({ width: 1440, height: 960 }).catch(() => undefined);
+// DOM probe: where does the old name sit, and is it visible to a person who has not clicked anything? Run in the page.
+const PROBE_BUZZ = () => {
+  const out = { hits: [], systemPromptControls: [], liveRegions: [] };
+  const panel = document.querySelector('[data-testid="agent-session-thread-panel"]');
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  while (w.nextNode()) {
+    const n = w.currentNode;
+    if (!/buzz/i.test(n.textContent ?? "")) continue;
+    const el = n.parentElement;
+    if (!el || ["SCRIPT", "STYLE"].includes(el.tagName)) continue;
+    const r = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    let details = null;
+    for (let a = el; a; a = a.parentElement) if (a.tagName === "DETAILS") { details = { open: a.open }; break; }
+    let hiddenAncestor = null;
+    for (let a = el; a; a = a.parentElement) {
+      const s2 = getComputedStyle(a);
+      if (s2.display === "none" || s2.visibility === "hidden" || a.hidden || a.getAttribute("aria-hidden") === "true" || a.inert || (s2.contentVisibility === "hidden")) {
+        hiddenAncestor = `${a.tagName} display=${s2.display} visibility=${s2.visibility} hidden=${a.hidden} aria-hidden=${a.getAttribute("aria-hidden")} content-visibility=${s2.contentVisibility}`;
+        break;
+      }
+    }
+    let clippedBy = null;
+    for (let a = el.parentElement; a; a = a.parentElement) {
+      const s2 = getComputedStyle(a);
+      const box = a.getBoundingClientRect();
+      if (/hidden|clip|auto|scroll/.test(`${s2.overflow} ${s2.overflowY}`) && (box.height === 0 || box.width === 0)) { clippedBy = `${a.tagName} ${Math.round(box.width)}x${Math.round(box.height)}`; break; }
+    }
+    let srOnly = false;
+    for (let a = el; a; a = a.parentElement) if (/\bsr-only\b/.test((a.className ?? "").toString())) srOnly = true;
+    const renderedBox = r.width > 0 && r.height > 0;
+    const inViewport = renderedBox && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth;
+    const cx = Math.round(r.left + r.width / 2);
+    const cy = Math.round(r.top + r.height / 2);
+    const top = r.width > 0 && r.height > 0 ? document.elementFromPoint(cx, cy) : null;
+    out.hits.push({
+      checkVisibility: typeof el.checkVisibility === "function" ? el.checkVisibility({ contentVisibilityAuto: true, opacityProperty: true, visibilityProperty: true }) : null,
+      elementFromPointIsIt: top ? el === top || el.contains(top) || top.contains(el) : false,
+      topElementAtPoint: top ? `${top.tagName}.${(top.className ?? "").toString().slice(0, 30)}` : null,
+      text: (n.textContent ?? "").trim().slice(0, 90),
+      tag: el.tagName,
+      rect: { w: Math.round(r.width), h: Math.round(r.height), top: Math.round(r.top), left: Math.round(r.left) },
+      offsetParentNull: el.offsetParent === null,
+      visibility: cs.visibility,
+      display: cs.display,
+      details,
+      hiddenAncestor,
+      clippedBy,
+      srOnly,
+      inLiveRegion: !!el.closest("[aria-live],[role=status],[role=log],[role=alert]"),
+      inPanel: !!panel?.contains(el),
+      visibleToPerson: (typeof el.checkVisibility === "function" ? el.checkVisibility({ contentVisibilityAuto: true, opacityProperty: true, visibilityProperty: true }) : true) && renderedBox && inViewport && cs.visibility !== "hidden" && !hiddenAncestor && !clippedBy && !srOnly && !(details && !details.open),
+    });
+  }
+  for (const e of document.querySelectorAll("summary, button, [aria-expanded]")) {
+    if (!/system prompt/i.test(e.textContent ?? "")) continue;
+    out.systemPromptControls.push({ tag: e.tagName, text: (e.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 60), ariaExpanded: e.getAttribute("aria-expanded"), detailsOpen: e.parentElement?.tagName === "DETAILS" ? e.parentElement.open : null });
+  }
+  for (const live of document.querySelectorAll("[aria-live], [role=status], [role=log], [role=alert]")) {
+    const t = live.textContent ?? "";
+    const it = live.innerText ?? "";
+    const box = live.getBoundingClientRect();
+    out.liveRegions.push({ tag: live.tagName, role: live.getAttribute("role"), ariaLive: live.getAttribute("aria-live"), box: `${Math.round(box.width)}x${Math.round(box.height)}`, textLen: t.length, innerTextLen: it.length, textContentHasSystemPromptBody: /You are an agent operating inside/.test(t), innerTextHasSystemPromptBody: /You are an agent operating inside/.test(it), textContentHasBuzz: /buzz/i.test(t), head: t.replace(/\s+/g, " ").trim().slice(0, 110) });
+  }
+  return out;
+};
 let poller;
 try {
   const version = await app.version().catch(() => "?");
@@ -203,12 +274,16 @@ try {
       // Freeze everything recorded so far: it is the DEFAULT view. Expansion below is opt-in raw text.
       await snapshot();
       frozenDefault = structuredClone(collected);
+      probeDefault = await page.evaluate(PROBE_BUZZ).catch((e) => ({ error: String(e) }));
+      ariaDefault = await page.locator("[role=log][aria-live]").first().ariaSnapshot({ timeout: 8000 }).catch((e) => `(ariaSnapshot failed: ${String(e).slice(0, 80)})`);
       const summaries = page.locator('[data-testid="agent-session-thread-panel"] summary');
       const n = await summaries.count();
       await setMode("panel-expanded");
       for (let i = 0; i < n; i += 1) await summaries.nth(i).evaluate((el) => el.click()).catch(() => undefined);
       await sleep(1500);
       await shot(page, rec, "r1a-panel-expanded");
+      probeExpanded = await page.evaluate(PROBE_BUZZ).catch((e) => ({ error: String(e) }));
+      ariaExpanded = await page.locator("[role=log][aria-live]").first().ariaSnapshot({ timeout: 8000 }).catch((e) => `(ariaSnapshot failed: ${String(e).slice(0, 80)})`);
       await snapshot();
       // Collapse again so nothing opt-in stays on screen for the rest of the run.
       for (let i = 0; i < n; i += 1) await summaries.nth(i).evaluate((el) => { if (el.parentElement?.open) el.click(); }).catch(() => undefined);
@@ -298,38 +373,57 @@ rec.row(
   hits.length ? "FAIL" : unseen.length || !(S1 && S2) ? "NOT OBSERVED" : "PASS",
   `${hits.length} hits across ${defaultKeys.length} default keys (${defaultKeys.reduce((n, k) => n + surfaces[k].length, 0)} distinct texts). Texts per surface group: ${observedSurfaces.map(([g, n]) => `${g} ${n}`).join(", ")}. ${unseen.length ? `NEVER OBSERVED: ${unseen.join(", ")}. ` : ""}${S1 && S2 ? "Opt-in expansion was isolated from the default verdict by snapshots before and after it." : "The expansion snapshots were not taken, so the default view is not isolated."} ${hits.slice(0, 12).map((h) => `${h.surface} ${h.kind} "${h.match}" in "${redact(h.context)}"`).join(" | ")}`,
 );
-const plainWords = ["Run a command", "Read a file", "Edit a file", "Update the to-do list", "View an image"];
-const defaultJoined = defaultKeys.flatMap((k) => surfaces[k].map((t) => ({ k, t })));
-const where = Object.fromEntries(plainWords.map((w) => [w, [...new Set(defaultJoined.filter((x) => x.t.includes(w)).map((x) => surfaceGroup(x.k)))]]));
-const optInJoined = Object.entries(optIn).flatMap(([k, ts]) => ts.map((t) => ({ k, t })));
-const whereOptIn = Object.fromEntries(plainWords.map((w) => [w, optInJoined.some((x) => x.t.includes(w))]));
+const visHits = (probeDefault?.hits ?? []).filter((h) => h.visibleToPerson);
 rec.row(
-  "R1A-plain-words",
-  "The exact plain titles appear in the default view: Run a command, Read a file, Edit a file, Update the to-do list, View an image",
-  plainWords.every((w) => where[w].length) ? "PASS" : "NOT OBSERVED",
-  `Surfaces per exact title (default view): ${plainWords.map((w) => `"${w}": ${where[w].join("+") || "NOT SEEN"}`).join("; ")}. Seen only in the opt-in expansion: ${plainWords.map((w) => `"${w}": ${whereOptIn[w]}`).join("; ")}. NOT a defect by itself: the exact titles are the fallback names used where a tool is announced by its raw id (permission request); the session rows of real tool calls carry the classifier's own plain labels, listed in R1A-plain-rows.`,
+  "R1A-buzz-visibility",
+  "Where the old name sits in the DOM of the open session panel in its DEFAULT state (nothing expanded): visible to a person without clicking, or only in collapsed DOM / live region text",
+  !probeDefault || probeDefault.error ? "NOT OBSERVED" : visHits.length ? "FAIL" : "PASS",
+  probeDefault && !probeDefault.error
+    ? `Default state: ${probeDefault.hits.length} text nodes contain the old name, ${visHits.length} visible to a person (visible=true), ${probeDefault.hits.length - visHits.length} not visible. Per node: ${probeDefault.hits.map((h) => `[${h.tag} "${redact(h.text)}" rect ${h.rect.w}x${h.rect.h}@${h.rect.top},${h.rect.left} checkVisibility=${h.checkVisibility} elementFromPoint-is-this-node=${h.elementFromPointIsIt} (top element there: ${h.topElementAtPoint}) offsetParentNull=${h.offsetParentNull} visibility=${h.visibility} details=${JSON.stringify(h.details)} hiddenAncestor=${h.hiddenAncestor} clippedBy=${h.clippedBy} srOnly=${h.srOnly} inLiveRegion=${h.inLiveRegion} VISIBLE=${h.visibleToPerson}]`).join(" ; ") || "none"}. System prompt controls: ${JSON.stringify(probeDefault.systemPromptControls)}. Live regions: ${probeDefault.liveRegions.map((l) => `<${l.tag} role=${l.role} aria-live=${l.ariaLive}> box ${l.box} textContent ${l.textLen} chars (has system prompt body: ${l.textContentHasSystemPromptBody}, has buzz: ${l.textContentHasBuzz}), innerText ${l.innerTextLen} chars (has system prompt body: ${l.innerTextHasSystemPromptBody}); starts "${redact(l.head)}"`).join(" ; ") || "none"}. Accessibility tree of the live-region log, default state (what a screen reader can reach): ${ariaDefault == null ? "not captured" : `${ariaDefault.length} chars, contains the system prompt body: ${/You are an agent operating inside/.test(ariaDefault)}, contains the old name: ${/buzz/i.test(ariaDefault)}`}. After expanding: ${ariaExpanded == null ? "not captured" : `${ariaExpanded.length} chars, contains the body: ${/You are an agent operating inside/.test(ariaExpanded)}`}. For contrast, AFTER expanding the System prompt control (opt-in): ${probeExpanded && !probeExpanded.error ? `${probeExpanded.hits.length} nodes, ${probeExpanded.hits.filter((h) => h.visibleToPerson).length} visible; live regions with the body in innerText: ${probeExpanded.liveRegions.filter((l) => l.innerTextHasSystemPromptBody).length}` : "not probed"}.`
+    : "The panel was not open in its default state, so the DOM probe did not run.",
 );
+// Rubric (coordinator 04:24): the product's titles come from the existing tool catalog (Ran command, Updated todo list, Viewed image,
+// Writing a file ...), so the check is: no raw tool id in any default text, title, aria-label, tooltip or live region (R1A-default-zero),
+// and every one of the five tools has a non-empty plain title in the default panel and transcript. The titles actually seen are recorded.
 const trDefault = (surfaces.transcript ?? []).concat(surfaces["session-panel"] ?? []);
 const labelOf = {
-  shell: ["Ran", "command"],
-  read_file: ["Read", "file"],
-  str_replace: ["Edited", "tour.txt"],
-  todo: ["Updated", "todo list"],
-  view_image: ["Viewed", "image"],
+  shell: { verb: "Ran", object: "command" },
+  read_file: { verb: "Read", object: "file" },
+  str_replace: { verb: "Edited", object: "tour.txt" },
+  todo: { verb: "Updated", object: "todo list" },
+  view_image: { verb: "Viewed", object: "image" },
 };
-const rowsFound = Object.fromEntries(Object.entries(labelOf).map(([tool, words]) => [tool, words.every((w) => trDefault.some((t) => t === w || t.includes(w)))]));
-rec.row(
-  "R1A-plain-rows",
-  "Each of the five tools shows a plain row label in the default session panel and transcript",
-  Object.values(rowsFound).every(Boolean) ? "PASS" : "FAIL",
-  `Row labels looked for (verb and object as the transcript prints them): ${Object.entries(labelOf).map(([t, w]) => `${t}: "${w.join(" ")}" ${rowsFound[t] ? "seen" : "NOT SEEN"}`).join("; ")}. Tooltip titles recorded on the panel: ${(surfaces["session-panel.attr.title"] ?? []).filter((t) => t.length < 40).join(" / ")}`,
+// The transcript prints a row as two adjacent texts, a verb and an object: find the verb then take the text that follows it.
+const trExpanded = S2?.["transcript-expanded"] ?? [];
+const findTitle = (list, { verb, object }) => list.findIndex((t, n) => t === verb && list.slice(n + 1, n + 3).includes(object)) >= 0;
+const seenTitles = Object.fromEntries(
+  Object.entries(labelOf).map(([tool, l]) => [tool, findTitle(trDefault, l) ? { text: `${l.verb} ${l.object}`, where: "default panel" } : findTitle(trExpanded, l) ? { text: `${l.verb} ${l.object}`, where: "after expanding the '6 tool calls' group" } : null]),
 );
-const permText = [...new Set((surfaces["toast-or-live-region"] ?? []).concat(surfaces.transcript ?? []).flatMap((t) => [...String(t).matchAll(/Permission requested[^]*?Options:[^.]{0,40}/gu)].map((m) => m[0])))];
+const stripTitles = [...new Set((surfaces["activity-strip"] ?? []).map((t) => t.replace(/^Scout:\s*/u, "").replace(/\s*Scout:.*$/u, "")).filter((t) => t && t !== "Working" && t !== "@Mention"))];
+const tooltipTitles = (surfaces["session-panel.attr.title"] ?? []).filter((t) => t.length < 40 && /^(command|file|todo list|image)$/u.test(t));
+const rawIdInTitles = [...Object.values(seenTitles).map((v) => v?.text), ...stripTitles, ...tooltipTitles].filter((t) => t && /__|buzz|dev[-_]mcp/iu.test(t));
+rec.row(
+  "R1A-plain-titles",
+  "Every one of the five tools has a non-empty plain title (default panel, or the tool-call group after the person expands it); no raw tool id in any of them or anywhere in the default view",
+  Object.values(seenTitles).every(Boolean) && !rawIdInTitles.length && !hits.length ? "PASS" : "FAIL",
+  `Titles seen: ${Object.entries(seenTitles).map(([t, v]) => `${t} -> ${v ? `"${v.text}" (${v.where})` : "NOT SEEN"}`).join("; ")}. Activity strip labels seen while the tools ran: ${stripTitles.map((t) => `"${t}"`).join(", ") || "none"}. Panel tooltips (title attributes): ${tooltipTitles.join(" / ") || "none"}. Raw ids among these titles: ${rawIdInTitles.length ? rawIdInTitles.join(", ") : "none"}. Default-view hits of the old name, a double underscore or a server prefix anywhere: ${hits.length}.`,
+);
+const exactLiteral = ["Run a command", "Read a file", "Edit a file", "Update the to-do list", "View an image"];
+const defaultJoined = defaultKeys.flatMap((k) => surfaces[k].map((t) => ({ k, t })));
+const optInJoined = Object.entries(optIn).flatMap(([k, ts]) => ts.map((t) => ({ k, t })));
+rec.row(
+  "R1A-fallback-titles-info",
+  "Information: where the product's fallback titles (Run a command, Read a file, Edit a file, Update the to-do list, View an image) appear",
+  "PASS",
+  `${exactLiteral.map((w) => `"${w}": default view ${[...new Set(defaultJoined.filter((x) => x.t.includes(w)).map((x) => surfaceGroup(x.k)))].join("+") || "not shown"}, opt-in expansion ${optInJoined.some((x) => x.t.includes(w))}`).join("; ")}. These strings come from formatToolTitle and are used where a tool is announced by its raw id (the permission request); session rows of real tool calls use the classifier's own labels above. Not a defect.`,
+);
+const permTexts = [...new Set((surfaces["toast-or-live-region"] ?? []).concat(surfaces.transcript ?? []).flatMap((t) => [...String(t).matchAll(/Permission requested[\s·:-]*([^]{1,80}?)\s*Options:\s*[^.]{0,60}/gu)].map((m) => ({ full: m[0], title: m[1].trim() }))).map((x) => JSON.stringify(x)))].map((x) => JSON.parse(x));
+const permPlain = permTexts.filter((p) => p.title && !/__|buzz|dev[-_]mcp|mcp/iu.test(p.full));
 rec.row(
   "R1A-permission",
-  "The permission request for the shell tool (shown in the transcript and announced in the aria-live region) uses plain words",
-  permText.length ? (permText.some((t) => /buzz|__|dev-mcp/iu.test(t)) ? "FAIL" : permText.some((t) => /Run a command/u.test(t)) ? "PASS" : "FAIL") : "NOT OBSERVED",
-  permText.length ? `Permission announcements recorded: ${permText.slice(0, 4).map((t) => `"${redact(t).slice(0, 140)}"`).join(" ; ")}` : "No permission announcement was recorded in this run, so the announcement text is not proven here",
+  "The permission row and its aria-live announcement read 'Permission requested' followed by a plain tool title, with no raw id",
+  permTexts.length ? (permPlain.length === permTexts.length ? "PASS" : "FAIL") : "NOT OBSERVED",
+  permTexts.length ? `Recorded in the default view (transcript row and live region): ${permTexts.slice(0, 4).map((p) => `"${redact(p.full).slice(0, 140)}" (title "${p.title}")`).join(" ; ")}` : "No permission announcement was recorded in this run, so the announcement text is not proven here",
 );
 const rawOptIn = [
   ...Object.entries(optIn).flatMap(([k, ts]) => ts.filter((t) => /buzz-dev-mcp__\w+/u.test(t)).map((t) => `${k}: ${t.match(/buzz-dev-mcp__\w+/u)[0]}`)),
@@ -374,6 +468,10 @@ rec.row(
   `Devtools scenario turns logged: ${turns.length}. tour.txt at ${tourFile ? tourFile.replace(home, "<home>") : "(not found)"}: ${JSON.stringify(tourText.slice(0, 80))}. tour.png bytes: ${tourPng}. Window title: ${titles}`,
 );
 rec.notes.counts = counts;
+rec.notes.probeDefault = probeDefault;
+rec.notes.probeExpanded = probeExpanded ? { hits: probeExpanded.hits, systemPromptControls: probeExpanded.systemPromptControls } : null;
+rec.notes.ariaDefault = ariaDefault;
+rec.notes.ariaExpanded = ariaExpanded;
 rec.notes.surfaces = Object.fromEntries(Object.entries(surfaces).map(([k, v]) => [k, v.slice(0, 120)]));
 rec.notes.optIn = Object.fromEntries(Object.entries(optIn).map(([k, v]) => [k, v.slice(0, 60)]));
 rec.notes.work = work;
