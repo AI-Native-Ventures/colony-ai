@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, Read, Write};
 
 pub(super) const MAX_FRAME: usize = 16 * 1024 * 1024;
+pub(super) const MAX_PRIVATE_FRAME: usize = 64 * 1024;
 pub(super) const PREFIX: &str = "@colony-native:";
 
 #[derive(Deserialize)]
@@ -76,9 +77,12 @@ pub(super) fn read(reader: &mut impl BufRead) -> Result<Option<Request>, &'stati
     if bytes.len() > MAX_FRAME || bytes.last() != Some(&b'\n') {
         return Err("Invalid native frame length");
     }
-    serde_json::from_slice(&bytes)
-        .map(Some)
-        .map_err(|_| "Invalid native request")
+    let request: Request =
+        serde_json::from_slice(&bytes).map_err(|_| "Invalid native request")?;
+    if matches!(&request, Request::PrivateResponse { .. }) && bytes.len() > MAX_PRIVATE_FRAME {
+        return Err("Invalid private native frame length");
+    }
+    Ok(Some(request))
 }
 
 pub(super) fn send(value: &Value) -> Result<(), &'static str> {
@@ -177,5 +181,18 @@ mod tests {
             b"{\"type\":\"private_response\",\"id\":1,\"result\":{},\"secret\":true}\n"
         ))
         .is_err());
+    }
+
+    #[test]
+    fn private_error_frames_use_the_smaller_limit_too() {
+        let mut bytes = serde_json::to_vec(&serde_json::json!({
+            "type": "private_response", "id": 1, "error": "x".repeat(MAX_PRIVATE_FRAME)
+        }))
+        .expect("test frame encoding");
+        bytes.push(b'\n');
+        assert!(matches!(
+            read(&mut Cursor::new(bytes)),
+            Err("Invalid private native frame length")
+        ));
     }
 }

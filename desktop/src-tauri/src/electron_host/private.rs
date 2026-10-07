@@ -8,7 +8,7 @@ use tauri::Manager;
 use tokio::sync::oneshot;
 
 const MAX_PENDING: usize = 16;
-const MAX_BYTES: usize = 64 * 1024;
+const MAX_BYTES: usize = wire::MAX_PRIVATE_FRAME;
 const MAX_ID: u64 = (1 << 53) - 1;
 // The parent has a 60-second deadline and retains hung handler slots.
 const DEADLINE: Duration = Duration::from_secs(65);

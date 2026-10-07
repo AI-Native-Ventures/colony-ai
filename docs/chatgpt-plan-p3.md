@@ -32,6 +32,29 @@ timeout, late replies, shutdown, malformed payloads and oversized replies.
 These tests have been authored, not compiled or run. No managed agent uses the
 new request seam yet. This checkpoint is not a working Codex integration.
 
+`electron/chatgpt/plan-launch-broker.mjs` prepares the matching main-process
+receipt lifecycle on top of P2's actual launch helper and relay. Its focused
+Node gate passed 24 tests, including the existing native transport tests. Tests
+use the fake OpenAI server and exercise grant expiry, commit/release,
+generation fencing, capacity reservation, entitlement, late cancellation,
+default-off behavior and typed error redaction. The initial run exposed five
+incorrect HTTP-status expectations in the new tests; the relay correctly
+denies retired capabilities with 403. The corrected gate passed.
+
+The final broker-only gate passed all 11 tests, followed by touched Biome. It
+also covers account retirement across explicit same-account reconnection and
+late writes to the stable private Codex home. A retired prepare retains its
+scope and capacity slot until its handler exits, so it cannot overwrite a
+successor's startup config. One preceding gate was stopped before ten minutes,
+including more than seven minutes in the shared heavy-command queue. The final
+successful Node run took three seconds; no local Rust command was run.
+
+The broker requires a trusted resolver that verifies the Colony runtime bundle;
+the resolver and exact binary integrity manifest are not implemented yet. Test
+paths are fixtures, not installed runtimes. Main boot does not wire this broker
+until that resolver exists. Node proof does not cover Rust dispatch or actual
+adapter/app-server execution.
+
 ## Launch ownership and lifecycle
 
 Electron main owns account selection, OAuth credentials, authorization leases,
@@ -54,6 +77,12 @@ Use a dedicated main-only launch broker with three private methods:
 - `plan_release`: revoke on spawn failure, adapter initialization failure,
   cancellation, agent stop, replacement or community teardown. A released
   generation cannot revoke its successor. Repeated release is idempotent.
+
+Use `handlePrivateRequest` as the `NativeHost.onPrivateRequest` callback. Its
+result envelope is `{ok:true,result}` or `{ok:false,code}`. Only a fixed set of
+recovery codes may leave main; unexpected exception text becomes
+`plan_launch_failed`. Native validates and deserializes that envelope rather
+than treating a transport-level failure as account readiness.
 
 Cap outstanding and active receipts at 64, matching the existing relay cap.
 Main shutdown revokes all receipts before native shutdown. An aborted prepare
@@ -122,6 +151,13 @@ The adapter's published dependency range must not choose a newer Codex version.
 Resolve only the Colony bundle, never a PATH executable selected by a renderer
 or inherited `CODEX_PATH`. Runtime installation and actual execution are CI
 only. No SIWC devkit package or asset is used.
+
+The published adapter entry point is `dist/index.js`. Native must run it with
+Colony's trusted bundled Node runtime and explicit arguments, rather than rely
+on its shebang or a PATH Node. The bundle resolver must supply this invocation
+before main is wired. An `adapterPath` fixture alone is not an executable or a
+cross-platform launch proof. Published package metadata and integrity values
+were saved in the preparation lane; no tarball or runtime was downloaded.
 
 The P3 acceptance gate needs CI running the actual pinned adapter and app-server
 through the production launch helper against the fake OpenAI server:
