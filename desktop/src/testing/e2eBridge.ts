@@ -159,6 +159,7 @@ import {
   KIND_REPO_STATE,
   KIND_STREAM_MESSAGE,
   KIND_STREAM_MESSAGE_EDIT,
+  KIND_STREAM_MESSAGE_PINNED,
   KIND_STREAM_MESSAGE_V2,
   KIND_SYSTEM_MESSAGE,
   KIND_TEXT_NOTE,
@@ -580,6 +581,12 @@ type E2eConfig = {
     agentMemory?: RawAgentMemoryListing | Record<string, RawAgentMemoryListing>;
     /** Fail successive `get_agent_memory` calls with these messages, then answer. */
     agentMemoryErrors?: string[];
+    /** Reject successive pin publishes (kind 40004) with these messages, then accept. */
+    pinPublishErrors?: string[];
+    /** Fail successive pin list reads (kind 40004 REQ) with these messages, then answer. */
+    pinReadErrors?: string[];
+    /** Hold successive pin list reads this long (ms) before answering. */
+    pinReadDelaysMs?: number[];
     /** Hold successive `get_agent_memory` calls this long (ms) before answering. */
     agentMemoryDelaysMs?: number[];
     addChannelMembersDelayMs?: number;
@@ -1736,6 +1743,13 @@ declare global {
       pending?: boolean;
       /** 64-hex id required for the event to be a valid reaction target. */
       id?: string;
+    }) => RelayEvent;
+    /** Seed and live-publish one pin (kind 40004) made by `pubkey`. */
+    __BUZZ_E2E_EMIT_MOCK_PIN__?: (input: {
+      channelName: string;
+      targetId: string;
+      pubkey?: string;
+      createdAt?: number;
     }) => RelayEvent;
     /** Seed and live-publish one signed company work tracking head. */
     __BUZZ_E2E_SEED_COMPANY_WORK_TRACKING_HEAD__?: (event: RelayEvent) => void;
@@ -17535,6 +17549,22 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.includes(KIND_STREAM_MESSAGE_PINNED) && !filter.ids) {
+      // The pin list read: scriptable failures and delays, like company work.
+      const readError = getConfig()?.mock?.pinReadErrors?.shift();
+      const readDelayMs = getConfig()?.mock?.pinReadDelaysMs?.shift() ?? 0;
+      const answer = () => {
+        if (readError) {
+          sendWsText(socket.handler, ["CLOSED", subId, readError]);
+          return;
+        }
+        emitMockHistory(socket, subId, channelIds, filter);
+      };
+      if (readDelayMs > 0) window.setTimeout(answer, readDelayMs);
+      else answer();
+      return;
+    }
+
     emitMockHistory(socket, subId, channelIds, filter);
     return;
   }
@@ -17579,6 +17609,26 @@ function sendToMockSocket(args: {
       } else {
         acknowledge();
       }
+      return;
+    }
+
+    if (event.kind === KIND_STREAM_MESSAGE_PINNED) {
+      const pinError = getConfig()?.mock?.pinPublishErrors?.shift();
+      const pinChannelId = event.tags.find((tag) => tag[0] === "h")?.[1];
+      if (pinError || !pinChannelId) {
+        sendWsText(socket.handler, [
+          "OK",
+          event.id,
+          false,
+          pinError ?? "invalid: pin needs a channel",
+        ]);
+        return;
+      }
+      // Stored like any channel event, so a pin is read back, deleted by the
+      // same `delete_message` mock, and delivered live like the relay does.
+      recordMockMessage(pinChannelId, event);
+      emitMockLiveEvent(pinChannelId, event);
+      sendWsText(socket.handler, ["OK", event.id, true, ""]);
       return;
     }
 
@@ -18625,6 +18675,32 @@ export function maybeInstallE2eTauriMocks() {
       pending,
       id,
     );
+  };
+  window.__BUZZ_E2E_EMIT_MOCK_PIN__ = ({
+    channelName,
+    targetId,
+    pubkey,
+    createdAt,
+  }) => {
+    const channel = mockChannels.find(
+      (candidate) => candidate.name === channelName,
+    );
+    if (!channel) {
+      throw new Error(`Mock channel ${channelName} not found.`);
+    }
+    const event = createMockEvent(
+      KIND_STREAM_MESSAGE_PINNED,
+      "",
+      [
+        ["h", channel.id],
+        ["e", targetId],
+      ],
+      pubkey,
+      createdAt,
+    );
+    recordMockMessage(channel.id, event);
+    emitMockLiveEvent(channel.id, event);
+    return event;
   };
   window.__BUZZ_E2E_SEED_COMPANY_WORK_TRACKING_HEAD__ = (event) => {
     if (!verifyEvent(event) || event.kind !== KIND_COMPANY_WORK_TRACKING_HEAD) {
