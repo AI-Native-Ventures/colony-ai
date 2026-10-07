@@ -204,6 +204,74 @@ pub(crate) fn process_has_buzz_marker(_pid: u32, _instance_id: &str) -> bool {
     false
 }
 
+/// What a live process's environment says about who owns it.
+///
+/// A caller that must not act under a running agent has to tell "not ours"
+/// from "cannot tell": a freshly spawned agent reads as empty until `execve` has
+/// finished, and a read can fail. Both are [`MarkerProbe::Unknown`], never
+/// [`MarkerProbe::Foreign`].
+// Not every platform's probe can produce every answer (Windows only ever says
+// `Unknown`, only `/proc` reads say `Gone`), so unconstructed variants are fine.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MarkerProbe {
+    /// The environment carries this install's `BUZZ_MANAGED_AGENT` marker.
+    Ours,
+    /// The environment was read in full and does not carry it: another
+    /// program, or an agent of another install (a reused pid).
+    Foreign,
+    /// The environment is empty or could not be read. Ownership is unknown.
+    Unknown,
+    /// The process exited between the liveness check and the read.
+    Gone,
+}
+
+/// Classify one read of a process's environment block (Linux
+/// `/proc/<pid>/environ`). Pure, so every branch is testable without a process.
+#[cfg(any(all(unix, not(target_os = "macos")), test))]
+pub(crate) fn classify_environ(read: std::io::Result<Vec<u8>>, instance_id: &str) -> MarkerProbe {
+    match read {
+        // Empty: the process is mid-`execve` (new image not built yet) or a
+        // zombie. Not evidence that it is someone else's.
+        Ok(data) if data.is_empty() => MarkerProbe::Unknown,
+        Ok(data) => {
+            let marker = buzz_marker_entry(instance_id);
+            if data.split(|&b| b == 0).any(|entry| entry == marker) {
+                MarkerProbe::Ours
+            } else {
+                MarkerProbe::Foreign
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => MarkerProbe::Gone,
+        Err(_) => MarkerProbe::Unknown,
+    }
+}
+
+/// Read ownership of a live process, telling "not ours" from "cannot tell".
+///
+/// Linux reads `/proc/<pid>/environ`. macOS reads the `KERN_PROCARGS2` buffer;
+/// an unreadable or empty buffer is [`MarkerProbe::Unknown`]. Other platforms
+/// cannot tell at all and always answer [`MarkerProbe::Unknown`].
+#[cfg(all(unix, not(target_os = "macos")))]
+pub(crate) fn probe_buzz_marker(pid: u32, instance_id: &str) -> MarkerProbe {
+    classify_environ(std::fs::read(format!("/proc/{pid}/environ")), instance_id)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn probe_buzz_marker(pid: u32, instance_id: &str) -> MarkerProbe {
+    match sweep::procargs2_buffer(pid) {
+        None => MarkerProbe::Unknown,
+        Some(buf) if buf.is_empty() => MarkerProbe::Unknown,
+        Some(_) if process_has_buzz_marker(pid, instance_id) => MarkerProbe::Ours,
+        Some(_) => MarkerProbe::Foreign,
+    }
+}
+
+#[cfg(not(unix))]
+pub(crate) fn probe_buzz_marker(_pid: u32, _instance_id: &str) -> MarkerProbe {
+    MarkerProbe::Unknown
+}
+
 #[cfg(unix)]
 fn signal_process_group_or_leader(pid: u32, signal: i32, action: &str) -> Result<(), String> {
     let pgid = -(pid as i32);
@@ -466,4 +534,82 @@ pub(crate) fn terminate_untracked_pair_runtime(
         process_is_running,
         super::super::remove_agent_runtime_receipt_path,
     )
+}
+
+#[cfg(test)]
+mod marker_probe_tests {
+    use super::*;
+    use std::io::{Error, ErrorKind};
+
+    const INSTANCE: &str = "xyz.block.buzz.app";
+
+    fn environ(entries: &[&str]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for entry in entries {
+            bytes.extend_from_slice(entry.as_bytes());
+            bytes.push(0);
+        }
+        bytes
+    }
+
+    #[test]
+    fn an_environment_with_this_installs_marker_is_ours() {
+        let data = environ(&[
+            "PATH=/usr/bin",
+            "BUZZ_MANAGED_AGENT=xyz.block.buzz.app",
+            "HOME=/h",
+        ]);
+        assert_eq!(classify_environ(Ok(data), INSTANCE), MarkerProbe::Ours);
+    }
+
+    #[test]
+    fn an_empty_environment_is_unknown_never_foreign() {
+        // What `/proc/<pid>/environ` reads for a process still inside `execve`.
+        assert_eq!(
+            classify_environ(Ok(Vec::new()), INSTANCE),
+            MarkerProbe::Unknown
+        );
+    }
+
+    #[test]
+    fn a_read_error_is_unknown_never_foreign() {
+        for kind in [
+            ErrorKind::PermissionDenied,
+            ErrorKind::InvalidData,
+            ErrorKind::Other,
+            ErrorKind::Interrupted,
+        ] {
+            assert_eq!(
+                classify_environ(Err(Error::from(kind)), INSTANCE),
+                MarkerProbe::Unknown,
+                "{kind:?}"
+            );
+        }
+        assert_eq!(
+            classify_environ(Err(Error::from_raw_os_error(13)), INSTANCE),
+            MarkerProbe::Unknown
+        );
+    }
+
+    #[test]
+    fn a_vanished_process_is_gone() {
+        assert_eq!(
+            classify_environ(Err(Error::from(ErrorKind::NotFound)), INSTANCE),
+            MarkerProbe::Gone
+        );
+    }
+
+    #[test]
+    fn a_readable_environment_without_the_marker_is_foreign() {
+        let data = environ(&["PATH=/usr/bin", "HOME=/h"]);
+        assert_eq!(classify_environ(Ok(data), INSTANCE), MarkerProbe::Foreign);
+    }
+
+    #[test]
+    fn another_installs_marker_is_foreign() {
+        let data = environ(&["BUZZ_MANAGED_AGENT=xyz.block.buzz.app.dev"]);
+        assert_eq!(classify_environ(Ok(data), INSTANCE), MarkerProbe::Foreign);
+        let data = environ(&["BUZZ_MANAGED_AGENT=xyz.block.buzz.app2"]);
+        assert_eq!(classify_environ(Ok(data), INSTANCE), MarkerProbe::Foreign);
+    }
 }

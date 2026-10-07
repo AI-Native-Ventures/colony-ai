@@ -1,4 +1,5 @@
-//! Buzz Nest — persistent agent workspace at `~/.buzz`.
+//! Colony nest: persistent agent workspace at `~/.colony` for new installs
+//! (existing installs keep `~/.buzz`, see [`super::nest_folder`]).
 //!
 //! Creates a shared knowledge directory on first launch so every
 //! Buzz-spawned agent starts with orientation (AGENTS.md) and a
@@ -20,6 +21,7 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 
 use crate::managed_agents::discovery::known_skill_dirs;
+use crate::managed_agents::nest_folder;
 #[cfg(unix)]
 use crate::util::create_symlink;
 
@@ -41,35 +43,68 @@ const NEST_DIRS: &[&str] = &[
 /// Fully static — no runtime interpolation, no secrets, no user paths.
 pub(crate) const AGENTS_MD: &str = include_str!("nest_agents.md");
 
-/// Default SKILL.md content for the buzz-cli skill.
-/// Written to ~/.buzz/.agents/skills/buzz-cli/SKILL.md on first init.
-const BUZZ_CLI_SKILL_MD: &str = include_str!("nest_skill.md");
+/// Default SKILL.md content for the colony-cli skill.
+/// Written to `<nest>/.agents/skills/colony-cli/SKILL.md` on first init.
+const COLONY_CLI_SKILL_MD: &str = include_str!("nest_skill.md");
 
 /// Template content version for AGENTS.md static content (above managed markers).
 /// Bump this when changing `nest_agents.md` to trigger refresh on existing installs.
 /// Version 1 is implicitly "before this mechanism existed" (no version file).
-const NEST_AGENTS_VERSION: u32 = 6;
+/// Version 7 renamed the managed-section markers (see [`BEGIN_MARKER`]); the
+/// refresh rewrites the markers of an existing block in place, so every
+/// install ends up with the current markers and keeps the text below them.
+const NEST_AGENTS_VERSION: u32 = 7;
 
 /// Template content version for SKILL.md.
 /// Bump this when changing `nest_skill.md` to trigger refresh on existing installs.
-const NEST_SKILL_VERSION: u32 = 6;
+/// Version 7 renamed the skill from `buzz-cli` to `colony-cli`.
+const NEST_SKILL_VERSION: u32 = 7;
 
-const BEGIN_MARKER: &str = "<!-- BEGIN BUZZ MANAGED";
-const END_MARKER: &str = "<!-- END BUZZ MANAGED -->";
+/// Prefix of the line that opens the managed section of AGENTS.md. Agents read
+/// this line, so it carries the product name.
+const BEGIN_MARKER: &str = "<!-- BEGIN COLONY MANAGED";
+
+/// The full opening line [`upsert_managed_section`] writes, and the line the
+/// template carries.
+const BEGIN_LINE: &str =
+    "<!-- BEGIN COLONY MANAGED - regenerated automatically, do not edit below -->";
+
+/// The line that closes the managed section.
+const END_MARKER: &str = "<!-- END COLONY MANAGED -->";
+
+/// Markers that builds before the rename wrote. They are match patterns only:
+/// files written by those builds still carry them, and the section is found by
+/// them so its owner's notes survive. Nothing writes them any more, and the
+/// first refresh or upsert of a file replaces them with the markers above.
+const LEGACY_BEGIN_MARKER: &str = "<!-- BEGIN BUZZ MANAGED";
+const LEGACY_END_MARKER: &str = "<!-- END BUZZ MANAGED -->";
+
+/// Opening and closing markers of either generation, current one first.
+const BEGIN_MARKERS: [&str; 2] = [BEGIN_MARKER, LEGACY_BEGIN_MARKER];
+const END_MARKERS: [&str; 2] = [END_MARKER, LEGACY_END_MARKER];
+
+/// Directory name of the generated CLI skill, under the canonical skills
+/// directory and under every harness-specific skills directory.
+#[cfg_attr(not(unix), allow(dead_code))]
+const SKILL_NAME: &str = "colony-cli";
 
 /// Canonical skill directory path relative to the nest root.
-const CANONICAL_SKILL_DIR: &str = ".agents/skills/buzz-cli";
+const CANONICAL_SKILL_DIR: &str = ".agents/skills/colony-cli";
 
-/// Nest directory name for production builds.
-const NEST_DIR_PROD: &str = ".buzz";
+/// Name the generated CLI skill had before it was renamed to [`SKILL_NAME`].
+/// Only [`retire_legacy_skill_entries`] still touches it.
+const LEGACY_SKILL_NAME: &str = "buzz-cli";
+
+/// Canonical directory of the legacy skill, relative to the nest root.
+const LEGACY_CANONICAL_SKILL_DIR: &str = ".agents/skills/buzz-cli";
 
 /// Process-lifetime nest directory. Initialized once at startup via
 /// [`init_nest_dir`] before any call to [`nest_dir`].
 ///
 /// `None` inside the `OnceLock` means "home dir was unresolvable at init time".
 /// The outer `None` from `OnceLock::get` means "not initialized yet" —
-/// [`nest_dir`] falls back to the prod path in that case, ensuring test code
-/// that never calls [`init_nest_dir`] still works.
+/// [`nest_dir`] falls back to the production choice in that case, ensuring
+/// test code that never calls [`init_nest_dir`] still works.
 static NEST_DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
 
 /// Initialize the process-lifetime nest directory.
@@ -81,28 +116,40 @@ static NEST_DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new
 /// `is_dev` should be `true` when the running binary is a dev build — i.e.
 /// when the Tauri app-data directory name starts with `"xyz.block.buzz.app.dev"`.
 /// Pass `false` for production (signed DMG) builds.
-pub fn init_nest_dir(is_dev: bool) {
-    let suffix = crate::build_identity::nest_name(is_dev);
-    let path = dirs::home_dir().map(|h| h.join(suffix.as_ref()));
-    // set() is a no-op when already initialized, which is correct: only the
-    // first call (at boot, before any filesystem work) should win.
-    let _ = NEST_DIR.set(path);
-}
-
-/// Returns the nest root path (`~/.buzz` for prod, `~/.buzz-dev` for dev),
-/// or `None` if the home directory cannot be resolved.
 ///
-/// If [`init_nest_dir`] has not been called yet (e.g. in unit tests), falls
-/// back to the production path `~/.buzz`.
-pub fn nest_dir() -> Option<PathBuf> {
-    match NEST_DIR.get() {
-        Some(path) => path.clone(),
-        // Not yet initialized — fall back to prod path. Covers test code.
-        None => dirs::home_dir().map(|h| h.join(NEST_DIR_PROD)),
+/// Production builds pick `~/.colony` for a new install and keep an existing
+/// `~/.buzz` (see [`nest_folder`]). The choice only reads the filesystem and
+/// is logged once, on the call that sets it.
+pub fn init_nest_dir(is_dev: bool) {
+    let Some(home) = dirs::home_dir() else {
+        let _ = NEST_DIR.set(None);
+        return;
+    };
+    let (path, choice) = nest_folder::resolve_nest_dir(&home, is_dev);
+    // set() is a no-op when already initialized, which is correct: only the
+    // first call (at boot, before any filesystem work) should win. Log only
+    // the call that wins so the line always names the folder actually used.
+    if NEST_DIR.set(Some(path)).is_ok() {
+        eprintln!("{}", choice.log_line(&home));
     }
 }
 
-/// Creates the Buzz nest at `~/.buzz` if it doesn't already exist.
+/// Returns the nest root path (`~/.colony` for a new production install,
+/// `~/.buzz` for an existing one, `~/.buzz-dev` for dev), or `None` if the
+/// home directory cannot be resolved.
+///
+/// If [`init_nest_dir`] has not been called yet (e.g. in unit tests), falls
+/// back to the production choice for the current home directory.
+pub fn nest_dir() -> Option<PathBuf> {
+    match NEST_DIR.get() {
+        Some(path) => path.clone(),
+        // Not yet initialized: fall back to the production choice. Covers
+        // test code.
+        None => dirs::home_dir().map(|home| nest_folder::resolve_nest_dir(&home, false).0),
+    }
+}
+
+/// Creates the nest folder (see [`nest_dir`]) if it doesn't already exist.
 ///
 /// Delegates to [`ensure_nest_at`] with the resolved nest directory.
 /// Returns an error string if the home directory cannot be resolved.
@@ -115,9 +162,10 @@ pub fn ensure_nest() -> Result<(), String> {
 ///
 /// - Creates the root directory and all subdirectories.
 /// - Writes `AGENTS.md` only if it doesn't already exist.
-/// - Writes `.agents/skills/buzz-cli/SKILL.md` only if it doesn't already exist.
+/// - Writes `.agents/skills/colony-cli/SKILL.md` only if it doesn't already exist.
 /// - Creates harness-specific symlinks pointing to the canonical
-///   `.agents/skills/buzz-cli` directory for each known provider.
+///   `.agents/skills/colony-cli` directory for each known provider.
+/// - Retires the generated `buzz-cli` skill entries left by earlier builds.
 /// - Sets 700 permissions on the root, all subdirectories, and the skill
 ///   directory tree (Unix).
 ///
@@ -181,9 +229,8 @@ pub fn ensure_nest_at(root: &Path) -> Result<(), String> {
         }
     }
 
-    // Write buzz-cli skill to the harness-agnostic .agents path.
-    // The first-init write uses the new canonical path; migration from
-    // the old .claude path is handled in refresh_skill_md_if_stale.
+    // Write the colony-cli skill to the harness-agnostic .agents path.
+    // Entries of the pre-rename buzz-cli skill are retired below.
     let agents_skill_dir = root.join(CANONICAL_SKILL_DIR);
     fs::create_dir_all(&agents_skill_dir)
         .map_err(|e| format!("create {}: {e}", agents_skill_dir.display()))?;
@@ -196,7 +243,7 @@ pub fn ensure_nest_at(root: &Path) -> Result<(), String> {
     {
         Ok(mut file) => {
             use std::io::Write;
-            file.write_all(BUZZ_CLI_SKILL_MD.as_bytes())
+            file.write_all(COLONY_CLI_SKILL_MD.as_bytes())
                 .map_err(|e| format!("write {}: {e}", skill_md.display()))?;
         }
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
@@ -206,13 +253,17 @@ pub fn ensure_nest_at(root: &Path) -> Result<(), String> {
     }
 
     // Create harness-specific symlinks for all known providers.
-    // Migration of the old .claude/skills/buzz-cli real dir is handled in
-    // refresh_skill_md_if_stale; ensure_skill_symlinks skips paths that already exist.
+    // ensure_skill_symlinks skips paths that already exist.
     ensure_skill_symlinks(root)?;
 
     // Refresh static content if the embedded template version is newer.
     refresh_agents_md_if_stale(root)?;
     refresh_skill_md_if_stale(root)?;
+
+    // The colony-cli skill is now in place, so the pre-rename skill can go.
+    // Runs on every call, not only on a version bump: an older build that is
+    // launched once and then upgraded again recreates the legacy entries.
+    retire_legacy_skill_entries(root)?;
 
     // Set owner-only permissions on root and all subdirectories.
     // Skip any path that is a symlink — chmod would affect the target.
@@ -286,7 +337,7 @@ fn ensure_skill_symlinks(root: &Path) -> Result<(), String> {
     for skill_dir in known_skill_dirs() {
         let parent = root.join(skill_dir);
         fs::create_dir_all(&parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
-        let link = parent.join("buzz-cli");
+        let link = parent.join(SKILL_NAME);
         if link.symlink_metadata().is_ok() {
             continue; // symlink or real path exists — skip
         }
@@ -378,9 +429,15 @@ fn read_version_file(path: &Path) -> u32 {
 
 /// Refresh AGENTS.md static content if the template version has changed.
 ///
-/// Preserves everything from the `<!-- BEGIN BUZZ MANAGED` marker onward
+/// Preserves everything from the `<!-- BEGIN COLONY MANAGED` marker onward
 /// (the dynamic section managed by `upsert_managed_section`). Replaces
 /// only the static template content above the marker.
+///
+/// A file written by an earlier build opens its section with the legacy marker.
+/// It is found the same way, and [`migrate_legacy_markers`] rewrites the legacy
+/// markers of that section in place, so the text below the section is kept and
+/// the file never says the old name afterwards. A file with no section of
+/// either generation still gets the full template, as before.
 fn refresh_agents_md_if_stale(root: &Path) -> Result<(), String> {
     let version_path = root.join(".nest-agents-version");
     if read_version_file(&version_path) >= NEST_AGENTS_VERSION {
@@ -391,8 +448,8 @@ fn refresh_agents_md_if_stale(root: &Path) -> Result<(), String> {
     let current =
         fs::read_to_string(&agents_md).map_err(|e| format!("read {}: {e}", agents_md.display()))?;
 
-    let new_content = match find_marker_at_line_start(&current, BEGIN_MARKER) {
-        Some(pos) => {
+    let new_content = match find_any_marker_at_line_start(&current, &BEGIN_MARKERS) {
+        Some((pos, _)) => {
             // Find the start of the marker line (could be preceded by blank lines).
             let marker_line_start = current[..pos].rfind('\n').map(|p| p + 1).unwrap_or(0);
             // Template content up to (but not including) the managed section,
@@ -407,7 +464,11 @@ fn refresh_agents_md_if_stale(root: &Path) -> Result<(), String> {
                 }
                 None => AGENTS_MD,
             };
-            format!("{}{}", template_static, &current[marker_line_start..])
+            format!(
+                "{}{}",
+                template_static,
+                migrate_legacy_markers(&current[marker_line_start..])
+            )
         }
         None => {
             // No managed section found — write full template.
@@ -435,30 +496,13 @@ fn refresh_agents_md_if_stale(root: &Path) -> Result<(), String> {
 
 /// Refresh SKILL.md if the template version has changed.
 ///
-/// SKILL.md has no user-editable sections — it is fully overwritten on version bump.
+/// SKILL.md has no user-editable sections, so it is fully overwritten on version bump.
 fn refresh_skill_md_if_stale(root: &Path) -> Result<(), String> {
-    let agents_skill_dir = root.join(".agents/skills/buzz-cli");
+    let agents_skill_dir = root.join(CANONICAL_SKILL_DIR);
     let version_path = agents_skill_dir.join(".skill-version");
     if read_version_file(&version_path) >= NEST_SKILL_VERSION {
         return Ok(());
     }
-
-    // Migration: if .claude/skills/buzz-cli exists as a real directory
-    // (pre-migration install), copy user's SKILL.md to the new location
-    // then remove the old directory so we can replace it with a symlink.
-    let old_skill_dir = root.join(".claude/skills/buzz-cli");
-    let old_is_real_dir = old_skill_dir
-        .symlink_metadata()
-        .map(|m| m.file_type().is_dir())
-        .unwrap_or(false);
-
-    let skill_content = if old_is_real_dir {
-        // Preserve user-edited content during migration.
-        fs::read_to_string(old_skill_dir.join("SKILL.md"))
-            .unwrap_or_else(|_| BUZZ_CLI_SKILL_MD.to_string())
-    } else {
-        BUZZ_CLI_SKILL_MD.to_string()
-    };
 
     // Ensure the canonical .agents skill directory exists.
     fs::create_dir_all(&agents_skill_dir)
@@ -470,25 +514,19 @@ fn refresh_skill_md_if_stale(root: &Path) -> Result<(), String> {
         .map_err(|e| format!("tempfile in {}: {e}", agents_skill_dir.display()))?;
     {
         use std::io::Write;
-        tmp.write_all(skill_content.as_bytes())
+        tmp.write_all(COLONY_CLI_SKILL_MD.as_bytes())
             .map_err(|e| format!("write tempfile: {e}"))?;
     }
     tmp.persist(&skill_md)
         .map_err(|e| format!("persist {}: {e}", skill_md.display()))?;
 
-    // Replace old real directory with a symlink.
-    if old_is_real_dir {
-        fs::remove_dir_all(&old_skill_dir)
-            .map_err(|e| format!("remove {}: {e}", old_skill_dir.display()))?;
-    }
-
-    // Create/replace the .claude/skills/buzz-cli symlink.
+    // Create/replace the .claude/skills/colony-cli symlink.
     #[cfg(unix)]
     {
         let claude_skills_dir = root.join(".claude/skills");
         fs::create_dir_all(&claude_skills_dir)
             .map_err(|e| format!("create {}: {e}", claude_skills_dir.display()))?;
-        let symlink_path = root.join(".claude/skills/buzz-cli");
+        let symlink_path = claude_skills_dir.join(SKILL_NAME);
         // Remove any stale symlink before (re)creating.
         let symlink_exists = symlink_path
             .symlink_metadata()
@@ -499,7 +537,7 @@ fn refresh_skill_md_if_stale(root: &Path) -> Result<(), String> {
                 .map_err(|e| format!("remove symlink {}: {e}", symlink_path.display()))?;
         }
         create_symlink(
-            std::path::Path::new("../../.agents/skills/buzz-cli"),
+            std::path::Path::new(&format!("../../{CANONICAL_SKILL_DIR}")),
             &symlink_path,
         )
         .map_err(|e| format!("symlink {}: {e}", symlink_path.display()))?;
@@ -509,6 +547,77 @@ fn refresh_skill_md_if_stale(root: &Path) -> Result<(), String> {
         .map_err(|e| format!("write {}: {e}", version_path.display()))?;
 
     Ok(())
+}
+
+/// Remove the generated `buzz-cli` skill entries that builds before the
+/// `colony-cli` rename left in the nest, so agents list one CLI skill and the
+/// old name never reaches them.
+///
+/// Move-only and exact: it removes only what Colony itself generated, namely the
+/// harness symlinks that point at the legacy canonical directory, the legacy
+/// `SKILL.md` and `.skill-version`, and the legacy directories once they are
+/// empty. Anything else a user or another tool put in those places stays.
+/// Failures other than "already gone" or "not empty" propagate so the next boot
+/// retries; nothing here is skipped silently.
+fn retire_legacy_skill_entries(root: &Path) -> Result<(), String> {
+    for skill_dir in known_skill_dirs() {
+        let link = root.join(skill_dir).join(LEGACY_SKILL_NAME);
+        let metadata = match link.symlink_metadata() {
+            Ok(metadata) => metadata,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(format!("stat {}: {e}", link.display())),
+        };
+        if metadata.file_type().is_symlink() {
+            let depth = Path::new(skill_dir).components().count();
+            let generated_target = format!("{}{LEGACY_CANONICAL_SKILL_DIR}", "../".repeat(depth));
+            let points_at_legacy_skill = fs::read_link(&link)
+                .map(|target| target == Path::new(&generated_target))
+                .map_err(|e| format!("read link {}: {e}", link.display()))?;
+            if points_at_legacy_skill {
+                fs::remove_file(&link)
+                    .map_err(|e| format!("remove symlink {}: {e}", link.display()))?;
+            }
+        } else if metadata.file_type().is_dir() {
+            // Pre-`.agents` layout: a real directory holding a copy of the skill.
+            remove_generated_skill_dir(&link)?;
+        }
+    }
+    remove_generated_skill_dir(&root.join(LEGACY_CANONICAL_SKILL_DIR))
+}
+
+/// Delete the files Colony generates inside a skill directory, then the
+/// directory itself if nothing else is left in it. A symlink or anything that
+/// is not a plain directory is not ours and is left alone.
+fn remove_generated_skill_dir(dir: &Path) -> Result<(), String> {
+    match dir.symlink_metadata() {
+        Ok(metadata) if metadata.file_type().is_dir() => {}
+        Ok(_) => return Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(format!("stat {}: {e}", dir.display())),
+    }
+    for generated in ["SKILL.md", ".skill-version"] {
+        let path = dir.join(generated);
+        match fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("remove {}: {e}", path.display())),
+        }
+    }
+    match fs::remove_dir(dir) {
+        Ok(()) => Ok(()),
+        // Something Colony did not generate lives here, so the directory stays.
+        Err(e)
+            if matches!(
+                e.kind(),
+                io::ErrorKind::NotFound
+                    | io::ErrorKind::DirectoryNotEmpty
+                    | io::ErrorKind::AlreadyExists
+            ) =>
+        {
+            Ok(())
+        }
+        Err(e) => Err(format!("remove {}: {e}", dir.display())),
+    }
 }
 
 fn escape_md_cell(s: &str) -> String {
@@ -574,14 +683,26 @@ fn find_marker_at_line_start(content: &str, marker: &str) -> Option<usize> {
     None
 }
 
+/// Earliest line-start occurrence of any of `markers`, as `(position, length of
+/// the marker that matched)`.
+fn find_any_marker_at_line_start(content: &str, markers: &[&str]) -> Option<(usize, usize)> {
+    markers
+        .iter()
+        .filter_map(|marker| {
+            find_marker_at_line_start(content, marker).map(|pos| (pos, marker.len()))
+        })
+        .min_by_key(|&(pos, _)| pos)
+}
+
 /// Find the first valid ordered BEGIN/END marker pair, both at line starts.
+/// Either marker may be of either generation, so a section written by an earlier
+/// build (or half rewritten by one) is found like any other.
 /// Returns `(begin_line_start, after_end)` byte offsets for slicing.
 fn find_managed_markers(content: &str) -> Option<(usize, usize)> {
-    let begin_pos = find_marker_at_line_start(content, BEGIN_MARKER)?;
+    let (begin_pos, _) = find_any_marker_at_line_start(content, &BEGIN_MARKERS)?;
     let begin_line_start = content[..begin_pos].rfind('\n').map(|p| p + 1).unwrap_or(0);
-    let end_pos =
-        find_marker_at_line_start(&content[begin_pos..], END_MARKER).map(|p| p + begin_pos)?;
-    let end_of_end = end_pos + END_MARKER.len();
+    let (end_rel, end_len) = find_any_marker_at_line_start(&content[begin_pos..], &END_MARKERS)?;
+    let end_of_end = begin_pos + end_rel + end_len;
     let after_end = if content[end_of_end..].starts_with('\n') {
         end_of_end + 1
     } else {
@@ -592,7 +713,7 @@ fn find_managed_markers(content: &str) -> Option<(usize, usize)> {
 
 /// Remove an orphan BEGIN marker line (one with no matching END after it).
 fn strip_orphan_begin_marker(content: &str) -> String {
-    if let Some(pos) = find_marker_at_line_start(content, BEGIN_MARKER) {
+    if let Some((pos, _)) = find_any_marker_at_line_start(content, &BEGIN_MARKERS) {
         let line_start = content[..pos].rfind('\n').map(|p| p + 1).unwrap_or(0);
         let line_end = content[pos..]
             .find('\n')
@@ -610,12 +731,68 @@ fn strip_orphan_begin_marker(content: &str) -> String {
     }
 }
 
+/// Drop every line that is a legacy marker and keep all other bytes.
+///
+/// Only used when the file holds no complete section: any legacy marker line
+/// left is then unmatched, and removing the line loses none of the text around
+/// it.
+fn drop_legacy_marker_lines(content: &str) -> String {
+    content
+        .split_inclusive('\n')
+        .filter(|line| {
+            !line.starts_with(LEGACY_BEGIN_MARKER) && !line.starts_with(LEGACY_END_MARKER)
+        })
+        .collect()
+}
+
+/// Rewrite the legacy markers of the first managed section of `content` into
+/// the current ones, in place.
+///
+/// Only the opening line and the closing marker change. The section body and
+/// every other byte are kept, and markers that are already current are left
+/// alone, so content without a legacy marker comes back byte for byte.
+fn migrate_legacy_markers(content: &str) -> String {
+    let mut edits: Vec<(usize, usize, &str)> = Vec::new();
+    if let Some((begin_pos, _)) = find_any_marker_at_line_start(content, &BEGIN_MARKERS) {
+        if content[begin_pos..].starts_with(LEGACY_BEGIN_MARKER) {
+            let line_end = content[begin_pos..]
+                .find('\n')
+                .map_or(content.len(), |p| begin_pos + p);
+            edits.push((begin_pos, line_end, BEGIN_LINE));
+        }
+        if let Some((end_rel, end_len)) =
+            find_any_marker_at_line_start(&content[begin_pos..], &END_MARKERS)
+        {
+            let end_pos = begin_pos + end_rel;
+            if content[end_pos..].starts_with(LEGACY_END_MARKER) {
+                edits.push((end_pos, end_pos + end_len, END_MARKER));
+            }
+        }
+    }
+    let mut out = String::with_capacity(content.len());
+    let mut cursor = 0;
+    for (start, end, text) in edits {
+        out.push_str(&content[cursor..start]);
+        out.push_str(text);
+        cursor = end;
+    }
+    out.push_str(&content[cursor..]);
+    out
+}
+
+/// Replace the managed section of `file_path` with `new_section_content`.
+///
+/// The section is found by its current markers or the legacy ones of builds
+/// before the rename, in any pairing, and is replaced as a whole by one section
+/// with the current markers. Every byte outside the section is kept, so notes
+/// above and below it survive. A file with no complete section gets one appended
+/// once its unmatched BEGIN marker line, and any unmatched legacy marker line,
+/// is removed. Only the first section is replaced: a second complete section is
+/// left as it is. Writing is skipped when nothing changes.
 pub fn upsert_managed_section(file_path: &Path, new_section_content: &str) -> io::Result<()> {
     let current = fs::read_to_string(file_path)?;
 
-    let replacement = format!(
-        "{BEGIN_MARKER} — regenerated automatically, do not edit below -->\n{new_section_content}\n{END_MARKER}\n"
-    );
+    let replacement = format!("{BEGIN_LINE}\n{new_section_content}\n{END_MARKER}\n");
 
     let new_content = match find_managed_markers(&current) {
         Some((begin_line_start, after_end)) => {
@@ -627,7 +804,7 @@ pub fn upsert_managed_section(file_path: &Path, new_section_content: &str) -> io
             )
         }
         None => {
-            let cleaned = strip_orphan_begin_marker(&current);
+            let cleaned = drop_legacy_marker_lines(&strip_orphan_begin_marker(&current));
             format!("{}\n\n{}", cleaned.trim_end_matches('\n'), replacement)
         }
     };
@@ -828,6 +1005,10 @@ pub fn try_regenerate_nest<R: tauri::Runtime>(app: &AppHandle<R>) {
     });
 }
 
+#[cfg(test)]
+mod brand_guard_tests;
+#[cfg(test)]
+mod marker_tests;
 #[cfg(test)]
 mod render_tests;
 #[cfg(test)]

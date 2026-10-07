@@ -189,7 +189,8 @@ Development desktop state uses separate bundle identifiers
 (`xyz.block.buzz.app.dev` and per-worktree variants), a separate keyring service
 (`buzz-desktop-dev`), and `~/.buzz-dev`. `just reset` removes those dev-only
 locations and the local Docker volumes. It does not touch the installed app's
-`xyz.block.buzz.app` data, `buzz-desktop` keyring service, or `~/.buzz` nest.
+`xyz.block.buzz.app` data, `buzz-desktop` keyring service, or the installed
+app's nest (`~/.colony` for new installs, `~/.buzz` for older ones).
 
 ---
 

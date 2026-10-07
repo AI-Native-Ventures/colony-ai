@@ -85,6 +85,8 @@ import { CommunityRail } from "@/features/sidebar/ui/CommunityRail";
 import { useChannelMutes } from "@/features/sidebar/lib/useChannelMutes";
 import { useChannelStars } from "@/features/sidebar/lib/useChannelStars";
 import { useCommunities } from "@/features/communities/useCommunities";
+import { useMembershipDenialWatcher } from "@/features/communities/useMembershipDenialWatcher";
+import { plainRelayErrorMessage } from "@/shared/lib/relayError";
 import {
   consumePendingCommunityRestore,
   loadCommunityDestination,
@@ -282,6 +284,16 @@ export function AppShell() {
     channelsQuery.error instanceof Error
       ? channelsQuery.error.message
       : undefined;
+  // People see a plain sentence; the relay's own text goes to the log only.
+  const channelsErrorDisplay = channelsErrorMessage
+    ? plainRelayErrorMessage(channelsErrorMessage)
+    : undefined;
+  React.useEffect(() => {
+    if (channelsErrorMessage) {
+      console.warn("[sidebar] channels request failed:", channelsErrorMessage);
+    }
+  }, [channelsErrorMessage]);
+  useMembershipDenialWatcher(communitiesHook.activeCommunity?.id ?? null);
   const relayConnectionCard = useSidebarRelayConnectionCard(
     channelsErrorMessage,
     communitiesHook.activeCommunity?.relayUrl,
@@ -894,7 +906,7 @@ export function AppShell() {
                           activeCommunity={communitiesHook.activeCommunity}
                           channels={sidebarChannels}
                           currentPubkey={identityQuery.data?.pubkey}
-                          errorMessage={channelsErrorMessage}
+                          errorMessage={channelsErrorDisplay}
                           fallbackDisplayName={identityQuery.data?.displayName}
                           homeBadgeCount={homeBadgeCount + dueReminderBadge}
                           isPowerActive={location.pathname === "/power"}
@@ -1046,7 +1058,7 @@ export function AppShell() {
                       {!isHuddleRoom ? (
                         <RelayConnectionOverlay
                           card={relayConnectionCard}
-                          errorMessage={channelsErrorMessage}
+                          errorMessage={channelsErrorDisplay}
                           hasCommunityRail={hasCommunityRail}
                           isHuddleDrawerOpen={isHuddleDrawerOpen}
                         />

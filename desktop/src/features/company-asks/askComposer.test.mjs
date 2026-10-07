@@ -310,7 +310,7 @@ test("temporary allowance requests preserve the configured head and need a valid
     moneyEmployeePubkey: MONEY_EMPLOYEE,
     moneyDuration: "temporary",
     moneyAllowance: "125.50",
-    moneyEndDate: "2026-10-05",
+    moneyEndDate: "2099-10-05",
     moneyReason: "The approved project needs a short term increase.",
   };
   const allowance = {
@@ -345,7 +345,7 @@ test("temporary allowance requests preserve the configured head and need a valid
     allowance: { amountCents: "10000", period: "week" },
     temporaryAllowance: {
       allowance: { amountCents: "12550", period: "week" },
-      expiresAt: "2026-10-05T23:59:59.999Z",
+      expiresAt: "2099-10-05T23:59:59.999Z",
     },
     fundingOrder: ["Existing provider subscription"],
   });

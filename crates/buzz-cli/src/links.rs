@@ -1,4 +1,4 @@
-//! Canonical `buzz://` deep links for Buzz entities.
+//! Canonical `buzz://` deep links for Colony entities.
 //!
 //! Buzz Desktop renders these links as rich preview cards in chat and
 //! navigates in-app when they are clicked. The desktop parser lives in
@@ -17,7 +17,11 @@
 
 use crate::error::CliError;
 
-/// A validated `buzz://message` deep link.
+/// Schemes accepted for message links: the current brand first, then the legacy
+/// scheme that older clients still mint.
+const MESSAGE_LINK_SCHEMES: [&str; 2] = ["colony", "buzz"];
+
+/// A validated `colony://message` (or legacy `buzz://message`) deep link.
 #[derive(Debug, PartialEq, Eq)]
 pub struct MessageLink {
     pub channel_id: String,
@@ -25,15 +29,16 @@ pub struct MessageLink {
     pub thread_root_id: Option<String>,
 }
 
-/// Parse a `buzz://message?channel=<uuid>&id=<event>[&thread=<root>]` link.
+/// Parse a `colony://message?channel=<uuid>&id=<event>[&thread=<root>]` link.
+/// The legacy `buzz://message` scheme is accepted too.
 ///
 /// The link chooses only the channel and event within the relay already
 /// configured for this CLI process. It cannot override the relay or identity.
 pub fn parse_message_link(input: &str) -> Result<MessageLink, CliError> {
     let url = url::Url::parse(input.trim())
-        .map_err(|_| CliError::Usage("invalid Buzz message link".into()))?;
+        .map_err(|_| CliError::Usage("invalid Colony message link".into()))?;
 
-    if url.scheme() != "buzz"
+    if !MESSAGE_LINK_SCHEMES.contains(&url.scheme())
         || url.host_str() != Some("message")
         || !matches!(url.path(), "" | "/")
         || !url.username().is_empty()
@@ -41,7 +46,7 @@ pub fn parse_message_link(input: &str) -> Result<MessageLink, CliError> {
         || url.fragment().is_some()
     {
         return Err(CliError::Usage(
-            "expected a buzz://message link without credentials or a fragment".into(),
+            "expected a colony://message link without credentials or a fragment".into(),
         ));
     }
 
@@ -55,31 +60,33 @@ pub fn parse_message_link(input: &str) -> Result<MessageLink, CliError> {
             "thread" => &mut thread,
             _ => {
                 return Err(CliError::Usage(
-                    "Buzz message link contains an unsupported query parameter".into(),
+                    "Colony message link contains an unsupported query parameter".into(),
                 ))
             }
         };
         if slot.replace(value.into_owned()).is_some() {
             return Err(CliError::Usage(format!(
-                "Buzz message link contains more than one {key} parameter"
+                "Colony message link contains more than one {key} parameter"
             )));
         }
     }
 
     let channel = channel
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| CliError::Usage("Buzz message link is missing channel".into()))?;
+        .ok_or_else(|| CliError::Usage("Colony message link is missing channel".into()))?;
     let message = message
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| CliError::Usage("Buzz message link is missing id".into()))?;
+        .ok_or_else(|| CliError::Usage("Colony message link is missing id".into()))?;
     if thread.as_deref() == Some("") {
         return Err(CliError::Usage(
-            "Buzz message link contains an empty thread parameter".into(),
+            "Colony message link contains an empty thread parameter".into(),
         ));
     }
 
     let channel_id = uuid::Uuid::parse_str(&channel)
-        .map_err(|_| CliError::Usage("Buzz message link contains an invalid channel UUID".into()))?
+        .map_err(|_| {
+            CliError::Usage("Colony message link contains an invalid channel UUID".into())
+        })?
         .to_string();
     let message_id = canonical_event_id(&message, "id")?;
     let thread_root_id = thread
@@ -97,7 +104,7 @@ pub fn parse_message_link(input: &str) -> Result<MessageLink, CliError> {
 fn canonical_event_id(value: &str, parameter: &str) -> Result<String, CliError> {
     if value.len() != 64 || !value.chars().all(|character| character.is_ascii_hexdigit()) {
         return Err(CliError::Usage(format!(
-            "Buzz message link contains an invalid {parameter} event ID"
+            "Colony message link contains an invalid {parameter} event ID"
         )));
     }
     Ok(value.to_ascii_lowercase())
@@ -209,6 +216,33 @@ mod tests {
                 thread_root_id: Some(THREAD.into()),
             }
         );
+    }
+
+    #[test]
+    fn parses_colony_scheme_message_link_like_the_legacy_scheme() {
+        let colony = parse_message_link(&format!(
+            "colony://message?channel={CHANNEL}&id={MESSAGE}&thread={THREAD}"
+        ))
+        .unwrap();
+        let legacy = parse_message_link(&format!(
+            "buzz://message?channel={CHANNEL}&id={MESSAGE}&thread={THREAD}"
+        ))
+        .unwrap();
+        assert_eq!(colony, legacy);
+        assert!(
+            parse_message_link(&format!("other://message?channel={CHANNEL}&id={MESSAGE}")).is_err()
+        );
+    }
+
+    #[test]
+    fn message_link_errors_say_colony() {
+        let err = parse_message_link("not a link").unwrap_err().to_string();
+        assert!(err.contains("Colony message link"), "{err}");
+        let err = parse_message_link("other://message")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("colony://message"), "{err}");
+        assert!(!err.to_ascii_lowercase().contains("buzz"), "{err}");
     }
 
     #[test]

@@ -255,7 +255,7 @@ test("community membership recovery claims a replacement invite and retains retr
     .fill("https://recovery.example/invite/fixture-code");
   await page.getByTestId("invite-redeem-submit").click();
   await expect(page.getByRole("alert")).toContainText(
-    "This invite code has expired. Ask for a new one.",
+    "This invite has expired. Ask your teammate to send you a new link.",
   );
   expect(claims).toBe(1);
   expect(

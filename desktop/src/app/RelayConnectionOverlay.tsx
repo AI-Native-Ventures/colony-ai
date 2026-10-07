@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { AlertCircle } from "lucide-react";
 
 import { SidebarRelayConnectionCard } from "@/features/sidebar/ui/SidebarRelayConnectionCard";
+import { RelayErrorRetryButton } from "@/features/sidebar/ui/SidebarRelayErrorNotice";
 import type { useSidebarRelayConnectionCard } from "@/features/sidebar/ui/useSidebarRelayConnectionCard";
 import { cn } from "@/shared/lib/cn";
 import { useIsMobile } from "@/shared/hooks/use-mobile";
@@ -103,6 +104,7 @@ export function RelayConnectionOverlay({
           >
             <AlertCircle aria-hidden="true" className="h-4 w-4 shrink-0" />
             <span className="flex-1">{errorMessage}</span>
+            <RelayErrorRetryButton testId="relay-error-overlay-retry" />
           </div>
         </motion.div>
       ) : null}

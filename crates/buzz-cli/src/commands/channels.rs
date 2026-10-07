@@ -806,7 +806,7 @@ fn apply_cardinality_rule(
                 return Err(CliError::Usage(format!(
                     "persona '{slug}' has {} live instances for this owner ({}); \
                      pass a template with a single instance per persona, or resolve \
-                     the duplicate in Buzz Desktop before creating the channel",
+                     the duplicate in Colony before creating the channel",
                     many.len(),
                     candidates.join(", ")
                 )));
@@ -1036,7 +1036,7 @@ async fn build_roster_resolution(
     .await
 }
 
-/// `buzz channels create --template <name>`: load a desktop-local channel
+/// `colony channels create --template <name>`: load a desktop-local channel
 /// template, resolve its agent roster against the relay, create the
 /// channel, apply the canvas template, and add resolved agents as members.
 ///
@@ -1420,7 +1420,7 @@ pub async fn cmd_set_add_policy(client: &BuzzClient, policy: &str) -> Result<(),
     }
 
     // Check if this policy is allowed by the deployment.
-    // NOTE: This gate covers only the `buzz channels set-add-policy` CLI path.
+    // NOTE: This gate covers only the `colony channels set-add-policy` CLI path.
     // A client that submits a kind:10100 event directly to the relay bypasses
     // this check. Full enforcement requires relay-side validation, which is
     // intentionally out of scope for this change (see team decision: no
@@ -1434,7 +1434,7 @@ pub async fn cmd_set_add_policy(client: &BuzzClient, policy: &str) -> Result<(),
         if !allowed.is_empty() && !allowed.contains(&policy) {
             return Err(CliError::Usage(format!(
                 "channel_add_policy '{policy}' is not permitted on this deployment \
-                 (BUZZ_ACP_ALLOWED_CHANNEL_ADD_POLICIES={allowed_raw})"
+                 (allowed here: {allowed_raw})"
             )));
         }
     }
@@ -1742,7 +1742,7 @@ mod tests {
         if !allowed.is_empty() && !allowed.contains(&policy) {
             return Err(CliError::Usage(format!(
                 "channel_add_policy '{policy}' is not permitted on this deployment \
-                 (BUZZ_ACP_ALLOWED_CHANNEL_ADD_POLICIES={allowed_raw})"
+                 (allowed here: {allowed_raw})"
             )));
         }
         Ok(())

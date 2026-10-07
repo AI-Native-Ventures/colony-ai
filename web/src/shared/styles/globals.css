@@ -3,8 +3,26 @@
 @plugin "@tailwindcss/typography";
 @config "../../../tailwind.config.js";
 
+/* Manrope variable (Latin), SIL OFL 1.1: see assets/fonts/OFL-Manrope.txt. */
+@font-face {
+  font-family: "Manrope";
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("../../assets/fonts/manrope-variable-latin.woff2") format("woff2");
+}
+
 @layer base {
   :root {
+    /* Colony brand colours (colony.global download section). */
+    --colony-ink: #303e34;
+    --colony-muted: #667366;
+    --colony-paper: #faf8f2;
+    --colony-card: #fffffa;
+    --colony-line: #dedfd4;
+    --colony-green: #40553c;
+    --colony-green-ink: #fffff6;
+    --colony-focus: #315f49;
     /* Catppuccin Latte (mauve accent) */
     --radius: 0.625rem;
     --background: 220 23.08% 94.9%;
@@ -95,6 +113,6 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: "Inter Variable", Inter, "Avenir Next", "Segoe UI", sans-serif;
+    font-family: "Manrope", "Avenir Next", "Segoe UI", system-ui, sans-serif;
   }
 }

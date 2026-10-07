@@ -6,13 +6,18 @@ mod help_tree;
 mod links;
 mod validate;
 
+#[cfg(test)]
+mod brand_guard_tests;
+#[cfg(test)]
+mod brand_tests;
+
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use client::BuzzClient;
 use error::CliError;
 use nostr::Keys;
 use uuid::Uuid;
 
-/// Run the Buzz CLI from raw arguments (including `argv[0]`).
+/// Run the Colony CLI from raw arguments (including `argv[0]`).
 ///
 /// Returns a process exit code (0 = success).
 ///
@@ -92,21 +97,34 @@ where
     I: IntoIterator<Item = S>,
     S: Into<std::ffi::OsString> + Clone,
 {
-    let matches = build_command().try_get_matches_from(args)?;
+    let args: Vec<std::ffi::OsString> = args.into_iter().map(Into::into).collect();
+    let name = invoked_name(args.first().map(std::ffi::OsString::as_os_str));
+    let matches = build_command().bin_name(name).try_get_matches_from(args)?;
     Cli::from_arg_matches(&matches)
+}
+
+/// The command name usage lines print: the file stem of `argv[0]`.
+///
+/// The CLI answers to `colony` and to the legacy `buzz`, and it reports whichever
+/// name it was invoked as. Falls back to `colony` when `argv[0]` is missing or empty.
+fn invoked_name(arg0: Option<&std::ffi::OsStr>) -> String {
+    arg0.and_then(|arg| std::path::Path::new(arg).file_stem())
+        .and_then(|stem| stem.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("colony")
+        .to_owned()
 }
 
 #[derive(Parser)]
 #[command(
-    name = "buzz",
-    about = "Buzz CLI — interact with a Buzz relay",
+    name = "colony",
+    about = "Colony CLI: work with your Colony community from the command line",
     long_about = "\
-Buzz CLI — interact with a Buzz relay
+Colony CLI: work with your Colony community from the command line
 
-Configuration (flags override env vars):
-  BUZZ_RELAY_URL     Relay base URL        [default: http://localhost:3000]
-  BUZZ_PRIVATE_KEY   Nostr private key (hex or nsec)  [required]
-  BUZZ_AUTH_TAG      NIP-OA auth tag JSON  [optional]
+Colony sets the relay, identity and owner attestation for agents it runs. To run \
+the CLI by hand, pass --relay, --private-key (hex or nsec) and, optionally, \
+--auth-tag (NIP-OA auth tag JSON).
 
 The 'pack' subcommand runs locally and does not require a relay connection.
 
@@ -114,16 +132,26 @@ Exit codes: 0=ok  1=bad input  2=relay/network error  3=auth error  4=other  5=w
 Errors are JSON on stderr: {\"error\": \"<category>\", \"message\": \"<detail>\"}"
 )]
 struct Cli {
-    /// Relay URL (http:// or https://). Overrides BUZZ_RELAY_URL env var.
-    #[arg(long, env = "BUZZ_RELAY_URL", default_value = "http://localhost:3000")]
+    /// Relay URL (http:// or https://). Defaults to the relay Colony configures.
+    #[arg(
+        long,
+        env = "BUZZ_RELAY_URL",
+        hide_env = true,
+        default_value = "http://localhost:3000"
+    )]
     relay: String,
 
     /// Nostr private key (hex or nsec). This is the CLI's identity.
-    #[arg(long, env = "BUZZ_PRIVATE_KEY", hide_env_values = true)]
+    #[arg(
+        long,
+        env = "BUZZ_PRIVATE_KEY",
+        hide_env = true,
+        hide_env_values = true
+    )]
     private_key: Option<String>,
 
     /// NIP-OA auth tag JSON (owner attestation). Injected into every signed event.
-    #[arg(long, env = "BUZZ_AUTH_TAG", hide_env_values = true)]
+    #[arg(long, env = "BUZZ_AUTH_TAG", hide_env = true, hide_env_values = true)]
     auth_tag: Option<String>,
 
     /// Output format: 'json' (default, full fields) or 'compact' (reduced fields).
@@ -337,7 +365,7 @@ impl RespondToArg {
 
 #[derive(Subcommand)]
 pub enum AgentsCmd {
-    /// Open a prefilled create-agent form in the owner's Buzz Desktop
+    /// Open a prefilled create-agent form in the owner's Colony app
     DraftCreate {
         /// Current channel UUID; the new agent is added here after save
         #[arg(long)]
@@ -349,7 +377,7 @@ pub enum AgentsCmd {
         #[arg(long)]
         system_prompt: String,
     },
-    /// Open a prefilled edit-agent form in the owner's Buzz Desktop
+    /// Open a prefilled edit-agent form in the owner's Colony app
     DraftUpdate {
         /// Current channel UUID
         #[arg(long)]
@@ -380,12 +408,12 @@ republish in progress). If the retry also fails, the command exits with an error
 Suggested --reason codes (unknown values are allowed): rotated, retired, \
 bot-rebuilt, left-organization, spam\n\n\
 Archiving a third-party identity is a human owner/admin action: an agent \
-running under BUZZ_AUTH_TAG signs as itself, so it can only ever satisfy \
+running with an owner attestation signs as itself, so it can only ever satisfy \
 the self path (target == signer) — not the owner-of-agent path for another \
 identity.\n\n\
 Examples:\n  \
-buzz agents archive <PUBKEY> --reason retired\n  \
-buzz agents archive <PUBKEY> --reason bot-rebuilt --replaced-by <NEW_PUBKEY>"
+colony agents archive <PUBKEY> --reason retired\n  \
+colony agents archive <PUBKEY> --reason bot-rebuilt --replaced-by <NEW_PUBKEY>"
     )]
     Archive {
         /// Target identity pubkey (hex)
@@ -412,7 +440,7 @@ buzz agents archive <PUBKEY> --reason bot-rebuilt --replaced-by <NEW_PUBKEY>"
 extraction failure, then exits with an error if still unresolvable. Use --admin to bypass \
 for relay-admin callers.\n\n\
 Examples:\n  \
-buzz agents unarchive <PUBKEY> --reason returned"
+colony agents unarchive <PUBKEY> --reason returned"
     )]
     Unarchive {
         /// Target identity pubkey (hex)
@@ -437,7 +465,7 @@ and NIP-70 `-` protection tag before trusting it. Any trust failure is a \
 nonzero-exit error, never a false-empty success — this command's whole \
 purpose is verification.\n\n\
 Examples:\n  \
-buzz agents archived"
+colony agents archived"
     )]
     Archived,
     /// Read the append-only configuration history for a company employee.
@@ -461,10 +489,10 @@ buzz agents archived"
 pub enum MessagesCmd {
     /// Send a message to a channel
     #[command(
-        after_help = "Examples:\n  buzz messages send --channel <UUID> --content \"hello\"\n  buzz messages send --channel <UUID> --content \"@alice check this\"\n  echo \"hello from stdin\" | buzz messages send --channel <UUID> --content -"
+        after_help = "Examples:\n  colony messages send --channel <UUID> --content \"hello\"\n  colony messages send --channel <UUID> --content \"@alice check this\"\n  echo \"hello from stdin\" | colony messages send --channel <UUID> --content -"
     )]
     Send {
-        /// Channel UUID (from 'buzz channels list')
+        /// Channel UUID (from 'colony channels list')
         #[arg(long)]
         channel: String,
         /// Message text — supports @mentions and markdown. Use '-' to read from stdin.
@@ -551,7 +579,7 @@ pub enum MessagesCmd {
     },
     /// Retrieve messages from a channel
     #[command(
-        after_help = "Examples:\n  buzz messages get --channel <UUID>\n  buzz messages get --channel <UUID> --limit 50 --kinds 1,1984"
+        after_help = "Examples:\n  colony messages get --channel <UUID>\n  colony messages get --channel <UUID> --limit 50 --kinds 1,1984"
     )]
     Get {
         /// Channel UUID
@@ -570,9 +598,9 @@ pub enum MessagesCmd {
         #[arg(long)]
         kinds: Option<String>,
     },
-    /// Get the containing thread for a message or Buzz message link
+    /// Get the containing thread for a message or Colony message link
     #[command(
-        after_help = "Examples:\n  buzz messages thread --channel <UUID> --event <EVENT_ID>\n  buzz messages thread --link 'buzz://message?channel=<UUID>&id=<EVENT_ID>&thread=<ROOT_ID>'"
+        after_help = "Examples:\n  colony messages thread --channel <UUID> --event <EVENT_ID>\n  colony messages thread --link 'colony://message?channel=<UUID>&id=<EVENT_ID>&thread=<ROOT_ID>'"
     )]
     Thread {
         /// Channel UUID; required unless --link is supplied
@@ -581,7 +609,7 @@ pub enum MessagesCmd {
         /// Message event ID (64-char hex); required unless --link is supplied
         #[arg(long, required_unless_present = "link", conflicts_with = "link")]
         event: Option<String>,
-        /// Canonical buzz://message deep link; uses the configured relay and identity
+        /// Canonical colony://message deep link; uses the configured relay and identity
         #[arg(long, conflicts_with_all = ["channel", "event"])]
         link: Option<String>,
         /// Maximum number of results to return
@@ -593,7 +621,7 @@ pub enum MessagesCmd {
     },
     /// Full-text search across messages
     #[command(
-        after_help = "Examples:\n  buzz messages search --query checkout\n  buzz messages search --author npub1... --since 1783497600\n  buzz messages search --author Aaron --query checkout --limit 20"
+        after_help = "Examples:\n  colony messages search --query checkout\n  colony messages search --author npub1... --since 1783497600\n  colony messages search --author Aaron --query checkout --limit 20"
     )]
     Search {
         /// Search query string (optional when --author is given)
@@ -624,7 +652,7 @@ pub enum MessagesCmd {
 pub enum ChannelsCmd {
     /// List channels visible to the current identity
     #[command(
-        after_help = "Examples:\n  buzz channels list\n  buzz channels list --visibility open"
+        after_help = "Examples:\n  colony channels list\n  colony channels list --visibility open"
     )]
     List {
         /// Filter by visibility
@@ -645,7 +673,7 @@ pub enum ChannelsCmd {
     },
     /// Search channels by human-readable name
     #[command(
-        after_help = "Examples:\n  buzz channels search --query composer\n  buzz channels search --query buzz-chat-composer --exact\n  buzz channels search --query design --include-archived"
+        after_help = "Examples:\n  colony channels search --query composer\n  colony channels search --query chat-composer --exact\n  colony channels search --query design --include-archived"
     )]
     Search {
         /// Search query (case-insensitive substring of channel name)
@@ -663,7 +691,7 @@ pub enum ChannelsCmd {
     },
     /// Create a new channel
     #[command(
-        after_help = "Examples:\n  buzz channels create --name general --type stream --visibility open\n  buzz channels create --name design --type forum --visibility open --description \"Design discussions\"\n  buzz channels create --name standup --type stream --visibility open --ttl 3600  # ephemeral, archived after 1h idle\n  buzz channels create --name project-x --template \"Buzz Team\"  # type/visibility/canvas/roster from the template; explicit flags override"
+        after_help = "Examples:\n  colony channels create --name general --type stream --visibility open\n  colony channels create --name design --type forum --visibility open --description \"Design discussions\"\n  colony channels create --name standup --type stream --visibility open --ttl 3600  # ephemeral, archived after 1h idle\n  colony channels create --name project-x --template \"Product Team\"  # type/visibility/canvas/roster from the template; explicit flags override"
     )]
     Create {
         /// Channel name
@@ -695,7 +723,7 @@ pub enum ChannelsCmd {
     },
     /// Update channel name, description, visibility, or ephemeral TTL
     #[command(
-        after_help = "Examples:\n  buzz channels update --channel <uuid> --name general\n  buzz channels update --channel <uuid> --visibility open\n  buzz channels update --channel <uuid> --visibility private"
+        after_help = "Examples:\n  colony channels update --channel <uuid> --name general\n  colony channels update --channel <uuid> --visibility open\n  colony channels update --channel <uuid> --visibility private"
     )]
     Update {
         /// Channel UUID
@@ -902,7 +930,7 @@ pub enum GifsCmd {
     ///
     /// Omitting --query returns trending GIFs. The output is a JSON array of
     /// GIF objects; paste the `cdn_url` field directly into
-    /// `buzz messages send --content` to share a GIF.
+    /// `colony messages send --content` to share a GIF.
     Search {
         /// Search text; omit or leave empty for trending
         #[arg(long)]
@@ -1053,7 +1081,7 @@ pub enum WorkflowsCmd {
     },
     /// Trigger a workflow run
     #[command(
-        after_help = "Examples:\n  buzz workflows trigger --workflow <UUID>\n  buzz workflows trigger --workflow <UUID> --inputs '{\"key\":\"value\"}'"
+        after_help = "Examples:\n  colony workflows trigger --workflow <UUID>\n  colony workflows trigger --workflow <UUID> --inputs '{\"key\":\"value\"}'"
     )]
     Trigger {
         /// Workflow UUID
@@ -1074,7 +1102,7 @@ pub enum WorkflowsCmd {
     },
     /// Approve or deny a workflow step
     #[command(
-        after_help = "Examples:\n  buzz workflows approve --token <UUID>\n  buzz workflows approve --token <UUID> --approved false --note \"needs revision\""
+        after_help = "Examples:\n  colony workflows approve --token <UUID>\n  colony workflows approve --token <UUID> --approved false --note \"needs revision\""
     )]
     Approve {
         /// The approval token UUID (from the approval request)
@@ -2005,7 +2033,7 @@ pub enum NotesCmd {
     /// title is carried forward when `--title` is omitted, and `--title ""`
     /// explicitly clears it.
     #[command(
-        after_help = "Examples:\n  echo '# Hello' | buzz notes set --name hello --title 'Hello' --content -\n  buzz notes set --name hello --tag onboarding --content - < draft.md"
+        after_help = "Examples:\n  echo '# Hello' | colony notes set --name hello --title 'Hello' --content -\n  colony notes set --name hello --tag onboarding --content - < draft.md"
     )]
     Set {
         /// Slug — becomes the `d` tag. `[a-z0-9._-]{1,80}`.
@@ -2097,9 +2125,9 @@ pub enum ReposCmd {
         /// Preferred Nostr relay(s) for repo discovery — can be specified multiple times
         #[arg(long = "nostr-relay")]
         relays: Vec<String>,
-        /// Channel UUID to bind the repo to. The `buzz-channel` tag is the
+        /// Channel UUID to bind the repo to. The channel binding is the
         /// git ACL: without it the relay 404s every clone/fetch/push until
-        /// the author runs `buzz repos bind` (issue #3527).
+        /// the author runs `colony repos bind` (issue #3527).
         #[arg(long)]
         channel: Option<String>,
     },
@@ -2123,7 +2151,7 @@ pub enum ReposCmd {
     },
     /// Bind (or rebind) one of your repositories to a channel.
     ///
-    /// The `buzz-channel` tag on the announcement is the git ACL: the relay
+    /// The channel binding on the announcement is the git ACL: the relay
     /// authorizes clone/fetch/push by membership in the bound channel. A
     /// repo announced without it (e.g. by a vanilla NIP-34 client) returns
     /// 404 for everyone until its author binds it here.
@@ -2251,7 +2279,7 @@ pub enum ProjectsCmd {
     Create {
         /// Project identifier (slug), up to 1024 bytes
         slug: String,
-        /// Member repository coordinate: bare Buzz repo id (e.g. `buzz`) or full
+        /// Member repository coordinate: bare Colony repo id (e.g. `colony`) or full
         /// `30617:<owner-hex>:<repo-d>` for cross-owner or colon-bearing repo ids.
         /// Omit to create a default repository named after the slug (requires `--channel`).
         #[arg(long = "repo")]
@@ -2262,7 +2290,7 @@ pub enum ProjectsCmd {
         /// Description (≤2048 bytes)
         #[arg(long)]
         description: Option<String>,
-        /// Associated Buzz channel UUID
+        /// Associated channel UUID
         #[arg(long)]
         channel: Option<String>,
         /// Visibility: `listed` (default) or `unlisted`
@@ -2295,7 +2323,7 @@ pub enum ProjectsCmd {
         #[arg(long = "repo", required = true)]
         repo: Vec<String>,
     },
-    /// Draft a project-linked channel for owner review in Buzz Desktop
+    /// Draft a project-linked channel for owner review in Colony
     #[command(name = "add-channel")]
     AddChannel {
         /// Project home channel UUID from the current ACP [Context]
@@ -2343,7 +2371,7 @@ pub enum ProjectsCmd {
         /// Remove the description
         #[arg(long, group = "mutation", conflicts_with = "description")]
         clear_description: bool,
-        /// Set the associated Buzz channel UUID
+        /// Set the associated channel UUID
         #[arg(long, group = "mutation")]
         channel: Option<String>,
         /// Remove the associated channel
@@ -2367,7 +2395,7 @@ pub enum ProjectsCmd {
 pub enum PatchesCmd {
     /// Send a git patch (NIP-34 kind:1617)
     #[command(
-        after_help = "Examples:\n  git format-patch -1 HEAD --stdout | buzz patches send --repo-owner <hex> --repo-id myrepo --patch-file - --root\n  buzz patches send --repo-owner <hex> --repo-id myrepo --patch-file 0001-fix.patch --reply-to <prev-patch-id>"
+        after_help = "Examples:\n  git format-patch -1 HEAD --stdout | colony patches send --repo-owner <hex> --repo-id myrepo --patch-file - --root\n  colony patches send --repo-owner <hex> --repo-id myrepo --patch-file 0001-fix.patch --reply-to <prev-patch-id>"
     )]
     Send {
         /// Repo owner pubkey (64-char hex)
@@ -2473,7 +2501,7 @@ pub enum PatchesCmd {
 pub enum PrCmd {
     /// Open a git pull request (NIP-34 kind:1618)
     #[command(
-        after_help = "Examples:\n  buzz pr open --repo-owner <hex> --repo-id myrepo --subject 'Fix bug' --body-file - --commit $(git rev-parse HEAD) --clone https://relay/git/owner/myrepo --branch-name fix-bug\n  buzz pr update --repo-owner <hex> --repo-id myrepo --pr <event> --pr-author <hex> --commit $(git rev-parse HEAD) --clone https://relay/git/owner/myrepo"
+        after_help = "Examples:\n  colony pr open --repo-owner <hex> --repo-id myrepo --subject 'Fix bug' --body-file - --commit $(git rev-parse HEAD) --clone https://relay/git/owner/myrepo --branch-name fix-bug\n  colony pr update --repo-owner <hex> --repo-id myrepo --pr <event> --pr-author <hex> --commit $(git rev-parse HEAD) --clone https://relay/git/owner/myrepo"
     )]
     Open {
         /// Repo owner pubkey (64-char hex)
@@ -2618,15 +2646,15 @@ pub enum IssuesCmd {
     /// Create a git issue (NIP-34 kind:1621)
     Create {
         /// Repo owner pubkey (64-char hex). Optional when `--channel` (or
-        /// `BUZZ_GIT_ORIGIN_CHANNEL_ID`) names a project home.
+        /// the channel this turn came from) names a project home.
         #[arg(long)]
         repo_owner: Option<String>,
         /// Repo identifier (d-tag). Optional when `--channel` (or
-        /// `BUZZ_GIT_ORIGIN_CHANNEL_ID`) names a project home.
+        /// the channel this turn came from) names a project home.
         #[arg(long)]
         repo_id: Option<String>,
         /// Project home channel. Infers the repository, creating one bound to
-        /// this project when none exists. Defaults to `BUZZ_GIT_ORIGIN_CHANNEL_ID`.
+        /// this project when none exists. Defaults to the channel this turn came from.
         #[arg(long)]
         channel: Option<String>,
         /// Issue title
@@ -2757,12 +2785,12 @@ pub enum MediaCmd {
     },
 }
 
-/// Subcommands for `buzz mem`.
+/// Subcommands for `colony mem`.
 #[derive(Subcommand)]
 pub enum MemCmd {
     /// List non-tombstoned memory entries
     Ls {
-        /// Owner pubkey (hex). Overrides BUZZ_AUTH_TAG.
+        /// Owner pubkey (hex). Overrides the owner Colony configured for this agent.
         #[arg(long)]
         owner: Option<String>,
         /// Agent pubkey (hex) to read as this key's owner.
@@ -2813,8 +2841,8 @@ pub enum MemCmd {
         #[arg(long)]
         patch_file: Option<String>,
         /// sha256 hex digest (lowercase) of the value the patch was generated
-        /// against. Hashes the exact UTF-8 bytes returned by `buzz mem get`,
-        /// not normalized lines. Run `buzz mem hash <slug>` to capture this
+        /// against. Hashes the exact UTF-8 bytes returned by `colony mem get`,
+        /// not normalized lines. Run `colony mem hash <slug>` to capture this
         /// before editing.
         #[arg(long)]
         base_hash: Option<String>,
@@ -2840,7 +2868,7 @@ pub enum MemCmd {
     },
 }
 
-/// Subcommands for `buzz credits`.
+/// Subcommands for `colony credits`.
 #[derive(Subcommand)]
 pub enum CreditsCmd {
     /// Show the account's available credit balance.
@@ -2853,7 +2881,7 @@ pub enum CreditsCmd {
     Packs,
     /// Create a hosted PayFast checkout for one pack.
     Pay {
-        /// Pack identifier from `buzz credits packs`.
+        /// Pack identifier from `colony credits packs`.
         pack_id: String,
         /// Email address sent to the checkout provider.
         #[arg(long)]
@@ -2864,12 +2892,12 @@ pub enum CreditsCmd {
     },
     /// Read one checkout intent by its reference.
     Verify {
-        /// Reference returned by `buzz credits pay`.
+        /// Reference returned by `colony credits pay`.
         reference: String,
     },
 }
 
-/// Subcommands for `buzz pack`.
+/// Subcommands for `colony pack`.
 #[derive(Subcommand)]
 pub enum PackCmd {
     /// Validate a persona pack directory
@@ -2886,15 +2914,15 @@ pub enum PackCmd {
 
 /// Community moderation commands.
 ///
-/// The community (tenant) is selected by the relay host in `--relay` /
-/// `BUZZ_RELAY_URL` — moderation commands are community-global and carry no
-/// channel scope. The signing key must be a community owner/admin; the relay
-/// authorizes every command.
+/// The community (tenant) is selected by the relay host in `--relay`.
+/// Moderation commands are community-global and carry no channel scope. The
+/// signing key must be a community owner/admin; the relay authorizes every
+/// command.
 #[derive(Subcommand)]
 pub enum ModerationCmd {
     /// List reports in the moderation queue (newest first)
     #[command(
-        after_help = "Examples:\n  buzz moderation reports\n  buzz moderation reports --status open --limit 20"
+        after_help = "Examples:\n  colony moderation reports\n  colony moderation reports --status open --limit 20"
     )]
     Reports {
         /// Filter by status: open | resolved | dismissed | escalated (default: all)
@@ -2906,7 +2934,7 @@ pub enum ModerationCmd {
     },
     /// Resolve or dismiss a report (kind 9044)
     #[command(
-        after_help = "Examples:\n  buzz moderation resolve --report <REPORT_EVENT_ID> --status dismissed --action dismiss\n  buzz moderation resolve --report <REPORT_EVENT_ID> --status resolved --action ban --reason \"rule 3\""
+        after_help = "Examples:\n  colony moderation resolve --report <REPORT_EVENT_ID> --status dismissed --action dismiss\n  colony moderation resolve --report <REPORT_EVENT_ID> --status resolved --action ban --reason \"rule 3\""
     )]
     Resolve {
         /// Hex event id of the kind:1984 report being resolved
@@ -2924,7 +2952,7 @@ pub enum ModerationCmd {
     },
     /// Ban a member from the community (kind 9040)
     #[command(
-        after_help = "Examples:\n  buzz moderation ban --pubkey <HEX>\n  buzz moderation ban --pubkey <HEX> --expires-in 604800 --reason \"repeated spam\""
+        after_help = "Examples:\n  colony moderation ban --pubkey <HEX>\n  colony moderation ban --pubkey <HEX> --expires-in 604800 --reason \"repeated spam\""
     )]
     Ban {
         /// Target member pubkey (hex)
@@ -2948,7 +2976,7 @@ pub enum ModerationCmd {
     },
     /// Time out a member — a write-block, not a disconnect (kind 9042)
     #[command(
-        after_help = "Examples:\n  buzz moderation timeout --pubkey <HEX> --expires-in 3600\n  buzz moderation timeout --pubkey <HEX> --expires-at 1783500000 --reason \"cool off\""
+        after_help = "Examples:\n  colony moderation timeout --pubkey <HEX> --expires-in 3600\n  colony moderation timeout --pubkey <HEX> --expires-at 1783500000 --reason \"cool off\""
     )]
     Timeout {
         /// Target member pubkey (hex)
@@ -3029,10 +3057,13 @@ async fn run(cli: Cli) -> Result<(), CliError> {
     // Auth: private key is required for all relay operations.
     // The keypair IS the identity — no tokens, no other auth.
     let private_key_str = cli.private_key.ok_or_else(|| {
-        CliError::Auth("BUZZ_PRIVATE_KEY is required (use --private-key or set env var)".into())
+        CliError::Auth(
+            "no identity key is configured (run this from a Colony agent, or pass --private-key)"
+                .into(),
+        )
     })?;
     let keys = Keys::parse(&private_key_str)
-        .map_err(|e| CliError::Key(format!("invalid BUZZ_PRIVATE_KEY: {e}")))?;
+        .map_err(|e| CliError::Key(format!("invalid private key: {e}")))?;
 
     // NIP-OA: parse and verify the auth tag if provided.
     //
@@ -3045,17 +3076,18 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Some(ref input) if !input.is_empty() => {
             let json = normalize_auth_tag_input(input);
             let tag = buzz_sdk::nip_oa::parse_auth_tag(&json)
-                .map_err(|e| CliError::Auth(format!("BUZZ_AUTH_TAG is malformed: {e}")))?;
+                .map_err(|e| CliError::Auth(format!("owner attestation is malformed: {e}")))?;
             buzz_sdk::nip_oa::verify_auth_tag(&json, &keys.public_key()).map_err(|e| {
                 CliError::Auth(format!(
-                    "BUZZ_AUTH_TAG verification failed for pubkey {}: {e}",
+                    "owner attestation verification failed for pubkey {}: {e}",
                     keys.public_key().to_hex()
                 ))
             })?;
             // Canonical wire form derives from the parsed-and-verified tag
             // (same shape as buzz-acp's RestClient), never from raw input.
-            let canonical = serde_json::to_string(tag.as_slice())
-                .map_err(|e| CliError::Auth(format!("BUZZ_AUTH_TAG serialization failed: {e}")))?;
+            let canonical = serde_json::to_string(tag.as_slice()).map_err(|e| {
+                CliError::Auth(format!("owner attestation serialization failed: {e}"))
+            })?;
             (Some(tag), Some(canonical))
         }
         _ => (None, None),

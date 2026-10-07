@@ -589,6 +589,13 @@ type E2eConfig = {
     /** Reject the mock delete_message command before changing its message store. */
     deleteMessageError?: string;
     channelsReadError?: string;
+    /**
+     * Reject `get_channels` with the message mapped to the relay URL last
+     * applied, so one community can refuse a removed member (the relay's 403
+     * membership text) while another still loads. Tests clear the entry at run
+     * time to simulate the person being added back.
+     */
+    channelsReadErrorByRelayUrl?: Record<string, string>;
     /** Reject successive mock `get_channels` calls, then resume. */
     channelsReadErrors?: (string | null)[];
     /** Reject successive mock `create_channel` calls, then resume. */
@@ -614,6 +621,9 @@ type E2eConfig = {
     /** Reject `apply_workspace` with this message, as a failed relay
      *  sign-in does in the real app. */
     applyCommunityError?: string;
+    /** Reject `apply_workspace` with the message mapped to the relay URL being
+     *  applied, so one community fails while another still connects. */
+    applyCommunityErrorByRelayUrl?: Record<string, string>;
     /** Reject `clear_pending_navigation_deep_links` with this message. */
     clearPendingNavigationDeepLinksError?: string;
     openDmDelayMs?: number;
@@ -1634,6 +1644,17 @@ async function writeClipboardFlavors({
 
 declare global {
   interface Window {
+    /**
+     * Deliver a community deep link while the app is running, like the Rust
+     * side does for a link opened mid-session: queue it, then fire the event.
+     */
+    __BUZZ_E2E_PUSH_COMMUNITY_DEEP_LINK__?: (link: {
+      id: string;
+      kind: "connect" | "join" | "add-community";
+      relayUrl: string;
+      code?: string | null;
+      name?: string | null;
+    }) => Promise<void>;
     __BUZZ_E2E__?: E2eConfig;
     __BUZZ_E2E_REFERENCE_WORKSPACE_WINDOW_LABEL__?: {
       channelId: string;
@@ -5630,6 +5651,8 @@ function getRelayCommunityUrl(config: E2eConfig | undefined): string | null {
 }
 
 let appliedRelayWsUrl: string | null = null;
+// The relay the mock backend was last pointed at, in every bridge mode.
+let appliedMockRelayUrl: string | null = null;
 
 function getRelayHttpUrl(config: E2eConfig | undefined): string {
   const activeRelayWsUrl = appliedRelayWsUrl ?? getRelayCommunityUrl(config);
@@ -12732,6 +12755,14 @@ async function handleGetChannels(
     );
   }
 
+  const channelsReadErrorByRelayUrl = config?.mock?.channelsReadErrorByRelayUrl;
+  if (
+    channelsReadErrorByRelayUrl &&
+    appliedMockRelayUrl !== null &&
+    Object.hasOwn(channelsReadErrorByRelayUrl, appliedMockRelayUrl)
+  ) {
+    throw new Error(channelsReadErrorByRelayUrl[appliedMockRelayUrl]);
+  }
   const channelsReadError =
     config?.mock?.channelsReadErrors?.shift() ??
     config?.mock?.channelsReadError;
@@ -13742,6 +13773,52 @@ async function handleUpdateChannel(
     created_at: ev?.created_at
       ? new Date(ev.created_at * 1000).toISOString()
       : new Date().toISOString(),
+  };
+}
+
+/** Kind 40100: the channel canvas. Same event shape as the desktop host's `set_canvas`. */
+const CANVAS_EVENT_KIND = 40100;
+
+async function handleSetCanvas(
+  args: { channelId: string; content: string },
+  config: E2eConfig | undefined,
+) {
+  if (!isRelayMode(config)) {
+    return { ok: true, event_id: mockEventId() };
+  }
+  // Relay mode writes the real event, so a canvas saved in the UI is read
+  // back from the relay (and survives a reload) exactly as in the app.
+  const result = await submitSignedEvent(config, {
+    kind: CANVAS_EVENT_KIND,
+    content: args.content,
+    tags: [["h", args.channelId]],
+  });
+  return { ok: true, event_id: result.event_id };
+}
+
+async function handleGetCanvas(
+  args: { channelId: string },
+  config: E2eConfig | undefined,
+) {
+  if (!isRelayMode(config)) {
+    const canvasReadError = config?.mock?.canvasReadError;
+    if (canvasReadError) {
+      throw new Error(canvasReadError);
+    }
+    // The no-canvas success shape: content null means no canvas set.
+    return { content: null, updated_at: null, author: null };
+  }
+  const [latest] = await relayQuery(config, [
+    { kinds: [CANVAS_EVENT_KIND], "#h": [args.channelId], limit: 1 },
+  ]);
+  if (!latest) {
+    return { content: "", event_id: null, updated_at: null, author: null };
+  }
+  return {
+    content: latest.content,
+    event_id: latest.id,
+    updated_at: latest.created_at,
+    author: latest.pubkey,
   };
 }
 
@@ -18089,6 +18166,21 @@ export function maybeInstallE2eTauriMocks() {
   window.__BUZZ_E2E_QUEUE_ACCOUNT_AUTH_ERROR__ = (method, error) => {
     queuedAccountAuthErrors.push({ method, error });
   };
+  window.__BUZZ_E2E_PUSH_COMMUNITY_DEEP_LINK__ = async (link) => {
+    mockPendingCommunityDeepLinks.push({
+      ...link,
+      code: link.code ?? null,
+      name: link.name ?? null,
+    });
+    await emit(
+      link.kind === "join"
+        ? "deep-link-join"
+        : link.kind === "connect"
+          ? "deep-link-connect"
+          : "deep-link-add-community",
+      {},
+    );
+  };
   window.__BUZZ_E2E_SET_ACCOUNT_LINKED__ = (linked, email) => {
     mockAccountLinked = linked;
     if (email) mockAccountEmail = email;
@@ -19853,6 +19945,16 @@ export function maybeInstallE2eTauriMocks() {
         const applyError = activeConfig?.mock?.applyCommunityError;
         if (applyError) throw new Error(applyError);
         const relayUrl = (payload as { relayUrl?: unknown }).relayUrl;
+        const applyErrorByRelayUrl =
+          activeConfig?.mock?.applyCommunityErrorByRelayUrl;
+        if (
+          typeof relayUrl === "string" &&
+          applyErrorByRelayUrl &&
+          Object.hasOwn(applyErrorByRelayUrl, relayUrl)
+        ) {
+          throw new Error(applyErrorByRelayUrl[relayUrl]);
+        }
+        if (typeof relayUrl === "string") appliedMockRelayUrl = relayUrl;
         if (
           isRelayMode(activeConfig) &&
           typeof relayUrl === "string" &&
@@ -22116,15 +22218,15 @@ export function maybeInstallE2eTauriMocks() {
         // returning null mirrors the Rust submit_event success path.
         return null;
       case "set_canvas":
-        return { ok: true, event_id: mockEventId() };
-      case "get_canvas": {
-        const canvasReadError = activeConfig?.mock?.canvasReadError;
-        if (canvasReadError) {
-          throw new Error(canvasReadError);
-        }
-        // Return the no-canvas success shape — content null means no canvas set.
-        return { content: null, updated_at: null, author: null };
-      }
+        return handleSetCanvas(
+          payload as Parameters<typeof handleSetCanvas>[0],
+          activeConfig,
+        );
+      case "get_canvas":
+        return handleGetCanvas(
+          payload as Parameters<typeof handleGetCanvas>[0],
+          activeConfig,
+        );
       // ── Local-save archive ──────────────────────────────────────────────
       // These stubs drive the LocalArchiveSettingsCard in screenshot / UI tests
       // without requiring a real SQLite backend. `mockSaveSubscriptions` is a
@@ -22525,6 +22627,11 @@ export function maybeInstallE2eTauriMocks() {
       case "agent_metric_archive_default_enabled":
         return activeConfig?.mock?.agentMetricArchiveDefaultEnabled ?? true;
       case "set_prevent_sleep_active":
+        return null;
+      // The agents' folder move runs before the window exists and stores a
+      // notice; the mock install never moved anything, so there is none.
+      case "get_nest_migration_notice":
+      case "acknowledge_nest_migration_notice":
         return null;
       case "set_window_vibrancy":
         return null;

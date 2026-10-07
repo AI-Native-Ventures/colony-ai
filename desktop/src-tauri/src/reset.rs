@@ -98,8 +98,9 @@ pub(crate) struct ResetContext<'a> {
     /// present and non-empty, wiped alongside `app_data_dir` to prevent
     /// `migrate_legacy_app_data_dir` from restoring the old identity.
     pub legacy_app_data_dir: Option<PathBuf>,
-    /// Nest dir (`~/.buzz` or `~/.buzz-dev`) scoped to this build's variant,
-    /// injected so unit tests can override without touching the global OnceLock.
+    /// Nest dir this process chose (`~/.colony` or `~/.buzz` for production,
+    /// `~/.buzz-dev` for dev), injected so unit tests can override without
+    /// touching the global OnceLock. Reset removes exactly this folder.
     pub nest_dir: Option<PathBuf>,
     pub keychain: &'a dyn ResetKeychain,
     pub home_dir: Option<PathBuf>,
@@ -181,6 +182,35 @@ fn rename_to_trash(src: &Path) -> Result<PathBuf, String> {
     Ok(dst)
 }
 
+/// True for `~/.buzz` and `~/.colony`. A production nest folder can sit next to
+/// things Colony never wrote (other tools' environments, loose notes), so Reset
+/// removes only the entries Colony owns. Dev and demo folders are namespaced and
+/// entirely Colony's, so they are removed whole.
+fn is_production_nest_folder(nest: &Path) -> bool {
+    nest.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| crate::build_identity::production_nest_names().contains(&name))
+}
+
+fn wipe_nest_folder(nest: &Path) {
+    if is_production_nest_folder(nest) {
+        if let Err(error) = crate::managed_agents::nest_migration::wipe_owned_entries(nest) {
+            eprintln!("buzz-desktop reset: {error}");
+        }
+    } else {
+        let _ = std::fs::remove_dir_all(nest);
+    }
+}
+
+/// True once nothing Colony owns is left in the nest folder.
+fn nest_wiped(nest: &Path) -> bool {
+    if is_production_nest_folder(nest) {
+        !crate::managed_agents::nest_migration::owned_entries_remain(nest)
+    } else {
+        !nest.exists()
+    }
+}
+
 /// Core wipe logic — separated for testing.
 pub(crate) fn run_boot_reset_with_keychain(ctx: ResetContext<'_>) -> ResetOutcome {
     // An unknown demo credential root is not evidence of an absent root. Refuse
@@ -242,7 +272,7 @@ pub(crate) fn run_boot_reset_with_keychain(ctx: ResetContext<'_>) -> ResetOutcom
     // never owns these shared roots, so signing out of one must leave them
     // available to production and every other demo.
     if let Some(ref nest) = ctx.nest_dir {
-        let _ = std::fs::remove_dir_all(nest);
+        wipe_nest_folder(nest);
     }
     // A demo owns credentials here. Failure to remove them must keep the reset
     // pending, even if the app data and keychain were successfully wiped.
@@ -319,7 +349,7 @@ pub(crate) fn run_boot_reset_with_keychain(ctx: ResetContext<'_>) -> ResetOutcom
         .as_ref()
         .map(|p| !p.exists())
         .unwrap_or(true);
-    let nest_gone = ctx.nest_dir.as_ref().map(|n| !n.exists()).unwrap_or(true);
+    let nest_gone = ctx.nest_dir.as_deref().map(nest_wiped).unwrap_or(true);
     // `exists()` treats metadata errors as absence. Only NotFound establishes
     // that credentials are gone; a dangling symlink is not an absent root.
     let demo_config_gone = ctx.demo_config_dir.as_ref().is_none_or(|path| {
@@ -694,6 +724,187 @@ mod tests {
         assert!(outcome.completed, "wipe must complete");
         assert!(!prod_nest.exists(), "prod nest must be wiped");
         assert!(dev_nest.exists(), "dev nest must survive");
+    }
+
+    // ── Test 7b: reset wipes the CHOSEN production folder, never the other ────
+
+    #[derive(Clone, Copy)]
+    enum Seed {
+        Absent,
+        /// An initialised nest holding agent knowledge.
+        Nest,
+        /// A folder with the right name that holds no nest marker.
+        Unrelated,
+    }
+
+    fn seed_folder(home: &Path, name: &str, seed: Seed) {
+        let folder = home.join(name);
+        match seed {
+            Seed::Absent => {}
+            Seed::Nest => {
+                std::fs::create_dir_all(folder.join("RESEARCH")).unwrap();
+                std::fs::write(folder.join("AGENTS.md"), "nest").unwrap();
+                std::fs::write(folder.join(".nest-agents-version"), "6").unwrap();
+                std::fs::write(folder.join("RESEARCH").join("notes.md"), name).unwrap();
+            }
+            Seed::Unrelated => {
+                std::fs::create_dir_all(&folder).unwrap();
+                std::fs::write(folder.join("not-a-nest.txt"), name).unwrap();
+            }
+        }
+    }
+
+    /// Run the reset exactly as `lib.rs` wires it: the folder handed to the wipe
+    /// is the one `init_nest_dir` picks for this home.
+    fn reset_with_chosen_folder(home: &Path) -> (String, ResetOutcome) {
+        let chosen = crate::managed_agents::nest_folder::choose_nest_folder(home, false)
+            .name
+            .into_owned();
+        let app_data = home.join("Application Support").join("xyz.block.buzz.app");
+        std::fs::create_dir_all(&app_data).unwrap();
+        write_sentinel(&app_data).unwrap();
+        let kc = FakeKeychain::ok();
+        let ctx = ResetContext {
+            app_data_dir: &app_data,
+            legacy_app_data_dir: None,
+            nest_dir: Some(home.join(&chosen)),
+            keychain: &kc,
+            home_dir: None,
+            is_dev: false,
+            demo_config_dir: None,
+            is_demo: false,
+        };
+        (chosen, run_boot_reset_with_keychain(ctx))
+    }
+
+    #[test]
+    fn test_reset_wipes_only_the_chosen_production_folder() {
+        if crate::build_identity::is_demo_build() {
+            return;
+        }
+        // (label, .buzz, .colony, wiped, kept)
+        let cases = [
+            ("only .buzz", Seed::Nest, Seed::Absent, ".buzz", None),
+            ("only .colony", Seed::Absent, Seed::Nest, ".colony", None),
+            (
+                "both, .colony holds the nest",
+                Seed::Nest,
+                Seed::Nest,
+                ".colony",
+                Some((".buzz", "RESEARCH/notes.md")),
+            ),
+            (
+                "both, .colony is unrelated",
+                Seed::Nest,
+                Seed::Unrelated,
+                ".buzz",
+                Some((".colony", "not-a-nest.txt")),
+            ),
+        ];
+        for (label, buzz, colony, wiped, kept) in cases {
+            let tmp = TempDir::new().unwrap();
+            let home = tmp.path();
+            seed_folder(home, ".buzz", buzz);
+            seed_folder(home, ".colony", colony);
+            // Tooling the owner keeps next to the nest must never be touched.
+            std::fs::create_dir_all(home.join(".venv-tts")).unwrap();
+            std::fs::write(home.join(".venv-tts").join("pyvenv.cfg"), "venv").unwrap();
+
+            let (chosen, outcome) = reset_with_chosen_folder(home);
+
+            assert!(outcome.completed, "{label}: reset must complete");
+            assert_eq!(chosen, wiped, "{label}: wrong folder chosen");
+            assert!(
+                !home.join(wiped).exists(),
+                "{label}: chosen folder must be wiped"
+            );
+            match kept {
+                Some((name, file)) => {
+                    let survivor = std::fs::read_to_string(home.join(name).join(file))
+                        .unwrap_or_else(|e| panic!("{label}: {name}/{file} lost: {e}"));
+                    assert_eq!(survivor, name, "{label}: {name} must be byte-identical");
+                }
+                None => {
+                    let other = if wiped == ".buzz" { ".colony" } else { ".buzz" };
+                    assert!(
+                        !home.join(other).exists(),
+                        "{label}: reset must not create {other}"
+                    );
+                }
+            }
+            assert_eq!(
+                std::fs::read_to_string(home.join(".venv-tts").join("pyvenv.cfg")).unwrap(),
+                "venv",
+                "{label}: foreign tooling must survive"
+            );
+        }
+    }
+
+    #[test]
+    fn test_after_reset_of_the_only_folder_the_next_boot_starts_fresh_on_colony() {
+        if crate::build_identity::is_demo_build() {
+            return;
+        }
+        for existing in [".buzz", ".colony"] {
+            let tmp = TempDir::new().unwrap();
+            seed_folder(tmp.path(), existing, Seed::Nest);
+
+            let (_, outcome) = reset_with_chosen_folder(tmp.path());
+            assert!(outcome.completed);
+
+            let next = crate::managed_agents::nest_folder::choose_nest_folder(tmp.path(), false);
+            assert_eq!(next.name, ".colony", "after wiping {existing}");
+            assert_eq!(
+                next.reason,
+                crate::managed_agents::nest_folder::NestFolderReason::FreshInstall
+            );
+        }
+    }
+
+    #[test]
+    fn test_reset_of_a_shared_folder_wipes_only_colony_owned_entries() {
+        if crate::build_identity::is_demo_build() {
+            return;
+        }
+        for folder in [".buzz", ".colony"] {
+            let tmp = TempDir::new().unwrap();
+            let home = tmp.path();
+            seed_folder(home, folder, Seed::Nest);
+            let nest = home.join(folder);
+            // Entries Colony never wrote, sitting next to the nest.
+            let python = nest.join(".venv-tts").join("bin").join("python");
+            std::fs::create_dir_all(python.parent().unwrap()).unwrap();
+            let script = format!("#!{}/bin/python3\n", nest.join(".venv-tts").display());
+            std::fs::write(&python, &script).unwrap();
+            std::fs::write(nest.join("notes.md"), "keep me").unwrap();
+            // A generated skill folder beside another tool's file.
+            std::fs::create_dir_all(nest.join(".claude").join("skills").join("buzz-cli")).unwrap();
+            std::fs::write(nest.join(".claude").join("settings.local.json"), "{}").unwrap();
+
+            let (chosen, outcome) = reset_with_chosen_folder(home);
+
+            assert!(outcome.completed, "{folder}: reset must complete");
+            assert_eq!(chosen, folder);
+            for owned in ["RESEARCH", "AGENTS.md", ".nest-agents-version"] {
+                assert!(
+                    !nest.join(owned).exists(),
+                    "{folder}: {owned} must be wiped"
+                );
+            }
+            assert!(
+                !nest.join(".claude").join("skills").exists(),
+                "{folder}: generated skill folder must be wiped"
+            );
+            assert_eq!(std::fs::read_to_string(&python).unwrap(), script);
+            assert_eq!(
+                std::fs::read_to_string(nest.join("notes.md")).unwrap(),
+                "keep me"
+            );
+            assert_eq!(
+                std::fs::read_to_string(nest.join(".claude").join("settings.local.json")).unwrap(),
+                "{}"
+            );
+        }
     }
 
     // ── Test 8: legacy app-data removed on reset ──────────────────────────────

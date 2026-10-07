@@ -1,3 +1,5 @@
+import { stripRelayWrappers } from "./relayMembershipDenied";
+
 /**
  * Utilities for classifying relay connectivity errors.
  *
@@ -31,4 +33,38 @@ export function isRelayUnreachableError(error: unknown): boolean {
     return error.startsWith(RELAY_UNREACHABLE_PREFIX);
   }
   return false;
+}
+
+export const RELAY_GENERIC_ERROR_MESSAGE =
+  "Colony could not reach this community. Try again.";
+
+/**
+ * True when `error` is native-layer relay text a person should never read:
+ * a wrapper ("relay returned 500 ...", "relay owned-agent query failed: ..."),
+ * or the unreachable prefix, however deeply nested.
+ */
+export function isTechnicalRelayError(error: unknown): boolean {
+  const text =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  const inner = stripRelayWrappers(text);
+  return (
+    inner !== text.trim() ||
+    isRelayUnreachableError(inner) ||
+    /^relay returned\b/i.test(inner)
+  );
+}
+
+/**
+ * The sentence a person sees for any relay failure. Raw relay text ("relay
+ * returned 403 Forbidden: ...") is technical and stays in the console, never
+ * on screen.
+ */
+export function plainRelayErrorMessage(error: unknown): string {
+  return isRelayUnreachableError(stripRelayWrappers(error))
+    ? RELAY_UNREACHABLE_SHORT
+    : RELAY_GENERIC_ERROR_MESSAGE;
 }

@@ -1383,7 +1383,7 @@ pub(crate) fn format_event_block(
 fn append_reply_instruction(s: &mut String, event_id: &str) {
     s.push_str(&format!(
         "\nIMPORTANT: For ordinary replies in this turn, use `--reply-to {event_id}` \
-         on `buzz messages send` so the conversation stays threaded. \
+         on `colony messages send` so the conversation stays threaded. \
          If the human explicitly asks for a channel-root, top-level, \
          or broadcast post, send that message without `--reply-to`. \
          If the requested destination is ambiguous, ask before sending."
@@ -1398,7 +1398,7 @@ fn append_reply_instruction(s: &mut String, event_id: &str) {
 fn append_new_thread_reply_instruction(s: &mut String, event_id: &str) {
     s.push_str(&format!(
         "\nIMPORTANT: This is a new top-level message. For ordinary replies in \
-         this turn, use `--reply-to {event_id}` on `buzz messages send` — the \
+         this turn, use `--reply-to {event_id}` on `colony messages send`; the \
          triggering message is the thread root. Do NOT reply into any other \
          (older) thread. If the human explicitly asks for a channel-root, \
          top-level, or broadcast post, send that message without `--reply-to`."
@@ -1592,7 +1592,7 @@ fn append_project_home(s: &mut String, channel_info: Option<&PromptChannelInfo>,
         _ => s.push_str("\nDefault repository: none yet"),
     }
     s.push_str(&format!(
-        "\nThis channel is that project's home. Tasks, repositories, and files created here belong to this project. Do not run `buzz projects create`. Create a repository with `buzz repos create --id <id> --name \"…\" --channel {channel_id}`. Create tasks with `buzz issues create --channel {channel_id} --subject \"…\" --content \"…\"`."
+        "\nThis channel is that project's home. Tasks, repositories, and files created here belong to this project. Do not run `colony projects create`. Create a repository with `colony repos create --id <id> --name \"…\" --channel {channel_id}`. Create tasks with `colony issues create --channel {channel_id} --subject \"…\" --content \"…\"`."
     ));
 }
 
@@ -1636,17 +1636,17 @@ fn format_context_hints(
         } else if complete_conversation_context {
             "Conversation context included below."
         } else if has_conversation_context && is_reply {
-            "Thread context included below. Use `buzz messages thread --channel <UUID> --event <ID>` for full history if truncated."
+            "Thread context included below. Use `colony messages thread --channel <UUID> --event <ID>` for full history if truncated."
         } else if has_conversation_context {
-            "Conversation context included below. Use `buzz messages get --channel <UUID>` for full history if truncated."
+            "Conversation context included below. Use `colony messages get --channel <UUID>` for full history if truncated."
         } else if conversation_context_had_session_events && is_reply {
-            "Earlier thread context is already available in this session. Use `buzz messages thread --channel <UUID> --event <ID>` to re-read the reply chain."
+            "Earlier thread context is already available in this session. Use `colony messages thread --channel <UUID> --event <ID>` to re-read the reply chain."
         } else if conversation_context_had_session_events {
-            "Earlier conversation context is already available in this session. Use `buzz messages get --channel <UUID>` to re-read it."
+            "Earlier conversation context is already available in this session. Use `colony messages get --channel <UUID>` to re-read it."
         } else if is_reply {
-            "Use `buzz messages thread --channel <UUID> --event <ID>` to fetch the reply chain."
+            "Use `colony messages thread --channel <UUID> --event <ID>` to fetch the reply chain."
         } else {
-            "Use `buzz messages get --channel <UUID>` for conversation context."
+            "Use `colony messages get --channel <UUID>` for conversation context."
         };
         let mut s = format!(
             "Scope: dm\n\
@@ -1674,11 +1674,11 @@ fn format_context_hints(
         let ctx_hint = if complete_conversation_context {
             "Thread context included below."
         } else if has_conversation_context {
-            "Thread context included below. Use `buzz messages thread --channel <UUID> --event <ID>` for full history if truncated."
+            "Thread context included below. Use `colony messages thread --channel <UUID> --event <ID>` for full history if truncated."
         } else if conversation_context_had_session_events {
-            "Earlier thread context is already available in this session. Use `buzz messages thread --channel <UUID> --event <ID>` to re-read it."
+            "Earlier thread context is already available in this session. Use `colony messages thread --channel <UUID> --event <ID>` to re-read it."
         } else {
-            "Use `buzz messages thread --channel <UUID> --event <ID>` to fetch thread context."
+            "Use `colony messages thread --channel <UUID> --event <ID>` to fetch thread context."
         };
         let session_scope = if scope.is_thread() {
             "thread"
@@ -1716,7 +1716,7 @@ fn format_context_hints(
         append_channel_description(&mut s, channel_info);
         append_project_home(&mut s, channel_info, channel_id);
         s.push_str(
-            "\nHint: Use `buzz messages get --channel <UUID>` for recent messages if needed.",
+            "\nHint: Use `colony messages get --channel <UUID>` for recent messages if needed.",
         );
         if let Some(event_id) = reply_anchor {
             append_new_thread_reply_instruction(&mut s, event_id);
@@ -4045,8 +4045,8 @@ mod tests {
                             assert!(prompt.contains("Session scope: thread"));
                             assert!(prompt.contains("Scope: thread"));
                             assert!(prompt.contains(&format!("Thread root: {root}")));
-                            assert!(prompt.contains("buzz messages thread"));
-                            assert!(!prompt.contains("buzz messages get"));
+                            assert!(prompt.contains("colony messages thread"));
+                            assert!(!prompt.contains("colony messages get"));
                         } else {
                             assert!(prompt.contains("Session scope: channel"));
                             assert!(prompt.contains(if is_reply {
@@ -4070,7 +4070,7 @@ mod tests {
                             assert!(prompt.contains(&format!("--reply-to {anchor}")));
                         } else {
                             assert!(!prompt.contains("--reply-to"));
-                            assert!(prompt.contains("buzz messages get"));
+                            assert!(prompt.contains("colony messages get"));
                         }
                     }
                 }
@@ -4157,7 +4157,7 @@ mod tests {
         )
         .join("\n\n");
         assert!(complete_prompt.contains("Thread context included below."));
-        assert!(!complete_prompt.contains("buzz messages thread"));
+        assert!(!complete_prompt.contains("colony messages thread"));
         assert!(!complete_prompt.contains("full history"));
         assert!(complete_prompt
             .contains("<thread-context included=\"2\" total=\"2\" truncated=\"false\">"));
@@ -4175,7 +4175,7 @@ mod tests {
             },
         )
         .join("\n\n");
-        assert!(prompt_with_prior_delivery.contains("buzz messages thread"));
+        assert!(prompt_with_prior_delivery.contains("colony messages thread"));
         assert!(prompt_with_prior_delivery
             .contains("<thread-context included=\"2\" total=\"2\" truncated=\"false\">"));
         assert!(prompt_with_prior_delivery.contains("Let's refactor auth"));
@@ -4197,7 +4197,7 @@ mod tests {
         .join("\n\n");
         assert!(truncated_prompt
             .contains("<thread-context included=\"2\" total=\"5\" truncated=\"true\">"));
-        assert!(truncated_prompt.contains("buzz messages thread"));
+        assert!(truncated_prompt.contains("colony messages thread"));
         assert!(truncated_prompt.contains("for full history if truncated"));
 
         if let ConversationContext::Thread {
@@ -4222,7 +4222,7 @@ mod tests {
         assert!(missing_root_prompt
             .contains("<thread-context included=\"2\" total=\"2\" truncated=\"false\">"));
         assert!(missing_root_prompt.contains("Let's refactor auth"));
-        assert!(missing_root_prompt.contains("buzz messages thread"));
+        assert!(missing_root_prompt.contains("colony messages thread"));
     }
 
     #[test]
@@ -4273,7 +4273,7 @@ mod tests {
         assert!(mixed_prompt.contains("thread B root question"));
         assert!(mixed_prompt.contains("older reply in thread A"));
         assert!(mixed_prompt.contains("newer reply in thread B"));
-        assert!(mixed_prompt.contains("buzz messages thread"));
+        assert!(mixed_prompt.contains("colony messages thread"));
 
         let same_thread_batch = FlushBatch {
             channel_id: ch,
@@ -4296,7 +4296,7 @@ mod tests {
         assert!(same_thread_prompt
             .contains("<thread-context included=\"1\" total=\"1\" truncated=\"false\">"));
         assert!(same_thread_prompt.contains("thread B root question"));
-        assert!(!same_thread_prompt.contains("buzz messages thread"));
+        assert!(!same_thread_prompt.contains("colony messages thread"));
     }
 
     #[test]
@@ -4342,7 +4342,7 @@ mod tests {
         .join("\n\n");
         assert!(prompt.contains("Scope: dm"));
         assert!(prompt.contains("Conversation context included below."));
-        assert!(!prompt.contains("buzz messages get"));
+        assert!(!prompt.contains("colony messages get"));
         assert!(!prompt.contains("full history"));
         assert!(prompt
             .contains("<conversation-context included=\"1\" total=\"1\" truncated=\"false\">"));
@@ -4615,7 +4615,7 @@ mod tests {
             "DM reply should have Scope: dm, got:\n{prompt}"
         );
         assert!(prompt.contains("Thread context included below."));
-        assert!(!prompt.contains("buzz messages thread"));
+        assert!(!prompt.contains("colony messages thread"));
         assert!(!prompt.contains("full history"));
         // Thread structural info should be present.
         assert!(
@@ -4667,7 +4667,7 @@ mod tests {
         .join("\n\n");
 
         assert!(prompt.contains("Earlier thread context is already available in this session"));
-        assert!(prompt.contains("buzz messages thread"));
+        assert!(prompt.contains("colony messages thread"));
         assert!(!prompt.contains("Thread context included below"));
         assert!(!prompt.contains("<thread-context"));
     }
@@ -4717,7 +4717,7 @@ mod tests {
         assert!(
             prompt.contains("Earlier conversation context is already available in this session")
         );
-        assert!(prompt.contains("buzz messages get"));
+        assert!(prompt.contains("colony messages get"));
         assert!(!prompt.contains("Conversation context included below"));
         assert!(!prompt.contains("<conversation-context"));
     }
@@ -4755,12 +4755,12 @@ mod tests {
         .join("\n\n");
         assert!(prompt.contains("Scope: dm"));
         assert!(
-            prompt.contains("buzz messages get"),
-            "DM non-reply hint should mention `buzz messages get`"
+            prompt.contains("colony messages get"),
+            "DM non-reply hint should mention `colony messages get`"
         );
         assert!(
-            !prompt.contains("buzz messages thread"),
-            "DM non-reply should NOT mention `buzz messages thread`"
+            !prompt.contains("colony messages thread"),
+            "DM non-reply should NOT mention `colony messages thread`"
         );
     }
 
@@ -5460,7 +5460,7 @@ mod tests {
             "instruction should tell agents to honor explicit root/top-level requests"
         );
         assert!(
-            !prompt.contains("on EVERY `buzz messages send` call"),
+            !prompt.contains("on EVERY `colony messages send` call"),
             "instruction should not make reply-to absolute for every send"
         );
     }
@@ -5846,7 +5846,7 @@ mod tests {
 
     #[test]
     fn test_format_prompt_canvas_injected_for_legacy_agent() {
-        let canvas = "[Channel Canvas]\nCanvas revision (event ID): abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234\nLast modified: 2024-01-15T10:30:00+00:00\nFetch current content with: buzz canvas get --channel 00f1ccaf-1506-4dd7-9a0e-fa67e9e486ae";
+        let canvas = "[Channel Canvas]\nCanvas revision (event ID): abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234\nLast modified: 2024-01-15T10:30:00+00:00\nFetch current content with: colony canvas get --channel 00f1ccaf-1506-4dd7-9a0e-fa67e9e486ae";
         let ch = Uuid::new_v4();
         let batch = FlushBatch {
             channel_id: ch,
@@ -5876,7 +5876,7 @@ mod tests {
 
     #[test]
     fn test_format_prompt_canvas_omitted_for_modern_agent() {
-        let canvas = "[Channel Canvas]\nCanvas revision (event ID): abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234\nLast modified: 2024-01-15T10:30:00+00:00\nFetch current content with: buzz canvas get --channel 00f1ccaf-1506-4dd7-9a0e-fa67e9e486ae";
+        let canvas = "[Channel Canvas]\nCanvas revision (event ID): abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234\nLast modified: 2024-01-15T10:30:00+00:00\nFetch current content with: colony canvas get --channel 00f1ccaf-1506-4dd7-9a0e-fa67e9e486ae";
         let ch = Uuid::new_v4();
         let batch = FlushBatch {
             channel_id: ch,
@@ -6538,10 +6538,10 @@ mod tests {
         assert!(s.contains(&format!("Project owner: {owner}")));
         assert!(s.contains("Default repository: none yet"));
         assert!(
-            s.contains("do not run `buzz projects create`")
-                || s.contains("Do not run `buzz projects create`")
+            s.contains("do not run `colony projects create`")
+                || s.contains("Do not run `colony projects create`")
         );
-        assert!(s.contains("buzz issues create --channel 11111111-1111-4111-8111-111111111111"));
+        assert!(s.contains("colony issues create --channel 11111111-1111-4111-8111-111111111111"));
         assert_eq!(
             s.lines()
                 .filter(|line| line.starts_with("Project:"))

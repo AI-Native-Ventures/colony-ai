@@ -80,3 +80,63 @@ The local baseline report and four smoke account identifiers for coordinator
 cleanup are in `/Users/mac/worktrees/.lanes/phase2/real-run-20261004/index.html`.
 No account or production data was deleted. Combined-branch proof awaits the
 coordinator's instruction and a usable isolated signed-in Claude environment.
+
+## Fresh-HOME brand proof (Colony 1.0.6 naming gate)
+
+`fresh-home-proof.mjs` proves that a new install shows the old product name nowhere an
+agent can speak to a person. It launches the packaged app under the same keychain-deny
+sandbox, with `HOME` pointing at a **throwaway directory** that holds no `~/.buzz` and no
+`~/.colony`, so the real user's folders are never read or written (the sandbox also denies
+them by absolute path). It signs up a disposable smoke account, creates a business,
+connects Claude Code, then asks Scout seven things that make it use tools and name files,
+folders and commands (`fresh-home-prompts.mjs`).
+
+A page-side collector (`brand-collector.mjs`) records every distinct visible text, plus the
+`title`, `aria-label`, `aria-description` and `alt` attributes, on the chat, the agent
+session panel and its transcript, the activity strip, the Show details popover, the
+Activity page, the Team page, overlays, toasts, notifications and the window title.
+`brand-scan.mjs` judges the capture:
+
+- the old name fails everywhere, in any case, including the opt-in popover and an expanded
+  transcript (the raw command there must say `colony`);
+- pipes, command flags, UUIDs and shell redirects also fail on the plain surfaces (chat,
+  transcript, session panel, Activity page, activity strip);
+- a surface with no recorded text is NOT OBSERVED, never PASS;
+- the throwaway HOME must end with `~/.colony` and without `~/.buzz`, and the host log must
+  say `chosen=.colony reason=fresh-install` under that HOME.
+
+`brand-report.mjs` writes `index.html` in the format of the earlier gate reports, next to
+`results.json` and screenshots. The exit code is 0 only for PASS.
+
+```sh
+cd desktop
+COLONY_REAL_RUN=1 node tests/real-run/fresh-home-proof.mjs \
+  --app '/path/to/Colony.app' --out /path/outside/the/repo/report-dir \
+  --expect-version 1.0.6
+```
+
+Useful flags: `--prompts 1,4,7` (subset), `--deadline-min 45`, `--intro-timeout-ms 120000`,
+`--pause-before-launch` (prints the throwaway HOME and waits so you can sign Claude Code in
+inside it, for example `HOME=<dir> claude`), `--claude-config-dir DIR` (use an existing
+Claude config instead of a fresh one), `--no-load-gate`. Env alternatives: `AI_APP`,
+`AI_OUT`, `AI_PROGRESS`. The throwaway HOME and the smoke account are never deleted; both
+are listed in the report.
+
+Limits to keep in mind: a build without the fresh-install folder choice has no
+`nest-folder` log line, so that check reports NOT OBSERVED; Claude Code must be able to
+authenticate with the throwaway HOME (see `--pause-before-launch`), otherwise onboarding
+stops at the connect screen and the report says so.
+
+Tests that need no app, run from `desktop/`:
+
+```sh
+node --test tests/real-run/brand-scan.test.mjs tests/real-run/brand-report.test.mjs \
+  tests/real-run/brand-collector.test.mjs tests/real-run/fresh-home.test.mjs \
+  tests/real-run/fresh-home-prompts.test.mjs
+node tests/real-run/fresh-home-proof.dry-run.mjs   # wiring check, about a minute
+```
+
+The dry run executes the real driver against a stubbed Electron and scripted page answers:
+a clean script must end PASS and a leaky one FAIL with the old name listed. It proves the
+driver's orchestration, judging and report writing, never the product.
+

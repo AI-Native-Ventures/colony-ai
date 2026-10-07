@@ -52,6 +52,7 @@ pub(crate) mod mesh_llm;
 #[cfg(feature = "mesh-llm")]
 pub(crate) mod mesh_readiness;
 mod messages;
+mod nest_notice;
 mod notifications;
 mod observer_archive;
 mod os_idle;
@@ -117,6 +118,7 @@ pub use media_raw::*;
 #[cfg(feature = "mesh-llm")]
 pub use mesh_llm::*;
 pub use messages::*;
+pub use nest_notice::*;
 pub use notifications::*;
 pub use observer_archive::*;
 pub use os_idle::*;

@@ -1,0 +1,38 @@
+{
+  "note": "Fixture: what a clean 1.0.6 run records. Plain labels, no raw commands outside the opt-in popover.",
+  "surfaces": {
+    "chat": [
+      "Hi, I am Scout. I checked your channels: general and welcome.",
+      "I saved your note and created the file gate-check.md in your workspace folder.",
+      "For the last steps I looked up your channels, posted a hello and wrote a file.",
+      "The folder I work in is /Users/test/.colony"
+    ],
+    "transcript": [
+      "Checking channels",
+      "Posting a message",
+      "Writing a file",
+      "3 tool calls"
+    ],
+    "session-panel": [
+      "Scout is working",
+      "Looked up the channels in your Colony",
+      "Created gate-check.md"
+    ],
+    "session-panel.attr.aria-label": ["Agent session"],
+    "activity-page": [
+      "Activity",
+      "Scout checked channels",
+      "Scout posted in general"
+    ],
+    "activity-strip": ["Checking channels", "Saving a note", "Writing a file"],
+    "activity-strip.attr.aria-label": ["Show what Scout is doing"],
+    "details-popover": [
+      "colony --format compact channels list",
+      "colony messages send --channel 11111111-1111-4111-8111-111111111111 --content hello | jq .accepted"
+    ],
+    "transcript-expanded": [
+      "colony mem get core",
+      "cat gate-check.md > /dev/null 2>&1"
+    ]
+  }
+}

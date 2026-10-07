@@ -8,6 +8,7 @@ import { cn } from "@/shared/lib/cn";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import type { TranscriptItem } from "../agentSessionTypes";
 import { getBuzzToolInfo } from "../agentSessionToolCatalog";
+import { plainActivityLabel } from "../agentActivityPlainLabel";
 import { buildCompactToolSummary } from "../agentSessionToolSummary";
 import type { AgentTranscriptIdentityProps } from "../activityRenderClasses/types";
 import {
@@ -39,6 +40,14 @@ export function ToolItem({
   const canonicalToolName = item.buzzToolName ?? item.toolName;
   const buzzTool = getBuzzToolInfo(canonicalToolName);
   const compactSummary = buildCompactToolSummary(item);
+  // Calls that carry a raw shell command, and tools we do not recognise (whose
+  // preview can be a raw command used as a title), show plain wording by
+  // default. The raw text is only in the expanded details.
+  const plain = plainActivityLabel(item);
+  const plainRowLabel =
+    plain.hasRawCommand || compactSummary.kind === "generic"
+      ? plain.label
+      : null;
   const duration = getToolDurationDisplay(item);
   const messageLink = getSentMessageLink(item);
   const timestampTitle = formatTranscriptTimestampTitle(item.timestamp);
@@ -125,6 +134,7 @@ export function ToolItem({
             preview={compactSummary.preview}
             thumbnailSrc={compactSummary.thumbnailSrc}
             label={compactSummary.label}
+            plainLabel={plainRowLabel}
           />
         </summary>
 

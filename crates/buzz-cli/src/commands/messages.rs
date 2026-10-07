@@ -411,7 +411,7 @@ pub fn resolve_thread_target(
         .to_hex();
     if expected_root_id.is_some_and(|expected| expected != root_event_id) {
         return Err(CliError::Usage(
-            "Buzz message link thread root does not match the selected message".into(),
+            "Colony message link thread root does not match the selected message".into(),
         ));
     }
     Ok(root_event_id)
@@ -641,7 +641,7 @@ pub async fn cmd_send_message(
             serde_json::json!({
                 "message": "mentioned pubkeys are not channel members; add them explicitly before retrying",
                 "missing_member_pubkeys": missing,
-                "add_member_command": format!("buzz channels add-member --channel {} --pubkey <pubkey> --role <member|bot>", p.channel_id),
+                "add_member_command": format!("colony channels add-member --channel {} --pubkey <pubkey> --role <member|bot>", p.channel_id),
             })
             .to_string(),
         ));

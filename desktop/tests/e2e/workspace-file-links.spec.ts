@@ -38,7 +38,9 @@ async function setup(page: Page) {
     (command: string, args: Record<string, unknown>) =>
       command === "read_agent_workspace_file"
         ? service.read(args)
-        : service.resolve(args),
+        : command === "list_agent_workspace_files"
+          ? service.list(args)
+          : service.resolve(args),
   );
   await page.addInitScript(() => {
     const w = window as typeof window & {
@@ -67,6 +69,7 @@ async function setup(page: Page) {
             [
               "resolve_agent_workspace_file",
               "read_agent_workspace_file",
+              "list_agent_workspace_files",
             ].includes(command)
           )
             return w.__FILE_HOST__(command, args);
@@ -155,14 +158,10 @@ for (const viewport of [
         })
         .focus();
       await page.keyboard.press("Enter");
-      const viewer = page.getByRole("dialog", {
-        name: "Work area",
-        exact: true,
-      });
-      await expect(viewer.getByRole("tab", { name: "Files" })).toHaveAttribute(
-        "aria-selected",
-        "true",
-      );
+      const viewer = page.getByTestId("work-area-panel");
+      await expect(
+        viewer.getByRole("tab", { name: "Files", exact: true }),
+      ).toHaveAttribute("aria-selected", "true");
       await expect(
         viewer.getByRole("heading", { name: "Film teardown" }),
       ).toBeVisible();
@@ -182,7 +181,9 @@ for (const viewport of [
       await page.screenshot({
         path: `${ARTIFACTS}/${testInfo.project.name}-files-${viewport.width}.png`,
       });
-      await viewer.getByRole("button", { name: "Close", exact: true }).click();
+      await viewer
+        .getByRole("button", { name: "Close work area", exact: true })
+        .click();
       await expect(viewer).not.toBeVisible();
       await page
         .getByTestId("channel-view-tabs")
@@ -206,7 +207,7 @@ test("a deleted file has a recoverable error, retry reads current content", asyn
     await row
       .getByRole("link", { name: "DAY1_VIDEO_PACK.md", exact: true })
       .click();
-    const viewer = page.getByRole("dialog", { name: "Work area", exact: true });
+    const viewer = page.getByTestId("work-area-panel");
     await expect(viewer.getByRole("alert")).toContainText(
       "no longer available",
     );
@@ -237,12 +238,15 @@ for (const viewport of [
         .getByTestId("channel-view-tabs")
         .getByRole("button", { name: "Files", exact: true })
         .click();
-      const viewer = page.getByRole("dialog", {
-        name: "Work area",
-        exact: true,
-      });
-      await expect(viewer).toContainText("Choose a file link");
-      await viewer.getByRole("button", { name: "Close", exact: true }).click();
+      const viewer = page.getByTestId("work-area-panel");
+      // Files opens on the agent workspace list; a file chosen there or from
+      // a message link opens in the reader.
+      await expect(
+        viewer.getByRole("button", { name: /^DAY1_VIDEO_PACK\.md/ }),
+      ).toBeVisible();
+      await viewer
+        .getByRole("button", { name: "Close work area", exact: true })
+        .click();
       await row.hover();
       await row.getByRole("button", { name: "Reply", exact: true }).click();
       const thread = page.getByTestId("message-thread-panel");

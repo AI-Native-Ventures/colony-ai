@@ -123,6 +123,64 @@ test("parseBuzzCliCommand never surfaces --channel as preview for sends", () => 
   }
 });
 
+test("parseBuzzCliCommand treats the colony command exactly like buzz", () => {
+  const commands = [
+    "channels list",
+    "--format compact channels list 2>&1 | head -50",
+    "messages send --channel agents --content 'Hello'",
+    "messages send --channel my-uuid --content -",
+    "mem get core",
+    "--relay wss://example.test dms list",
+    "channels",
+    "nonsense go",
+  ];
+
+  for (const rest of commands) {
+    const legacy = parseBuzzCliCommand(`buzz ${rest}`);
+    const current = parseBuzzCliCommand(`colony ${rest}`);
+    assert.deepEqual(current, legacy, `colony differs from buzz for: ${rest}`);
+  }
+});
+
+test("parseBuzzCliCommand finds colony by basename and inside pipelines", () => {
+  for (const command of [
+    "/Users/someone/.colony/bin/colony channels list",
+    "cd /tmp && colony channels list",
+    "echo ok | colony channels list",
+  ]) {
+    const descriptor = parseBuzzCliCommand(command);
+    assert.equal(descriptor?.operation, "channels.list", command);
+    assert.equal(descriptor?.renderClass, "relay-op", command);
+  }
+});
+
+test("parseBuzzCliCommand does not take a folder named colony for the command", () => {
+  for (const command of [
+    "ls -la ~/.colony",
+    "cat ~/.colony/notes.md",
+    "cd ~/Projects/colony && ls -la",
+    "colonyx channels list",
+    "mycolony channels list",
+  ]) {
+    assert.equal(parseBuzzCliCommand(command), null, command);
+  }
+});
+
+test("classifyTool maps a colony shell command to a relay operation", () => {
+  const descriptor = classifyTool({
+    title: "Shell",
+    toolName: "dev__shell",
+    buzzToolName: null,
+    args: { command: "colony --format compact channels list 2>&1 | head -50" },
+    result: "",
+    isError: false,
+  });
+
+  assert.equal(descriptor.renderClass, "relay-op");
+  assert.equal(descriptor.operation, "channels.list");
+  assert.equal(descriptor.source, "shell");
+});
+
 test("classifyTool promotes load_skill to skill-read descriptors", () => {
   const descriptor = classifyTool({
     title: "load_skill",

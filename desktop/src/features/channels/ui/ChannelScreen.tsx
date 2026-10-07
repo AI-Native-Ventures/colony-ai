@@ -19,6 +19,7 @@ import {
 import { ChannelScreenEmptyState } from "@/features/channels/ui/ChannelScreenEmptyState";
 import { ChannelScreenHeader } from "@/features/channels/ui/ChannelScreenHeader";
 import { ChannelWorkspaceTopBar } from "@/features/channels/ui/ChannelWorkspaceTopBar";
+import { WorkAreaLayout } from "@/features/workarea/dock/WorkAreaLayout";
 import { WelcomeAgentCreateDialog } from "@/features/channels/ui/WelcomeAgentCreateDialog";
 import { ForumChannelContent } from "@/features/channels/ui/ForumChannelContent";
 import { MembersSidebar } from "@/features/channels/ui/MembersSidebar";
@@ -836,12 +837,25 @@ export function ChannelScreen({
             <ChannelWorkspaceTopBar
               channelTitle={activeChannelTitle}
               currentPubkey={currentPubkey}
+              channelId={activeChannel.id}
               isThreadOpen={Boolean(openThreadHeadId)}
               members={channelMembers ?? []}
               onToggleMembers={handleToggleMembers}
               onOpenInbox={() => void goHome()}
             />
           ) : null}
+          <WorkAreaLayout
+            channel={
+              activeChannel
+                ? {
+                    channelType: activeChannel.channelType,
+                    isArchived: Boolean(activeChannel.archivedAt),
+                    currentPubkey,
+                  }
+                : undefined
+            }
+            channelId={activeChannel?.id ?? null}
+          >
           <div
             className="colony-channel-route-content"
             ref={channelContentRef}
@@ -1019,6 +1033,7 @@ export function ChannelScreen({
             <ChannelScreenEmptyState />
           )}
           </div>
+          </WorkAreaLayout>
         <MembersSidebar
           channel={activeChannel}
           currentPubkey={currentPubkey}

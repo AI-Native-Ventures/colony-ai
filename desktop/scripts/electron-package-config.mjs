@@ -113,6 +113,7 @@ export function createPackagerOptions({
   icon,
   osxSign,
   osxNotarize,
+  deepLinkSchemes = [],
 }) {
   assertPlatform(platform);
   assertArchitecture(arch);
@@ -138,6 +139,15 @@ export function createPackagerOptions({
             NSMicrophoneUsageDescription:
               "Your microphone is used to send and receive audio in huddles.",
           },
+        }
+      : {}),
+    // macOS only routes a URL scheme to an app that declares it in Info.plist
+    // (CFBundleURLTypes); setAsDefaultProtocolClient cannot add it at runtime.
+    ...(platform === "darwin" && deepLinkSchemes.length > 0
+      ? {
+          protocols: [
+            { name: `${productName} link`, schemes: deepLinkSchemes },
+          ],
         }
       : {}),
     ...(platform === "darwin" && osxSign ? { osxSign } : {}),

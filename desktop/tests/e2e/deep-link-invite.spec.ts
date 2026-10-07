@@ -24,6 +24,7 @@ async function startMachineSetupWithPendingLink(
 
 async function finishPendingAccountSignIn(
   page: import("@playwright/test").Page,
+  expectedScene: "business" | "invite" = "business",
 ) {
   await expect(page.getByTestId("onboarding-scene-account")).toBeVisible();
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
@@ -32,7 +33,9 @@ async function finishPendingAccountSignIn(
     .getByRole("textbox", { name: "Password" })
     .fill("correct-horse-12");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
+  await expect(
+    page.getByTestId(`onboarding-scene-${expectedScene}`),
+  ).toBeVisible();
 }
 
 const PENDING_JOIN_LINK = {
@@ -65,7 +68,7 @@ const SECOND_PENDING_ADD_COMMUNITY_LINK = {
   name: "Beta Team",
 };
 
-test("join deep link is acknowledged without claiming before setup", async ({
+test("join deep link shows the invite during setup and claims nothing before the person joins", async ({
   page,
 }) => {
   let claimCalls = 0;
@@ -75,15 +78,11 @@ test("join deep link is acknowledged without claiming before setup", async ({
   });
   await startMachineSetupWithPendingLink(page, PENDING_JOIN_LINK);
 
-  const gate = page.getByTestId("pending-invite-gate");
-  await expect(gate).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Opening community link" }),
-  ).toBeVisible();
-  await page.getByTestId("pending-invite-continue").click();
-  await expect(gate).toHaveCount(0);
-  await finishPendingAccountSignIn(page);
-  await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
+  // The invite is presented on the account screen, not behind a gate.
+  await expect(page.getByTestId("pending-invite-gate")).toHaveCount(0);
+  await expect(page.getByTestId("invite-brand")).toBeVisible();
+  await finishPendingAccountSignIn(page, "invite");
+  await expect(page.getByTestId("onboarding-scene-business")).toHaveCount(0);
   expect(claimCalls).toBe(0);
   await expect
     .poll(() =>
@@ -440,6 +439,8 @@ test("persisted deep-link invite hands off to Joining after machine onboarding",
           relayUrl: "wss://hive.example.com",
           inviteCode: "abc.def",
           communityName: "hive",
+          // The person already chose to join: no second confirmation.
+          acknowledged: true,
           createdAt: timestamp,
           updatedAt: timestamp,
         }),
@@ -456,12 +457,14 @@ test("persisted deep-link invite hands off to Joining after machine onboarding",
   // Machine onboarding is complete, so the transaction owns the screen.
   await expect(page.getByTestId("community-onboarding-flow")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Your Colony isn’t ready yet." }),
+    page.getByRole("heading", { name: "We couldn’t join just yet." }),
   ).toBeVisible();
   await expect(page.getByTestId("pending-invite-gate")).toHaveCount(0);
 
-  // The claim was attempted and its failure surfaced with a Retry.
+  // The claim was attempted and its failure surfaced with a Retry and a way
+  // back out.
   await expect(
     page.getByRole("button", { name: "Try again", exact: true }),
   ).toBeVisible();
+  await expect(page.getByTestId("invite-claim-leave")).toBeVisible();
 });

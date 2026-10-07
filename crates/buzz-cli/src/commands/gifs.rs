@@ -1,6 +1,6 @@
 //! Agent GIF search and share via the relay's KLIPY proxy.
 //!
-//! `buzz gifs search` / `buzz gifs share` hit the relay-relative endpoints
+//! `colony gifs search` / `colony gifs share` hit the relay-relative endpoints
 //! advertised in the NIP-11 `gif` descriptor. No provider credential is held
 //! by the agent — the relay proxies KLIPY and returns only allowlisted data.
 //!
@@ -172,9 +172,9 @@ pub(crate) async fn resolve_gif_descriptor(
 // Response normalization
 // ---------------------------------------------------------------------------
 
-/// Normalized GIF entry emitted by `buzz gifs search`.
+/// Normalized GIF entry emitted by `colony gifs search`.
 ///
-/// `cdn_url` is the URL to embed directly in a `buzz messages send --content`
+/// `cdn_url` is the URL to embed directly in a `colony messages send --content`
 /// argument.  Agents paste it as-is; no further processing is needed.
 #[derive(serde::Serialize)]
 pub(crate) struct GifEntry {
@@ -307,11 +307,11 @@ fn first_complete_gif_asset(
 // Commands
 // ---------------------------------------------------------------------------
 
-/// `buzz gifs search [--query <q>] [--locale <l>]`
+/// `colony gifs search [--query <q>] [--locale <l>]`
 ///
 /// Empty/omitted `query` returns KLIPY trending GIFs. Output is a JSON array
 /// of normalized GIF objects; each entry's `cdn_url` is the URL to embed in a
-/// `buzz messages send --content` argument.
+/// `colony messages send --content` argument.
 pub async fn cmd_search(
     client: &BuzzClient,
     query: &str,
@@ -351,7 +351,7 @@ pub(crate) async fn search_entries(
     normalize_gif_response(&raw)
 }
 
-/// `buzz gifs share --slug <slug>`
+/// `colony gifs share --slug <slug>`
 ///
 /// Reports a selected GIF to KLIPY so it can update Recents. The `slug` is
 /// the provider identifier returned in search results. Prints

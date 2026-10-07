@@ -22,6 +22,7 @@ import {
 } from "./EmailCodePresentation";
 import { Glyph, InlineAlert, PrimaryButton } from "./OnboardingScenePrimitives";
 import "./onboardingCalibration.css";
+import "./inviteScene.css";
 import "./onboardingTypography.css";
 import "./scoutPresence.css";
 import { ScoutAvatar } from "./ScoutAvatar";
@@ -300,16 +301,28 @@ export function OnboardingScenePresentation(props: PresentationProps) {
   const access = accessScene(props.scene);
   const switchText = access ? null : props.scene === "account" ||
     props.scene === "account-error" ? (
-    <span>
-      Already have an account?{" "}
-      <button
-        className="link"
-        onClick={() => props.onNavigate?.("signin")}
-        type="button"
-      >
-        Sign in
-      </button>
-    </span>
+    <div className="account-switch-stack">
+      <span>
+        Already have an account?{" "}
+        <button
+          className="link"
+          onClick={() => props.onNavigate?.("signin")}
+          type="button"
+        >
+          Sign in
+        </button>
+      </span>
+      {props.onHaveInviteLink ? (
+        <button
+          className="link invite-link-entry"
+          data-testid="have-invite-link"
+          onClick={props.onHaveInviteLink}
+          type="button"
+        >
+          Have an invite link?
+        </button>
+      ) : null}
+    </div>
   ) : props.scene.startsWith("verify") ? (
     <span>
       Already have an account?{" "}

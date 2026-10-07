@@ -10,6 +10,7 @@ import {
   useReducer,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 
 import { router } from "@/app/router";
@@ -37,6 +38,7 @@ import {
 import { NativeUnavailableScreen } from "@/features/onboarding/ui/NativeUnavailableScreen";
 import { OnboardingFlow } from "@/features/onboarding/ui/OnboardingFlow";
 import { PendingInviteGate } from "@/features/onboarding/ui/PendingInviteGate";
+import { useInvitePasteCapture } from "@/features/onboarding/useInvitePasteCapture";
 import { KeyringLockedScreen } from "@/features/onboarding/ui/KeyringLockedScreen";
 import { RelaunchRequiredScreen } from "@/features/onboarding/ui/RelaunchRequiredScreen";
 import { ResetFailedScreen } from "@/features/onboarding/ui/ResetFailedScreen";
@@ -55,7 +57,12 @@ import {
 } from "@/features/communities/addCommunityPrefill";
 import { WelcomeSetup } from "@/features/communities/ui/WelcomeSetup";
 import { CommunityApplyErrorScreen } from "@/features/communities/ui/CommunityApplyErrorScreen";
+import {
+  getMembershipDenial,
+  subscribeMembershipDenial,
+} from "@/features/communities/membershipDenialGate";
 import { CommunityChangeOverlay } from "@/features/communities/ui/CommunityChangeOverlay";
+import { prepareCommunitySwitchFromFailure } from "@/app/prepareCommunitySwitch";
 import { setAvatarProfileSyncQueryClient } from "@/features/profile/avatarProfileSync";
 import { seedProjectSnapshot } from "@/features/projects/projectSnapshot";
 import { createBuzzQueryClient } from "@/shared/api/queryClient";
@@ -420,6 +427,14 @@ function CommunityApp({
     [activeCommunity?.id, switchCommunity],
   );
 
+  // The router is not mounted on failure screens, so leaving a failed
+  // community edits history directly instead of navigating.
+  const prepareLanding = useCallback(
+    (communityId: string) =>
+      prepareCommunitySwitchFromFailure(communityId, router.history),
+    [],
+  );
+
   const handleCommunityOnboardingConnect = useCallback(async () => {
     const transaction = communityOnboarding.transaction;
     if (transaction?.stage !== "connecting") return;
@@ -524,6 +539,20 @@ function CommunityApp({
   const showBootSplashOverlay =
     bootSplashPhase !== "done" && !isCommunitySwitch && !isContinuingOnboarding;
 
+  // A denial is only this community's while it is the active one, so a late
+  // refusal from the community the person just left never shows here.
+  const membershipDenial = useSyncExternalStore(
+    subscribeMembershipDenial,
+    getMembershipDenial,
+    getMembershipDenial,
+  );
+  const failureError =
+    "error" in community && community.error
+      ? community.error
+      : membershipDenial && membershipDenial.communityId === activeCommunity?.id
+        ? membershipDenial.detail
+        : null;
+
   let appContent: ReactNode = null;
   if (!transaction) {
     if (community.needsSetup) {
@@ -535,13 +564,15 @@ function CommunityApp({
           }
         />
       );
-    } else if ("error" in community && community.error) {
-      // Surface apply failures so the user can retry or change community.
+    } else if (failureError !== null) {
+      // Surface apply failures, and a membership refusal that reached the open
+      // workspace, so the user can retry, switch, or drop this community.
       appContent = (
         <>
           <CommunityApplyErrorScreen
-            error={community.error}
-            onChangeCommunity={() => setIsCommunityChangeOpen(true)}
+            error={failureError}
+            onEditCommunity={() => setIsCommunityChangeOpen(true)}
+            onPrepareLanding={prepareLanding}
             onRetry={reconnectCommunity}
           />
           {isCommunityChangeOpen ? (
@@ -611,6 +642,10 @@ function CommunityApp({
       {appContent}
       {isCommunityChangeOpen && transaction ? (
         <CommunityChangeOverlay
+          escape={{
+            onPrepareLanding: prepareLanding,
+            onEscaped: communityOnboarding.clear,
+          }}
           onClose={() => setIsCommunityChangeOpen(false)}
           onUpdated={(communityName, relayUrl) => {
             communityOnboarding.update({
@@ -709,6 +744,11 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
     };
   }, [acceptsCommunityDeepLinks, communityOnboarding.start, openAddCommunity]);
 
+  useInvitePasteCapture(
+    communityOnboarding.start,
+    acceptsCommunityDeepLinks && machine.stage === "ready",
+  );
+
   if (machine.stage === "reset-failed") return <ResetFailedScreen />;
   if (machine.stage === "keyring-locked") return <KeyringLockedScreen />;
   if (machine.stage === "relaunch-required") return <RelaunchRequiredScreen />;
@@ -755,7 +795,10 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
   const isDeepLink =
     transaction?.source === "deep-link-join" ||
     transaction?.source === "deep-link-connect";
-  const shouldAcknowledgeDeepLink = isDeepLink && !transaction.acknowledged;
+  // Links that carry an invite code are presented by the invite scene during
+  // first run; the gate remains for links with nothing to confirm.
+  const shouldAcknowledgeDeepLink =
+    isDeepLink && !transaction.acknowledged && !transaction.inviteCode;
 
   return (
     <>

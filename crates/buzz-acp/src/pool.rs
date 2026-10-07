@@ -2104,7 +2104,7 @@ pub(crate) fn prepend_standing_for_legacy(
 /// agent instructions. A persona-only agent still yields
 /// `<agent-instructions>…</agent-instructions>` rather than an unlabeled blob that would be mistaken
 /// for `<base>`.
-fn framed_system_prompt(
+pub(crate) fn framed_system_prompt(
     cwd: &str,
     base_prompt: Option<&str>,
     system_prompt: Option<&str>,
@@ -2129,7 +2129,7 @@ fn framed_system_prompt(
     }
 }
 
-fn workspace_section(cwd: &str) -> String {
+pub(crate) fn workspace_section(cwd: &str) -> String {
     crate::prompt_framing::semantic_section(
         "workspace",
         &format!("Current working directory: {cwd}"),
@@ -3875,7 +3875,7 @@ pub(crate) fn render_canvas_section(event_id: &str, timestamp: &str, channel_uui
         &format!(
             "Canvas revision (event ID): {event_id}\n\
              Last modified: {timestamp}\n\
-             Fetch current content with: buzz canvas get --channel {channel_uuid}"
+             Fetch current content with: colony canvas get --channel {channel_uuid}"
         ),
     )
 }
@@ -7343,7 +7343,7 @@ done"#
         assert!(!wire.contains("agent reply already retained in the provider session"));
         assert!(wire.contains("follow-up mention"));
         assert!(wire.contains("truncated=\"true\""));
-        assert!(wire.contains("buzz messages thread"));
+        assert!(wire.contains("colony messages thread"));
     }
 
     #[tokio::test]
@@ -10054,7 +10054,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             "<channel-canvas>\n\
              Canvas revision (event ID): a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2\n\
              Last modified: 2024-01-15T10:30:00+00:00\n\
-             Fetch current content with: buzz canvas get --channel 00f1ccaf-1506-4dd7-9a0e-fa67e9e486ae\n\
+             Fetch current content with: colony canvas get --channel 00f1ccaf-1506-4dd7-9a0e-fa67e9e486ae\n\
              </channel-canvas>"
         );
     }
@@ -10171,7 +10171,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
         let result = canvas_section_from_query_response(&[ev], CHANNEL_UUID);
         let section = result.expect("expected Some");
         assert!(section.contains(&id), "section must contain the event id");
-        assert!(section.contains("buzz canvas get --channel"));
+        assert!(section.contains("colony canvas get --channel"));
         assert!(section.contains(CHANNEL_UUID));
         assert!(section.starts_with("<channel-canvas>"));
         // Timestamp must use Z suffix, not +00:00

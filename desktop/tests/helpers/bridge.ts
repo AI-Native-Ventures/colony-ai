@@ -432,6 +432,8 @@ type MockBridgeOptions = {
   addChannelMembersErrors?: (string | null)[];
   channelMembersReadDelayMs?: number;
   channelsReadError?: string;
+  /** Reject `get_channels` per applied relay URL; see e2eBridge mock config. */
+  channelsReadErrorByRelayUrl?: Record<string, string>;
   /** Reject successive mock `get_channels` calls, then resume. */
   channelsReadErrors?: (string | null)[];
   /** Reject successive mock `create_channel` calls, then resume. */
@@ -455,6 +457,8 @@ type MockBridgeOptions = {
   applyCommunityDelayMs?: number;
   /** Reject `apply_workspace` with this message; see e2eBridge mock config. */
   applyCommunityError?: string;
+  /** Reject `apply_workspace` per relay URL; see e2eBridge mock config. */
+  applyCommunityErrorByRelayUrl?: Record<string, string>;
   /** Reject `clear_pending_navigation_deep_links` with this message. */
   clearPendingNavigationDeepLinksError?: string;
   openDmDelayMs?: number;

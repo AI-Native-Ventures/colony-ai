@@ -118,7 +118,12 @@ export async function startR17AccountAuth(
   });
 
   await page.goto("/");
-  if (options.mock?.pendingCommunityDeepLinks?.length) {
+  const links = options.mock?.pendingCommunityDeepLinks ?? [];
+  if (links.some((link) => link.code)) {
+    // A link that carries an invite is shown on the account screen itself.
+    await expect(page.getByTestId("invite-brand")).toBeVisible();
+    if (options.pauseAtPendingInvite) return;
+  } else if (links.length) {
     await expect(page.getByTestId("pending-invite-gate")).toBeVisible();
     if (options.pauseAtPendingInvite) return;
     await page.getByTestId("pending-invite-continue").click();

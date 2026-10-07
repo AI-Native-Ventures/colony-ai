@@ -617,11 +617,12 @@ fn parse_nostr_bind_deep_link(url: &Url) -> Result<NostrBindDeepLinkPayload, Str
     })
 }
 
-/// Handle an incoming `buzz://` deep link URL.
+/// Handle an incoming `colony://` or legacy `buzz://` deep link URL.
 ///
-/// Currently supports:
-/// - `buzz://connect?relay=<ws(s)://...>` — emits `deep-link-connect` to the frontend
-/// - `buzz://repo|project|pr|issue?…` — emits `deep-link-entity` to the frontend
+/// Currently supports (under either scheme):
+/// - `connect?relay=<ws(s)://...>` — emits `deep-link-connect` to the frontend
+/// - `join?relay=<ws(s)://...>&code=<invite>` — emits `deep-link-join` to the frontend
+/// - `repo|project|pr|issue?…` — emits `deep-link-entity` to the frontend
 pub(crate) fn handle_deep_link_url(app: &tauri::AppHandle, url_str: &str) {
     let url = match Url::parse(url_str) {
         Ok(u) => u,
@@ -631,7 +632,7 @@ pub(crate) fn handle_deep_link_url(app: &tauri::AppHandle, url_str: &str) {
         }
     };
 
-    if url.scheme() != crate::build_identity::deep_link_scheme() {
+    if !crate::build_identity::is_deep_link_scheme_for_build(url.scheme()) {
         eprintln!("buzz-desktop: ignoring unsupported deep link scheme: {url_str}");
         return;
     }
@@ -709,12 +710,10 @@ pub(crate) fn handle_deep_link_url(app: &tauri::AppHandle, url_str: &str) {
             let _ = app.emit("deep-link-message", payload);
         }
         Some("repo" | "project" | "pr" | "issue") => {
-            // OS routing uses this build's scheme; frontend navigation consumes
-            // canonical buzz:// entity links rather than transport identity.
-            let Some(href) = canonical_entity_deep_link(
-                &url,
-                crate::build_identity::deep_link_scheme().as_ref(),
-            ) else {
+            // OS routing uses this build's schemes; frontend navigation consumes
+            // canonical buzz:// entity links rather than transport identity. The
+            // scheme was admitted above, so canonicalize from the one received.
+            let Some(href) = canonical_entity_deep_link(&url, url.scheme()) else {
                 eprintln!("buzz-desktop: malformed entity deep link: {url_str}");
                 return;
             };

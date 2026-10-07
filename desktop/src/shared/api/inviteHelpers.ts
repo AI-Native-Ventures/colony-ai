@@ -19,6 +19,7 @@ export type ParsedInvite =
  *  - `https://<relay>/invite/<code>` → `{ relayWsUrl: "wss://<relay>", code }`
  *  - `http://<relay>/invite/<code>`  → `{ relayWsUrl: "ws://<relay>", code }`
  *  - `buzz://join?relay=<wsUrl>&code=<code>` → `{ relayWsUrl, code }`
+ *  - `colony://join?relay=<wsUrl>&code=<code>` → `{ relayWsUrl, code }`
  *  - bare code (no `://`, no `/`)    → `{ code }`
  *
  * Returns `null` for empty input or inputs that don't match any form.
@@ -31,9 +32,10 @@ export function parseInviteInput(input: string): ParsedInvite | null {
   try {
     const url = new URL(trimmed);
 
-    // buzz://join?relay=...&code=...
+    // buzz://join?relay=...&code=... (and colony://join?..., the same link
+    // under the Colony scheme the invite landing page opens).
     // Non-special schemes put the authority in `host`, not `pathname`.
-    if (url.protocol === "buzz:") {
+    if (url.protocol === "buzz:" || url.protocol === "colony:") {
       if (url.host !== "join") return null;
       const relay = url.searchParams.get("relay");
       const code = url.searchParams.get("code");

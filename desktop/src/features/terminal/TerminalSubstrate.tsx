@@ -46,6 +46,11 @@ type TerminalSubstrateProps = {
   focusReportingEnabled: boolean;
   enabled?: boolean;
   mode?: "docked" | "maximized";
+  /**
+   * `bottom` is the legacy full-width dock under the content. `embedded` fills
+   * a host (the work area dock), which owns sizing, hiding and maximizing.
+   */
+  placement?: "bottom" | "embedded";
   visible?: boolean;
   onHide?: () => void;
   onModeChange?: (mode: "docked" | "maximized") => void;
@@ -85,6 +90,7 @@ export function TerminalSubstrate({
   focusReportingEnabled,
   enabled = true,
   mode = "docked",
+  placement = "bottom",
   visible = true,
   onHide = NOOP,
   onModeChange = NOOP,
@@ -478,11 +484,14 @@ export function TerminalSubstrate({
       aria-label="Colony Term"
       className="buzz-terminal-substrate"
       data-terminal-mode={mode}
+      data-terminal-placement={placement}
       data-terminal-owner={owner}
       data-terminal-visible={visible ? "true" : "false"}
       style={{
         ...terminalStyle,
-        ...(mode === "docked" ? { height: dockHeight } : undefined),
+        ...(mode === "docked" && placement === "bottom"
+          ? { height: dockHeight }
+          : undefined),
       }}
       onWheel={(event) => {
         event.preventDefault();
@@ -503,7 +512,7 @@ export function TerminalSubstrate({
         if (result.lines !== 0) onScroll(result.lines);
       }}
     >
-      {mode === "docked" ? (
+      {mode === "docked" && placement === "bottom" ? (
         <hr
           aria-label="Resize Colony Term"
           aria-orientation="horizontal"
@@ -654,30 +663,32 @@ export function TerminalSubstrate({
             <Plus />
           </button>
         </div>
-        <div className="buzz-terminal-readout">
-          <button
-            aria-label={
-              mode === "maximized"
-                ? "Restore Colony Term"
-                : "Maximize Colony Term"
-            }
-            className="buzz-terminal-window-action"
-            onClick={() =>
-              onModeChange(mode === "maximized" ? "docked" : "maximized")
-            }
-            type="button"
-          >
-            {mode === "maximized" ? <Minimize2 /> : <Maximize2 />}
-          </button>
-          <button
-            aria-label="Hide Colony Term"
-            className="buzz-terminal-window-action"
-            onClick={onHide}
-            type="button"
-          >
-            <X />
-          </button>
-        </div>
+        {placement === "bottom" ? (
+          <div className="buzz-terminal-readout">
+            <button
+              aria-label={
+                mode === "maximized"
+                  ? "Restore Colony Term"
+                  : "Maximize Colony Term"
+              }
+              className="buzz-terminal-window-action"
+              onClick={() =>
+                onModeChange(mode === "maximized" ? "docked" : "maximized")
+              }
+              type="button"
+            >
+              {mode === "maximized" ? <Minimize2 /> : <Maximize2 />}
+            </button>
+            <button
+              aria-label="Hide Colony Term"
+              className="buzz-terminal-window-action"
+              onClick={onHide}
+              type="button"
+            >
+              <X />
+            </button>
+          </div>
+        ) : null}
       </div>
       <div className="buzz-terminal-viewport px-5 pt-2">
         <canvas ref={canvasRef} />

@@ -3,6 +3,12 @@ import { useEffect } from "react";
 import { toast } from "sonner";
 
 import { supportsNativeCapability } from "@/shared/api/nativeBridge";
+import { invokeTauri } from "@/shared/api/tauriTransport";
+
+import {
+  type NestMigrationNotice,
+  surfaceNestMigrationNotice,
+} from "./nestMigrationNotice";
 
 const MIGRATION_TOAST_KEY = "buzz-legacy-nest-migrated-notified";
 
@@ -18,6 +24,12 @@ const MIGRATION_TOAST_KEY = "buzz-legacy-nest-migrated-notified";
  *   legacy `~/.sprout` nest. Shown once per machine (deduped via
  *   localStorage); the backend re-emits each launch while `~/.sprout` exists,
  *   which also covers the event being emitted before this listener mounts.
+ *
+ * - `get_nest_migration_notice`: the agents' folder was moved to a new place, or
+ *   left where it was because moving it was not safe. The move runs before the
+ *   window exists, so the backend stores a plain-language message and this hook
+ *   asks for it once the app has mounted, shows it, then acknowledges it so it
+ *   is never shown twice.
  *
  * Mounted at the app root ahead of the community-init effect so the listener
  * is registered before the first `apply_workspace` call.
@@ -44,7 +56,18 @@ export function useNestNotifications(): void {
       });
     });
 
+    let cancelled = false;
+    void surfaceNestMigrationNotice({
+      fetchNotice: () =>
+        invokeTauri<NestMigrationNotice | null>("get_nest_migration_notice"),
+      acknowledge: () => invokeTauri("acknowledge_nest_migration_notice"),
+      show: (message) =>
+        toast.info("About your agents' files", { description: message }),
+      isCancelled: () => cancelled,
+    });
+
     return () => {
+      cancelled = true;
       void unlistenReposError.then((fn) => fn());
       void unlistenMigrated.then((fn) => fn());
     };

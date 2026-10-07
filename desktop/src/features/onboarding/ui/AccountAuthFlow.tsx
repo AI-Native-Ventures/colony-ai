@@ -37,6 +37,10 @@ type AccountAuthFlowProps = {
   onAuthenticated: (account: AccountAuthRecord) => Promise<void> | void;
   onCancel?: () => void;
   standalone?: boolean;
+  /** Workspace invite shown above the account and sign-in forms. */
+  inviteBrand?: React.ReactNode;
+  /** Opens the "Have an invite link?" step from the account screen. */
+  onHaveInviteLink?: () => void;
 };
 
 function normalizedEmail(value: string) {
@@ -231,6 +235,8 @@ export function AccountAuthFlow({
   onAuthenticated,
   onCancel,
   standalone = false,
+  inviteBrand,
+  onHaveInviteLink,
 }: AccountAuthFlowProps) {
   const [state, dispatch] = React.useReducer(
     accountAuthFlowReducer,
@@ -946,6 +952,8 @@ export function AccountAuthFlow({
 
   if (standalone && mode === "onboarding" && designedScene) {
     const data: OnboardingSceneData = {
+      // Invited people have no business or connection steps ahead of them.
+      hideProgress: inviteBrand !== undefined,
       name,
       email: state.email,
       business: "",
@@ -994,6 +1002,18 @@ export function AccountAuthFlow({
             onPasswordChange={setPassword}
             onGoogleSignIn={submitGoogle}
             googlePending={googlePending}
+            inviteBrand={
+              designedScene === "account" ||
+              designedScene === "account-error" ||
+              designedScene === "signin"
+                ? inviteBrand
+                : undefined
+            }
+            onHaveInviteLink={
+              designedScene === "account" || designedScene === "account-error"
+                ? onHaveInviteLink
+                : undefined
+            }
             onSubmit={submit}
             scene={designedScene}
             authCode={

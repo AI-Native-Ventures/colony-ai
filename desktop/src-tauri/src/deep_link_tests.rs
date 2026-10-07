@@ -43,6 +43,29 @@ fn demo_entity_transport_produces_the_frontend_golden_contract() {
 }
 
 #[test]
+fn colony_transport_produces_the_same_canonical_entity_links() {
+    let golden = entity_link_golden();
+    for canonical in golden["links"].as_object().unwrap().values() {
+        let canonical = canonical.as_str().unwrap();
+        let transport = Url::parse(&canonical.replacen("buzz:", "colony:", 1)).unwrap();
+        assert_eq!(
+            canonical_entity_deep_link(&transport, "colony").as_deref(),
+            Some(canonical)
+        );
+        assert!(canonical_entity_deep_link(&transport, "buzz").is_none());
+    }
+}
+
+#[test]
+fn join_deep_link_parses_under_the_colony_scheme() {
+    let raw = "colony://join?relay=wss%3A%2F%2Frelay.example&code=abc.def&policy_receipt=r1";
+    let payload = parse_join_deep_link(&Url::parse(raw).unwrap()).expect("required params present");
+    assert_eq!(payload["relayUrl"], "wss://relay.example");
+    assert_eq!(payload["code"], "abc.def");
+    assert_eq!(payload["policyReceipt"], "r1");
+}
+
+#[test]
 fn parse_entity_deep_link_accepts_every_share_link_shape() {
     let golden = entity_link_golden();
     let owner = golden["owner"].as_str().unwrap();

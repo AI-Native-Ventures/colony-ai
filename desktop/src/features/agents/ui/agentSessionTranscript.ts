@@ -10,6 +10,7 @@ import {
   findBuzzToolName,
   isGenericToolTitle,
   normalizeToolStatus,
+  plainifyToolIds,
 } from "./agentSessionToolCatalog";
 import { classifyTool } from "./agentSessionToolClassifier";
 import { asRecord, asString, titleCase } from "./agentSessionUtils";
@@ -173,13 +174,17 @@ function stringifyPayload(value: unknown) {
 
 function describePermissionRequest(payload: Record<string, unknown>) {
   const params = asRecord(payload.params);
-  const title =
+  const rawTitle =
     asString(params.title) ??
     asString(params.message) ??
     asString(params.reason) ??
     "Permission requested";
-  const toolCallId =
-    asString(params.toolCallId) ?? asString(params.tool_call_id);
+  // The request names the tool by its raw id (`<server>__shell`). People see
+  // plain words instead; the raw id stays on the descriptor's `object`.
+  const title = plainifyToolIds(rawTitle);
+  const toolCallId = plainifyToolIds(
+    asString(params.toolCallId) ?? asString(params.tool_call_id) ?? "",
+  );
   const options = Array.isArray(params.options)
     ? params.options
         .map((option) => {
@@ -221,7 +226,7 @@ function describePermissionRequest(payload: Record<string, unknown>) {
       action: { verb: "Requested", object: title },
       tone: "admin" as const,
       operation: "session/request_permission",
-      object: title,
+      object: rawTitle,
       source: "acp" as const,
       groupKey: "permission:request",
     },

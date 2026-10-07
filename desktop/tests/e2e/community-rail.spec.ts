@@ -1283,9 +1283,10 @@ test.describe("community rail", () => {
     await expect(page.getByText("Join or create a community")).toHaveCount(0);
     await expect(page.getByTestId("community-switch-gate")).toHaveCount(0);
     await expect(page.getByTestId("community-apply-error-retry")).toBeVisible();
+    // No community is left to edit, so no edit action is offered.
     await expect(
-      page.getByRole("button", { name: "Change community" }),
-    ).toBeVisible();
+      page.getByRole("button", { name: /Edit this community/ }),
+    ).toHaveCount(0);
   });
 
   test("keeps the gutter when the mobile sidebar closes without a rail", async ({

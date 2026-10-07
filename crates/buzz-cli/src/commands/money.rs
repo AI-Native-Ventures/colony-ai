@@ -54,7 +54,7 @@ struct AdjustmentInput {
     evidence_ref: String,
 }
 
-/// Route a `buzz money` command.
+/// Route a `colony money` command.
 pub async fn dispatch(command: MoneyCmd, client: &BuzzClient) -> Result<(), CliError> {
     match command {
         MoneyCmd::Invoices(command) => dispatch_invoices(command, client).await,

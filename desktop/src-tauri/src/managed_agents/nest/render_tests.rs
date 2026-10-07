@@ -212,15 +212,15 @@ fn test_upsert_managed_section_with_markers() {
     let file = tmp.path().join("AGENTS.md");
     fs::write(
             &file,
-            "# Header\n\nsome content\n\n<!-- BEGIN BUZZ MANAGED — regenerated automatically, do not edit below -->\nold section\n<!-- END BUZZ MANAGED -->\n\nafter\n",
+            "# Header\n\nsome content\n\n<!-- BEGIN COLONY MANAGED - regenerated automatically, do not edit below -->\nold section\n<!-- END COLONY MANAGED -->\n\nafter\n",
         )
         .unwrap();
 
     upsert_managed_section(&file, "new section").unwrap();
 
     let result = fs::read_to_string(&file).unwrap();
-    assert!(result.contains("<!-- BEGIN BUZZ MANAGED"));
-    assert!(result.contains("<!-- END BUZZ MANAGED -->"));
+    assert!(result.contains("<!-- BEGIN COLONY MANAGED"));
+    assert!(result.contains("<!-- END COLONY MANAGED -->"));
     assert!(result.contains("new section"));
     assert!(!result.contains("old section"));
     assert!(result.contains("# Header"));
@@ -239,10 +239,10 @@ fn test_upsert_managed_section_without_markers() {
     let result = fs::read_to_string(&file).unwrap();
     assert!(result.contains("# Header"));
     assert!(result.contains("existing content"));
-    assert!(result.contains("<!-- BEGIN BUZZ MANAGED"));
-    assert!(result.contains("<!-- END BUZZ MANAGED -->"));
+    assert!(result.contains("<!-- BEGIN COLONY MANAGED"));
+    assert!(result.contains("<!-- END COLONY MANAGED -->"));
     assert!(result.contains("injected section"));
-    let begin_pos = result.find("<!-- BEGIN BUZZ MANAGED").unwrap();
+    let begin_pos = result.find("<!-- BEGIN COLONY MANAGED").unwrap();
     let header_pos = result.find("# Header").unwrap();
     assert!(
         header_pos < begin_pos,
@@ -282,7 +282,7 @@ fn test_upsert_end_before_begin() {
     let file = tmp.path().join("AGENTS.md");
     fs::write(
             &file,
-            "# Header\n\n<!-- END BUZZ MANAGED -->\nsome middle content\n<!-- BEGIN BUZZ MANAGED — regenerated automatically, do not edit below -->\nold section\n",
+            "# Header\n\n<!-- END COLONY MANAGED -->\nsome middle content\n<!-- BEGIN COLONY MANAGED - regenerated automatically, do not edit below -->\nold section\n",
         )
         .unwrap();
 
@@ -329,7 +329,7 @@ fn test_upsert_begin_only_no_end() {
     let file = tmp.path().join("AGENTS.md");
     fs::write(
             &file,
-            "# Header\n\nsome content\n\n<!-- BEGIN BUZZ MANAGED — regenerated automatically, do not edit below -->\norphaned section without end marker\n",
+            "# Header\n\nsome content\n\n<!-- BEGIN COLONY MANAGED - regenerated automatically, do not edit below -->\norphaned section without end marker\n",
         )
         .unwrap();
 
@@ -370,7 +370,7 @@ fn test_upsert_duplicate_markers() {
     let file = tmp.path().join("AGENTS.md");
     fs::write(
             &file,
-            "# Header\n\n<!-- BEGIN BUZZ MANAGED — regenerated automatically, do not edit below -->\nfirst block\n<!-- END BUZZ MANAGED -->\n\nbetween blocks\n\n<!-- BEGIN BUZZ MANAGED — regenerated automatically, do not edit below -->\nsecond block\n<!-- END BUZZ MANAGED -->\n",
+            "# Header\n\n<!-- BEGIN COLONY MANAGED - regenerated automatically, do not edit below -->\nfirst block\n<!-- END COLONY MANAGED -->\n\nbetween blocks\n\n<!-- BEGIN COLONY MANAGED - regenerated automatically, do not edit below -->\nsecond block\n<!-- END COLONY MANAGED -->\n",
         )
         .unwrap();
 
@@ -403,7 +403,7 @@ fn test_upsert_marker_in_code_block() {
     // Indented by 4 spaces — not at column 0, so should NOT match as a real marker.
     fs::write(
         &file,
-        "# Header\n\n    <!-- BEGIN BUZZ MANAGED — some indented marker -->\n\nReal content here\n",
+        "# Header\n\n    <!-- BEGIN COLONY MANAGED - some indented marker -->\n\nReal content here\n",
     )
     .unwrap();
 
@@ -412,7 +412,7 @@ fn test_upsert_marker_in_code_block() {
     let result = fs::read_to_string(&file).unwrap();
 
     assert!(
-        result.contains("    <!-- BEGIN BUZZ MANAGED — some indented marker -->"),
+        result.contains("    <!-- BEGIN COLONY MANAGED - some indented marker -->"),
         "indented marker inside code block must be preserved verbatim"
     );
     assert!(
@@ -426,7 +426,7 @@ fn test_upsert_marker_in_code_block() {
 
     // The real markers appended at the end must be at line-start (column 0).
     let begin_pos = result
-        .find("<!-- BEGIN BUZZ MANAGED — regenerated")
+        .find("<!-- BEGIN COLONY MANAGED - regenerated")
         .expect("regenerated BEGIN marker must be present");
     assert!(
         begin_pos == 0 || result.as_bytes()[begin_pos - 1] == b'\n',
@@ -491,7 +491,7 @@ fn test_upsert_idempotent() {
     let file = tmp.path().join("AGENTS.md");
     fs::write(
             &file,
-            "# Header\n\n<!-- BEGIN BUZZ MANAGED — regenerated automatically, do not edit below -->\nexisting section\n<!-- END BUZZ MANAGED -->\n",
+            "# Header\n\n<!-- BEGIN COLONY MANAGED - regenerated automatically, do not edit below -->\nexisting section\n<!-- END COLONY MANAGED -->\n",
         )
         .unwrap();
 
@@ -512,7 +512,7 @@ fn agents_md_with_markers(dir: &Path) -> PathBuf {
     let file = dir.join("AGENTS.md");
     fs::write(
         &file,
-        "# Header\n\n<!-- BEGIN BUZZ MANAGED — regenerated automatically, do not edit below -->\n\n<!-- END BUZZ MANAGED -->\n",
+        "# Header\n\n<!-- BEGIN COLONY MANAGED - regenerated automatically, do not edit below -->\n\n<!-- END COLONY MANAGED -->\n",
     )
     .unwrap();
     file

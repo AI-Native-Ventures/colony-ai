@@ -196,6 +196,34 @@ test("macOS package declares why the app needs microphone access", () => {
   });
 });
 
+test("macOS package declares the deep-link schemes in Info.plist", () => {
+  const base = {
+    dir: "/tmp/staged-app",
+    out: "/checkout/desktop/dist-electron",
+    productName: "Colony",
+    appVersion: "1.0.5",
+    electronVersion: "44.4.3",
+    arch: "arm64",
+    extraResource: ["/tmp/staged-app/colony-native-host"],
+    deepLinkSchemes: ["colony", "buzz"],
+  };
+
+  // macOS only routes a scheme to an app that declares it in Info.plist.
+  assert.deepEqual(
+    createPackagerOptions({ ...base, platform: "darwin" }).protocols,
+    [{ name: "Colony link", schemes: ["colony", "buzz"] }],
+  );
+  assert.equal(
+    createPackagerOptions({ ...base, platform: "linux" }).protocols,
+    undefined,
+  );
+  assert.equal(
+    createPackagerOptions({ ...base, platform: "darwin", deepLinkSchemes: [] })
+      .protocols,
+    undefined,
+  );
+});
+
 test("sidecar staging includes real runtime binaries for each platform", () => {
   assert.deepEqual(sidecarFilenames("darwin"), [
     "buzz-acp",

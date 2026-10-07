@@ -591,8 +591,8 @@ test("validates image types in the designed avatar upload state", async ({
     name: "avatar.svg",
   });
   const invalid = page.getByTestId("avatar-invalid");
-  await expect(invalid).toContainText("Choose a smaller supported image");
-  await expect(invalid).toContainText("Use JPEG, PNG or WebP, up to 5 MB.");
+  await expect(invalid).toContainText("That file is not a supported image");
+  await expect(invalid).toContainText("JPEG, PNG or WebP image up to 20 MB");
   await expect(page.getByTestId("avatar-crop-preview")).toHaveCount(0);
 });
 

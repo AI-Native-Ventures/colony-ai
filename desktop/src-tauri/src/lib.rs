@@ -270,6 +270,14 @@ pub fn run() {
                     .and_then(|n| n.to_str())
                     .map(crate::migration::is_dev_data_dir_name)
                     .unwrap_or(false);
+                // Move an existing ~/.buzz to ~/.colony (behind a kill switch,
+                // off by default) before the nest folder is chosen and before
+                // anything reads or creates it. Never fails the launch.
+                crate::managed_agents::nest_migration::run_at_boot(
+                    &app_handle,
+                    &data_dir,
+                    is_dev_for_reset,
+                );
                 crate::managed_agents::init_nest_dir(is_dev_for_reset);
                 crate::reset::run_boot_reset(&data_dir)
             } else {
@@ -383,9 +391,10 @@ pub fn run() {
                     .store(port, std::sync::atomic::Ordering::Relaxed);
             });
 
-            // Create the Buzz nest (~/.buzz or ~/.buzz-dev for dev builds) before
-            // agents are restored, so default_agent_workdir() resolves to the
-            // nest directory. Non-fatal: agents fall back to $HOME if nest
+            // Create the nest (~/.colony for a new install, the existing ~/.buzz
+            // for older installs, ~/.buzz-dev for dev builds) before agents are
+            // restored, so default_agent_workdir() resolves to the nest
+            // directory. Non-fatal: agents fall back to $HOME if nest
             // creation fails.
             if let Err(error) = ensure_nest() {
                 eprintln!("buzz-desktop: failed to create nest: {error}");
@@ -402,6 +411,18 @@ pub fn run() {
             // not be resolved (transiently unavailable external volume), it
             // returns false so we skip restore this launch rather than let an
             // agent clone into the wrong REPOS. See managed_agents::repos.
+            // A repositories pointer the nest migration wrote (it left the old
+            // REPOS behind) must not outlive that folder: if the person moved
+            // it away, drop the pointer so the default REPOS is used instead of
+            // skipping agent restore at every launch. Never fails the launch.
+            if let (Some(nest), Ok(data_dir)) =
+                (managed_agents::nest_dir(), app_handle.path().app_data_dir())
+            {
+                managed_agents::nest_migration::heal_repos_pointer(
+                    &nest,
+                    &managed_agents::nest_migration::state_dir(&data_dir),
+                );
+            }
             let restore_agents = match managed_agents::nest_dir() {
                 Some(nest) => managed_agents::resolve_repos_at_boot(&nest),
                 None => true,
@@ -440,6 +461,12 @@ pub fn run() {
                 if let Some(parent) = exe.parent() {
                     if let Err(error) = managed_agents::ensure_cli_symlink(parent, is_dev_nest) {
                         eprintln!("buzz-desktop: failed to create CLI symlink: {error}");
+                    }
+                    // The `colony` command agents are taught, linked to the same CLI.
+                    if let Err(error) =
+                        managed_agents::ensure_agent_command_link(parent, is_dev_nest)
+                    {
+                        eprintln!("buzz-desktop: failed to link the colony command: {error}");
                     }
                 }
             }
@@ -629,6 +656,8 @@ pub fn run() {
             get_relay_ws_url,
             get_relay_http_url,
             get_media_proxy_port,
+            get_nest_migration_notice,
+            acknowledge_nest_migration_notice,
             fetch_link_preview_metadata,
             read_business_website,
             cancel_link_preview_metadata,

@@ -211,3 +211,28 @@ test("parseInviteInput_buzz_join_rejects_fragment_in_nested_relay", () => {
     null,
   );
 });
+
+// ---------------------------------------------------------------------------
+// colony:// join links (the Colony scheme the invite landing page opens)
+// ---------------------------------------------------------------------------
+
+test("parseInviteInput_colony_join_returns_relay_and_code", () => {
+  assert.deepEqual(
+    parseInviteInput(
+      "colony://join?relay=wss%3A%2F%2Frosebank.colony.example&code=abc123",
+    ),
+    { relayWsUrl: "wss://rosebank.colony.example", code: "abc123" },
+  );
+});
+
+test("parseInviteInput_colony_rejects_non_join_hosts_and_missing_params", () => {
+  assert.equal(
+    parseInviteInput("colony://open?relay=wss%3A%2F%2Fa.b&code=x"),
+    null,
+  );
+  assert.equal(parseInviteInput("colony://join?code=abc"), null);
+  assert.equal(
+    parseInviteInput("colony://join?relay=https%3A%2F%2Fa.b&code=abc"),
+    null,
+  );
+});
