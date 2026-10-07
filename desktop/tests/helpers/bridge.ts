@@ -369,6 +369,10 @@ type MockBridgeOptions = {
    * listing for any managed agent, or a pubkey-keyed record for per-agent data.
    */
   agentMemory?: MockAgentMemoryListing | Record<string, MockAgentMemoryListing>;
+  /** Fail successive `get_agent_memory` calls with these messages, then answer. */
+  agentMemoryErrors?: string[];
+  /** Hold successive `get_agent_memory` calls this long (ms) before answering. */
+  agentMemoryDelaysMs?: number[];
   managedAgentPrereqs?: {
     acp?: MockCommandAvailability;
     mcp?: MockCommandAvailability;

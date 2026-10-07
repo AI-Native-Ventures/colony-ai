@@ -83,7 +83,10 @@ export function WorkAreaPanel({
         {tabs.length === 0 ? (
           <div className="colony-work-area-empty" data-testid="work-area-empty">
             <h2>Keep the work beside the conversation.</h2>
-            <p>Open a terminal or inspect a file.</p>
+            <p>
+              Open a terminal, read a file, or see this channel's work and
+              knowledge.
+            </p>
             <div className="colony-work-area-choices">
               {listOpenableWorkAreaTabs().map((definition) => {
                 const Icon = definition.icon;

@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   Diamond,
   FileText,
   Pencil,
@@ -9,6 +10,7 @@ import type * as React from "react";
 
 import { WorkAreaCanvasTab } from "./tabs/WorkAreaCanvasTab";
 import { WorkAreaFilesTab } from "./tabs/WorkAreaFilesTab";
+import { WorkAreaKnowledgeTab } from "./tabs/WorkAreaKnowledgeTab";
 import { WorkAreaTerminalTab } from "./tabs/WorkAreaTerminalTab";
 import { WorkAreaWorkTab } from "./tabs/WorkAreaWorkTab";
 import type { WorkAreaTabKind } from "./workAreaTypes";
@@ -64,6 +66,13 @@ const DEFINITIONS: Record<WorkAreaTabKind, WorkAreaTabDefinition> = {
     icon: Diamond,
     available: true,
     Panel: WorkAreaWorkTab,
+  },
+  knowledge: {
+    kind: "knowledge",
+    label: "Knowledge",
+    icon: BookOpen,
+    available: true,
+    Panel: WorkAreaKnowledgeTab,
   },
 };
 
