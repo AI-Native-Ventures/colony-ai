@@ -23,7 +23,10 @@ export function startFixtureSite() {
       response.end(`<!doctype html><meta charset="utf-8"><title>popup-parent</title>
 <script>
   window.open("http://127.0.0.1:${port}/probe", "_blank");
+  // Chromium refuses a file: window from a web page before the app is asked;
+  // ftp: reaches the app's window handler, which must refuse it.
   window.open("file:///etc/hosts", "_blank");
+  window.open("ftp://127.0.0.1:1/", "_blank");
   document.title = "popup-parent-ready";
 </script>`);
       return;

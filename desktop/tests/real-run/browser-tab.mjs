@@ -8,7 +8,8 @@
 //   1. two businesses share no cookie, localStorage or IndexedDB; one business
 //      keeps them across tabs and across a window opened by a page;
 //   2. pages see no desktop bridge and every permission request is denied;
-//   3. file:, javascript:, data: and credentialed URLs are refused;
+//   3. file:, javascript:, data: and credentialed URLs are refused, and file:
+//      and ftp: windows opened by a page never become tabs;
 //   4. a download lands in the real Downloads folder under a collision-free
 //      name with a visible result (the files it made are removed afterwards);
 //   5. forgetting a business clears its storage but not the person's files.
@@ -217,7 +218,7 @@ try {
     }
   });
   await check(
-    "a window opened by a page joins the profile; file: is blocked",
+    "a window opened by a page joins the profile; file: and ftp: windows never open",
     async () => {
       const parent = await bridge("createTab", {
         businessId: "real-run-business-a",
@@ -228,12 +229,16 @@ try {
         "new-tab",
       );
       assert(opened.tab.businessId === "real-run-business-a", "wrong business");
-      await waitForEvent(
-        (event) =>
-          event.type === "navigation-blocked" &&
-          event.tabId === parent.id &&
-          event.reason === "unsupported-link",
-        "file: window blocked",
+      // Chromium refuses a file: window from a web page before the app is
+      // asked, so only the invariant is checked: nothing but web tabs exist.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const tabs = await bridge("listTabs");
+      const nonWeb = tabs.filter(
+        (entry) => entry.url !== "about:blank" && !/^https?:/u.test(entry.url),
+      );
+      assert(
+        nonWeb.length === 0,
+        `non-web tabs exist: ${nonWeb.map((entry) => entry.url).join(", ")}`,
       );
     },
   );

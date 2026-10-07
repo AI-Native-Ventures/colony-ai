@@ -218,7 +218,7 @@ async function main() {
   );
 
   await check(
-    "a window opened by a page joins the same profile; a file: window is blocked",
+    "a window opened by a page joins the same profile; file: and ftp: windows never open",
     async () => {
       const parent = await request("create", {
         businessId: "smoke-business-a",
@@ -236,16 +236,6 @@ async function main() {
         opened.tab.businessId === "smoke-business-a",
         `business ${opened.tab.businessId}`,
       );
-      await waitFor(
-        () =>
-          events.find(
-            (event) =>
-              event.type === "navigation-blocked" &&
-              event.tabId === parent.id &&
-              event.reason === "unsupported-link",
-          ),
-        "navigation-blocked event for file:",
-      );
       const popped = await waitFor(async () => {
         const [current] = (await request("list")).filter(
           (entry) => entry.id === opened.tab.id,
@@ -261,10 +251,25 @@ async function main() {
         popped.cookie.includes("scope=A"),
         `popup cookie ${popped.cookie}`,
       );
+      // The page opened its windows on load, before the probe finished. Let
+      // anything late arrive, then require that only web tabs exist. Chromium
+      // itself refuses a file: window from a web page, so the app's handler may
+      // never be asked; either way nothing but http(s) may be open.
+      await sleep(1500);
       const tabs = await request("list");
+      const nonWeb = tabs.filter(
+        (entry) => entry.url !== "about:blank" && !/^https?:/u.test(entry.url),
+      );
       assert(
-        !tabs.some((entry) => entry.url.startsWith("file:")),
-        "a file: tab exists",
+        nonWeb.length === 0,
+        `non-web tabs exist: ${nonWeb.map((entry) => entry.url).join(", ")}`,
+      );
+      const blocked = events.filter(
+        (event) =>
+          event.type === "navigation-blocked" && event.tabId === parent.id,
+      );
+      console.log(
+        `note: ${blocked.length} window request(s) reached the app's handler and were refused`,
       );
     },
   );
