@@ -140,3 +140,57 @@ The dry run executes the real driver against a stubbed Electron and scripted pag
 a clean script must end PASS and a leaky one FAIL with the old name listed. It proves the
 driver's orchestration, judging and report writing, never the product.
 
+
+## Work, Knowledge, channel notes and pinned messages gate (Colony 1.0.6)
+
+`work-knowledge-proof.mjs` proves the Work and Knowledge dock tabs, channel notes and pinned
+messages on the packaged app against the live relay. The mock-bridge specs
+(`work-area-work`, `work-area-knowledge`, `work-area-pins`) prove the screens; nothing before
+this gate has run them against a real relay or across a real reload.
+
+It launches the packaged app under the same keychain-deny sandbox and throwaway `HOME` as the
+brand proof, signs up a disposable smoke account, creates a business and enters the app. These
+rows need no AI reply, so when Claude Code is not signed in under the sandbox the app is entered
+with Skip for now after a 45 second wait (the report says so; `--require-ai` refuses the shortcut).
+Then it clicks through one story in the welcome channel, with a unique run tag in every string:
+
+| Row | What is observed |
+|-----|------------------|
+| WK0 | a stream channel is open with the Work/Knowledge/Canvas header tabs and a composer |
+| WK1 | Work opens and shows rows or an honest empty state, no raw error text |
+| WK2 | Knowledge opens with its Channel notes and Pinned sections loaded |
+| WK3 | a note is created: the Canvas tab saves a canvas and shows it back |
+| WK4 | the note is listed in Knowledge, Channel notes |
+| WK5 | a message is sent and pinned; its menu then offers Unpin (the reader saw our pin) |
+| WK6 | the pin is listed in Knowledge with its text and a "Pinned by" line |
+| WK7 | the Pins screen (header Pins button) lists the same pin |
+| WK8 | after an app reload the signed-in channel is back |
+| WK9 | after the reload the note is still in Knowledge |
+| WK10 | after the reload the pin is still in Knowledge |
+| WK11 | after the reload Work still opens to an honest state |
+| WK12 | Unpin from the Knowledge list removes the row |
+| WK13 | after a second reload the pin stays gone and the note stays |
+
+A row whose prerequisite did not PASS is BLOCKED, never PASS. The verdict is PASS only if every
+row was observed. WK5 failing with "Pin was refused" means the live relay rejected kind 40004;
+WK13 failing with "did not reach the relay" means Unpin only hid the row.
+
+```sh
+cd desktop
+COLONY_REAL_RUN=1 node tests/real-run/work-knowledge-proof.mjs \
+  --app '/path/to/Colony.app' --out /path/outside/the/repo/report-dir \
+  --expect-version 1.0.6
+```
+
+Flags: `--no-unpin` (skip WK12 and WK13), `--require-ai`, `--claude-config-dir DIR`,
+`--pause-before-launch`, `--no-load-gate`, `--relay`, `--website`. Env: `AI_APP`, `AI_OUT`,
+`AI_PROGRESS`. The smoke account, the throwaway HOME and the private profile are never deleted;
+the report lists them.
+
+The row sequencing, the prerequisite blocking, every verdict and the report are unit tested with
+a scripted app (a relay that refuses the pin, a pin or note the relay does not keep, an unpin that
+only hides the row, a reload that does not return); the driver itself needs a packaged build:
+
+```sh
+node --test tests/real-run/work-knowledge-rows.test.mjs
+```
