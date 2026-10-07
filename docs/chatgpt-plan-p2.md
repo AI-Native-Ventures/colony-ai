@@ -1,8 +1,10 @@
 # ChatGPT plan P2 local foundation
 
-P2 starts from green P1 commit 2062ffac3. Its PR is held until the coordinator
-merges P1 after cutting release 1.0.5. The detailed decision and source evidence
-are in the coordinator's requested lane file, P2-DECISION.md.
+P1 merged to develop as c9315a6ec in PR 245. On 7 October 2026, the two P2
+checkpoint commits were rebased onto develop at 3c49da5e1 without changing their
+patches. This PR contains the Node foundation; the remaining integration gates
+below are still outstanding. The detailed decision and source evidence are in
+the coordinator's requested lane file, P2-DECISION.md.
 
 Use Codex app-server's HTTP Responses provider through an Electron-owned
 loopback relay. A child receives a per-agent local capability, never the real
