@@ -459,6 +459,8 @@ type MockBridgeOptions = {
   /** Exact reference records for visual comparison captures only. */
   visualFixture?: VisualFixtureSeed;
   canvasReadError?: string;
+  /** Canvas Markdown returned by `get_canvas` per channel id (mock mode only). */
+  canvasContentByChannelId?: Record<string, string>;
   /** Delay (ms) for `apply_workspace`; see e2eBridge mock config. */
   applyCommunityDelayMs?: number;
   /** Reject `apply_workspace` with this message; see e2eBridge mock config. */
