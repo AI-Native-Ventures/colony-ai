@@ -59,7 +59,70 @@ const describeScreen = async () => ({
 });
 try {
   rec.row(`D3-version`, "App reports version 1.0.5", version === "1.0.5" ? "PASS" : "FAIL", `app.getVersion() = ${version}`);
-  if (mode === "one") {
+  if (mode === "retry2") {
+    // Delta gate 2 (PR 250): Retry twice while still refused, read the Details line after each Retry, then Remove and a re-invite.
+    const FORBIDDEN = /relay returned|relay owned-agent query failed|\b403\b|Forbidden|owned-agent/iu;
+    const detailsText = async () => redact((await page.getByTestId("community-apply-error-details").innerText().catch(() => "(no details line)")).replace(/\s+/gu, " "));
+    await guard("R1b-screen", "Removed member sees the escape screen", async () => {
+      const appeared = await waitScreen(90000);
+      const d = appeared ? await describeScreen() : null;
+      const details = appeared ? await detailsText() : "";
+      rec.row(
+        "R1b-screen",
+        "Removed member with ONE community sees the escape screen, plain message, no raw relay text",
+        appeared && !d.rawVisible && !FORBIDDEN.test(details) && /not a member/iu.test(d.message) ? "PASS" : "FAIL",
+        appeared ? `Message: "${d.message}". Buttons: ${d.buttons.join(" | ")}. Details line before any Retry: "${details}". Raw relay text visible: ${d.rawVisible}. Store: ${JSON.stringify(await stored())}` : `Escape screen never appeared in 90 s. Page: ${await body(600)}`,
+        { screenshot: await shot(page, rec, "r1b-screen") },
+      );
+    });
+    for (const n of [1, 2]) {
+      await guard(`R1b-retry-${n}`, `Retry ${n}`, async () => {
+        await screen().getByRole("button", { name: "Retry" }).click({ timeout: 8000 });
+        // Sample the Details line and the page every second for 12 s: a flash of raw text counts.
+        const seen = new Set();
+        let rawSeen = false;
+        for (let i = 0; i < 12; i += 1) {
+          await sleep(1000);
+          const t = await detailsText();
+          if (t) seen.add(t);
+          if (FORBIDDEN.test(t) || RAW.test(await page.locator("body").innerText().catch(() => ""))) rawSeen = true;
+        }
+        const still = await screen().isVisible().catch(() => false);
+        rec.row(
+          `R1b-retry-${n}`,
+          `After Retry ${n} (still refused) the Details line has no 'relay returned' and no 'relay owned-agent query failed'`,
+          still && !rawSeen ? "PASS" : "FAIL",
+          `Escape screen still visible: ${still}. Raw text seen in any of 12 samples: ${rawSeen}. Details line texts seen: ${[...seen].map((t) => `"${t}"`).join(" ; ") || "(none)"}. Message: "${(await describeScreen()).message}"`,
+          { screenshot: await shot(page, rec, `r1b-retry-${n}`) },
+        );
+      });
+    }
+    await guard("R1b-remove", "Remove this community from this device lands on Join or create", async () => {
+      await screen().getByRole("button", { name: /^Remove this community from this device/ }).click({ timeout: 8000 });
+      await screen().getByTestId("community-escape-remove-confirm").click({ timeout: 8000 });
+      const join = await page.getByText("Join or create a community").waitFor({ timeout: 30000 }).then(() => true, () => false);
+      const choice = await page.getByTestId("community-choice-join").isVisible().catch(() => false);
+      rec.row("R1b-remove", "Remove this community from this device lands on Join or create a community", join && choice && !(await screen().count()) ? "PASS" : "FAIL", `Join or create text: ${join}. Join choice visible: ${choice}. Escape screen gone: ${!(await screen().count())}. Store: ${JSON.stringify(await stored())}. Page: ${await body(300)}`, { screenshot: await shot(page, rec, "r1b-removed") });
+    });
+    await guard("R1b-reinvite", "A re-invite lets the member back in", async () => {
+      const inv = state.invites.default;
+      const code = inv.split("/").pop();
+      const relayWs = `wss://${new URL(inv).host}`;
+      const sent = await sendDeepLink(profile, `colony://join?relay=${relayWs}&code=${code}`);
+      let joined = false;
+      const end = Date.now() + 90000;
+      while (Date.now() < end) {
+        const join = page.getByTestId("invite-join");
+        if (await join.isVisible().catch(() => false)) {
+          for (const box of await page.locator('input[type="checkbox"],[role="checkbox"]').all()) await box.click().catch(() => undefined);
+          await join.click().catch(() => undefined);
+        }
+        if ((await page.getByTestId("app-sidebar").isVisible().catch(() => false)) && !(await screen().count())) { joined = true; break; }
+        await sleep(1500);
+      }
+      rec.row("R1b-reinvite", "A re-invite lets the member back in: the workspace opens, no escape screen", joined ? "PASS" : "FAIL", `Deep link: ${sent.method}, exited ${sent.exited}. Workspace reached: ${joined}. Store: ${JSON.stringify(await stored())}. Page: ${await body(300)}`, { screenshot: await shot(page, rec, "r1b-rejoined") });
+    });
+  } else if (mode === "one") {
     await guard("D3-screen", "Removed member with ONE community sees the escape screen, not raw text, not an empty shell", async () => {
       const appeared = await waitScreen(90000);
       const d = appeared ? await describeScreen() : null;

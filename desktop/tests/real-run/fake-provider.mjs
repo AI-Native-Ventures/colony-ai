@@ -20,9 +20,25 @@ const textOf = (content) =>
       : "";
 
 /** The scripted commands for what the person asked. `ctx` carries ids parsed from the prompt and earlier tool output. */
+// 1x1 PNG, used by the dev-tools tour.
+const TINY_PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
 export function scenarioFor(human, ctx) {
   const t = human.toLowerCase();
   const channel = ctx.generalId ?? ctx.channelId;
+  if (/use every one of your tools/u.test(t))
+    return {
+      name: "devtools",
+      echo: "plain",
+      cmds: [
+        // shell: make a text file and a tiny PNG in the working folder
+        `printf 'tour line one\\ntour line two\\n' > tour.txt; (printf '%s' '${TINY_PNG_B64}' | base64 -d 2>/dev/null || printf '%s' '${TINY_PNG_B64}' | base64 -D) > tour.png; ls -la tour.txt tour.png`,
+        { tool: "read_file", args: { path: "tour.txt" } },
+        { tool: "str_replace", args: { path: "tour.txt", old_str: "tour line one", new_str: "tour line 1 edited" } },
+        { tool: "todo", args: { todos: [{ text: "Check the tour file", done: true }, { text: "Report back", done: false }] } },
+        { tool: "view_image", args: { source: "tour.png" } },
+      ],
+    };
   if (/what commands and tools did you use/u.test(t))
     return { name: "commands", cmds: ["pwd", "colony --help"], echo: "commands" };
   if (/know about our business/u.test(t))
@@ -59,6 +75,14 @@ function pickShell(tools = []) {
   const props = Object.keys(tool.function.parameters?.properties ?? {});
   const key = ["command", "cmd", "script"].find((k) => props.includes(k)) ?? props[0] ?? "command";
   return { name: tool.function.name, key };
+}
+
+function pickNamed(tools = [], base) {
+  const tool = tools.find((t) => {
+    const n = t?.function?.name ?? "";
+    return n === base || n.endsWith(`__${base}`);
+  });
+  return tool ? tool.function.name : null;
 }
 
 export async function startFakeProvider({ logFile, port = 0 } = {}) {
@@ -162,8 +186,17 @@ export async function startFakeProvider({ logFile, port = 0 } = {}) {
       if (!shell) {
         return reply({ role: "assistant", content: "No shell tool was offered to me in this turn." }, "stop");
       }
-      const call = (command) =>
-        reply(
+      const call = (command) => {
+        // A step is a shell command (string) or { tool, args } for one of the other dev tools.
+        let name = shell.name;
+        let args = { [shell.key]: command };
+        if (command && typeof command === "object") {
+          const named = pickNamed(tools, command.tool);
+          if (!named) return reply({ role: "assistant", content: `The ${command.tool} tool was not offered to me.` }, "stop");
+          name = named;
+          args = command.args;
+        }
+        return reply(
           {
             role: "assistant",
             content: null,
@@ -171,24 +204,25 @@ export async function startFakeProvider({ logFile, port = 0 } = {}) {
               {
                 id: `call_${sessions.requests}_${step}`,
                 type: "function",
-                function: { name: shell.name, arguments: JSON.stringify({ [shell.key]: command }) },
+                function: { name, arguments: JSON.stringify(args) },
               },
             ],
           },
           "tool_calls",
         );
+      };
       const cmds = scenario.cmds.map((c) => (typeof c === "function" ? c(results) : c));
       if (step < cmds.length) return call(cmds[step]);
       if (step === cmds.length) {
         // Compose the plain text reply that echoes what the tools printed, and post it the way a real model would.
         const echo = cmds
-          .map((cmd, i) => `$ ${cmd}\n${(results[i] ?? "").slice(0, 1400)}`)
+          .map((cmd, i) => `$ ${typeof cmd === "object" ? `${cmd.tool} ${JSON.stringify(cmd.args)}` : cmd}\n${(results[i] ?? "").slice(0, 1400)}`)
           .join("\n\n");
         const lead =
           scenario.echo === "commands"
             ? `Here are the commands I used, and the folder I work in.\n\nEarlier in this session: ${ranBefore.slice(-8).join(" ; ")}\n\n`
             : `Here is what I found.\n\n`;
-        const text = `${lead}${echo}`.replace(/G2EOF/gu, "G2 EOF");
+        const text = (scenario.echo === "plain" ? "Tour finished. I ran a command, read a file, edited it, updated the to-do list and looked at an image." : `${lead}${echo}`).replace(/G2EOF/gu, "G2 EOF");
         const where = ctx.replyTo ? ` --reply-to ${ctx.replyTo}` : "";
         const post = `cat > .scratch-reply.txt <<'G2EOF'\n${text}\nG2EOF\ncolony messages send --channel ${ctx.channelId}${where} --content "$(cat .scratch-reply.txt)" && rm -f .scratch-reply.txt`;
         return call(post);
