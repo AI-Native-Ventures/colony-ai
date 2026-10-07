@@ -824,12 +824,10 @@ fn remote_launch_never_exports_local_browser_authority() {
     let wire = launch.to_string();
     assert!(!wire.contains("fixture-local-only-authority"));
     for field in ["env", "policy_env"] {
-        assert!(
-            launch[field]
-                .as_object()
-                .expect("launch environment")
-                .keys()
-                .all(|key| !key.to_ascii_uppercase().starts_with("COLONY_BROWSER_"))
-        );
+        assert!(launch[field]
+            .as_object()
+            .expect("launch environment")
+            .keys()
+            .all(|key| !key.to_ascii_uppercase().starts_with("COLONY_BROWSER_")));
     }
 }
