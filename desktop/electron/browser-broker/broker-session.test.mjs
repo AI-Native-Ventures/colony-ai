@@ -24,7 +24,12 @@ async function fixture(t, capabilityOptions = {}) {
   const driver = createFakePageDriver();
   const broker = createBroker({ capabilities, driver });
   driver.attach(broker);
-  driver.addTab({ id: "tab", url: "https://shop.example", title: "Fixture" });
+  driver.addTab({
+    id: "tab",
+    businessId: "business",
+    url: "https://shop.example",
+    title: "Fixture",
+  });
   const server = createBrokerServer({
     broker,
     capabilities,
@@ -190,4 +195,34 @@ test("expiry fences the matching tuple while another agent's live grant survives
   assert.deepEqual(await first.listTools(), []);
   assert.equal((await first.callTool("browser_tabs", {})).code, "no_grant");
   assert.ok((await other.listTools()).length > 0);
+});
+
+test("connect stays unavailable until this exact socket scope is approved and after revocation", async (t) => {
+  const f = await fixture(t);
+  const owner = await f.client();
+  assert.deepEqual(await owner.listTools(), []);
+  assert.equal((await owner.callTool("browser_connect", {})).code, "no_grant");
+  const grant = f.grant();
+  assert.ok(
+    (await owner.listTools()).some((tool) => tool.name === "browser_connect"),
+  );
+  const result = await owner.callTool("browser_connect", {});
+  assert.equal(result.ok, true);
+  assert.equal(result.connected, true);
+  assert.equal(result.primaryTab.id, "tab");
+  assert.deepEqual(result.approvedSites, ["https://shop.example"]);
+  for (const context of [
+    { ...session, agentId: "c".repeat(64) },
+    { ...session, taskId: session.taskId.slice(0, -64) + "d".repeat(64) },
+    { ...session, communityOrigin: "https://other-relay.example" },
+  ]) {
+    const other = await f.client(context);
+    assert.equal(
+      (await other.callTool("browser_connect", {})).code,
+      "no_grant",
+    );
+  }
+  f.broker.revoke(grant.id);
+  assert.equal((await owner.callTool("browser_connect", {})).code, "no_grant");
+  assert.deepEqual(await owner.listTools(), []);
 });

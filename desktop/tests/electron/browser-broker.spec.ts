@@ -134,6 +134,14 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
     const call = (tool: string, args: object) =>
       connectedClient.callTool(tool, { tab: tab.id, ...args });
     expect((await call("browser_navigate", { url: origin })).ok).toBe(true);
+    const connection = await connectedClient.callTool("browser_connect", {});
+    expect(connection.ok).toBe(true);
+    expect(connection.connected).toBe(true);
+    expect(connection.primaryTab.id).toBe(tab.id);
+    expect(connection.primaryTab.url).toBe(`${origin}/`);
+    expect(connection.approvedSites).toEqual([origin]);
+    expect(connection.expiresAt).toBe(grant.expiresAt);
+
     const snapshot = await call("browser_snapshot", {});
     expect(snapshot.ok).toBe(true);
     expect(snapshot.snapshot).toContain("untrusted-page-content");
@@ -272,6 +280,10 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
       (await call("browser_navigate", { url: `${origin}/redirect` })).code,
     ).toBe("private_network_denied");
     expect((await call("browser_navigate", { url: origin })).ok).toBe(true);
+    expect(
+      (await connectedClient.callTool("browser_connect", {})).connected,
+    ).toBe(true);
+
     const fresh = await call("browser_snapshot", {});
     const sendLine = fresh.snapshot
       .split("\n")
@@ -335,6 +347,10 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
       )
       .toBe(true);
     await request("agent-revoke", { grantId: grant.id });
+    expect((await connectedClient.callTool("browser_connect", {})).code).toBe(
+      "no_grant",
+    );
+
     expect((await waiting).ok).toBe(false);
     await expect
       .poll(async () => (await connectedClient.listTools()).length)

@@ -11,6 +11,7 @@ import {
 
 test("the tool list is exactly the approved surface", () => {
   assert.deepEqual(toolNames(), [
+    "browser_connect",
     "browser_tabs",
     "browser_open",
     "browser_close",

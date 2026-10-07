@@ -1109,3 +1109,46 @@ test("failed awaiting-control update revokes access and cannot leave a confirmab
     false,
   );
 });
+
+test("connect reports only the existing approved primary tab without granting access", async () => {
+  const env = setup();
+  const result = await env.call("browser_connect", {});
+  assert.equal(result.ok, true);
+  assert.equal(result.connected, true);
+  assert.deepEqual(result.primaryTab, {
+    id: "tab-1",
+    url: "https://shop.example/cart",
+    title: "Cart",
+    loading: false,
+    primary: true,
+  });
+  assert.deepEqual(result.approvedSites, ["https://shop.example"]);
+  assert.equal(result.expiresAt, env.grant.expiresAt);
+  const text = JSON.stringify(result);
+  assert.ok(!text.includes(env.token));
+  assert.ok(!text.includes(env.grant.businessId));
+  assert.equal(env.driver.calls.length, 0);
+  env.caps.revoke(env.grant.id);
+  assert.equal((await env.call("browser_connect", {})).ok, false);
+});
+
+test("connect refuses a missing primary, another profile, human control or unapproved site", async () => {
+  for (const changes of [
+    null,
+    { businessId: "another-business" },
+    { clientId: "another-client" },
+    { controlOwner: "human" },
+    { url: "https://evil.example" },
+  ]) {
+    const env = setup();
+    const getTab = env.driver.getTab;
+    env.driver.getTab = async (id) =>
+      changes === null ? null : { ...(await getTab(id)), ...changes };
+    const result = await env.call("browser_connect", {});
+    assert.equal(result.ok, false, JSON.stringify(changes));
+    assert.ok(
+      ["not_found", "fenced", "origin_approval_required"].includes(result.code),
+      result.code,
+    );
+  }
+});
