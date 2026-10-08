@@ -33,6 +33,17 @@ pub(crate) const RESERVED_ENV_KEYS: &[&str] = &[
     "BUZZ_API_TOKEN",
     "BUZZ_ACP_PRIVATE_KEY",
     "BUZZ_ACP_API_TOKEN",
+    // Main-owned browser launch authority and immutable MCP identity.
+    "COLONY_BROWSER_AGENT",
+    "COLONY_BROWSER_MCP_COMMAND",
+    "COLONY_BROWSER_MCP_SCRIPT",
+    "COLONY_BROWSER_MCP_RUN_AS_NODE",
+    "COLONY_BROWSER_BROKER_SOCKET",
+    "COLONY_BROWSER_BROKER_MASTER",
+    "COLONY_BROWSER_BROKER_SECRET",
+    "COLONY_BROWSER_AGENT_ID",
+    "COLONY_BROWSER_TASK_ID",
+    "COLONY_BROWSER_COMMUNITY_ORIGIN",
     // Relay URL: overriding would let a malicious config redirect the
     // agent to an attacker-controlled relay.
     "BUZZ_RELAY_URL",

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import { NativeHost, nativeRequestTimeout } from "./native-host.mjs";
+import { RendererHost } from "./renderer-host.mjs";
 
 test("long native commands receive a longer deadline", () => {
   assert.equal(
@@ -31,7 +32,7 @@ test("long native commands receive a longer deadline", () => {
     60_000,
   );
 });
-function fixture(t) {
+function fixture(t, options = {}) {
   const child = new EventEmitter();
   const requests = [];
   child.stdout = new PassThrough();
@@ -49,6 +50,7 @@ function fixture(t) {
   const host = new NativeHost("test", {
     spawnProcess: () => child,
     timeout: 1000,
+    ...options,
   });
   const send = (message) =>
     child.stdout.write(`@colony-native:${JSON.stringify(message)}\n`);
@@ -161,4 +163,273 @@ test("installation response survives the ordinary RPC deadline", async (t) => {
   assert.equal(host.pending.has(request.id), true);
   send({ type: "response", id: request.id, result: { success: true } });
   assert.deepEqual(await install, { value: { success: true } });
+});
+
+function launchFixture(t, env, browserAgentHost) {
+  let launched;
+  const child = new EventEmitter();
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.stdin = new PassThrough();
+  child.kill = () => {
+    queueMicrotask(() => child.emit("exit"));
+    return true;
+  };
+  const host = new NativeHost("fixture", {
+    env,
+    browserAgentHost,
+    spawnProcess: (_executable, _args, options) => {
+      launched = options.env;
+      return child;
+    },
+    timeout: 1000,
+  });
+  t.after(() => host.fail("Test cleanup"));
+  child.stdout.write('@colony-native:{"type":"ready","version":1}\n');
+  return launched;
+}
+
+const browserLaunch = {
+  enabled: true,
+  env: {
+    COLONY_BROWSER_MCP_COMMAND: "/fixture/electron",
+    COLONY_BROWSER_MCP_SCRIPT: "/fixture/mcp-server.mjs",
+    COLONY_BROWSER_MCP_RUN_AS_NODE: "1",
+    COLONY_BROWSER_BROKER_SOCKET: "/fixture/browser.sock",
+    COLONY_BROWSER_BROKER_MASTER: "main-owned-fixture-master",
+    COLONY_BROWSER_BROKER_SECRET: "must-not-forward",
+  },
+};
+const ambientBrowser = {
+  PATH: "/fixture/bin",
+  COLONY_BROWSER_AGENT: "1",
+  COLONY_BROWSER_BROKER_MASTER: "stale-master",
+  colony_browser_broker_secret: "stale-credential",
+  COLONY_BROWSER_AGENT_ID: "stale-agent",
+  COLONY_BROWSER_TASK_ID: "stale-task",
+  COLONY_BROWSER_COMMUNITY_ORIGIN: "https://stale.example",
+  COLONY_BROWSER_UNKNOWN: "stale-future-field",
+};
+
+test("native launch removes ambient browser authority when disabled or missing", (t) => {
+  for (const flag of [undefined, "0", "true", "01", "1 "]) {
+    const env = { ...ambientBrowser, COLONY_BROWSER_AGENT: flag };
+    assert.deepEqual(launchFixture(t, env, browserLaunch), {
+      PATH: "/fixture/bin",
+      COLONY_ELECTRON_HOST: "1",
+    });
+  }
+  for (const host of [undefined, { enabled: false, env: browserLaunch.env }])
+    assert.deepEqual(launchFixture(t, ambientBrowser, host), {
+      PATH: "/fixture/bin",
+      COLONY_ELECTRON_HOST: "1",
+    });
+});
+
+test("native launch forwards only generated live-host fields with exact opt-in", (t) => {
+  const launched = launchFixture(t, ambientBrowser, browserLaunch);
+  const { COLONY_BROWSER_BROKER_SECRET: _omitted, ...generated } =
+    browserLaunch.env;
+  assert.deepEqual(launched, {
+    PATH: "/fixture/bin",
+    COLONY_ELECTRON_HOST: "1",
+    COLONY_BROWSER_AGENT: "1",
+    ...generated,
+  });
+  assert.equal(ambientBrowser.COLONY_BROWSER_BROKER_MASTER, "stale-master");
+});
+
+test("invalid live-host launch configuration fails before a child is spawned", () => {
+  for (const key of Object.keys(browserLaunch.env).filter(
+    (name) => !name.endsWith("SECRET"),
+  )) {
+    const env = { ...browserLaunch.env };
+    delete env[key];
+    assert.throws(
+      () =>
+        new NativeHost("fixture", {
+          env: ambientBrowser,
+          browserAgentHost: { enabled: true, env },
+          spawnProcess: () => {
+            assert.fail("invalid authority must not spawn");
+          },
+        }),
+      /Invalid main-owned browser launch/,
+    );
+  }
+  for (const value of ["", "short", "x".repeat(257), "secret\ninvalid-value"]) {
+    assert.throws(
+      () =>
+        new NativeHost("fixture", {
+          env: ambientBrowser,
+          browserAgentHost: {
+            enabled: true,
+            env: { ...browserLaunch.env, COLONY_BROWSER_BROKER_MASTER: value },
+          },
+          spawnProcess: () => {
+            assert.fail("invalid authority must not spawn");
+          },
+        }),
+      /Invalid main-owned browser launch/,
+    );
+  }
+});
+
+test("private launch replies never become renderer events and can finish out of order", async (t) => {
+  const completions = [];
+  const { host, requests, send } = fixture(t, {
+    onPrivateRequest: (name, payload, signal) =>
+      new Promise((resolve) => {
+        assert.equal(name, "chatgpt_plan_prepare");
+        assert.equal(signal.aborted, false);
+        completions.push(() =>
+          resolve({ key: `local-capability-${payload.agentId}` }),
+        );
+      }),
+  });
+  for (const type of ["event", "channel", "private_request"])
+    host.on(type, () => assert.fail("private request became an event"));
+  send({
+    type: "private_request",
+    id: 1,
+    name: "chatgpt_plan_prepare",
+    payload: { agentId: "a" },
+  });
+  send({
+    type: "private_request",
+    id: 2,
+    name: "chatgpt_plan_prepare",
+    payload: { agentId: "b" },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  completions[1]();
+  completions[0]();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(requests, [
+    { type: "private_response", id: 2, result: { key: "local-capability-b" } },
+    { type: "private_response", id: 1, result: { key: "local-capability-a" } },
+  ]);
+  assert.equal(host.privatePending.size, 0);
+});
+
+test("renderer cannot forge a parent response or request a private launch", async (t) => {
+  const { host, requests } = fixture(t, {
+    onPrivateRequest: () => assert.fail("renderer invoked private handler"),
+  });
+  const renderer = new RendererHost(host);
+  for (const type of ["private_request", "private_response"])
+    await assert.rejects(
+      renderer.request(type, {
+        id: 1,
+        name: "chatgpt_plan_prepare",
+        payload: {},
+      }),
+      /Unsupported native renderer request/,
+    );
+  assert.deepEqual(requests, []);
+});
+
+test("private failures hide exception text and reject duplicate ids", async (t) => {
+  const { host, requests, send } = fixture(t, {
+    onPrivateRequest: () => {
+      throw new Error("secret-fixture-value");
+    },
+  });
+  const frame = {
+    type: "private_request",
+    id: 1,
+    name: "chatgpt_plan_prepare",
+    payload: {},
+  };
+  send(frame);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(requests, [
+    { type: "private_response", id: 1, error: "private_request_failed" },
+  ]);
+  send(frame);
+  assert.equal(host.ended, true);
+  assert.equal(host.disconnectReason, "Invalid private native request");
+});
+
+test("private deadlines abort and retain bounded slots until handlers retire", async (t) => {
+  const handlers = [];
+  const { host, requests, send } = fixture(t, {
+    privateTimeout: 5,
+    onPrivateRequest: (_name, _payload, signal) =>
+      new Promise((resolve) => handlers.push({ resolve, signal })),
+  });
+  for (let id = 1; id <= 17; id++)
+    send({
+      type: "private_request",
+      id,
+      name: "chatgpt_plan_prepare",
+      payload: {},
+    });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(handlers.length, 16);
+  assert.equal(host.privatePending.size, 16);
+  assert.equal(
+    handlers.every(({ signal }) => signal.aborted),
+    true,
+  );
+  assert.equal(
+    requests.filter((r) => r.error === "private_request_timeout").length,
+    16,
+  );
+  assert.equal(
+    requests.find((r) => r.id === 17).error,
+    "private_request_unavailable",
+  );
+  for (const handler of handlers) handler.resolve({ key: "late-capability" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(host.privatePending.size, 0);
+  assert.equal(
+    requests.some((r) => r.result),
+    false,
+  );
+});
+
+test("host disconnect aborts private work and suppresses late replies", async (t) => {
+  let complete;
+  let signal;
+  const { host, requests, send } = fixture(t, {
+    onPrivateRequest: (_name, _payload, abort) =>
+      new Promise((resolve) => {
+        signal = abort;
+        complete = resolve;
+      }),
+  });
+  send({
+    type: "private_request",
+    id: 1,
+    name: "chatgpt_plan_prepare",
+    payload: {},
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  host.fail("fixture disconnect");
+  assert.equal(signal.aborted, true);
+  complete({ key: "late-capability" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(requests, []);
+});
+
+test("private request and response frames have a smaller strict bound", async (t) => {
+  const { host, send, requests } = fixture(t, {
+    onPrivateRequest: () => ({ value: "x".repeat(64 * 1024) }),
+  });
+  send({
+    type: "private_request",
+    id: 1,
+    name: "chatgpt_plan_prepare",
+    payload: {},
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(requests[0].error, "private_result_invalid");
+  send({
+    type: "private_request",
+    id: 2,
+    name: "chatgpt_plan_prepare",
+    payload: { value: "x".repeat(64 * 1024) },
+  });
+  assert.equal(host.ended, true);
 });

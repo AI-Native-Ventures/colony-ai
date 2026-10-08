@@ -1061,6 +1061,7 @@ dependencies = [
  "evalexpr",
  "futures-util",
  "hex",
+ "hmac 0.13.0",
  "nix 0.31.3",
  "nostr 0.44.7",
  "reqwest 0.13.4",
@@ -1181,7 +1182,7 @@ dependencies = [
 
 [[package]]
 name = "buzz-desktop"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "anyhow",
  "arboard",

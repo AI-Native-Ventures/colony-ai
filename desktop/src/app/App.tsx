@@ -41,6 +41,7 @@ import { PendingInviteGate } from "@/features/onboarding/ui/PendingInviteGate";
 import { useInvitePasteCapture } from "@/features/onboarding/useInvitePasteCapture";
 import { KeyringLockedScreen } from "@/features/onboarding/ui/KeyringLockedScreen";
 import { RelaunchRequiredScreen } from "@/features/onboarding/ui/RelaunchRequiredScreen";
+import { retryPendingBrowserForgets } from "@/shared/api/browserProfiles";
 import { ResetFailedScreen } from "@/features/onboarding/ui/ResetFailedScreen";
 import { loadCommunityDiscoveryAfterLeave } from "@/features/communities/communityStorage";
 import { useCommunityInit } from "@/features/communities/useCommunityInit";
@@ -823,6 +824,12 @@ export function App() {
   const [sharedIdentity, setSharedIdentity] = useState<boolean | null>(null);
   const [startupError, setStartupError] = useState(false);
   const [queryClient] = useState(createBuzzQueryClient);
+
+  useEffect(() => {
+    // A browser profile that could not be cleared before the last quit (sign
+    // out, removed community) is cleared now, before any page is opened.
+    void retryPendingBrowserForgets();
+  }, []);
 
   useEffect(() => {
     getSharedIdentity()

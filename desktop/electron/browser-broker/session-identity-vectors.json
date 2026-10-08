@@ -1,0 +1,35 @@
+[
+  {
+    "master": "fixture-master-only-1-never-real",
+    "relay": "wss://RELAY.example:443/events?auth=fake#fragment",
+    "context": {
+      "agentId": "abababababababababababababababababababababababababababababababab",
+      "taskId": "thread:12345678-1234-5678-9abc-123456789abc:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "communityOrigin": "https://relay.example"
+    },
+    "key": "[\"abababababababababababababababababababababababababababababababab\",\"thread:12345678-1234-5678-9abc-123456789abc:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"https://relay.example\"]",
+    "credential": "ee5fbe4ebdbe47f4a521aa6abed74298a75a20bbd986d666185de0454f7ae43e"
+  },
+  {
+    "master": "fixture-master-only-2-never-real",
+    "relay": "ws://relay.example:8080/events",
+    "context": {
+      "agentId": "abababababababababababababababababababababababababababababababab",
+      "taskId": "conversation:12345678-1234-5678-9abc-123456789abc",
+      "communityOrigin": "http://relay.example:8080"
+    },
+    "key": "[\"abababababababababababababababababababababababababababababababab\",\"conversation:12345678-1234-5678-9abc-123456789abc\",\"http://relay.example:8080\"]",
+    "credential": "edf5176b04a991c75062015283c0cf7f6eefa83faa0f3dcd64e9358ded5f3c92"
+  },
+  {
+    "master": "fixture-master-only-3-never-real",
+    "relay": "https://[2001:db8::1]:8443/path?token=fixture",
+    "context": {
+      "agentId": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+      "taskId": "conversation:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "communityOrigin": "https://[2001:db8::1]:8443"
+    },
+    "key": "[\"efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef\",\"conversation:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\",\"https://[2001:db8::1]:8443\"]",
+    "credential": "93ae9b1dc98faea4bc78615ddc8739221de9314b6e67be476c6dff91c6c86463"
+  }
+]

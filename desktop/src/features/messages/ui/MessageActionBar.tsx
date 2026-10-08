@@ -39,6 +39,8 @@ import { cn } from "@/shared/lib/cn";
 import { copyTextToClipboard } from "@/shared/lib/clipboard";
 import { emojiDisplayName } from "@/shared/lib/emojiName";
 import { rewriteRelayUrl } from "@/shared/lib/mediaUrl";
+import { MessagePinMenuItem } from "@/features/pins/ui/MessagePinMenuItem";
+import { PINNABLE_MESSAGE_KINDS } from "@/features/pins/pinModels";
 import { KIND_HUDDLE_STARTED } from "@/shared/constants/kinds";
 import { Button } from "@/shared/ui/button";
 import { HashArrowIn } from "@/shared/ui/icons";
@@ -136,6 +138,16 @@ function MoreActionsMenu({
   // already readable anywhere. The HTML sidecar adds only identity, letting a
   // paste back into Buzz re-light each chip with the pubkey the author tagged.
   const mentionIdentities = useMessageMentionIdentities(message.tags, profiles);
+
+  // A pin points at a delivered stream message of a known channel and author.
+  const pinChannelId =
+    !message.pending &&
+    channelId &&
+    message.pubkey &&
+    typeof message.kind === "number" &&
+    PINNABLE_MESSAGE_KINDS.includes(message.kind)
+      ? channelId
+      : null;
 
   // A report needs a real, delivered event to target and a known author to
   // name in the NIP-56 `p` tag. Pending sends and system huddle rows have
@@ -303,6 +315,18 @@ function MoreActionsMenu({
               <Link2 className="h-4 w-4" />
               Copy link
             </DropdownMenuItem>
+          ) : null}
+
+          {pinChannelId ? (
+            <MessagePinMenuItem
+              channelId={pinChannelId}
+              message={{
+                id: message.id,
+                pubkey: message.pubkey ?? "",
+                content: message.body,
+                createdAt: message.createdAt,
+              }}
+            />
           ) : null}
 
           {canReport || onDelete ? <DropdownMenuSeparator /> : null}

@@ -1,12 +1,24 @@
 /**
  * Tab kinds the work area dock can host.
  *
- * EXTENSION POINT (phase 3, browser tab): add `"browser"` to this list, give it
- * a definition in `workAreaTabRegistry.tsx`, and decide whether it is a
- * singleton. Nothing else in the dock (strip, panels, persistence, shortcuts)
- * needs to change; persisted snapshots drop kinds they do not recognise.
+ * Adding a kind: add it to this list, give it a definition in
+ * `workAreaTabRegistry.tsx`, and decide whether it is a singleton. Nothing else
+ * in the dock (strip, panels, persistence, shortcuts) needs to change;
+ * persisted snapshots drop kinds they do not recognise.
+ *
+ * The browser is the one kind that is not a singleton: every page is its own
+ * dock tab (as in the r15 reference), with the id `browser:<page key>`. What a
+ * page holds (address, title, history) is remembered by the browser's own
+ * store, `features/workarea/browser/browserTabsStore.ts`.
  */
-export const WORK_AREA_TAB_KINDS = ["terminal", "files", "canvas"] as const;
+export const WORK_AREA_TAB_KINDS = [
+  "browser",
+  "terminal",
+  "files",
+  "canvas",
+  "work",
+  "knowledge",
+] as const;
 export type WorkAreaTabKind = (typeof WORK_AREA_TAB_KINDS)[number];
 
 /** Kinds that may exist at most once per channel. Their tab id is the kind. */
@@ -14,6 +26,8 @@ export const WORK_AREA_SINGLETON_KINDS: readonly WorkAreaTabKind[] = [
   "terminal",
   "files",
   "canvas",
+  "work",
+  "knowledge",
 ];
 
 export type WorkAreaTab = {
@@ -45,6 +59,10 @@ export const EMPTY_WORK_AREA_STATE: WorkAreaChannelState = Object.freeze({
   activeTabId: null,
   width: WORK_AREA_DEFAULT_WIDTH,
 });
+
+export function isSingletonWorkAreaKind(kind: WorkAreaTabKind): boolean {
+  return WORK_AREA_SINGLETON_KINDS.includes(kind);
+}
 
 export function isWorkAreaTabKind(value: unknown): value is WorkAreaTabKind {
   return (

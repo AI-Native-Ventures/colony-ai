@@ -793,3 +793,41 @@ fn owner_only_access_deploy_payload_clamps_stale_access() {
         "owner-only-access deploy payload retained a stale allowlist"
     );
 }
+
+#[test]
+fn remote_launch_never_exports_local_browser_authority() {
+    let record = bare_agent_record(None, None, None);
+    let mut descriptor = crate::managed_agents::resolve_effective_harness_descriptor(
+        &record,
+        &[],
+        &crate::managed_agents::GlobalAgentConfig::default(),
+    )
+    .expect("fixture descriptor");
+    for key in [
+        "COLONY_BROWSER_AGENT",
+        "COLONY_BROWSER_BROKER_MASTER",
+        "COLONY_BROWSER_BROKER_SECRET",
+        "COLONY_BROWSER_MCP_COMMAND",
+        "COLONY_BROWSER_TASK_ID",
+        "colony_browser_unknown",
+    ] {
+        descriptor
+            .env
+            .insert(key.into(), "fixture-local-only-authority".into());
+    }
+    descriptor
+        .env
+        .insert("USER_KEY".into(), "retained-user-value".into());
+    let launch =
+        super::deploy::build_launch_block(&record, &descriptor, &[], None, None, &"a".repeat(64));
+    assert_eq!(launch["env"]["USER_KEY"], "retained-user-value");
+    let wire = launch.to_string();
+    assert!(!wire.contains("fixture-local-only-authority"));
+    for field in ["env", "policy_env"] {
+        assert!(launch[field]
+            .as_object()
+            .expect("launch environment")
+            .keys()
+            .all(|key| !key.to_ascii_uppercase().starts_with("COLONY_BROWSER_")));
+    }
+}

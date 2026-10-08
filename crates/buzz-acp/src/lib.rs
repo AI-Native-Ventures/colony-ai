@@ -1,5 +1,6 @@
 #![deny(unsafe_code)]
 
+mod browser_runtime;
 mod business_context;
 
 mod acp;

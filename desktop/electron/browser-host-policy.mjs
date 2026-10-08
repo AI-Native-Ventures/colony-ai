@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 export const MAX_BROWSER_TABS = 12;
@@ -30,6 +30,83 @@ export function checkedScopeId(value, label) {
   return value;
 }
 
+/** Cloud metadata services that answer on a name instead of an address. */
+const METADATA_HOST_NAMES = new Set(["metadata.google.internal"]);
+
+/** The eight 16-bit groups of a normalized IPv6 host ("::" expanded). */
+function ipv6Groups(host) {
+  const [head, tail, extra] = host.split("::");
+  if (extra !== undefined) return null;
+  const parse = (part) => (part ? part.split(":") : []);
+  const first = parse(head);
+  const last = tail === undefined ? [] : parse(tail);
+  const missing = 8 - first.length - last.length;
+  if (tail === undefined ? missing !== 0 : missing < 1) return null;
+  const groups = [
+    ...first,
+    ...Array(tail === undefined ? 0 : missing).fill("0"),
+    ...last,
+  ];
+  const numbers = groups.map((group) => Number.parseInt(group, 16));
+  return numbers.length === 8 && numbers.every((n) => n >= 0 && n <= 0xffff)
+    ? numbers
+    : null;
+}
+
+function isLinkLocalIpv4(octets) {
+  return octets[0] === 169 && octets[1] === 254;
+}
+
+/**
+ * True for the addresses a person's browser must never open from here:
+ * link-local IPv4 (169.254.0.0/16, which holds the cloud metadata service),
+ * IPv6 link-local (fe80::/10), the AWS IPv6 metadata address, either of those
+ * spelled as an IPv4-mapped IPv6 address, and the metadata host names.
+ *
+ * `hostname` is a WHATWG URL hostname, which has already turned decimal, hex,
+ * octal and short IPv4 spellings into dotted decimal and compressed IPv6 into
+ * its canonical lower case form. Ordinary private and LAN addresses, loopback
+ * included, stay open: a router page is a normal thing to visit. Names are
+ * matched as written; a name that merely resolves to a blocked address is not
+ * caught here because the host does not resolve names itself.
+ */
+export function isBlockedBrowserHostname(hostname) {
+  const host = String(hostname).toLowerCase().replace(/\.+$/u, "");
+  if (METADATA_HOST_NAMES.has(host)) return true;
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/u.exec(host);
+  if (v4) return isLinkLocalIpv4(v4.slice(1).map(Number));
+  if (!host.startsWith("[") || !host.endsWith("]")) return false;
+  const groups = ipv6Groups(host.slice(1, -1));
+  if (!groups) return false;
+  if ((groups[0] & 0xffc0) === 0xfe80) return true;
+  const awsMetadata = [0xfd00, 0x0ec2, 0, 0, 0, 0, 0, 0x0254];
+  if (groups.every((group, index) => group === awsMetadata[index])) return true;
+  const mapped = groups.slice(0, 5).every((group) => group === 0);
+  return (
+    mapped &&
+    groups[5] === 0xffff &&
+    isLinkLocalIpv4([
+      groups[6] >> 8,
+      groups[6] & 0xff,
+      groups[7] >> 8,
+      groups[7] & 0xff,
+    ])
+  );
+}
+
+/**
+ * Whether a request URL of any scheme points at a blocked host. This is what
+ * the profile's request filter asks for page loads, redirect hops and every
+ * subresource; an unparseable URL is not a blocked host.
+ */
+export function isBlockedBrowserUrl(value) {
+  try {
+    return isBlockedBrowserHostname(new URL(value).hostname);
+  } catch {
+    return false;
+  }
+}
+
 export function checkedUrl(value) {
   if (
     typeof value !== "string" ||
@@ -50,6 +127,9 @@ export function checkedUrl(value) {
     url.password.length > 0
   ) {
     throw new Error("Only credential-free HTTP and HTTPS pages are allowed");
+  }
+  if (isBlockedBrowserHostname(url.hostname)) {
+    throw new Error("Link-local and cloud metadata addresses cannot be opened");
   }
   return url.href;
 }
@@ -105,7 +185,13 @@ export function checkedBounds(value, window) {
   return bounds;
 }
 
-export function downloadFileName(name) {
+/**
+ * A file name that is safe to create in the user's Downloads folder: a bare
+ * name (no directories, no leading dots, no control or reserved characters)
+ * with the stem and extension bounded. Uniqueness is the caller's job, so the
+ * person sees `report.pdf`, not a machine-made suffix.
+ */
+export function safeDownloadName(name) {
   const base = String(name)
     .replace(/\\/gu, "/")
     .split("/")
@@ -113,11 +199,20 @@ export function downloadFileName(name) {
     ?.normalize("NFKC")
     .replace(/[^\p{L}\p{N}._ -]/gu, "_")
     .replace(/^\.+/u, "")
+    .trim()
     .slice(0, 120);
   const safe = base || "download";
   const extension = path.extname(safe).slice(0, 20);
   const stem = safe.slice(0, safe.length - extension.length) || "download";
-  return `${stem}-${Date.now()}-${randomUUID().slice(0, 8)}${extension}`;
+  return `${stem}${extension}`;
+}
+
+/** The nth collision-free spelling of a download name: `report (2).pdf`. */
+export function numberedDownloadName(name, attempt) {
+  if (attempt <= 0) return name;
+  const extension = path.extname(name);
+  const stem = name.slice(0, name.length - extension.length);
+  return `${stem} (${attempt})${extension}`;
 }
 
 export function navigationFailure(error) {
@@ -142,4 +237,49 @@ export function browserProfileIdentity(businessId, clientId) {
     "persist:colony-browser-".length,
   );
   return { partition, profileHash, businessHash };
+}
+
+/**
+ * Keyboard shortcuts that must keep working while the page has focus, because
+ * a native page view swallows key events before the app window sees them.
+ * Returns the action to relay to the app window, or null to leave the key to
+ * the page. `platform` follows `process.platform`.
+ */
+export function browserShortcutAction(input, platform) {
+  if (!isRecord(input) || input.type !== "keyDown" || input.isAutoRepeat)
+    return null;
+  const mac = platform === "darwin";
+  const primary = mac ? input.meta : input.control;
+  const other = mac ? input.control : input.meta;
+  if (other) return null;
+  const key = typeof input.key === "string" ? input.key.toLowerCase() : "";
+  if (primary && !input.alt) {
+    if (input.shift) return null;
+    switch (key) {
+      case "l":
+        return "focus-address";
+      case "t":
+        return "new-tab";
+      case "w":
+        return "close-tab";
+      case "r":
+        return "reload";
+      case "[":
+        return "back";
+      case "]":
+        return "forward";
+      case "\\":
+        return "toggle-dock";
+      default:
+        return null;
+    }
+  }
+  // Option+Arrow is word movement in a macOS text field, so Alt history keys
+  // are for Windows and Linux only; macOS uses Command+[ and Command+].
+  if (!mac && !primary && input.alt && !input.shift) {
+    if (key === "arrowleft") return "back";
+    if (key === "arrowright") return "forward";
+  }
+  if (!primary && !input.alt && !input.shift && key === "f5") return "reload";
+  return null;
 }
