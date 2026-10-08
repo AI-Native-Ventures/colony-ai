@@ -1,3 +1,4 @@
+use super::private::Broker;
 use super::wire::{self, Request};
 use base64::Engine;
 use serde_json::{json, Value};
@@ -155,9 +156,22 @@ fn invoke(
 pub(super) fn start(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "macos")]
     app.set_activation_policy(tauri::ActivationPolicy::Accessory)?;
+    let broker = Broker::new()?;
+    if !app.manage(broker.clone()) {
+        broker.close();
+        return Err("Private native channel is already installed".into());
+    }
+    struct CloseChannel(Arc<Broker>);
+    impl Drop for CloseChannel {
+        fn drop(&mut self) {
+            self.0.close();
+        }
+    }
+    let cleanup = CloseChannel(broker.clone());
     std::thread::Builder::new()
         .name("electron-native-transport".into())
         .spawn(move || {
+            let _cleanup = cleanup;
             let pending = Arc::new(AtomicUsize::new(0));
             let mut subscriptions = HashMap::new();
             let mut input = std::io::stdin().lock();
@@ -177,6 +191,9 @@ pub(super) fn start(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
                 };
                 match request {
                     Request::Shutdown {} => break,
+                    Request::PrivateResponse { id, result, error } => {
+                        broker.reply(id, result, error)
+                    }
                     Request::Invoke {
                         id,
                         command,

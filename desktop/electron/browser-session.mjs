@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { closeSync, mkdirSync, openSync, unlinkSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -6,11 +7,40 @@ import {
   MAX_BROWSER_DOWNLOAD_BYTES,
   MAX_BROWSER_PROFILES,
   browserProfileIdentity,
-  downloadFileName,
+  isBlockedBrowserUrl,
+  numberedDownloadName,
+  safeDownloadName,
 } from "./browser-host-policy.mjs";
 
 const PROFILE_MANIFEST_VERSION = 1;
 const PROFILE_HASH_PATTERN = /^[a-f0-9]{40}$/u;
+/** How many "name (n).ext" spellings are tried before a download is refused. */
+const MAX_DOWNLOAD_NAME_ATTEMPTS = 200;
+/** Finished downloads that can still be revealed in the file manager. */
+const MAX_REMEMBERED_DOWNLOADS = 50;
+
+/**
+ * Create the destination file exclusively (so two downloads, or an existing
+ * file, can never be overwritten) and return its path. The empty file is ours:
+ * it is removed again if the download does not complete.
+ */
+function reserveDownloadPath(directory, fileName) {
+  const safeName = safeDownloadName(fileName);
+  mkdirSync(directory, { recursive: true });
+  for (let attempt = 0; attempt < MAX_DOWNLOAD_NAME_ATTEMPTS; attempt += 1) {
+    const candidate = path.join(
+      directory,
+      numberedDownloadName(safeName, attempt),
+    );
+    try {
+      closeSync(openSync(candidate, "wx", 0o600));
+      return candidate;
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+    }
+  }
+  throw new Error("No free download file name");
+}
 
 export function createBrowserSessionStore({
   session,
@@ -18,14 +48,21 @@ export function createBrowserSessionStore({
   maxProfiles = MAX_BROWSER_PROFILES,
   maxActiveDownloads = MAX_ACTIVE_BROWSER_DOWNLOADS,
   maxDownloadBytes = MAX_BROWSER_DOWNLOAD_BYTES,
+  /** The person's Downloads folder; downloads are saved here and nowhere else. */
+  downloadsPath,
+  /** Reveal a saved file in the system file manager. */
+  showItemInFolder = () => {},
   getTabForContents,
   emitTabEvent,
   hasTab,
 }) {
+  if (typeof downloadsPath !== "string" || !path.isAbsolute(downloadsPath))
+    throw new Error("Browser downloads need an absolute downloads folder");
   const setupBySession = new WeakMap();
   const sessionsByProfile = new Map();
   const activeTabsByProfile = new Map();
   const activeDownloads = new Map();
+  const savedDownloads = new Map();
   const manifestPath = path.join(userDataPath, "browser-profiles.json");
   let profiles;
   let manifestLoad;
@@ -133,25 +170,31 @@ export function createBrowserSessionStore({
         return;
       }
 
-      const directory = path.join(
-        userDataPath,
-        "browser-downloads",
-        profileHash,
-      );
-      const destination = path.join(
-        directory,
-        downloadFileName(item.getFilename()),
-      );
+      let destination;
       try {
+        destination = reserveDownloadPath(downloadsPath, item.getFilename());
         item.setSavePath(destination);
       } catch {
         event.preventDefault();
         item.cancel();
+        if (destination) {
+          try {
+            unlinkSync(destination);
+          } catch {
+            // Already gone.
+          }
+        }
         emitTabEvent(tab, "download-blocked", { reason: "save-failed" });
         return;
       }
+      const downloadId = randomUUID();
+      const fileName = path.basename(destination);
       activeDownloads.set(item, { tab, profileHash });
-      emitTabEvent(tab, "download", { state: "started" });
+      emitTabEvent(tab, "download", {
+        state: "started",
+        downloadId,
+        fileName,
+      });
 
       item.on("updated", () => {
         if (
@@ -163,14 +206,28 @@ export function createBrowserSessionStore({
       });
       item.once("done", (_event, state) => {
         activeDownloads.delete(item);
+        const completed = state === "completed";
+        if (completed) {
+          savedDownloads.set(downloadId, destination);
+          while (savedDownloads.size > MAX_REMEMBERED_DOWNLOADS)
+            savedDownloads.delete(savedDownloads.keys().next().value);
+        } else {
+          // Never leave our placeholder or a partial file in Downloads.
+          try {
+            unlinkSync(destination);
+          } catch {
+            // Already gone.
+          }
+        }
         if (hasTab(tab.id))
           emitTabEvent(tab, "download", {
-            state:
-              state === "completed"
-                ? "completed"
-                : state === "interrupted"
-                  ? "interrupted"
-                  : "cancelled",
+            state: completed
+              ? "completed"
+              : state === "interrupted"
+                ? "interrupted"
+                : "cancelled",
+            downloadId,
+            fileName,
           });
       });
     });
@@ -187,6 +244,13 @@ export function createBrowserSessionStore({
         browserSession.setDevicePermissionHandler?.(() => false);
         browserSession.setDisplayMediaRequestHandler?.((_request, callback) =>
           callback(null),
+        );
+        // Every page load, redirect hop and subresource of this profile: link-local
+        // and cloud metadata hosts are never reachable from a page.
+        browserSession.webRequest.onBeforeRequest(
+          { urls: ["<all_urls>"] },
+          (details, callback) =>
+            callback({ cancel: isBlockedBrowserUrl(details.url) }),
         );
         configureDownloads(browserSession, profileHash);
       });
@@ -234,10 +298,6 @@ export function createBrowserSessionStore({
         sessionsByProfile.set(identity.profileHash, browserSession);
       }
       await ensureSessionSetup(browserSession, identity.profileHash);
-      await mkdir(
-        path.join(userDataPath, "browser-downloads", identity.profileHash),
-        { recursive: true },
-      );
       if (pendingTabId) retainTab(identity.profileHash, pendingTabId);
       return {
         session: browserSession,
@@ -299,10 +359,8 @@ export function createBrowserSessionStore({
     await browserSession.clearStorageData();
     await browserSession.clearCache();
     await browserSession.clearAuthCache();
-    await rm(path.join(userDataPath, "browser-downloads", profileHash), {
-      recursive: true,
-      force: true,
-    });
+    // Files already saved to the person's Downloads folder are theirs and are
+    // never deleted when a profile is forgotten.
   }
 
   async function forgetProfilesLocked(profileHashes) {
@@ -336,17 +394,55 @@ export function createBrowserSessionStore({
     });
   }
 
+  /** Wait (bounded) for cancelled downloads of these profiles to finish. */
+  async function waitForDownloadsToStop(profileHashes, timeoutMs = 3_000) {
+    const wanted = new Set(profileHashes);
+    const deadline = Date.now() + timeoutMs;
+    while (
+      [...activeDownloads.values()].some((download) =>
+        wanted.has(download.profileHash),
+      ) &&
+      Date.now() < deadline
+    )
+      await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  /**
+   * Forget every stored profile: sign out and account delete. Callers close the
+   * tabs first; downloads they cancelled get a moment to stop. Files already
+   * saved to Downloads stay, as for any forget.
+   */
+  function forgetAll() {
+    return inRegistryQueue(async () => {
+      const profileHashes = [...(await loadProfiles()).keys()];
+      await waitForDownloadsToStop(profileHashes);
+      return forgetProfilesLocked(profileHashes);
+    });
+  }
+
   async function forgetClient(businessId, clientId) {
     const { profileHash } = browserProfileIdentity(businessId, clientId);
     return forgetProfiles([profileHash]);
   }
 
+  /** Show a finished download in the file manager. Ids are opaque to callers. */
+  function revealDownload(downloadId) {
+    const destination =
+      typeof downloadId === "string" ? savedDownloads.get(downloadId) : null;
+    if (!destination)
+      throw new Error("That download is no longer available to show");
+    showItemInFolder(destination);
+    return { revealed: true };
+  }
+
   return {
     forScope,
+    revealDownload,
     retainTab,
     releaseTab,
     cancelTabDownloads,
     forgetBusiness,
     forgetClient,
+    forgetAll,
   };
 }

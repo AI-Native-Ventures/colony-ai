@@ -11,6 +11,7 @@ import {
   shell,
 } from "electron";
 import { createOpenRouterService } from "./openrouter-oauth.mjs";
+import { CHATGPT_COMMANDS, dispatchChatGpt } from "./chatgpt/ipc.mjs";
 import {
   createWorkspaceFileService,
   WORKSPACE_FILE_COMMANDS,
@@ -36,6 +37,8 @@ export function createAppWindow({
   trusted,
   onUntrustedOpen,
   browserOptions = {},
+  chatGpt,
+  browserTabEnabled = true,
 }) {
   if (!validWindowLabel(label)) throw new Error("Invalid window label");
   const main = label === "main";
@@ -52,7 +55,10 @@ export function createAppWindow({
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      additionalArguments: [`--colony-window-label=${label}`],
+      additionalArguments: [
+        `--colony-window-label=${label}`,
+        ...(browserTabEnabled ? [] : ["--colony-browser-tab=0"]),
+      ],
     },
   });
   const rendererHost = new RendererHost(
@@ -94,7 +100,10 @@ export function createAppWindow({
     invoke: (command, args) =>
       rendererHost.request("invoke", { command, args }),
   });
-  window.on("closed", () => openRouter.cancel());
+  window.on("closed", () => {
+    openRouter.cancel();
+    if (main) chatGpt?.cancel();
+  });
   const disposeWindowEvents = shellPlugins.attachWindowEvents(window);
   rendererHost.on("event", send);
   rendererHost.on("channel", send);
@@ -114,6 +123,7 @@ export function createAppWindow({
       return;
     }
     openRouter.cancel();
+    if (main) chatGpt?.cancel();
     // A reload retires the previous renderer's subscriptions and channels
     // before the new one may issue commands.
     void rendererHost.reset().catch(() => {
@@ -127,6 +137,17 @@ export function createAppWindow({
 
   /** Handle one renderer request that already passed the sender check. */
   async function dispatch(type, payload) {
+    if (type === "invoke" && CHATGPT_COMMANDS.has(payload.command)) {
+      const generation = rendererHost.generation;
+      const result = await dispatchChatGpt(
+        chatGpt,
+        payload.command,
+        payload.args,
+        main,
+      );
+      rendererHost.check(generation);
+      return result;
+    }
     if (type === "invoke" && WORKSPACE_FILE_COMMANDS.has(payload.command)) {
       const generation = rendererHost.generation;
       const result = await workspaceFiles[
@@ -168,6 +189,7 @@ export function createAppWindow({
   /** Retire this window's native subscriptions; the host keeps running. */
   async function dispose() {
     openRouter.cancel();
+    if (main) chatGpt?.cancel();
     disposeWindowEvents();
     if (!main) await rendererHost.reset().catch(() => {});
   }

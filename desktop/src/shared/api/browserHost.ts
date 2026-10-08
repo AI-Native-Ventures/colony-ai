@@ -1,5 +1,8 @@
-/** Agent mode is visible state only and grants no browser actions or credentials. */
-export type BrowserControlOwner = "human" | "agent";
+/** Agent actions require a separate main-owned, revocable task grant. */
+export type BrowserControlOwner =
+  | "human"
+  | "agent"
+  | "agent-awaiting-confirmation";
 
 export type BrowserTabBounds = {
   x: number;
@@ -24,6 +27,39 @@ export type BrowserTabState = {
   bounds: BrowserTabBounds | null;
 };
 
+/** Keys the host relays from a focused page to the app window. */
+export type BrowserShortcutAction =
+  | "focus-address"
+  | "new-tab"
+  | "close-tab"
+  | "reload"
+  | "back"
+  | "forward"
+  | "toggle-dock";
+
+export type BrowserNavigationBlockReason =
+  | "unsupported-url"
+  | "unsupported-link"
+  | "unsupported-redirect"
+  | "tab-limit"
+  | "tab-open-failed"
+  | "agent-popup-denied"
+  | "origin_approval_required"
+  | "private_network_denied"
+  | "scheme_denied"
+  | "invalid_input";
+
+export type BrowserDownloadBlockReason =
+  | "download-limit"
+  | "download-size-limit"
+  | "save-failed";
+
+export type BrowserDownloadState =
+  | "started"
+  | "completed"
+  | "cancelled"
+  | "interrupted";
+
 export type BrowserHostEvent =
   | {
       type: "created" | "new-tab" | "state";
@@ -31,13 +67,26 @@ export type BrowserHostEvent =
       openedFrom?: string;
     }
   | { type: "closed"; tabId: string }
-  | { type: "navigation-blocked"; tabId: string; reason: string }
-  | { type: "download-blocked"; tabId: string; reason: string }
+  | {
+      type: "navigation-blocked";
+      tabId: string;
+      reason: BrowserNavigationBlockReason;
+    }
+  | {
+      type: "download-blocked";
+      tabId: string;
+      reason: BrowserDownloadBlockReason;
+    }
   | {
       type: "download";
       tabId: string;
-      state: "started" | "completed" | "cancelled" | "interrupted";
-    };
+      state: BrowserDownloadState;
+      /** Opaque id; pass it to `revealDownload` once the download completed. */
+      downloadId: string;
+      /** The name the file was saved under in the Downloads folder. */
+      fileName: string;
+    }
+  | { type: "shortcut"; tabId: string; action: BrowserShortcutAction };
 
 export type CreateBrowserTabOptions = {
   businessId: string;
@@ -68,6 +117,10 @@ export type BrowserHostApi = {
     tabId: string,
     controlOwner: BrowserControlOwner,
   ): Promise<BrowserTabState>;
+  /** Move keyboard focus into the page (keyboard route into the native view). */
+  focus(tabId: string): Promise<BrowserTabState>;
+  /** Show a completed download in the system file manager. */
+  revealDownload(downloadId: string): Promise<{ revealed: boolean }>;
   closeTab(tabId: string): Promise<{ closed: boolean }>;
   /** Close the business's browser tabs while retaining profile data. */
   closeBusiness(businessId: string): Promise<BrowserProfileLifecycleResult>;
@@ -83,6 +136,8 @@ export type BrowserHostApi = {
     businessId: string,
     clientId: string,
   ): Promise<{ forgottenProfiles: number }>;
+  /** Close every browser tab and clear every profile and its downloads. */
+  forgetAll(): Promise<{ forgottenProfiles: number }>;
   onEvent(callback: (event: BrowserHostEvent) => void): () => void;
 };
 
@@ -101,6 +156,11 @@ function requireBrowserHost(): BrowserHostApi {
   return window.colonyBrowserHost;
 }
 
+/** True when this runtime has the embedded browser (a desktop build, not killed). */
+export function isBrowserHostAvailable(): boolean {
+  return typeof window !== "undefined" && Boolean(window.colonyBrowserHost);
+}
+
 /** Typed renderer boundary for the isolated Electron browser host. */
 export const browserHost = {
   createTab: (options: CreateBrowserTabOptions) =>
@@ -117,6 +177,9 @@ export const browserHost = {
   stop: (tabId: string) => requireBrowserHost().stop(tabId),
   setControlOwner: (tabId: string, controlOwner: BrowserControlOwner) =>
     requireBrowserHost().setControlOwner(tabId, controlOwner),
+  focus: (tabId: string) => requireBrowserHost().focus(tabId),
+  revealDownload: (downloadId: string) =>
+    requireBrowserHost().revealDownload(downloadId),
   closeTab: (tabId: string) => requireBrowserHost().closeTab(tabId),
   closeBusiness: (businessId: string) =>
     requireBrowserHost().closeBusiness(businessId),
@@ -126,6 +189,7 @@ export const browserHost = {
     requireBrowserHost().forgetBusiness(businessId),
   forgetClient: (businessId: string, clientId: string) =>
     requireBrowserHost().forgetClient(businessId, clientId),
+  forgetAll: () => requireBrowserHost().forgetAll(),
   onEvent: (callback: (event: BrowserHostEvent) => void) =>
     requireBrowserHost().onEvent(callback),
 };

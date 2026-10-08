@@ -3,6 +3,8 @@ import { ChannelMemberAvatarStack } from "@/features/channels/ui/ChannelMemberAv
 import { WORK_AREA_PANEL_ID } from "@/features/workarea/dock/WorkAreaPanel";
 import { toggleWorkAreaFrom } from "@/features/workarea/dock/workAreaActions";
 import { useWorkAreaDock } from "@/features/workarea/dock/useWorkAreaDock";
+import { requestWorkAreaTab } from "@/features/workarea/dock/workAreaRequests";
+import { isBrowserHostAvailable } from "@/shared/api/browserHost";
 import type { ChannelMember } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
 import { WorkspaceTopBar } from "@/shared/ui/workspace-topbar";
@@ -51,10 +53,24 @@ export function ChannelWorkspaceTopBar({
             <PanelLeft aria-hidden="true" />
             Work area
           </Button>
-          <Globe
-            aria-hidden="true"
-            className="h-4 w-4 shrink-0 text-muted-foreground"
-          />
+          {isBrowserHostAvailable() ? (
+            // As in the reference, the globe on the conversation toolbar opens
+            // the browser beside the conversation.
+            <button
+              aria-label="Open browser"
+              className="colony-channel-topbar-action"
+              data-testid="channel-open-browser"
+              onClick={() => requestWorkAreaTab("browser")}
+              type="button"
+            >
+              <Globe aria-hidden="true" />
+            </button>
+          ) : (
+            <Globe
+              aria-hidden="true"
+              className="h-4 w-4 shrink-0 text-muted-foreground"
+            />
+          )}
           <ChannelMemberAvatarStack
             currentPubkey={currentPubkey}
             members={members}

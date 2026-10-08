@@ -7,12 +7,16 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 const LABEL_ARG = "--colony-window-label=";
+// The browser tab kill switch (COLONY_DISABLE_BROWSER_TAB=1 in the main
+// process) arrives as an argument, so a disabled app exposes no browser bridge.
+const browserTabEnabled = !process.argv.includes("--colony-browser-tab=0");
 const windowLabel =
   process.argv
     .find((arg) => arg.startsWith(LABEL_ARG))
     ?.slice(LABEL_ARG.length) ?? "main";
 const listeners = new Map();
 const browserListeners = new Set();
+const browserBrokerListeners = new Set();
 const updaterListeners = new Set();
 let sequence = 0;
 
@@ -44,6 +48,27 @@ ipcRenderer.on("colony:updater-status", (_event, status) => {
       // A throwing renderer listener must not starve the others.
     }
   }
+});
+
+ipcRenderer.on("colony:browser-broker-event", (_event, message) => {
+  for (const callback of browserBrokerListeners) {
+    try {
+      callback(message);
+    } catch {
+      /* Isolate renderer observers. */
+    }
+  }
+});
+
+contextBridge.exposeInMainWorld("colonyBrowserBroker", {
+  request: (action, payload = {}) =>
+    ipcRenderer.invoke("colony:browser-broker", action, payload),
+  onEvent: (callback) => {
+    if (typeof callback !== "function")
+      throw new Error("Invalid browser task listener");
+    browserBrokerListeners.add(callback);
+    return () => browserBrokerListeners.delete(callback);
+  },
 });
 
 async function browserRequest(action, payload = {}) {
@@ -80,32 +105,37 @@ contextBridge.exposeInMainWorld("colonyDesktop", {
   },
 });
 
-contextBridge.exposeInMainWorld("colonyBrowserHost", {
-  createTab: (options) => browserRequest("create", options),
-  listTabs: () => browserRequest("list"),
-  attach: (tabId, bounds, visible) =>
-    browserRequest("attach", { tabId, bounds, visible }),
-  detach: (tabId) => browserRequest("detach", { tabId }),
-  navigate: (tabId, url) => browserRequest("navigate", { tabId, url }),
-  back: (tabId) => browserRequest("back", { tabId }),
-  forward: (tabId) => browserRequest("forward", { tabId }),
-  reload: (tabId) => browserRequest("reload", { tabId }),
-  stop: (tabId) => browserRequest("stop", { tabId }),
-  setControlOwner: (tabId, controlOwner) =>
-    browserRequest("control-owner", { tabId, controlOwner }),
-  closeTab: (tabId) => browserRequest("close", { tabId }),
-  closeBusiness: (businessId) =>
-    browserRequest("close-business", { businessId }),
-  closeClient: (businessId, clientId) =>
-    browserRequest("close-client", { businessId, clientId }),
-  forgetBusiness: (businessId) =>
-    browserRequest("forget-business", { businessId }),
-  forgetClient: (businessId, clientId) =>
-    browserRequest("forget-client", { businessId, clientId }),
-  onEvent: (callback) => {
-    if (typeof callback !== "function")
-      throw new Error("Invalid browser listener");
-    browserListeners.add(callback);
-    return () => browserListeners.delete(callback);
-  },
-});
+if (browserTabEnabled)
+  contextBridge.exposeInMainWorld("colonyBrowserHost", {
+    createTab: (options) => browserRequest("create", options),
+    listTabs: () => browserRequest("list"),
+    attach: (tabId, bounds, visible) =>
+      browserRequest("attach", { tabId, bounds, visible }),
+    detach: (tabId) => browserRequest("detach", { tabId }),
+    navigate: (tabId, url) => browserRequest("navigate", { tabId, url }),
+    back: (tabId) => browserRequest("back", { tabId }),
+    forward: (tabId) => browserRequest("forward", { tabId }),
+    reload: (tabId) => browserRequest("reload", { tabId }),
+    stop: (tabId) => browserRequest("stop", { tabId }),
+    setControlOwner: (tabId, controlOwner) =>
+      browserRequest("control-owner", { tabId, controlOwner }),
+    focus: (tabId) => browserRequest("focus", { tabId }),
+    revealDownload: (downloadId) =>
+      browserRequest("reveal-download", { downloadId }),
+    closeTab: (tabId) => browserRequest("close", { tabId }),
+    closeBusiness: (businessId) =>
+      browserRequest("close-business", { businessId }),
+    closeClient: (businessId, clientId) =>
+      browserRequest("close-client", { businessId, clientId }),
+    forgetBusiness: (businessId) =>
+      browserRequest("forget-business", { businessId }),
+    forgetClient: (businessId, clientId) =>
+      browserRequest("forget-client", { businessId, clientId }),
+    forgetAll: () => browserRequest("forget-all", {}),
+    onEvent: (callback) => {
+      if (typeof callback !== "function")
+        throw new Error("Invalid browser listener");
+      browserListeners.add(callback);
+      return () => browserListeners.delete(callback);
+    },
+  });

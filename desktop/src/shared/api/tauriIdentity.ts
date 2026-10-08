@@ -1,3 +1,4 @@
+import { forgetAllBrowserProfiles } from "@/shared/api/browserProfiles";
 import { invokeTauri } from "@/shared/api/tauri";
 import type { Identity, IdentityStorage } from "@/shared/api/types";
 import {
@@ -50,6 +51,9 @@ export async function persistCurrentIdentity(): Promise<Identity> {
  */
 export async function signOut(): Promise<void> {
   requireNativeCapability("identity-recovery");
+  // No browser login or cookie stays on this device. Never throws: a profile
+  // the host could not clear yet is recorded and cleared at the next start.
+  await forgetAllBrowserProfiles();
   await invokeTauri("sign_out");
 }
 
