@@ -29,9 +29,11 @@ import {
 } from "@/shared/api/tauri";
 import type {
   AddChannelMembersInput,
+  CanvasResponse,
   Channel,
   ChannelDetail,
   CreateChannelInput,
+  SetCanvasResult,
   SetChannelPurposeInput,
   SetChannelTopicInput,
   UpdateChannelInput,
@@ -980,22 +982,42 @@ export function useCanvasQuery(channelId: string | null, enabled = true) {
   });
 }
 
-export function useSetCanvasMutation(channelId: string | null) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+/**
+ * Options for saving a channel canvas. The saved text goes into the cache
+ * before the save resolves, so a caller that closes its editor on resolve
+ * shows what was saved rather than the canvas cached before the edit (the
+ * relay refetch takes a round trip). A fetch already in flight is cancelled
+ * first so it cannot land the pre-save canvas over the saved one; the
+ * invalidation then refetches the relay's copy with its timestamp and author.
+ */
+export function setCanvasMutationOptions(
+  queryClient: QueryClient,
+  channelId: string | null,
+  save: typeof setCanvas = setCanvas,
+) {
+  return {
     mutationFn: (content: string) => {
       if (!channelId) {
         return Promise.reject(new Error("No channel selected"));
       }
-      return setCanvas({ channelId, content });
+      return save({ channelId, content });
     },
-    onSuccess: () => {
-      if (channelId) {
-        void queryClient.invalidateQueries({
-          queryKey: ["channel-canvas", channelId],
-        });
-      }
+    onSuccess: async (_result: SetCanvasResult, content: string) => {
+      if (!channelId) return;
+      const queryKey = ["channel-canvas", channelId];
+      await queryClient.cancelQueries({ queryKey });
+      queryClient.setQueryData<CanvasResponse>(queryKey, {
+        content,
+        updatedAt: Math.floor(Date.now() / 1000),
+        author: null,
+      });
+      void queryClient.invalidateQueries({ queryKey });
     },
-  });
+  };
+}
+
+export function useSetCanvasMutation(channelId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation(setCanvasMutationOptions(queryClient, channelId));
 }
