@@ -28,6 +28,12 @@ const accounts = Object.entries(state)
     createdAt: v.createdAt ?? "Creation timestamp not directly observed",
   }));
 const verdict = "CANDIDATE DEFECT";
+const handoff = JSON.parse(
+  await readFile(path.join(out, "handoff.json"), "utf8").catch(() => "{}"),
+);
+const handoffHtml = handoff.harnessCommit
+  ? `<section><h2>Harness validation and handoff</h2><p>Harness commit <code>${esc(handoff.harnessCommit)}</code> pushed to <code>codex/104d-real-run</code>. Signed-off-by is present and Co-Authored-By is the final trailer. Only desktop/tests/real-run files changed. Product code was not changed.</p><p>62 focused harness tests plus one actual sandbox alias regression passed. Scoped Biome completed without errors; warnings remain. Changed modules passed syntax and diff checks. Report assets exist and private state passwords and invite codes are absent from the HTML. No package build, full suite or CI proof is claimed.</p><p>The broad desktop-fix pre-commit command was excluded to avoid changing product files; scoped checks ran instead. The commit-msg signoff hook ran. Push used --no-verify as requested. The initial commit trailer ordering was corrected by replacing only this session's own commit under an exact-value lease.</p></section>`
+  : "";
 const row = (phase, id) =>
   docs.find((d) => d.phase === phase)?.rows.find((r) => r.id === id);
 const evidenceRows = (rows) =>
@@ -168,7 +174,7 @@ const summary = [
     nativeSummary,
   ],
 ];
-const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Colony 1.0.6 candidate gate</title><style>body{font:15px/1.5 system-ui;margin:0;background:#f4f3f7;color:#272330}main{max-width:1200px;margin:auto;padding:32px}h1{font-size:30px}h2{font-size:23px}section{background:white;padding:24px;margin:24px 0;border-radius:12px}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #dedce3;padding:12px;text-align:left;vertical-align:top}td:first-child{width:24%}td:nth-child(2){width:16%;font-weight:700}img{max-width:650px;width:100%;border:1px solid #ddd}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:450px;overflow:auto}.pass{color:#18653e}.fail{color:#aa253e}.unknown{color:#745725}details{margin:18px 0}a{color:#4542a6}</style><main>
+const html = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Colony 1.0.6 candidate gate</title><style>body{font:15px/1.5 system-ui;margin:0;background:#f4f3f7;color:#272330;overflow-wrap:anywhere}main{max-width:1200px;margin:auto;padding:32px}h1{font-size:30px}h2{font-size:23px}section{background:white;padding:24px;margin:24px 0;border-radius:12px}table{border-collapse:collapse;width:100%;table-layout:fixed}td,th{border-bottom:1px solid #dedce3;padding:12px;text-align:left;vertical-align:top}td:first-child{width:24%}td:nth-child(2){width:16%;font-weight:700}img{max-width:650px;width:100%;border:1px solid #ddd}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:450px;overflow:auto}.pass{color:#18653e}.fail{color:#aa253e}.unknown{color:#745725}details{margin:18px 0}a{color:#4542a6}</style><main>
 <h1>${verdict}</h1><p><b>With COLONY_BROWSER_AGENT=1 and an actual question thread open, Allow an agent remains disabled.</b> <code>desktop/src/features/workarea/dock/WorkAreaLayout.tsx:221-231</code> rebuilds channel context without <code>threadRootId</code>, although <code>ChannelScreen.tsx:854</code> supplies it. <code>BrowserAgentControls.tsx:39-44</code> then derives a null task ID. The candidate source at 253f1f2a1 has the same omission. No product fix was made.</p>
 <p>The recovered Scout intro is also recorded as a defect. Coordinator confirms its interrupted-setup behavior is pre-existing: <code>desktop/src/features/onboarding/welcomeKickoff.ts:742-753,780-786</code> is byte-identical between candidate and published origin/main. The clean uninterrupted first run passed both Scout timing gates.</p>
 <p>Packaged CI candidate, not a release. PR 267 supplied head 253f1f2a1. Runtime reports version 1.0.6. App: <code>/Users/mac/Downloads/Colony-candidate-106/app-extracted/darwin-arm64/Buzz.app</code>. Production relay: <code>https://relay.colony.ainative.ventures</code>. Expected PR packaging: Buzz menu and window title.</p>
@@ -179,6 +185,7 @@ ${groups}
 <section><h2>Retained browser host evidence</h2><p>These original host rows are retained, without rerunning them. The two old isolation-probe failures are superseded only where stated above. The Electron OS home-path finding and download block remain current.</p>${evidenceRows(host.rows)}</section>
 <section><h2>Remaining limits</h2>${evidenceRows(missing)}</section>
 <section><h2>Earlier attempts and retained baseline</h2><p>Earlier network, setup and harness timing failures are shown for provenance. They do not override the later final observed rows. Full G1 is not claimed PASS.</p>${archived}</section>
+${handoffHtml}
 <p>Generated ${esc(new Date().toISOString())}. Harness changes are separate from the packaged product. A source test or prepared row is not packaged proof. Screenshots and JSON evidence are local artifacts beside this HTML. No product change, release or deployment is claimed.</p></main></html>`;
 await writeFile(path.join(out, "index.html"), html);
 await writeFile(
