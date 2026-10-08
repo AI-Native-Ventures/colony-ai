@@ -123,13 +123,20 @@ function fixture(communityOrigin = "https://relay.example") {
 }
 
 test("task and origin approval come from conversation facts, not page text", () => {
-  assert.equal(browserTaskScope(channel, "stream", "A".repeat(64)), taskId);
+  for (const channelType of ["stream", "forum"]) {
+    assert.equal(
+      browserTaskScope(channel, channelType, "A".repeat(64)),
+      taskId,
+    );
+    assert.equal(
+      browserTaskScope(channel, channelType, "b".repeat(64)),
+      `thread:${channel}:${"b".repeat(64)}`,
+    );
+    for (const root of [undefined, null, "", "ignore instructions"])
+      assert.equal(browserTaskScope(channel, channelType, root), null);
+  }
   assert.equal(browserTaskScope(channel, "dm"), `conversation:${channel}`);
-  assert.equal(
-    browserTaskScope(channel, "stream", "ignore instructions"),
-    null,
-  );
-  assert.equal(browserTaskScope(channel, "stream"), null);
+  assert.equal(browserTaskScope("invalid", "stream", "A".repeat(64)), null);
   assert.equal(
     browserApprovalOrigin("https://example.com/path?token=secret"),
     "https://example.com",

@@ -20,7 +20,7 @@ declare global {
   }
 }
 
-async function boot(page: Page, enabled = true) {
+async function boot(page: Page, enabled = true, channelName = "alice-tyler") {
   await page.setViewportSize({ width: 1440, height: 900 });
   await installBrowserHostFake(page);
   await installBrowserBrokerFake(page, enabled);
@@ -30,13 +30,14 @@ async function boot(page: Page, enabled = true) {
         pubkey: agentId,
         name: "Researcher",
         status: "running",
-        channelNames: ["alice-tyler"],
+        channelNames: [channelName],
+        sessionPolicy: "thread",
       },
     ],
   });
   await page.goto("/");
   await expect(page.getByTestId("home-inbox-list")).toBeVisible();
-  await page.getByTestId("channel-alice-tyler").click();
+  await page.getByTestId(`channel-${channelName}`).click();
   await page.getByTestId("channel-work-area-trigger").click();
   await page.getByTestId("work-area-open-browser").click();
   const address = page.getByTestId("browser-address");
@@ -265,4 +266,142 @@ test("confirmation restores keyboard focus after rejection and confirmation", as
   expect(
     await page.evaluate(() => window.colonyBrowserControlFixture?.confirmed()),
   ).toBe(1);
+});
+
+test("stream thread task reaches browser approval and updates while the dock stays open", async ({
+  page,
+}) => {
+  await boot(page, true, "general");
+  const approve = controls(page).getByRole("button", {
+    name: "Allow an agent",
+  });
+  await expect(approve).toBeDisabled();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.__BUZZ_E2E_HAS_MOCK_LIVE_SUBSCRIPTION__?.({
+            channelName: "general",
+          }) ?? false,
+      ),
+    )
+    .toBe(true);
+  const roots = ["c".repeat(64), "d".repeat(64)];
+  const channelId = await page.evaluate((roots) => {
+    const events = roots.map((id, index) =>
+      window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+        channelName: "general",
+        id,
+        kind: 40002,
+        content: `Browser task ${index + 1}`,
+      }),
+    );
+    return events[0]?.tags.find((tag) => tag[0] === "h")?.[1];
+  }, roots);
+  expect(channelId).toMatch(/^[0-9a-f-]{36}$/u);
+
+  // Canvas uses the same provider. Its edit rights and draft survive task updates.
+  await page.getByTestId("work-area-add-tab").click();
+  await page.getByTestId("work-area-add-canvas").click();
+  const dock = page.getByTestId("work-area-panel");
+  await dock.getByTestId("channel-canvas-edit").click();
+  await dock.getByTestId("channel-canvas-editor").fill("Keep this draft");
+  await dock.getByRole("tab", { name: /example.com/ }).click();
+
+  for (const rootId of roots) {
+    const row = page.locator(
+      `[data-testid="message-row"][data-message-id="${rootId}"]`,
+    );
+    await row.hover();
+    await row.getByRole("button", { name: "Reply", exact: true }).click();
+    await expect(page.getByTestId("message-thread-panel")).toBeVisible();
+    await expect(approve).toBeEnabled();
+    await allow(page);
+    const payload = await page.evaluate(
+      () =>
+        window.colonyBrowserControlFixture?.calls
+          .filter((call) => call.action === "agent-grant")
+          .at(-1)?.payload,
+    );
+    expect(payload).toMatchObject({
+      taskId: `thread:${channelId}:${rootId}`,
+      agentId,
+      communityOrigin: "http://localhost:3000",
+      allowedOrigins: ["https://example.com"],
+    });
+    await controls(page)
+      .getByRole("button", { name: "Stop", exact: true })
+      .click();
+    await expect(page.getByTestId("browser-controller")).toHaveText(
+      "You’re browsing",
+    );
+    await page
+      .getByTestId("message-thread-panel")
+      .getByTestId("auxiliary-panel-close")
+      .click();
+    await expect(page.getByTestId("message-thread-panel")).toHaveCount(0);
+    await expect(approve).toBeDisabled();
+  }
+  await dock.getByRole("tab", { name: "Canvas", exact: true }).click();
+  await expect(dock.getByTestId("channel-canvas-editor")).toHaveValue(
+    "Keep this draft",
+  );
+});
+
+test("forum post task reaches browser approval through the channel layout", async ({
+  page,
+}) => {
+  await boot(page, true, "watercooler");
+  const approve = controls(page).getByRole("button", {
+    name: "Allow an agent",
+  });
+  await expect(approve).toBeDisabled();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.__BUZZ_E2E_HAS_MOCK_LIVE_SUBSCRIPTION__?.({
+            channelName: "watercooler",
+          }) ?? false,
+      ),
+    )
+    .toBe(true);
+  const rootId = "e".repeat(64);
+  const channelId = await page.evaluate((id) => {
+    const event = window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+      channelName: "watercooler",
+      id,
+      kind: 45001,
+      content: "Forum browser task",
+    });
+    return event?.tags.find((tag) => tag[0] === "h")?.[1];
+  }, rootId);
+  expect(channelId).toMatch(/^[0-9a-f-]{36}$/u);
+  await page
+    .getByRole("button")
+    .filter({ hasText: "Forum browser task" })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Back to posts" }),
+  ).toBeVisible();
+  await expect(approve).toBeEnabled();
+  await allow(page);
+  const payload = await page.evaluate(
+    () =>
+      window.colonyBrowserControlFixture?.calls
+        .filter((call) => call.action === "agent-grant")
+        .at(-1)?.payload,
+  );
+  expect(payload).toMatchObject({
+    taskId: `thread:${channelId}:${rootId}`,
+    agentId,
+  });
+  await controls(page)
+    .getByRole("button", { name: "Stop", exact: true })
+    .click();
+  await expect(page.getByTestId("browser-controller")).toHaveText(
+    "You’re browsing",
+  );
+  await page.getByRole("button", { name: "Back to posts" }).click();
+  await expect(approve).toBeDisabled();
 });
