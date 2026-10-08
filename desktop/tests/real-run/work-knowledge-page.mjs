@@ -127,6 +127,11 @@ export function pageContext(page, { shot }) {
       if (!saved) return { saved: false, shown: "" };
       const content = page.getByTestId("channel-canvas-content");
       await content.waitFor({ timeout: 15000 }).catch(() => undefined);
+      // Save closes the editor before the relay refetch resolves. Poll the actual canvas.
+      await until(
+        async () => (await content.innerText()).includes(markdown),
+        15000,
+      );
       return {
         saved: true,
         shown: (await content.innerText().catch(() => "")) || "",

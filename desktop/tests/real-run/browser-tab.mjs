@@ -36,6 +36,7 @@
 import { _electron as electron } from "@playwright/test";
 import {
   existsSync,
+  appendFileSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -130,6 +131,11 @@ const downloadsDir = path.join(home, "Downloads");
 const rows = [];
 function record(name, status, detail = "") {
   rows.push({ name, status, ...(detail ? { detail } : {}) });
+  if (process.env.AI_PROGRESS)
+    appendFileSync(
+      process.env.AI_PROGRESS,
+      `${new Date().toTimeString().slice(0, 8)} [G2-HOST] ${name} ${status}: ${detail}\n`,
+    );
   console.log(`${status} ${name}${detail ? `: ${detail}` : ""}`);
 }
 async function check(name, run) {

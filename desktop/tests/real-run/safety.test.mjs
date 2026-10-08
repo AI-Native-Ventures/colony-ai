@@ -214,7 +214,10 @@ test("launch guard refuses the real HOME unless the migration flag is exactly 0"
       realHome,
     ),
   );
-  assert.throws(() => assertHomeMigrationGuard({}, realHome), /HOME is not set/u);
+  assert.throws(
+    () => assertHomeMigrationGuard({}, realHome),
+    /HOME is not set/u,
+  );
 });
 
 test("personal configuration terms are flagged only when present", () => {
@@ -264,16 +267,17 @@ test("the setup notice pattern matches the shipped wording and not intros", () =
   );
 });
 
-test("real-env policy blocks the keychain service for the app but not Claude sign-in or the real home", () => {
+test("candidate policy denies owner data, credentials and unsandboxed keychain helpers", () => {
   const policy = realEnvSandboxPolicy("/Users/test", "/tmp/probe");
-  assert.match(policy, /\(deny mach-lookup[^)]*com\.apple\.securityd/u);
-  assert.match(
-    policy,
-    /\(allow process-exec \(literal "\/usr\/bin\/security"\) \(with no-sandbox\)\)/u,
-  );
-  assert.match(policy, /Colony Electron"/u);
-  assert.match(policy, /\/tmp\/probe/u);
-  // The real nest and Claude config stay reachable: HOME is deliberately real.
-  assert.doesNotMatch(policy, /\/Users\/test\/\.buzz/u);
-  assert.doesNotMatch(policy, /\/Users\/test\/\.claude/u);
+  assert.match(policy, /deny mach-lookup/);
+  assert.match(policy, /deny process-exec/);
+  assert.doesNotMatch(policy, /with no-sandbox/);
+  for (const entry of [
+    ".buzz",
+    ".colony",
+    ".claude",
+    ".codex",
+    "Library/Keychains",
+  ])
+    assert.ok(policy.includes(`/Users/test/${entry}`));
 });

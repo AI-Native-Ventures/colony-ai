@@ -50,7 +50,13 @@ application
     lifecycle.push({ sinceLaunchMs: Date.now() - launchedAt, code, signal }),
   );
 const guard = async (id, label, fn) => {
-  if (only === "retry" && !["A5-retry", "A2-relaunch"].includes(id)) return undefined;
+  if (
+    only === "106" &&
+    ["A5-bad-type", "A5-oversized", "A5-owner-caption", "A2-scout"].includes(id)
+  )
+    return undefined;
+  if (only === "retry" && !["A5-retry", "A2-relaunch"].includes(id))
+    return undefined;
   try {
     return await fn();
   } catch (error) {
@@ -149,7 +155,8 @@ const sidebarAvatar = () =>
       src: img?.currentSrc?.slice(0, 40) ?? null,
     };
   });
-const cleanUrlLite = (u) => redact(String(u).replace(/\?.*$/u, "").slice(0, 90));
+const cleanUrlLite = (u) =>
+  redact(String(u).replace(/\?.*$/u, "").slice(0, 90));
 const png = path.join(state.A.privateDir, "avatar-256.png");
 await writeFile(png, makePng(256));
 const bad = path.join(state.A.privateDir, "not-an-image.txt");
@@ -221,8 +228,8 @@ const chooseFile = async (file) => {
 try {
   rec.row(
     "A2-version",
-    "App reports version 1.0.5",
-    version === "1.0.5" ? "PASS" : "FAIL",
+    `App reports version ${process.env.EXPECT_VERSION ?? "1.0.5"}`,
+    version === (process.env.EXPECT_VERSION ?? "1.0.5") ? "PASS" : "FAIL",
     `app.getVersion() = ${version}`,
   );
   await guard("A2-relaunch", "Relaunch profile A", async () => {
@@ -503,7 +510,9 @@ try {
       let recovered = false;
       // Attempt 1: break the host to relay hop (reqwest) through the local proxy the app was launched against.
       // Attempt 2 (only if attempt 1 produced no failure): break the renderer to host hop with route.abort.
-      for (const mode of proxy ? ["host-proxy", "renderer-abort"] : ["renderer-abort"]) {
+      for (const mode of proxy
+        ? ["host-proxy", "renderer-abort"]
+        : ["renderer-abort"]) {
         if (mode === "host-proxy") proxy.block(true);
         else blockMedia = true;
         await page.getByTestId("avatar-save").click();
@@ -513,7 +522,13 @@ try {
         retryVisible = await retry.isVisible().catch(() => false);
         retryLabel = retryVisible ? (await retry.innerText()).trim() : "";
         await shot(page, rec, `a5-10-failed-upload-${mode}`);
-        modes.push({ mode, retryVisible, proxy: proxy ? proxy.stats() : null, aborted: aborted.slice(0, 4), abortedCount: aborted.length });
+        modes.push({
+          mode,
+          retryVisible,
+          proxy: proxy ? proxy.stats() : null,
+          aborted: aborted.slice(0, 4),
+          abortedCount: aborted.length,
+        });
         if (proxy && mode === "host-proxy") proxy.block(false);
         blockMedia = false;
         if (retryVisible) {
@@ -529,14 +544,25 @@ try {
           break;
         }
         // No failure seen: the upload went through (dialog closed) or nothing happened. Reopen for the next attempt.
-        if (!(await page.getByTestId("profile-avatar-dialog").isVisible().catch(() => false))) {
+        if (
+          !(await page
+            .getByTestId("profile-avatar-dialog")
+            .isVisible()
+            .catch(() => false))
+        ) {
           await openAvatarDialogFrom("sidebar");
           await chooseFile(png);
           await page.getByTestId("avatar-save").waitFor({ timeout: 6000 });
         }
       }
-      rec.notes.netfail = { modes, abortedCount: aborted.length, aborted: aborted.slice(0, 6) };
-      await page.unroute(/127\.0\.0\.1:\d+\/media|\/upload|blossom/iu, routeFn).catch(() => undefined);
+      rec.notes.netfail = {
+        modes,
+        abortedCount: aborted.length,
+        aborted: aborted.slice(0, 6),
+      };
+      await page
+        .unroute(/127\.0\.0\.1:\d+\/media|\/upload|blossom/iu, routeFn)
+        .catch(() => undefined);
       rec.row(
         "A5-retry",
         "Failed upload shows an inline error with Retry, and Retry works once online",

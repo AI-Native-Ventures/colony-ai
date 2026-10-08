@@ -33,6 +33,7 @@ function fakeApp(overrides = {}) {
     relayKeepsCanvas: true,
     relayHonoursDelete: true,
     sidebarBack: true,
+    loadingAfterUnpin: false,
     ...overrides,
   };
   const ctx = {
@@ -64,6 +65,9 @@ function fakeApp(overrides = {}) {
         return screen.canvas
           ? `Channel notes Canvas ${screen.canvas}`
           : "Channel notes";
+      if (testId === "work-area-knowledge-pins")
+        if (screen.unpinnedLocally && opts.loadingAfterUnpin)
+          return "Pinned Loading pinned messages";
       if (testId === "work-area-knowledge-pins")
         return screen.pins.length
           ? screen.pins.map((text) => `${text} Pinned by You`).join(" ")
@@ -106,6 +110,7 @@ function fakeApp(overrides = {}) {
       return { sidebar: opts.sidebarBack, channel: opts.sidebarBack };
     },
     async unpinFromKnowledge(text) {
+      screen.unpinnedLocally = true;
       screen.pins = screen.pins.filter((item) => item !== text);
       if (opts.relayHonoursDelete)
         relay.pins = relay.pins.filter((item) => item !== text);
@@ -155,6 +160,13 @@ test("a healthy app: every row PASS, overall PASS, unique run strings round trip
   assert.deepEqual(ctx.relay.pins, []);
   assert.deepEqual(ctx.relay.messages, [pinMessageText(TAG)]);
   assert.equal(outcome.WK13, "PASS");
+});
+
+test("WK13 cannot pass on absence while the Pinned section is loading", async () => {
+  const { rows, outcome } = await run({ loadingAfterUnpin: true });
+  assert.equal(outcome.WK12, "PASS");
+  assert.equal(outcome.WK13, "BLOCKED");
+  assert.match(rows.find((row) => row.id === "WK13").detail, /has not loaded/u);
 });
 
 test("a relay that refuses the pin fails WK5 and blocks everything that depends on a pin", async () => {

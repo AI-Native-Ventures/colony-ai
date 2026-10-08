@@ -15,7 +15,11 @@ import { deflateSync } from "node:zlib";
 import os from "node:os";
 import path from "node:path";
 import { createSmokeInbox } from "./mailbox.mjs";
-import { realEnvironment, realEnvSandboxPolicy } from "./safety.mjs";
+import {
+  assertHomeMigrationGuard,
+  realEnvironment,
+  realEnvSandboxPolicy,
+} from "./safety.mjs";
 
 // Defaults target the Colony 1.0.5 candidate gate. Override with AI_OUT, AI_APP, AI_PROGRESS, AI_STATE.
 export const OUT =
@@ -119,6 +123,62 @@ export class Rec {
 }
 
 export function instrument(page, rec, tag) {
+  const scans = [];
+  rec.notes.namingScans ??= [];
+  const timer = setInterval(async () => {
+    if (page.isClosed()) {
+      clearInterval(timer);
+      return;
+    }
+    try {
+      const scan = await page.evaluate(() => {
+        const text = document.body?.innerText ?? "";
+        const attrs = [
+          ...document.querySelectorAll(
+            "[aria-label],[aria-description],[title],[alt]",
+          ),
+        ]
+          .filter((e) => e.getClientRects().length)
+          .flatMap((e) =>
+            ["aria-label", "aria-description", "title", "alt"].map(
+              (a) => e.getAttribute(a) ?? "",
+            ),
+          );
+        return {
+          title: document.title,
+          view: [
+            ...document.querySelectorAll(
+              "h1,h2,[aria-selected=true],[aria-current=page]",
+            ),
+          ]
+            .filter((e) => e.getClientRects().length)
+            .map((e) => e.innerText || e.getAttribute("aria-label"))
+            .join(" | "),
+          text: text.slice(0, 24000),
+          hits: [text, ...attrs].flatMap((v) =>
+            [...v.matchAll(/.{0,70}buzz.{0,70}/gi)].map((m) => m[0]),
+          ),
+          chatgpt: /ChatGPT/i.test(text),
+          agentControls: [
+            ...document.querySelectorAll('[data-testid*="browser-agent"]'),
+          ]
+            .filter((e) => e.getClientRects().length)
+            .map((e) => e.getAttribute("data-testid")),
+        };
+      });
+      const key = JSON.stringify(scan);
+      if (!scans.includes(key)) {
+        scans.push(key);
+        rec.notes.namingScans.push({
+          tag,
+          atMs: Date.now() - rec.started,
+          ...scan,
+        });
+      }
+    } catch {}
+  }, 1000);
+  timer.unref();
+
   page.on("console", (message) => {
     if (["error", "warning"].includes(message.type()))
       rec.console.push({
@@ -168,6 +228,18 @@ export function instrument(page, rec, tag) {
 export async function shot(page, rec, name) {
   const file = `${rec.phase}-${name}.png`;
   try {
+    await page.evaluate(() =>
+      Promise.all(
+        document
+          .getAnimations()
+          .filter(
+            (a) =>
+              a.playState === "running" &&
+              a.effect?.getTiming().iterations !== Infinity,
+          )
+          .map((a) => a.finished.catch(() => undefined)),
+      ),
+    );
     await page.screenshot({ path: path.join(OUT, "screenshots", file) });
     return `screenshots/${file}`;
   } catch {
@@ -215,21 +287,35 @@ export async function launch({
 }) {
   const exe = path.join(APP, "Contents", "MacOS", await macosExecutable());
   const q = (value) => `'${value.replace(/'/gu, `'\\''`)}'`;
+  const probeDir = path.join(privateDir, "deny-probe");
+  await mkdir(probeDir, { recursive: true, mode: 0o700 });
+  await writeFile(path.join(probeDir, "probe.txt"), "synthetic sandbox probe", {
+    mode: 0o600,
+  });
   const sandbox = path.join(privateDir, "sandbox.sb");
-  await writeFile(sandbox, realEnvSandboxPolicy(undefined, ""), {
+  await writeFile(sandbox, realEnvSandboxPolicy(undefined, probeDir), {
     mode: 0o600,
   });
   const launcher = path.join(privateDir, "launch.sh");
-  await writeFile(
-    launcher,
-    `#!/bin/sh\nexec /usr/bin/sandbox-exec -f ${q(sandbox)} ${q(exe)} "$@"\n`,
-    { mode: 0o700 },
-  );
   const launchEnv = {
     ...realEnvironment(process.env, userDataDir, RELAY),
     COLONY_NATIVE_HOST_LOG: path.join(privateDir, "native-host.log"),
     ...extraEnv,
   };
+  assertHomeMigrationGuard(launchEnv);
+  const probeLog = path.join(privateDir, "sandbox-probe.log");
+  await writeFile(probeLog, "", { mode: 0o600 });
+  const inside = `test "$HOME" = ${q(launchEnv.HOME)} || exit 71
+ test "$COLONY_NEST_MIGRATION" = 0 || exit 72
+ if LC_ALL=C /bin/cat ${q(path.join(probeDir, "probe.txt"))} >/dev/null 2>${q(path.join(privateDir, "sandbox-probe-error.txt"))}; then exit 73; fi
+ /usr/bin/grep -q "Operation not permitted" ${q(path.join(privateDir, "sandbox-probe-error.txt"))} || exit 74
+ echo "PASS sandbox denied synthetic probe; HOME=$HOME; migration=$COLONY_NEST_MIGRATION" >> ${q(probeLog)}
+ exec ${q(exe)} "$@"`;
+  await writeFile(
+    launcher,
+    `#!/bin/sh\nexec /usr/bin/sandbox-exec -f ${q(sandbox)} /bin/sh -c ${q(inside)} guard "$@"\n`,
+    { mode: 0o700 },
+  );
   await progress(
     `[launch] HOME=${launchEnv.HOME} COLONY_NEST_MIGRATION=${launchEnv.COLONY_NEST_MIGRATION} userData=${userDataDir}`,
   );
@@ -243,9 +329,24 @@ export async function launch({
     version: app.getVersion(),
     packaged: app.isPackaged,
     userData: app.getPath("userData"),
+    envHome: process.env.HOME,
+    migration: process.env.COLONY_NEST_MIGRATION,
+    osHome: app.getPath("home"),
   }));
   if (!version.packaged || version.userData !== userDataDir)
     throw new Error("Profile isolation assertion failed");
+  const sandboxProof = (await readFile(probeLog, "utf8")).trim();
+  if (
+    !sandboxProof.startsWith("PASS sandbox") ||
+    version.envHome !== launchEnv.HOME ||
+    version.migration !== "0"
+  ) {
+    await closeApp(application);
+    throw new Error("Guarded sandbox or runtime HOME proof failed");
+  }
+  await progress(
+    `[sandbox-probe] PASS ${sandboxProof}; runtime process.env.HOME=${version.envHome}; Electron app.getPath(home)=${version.osHome}`,
+  );
   const first = await application.firstWindow({ timeout: 30000 });
   await first.setViewportSize({ width: 1440, height: 960 });
   await first.waitForLoadState("domcontentloaded", { timeout: 20000 });
@@ -365,7 +466,7 @@ export async function createBusiness(
   await cont.waitFor({ timeout: 30000 });
   await cont.click();
   await page
-    .getByTestId("onboarding-connect-runtime-claude")
+    .getByRole("radio", { name: /Bring your own key/iu })
     .waitFor({ timeout: 45000 });
 }
 
