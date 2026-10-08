@@ -270,8 +270,13 @@ async function startApp(ctx, state, label, extraEnv) {
     privateDir: state.priv.privateDir,
     extraEnv: { ...ctx.extraEnv, ...extraEnv },
   };
-  const app =
-    ctx.driver.kind === "fake"
+  const app = ctx.driver.launch
+    ? await ctx.driver.launch({
+        ...common,
+        app: ctx.driver.app,
+        relayUrl: ctx.relayUrl,
+      })
+    : ctx.driver.kind === "fake"
       ? await launchFake({ ...common, script: ctx.driver.script })
       : await launchPackaged({
           ...common,
@@ -824,7 +829,9 @@ export async function runProof(options) {
     },
     method: [
       "Each case builds a throwaway HOME from synthetic files shaped like the owner's real ~/.buzz (names, kinds and modes from a read-only listing; no private contents were read or copied).",
-      "The app is launched with HOME pointing at that fixture, inside a sandbox that denies the real home's ~/.buzz and ~/.colony and the keychain services.",
+      ctx.driver.kind === "native"
+        ? "Only the candidate's bundled native host is launched, with a synthetic sandbox denial probe, a throwaway HOME, blocked outbound web traffic and denied owner folders and keychain services. No full Electron app is launched by this migration run."
+        : "The app is launched with HOME pointing at that fixture, inside a sandbox that denies the real home's ~/.buzz and ~/.colony and the keychain services.",
       "Before and after manifests record path, type, size, mode, inode, mtime and sha256 for every entry, link targets without following links, and row counts for archive.db read from a copy so the original and its -wal and -shm are never opened.",
       `The migration flag is ${ctx.flagMode === "env" ? `set explicitly through ${ctx.contract.env.flag}` : "left at the build's own default"}.`,
       ctx.profileDir

@@ -503,6 +503,15 @@ export async function runWorkKnowledgeRows(
     const back = await reloaded();
     if (back.status !== "PASS") return back;
     const view = await knowledge();
+    if (
+      !view.pinsText?.trim() ||
+      /Loading pinned messages/iu.test(view.pinsText)
+    )
+      return {
+        status: "BLOCKED",
+        detail:
+          "The Pinned section has not loaded, so absence of the unpinned message is not proven.",
+      };
     const stillPinned = containsAll(view.pinsText, [message]).ok;
     const noteKept = containsAll(view.notesText, [preview]).ok;
     if (stillPinned)

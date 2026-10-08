@@ -27,6 +27,9 @@ export const REAL_HOME_FORBIDDEN = [
   ".buzz-dev",
   ".colony",
   ".colony-dev",
+  ".claude",
+  ".codex",
+  ".config/opencode",
   "Library/Keychains",
   "Library/Application Support/xyz.block.buzz.app",
   "Library/Application Support/xyz.block.buzz.app.dev",
@@ -110,7 +113,7 @@ export function freshHomeSandboxPolicy(realHome) {
       (entry) => `(deny file-read* file-write* (subpath ${quote(entry)}))`,
     ),
     '(deny mach-lookup (global-name "com.apple.securityd") (global-name "com.apple.SecurityServer") (global-name "com.apple.security.agent") (global-name "com.apple.SecurityAgent") (global-name-regex #"^com\\.apple\\.(securityd|SecurityServer|SecurityAgent|security\\.agent)(\\.|$)"))',
-    '(allow process-exec (literal "/usr/bin/security") (with no-sandbox))',
+    '(deny process-exec (literal "/usr/bin/security") (literal "/System/Library/CoreServices/SecurityAgent.app/Contents/MacOS/SecurityAgent"))',
   ].join("\n");
 }
 

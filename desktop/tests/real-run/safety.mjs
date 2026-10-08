@@ -151,6 +151,15 @@ export function realEnvSandboxPolicy(home = homedir(), probePath = "") {
   const q = (s) => JSON.stringify(s);
   const support = path.join(home, "Library", "Application Support");
   const forbidden = [
+    ...[
+      ".buzz",
+      ".buzz-dev",
+      ".colony",
+      ".colony-dev",
+      ".claude",
+      ".codex",
+      ".config/opencode",
+    ].map((entry) => path.join(home, entry)),
     path.join(home, "Library", "Keychains"),
     "/Library/Keychains",
     path.join(support, "xyz.block.buzz.app"),
@@ -174,7 +183,7 @@ export function realEnvSandboxPolicy(home = homedir(), probePath = "") {
       ),
     ].map((p) => `(deny file-read* file-write* (subpath ${q(p)}))`),
     '(deny mach-lookup (global-name "com.apple.securityd") (global-name "com.apple.SecurityServer") (global-name "com.apple.security.agent") (global-name "com.apple.SecurityAgent") (global-name-regex #"^com\\.apple\\.(securityd|SecurityServer|SecurityAgent|security\\.agent)(\\.|$)"))',
-    '(allow process-exec (literal "/usr/bin/security") (with no-sandbox))',
+    '(deny process-exec (literal "/usr/bin/security") (literal "/System/Library/CoreServices/SecurityAgent.app/Contents/MacOS/SecurityAgent"))',
   ].join("\n");
 }
 
@@ -193,7 +202,6 @@ export function realEnvironment(source, userDataDir, relayUrl) {
     "TMPDIR",
     "LANG",
     "LC_ALL",
-    "CLAUDE_CONFIG_DIR",
   ]) {
     if (source[key]) env[key] = source[key];
   }
@@ -245,7 +253,10 @@ export function assertHomeMigrationGuard(env, realHome = homedir()) {
     }
   };
   if (!env.HOME) throw new Error("Launch guard: HOME is not set");
-  if (canonical(env.HOME) === canonical(realHome) && env.COLONY_NEST_MIGRATION !== "0")
+  if (
+    canonical(env.HOME) === canonical(realHome) &&
+    env.COLONY_NEST_MIGRATION !== "0"
+  )
     throw new Error(
       "Launch guard: HOME is the real home and COLONY_NEST_MIGRATION is not exactly 0. Refusing to start.",
     );
