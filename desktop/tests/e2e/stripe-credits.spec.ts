@@ -29,6 +29,7 @@ async function setup(
     : undefined;
   let balance = 0;
   const calls: Array<Record<string, unknown>> = [];
+  const checks: string[] = [];
   await page.clock.install();
   await installMockBridge(page, {
     referenceWorkspace: true,
@@ -60,6 +61,10 @@ async function setup(
       return route.fulfill({
         json: { paymentIntents: intent ? [intent] : [] },
       });
+    if (path.includes("/intents/")) {
+      checks.push(path.split("/").pop() ?? "");
+      return route.fulfill({ json: intent });
+    }
     if (path.endsWith("/checkout")) {
       const body = request.postDataJSON();
       calls.push(body);
@@ -89,6 +94,7 @@ async function setup(
   await expect(page.getByTestId("power-checkout")).toBeVisible();
   return {
     calls,
+    checks,
     settle(status: "paid" | "failed" | "cancelled") {
       if (!intent) throw new Error("no intent");
       intent.status = status;
@@ -144,6 +150,7 @@ test("restored pending payment keeps the original checkout and can be checked", 
   state.settle("paid");
   await checkout.getByRole("button", { name: "Check payment" }).click();
   await expect(checkout).toContainText("Payment confirmed");
+  expect(state.checks).toEqual(["credit-restored"]);
 });
 
 test("failed payment and browser opening error retain honest recovery controls", async ({

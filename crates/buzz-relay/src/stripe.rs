@@ -278,7 +278,10 @@ impl PaymentProvider for Stripe {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{routing::post, Json, Router};
+    use axum::{
+        routing::{get, post},
+        Json, Router,
+    };
 
     fn provider() -> Stripe {
         Stripe::new("fake-api".into(), "fake-webhook".into()).expect("fake config")
@@ -376,6 +379,9 @@ mod tests {
             assert_eq!(fields["mode"], "payment");
             Json(serde_json::json!({"id":"cs_test_checkout", "url":"https://checkout.stripe.com/c/pay/test", "mode":"payment", "payment_status":"unpaid", "client_reference_id":"credit-test", "amount_total":500, "currency":"usd"}))
         }));
+        let app = app.route("/checkout/sessions/cs_test_checkout", get(|| async {
+            Json(serde_json::json!({"id":"cs_test_checkout", "mode":"payment", "payment_status":"paid", "client_reference_id":"credit-test", "amount_total":500, "currency":"usd", "status":"complete"}))
+        }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind fake");
@@ -397,6 +403,13 @@ mod tests {
             assert_eq!(result.session_id.as_deref(), Some("cs_test_checkout"));
             assert!(result.fields.is_empty());
         }
+        let reconciled = provider
+            .reconcile_payment("cs_test_checkout")
+            .await
+            .expect("reconcile fake Stripe");
+        assert_eq!(reconciled.status, "COMPLETE");
+        assert_eq!(reconciled.reference, "credit-test");
+        assert_eq!(reconciled.amount_minor_units, Some(500));
         server.abort();
     }
 }

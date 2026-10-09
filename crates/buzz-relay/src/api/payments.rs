@@ -293,7 +293,7 @@ async fn history(
     })))
 }
 
-/// Create or safely recover one server-priced PayFast credit checkout.
+/// Create or safely recover one server-priced credit checkout.
 async fn checkout(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -557,14 +557,23 @@ async fn reconcile_open_intent(
     provider: &dyn PaymentProvider,
     intent: &PaymentIntentRecord,
 ) -> Result<(), (StatusCode, Json<Value>)> {
-    if intent.provider != provider.name() {
-        return Ok(());
-    }
     if !matches!(intent.status.as_str(), "pending" | "delayed" | "uncertain") {
         return Ok(());
     }
     let Some(provider_payment_id) = intent.provider_payment_id.as_deref() else {
         return Ok(());
+    };
+    // Recover intents with their original provider even after configuration switches.
+    let original_provider;
+    let provider = if intent.provider != provider.name() {
+        original_provider = if intent.provider == "stripe" {
+            Box::new(configured_stripe(state)?) as Box<dyn PaymentProvider>
+        } else {
+            Box::new(configured_payfast(state)?) as Box<dyn PaymentProvider>
+        };
+        original_provider.as_ref()
+    } else {
+        provider
     };
     let reconciled = provider
         .reconcile_payment(provider_payment_id)
@@ -592,7 +601,7 @@ async fn apply_reconciliation(
         "amountMinorUnits": reconciled.amount_minor_units,
     });
     let serialized_event = serde_json::to_vec(&event_data).map_err(|error| {
-        tracing::error!(error = %error, "could not encode PayFast reconciliation result");
+        tracing::error!(error = %error, "could not encode payment reconciliation result");
         api_error(StatusCode::INTERNAL_SERVER_ERROR, "payment_unavailable")
     })?;
     let digest = hex::encode(Sha256::digest(serialized_event));
@@ -679,7 +688,22 @@ async fn read_intent(
         .await
         .map_err(|error| map_db_error("read intent", error))?
         .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "unknown_reference"))?;
-    Ok(Json(payment_intent_json(&intent)))
+    if !matches!(intent.status.as_str(), "pending" | "delayed" | "uncertain") {
+        return Ok(Json(payment_intent_json(&intent)));
+    }
+    let provider: Box<dyn PaymentProvider> = if intent.provider == "stripe" {
+        Box::new(configured_stripe(&state)?)
+    } else {
+        Box::new(configured_payfast(&state)?)
+    };
+    reconcile_open_intent(&state, provider.as_ref(), &intent).await?;
+    let latest = state
+        .db
+        .account_payment_intent(account.id, &reference)
+        .await
+        .map_err(|error| map_db_error("read reconciled intent", error))?
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "unknown_reference"))?;
+    Ok(Json(payment_intent_json(&latest)))
 }
 
 /// Verify the raw Stripe event before entering the atomic journal/ledger transaction.

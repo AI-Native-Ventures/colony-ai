@@ -48,8 +48,9 @@ async function request<T>(
   path: string,
   body?: Record<string, unknown>,
   signed = true,
+  httpBase?: string,
 ): Promise<T> {
-  const url = `${(await getRelayHttpUrl()).replace(/\/+$/, "")}/api/payments${path}`;
+  const url = `${(httpBase ?? (await getRelayHttpUrl())).replace(/\/+$/, "")}/api/payments${path}`;
   const method = body ? "POST" : "GET";
   const serialized = body ? JSON.stringify(body) : undefined;
   const headers: Record<string, string> = {};
@@ -87,16 +88,28 @@ async function request<T>(
 }
 
 export async function readCredits(): Promise<CreditSnapshot> {
+  const base = await getRelayHttpUrl();
   const [catalog, history] = await Promise.all([
     request<Pick<CreditSnapshot, "packs" | "provider" | "enabled">>(
       "/packs",
       undefined,
       false,
+      base,
     ),
-    request<{ paymentIntents: CreditIntent[] }>("/history"),
+    request<{ paymentIntents: CreditIntent[] }>(
+      "/history",
+      undefined,
+      true,
+      base,
+    ),
   ]);
   // Read after history so a paid intent cannot be paired with a pre-grant balance.
-  const balance = await request<{ balanceUsdCents: number }>("/balance");
+  const balance = await request<{ balanceUsdCents: number }>(
+    "/balance",
+    undefined,
+    true,
+    base,
+  );
   return {
     ...catalog,
     balanceUsdCents: balance.balanceUsdCents,
@@ -108,6 +121,9 @@ export function startCreditCheckout(
   idempotencyKey: string,
 ): Promise<Checkout> {
   return request("/checkout", { packId, idempotencyKey });
+}
+export function checkCreditPayment(reference: string): Promise<CreditIntent> {
+  return request(`/intents/${encodeURIComponent(reference)}`);
 }
 export function formatCreditMoney(
   cents: number,

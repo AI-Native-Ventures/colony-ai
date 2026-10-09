@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/shared/ui/button";
 import { SectionHeader } from "@/shared/ui/PageHeader";
 import {
+  checkCreditPayment,
   formatCreditMoney,
   PaymentRequestError,
   readCredits,
@@ -17,6 +18,7 @@ export function CreditCheckout({ communityId }: { communityId: string }) {
   const [key, setKey] = React.useState<string>(() => crypto.randomUUID());
   const [checkout, setCheckout] = React.useState<Checkout>();
   const [reference, setReference] = React.useState<string>();
+  const [checking, setChecking] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string>();
   const polls = React.useRef(0);
@@ -100,6 +102,7 @@ export function CreditCheckout({ communityId }: { communityId: string }) {
       setKey(result.idempotencyKey);
       polls.current = 0;
       await launch(result);
+      if (!mounted.current) return;
       await client.invalidateQueries({
         queryKey: ["account-credits", communityId],
       });
@@ -118,6 +121,25 @@ export function CreditCheckout({ communityId }: { communityId: string }) {
       if (mounted.current) setBusy(false);
     }
   }
+  async function check() {
+    setChecking(true);
+    setError(undefined);
+    polls.current = 0;
+    try {
+      if (intent) await checkCreditPayment(intent.reference);
+      if (!mounted.current) return;
+      await query.refetch();
+    } catch (cause) {
+      if (mounted.current)
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Payment could not be checked. Try again.",
+        );
+    } finally {
+      if (mounted.current) setChecking(false);
+    }
+  }
   function retry() {
     setReference(undefined);
     setCheckout(undefined);
@@ -128,7 +150,7 @@ export function CreditCheckout({ communityId }: { communityId: string }) {
   return (
     <section
       className="space-y-4 rounded-xl border border-border/70 bg-background/70 p-5"
-      aria-busy={busy}
+      aria-busy={busy || checking}
     >
       <SectionHeader title="Choose an amount" />
       {snapshot ? (
@@ -155,7 +177,7 @@ export function CreditCheckout({ communityId }: { communityId: string }) {
         <>
           <fieldset
             className="grid gap-3 sm:grid-cols-2"
-            disabled={busy || Boolean(pending)}
+            disabled={busy || checking || Boolean(pending)}
           >
             <legend className="sr-only">Credit amount</legend>
             {snapshot.packs.map((item) => (
@@ -228,13 +250,10 @@ export function CreditCheckout({ communityId }: { communityId: string }) {
           <div className="flex flex-wrap justify-end gap-2">
             <Button
               variant="outline"
-              onClick={() => {
-                polls.current = 0;
-                void query.refetch();
-              }}
-              disabled={busy || query.isFetching}
+              onClick={() => void check()}
+              disabled={busy || checking || query.isFetching}
             >
-              Check payment
+              {checking ? "Checking payment" : "Check payment"}
             </Button>
             {failure ? (
               <Button onClick={retry}>Try again</Button>
@@ -244,6 +263,7 @@ export function CreditCheckout({ communityId }: { communityId: string }) {
                 disabled={
                   !pack ||
                   busy ||
+                  checking ||
                   !snapshot.enabled ||
                   (pending && intent.status !== "pending")
                 }

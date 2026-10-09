@@ -1,4 +1,4 @@
-//! Deployment-global account credit ledger, PayFast intents, and subscriptions.
+//! Deployment-global credit ledger, provider-bound checkout intents, and PayFast subscriptions.
 
 use buzz_datastore_tracing::datastore_span;
 use chrono::{DateTime, Utc};
@@ -55,17 +55,17 @@ pub struct PaymentIntentRecord {
     pub provider: String,
     /// ISO currency fixed at intent creation.
     pub charge_currency: String,
-    /// Amount asked of PayFast, in ZAR cents.
+    /// Amount charged in the intent currency minor units.
     pub charge_minor_units: i64,
     /// Credit grant fixed at intent creation, in nanoUSD.
     pub grant_nanousd: i64,
     /// Current payment-intent state.
     pub status: String,
-    /// PayFast payment id, if one was confirmed.
+    /// Provider payment or Checkout Session id, when known.
     pub provider_payment_id: Option<String>,
-    /// Last PayFast lifecycle status.
+    /// Last verified provider lifecycle status.
     pub provider_status: Option<String>,
-    /// Amount received from PayFast, in ZAR cents.
+    /// Amount received in the intent currency minor units.
     pub paid_minor_units: Option<i64>,
     /// Checkout creation time.
     pub created_at: DateTime<Utc>,
