@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { stat } from "node:fs/promises";
 import { createBrowserAgentHost } from "./browser-agent-host.mjs";
 import { createPageDriver } from "./page-driver.mjs";
+import { readPackagedGate } from "./packaged-gate.mjs";
 import { createEgressProxy } from "./egress-proxy.mjs";
 
 export const BROWSER_BROKER_EVENT_CHANNEL = "colony:browser-broker-event";
@@ -16,12 +17,14 @@ export async function createElectronBrowserAgentHost({
   scriptPath = fileURLToPath(new URL("./mcp-server.mjs", import.meta.url)),
   chooseFile = async () => null,
   socketPath,
-  // Only fixture launchers inject this. Production main never accepts exceptions.
+  gateEnvironment = process.env,
+  // Source fixtures may inject this; packaged main uses the dual-opt-in gate.
   fixturePrivateExceptions = [],
   proxyFactory = createEgressProxy,
   hostOptions = {},
 } = {}) {
   if (!enabled) return createBrowserAgentHost({ enabled: false });
+  const packagedGate = await readPackagedGate(gateEnvironment);
   const adapter = browserHost.agentAdapter;
   const profiles = new Map();
   let tail = Promise.resolve();
@@ -63,7 +66,7 @@ export async function createElectronBrowserAgentHost({
     return grant;
   }
 
-  async function prepare(tab) {
+  async function prepare(tab, privateExceptions) {
     const session = adapter.session(tab.id);
     let profile = profiles.get(session);
     if (profile?.failure && !profileActive(session)) {
@@ -72,7 +75,7 @@ export async function createElectronBrowserAgentHost({
     }
     if (profile) return profile;
     const proxy = proxyFactory({
-      getPrivateExceptions: () => fixturePrivateExceptions,
+      getPrivateExceptions: () => privateExceptions,
     });
     const port = await proxy.start();
     profile = { proxy, session, tabId: tab.id, failure: null };
@@ -187,16 +190,21 @@ export async function createElectronBrowserAgentHost({
           throw new Error("This tab already has an active browser task");
         if (payload.privateExceptions?.length)
           throw new Error("Private network browsing is not enabled");
-        const profile = await prepare(tab);
+        const privateExceptions = packagedGate
+          ? packagedGate.exceptionsFor(payload)
+          : fixturePrivateExceptions;
+        const profile = await prepare(tab, privateExceptions);
         if (profile.failure)
           throw new Error("Browser network containment requires recovery");
         // The tab may have closed or changed scope while setProxy was pending.
         try {
           ownedTab(payload, senderId);
-          return await host.handleRequest(action, {
+          const grant = await host.handleRequest(action, {
             ...payload,
-            privateExceptions: fixturePrivateExceptions,
+            privateExceptions,
           });
+          packagedGate?.consume();
+          return grant;
         } catch (error) {
           if (!profileActive(profile.session)) await cleanup(profile);
           throw error;
@@ -212,6 +220,8 @@ export async function createElectronBrowserAgentHost({
       !["agent-pending", "agent-log", "agent-grants"].includes(action)
     ) {
       ownedGrant(payload.grantId, senderId);
+      if (packagedGate && action === "agent-approve-origin")
+        throw new Error("Packaged gate fixture origin cannot be widened");
       if (payload.allowPrivate)
         throw new Error("Private network browsing is not enabled");
     }
