@@ -102,9 +102,7 @@ function SceneBody(props: PresentationProps) {
     scene === "funding" ||
     scene.startsWith("subscription") ||
     scene.startsWith("credits") ||
-    scene.startsWith("openrouter") ||
-    scene === "api-key" ||
-    scene === "api-error"
+    scene.startsWith("openrouter")
   ) {
     return (
       <ConnectionShell

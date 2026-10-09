@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getOnboardingSubscriptionRuntimes,
   getReadyOnboardingRuntimes,
   getVisibleOnboardingRuntimes,
   runtimeIsReadyForOnboarding,
@@ -39,6 +40,28 @@ test("visible onboarding runtimes use the product order", () => {
   assert.deepEqual(
     getVisibleOnboardingRuntimes(runtimes).map(({ id }) => id),
     ["claude", "codex", "goose", "buzz-agent"],
+  );
+});
+
+test("the Connect step lists only Claude Code and Codex as subscriptions", () => {
+  const runtimes = [
+    runtime("buzz-agent", "available", "not_applicable"),
+    runtime("goose", "available", "logged_in"),
+    runtime("codex", "adapter_missing", "unknown"),
+    runtime("opencode", "available", "logged_in"),
+    runtime("claude", "not_installed", "unknown"),
+    runtime("cursor", "available", "logged_in"),
+  ];
+
+  assert.deepEqual(
+    getOnboardingSubscriptionRuntimes(runtimes).map(({ id }) => id),
+    ["claude", "codex"],
+  );
+  assert.deepEqual(
+    getOnboardingSubscriptionRuntimes(
+      runtimes.filter(({ id }) => id !== "claude"),
+    ).map(({ id }) => id),
+    ["codex"],
   );
 });
 

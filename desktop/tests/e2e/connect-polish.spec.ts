@@ -124,7 +124,9 @@ for (const viewport of [
             })
           : original(command, args);
     });
-    await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
+    await page
+      .getByRole("radio", { name: "Colony Agent", exact: true })
+      .click();
     const action = page.getByRole("button", {
       name: "Test connection",
       exact: true,

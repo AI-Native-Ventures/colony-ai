@@ -29,6 +29,28 @@ export function runtimeIsVisibleInOnboarding(runtimeId: string) {
   return VISIBLE_ONBOARDING_RUNTIME_IDS.has(runtimeId);
 }
 
+/**
+ * The Connect step offers exactly two paths: the person's own Claude Code or
+ * Codex subscription, or the bundled Colony Agent. Every other harness, and
+ * bring-your-own-key setup, lives in Settings > Agents.
+ */
+export const ONBOARDING_SUBSCRIPTION_RUNTIME_IDS = ["claude", "codex"] as const;
+
+export function runtimeIsOnboardingSubscription(runtimeId: string) {
+  return (ONBOARDING_SUBSCRIPTION_RUNTIME_IDS as readonly string[]).includes(
+    runtimeId,
+  );
+}
+
+/** Claude Code and Codex, in that order, as the Connect step lists them. */
+export function getOnboardingSubscriptionRuntimes(
+  runtimes: readonly AcpRuntimeCatalogEntry[],
+) {
+  return getVisibleOnboardingRuntimes(runtimes).filter((runtime) =>
+    runtimeIsOnboardingSubscription(runtime.id),
+  );
+}
+
 /** Bundled readiness requires provider credentials and native prerequisites. */
 export function runtimeIsReadyForOnboarding(
   runtime: AcpRuntimeCatalogEntry,

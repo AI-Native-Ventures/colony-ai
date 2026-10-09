@@ -262,7 +262,7 @@ test("cancelling stops the native attempt, preserves settings and ignores a late
   await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
 });
 
-for (const route of ["Bring your own key", "OpenRouter"]) {
+for (const route of ["Saved in Settings", "OpenRouter"]) {
   test(`${route} proof labels the tested bundled runtime after choosing Claude`, async ({
     page,
   }) => {
@@ -290,14 +290,12 @@ for (const route of ["Bring your own key", "OpenRouter"]) {
       .getByRole("button", { name: /Claude Code/ })
       .click();
     if (openRouter) await installOpenRouterAccount(page);
-    await page.getByRole("radio", { name: route, exact: true }).click();
-    if (!openRouter)
-      await page
-        .getByRole("button", { name: "Check key", exact: true })
-        .click();
+    await page
+      .getByRole("radio", { name: "Colony Agent", exact: true })
+      .click();
     await page
       .getByRole("button", {
-        name: openRouter ? "Test connection" : "Connect",
+        name: openRouter ? "Test connection" : "Test Colony Agent",
         exact: true,
       })
       .click();
@@ -341,15 +339,22 @@ test("OpenRouter does not test another provider's saved connection", async ({
     },
   });
   await installOpenRouterAccount(page);
-  await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
+  await page.getByRole("radio", { name: "Colony Agent", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Connect", exact: true }),
   ).toHaveCount(0);
+  const panel = page.getByTestId("openrouter-connection");
+  await expect(panel.getByText("Connected", { exact: true })).toBeVisible();
+  // The saved Anthropic setup is offered as itself, never behind OpenRouter's
+  // Test connection.
+  await expect(
+    panel.getByRole("button", { name: "Test connection", exact: true }),
+  ).toBeDisabled();
   await expect(
     page
-      .getByTestId("openrouter-connection")
-      .getByText("Connected", { exact: true }),
-  ).toBeVisible();
+      .getByTestId("onboarding-colony-agent-saved")
+      .getByRole("button", { name: "Test Colony Agent", exact: true }),
+  ).toBeEnabled();
 });
 
 test("Welcome exposes recovery when the saved runtime disappears, then retries provisioning", async ({
@@ -422,9 +427,7 @@ test("Welcome exposes recovery when the saved runtime disappears, then retries p
   ).toBeGreaterThan(discoveryBeforeRetry);
 });
 
-for (const id of [
-  "claude",
-  "codex",
+const OTHER_HARNESSES = [
   "cursor",
   "devin",
   "omp",
@@ -434,14 +437,49 @@ for (const id of [
   "amp",
   "hermes",
   "openclaw",
-  "buzz-agent",
   "goose",
-]) {
+];
+
+test("harnesses beyond Claude Code and Codex stay out of onboarding", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    runtimes: OTHER_HARNESSES.map((id) => ({
+      ...r17Runtime("claude", "available", { status: "logged_in" }),
+      id,
+      label: id,
+      command: id,
+    })),
+    // A preference saved from Settings for another harness is not adopted.
+    mock: {
+      globalAgentConfig: {
+        preferred_runtime: "goose",
+        provider: null,
+        model: null,
+        env_vars: {},
+      },
+    },
+  });
+  for (const id of OTHER_HARNESSES)
+    await expect(
+      page.getByTestId(`onboarding-connect-runtime-${id}`),
+    ).toHaveCount(0);
+  await expect(page.getByTestId("onboarding-acp-empty")).toContainText(
+    "Claude Code and Codex are not available.",
+  );
+  await expect(
+    page.getByRole("button", { name: "Connect", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Skip for now", exact: true }),
+  ).toBeEnabled();
+});
+
+for (const id of ["claude", "codex", "buzz-agent"]) {
   test(`selected ${id} reaches the real Connect request without a bundled fallback`, async ({
     page,
   }) => {
-    // Only the bundled agent is judged by provider config. Goose sign-in is
-    // unprobed (launch decision), so it is exercised as a signed-in harness.
+    // Only the bundled agent is judged by provider config.
     const providerRuntime = id === "buzz-agent";
     const runtime = {
       ...r17Runtime("claude", "available", {
@@ -462,11 +500,18 @@ for (const id of [
         },
       },
     });
-    if (providerRuntime)
+    if (providerRuntime) {
+      // Colony Agent is its own path; its saved Settings setup is tested there.
+      await page
+        .getByRole("radio", { name: "Colony Agent", exact: true })
+        .click();
       await expect(
-        page.getByTestId(`onboarding-connect-runtime-${id}`),
+        page.getByTestId("onboarding-colony-agent-saved"),
       ).not.toContainText("Signed in");
-    await page.getByRole("button", { name: /^Connect / }).click();
+      await page
+        .getByRole("button", { name: "Test Colony Agent", exact: true })
+        .click();
+    } else await page.getByRole("button", { name: /^Connect / }).click();
     await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
     const request = await page.evaluate(() =>
       window.__BUZZ_E2E_COMMAND_PAYLOADS__?.find(

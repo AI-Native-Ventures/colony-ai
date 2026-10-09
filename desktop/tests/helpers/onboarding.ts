@@ -176,6 +176,28 @@ export async function openR17ConnectionSetup(
   await completeR17BusinessSetup(page);
 }
 
+/**
+ * The mock bridge has no OpenRouter account by default, so the panel reports a
+ * read failure. Tests that show the Colony Agent path as a new person sees it
+ * install an unlinked account first.
+ */
+export async function mockOpenRouterUnlinked(page: Page) {
+  await page.evaluate(() => {
+    const internals = (
+      window as unknown as {
+        __TAURI_INTERNALS__: {
+          invoke: (command: string, args?: unknown) => Promise<unknown>;
+        };
+      }
+    ).__TAURI_INTERNALS__;
+    const original = internals.invoke.bind(internals);
+    internals.invoke = (command, args) =>
+      command === "get_openrouter_connection"
+        ? Promise.resolve({ status: "unlinked" })
+        : original(command, args);
+  });
+}
+
 export async function seedActiveIdentity(
   page: Page,
   identity: { privateKey: string; pubkey: string; username: string },

@@ -5,17 +5,30 @@ import ompLogoUrl from "../assets/harness-logos/omp.svg?url";
 import primeLogoUrl from "../assets/harness-logos/prime-mark.jpg?url";
 import claudeLogoUrl from "../assets/harness-logos/claude.png?inline";
 import codexLogoUrl from "../assets/harness-logos/codex.webp?url";
-import openRouterDarkLogoUrl from "../assets/harness-logos/openrouter-dark.svg?url";
-import openRouterLogoUrl from "../assets/harness-logos/openrouter.svg?url";
 import type { OnboardingSceneId } from "./onboardingScenes";
 import type { OnboardingSceneData } from "./OnboardingSceneTypes";
-import {
-  AntMark,
-  BackButton,
-  Glyph,
-  type GlyphName,
-} from "./OnboardingScenePrimitives";
+import { AntMark, BackButton, Glyph } from "./OnboardingScenePrimitives";
 import { CreditReviewDialog } from "./OnboardingSceneOverlays";
+
+/**
+ * Onboarding offers two paths: the person's own Claude Code or Codex
+ * subscription, or Colony Agent powered by OpenRouter or Colony credits.
+ * Bring-your-own-key and every other harness live in Settings > Agents.
+ */
+const CONNECTION_ROUTES = [
+  { id: "subscription", label: "Claude Code or Codex" },
+  { id: "colony", label: "Colony Agent" },
+] as const;
+
+type ConnectionRoute = (typeof CONNECTION_ROUTES)[number]["id"];
+
+export function connectionRouteForScene(
+  scene: OnboardingSceneId,
+): ConnectionRoute {
+  return scene === "connect" || scene.startsWith("subscription")
+    ? "subscription"
+    : "colony";
+}
 
 export function ConnectionShell({
   scene,
@@ -75,91 +88,52 @@ export function ConnectionShell({
         className="power-routes"
         role="radiogroup"
       >
-        {[
-          ["subscription", "Subscriptions", "subscription"],
-          ["credits", "Colony credits", "sparkles"],
-          ["openrouter", "OpenRouter", "globe"],
-          ["api", "Bring your own key", "lock"],
-        ].map(([id, label, icon], index) => (
-          // biome-ignore lint/a11y/useSemanticElements: Frozen icon buttons implement a tested roving radio group.
-          <button
-            aria-checked={
-              scene === "connect" || scene.startsWith("subscription")
-                ? id === "subscription"
-                : scene.startsWith("credits") || scene === "funding"
-                  ? id === "credits"
-                  : scene.startsWith("openrouter")
-                    ? id === "openrouter"
-                    : id === "api"
-            }
-            key={id}
-            role="radio"
-            ref={(element) => {
-              routeRefs.current[index] = element;
-            }}
-            tabIndex={
-              (
-                scene === "connect" || scene.startsWith("subscription")
-                  ? id === "subscription"
-                  : scene.startsWith("credits") || scene === "funding"
-                    ? id === "credits"
-                    : scene.startsWith("openrouter")
-                      ? id === "openrouter"
-                      : id === "api"
-              )
-                ? 0
-                : -1
-            }
-            onKeyDown={(event) => {
-              const offset =
-                event.key === "ArrowRight" || event.key === "ArrowDown"
-                  ? 1
-                  : event.key === "ArrowLeft" || event.key === "ArrowUp"
-                    ? -1
-                    : 0;
-              if (!offset && event.key !== "Home" && event.key !== "End")
-                return;
-              event.preventDefault();
-              const next =
-                event.key === "Home"
-                  ? 0
-                  : event.key === "End"
-                    ? 3
-                    : (index + offset + 4) % 4;
-              routeRefs.current[next]?.focus();
-              routeRefs.current[next]?.click();
-            }}
-            onClick={() => {
-              if (id === "subscription") onSelectConnection?.("connect");
-              if (id === "credits") onSelectConnection?.("credits-price-error");
-              if (id === "openrouter")
-                onSelectConnection?.("openrouter-unlinked");
-              if (id === "api") onSelectConnection?.("api-key");
-            }}
-            type="button"
-          >
-            <span aria-hidden="true">
-              {id === "credits" ? (
-                <AntMark />
-              ) : id === "openrouter" ? (
-                <span
-                  className="harness-logo openrouter-logo"
-                  aria-hidden="true"
-                >
-                  <img alt="" className="logo-light" src={openRouterLogoUrl} />
-                  <img
-                    alt=""
-                    className="logo-dark"
-                    src={openRouterDarkLogoUrl}
-                  />
-                </span>
-              ) : (
-                <Glyph name={icon as GlyphName} />
-              )}
-            </span>
-            <strong>{label}</strong>
-          </button>
-        ))}
+        {CONNECTION_ROUTES.map(({ id, label }, index) => {
+          const checked = connectionRouteForScene(scene) === id;
+          return (
+            // biome-ignore lint/a11y/useSemanticElements: Frozen icon buttons implement a tested roving radio group.
+            <button
+              aria-checked={checked}
+              key={id}
+              role="radio"
+              ref={(element) => {
+                routeRefs.current[index] = element;
+              }}
+              tabIndex={checked ? 0 : -1}
+              onKeyDown={(event) => {
+                const offset =
+                  event.key === "ArrowRight" || event.key === "ArrowDown"
+                    ? 1
+                    : event.key === "ArrowLeft" || event.key === "ArrowUp"
+                      ? -1
+                      : 0;
+                if (!offset && event.key !== "Home" && event.key !== "End")
+                  return;
+                event.preventDefault();
+                const count = CONNECTION_ROUTES.length;
+                const next =
+                  event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? count - 1
+                      : (index + offset + count) % count;
+                routeRefs.current[next]?.focus();
+                routeRefs.current[next]?.click();
+              }}
+              onClick={() =>
+                onSelectConnection?.(
+                  id === "subscription" ? "connect" : "openrouter-unlinked",
+                )
+              }
+              type="button"
+            >
+              <span aria-hidden="true">
+                {id === "colony" ? <AntMark /> : <Glyph name="subscription" />}
+              </span>
+              <strong>{label}</strong>
+            </button>
+          );
+        })}
       </div>
       <section aria-label="Connection options" className="power-body">
         {content}
@@ -351,7 +325,7 @@ function ReadySubscriptionPreview({ scene }: { scene: OnboardingSceneId }) {
           <Glyph name="check" />
           <p>
             An API key was found. Sign in with a subscription for this route, or
-            choose Bring your own key.
+            choose Colony Agent.
           </p>
         </div>
       ) : null}
@@ -507,7 +481,7 @@ function SubscriptionState({
           <Glyph name="alert" />
           <p>
             An API key was found. Sign in with a subscription for this route, or
-            choose Bring your own key.
+            choose Colony Agent.
           </p>
         </div>
       ) : null}
@@ -854,73 +828,6 @@ function OpenRouterState({
   );
 }
 
-function ApiKeyState({
-  scene,
-  enabled,
-}: {
-  scene: OnboardingSceneId;
-  enabled: boolean;
-}) {
-  return (
-    <>
-      <div className="section-heading">
-        <h3>Connect directly to a provider</h3>
-      </div>
-      <div className="key-fields">
-        <div className="field">
-          <label htmlFor="key-provider">Provider</label>
-          <select disabled={!enabled} id="key-provider">
-            <option>Anthropic</option>
-            <option>OpenAI</option>
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="provider-key">API key</label>
-          <div className="input-wrap">
-            <input
-              autoComplete="off"
-              disabled={!enabled}
-              id="provider-key"
-              defaultValue={
-                scene === "api-error" && enabled
-                  ? "demo-invalid-key"
-                  : undefined
-              }
-              placeholder="Paste your provider’s key"
-              type="password"
-            />
-            <button aria-label="Show API key" disabled={!enabled} type="button">
-              Show
-            </button>
-          </div>
-        </div>
-      </div>
-      <p className="power-caption">
-        Usage is billed by Anthropic, separately from any subscription.
-      </p>
-      {scene === "api-error" ? (
-        <div className="power-notice is-error" role="alert">
-          <Glyph name="alert" />
-          <p>
-            This key could not be verified. Check the provider, key and
-            available billing balance.
-          </p>
-        </div>
-      ) : null}
-      <button
-        className="primary full"
-        disabled={!enabled || scene === "api-key"}
-        type="button"
-      >
-        Check key <Glyph name="arrow" />
-      </button>
-      <p className="power-demo-note">
-        Preview only: enter a sample key, not a real credential.
-      </p>
-    </>
-  );
-}
-
 export function StaticConnectContent({
   scene,
   data,
@@ -937,8 +844,6 @@ export function StaticConnectContent({
     scene === "openrouter-error"
   )
     return <OpenRouterState enabled={data.visualOnly === true} scene={scene} />;
-  if (scene === "api-key" || scene === "api-error")
-    return <ApiKeyState enabled={data.visualOnly === true} scene={scene} />;
   if (scene.startsWith("credits") || scene === "funding")
     return (
       <CreditState data={data} onCreditsRetry={onCreditsRetry} scene={scene} />
