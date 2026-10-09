@@ -45,7 +45,16 @@ pub(crate) const AGENTS_MD: &str = include_str!("nest_agents.md");
 
 /// Default SKILL.md content for the colony-cli skill.
 /// Written to `<nest>/.agents/skills/colony-cli/SKILL.md` on first init.
-const COLONY_CLI_SKILL_MD: &str = include_str!("nest_skill.md");
+///
+/// It ends with the web task rules. Their one copy is `web_tasks.md` in
+/// buzz-acp, which is also the end of every agent's base prompt
+/// ([`buzz_acp::WEB_TASK_RULES`]); the file is included here because a const
+/// cannot be built from another crate's const.
+const COLONY_CLI_SKILL_MD: &str = concat!(
+    include_str!("nest_skill.md"),
+    "\n",
+    include_str!("../../../../crates/buzz-acp/src/web_tasks.md")
+);
 
 /// Template content version for AGENTS.md static content (above managed markers).
 /// Bump this when changing `nest_agents.md` to trigger refresh on existing installs.
@@ -58,7 +67,8 @@ const NEST_AGENTS_VERSION: u32 = 7;
 /// Template content version for SKILL.md.
 /// Bump this when changing `nest_skill.md` to trigger refresh on existing installs.
 /// Version 7 renamed the skill from `buzz-cli` to `colony-cli`.
-const NEST_SKILL_VERSION: u32 = 7;
+/// Version 8 added the web task rules (see [`COLONY_CLI_SKILL_MD`]).
+const NEST_SKILL_VERSION: u32 = 8;
 
 /// Prefix of the line that opens the managed section of AGENTS.md. Agents read
 /// this line, so it carries the product name.
@@ -667,7 +677,10 @@ pub fn render_dynamic_section(
     };
 
     let relay_url = relay_url.replace(['\n', '\r'], "");
-    format!("{active_agents}\n\n## Workspace\n- Relay: {relay_url}")
+    // The web task rules ride in the managed section, which every launch
+    // rewrites, so existing nests pick up a change without a template bump.
+    let web_task_rules = buzz_acp::WEB_TASK_RULES.trim_end();
+    format!("{active_agents}\n\n## Workspace\n- Relay: {relay_url}\n\n{web_task_rules}")
 }
 
 /// Find a marker that appears at the start of a line (position 0 or preceded by `\n`).
@@ -1013,3 +1026,5 @@ mod marker_tests;
 mod render_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod web_task_rules_tests;

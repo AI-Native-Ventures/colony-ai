@@ -12,7 +12,7 @@ import { createBrokerServer } from "./broker-server.mjs";
 import { createCapabilityStore } from "./capability.mjs";
 import { createFakePageDriver, until } from "./fake-page-driver.test.mjs";
 import { createMcpServer, main, toMcpResult } from "./mcp-server.mjs";
-import { toolDescriptors } from "./tool-definitions.mjs";
+import { toolDescriptors, WEB_TASKS } from "./tool-definitions.mjs";
 
 const SERVER_FILE = fileURLToPath(new URL("./mcp-server.mjs", import.meta.url));
 
@@ -68,6 +68,9 @@ test("initialize negotiates a supported version and advertises listChanged tools
   });
   assert.equal(frames[0].result.serverInfo.name, "colony-browser");
   assert.ok(/untrusted/u.test(frames[0].result.instructions));
+  // Instructions reach the agent even before any grant, when tools/list is
+  // empty: that is when it must ask for access instead of improvising.
+  assert.ok(frames[0].result.instructions.endsWith(WEB_TASKS));
   await send(initialize("1999-01-01"));
   assert.equal(frames[1].result.protocolVersion, "2025-11-25");
 });
