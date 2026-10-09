@@ -127,6 +127,8 @@ pub struct AccountConfig {
 /// Optional PayFast checkout settings for deployment-global account credits.
 #[derive(Clone)]
 pub struct PaymentsConfig {
+    stripe_secret: Option<Arc<Zeroizing<String>>>,
+    stripe_webhook_secret: Option<Arc<Zeroizing<String>>>,
     enabled: bool,
     merchant_id: Option<String>,
     merchant_key: Option<Arc<Zeroizing<String>>>,
@@ -137,6 +139,37 @@ pub struct PaymentsConfig {
 }
 
 impl PaymentsConfig {
+    #[cfg(test)]
+    pub(crate) fn stripe_test_config() -> Self {
+        payments_config_from_lookup(|key| match key {
+            "STRIPE_SECRET_KEY" => Some("fake-api".into()),
+            "STRIPE_WEBHOOK_SECRET" => Some("fake-webhook".into()),
+            _ => None,
+        })
+        .expect("fake Stripe config")
+    }
+
+    /// Stripe takes precedence for credit checkout when both secrets are present.
+    pub fn stripe_enabled(&self) -> bool {
+        self.stripe_secret.is_some() && self.stripe_webhook_secret.is_some()
+    }
+
+    /// Whether Stripe uses a test-mode API credential.
+    pub fn stripe_sandbox(&self) -> bool {
+        self.stripe_secret()
+            .is_some_and(|key| key.starts_with("sk_test_") || key.starts_with("rk_test_"))
+    }
+
+    pub(crate) fn stripe_secret(&self) -> Option<&str> {
+        self.stripe_secret.as_deref().map(|value| value.as_str())
+    }
+
+    pub(crate) fn stripe_webhook_secret(&self) -> Option<&str> {
+        self.stripe_webhook_secret
+            .as_deref()
+            .map(|value| value.as_str())
+    }
+
     /// Whether credit checkout and subscription checkout are enabled.
     pub fn enabled(&self) -> bool {
         self.enabled
@@ -176,6 +209,7 @@ impl PaymentsConfig {
 impl std::fmt::Debug for PaymentsConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PaymentsConfig")
+            .field("stripe_enabled", &self.stripe_enabled())
             .field("enabled", &self.enabled)
             .field(
                 "merchant_id",
@@ -209,6 +243,19 @@ fn payments_config_from_lookup(
             ))),
         }
     };
+    let secret = |name: &str| {
+        lookup(name)
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty())
+            .map(|s| Arc::new(Zeroizing::new(s)))
+    };
+    let stripe_secret = secret("STRIPE_SECRET_KEY");
+    let stripe_webhook_secret = secret("STRIPE_WEBHOOK_SECRET");
+    if stripe_secret.is_some() != stripe_webhook_secret.is_some() {
+        return Err(ConfigError::InvalidValue(
+            "Stripe requires both STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET".into(),
+        ));
+    }
     let enabled = parse_flag("COLONY_PAYMENTS_ENABLED", false)?;
     let sandbox = parse_flag("COLONY_PAYMENTS_SANDBOX", true)?;
     let merchant_id = lookup("PAYFAST_MERCHANT_ID")
@@ -276,6 +323,8 @@ fn payments_config_from_lookup(
         ));
     }
     Ok(PaymentsConfig {
+        stripe_secret,
+        stripe_webhook_secret,
         enabled,
         merchant_id,
         merchant_key,
@@ -1855,6 +1904,26 @@ mod tests {
         let debug = format!("{config:?}");
         assert!(debug.contains("[REDACTED]"));
         assert!(!debug.contains("private-klipy-key"));
+    }
+
+    #[test]
+    fn stripe_configuration_requires_both_secrets_and_never_formats_them() {
+        for values in [
+            vec![("STRIPE_SECRET_KEY", "fake-api")],
+            vec![("STRIPE_WEBHOOK_SECRET", "fake-webhook")],
+        ] {
+            assert!(payments_config_from_lookup(env_of(&values)).is_err());
+        }
+        let config = payments_config_from_lookup(env_of(&[
+            ("STRIPE_SECRET_KEY", "fake-api"),
+            ("STRIPE_WEBHOOK_SECRET", "fake-webhook"),
+        ]))
+        .expect("stripe config");
+        assert!(config.stripe_enabled());
+        assert!(!config.enabled()); // PayFast remains independently configured.
+        let debug = format!("{config:?}");
+        assert!(!debug.contains("fake-api"));
+        assert!(!debug.contains("fake-webhook"));
     }
 
     #[test]

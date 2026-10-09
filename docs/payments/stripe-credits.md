@@ -1,0 +1,15 @@
+# Stripe credit checkout operations
+
+Configure STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET as Fly secrets through the owner's normal secret-management process. Both must be present; a partial configuration fails startup. Neither is sent to clients or logged. Stripe then takes precedence for credit packs, independent of the legacy COLONY_PAYMENTS_ENABLED PayFast flag. PayFast checkout, subscriptions and ITN remain supported when their existing configuration is enabled.
+
+The Stripe snapshot event endpoint is POST /api/payments/webhook/stripe. Subscribe to checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed and checkout.session.expired using the 2025-02-24.acacia API shape. Forward the unmodified request body and Stripe-Signature header. Session creation uses the same pinned API version. Refunds are outside this release.
+
+USD packs are $5, $15, $50 and $120, granting exactly the same dollar value of credits. Usage margin belongs to the gateway. The system browser hosts Stripe checkout; the return page only instructs the person to check Colony. Browser return and closing the tab never grant or cancel credits.
+
+The account intent is committed before calling Stripe. Stable references are used as provider idempotency keys. Reopening uses the original intent and session. The API never recreates a session after 23 hours, before Stripe's minimum 24-hour idempotency retention expires. Existing sessions can be reconciled server-to-server; expired sessions can also be closed by signed expiry events. A payment uncertain after that window must be checked before another checkout.
+
+Notification receipt, ledger insertion and settlement share one PostgreSQL transaction. Failure returns HTTP 500 without a committed receipt so Stripe can retry. Duplicate event ids and distinct events for a previously granted session do not add credits again. If delivery retries are exhausted, redeliver the original event from Stripe Workbench after repairing the outage. Do not adjust balances by treating a browser redirect as proof.
+
+Migration 0054 widens existing DDL constraints and renames the journal amount to currency-neutral minor units. schema/schema.sql contains the same changes. No new seed DML or storage parameters are introduced, so no new pgschema reconcile statement is required. Existing operator-global registry reconciliation and live table-presence assertions continue to cover these tables.
+
+CI uses a fake Stripe HTTP server and signed synthetic events. PostgreSQL tests exercise the production settlement method, including interruption before grant and delivery retry. Desktop mock-bridge specs are registered in smoke and integration. These prove source behavior, not live Stripe acceptance, owner Fly configuration, deployment adoption, or installed Colony 1.0.7 behavior. A release still needs a test-mode purchase, duplicate event redelivery, and confirmed installed-app balance after webhook delivery.

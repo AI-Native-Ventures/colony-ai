@@ -49,6 +49,7 @@ pub mod router;
 /// Shared application state.
 pub mod state;
 pub mod storage_sweep;
+pub mod stripe;
 /// Subscription registry with (channel, kind) fan-out index.
 pub mod subscription;
 /// OpenTelemetry tracing initialisation (tracer provider + OTLP exporter).

@@ -54,6 +54,8 @@ pub enum ProviderError {
 pub struct CheckoutAuthorization {
     /// Hosted payment form endpoint.
     pub url: String,
+    /// Server-created session identifier, when the provider uses sessions.
+    pub session_id: Option<String>,
     /// Ordered form field names and values, including the signature.
     pub fields: Vec<(String, String)>,
 }
@@ -71,6 +73,21 @@ pub fn nano_usd_from_cents(cents: i64) -> Result<i64, ProviderError> {
 /// A verified callback or a deliberate no-op.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProviderEvent {
+    /// Verified Stripe session lifecycle event; the event id is the durable deduplication key.
+    StripePayment {
+        /// Stripe event identifier.
+        event_id: String,
+        /// Merchant reference from the Checkout Session.
+        reference: String,
+        /// Checkout Session identifier.
+        session_id: String,
+        /// Normalized payment state.
+        status: String,
+        /// Total charged in USD cents.
+        amount: i64,
+        /// ISO currency from the signed session.
+        currency: String,
+    },
     /// A verified payment notification for a one-time credit checkout.
     Payment {
         /// Merchant generated payment reference.

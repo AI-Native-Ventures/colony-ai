@@ -794,6 +794,7 @@ fn checkout_authorization(
         .collect::<Vec<_>>();
     fields.push(("signature".to_owned(), signature));
     crate::payments_provider::CheckoutAuthorization {
+        session_id: None,
         url: action_url.to_owned(),
         fields,
     }
