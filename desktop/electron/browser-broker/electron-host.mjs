@@ -220,6 +220,8 @@ export async function createElectronBrowserAgentHost({
       !["agent-pending", "agent-log", "agent-grants"].includes(action)
     ) {
       ownedGrant(payload.grantId, senderId);
+      if (packagedGate && action === "agent-approve-origin")
+        throw new Error("Packaged gate fixture origin cannot be widened");
       if (payload.allowPrivate)
         throw new Error("Private network browsing is not enabled");
     }

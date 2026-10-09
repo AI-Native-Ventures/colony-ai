@@ -9,7 +9,8 @@ COLONY_BROWSER_PACKAGED_GATE. The production Electron host reads both opt-ins
 before accepting one exact managed agent/task/community/business/client and
 fixture origin. The marker expires within ten minutes. Other origins, private
 ports, renderer-supplied exceptions and subsequent grants remain refused. The
-seam never approves a task or supplies a browser credential.
+seam never approves a task or supplies a browser credential. Origin widening is
+refused while the gate is active, including a different scheme at the same port.
 
 The coordinator must create the managed agent/task in an isolated test relay,
 then pass its trusted identity in `task` (agentId, taskId, communityOrigin,

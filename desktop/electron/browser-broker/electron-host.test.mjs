@@ -457,6 +457,19 @@ test("packaged grant seam binds one task and origin, preserves refusal hooks and
     );
   const grant = await f.grant({ allowedOrigins: [gate.config.origin] });
   assert.deepEqual(grant.privateExceptions, ["127.0.0.1:43210"]);
+  for (const origin of ["https://127.0.0.1:43210", "https://other.example"]) {
+    await assert.rejects(
+      f.host.handleRequest(
+        "agent-approve-origin",
+        { grantId: grant.id, url: origin },
+        f.sender.id,
+      ),
+      /cannot be widened/u,
+    );
+  }
+  assert.deepEqual(f.host.capabilities.getGrant(grant.id).allowedOrigins, [
+    gate.config.origin,
+  ]);
   const contents = f.browser.agentAdapter.webContents(f.tab.id);
   for (const event of ["will-frame-navigate", "will-redirect"]) {
     for (const [url, blocked] of [
