@@ -65,10 +65,12 @@ async fn aggregate_holds_allow_four_employees_and_block_fifth_and_other_debits()
     }
     let digest = "a".repeat(64);
     let requests: Vec<_> = (0..5).map(|_| Uuid::new_v4()).collect();
+    // Both futures retain this borrow until join completes.
+    let agent_pubkey = agent.public_key();
     let a = db.admit_credit_ai_request(
         "fixture",
         community,
-        agent.public_key().as_bytes(),
+        agent_pubkey.as_bytes(),
         sessions[0],
         requests[0],
         &digest,
@@ -77,7 +79,7 @@ async fn aggregate_holds_allow_four_employees_and_block_fifth_and_other_debits()
     let b = db.admit_credit_ai_request(
         "fixture",
         community,
-        agent.public_key().as_bytes(),
+        agent_pubkey.as_bytes(),
         sessions[1],
         requests[1],
         &digest,

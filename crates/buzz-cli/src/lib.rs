@@ -3466,7 +3466,15 @@ mod tests {
         assert_eq!(names(&cmd, "canvas"), vec!["get", "set"]);
         assert_eq!(
             names(&cmd, "credits"),
-            vec!["balance", "history", "packs", "pay", "usage", "verify"]
+            vec![
+                "balance",
+                "history",
+                "packs",
+                "pay",
+                "reconcile-ai",
+                "usage",
+                "verify"
+            ]
         );
         assert_eq!(names(&cmd, "reactions"), vec!["add", "get", "remove"]);
         assert_eq!(names(&cmd, "secrets"), vec!["bind", "list", "revoke"]);

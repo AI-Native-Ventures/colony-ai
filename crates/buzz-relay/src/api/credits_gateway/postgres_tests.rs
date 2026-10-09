@@ -499,9 +499,8 @@ async fn operator_correction_requires_operator_and_refunds_original_journal_once
         .await
         .unwrap();
     assert_eq!(unauthorized.status(), StatusCode::FORBIDDEN);
-    Arc::get_mut(&mut f.gateway.relay)
-        .unwrap()
-        .config
+    let relay = Arc::get_mut(&mut f.gateway.relay).unwrap();
+    Arc::make_mut(&mut relay.config)
         .relay_operator_pubkeys
         .push(f.owner.public_key().to_hex());
     for nonce in ["correct", "repeat-correct"] {
