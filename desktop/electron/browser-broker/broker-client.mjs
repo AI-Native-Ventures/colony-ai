@@ -1,3 +1,4 @@
+import { BROWSER_APPROVAL_GUIDANCE } from "./approval-guidance.mjs";
 import net from "node:net";
 
 /**
@@ -220,7 +221,7 @@ export function createBrokerClient({
         message:
           reply.code === "connection_lost"
             ? "The browser connection was lost. The action was not retried."
-            : "No browser access is available for this task.",
+            : BROWSER_APPROVAL_GUIDANCE,
       };
     },
     close() {

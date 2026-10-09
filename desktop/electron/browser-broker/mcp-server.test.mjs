@@ -6,6 +6,8 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { createBrokerClient } from "./broker-client.mjs";
+import { createBrowserAgentHost } from "./browser-agent-host.mjs";
 import { createBroker } from "./broker-core.mjs";
 import { browserSessionCredential } from "./session-identity.mjs";
 import { createBrokerServer } from "./broker-server.mjs";
@@ -70,6 +72,10 @@ test("initialize negotiates a supported version and advertises listChanged tools
   assert.ok(/untrusted/u.test(frames[0].result.instructions));
   // Instructions reach the agent even before any grant, when tools/list is
   // empty: that is when it must ask for access instead of improvising.
+  assert.match(
+    frames[0].result.instructions,
+    /Ask the person to approve the Colony browser for this task, then wait/u,
+  );
   assert.ok(frames[0].result.instructions.endsWith(WEB_TASKS));
   await send(initialize("1999-01-01"));
   assert.equal(frames[1].result.protocolVersion, "2025-11-25");
@@ -322,6 +328,22 @@ test("end to end over a real socket and a real child process", {
       [],
     );
 
+    send({
+      jsonrpc: "2.0",
+      id: 20,
+      method: "tools/call",
+      params: { name: "browser_connect", arguments: {} },
+    });
+    const unapproved = (await until(() => frames.find((f) => f.id === 20)))
+      .result;
+    assert.equal(unapproved.isError, true);
+    const guidance = JSON.parse(unapproved.content[0].text);
+    assert.equal(guidance.code, "no_grant");
+    assert.match(
+      guidance.message,
+      /Ask the person to approve the Colony browser for this task, then wait/u,
+    );
+
     server.issueGrant({
       ...context,
       businessId: "biz-1",
@@ -493,4 +515,60 @@ test("production stdio entrypoint bounds output before queuing a large reply", a
   } finally {
     h.stop();
   }
+});
+
+test("disabled host and disconnected actual MCP tool call tell the agent to ask and wait", async () => {
+  const disabled = await createBrowserAgentHost({ enabled: false });
+  assert.deepEqual(disabled.env, {});
+  await assert.rejects(
+    disabled.handleRequest("agent-grant", {}),
+    /approve the Colony browser for this task, then wait/u,
+  );
+  const client = createBrokerClient();
+  const output = new PassThrough();
+  let wire = "";
+  output.on("data", (chunk) => {
+    wire += chunk;
+  });
+  const server = createMcpServer({ client, output });
+  try {
+    await server.handleLine(JSON.stringify(initialize()));
+    const initialized = JSON.parse(wire.trim());
+    assert.match(
+      initialized.result.instructions,
+      /approve the Colony browser for this task, then wait/u,
+    );
+    wire = "";
+    await server.handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: "browser_connect", arguments: {} },
+      }),
+    );
+    const result = JSON.parse(wire.trim()).result;
+    assert.equal(result.isError, true);
+    const body = JSON.parse(result.content[0].text);
+    assert.equal(body.code, "no_grant");
+    assert.match(
+      body.message,
+      /approve the Colony browser for this task, then wait/u,
+    );
+    assert.match(body.message, /disabled.*enable it/u);
+  } finally {
+    client.close();
+  }
+});
+
+test("direct production broker refusal carries the same task approval instruction", async () => {
+  const capabilities = createCapabilityStore();
+  const broker = createBroker({ capabilities, driver: createFakePageDriver() });
+  const result = await broker.call("unapproved-token", "browser_connect", {});
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "no_grant");
+  assert.match(
+    result.message,
+    /approve the Colony browser for this task, then wait/u,
+  );
 });

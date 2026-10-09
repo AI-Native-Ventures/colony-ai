@@ -1,3 +1,4 @@
+import { BROWSER_APPROVAL_GUIDANCE } from "./approval-guidance.mjs";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
@@ -185,7 +186,7 @@ export function createBrokerServer({
           result: {
             ok: false,
             code: "no_grant",
-            message: "No browser access has been granted for this task.",
+            message: BROWSER_APPROVAL_GUIDANCE,
           },
         });
         return;
