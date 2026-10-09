@@ -258,7 +258,7 @@ async fn real_route_rejects_anonymous_tampered_and_empty_balance_before_upstream
 async fn missing_usage_recovers_automatically_by_generation_without_another_inference() {
     let mut response = upstream_response();
     response.as_object_mut().unwrap().remove("usage");
-    let f = fixture(response).await;
+    let mut f = fixture(response).await;
     let request = Uuid::new_v4();
     assert_eq!(
         call(&f, &body(&f, request), "missing").await.0,
@@ -269,6 +269,7 @@ async fn missing_usage_recovers_automatically_by_generation_without_another_infe
         .execute(&f.pool)
         .await
         .unwrap();
+    f.gateway.enabled = false; // Flag shutdown must not disable billing recovery.
     recover_due(&f.gateway).await.unwrap();
     assert_eq!(
         f.gateway
@@ -280,6 +281,7 @@ async fn missing_usage_recovers_automatically_by_generation_without_another_infe
         988_000_000
     );
     assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+    f.gateway.enabled = true;
     assert_eq!(
         call(&f, &body(&f, request), "recovered").await.1["error"],
         "already_completed"

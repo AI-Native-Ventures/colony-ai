@@ -266,6 +266,7 @@ mod tests {
             ("0.000000001", 2),
             ("1e-9", 2),
             ("0.1234567891", 148_148_147),
+            ("0.100000000000000001", 120_000_001),
         ] {
             assert_eq!(charge_decimal(cost), Ok(charge), "{cost}");
         }
@@ -292,5 +293,97 @@ mod tests {
             .unwrap()
             .upstream_body()
             .is_err());
+    }
+
+    #[test]
+    fn production_observer_preserves_cost_before_any_float_conversion() {
+        let response = observe(br#"{"id":"gen-exact","choices":[],"usage":{"cost":0.100000000000000001,"total_tokens":1}}"#).unwrap();
+        assert_eq!(response.charged, Some(120_000_001));
+        assert_eq!(response.usage["costUsd"], "0.100000000000000001");
+        assert_eq!(
+            observe(br#"{"id":"gen-missing","choices":[]}"#)
+                .unwrap()
+                .charged,
+            None
+        );
+    }
+
+    async fn fake_server(router: axum::Router) -> (String, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        (origin, task)
+    }
+
+    #[tokio::test]
+    async fn production_transport_bounds_deadline_and_response_bytes() {
+        use axum::{routing::post, Router};
+        let slow = Router::new().route(
+            "/chat/completions",
+            post(|| async {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                "late"
+            }),
+        );
+        let (origin, task) = fake_server(slow).await;
+        let upstream = Upstream::fake(origin, Duration::from_millis(20));
+        assert!(upstream.complete(&json!({})).await.is_err());
+        task.abort();
+        let oversized = Router::new().route(
+            "/chat/completions",
+            post(|| async { "x".repeat(MAX_RESPONSE + 1) }),
+        );
+        let (origin, task) = fake_server(oversized).await;
+        assert!(Upstream::fake(origin, Duration::from_secs(1))
+            .complete(&json!({}))
+            .await
+            .is_err());
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn production_transport_never_follows_redirects_or_accepts_other_generation() {
+        use axum::{
+            routing::{get, post},
+            Router,
+        };
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let hits = Arc::new(AtomicUsize::new(0));
+        let observed = hits.clone();
+        let router = Router::new()
+            .route(
+                "/chat/completions",
+                post(|| async { axum::response::Redirect::temporary("/leak") }),
+            )
+            .route(
+                "/leak",
+                get(move || {
+                    let hits = observed.clone();
+                    async move {
+                        hits.fetch_add(1, Ordering::SeqCst);
+                        "leaked"
+                    }
+                }),
+            )
+            .route(
+                "/generation",
+                get(|| async {
+                    axum::Json(json!({"data":{"id":"different-generation","total_cost":0.01}}))
+                }),
+            );
+        let (origin, task) = fake_server(router).await;
+        let upstream = Upstream::fake(origin, Duration::from_secs(1));
+        assert!(upstream.complete(&json!({})).await.is_err());
+        assert_eq!(hits.load(Ordering::SeqCst), 0);
+        assert!(upstream
+            .generation_cost("original-generation")
+            .await
+            .is_err());
+        task.abort();
     }
 }
