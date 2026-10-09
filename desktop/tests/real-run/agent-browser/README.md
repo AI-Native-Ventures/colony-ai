@@ -33,7 +33,11 @@ and control/grant transitions. The driver clicks normal visible approval,
 confirmation, rejection, takeover and Stop controls and independently counts
 fixture side effects. Refusal includes a distinct forbidden port and redirect.
 The adapter must observe stale confirmation refusal as well as a subsequent
-managed browser call after Stop/takeover. Missing prerequisites return BLOCKED.
+managed browser attempt after Stop/takeover. For that negative phase, a FAKE
+plan step may set allowStaleTool: true for a previously advertised browser
+connect/snapshot tool. This only asks the real agent to attempt the stale call;
+the real runtime or broker must refuse it. Arbitrary or never-advertised tools
+remain refused by the FAKE responder. Missing prerequisites return BLOCKED.
 Always call run.close() after terminating the app and its process tree.
 
 Upload requires the immutable upload slice in the candidate and the real native

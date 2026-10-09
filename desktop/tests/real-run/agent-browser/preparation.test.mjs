@@ -218,3 +218,37 @@ test("fixture preparation allocates no listener and contains no observed side ef
   });
   await fixtures.close();
 });
+
+test("FAKE fault replay only attempts a previously advertised browser read, never invents authority or other tools", () => {
+  const name = "colony-browser__browser_snapshot";
+  const body = {
+    model: "colony-browser-fake",
+    messages: [],
+    tools: [{ function: { name } }],
+  };
+  const responder = createFakeModelResponder([
+    { tool: name, args: { tab: "actual-tab" } },
+    { tool: name, args: { tab: "actual-tab" }, allowStaleTool: true },
+  ]);
+  responder(body);
+  assert.equal(
+    responder({ ...body, tools: [] }).choices[0].message.tool_calls[0].function
+      .name,
+    name,
+  );
+  assert.throws(() =>
+    createFakeModelResponder([{ tool: name, allowStaleTool: true }])({
+      ...body,
+      tools: [],
+    }),
+  );
+  const shell = createFakeModelResponder([
+    { tool: "shell" },
+    { tool: "shell", allowStaleTool: true },
+  ]);
+  shell({ ...body, tools: [{ function: { name: "shell" } }] });
+  assert.throws(() => shell({ ...body, tools: [] }));
+  const normal = createFakeModelResponder([{ tool: name }, { tool: name }]);
+  normal(body);
+  assert.throws(() => normal({ ...body, tools: [] }));
+});

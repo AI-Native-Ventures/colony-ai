@@ -6,6 +6,7 @@ export function createFakeModelResponder(plan) {
   if (!Array.isArray(plan) || !plan.length || plan.length > MAX_TURNS)
     throw new Error("Supply a bounded FAKE model plan");
   let turn = 0;
+  const priorBrowserTools = new Set();
   return (body) => {
     if (
       Buffer.byteLength(JSON.stringify(body)) > MAX_FRAME ||
@@ -15,6 +16,16 @@ export function createFakeModelResponder(plan) {
       turn >= plan.length
     )
       throw new Error("FAKE provider refuses an unexpected request");
+    for (const tool of body.tools ?? []) {
+      const name = tool.function?.name;
+      if (
+        typeof name === "string" &&
+        name.length <= 256 &&
+        /browser_(connect|snapshot)$/u.test(name) &&
+        priorBrowserTools.size < 64
+      )
+        priorBrowserTools.add(name);
+    }
     const step = plan[turn++];
     // Callback selects a fresh tab/ref only from actual prior tool messages.
     // It must never issue a direct broker call or fabricate the agent transcript.
@@ -38,7 +49,13 @@ export function createFakeModelResponder(plan) {
       : { role: "assistant", content: "Fixture task finished." };
     if (
       selection?.tool &&
-      !(body.tools ?? []).some((tool) => tool.function?.name === selection.tool)
+      !(body.tools ?? []).some(
+        (tool) => tool.function?.name === selection.tool,
+      ) &&
+      !(
+        selection.allowStaleTool === true &&
+        priorBrowserTools.has(selection.tool)
+      )
     )
       throw new Error(
         "The requested tool was not advertised by the actual agent session",
