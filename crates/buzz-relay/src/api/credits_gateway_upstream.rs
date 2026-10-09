@@ -79,11 +79,12 @@ impl Upstream {
     }
 
     pub(super) async fn generation_cost(&self, generation: &str) -> Result<i64, ()> {
+        let mut url = url::Url::parse(&format!("{}/generation", self.origin)).map_err(|_| ())?;
+        url.query_pairs_mut().append_pair("id", generation);
         let response = self
             .client
-            .get(format!("{}/generation", self.origin))
+            .get(url.as_str())
             .bearer_auth(self.key.as_str())
-            .query(&[("id", generation)])
             .send()
             .await
             .map_err(|_| ())?;

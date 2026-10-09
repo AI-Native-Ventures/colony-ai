@@ -52,10 +52,17 @@ async fn fixture_status(response: Value, upstream_status: StatusCode) -> Fixture
         )
         .route(
             "/generation",
-            get(move || {
-                let response = response.clone();
-                async move { Json(json!({"data":{"id":response["id"],"total_cost":0.01}})) }
-            }),
+            get(
+                move |axum::extract::Query(query): axum::extract::Query<
+                    std::collections::HashMap<String, String>,
+                >| {
+                    let response = response.clone();
+                    async move {
+                        assert_eq!(query.get("id").map(String::as_str), response["id"].as_str());
+                        Json(json!({"data":{"id":response["id"],"total_cost":0.01}}))
+                    }
+                },
+            ),
         );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
