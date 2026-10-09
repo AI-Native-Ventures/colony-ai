@@ -116,8 +116,13 @@ fn configured_stripe(state: &AppState) -> Result<Stripe, (StatusCode, Json<Value
             "payment_unavailable",
         ));
     };
-    Stripe::new(secret.to_owned(), webhook.to_owned())
-        .map_err(|_| api_error(StatusCode::SERVICE_UNAVAILABLE, "payment_unavailable"))
+    Stripe::new(
+        secret.to_owned(),
+        webhook.to_owned(),
+        config.credit_terms_url(),
+        config.credit_acceptable_use_url(),
+    )
+    .map_err(|_| api_error(StatusCode::SERVICE_UNAVAILABLE, "payment_unavailable"))
 }
 
 fn configured_credit_provider(
@@ -205,6 +210,10 @@ async fn packs(State(state): State<Arc<AppState>>) -> Json<Value> {
         "currency": currency.code(),
         "sandbox": credit_sandbox(&state),
         "enabled": state.config.payments.stripe_enabled() || state.config.payments.enabled(),
+        "policyUrls": {
+            "terms": state.config.payments.credit_terms_url(),
+            "acceptableUse": state.config.payments.credit_acceptable_use_url(),
+        },
         "packs": packs,
     }))
 }
@@ -1117,10 +1126,48 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn pack_catalog_exposes_the_configured_checkout_policy_urls() {
+        use axum::{body::Body, http::Request};
+        use tower::ServiceExt;
+        let mut state = crate::state::tests::test_state_with_database_url(
+            "postgres://fake:fake@127.0.0.1:1/fake",
+        )
+        .await;
+        Arc::get_mut(&mut state)
+            .expect("unique state")
+            .config
+            .payments = crate::config::PaymentsConfig::stripe_test_config();
+        let stripe = configured_stripe(&state).expect("configured provider");
+        assert_eq!(stripe.name(), "stripe");
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .uri("/packs")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("catalog");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), 16 * 1024)
+            .await
+            .expect("body");
+        let catalog: Value = serde_json::from_slice(&body).expect("JSON");
+        assert_eq!(
+            catalog["policyUrls"]["terms"],
+            "https://policies.example/custom-terms"
+        );
+        assert_eq!(
+            catalog["policyUrls"]["acceptableUse"],
+            "https://policies.example/custom-use"
+        );
+    }
+
+    #[tokio::test]
     async fn stripe_http_webhook_rejects_unsigned_and_tampered_raw_bodies_before_database_access() {
         use axum::body::Body;
         use axum::http::Request;
-        use hmac::{Hmac, Mac};
+        use hmac::{Hmac, KeyInit, Mac};
         use tower::ServiceExt;
         let mut state = crate::state::tests::test_state_with_database_url(
             "postgres://fake:fake@127.0.0.1:1/fake",

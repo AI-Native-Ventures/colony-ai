@@ -3,7 +3,7 @@ use super::*;
 use axum::body::{to_bytes, Body};
 use axum::http::Request;
 use base64::{engine::general_purpose::STANDARD, Engine};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use nostr::{EventBuilder, Keys, Kind, Tag};
 use tower::ServiceExt;
 

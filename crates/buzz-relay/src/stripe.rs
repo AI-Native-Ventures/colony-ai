@@ -7,7 +7,7 @@ use crate::{
     },
 };
 use axum::http::HeaderMap;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use serde::Deserialize;
 use sha2::Sha256;
 use std::{net::IpAddr, time::Duration};
@@ -22,6 +22,7 @@ pub struct Stripe {
     secret: Zeroizing<String>,
     webhook_secret: Zeroizing<String>,
     api_base: String,
+    policy_acceptance: String,
 }
 
 #[derive(Deserialize)]
@@ -50,7 +51,12 @@ struct EventData {
 
 impl Stripe {
     /// Construct a bounded, non-redirecting client for Stripe's official API.
-    pub fn new(secret: String, webhook_secret: String) -> Result<Self, ProviderError> {
+    pub fn new(
+        secret: String,
+        webhook_secret: String,
+        terms_url: &str,
+        acceptable_use_url: &str,
+    ) -> Result<Self, ProviderError> {
         if secret.is_empty() || webhook_secret.is_empty() {
             return Err(ProviderError::Configuration);
         }
@@ -62,6 +68,7 @@ impl Stripe {
             secret: Zeroizing::new(secret),
             webhook_secret: Zeroizing::new(webhook_secret),
             api_base: "https://api.stripe.com/v1".to_owned(),
+            policy_acceptance: format!("I agree to the [Terms]({terms_url}) and [Acceptable Use Policy]({acceptable_use_url})."),
         })
     }
 
@@ -136,6 +143,14 @@ impl PaymentProvider for Stripe {
         let fields = [
             ("mode", "payment".to_owned()),
             ("adaptive_pricing[enabled]", "false".to_owned()),
+            (
+                "consent_collection[terms_of_service]",
+                "required".to_owned(),
+            ),
+            (
+                "custom_text[terms_of_service_acceptance][message]",
+                self.policy_acceptance.clone(),
+            ),
             ("client_reference_id", reference.to_owned()),
             ("customer_email", email.to_owned()),
             ("success_url", format!("{callback_url}?result=return")),
@@ -285,7 +300,13 @@ mod tests {
     };
 
     fn provider() -> Stripe {
-        Stripe::new("fake-api".into(), "fake-webhook".into()).expect("fake config")
+        Stripe::new(
+            "fake-api".into(),
+            "fake-webhook".into(),
+            "https://policies.example/terms",
+            "https://policies.example/use",
+        )
+        .expect("fake config")
     }
     fn signed(body: &[u8], timestamp: i64) -> HeaderMap {
         let mut mac = Hmac::<Sha256>::new_from_slice(b"fake-webhook").expect("hmac");
@@ -379,6 +400,8 @@ mod tests {
             assert_eq!(fields["line_items[0][price_data][currency]"], "usd");
             assert_eq!(fields["mode"], "payment");
             assert_eq!(fields["adaptive_pricing[enabled]"], "false");
+            assert_eq!(fields["consent_collection[terms_of_service]"], "required");
+            assert_eq!(fields["custom_text[terms_of_service_acceptance][message]"], "I agree to the [Terms](https://policies.example/terms) and [Acceptable Use Policy](https://policies.example/use).");
             Json(serde_json::json!({"id":"cs_test_checkout", "url":"https://checkout.stripe.com/c/pay/test", "mode":"payment", "payment_status":"unpaid", "client_reference_id":"credit-test", "amount_total":500, "currency":"usd"}))
         }));
         let app = app.route("/checkout/sessions/cs_test_checkout", get(|| async {

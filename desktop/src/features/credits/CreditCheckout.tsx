@@ -55,6 +55,17 @@ export function CreditCheckout({ communityId }: { communityId: string }) {
     intent && ["pending", "delayed", "uncertain"].includes(intent.status);
   const failure = intent?.status === "failed" || intent?.status === "cancelled";
 
+  async function openPolicy(url: string) {
+    try {
+      if (new URL(url).protocol !== "https:")
+        throw new Error("The policy link is unavailable.");
+      await openUrl(url);
+    } catch {
+      if (mounted.current)
+        setError("The policy could not open in your browser. Try again.");
+    }
+  }
+
   async function launch(result: Checkout) {
     if (result.authorizationUrl && result.authorizationMethod === "GET") {
       const url = new URL(result.authorizationUrl);
@@ -211,6 +222,31 @@ export function CreditCheckout({ communityId }: { communityId: string }) {
           <p className="text-sm text-muted-foreground">
             Checkout opens in your browser. Credits become available after
             payment is confirmed.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            By buying credits you agree to the{" "}
+            <a
+              className="underline underline-offset-2 focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+              href={snapshot.policyUrls.terms}
+              onClick={(event) => {
+                event.preventDefault();
+                void openPolicy(snapshot.policyUrls.terms);
+              }}
+            >
+              Terms
+            </a>{" "}
+            and{" "}
+            <a
+              className="underline underline-offset-2 focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+              href={snapshot.policyUrls.acceptableUse}
+              onClick={(event) => {
+                event.preventDefault();
+                void openPolicy(snapshot.policyUrls.acceptableUse);
+              }}
+            >
+              Acceptable Use Policy
+            </a>
+            .
           </p>
           {pending || (checkout && !intent) ? (
             <p className="text-sm text-muted-foreground" role="status">

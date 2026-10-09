@@ -46,6 +46,10 @@ async function setup(
         json: {
           provider: "stripe",
           enabled: !options.disabled,
+          policyUrls: {
+            terms: "https://policies.example/custom-terms",
+            acceptableUse: "https://policies.example/custom-use",
+          },
           packs: [500, 1500, 5000, 12000].map((cents) => ({
             id: `usd-${cents / 100}`,
             name: "Credits",
@@ -151,6 +155,45 @@ test("restored pending payment keeps the original checkout and can be checked", 
   await checkout.getByRole("button", { name: "Check payment" }).click();
   await expect(checkout).toContainText("Payment confirmed");
   expect(state.checks).toEqual(["credit-restored"]);
+});
+
+test("buy flow links configured policies using keyboard and pointer in the system browser", async ({
+  page,
+}) => {
+  await setup(page);
+  const checkout = page.getByTestId("power-checkout");
+  await expect(checkout).toContainText(
+    "By buying credits you agree to the Terms and Acceptable Use Policy.",
+  );
+  const terms = checkout.getByRole("link", { name: "Terms", exact: true });
+  const acceptableUse = checkout.getByRole("link", {
+    name: "Acceptable Use Policy",
+    exact: true,
+  });
+  await expect(terms).toHaveAttribute(
+    "href",
+    "https://policies.example/custom-terms",
+  );
+  await expect(acceptableUse).toHaveAttribute(
+    "href",
+    "https://policies.example/custom-use",
+  );
+  await terms.focus();
+  await terms.press("Enter");
+  await acceptableUse.click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const tauri = window as Window & {
+          __TAURI_INTERNALS__: { invoke(command: string): Promise<string[]> };
+        };
+        return tauri.__TAURI_INTERNALS__.invoke("get_e2e_opened_external_urls");
+      }),
+    )
+    .toEqual([
+      "https://policies.example/custom-terms",
+      "https://policies.example/custom-use",
+    ]);
 });
 
 test("failed payment and browser opening error retain honest recovery controls", async ({

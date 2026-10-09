@@ -18,6 +18,7 @@ export type CreditIntent = {
 export type CreditSnapshot = {
   enabled: boolean;
   provider: "stripe" | "payfast";
+  policyUrls: { terms: string; acceptableUse: string };
   packs: CreditPack[];
   balanceUsdCents: number;
   intents: CreditIntent[];
@@ -90,12 +91,9 @@ async function request<T>(
 export async function readCredits(): Promise<CreditSnapshot> {
   const base = await getRelayHttpUrl();
   const [catalog, history] = await Promise.all([
-    request<Pick<CreditSnapshot, "packs" | "provider" | "enabled">>(
-      "/packs",
-      undefined,
-      false,
-      base,
-    ),
+    request<
+      Pick<CreditSnapshot, "packs" | "provider" | "enabled" | "policyUrls">
+    >("/packs", undefined, false, base),
     request<{ paymentIntents: CreditIntent[] }>(
       "/history",
       undefined,

@@ -124,11 +124,13 @@ pub struct AccountConfig {
     google_jwks_url: Option<String>,
 }
 
-/// Optional PayFast checkout settings for deployment-global account credits.
+/// Checkout settings and public policy links for deployment-global account credits.
 #[derive(Clone)]
 pub struct PaymentsConfig {
     stripe_secret: Option<Arc<Zeroizing<String>>>,
     stripe_webhook_secret: Option<Arc<Zeroizing<String>>>,
+    credit_terms_url: String,
+    credit_acceptable_use_url: String,
     enabled: bool,
     merchant_id: Option<String>,
     merchant_key: Option<Arc<Zeroizing<String>>>,
@@ -139,11 +141,25 @@ pub struct PaymentsConfig {
 }
 
 impl PaymentsConfig {
+    /// Public terms URL shared by hosted checkout and the desktop purchase flow.
+    pub fn credit_terms_url(&self) -> &str {
+        &self.credit_terms_url
+    }
+
+    /// Public acceptable use URL shared by hosted checkout and the desktop purchase flow.
+    pub fn credit_acceptable_use_url(&self) -> &str {
+        &self.credit_acceptable_use_url
+    }
+
     #[cfg(test)]
     pub(crate) fn stripe_test_config() -> Self {
         payments_config_from_lookup(|key| match key {
             "STRIPE_SECRET_KEY" => Some("fake-api".into()),
             "STRIPE_WEBHOOK_SECRET" => Some("fake-webhook".into()),
+            "COLONY_CREDITS_TERMS_URL" => Some("https://policies.example/custom-terms".into()),
+            "COLONY_CREDITS_ACCEPTABLE_USE_URL" => {
+                Some("https://policies.example/custom-use".into())
+            }
             _ => None,
         })
         .expect("fake Stripe config")
@@ -251,6 +267,47 @@ fn payments_config_from_lookup(
     };
     let stripe_secret = secret("STRIPE_SECRET_KEY");
     let stripe_webhook_secret = secret("STRIPE_WEBHOOK_SECRET");
+    let policy_url = |name: &str, default: &str| -> Result<String, ConfigError> {
+        let raw = lookup(name).unwrap_or_else(|| default.to_owned());
+        let raw = raw.trim();
+        let invalid = || {
+            ConfigError::InvalidValue(format!(
+                "{name} must be a public HTTPS URL without credentials, query, or fragment"
+            ))
+        };
+        if raw.len() > 400 || raw.chars().any(char::is_whitespace) {
+            return Err(invalid());
+        }
+        let parsed = url::Url::parse(raw).map_err(|_| invalid())?;
+        if parsed.scheme() != "https"
+            || parsed.host_str().is_none()
+            || !parsed.username().is_empty()
+            || parsed.password().is_some()
+            || parsed.query().is_some()
+            || parsed.fragment().is_some()
+        {
+            return Err(invalid());
+        }
+        // These URLs also appear as Markdown link destinations in Stripe consent text.
+        let encoded = parsed
+            .as_str()
+            .replace('(', "%28")
+            .replace(')', "%29")
+            .replace('[', "%5B")
+            .replace(']', "%5D");
+        if encoded.len() > 400 {
+            return Err(invalid());
+        }
+        Ok(encoded)
+    };
+    let credit_terms_url = policy_url(
+        "COLONY_CREDITS_TERMS_URL",
+        "https://colony.global/terms.html",
+    )?;
+    let credit_acceptable_use_url = policy_url(
+        "COLONY_CREDITS_ACCEPTABLE_USE_URL",
+        "https://colony.global/acceptable-use.html",
+    )?;
     if stripe_secret.is_some() != stripe_webhook_secret.is_some() {
         return Err(ConfigError::InvalidValue(
             "Stripe requires both STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET".into(),
@@ -325,6 +382,8 @@ fn payments_config_from_lookup(
     Ok(PaymentsConfig {
         stripe_secret,
         stripe_webhook_secret,
+        credit_terms_url,
+        credit_acceptable_use_url,
         enabled,
         merchant_id,
         merchant_key,
@@ -1904,6 +1963,42 @@ mod tests {
         let debug = format!("{config:?}");
         assert!(debug.contains("[REDACTED]"));
         assert!(!debug.contains("private-klipy-key"));
+    }
+
+    #[test]
+    fn credit_policy_urls_are_configurable_and_must_be_public_https_links() {
+        let defaults = payments_config_from_lookup(env_of(&[])).expect("defaults");
+        assert_eq!(
+            defaults.credit_terms_url(),
+            "https://colony.global/terms.html"
+        );
+        let configured = PaymentsConfig::stripe_test_config();
+        assert_eq!(
+            configured.credit_terms_url(),
+            "https://policies.example/custom-terms"
+        );
+        assert_eq!(
+            configured.credit_acceptable_use_url(),
+            "https://policies.example/custom-use"
+        );
+        for name in [
+            "COLONY_CREDITS_TERMS_URL",
+            "COLONY_CREDITS_ACCEPTABLE_USE_URL",
+        ] {
+            for invalid in [
+                "",
+                "http://policies.example/terms",
+                "https://user@policies.example/terms",
+                "https://policies.example/terms?other=1",
+                "https://policies.example/terms#section",
+                "https://policies.example/te\nrms",
+            ] {
+                assert!(
+                    payments_config_from_lookup(env_of(&[(name, invalid)])).is_err(),
+                    "accepted {name}: {invalid}"
+                );
+            }
+        }
     }
 
     #[test]
