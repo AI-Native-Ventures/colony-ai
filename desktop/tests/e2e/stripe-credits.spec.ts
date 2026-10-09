@@ -15,6 +15,7 @@ async function setup(
     restored?: boolean;
     openerError?: string;
     disabled?: boolean;
+    unavailable?: boolean;
   } = {},
 ) {
   let intent: Intent | undefined = options.restored
@@ -28,6 +29,7 @@ async function setup(
       }
     : undefined;
   let balance = 0;
+  let unavailable = options.unavailable ?? false;
   const calls: Array<Record<string, unknown>> = [];
   const checks: string[] = [];
   await page.clock.install();
@@ -39,6 +41,11 @@ async function setup(
   await page.route("**/api/payments/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (unavailable)
+      return route.fulfill({
+        status: 503,
+        json: { error: "payments_unavailable" },
+      });
     if (path !== "/api/payments/packs")
       expect(request.headers().authorization).toMatch(/^Nostr /);
     if (path.endsWith("/packs"))
@@ -99,6 +106,9 @@ async function setup(
   return {
     calls,
     checks,
+    reconnect() {
+      unavailable = false;
+    },
     settle(status: "paid" | "failed" | "cancelled") {
       if (!intent) throw new Error("no intent");
       intent.status = status;
@@ -227,5 +237,29 @@ test("disabled provider cannot start checkout", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Continue to checkout" }),
   ).toHaveCount(0);
+  expect(state.calls).toHaveLength(0);
+});
+
+test("unavailable catalogue blocks purchase and can be retried with the keyboard", async ({
+  page,
+}) => {
+  const state = await setup(page, { unavailable: true });
+  const checkout = page.getByTestId("power-checkout");
+  await expect(checkout.getByRole("alert")).toContainText(
+    "The payment service could not confirm this request",
+  );
+  await expect(
+    checkout.getByRole("button", { name: "Continue to checkout" }),
+  ).toHaveCount(0);
+  expect(state.calls).toHaveLength(0);
+  state.reconnect();
+  const retry = checkout.getByRole("button", { name: "Retry loading prices" });
+  await retry.focus();
+  await retry.press("Enter");
+  await expect(checkout.getByRole("alert")).toHaveCount(0);
+  await checkout.getByRole("radio").first().check();
+  await expect(
+    checkout.getByRole("button", { name: "Continue to checkout" }),
+  ).toBeEnabled();
   expect(state.calls).toHaveLength(0);
 });

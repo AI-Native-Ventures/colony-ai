@@ -175,9 +175,20 @@ export function CreditCheckout({ communityId }: { communityId: string }) {
         </p>
       ) : null}
       {query.error ? (
-        <p className="text-sm text-destructive" role="alert">
-          {query.error.message}
-        </p>
+        <div className="space-y-3">
+          <p className="text-sm text-destructive" role="alert">
+            {query.error.message}
+          </p>
+          <Button
+            variant="outline"
+            disabled={query.isFetching}
+            onClick={() => void query.refetch()}
+          >
+            {query.isFetching
+              ? "Loading current prices"
+              : "Retry loading prices"}
+          </Button>
+        </div>
       ) : null}
       {snapshot && !snapshot.enabled ? (
         <p className="text-sm text-muted-foreground">
