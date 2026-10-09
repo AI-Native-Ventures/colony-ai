@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { installMockBridge } from "../helpers/bridge";
 
 import {
+  mockOpenRouterUnlinked,
   openR17ConnectionSetup,
   R17_BUSINESS_PROFILE_KEY,
   type R17ConnectionSetupOptions,
@@ -95,18 +96,28 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
     });
   expect(selectStyle).toEqual({ alignment: "left", border: "0px" });
 
-  await page.getByRole("radio", { name: "Bring your own key" }).click();
+  // Onboarding offers two paths only. Bring-your-own-key and the other
+  // harnesses stay under Settings > Agents.
+  await expect(page.getByRole("radio")).toHaveCount(2);
   await expect(
-    page.getByRole("heading", { name: "Connect directly to a provider" }),
-  ).toBeVisible();
-  await expect(page.getByLabel("Provider", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Check key" })).toBeDisabled();
+    page.getByRole("radio", { name: "Bring your own key" }),
+  ).toHaveCount(0);
+  await expect(page.getByText(/^More tools \(/)).toHaveCount(0);
+  await expect(
+    page.getByTestId("onboarding-connect-runtime-buzz-agent"),
+  ).toHaveCount(0);
 
-  await page.getByRole("radio", { name: "OpenRouter" }).click();
+  await page.getByRole("radio", { name: "Colony Agent", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Your OpenRouter account" }),
   ).toBeVisible();
-  await page.getByRole("radio", { name: "Subscriptions" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Colony credits", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Provider", { exact: true })).toHaveCount(0);
+  await page
+    .getByRole("radio", { name: "Claude Code or Codex", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "On this computer" }),
   ).toBeVisible();
@@ -123,7 +134,7 @@ test("R17 onboarding can continue when provider discovery fails", async ({
   await expect(discoveryNotice).toBeVisible();
   await expect(discoveryNotice).not.toContainText("Mock ACP runtime discovery");
   await expect(
-    page.getByRole("radio", { name: "Bring your own key" }),
+    page.getByRole("radio", { name: "Colony Agent", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Skip for now" }),
@@ -307,18 +318,26 @@ test("R17 bundled agent without a provider is not ready and credits are coming s
       r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
     ],
   });
-  const card = page.getByTestId("onboarding-connect-runtime-buzz-agent");
-  await expect(card).toContainText("No AI connected yet");
-  await expect(card).not.toContainText("Ready");
-  await expect(page.getByTestId("onboarding-ai-not-ready")).toHaveCount(0);
-  await page
-    .getByRole("radio", { name: "Colony credits", exact: true })
-    .click();
-  const credits = page.getByTestId("onboarding-credits-coming-soon");
-  await expect(credits).toContainText("Coming soon");
+  // Colony Agent is its own path, never a card in the subscription list.
   await expect(
-    page.getByRole("button", { name: "Connect", exact: true }),
-  ).toBeDisabled();
+    page.getByTestId("onboarding-connect-runtime-buzz-agent"),
+  ).toHaveCount(0);
+  await expect(page.getByTestId("onboarding-ai-not-ready")).toHaveCount(0);
+  await mockOpenRouterUnlinked(page);
+  await page.getByRole("radio", { name: "Colony Agent", exact: true }).click();
+  await expect(
+    page.getByRole("radio", { name: "Colony Agent", exact: true }),
+  ).toBeChecked();
+  const credits = page.getByTestId("onboarding-credits-coming-soon");
+  await expect(credits).toContainText("Colony credits");
+  await expect(credits).toContainText("Coming soon");
+  await expect(credits.getByRole("button")).toHaveCount(0);
+  await expect(page.getByTestId("onboarding-colony-agent-saved")).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("button", { name: "Connect OpenRouter", exact: true }),
+  ).toBeVisible();
   await expect(page.locator(".form-content .lede[role=status]")).toHaveCount(0);
   await expect(credits).not.toContainText(/balance|Unavailable|12\.50/);
   await expect(page.getByRole("button", { name: "Reload prices" })).toHaveCount(
@@ -327,9 +346,11 @@ test("R17 bundled agent without a provider is not ready and credits are coming s
   await expect(
     page.getByRole("button", { name: "Skip for now" }),
   ).toBeEnabled();
+  await page.getByRole("button", { name: "Skip for now" }).click();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });
 
-test("R17 Bring your own key saves a tested OpenRouter provider default", async ({
+test("R17 Colony Agent saved in Settings is tested from onboarding without editing keys", async ({
   page,
 }) => {
   await openR17ConnectionSetup(page, {
@@ -343,38 +364,32 @@ test("R17 Bring your own key saves a tested OpenRouter provider default", async 
     mock: {
       globalAgentConfig: {
         preferred_runtime: "buzz-agent",
-        provider: "openrouter",
+        provider: "anthropic",
         model: "fixture/model",
-        env_vars: {},
-      },
-      discoverAgentModels: {
-        models: [{ id: "fixture/model", name: "Fixture model" }],
-        supportsSwitching: true,
-        selectedModel: "fixture/model",
+        env_vars: { ANTHROPIC_API_KEY: "e2e-fixture-key" },
       },
     },
   });
-  await page
-    .getByRole("radio", { name: "Bring your own key", exact: true })
-    .click();
-  const key = page.getByTestId("onboarding-provider-key");
-  await expect(key).toHaveAttribute("type", "password");
-  await key.fill("e2e-fixture-key");
-  await page.getByRole("button", { name: "Check key", exact: true }).click();
-  await expect(
-    page.getByText("AI connected and saved as your default."),
-  ).toBeVisible();
+  await page.getByRole("radio", { name: "Colony Agent", exact: true }).click();
+  const saved = page.getByTestId("onboarding-colony-agent-saved");
+  await expect(saved).toContainText("saved in Settings");
   await expect(page.locator(".harness-state")).toHaveText("Included");
-  await expect(
-    page.getByText("AI employees will not reply", { exact: false }),
-  ).toHaveCount(0);
-  expect(
-    await mockCommand(page, "get_global_agent_config_set_call_count"),
-  ).toBe(1);
-  expect(await mockCommand(page, "get_global_agent_config")).toMatchObject({
-    preferred_runtime: "buzz-agent",
-    provider: "anthropic",
-    model: "fixture/model",
+  await expect(page.getByTestId("onboarding-provider-key")).toHaveCount(0);
+  await saved
+    .getByRole("button", { name: "Test Colony Agent", exact: true })
+    .click();
+  await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
+  const request = await page.evaluate(() =>
+    window.__BUZZ_E2E_COMMAND_PAYLOADS__?.find(
+      (entry) => entry.command === "test_onboarding_connection",
+    ),
+  );
+  expect(request?.payload).toMatchObject({
+    config: {
+      preferred_runtime: "buzz-agent",
+      provider: "anthropic",
+      model: "fixture/model",
+    },
   });
 });
 
@@ -424,29 +439,23 @@ test("bundled agent readiness names missing Git for Windows before claiming Read
       },
     },
   });
-  const card = page.getByTestId("onboarding-connect-runtime-buzz-agent");
-  await expect(card).toContainText(
-    "Install Git for Windows from https://gitforwindows.org/",
-  );
-  await expect(card).not.toContainText("Ready on this computer");
-  await expect(card.locator(".provider-status.is-connected")).toHaveCount(0);
-  await page
-    .getByRole("radio", { name: "Bring your own key", exact: true })
-    .click();
+  await page.getByRole("radio", { name: "Colony Agent", exact: true }).click();
   await expect(page.locator(".harness-state")).toHaveText(
     "Git for Windows needed",
-  );
-  await expect(page.getByRole("alert")).toContainText(
-    "Install Git for Windows",
   );
   await expect(
-    page.getByRole("button", { name: "Check key", exact: true }),
-  ).toBeDisabled();
-  await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
-  await expect(page.locator(".harness-state")).toHaveText(
-    "Git for Windows needed",
+    page
+      .getByTestId("onboarding-colony-agent")
+      .getByRole("alert")
+      .filter({ hasText: "Install Git for Windows" }),
+  ).toContainText("https://gitforwindows.org/");
+  // A configured provider is not enough while the prerequisite is missing.
+  await expect(page.getByTestId("onboarding-colony-agent-saved")).toHaveCount(
+    0,
   );
-  await page.getByRole("radio", { name: "Subscriptions", exact: true }).click();
+  await page
+    .getByRole("radio", { name: "Claude Code or Codex", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: "Skip for now", exact: true }),
   ).toBeEnabled();

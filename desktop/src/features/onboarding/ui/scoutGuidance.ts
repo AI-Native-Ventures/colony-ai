@@ -30,14 +30,10 @@ export function scoutGuidance(
       status: "Your turn",
       pose: "waiting",
     };
-  else if (
-    /subscription|credits|openrouter|api-key|api-error|connect|funding/.test(
-      scene,
-    )
-  )
+  else if (/subscription|credits|openrouter|connect|funding/.test(scene))
     guidance = {
       title: "Let’s connect your first agent.",
-      copy: "Choose the connection that works for you. The supported options are all here.",
+      copy: "Use your own Claude Code or Codex plan, or let Colony Agent do the work. Other tools and keys live in Settings.",
       status: "Your turn",
       pose: "waiting",
     };
@@ -104,7 +100,6 @@ export function scoutGuidance(
   const inlineErrorScenes: OnboardingSceneId[] = [
     "account-error",
     "business-error",
-    "api-error",
     "connection-error",
     "credits-failed",
     "credits-price-error",
