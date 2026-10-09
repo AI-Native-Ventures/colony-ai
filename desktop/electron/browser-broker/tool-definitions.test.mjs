@@ -26,6 +26,7 @@ test("the tool list is exactly the approved surface", () => {
     "browser_select",
     "browser_scroll",
     "browser_wait",
+    "browser_download",
     "browser_upload",
   ]);
 });

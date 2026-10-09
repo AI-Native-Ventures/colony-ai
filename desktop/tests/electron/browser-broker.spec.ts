@@ -1,5 +1,12 @@
 import { createServer } from "node:http";
-import { mkdtemp, rm, writeFile, readdir } from "node:fs/promises";
+import {
+  mkdtemp,
+  rm,
+  writeFile,
+  readdir,
+  mkdir,
+  readFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
@@ -14,6 +21,10 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
   test.setTimeout(120_000);
   let submits = 0;
   let forbiddenRequests = 0;
+  let downloads = 0;
+  let slowStarted = false;
+  let slowClosed = false;
+  let downloadCookie = "";
   const deniedServer = createServer((_request, response) => {
     forbiddenRequests += 1;
     response.end("Denied");
@@ -26,6 +37,34 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
     throw new Error("Denied probe did not bind");
   const deniedOrigin = `http://127.0.0.1:${deniedAddress.port}`;
   const server = createServer((request, response) => {
+    if (request.url === "/report.txt") {
+      downloads += 1;
+      downloadCookie = request.headers.cookie ?? "";
+      response.setHeader(
+        "content-disposition",
+        'attachment; filename="report.txt"',
+      );
+      response.end("approved-session-download");
+      return;
+    }
+    if (request.url === "/download-redirect") {
+      response.writeHead(302, { location: `${deniedOrigin}/private-download` });
+      response.end();
+      return;
+    }
+    if (request.url === "/oversized.txt") {
+      response.end("x".repeat(1025));
+      return;
+    }
+    if (request.url === "/slow.txt") {
+      slowStarted = true;
+      response.on("close", () => {
+        slowClosed = true;
+      });
+      response.writeHead(200, { "content-type": "application/octet-stream" });
+      response.write("pending");
+      return;
+    }
     if (request.url === "/submit") {
       submits += 1;
       response.end("Submitted");
@@ -52,6 +91,10 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
       <input id="password" type="password" value="credential-do-not-leak">
       <label>Card number<input id="card" value="4111111111111111"></label>
       <label>API key<input id="api" value="fixture-api-secret"></label>
+      <a href="/report.txt">Download report</a>
+      <a href="/download-redirect">Download redirect</a>
+      <a href="/oversized.txt">Download oversized</a>
+      <a href="/slow.txt">Download slow</a>
       <a href="https://other.example/">Other site</a>
       <a href="file:///private/secret">Local file</a>
       <iframe src="${deniedOrigin}/forbidden" title="Denied frame"></iframe>
@@ -169,6 +212,75 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
         throw new Error(`Missing ref for ${name}: ${snapshot.snapshot}`);
       return match[1];
     };
+    await application.evaluate(async (_electron, id) => {
+      const fixture = (
+        globalThis as typeof globalThis & {
+          colonyBrowserFixture: {
+            browser: {
+              agentAdapter: {
+                webContents(id: string): {
+                  executeJavaScript(code: string): Promise<unknown>;
+                };
+              };
+            };
+          };
+        }
+      ).colonyBrowserFixture;
+      await fixture.browser.agentAdapter
+        .webContents(id)
+        .executeJavaScript(
+          "document.cookie='download_identity=approved'; true",
+        );
+    }, tab.id);
+    const downloadDir = path.join(dir, "downloads");
+    await mkdir(downloadDir, { recursive: true });
+    await writeFile(
+      path.join(downloadDir, "report.txt"),
+      "person-existing-file",
+    );
+    const rejectedDownload = call("browser_download", {
+      ref: ref("Download report"),
+    });
+    await expect
+      .poll(async () => (await request<unknown[]>("agent-pending")).length)
+      .toBe(1);
+    const [rejectedApproval] =
+      await request<{ actionId: string }[]>("agent-pending");
+    expect(downloads).toBe(0);
+    await request("agent-reject", { actionId: rejectedApproval.actionId });
+    expect((await rejectedDownload).ok).toBe(false);
+    expect(downloads).toBe(0);
+    async function confirmDownload(name: string) {
+      const action = call("browser_download", { ref: ref(name) });
+      await expect
+        .poll(async () => (await request<unknown[]>("agent-pending")).length)
+        .toBe(1);
+      const [pending] = await request<{ actionId: string }[]>("agent-pending");
+      await request("agent-confirm", { actionId: pending.actionId });
+      return action;
+    }
+    const downloaded = await confirmDownload("Download report");
+    expect(downloaded.ok, JSON.stringify(downloaded)).toBe(true);
+    expect(downloaded.name).toBe("report (1).txt");
+    expect(downloadCookie).toContain("download_identity=approved");
+    expect(await readFile(path.join(downloadDir, "report.txt"), "utf8")).toBe(
+      "person-existing-file",
+    );
+    expect(
+      await readFile(path.join(downloadDir, downloaded.name), "utf8"),
+    ).toBe("approved-session-download");
+    expect(JSON.stringify(downloaded)).not.toContain(dir);
+    expect(JSON.stringify(downloaded)).not.toContain(
+      "approved-session-download",
+    );
+    expect((await confirmDownload("Download redirect")).ok).toBe(false);
+    expect(forbiddenRequests).toBe(0);
+    expect((await confirmDownload("Download oversized")).ok).toBe(false);
+    expect((await readdir(downloadDir)).sort()).toEqual([
+      "report (1).txt",
+      "report.txt",
+    ]);
+
     const selected = await request<{
       uploadId: string;
       name: string;
@@ -435,6 +547,45 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
         (await (window.colonyBrowserHost as BrowserHostApi).listTabs())[0],
     );
     expect(current.controlOwner).toBe("human");
+    const slowGrant = await request<BrowserGrant>("agent-grant", {
+      ...context,
+      businessId: "fixture-business",
+      tabId: tab.id,
+      allowedOrigins: [origin],
+    });
+    expect((await call("browser_navigate", { url: origin })).ok).toBe(true);
+    const slowSnapshot = await call("browser_snapshot", {});
+    const slowRef = /\[ref=(e\d+)\]/u.exec(
+      slowSnapshot.snapshot
+        .split("\n")
+        .find((line: string) => line.includes("Download slow")) ?? "",
+    )?.[1];
+    expect(slowRef).toBeTruthy();
+    const slowAction = call("browser_download", { ref: slowRef });
+    await expect
+      .poll(async () => (await request<unknown[]>("agent-pending")).length)
+      .toBe(1);
+    const [slowApproval] =
+      await request<{ actionId: string }[]>("agent-pending");
+    await request("agent-confirm", { actionId: slowApproval.actionId });
+    await expect.poll(() => slowStarted).toBe(true);
+    await request("agent-revoke", { grantId: slowGrant.id });
+    expect((await slowAction).ok).toBe(false);
+    await expect.poll(() => slowClosed).toBe(true);
+    await request("agent-recover-control", { tabId: tab.id });
+    expect(
+      (
+        await request<{ recoveryRequired: boolean }>("agent-status", {
+          tabId: tab.id,
+        })
+      ).recoveryRequired,
+    ).toBe(false);
+    expect((await readdir(downloadDir)).sort()).toEqual([
+      "report (1).txt",
+      "report.txt",
+    ]);
+    expect(await readdir(path.join(dir, "uploads", "records"))).toEqual([]);
+    expect(await readdir(path.join(dir, "uploads", "payloads"))).toEqual([]);
   } finally {
     client?.close();
     await application?.close();
