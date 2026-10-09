@@ -15,6 +15,7 @@ struct Fixture {
     host: String,
     agent: Keys,
     owner: Keys,
+    auth_time: nostr::Timestamp,
     account: Uuid,
     session: Uuid,
     calls: Arc<AtomicUsize>,
@@ -143,6 +144,7 @@ async fn fixture_status(response: Value, upstream_status: StatusCode) -> Fixture
         host,
         agent,
         owner,
+        auth_time: nostr::Timestamp::now(),
         account,
         session,
         calls,
@@ -159,6 +161,7 @@ fn signed(f: &Fixture, body: &str, nonce: &str) -> Request<Body> {
 fn signed_path(f: &Fixture, body: &str, nonce: &str, path: &str, keys: &Keys) -> Request<Body> {
     let url = format!("https://{}/api/credits-gateway{path}", f.host);
     let event = EventBuilder::new(Kind::HttpAuth, "")
+        .custom_created_at(f.auth_time)
         .tags([
             Tag::parse(["u", &url]).unwrap(),
             Tag::parse(["method", "POST"]).unwrap(),

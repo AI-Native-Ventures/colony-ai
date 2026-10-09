@@ -376,7 +376,7 @@ mod tests {
             )
             .route(
                 "/leak",
-                get(move || {
+                post(move || {
                     let hits = observed.clone();
                     async move {
                         hits.fetch_add(1, Ordering::SeqCst);
