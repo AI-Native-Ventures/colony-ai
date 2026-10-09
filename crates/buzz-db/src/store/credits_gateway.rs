@@ -12,7 +12,10 @@ use crate::{Db, DbError, Result};
 #[derive(Debug, PartialEq, Eq)]
 pub enum Admission {
     /// A durable hold was committed; inference may start exactly once.
-    New,
+    New {
+        /// Authenticated payer, only for server-side provider attribution.
+        account_id: Uuid,
+    },
     /// Original inference is still in progress or recovering.
     Pending,
     /// Original inference was already charged; never repeat it.
@@ -173,7 +176,9 @@ impl Db {
         sqlx::query("INSERT INTO account_credit_ledger (account_id, entry_type, amount_nanousd, source_id, description, metadata) VALUES ($1,'adjustment',$2,$3,'Colony Agent pending usage hold',$4)")
             .bind(account).bind(-reserve).bind(format!("ai:{request}:hold")).bind(json!({"requestId":request,"pending":true})).execute(&mut *tx).await?;
         tx.commit().await?;
-        Ok(Admission::New)
+        Ok(Admission::New {
+            account_id: account,
+        })
     }
 
     /// Persist an authoritative upstream rejection as zero usage before releasing

@@ -84,8 +84,8 @@ async fn aggregate_holds_allow_four_employees_and_block_fifth_and_other_debits()
         200_000_000,
     );
     let (a, b) = tokio::join!(a, b);
-    assert_eq!(a.unwrap(), Admission::New);
-    assert_eq!(b.unwrap(), Admission::New);
+    assert_eq!(a.unwrap(), Admission::New { account_id: ids[0] });
+    assert_eq!(b.unwrap(), Admission::New { account_id: ids[0] });
     for i in 2..4 {
         assert_eq!(
             db.admit_credit_ai_request(
@@ -99,7 +99,7 @@ async fn aggregate_holds_allow_four_employees_and_block_fifth_and_other_debits()
             )
             .await
             .unwrap(),
-            Admission::New
+            Admission::New { account_id: ids[0] }
         );
     }
     assert_eq!(
@@ -155,7 +155,7 @@ async fn aggregate_holds_allow_four_employees_and_block_fifth_and_other_debits()
         )
         .await
         .unwrap(),
-        Admission::New
+        Admission::New { account_id: ids[0] }
     );
 }
 
@@ -177,7 +177,7 @@ async fn settlement_lost_ack_replay_is_exactly_once_and_estimate_correction_refu
         )
         .await
         .unwrap(),
-        Admission::New
+        Admission::New { account_id: ids[0] }
     );
     assert_eq!(
         db.admit_credit_ai_request(
@@ -390,7 +390,7 @@ async fn migration_schema_gateway_authorization_and_reservations_use_migrated_ta
         )
         .await
         .unwrap(),
-        Admission::New
+        Admission::New { account_id: ids[0] }
     );
     let count: i64 = sqlx::query_scalar("SELECT count(*) FROM _operator_global_tables WHERE table_name IN ('account_ai_sessions','account_ai_requests')").fetch_one(&pool).await.unwrap();
     assert_eq!(count, 2);
@@ -425,7 +425,7 @@ async fn admission_recovers_expired_session_even_when_background_worker_is_backl
         )
         .await
         .unwrap(),
-        Admission::New
+        Admission::New { account_id: ids[0] }
     );
     let status: String = sqlx::query_scalar("SELECT status FROM account_ai_requests WHERE id=$1")
         .bind(old)

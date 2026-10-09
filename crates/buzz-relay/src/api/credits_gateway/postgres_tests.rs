@@ -19,6 +19,7 @@ struct Fixture {
     account: Uuid,
     session: Uuid,
     calls: Arc<AtomicUsize>,
+    sent: Arc<std::sync::Mutex<Vec<Value>>>,
     server: tokio::task::JoinHandle<()>,
 }
 impl Drop for Fixture {
@@ -38,23 +39,38 @@ async fn fixture_status(response: Value, upstream_status: StatusCode) -> Fixture
 async fn fixture_provider(response: Value, upstream_status: StatusCode, direct: bool) -> Fixture {
     let calls = Arc::new(AtomicUsize::new(0));
     let counter = calls.clone();
+    let sent = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let captured = sent.clone();
     let completion = response.clone();
     let upstream = Router::new()
         .route(
             "/chat/completions",
             post(move |headers: HeaderMap, Json(body): Json<Value>| {
                 let counter = counter.clone();
-                let completion = completion.clone();
+                let captured = captured.clone();
+                let mut completion = completion.clone();
                 async move {
                     assert_eq!(headers["authorization"], "Bearer synthetic-test-key");
                     assert!(headers.get("x-auth-tag").is_none());
                     if direct {
                         assert!(body.get("provider").is_none());
+                        assert!(body.get("user").is_none());
                         assert_eq!(body["model"], "direct-test-model");
                     } else {
                         assert_eq!(body["provider"]["max_price"]["request"], 0);
+                        assert_eq!(body["provider"]["only"], json!(["openai"]));
+                        assert_eq!(body["provider"]["allow_fallbacks"], false);
+                        assert!(body["user"]
+                            .as_str()
+                            .is_some_and(|user| user.starts_with("colony_") && user.len() == 71));
                     }
-                    counter.fetch_add(1, Ordering::SeqCst);
+                    captured.lock().unwrap().push(body);
+                    let index = counter.fetch_add(1, Ordering::SeqCst);
+                    if index > 0 {
+                        if let Some(id) = completion["id"].as_str().map(str::to_owned) {
+                            completion["id"] = json!(format!("{id}-{index}"));
+                        }
+                    }
                     (upstream_status, Json(completion))
                 }
             }),
@@ -178,6 +194,7 @@ async fn fixture_provider(response: Value, upstream_status: StatusCode, direct: 
         account,
         session,
         calls,
+        sent,
         server,
     }
 }
@@ -630,4 +647,109 @@ async fn recovery_fences_provider_configuration_changes_and_still_expires_hold()
         .await
         .unwrap();
     assert_eq!(status, "estimated");
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn openrouter_user_is_stable_keyed_account_pseudonym_and_models_are_server_allowlisted() {
+    let f = fixture(upstream_response()).await;
+    for nonce in ["customer-first", "customer-second"] {
+        assert_eq!(
+            call(&f, &body(&f, Uuid::new_v4()), nonce).await.0,
+            StatusCode::OK
+        );
+    }
+    let identifiers: Vec<String> = f
+        .sent
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|v| v["user"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(identifiers[0], identifiers[1]);
+    assert!(identifiers[0].starts_with("colony_"));
+    assert_eq!(identifiers[0].len(), 71);
+    assert!(!identifiers[0].contains(&f.account.to_string()));
+    assert!(!identifiers[0].contains('@'));
+    let other = fixture(upstream_response()).await;
+    assert_eq!(
+        call(&other, &body(&other, Uuid::new_v4()), "other-customer")
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_ne!(
+        identifiers[0],
+        other.sent.lock().unwrap()[0]["user"].as_str().unwrap()
+    );
+    let mut blocked = fixture(upstream_response()).await;
+    Arc::get_mut(blocked.gateway.upstream.as_mut().unwrap())
+        .unwrap()
+        .model = "unchecked-commercial-terms".into();
+    assert_eq!(
+        call(&blocked, &body(&blocked, Uuid::new_v4()), "unchecked-model")
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(blocked.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        blocked
+            .gateway
+            .relay
+            .db
+            .account_credit_balance(blocked.account)
+            .await
+            .unwrap(),
+        1_000_000_000
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn gateway_response_never_exports_upstream_credentials_or_general_api_access() {
+    let mut response = upstream_response();
+    response["api_key"] = json!("synthetic-test-key");
+    response["endpoint"] = json!("https://provider.invalid/general-api-secret");
+    response["usage"]["token"] = json!("synthetic-test-key");
+    response["choices"][0]["token"] = json!("synthetic-test-key");
+    response["choices"][0]["message"]["credentials"] = json!({"key":"synthetic-test-key"});
+    let f = fixture(response).await;
+    let request = Uuid::new_v4();
+    let (status, response) = call(&f, &body(&f, request), "private-response").await;
+    assert_eq!(status, StatusCode::OK);
+    let serialized = response.to_string();
+    assert!(!serialized.contains("synthetic-test-key"));
+    assert!(!serialized.contains("general-api-secret"));
+    assert!(!serialized.contains("gen-"));
+    assert_eq!(response["id"], format!("colony-{request}"));
+    assert_eq!(response["choices"][0]["message"]["content"], "Hello");
+    let bare = Request::post("/managed-inference")
+        .header("host", &f.host)
+        .header(
+            "authorization",
+            format!("Bearer {}", response["id"].as_str().unwrap()),
+        )
+        .body(Body::from(body(&f, Uuid::new_v4())))
+        .unwrap();
+    assert_eq!(
+        routes(f.gateway.clone())
+            .oneshot(bare)
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+    let generic = Request::post("/v1/chat/completions")
+        .body(Body::from("{}"))
+        .unwrap();
+    assert_eq!(
+        routes(f.gateway.clone())
+            .oneshot(generic)
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND
+    );
 }

@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use super::credits_gateway_metering::TokenPrices;
+use super::credits_gateway_policy::Policy;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, value::RawValue, Value};
@@ -23,6 +24,7 @@ pub(super) struct Upstream {
     pub(super) fingerprint: String,
     openrouter: bool,
     prices: Option<TokenPrices>,
+    policy: Policy,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -67,6 +69,16 @@ impl Upstream {
             Err(_) if openrouter => None,
             Err(_) => return None,
         };
+        let allowed: Vec<String> = match std::env::var("COLONY_CREDITS_ALLOWED_MODELS") {
+            Ok(list) => serde_json::from_str(&list).ok()?,
+            Err(_) => vec![MODEL.into()],
+        };
+        let tracking = if openrouter {
+            Some(std::env::var("COLONY_CREDITS_USER_HASH_KEY").ok()?)
+        } else {
+            None
+        };
+        let policy = Policy::new(&model, allowed, openrouter, tracking).ok()?;
         Self::new(
             key,
             origin.trim_end_matches('/').into(),
@@ -74,10 +86,12 @@ impl Upstream {
             model,
             openrouter,
             prices,
+            policy,
         )
         .ok()
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn new(
         key: String,
         origin: String,
@@ -85,7 +99,9 @@ impl Upstream {
         model: String,
         openrouter: bool,
         prices: Option<TokenPrices>,
+        policy: Policy,
     ) -> Result<Self, ()> {
+        policy.check_model(&model)?;
         if let Some(prices) = &prices {
             prices.validate()?;
         }
@@ -119,6 +135,7 @@ impl Upstream {
             fingerprint,
             openrouter,
             prices,
+            policy,
         })
     }
 
@@ -131,6 +148,13 @@ impl Upstream {
             MODEL.into(),
             true,
             Some(TokenPrices::openrouter_ceiling()),
+            Policy::new(
+                MODEL,
+                vec![MODEL.into()],
+                true,
+                Some("synthetic-customer-hmac-key-at-least-32-bytes".into()),
+            )
+            .unwrap(),
         )
         .unwrap()
     }
@@ -144,12 +168,31 @@ impl Upstream {
             "direct-test-model".into(),
             false,
             Some(prices),
+            Policy::new(
+                "direct-test-model",
+                vec!["direct-test-model".into()],
+                false,
+                None,
+            )
+            .unwrap(),
         )
         .unwrap()
     }
 
     pub(super) fn request(&self, request: &ManagedRequest) -> Result<(Value, i64), ()> {
+        self.policy.check_model(&self.model)?;
         request.upstream_body(&self.model, self.openrouter, self.prices.as_ref())
+    }
+
+    pub(super) fn attribute_customer(
+        &self,
+        body: &mut Value,
+        account: uuid::Uuid,
+    ) -> Result<(), ()> {
+        if self.openrouter {
+            body["user"] = json!(self.policy.user(account)?);
+        }
+        Ok(())
     }
 
     pub(super) fn observe(&self, bytes: &[u8]) -> Result<ObservedResponse, ()> {
@@ -281,6 +324,10 @@ impl ManagedRequest {
         });
         if openrouter {
             body["provider"] = json!({"max_price":{"prompt":1,"completion":5,"request":0},"require_parameters":true});
+        }
+        if openrouter && model == MODEL {
+            body["provider"]["only"] = json!(["openai"]);
+            body["provider"]["allow_fallbacks"] = json!(false);
         }
         if !self.tools.is_empty() {
             body["tools"] = json!(self.tools);
@@ -512,6 +559,18 @@ mod tests {
             .charged,
             None
         );
+    }
+
+    #[test]
+    fn attribution_survives_inference_key_rotation() {
+        let mut upstream = Upstream::fake("http://127.0.0.1:1".into(), Duration::from_secs(1));
+        let account = uuid::Uuid::new_v4();
+        let mut before = json!({});
+        upstream.attribute_customer(&mut before, account).unwrap();
+        upstream.key = Zeroizing::new("rotated-synthetic-inference-key".into());
+        let mut after = json!({});
+        upstream.attribute_customer(&mut after, account).unwrap();
+        assert_eq!(before["user"], after["user"]);
     }
 
     async fn fake_server(router: axum::Router) -> (String, tokio::task::JoinHandle<()>) {

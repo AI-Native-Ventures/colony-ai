@@ -6,6 +6,7 @@ pub mod bridge;
 /// Private Colony Agent credit gateway.
 pub mod credits_gateway;
 mod credits_gateway_metering;
+mod credits_gateway_policy;
 mod credits_gateway_upstream;
 pub mod events;
 pub mod gifs;

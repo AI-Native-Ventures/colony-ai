@@ -205,14 +205,14 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
     .await?;
     let request: ManagedRequest = serde_json::from_slice(&body)
         .map_err(|_| api_error(StatusCode::BAD_REQUEST, "Invalid Colony Agent request."))?;
-    let (upstream_body, reserve) = upstream.request(&request).map_err(|_| {
+    let (mut upstream_body, reserve) = upstream.request(&request).map_err(|_| {
         api_error(
             StatusCode::BAD_REQUEST,
             "Unsupported Colony Agent request or context too large.",
         )
     })?;
     let digest = hex::encode(Sha256::digest(&body));
-    match gateway
+    let account_id = match gateway
         .relay
         .db
         .admit_credit_ai_request(
@@ -227,7 +227,7 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
         .await
         .map_err(database_error)?
     {
-        Admission::New => {}
+        Admission::New { account_id } => account_id,
         Admission::Insufficient => {
             return Err(api_error(
                 StatusCode::PAYMENT_REQUIRED,
@@ -252,7 +252,10 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
                 ),
             ))
         }
-    }
+    };
+    upstream
+        .attribute_customer(&mut upstream_body, account_id)
+        .map_err(|_| unavailable())?;
     // No inference retry. Cancellation and every error leave the committed hold
     // to the durable worker, including cancellation before the send starts.
     let bytes = match upstream.complete(&upstream_body).await {
@@ -295,6 +298,10 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
         return Err(recovering());
     }
     let mut response = observed.response;
+    response["id"] = json!(format!("colony-{}", request.request_id));
+    response["choices"] =
+        super::credits_gateway_policy::choices(&response["choices"]).map_err(|_| recovering())?;
+    response["usage"] = billing_usage(&response["usage"]);
     response["chargedNanousd"] = json!(charged.to_string());
     Ok(Json(response))
 }
