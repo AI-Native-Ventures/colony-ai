@@ -322,7 +322,7 @@ fn observe(
     #[derive(Deserialize)]
     struct Response {
         id: String,
-        usage: Option<Usage>,
+        usage: Option<Box<RawValue>>,
     }
     #[derive(Deserialize)]
     struct Usage {
@@ -338,7 +338,12 @@ fn observe(
         .filter(|v| v.is_object())
         .cloned()
         .unwrap_or_else(|| json!({}));
-    let cost = raw.usage.and_then(|u| u.cost);
+    // Preserve a valid generation id even when usage has the wrong shape, so
+    // automatic attribution can recover instead of charging the maximum.
+    let cost = raw
+        .usage
+        .and_then(|usage| serde_json::from_str::<Usage>(usage.get()).ok())
+        .and_then(|usage| usage.cost);
     let charged = match cost.as_ref() {
         Some(cost) => charge_decimal(cost.get()).ok(),
         None if usage.get("cost").is_none() => prices.and_then(|p| p.usage_charge(&usage).ok()),
@@ -461,6 +466,18 @@ mod tests {
             .charged,
             None
         );
+    }
+
+    #[test]
+    fn malformed_usage_preserves_generation_for_automatic_attribution() {
+        let observed = observe(
+            br#"{"id":"recover-me","choices":[],"usage":"invalid"}"#,
+            "model",
+            None,
+        )
+        .unwrap();
+        assert_eq!(observed.generation, "recover-me");
+        assert_eq!(observed.charged, None);
     }
 
     #[test]
