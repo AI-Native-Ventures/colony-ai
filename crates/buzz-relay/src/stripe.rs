@@ -135,6 +135,7 @@ impl PaymentProvider for Stripe {
         }
         let fields = [
             ("mode", "payment".to_owned()),
+            ("adaptive_pricing[enabled]", "false".to_owned()),
             ("client_reference_id", reference.to_owned()),
             ("customer_email", email.to_owned()),
             ("success_url", format!("{callback_url}?result=return")),
@@ -377,6 +378,7 @@ mod tests {
             assert_eq!(fields["line_items[0][price_data][unit_amount]"], "500");
             assert_eq!(fields["line_items[0][price_data][currency]"], "usd");
             assert_eq!(fields["mode"], "payment");
+            assert_eq!(fields["adaptive_pricing[enabled]"], "false");
             Json(serde_json::json!({"id":"cs_test_checkout", "url":"https://checkout.stripe.com/c/pay/test", "mode":"payment", "payment_status":"unpaid", "client_reference_id":"credit-test", "amount_total":500, "currency":"usd"}))
         }));
         let app = app.route("/checkout/sessions/cs_test_checkout", get(|| async {

@@ -46,7 +46,7 @@ pub enum ProviderError {
     Configuration,
 }
 
-/// Destination and fields for one hosted payment form POST.
+/// Hosted checkout destination, optional POST fields, and optional session identity.
 ///
 /// The fields include the public merchant key needed by PayFast's hosted form,
 /// so this type intentionally does not implement `Debug`.
@@ -141,7 +141,7 @@ pub struct ReconciledSubscription {
 /// One hosted-checkout provider.
 #[async_trait::async_trait]
 pub trait PaymentProvider: Send + Sync {
-    /// Build signed hosted-checkout form fields without contacting the provider.
+    /// Create hosted checkout authorization, contacting the gateway when required.
     async fn initialize(
         &self,
         amount_minor_units: i64,
