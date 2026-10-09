@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use super::{
     api_error, bridge,
-    credits_gateway_upstream::{ManagedRequest, Upstream, MAX_BODY, MODEL},
+    credits_gateway_upstream::{CompletionFailure, ManagedRequest, Upstream, MAX_BODY, MODEL},
     relay_members,
 };
 use crate::state::AppState;
@@ -252,10 +252,19 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
     }
     // No inference retry. Cancellation and every error leave the committed hold
     // to the durable worker, including cancellation before the send starts.
-    let bytes = upstream
-        .complete(&upstream_body)
-        .await
-        .map_err(|_| recovering())?;
+    let bytes = match upstream.complete(&upstream_body).await {
+        Ok(bytes) => bytes,
+        Err(CompletionFailure::Rejected) => {
+            gateway
+                .relay
+                .db
+                .reject_credit_ai_request(request.request_id)
+                .await
+                .map_err(database_error)?;
+            return Err(unavailable());
+        }
+        Err(CompletionFailure::Ambiguous) => return Err(recovering()),
+    };
     let observed = super::credits_gateway_upstream::observe(&bytes).map_err(|_| recovering())?;
     // Store only billing evidence, never prompts or completion content.
     gateway

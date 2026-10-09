@@ -27,6 +27,10 @@ impl Drop for Fixture {
 }
 
 async fn fixture(response: Value) -> Fixture {
+    fixture_status(response, StatusCode::OK).await
+}
+
+async fn fixture_status(response: Value, upstream_status: StatusCode) -> Fixture {
     let calls = Arc::new(AtomicUsize::new(0));
     let counter = calls.clone();
     let completion = response.clone();
@@ -41,7 +45,7 @@ async fn fixture(response: Value) -> Fixture {
                     assert!(headers.get("x-auth-tag").is_none());
                     assert_eq!(body["provider"]["max_price"]["request"], 0);
                     counter.fetch_add(1, Ordering::SeqCst);
-                    Json(completion)
+                    (upstream_status, Json(completion))
                 }
             }),
         )
@@ -467,4 +471,36 @@ async fn operator_correction_requires_operator_and_refunds_original_journal_once
     .await
     .unwrap();
     assert_eq!(refunds, 1);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn definite_upstream_rejection_releases_hold_without_billing_customer() {
+    let f = fixture_status(
+        json!({"error":{"message":"synthetic provider rejection"}}),
+        StatusCode::UNAUTHORIZED,
+    )
+    .await;
+    let request = Uuid::new_v4();
+    assert_eq!(
+        call(&f, &body(&f, request), "rejection").await.0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert_eq!(
+        f.gateway
+            .relay
+            .db
+            .account_credit_balance(f.account)
+            .await
+            .unwrap(),
+        1_000_000_000
+    );
+    let charged: i64 =
+        sqlx::query_scalar("SELECT charged_nanousd FROM account_ai_requests WHERE id=$1")
+            .bind(request)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(charged, 0);
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
 }

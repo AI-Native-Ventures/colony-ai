@@ -19,6 +19,12 @@ pub(super) struct Upstream {
     origin: String,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum CompletionFailure {
+    Rejected,
+    Ambiguous,
+}
+
 impl Upstream {
     pub(super) fn from_env() -> Option<Self> {
         let key = std::env::var("OPENROUTER_MASTER_KEY").ok()?;
@@ -51,7 +57,7 @@ impl Upstream {
         Self::new("synthetic-test-key".into(), origin, timeout).unwrap()
     }
 
-    pub(super) async fn complete(&self, body: &Value) -> Result<Vec<u8>, ()> {
+    pub(super) async fn complete(&self, body: &Value) -> Result<Vec<u8>, CompletionFailure> {
         let response = self
             .client
             .post(format!("{}/chat/completions", self.origin))
@@ -60,8 +66,16 @@ impl Upstream {
             .json(body)
             .send()
             .await
-            .map_err(|_| ())?;
-        bounded_response(response).await
+            .map_err(|_| CompletionFailure::Ambiguous)?;
+        if matches!(
+            response.status().as_u16(),
+            400 | 401 | 402 | 403 | 404 | 413 | 422 | 429
+        ) {
+            return Err(CompletionFailure::Rejected);
+        }
+        bounded_response(response)
+            .await
+            .map_err(|_| CompletionFailure::Ambiguous)
     }
 
     pub(super) async fn generation_cost(&self, generation: &str) -> Result<i64, ()> {

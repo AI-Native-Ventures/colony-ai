@@ -147,6 +147,14 @@ impl Db {
         Ok(Admission::New)
     }
 
+    /// Persist an authoritative upstream rejection as zero usage before releasing
+    /// its hold. Recovery can finish this if the settlement acknowledgement is lost.
+    pub async fn reject_credit_ai_request(&self, id: Uuid) -> Result<()> {
+        sqlx::query("UPDATE account_ai_requests SET observed_nanousd = 0, usage = '{\"upstreamRejected\":true}'::jsonb WHERE id = $1 AND status = 'pending' AND generation_id IS NULL")
+            .bind(id).execute(&self.pool).await?;
+        self.settle_credit_ai_request(id, 0, false).await
+    }
+
     /// Persist returned attribution before trying settlement. Above-ceiling costs
     /// remain review evidence and cannot increase the authorized debit.
     pub async fn observe_credit_ai_usage(
