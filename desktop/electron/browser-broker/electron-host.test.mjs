@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { GATE_MARKER, GATE_HOME_PREFIX } from "./packaged-gate.mjs";
 import { createBrowserHost } from "../browser-host.mjs";
 import {
   createElectronBrowserAgentHost,
@@ -91,6 +92,7 @@ async function fixture(t, options = {}) {
     browserHost: browser,
     enabled: true,
     socketPath: path.join(dir, "s", "b.sock"),
+    gateEnvironment: options.gateEnvironment ?? {},
     proxyFactory: () => ({
       start: async () => 9999,
       stop: async () => network.push("stop-proxy"),
@@ -373,5 +375,114 @@ test("failed network cleanup is visible and retained for explicit person recover
       f.sender.id,
     ),
     { enabled: true, recoveryRequired: false },
+  );
+});
+
+async function gateFixture(t, changes = {}) {
+  const home = await mkdtemp(path.join(os.tmpdir(), GATE_HOME_PREFIX));
+  await chmod(home, 0o700);
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const config = {
+    schema: 1,
+    nonce: "c".repeat(64),
+    provider: "FAKE",
+    expiresAt: Date.now() + 60_000,
+    origin: "http://127.0.0.1:43210",
+    agentId: "a".repeat(64),
+    taskId: "conversation:11111111-1111-4111-8111-111111111111",
+    communityOrigin: "https://relay.example",
+    businessId: "business-a",
+    clientId: null,
+    ...changes,
+  };
+  const marker = path.join(home, GATE_MARKER);
+  await writeFile(marker, JSON.stringify(config), { mode: 0o600 });
+  const gateEnvironment = {
+    HOME: home,
+    COLONY_BROWSER_PACKAGED_GATE: "c".repeat(64),
+  };
+  return { home, marker, config, gateEnvironment };
+}
+
+test("packaged production grant needs BOTH gate opt-ins", async (t) => {
+  const gate = await gateFixture(t);
+  const absent = await fixture(t, { gateEnvironment: { HOME: gate.home } });
+  await assert.rejects(
+    absent.grant({ allowedOrigins: [gate.config.origin] }),
+    /public internet address/iu,
+  );
+  await rm(gate.marker);
+  await assert.rejects(fixture(t, gate), /ENOENT/u);
+});
+
+test("packaged gate rejects wrong nonce, provider, expiry, permissions and symlink marker", async (t) => {
+  for (const changes of [
+    { nonce: "d".repeat(64) },
+    { provider: "openai" },
+    { expiresAt: 0 },
+    { expiresAt: Date.now() + 3600_000 },
+    { origin: "http://localhost:43210" },
+    { origin: "http://127.0.0.1:43210/path" },
+  ]) {
+    const gate = await gateFixture(t, changes);
+    await assert.rejects(fixture(t, gate), /gate/iu);
+  }
+  const gate = await gateFixture(t);
+  await chmod(gate.home, 0o755);
+  await assert.rejects(fixture(t, gate), /private temporary HOME/u);
+  await chmod(gate.home, 0o700);
+  await chmod(gate.marker, 0o644);
+  await assert.rejects(fixture(t, gate), /marker/u);
+  await chmod(gate.marker, 0o600);
+  const target = path.join(gate.home, "target");
+  await writeFile(target, JSON.stringify(gate.config), { mode: 0o600 });
+  await rm(gate.marker);
+  await symlink(target, gate.marker);
+  await assert.rejects(fixture(t, gate), /marker/u);
+});
+
+test("packaged grant seam binds one task and origin, preserves refusal hooks and consumes once", async (t) => {
+  const gate = await gateFixture(t);
+  const f = await fixture(t, gate);
+  for (const changed of [
+    { agentId: "b".repeat(64) },
+    { taskId: "conversation:22222222-2222-4222-8222-222222222222" },
+    { communityOrigin: "https://other.example" },
+    { allowedOrigins: ["http://127.0.0.1:43211"] },
+    { allowedOrigins: [gate.config.origin, "https://example.com"] },
+  ])
+    await assert.rejects(
+      f.grant({ allowedOrigins: [gate.config.origin], ...changed }),
+      /exact fixture/u,
+    );
+  const grant = await f.grant({ allowedOrigins: [gate.config.origin] });
+  assert.deepEqual(grant.privateExceptions, ["127.0.0.1:43210"]);
+  const contents = f.browser.agentAdapter.webContents(f.tab.id);
+  for (const event of ["will-frame-navigate", "will-redirect"]) {
+    for (const [url, blocked] of [
+      [gate.config.origin + "/ok", false],
+      ["http://127.0.0.1:43211/private", true],
+      ["http://192.168.1.1/", true],
+      ["file:///private/secret", true],
+    ]) {
+      let cancelled = false;
+      contents.emit(event, {
+        url,
+        isMainFrame: true,
+        preventDefault() {
+          cancelled = true;
+        },
+      });
+      assert.equal(cancelled, blocked, `${event} ${url}`);
+    }
+  }
+  await f.host.handleRequest(
+    "agent-revoke",
+    { grantId: grant.id },
+    f.sender.id,
+  );
+  await assert.rejects(
+    f.grant({ allowedOrigins: [gate.config.origin] }),
+    /one exact/u,
   );
 });
