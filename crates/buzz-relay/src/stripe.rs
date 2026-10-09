@@ -338,7 +338,9 @@ mod tests {
         let mut wrong = headers.clone();
         wrong.insert(
             "stripe-signature",
-            "t=1,v1=deadbeef".parse().expect("header"),
+            format!("t={},v1=deadbeef", chrono::Utc::now().timestamp())
+                .parse()
+                .expect("header"),
         );
         assert!(provider.verify_callback(&body, &wrong, None).await.is_err());
     }

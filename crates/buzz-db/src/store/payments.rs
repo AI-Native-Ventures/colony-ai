@@ -1624,7 +1624,7 @@ mod postgres_tests {
         let event = format!("evt_{}", Uuid::new_v4().simple());
         let session = format!("cs_{}", Uuid::new_v4().simple());
         // Fail the actual ledger INSERT after the notification has been inserted in its transaction.
-        sqlx::query("CREATE FUNCTION stripe_test_crash() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected ledger crash'; END $$").execute(&pool).await.expect("function");
+        sqlx::query("CREATE FUNCTION stripe_test_crash() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_terminate_backend(pg_backend_pid()); RETURN NEW; END $$").execute(&pool).await.expect("function");
         sqlx::query("CREATE TRIGGER stripe_test_crash BEFORE INSERT ON account_credit_ledger FOR EACH ROW EXECUTE FUNCTION stripe_test_crash()").execute(&pool).await.expect("trigger");
         assert!(db
             .apply_account_payment_notification_for_provider(

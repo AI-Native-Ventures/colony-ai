@@ -1241,3 +1241,6 @@ mod tests {
         assert_eq!(body.0["error"], "subscription_pending");
     }
 }
+
+#[cfg(test)]
+mod postgres_tests;
