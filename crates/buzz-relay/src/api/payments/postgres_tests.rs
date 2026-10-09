@@ -15,8 +15,9 @@ async fn state() -> (Arc<AppState>, Keys, Uuid, String) {
     .await;
     let host = format!("stripe-{}.example", Uuid::new_v4().simple());
     let mutable = Arc::get_mut(&mut state).expect("unique state");
-    mutable.config.payments = crate::config::PaymentsConfig::stripe_test_config();
-    mutable.config.relay_url = format!("wss://{host}");
+    let config = Arc::make_mut(&mut mutable.config);
+    config.payments = crate::config::PaymentsConfig::stripe_test_config();
+    config.relay_url = format!("wss://{host}");
     state
         .db
         .ensure_configured_community(&host)

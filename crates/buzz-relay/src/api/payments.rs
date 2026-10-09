@@ -493,7 +493,7 @@ async fn resolve_credit_intent(
             &intent,
             None,
             &intent.idempotency_key,
-            credit_sandbox(&state),
+            credit_sandbox(state),
         )));
     }
     if intent.status != "pending" {
@@ -557,7 +557,7 @@ async fn resolve_credit_intent(
         &intent,
         Some(checkout_url),
         &intent.idempotency_key,
-        credit_sandbox(&state),
+        credit_sandbox(state),
     )))
 }
 
@@ -1133,10 +1133,8 @@ mod tests {
             "postgres://fake:fake@127.0.0.1:1/fake",
         )
         .await;
-        Arc::get_mut(&mut state)
-            .expect("unique state")
-            .config
-            .payments = crate::config::PaymentsConfig::stripe_test_config();
+        Arc::make_mut(&mut Arc::get_mut(&mut state).expect("unique state").config).payments =
+            crate::config::PaymentsConfig::stripe_test_config();
         let stripe = configured_stripe(&state).expect("configured provider");
         assert_eq!(stripe.name(), "stripe");
         let response = router(state)
@@ -1173,10 +1171,8 @@ mod tests {
             "postgres://fake:fake@127.0.0.1:1/fake",
         )
         .await;
-        Arc::get_mut(&mut state)
-            .expect("unique test state")
-            .config
-            .payments = crate::config::PaymentsConfig::stripe_test_config();
+        Arc::make_mut(&mut Arc::get_mut(&mut state).expect("unique test state").config).payments =
+            crate::config::PaymentsConfig::stripe_test_config();
         let body = br#"{"id":"evt_test","type":"checkout.session.completed","data":{"object":{"id":"cs_test","client_reference_id":"credit-test","mode":"payment","payment_status":"paid","amount_total":500,"currency":"usd"}}}"#;
         let timestamp = chrono::Utc::now().timestamp();
         let mut mac = Hmac::<Sha256>::new_from_slice(b"fake-webhook").expect("hmac");
