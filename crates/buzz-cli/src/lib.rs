@@ -2871,6 +2871,15 @@ pub enum MemCmd {
 /// Subcommands for `colony credits`.
 #[derive(Subcommand)]
 pub enum CreditsCmd {
+    /// Correct provisional Colony Agent usage from OpenRouter attribution (operator only).
+    ReconcileAi {
+        /// Original durable gateway request UUID.
+        #[arg(long)]
+        request_id: uuid::Uuid,
+        /// Generation id established from OpenRouter activity.
+        #[arg(long)]
+        generation_id: String,
+    },
     /// Show the account's available credit balance.
     Balance,
     /// Show account credit usage recorded by the server ledger.

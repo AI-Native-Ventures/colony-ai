@@ -6,6 +6,17 @@ use crate::CreditsCmd;
 
 pub async fn dispatch(command: CreditsCmd, client: &BuzzClient) -> Result<(), CliError> {
     match command {
+        CreditsCmd::ReconcileAi {
+            request_id,
+            generation_id,
+        } => {
+            let body = serde_json::json!({"request_id":request_id,"generation_id":generation_id});
+            print_body(
+                client
+                    .post_json_once_authed("/api/credits-gateway/reconcile", &body)
+                    .await?,
+            )
+        }
         CreditsCmd::Balance => print_body(client.get_authed("/api/payments/balance").await?),
         CreditsCmd::Usage => print_body(client.get_authed("/api/payments/usage").await?),
         CreditsCmd::History => print_body(client.get_authed("/api/payments/history").await?),

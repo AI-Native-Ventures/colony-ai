@@ -20,6 +20,8 @@ pub mod channel_members;
 pub mod community;
 /// Durable company work watchdog schedule and delivery journal.
 pub mod company_work_watchdog;
+/// Private Colony managed-session credit reservations and settlement.
+pub mod credits_gateway;
 /// Durable whole-community deletion lifecycle and PostgreSQL adapter.
 pub mod deletion;
 /// Direct message channel persistence.
