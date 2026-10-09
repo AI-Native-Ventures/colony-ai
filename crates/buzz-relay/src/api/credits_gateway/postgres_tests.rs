@@ -32,6 +32,10 @@ async fn fixture(response: Value) -> Fixture {
 }
 
 async fn fixture_status(response: Value, upstream_status: StatusCode) -> Fixture {
+    fixture_provider(response, upstream_status, false).await
+}
+
+async fn fixture_provider(response: Value, upstream_status: StatusCode, direct: bool) -> Fixture {
     let calls = Arc::new(AtomicUsize::new(0));
     let counter = calls.clone();
     let completion = response.clone();
@@ -44,7 +48,12 @@ async fn fixture_status(response: Value, upstream_status: StatusCode) -> Fixture
                 async move {
                     assert_eq!(headers["authorization"], "Bearer synthetic-test-key");
                     assert!(headers.get("x-auth-tag").is_none());
-                    assert_eq!(body["provider"]["max_price"]["request"], 0);
+                    if direct {
+                        assert!(body.get("provider").is_none());
+                        assert_eq!(body["model"], "direct-test-model");
+                    } else {
+                        assert_eq!(body["provider"]["max_price"]["request"], 0);
+                    }
                     counter.fetch_add(1, Ordering::SeqCst);
                     (upstream_status, Json(completion))
                 }
@@ -58,6 +67,10 @@ async fn fixture_status(response: Value, upstream_status: StatusCode) -> Fixture
                 >| {
                     let response = response.clone();
                     async move {
+                        assert!(
+                            !direct,
+                            "direct providers must not query OpenRouter generation metadata"
+                        );
                         assert_eq!(query.get("id").map(String::as_str), response["id"].as_str());
                         Json(json!({"data":{"id":response["id"],"total_cost":0.01}}))
                     }
@@ -142,7 +155,17 @@ async fn fixture_status(response: Value, upstream_status: StatusCode) -> Fixture
     );
     let gateway = Gateway {
         relay: Arc::new(state),
-        upstream: Some(Arc::new(Upstream::fake(origin, Duration::from_secs(1)))),
+        upstream: Some(Arc::new(if direct {
+            Upstream::fake_direct(
+                origin,
+                super::super::credits_gateway_metering::TokenPrices {
+                    input_nanousd_per_million: "1000000001".into(),
+                    output_nanousd_per_million: "2000000003".into(),
+                },
+            )
+        } else {
+            Upstream::fake(origin, Duration::from_secs(1))
+        })),
         enabled: true,
     };
     Fixture {
@@ -415,7 +438,13 @@ async fn operator_correction_requires_operator_and_refunds_original_journal_once
     let request = Uuid::new_v4();
     // Simulate a crash after durable admission, before any provider attribution.
     let private: ManagedRequest = serde_json::from_str(&body(&f, request)).unwrap();
-    let (_, reserve) = private.upstream_body().unwrap();
+    let (_, reserve) = f
+        .gateway
+        .upstream
+        .as_ref()
+        .unwrap()
+        .request(&private)
+        .unwrap();
     let row: Uuid = sqlx::query_scalar("SELECT community_id FROM account_ai_sessions WHERE id=$1")
         .bind(f.session)
         .fetch_one(&f.pool)
@@ -425,6 +454,7 @@ async fn operator_correction_requires_operator_and_refunds_original_journal_once
         .relay
         .db
         .admit_credit_ai_request(
+            &f.gateway.upstream.as_ref().unwrap().fingerprint,
             buzz_core::CommunityId::from_uuid(row),
             f.agent.public_key().as_bytes(),
             f.session,
@@ -513,4 +543,91 @@ async fn definite_upstream_rejection_releases_hold_without_billing_customer() {
             .unwrap();
     assert_eq!(charged, 0);
     assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn fake_direct_provider_token_usage_settles_exact_ledger_without_returned_cost() {
+    let response = json!({"id":format!("direct-{}",Uuid::new_v4()),"choices":[{"message":{"role":"assistant","content":"Hello direct"}}],"usage":{"prompt_tokens":7,"completion_tokens":3,"total_tokens":10}});
+    let f = fixture_provider(response, StatusCode::OK, true).await;
+    let request = Uuid::new_v4();
+    let payload = body(&f, request);
+    let (status, response) = call(&f, &payload, "direct-first").await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+    // ceil((7*1000000001 + 3*2000000003) * 12 / 10000000).
+    assert_eq!(response["chargedNanousd"], "15601");
+    assert_eq!(response["model"], "direct-test-model");
+    assert_eq!(
+        f.gateway
+            .relay
+            .db
+            .account_credit_balance(f.account)
+            .await
+            .unwrap(),
+        999_984_399
+    );
+    let record = f
+        .gateway
+        .relay
+        .db
+        .credit_ai_recovery_request(request)
+        .await
+        .unwrap();
+    assert_eq!(record.observed, Some(15_601));
+    let usage: Value = sqlx::query_scalar("SELECT usage FROM account_ai_requests WHERE id=$1")
+        .bind(request)
+        .fetch_one(&f.pool)
+        .await
+        .unwrap();
+    assert_eq!(usage["costSource"], "token_table");
+    assert_eq!(usage["inputPriceNanousdPerMillion"], "1000000001");
+    assert_eq!(usage["outputPriceNanousdPerMillion"], "2000000003");
+    assert_eq!(
+        record.upstream_id,
+        f.gateway.upstream.as_ref().unwrap().fingerprint
+    );
+    assert_eq!(
+        call(&f, &payload, "direct-retry").await.0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn recovery_fences_provider_configuration_changes_and_still_expires_hold() {
+    let mut response = upstream_response();
+    response.as_object_mut().unwrap().remove("usage");
+    let mut f = fixture(response).await;
+    let request = Uuid::new_v4();
+    assert_eq!(
+        call(&f, &body(&f, request), "configuration-fence").await.0,
+        StatusCode::CONFLICT
+    );
+    Arc::get_mut(f.gateway.upstream.as_mut().unwrap())
+        .unwrap()
+        .fingerprint = "different-provider-configuration".into();
+    sqlx::query("UPDATE account_ai_requests SET next_retry_at=now() WHERE id=$1")
+        .bind(request)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    recover_due(&f.gateway).await.unwrap();
+    let status: String = sqlx::query_scalar("SELECT status FROM account_ai_requests WHERE id=$1")
+        .bind(request)
+        .fetch_one(&f.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        status, "pending",
+        "must not settle from the replacement provider's generation endpoint"
+    );
+    sqlx::query("UPDATE account_ai_requests SET created_at=now()-interval '16 minutes', next_retry_at=now() WHERE id=$1").bind(request).execute(&f.pool).await.unwrap();
+    recover_due(&f.gateway).await.unwrap();
+    let status: String = sqlx::query_scalar("SELECT status FROM account_ai_requests WHERE id=$1")
+        .bind(request)
+        .fetch_one(&f.pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "estimated");
 }

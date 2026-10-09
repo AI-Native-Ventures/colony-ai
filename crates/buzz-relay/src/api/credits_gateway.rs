@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use super::{
     api_error, bridge,
-    credits_gateway_upstream::{CompletionFailure, ManagedRequest, Upstream, MAX_BODY, MODEL},
+    credits_gateway_upstream::{CompletionFailure, ManagedRequest, Upstream, MAX_BODY},
     relay_members,
 };
 use crate::state::AppState;
@@ -71,7 +71,9 @@ fn routes(gateway: Gateway) -> Router {
 }
 
 async fn capabilities(State(gateway): State<Gateway>) -> Json<Value> {
-    Json(json!({"enabled":gateway.enabled,"runtime":"colony","model":MODEL,"marginPercent":20}))
+    Json(
+        json!({"enabled":gateway.enabled,"runtime":"colony","model":gateway.upstream.as_ref().map(|u| &u.model),"marginPercent":20}),
+    )
 }
 
 fn unavailable() -> (StatusCode, Json<Value>) {
@@ -156,7 +158,7 @@ async fn create_session(
         .await
         .map_err(database_error)?;
     Ok(Json(
-        json!({"sessionId":session,"expiresInSeconds":7200,"model":MODEL}),
+        json!({"sessionId":session,"expiresInSeconds":7200,"model":gateway.upstream.as_ref().map(|u| &u.model)}),
     ))
 }
 
@@ -203,7 +205,7 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
     .await?;
     let request: ManagedRequest = serde_json::from_slice(&body)
         .map_err(|_| api_error(StatusCode::BAD_REQUEST, "Invalid Colony Agent request."))?;
-    let (upstream_body, reserve) = request.upstream_body().map_err(|_| {
+    let (upstream_body, reserve) = upstream.request(&request).map_err(|_| {
         api_error(
             StatusCode::BAD_REQUEST,
             "Unsupported Colony Agent request or context too large.",
@@ -214,6 +216,7 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
         .relay
         .db
         .admit_credit_ai_request(
+            &upstream.fingerprint,
             tenant.community(),
             agent.as_bytes(),
             request.session_id,
@@ -265,7 +268,7 @@ async fn inference(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
         }
         Err(CompletionFailure::Ambiguous) => return Err(recovering()),
     };
-    let observed = super::credits_gateway_upstream::observe(&bytes).map_err(|_| recovering())?;
+    let observed = upstream.observe(&bytes).map_err(|_| recovering())?;
     // Store only billing evidence, never prompts or completion content.
     gateway
         .relay
@@ -303,8 +306,16 @@ fn billing_usage(usage: &Value) -> Value {
             result[key] = json!(value);
         }
     }
-    if let Some(cost) = usage.get("costUsd").and_then(Value::as_str) {
-        result["costUsd"] = json!(cost);
+    for key in [
+        "costUsd",
+        "model",
+        "costSource",
+        "inputPriceNanousdPerMillion",
+        "outputPriceNanousdPerMillion",
+    ] {
+        if let Some(value) = usage.get(key).and_then(Value::as_str) {
+            result[key] = json!(value);
+        }
     }
     // Returned decimal and margin-inclusive integer are both durable.
     result
@@ -320,7 +331,9 @@ async fn recover_due(gateway: &Gateway) -> Result<(), buzz_db::DbError> {
         let mut actual = record.observed.filter(|cost| *cost <= record.reserved);
         if actual.is_none() && age < chrono::Duration::minutes(15) {
             if let (Some(upstream), Some(generation)) = (&gateway.upstream, &record.generation_id) {
+                if upstream.fingerprint == record.upstream_id {
                 actual = tokio::time::timeout(Duration::from_secs(10), upstream.generation_cost(generation)).await.ok().and_then(Result::ok).filter(|cost| *cost <= record.reserved);
+                }
             }
         }
         if let Some(charged) = actual {
@@ -366,10 +379,11 @@ async fn reconcile(State(gateway): State<Gateway>, headers: HeaderMap, body: Byt
         .credit_ai_recovery_request(request.request_id)
         .await
         .map_err(database_error)?;
-    if record
-        .generation_id
-        .as_ref()
-        .is_some_and(|id| id != &request.generation_id)
+    if record.upstream_id != upstream.fingerprint
+        || record
+            .generation_id
+            .as_ref()
+            .is_some_and(|id| id != &request.generation_id)
         || request.generation_id.is_empty()
         || request.generation_id.len() > 200
     {

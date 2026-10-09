@@ -66,6 +66,7 @@ async fn aggregate_holds_allow_four_employees_and_block_fifth_and_other_debits()
     let digest = "a".repeat(64);
     let requests: Vec<_> = (0..5).map(|_| Uuid::new_v4()).collect();
     let a = db.admit_credit_ai_request(
+        "fixture",
         community,
         agent.public_key().as_bytes(),
         sessions[0],
@@ -74,6 +75,7 @@ async fn aggregate_holds_allow_four_employees_and_block_fifth_and_other_debits()
         200_000_000,
     );
     let b = db.admit_credit_ai_request(
+        "fixture",
         community,
         agent.public_key().as_bytes(),
         sessions[1],
@@ -87,6 +89,7 @@ async fn aggregate_holds_allow_four_employees_and_block_fifth_and_other_debits()
     for i in 2..4 {
         assert_eq!(
             db.admit_credit_ai_request(
+                "fixture",
                 community,
                 agent.public_key().as_bytes(),
                 sessions[i],
@@ -101,6 +104,7 @@ async fn aggregate_holds_allow_four_employees_and_block_fifth_and_other_debits()
     }
     assert_eq!(
         db.admit_credit_ai_request(
+            "fixture",
             community,
             agent.public_key().as_bytes(),
             sessions[4],
@@ -127,6 +131,7 @@ async fn aggregate_holds_allow_four_employees_and_block_fifth_and_other_debits()
         .unwrap();
     assert_eq!(
         db.admit_credit_ai_request(
+            "fixture",
             community,
             agent.public_key().as_bytes(),
             sessions[4],
@@ -140,6 +145,7 @@ async fn aggregate_holds_allow_four_employees_and_block_fifth_and_other_debits()
     );
     assert_eq!(
         db.admit_credit_ai_request(
+            "fixture",
             community,
             agent.public_key().as_bytes(),
             sessions[4],
@@ -161,6 +167,7 @@ async fn settlement_lost_ack_replay_is_exactly_once_and_estimate_correction_refu
     let digest = "a".repeat(64);
     assert_eq!(
         db.admit_credit_ai_request(
+            "fixture",
             community,
             agent.public_key().as_bytes(),
             ids[1],
@@ -174,6 +181,7 @@ async fn settlement_lost_ack_replay_is_exactly_once_and_estimate_correction_refu
     );
     assert_eq!(
         db.admit_credit_ai_request(
+            "fixture",
             community,
             agent.public_key().as_bytes(),
             ids[1],
@@ -187,6 +195,7 @@ async fn settlement_lost_ack_replay_is_exactly_once_and_estimate_correction_refu
     );
     assert!(db
         .admit_credit_ai_request(
+            "fixture",
             community,
             agent.public_key().as_bytes(),
             ids[1],
@@ -227,6 +236,7 @@ async fn settlement_lost_ack_replay_is_exactly_once_and_estimate_correction_refu
     assert_eq!(count, 1);
     assert_eq!(
         db.admit_credit_ai_request(
+            "fixture",
             community,
             agent.public_key().as_bytes(),
             ids[1],
@@ -251,6 +261,7 @@ async fn session_identity_community_expiry_and_ownership_are_enforced() {
     let other = Keys::generate();
     assert!(db
         .admit_credit_ai_request(
+            "fixture",
             community,
             other.public_key().as_bytes(),
             ids[1],
@@ -262,6 +273,7 @@ async fn session_identity_community_expiry_and_ownership_are_enforced() {
         .is_err());
     assert!(db
         .admit_credit_ai_request(
+            "fixture",
             CommunityId::from_uuid(Uuid::new_v4()),
             agent.public_key().as_bytes(),
             ids[1],
@@ -278,6 +290,7 @@ async fn session_identity_community_expiry_and_ownership_are_enforced() {
         .unwrap();
     assert!(db
         .admit_credit_ai_request(
+            "fixture",
             community,
             agent.public_key().as_bytes(),
             ids[1],
@@ -300,6 +313,7 @@ async fn session_identity_community_expiry_and_ownership_are_enforced() {
         .unwrap();
     assert!(db
         .admit_credit_ai_request(
+            "fixture",
             community,
             agent.public_key().as_bytes(),
             ids[1],
@@ -321,6 +335,7 @@ async fn zero_cost_releases_hold_and_recovery_claims_are_bounded_and_back_off() 
     let (db, pool, community, agent, ids) = fixture().await;
     let request = Uuid::new_v4();
     db.admit_credit_ai_request(
+        "fixture",
         community,
         agent.public_key().as_bytes(),
         ids[1],
@@ -365,6 +380,7 @@ async fn migration_schema_gateway_authorization_and_reservations_use_migrated_ta
     let (db, _, community, agent, ids) = fixture().await;
     assert_eq!(
         db.admit_credit_ai_request(
+            "fixture",
             community,
             agent.public_key().as_bytes(),
             ids[1],
@@ -378,4 +394,47 @@ async fn migration_schema_gateway_authorization_and_reservations_use_migrated_ta
     );
     let count: i64 = sqlx::query_scalar("SELECT count(*) FROM _operator_global_tables WHERE table_name IN ('account_ai_sessions','account_ai_requests')").fetch_one(&pool).await.unwrap();
     assert_eq!(count, 2);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn admission_recovers_expired_session_even_when_background_worker_is_backlogged() {
+    let (db, pool, community, agent, ids) = fixture().await;
+    let old = Uuid::new_v4();
+    db.admit_credit_ai_request(
+        "fixture",
+        community,
+        agent.public_key().as_bytes(),
+        ids[1],
+        old,
+        &"a".repeat(64),
+        100_000_000,
+    )
+    .await
+    .unwrap();
+    sqlx::query("UPDATE account_ai_requests SET created_at=now()-interval '16 minutes', next_retry_at=now()+interval '1 hour' WHERE id=$1").bind(old).execute(&pool).await.unwrap();
+    assert_eq!(
+        db.admit_credit_ai_request(
+            "fixture",
+            community,
+            agent.public_key().as_bytes(),
+            ids[1],
+            Uuid::new_v4(),
+            &"b".repeat(64),
+            100_000_000
+        )
+        .await
+        .unwrap(),
+        Admission::New
+    );
+    let status: String = sqlx::query_scalar("SELECT status FROM account_ai_requests WHERE id=$1")
+        .bind(old)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "estimated");
+    assert_eq!(
+        db.account_credit_balance(ids[0]).await.unwrap(),
+        800_000_000
+    );
 }
