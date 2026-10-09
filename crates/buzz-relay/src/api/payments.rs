@@ -1198,7 +1198,7 @@ mod tests {
 
     #[test]
     fn provider_status_payload_keeps_amounts_as_exact_strings() {
-        let intent = PaymentIntentRecord {
+        let mut intent = PaymentIntentRecord {
             reference: "credit-1".to_owned(),
             account_id: Uuid::nil(),
             idempotency_key: Uuid::nil(),
@@ -1217,6 +1217,25 @@ mod tests {
         let response = payment_intent_json(&intent);
         assert_eq!(response["grantNanousd"], "5000000000");
         assert_eq!(response["status"], "paid");
+        intent.provider = "stripe".to_owned();
+        intent.charge_currency = "USD".to_owned();
+        intent.charge_minor_units = 500;
+        intent.provider_payment_id = Some("cs_test".to_owned());
+        intent.paid_minor_units = Some(500);
+        let response = intent_response(
+            &intent,
+            Some(CheckoutAuthorization {
+                url: "https://checkout.stripe.com/c/pay/test".to_owned(),
+                session_id: Some("cs_test".to_owned()),
+                fields: vec![],
+            }),
+            &intent.idempotency_key,
+            false,
+        );
+        assert_eq!(response["currency"], "USD");
+        assert_eq!(response["authorizationMethod"], "GET");
+        assert_eq!(response["amountMinorUnits"], 500);
+        assert_eq!(response["grantUsdCents"], 500);
     }
 
     #[test]
