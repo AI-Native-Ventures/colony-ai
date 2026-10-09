@@ -1,3 +1,4 @@
+import { browserAgentEnabled } from "./browser-broker/feature-flag.mjs";
 import { EventEmitter } from "node:events";
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
@@ -32,7 +33,7 @@ export function browserNativeEnvironment(env, browserAgentHost) {
       ([key]) => !key.toUpperCase().startsWith("COLONY_BROWSER_"),
     ),
   );
-  if (env.COLONY_BROWSER_AGENT !== "1" || browserAgentHost?.enabled !== true)
+  if (!browserAgentEnabled(env) || browserAgentHost?.enabled !== true)
     return clean;
   const generated = browserAgentHost.env;
   const keys = [
