@@ -416,6 +416,8 @@ const DEFAULT_SYSTEM_PROMPT: &str =
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Provider {
+    /// Private managed-session Colony credits. No provider API key.
+    ColonyCredits,
     Anthropic,
     OpenAi,
     /// DeepSeek's OpenAI-compatible Chat Completions API.
@@ -659,6 +661,13 @@ impl Config {
         // hatch — empty means "use OAuth PKCE." Legacy Databricks encodes the
         // model in the URL path; Databricks v2 keeps it in the request body.
         let (api_key, model, base_url, openai_api) = match provider {
+            Provider::ColonyCredits => (
+                String::new(),
+                env_or("COLONY_CREDITS_MODEL", "colony-credits"),
+                crate::credits_gateway::gateway_origin(&req("BUZZ_RELAY_URL")?)
+                    .map_err(|error| error.to_string())?,
+                OpenAiApi::Chat,
+            ),
             Provider::Anthropic => (
                 req("ANTHROPIC_API_KEY")?,
                 resolve_model(
@@ -723,7 +732,11 @@ impl Config {
             anthropic_api_version: env_or("ANTHROPIC_API_VERSION", "2023-06-01"),
             openai_api,
             max_rounds: parse_env("BUZZ_AGENT_MAX_ROUNDS", 0)?,
-            max_output_tokens: parse_env("BUZZ_AGENT_MAX_OUTPUT_TOKENS", 65_536)?,
+            max_output_tokens: if provider == Provider::ColonyCredits {
+                4096
+            } else {
+                parse_env("BUZZ_AGENT_MAX_OUTPUT_TOKENS", 65_536)?
+            },
             max_token_recoveries: parse_env("BUZZ_AGENT_MAX_TOKEN_RECOVERIES", 3u32)?,
             llm_timeout: Duration::from_secs(parse_env("BUZZ_AGENT_LLM_TIMEOUT_SECS", 240)?),
             tool_timeout: Duration::from_secs(parse_env("BUZZ_AGENT_TOOL_TIMEOUT_SECS", 1_260)?),
@@ -982,6 +995,7 @@ fn resolve_provider_with_keys(
                 "databricks_v2" | "databricks-v2" => Ok(Provider::DatabricksV2),
                 "openrouter" if present_nonempty(openrouter_key) => Ok(Provider::OpenRouter),
                 "openrouter" => Err("config: OPENROUTER_API_KEY required".into()),
+                "colony-credits" => Ok(Provider::ColonyCredits),
                 "deepseek" if present_nonempty(deepseek_key) => Ok(Provider::DeepSeek),
                 "deepseek" => Err("config: DEEPSEEK_API_KEY required".into()),
                 _ => Err(format!(
