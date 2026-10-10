@@ -198,6 +198,13 @@ export const TOOLS = Object.freeze([
     ),
   },
   {
+    name: "browser_download",
+    description:
+      "Download an HTTP(S) link from a current element reference after person confirmation. The file is saved in Downloads; only its opaque id, name and size are returned. No URLs, paths or headers are accepted." +
+      UNTRUSTED,
+    inputSchema: object({ tab, ref }, ["tab", "ref"]),
+  },
+  {
     name: "browser_upload",
     description:
       "Attach a file the person chose earlier to a file input. You cannot choose paths.",

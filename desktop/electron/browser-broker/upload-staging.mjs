@@ -339,8 +339,105 @@ export function createUploadStagingStore({
     });
   }
 
+  /** Stage bounded main-owned bytes with the same private ownership journal. */
+  async function stageBytes(grantId, name, bytes, { signal, check } = {}) {
+    return exclusive(async () => {
+      const deadline = now() + 30_000;
+      await retryCleanup();
+      checkCancelled(signal, check, deadline);
+      if (
+        typeof grantId !== "string" ||
+        grantId.length === 0 ||
+        grantId.length > 256 ||
+        !fileNameAllowed(name) ||
+        !(bytes instanceof Uint8Array) ||
+        bytes.byteLength > maxBytes
+      )
+        throw new Error("Invalid bounded browser file");
+      if (entries.size >= maxEntries)
+        throw new Error("Browser upload staging limit reached");
+      const entry = {
+        version: 1,
+        id: `u-${randomUUID()}`,
+        grantId,
+        name,
+        size: bytes.byteLength,
+        cleanupRequired: false,
+      };
+      const owned = paths(entry.id, name);
+      let journal;
+      let output;
+      let failure;
+      try {
+        journal = await fs.open(owned.record, "wx", 0o600);
+        entries.set(entry.id, entry);
+        await journal.writeFile(
+          JSON.stringify({
+            version: entry.version,
+            id: entry.id,
+            grantId,
+            name,
+            size: entry.size,
+          }),
+        );
+        await journal.sync();
+        await journal.close();
+        journal = undefined;
+        await fs.mkdir(owned.directory, { mode: 0o700 });
+        output = await fs.open(owned.file, "wx", 0o600);
+        let offset = 0;
+        while (offset < bytes.byteLength) {
+          checkCancelled(signal, check, deadline);
+          const chunk = bytes.subarray(
+            offset,
+            Math.min(offset + CHUNK_BYTES, bytes.byteLength),
+          );
+          const { bytesWritten } = await output.write(
+            chunk,
+            0,
+            chunk.byteLength,
+            offset,
+          );
+          if (
+            !Number.isInteger(bytesWritten) ||
+            bytesWritten < 1 ||
+            bytesWritten > chunk.byteLength
+          )
+            throw new Error("Browser file staging could not write");
+          offset += bytesWritten;
+        }
+        await output.chmod(0o400);
+        await output.sync();
+        checkCancelled(signal, check, deadline);
+      } catch (error) {
+        failure = error;
+      }
+      for (const handle of [journal, output]) {
+        try {
+          await handle?.close();
+        } catch (error) {
+          failure ??= error;
+        }
+      }
+      if (failure) {
+        if (entries.has(entry.id)) {
+          try {
+            await cleanupEntry(entry);
+          } catch {
+            throw new Error(
+              "Browser file staging failed; cleanup recovery is required",
+            );
+          }
+        }
+        throw new Error("Browser file could not be staged");
+      }
+      return { id: entry.id, path: owned.file, name, size: entry.size };
+    });
+  }
+
   return {
     stage,
+    stageBytes,
     recover: () => exclusive(retryCleanup),
     cleanup: (id) => {
       const known = entries.get(id);

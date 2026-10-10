@@ -259,3 +259,100 @@ test("a bounded staging deadline prevents a slow copy from returning success", a
   assert.deepEqual(store.pending(), []);
   assert.deepEqual(await fs.readdir(path.join(f.rootPath, "records")), []);
 });
+
+test("bounded main-owned bytes use private journals and the same live-file capacity", async (t) => {
+  const f = await fixture(t, { maxBytes: 16, maxEntries: 1 });
+  const data = Buffer.from("bounded-download");
+  const staged = await f.store.stageBytes("grant", "download.txt", data);
+  assert.equal(await fs.readFile(staged.path, "utf8"), "bounded-download");
+  assert.equal(staged.size, data.length);
+  await assert.rejects(
+    f.store.stageBytes("next", "next.txt", Buffer.from("next")),
+    /limit/u,
+  );
+  await f.store.cleanup(staged.id);
+  await assert.rejects(
+    f.store.stageBytes("grant", "../outside", data),
+    /Invalid/u,
+  );
+  await assert.rejects(
+    f.store.stageBytes("grant", "big.txt", Buffer.alloc(17)),
+    /Invalid/u,
+  );
+  assert.deepEqual(f.store.pending(), []);
+  assert.deepEqual(await fs.readdir(path.join(f.rootPath, "records")), []);
+});
+
+test("bounded-byte write failure keeps its journal through failed cleanup and process recovery", async (t) => {
+  const f = await fixture(t);
+  const injected = {
+    ...fs,
+    open: async (file, ...args) => {
+      const handle = await fs.open(file, ...args);
+      if (args[0] === "wx" && file.includes(`${path.sep}payloads${path.sep}`)) {
+        const write = handle.write.bind(handle);
+        handle.write = async (...parameters) => {
+          await write(...parameters);
+          throw new Error("injected write failure");
+        };
+      }
+      return handle;
+    },
+    rmdir: async () => {
+      throw new Error("injected cleanup failure");
+    },
+  };
+  const store = createUploadStagingStore({
+    rootPath: f.rootPath,
+    fs: injected,
+  });
+  await assert.rejects(
+    store.stageBytes("grant", "download.txt", Buffer.from("bytes")),
+    /recovery/u,
+  );
+  assert.equal(store.pending().length, 1);
+  assert.equal(store.pending()[0].cleanupRequired, true);
+  assert.equal((await fs.readdir(path.join(f.rootPath, "records"))).length, 1);
+  const recovered = createUploadStagingStore({ rootPath: f.rootPath });
+  await recovered.recover();
+  assert.deepEqual(await fs.readdir(path.join(f.rootPath, "records")), []);
+  assert.deepEqual(await fs.readdir(path.join(f.rootPath, "payloads")), []);
+});
+
+test("bounded-byte staging respects cancellation and its deadline before returning authority", async (t) => {
+  const f = await fixture(t);
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    f.store.stageBytes("grant", "download.txt", Buffer.from("bytes"), {
+      signal: controller.signal,
+    }),
+    /cancelled/u,
+  );
+  let clock = 0;
+  const injected = {
+    ...fs,
+    open: async (file, ...args) => {
+      const handle = await fs.open(file, ...args);
+      if (args[0] === "wx" && file.includes(`${path.sep}payloads${path.sep}`)) {
+        const write = handle.write.bind(handle);
+        handle.write = async (...parameters) => {
+          const result = await write(...parameters);
+          clock = 30_000;
+          return result;
+        };
+      }
+      return handle;
+    },
+  };
+  const store = createUploadStagingStore({
+    rootPath: f.rootPath,
+    fs: injected,
+    now: () => clock,
+  });
+  await assert.rejects(
+    store.stageBytes("grant", "download.txt", Buffer.from("bytes")),
+    /could not be staged/u,
+  );
+  assert.deepEqual(store.pending(), []);
+});

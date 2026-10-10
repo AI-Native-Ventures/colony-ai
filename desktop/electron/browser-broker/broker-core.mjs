@@ -587,7 +587,7 @@ export function createBroker({
       requireApprovedPage(ctx, args.tab, fresh);
     }
     ctx.check();
-    return { info, entry, origin };
+    return { info, entry, origin, described, generation };
   }
 
   // ---- tools ---------------------------------------------------------------
@@ -851,6 +851,36 @@ export function createBroker({
       };
     },
 
+    async browser_download(ctx, args) {
+      const { described, generation } = await guardedElementAction(
+        ctx,
+        args,
+        "download",
+      );
+      const check = () => {
+        ctx.check();
+        if (registryFor(args.tab).generation !== generation)
+          throw new BrokerError("fenced");
+      };
+      const result = await driver.download(args.tab, described.element.href, {
+        grantId: ctx.grant.id,
+        signal: ctx.signal,
+        check,
+        authorize: async (url) => {
+          await approvedNavigationTarget(ctx, args.tab, url);
+          check();
+        },
+      });
+      check();
+      return {
+        tab: args.tab,
+        downloadId: result.downloadId,
+        name: sanitizeUntrusted(result.name, 255),
+        bytes: result.bytes,
+        cleanupRequired: result.cleanupRequired === true,
+      };
+    },
+
     async browser_upload(ctx, args) {
       const upload = uploads.get(args.uploadId);
       if (!upload || upload.grantId !== ctx.grant.id || upload.used)
@@ -1043,6 +1073,17 @@ export function createBroker({
         if (required)
           record(null, "browser_upload", { tab: tabId }, "error", now(), {
             code: "upload_recovery_required",
+            summary: "Browser access revoked; file cleanup recovery required.",
+          });
+        emit("control-recovery", { tabId, required });
+      }
+    },
+    /** Main reports retained download cleanup without giving the agent file access. */
+    notifyDownloadRecovery(tabIds, required) {
+      for (const tabId of tabIds) {
+        if (required)
+          record(null, "browser_download", { tab: tabId }, "error", now(), {
+            code: "download_recovery_required",
             summary: "Browser access revoked; file cleanup recovery required.",
           });
         emit("control-recovery", { tabId, required });

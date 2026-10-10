@@ -746,6 +746,8 @@ test("updates presence from the profile menu", async ({ page }) => {
 test("renders agent profile ingress subviews from the Playwright mock bridge", async ({
   page,
 }) => {
+  // This composed profile tour also waits for real success-toast expiry.
+  test.setTimeout(60_000);
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await installMockBridge(page, {
     agentMemory: createMockAgentMemoryListing(),
@@ -1366,6 +1368,13 @@ test("renders agent profile ingress subviews from the Playwright mock bridge", a
   await expect(startOnLaunchRow).not.toBeChecked();
   await expect(startOnLaunchToggle).toHaveAttribute("data-state", "unchecked");
   await expectHashSearchParam(page, "profileTab", "runtime");
+  await expect(
+    page.locator('[data-sonner-toast][data-type="success"]'),
+  ).toContainText("Memory Bot will stay manual-start only.");
+  // Sonner pauses expiry while hovered. Clear this real startup-preference
+  // toast before the first lower runtime row, including Instances, is clicked.
+  await page.mouse.move(0, 0);
+  await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
   const instancesSection = page.getByTestId("user-profile-instances-section");
   await expect(
     instancesSection.getByRole("heading", {
@@ -1411,6 +1420,11 @@ test("renders agent profile ingress subviews from the Playwright mock bridge", a
   const instancesRow = page.getByTestId("user-profile-instances");
   await expect(instancesRow).toContainText("1 instance");
   await expect(instancesRow).toHaveClass(/min-h-16/);
+  // Center scrolling can leave this row underneath the sticky profile chrome.
+  await instancesRow.evaluate((element) =>
+    element.scrollIntoView({ block: "end", behavior: "instant" }),
+  );
+  await waitForAnimations(page);
   await instancesRow.click();
   await expect(
     page.getByTestId(`user-profile-instance-${agentPubkey}`),
@@ -1433,11 +1447,6 @@ test("renders agent profile ingress subviews from the Playwright mock bridge", a
   await expect(diagnosticsIngress.locator("svg.lucide-chevron-up")).toHaveCount(
     0,
   );
-  // The start-on-launch toast sits over the last runtime row, and Sonner keeps
-  // a toast open while the pointer rests on it. Park the pointer and let it
-  // leave so the click reaches the ingress.
-  await page.mouse.move(0, 0);
-  await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
   await diagnosticsIngress.click();
   await expectHashSearchParam(page, "profileView", "diagnostics");
   await expect(
