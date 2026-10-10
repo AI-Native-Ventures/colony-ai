@@ -241,19 +241,8 @@ function RuntimeOption({
           {checkingClaude ? "Checking…" : "Check Claude subscription"}
         </Button>
       ) : null}
+      {/* A ready card states Installed once, in its account line above. */}
       <div className="runtime-actions">
-        {ready &&
-        !(
-          subscription?.source === "live" &&
-          subscription.signedIn &&
-          subscription.plan
-        ) ? (
-          <span className="provider-status is-connected">
-            {runtime.authStatus.status === "logged_in"
-              ? "Installed"
-              : "Configured"}
-          </span>
-        ) : null}
         {!ready && needsSignIn ? (
           <Button
             className="runtime-action"
@@ -940,15 +929,15 @@ export function ConnectSetupStep({
                 <span aria-hidden="true">→</span>
               </button>
               {aiReady ? <p>Sign-in stays with the provider.</p> : null}
-              {!aiReady ? (
-                <button
-                  className="back"
-                  type="button"
-                  onClick={() => onContinue()}
-                >
-                  Skip for now
-                </button>
-              ) : null}
+              {/* Both paths keep Skip for now, ready or not, so nobody is held
+                  on Connect without an AI app. */}
+              <button
+                className="back"
+                type="button"
+                onClick={() => onContinue()}
+              >
+                Skip for now
+              </button>
             </div>
           )}
         </>
