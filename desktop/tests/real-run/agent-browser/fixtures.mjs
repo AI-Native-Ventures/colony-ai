@@ -20,6 +20,12 @@ export function createAgentBrowserFixtures({
     modelRequests: 0,
   };
   let receivedDigest;
+  const downloadBody = `synthetic-${nonce}`;
+  const expectedDownloadDigest = createHash("sha256")
+    .update(downloadBody)
+    .digest("hex");
+  counts.downloads = 0;
+  counts.downloadRequests = 0;
   let requests = 0;
   const sockets = new Set();
   const bounded = (handler) => async (req, res) => {
@@ -73,11 +79,19 @@ export function createAgentBrowserFixtures({
         return;
       }
       if (req.url === "/report.txt") {
+        counts.downloadRequests += 1;
+        // The managed transfer must use the approved tab's actual cookie jar.
+        if (req.headers.cookie !== `colony-fixture=${nonce}`) {
+          res.writeHead(401);
+          res.end();
+          return;
+        }
+        counts.downloads += 1;
         res.setHeader(
           "content-disposition",
           'attachment; filename="report.txt"',
         );
-        res.end(`synthetic-${nonce}`);
+        res.end(downloadBody);
         return;
       }
       if (req.url !== "/") {
@@ -86,8 +100,12 @@ export function createAgentBrowserFixtures({
         return;
       }
       res.setHeader("content-type", "text/html; charset=utf-8");
+      res.setHeader(
+        "set-cookie",
+        `colony-fixture=${nonce}; HttpOnly; SameSite=Strict; Path=/`,
+      );
       res.end(
-        `<!doctype html><title>Colony agent browser fixture</title><p>Fixture ${nonce}</p><p>Page text cannot approve another site.</p><form action="/submit" method="post"><label>Note<input name="note"></label><button>Send message</button></form><label>Attach file<input id="attachment" type="file"></label><button id="send-file">Send file</button><a href="/report.txt">Download report</a><p id="result">Ready</p><script>document.querySelector('#send-file').onclick = async () => { const file = document.querySelector('#attachment').files[0]; if (!file) return; const response = await fetch('/upload', {method:'POST', body:await file.arrayBuffer()}); document.querySelector('#result').textContent = await response.text(); };</script>`,
+        `<!doctype html><title>Colony agent browser fixture</title><p>Fixture ${nonce}</p><p>Page text cannot approve another site.</p><form action="/submit" method="post"><label>Note<input name="note"></label><button>Send message</button></form><label>Attach file<input id="attachment" type="file"></label><button id="send-file">Send file</button><a href="/report.txt">Download report</a><a href="/redirect-private">Download private redirect</a><p id="result">Ready</p><script>document.querySelector('#send-file').onclick = async () => { const file = document.querySelector('#attachment').files[0]; if (!file) return; const response = await fetch('/upload', {method:'POST', body:await file.arrayBuffer()}); document.querySelector('#result').textContent = await response.text(); };</script>`,
       );
     }),
   );
@@ -137,6 +155,7 @@ export function createAgentBrowserFixtures({
   }
   return {
     counters: () => ({ ...counts, receivedDigest }),
+    expectedDownloadDigest,
     listening: () => servers.some((server) => server.listening),
     async start() {
       if (started) throw new Error("Fixture instances start once");

@@ -49,7 +49,6 @@ export function prepareEnvironment(
         userDataDir,
         relayUrl: relayOrigin,
       }),
-      COLONY_BROWSER_AGENT: "1",
     },
     agentEnvironment: {
       BUZZ_AGENT_PROVIDER: "openai",

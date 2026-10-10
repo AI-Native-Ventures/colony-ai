@@ -14,6 +14,7 @@ const base = {
   managedAcpSession: true,
   scopedMcpLaunchedByHarness: true,
   flagOn: true,
+  defaultFlagUnset: true,
   realControlUi: true,
   actionLogRedacted: true,
   fixtureGranted: true,
@@ -22,7 +23,15 @@ const base = {
 test("every requested row starts unobserved and absence of a real managed session blocks approval", () => {
   assert.deepEqual(
     ROWS.map((row) => row.id),
-    ["approve", "deny", "takeover", "stop", "upload", "private-url-refusal"],
+    [
+      "approve",
+      "deny",
+      "takeover",
+      "stop",
+      "upload",
+      "download",
+      "private-url-refusal",
+    ],
   );
   assert.ok(preparedRows().every((row) => row.status === "NOT OBSERVED"));
   const complete = {
@@ -91,6 +100,8 @@ test("upload adoption blocks the candidate and wrong bytes or retained journals 
     receivedDigest: "b".repeat(64),
     privatePayloads: 0,
     ownershipRecords: 0,
+    afterUploads: 1,
+    grantTerminated: true,
   };
   assert.equal(judgeRow("upload", uploaded).status, "PASS");
   assert.equal(
@@ -144,13 +155,17 @@ test("launch preparation drops inherited credentials and enables only a fresh HO
       HOME: options.realHome,
       OPENAI_API_KEY: "owner-secret",
       COLONY_BROWSER_BROKER_MASTER: "owner-secret",
+      COLONY_BROWSER_AGENT: "1",
       PATH: "/usr/bin",
     },
     options,
   );
   assert.equal(prepared.status, "PREPARED_NOT_RUN");
   assert.equal(prepared.environment.HOME, options.home);
-  assert.equal(prepared.environment.COLONY_BROWSER_AGENT, "1");
+  assert.equal(
+    Object.hasOwn(prepared.environment, "COLONY_BROWSER_AGENT"),
+    false,
+  );
   assert.equal(prepared.environment.OPENAI_API_KEY, undefined);
   assert.equal(prepared.environment.COLONY_BROWSER_BROKER_MASTER, undefined);
   assert.equal(
@@ -213,6 +228,8 @@ test("fixture preparation allocates no listener and contains no observed side ef
     submissions: 0,
     forbiddenRequests: 0,
     uploads: 0,
+    downloads: 0,
+    downloadRequests: 0,
     modelRequests: 0,
     receivedDigest: undefined,
   });
