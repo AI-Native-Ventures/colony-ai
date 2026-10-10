@@ -32,10 +32,9 @@ export type Checkout = {
   authorizationFields: Array<{ name: string; value: string }>;
 };
 export class PaymentRequestError extends Error {
-  constructor(
-    readonly code: string,
-    readonly reference?: string,
-  ) {
+  readonly code: string;
+  readonly reference?: string;
+  constructor(code: string, reference?: string) {
     super(
       code === "email_unverified"
         ? "Verify your account email before buying credits."
@@ -43,6 +42,8 @@ export class PaymentRequestError extends Error {
           ? "Sign in to a Colony account to buy credits."
           : "The payment service could not confirm this request. Check your payment before trying again.",
     );
+    this.code = code;
+    this.reference = reference;
   }
 }
 async function request<T>(

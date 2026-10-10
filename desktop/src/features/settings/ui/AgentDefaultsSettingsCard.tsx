@@ -1,4 +1,6 @@
 import * as React from "react";
+import { useCommunities } from "@/features/communities/useCommunities";
+import { SettingsColonyCreditsOption } from "./SettingsColonyCreditsOption";
 import { useQuery } from "@tanstack/react-query";
 import { OpenRouterConnectionPanel } from "@/shared/ui/OpenRouterConnectionPanel";
 import { getGlobalAgentConfig } from "@/shared/api/tauriGlobalAgentConfig";
@@ -10,6 +12,7 @@ import { agentDefaultsConnection } from "../lib/agentDefaultsConnection";
 import { SettingsOptionGroup } from "./SettingsOptionGroup";
 
 export function AgentDefaultsSettingsCard() {
+  const { activeCommunity } = useCommunities();
   const [revision, setRevision] = React.useState(0);
   const [openRouterExpanded, setOpenRouterExpanded] = React.useState(false);
   const config = useQuery({
@@ -94,10 +97,30 @@ export function AgentDefaultsSettingsCard() {
             ) : null}
           </details>
         )}
-        <section aria-label="Bring your own key">
-          <h4 className="mb-3 text-sm font-semibold">Bring your own key</h4>
-          <AgentDefaultsEditor key={revision} layout="flat" />
-        </section>
+        <SettingsColonyCreditsOption
+          key={activeCommunity?.id ?? ""}
+          communityId={activeCommunity?.id ?? ""}
+          selected={
+            config.data?.provider === "colony-credits" &&
+            config.data?.preferred_runtime === "buzz-agent"
+          }
+          onSaved={() => setRevision((value) => value + 1)}
+        />
+        {config.data?.provider === "colony-credits" ? (
+          <details>
+            <summary className="cursor-pointer text-sm font-medium">
+              Bring your own key
+            </summary>
+            <div className="mt-3">
+              <AgentDefaultsEditor key={revision} layout="flat" />
+            </div>
+          </details>
+        ) : (
+          <section aria-label="Bring your own key">
+            <h4 className="mb-3 text-sm font-semibold">Bring your own key</h4>
+            <AgentDefaultsEditor key={revision} layout="flat" />
+          </section>
+        )}
       </div>
     </SettingsOptionGroup>
   );

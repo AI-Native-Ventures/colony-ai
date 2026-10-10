@@ -731,6 +731,7 @@ type MockBridgeOptions = {
     model: string | null;
     preferred_runtime?: string | null;
   };
+  colonyCreditsGatewayEnabled?: boolean;
   ownerOnlyAccessBuild?: boolean;
   /** File-layer config returned by runtime id. */
   runtimeFileConfigs?: Record<

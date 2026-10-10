@@ -1,0 +1,77 @@
+.colony-credits-settings .colony-credits-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border, hsl(var(--border)));
+  border-radius: 0.8rem;
+}
+.colony-credits-settings h3 {
+  font-weight: 600;
+}
+.colony-credits-settings p {
+  margin-top: 0.4rem;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--color-muted-foreground, hsl(var(--muted-foreground)));
+}
+.colony-credits-settings .colony-credits-mark {
+  flex: none;
+  width: 2rem;
+  padding-top: 0.25rem;
+}
+.colony-credits-settings .colony-credits-state {
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+.colony-credits-settings .colony-credits-actions button {
+  border: 1px solid var(--color-border, hsl(var(--border)));
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+}
+.colony-credits-settings .colony-credits-actions .primary {
+  background: var(--color-primary, hsl(var(--primary)));
+  color: var(--color-primary-foreground, hsl(var(--primary-foreground)));
+}
+.colony-credits-settings button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.colony-credits-option .colony-credits-consent a {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.colony-onboarding-root .colony-credits-actions {
+  margin-top: 0.75rem;
+}
+.colony-onboarding-root .colony-credits-actions button {
+  min-width: 0;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.75rem;
+}
+.colony-onboarding-root .colony-credits-actions .secondary {
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  color: var(--text);
+  background: var(--wash);
+}
+.colony-onboarding-root .colony-credits-option .colony-credits-balance {
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 0.75rem;
+}
+.colony-credits-option button:focus-visible,
+.colony-credits-option a:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+@media (max-width: 440px) {
+  .colony-credits-option:has(.colony-credits-actions) > .colony-credits-mark {
+    display: none;
+  }
+  .colony-credits-settings .colony-credits-option {
+    gap: 0.5rem;
+    padding: 0.75rem;
+  }
+}

@@ -18,6 +18,7 @@ import {
   type OnboardingConnectionProof,
 } from "./onboardingConnectionTest";
 import { buildOnboardingRuntimeCandidate } from "./saveOnboardingRuntime";
+import { readCreditsGateway } from "@/features/credits/creditsGateway";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import {
@@ -582,6 +583,8 @@ export function ConnectSetupStep({
     string | null
   >(null);
   const [saving, setSaving] = React.useState(false);
+  const creditsAttempt = React.useRef<GlobalAgentConfig | undefined>(undefined);
+  const [testedCredits, setTestedCredits] = React.useState(false);
   const [selectedModel, setSelectedModel] = React.useState<
     string | null | undefined
   >(undefined);
@@ -690,7 +693,10 @@ export function ConnectSetupStep({
   // saved setup prove itself with a reply. OpenRouter setups belong to the
   // OpenRouter panel.
   const colonyAgentSaved =
-    colonyPath && globalConfig.provider !== "openrouter" && candidateReady;
+    colonyPath &&
+    globalConfig.provider !== "openrouter" &&
+    globalConfig.provider !== "colony-credits" &&
+    candidateReady;
   const aiReady = colonyPath
     ? openRouterTestReady || colonyAgentSaved
     : candidateReady;
@@ -714,7 +720,7 @@ export function ConnectSetupStep({
 
   const proofModels = useQuery({
     queryKey: ["onboarding-proof-models", testedRuntime?.id, proof?.model],
-    enabled: !!proof?.model && !!testedRuntime?.command,
+    enabled: !testedCredits && !!proof?.model && !!testedRuntime?.command,
     queryFn: () => {
       if (!testedRuntime?.command)
         throw new Error("Harness model catalog is unavailable.");
@@ -729,8 +735,8 @@ export function ConnectSetupStep({
     proofModels.data?.models.find((model) => model.id === proof?.model)?.name ||
     proof?.model;
 
-  const continueWithRuntime = async () => {
-    if (!aiReady) {
+  const continueWithRuntime = async (creditsCandidate?: GlobalAgentConfig) => {
+    if (!creditsCandidate && !aiReady) {
       return;
     }
     const attempt = ++generation.current;
@@ -744,8 +750,25 @@ export function ConnectSetupStep({
       const runtimeId = colonyPath ? "buzz-agent" : selectedRuntimeId;
       if (!runtimeId) throw new Error("Choose an AI app before testing.");
       setTestedRuntimeId(runtimeId);
+      if (
+        creditsCandidate &&
+        (!bundledPrerequisite.ready || bundled?.availability !== "available")
+      )
+        throw new Error(
+          "Colony Agent is unavailable. Check Agent runtimes in Settings.",
+        );
+      if (creditsCandidate) {
+        const current = await readCreditsGateway();
+        if (!isCurrent()) return;
+        if (!current.configured || current.credits.balanceUsdCents <= 0)
+          throw new Error(
+            "Colony credits are unavailable or out of funds. Go back to check your balance or buy credits.",
+          );
+      }
+      creditsAttempt.current = creditsCandidate;
+      setTestedCredits(!!creditsCandidate);
       const candidate = buildOnboardingRuntimeCandidate(
-        globalConfig,
+        creditsCandidate ?? globalConfig,
         runtimeId,
         runtimes.data ?? [],
         colonyPath ? undefined : selectedModel,
@@ -818,7 +841,7 @@ export function ConnectSetupStep({
             return;
           }
           if (scene === "testing") {
-            void continueWithRuntime();
+            void continueWithRuntime(creditsAttempt.current);
             return;
           }
           if (testState === "testing" && connectionPhase === "saving") return;
@@ -901,7 +924,21 @@ export function ConnectSetupStep({
                   setOpenRouterScene(`openrouter-${state}`)
                 }
               />
-              <ColonyCreditsOption />
+              <ColonyCreditsOption
+                communityId={communityId}
+                selected={
+                  globalConfig.provider === "colony-credits" &&
+                  globalConfig.preferred_runtime === "buzz-agent"
+                }
+                canSelect={
+                  !saving &&
+                  bundledPrerequisite.ready &&
+                  bundled?.availability === "available" &&
+                  !!bundled.command &&
+                  !!bundled.binaryPath
+                }
+                onSelect={continueWithRuntime}
+              />
             </div>
           )}
           {saveError && colonyPath ? <p role="alert">{saveError}</p> : null}

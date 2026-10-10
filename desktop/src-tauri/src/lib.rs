@@ -785,6 +785,7 @@ pub fn run() {
             set_global_agent_config,
             test_ai_connection,
             test_onboarding_connection,
+            colony_credits_gateway_enabled,
             cancel_onboarding_connection_test,
             mesh_start_node,
             mesh_stop_node,
