@@ -22,11 +22,13 @@ export function ColonyCreditsOption({
   selected,
   canSelect,
   onSelect,
+  onBusyChange,
 }: {
   communityId: string;
   selected: boolean;
   canSelect: boolean;
   onSelect: (candidate: GlobalAgentConfig) => Promise<void>;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [checkout, setCheckout] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -56,6 +58,7 @@ export function ColonyCreditsOption({
     if (inFlight.current || !canSelect) return;
     inFlight.current = true;
     setBusy(true);
+    onBusyChange?.(true);
     setError(undefined);
     try {
       await connectColonyCredits(onSelect, () => mounted.current);
@@ -70,6 +73,7 @@ export function ColonyCreditsOption({
       inFlight.current = false;
       if (mounted.current) {
         setBusy(false);
+        onBusyChange?.(false);
         void query.refetch();
       }
     }

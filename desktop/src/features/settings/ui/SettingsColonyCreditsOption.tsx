@@ -15,10 +15,14 @@ export function SettingsColonyCreditsOption({
   communityId,
   selected,
   onSaved,
+  onBusyChange,
+  disabled,
 }: {
   communityId: string;
   selected: boolean;
   onSaved: () => void;
+  onBusyChange: (busy: boolean) => void;
+  disabled: boolean;
 }) {
   const client = useQueryClient();
   const runtimes = useAcpRuntimesQueryForced();
@@ -28,9 +32,10 @@ export function SettingsColonyCreditsOption({
   React.useEffect(
     () => () => {
       generation.current += 1;
+      onBusyChange(false);
       void cancelOnboardingConnectionTest().catch(console.warn);
     },
-    [],
+    [onBusyChange],
   );
   const bundled = runtimes.data?.find((runtime) => runtime.id === "buzz-agent");
   const ready =
@@ -46,7 +51,8 @@ export function SettingsColonyCreditsOption({
       <ColonyCreditsOption
         communityId={communityId}
         selected={selected}
-        canSelect={ready}
+        canSelect={ready && !disabled}
+        onBusyChange={onBusyChange}
         onSelect={async (candidate) => {
           const attempt = ++generation.current;
           setConfirmed(false);

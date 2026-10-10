@@ -8,8 +8,8 @@ test("Colony credits stay a visible Colony Agent option with no purchase control
   const html = renderToStaticMarkup(
     React.createElement(ColonyCreditsOptionView, { state: "unconfigured" }),
   );
-  assert.match(html, /<h3 id="[^"]+">Colony credits<\/h3>/);
-  assert.match(html, /aria-labelledby="([^"]+)"[\s\S]*<h3 id="\1">/);
+  assert.match(html, /<h3 id="[^"]+"[^>]*>Colony credits<\/h3>/);
+  assert.match(html, /aria-labelledby="([^"]+)"[\s\S]*<h3 id="\1"[^>]*>/);
   assert.match(html, />Coming soon</);
   assert.doesNotMatch(html, /<button|<input|<a /);
   assert.doesNotMatch(html, /balance|Unavailable|Reload|\$\d/i);

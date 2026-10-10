@@ -50,8 +50,10 @@ export function ColonyCreditsOptionView({
       <span aria-hidden="true" className="colony-credits-mark">
         <AntMark />
       </span>
-      <div className="colony-credits-body min-w-0 flex-1">
-        <h3 id={headingId}>Colony credits</h3>
+      <div className="colony-credits-body min-w-0 flex-1 text-sm">
+        <h3 id={headingId} className="text-sm font-semibold">
+          Colony credits
+        </h3>
         <p>
           Pay Colony for Colony Agent’s AI use, with no other account needed.
           {state === "unconfigured"
@@ -76,7 +78,7 @@ export function ColonyCreditsOptionView({
             ) : null}
             <div className="colony-credits-actions flex flex-wrap gap-2 mt-3">
               <button
-                className="primary"
+                className="primary !text-xs"
                 type="button"
                 disabled={busy || refreshing}
                 onClick={onBuy}
@@ -84,7 +86,7 @@ export function ColonyCreditsOptionView({
                 Buy credits
               </button>
               <button
-                className="secondary"
+                className="secondary !text-xs"
                 type="button"
                 disabled={busy || refreshing || !canSelect || !funded}
                 onClick={onSelect}
@@ -96,7 +98,7 @@ export function ColonyCreditsOptionView({
                     : "Use Colony credits"}
               </button>
               <button
-                className="link"
+                className="link !text-xs"
                 type="button"
                 disabled={busy || refreshing}
                 onClick={onRefresh}
@@ -136,7 +138,7 @@ export function ColonyCreditsOptionView({
             </p>
             {state === "error" ? (
               <button
-                className="link"
+                className="link !text-xs"
                 type="button"
                 disabled={refreshing}
                 onClick={onRefresh}
@@ -148,7 +150,7 @@ export function ColonyCreditsOptionView({
         ) : null}
       </div>
       {state === "unconfigured" ? (
-        <span className="colony-credits-state">Coming soon</span>
+        <span className="colony-credits-state text-2xs">Coming soon</span>
       ) : null}
     </section>
   );
