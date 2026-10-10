@@ -1,3 +1,4 @@
+import { BROWSER_APPROVAL_GUIDANCE } from "./approval-guidance.mjs";
 import { randomUUID } from "node:crypto";
 import { createActionLog, summarizeToolArgs } from "./action-log.mjs";
 import { classifyAction, confirmationSummary } from "./classifier.mjs";
@@ -48,7 +49,7 @@ export class BrokerError extends Error {
 }
 
 const MESSAGES = {
-  no_grant: "No browser access has been granted for this task.",
+  no_grant: BROWSER_APPROVAL_GUIDANCE,
   grant_expired: "The browser grant has expired.",
   grant_revoked: "The browser grant was revoked or taken over by the person.",
   fenced: "The action was cancelled because access changed.",

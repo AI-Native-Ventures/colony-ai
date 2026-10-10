@@ -34,3 +34,16 @@ CREATE INDEX account_ai_request_history ON account_ai_requests(account_id, creat
 INSERT INTO _operator_global_tables (table_name, reason) VALUES
     ('account_ai_sessions', 'deployment-global payer authorization bound to a managed agent and community'),
     ('account_ai_requests', 'deployment-global durable AI spend reservation and reconciliation journal');
+
+-- Billing session anchors survive tenant deletion so outstanding holds can
+-- settle and financial evidence remains available. New authorizations and
+-- spend explicitly take the community write fence in the admission transaction.
+CREATE OR REPLACE FUNCTION community_write_fence_excluded_table(target NAME) RETURNS BOOLEAN
+LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE AS $$
+    SELECT target::TEXT = ANY (ARRAY[
+        'community_deletion_requests', 'community_deletion_approvals',
+        'community_deletion_checkpoints', 'community_serving_write_leases',
+        'community_deletion_executor_heartbeats', 'product_feedback',
+        'rate_limit_violations', 'account_ai_sessions'
+    ]::TEXT[])
+$$;

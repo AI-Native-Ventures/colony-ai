@@ -40,3 +40,11 @@
   .download-button{transition:none}
   .download-button:hover{transform:none}
 }
+
+/* Legal links in the page footer. */
+.colony-end-legal{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 22px;font-size:.8125rem}
+.colony-end-legal a{text-decoration:none}
+.colony-end-legal a:hover{color:var(--p-ink,#293b30);text-decoration:underline;text-underline-offset:3px}
+@media(max-width:600px){
+  .r10-story .colony-end-legal{order:2;flex-basis:100%;justify-content:flex-start;gap:10px 18px;font-size:.8125rem}
+}

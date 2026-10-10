@@ -1621,7 +1621,7 @@ LANGUAGE SQL IMMUTABLE STRICT PARALLEL SAFE AS $$
         'community_deletion_requests', 'community_deletion_approvals',
         'community_deletion_checkpoints', 'community_serving_write_leases',
         'community_deletion_executor_heartbeats', 'product_feedback',
-        'rate_limit_violations'
+        'rate_limit_violations', 'account_ai_sessions'
     ]::TEXT[])
 $$;
 
@@ -2149,20 +2149,27 @@ CREATE TABLE account_payment_intents (
     reference TEXT PRIMARY KEY CHECK (length(reference) BETWEEN 1 AND 200),
     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
     idempotency_key UUID NOT NULL,
-    provider TEXT NOT NULL CHECK (provider = 'payfast'),
+    provider TEXT NOT NULL,
     pack_id TEXT NOT NULL CHECK (length(pack_id) BETWEEN 1 AND 64),
     charge_minor_units BIGINT NOT NULL CHECK (charge_minor_units > 0),
-    charge_currency TEXT NOT NULL CHECK (charge_currency = 'ZAR'),
+    charge_currency TEXT NOT NULL,
     grant_nanousd BIGINT NOT NULL CHECK (grant_nanousd > 0),
     status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'paid', 'delayed', 'failed', 'cancelled', 'uncertain')),
-    provider_payment_id TEXT UNIQUE CHECK (
-        provider_payment_id IS NULL OR provider_payment_id ~ '^[0-9]{1,32}$'
-    ),
+    provider_payment_id TEXT UNIQUE,
     provider_status TEXT CHECK (provider_status IS NULL OR length(provider_status) <= 64),
     paid_minor_units BIGINT CHECK (paid_minor_units IS NULL OR paid_minor_units >= 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT account_payment_intents_provider_currency_check CHECK (
+        (provider = 'payfast' AND charge_currency = 'ZAR') OR
+        (provider = 'stripe' AND charge_currency = 'USD')
+    ),
+    CONSTRAINT account_payment_intents_provider_payment_id_check CHECK (
+        provider_payment_id IS NULL OR
+        (provider = 'payfast' AND provider_payment_id ~ '^[0-9]{1,32}$') OR
+        (provider = 'stripe' AND provider_payment_id ~ '^cs_[A-Za-z0-9_]{1,197}$')
+    ),
     UNIQUE (account_id, idempotency_key)
 );
 CREATE UNIQUE INDEX account_payment_intents_one_open_idx
@@ -2215,16 +2222,25 @@ CREATE INDEX account_site_subscription_payments_history_idx
     ON account_site_subscription_payments (subscription_id, created_at DESC, provider_payment_id DESC);
 
 CREATE TABLE account_payment_notifications (
-    event_id TEXT PRIMARY KEY CHECK (event_id ~ '^[0-9a-f]{64}$'),
+    event_id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL DEFAULT 'payfast' CHECK (provider IN ('payfast', 'stripe')),
+    charge_currency TEXT NOT NULL DEFAULT 'ZAR' CHECK (charge_currency ~ '^[A-Z]{3}$'),
     reference TEXT CHECK (reference IS NULL OR length(reference) <= 200),
-    provider_payment_id TEXT CHECK (
-        provider_payment_id IS NULL OR provider_payment_id ~ '^[0-9]{1,32}$'
-    ),
+    provider_payment_id TEXT,
     provider_status TEXT NOT NULL CHECK (length(provider_status) <= 64),
-    amount_zar_cents BIGINT CHECK (amount_zar_cents IS NULL OR amount_zar_cents >= 0),
+    amount_minor_units BIGINT CHECK (amount_minor_units IS NULL OR amount_minor_units >= 0),
     result TEXT NOT NULL CHECK (result IN (
         'processing', 'applied', 'already_applied', 'unmatched', 'uncertain', 'duplicate_payment'
     )),
+    CONSTRAINT account_payment_notifications_event_id_check CHECK (
+        (provider = 'payfast' AND event_id ~ '^[0-9a-f]{64}$') OR
+        (provider = 'stripe' AND event_id ~ '^evt_[A-Za-z0-9_]{1,196}$')
+    ),
+    CONSTRAINT account_payment_notifications_provider_payment_id_check CHECK (
+        provider_payment_id IS NULL OR
+        (provider = 'payfast' AND provider_payment_id ~ '^[0-9]{1,32}$') OR
+        (provider = 'stripe' AND provider_payment_id ~ '^cs_[A-Za-z0-9_]{1,197}$')
+    ),
     received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     processed_at TIMESTAMPTZ
 );

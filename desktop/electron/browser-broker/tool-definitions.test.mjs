@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   MAX_TYPE_CHARS,
@@ -7,6 +8,7 @@ import {
   toolDescriptors,
   toolNames,
   validateToolInput,
+  WEB_TASKS,
 } from "./tool-definitions.mjs";
 
 test("the tool list is exactly the approved surface", () => {
@@ -63,6 +65,24 @@ test("descriptors are plain JSON and tools that return page text warn about it",
   assert.equal(isToolName("browser_evaluate"), false);
   assert.equal(isToolName(undefined), false);
   assert.equal(isToolName("__proto__"), false);
+});
+
+test("connect and open say how web tasks are done, in the shared words", () => {
+  const descriptors = toolDescriptors();
+  for (const name of ["browser_connect", "browser_open"]) {
+    const tool = descriptors.find((entry) => entry.name === name);
+    assert.ok(tool.description.endsWith(WEB_TASKS), name);
+  }
+  const rules = readFileSync(
+    new URL("../../../crates/buzz-acp/src/web_tasks.md", import.meta.url),
+    "utf8",
+  );
+  const shared = WEB_TASKS.match(/Never reach a website another way:[^.]*\./u);
+  assert.ok(shared, "the line names what agents must never do");
+  assert.ok(
+    rules.includes(shared[0]),
+    "the line is copied word for word from the one rule file",
+  );
 });
 
 test("valid input passes and is copied", () => {

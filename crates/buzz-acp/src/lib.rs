@@ -27,6 +27,7 @@ pub use acp::{
     AcpClient, AcpError, EnvVar, McpServer, SessionNewResponse, StopReason, SystemPromptTransport,
 };
 pub use observer::{ObserverContext, ObserverEvent, ObserverHandle};
+pub use prompt_framing::WEB_TASK_RULES;
 pub use usage::TurnUsage;
 
 use std::collections::{HashMap, HashSet, VecDeque};

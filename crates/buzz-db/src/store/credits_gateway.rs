@@ -59,6 +59,12 @@ impl Db {
         agent: &[u8],
     ) -> Result<Uuid> {
         let mut tx = self.pool.begin().await?;
+        // Sessions are account-global recovery anchors, excluded from tenant
+        // purge. Fence new authorization explicitly on this transaction.
+        sqlx::query("SELECT assert_community_write_allowed($1)")
+            .bind(community.as_uuid())
+            .execute(&mut *tx)
+            .await?;
         let account: Option<Uuid> = sqlx::query_scalar(
             "SELECT id FROM accounts WHERE pubkey = $1 AND email_verified_at IS NOT NULL FOR UPDATE",
         ).bind(owner).fetch_optional(&mut *tx).await?;
@@ -113,6 +119,11 @@ impl Db {
             return Err(DbError::InvalidData("invalid AI reservation".into()));
         }
         let mut tx = self.pool.begin().await?;
+        // No new holds after quiescing; settlement remains deployment-global.
+        sqlx::query("SELECT assert_community_write_allowed($1)")
+            .bind(community.as_uuid())
+            .execute(&mut *tx)
+            .await?;
         // Always use the same payer lock as every existing ledger debit.
         let account: Option<Uuid> = sqlx::query_scalar(
             "SELECT a.id FROM accounts a JOIN account_ai_sessions s ON s.account_id = a.id \

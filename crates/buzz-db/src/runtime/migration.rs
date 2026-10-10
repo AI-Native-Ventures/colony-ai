@@ -500,6 +500,8 @@ mod postgres_tests {
             "account_site_subscriptions",
             "account_site_subscription_payments",
             "account_payment_notifications",
+            "account_ai_sessions",
+            "account_ai_requests",
         ] {
             if normalized[insert_pos..].contains(&format!("'{value}'")) {
                 globals.insert(value.to_owned());
@@ -713,7 +715,13 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 53);
+        assert_eq!(migrations.len(), 55);
+        assert_eq!(migrations[53].version, 54);
+        assert_eq!(migrations[54].version, 55);
+        assert!(migrations[54]
+            .sql
+            .as_str()
+            .contains("CREATE TABLE account_ai_sessions"));
         assert_eq!(migrations[0].version, 1);
         assert_eq!(&*migrations[0].description, "initial schema");
         assert!(migrations[0]
@@ -1344,10 +1352,13 @@ mod postgres_tests {
         let subscription_cycle_fence = migrations[48].sql.as_str();
         assert!(subscription_cycle_fence.contains("provider_cycles_complete"));
         assert!(subscription_cycle_fence.contains("last_provider_payment_cycle"));
-        // schema.sql exclusion list must match the restored (pre-0041) body.
+        // The account-global billing session anchor survives tenant deletion.
+        // Migration 0055 extends the restored exclusion list without restoring
+        // any of the removed NIP-FI tables.
         assert!(
-            desired_schema.contains("'rate_limit_violations'\n    ]::TEXT[])"),
-            "schema.sql exclusion list must match the pre-0041 body after ledger removal"
+            desired_schema
+                .contains("'rate_limit_violations', 'account_ai_sessions'\n    ]::TEXT[])"),
+            "schema.sql must preserve billing sessions outside the tenant purge"
         );
 
         assert_eq!(migrations[49].version, 50);
@@ -2202,7 +2213,7 @@ mod postgres_tests {
     /// are independent sources of the same schema. This test bootstraps one
     /// probe database through the real `bin/pgschema apply` binary, runs the
     /// required reconciliation script, migrates another probe database through
-    /// version 49, and compares admin and account payment table columns and
+    /// all committed migrations, and compares admin and account payment table columns and
     /// indexes. Columns are keyed by name because migrations may append them
     /// with `ALTER TABLE` while desired state declares them inline.
     ///
@@ -2336,9 +2347,9 @@ mod postgres_tests {
         .await
         .expect("run post-pgschema desired-state reconciliation");
         MIGRATOR
-            .run_to(49, &migrated)
+            .run(&migrated)
             .await
-            .expect("apply migrations 1-49");
+            .expect("apply all committed migrations");
 
         for table in [
             "relay_admin_actions",
@@ -2364,6 +2375,60 @@ mod postgres_tests {
                  state (including per-key indoption) has drifted from the migrations. If a \
                  migration uses a construct pgschema cannot represent (e.g. NULLS FIRST), the \
                  migration and schema.sql must both use a representable shape."
+            );
+        }
+
+        // The real pgschema and migration bootstraps must both accept Stripe ids,
+        // preserve provider/currency checks, and execute the production grant path.
+        for pool in [&desired, &migrated] {
+            let account = uuid::Uuid::new_v4();
+            sqlx::query("INSERT INTO accounts (id, email, pubkey, wrapped_dek, kek_id, sealed_nsec, nonce) VALUES ($1, $2, $3, $4, 'test-kek', $5, $6)")
+                .bind(account).bind(format!("stripe-parity-{}@example.invalid", account.simple()))
+                .bind(format!("{:064x}", account.as_u128())).bind(vec![1u8;28]).bind(vec![2u8;16]).bind(vec![3u8;12])
+                .execute(pool).await.expect("parity account");
+            let db = crate::Db::from_pool(pool.clone());
+            let reference = format!("credit-{}", uuid::Uuid::new_v4());
+            db.create_account_payment_intent_for_provider(
+                account,
+                &reference,
+                uuid::Uuid::new_v4(),
+                "usd-5",
+                500,
+                5_000_000_000,
+                "stripe",
+                "USD",
+            )
+            .await
+            .expect("Stripe intent on both schemas");
+            for _ in 0..2 {
+                db.apply_account_payment_notification_for_provider(
+                    "evt_schema_parity",
+                    Some(&reference),
+                    Some("cs_schema_parity"),
+                    "COMPLETE",
+                    Some(500),
+                    "stripe",
+                    "USD",
+                )
+                .await
+                .expect("Stripe settlement on both schemas");
+            }
+            assert_eq!(
+                db.account_credit_balance(account)
+                    .await
+                    .expect("parity balance"),
+                5_000_000_000
+            );
+        }
+        for table in ["account_payment_intents", "account_payment_notifications"] {
+            let constraints = |pool: PgPool| async move {
+                sqlx::query_as::<_, (String, String)>("SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = $1::regclass AND contype = 'c' ORDER BY conname")
+                    .bind(table).fetch_all(&pool).await.expect("payment constraints")
+            };
+            assert_eq!(
+                constraints(desired.clone()).await,
+                constraints(migrated.clone()).await,
+                "payment constraint parity for {table}"
             );
         }
 

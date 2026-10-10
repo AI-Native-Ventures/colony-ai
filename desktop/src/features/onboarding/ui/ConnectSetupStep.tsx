@@ -28,10 +28,7 @@ import {
   useInstallAcpRuntimeMutation,
 } from "@/features/agents/hooks";
 import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
-import {
-  AiKeyConnectionPanel,
-  CreditsComingSoon,
-} from "./AiKeyConnectionPanel";
+import { ColonyCreditsOption } from "./ColonyCreditsOption";
 import { resolveAgentPrerequisiteReadiness } from "./agentReadiness";
 import type {
   GlobalAgentConfig,
@@ -46,9 +43,9 @@ import {
   type OnboardingSceneData,
 } from "./OnboardingScenePresentation";
 import type { OnboardingSceneId } from "./onboardingScenes";
-import { scoutGuidance } from "./scoutGuidance";
 import {
-  getVisibleOnboardingRuntimes,
+  getOnboardingSubscriptionRuntimes,
+  runtimeIsOnboardingSubscription,
   runtimeIsReadyForOnboarding,
 } from "./onboardingRuntimeSelection";
 import {
@@ -406,21 +403,18 @@ function RuntimeConnectionPanel({
   const gitBashPrerequisite = gitBashQuery.isError
     ? undefined
     : gitBashQuery.data;
-  const runtimes = getVisibleOnboardingRuntimes(query.data ?? []);
+  const runtimes = getOnboardingSubscriptionRuntimes(query.data ?? []);
   const ready = runtimes.filter(
     (runtime) =>
       runtimeIsReadyForOnboarding(runtime, globalConfig, gitBashPrerequisite) &&
       resolveAgentPrerequisiteReadiness(runtime.id, gitBashPrerequisite).ready,
   );
-  const primaryRuntimes = runtimes.filter(
+  const signedInRuntime = runtimes.find(
     (runtime) =>
       ready.includes(runtime) ||
       subscriptions.data?.some(
         (item) => item.id === runtime.id && item.signedIn === true && item.plan,
       ),
-  );
-  const moreRuntimes = runtimes.filter(
-    (runtime) => !primaryRuntimes.includes(runtime),
   );
   const renderRuntime = (runtime: AcpRuntimeCatalogEntry) => (
     <RuntimeOption
@@ -462,8 +456,8 @@ function RuntimeConnectionPanel({
 
   React.useEffect(() => {
     if (!selectedRuntimeId && runtimes.length > 0)
-      onRuntimeSelect(primaryRuntimes[0]?.id ?? runtimes[0].id);
-  }, [runtimes, primaryRuntimes, selectedRuntimeId, onRuntimeSelect]);
+      onRuntimeSelect(signedInRuntime?.id ?? runtimes[0].id);
+  }, [runtimes, signedInRuntime, selectedRuntimeId, onRuntimeSelect]);
 
   React.useEffect(() => {
     const header: HarnessHeader = selectedRuntime
@@ -559,16 +553,8 @@ function RuntimeConnectionPanel({
           tabIndex={-1}
         >
           <legend className="sr-only">Detected AI apps</legend>
-          {primaryRuntimes.map(renderRuntime)}
+          {runtimes.map(renderRuntime)}
         </fieldset>
-      ) : null}
-      {moreRuntimes.length ? (
-        <details className="more-tools">
-          <summary>More tools ({moreRuntimes.length})</summary>
-          <div className="subscription-cards">
-            {moreRuntimes.map(renderRuntime)}
-          </div>
-        </details>
       ) : null}
       {claudeCheckError ? (
         <p role="alert" className="runtime-action-error text-sm">
@@ -577,8 +563,8 @@ function RuntimeConnectionPanel({
       ) : null}
       {!query.isFetching && !query.error && runtimes.length === 0 ? (
         <div className="power-empty" data-testid="onboarding-acp-empty">
-          <h3>No supported AI appes are available.</h3>
-          <p>You can continue and connect an AI app later.</p>
+          <h3>Claude Code and Codex are not available.</h3>
+          <p>Choose Colony Agent, or continue and connect an AI app later.</p>
         </div>
       ) : null}
       <p className="power-caption">
@@ -638,12 +624,10 @@ export function ConnectSetupStep({
     null,
   );
   const [saveError, setSaveError] = React.useState<string | null>(null);
+  // Two onboarding paths: the person's own Claude Code or Codex subscription
+  // ("connect"), or Colony Agent powered by OpenRouter or Colony credits.
   const [connectionScene, setConnectionScene] = React.useState<
-    | "connect"
-    | "funding"
-    | "credits-price-error"
-    | "openrouter-unlinked"
-    | "api-key"
+    "connect" | "colony"
   >("connect");
   const [harnessHeader, setHarnessHeader] = React.useState<HarnessHeader>({
     label: "Finding AI apps",
@@ -670,15 +654,21 @@ export function ConnectSetupStep({
     harnessLabel: harnessHeader.label,
     harnessStatus: harnessHeader.status,
   };
+  const [openRouterReady, setOpenRouterReady] = React.useState(false);
+  const [openRouterScene, setOpenRouterScene] =
+    React.useState<OnboardingSceneId>("openrouter-unlinked");
   const onSelectConnection = React.useCallback((scene: OnboardingSceneId) => {
-    if (
-      scene === "connect" ||
-      scene === "credits-price-error" ||
-      scene === "openrouter-unlinked" ||
-      scene === "api-key"
-    ) {
-      setConnectionScene(scene);
+    const next =
+      scene === "connect" || scene.startsWith("subscription")
+        ? "connect"
+        : "colony";
+    if (next === "connect") {
+      // The OpenRouter panel unmounts with the Colony Agent path, so its
+      // reported readiness must not survive into the next visit.
+      setOpenRouterReady(false);
+      setOpenRouterScene("openrouter-unlinked");
     }
+    setConnectionScene(next);
   }, []);
 
   const { globalConfig } = useGlobalAgentConfig();
@@ -691,19 +681,9 @@ export function ConnectSetupStep({
     (runtime) => runtime.id === selectedRuntimeId,
   );
   const bundled = runtimes.data?.find((runtime) => runtime.id === "buzz-agent");
-  const [byokChecked, setByokChecked] = React.useState(false);
-  const [openRouterReady, setOpenRouterReady] = React.useState(false);
-  const [openRouterScene, setOpenRouterScene] =
-    React.useState<OnboardingSceneId>("openrouter-unlinked");
-  const keyScene =
-    connectionScene === "api-key" || connectionScene === "openrouter-unlinked";
-  const candidateRuntime = keyScene ? bundled : selectedRuntime;
-  const aiReady =
-    (connectionScene === "api-key"
-      ? byokChecked
-      : connectionScene === "openrouter-unlinked"
-        ? openRouterReady && globalConfig.provider === "openrouter"
-        : true) &&
+  const colonyPath = connectionScene === "colony";
+  const candidateRuntime = colonyPath ? bundled : selectedRuntime;
+  const candidateReady =
     !!candidateRuntime &&
     runtimeIsReadyForOnboarding(
       candidateRuntime,
@@ -712,8 +692,29 @@ export function ConnectSetupStep({
     ) &&
     resolveAgentPrerequisiteReadiness(candidateRuntime.id, gitBashPrerequisite)
       .ready;
+  // The OpenRouter panel tests only an OpenRouter-backed Colony Agent, never
+  // another provider's saved connection.
+  const openRouterTestReady =
+    openRouterReady && globalConfig.provider === "openrouter" && candidateReady;
+  // Colony Agent can already run on another provider's key saved in
+  // Settings > Agents. Onboarding no longer edits keys, but it still lets that
+  // saved setup prove itself with a reply. OpenRouter setups belong to the
+  // OpenRouter panel.
+  const colonyAgentSaved =
+    colonyPath && globalConfig.provider !== "openrouter" && candidateReady;
+  const aiReady = colonyPath
+    ? openRouterTestReady || colonyAgentSaved
+    : candidateReady;
+  const bundledPrerequisite = resolveAgentPrerequisiteReadiness(
+    "buzz-agent",
+    gitBashPrerequisite,
+  );
   React.useEffect(() => {
-    if (!selectedRuntimeId && globalConfig.preferred_runtime) {
+    if (
+      !selectedRuntimeId &&
+      globalConfig.preferred_runtime &&
+      runtimeIsOnboardingSubscription(globalConfig.preferred_runtime)
+    ) {
       setSelectedRuntimeId(globalConfig.preferred_runtime);
       setSelectedModel(globalConfig.model);
     }
@@ -740,7 +741,7 @@ export function ConnectSetupStep({
     proof?.model;
 
   const continueWithRuntime = async () => {
-    if (!aiReady || connectionScene === "credits-price-error") {
+    if (!aiReady) {
       return;
     }
     const attempt = ++generation.current;
@@ -751,14 +752,14 @@ export function ConnectSetupStep({
     setConnectionPhase("starting");
     setTestState("testing");
     try {
-      const runtimeId = keyScene ? "buzz-agent" : selectedRuntimeId;
+      const runtimeId = colonyPath ? "buzz-agent" : selectedRuntimeId;
       if (!runtimeId) throw new Error("Choose an AI app before testing.");
       setTestedRuntimeId(runtimeId);
       const candidate = buildOnboardingRuntimeCandidate(
         globalConfig,
         runtimeId,
         runtimes.data ?? [],
-        keyScene ? undefined : selectedModel,
+        colonyPath ? undefined : selectedModel,
       );
       const result = await runOnboardingBusinessConnectionTest(
         candidate,
@@ -854,55 +855,92 @@ export function ConnectSetupStep({
               selectedRuntimeId={selectedRuntimeId}
               onRuntimeSelect={selectRuntime}
             />
-          ) : connectionScene === "openrouter-unlinked" ? (
-            <OpenRouterConnectionPanel
-              onboarding
-              onTestConnection={() => void continueWithRuntime()}
-              testDisabled={!aiReady || saving}
-              onReadyChange={setOpenRouterReady}
-              onStateChange={(state) =>
-                setOpenRouterScene(`openrouter-${state}`)
-              }
-            />
-          ) : connectionScene === "api-key" ? (
-            <AiKeyConnectionPanel
-              key={connectionScene}
-              onCheckedChange={setByokChecked}
-            />
           ) : (
-            <CreditsComingSoon />
+            <div
+              className="colony-agent-power"
+              data-testid="onboarding-colony-agent"
+            >
+              {!bundled && !runtimes.isFetching && !runtimes.error ? (
+                <div className="power-notice is-error" role="alert">
+                  <p>
+                    Colony Agent is not available on this computer. Choose
+                    Claude Code or Codex, or skip for now.
+                  </p>
+                </div>
+              ) : null}
+              {!bundledPrerequisite.ready &&
+              (bundledPrerequisite.reason === "git-bash" ||
+                gitBashQuery.isError) ? (
+                <div
+                  className={`power-notice ${bundledPrerequisite.reason === "git-bash" ? "is-error" : ""}`}
+                  role={
+                    bundledPrerequisite.reason === "git-bash"
+                      ? "alert"
+                      : "status"
+                  }
+                >
+                  <p>{bundledPrerequisite.copy}</p>
+                </div>
+              ) : null}
+              {colonyAgentSaved ? (
+                <div
+                  className="colony-agent-saved"
+                  data-testid="onboarding-colony-agent-saved"
+                >
+                  <div className="power-notice" role="status">
+                    <p>
+                      Colony Agent already has an AI connection saved in
+                      Settings. Test it to continue.
+                    </p>
+                  </div>
+                  <button
+                    className="primary full"
+                    disabled={saving}
+                    onClick={() => void continueWithRuntime()}
+                    type="button"
+                  >
+                    Test Colony Agent <span aria-hidden="true">→</span>
+                  </button>
+                </div>
+              ) : null}
+              <OpenRouterConnectionPanel
+                onboarding
+                onTestConnection={() => void continueWithRuntime()}
+                testDisabled={!openRouterTestReady || saving}
+                onReadyChange={setOpenRouterReady}
+                onStateChange={(state) =>
+                  setOpenRouterScene(`openrouter-${state}`)
+                }
+              />
+              <ColonyCreditsOption />
+            </div>
           )}
-          {saveError && connectionScene !== "connect" ? (
-            <p role="alert">{saveError}</p>
-          ) : null}
-          {connectionScene !== "openrouter-unlinked" &&
-          (connectionScene === "connect" ||
-            connectionScene === "credits-price-error" ||
-            aiReady) ? (
+          {saveError && colonyPath ? <p role="alert">{saveError}</p> : null}
+          {colonyPath ? (
+            <div className="colony-agent-skip">
+              <button
+                className="back"
+                type="button"
+                onClick={() => onContinue()}
+              >
+                Skip for now
+              </button>
+            </div>
+          ) : (
             <div className="power-cta">
               <button
                 className="primary full"
-                disabled={
-                  saving ||
-                  !aiReady ||
-                  connectionScene === "credits-price-error"
-                }
+                disabled={saving || !aiReady}
                 onClick={() => void continueWithRuntime()}
                 type="button"
               >
-                {connectionScene === "connect" && selectedRuntime
+                {selectedRuntime
                   ? `Connect ${getRuntimeDisplayLabel(selectedRuntime)}`
                   : "Connect"}{" "}
                 <span aria-hidden="true">→</span>
               </button>
-              {aiReady && connectionScene === "connect" ? (
-                <p>Sign-in stays with the provider.</p>
-              ) : null}
-              {/* A configured bundled agent is not a signed-in subscription. Keep
-                  its fallback attached while asynchronous detection settles. */}
-              {!aiReady ||
-              selectedRuntime?.id === "buzz-agent" ||
-              connectionScene === "credits-price-error" ? (
+              {aiReady ? <p>Sign-in stays with the provider.</p> : null}
+              {!aiReady ? (
                 <button
                   className="back"
                   type="button"
@@ -912,15 +950,12 @@ export function ConnectSetupStep({
                 </button>
               ) : null}
             </div>
-          ) : null}
+          )}
         </>
       }
       data={{
         ...data,
-        ...(connectionScene === "credits-price-error"
-          ? { scoutGuidance: scoutGuidance("connect") }
-          : {}),
-        ...(keyScene
+        ...(colonyPath
           ? {
               harnessLabel: "Colony Agent",
               harnessStatus: bundled
@@ -933,14 +968,10 @@ export function ConnectSetupStep({
             }
           : {}),
       }}
-      harnessMark={keyScene ? undefined : harnessHeader.mark}
+      harnessMark={colonyPath ? undefined : harnessHeader.mark}
       onNavigate={onBack}
       onSelectConnection={onSelectConnection}
-      scene={
-        connectionScene === "openrouter-unlinked"
-          ? openRouterScene
-          : connectionScene
-      }
+      scene={colonyPath ? openRouterScene : "connect"}
     />
   );
 }

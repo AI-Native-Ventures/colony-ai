@@ -1,4 +1,8 @@
 use super::*;
+use crate::deletion::{
+    FrozenInventory, KeyStreamDigest, LeaseToken, PrefixManifest, StorageManifest,
+    DEFAULT_LEASE_DURATION,
+};
 use crate::payments::CreditDebitOutcome;
 use nostr::Keys;
 use sqlx::{postgres::PgPoolOptions, PgPool};
@@ -439,4 +443,152 @@ async fn admission_recovers_expired_session_even_when_background_worker_is_backl
         db.account_credit_balance(ids[0]).await.unwrap(),
         800_000_000
     );
+}
+
+async fn deletion_preserves_billing_recovery() {
+    let (db, pool, community, agent, ids) = fixture().await;
+    let request = Uuid::new_v4();
+    let digest = "a".repeat(64);
+    db.admit_credit_ai_request(
+        "fixture",
+        community,
+        agent.public_key().as_bytes(),
+        ids[1],
+        request,
+        &digest,
+        100_000_000,
+    )
+    .await
+    .unwrap();
+    let owner: String = sqlx::query_scalar("SELECT pubkey FROM accounts WHERE id=$1")
+        .bind(ids[0])
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let host: String = sqlx::query_scalar("SELECT host FROM communities WHERE id=$1")
+        .bind(community.as_uuid())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let store = db.deletion_store();
+    // This production catalog check failed before the SQL exclusion fix.
+    store.validate_catalog().await.unwrap();
+    let submitted = store.submit(&host, "test-operator", None).await.unwrap();
+    let storage = StorageManifest {
+        version: 4,
+        prefixes: ["_meta", "_uploads", "repos"]
+            .into_iter()
+            .map(|prefix| PrefixManifest {
+                prefix: format!("{prefix}/{community}/"),
+                object_count: 0,
+                total_bytes: 0,
+                keys_digest: KeyStreamDigest::new().finish().0,
+            })
+            .collect(),
+    };
+    let inventory = FrozenInventory {
+        schema: store.inventory_schema(community).await.unwrap(),
+        storage,
+    };
+    store
+        .freeze_inventory(submitted.id, &inventory)
+        .await
+        .unwrap();
+    store
+        .approve(submitted.id, "test-approver", None)
+        .await
+        .unwrap();
+    let claim = store
+        .claim_specific(submitted.id, "test-executor", DEFAULT_LEASE_DURATION)
+        .await
+        .unwrap()
+        .unwrap();
+    store.begin_quiescing(&claim.lease).await.unwrap();
+    // Ownership rows still exist here. Removing either explicit production
+    // fence therefore lets this operation succeed and fails the regression.
+    assert!(db
+        .create_credit_ai_session(&owner, community, agent.public_key().as_bytes())
+        .await
+        .is_err());
+    assert!(db
+        .admit_credit_ai_request(
+            "fixture",
+            community,
+            agent.public_key().as_bytes(),
+            ids[1],
+            request,
+            &digest,
+            100_000_000,
+        )
+        .await
+        .is_err());
+    let generation = store.fence(&claim.lease).await.unwrap();
+    let token = LeaseToken {
+        fence_generation: Some(generation),
+        ..claim.lease
+    };
+    store
+        .freeze_destructive_storage_manifest(&token, &inventory.storage)
+        .await
+        .unwrap();
+    store.mark_drained(&token).await.unwrap();
+    store
+        .mark_bindings_removed(&token, json!({"keys":0}))
+        .await
+        .unwrap();
+    let purged = store.purge_postgres(&token).await.unwrap();
+    assert_eq!(purged["users"], 2);
+    assert!(!purged.contains_key("account_ai_sessions"));
+    store
+        .mark_cache_purged(&token, json!({"keys":0}))
+        .await
+        .unwrap();
+    store
+        .verify_postgres_logically_deleted(&token)
+        .await
+        .unwrap();
+    let state: String = sqlx::query_scalar("SELECT deletion_state FROM communities WHERE id=$1")
+        .bind(community.as_uuid())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(state, "tombstone");
+    // Tenant removal must not strand the reservation or destroy its session FK.
+    sqlx::query("UPDATE account_ai_requests SET next_retry_at=now() WHERE id=$1")
+        .bind(request)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let due = db.claim_credit_ai_recovery().await.unwrap();
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].id, request);
+    db.settle_credit_ai_request(request, 12_000_000, false)
+        .await
+        .unwrap();
+    db.settle_credit_ai_request(request, 12_000_000, false)
+        .await
+        .unwrap();
+    assert_eq!(
+        db.account_credit_balance(ids[0]).await.unwrap(),
+        988_000_000
+    );
+    let retained: i64 = sqlx::query_scalar("SELECT count(*) FROM account_ai_requests r JOIN account_ai_sessions s ON s.id=r.session_id WHERE r.id=$1 AND s.community_id=$2 AND r.status='settled'")
+        .bind(request).bind(community.as_uuid()).fetch_one(&pool).await.unwrap();
+    assert_eq!(retained, 1);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn community_deletion_fences_new_spend_and_preserves_billing_recovery() {
+    deletion_preserves_billing_recovery().await;
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn migration_schema_community_deletion_fences_new_spend_and_preserves_billing_recovery() {
+    let pool = PgPool::connect(&crate::test_support::database_url())
+        .await
+        .unwrap();
+    crate::migration::run_migrations(&pool).await.unwrap();
+    deletion_preserves_billing_recovery().await;
 }
