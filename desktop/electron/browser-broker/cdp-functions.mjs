@@ -51,13 +51,16 @@ export const FUNCTIONS = Object.freeze({
     if (form) {
       try { formAction = new URL(attr(form, "action") || location.href, location.href).href; } catch (e) { formAction = null; }
     }
-    const href = tag === "a" ? attr(el, "href") : null;
+    let href = null;
+    if (tag === "a" && attr(el, "href")) {
+      try { href = new URL(attr(el, "href"), el.baseURI || location.href).href; } catch (e) { href = null; }
+    }
     return {
       tag,
       inputType: tag === "input" ? String(el.type || "").toLowerCase() : undefined,
       buttonType: tag === "button" ? String(el.type || "submit").toLowerCase() : undefined,
       autocomplete: attr(el, "autocomplete") || undefined,
-      href: href == null ? undefined : text(href, 500),
+      href: href == null || href.length > 8192 ? undefined : href,
       label: labelOf(el),
       inDialog: Boolean(dialog),
       dialogRole: dialog ? (attr(dialog, "role") || "dialog") : undefined,

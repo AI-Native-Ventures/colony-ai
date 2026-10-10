@@ -4,6 +4,7 @@ import { createPageDriver } from "./page-driver.mjs";
 import { readPackagedGate } from "./packaged-gate.mjs";
 import { createEgressProxy } from "./egress-proxy.mjs";
 import { createUploadStagingStore } from "./upload-staging.mjs";
+import { createBrowserDownloadManager } from "./download-manager.mjs";
 
 export const BROWSER_BROKER_EVENT_CHANNEL = "colony:browser-broker-event";
 export const MAX_UPLOAD_BYTES = 32 * 1024 * 1024;
@@ -19,6 +20,7 @@ export async function createElectronBrowserAgentHost({
   gateEnvironment = process.env,
   uploadStagingRoot,
   uploadStagingOptions = {},
+  downloadOptions = {},
   // Source fixtures may inject this; packaged main uses the dual-opt-in gate.
   fixturePrivateExceptions = [],
   proxyFactory = createEgressProxy,
@@ -31,6 +33,7 @@ export async function createElectronBrowserAgentHost({
     rootPath: uploadStagingRoot,
   });
   let uploadFailure = false;
+  let downloadFailure = false;
   const adapter = browserHost.agentAdapter;
   const profiles = new Map();
   let tail = Promise.resolve();
@@ -40,7 +43,23 @@ export async function createElectronBrowserAgentHost({
     tail = result.catch(() => undefined);
     return result;
   };
-  const driver = createPageDriver({ adapter });
+  const downloads = createBrowserDownloadManager({
+    ...downloadOptions,
+    staging,
+    downloadsPath: adapter.downloadDirectory(),
+    fetchForTab: (tabId, url, options) => {
+      const session = adapter.session(tabId);
+      if (!session?.fetch)
+        throw new Error("Browser download session unavailable");
+      return session.fetch(url, options);
+    },
+    remember: (...args) => adapter.rememberDownload(...args),
+    onRecovery: () => {
+      downloadFailure = true;
+      host.broker.notifyDownloadRecovery(adapter.tabIds(), true);
+    },
+  });
+  const driver = createPageDriver({ adapter, downloads });
   const host = await createBrowserAgentHost({
     ...hostOptions,
     enabled: true,
@@ -82,6 +101,11 @@ export async function createElectronBrowserAgentHost({
 
   async function recoverUploads() {
     try {
+      await downloads.recover();
+      if (downloadFailure) {
+        downloadFailure = false;
+        host.broker.notifyDownloadRecovery(adapter.tabIds(), false);
+      }
       await staging.recover();
       for (const entry of staging.pending()) {
         if (host.capabilities.getGrant(entry.grantId)?.state !== "active")
@@ -212,6 +236,7 @@ export async function createElectronBrowserAgentHost({
         recoveryRequired:
           host.broker.controlRecoveryRequired(tab.id) ||
           uploadFailure ||
+          downloadFailure ||
           Boolean(profiles.get(adapter.session(tab.id))?.failure),
       };
     }
@@ -312,6 +337,7 @@ export async function createElectronBrowserAgentHost({
             ...event,
             required:
               uploadFailure ||
+              downloadFailure ||
               host.broker.controlRecoveryRequired(event.tabId) ||
               Boolean(profiles.get(adapter.session(event.tabId))?.failure),
           });
@@ -322,6 +348,7 @@ export async function createElectronBrowserAgentHost({
       stopped = true;
       unsubscribe();
       await host.stop();
+      await downloads.stop();
       await tail;
       await staging.cleanupAll();
       for (const profile of profiles.values()) await cleanup(profile);

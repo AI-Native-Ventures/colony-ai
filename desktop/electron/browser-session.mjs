@@ -151,6 +151,16 @@ export function createBrowserSessionStore({
   function configureDownloads(browserSession, profileHash) {
     browserSession.on("will-download", (event, item, webContents) => {
       const tab = getTabForContents(webContents.id);
+      if (
+        tab &&
+        ["agent", "agent-awaiting-confirmation"].includes(tab.controlOwner)
+      ) {
+        event.preventDefault();
+        emitTabEvent(tab, "download-blocked", {
+          reason: "Use the confirmed download tool",
+        });
+        return;
+      }
       if (!tab || activeDownloads.size >= maxActiveDownloads) {
         event.preventDefault();
         if (tab)
@@ -435,7 +445,37 @@ export function createBrowserSessionStore({
     return { revealed: true };
   }
 
+  /** Register a complete agent download in the existing bounded person reveal store. */
+  function rememberAgentDownload(
+    tab,
+    downloadId,
+    destination,
+    fileName,
+    bytes,
+  ) {
+    if (
+      !tab ||
+      !/^[a-f0-9-]{36}$/u.test(downloadId) ||
+      path.dirname(destination) !== path.resolve(downloadsPath) ||
+      path.basename(destination) !== fileName ||
+      !Number.isInteger(bytes) ||
+      bytes < 0 ||
+      bytes > maxDownloadBytes
+    )
+      throw new Error("Invalid completed browser download");
+    savedDownloads.set(downloadId, destination);
+    while (savedDownloads.size > MAX_REMEMBERED_DOWNLOADS)
+      savedDownloads.delete(savedDownloads.keys().next().value);
+    if (hasTab(tab.id))
+      emitTabEvent(tab, "download", {
+        state: "completed",
+        downloadId,
+        fileName,
+      });
+  }
+
   return {
+    rememberAgentDownload,
     forScope,
     revealDownload,
     retainTab,

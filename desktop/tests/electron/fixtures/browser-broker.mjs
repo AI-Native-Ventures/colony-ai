@@ -42,6 +42,7 @@ async function boot() {
   const host = await createElectronBrowserAgentHost({
     browserHost: browser,
     uploadStagingRoot: path.join(app.getPath("userData"), "uploads"),
+    downloadOptions: { maxBytes: 1024, deadlineMs: 2000 },
     chooseFile: async () =>
       process.env.COLONY_BROWSER_FIXTURE_UPLOAD_PATH ?? null,
     enabled: process.env.COLONY_BROWSER_AGENT === "1",
