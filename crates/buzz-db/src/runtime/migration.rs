@@ -500,6 +500,8 @@ mod postgres_tests {
             "account_site_subscriptions",
             "account_site_subscription_payments",
             "account_payment_notifications",
+            "account_ai_sessions",
+            "account_ai_requests",
         ] {
             if normalized[insert_pos..].contains(&format!("'{value}'")) {
                 globals.insert(value.to_owned());
@@ -713,7 +715,13 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 54);
+        assert_eq!(migrations.len(), 55);
+        assert_eq!(migrations[53].version, 54);
+        assert_eq!(migrations[54].version, 55);
+        assert!(migrations[54]
+            .sql
+            .as_str()
+            .contains("CREATE TABLE account_ai_sessions"));
         assert_eq!(migrations[0].version, 1);
         assert_eq!(&*migrations[0].description, "initial schema");
         assert!(migrations[0]
@@ -1344,10 +1352,13 @@ mod postgres_tests {
         let subscription_cycle_fence = migrations[48].sql.as_str();
         assert!(subscription_cycle_fence.contains("provider_cycles_complete"));
         assert!(subscription_cycle_fence.contains("last_provider_payment_cycle"));
-        // schema.sql exclusion list must match the restored (pre-0041) body.
+        // The account-global billing session anchor survives tenant deletion.
+        // Migration 0055 extends the restored exclusion list without restoring
+        // any of the removed NIP-FI tables.
         assert!(
-            desired_schema.contains("'rate_limit_violations'\n    ]::TEXT[])"),
-            "schema.sql exclusion list must match the pre-0041 body after ledger removal"
+            desired_schema
+                .contains("'rate_limit_violations', 'account_ai_sessions'\n    ]::TEXT[])"),
+            "schema.sql must preserve billing sessions outside the tenant purge"
         );
 
         assert_eq!(migrations[49].version, 50);
