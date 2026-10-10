@@ -31,12 +31,19 @@ for (const viewport of [
     await expect(
       routes.getByRole("radio", { name: "Claude Code or Codex", exact: true }),
     ).toBeChecked();
-    await expect(
-      page.getByTestId("onboarding-connect-runtime-claude"),
-    ).toBeVisible();
+    const claude = page.getByTestId("onboarding-connect-runtime-claude");
+    await expect(claude).toBeVisible();
+    // A ready card says Installed once, not again at its foot.
+    await expect(claude.getByText("Installed", { exact: true })).toHaveCount(1);
     await expect(
       page.getByTestId("onboarding-connect-runtime-codex"),
     ).toBeVisible();
+    // Someone without either app can always skip from the first tab.
+    const subscriptionSkip = page.getByRole("button", {
+      name: "Skip for now",
+      exact: true,
+    });
+    await expect(subscriptionSkip).toBeEnabled();
     await expect(
       page.getByTestId("onboarding-connect-runtime-goose"),
     ).toHaveCount(0);
@@ -46,6 +53,20 @@ for (const viewport of [
     await page.screenshot({
       path: `${SHOT_DIR}/01-claude-code-or-codex-${viewport.width}.png`,
     });
+    if (viewport.width < 1440) {
+      // At phone width Skip for now sits below the fold on this tab.
+      await subscriptionSkip.scrollIntoViewIfNeeded();
+      await waitForAnimations(page);
+      await page.screenshot({
+        path: `${SHOT_DIR}/01-claude-code-or-codex-skip-${viewport.width}.png`,
+      });
+      // Return to the top so the Colony Agent shot frames the same view.
+      await subscriptionSkip.evaluate((element) => {
+        for (let node = element.parentElement; node; node = node.parentElement)
+          node.scrollTop = 0;
+        window.scrollTo(0, 0);
+      });
+    }
 
     await mockOpenRouterUnlinked(page);
     await routes

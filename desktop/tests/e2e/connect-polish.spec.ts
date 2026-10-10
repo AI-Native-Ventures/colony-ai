@@ -46,9 +46,11 @@ for (const viewport of [
         "Your AI teammates share these allowances with your other usage.",
       ),
     ).toBeVisible();
+    // Skip for now stays available on the Claude Code or Codex path even
+    // when an app is ready.
     await expect(
       page.getByRole("button", { name: "Skip for now", exact: true }),
-    ).toHaveCount(0);
+    ).toBeEnabled();
     await capture(page, `subscriptions-${viewport.width}`);
     await page
       .getByRole("button", { name: "Connect Claude Code", exact: true })
