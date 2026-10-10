@@ -279,6 +279,11 @@ for (const surface of ["onboarding", "settings"] as const) {
       )
       .toBe(1);
     expect(await saveCount(page)).toBe(0);
+    if (surface === "settings")
+      await expect(page.getByTestId("agent-defaults-editing")).toHaveAttribute(
+        "disabled",
+        "",
+      );
     expect(await savedConfig(page)).toMatchObject(original);
     if (surface === "onboarding")
       await expect(
@@ -295,6 +300,17 @@ for (const surface of ["onboarding", "settings"] as const) {
       preferred_runtime: "buzz-agent",
     });
     expect(await saveCount(page)).toBe(1);
+    if (surface === "settings") {
+      await expect(
+        page.getByTestId("agent-defaults-editing"),
+      ).not.toHaveAttribute("disabled", "");
+      await page
+        .getByTestId("settings-global-agent-config")
+        .locator("summary")
+        .filter({ hasText: "Bring your own key" })
+        .click();
+      await expect(page.getByTestId("global-agent-model")).toHaveCount(0);
+    }
     const call = await page.evaluate(() =>
       window.__BUZZ_E2E_COMMAND_PAYLOADS__?.find(
         (entry) => entry.command === "test_onboarding_connection",
