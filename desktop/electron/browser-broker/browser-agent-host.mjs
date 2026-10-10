@@ -1,3 +1,4 @@
+import { BROWSER_APPROVAL_GUIDANCE } from "./approval-guidance.mjs";
 import { randomBytes } from "node:crypto";
 import { createBroker } from "./broker-core.mjs";
 import { createBrokerServer, defaultSocketPath } from "./broker-server.mjs";
@@ -43,7 +44,9 @@ export async function createBrowserAgentHost({
       env: {},
       stop: async () => {},
       handleRequest: async () => {
-        throw new Error("The agent browser is not enabled");
+        throw new Error(
+          `The agent browser is not enabled. ${BROWSER_APPROVAL_GUIDANCE}`,
+        );
       },
       onEvent: () => () => {},
     };
