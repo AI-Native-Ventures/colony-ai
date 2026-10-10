@@ -33,6 +33,7 @@ import {
   deepLinkSchemesFromConfig,
   registerDeepLinkSchemes,
 } from "./deep-links.mjs";
+import { browserAgentEnabled } from "./browser-broker/feature-flag.mjs";
 import { NativeHost } from "./native-host.mjs";
 import { createBuzzMediaProtocolHandler } from "./protocols.mjs";
 import { revealElectronWindow } from "./window-activation.mjs";
@@ -49,8 +50,7 @@ const { autoUpdater, createElectronUpdaterService, UPDATE_METADATA_URL } =
 
 const desktop = fileURLToPath(new URL("..", import.meta.url));
 const smoke = process.env.COLONY_ELECTRON_SMOKE === "1";
-if (process.env.COLONY_BROWSER_AGENT === "1")
-  app.commandLine.appendSwitch("disable-quic");
+if (browserAgentEnabled()) app.commandLine.appendSwitch("disable-quic");
 const runtime = runtimePaths({
   packaged: app.isPackaged,
   appPath: desktop,
@@ -239,7 +239,7 @@ async function boot() {
   await app.whenReady();
   browserAgentHost = await createElectronBrowserAgentHost({
     browserHost,
-    enabled: browserTabEnabled && process.env.COLONY_BROWSER_AGENT === "1",
+    enabled: browserTabEnabled && browserAgentEnabled(),
     uploadStagingRoot: path.join(
       app.getPath("userData"),
       "browser-agent-uploads",

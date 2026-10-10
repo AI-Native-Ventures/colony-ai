@@ -31,6 +31,7 @@ test("real-run preparation produces the production gate's dual opt-in, FAKE only
   assert.equal(config.nonce, run.environment.COLONY_BROWSER_PACKAGED_GATE);
   assert.equal(run.agentEnvironment.OPENAI_COMPAT_MODEL, "colony-browser-fake");
   assert.equal(run.environment.COLONY_NEST_MIGRATION, "0");
+  assert.equal(Object.hasOwn(run.environment, "COLONY_BROWSER_AGENT"), false);
   const gate = await readPackagedGate(run.environment);
   assert.deepEqual(
     gate.exceptionsFor({ ...task, allowedOrigins: [run.fixtureOrigin] }),

@@ -3663,12 +3663,14 @@ test("thread composer switches directly between visible reply edits", async ({
   await timelineRoot.getByRole("button", { name: "Reply" }).click();
 
   const threadPanel = page.getByTestId("message-thread-panel");
+  // Linked-work loading changes reply positions; settle it before hovering.
+  await waitForCompanyWorkThreadContextRead(page);
   const threadInput = threadPanel.getByTestId("message-input");
   const secondReply = threadPanel.locator(`[data-message-id="${secondId}"]`);
   await secondReply.hover();
   await secondReply.getByRole("button", { name: "More actions" }).click();
   await page.getByTestId(`edit-message-${secondId}`).click();
-  await expect(threadInput).toHaveText(second);
+  await expectReplyEditReady(threadPanel, second);
 
   const firstReply = threadPanel.locator(`[data-message-id="${firstId}"]`);
   await firstReply.hover();
