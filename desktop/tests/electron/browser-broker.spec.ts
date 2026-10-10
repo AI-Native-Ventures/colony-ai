@@ -81,6 +81,9 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
         PATH: process.env.PATH,
         TMPDIR: process.env.TMPDIR,
         LANG: process.env.LANG,
+        // xvfb-run supplies the display for Linux CI. Keep the HOME isolated.
+        DISPLAY: process.env.DISPLAY,
+        XAUTHORITY: process.env.XAUTHORITY,
         HOME: dir,
         COLONY_NEST_MIGRATION: "0",
         COLONY_BROWSER_AGENT: "1",
