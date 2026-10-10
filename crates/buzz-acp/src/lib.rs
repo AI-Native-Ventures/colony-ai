@@ -3772,6 +3772,7 @@ async fn tokio_main() -> Result<()> {
                     &respawn_tx,
                     &mut respawn_tasks,
                     observer.clone(),
+                    Some(&ctx.rest_client),
                 ) == LoopAction::Exit
                 {
                     break;
@@ -3800,6 +3801,7 @@ async fn tokio_main() -> Result<()> {
                     &respawn_tx,
                     &mut respawn_tasks,
                     observer.clone(),
+                    Some(&ctx.rest_client),
                 );
                 if pool.live_count() == 0 && !any_respawn_in_flight(&crash_history) {
                     tracing::error!("all agents dead — exiting");
@@ -4711,7 +4713,20 @@ fn handle_prompt_result(
         // Don't requeue batches for channels the agent was removed from —
         // those events are stale and should be silently dropped.
         if !removed_channels.contains(&batch.channel_id) {
-            if matches!(
+            if config.managed_credits_session.is_some()
+                && !matches!(result.outcome, PromptOutcome::Ok(_))
+            {
+                // A lost ACP response, process exit, timeout or cancellation may
+                // follow billed inference. Never create a fresh paid request by
+                // replaying this batch, including annotated cancelled prompts.
+                let notice = match &result.outcome {
+                    PromptOutcome::Error(error) => provider_failure::notice(error),
+                    _ => None,
+                }
+                .unwrap_or_else(|| provider_failure::credits_interrupted_notice().to_owned());
+                spawn_failure_notice(rest_client, &batch, notice);
+                hard_timeout_fate_suffix = Some(" (automatic replay stopped for Colony credits)");
+            } else if matches!(
                 result.outcome,
                 PromptOutcome::Cancelled | PromptOutcome::CancelDrainTimeout(_)
             ) {
@@ -5088,6 +5103,7 @@ fn recover_panicked_agent(
     respawn_tx: &mpsc::Sender<RespawnResult>,
     respawn_tasks: &mut tokio::task::JoinSet<()>,
     observer: Option<observer::ObserverHandle>,
+    rest_client: Option<&relay::RestClient>,
 ) {
     let task_id = join_error.id();
     let Some(meta) = pool.task_map_mut().remove(&task_id) else {
@@ -5099,7 +5115,13 @@ fn recover_panicked_agent(
     // Requeue BEFORE mark_complete (same rationale as handle_prompt_result).
     if let Some(batch) = meta.recoverable_batch {
         if let Some(ch) = meta.channel_id {
-            if !removed_channels.contains(&ch) {
+            if !removed_channels.contains(&ch) && config.managed_credits_session.is_some() {
+                spawn_failure_notice(
+                    rest_client,
+                    &batch,
+                    provider_failure::credits_interrupted_notice().to_owned(),
+                );
+            } else if !removed_channels.contains(&ch) {
                 // Dead-letter on exhaustion is logged inside requeue(); a
                 // panic path has no outcome to report, so no notice here.
                 let _ = queue.requeue(batch);
@@ -5201,6 +5223,7 @@ fn drain_ready_join_results(
     respawn_tx: &mpsc::Sender<RespawnResult>,
     respawn_tasks: &mut tokio::task::JoinSet<()>,
     observer: Option<observer::ObserverHandle>,
+    rest_client: Option<&relay::RestClient>,
 ) -> LoopAction {
     while let Some(Some(join_result)) = pool.join_set.join_next().now_or_never() {
         if let Err(join_error) = join_result {
@@ -5217,6 +5240,7 @@ fn drain_ready_join_results(
                 respawn_tx,
                 respawn_tasks,
                 observer.clone(),
+                rest_client,
             );
             if pool.live_count() == 0 && !any_respawn_in_flight(crash_history) {
                 return LoopAction::Exit;
@@ -9200,6 +9224,7 @@ mod build_mcp_servers_tests {
             respond_to_allowlist: std::collections::HashSet::new(),
             allowed_respond_to: vec![],
             persona_env_vars: vec![],
+            managed_credits_session: None,
             has_generated_codex_config: false,
             relay_observer: false,
             exit_after_inactivity_secs: 0,
@@ -9426,6 +9451,7 @@ mod error_outcome_emission_tests {
             respond_to_allowlist: HashSet::new(),
             allowed_respond_to: vec![],
             persona_env_vars: vec![],
+            managed_credits_session: None,
             has_generated_codex_config: false,
             relay_observer: false,
             exit_after_inactivity_secs: 0,
@@ -9902,6 +9928,7 @@ mod error_outcome_emission_tests {
             &respawn_tx,
             &mut respawn_tasks,
             Some(observer.clone()),
+            None,
         );
 
         let panic = observer
@@ -9921,6 +9948,15 @@ mod error_outcome_emission_tests {
     // the requeued batch stays wedged until the ~2h in-flight backstop.
     #[tokio::test]
     async fn panic_recovery_frees_the_exact_thread_scope() {
+        assert_panic_recovery_frees_the_exact_thread_scope(false).await;
+    }
+
+    #[tokio::test]
+    async fn credits_panic_recovery_frees_scope_without_replaying_paid_batch() {
+        assert_panic_recovery_frees_the_exact_thread_scope(true).await;
+    }
+
+    async fn assert_panic_recovery_frees_the_exact_thread_scope(credits: bool) {
         let mut pool = AgentPool::from_slots(vec![]);
         let channel_id = Uuid::new_v4();
         let scope = scope::SessionScope::Thread {
@@ -9968,7 +10004,10 @@ mod error_outcome_emission_tests {
         abort_handle.abort();
         let join_error = pool.join_set.join_next().await.unwrap().unwrap_err();
 
-        let config = test_config();
+        let mut config = test_config();
+        if credits {
+            config.managed_credits_session = Some(Uuid::new_v4());
+        }
         let mut heartbeat_in_flight = false;
         let removed_channels = HashSet::new();
         let mut typing_channels = HashMap::new();
@@ -9994,6 +10033,7 @@ mod error_outcome_emission_tests {
             &respawn_tx,
             &mut respawn_tasks,
             None,
+            None,
         );
 
         // The exact Thread scope is freed and the requeued batch is flushable
@@ -10007,9 +10047,10 @@ mod error_outcome_emission_tests {
         // applies a short retry backoff — so it is undispatched work now and
         // becomes flushable once the backoff expires, rather than being stranded
         // in-flight behind the wrong scope until the ~2h backstop).
-        assert!(
+        assert_eq!(
             queue.has_undispatched_work(),
-            "requeued thread batch must be queued (undispatched) after recovery"
+            !credits,
+            "only ordinary runtime batches may be replayed after panic"
         );
     }
 
@@ -11067,6 +11108,113 @@ mod error_outcome_emission_tests {
             let notice = provider_failure::notice(&error).unwrap();
             assert!(!notice.contains("sensitive payload"));
             assert_terminal_notice(code, raw, &notice).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn credits_refusals_post_one_safe_threaded_notice_without_requeueing() {
+        for message in [
+            "Out of credits. Top up to keep your Colony Agent working.",
+            "Your Colony Agents are busy. Try again shortly.",
+            "Usage is being recovered automatically. This turn was stopped; do not resend it automatically.",
+            "This request was already charged. Its response could not be recovered. Start a new conversation turn.",
+            "Managed session expired or unauthorized. Restart your Colony Agent.",
+            "Colony credits are unavailable. Try again later.",
+            "Colony credits currently support bounded text and function tools. This input cannot be sent.",
+        ] {
+            let notice = format!("⚠️ {message}");
+            assert_terminal_notice(-32004, message, &notice).await;
+            assert_eq!(provider_failure::onboarding_notice(&AcpError::AgentError { code: -32004, message: message.into() }).as_deref(), Some(message));
+        }
+        assert_terminal_notice(-32004, "must-not-leak-upstream-payload", "⚠️ Colony credits could not complete this turn. Automatic replay was stopped. Check your balance and restart your Colony Agent if needed.").await;
+    }
+
+    #[tokio::test]
+    async fn credits_interruptions_never_requeue_an_ambiguous_paid_batch() {
+        for outcome in [
+            PromptOutcome::Error(AcpError::Io(std::io::Error::other("lost pipe"))),
+            PromptOutcome::AgentExited,
+            PromptOutcome::ProjectContextIndeterminate("relay unavailable".into()),
+            PromptOutcome::Timeout(TimeoutKind::Idle),
+            PromptOutcome::Timeout(TimeoutKind::Hard {
+                recently_active: false,
+            }),
+            PromptOutcome::Timeout(TimeoutKind::Hard {
+                recently_active: true,
+            }),
+            PromptOutcome::Cancelled,
+            PromptOutcome::CancelDrainTimeout(Duration::from_secs(5)),
+        ] {
+            let channel_id = Uuid::new_v4();
+            let scope = scope::SessionScope::Conversation { channel_id };
+            let event = EventBuilder::new(Kind::Custom(9), "paid task")
+                .sign_with_keys(&Keys::generate())
+                .unwrap();
+            let batch = FlushBatch {
+                channel_id,
+                scope: scope.clone(),
+                events: vec![BatchEvent {
+                    event,
+                    prompt_tag: "test".into(),
+                    received_at: std::time::Instant::now(),
+                }],
+                cancelled_events: vec![],
+                cancel_reason: Some(CancelReason::Steer),
+            };
+            let agent = dummy_agent(0).await;
+            let mut pool = AgentPool::from_slots(vec![None]);
+            let task = pool.join_set.spawn(async {}).id();
+            pool.task_map_mut().insert(
+                task,
+                crate::pool::TaskMeta {
+                    agent_index: 0,
+                    channel_id: Some(channel_id),
+                    scope: Some(scope.clone()),
+                    turn_id: "credits-interruption".into(),
+                    recoverable_batch: None,
+                    control_tx: None,
+                    steer_tx: None,
+                    successful_steer_deliveries: HashSet::new(),
+                },
+            );
+            let mut queue = EventQueue::new(config::DedupMode::Queue);
+            let mut config = test_config();
+            config.managed_credits_session = Some(Uuid::new_v4());
+            let mut heartbeat = false;
+            let removed = HashSet::new();
+            let mut history = vec![SlotCircuit {
+                crash_times: vec![],
+                open_until: Some(std::time::Instant::now() + Duration::from_secs(3600)),
+                respawn_in_flight: false,
+            }];
+            let (sender, _receiver) = mpsc::channel(8);
+            let mut respawns = tokio::task::JoinSet::new();
+            let result = PromptResult {
+                agent,
+                source: PromptSource::Channel(scope),
+                turn_id: "credits-interruption".into(),
+                outcome,
+                batch: Some(batch),
+            };
+            handle_prompt_result(
+                &mut pool,
+                &mut queue,
+                &config,
+                result,
+                &mut heartbeat,
+                &removed,
+                &mut history,
+                &sender,
+                &mut respawns,
+                None,
+                None,
+            );
+            assert_eq!(queue.pending_channels(), 0);
+            assert_eq!(queue.queued_event_count(channel_id), 0);
+            assert!(
+                !queue.has_undispatched_work(),
+                "cancelled annotations must not replay paid work"
+            );
         }
     }
 
