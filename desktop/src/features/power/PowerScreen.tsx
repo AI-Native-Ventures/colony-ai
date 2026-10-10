@@ -7,10 +7,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useAcpRuntimesQuery } from "@/features/agents/hooks";
 import { agentHarnessLabel } from "@/features/agents/agentDirectoryModel";
 import { useCommunities } from "@/features/communities/useCommunities";
+import { CreditCheckout } from "@/features/credits/CreditCheckout";
 import {
-  unavailableCreditsOnboardingApi,
-  type CreditsOnboardingApi,
-} from "@/features/onboarding/ui/creditsOnboardingApi";
+  readCredits,
+  type CreditIntent,
+} from "@/features/credits/accountPayments";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 import type { TeamMember } from "@/features/company-team/teamModels";
@@ -23,7 +24,7 @@ import type {
 import type { ManagedAgent } from "@/shared/api/types";
 import { truncateNpub } from "@/shared/lib/pubkey";
 import { Button } from "@/shared/ui/button";
-import { PageHeader, SectionHeader } from "@/shared/ui/PageHeader";
+import { PageHeader } from "@/shared/ui/PageHeader";
 import type { UsagePeriodDays } from "./usageBoundaries";
 import { useAgentUsageSeries } from "./useAgentUsageSeries";
 import {
@@ -100,11 +101,10 @@ export function PowerScreen({
   const { activeCommunity } = useCommunities();
   const communityId = activeCommunity?.id ?? "";
   const { goSettings } = useAppNavigation();
-  const creditApi: CreditsOnboardingApi = unavailableCreditsOnboardingApi;
   const creditsQuery = useQuery({
     enabled: Boolean(communityId),
-    queryKey: ["colony-credits", communityId],
-    queryFn: () => creditApi.read(communityId),
+    queryKey: ["account-credits", communityId],
+    queryFn: readCredits,
     retry: false,
   });
   const usageQuery = useAgentUsageSeries(30);
@@ -130,10 +130,12 @@ export function PowerScreen({
     spendQuery,
     spendEnabled,
   );
-  const credits = creditsQuery.data ?? {
-    status: "unavailable" as const,
-    reason: "contract-not-available" as const,
-  };
+  const credits = creditsQuery.data
+    ? {
+        status: "available",
+        balanceUsdCents: creditsQuery.data.balanceUsdCents,
+      }
+    : { status: "unavailable" };
   const agents = agentsQuery.data ?? [];
   const runtimes = runtimesQuery.data ?? [];
   const profileRecords = profilesQuery.data?.profiles ?? {};
@@ -253,7 +255,7 @@ export function PowerScreen({
         ) : null
       ) : section === "checkout" ? (
         <CheckoutScreen
-          creditsUnavailable={credits.status === "unavailable"}
+          communityId={communityId}
           onBack={() => onSectionChange("overview")}
         />
       ) : (
@@ -336,6 +338,7 @@ export function PowerScreen({
             />
           ) : (
             <BillingHistory
+              intents={creditsQuery.data?.intents ?? []}
               creditsUnavailable={credits.status === "unavailable"}
               onAddCredits={() => onSectionChange("checkout")}
             />
@@ -633,9 +636,11 @@ function UsageRow({
 }
 
 function BillingHistory({
+  intents,
   creditsUnavailable,
   onAddCredits,
 }: {
+  intents: CreditIntent[];
   creditsUnavailable: boolean;
   onAddCredits: () => void;
 }) {
@@ -657,6 +662,33 @@ function BillingHistory({
             </tr>
           </thead>
           <tbody>
+            {intents.map((intent) => (
+              <tr key={intent.reference}>
+                <td className="break-all px-4 py-3">{intent.reference}</td>
+                <td className="px-3 py-3">
+                  {new Date(intent.createdAt).toLocaleDateString()}
+                </td>
+                <td className="px-3 py-3">
+                  {money(
+                    Number(BigInt(intent.grantNanousd) / 10_000_000n) / 100,
+                  )}
+                </td>
+                <td className="px-3 py-3">
+                  {intent.status === "paid" ? "Confirmed" : intent.status}
+                </td>
+                <td />
+              </tr>
+            ))}
+            {!creditsUnavailable && intents.length === 0 ? (
+              <tr>
+                <td
+                  className="px-4 py-8 text-center text-sm text-muted-foreground"
+                  colSpan={5}
+                >
+                  No credit purchases yet.
+                </td>
+              </tr>
+            ) : null}
             {creditsUnavailable ? (
               <tr>
                 <td
@@ -681,10 +713,10 @@ function BillingHistory({
 }
 
 function CheckoutScreen({
-  creditsUnavailable,
+  communityId,
   onBack,
 }: {
-  creditsUnavailable: boolean;
+  communityId: string;
   onBack: () => void;
 }) {
   return (
@@ -700,19 +732,7 @@ function CheckoutScreen({
         description="Review a credit purchase before payment."
         title="Add credits"
       />
-      <section className="space-y-4 rounded-xl border border-border/70 bg-background/70 p-5">
-        <SectionHeader title="Choose an amount" />
-        <div className="min-h-16 rounded-lg border border-dashed border-border/70 px-4 py-5 text-sm text-muted-foreground">
-          {creditsUnavailable
-            ? "Current prices are unavailable. Your balance has not changed."
-            : "Choose an amount to review."}
-        </div>
-        <div className="flex justify-end">
-          <Button disabled size="sm" type="button">
-            Choose amount
-          </Button>
-        </div>
-      </section>
+      <CreditCheckout communityId={communityId} />
     </div>
   );
 }

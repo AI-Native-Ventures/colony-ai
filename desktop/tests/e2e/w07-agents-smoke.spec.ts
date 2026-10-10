@@ -225,6 +225,9 @@ test.describe("W07 agent workspace smoke", () => {
     page,
   }) => {
     await installMockBridge(page, { managedAgents: [] });
+    await page.route("**/api/payments/**", (route) =>
+      route.fulfill({ status: 503, json: { error: "payments_unavailable" } }),
+    );
     await page.goto("/#/supervision", { waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("agent-supervision")).toBeVisible();
     await expect(
@@ -246,12 +249,13 @@ test.describe("W07 agent workspace smoke", () => {
     });
     await expect(page.getByTestId("power-checkout")).toBeVisible();
     await expect(
-      page.getByText(
-        "Current prices are unavailable. Your balance has not changed.",
-      ),
+      page.getByTestId("power-checkout").getByRole("alert"),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Choose amount" }),
-    ).toBeDisabled();
+      page.getByRole("button", { name: "Continue to checkout" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Retry loading prices" }),
+    ).toBeEnabled();
   });
 });
