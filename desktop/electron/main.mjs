@@ -240,6 +240,10 @@ async function boot() {
   browserAgentHost = await createElectronBrowserAgentHost({
     browserHost,
     enabled: browserTabEnabled && process.env.COLONY_BROWSER_AGENT === "1",
+    uploadStagingRoot: path.join(
+      app.getPath("userData"),
+      "browser-agent-uploads",
+    ),
     execPath: process.execPath,
     scriptPath: fileURLToPath(
       new URL("./browser-broker/mcp-server.mjs", import.meta.url),
