@@ -7,7 +7,7 @@ use std::{
     sync::{LazyLock, Mutex},
     time::Duration,
 };
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
 static CONNECTION_TEST: LazyLock<tokio::sync::Mutex<()>> =
@@ -18,6 +18,12 @@ static LATEST_REQUEST: Mutex<Option<(String, CancellationToken)>> = Mutex::new(N
 static ACTIVE_TEST: Mutex<Option<(String, PathBuf)>> = Mutex::new(None);
 const CONNECTION_TIMEOUT_SECS: u64 = 40;
 const CONNECTION_OUTER_TIMEOUT_SECS: u64 = CONNECTION_TIMEOUT_SECS + 20;
+
+/// Native launch flag, default OFF. Exposes no authorization or credentials.
+#[tauri::command]
+pub fn colony_credits_gateway_enabled() -> bool {
+    crate::managed_agents::credits_gateway::enabled()
+}
 
 /// Cancel only the named active attempt; stale UI cleanup cannot stop a newer test.
 #[tauri::command]
@@ -119,6 +125,22 @@ pub async fn test_onboarding_connection(
         .ok_or("Choose an AI harness before testing.")?;
     let runtime = crate::managed_agents::known_acp_runtime_exact(id)
         .ok_or("Connection testing is unavailable for this harness. Choose another connection.")?;
+    let credits_selected = config.provider.as_deref() == Some("colony-credits");
+    crate::managed_agents::credits_gateway::validate_selection(
+        credits_selected,
+        crate::managed_agents::credits_gateway::enabled(),
+        Some(id),
+        &crate::managed_agents::BackendKind::Local,
+    )?;
+    let credits_context = if credits_selected {
+        let state = app.state::<crate::app_state::AppState>();
+        Some((
+            crate::relay::relay_ws_url_with_override(&state),
+            state.signing_keys()?,
+        ))
+    } else {
+        None
+    };
     let (agent, resolved_agent) = runtime
         .commands
         .iter()
@@ -183,18 +205,37 @@ pub async fn test_onboarding_connection(
     );
     crate::build_identity::apply_demo_config_home(&mut command)?;
     crate::managed_agents::configure_runtime_cli(&mut command, Some(runtime));
+    let probe_app = app.clone();
+    let probe_cancel = cancel.clone();
     let mut worker = tokio::task::spawn_blocking(move || {
-        crate::managed_agents::output_with_timeout(
+        if let Some((relay, owner)) = credits_context {
+            return crate::managed_agents::credits_gateway::run_connection_probe(
+                command,
+                &relay,
+                &owner,
+                || {
+                    let state = probe_app.state::<crate::app_state::AppState>();
+                    !probe_cancel.is_cancelled()
+                        && crate::relay::relay_ws_url_with_override(&state) == relay
+                        && state
+                            .signing_keys()
+                            .is_ok_and(|current| current.public_key() == owner.public_key())
+                },
+                Duration::from_secs(CONNECTION_OUTER_TIMEOUT_SECS),
+            );
+        }
+        crate::managed_agents::credits_gateway::apply(&mut command, None);
+        Ok(crate::managed_agents::output_with_timeout(
             command,
             Duration::from_secs(CONNECTION_OUTER_TIMEOUT_SECS),
-        )
+        ))
     });
     let mut cancellation_sent = false;
     let mut waiting_sent = false;
     let mut progress_error = None;
     let output = loop {
         tokio::select! {
-            output = &mut worker => break output.map_err(|_| "The connection test could not start. Try again.")?,
+            output = &mut worker => break output.map_err(|_| "The connection test could not start. Try again.")??,
             _ = cancel.cancelled(), if !cancellation_sent => {
                 if std::fs::write(&cancel_path, []).is_err() {
                     progress_error = Some("Could not cancel the connection test. It will stop at its bounded deadline.");

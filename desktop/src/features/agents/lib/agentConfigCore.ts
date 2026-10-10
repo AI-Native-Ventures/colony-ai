@@ -62,7 +62,8 @@ export type AgentConfigFieldDescriptor =
       persistence: NormalizedFieldPersistence;
       targetApplication:
         | { kind: "envVar"; key: string }
-        | { kind: "acpNative" };
+        | { kind: "acpNative" }
+        | { kind: "managedRelay" };
       render: "control";
       value: string | null;
     }
@@ -196,9 +197,13 @@ export function deriveAgentConfigFieldModel({
     kind: "model",
     optionSource: "acpModels",
     persistence: { kind: "normalizedField", field: "model" },
-    targetApplication: runtime?.modelEnvVar
-      ? { kind: "envVar", key: runtime.modelEnvVar }
-      : { kind: "acpNative" },
+    targetApplication:
+      runtime?.id === "buzz-agent" &&
+      config.provider?.trim() === "colony-credits"
+        ? { kind: "managedRelay" }
+        : runtime?.modelEnvVar
+          ? { kind: "envVar", key: runtime.modelEnvVar }
+          : { kind: "acpNative" },
     render: "control",
     value: config.model,
   });

@@ -26,6 +26,13 @@ export function agentDefaultsConnection(
       label: `${runtime.label} unavailable`,
       detail: "Open Agent runtimes to check installation.",
     };
+  if (config.provider === "colony-credits" && runtime.id === "buzz-agent")
+    return {
+      kind: "credits",
+      label: "Colony credits selected",
+      detail:
+        "Colony Agent uses your credit balance. Check availability and balance below.",
+    };
   // Native auth metadata is the authority for subscription routes. Provider-backed
   // runtimes use credentials instead, including the bundled runtime's n/a auth.
   if (

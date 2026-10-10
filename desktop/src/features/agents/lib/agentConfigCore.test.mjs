@@ -721,3 +721,21 @@ test("buzz_agent_optionSource_unchanged_still_buzzAgentCatalog", () => {
     "buzz-agent optionSource must remain buzzAgentCatalog",
   );
 });
+
+test("only the bundled credits route assigns model ownership to the relay", () => {
+  for (const [id, provider, target] of [
+    ["buzz-agent", "colony-credits", "managedRelay"],
+    ["buzz-agent", "openrouter", "envVar"],
+    ["goose", "colony-credits", "envVar"],
+  ]) {
+    const model = deriveAgentConfigFieldModel({
+      config: { ...config, provider, model: null },
+      runtime: runtime(id, {
+        modelEnvVar: "MODEL",
+        providerEnvVar: "PROVIDER",
+      }),
+      scope: "global",
+    });
+    assert.equal(field(model, "model").targetApplication.kind, target);
+  }
+});
