@@ -87,7 +87,7 @@ impl CreditsGateway {
         Self::new(
             &env("BUZZ_RELAY_URL")?,
             &env("COLONY_CREDITS_SESSION_ID")?,
-            Keys::parse(env("BUZZ_PRIVATE_KEY")?)
+            Keys::parse(&env("BUZZ_PRIVATE_KEY")?)
                 .map_err(|_| AgentError::Credits(CreditRefusal::Unauthorized))?,
             std::env::var("BUZZ_AUTH_TAG").ok(),
         )
