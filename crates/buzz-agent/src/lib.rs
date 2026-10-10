@@ -5,6 +5,7 @@ mod auth_http;
 mod builtin;
 pub mod catalog;
 pub mod config;
+pub mod credits_gateway;
 pub mod databricks;
 mod handoff;
 mod hints;
@@ -627,6 +628,15 @@ async fn set_model_session(app: &Arc<App>, id: Value, params: Value, wire_tx: &W
         Ok(p) => p,
         Err(m) => return reject(wire_tx, id, INVALID_PARAMS, &m).await,
     };
+    if app.cfg.provider == Provider::ColonyCredits {
+        return reject(
+            wire_tx,
+            id,
+            INVALID_PARAMS,
+            "Colony credits uses the model selected by the relay.",
+        )
+        .await;
+    }
     if p.model_id.trim().is_empty() {
         return reject(
             wire_tx,

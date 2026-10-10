@@ -602,6 +602,8 @@ pub struct Config {
     /// Per-persona env vars to inject at agent spawn time (e.g., GOOSE_PROVIDER, GOOSE_MODEL, BUZZ_AGENT_MODEL).
     /// Populated from persona pack resolution. Empty when no pack is configured.
     pub persona_env_vars: Vec<(String, String)>,
+    /// Desktop-owned credits session. Failed or cancelled paid turns cannot be replayed.
+    pub managed_credits_session: Option<Uuid>,
     /// Whether `codex_network_env()` successfully injected a `CODEX_CONFIG` entry into
     /// `persona_env_vars`.  When true, `AcpClient::spawn` merges all `CODEX_CONFIG` entries
     /// and forces `sandbox_workspace_write.network_access = true` via `build_codex_config_env`.
@@ -921,6 +923,22 @@ pub fn propagate_legacy_env_vars() {
     }
 }
 
+/// Bind replay policy to the native-managed bundled credits authorization.
+fn resolve_managed_credits_session(
+    flag: Option<&str>,
+    command: &str,
+    session: Option<&str>,
+) -> Result<Option<Uuid>, ConfigError> {
+    if flag != Some("1") || normalize_agent_command_identity(command) != "buzz-agent" {
+        return Ok(None);
+    }
+    let session = session
+        .ok_or_else(|| ConfigError::ConfigFile("managed credits session required".into()))?;
+    Uuid::parse_str(session)
+        .map(Some)
+        .map_err(|_| ConfigError::ConfigFile("invalid managed credits session".into()))
+}
+
 impl Config {
     pub fn from_cli() -> Result<Self, ConfigError> {
         // Legacy env-var propagation is intentionally NOT done here.
@@ -1158,6 +1176,12 @@ impl Config {
 
         validate_multiple_event_handling(args.multiple_event_handling, args.dedup)?;
 
+        let managed_credits_session = resolve_managed_credits_session(
+            std::env::var("COLONY_CREDITS_GATEWAY").ok().as_deref(),
+            &agent_command,
+            std::env::var("COLONY_CREDITS_SESSION_ID").ok().as_deref(),
+        )?;
+
         let config = Config {
             keys,
             relay_url: args.relay_url,
@@ -1203,6 +1227,7 @@ impl Config {
             respond_to_allowlist,
             allowed_respond_to,
             persona_env_vars,
+            managed_credits_session,
             has_generated_codex_config,
             relay_observer: args.relay_observer,
             exit_after_inactivity_secs: args.exit_after_inactivity,
@@ -1579,6 +1604,7 @@ mod tests {
             respond_to_allowlist: HashSet::new(),
             allowed_respond_to: Vec::new(),
             persona_env_vars: vec![],
+            managed_credits_session: None,
             has_generated_codex_config: false,
             relay_observer: false,
             exit_after_inactivity_secs: 0,
@@ -3230,5 +3256,31 @@ channels = "ALL"
             "Found secret-bearing env args without hide_env_values=true. \
              Add `hide_env_values = true` to each: {violations:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod credits_replay_tests {
+    use super::*;
+    #[test]
+    fn replay_fence_requires_flag_bundled_runtime_and_valid_managed_session() {
+        let session = Uuid::new_v4();
+        for flag in [None, Some("0"), Some("1")] {
+            for command in ["buzz-agent", "/bundle/buzz-agent", "codex"] {
+                let expected = flag == Some("1") && command.ends_with("buzz-agent");
+                assert_eq!(
+                    resolve_managed_credits_session(flag, command, Some(&session.to_string()))
+                        .unwrap()
+                        .is_some(),
+                    expected
+                );
+                for invalid in [None, Some("bad-session")] {
+                    assert_eq!(
+                        resolve_managed_credits_session(flag, command, invalid).is_err(),
+                        expected
+                    );
+                }
+            }
+        }
     }
 }

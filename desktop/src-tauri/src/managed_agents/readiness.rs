@@ -493,6 +493,12 @@ fn buzz_agent_requirements(effective: &EffectiveAgentEnv) -> Vec<Requirement> {
         .map(|v| v.trim())
         .or(Some("deepseek"));
 
+    // Credits selects the model and checks capability at the authoritative launch seam.
+    // A customer key/model must never become a setup requirement for this choice.
+    if provider == Some("colony-credits") {
+        return missing;
+    }
+
     // Model is required — maps to BUZZ_AGENT_MODEL in the effective env.
     // Same empty-string treatment as provider.
     // Also accept provider-specific model fallback keys, matching buzz-agent's
