@@ -519,7 +519,12 @@ pub fn spawn_agent_child(
         if owner_hex.is_some_and(|expected| expected != owner.public_key().to_hex()) {
             return Err("Identity changed before Colony credits authorization. Try again.".into());
         }
-        let authorization = super::credits_gateway::authorize(relay_url, &record.pubkey, &owner)?;
+        let agent_keys = nostr::Keys::parse(&record.private_key_nsec)
+            .map_err(|_| "Invalid managed agent identity.".to_string())?;
+        if agent_keys.public_key().to_hex() != record.pubkey {
+            return Err("Managed agent identity does not match its saved public key.".into());
+        }
+        let authorization = super::credits_gateway::authorize(relay_url, &agent_keys, &owner)?;
         if state.signing_keys()?.public_key() != owner.public_key() {
             return Err("Identity changed during Colony credits authorization. Try again.".into());
         }

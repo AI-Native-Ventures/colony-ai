@@ -26,6 +26,7 @@ fn authoritative_launch_env_is_keyless_and_scrubs_stale_authorization() {
         session_id: uuid::Uuid::new_v4(),
         model: "server-model".into(),
         expires_in_seconds: 7200,
+        auth_tag: Some("fresh-owner-authorization".into()),
     };
     let mut command = Command::new("unused-test-command");
     for key in PROVIDER_KEYS {
@@ -60,6 +61,10 @@ fn authoritative_launch_env_is_keyless_and_scrubs_stale_authorization() {
     assert_eq!(env["BUZZ_AGENT_MODEL"].as_deref(), Some("server-model"));
     assert_eq!(env["BUZZ_ACP_MODEL"].as_deref(), Some("server-model"));
     assert_eq!(env["BUZZ_ACP_SETUP_PAYLOAD"], None);
+    assert_eq!(
+        env["BUZZ_AUTH_TAG"].as_deref(),
+        Some("fresh-owner-authorization")
+    );
     apply(&mut command, None);
     for key in [SESSION_ENV, MODEL_ENV, "COLONY_CREDITS_GATEWAY"] {
         assert_eq!(command.get_envs().find(|(k, _)| *k == key).unwrap().1, None);
@@ -78,14 +83,65 @@ fn native_authorization_checks_capability_and_signs_session_for_exact_owner_and_
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let owner = Keys::generate();
-    let agent = Keys::generate().public_key().to_hex();
+    let agent_keys = Keys::generate();
+    let agent = agent_keys.public_key().to_hex();
     let expected_owner = owner.public_key();
     let expected_agent = agent.clone();
     let expected_url = format!("{origin}/api/credits-gateway/sessions");
     let session = uuid::Uuid::new_v4();
     let server = std::thread::spawn(move || {
-        for i in 0..2 {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        for i in 0..3 {
             let (mut socket, _) = listener.accept().unwrap();
+            if i == 1 {
+                use futures_util::{SinkExt, StreamExt};
+                socket.set_nonblocking(true).unwrap();
+                runtime.block_on(async {
+                    tokio::time::timeout(Duration::from_secs(5), async {
+                        let socket = tokio::net::TcpStream::from_std(socket).unwrap();
+                        let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
+                        ws.send(tokio_tungstenite::tungstenite::Message::Text(
+                            serde_json::json!(["AUTH", "first-launch-challenge"])
+                                .to_string()
+                                .into(),
+                        ))
+                        .await
+                        .unwrap();
+                        let message = ws.next().await.unwrap().unwrap();
+                        let frame: serde_json::Value =
+                            serde_json::from_str(message.to_text().unwrap()).unwrap();
+                        assert_eq!(frame[0], "AUTH");
+                        let event: nostr::Event = serde_json::from_value(frame[1].clone()).unwrap();
+                        event.verify().unwrap();
+                        assert_eq!(event.pubkey.to_hex(), expected_agent);
+                        let tag = event
+                            .tags
+                            .iter()
+                            .find(|tag| tag.as_slice().first().map(String::as_str) == Some("auth"))
+                            .unwrap();
+                        let tag_json = serde_json::to_string(tag.as_slice()).unwrap();
+                        assert_eq!(
+                            buzz_sdk_pkg::nip_oa::verify_auth_tag(&tag_json, &event.pubkey)
+                                .unwrap(),
+                            expected_owner
+                        );
+                        ws.send(tokio_tungstenite::tungstenite::Message::Text(
+                            serde_json::json!(["OK", event.id.to_hex(), true, ""])
+                                .to_string()
+                                .into(),
+                        ))
+                        .await
+                        .unwrap();
+                        let _ = ws.next().await;
+                    })
+                    .await
+                    .unwrap();
+                });
+                continue;
+            }
             socket
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
@@ -97,7 +153,7 @@ fn native_authorization_checks_capability_and_signs_session_for_exact_owner_and_
                 assert!(request.len() < 16384);
             }
             let headers = String::from_utf8(request).unwrap();
-            if i == 1 {
+            if i == 2 {
                 assert!(headers.starts_with("POST /api/credits-gateway/sessions "));
                 let length: usize = headers
                     .lines()
@@ -134,7 +190,7 @@ fn native_authorization_checks_capability_and_signs_session_for_exact_owner_and_
             write!(socket,"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",body.len()).unwrap();
         }
     });
-    let authorization = authorize(&origin, &agent, &owner).unwrap();
+    let authorization = authorize(&origin, &agent_keys, &owner).unwrap();
     assert_eq!(authorization.session_id, session);
     assert_eq!(authorization.model, "server-model");
     server.join().unwrap();

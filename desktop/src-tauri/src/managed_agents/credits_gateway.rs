@@ -28,6 +28,8 @@ pub(super) struct Authorization {
     session_id: uuid::Uuid,
     model: String,
     expires_in_seconds: u64,
+    #[serde(skip)]
+    auth_tag: Option<String>,
 }
 
 pub(super) fn enabled() -> bool {
@@ -76,9 +78,9 @@ fn bounded_json<T: serde::de::DeserializeOwned>(
 /// Runs at the existing blocking native spawn boundary with an explicit relay.
 /// Ownership is proved by the active owner's NIP-98 signature; agent ownership
 /// and membership are checked by the relay before returning a session.
-pub(super) fn authorize(relay: &str, agent: &str, owner: &Keys) -> Result<Authorization, String> {
+pub(super) fn authorize(relay: &str, agent: &Keys, owner: &Keys) -> Result<Authorization, String> {
     let relay = relay.to_owned();
-    let agent = agent.to_owned();
+    let agent = agent.clone();
     let owner = owner.clone();
     // Some launch callers are async. reqwest blocking clients must be created
     // and dropped outside their Tokio runtime; this worker has bounded I/O.
@@ -90,7 +92,7 @@ pub(super) fn authorize(relay: &str, agent: &str, owner: &Keys) -> Result<Author
         .map_err(|_| "Colony credits authorization stopped.".to_string())?
 }
 
-fn authorize_blocking(relay: &str, agent: &str, owner: &Keys) -> Result<Authorization, String> {
+fn authorize_blocking(relay: &str, agent: &Keys, owner: &Keys) -> Result<Authorization, String> {
     let origin =
         buzz_agent_pkg::credits_gateway::gateway_origin(relay).map_err(|e| e.to_string())?;
     let http = reqwest::blocking::Client::builder()
@@ -108,12 +110,46 @@ fn authorize_blocking(relay: &str, agent: &str, owner: &Keys) -> Result<Authoriz
     if capability["enabled"] != true || capability["runtime"] != "colony" {
         return Err("Colony credits are not configured on this relay.".into());
     }
+    // First launch has not authenticated the harness yet. Establish the existing
+    // immutable NIP-OA ownership mapping before the gateway checks it. This
+    // performs no inference or profile write, and the relay ACK follows backfill.
+    let auth_tag = buzz_sdk_pkg::nip_oa::compute_auth_tag(owner, &agent.public_key(), "")
+        .map_err(|_| "Could not authorize the managed agent identity.".to_string())?;
+    let tag: Vec<String> = serde_json::from_str(&auth_tag)
+        .map_err(|_| "Invalid managed agent authorization.".to_string())?;
+    let tag =
+        nostr::Tag::parse(tag).map_err(|_| "Invalid managed agent authorization.".to_string())?;
+    let ws_url = origin
+        .replacen("https://", "wss://", 1)
+        .replacen("http://", "ws://", 1);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|_| "Could not start managed agent authentication.".to_string())?;
+    runtime.block_on(async {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            let connection = buzz_ws_client_pkg::NostrWsConnection::connect_authenticated(
+                &ws_url,
+                agent,
+                Some(&tag),
+            )
+            .await
+            .map_err(|_| "Managed agent identity could not be authenticated.".to_string())?;
+            connection
+                .disconnect()
+                .await
+                .map_err(|_| "Managed agent authentication did not close cleanly.".to_string())
+        })
+        .await
+        .map_err(|_| "Managed agent authentication timed out.".to_string())?
+    })?;
     let url = format!("{origin}/api/credits-gateway/sessions");
-    let body = serde_json::to_vec(&serde_json::json!({"agent_pubkey": agent}))
-        .map_err(|_| "Could not authorize Colony credits.".to_string())?;
+    let body =
+        serde_json::to_vec(&serde_json::json!({"agent_pubkey": agent.public_key().to_hex()}))
+            .map_err(|_| "Could not authorize Colony credits.".to_string())?;
     let auth =
         crate::relay::build_nip98_auth_header_for_keys(owner, &reqwest::Method::POST, &url, &body)?;
-    let authorization: Authorization = bounded_json(
+    let mut authorization: Authorization = bounded_json(
         http.post(url)
             .header("authorization", auth)
             .header("content-type", "application/json")
@@ -130,6 +166,7 @@ fn authorize_blocking(relay: &str, agent: &str, owner: &Keys) -> Result<Authoriz
     {
         return Err("Invalid Colony credits authorization.".into());
     }
+    authorization.auth_tag = Some(auth_tag);
     Ok(authorization)
 }
 
@@ -141,6 +178,9 @@ pub(super) fn apply(command: &mut Command, authorization: Option<&Authorization>
     if let Some(authorization) = authorization {
         for key in PROVIDER_KEYS {
             command.env_remove(key);
+        }
+        if let Some(tag) = &authorization.auth_tag {
+            command.env("BUZZ_AUTH_TAG", tag);
         }
         command
             .env("COLONY_CREDITS_GATEWAY", "1")
