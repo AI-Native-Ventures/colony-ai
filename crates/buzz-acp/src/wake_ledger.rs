@@ -267,15 +267,27 @@ impl WakeLedger {
         pending: impl IntoIterator<Item = &'p nostr::Event>,
         now: u64,
     ) -> SyncOutcome {
+        let mut newly_committed = Vec::new();
         for event in events {
             let id = event.id.to_hex();
             self.remember(HandledEvent {
                 id: id.clone(),
                 created_at: event.created_at.as_secs(),
             });
-            self.committed.insert(id);
+            if self.committed.insert(id.clone()) {
+                newly_committed.push(id);
+            }
         }
-        self.sync(pending, now)
+        // A failed or deferred commit never reached a turn. Keep its seen state,
+        // but let pending events stay replayable when a later background sync
+        // succeeds. Existing successful commitments must survive this rollback.
+        let outcome = self.sync(pending, now);
+        if !outcome.is_saved() {
+            for id in newly_committed {
+                self.committed.remove(&id);
+            }
+        }
+        outcome
     }
 
     /// Hand events back after their turn stopped before doing the work, for
@@ -634,6 +646,72 @@ mod tests {
             Admission::Duplicate,
             "it is not answered again after a restart"
         );
+    }
+
+    #[test]
+    fn failed_commits_stay_replayable_when_background_sync_recovers() {
+        let temp = TempLedger::new();
+        let state_dir = temp.dir.join("state");
+        let path = state_dir.join("wake.json");
+        let now = 20_000;
+        let previously_committed = event_at(19_940);
+        let waiting = event_at(19_950);
+        let deferred = event_at(19_960);
+        let mut ledger = WakeLedger::open(path.clone(), RELAY, &agent(), now, now);
+        assert!(ledger
+            .commit([&previously_committed], std::iter::empty(), now)
+            .is_saved());
+
+        std::fs::remove_file(&path).expect("remove saved ledger");
+        std::fs::remove_dir(&state_dir).expect("remove ledger directory");
+        std::fs::write(&state_dir, b"block writes").expect("block ledger directory");
+        let mut queue = crate::queue::EventQueue::new(crate::config::DedupMode::Queue);
+        let channel_id = uuid::Uuid::new_v4();
+        for event in [&waiting, &deferred] {
+            queue.push(crate::queue::QueuedEvent {
+                channel_id,
+                scope: crate::scope::SessionScope::Conversation { channel_id },
+                event: event.clone(),
+                received_at: std::time::Instant::now(),
+                prompt_tag: "mention".into(),
+            });
+            ledger.admit(event, now);
+        }
+        assert_eq!(
+            ledger.commit(
+                [&previously_committed, &waiting],
+                queue.pending_events(),
+                now + 1,
+            ),
+            SyncOutcome::Failed
+        );
+        assert_eq!(
+            ledger.commit([&deferred], queue.pending_events(), now + 2),
+            SyncOutcome::Deferred
+        );
+        assert!(ledger.committed.contains(&previously_committed.id.to_hex()));
+
+        std::fs::remove_file(&state_dir).expect("unblock ledger directory");
+        let retry_now = now + 1 + WRITE_RETRY_SECS;
+        assert!(ledger.sync(queue.pending_events(), retry_now).is_saved());
+        let mut reopened = WakeLedger::open(path.clone(), RELAY, &agent(), 30_000, 30_000);
+        assert!(reopened
+            .catch_up_since()
+            .is_some_and(|floor| floor <= 19_950));
+        assert_eq!(reopened.admit(&waiting, 30_000), Admission::CaughtUp);
+        assert_eq!(reopened.admit(&deferred, 30_000), Admission::CaughtUp);
+        assert_eq!(
+            reopened.admit(&previously_committed, 30_000),
+            Admission::Duplicate,
+            "rollback preserves commitments from earlier successful turns"
+        );
+
+        assert!(ledger
+            .commit([&waiting], queue.pending_events(), retry_now)
+            .is_saved());
+        let mut after_commit = WakeLedger::open(path, RELAY, &agent(), 30_000, 30_000);
+        assert_eq!(after_commit.admit(&waiting, 30_000), Admission::Duplicate);
+        assert_eq!(after_commit.admit(&deferred, 30_000), Admission::CaughtUp);
     }
 
     #[test]

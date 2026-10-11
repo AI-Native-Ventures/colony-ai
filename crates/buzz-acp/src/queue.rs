@@ -782,6 +782,16 @@ impl EventQueue {
         self.queues.len()
     }
 
+    /// Events admitted to the queue and not yet handed to a turn.
+    ///
+    /// The wake ledger leaves these out of its handled list (unless already
+    /// committed, as a steered event is) and keeps its floor at or below them,
+    /// so a restart replays them. Batches in flight and cancelled carryover
+    /// were already committed when their turn started and are not listed.
+    pub(crate) fn pending_events(&self) -> impl Iterator<Item = &Event> {
+        self.queues.values().flatten().map(|queued| &queued.event)
+    }
+
     /// Whether `scope` still has work that can be reconstructed into a batch.
     ///
     /// Busy-owner hold timestamps are derived from pending queue state. Queue
@@ -2538,6 +2548,38 @@ mod tests {
         assert!(
             prompt.contains(&format!("--reply-to {newest_id}")),
             "reply anchor must target the newest event; prompt was:\n{prompt}"
+        );
+    }
+
+    #[test]
+    fn pending_events_lists_events_not_yet_handed_to_a_turn() {
+        let mut q = EventQueue::new(DedupMode::Queue);
+        let ch = Uuid::new_v4();
+        let first = make_queued(ch, "first");
+        let first_id = first.event.id;
+        q.push(first);
+        let pending: Vec<_> = q.pending_events().map(|event| event.id).collect();
+        assert_eq!(pending, vec![first_id]);
+
+        let batch = q.flush_next().expect("batch");
+        assert_eq!(
+            q.pending_events().count(),
+            0,
+            "a batch handed to a turn is not pending"
+        );
+
+        q.push(make_queued(ch, "queued behind the turn"));
+        assert_eq!(
+            q.pending_events().count(),
+            1,
+            "an event queued behind a turn is pending"
+        );
+
+        q.requeue_preserve_timestamps(batch);
+        assert_eq!(
+            q.pending_events().count(),
+            2,
+            "a requeued batch is pending again"
         );
     }
 
