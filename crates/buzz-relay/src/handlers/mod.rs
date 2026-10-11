@@ -29,6 +29,8 @@ pub mod company_permissions;
 pub mod company_records;
 /// Nostr-first broker for device-backed secret binding records.
 pub mod company_secrets;
+/// Brokers for company-wide singleton records: business profile and team computer.
+pub mod company_singleton_records;
 pub mod company_spend;
 /// Nostr-first broker for company work suggestions and watchdog settings.
 pub mod company_work_tracking;

@@ -989,6 +989,21 @@ Agent memory kind 30174 and the existing buzz memory CLI remain a separate
 Memory section within Lessons. Memory entries are not lesson records and are
 not changed by lesson create, edit, approval, deprecation, or restore actions.
 
+## Business profile
+
+The business profile is one company-wide record: the facts every employee
+works from, and the company name people see. An owner or admin writes kind
+47046 with `{ "profile": <profile>, "expectedRevision": <n or null> }`; the
+relay validates the profile (name 1 to 120 characters, general text at most
+500, general lists at most 10 items, optional `bestSellers` with at most three
+strings of 120 characters each, optional `priceRange` as a string of at most
+120 characters or null, an IANA time zone, no unknown keys, at most 16 KB) and
+writes relay-signed head kind 30657 with `d` = `business-profile` and a
+`["revision", "<n>"]` tag. The first write sends `expectedRevision: null`;
+every later write must name the current revision, so two people saving at once
+cannot overwrite each other. Members and employees read the head. Employees
+read it with `colony profile show`.
+
 ## Proof boundaries
 
 Kind registration and typed content live in `buzz-core`; relay, SDK, CLI, and
