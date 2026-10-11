@@ -1896,6 +1896,10 @@ pub struct FormatPromptArgs<'a> {
     /// Defaults to `false` so a caller that never sets it behaves as if this
     /// were the session's first message.
     pub standing_context_sent: bool,
+    /// The `<colony-business-profile>` section this turn carries, when its
+    /// session has not received the latest revision yet. Rendered for modern
+    /// and legacy agents alike, after the standing context.
+    pub business_profile: Option<&'a str>,
 }
 
 /// The prompt sections that do not change for the life of a session: base
@@ -1986,9 +1990,10 @@ pub(crate) fn base_section(base_prompt: &str) -> String {
 /// 0. [`StandingContext`] — `<base>`, `<agent-instructions>`, `<team-instructions>`,
 ///    `<core-memory>`, `<huddle-instructions>`, `<channel-canvas>`. Legacy agents only, and only
 ///    on the session's first message (see `standing_context_sent`)
-/// 1. `<context>` — scope, channel name, and contextual hints for the agent
-/// 2. `<thread-context>` or `<conversation-context>` — if fetched
-/// 3. `<buzz-event>` / `<buzz-events>` — the triggering event(s)
+/// 1. `<colony-business-profile>`: latest facts, when this session lacks the revision
+/// 2. `<context>`: scope, channel name, and contextual hints for the agent
+/// 3. `<thread-context>` or `<conversation-context>`: if fetched
+/// 4. `<buzz-event>` / `<buzz-events>`: the triggering event(s)
 ///
 /// Each section is returned as its own block rather than one joined string so
 /// the observer frame's size trimmer (`fit_observer_event_to_budget`) elides
@@ -2036,6 +2041,12 @@ pub fn format_prompt(batch: &FlushBatch, args: &FormatPromptArgs<'_>) -> Vec<Str
             }
             .sections(),
         );
+    }
+
+    // Business profile: the owner's latest facts, carried in a session's first
+    // turn and again after the owner changes them.
+    if let Some(profile) = args.business_profile {
+        sections.push(profile.to_string());
     }
 
     // 2. Context hints (with a human-aware reply anchor).
@@ -2581,6 +2592,59 @@ mod tests {
             2,
             "a requeued batch is pending again"
         );
+    }
+
+    #[test]
+    fn business_profile_rides_after_standing_context_and_before_context() {
+        let mut q = EventQueue::new(DedupMode::Queue);
+        q.push(make_queued(Uuid::new_v4(), "what do we sell?"));
+        let batch = q.flush_next().expect("batch");
+        let profile =
+            "<colony-business-profile revision=\"2\">\nprofile facts\n</colony-business-profile>";
+        let prompt = format_prompt(
+            &batch,
+            &FormatPromptArgs {
+                base_prompt: Some("base rules"),
+                business_profile: Some(profile),
+                ..Default::default()
+            },
+        )
+        .join("\n\n");
+        let base = prompt.find("<base>").expect("legacy standing context");
+        let profile_at = prompt.find(profile).expect("profile section");
+        let context = prompt.find("<context>").expect("context hints");
+        assert!(base < profile_at && profile_at < context);
+        assert_eq!(prompt.matches("<colony-business-profile").count(), 1);
+
+        let without = format_prompt(&batch, &FormatPromptArgs::default()).join("\n\n");
+        assert!(!without.contains("<colony-business-profile"));
+    }
+
+    #[test]
+    fn business_profile_is_carried_when_standing_context_uses_the_system_role() {
+        let mut q = EventQueue::new(DedupMode::Queue);
+        q.push(make_queued(Uuid::new_v4(), "what do we sell?"));
+        let batch = q.flush_next().expect("batch");
+        let profile = "<colony-business-profile revision=\"2\">facts</colony-business-profile>";
+        for standing_context_sent in [false, true] {
+            let sections = format_prompt(
+                &batch,
+                &FormatPromptArgs {
+                    has_system_prompt_support: true,
+                    base_prompt: Some("standing rules"),
+                    standing_context_sent,
+                    business_profile: Some(profile),
+                    ..Default::default()
+                },
+            );
+            let prompt = sections.join("\n\n");
+            assert!(!prompt.contains("standing rules"));
+            assert_eq!(sections.first().map(String::as_str), Some(profile));
+            assert!(
+                prompt.find(profile).expect("profile") < prompt.find("<context>").expect("context")
+            );
+            assert_eq!(prompt.matches("<colony-business-profile").count(), 1);
+        }
     }
 
     #[test]

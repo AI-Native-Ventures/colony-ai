@@ -2,13 +2,6 @@
 
 mod browser_runtime;
 mod business_context;
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "turns start carrying the relay business profile in the next task"
-    )
-)]
 mod business_profile;
 
 mod acp;
@@ -2862,6 +2855,7 @@ async fn tokio_main() -> Result<()> {
         memory_enabled: config.memory_enabled,
         harness_name: crate::config::normalize_agent_command_identity(&config.agent_command),
         relay_url: config.relay_url.clone(),
+        business_profile: business_profile::BusinessProfileCache::new(),
     });
 
     if !config.memory_enabled {
@@ -4468,6 +4462,7 @@ mod wake_ledger_dispatch_tests {
             memory_enabled: false,
             harness_name: "goose".to_string(),
             relay_url: "ws://127.0.0.1:3000".to_string(),
+            business_profile: business_profile::BusinessProfileCache::disabled(),
         }
     }
 

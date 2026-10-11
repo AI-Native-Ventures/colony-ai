@@ -114,6 +114,9 @@ pub struct AgentModelCapabilities {
 pub struct ChannelDeliveryState {
     /// Whether a legacy user message has successfully carried standing context.
     pub standing_context_sent: bool,
+    /// Business profile revision this ACP session received, so a later turn
+    /// carries the profile again only after the owner changed it.
+    pub business_profile_revision: Option<u32>,
     /// Buzz event IDs already delivered to this ACP session, either as trigger
     /// events or conversation context.
     pub delivered_event_ids: HashSet<String>,
@@ -247,6 +250,16 @@ impl SessionState {
             }
             delivery.hydrated_thread_roots.push_back(root);
         }
+    }
+
+    /// Record that this session received business profile `revision`. The
+    /// record lives in the session's delivery state, so every invalidation
+    /// path forgets it with the session.
+    pub(crate) fn mark_business_profile_delivered(&mut self, scope: SessionScope, revision: u32) {
+        self.deliveries
+            .entry(scope)
+            .or_default()
+            .business_profile_revision = Some(revision);
     }
 
     #[cfg(test)]
@@ -859,6 +872,9 @@ pub struct PromptContext {
     /// the desktop keys per (agent, relay) pair, e.g. `session_config_captured`,
     /// mirroring the `managed_agent_runtime_lifecycle` frames.
     pub relay_url: String,
+    /// Latest business profile on the relay, shared by every worker of this
+    /// harness. See `business_profile.rs`.
+    pub business_profile: crate::business_profile::BusinessProfileCache,
 }
 
 impl AgentPool {
@@ -2512,6 +2528,14 @@ pub async fn run_prompt_task(
         }
     }
 
+    // The latest business profile on the relay, asked for at most once a
+    // minute per harness. Channel turns carry it when their session has not
+    // received that revision yet; heartbeats never carry it.
+    let latest_business_profile = match &source {
+        PromptSource::Channel(_) => ctx.business_profile.current(&ctx.rest_client).await,
+        PromptSource::Heartbeat => None,
+    };
+
     // The core section to fold into the system prompt for this turn's session.
     // Channel-scoped; heartbeats carry no owner core.
     let agent_core: Option<String> = match &source {
@@ -2872,6 +2896,9 @@ pub async fn run_prompt_task(
     // failed or cancelled first turn must not make its retry assume that the
     // provider retained any of that thread's context.
     let mut pending_hydrated_thread_roots = HashSet::new();
+    // The profile revision this turn carries, committed with the delivery
+    // receipt only after ACP reports success (the same rule as event ids).
+    let mut pending_profile_revision: Option<u32> = None;
     let prompt_sections: Vec<String> = if let Some(text) = prompt_text {
         // Heartbeats create their session before this point, so a Goose method-not-found
         // probe has already selected the correct framing for this process.
@@ -2961,6 +2988,15 @@ pub async fn run_prompt_task(
 
         let profile_lookup =
             fetch_prompt_profile_lookup(b, conversation_context.as_ref(), &ctx.rest_client).await;
+        let profile_for_turn = crate::business_profile::for_turn(
+            latest_business_profile.as_deref(),
+            agent
+                .state
+                .deliveries
+                .get(&b.scope)
+                .and_then(|delivery| delivery.business_profile_revision),
+        );
+        pending_profile_revision = profile_for_turn.map(|profile| profile.revision);
 
         let known_names: Vec<&str> = profile_lookup
             .iter()
@@ -2993,6 +3029,7 @@ pub async fn run_prompt_task(
                 team_instructions: standing.team_instructions,
                 agent_canvas: standing.agent_canvas,
                 standing_context_sent,
+                business_profile: profile_for_turn.map(|profile| profile.block.as_str()),
             },
         )
     } else {
@@ -3219,6 +3256,7 @@ pub async fn run_prompt_task(
                                 standing_sent,
                                 &pending_delivered_event_ids,
                                 &pending_hydrated_thread_roots,
+                                pending_profile_revision,
                             );
                         }
                         apply_completed_before_control_signal(
@@ -3263,6 +3301,7 @@ pub async fn run_prompt_task(
                     standing_sent,
                     &pending_delivered_event_ids,
                     &pending_hydrated_thread_roots,
+                    pending_profile_revision,
                 );
             } else if !agent.has_system_prompt_support() {
                 agent.state.heartbeat_standing_context_sent = true;
@@ -4888,12 +4927,18 @@ fn record_scope_delivery_success(
     standing_context_sent: bool,
     event_ids: &HashSet<String>,
     hydrated_thread_roots: &HashSet<String>,
+    business_profile_revision: Option<u32>,
 ) {
     tracing::info!(
         target: "pool::prompt",
         "{}",
         delivery_receipt_line(scope.channel_id(), event_ids)
     );
+    if let Some(revision) = business_profile_revision {
+        agent
+            .state
+            .mark_business_profile_delivered(scope.clone(), revision);
+    }
     agent.state.mark_scope_delivery_success(
         scope,
         standing_context_sent,
@@ -7014,8 +7059,136 @@ done"#
         );
     }
 
+    #[test]
+    fn business_profile_revision_is_forgotten_on_every_session_removal_path() {
+        let channel_id = Uuid::new_v4();
+        let scope = SessionScope::Conversation { channel_id };
+        let delivered = |state: &SessionState| {
+            state
+                .deliveries
+                .get(&scope)
+                .and_then(|delivery| delivery.business_profile_revision)
+        };
+        let mut state = SessionState::default();
+        state.mark_business_profile_delivered(scope.clone(), 4);
+        assert_eq!(delivered(&state), Some(4));
+        state.invalidate_scope(&scope);
+        assert_eq!(
+            delivered(&state),
+            None,
+            "a replaced session gets the profile again"
+        );
+
+        state.mark_business_profile_delivered(scope.clone(), 4);
+        state.invalidate_channel(&channel_id);
+        assert_eq!(delivered(&state), None, "leaving a channel forgets it");
+
+        state.mark_business_profile_delivered(scope.clone(), 4);
+        state.invalidate_all();
+        assert_eq!(delivered(&state), None, "an agent restart forgets it");
+    }
+
     #[tokio::test]
     async fn channel_prompt_commits_delivery_state_only_after_acp_success() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let relay_keys = Keys::generate();
+        let relay_hex = relay_keys.public_key().to_hex();
+        let profile = serde_json::json!({
+            "schemaVersion": 1,
+            "name": "North Star",
+            "timeZone": "Africa/Johannesburg",
+            "whatYouSell": "Design work for small shops."
+        });
+        let head = EventBuilder::new(Kind::Custom(30657), profile.to_string())
+            .tags([
+                Tag::parse(["d", "business-profile"]).expect("profile coordinate"),
+                Tag::parse(["revision", "2"]).expect("profile revision"),
+            ])
+            .sign_with_keys(&relay_keys)
+            .expect("relay-signed profile");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind profile relay");
+        let base_url = format!("http://{}", listener.local_addr().expect("relay address"));
+        let profile_queries = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted_queries = Arc::clone(&profile_queries);
+        // Drop aborts the bounded stub even if an assertion fails.
+        struct ProfileRelay(tokio::task::JoinHandle<()>);
+        impl Drop for ProfileRelay {
+            fn drop(&mut self) {
+                self.0.abort();
+            }
+        }
+        let _server = ProfileRelay(tokio::spawn(async move {
+            for _ in 0..64 {
+                let Ok(Ok((mut socket, _))) =
+                    tokio::time::timeout(Duration::from_secs(10), listener.accept()).await
+                else {
+                    break;
+                };
+                let request = async {
+                    let mut bytes = Vec::new();
+                    let mut buffer = [0; 2048];
+                    let header_end = loop {
+                        let read = socket.read(&mut buffer).await.expect("read relay request");
+                        if read == 0 {
+                            return;
+                        }
+                        bytes.extend_from_slice(&buffer[..read]);
+                        assert!(bytes.len() <= 16 * 1024, "bounded relay request");
+                        if let Some(end) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                            let headers =
+                                std::str::from_utf8(&bytes[..end]).expect("request headers");
+                            let content_length = headers
+                                .lines()
+                                .find_map(|line| {
+                                    let (name, value) = line.split_once(':')?;
+                                    name.eq_ignore_ascii_case("content-length").then(|| {
+                                        value.trim().parse::<usize>().expect("content length")
+                                    })
+                                })
+                                .unwrap_or(0);
+                            assert!(content_length <= 16 * 1024, "bounded request body");
+                            if bytes.len() >= end + 4 + content_length {
+                                break end + 4;
+                            }
+                        }
+                    };
+                    let (content_type, body) = if bytes.starts_with(b"GET / HTTP/") {
+                        (
+                            "application/nostr+json",
+                            serde_json::json!({"self": relay_hex}).to_string(),
+                        )
+                    } else if bytes.starts_with(b"POST /query HTTP/") {
+                        let filters: serde_json::Value =
+                            serde_json::from_slice(&bytes[header_end..]).expect("query filters");
+                        let filters = filters.as_array().expect("filter array");
+                        if filters
+                            .iter()
+                            .any(|filter| filter["kinds"] == serde_json::json!([30657]))
+                        {
+                            assert_eq!(filters.len(), 1);
+                            assert_eq!(filters[0]["authors"], serde_json::json!([relay_hex]));
+                            assert_eq!(filters[0]["#d"], serde_json::json!(["business-profile"]));
+                            counted_queries.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            ("application/json", serde_json::json!([head]).to_string())
+                        } else {
+                            ("application/json", "[]".to_string())
+                        }
+                    } else {
+                        // Cosmetic event/reaction writes are irrelevant to prompt delivery.
+                        ("application/json", "{}".to_string())
+                    };
+                    let response = format!("HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                    let _ = socket.write_all(response.as_bytes()).await;
+                };
+                tokio::time::timeout(Duration::from_secs(10), request)
+                    .await
+                    .expect("bounded relay socket");
+            }
+        }));
+
         let capture = std::env::temp_dir().join(format!(
             "buzz-acp-channel-delivery-lifecycle-{}.ndjson",
             Uuid::new_v4()
@@ -7062,6 +7235,9 @@ done"#
 
         let mut ctx = make_prompt_context_no_owner();
         ctx.base_prompt = Some("standing-once".into());
+        ctx.business_profile = crate::business_profile::BusinessProfileCache::new();
+        ctx.rest_client.base_url = base_url;
+        ctx.channel_info = ChannelInfoResolver::new(HashMap::new(), ctx.rest_client.clone());
         let ctx = Arc::new(ctx);
         let (result_tx, mut result_rx) = mpsc::unbounded_channel();
 
@@ -7110,6 +7286,11 @@ done"#
                 turn >= 2,
                 "channel event IDs must commit only after ACP success"
             );
+            assert_eq!(
+                delivery.business_profile_revision,
+                if turn >= 2 { Some(2) } else { None },
+                "a failed prompt must resend the profile; only success commits the revision"
+            );
             assert!(
                 delivery.hydrated_thread_roots.is_empty(),
                 "a successful turn without fetched thread context must not hydrate a root"
@@ -7124,11 +7305,31 @@ done"#
             .map(|line| serde_json::from_str(line).expect("captured request is JSON"))
             .collect();
         std::fs::remove_file(&capture).expect("remove ACP capture");
+        assert_eq!(requests.len(), 3);
+        assert_eq!(profile_queries.load(std::sync::atomic::Ordering::SeqCst), 1);
         let prompt_text = |index: usize| {
-            requests[index]["params"]["prompt"][0]["text"]
-                .as_str()
-                .expect("text prompt")
+            requests[index]["params"]["prompt"]
+                .as_array()
+                .expect("prompt blocks")
+                .iter()
+                .filter_map(|block| block["text"].as_str())
+                .collect::<Vec<_>>()
+                .join("\n\n")
         };
+        for turn in 0..3 {
+            let prompt = prompt_text(turn);
+            assert_eq!(
+                prompt
+                    .matches("<colony-business-profile revision=\"2\">")
+                    .count(),
+                usize::from(turn < 2),
+                "failed delivery must retry the profile, then success suppresses it"
+            );
+            if turn < 2 {
+                assert!(prompt.contains("North Star"));
+                assert!(prompt.contains("Design work for small shops."));
+            }
+        }
         assert!(prompt_text(0).contains("<base>\nstanding-once\n</base>"));
         assert!(
             prompt_text(1).contains("<base>\nstanding-once\n</base>"),
@@ -8050,6 +8251,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
                 standing_context_sent: true,
                 delivered_event_ids: HashSet::from(["event-a".into()]),
                 hydrated_thread_roots: VecDeque::from(["root-a".into()]),
+                business_profile_revision: Some(1),
             },
         );
         s.deliveries.insert(
@@ -8058,6 +8260,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
                 standing_context_sent: true,
                 delivered_event_ids: HashSet::from(["event-b".into()]),
                 hydrated_thread_roots: VecDeque::from(["root-b".into()]),
+                business_profile_revision: Some(1),
             },
         );
         s.heartbeat_session = Some("sess-hb".into());
@@ -9992,6 +10195,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             memory_enabled: false,
             harness_name: "goose".to_string(),
             relay_url: "ws://127.0.0.1:3000".to_string(),
+            business_profile: crate::business_profile::BusinessProfileCache::disabled(),
         }
     }
 

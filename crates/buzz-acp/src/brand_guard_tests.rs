@@ -278,6 +278,13 @@ fn surfaces() -> Vec<Surface> {
         .expect("the fixture role context is valid")
         .expect("a supplied role context always appends a block"),
     ));
+    out.push(Surface::new(
+        "business profile section",
+        crate::business_profile::render_block(
+            2,
+            &serde_json::json!({ "name": "North Star", "whatYouSell": "Design work for small shops." }),
+        ),
+    ));
 
     out.extend(turn_prompt_surfaces());
     out
@@ -316,6 +323,7 @@ fn guard_corpus_covers_the_production_seams() {
     assert!(find("core memory nudge"), "core nudge surface missing");
     assert!(find("channel canvas"), "canvas surface missing");
     assert!(find("role context"), "role context surface missing");
+    assert!(find("business profile"), "business profile surface missing");
     assert!(find("project home"), "project home turn missing");
     assert!(find("merged Interrupt"), "interrupt merge turn missing");
     // The base prompt is the real file, not an empty stand-in.
