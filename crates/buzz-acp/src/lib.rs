@@ -3168,11 +3168,12 @@ async fn tokio_main() -> Result<()> {
         // Restart catch-up: after a failed wake ledger write, queued work waits
         // for the write backoff. Wake the loop when it ends so that work is
         // retried even on a quiet channel.
-        let ledger_retry_at = handled_wakes
-            .as_ref()
-            .and_then(|ledger| ledger.retry_delay(wake_ledger::unix_now()))
-            .filter(|_| queue.pending_channels() > 0)
-            .map(|delay| tokio::time::Instant::now() + delay);
+        let ledger_retry_at = wake_ledger_retry_delay(
+            handled_wakes.as_ref(),
+            queue.pending_channels() > 0,
+            wake_ledger::unix_now(),
+        )
+        .map(|delay| tokio::time::Instant::now() + delay);
 
         let pool_event: Option<PoolEvent> = {
             let (result_rx, join_set) = pool.rx_and_join_set();
@@ -4084,8 +4085,12 @@ async fn tokio_main() -> Result<()> {
                 }
             }
             Some(PoolEvent::LedgerRetry) => {
-                // The wake ledger's write backoff ended: retry the queued work
-                // it held back.
+                // Save pending-preserving state even if no worker can claim the
+                // queue. A failed write renews the backoff; a saved write clears
+                // it, so an elapsed deadline cannot rearm an immediate loop.
+                // Failed commitments were rolled back, leaving unsent events
+                // replayable until dispatch commits them before starting a turn.
+                sync_wake_ledger_retry(handled_wakes.as_mut(), &queue, wake_ledger::unix_now());
                 for (scope, thread_tags) in dispatch_pending(
                     &mut pool,
                     &mut queue,
@@ -4272,6 +4277,36 @@ fn commit_to_wake_ledger<'e>(
     saved
 }
 
+/// Schedule failed wake saves while work waits, including a deadline passed
+/// while another main-loop branch was running.
+fn wake_ledger_retry_delay(
+    ledger: Option<&wake_ledger::WakeLedger>,
+    pending_work: bool,
+    now: u64,
+) -> Option<Duration> {
+    let ledger = ledger.filter(|ledger| pending_work && ledger.write_failed())?;
+    Some(ledger.retry_delay(now).unwrap_or(Duration::ZERO))
+}
+
+/// Retry a save without treating queued, undispatched events as handled.
+///
+/// Updating the write result before dispatch renews or clears the retry timer
+/// even when the worker pool is busy or the queue's scope is held.
+fn sync_wake_ledger_retry(
+    ledger: Option<&mut wake_ledger::WakeLedger>,
+    queue: &EventQueue,
+    now: u64,
+) -> bool {
+    let Some(ledger) = ledger else {
+        return true;
+    };
+    let saved = ledger.sync(queue.pending_events(), now).is_saved();
+    if !saved {
+        tracing::warn!("wake ledger could not be saved; new turns wait until it can");
+    }
+    saved
+}
+
 #[cfg(test)]
 mod wake_ledger_dispatch_tests {
     use super::*;
@@ -4378,6 +4413,127 @@ mod wake_ledger_dispatch_tests {
             [&queued.event],
             &queue
         ));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn wake_retry_scheduling_keeps_exact_and_elapsed_deadlines_ready() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-retry-time-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        std::fs::write(dir.join("blocker"), b"").expect("write blocker file");
+        let mut ledger = wake_ledger::WakeLedger::open(
+            dir.join("blocker").join("wake.json"),
+            RELAY,
+            &"ab".repeat(32),
+            NOW,
+            NOW,
+        );
+        assert_eq!(wake_ledger_retry_delay(None, true, NOW), None);
+        assert_eq!(wake_ledger_retry_delay(Some(&ledger), true, NOW), None);
+        assert_eq!(
+            ledger.sync(std::iter::empty(), NOW),
+            wake_ledger::SyncOutcome::Failed
+        );
+        let deadline = NOW + wake_ledger::WRITE_RETRY_SECS;
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), true, deadline - 1),
+            Some(Duration::from_secs(1))
+        );
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), true, deadline),
+            Some(Duration::ZERO)
+        );
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), true, deadline + 1),
+            Some(Duration::ZERO)
+        );
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), false, deadline + 1),
+            None
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn wake_retry_renews_or_clears_failure_when_no_worker_can_take_pending_work() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-retry-save-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let blocker = dir.join("blocker");
+        std::fs::write(&blocker, b"").expect("write blocker file");
+        let path = blocker.join("wake.json");
+        let mut ledger =
+            wake_ledger::WakeLedger::open(path.clone(), RELAY, &"ab".repeat(32), NOW, NOW);
+        let mut queue = EventQueue::new(DedupMode::Queue);
+        let (queued, _) = mention(Uuid::new_v4());
+        let event = queued.event.clone();
+        assert!(queue.push(queued));
+        assert_eq!(
+            ledger.commit([&event], queue.pending_events(), NOW),
+            wake_ledger::SyncOutcome::Failed
+        );
+        let first_deadline = NOW + wake_ledger::WRITE_RETRY_SECS;
+        assert!(!sync_wake_ledger_retry(
+            Some(&mut ledger),
+            &queue,
+            first_deadline
+        ));
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), true, first_deadline),
+            Some(Duration::from_secs(wake_ledger::WRITE_RETRY_SECS))
+        );
+
+        let mut pool = AgentPool::from_slots(vec![]);
+        let ctx = Arc::new(test_prompt_context(&Keys::generate()));
+        let mut last_activity = tokio::time::Instant::now();
+        assert!(dispatch_pending(
+            &mut pool,
+            &mut queue,
+            &ctx,
+            &mut last_activity,
+            None,
+            Some(&mut ledger)
+        )
+        .is_empty());
+        assert_eq!(queue.pending_events().count(), 1);
+
+        std::fs::remove_file(blocker).expect("unblock ledger directory");
+        let second_deadline = first_deadline + wake_ledger::WRITE_RETRY_SECS;
+        assert!(sync_wake_ledger_retry(
+            Some(&mut ledger),
+            &queue,
+            second_deadline
+        ));
+        assert!(!ledger.write_failed());
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), true, second_deadline),
+            None
+        );
+        assert!(dispatch_pending(
+            &mut pool,
+            &mut queue,
+            &ctx,
+            &mut last_activity,
+            None,
+            Some(&mut ledger)
+        )
+        .is_empty());
+        assert_eq!(
+            queue.pending_events().count(),
+            1,
+            "work stays queued without a worker"
+        );
+        let mut reopened = wake_ledger::WakeLedger::open(
+            path,
+            RELAY,
+            &"ab".repeat(32),
+            second_deadline,
+            second_deadline,
+        );
+        assert_ne!(
+            reopened.admit(&event, second_deadline),
+            wake_ledger::Admission::Duplicate,
+            "retry sync must not mark undispatched work as handled"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
