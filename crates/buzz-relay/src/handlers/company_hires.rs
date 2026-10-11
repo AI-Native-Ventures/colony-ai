@@ -12,11 +12,13 @@ use uuid::Uuid;
 
 use buzz_core::company_members::{MemberPositionAction, MemberPositionActionKind};
 use buzz_core::company_records::{
-    hire_d_tag, hire_goal_record, parse_company_command, validate_hire_action, CompanyCommand,
-    HireAction, HireActionKind, HireHead, HireProposal, HireStatus, COMPANY_RECORD_SCHEMA_VERSION,
+    hire_d_tag, hire_duty_proposals, hire_goal_record, parse_company_command, validate_hire_action,
+    CompanyCommand, HireAction, HireActionKind, HireHead, HireProposal, HireStatus,
+    COMPANY_RECORD_SCHEMA_VERSION,
 };
 use buzz_core::kind::{
-    KIND_GOAL_HEAD, KIND_HIRE_ACTION, KIND_HIRE_HEAD, KIND_STREAM_MESSAGE, KIND_STREAM_MESSAGE_V2,
+    KIND_DUTY_HEAD, KIND_GOAL_HEAD, KIND_HIRE_ACTION, KIND_HIRE_HEAD, KIND_STREAM_MESSAGE,
+    KIND_STREAM_MESSAGE_V2,
 };
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_core::StoredEvent;
@@ -429,7 +431,7 @@ pub(super) async fn handle(
         None
     };
     let hire_records = if action.action == HireActionKind::Complete {
-        Some(create_hire_records(&mut tx, tenant, state, &next).await?)
+        Some(create_hire_records(&mut tx, tenant, state, &next, action.time_zone.as_deref()).await?)
     } else {
         None
     };
@@ -478,6 +480,8 @@ pub(super) async fn handle(
 struct HireRecords {
     /// The employee's root goal head.
     goal: StoredEvent,
+    /// One routine head per role-pack duty plus the Plan check routine.
+    duties: Vec<StoredEvent>,
 }
 
 /// Writes the records a completed hire creates inside the hire transaction, so
@@ -487,11 +491,16 @@ async fn create_hire_records(
     tenant: &TenantContext,
     state: &AppState,
     hired: &HireHead,
+    time_zone: Option<&str>,
 ) -> Result<HireRecords, IngestError> {
     let employee = hired
         .employee_pubkey
         .as_deref()
         .ok_or_else(|| invalid("complete needs employeePubkey"))?;
+    let founder = hired
+        .founder_pubkey
+        .as_deref()
+        .ok_or_else(|| forbidden("founder sign-off is required before hiring"))?;
     let goal = hire_goal_record(&hired.proposal, employee)
         .map_err(|error| invalid(format!("hire goal: {error}")))?;
     let goal = super::company_records::create_hire_goal_in_transaction(
@@ -502,7 +511,22 @@ async fn create_hire_records(
         &hired.source_action_event_id,
     )
     .await?;
-    Ok(HireRecords { goal })
+    let proposals = hire_duty_proposals(&hired.proposal, employee, time_zone, Uuid::new_v4)
+        .map_err(|error| invalid(format!("hire routines: {error}")))?;
+    let duties = super::company_duties::create_hire_duties_in_transaction(
+        tx,
+        tenant,
+        state,
+        super::company_duties::HireDuties {
+            proposals: &proposals,
+            proposer_pubkey: &hired.proposed_by_pubkey,
+            founder_pubkey: founder,
+            hire_id: hired.proposal.hire_id,
+            complete_event_id: &hired.source_action_event_id,
+        },
+    )
+    .await?;
+    Ok(HireRecords { goal, duties })
 }
 
 /// Fans out a completed hire's records after commit; each is already durable.
@@ -521,6 +545,17 @@ async fn dispatch_hire_records(
         None,
     )
     .await;
+    for duty in &records.duties {
+        super::event::dispatch_persistent_event(
+            tenant,
+            state,
+            duty,
+            KIND_DUTY_HEAD,
+            &relay_pubkey,
+            None,
+        )
+        .await;
+    }
 }
 
 /// Serializes one employee name and checks real member profiles and open hires.

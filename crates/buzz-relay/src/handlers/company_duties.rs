@@ -364,6 +364,106 @@ pub(crate) async fn replace_prepared_duty_head(
     Ok(replaced.event)
 }
 
+/// Hire-completion data that creates one employee's routines and workflows.
+pub(crate) struct HireDuties<'a> {
+    /// Routine definitions built from the role pack plus the Plan check routine.
+    pub(crate) proposals: &'a [DutyProposal],
+    /// Member who proposed the hire and its role pack.
+    pub(crate) proposer_pubkey: &'a str,
+    /// Community owner whose hire signature approves every routine.
+    pub(crate) founder_pubkey: &'a str,
+    /// Hire recorded as each routine's source.
+    pub(crate) hire_id: Uuid,
+    /// The `complete` command that writes the routine heads.
+    pub(crate) complete_event_id: &'a str,
+}
+
+/// Creates a completed hire's routines and schedule workflows in the hire's
+/// transaction.
+///
+/// The employee registration and channel membership rows these checks read
+/// were committed by attachment and the introduction, so they hold here. The
+/// owner owns every workflow, so the owner must be a channel member for the
+/// schedules to run. Any failure leaves the caller to roll back the hire.
+pub(crate) async fn create_hire_duties_in_transaction(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant: &TenantContext,
+    state: &AppState,
+    hire: HireDuties<'_>,
+) -> Result<Vec<StoredEvent>, IngestError> {
+    let Some(first) = hire.proposals.first() else {
+        return Ok(Vec::new());
+    };
+    if hire.proposals.iter().any(|proposal| {
+        proposal.employee_pubkey != first.employee_pubkey || proposal.channel_id != first.channel_id
+    }) {
+        return Err(internal(
+            "hire routines must share one employee and channel",
+        ));
+    }
+    validate_duty_proposal(first).map_err(|error| invalid(format!("hire routine: {error}")))?;
+    validate_employee_channel(state, tenant, first).await?;
+    let workflow_owner_pubkey = hex::decode(hire.founder_pubkey).map_err(internal)?;
+    if state
+        .db
+        .get_member_role(tenant.community(), first.channel_id, &workflow_owner_pubkey)
+        .await
+        .map_err(internal)?
+        .is_none()
+    {
+        return Err(invalid(
+            "the owner must be a member of the home channel so the employee's routines can run",
+        ));
+    }
+    let mut stored = Vec::with_capacity(hire.proposals.len());
+    for proposal in hire.proposals {
+        validate_duty_proposal(proposal)
+            .map_err(|error| invalid(format!("hire routine: {error}")))?;
+        let (_, definition_json, definition_hash) = workflow_definition(proposal)?;
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(format!(
+                "company-duty:{}:{}",
+                tenant.community().as_uuid(),
+                proposal.duty_id
+            ))
+            .execute(&mut **tx)
+            .await
+            .map_err(internal)?;
+        let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+        let head = DutyHead {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            duty_id: proposal.duty_id,
+            proposal: proposal.clone(),
+            status: DutyStatus::Active,
+            proposed_by_pubkey: hire.proposer_pubkey.to_owned(),
+            approved_by_pubkey: hire.founder_pubkey.to_owned(),
+            approved_at: now.clone(),
+            source_ask_id: None,
+            source_ask_channel_id: None,
+            source_hire_id: Some(hire.hire_id),
+            workflow_definition_hash: hex::encode(&definition_hash),
+            created_at: now.clone(),
+            updated_at: now,
+            source_action_event_id: hire.complete_event_id.to_owned(),
+        };
+        validate_duty_head(&head)
+            .map_err(|error| internal(format!("hire routine head: {error}")))?;
+        let d_tag = duty_d_tag(proposal.duty_id);
+        let prepared = PreparedDutyHead {
+            duty_id: proposal.duty_id,
+            event: relay_duty_head_event(&head, &d_tag, None, state)?,
+            d_tag,
+            workflow_owner_pubkey: workflow_owner_pubkey.clone(),
+            workflow_channel_id: proposal.channel_id,
+            workflow_name: proposal.title.clone(),
+            workflow_definition: definition_json,
+            workflow_hash: definition_hash,
+        };
+        stored.push(replace_prepared_duty_head(tx, tenant.community(), &prepared, state).await?);
+    }
+    Ok(stored)
+}
+
 /// Resolve one relay-signed duty head by its d-tag.
 pub(crate) async fn current_duty_head(
     state: &AppState,
