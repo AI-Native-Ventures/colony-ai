@@ -271,6 +271,26 @@ mod tests {
     }
 
     #[test]
+    fn base_prompt_formatting_and_progress_lines_follow_the_voice_rules() {
+        for retired in ["Use GitHub-flavored Markdown", "narrate as you go"] {
+            assert!(
+                !DEFAULT_BASE_PROMPT.contains(retired),
+                "base prompt still says: {retired}"
+            );
+        }
+        for current in [
+            "- Use Markdown only for links, and for code blocks when you share code.",
+            "so post one pickup line, then only results or blockers, and never go dark between \"picked up\" and \"done.\"",
+            "Step-by-step progress stays out of chat.",
+        ] {
+            assert!(
+                DEFAULT_BASE_PROMPT.contains(current),
+                "base prompt is missing: {current}"
+            );
+        }
+    }
+
+    #[test]
     fn semantic_section_attributes_do_not_mutate_body() {
         assert_eq!(
             semantic_section_with_attributes(
