@@ -41,17 +41,18 @@ const CMD = process.env.AI_CMD_DIR;
 await mkdir(CMD, { recursive: true, mode: 0o700 });
 
 const state = await loadState();
-if (!state.G) {
+const PROFILE = process.env.GATE_PROFILE ?? "G";
+if (!state[PROFILE]) {
   const privateDir = await realpath(
     await mkdtemp(path.join(os.tmpdir(), GATE_HOME_PREFIX)),
   );
   await chmod(privateDir, 0o700);
   const userDataDir = path.join(privateDir, "user-data");
   await mkdir(userDataDir, { mode: 0o700 });
-  state.G = { privateDir, userDataDir, label: "107-gate" };
+  state[PROFILE] = { privateDir, userDataDir, label: `107-gate-${PROFILE}` };
   await saveState(state);
 }
-const G = state.G;
+const G = state[PROFILE];
 const rec = new Rec(process.env.RESUME_PHASE ?? "C107");
 const fake = await startFakeProvider({
   logFile: path.join(OUT, `${rec.phase}-fake.jsonl`),
