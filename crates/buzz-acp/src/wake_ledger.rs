@@ -37,6 +37,8 @@ use crate::relay::SINCE_SKEW_SECS;
 
 /// Longest look-back a restarted employee replays: seven days.
 pub(crate) const MAX_LOOKBACK_SECS: u64 = 7 * 24 * 60 * 60;
+/// Most handled ids kept in memory and in the file.
+pub(crate) const MAX_HANDLED: usize = 512;
 /// How long the floor stays at this run's replay start. The startup replay
 /// arrives newest first and one channel at a time; holding the floor until it
 /// has settled keeps a restart inside that window from skipping older events.
@@ -126,6 +128,8 @@ pub(crate) struct WakeLedger {
     /// Ids recorded through [`WakeLedger::commit`]: handled even while the same
     /// event still waits in the queue (a steered event).
     committed: HashSet<String>,
+    /// Lowest floor that keeps every evicted id out of the next replay.
+    evicted_floor: u64,
     /// Events handed back by [`WakeLedger::forget_events`] and not received
     /// again since, with their `created_at`. They hold the floor at or below
     /// them, so the next start replays them.
@@ -190,6 +194,7 @@ impl WakeLedger {
             handled: VecDeque::new(),
             handled_ids: HashSet::new(),
             committed: HashSet::new(),
+            evicted_floor: 0,
             released: HashMap::new(),
             written: None,
             retry_at: None,
@@ -377,7 +382,9 @@ impl WakeLedger {
             .into_iter()
             .chain(self.released.values().copied())
             .min();
-        let floor = lowest_unhandled.map_or(caught_up, |lowest| lowest.min(caught_up));
+        let floor = lowest_unhandled
+            .map_or(caught_up, |lowest| lowest.min(caught_up))
+            .max(self.evicted_floor);
         LedgerFile {
             version: FILE_VERSION,
             relay_url: self.relay_url.clone(),
@@ -393,8 +400,21 @@ impl WakeLedger {
     }
 
     fn remember(&mut self, entry: HandledEvent) {
-        if self.handled_ids.insert(entry.id.clone()) {
-            self.handled.push_back(entry);
+        if !self.handled_ids.insert(entry.id.clone()) {
+            return;
+        }
+        self.handled.push_back(entry);
+        while self.handled.len() > MAX_HANDLED {
+            let Some(evicted) = self.handled.pop_front() else {
+                break;
+            };
+            self.handled_ids.remove(&evicted.id);
+            self.committed.remove(&evicted.id);
+            // A replay starts `SINCE_SKEW_SECS` before the floor; keep it after
+            // the forgotten id so that id is never processed again.
+            self.evicted_floor = self
+                .evicted_floor
+                .max(evicted.created_at.saturating_add(SINCE_SKEW_SECS + 1));
         }
     }
 }
@@ -772,6 +792,44 @@ mod tests {
         assert_eq!(
             blocked.commit([&wake], std::iter::empty(), 10_000 + WRITE_RETRY_SECS),
             SyncOutcome::Failed
+        );
+    }
+
+    #[test]
+    fn a_forgotten_id_never_replays() {
+        let temp = TempLedger::new();
+        let mut ledger = temp.open(1_000);
+        let oldest = event_at(1_000);
+        ledger.admit(&oldest, 1_000);
+        assert!(ledger
+            .commit([&oldest], std::iter::empty(), 1_000)
+            .is_saved());
+        for offset in 0..(MAX_HANDLED as u64 - 1) {
+            ledger.admit(&event_at(2_000 + offset), 2_000 + offset);
+        }
+        // One more id pushes the oldest out. It is a late, older event that is
+        // still queued, so it would pull the floor below the forgotten id.
+        let late = event_at(900);
+        ledger.admit(&late, 2_600);
+        ledger.sync([&late], 2_600);
+        let file = temp.written();
+        assert_eq!(
+            file.handled.len(),
+            MAX_HANDLED - 1,
+            "the list is bounded and leaves the queued event out"
+        );
+        assert!(file
+            .handled
+            .iter()
+            .all(|entry| entry.id != oldest.id.to_hex()));
+        assert_eq!(
+            file.floor,
+            1_000 + SINCE_SKEW_SECS + 1,
+            "the next replay starts after the forgotten id"
+        );
+        assert!(
+            !ledger.committed.contains(&oldest.id.to_hex()),
+            "a forgotten id also leaves the committed set, so it stays bounded"
         );
     }
 
