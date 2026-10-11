@@ -1211,6 +1211,109 @@ pub fn validate_hire_action(action: &HireAction) -> Result<(), CompanyRecordErro
     }
 }
 
+/// Title of the built-in routine that keeps every employee's plan current.
+pub const PLAN_CHECK_DUTY_TITLE: &str = "Plan check";
+/// Readable schedule of the built-in Plan check routine.
+pub const PLAN_CHECK_DUTY_SCHEDULE: &str = "Every Monday at 09:00";
+/// Instructions the employee receives on each Plan check run.
+pub const PLAN_CHECK_DUTY_INSTRUCTIONS: &str = "Check your 2-week plan. If it is 14 days old or finished, write the next 2-week plan and send it to your manager for approval.";
+/// Time zone of a hire's routines when the owner's `complete` names none.
+pub const DEFAULT_HIRE_TIME_ZONE: &str = "UTC";
+/// Done condition of a hire goal whose role pack names no `owns` outcome.
+pub const HIRE_GOAL_DEFAULT_DONE_CONDITION: &str = "Plan approved and delivered";
+
+/// Builds the root goal a completed hire creates for its employee.
+///
+/// The goal reuses the hire id, is owned by the employee and is linked to the
+/// introduction channel. Its title is the role's `owns` outcome, cut at a word
+/// to fit a goal title, or the hire title when the pack names none. Its done
+/// condition is the full `owns` text or [`HIRE_GOAL_DEFAULT_DONE_CONDITION`].
+pub fn hire_goal_record(
+    proposal: &HireProposal,
+    employee_pubkey: &str,
+) -> Result<GoalRecord, CompanyRecordError> {
+    let owns = proposal
+        .role_pack
+        .owns
+        .as_deref()
+        .map(str::trim)
+        .filter(|owns| !owns.is_empty());
+    let goal = GoalRecord {
+        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+        goal_id: proposal.hire_id,
+        parent_goal_id: None,
+        title: owns.map_or_else(|| proposal.title.clone(), goal_title_from_owns),
+        owner_pubkey: employee_pubkey.to_owned(),
+        due_date: None,
+        done_condition: owns.unwrap_or(HIRE_GOAL_DEFAULT_DONE_CONDITION).to_owned(),
+        target: None,
+        linked_channel_ids: vec![proposal.introduction_channel_id],
+    };
+    validate_goal_record(&goal)?;
+    Ok(goal)
+}
+
+/// Fits an `owns` outcome into a goal title, cutting after the last whole word.
+fn goal_title_from_owns(owns: &str) -> String {
+    if char_len(owns) <= MAX_TITLE_CHARS {
+        return owns.to_owned();
+    }
+    let hard_cut = owns.chars().take(MAX_TITLE_CHARS - 3).collect::<String>();
+    let word_cut = hard_cut
+        .rsplit_once(char::is_whitespace)
+        .map(|(head, _)| head.trim_end())
+        .filter(|head| !head.is_empty())
+        .unwrap_or(hard_cut.as_str());
+    format!("{word_cut}...")
+}
+
+/// Builds the routine proposals a completed hire creates: one per role-pack
+/// duty, then the built-in Plan check routine.
+///
+/// Every routine runs for the employee in the hire's introduction channel, in
+/// the owner's time zone or [`DEFAULT_HIRE_TIME_ZONE`]. `next_duty_id` supplies
+/// one new duty id per proposal, in order.
+pub fn hire_duty_proposals(
+    proposal: &HireProposal,
+    employee_pubkey: &str,
+    time_zone: Option<&str>,
+    mut next_duty_id: impl FnMut() -> Uuid,
+) -> Result<Vec<crate::company_duties::DutyProposal>, CompanyRecordError> {
+    let plan_check = RoleDutyTemplate {
+        title: PLAN_CHECK_DUTY_TITLE.to_owned(),
+        schedule_text: PLAN_CHECK_DUTY_SCHEDULE.to_owned(),
+        instructions: PLAN_CHECK_DUTY_INSTRUCTIONS.to_owned(),
+    };
+    let time_zone = time_zone.unwrap_or(DEFAULT_HIRE_TIME_ZONE);
+    proposal
+        .role_pack
+        .duties
+        .iter()
+        .chain(std::iter::once(&plan_check))
+        .map(|template| {
+            let schedule_cron = crate::company_duties::parse_readable_schedule(
+                &template.schedule_text,
+            )
+            .ok_or(CompanyRecordError::Invalid(
+                "role duty scheduleText must be a supported recurring schedule",
+            ))?;
+            let duty = crate::company_duties::DutyProposal {
+                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+                duty_id: next_duty_id(),
+                employee_pubkey: employee_pubkey.to_owned(),
+                title: template.title.clone(),
+                schedule_text: template.schedule_text.clone(),
+                schedule_cron,
+                time_zone: time_zone.to_owned(),
+                channel_id: proposal.introduction_channel_id,
+                instructions: template.instructions.clone(),
+            };
+            crate::company_duties::validate_duty_proposal(&duty)?;
+            Ok(duty)
+        })
+        .collect()
+}
+
 /// Ask create or cancel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -3004,6 +3107,108 @@ mod tests {
                 action.action
             );
         }
+    }
+
+    #[test]
+    fn hire_goal_takes_owns_or_falls_back_to_the_hire_title() {
+        let mut proposal = hire_proposal();
+        proposal.role_pack.owns = Some("Show up well on social media every week".into());
+        let goal = hire_goal_record(&proposal, PK_B).expect("goal from owns");
+        assert_eq!(goal.schema_version, COMPANY_RECORD_SCHEMA_VERSION);
+        assert_eq!(goal.goal_id, proposal.hire_id);
+        assert_eq!(goal.parent_goal_id, None);
+        assert_eq!(goal.title, "Show up well on social media every week");
+        assert_eq!(
+            goal.done_condition,
+            "Show up well on social media every week"
+        );
+        assert_eq!(goal.owner_pubkey, PK_B);
+        assert_eq!(goal.due_date, None);
+        assert_eq!(goal.target, None);
+        assert_eq!(
+            goal.linked_channel_ids,
+            vec![proposal.introduction_channel_id]
+        );
+
+        proposal.role_pack.owns = None;
+        let fallback = hire_goal_record(&proposal, PK_B).expect("goal from the hire title");
+        assert_eq!(fallback.title, proposal.title);
+        assert_eq!(fallback.done_condition, HIRE_GOAL_DEFAULT_DONE_CONDITION);
+        assert_eq!(
+            HIRE_GOAL_DEFAULT_DONE_CONDITION,
+            "Plan approved and delivered"
+        );
+
+        assert!(hire_goal_record(&proposal, "not-a-pubkey").is_err());
+    }
+
+    #[test]
+    fn a_long_owns_is_cut_at_a_word_for_the_goal_title() {
+        let owns = "Grow weekly signups ".repeat(25).trim_end().to_owned();
+        assert_eq!(owns.chars().count(), 499);
+        let mut proposal = hire_proposal();
+        proposal.role_pack.owns = Some(owns.clone());
+        assert!(validate_hire_proposal(&proposal).is_ok());
+        let goal = hire_goal_record(&proposal, PK_B).expect("goal from a long owns");
+        assert!(goal.title.chars().count() <= MAX_TITLE_CHARS);
+        let kept = goal
+            .title
+            .strip_suffix("...")
+            .expect("a cut title ends with ...");
+        assert!(owns.starts_with(kept));
+        assert!(!kept.ends_with(' '));
+        assert!(
+            owns[kept.len()..].starts_with(' '),
+            "the cut falls between words"
+        );
+        assert_eq!(goal.done_condition, owns);
+    }
+
+    #[test]
+    fn hire_routines_are_the_role_duties_then_plan_check_in_the_home_channel() {
+        let mut proposal = hire_proposal();
+        proposal.role_pack.duties = vec![RoleDutyTemplate {
+            title: "Follow-up check".into(),
+            schedule_text: "Every weekday at 08:00".into(),
+            instructions: "Draft today's follow-ups for leads that are due.".into(),
+        }];
+        let mut ids = (100..).map(Uuid::from_u128);
+        let duties = hire_duty_proposals(&proposal, PK_B, Some("Africa/Johannesburg"), || {
+            ids.next().expect("an id")
+        })
+        .expect("hire routines");
+        assert_eq!(duties.len(), 2);
+        assert_eq!(duties[0].duty_id, Uuid::from_u128(100));
+        assert_eq!(duties[0].title, "Follow-up check");
+        assert_eq!(duties[0].schedule_cron, "0 8 * * 1-5");
+        assert_eq!(duties[1].duty_id, Uuid::from_u128(101));
+        assert_eq!(duties[1].title, PLAN_CHECK_DUTY_TITLE);
+        assert_eq!(PLAN_CHECK_DUTY_TITLE, "Plan check");
+        assert_eq!(duties[1].schedule_text, PLAN_CHECK_DUTY_SCHEDULE);
+        assert_eq!(PLAN_CHECK_DUTY_SCHEDULE, "Every Monday at 09:00");
+        assert_eq!(duties[1].schedule_cron, "0 9 * * 1");
+        assert_eq!(duties[1].instructions, PLAN_CHECK_DUTY_INSTRUCTIONS);
+        for duty in &duties {
+            assert_eq!(duty.employee_pubkey, PK_B);
+            assert_eq!(duty.channel_id, proposal.introduction_channel_id);
+            assert_eq!(duty.time_zone, "Africa/Johannesburg");
+            assert!(crate::company_duties::validate_duty_proposal(duty).is_ok());
+        }
+
+        proposal.role_pack.duties.clear();
+        let plan_only =
+            hire_duty_proposals(&proposal, PK_B, None, Uuid::new_v4).expect("plan check only");
+        assert_eq!(plan_only.len(), 1);
+        assert_eq!(plan_only[0].title, PLAN_CHECK_DUTY_TITLE);
+        assert_eq!(plan_only[0].time_zone, DEFAULT_HIRE_TIME_ZONE);
+        assert_eq!(DEFAULT_HIRE_TIME_ZONE, "UTC");
+
+        proposal.role_pack.duties = vec![RoleDutyTemplate {
+            title: "Broken".into(),
+            schedule_text: "Tomorrow at 09:00".into(),
+            instructions: "Never runs.".into(),
+        }];
+        assert!(hire_duty_proposals(&proposal, PK_B, None, Uuid::new_v4).is_err());
     }
 
     fn tool_permission(now: chrono::DateTime<chrono::Utc>) -> ToolPermissionRecord {
