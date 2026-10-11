@@ -448,6 +448,17 @@ pub async fn query_events(pool: &PgPool, q: &EventQuery) -> Result<Vec<StoredEve
     .await
 }
 
+/// Query authoritative event state on the caller's existing transaction.
+///
+/// This preserves the transaction snapshot and locks without checking out a
+/// second writer-pool connection while the caller holds the first one.
+pub async fn query_events_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    q: &EventQuery,
+) -> Result<Vec<StoredEvent>> {
+    query_events_on(tx.as_mut(), q).await
+}
+
 pub(crate) async fn query_events_with_operation(
     pool: &PgPool,
     q: &EventQuery,

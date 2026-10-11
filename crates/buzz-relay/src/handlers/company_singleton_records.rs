@@ -63,10 +63,6 @@ pub(super) async fn handle_business_profile(
         "change the business profile",
     )
     .await?;
-    if event_already_stored(&mut tx, community_id, &event).await? {
-        tx.rollback().await.map_err(internal)?;
-        return Ok(duplicate_result(&event));
-    }
     let (current_head_id, current_stored) = lock_current_head(
         &mut tx,
         state,
@@ -75,6 +71,10 @@ pub(super) async fn handle_business_profile(
         BUSINESS_PROFILE_D_TAG,
     )
     .await?;
+    if event_already_stored(&mut tx, community_id, &event).await? {
+        tx.rollback().await.map_err(internal)?;
+        return Ok(duplicate_result(&event));
+    }
     let current_revision = current_stored
         .as_ref()
         .map(stored_profile_revision)
@@ -154,10 +154,6 @@ pub(super) async fn handle_team_computer(
         "change which computer runs the team",
     )
     .await?;
-    if stores_action && event_already_stored(&mut tx, community_id, &event).await? {
-        tx.rollback().await.map_err(internal)?;
-        return Ok(duplicate_result(&event));
-    }
     let (current_head_id, current_stored) = lock_current_head(
         &mut tx,
         state,
@@ -166,6 +162,10 @@ pub(super) async fn handle_team_computer(
         TEAM_COMPUTER_D_TAG,
     )
     .await?;
+    if stores_action && event_already_stored(&mut tx, community_id, &event).await? {
+        tx.rollback().await.map_err(internal)?;
+        return Ok(duplicate_result(&event));
+    }
     let current = current_stored
         .as_ref()
         .map(parse_team_computer_head)
@@ -363,7 +363,7 @@ async fn lock_current_head(
     )
     .await
     .map_err(internal)?;
-    let current_stored = current_singleton_head(state, community_id, kind, d_tag).await?;
+    let current_stored = current_singleton_head(tx, state, community_id, kind, d_tag).await?;
     if current_stored
         .as_ref()
         .map(|head| head.event.id.to_bytes().to_vec())
@@ -377,6 +377,7 @@ async fn lock_current_head(
 }
 
 async fn current_singleton_head(
+    tx: &mut Transaction<'static, Postgres>,
     state: &AppState,
     community_id: CommunityId,
     kind: u32,
@@ -388,9 +389,7 @@ async fn current_singleton_head(
     query.d_tag = Some(d_tag.to_owned());
     query.global_only = true;
     query.limit = Some(2);
-    let mut rows = state
-        .db
-        .query_events_for_event_write(&query)
+    let mut rows = buzz_db::event::query_events_in_transaction(tx, &query)
         .await
         .map_err(internal)?;
     if rows.len() > 1 {
@@ -520,4 +519,71 @@ fn conflict(message: impl Into<String>) -> IngestError {
 
 fn internal(error: impl std::fmt::Display) -> IngestError {
     IngestError::Internal(format!("error: {error}"))
+}
+
+#[cfg(test)]
+mod postgres_tests {
+    use super::*;
+    use std::time::Duration;
+    use uuid::Uuid;
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn singleton_head_reads_use_the_locked_transaction_with_one_pool_connection() {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(Duration::from_secs(2))
+            .connect(&crate::test_support::database_url())
+            .await
+            .expect("connect to disposable singleton database");
+        let community_uuid = Uuid::new_v4();
+        sqlx::query("INSERT INTO communities (id, host) VALUES ($1, $2)")
+            .bind(community_uuid)
+            .bind(format!("singleton-{}.test", community_uuid.simple()))
+            .execute(&pool)
+            .await
+            .expect("insert singleton test community");
+        let community = CommunityId::from_uuid(community_uuid);
+        let state = crate::state::tests::test_state_with_database_pool(pool.clone()).await;
+        let head = EventBuilder::new(Kind::Custom(KIND_BUSINESS_PROFILE_HEAD as u16), "{}")
+            .tag(Tag::parse(["d", BUSINESS_PROFILE_D_TAG]).expect("profile coordinate"))
+            .sign_with_keys(&state.relay_keypair)
+            .expect("sign singleton test head");
+        let mut tx = pool.begin().await.expect("begin singleton transaction");
+        let (head_id, stored) = tokio::time::timeout(
+            Duration::from_secs(5),
+            lock_current_head(
+                &mut tx,
+                &state,
+                community,
+                KIND_BUSINESS_PROFILE_HEAD,
+                BUSINESS_PROFILE_D_TAG,
+            ),
+        )
+        .await
+        .expect("empty head read must not wait for another pool connection")
+        .expect("read empty singleton coordinate");
+        assert!(head_id.is_none());
+        assert!(stored.is_none());
+        buzz_db::event::insert_event_in_transaction(&mut tx, community, &head, None)
+            .await
+            .expect("insert uncommitted singleton head");
+        let (head_id, stored) = tokio::time::timeout(
+            Duration::from_secs(5),
+            lock_current_head(
+                &mut tx,
+                &state,
+                community,
+                KIND_BUSINESS_PROFILE_HEAD,
+                BUSINESS_PROFILE_D_TAG,
+            ),
+        )
+        .await
+        .expect("head read must use the existing pool connection")
+        .expect("read uncommitted head from the locked transaction");
+        assert_eq!(head_id, Some(head.id.to_bytes().to_vec()));
+        assert_eq!(stored.expect("singleton head").event, head);
+        tx.rollback().await.expect("roll back singleton test");
+        pool.close().await;
+    }
 }

@@ -235,6 +235,88 @@ async fn current_profile(keys: &Keys) -> Option<(u32, BusinessProfile)> {
         })
 }
 
+async fn post_duplicates_behind_coordinate_lock(
+    keys: &Keys,
+    event: &Event,
+    head_kind: u32,
+    d_tag: &str,
+) -> (Value, Value) {
+    let head = query_one(keys, head_kind, d_tag)
+        .await
+        .expect("current head before replay");
+    let community_id = ensure_test_community(&relay_authority()).await;
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&test_database_url())
+        .await
+        .expect("connect to coordinate blocker database");
+    let mut blocker = pool.begin().await.expect("begin coordinate blocker");
+    let blocker_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *blocker)
+        .await
+        .expect("coordinate blocker process");
+    buzz_db::replaceable::lock_parameterized_event_head_in_transaction(
+        &mut blocker,
+        buzz_core::CommunityId::from_uuid(community_id),
+        head_kind,
+        &head.pubkey.to_bytes(),
+        d_tag,
+    )
+    .await
+    .expect("hold the production coordinate lock");
+
+    let launch = || {
+        let keys = keys.clone();
+        let event = event.clone();
+        tokio::spawn(async move { post_event(&keys, &event).await })
+    };
+    let mut first = launch();
+    let mut second = launch();
+    let queued = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let waiting: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM pg_stat_activity \
+                 WHERE datname = current_database() \
+                 AND $1::integer = ANY(pg_blocking_pids(pid))",
+            )
+            .bind(blocker_pid)
+            .fetch_one(&pool)
+            .await?;
+            if waiting >= 2 {
+                return Ok::<(), sqlx::Error>(());
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+    blocker
+        .rollback()
+        .await
+        .expect("release coordinate blocker");
+    if !matches!(queued, Ok(Ok(()))) {
+        first.abort();
+        second.abort();
+        panic!("both duplicate requests must wait behind the coordinate lock: {queued:?}");
+    }
+    let joined = tokio::time::timeout(Duration::from_secs(10), async {
+        tokio::join!(&mut first, &mut second)
+    })
+    .await;
+    let (first_result, second_result) = match joined {
+        Ok(results) => results,
+        Err(_) => {
+            first.abort();
+            second.abort();
+            panic!("duplicate requests must complete after the blocker releases");
+        }
+    };
+    pool.close().await;
+    (
+        first_result.expect("first duplicate request"),
+        second_result.expect("second duplicate request"),
+    )
+}
+
 #[tokio::test]
 #[ignore]
 async fn business_profile_is_written_by_owners_and_admins_and_read_by_members_and_employees() {
@@ -314,6 +396,32 @@ async fn business_profile_is_written_by_owners_and_admins_and_read_by_members_an
         assert_eq!(revision, current_revision);
         assert_eq!(profile.name, admin_name);
     }
+
+    let replayed_name = format!("Replay Designs {}", Uuid::new_v4().simple());
+    let replayed =
+        buzz_sdk::company_profile::build_business_profile_action(&BusinessProfileAction {
+            profile: sample_profile(&replayed_name),
+            expected_revision: Some(current_revision),
+        })
+        .expect("build replayed profile action")
+        .sign_with_keys(&owner)
+        .expect("sign replayed profile action");
+    let (first, second) = post_duplicates_behind_coordinate_lock(
+        &owner,
+        &replayed,
+        KIND_BUSINESS_PROFILE_HEAD,
+        BUSINESS_PROFILE_D_TAG,
+    )
+    .await;
+    assert_accepted(&first);
+    assert_accepted(&second);
+    let (revision, profile) = current_profile(&owner).await.expect("profile after replay");
+    assert_eq!(
+        revision,
+        current_revision + 1,
+        "a replay advances the head once"
+    );
+    assert_eq!(profile.name, replayed_name);
 }
 
 fn computer_action(
@@ -410,6 +518,56 @@ async fn team_computer_has_one_holder_heartbeats_releases_and_moves_by_force() {
         "only the computer that runs the team",
     );
 
+    let before_heartbeat = query_one(&owner, KIND_TEAM_COMPUTER_HEAD, TEAM_COMPUTER_D_TAG)
+        .await
+        .expect("head before accepted heartbeat");
+    let before_heartbeat_head: TeamComputerHead =
+        serde_json::from_str(&before_heartbeat.content).expect("parse pre-heartbeat head");
+    let wait_secs =
+        (before_heartbeat_head.last_seen_at + 60 - chrono::Utc::now().timestamp()).max(0) as u64;
+    assert!(
+        wait_secs <= 60,
+        "the heartbeat wait is bounded to one minute"
+    );
+    tokio::time::sleep(Duration::from_secs(wait_secs + 1)).await;
+    let heartbeat = buzz_sdk::team_computer::build_team_computer_action(&computer_action(
+        Heartbeat,
+        &laptop,
+        laptop_name,
+        false,
+    ))
+    .expect("build accepted heartbeat")
+    .sign_with_keys(&owner)
+    .expect("sign accepted heartbeat");
+    assert_accepted(&post_event(&owner, &heartbeat).await);
+    let after_heartbeat = query_one(&owner, KIND_TEAM_COMPUTER_HEAD, TEAM_COMPUTER_D_TAG)
+        .await
+        .expect("head after accepted heartbeat");
+    let after_heartbeat_head: TeamComputerHead =
+        serde_json::from_str(&after_heartbeat.content).expect("parse post-heartbeat head");
+    assert_ne!(after_heartbeat.id, before_heartbeat.id);
+    assert!(after_heartbeat_head.last_seen_at >= before_heartbeat_head.last_seen_at + 60);
+    assert_eq!(after_heartbeat_head.computer_id, laptop);
+    let community_id = ensure_test_community(&relay_authority()).await;
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&test_database_url())
+        .await
+        .expect("connect to verify heartbeat persistence");
+    let heartbeat_stored: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM events WHERE community_id = $1 AND id = $2)",
+    )
+    .bind(community_id)
+    .bind(heartbeat.id.to_bytes().as_slice())
+    .fetch_one(&pool)
+    .await
+    .expect("read heartbeat action persistence");
+    assert!(
+        !heartbeat_stored,
+        "heartbeats only replace the canonical head"
+    );
+    pool.close().await;
+
     assert_accepted(
         &submit_computer(&admin, computer_action(Claim, &desktop, desktop_name, true)).await,
     );
@@ -442,13 +600,26 @@ async fn team_computer_has_one_holder_heartbeats_releases_and_moves_by_force() {
     assert_eq!(reclaimed.released_at, None);
 
     // Two computers racing for a free team: exactly one wins.
-    assert_accepted(
-        &submit_computer(
-            &owner,
-            computer_action(Release, &laptop, laptop_name, false),
-        )
-        .await,
-    );
+    let release = buzz_sdk::team_computer::build_team_computer_action(&computer_action(
+        Release,
+        &laptop,
+        laptop_name,
+        false,
+    ))
+    .expect("build replayed release")
+    .tag(Tag::parse(["test_id", Uuid::new_v4().to_string().as_str()]).expect("unique release"))
+    .sign_with_keys(&owner)
+    .expect("sign replayed release");
+    let (first_release, second_release) = post_duplicates_behind_coordinate_lock(
+        &owner,
+        &release,
+        KIND_TEAM_COMPUTER_HEAD,
+        TEAM_COMPUTER_D_TAG,
+    )
+    .await;
+    assert_accepted(&first_release);
+    assert_accepted(&second_release);
+    assert!(current_team_computer(&owner).await.released_at.is_some());
     let racer_a = Uuid::new_v4().to_string();
     let racer_b = Uuid::new_v4().to_string();
     let (first, second) = tokio::join!(
