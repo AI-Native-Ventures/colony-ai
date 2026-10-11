@@ -535,6 +535,13 @@ pub struct CliArgs {
     /// ignored (the watermark stays at startup time).
     #[arg(long, env = "BUZZ_ACP_REPLAY_FLOOR")]
     pub replay_floor: Option<u64>,
+
+    /// Wake ledger file for a Colony employee: where it records the wake events
+    /// it handled, so a restart processes mentions and routine wakes that
+    /// arrived while it was offline, each once. Unset: subscriptions start at
+    /// the startup watermark, as before.
+    #[arg(long, env = "COLONY_WAKE_LEDGER", hide = true)]
+    pub wake_ledger: Option<PathBuf>,
 }
 
 /// Merged NIP-01 subscription filter for a single channel.
@@ -632,6 +639,9 @@ pub struct Config {
     /// triggering message. Clamped where consumed — see
     /// `startup_watermark_with_floor`.
     pub replay_floor_unix: Option<u64>,
+    /// Wake ledger file (`--wake-ledger` / `COLONY_WAKE_LEDGER`). `None` turns
+    /// restart catch-up off. See `wake_ledger.rs`.
+    pub wake_ledger_path: Option<PathBuf>,
     /// Agent owner pubkey (hex). Used for `--respond-to=owner-only` gate.
     /// Replaces the old REST-based owner lookup.
     pub agent_owner: Option<String>,
@@ -1243,6 +1253,7 @@ impl Config {
             lazy_pool: args.lazy_pool,
             idle_pool_sleep_secs: args.idle_pool_sleep,
             replay_floor_unix: args.replay_floor,
+            wake_ledger_path: args.wake_ledger,
             agent_owner: args.agent_owner.map(|s| s.trim().to_ascii_lowercase()),
             no_base_prompt: args.no_base_prompt,
             base_prompt_content,
@@ -1620,6 +1631,7 @@ mod tests {
             lazy_pool: false,
             idle_pool_sleep_secs: 0,
             replay_floor_unix: None,
+            wake_ledger_path: None,
             agent_owner: None,
             no_base_prompt: false,
             base_prompt_content: None,
@@ -3084,6 +3096,29 @@ channels = "ALL"
         assert!(
             Config::from_args(args).is_err(),
             "a malformed role context stops the employee start"
+        );
+    }
+
+    #[test]
+    fn wake_ledger_path_reaches_config_through_the_real_cli_path() {
+        let args = CliArgs::try_parse_from([
+            "buzz-acp",
+            "--private-key",
+            TEST_PRIVATE_KEY,
+            "--wake-ledger",
+            "/tmp/colony-employee/wake-ledger.json",
+        ])
+        .expect("parse wake ledger");
+        assert_eq!(
+            Config::from_args(args).expect("config").wake_ledger_path,
+            Some(PathBuf::from("/tmp/colony-employee/wake-ledger.json"))
+        );
+        let args = CliArgs::try_parse_from(["buzz-acp", "--private-key", TEST_PRIVATE_KEY])
+            .expect("parse without a ledger");
+        assert_eq!(
+            Config::from_args(args).expect("config").wake_ledger_path,
+            None,
+            "restart catch-up stays off unless the host names a ledger"
         );
     }
 

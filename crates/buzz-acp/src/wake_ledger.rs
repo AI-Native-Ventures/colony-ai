@@ -377,9 +377,9 @@ impl WakeLedger {
     }
 
     /// How long until the next write attempt after a failure. `None` when no
-    /// write failed, or when the backoff already ended: a passed deadline never
-    /// wakes the main loop again by itself (no busy loop); the next dispatch
-    /// retries instead.
+    /// write failed, or when the backoff already ended. The listener schedules
+    /// an elapsed failed deadline as ready and renews or clears the failure
+    /// before waiting again, so a quiet queue can recover without a busy loop.
     pub(crate) fn retry_delay(&self, now: u64) -> Option<Duration> {
         let retry_at = self.retry_at.filter(|retry_at| *retry_at > now)?;
         Some(Duration::from_secs(retry_at - now))

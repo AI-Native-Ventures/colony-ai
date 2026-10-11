@@ -23,13 +23,6 @@ mod scope;
 mod setup_mode;
 mod tool_permissions;
 mod usage;
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the listener uses every part of the ledger once restart catch-up is wired in"
-    )
-)]
 mod wake_ledger;
 
 pub use acp::{
@@ -2600,9 +2593,26 @@ async fn tokio_main() -> Result<()> {
 
     let pubkey_hex = config.keys.public_key().to_hex();
 
-    // Restart catch-up ledger (`COLONY_WAKE_LEDGER`). Opened in a later step;
-    // `None` keeps today's behaviour.
-    let mut handled_wakes: Option<wake_ledger::WakeLedger> = None;
+    // Restart catch-up uses the saved floor, at most seven days back. Keep the
+    // ledger and its floor after a failed startup save: every new turn waits
+    // for the dedicated retry to recover storage.
+    let mut handled_wakes = open_wake_ledger(
+        config.wake_ledger_path.clone(),
+        &config.relay_url,
+        &pubkey_hex,
+        now_unix,
+        startup_watermark,
+    );
+    let catch_up_since = handled_wakes
+        .as_ref()
+        .and_then(wake_ledger::WakeLedger::catch_up_since);
+    if let Some(since) = catch_up_since {
+        tracing::info!(
+            since,
+            startup_watermark,
+            "catching up on wake events sent while the employee was offline"
+        );
+    }
 
     // Parse BUZZ_AUTH_TAG into a nostr::Tag for NIP-OA relay membership delegation.
     let relay_auth_tag: Option<nostr::Tag> = std::env::var("BUZZ_AUTH_TAG")
@@ -2753,7 +2763,11 @@ async fn tokio_main() -> Result<()> {
     }
     let mut subscribed_channel_ids = HashSet::with_capacity(channel_filters.len());
     for (channel_id, filter) in &channel_filters {
-        if let Err(e) = relay.subscribe_channel(*channel_id, filter.clone()).await {
+        // `None` keeps the startup watermark, exactly as before.
+        if let Err(e) = relay
+            .subscribe_channel_from(*channel_id, filter.clone(), catch_up_since)
+            .await
+        {
             tracing::warn!("failed to subscribe to channel {channel_id}: {e}");
         } else {
             subscribed_channel_ids.insert(*channel_id);
@@ -3162,18 +3176,22 @@ async fn tokio_main() -> Result<()> {
             }
         }
 
+        // Save ignored and queued events before waiting. During write failure
+        // the dedicated LedgerRetry owns recovery and preserves queued work.
+        if let Some(ledger) = handled_wakes.as_mut() {
+            if !ledger.write_failed() {
+                ledger.sync(queue.pending_events(), wake_ledger::unix_now());
+            }
+        }
+
         // Borrow result_rx and join_set simultaneously via split-borrow helper.
         pool.retain_held_scopes(|scope| queue.has_pending_scope(scope));
         let hold_deadline = wake_ledger_hold_deadline(&pool, handled_wakes.as_ref());
-        // Restart catch-up: after a failed wake ledger write, queued work waits
-        // for the write backoff. Wake the loop when it ends so that work is
-        // retried even on a quiet channel.
-        let ledger_retry_at = wake_ledger_retry_delay(
-            handled_wakes.as_ref(),
-            queue.pending_channels() > 0,
-            wake_ledger::unix_now(),
-        )
-        .map(|delay| tokio::time::Instant::now() + delay);
+        // Recover failed saves even with a quiet queue or a sleeping lazy pool.
+        // The retry renews or clears failure before the next wait.
+        let ledger_retry_at =
+            wake_ledger_retry_delay(handled_wakes.as_ref(), wake_ledger::unix_now())
+                .map(|delay| tokio::time::Instant::now() + delay);
 
         let pool_event: Option<PoolEvent> = {
             let (result_rx, join_set) = pool.rx_and_join_set();
@@ -3225,7 +3243,7 @@ async fn tokio_main() -> Result<()> {
                         Some(at) => tokio::time::sleep_until(at).await,
                         None => std::future::pending().await,
                     }
-                }, if pool_ready => {
+                } => {
                     Some(PoolEvent::LedgerRetry)
                 },
                 Some(Err(error)) = wake_tasks.join_next(), if !wake_tasks.is_empty() => {
@@ -3399,6 +3417,25 @@ async fn tokio_main() -> Result<()> {
                                         );
                                     }
                                 }
+                                continue;
+                            }
+
+                            // Restart catch-up: skip an event this employee
+                            // already handled, and drop a control command that
+                            // only arrived because the subscription replayed
+                            // from the wake ledger floor.
+                            if !wake_ledger_admits(
+                                handled_wakes.as_mut(),
+                                &buzz_event.event,
+                                kind_u32,
+                                &pubkey_hex,
+                                wake_ledger::unix_now(),
+                            ) {
+                                tracing::debug!(
+                                    channel_id = %buzz_event.channel_id,
+                                    event_id = %buzz_event.event.id.to_hex(),
+                                    "wake ledger skipped an already handled event or a stale control command"
+                                );
                                 continue;
                             }
 
@@ -3724,7 +3761,7 @@ async fn tokio_main() -> Result<()> {
                             typing_channels.insert(scope, thread_tags);
                         }
                     } else if pool.any_idle() {
-                        dispatch_heartbeat(&mut pool, &ctx, &mut heartbeat_in_flight);
+                        dispatch_heartbeat(&mut pool, &ctx, &mut heartbeat_in_flight, handled_wakes.as_ref());
                     } else {
                         tracing::debug!("heartbeat_skipped_busy");
                     }
@@ -4106,6 +4143,11 @@ async fn tokio_main() -> Result<()> {
         }
     }
 
+    // Events still queued stay replayable on the next start.
+    if let Some(ledger) = handled_wakes.as_mut() {
+        ledger.sync(queue.pending_events(), wake_ledger::unix_now());
+    }
+
     // Drain wake tasks gracefully rather than aborting: an in-flight
     // initialize_agent_pool observes the shutdown watch at its biased per-slot
     // select and reaps its partially-spawned agents itself. `shutdown()` here
@@ -4254,6 +4296,23 @@ fn is_owner_control_command(
         && event_mentions_agent(event, agent_pubkey_hex)
 }
 
+/// Open and save the configured ledger without disabling catch-up on failure.
+/// Keeping its retry state blocks turns until storage recovers.
+fn open_wake_ledger(
+    path: Option<std::path::PathBuf>,
+    relay_url: &str,
+    agent_pubkey_hex: &str,
+    now: u64,
+    startup_watermark: u64,
+) -> Option<wake_ledger::WakeLedger> {
+    let mut ledger =
+        wake_ledger::WakeLedger::open(path?, relay_url, agent_pubkey_hex, now, startup_watermark);
+    if !ledger.sync(std::iter::empty(), now).is_saved() {
+        tracing::warn!("wake ledger could not be saved; new turns wait until it can");
+    }
+    Some(ledger)
+}
+
 /// Record events as handled in the wake ledger before a turn sees them.
 ///
 /// Returns `true` when there is no ledger, or when the ledger now holds the
@@ -4266,6 +4325,42 @@ fn commit_to_wake_ledger<'e>(
     queue: &EventQueue,
 ) -> bool {
     commit_to_wake_ledger_with_pending(ledger, events, queue.pending_events())
+}
+
+/// Owner control commands the listener consumes instead of prompting. Keep in
+/// step with the `!shutdown`, `!cancel` and `!rotate` checks in the relay
+/// branch of the main loop, so [`wake_ledger_admits`] drops every stale one.
+const OWNER_CONTROL_COMMANDS: [&str; 3] = ["!shutdown", "!cancel", "!rotate"];
+
+/// Whether a channel event reaches the listener, given the wake ledger.
+///
+/// Without a ledger every event passes, as before. With one, an event this
+/// employee already handled (before a restart or earlier in this run) is
+/// skipped, and a control command that only arrived through the restart
+/// catch-up is dropped: it was meant for the process that is gone, and a stale
+/// `!shutdown` must not stop the new one.
+fn wake_ledger_admits(
+    ledger: Option<&mut wake_ledger::WakeLedger>,
+    event: &nostr::Event,
+    kind_u32: u32,
+    agent_pubkey_hex: &str,
+    now: u64,
+) -> bool {
+    let Some(ledger) = ledger else {
+        return true;
+    };
+    // The relay subtracts its clock-skew allowance from the subscription floor.
+    // Enforce the exact seven-day bound here, before recording admission.
+    if event.created_at.as_secs() < now.saturating_sub(wake_ledger::MAX_LOOKBACK_SECS) {
+        return false;
+    }
+    match ledger.admit(event, now) {
+        wake_ledger::Admission::Duplicate => false,
+        wake_ledger::Admission::Live => true,
+        wake_ledger::Admission::CaughtUp => !OWNER_CONTROL_COMMANDS
+            .iter()
+            .any(|command| is_owner_control_command(event, kind_u32, command, agent_pubkey_hex)),
+    }
 }
 
 /// Commit before delivery while keeping every undispatched event replayable,
@@ -4301,14 +4396,10 @@ fn wake_ledger_hold_deadline(
     pool.next_hold_deadline(pool::HOLD_BUSY_OWNER_TIMEOUT)
 }
 
-/// Schedule failed wake saves while work waits, including a deadline passed
-/// while another main-loop branch was running.
-fn wake_ledger_retry_delay(
-    ledger: Option<&wake_ledger::WakeLedger>,
-    pending_work: bool,
-    now: u64,
-) -> Option<Duration> {
-    let ledger = ledger.filter(|ledger| pending_work && ledger.write_failed())?;
+/// Schedule every failed wake save, including quiet queues and deadlines
+/// passed while another main-loop branch was running.
+fn wake_ledger_retry_delay(ledger: Option<&wake_ledger::WakeLedger>, now: u64) -> Option<Duration> {
+    let ledger = ledger.filter(|ledger| ledger.write_failed())?;
     Some(ledger.retry_delay(now).unwrap_or(Duration::ZERO))
 }
 
@@ -4414,6 +4505,159 @@ mod wake_ledger_dispatch_tests {
         )
     }
 
+    fn startup_failed_ledger(
+        dir: &std::path::Path,
+        now: u64,
+    ) -> (std::path::PathBuf, wake_ledger::WakeLedger) {
+        let path = dir.join("wake.json");
+        let agent = "ab".repeat(32);
+        assert!(
+            wake_ledger::WakeLedger::open(path.clone(), RELAY, &agent, now - 100, now - 100)
+                .sync(std::iter::empty(), now - 100)
+                .is_saved()
+        );
+        // The saved file remains readable, but its atomic-write path is blocked.
+        std::fs::create_dir(path.with_extension("tmp")).expect("block startup write");
+        let ledger = open_wake_ledger(Some(path.clone()), RELAY, &agent, now, now)
+            .expect("startup keeps the ledger after its first write fails");
+        assert!(ledger.write_failed());
+        assert_eq!(ledger.catch_up_since(), Some(now - 100));
+        (path, ledger)
+    }
+
+    #[test]
+    fn startup_failure_retries_and_recovers_with_a_quiet_empty_queue() {
+        assert!(open_wake_ledger(None, RELAY, &"ab".repeat(32), NOW, NOW).is_none());
+        let dir = std::env::temp_dir().join(format!("colony-wake-quiet-{}", Uuid::new_v4()));
+        let (path, mut ledger) = startup_failed_ledger(&dir, NOW);
+        let queue = EventQueue::new(DedupMode::Queue);
+        let deadline = NOW + wake_ledger::WRITE_RETRY_SECS;
+        assert_eq!(queue.pending_events().count(), 0);
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), NOW),
+            Some(Duration::from_secs(wake_ledger::WRITE_RETRY_SECS))
+        );
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), deadline),
+            Some(Duration::ZERO)
+        );
+        assert!(!sync_wake_ledger_retry(Some(&mut ledger), &queue, deadline));
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), deadline),
+            Some(Duration::from_secs(wake_ledger::WRITE_RETRY_SECS))
+        );
+        std::fs::remove_dir(path.with_extension("tmp")).expect("unblock startup write");
+        let retry = deadline + wake_ledger::WRITE_RETRY_SECS;
+        assert!(sync_wake_ledger_retry(Some(&mut ledger), &queue, retry));
+        assert_eq!(wake_ledger_retry_delay(Some(&ledger), retry), None);
+        assert!(!ledger.write_failed());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn startup_failed_save_blocks_dispatch_until_the_same_ledger_recovers() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-startup-{}", Uuid::new_v4()));
+        let now = wake_ledger::unix_now();
+        let (path, mut ledger) = startup_failed_ledger(&dir, now);
+        let mut pool = AgentPool::from_slots(vec![Some(idle_worker().await)]);
+        let ctx = Arc::new(test_prompt_context(&Keys::generate()));
+        let mut queue = EventQueue::new(DedupMode::Queue);
+        let (queued, _) = mention(Uuid::new_v4());
+        let scope = queued.scope.clone();
+        let event = queued.event.clone();
+        assert!(queue.push(queued));
+        let mut last_activity = tokio::time::Instant::now();
+        assert!(dispatch_pending(
+            &mut pool,
+            &mut queue,
+            &ctx,
+            &mut last_activity,
+            None,
+            Some(&mut ledger)
+        )
+        .is_empty());
+        assert!(pool.any_idle());
+        assert!(pool.join_set.is_empty());
+        assert!(pool.task_map().is_empty());
+        assert!(!queue.is_scope_in_flight(&scope));
+        assert_eq!(queue.pending_events().count(), 1);
+        std::fs::remove_dir(path.with_extension("tmp")).expect("unblock startup write");
+        assert!(sync_wake_ledger_retry(
+            Some(&mut ledger),
+            &queue,
+            now + wake_ledger::WRITE_RETRY_SECS
+        ));
+        assert_eq!(
+            dispatch_pending(
+                &mut pool,
+                &mut queue,
+                &ctx,
+                &mut last_activity,
+                None,
+                Some(&mut ledger)
+            )
+            .len(),
+            1
+        );
+        assert!(queue.is_scope_in_flight(&scope));
+        assert_eq!(pool.task_map().len(), 1);
+        let mut reopened = wake_ledger::WakeLedger::open(path, RELAY, &"ab".repeat(32), now, now);
+        assert_eq!(
+            reopened.admit(&event, now),
+            wake_ledger::Admission::Duplicate,
+            "the event was saved before its turn started"
+        );
+        pool.join_set.abort_all();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn startup_failed_save_blocks_heartbeat_until_the_same_ledger_recovers() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-heartbeat-{}", Uuid::new_v4()));
+        let now = wake_ledger::unix_now();
+        let (path, mut ledger) = startup_failed_ledger(&dir, now);
+        let mut pool = AgentPool::from_slots(vec![Some(idle_worker().await)]);
+        let ctx = Arc::new(test_prompt_context(&Keys::generate()));
+        let mut heartbeat_in_flight = false;
+        dispatch_heartbeat(&mut pool, &ctx, &mut heartbeat_in_flight, Some(&ledger));
+        assert!(!heartbeat_in_flight);
+        assert!(pool.any_idle(), "failed storage must not claim the worker");
+        assert!(pool.join_set.is_empty());
+        assert!(pool.task_map().is_empty());
+        std::fs::remove_dir(path.with_extension("tmp")).expect("unblock startup write");
+        assert!(sync_wake_ledger_retry(
+            Some(&mut ledger),
+            &EventQueue::new(DedupMode::Queue),
+            now + wake_ledger::WRITE_RETRY_SECS
+        ));
+        dispatch_heartbeat(&mut pool, &ctx, &mut heartbeat_in_flight, Some(&ledger));
+        assert!(
+            heartbeat_in_flight,
+            "a recovered ledger permits heartbeat immediately"
+        );
+        assert!(!pool.any_idle());
+        assert_eq!(pool.task_map().len(), 1);
+        pool.join_set.abort_all();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn heartbeat_without_a_ledger_keeps_existing_behavior() {
+        let mut pool = AgentPool::from_slots(vec![Some(idle_worker().await)]);
+        let ctx = Arc::new(test_prompt_context(&Keys::generate()));
+        let mut heartbeat_in_flight = false;
+        dispatch_heartbeat(&mut pool, &ctx, &mut heartbeat_in_flight, None);
+        assert!(heartbeat_in_flight);
+        assert_eq!(pool.task_map().len(), 1);
+        dispatch_heartbeat(&mut pool, &ctx, &mut heartbeat_in_flight, None);
+        assert_eq!(
+            pool.task_map().len(),
+            1,
+            "no second heartbeat while one is in flight"
+        );
+        pool.join_set.abort_all();
+    }
+
     #[test]
     fn commit_helper_passes_without_a_ledger_and_reports_failed_writes() {
         let dir = std::env::temp_dir().join(format!("colony-wake-commit-{}", Uuid::new_v4()));
@@ -4452,28 +4696,24 @@ mod wake_ledger_dispatch_tests {
             NOW,
             NOW,
         );
-        assert_eq!(wake_ledger_retry_delay(None, true, NOW), None);
-        assert_eq!(wake_ledger_retry_delay(Some(&ledger), true, NOW), None);
+        assert_eq!(wake_ledger_retry_delay(None, NOW), None);
+        assert_eq!(wake_ledger_retry_delay(Some(&ledger), NOW), None);
         assert_eq!(
             ledger.sync(std::iter::empty(), NOW),
             wake_ledger::SyncOutcome::Failed
         );
         let deadline = NOW + wake_ledger::WRITE_RETRY_SECS;
         assert_eq!(
-            wake_ledger_retry_delay(Some(&ledger), true, deadline - 1),
+            wake_ledger_retry_delay(Some(&ledger), deadline - 1),
             Some(Duration::from_secs(1))
         );
         assert_eq!(
-            wake_ledger_retry_delay(Some(&ledger), true, deadline),
+            wake_ledger_retry_delay(Some(&ledger), deadline),
             Some(Duration::ZERO)
         );
         assert_eq!(
-            wake_ledger_retry_delay(Some(&ledger), true, deadline + 1),
+            wake_ledger_retry_delay(Some(&ledger), deadline + 1),
             Some(Duration::ZERO)
-        );
-        assert_eq!(
-            wake_ledger_retry_delay(Some(&ledger), false, deadline + 1),
-            None
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -4502,7 +4742,7 @@ mod wake_ledger_dispatch_tests {
             first_deadline
         ));
         assert_eq!(
-            wake_ledger_retry_delay(Some(&ledger), true, first_deadline),
+            wake_ledger_retry_delay(Some(&ledger), first_deadline),
             Some(Duration::from_secs(wake_ledger::WRITE_RETRY_SECS))
         );
 
@@ -4529,7 +4769,7 @@ mod wake_ledger_dispatch_tests {
         ));
         assert!(!ledger.write_failed());
         assert_eq!(
-            wake_ledger_retry_delay(Some(&ledger), true, second_deadline),
+            wake_ledger_retry_delay(Some(&ledger), second_deadline),
             None
         );
         assert!(dispatch_pending(
@@ -4770,7 +5010,7 @@ mod wake_ledger_dispatch_tests {
         );
         assert!(!queue.is_scope_in_flight(&held_scope));
         let retry_now = wake_ledger::unix_now();
-        let retry_delay = wake_ledger_retry_delay(Some(&ledger), true, retry_now)
+        let retry_delay = wake_ledger_retry_delay(Some(&ledger), retry_now)
             .expect("dedicated ledger retry remains available");
         assert!(retry_delay > Duration::ZERO);
         for advance in [Duration::ZERO, retry_delay] {
@@ -4792,7 +5032,7 @@ mod wake_ledger_dispatch_tests {
         }
         let retry_at = retry_now + retry_delay.as_secs();
         assert_eq!(
-            wake_ledger_retry_delay(Some(&ledger), true, retry_at),
+            wake_ledger_retry_delay(Some(&ledger), retry_at),
             Some(Duration::ZERO)
         );
         std::fs::remove_file(blocker).expect("unblock ledger directory");
@@ -4990,6 +5230,124 @@ mod wake_ledger_dispatch_tests {
 
         pool.join_set.abort_all();
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod wake_ledger_admission_tests {
+    use super::*;
+    use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
+
+    const RELAY: &str = "wss://relay.example.com";
+    const NOW: u64 = 20_000;
+
+    fn message(content: &str, created_at: u64, agent: &str) -> nostr::Event {
+        EventBuilder::new(Kind::Custom(KIND_STREAM_MESSAGE as u16), content)
+            .tags([Tag::parse(["p", agent]).expect("p tag")])
+            .custom_created_at(Timestamp::from(created_at))
+            .sign_with_keys(&Keys::generate())
+            .expect("sign test event")
+    }
+
+    /// A ledger that saved floor 10_000 last run and restarted at `NOW`.
+    fn restarted_ledger(dir: &std::path::Path, agent: &str) -> wake_ledger::WakeLedger {
+        let path = dir.join("wake.json");
+        wake_ledger::WakeLedger::open(path.clone(), RELAY, agent, 10_000, 10_000)
+            .sync(std::iter::empty(), 10_000);
+        wake_ledger::WakeLedger::open(path, RELAY, agent, NOW, NOW)
+    }
+
+    #[test]
+    fn restart_catch_up_admission_table() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-admission-{}", Uuid::new_v4()));
+        let agent = "ab".repeat(32);
+        let mut ledger = restarted_ledger(&dir, &agent);
+
+        let missed = message("draft next week's posts", 15_000, &agent);
+        let live = message("post the carousel", NOW, &agent);
+        let cases: Vec<(&str, &nostr::Event, bool)> = vec![
+            ("a mention sent while offline runs", &missed, true),
+            ("the same mention replayed again is skipped", &missed, false),
+            ("a mention sent after start runs", &live, true),
+            (
+                "a mention already handled in this run is skipped",
+                &live,
+                false,
+            ),
+        ];
+        for (case, event, expected) in cases {
+            assert_eq!(
+                wake_ledger_admits(Some(&mut ledger), event, KIND_STREAM_MESSAGE, &agent, NOW),
+                expected,
+                "{case}"
+            );
+        }
+        for command in OWNER_CONTROL_COMMANDS {
+            let stale = message(command, 15_000, &agent);
+            assert!(
+                !wake_ledger_admits(Some(&mut ledger), &stale, KIND_STREAM_MESSAGE, &agent, NOW),
+                "{command} sent while offline is dropped"
+            );
+            let fresh = message(command, NOW, &agent);
+            assert!(
+                wake_ledger_admits(Some(&mut ledger), &fresh, KIND_STREAM_MESSAGE, &agent, NOW),
+                "{command} sent after start still reaches the owner checks"
+            );
+            assert!(
+                !wake_ledger_admits(Some(&mut ledger), &fresh, KIND_STREAM_MESSAGE, &agent, NOW),
+                "{command} is not handled twice"
+            );
+        }
+        for event in [&missed, &live] {
+            assert!(
+                wake_ledger_admits(None, event, KIND_STREAM_MESSAGE, &agent, NOW),
+                "without a ledger every event passes, as before"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn admission_enforces_the_seven_day_bound_after_relay_clock_skew() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-bound-{}", Uuid::new_v4()));
+        let agent = "ab".repeat(32);
+        let now = wake_ledger::MAX_LOOKBACK_SECS + NOW;
+        let cutoff = now - wake_ledger::MAX_LOOKBACK_SECS;
+        restarted_ledger(&dir, &agent);
+        let mut ledger =
+            wake_ledger::WakeLedger::open(dir.join("wake.json"), RELAY, &agent, now, now);
+        assert_eq!(ledger.catch_up_since(), Some(cutoff));
+        let too_old = message("before the seven day boundary", cutoff - 1, &agent);
+        let boundary = message("at the seven day boundary", cutoff, &agent);
+        assert!(!wake_ledger_admits(
+            Some(&mut ledger),
+            &too_old,
+            KIND_STREAM_MESSAGE,
+            &agent,
+            now
+        ));
+        assert!(wake_ledger_admits(
+            Some(&mut ledger),
+            &boundary,
+            KIND_STREAM_MESSAGE,
+            &agent,
+            now
+        ));
+        assert!(!wake_ledger_admits(
+            Some(&mut ledger),
+            &boundary,
+            KIND_STREAM_MESSAGE,
+            &agent,
+            now
+        ));
+        assert!(wake_ledger_admits(
+            None,
+            &too_old,
+            KIND_STREAM_MESSAGE,
+            &agent,
+            now
+        ));
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
 
@@ -6091,8 +6449,9 @@ fn dispatch_heartbeat(
     pool: &mut AgentPool,
     ctx: &Arc<PromptContext>,
     heartbeat_in_flight: &mut bool,
+    ledger: Option<&wake_ledger::WakeLedger>,
 ) {
-    if *heartbeat_in_flight {
+    if *heartbeat_in_flight || ledger.is_some_and(wake_ledger::WakeLedger::write_failed) {
         return;
     }
     let agent = match pool.try_claim(None) {
@@ -10068,6 +10427,7 @@ mod build_mcp_servers_tests {
             lazy_pool: false,
             idle_pool_sleep_secs: 0,
             replay_floor_unix: None,
+            wake_ledger_path: None,
             agent_owner: None,
             no_base_prompt: false,
             base_prompt_content: None,
@@ -10295,6 +10655,7 @@ mod error_outcome_emission_tests {
             lazy_pool: false,
             idle_pool_sleep_secs: 0,
             replay_floor_unix: None,
+            wake_ledger_path: None,
             agent_owner: None,
             no_base_prompt: false,
             base_prompt_content: None,
