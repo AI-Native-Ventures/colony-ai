@@ -12,9 +12,9 @@ use uuid::Uuid;
 use buzz_core::business_records::{validate_company_work_d_tag, CompanyWorkItemHead};
 use buzz_core::company_records::{
     goal_d_tag, goal_parent_creates_cycle, parse_company_command, validate_goal_action,
-    validate_goal_d_tag, validate_goal_progress, CompanyCommand, GoalAction, GoalActionKind,
-    GoalHead, GoalRecord, GoalStatus, RecordedGoalProgress, COMPANY_RECORD_SCHEMA_VERSION,
-    MAX_GOAL_DEPTH,
+    validate_goal_d_tag, validate_goal_progress, validate_goal_record, CompanyCommand, GoalAction,
+    GoalActionKind, GoalHead, GoalRecord, GoalStatus, RecordedGoalProgress,
+    COMPANY_RECORD_SCHEMA_VERSION, MAX_GOAL_DEPTH,
 };
 use buzz_core::kind::{KIND_GOAL_ACTION, KIND_GOAL_HEAD, KIND_WORK_ITEM_HEAD};
 use buzz_core::tenant::TenantContext;
@@ -306,6 +306,59 @@ async fn handle_goal_action(
         accepted: true,
         message: String::new(),
     })
+}
+
+/// Creates a completed hire's root goal inside the hire's transaction.
+///
+/// The goal reuses the hire id, so a goal already at that coordinate fails the
+/// whole hire instead of being overwritten. It takes the same community
+/// goal-tree lock as member goal commands.
+pub(super) async fn create_hire_goal_in_transaction(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    community_id: buzz_core::tenant::CommunityId,
+    state: &AppState,
+    goal: GoalRecord,
+    source_action_event_id: &str,
+) -> Result<StoredEvent, IngestError> {
+    validate_goal_record(&goal).map_err(|error| invalid(format!("hire goal: {error}")))?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!("company-goal-tree:{}", community_id.as_uuid()))
+        .execute(&mut **tx)
+        .await
+        .map_err(internal)?;
+    let d_tag = goal_d_tag(goal.goal_id);
+    let head = GoalHead {
+        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+        goal_id: goal.goal_id,
+        status: GoalStatus::Active,
+        title: goal.title.clone(),
+        goal: Some(goal),
+        progress: None,
+        source_action_event_id: source_action_event_id.to_owned(),
+    };
+    let event = super::business_records::relay_global_head_event(
+        KIND_GOAL_HEAD,
+        &d_tag,
+        &head,
+        None,
+        state,
+    )?;
+    let replaced = state
+        .db
+        .replace_parameterized_event_in_transaction(
+            tx,
+            community_id,
+            &event,
+            &d_tag,
+            None,
+            ParameterizedReplacePrecondition::CreateOnly,
+        )
+        .await
+        .map_err(internal)?;
+    if replaced.status != ParameterizedReplaceStatus::Inserted {
+        return Err(conflict("a goal already uses this hire id"));
+    }
+    Ok(replaced.event)
 }
 
 fn goal_command_d_tag(event: &Event, goal_id: Uuid) -> Result<String, IngestError> {

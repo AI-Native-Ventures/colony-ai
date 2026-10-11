@@ -12,11 +12,11 @@ use uuid::Uuid;
 
 use buzz_core::company_members::{MemberPositionAction, MemberPositionActionKind};
 use buzz_core::company_records::{
-    hire_d_tag, parse_company_command, validate_hire_action, CompanyCommand, HireAction,
-    HireActionKind, HireHead, HireProposal, HireStatus, COMPANY_RECORD_SCHEMA_VERSION,
+    hire_d_tag, hire_goal_record, parse_company_command, validate_hire_action, CompanyCommand,
+    HireAction, HireActionKind, HireHead, HireProposal, HireStatus, COMPANY_RECORD_SCHEMA_VERSION,
 };
 use buzz_core::kind::{
-    KIND_HIRE_ACTION, KIND_HIRE_HEAD, KIND_STREAM_MESSAGE, KIND_STREAM_MESSAGE_V2,
+    KIND_GOAL_HEAD, KIND_HIRE_ACTION, KIND_HIRE_HEAD, KIND_STREAM_MESSAGE, KIND_STREAM_MESSAGE_V2,
 };
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_core::StoredEvent;
@@ -428,6 +428,11 @@ pub(super) async fn handle(
     } else {
         None
     };
+    let hire_records = if action.action == HireActionKind::Complete {
+        Some(create_hire_records(&mut tx, tenant, state, &next).await?)
+    } else {
+        None
+    };
     tx.commit().await.map_err(internal)?;
 
     super::event::dispatch_persistent_event(
@@ -459,11 +464,63 @@ pub(super) async fn handle(
         )
         .await;
     }
+    if let Some(records) = hire_records {
+        dispatch_hire_records(tenant, state, records).await;
+    }
     Ok(IngestResult {
         event_id: event.id.to_hex(),
         accepted: true,
         message: String::new(),
     })
+}
+
+/// Records a completed hire creates inside its transaction.
+struct HireRecords {
+    /// The employee's root goal head.
+    goal: StoredEvent,
+}
+
+/// Writes the records a completed hire creates inside the hire transaction, so
+/// they commit with the hired head and member position or not at all.
+async fn create_hire_records(
+    tx: &mut Transaction<'_, Postgres>,
+    tenant: &TenantContext,
+    state: &AppState,
+    hired: &HireHead,
+) -> Result<HireRecords, IngestError> {
+    let employee = hired
+        .employee_pubkey
+        .as_deref()
+        .ok_or_else(|| invalid("complete needs employeePubkey"))?;
+    let goal = hire_goal_record(&hired.proposal, employee)
+        .map_err(|error| invalid(format!("hire goal: {error}")))?;
+    let goal = super::company_records::create_hire_goal_in_transaction(
+        tx,
+        tenant.community(),
+        state,
+        goal,
+        &hired.source_action_event_id,
+    )
+    .await?;
+    Ok(HireRecords { goal })
+}
+
+/// Fans out a completed hire's records after commit; each is already durable.
+async fn dispatch_hire_records(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    records: HireRecords,
+) {
+    let relay_pubkey = state.relay_keypair.public_key().to_hex();
+    super::event::dispatch_persistent_event(
+        tenant,
+        state,
+        &records.goal,
+        KIND_GOAL_HEAD,
+        &relay_pubkey,
+        None,
+    )
+    .await;
 }
 
 /// Serializes one employee name and checks real member profiles and open hires.
@@ -837,3 +894,6 @@ fn conflict(message: impl Into<String>) -> IngestError {
 fn internal(error: impl std::fmt::Display) -> IngestError {
     IngestError::Internal(format!("error: {error}"))
 }
+
+#[cfg(test)]
+mod postgres_tests;
