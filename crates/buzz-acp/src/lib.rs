@@ -2,6 +2,14 @@
 
 mod browser_runtime;
 mod business_context;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "turns start carrying the relay business profile in the next task"
+    )
+)]
+mod business_profile;
 
 mod acp;
 #[cfg(test)]
