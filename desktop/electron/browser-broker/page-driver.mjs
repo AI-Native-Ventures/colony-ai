@@ -18,8 +18,8 @@ import { DriverError } from "./driver-errors.mjs";
  *   - navigation goes through the host adapter so the broker's synchronous gate
  *     and the egress proxy apply
  *
- * STATUS: not yet run against real Chromium. The adapter and CDP shapes follow
- * the protocol docs; expect fixes when the Electron fixture suite first runs.
+ * Covered by the focused source Electron fixture. Packaged managed-agent
+ * runtime adoption remains a separate proof gate.
  */
 
 const WORLD_NAME = "colony-agent";
@@ -117,6 +117,7 @@ function center(quad) {
 export function createPageDriver({
   internals,
   adapter,
+  downloads,
   cdpTimeoutMs = 15_000,
   loadTimeoutMs = 30_000,
   pollMs = 150,
@@ -303,6 +304,7 @@ export function createPageDriver({
         broker?.notifyDocumentChanged(tabId),
       );
       adapter.onTabClosed?.((tabId) => {
+        downloads?.cancelTab(tabId);
         sessions.delete(tabId);
         broker?.notifyTabClosed(tabId);
       });
@@ -808,7 +810,13 @@ export function createPageDriver({
       return { matched: false };
     },
 
+    async download(tabId, url, options) {
+      if (!downloads) throw new DriverError("element_not_actionable");
+      return downloads.download(tabId, url, options);
+    },
+
     async stopTab(tabId) {
+      downloads?.cancelTab(tabId);
       await adapter.stop(tabId);
     },
 

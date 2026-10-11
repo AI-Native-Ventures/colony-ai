@@ -116,10 +116,43 @@ test("connection controls keep one label owner and radio semantics", () => {
       },
     }),
   );
-  assert.equal((html.match(/role="radio"/g) ?? []).length, 4);
+  // Onboarding offers exactly two paths. Bring-your-own-key and the other
+  // harnesses live in Settings > Agents.
+  assert.equal((html.match(/role="radiogroup"/g) ?? []).length, 1);
+  assert.equal((html.match(/role="radio"/g) ?? []).length, 2);
+  assert.deepEqual(
+    [
+      ...html.matchAll(
+        /role="radio"(?:(?!<\/button>)[\s\S])*<strong>([^<]+)<\/strong>/g,
+      ),
+    ].map((match) => match[1]),
+    ["Claude Code or Codex", "Colony Agent"],
+  );
   assert.equal((html.match(/aria-checked="true"/g) ?? []).length, 1);
+  assert.match(
+    html,
+    /aria-checked="true"[^>]*role="radio"[^>]*>(?:(?!<\/button>)[\s\S])*<strong>Claude Code or Codex</,
+  );
+  assert.doesNotMatch(html, /Bring your own key|More tools|Subscriptions</);
   assert.match(html, /Choose AI app. Current: Claude Code/);
   assert.doesNotMatch(html, /harness-row|aria-pressed/);
+});
+
+test("OpenRouter and credit scenes select the Colony Agent path", () => {
+  for (const scene of ["openrouter-unlinked", "credits-price-error"]) {
+    const html = renderToStaticMarkup(
+      React.createElement(OnboardingScenePresentation, {
+        scene,
+        data: { ...data, visualOnly: true },
+      }),
+    );
+    assert.equal((html.match(/role="radio"/g) ?? []).length, 2, scene);
+    assert.match(
+      html,
+      /aria-checked="true"[^>]*role="radio"[^>]*>(?:(?!<\/button>)[\s\S])*<strong>Colony Agent</,
+      scene,
+    );
+  }
 });
 
 test("verification retains the frozen account/business/connect progress strip", () => {

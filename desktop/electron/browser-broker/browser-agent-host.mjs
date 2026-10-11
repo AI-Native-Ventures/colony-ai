@@ -1,3 +1,4 @@
+import { BROWSER_APPROVAL_GUIDANCE } from "./approval-guidance.mjs";
 import { randomBytes } from "node:crypto";
 import { createBroker } from "./broker-core.mjs";
 import { createBrokerServer, defaultSocketPath } from "./broker-server.mjs";
@@ -43,7 +44,9 @@ export async function createBrowserAgentHost({
       env: {},
       stop: async () => {},
       handleRequest: async () => {
-        throw new Error("The agent browser is not enabled");
+        throw new Error(
+          `The agent browser is not enabled. ${BROWSER_APPROVAL_GUIDANCE}`,
+        );
       },
       onEvent: () => () => {},
     };
@@ -138,10 +141,15 @@ export async function createBrowserAgentHost({
         // Do not open a file dialog for a grant that is not live.
         if (capabilities.getGrant(grantId)?.state !== "active")
           throw new Error("No active grant for this upload");
-        const file = await chooseFile();
+        const file = await chooseFile(grantId);
         if (!file) return { cancelled: true };
-        const uploadId = broker.registerUpload(grantId, file);
-        return { uploadId, name: file.name, size: file.size };
+        try {
+          const uploadId = broker.registerUpload(grantId, file);
+          return { uploadId, name: file.name, size: file.size };
+        } catch (error) {
+          await file.cleanup?.();
+          throw error;
+        }
       }
       default:
         throw new Error("Unsupported agent browser operation");

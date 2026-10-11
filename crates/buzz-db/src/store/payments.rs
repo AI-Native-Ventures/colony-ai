@@ -1,4 +1,4 @@
-//! Deployment-global account credit ledger, PayFast intents, and subscriptions.
+//! Deployment-global credit ledger, provider-bound checkout intents, and PayFast subscriptions.
 
 use buzz_datastore_tracing::datastore_span;
 use chrono::{DateTime, Utc};
@@ -51,17 +51,21 @@ pub struct PaymentIntentRecord {
     pub idempotency_key: Uuid,
     /// Stable credit pack id.
     pub pack_id: String,
-    /// Amount asked of PayFast, in ZAR cents.
+    /// Payment provider fixed at intent creation.
+    pub provider: String,
+    /// ISO currency fixed at intent creation.
+    pub charge_currency: String,
+    /// Amount charged in the intent currency minor units.
     pub charge_minor_units: i64,
     /// Credit grant fixed at intent creation, in nanoUSD.
     pub grant_nanousd: i64,
     /// Current payment-intent state.
     pub status: String,
-    /// PayFast payment id, if one was confirmed.
+    /// Provider payment or Checkout Session id, when known.
     pub provider_payment_id: Option<String>,
-    /// Last PayFast lifecycle status.
+    /// Last verified provider lifecycle status.
     pub provider_status: Option<String>,
-    /// Amount received from PayFast, in ZAR cents.
+    /// Amount received in the intent currency minor units.
     pub paid_minor_units: Option<i64>,
     /// Checkout creation time.
     pub created_at: DateTime<Utc>,
@@ -259,6 +263,37 @@ impl Db {
         charge_minor_units: i64,
         grant_nanousd: i64,
     ) -> Result<CreatePaymentIntentOutcome> {
+        self.create_account_payment_intent_for_provider(
+            account_id,
+            reference,
+            idempotency_key,
+            pack_id,
+            charge_minor_units,
+            grant_nanousd,
+            "payfast",
+            "ZAR",
+        )
+        .await
+    }
+
+    /// Create an intent with immutable provider and charge currency under the account lock.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_account_payment_intent_for_provider(
+        &self,
+        account_id: Uuid,
+        reference: &str,
+        idempotency_key: Uuid,
+        pack_id: &str,
+        charge_minor_units: i64,
+        grant_nanousd: i64,
+        provider: &str,
+        currency: &str,
+    ) -> Result<CreatePaymentIntentOutcome> {
+        if !matches!((provider, currency), ("payfast", "ZAR") | ("stripe", "USD")) {
+            return Err(DbError::InvalidData(
+                "invalid payment provider or currency".into(),
+            ));
+        }
         if reference.is_empty()
             || reference.len() > 200
             || pack_id.is_empty()
@@ -286,7 +321,7 @@ impl Db {
         }
 
         if let Some(row) = sqlx::query(
-            "SELECT reference, account_id, idempotency_key, pack_id, charge_minor_units, \
+            "SELECT reference, account_id, idempotency_key, provider, charge_currency, pack_id, charge_minor_units, \
                     grant_nanousd, status, provider_payment_id, provider_status, paid_minor_units, \
                     created_at, updated_at \
              FROM account_payment_intents WHERE account_id = $1 AND idempotency_key = $2",
@@ -297,7 +332,7 @@ impl Db {
         .await?
         {
             let existing = payment_intent_from_row(row)?;
-            if existing.pack_id != pack_id
+            if existing.provider != provider || existing.charge_currency != currency || existing.pack_id != pack_id
                 || existing.charge_minor_units != charge_minor_units
                 || existing.grant_nanousd != grant_nanousd
             {
@@ -310,7 +345,7 @@ impl Db {
         }
 
         if let Some(row) = sqlx::query(
-            "SELECT reference, account_id, idempotency_key, pack_id, charge_minor_units, \
+            "SELECT reference, account_id, idempotency_key, provider, charge_currency, pack_id, charge_minor_units, \
                     grant_nanousd, status, provider_payment_id, provider_status, paid_minor_units, \
                     created_at, updated_at \
              FROM account_payment_intents WHERE account_id = $1 \
@@ -330,8 +365,8 @@ impl Db {
             "INSERT INTO account_payment_intents \
              (reference, account_id, idempotency_key, provider, pack_id, charge_minor_units, \
               charge_currency, grant_nanousd) \
-             VALUES ($1, $2, $3, 'payfast', $4, $5, 'ZAR', $6) \
-             RETURNING reference, account_id, idempotency_key, pack_id, charge_minor_units, \
+             VALUES ($1, $2, $3, $7, $4, $5, $8, $6) \
+             RETURNING reference, account_id, idempotency_key, provider, charge_currency, pack_id, charge_minor_units, \
                        grant_nanousd, status, provider_payment_id, provider_status, paid_minor_units, \
                        created_at, updated_at",
         )
@@ -341,6 +376,8 @@ impl Db {
         .bind(pack_id)
         .bind(charge_minor_units)
         .bind(grant_nanousd)
+        .bind(provider)
+        .bind(currency)
         .fetch_one(&mut *tx)
         .await?;
         let created = payment_intent_from_row(row)?;
@@ -356,7 +393,7 @@ impl Db {
         reference: &str,
     ) -> Result<Option<PaymentIntentRecord>> {
         let row = sqlx::query(
-            "SELECT reference, account_id, idempotency_key, pack_id, charge_minor_units, \
+            "SELECT reference, account_id, idempotency_key, provider, charge_currency, pack_id, charge_minor_units, \
                     grant_nanousd, status, provider_payment_id, provider_status, paid_minor_units, \
                     created_at, updated_at \
              FROM account_payment_intents WHERE account_id = $1 AND reference = $2",
@@ -376,7 +413,7 @@ impl Db {
         limit: i64,
     ) -> Result<Vec<PaymentIntentRecord>> {
         let rows = sqlx::query(
-            "SELECT reference, account_id, idempotency_key, pack_id, charge_minor_units, \
+            "SELECT reference, account_id, idempotency_key, provider, charge_currency, pack_id, charge_minor_units, \
                     grant_nanousd, status, provider_payment_id, provider_status, paid_minor_units, \
                     created_at, updated_at FROM account_payment_intents \
              WHERE account_id = $1 ORDER BY created_at DESC, reference DESC LIMIT $2",
@@ -395,7 +432,7 @@ impl Db {
         account_id: Uuid,
     ) -> Result<Option<PaymentIntentRecord>> {
         let row = sqlx::query(
-            "SELECT reference, account_id, idempotency_key, pack_id, charge_minor_units, \
+            "SELECT reference, account_id, idempotency_key, provider, charge_currency, pack_id, charge_minor_units, \
                     grant_nanousd, status, provider_payment_id, provider_status, paid_minor_units, \
                     created_at, updated_at \
              FROM account_payment_intents WHERE account_id = $1 \
@@ -408,6 +445,24 @@ impl Db {
         row.map(payment_intent_from_row).transpose()
     }
 
+    /// Remember a Stripe session without overwriting a session learned from a concurrent webhook.
+    pub async fn attach_account_checkout_session(
+        &self,
+        reference: &str,
+        session_id: &str,
+    ) -> Result<()> {
+        if !valid_stripe_id(session_id, "cs_") {
+            return Err(DbError::InvalidData("invalid Stripe session".into()));
+        }
+        let result = sqlx::query("UPDATE account_payment_intents SET provider_payment_id = $2, updated_at = now() \
+            WHERE reference = $1 AND provider = 'stripe' AND (provider_payment_id IS NULL OR provider_payment_id = $2)")
+            .bind(reference).bind(session_id).execute(&self.pool).await?;
+        if result.rows_affected() != 1 {
+            return Err(DbError::InvalidData("checkout session conflict".into()));
+        }
+        Ok(())
+    }
+
     /// Atomically journal one verified ITN and settle or update its intent.
     #[datastore_span(name = "account_payment_notification_apply", system = "postgresql")]
     pub async fn apply_account_payment_notification(
@@ -418,12 +473,49 @@ impl Db {
         provider_status: &str,
         amount_zar_cents: Option<i64>,
     ) -> Result<PaymentNotificationOutcome> {
-        validate_notification(
+        self.apply_account_payment_notification_for_provider(
             event_id,
+            reference,
             provider_payment_id,
             provider_status,
             amount_zar_cents,
-        )?;
+            "payfast",
+            "ZAR",
+        )
+        .await
+    }
+
+    /// Atomically journal and settle a verified provider notification, including Stripe event ids.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn apply_account_payment_notification_for_provider(
+        &self,
+        event_id: &str,
+        reference: Option<&str>,
+        provider_payment_id: Option<&str>,
+        provider_status: &str,
+        amount_zar_cents: Option<i64>,
+        provider: &str,
+        currency: &str,
+    ) -> Result<PaymentNotificationOutcome> {
+        if provider == "payfast" && currency == "ZAR" {
+            validate_notification(
+                event_id,
+                provider_payment_id,
+                provider_status,
+                amount_zar_cents,
+            )?;
+        } else if provider != "stripe"
+            || currency.len() != 3
+            || !currency.bytes().all(|b| b.is_ascii_uppercase())
+            || !valid_stripe_id(event_id, "evt_")
+            || !provider_payment_id.is_some_and(|id| valid_stripe_id(id, "cs_"))
+            || provider_status.len() > 64
+            || amount_zar_cents.is_some_and(|v| v < 0)
+        {
+            return Err(DbError::InvalidData(
+                "invalid verified payment notification".into(),
+            ));
+        }
         validate_payment_reference(reference)?;
         let connection = observability::acquire_writer(
             &self.pool,
@@ -433,8 +525,8 @@ impl Db {
         let mut tx = Transaction::begin(connection, None).await?;
         let inserted = sqlx::query(
             "INSERT INTO account_payment_notifications \
-             (event_id, reference, provider_payment_id, provider_status, amount_zar_cents, result) \
-             VALUES ($1, $2, $3, $4, $5, 'processing') ON CONFLICT (event_id) DO NOTHING \
+             (event_id, reference, provider_payment_id, provider_status, amount_minor_units, result, provider, charge_currency) \
+             VALUES ($1, $2, $3, $4, $5, 'processing', $6, $7) ON CONFLICT (event_id) DO NOTHING \
              RETURNING event_id",
         )
         .bind(event_id)
@@ -442,6 +534,8 @@ impl Db {
         .bind(provider_payment_id)
         .bind(provider_status)
         .bind(amount_zar_cents)
+        .bind(provider)
+        .bind(currency)
         .fetch_optional(&mut *tx)
         .await?;
         if inserted.is_none() {
@@ -451,7 +545,7 @@ impl Db {
 
         let row = if let Some(reference) = reference {
             sqlx::query(
-                "SELECT reference, account_id, idempotency_key, pack_id, charge_minor_units, \
+                "SELECT reference, account_id, idempotency_key, provider, charge_currency, pack_id, charge_minor_units, \
                         grant_nanousd, status, provider_payment_id, provider_status, paid_minor_units, \
                         created_at, updated_at \
                  FROM account_payment_intents WHERE reference = $1 FOR UPDATE",
@@ -468,6 +562,12 @@ impl Db {
             return Ok(PaymentNotificationOutcome::Unmatched);
         };
         let intent = payment_intent_from_row(row)?;
+
+        if intent.provider != provider || intent.charge_currency != currency {
+            finish_notification(&mut tx, event_id, "uncertain").await?;
+            tx.commit().await?;
+            return Ok(PaymentNotificationOutcome::Uncertain);
+        }
 
         let existing_payment_owner = if let Some(provider_payment_id) = provider_payment_id {
             sqlx::query_scalar::<_, String>(
@@ -548,7 +648,7 @@ impl Db {
                     tx.commit().await?;
                     return Ok(PaymentNotificationOutcome::Uncertain);
                 };
-                let source_id = format!("payfast:{provider_payment_id}");
+                let source_id = format!("{provider}:{provider_payment_id}");
                 let inserted = sqlx::query(
                     "INSERT INTO account_credit_ledger \
                      (account_id, entry_type, amount_nanousd, source_id, reference, description, metadata) \
@@ -559,13 +659,13 @@ impl Db {
                 .bind(intent.grant_nanousd)
                 .bind(&source_id)
                 .bind(&intent.reference)
-                .bind(format!("PayFast {} credit pack", intent.pack_id))
+                .bind(format!("{provider} {} credit pack", intent.pack_id))
                 .bind(serde_json::json!({
-                    "provider": "payfast",
+                    "provider": provider,
                     "providerPaymentId": provider_payment_id,
                     "packId": intent.pack_id,
                     "chargeMinorUnits": intent.charge_minor_units,
-                    "chargeCurrency": "ZAR",
+                    "chargeCurrency": currency,
                 }))
                 .execute(&mut *tx)
                 .await?;
@@ -936,7 +1036,7 @@ impl Db {
         let mut tx = Transaction::begin(connection, None).await?;
         let inserted = sqlx::query(
             "INSERT INTO account_payment_notifications \
-             (event_id, reference, provider_payment_id, provider_status, amount_zar_cents, result) \
+             (event_id, reference, provider_payment_id, provider_status, amount_minor_units, result) \
              VALUES ($1, $2, $3, $4, $5, 'processing') ON CONFLICT (event_id) DO NOTHING \
              RETURNING event_id",
         )
@@ -1307,6 +1407,13 @@ async fn update_intent_status(
     Ok(())
 }
 
+fn valid_stripe_id(id: &str, prefix: &str) -> bool {
+    id.starts_with(prefix)
+        && id.len() > prefix.len()
+        && id.len() <= 200
+        && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+}
+
 fn validate_notification(
     event_id: &str,
     provider_payment_id: Option<&str>,
@@ -1358,6 +1465,8 @@ fn payment_intent_from_row(row: sqlx::postgres::PgRow) -> Result<PaymentIntentRe
         account_id: row.try_get("account_id")?,
         idempotency_key: row.try_get("idempotency_key")?,
         pack_id: row.try_get("pack_id")?,
+        provider: row.try_get("provider")?,
+        charge_currency: row.try_get("charge_currency")?,
         charge_minor_units: row.try_get("charge_minor_units")?,
         grant_nanousd: row.try_get("grant_nanousd")?,
         status: row.try_get("status")?,
@@ -1440,6 +1549,187 @@ mod postgres_tests {
         .await
         .expect("insert payment test account");
         id
+    }
+
+    async fn make_stripe_intent(db: &Db, account: Uuid) -> PaymentIntentRecord {
+        match db
+            .create_account_payment_intent_for_provider(
+                account,
+                &unique_reference("stripe"),
+                Uuid::new_v4(),
+                "usd-5",
+                500,
+                CREDIT_GRANT_NANOUSD,
+                "stripe",
+                "USD",
+            )
+            .await
+            .expect("intent")
+        {
+            CreatePaymentIntentOutcome::Created(intent) => intent,
+            _ => panic!("expected new intent"),
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn stripe_duplicate_events_and_distinct_events_for_one_session_grant_once() {
+        let (db, pool) = setup_db().await;
+        let account = make_account(&pool).await;
+        let intent = make_stripe_intent(&db, account).await;
+        let event = format!("evt_{}", Uuid::new_v4().simple());
+        let session = format!("cs_{}", Uuid::new_v4().simple());
+        for (id, expected) in [
+            (&event, PaymentNotificationOutcome::Applied),
+            (&event, PaymentNotificationOutcome::Duplicate),
+            (
+                &format!("evt_{}", Uuid::new_v4().simple()),
+                PaymentNotificationOutcome::Duplicate,
+            ),
+        ] {
+            assert_eq!(
+                db.apply_account_payment_notification_for_provider(
+                    id,
+                    Some(&intent.reference),
+                    Some(&session),
+                    "COMPLETE",
+                    Some(500),
+                    "stripe",
+                    "USD"
+                )
+                .await
+                .expect("settle"),
+                expected
+            );
+        }
+        assert_eq!(
+            db.account_credit_balance(account).await.expect("balance"),
+            CREDIT_GRANT_NANOUSD
+        );
+        assert_eq!(
+            db.account_credit_history(account, 100)
+                .await
+                .expect("ledger")
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn stripe_crash_between_receipt_and_grant_rolls_back_and_delivery_can_retry() {
+        let (db, pool) = setup_db().await;
+        let account = make_account(&pool).await;
+        let intent = make_stripe_intent(&db, account).await;
+        let event = format!("evt_{}", Uuid::new_v4().simple());
+        let session = format!("cs_{}", Uuid::new_v4().simple());
+        // Fail the actual ledger INSERT after the notification has been inserted in its transaction.
+        sqlx::query("CREATE FUNCTION stripe_test_crash() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_terminate_backend(pg_backend_pid()); RETURN NEW; END $$").execute(&pool).await.expect("function");
+        sqlx::query("CREATE TRIGGER stripe_test_crash BEFORE INSERT ON account_credit_ledger FOR EACH ROW EXECUTE FUNCTION stripe_test_crash()").execute(&pool).await.expect("trigger");
+        assert!(db
+            .apply_account_payment_notification_for_provider(
+                &event,
+                Some(&intent.reference),
+                Some(&session),
+                "COMPLETE",
+                Some(500),
+                "stripe",
+                "USD"
+            )
+            .await
+            .is_err());
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM account_payment_notifications WHERE event_id = $1"
+            )
+            .bind(&event)
+            .fetch_one(&pool)
+            .await
+            .expect("journal"),
+            0
+        );
+        assert_eq!(
+            db.account_credit_balance(account).await.expect("balance"),
+            0
+        );
+        assert_eq!(
+            db.account_payment_intent(account, &intent.reference)
+                .await
+                .expect("read")
+                .expect("intent")
+                .status,
+            "pending"
+        );
+        sqlx::query("DROP TRIGGER stripe_test_crash ON account_credit_ledger")
+            .execute(&pool)
+            .await
+            .expect("recover");
+        assert_eq!(
+            db.apply_account_payment_notification_for_provider(
+                &event,
+                Some(&intent.reference),
+                Some(&session),
+                "COMPLETE",
+                Some(500),
+                "stripe",
+                "USD"
+            )
+            .await
+            .expect("retry"),
+            PaymentNotificationOutcome::Applied
+        );
+        assert_eq!(
+            db.account_credit_balance(account).await.expect("balance"),
+            CREDIT_GRANT_NANOUSD
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn stripe_wrong_currency_amount_provider_and_session_cannot_grant() {
+        let (db, pool) = setup_db().await;
+        let account = make_account(&pool).await;
+        let intent = make_stripe_intent(&db, account).await;
+        let session = format!("cs_{}", Uuid::new_v4().simple());
+        db.attach_account_checkout_session(&intent.reference, &session)
+            .await
+            .expect("session");
+        for (amount, currency, payment) in [
+            (500, "EUR", session.as_str()),
+            (499, "USD", session.as_str()),
+            (500, "USD", "cs_wrong"),
+        ] {
+            assert_eq!(
+                db.apply_account_payment_notification_for_provider(
+                    &format!("evt_{}", Uuid::new_v4().simple()),
+                    Some(&intent.reference),
+                    Some(payment),
+                    "COMPLETE",
+                    Some(amount),
+                    "stripe",
+                    currency
+                )
+                .await
+                .expect("reject mismatch"),
+                PaymentNotificationOutcome::Uncertain
+            );
+        }
+        assert_eq!(
+            db.apply_account_payment_notification(
+                &new_event_id(),
+                Some(&intent.reference),
+                Some("123"),
+                "COMPLETE",
+                Some(500)
+            )
+            .await
+            .expect("reject wrong provider"),
+            PaymentNotificationOutcome::Uncertain
+        );
+        assert_eq!(
+            db.account_credit_balance(account).await.expect("balance"),
+            0
+        );
     }
 
     async fn make_credit_intent(db: &Db, account_id: Uuid) -> PaymentIntentRecord {

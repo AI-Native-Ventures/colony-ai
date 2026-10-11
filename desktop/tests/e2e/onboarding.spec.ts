@@ -2118,9 +2118,14 @@ test("R17 connection setup opens the designed workspace route", async ({
     page.getByRole("heading", { name: "Let’s connect your first agent." }),
   ).toBeVisible();
   await expect(
-    page.getByRole("radio", { name: "Bring your own key" }),
+    page.getByRole("radio", { name: "Claude Code or Codex", exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole("radio", { name: "OpenRouter" })).toBeVisible();
+  await expect(
+    page.getByRole("radio", { name: "Colony Agent", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("radio", { name: "Bring your own key" }),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Skip for now", exact: true }).click();
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
 });

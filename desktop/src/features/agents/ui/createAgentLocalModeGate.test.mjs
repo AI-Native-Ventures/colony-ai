@@ -1442,3 +1442,27 @@ test("inherited defaults expose a provider-specific model fallback to agent dial
     value: "goose-claude-opus-4-8",
   });
 });
+
+test("inherited credits can create a bundled employee without a customer model or key", () => {
+  const base = {
+    isProviderMode: false,
+    runtimeId: "buzz-agent",
+    provider: "",
+    model: "",
+    envVars: {},
+    globalProvider: "colony-credits",
+    globalModel: "",
+  };
+  assert.equal(computeLocalModeGate(base).satisfied, true);
+  assert.deepEqual(computeLocalModeGate(base).missingNormalizedFields, []);
+  for (const change of [
+    { globalProvider: "openrouter" },
+    { runtimeId: "goose" },
+  ])
+    assert.ok(
+      computeLocalModeGate({
+        ...base,
+        ...change,
+      }).missingNormalizedFields.includes("model"),
+    );
+});

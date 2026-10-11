@@ -25,7 +25,7 @@ for (const viewport of [
       runtimes: [missingAdapter],
       mock: { acpRuntimesCatalogAfterInstall: [readyCodex] },
     });
-    await page.getByText(/^More tools \(/).click();
+    await expect(page.getByText(/^More tools \(/)).toHaveCount(0);
     const card = page.getByTestId("onboarding-connect-runtime-codex");
     await expect(card).toContainText("Setup needed");
     await expect(card).toContainText(
@@ -54,7 +54,7 @@ for (const viewport of [
   { width: 1728, height: 1117 },
   { width: 1440, height: 900 },
 ]) {
-  test(`unprobed provider harnesses retain setup recovery at ${viewport.width}`, async ({
+  test(`other harnesses stay in Settings, not onboarding, at ${viewport.width}`, async ({
     page,
   }) => {
     await page.setViewportSize(viewport);
@@ -72,38 +72,24 @@ for (const viewport of [
         label: "Grok Build",
         command: "grok",
       },
+      r17Runtime("codex", "available", { status: "unknown" }),
     ];
     await openR17ConnectionSetup(page, { runtimes });
-    await page.getByText(/^More tools \(/).click();
-    for (const id of ["goose", "omp", "grok"]) {
-      const card = page.getByTestId(`onboarding-connect-runtime-${id}`);
-      await expect(card).toContainText("Authentication not checked");
-      await expect(card).not.toContainText("Ready on this computer");
-      await expect(card.locator(".provider-status.is-connected")).toHaveCount(
-        0,
-      );
+    await expect(
+      page.getByTestId("onboarding-connect-runtime-codex"),
+    ).toBeVisible();
+    for (const id of ["goose", "omp", "grok", "buzz-agent"])
       await expect(
-        card.getByRole("button", {
-          name: `Open ${id === "omp" ? "Oh My Pi" : id === "grok" ? "Grok Build" : "Goose"} setup guide`,
-          exact: true,
-        }),
-      ).toBeEnabled();
-      await expect(
-        card.getByRole("button", { name: /Check .* again/ }),
+        page.getByTestId(`onboarding-connect-runtime-${id}`),
       ).toHaveCount(0);
-      await expect(card).toContainText(
-        "Sign-in cannot be checked. Use the setup guide, or choose another connection.",
-      );
-      await expect(
-        card.getByRole("button", { name: "Install", exact: true }),
-      ).toHaveCount(0);
-    }
+    await expect(page.getByText(/^More tools \(/)).toHaveCount(0);
+    await expect(page.locator("details.more-tools")).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Skip for now", exact: true }),
     ).toBeEnabled();
     await waitForAnimations(page);
     await page.screenshot({
-      path: `test-results/harness-detection/app-auth-unknown-${viewport.width}.png`,
+      path: `test-results/harness-detection/app-two-paths-only-${viewport.width}.png`,
     });
   });
 }
@@ -138,7 +124,7 @@ for (const viewport of [
   });
 }
 
-test("bundled Colony Agent does not offer an external setup guide or auth recheck", async ({
+test("bundled Colony Agent is its own path, not a setup card", async ({
   page,
 }) => {
   await openR17ConnectionSetup(page, {
@@ -146,14 +132,17 @@ test("bundled Colony Agent does not offer an external setup guide or auth rechec
       r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
     ],
   });
-  await page.getByText(/^More tools \(/).click();
-  const card = page.getByTestId("onboarding-connect-runtime-buzz-agent");
-  await expect(card).toContainText("No AI connected yet");
   await expect(
-    card.getByRole("button", { name: /Check .* again/ }),
+    page.getByTestId("onboarding-connect-runtime-buzz-agent"),
+  ).toHaveCount(0);
+  await page.getByRole("radio", { name: "Colony Agent", exact: true }).click();
+  const colonyAgent = page.getByTestId("onboarding-colony-agent");
+  await expect(colonyAgent).toBeVisible();
+  await expect(
+    colonyAgent.getByRole("button", { name: /Check .* again/ }),
   ).toHaveCount(0);
   await expect(
-    card.getByRole("button", { name: /Open .* setup guide/ }),
+    colonyAgent.getByRole("button", { name: /Open .* setup guide/ }),
   ).toHaveCount(0);
 });
 
@@ -164,7 +153,6 @@ test("runtime auth recheck is labelled and disabled during discovery", async ({
     runtimes: [r17Runtime("codex", "available", { status: "unknown" })],
     discoveryDelayMs: 1500,
   });
-  await page.getByText(/^More tools \(/).click();
   const card = page.getByTestId("onboarding-connect-runtime-codex");
   await expect(card).toContainText("Sign-in status unavailable");
   const check = card.getByRole("button", {
@@ -184,7 +172,7 @@ for (const viewport of [
   { width: 1728, height: 1117 },
   { width: 1440, height: 900 },
 ]) {
-  test(`subscriptions show actual allowances before collapsed tools at ${viewport.width}`, async ({
+  test(`subscriptions show actual allowances and no other tools at ${viewport.width}`, async ({
     page,
   }) => {
     await page.setViewportSize(viewport);
@@ -279,10 +267,10 @@ for (const viewport of [
     await expect(
       codex.getByRole("button", { name: "Retry", exact: true }),
     ).toHaveCount(0);
-    await page.getByText(/^More tools \(/).click();
+    await expect(page.getByText(/^More tools \(/)).toHaveCount(0);
     await expect(
       page.getByTestId("onboarding-connect-runtime-goose"),
-    ).toBeVisible();
+    ).toHaveCount(0);
   });
 }
 

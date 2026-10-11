@@ -278,6 +278,19 @@ export function createFakePageDriver() {
       calls.push({ op: "select", id, backendNodeId, values });
       return {};
     },
+    async download(id, url, options) {
+      await maybeHold("download");
+      options.check();
+      await options.authorize(url);
+      options.check();
+      calls.push({ op: "download", id, url });
+      return {
+        downloadId: "fixture-download",
+        name: "report.txt",
+        bytes: 8,
+        cleanupRequired: false,
+      };
+    },
     async upload(id, backendNodeId, path) {
       calls.push({ op: "upload", id, backendNodeId, path });
       return {};

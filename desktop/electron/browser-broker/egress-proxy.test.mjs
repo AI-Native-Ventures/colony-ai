@@ -368,3 +368,36 @@ test("stop closes every open tunnel", async (t) => {
   await until(() => closed);
   await env.upstream.close();
 });
+
+test("aborting an HTTP client closes its live upstream response instead of orphaning it", async (t) => {
+  let closed = false;
+  let started = false;
+  const server = http.createServer((_req, response) => {
+    response.on("close", () => {
+      closed = true;
+    });
+    started = true;
+    response.writeHead(200);
+    response.write("pending");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const proxy = createEgressProxy({
+    getPrivateExceptions: () => [`127.0.0.1:${server.address().port}`],
+  });
+  const port = await proxy.start();
+  const client = http.get({
+    host: "127.0.0.1",
+    port,
+    path: `http://127.0.0.1:${server.address().port}/slow`,
+  });
+  client.on("error", () => {});
+  t.after(async () => {
+    client.destroy();
+    await proxy.stop();
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  });
+  await until(() => started);
+  client.destroy();
+  await until(() => closed, 500);
+});

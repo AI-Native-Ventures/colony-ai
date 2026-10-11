@@ -505,6 +505,34 @@ pub fn spawn_agent_child(
     let effective_command = &descriptor.command;
     let agent_args = &descriptor.args;
 
+    let credits_selected =
+        effective_cfg.provider.value.as_deref().map(str::trim) == Some("colony-credits");
+    super::credits_gateway::validate_selection(
+        credits_selected,
+        super::credits_gateway::enabled(),
+        known_acp_runtime(effective_command).map(|r| r.id),
+        &record.backend,
+    )?;
+    let credits_authorization = if credits_selected {
+        let state = app.state::<crate::app_state::AppState>();
+        let owner = state.signing_keys()?;
+        if owner_hex.is_some_and(|expected| expected != owner.public_key().to_hex()) {
+            return Err("Identity changed before Colony credits authorization. Try again.".into());
+        }
+        let agent_keys = nostr::Keys::parse(&record.private_key_nsec)
+            .map_err(|_| "Invalid managed agent identity.".to_string())?;
+        if agent_keys.public_key().to_hex() != record.pubkey {
+            return Err("Managed agent identity does not match its saved public key.".into());
+        }
+        let authorization = super::credits_gateway::authorize(relay_url, &agent_keys, &owner)?;
+        if state.signing_keys()?.public_key() != owner.public_key() {
+            return Err("Identity changed during Colony credits authorization. Try again.".into());
+        }
+        Some(authorization)
+    } else {
+        None
+    };
+
     let log_path = super::managed_agent_runtime_log_path(app, &runtime_key)?;
     append_log_marker(
         &log_path,
@@ -797,6 +825,9 @@ pub fn spawn_agent_child(
             command.env(key, value);
         }
     }
+
+    super::credits_gateway::apply(&mut command, credits_authorization.as_ref());
+    let spawned_setup_mode = spawned_setup_mode && credits_authorization.is_none();
 
     // Stamp desktop ownership and an unpredictable harness-generation identity.
     let start_nonce = uuid::Uuid::new_v4().simple().to_string();

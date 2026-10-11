@@ -293,7 +293,10 @@ export function AgentConfigFields({
     (field) => field.kind === "model" && field.render === "control",
   );
   // CLI-login harnesses use ACP for this setting; they provide their own default.
-  const modelIsOptional = modelField?.targetApplication.kind === "acpNative";
+  const modelOwnedByRelay =
+    modelField?.targetApplication.kind === "managedRelay";
+  const modelIsOptional =
+    modelOwnedByRelay || modelField?.targetApplication.kind === "acpNative";
   const modelIsValid =
     modelIsOptional ||
     (config.model?.trim().length ?? 0) > 0 ||
@@ -370,23 +373,25 @@ export function AgentConfigFields({
   } = usePersonaModelDiscovery({
     envVars: config.env_vars,
     isCustomProviderEditing: isCustomProvider,
-    modelFieldVisible: !dependentFieldsDisabled,
+    modelFieldVisible: !modelOwnedByRelay && !dependentFieldsDisabled,
     open: true,
     provider: providerForDiscovery,
     selectedRuntime,
   });
-  const modelControlVisible = shouldRenderModelControl({
-    discoveredModelOptions: dependentFieldsDisabled
-      ? null
-      : discoveredModelOptions,
-    modelDiscoveryLoading: dependentFieldsDisabled
-      ? false
-      : modelDiscoveryLoading,
-    modelDiscoverySuccessfulEmpty:
-      !dependentFieldsDisabled && modelDiscoverySuccessfulEmpty,
-    modelIsOptional,
-    showCustomModelOption,
-  });
+  const modelControlVisible =
+    !modelOwnedByRelay &&
+    shouldRenderModelControl({
+      discoveredModelOptions: dependentFieldsDisabled
+        ? null
+        : discoveredModelOptions,
+      modelDiscoveryLoading: dependentFieldsDisabled
+        ? false
+        : modelDiscoveryLoading,
+      modelDiscoverySuccessfulEmpty:
+        !dependentFieldsDisabled && modelDiscoverySuccessfulEmpty,
+      modelIsOptional,
+      showCustomModelOption,
+    });
 
   // Mount-time healing policy: onboarding (first-run, no higher layers) heals
   // on open. Evergreen surfaces (Settings, dialogs) only heal after an explicit
@@ -403,7 +408,7 @@ export function AgentConfigFields({
 
   const autoSelectedModelScopeRef = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (!autoSelectModelOnProviderChange) return;
+    if (modelOwnedByRelay || !autoSelectModelOnProviderChange) return;
     if (!mayMutateDependentFieldsRef.current) return;
     const trimmedProvider = providerForDiscovery.trim();
     if (trimmedProvider.length === 0 || isCustomProvider) {
@@ -426,6 +431,7 @@ export function AgentConfigFields({
   }, [
     config,
     discoveredModelOptions,
+    modelOwnedByRelay,
     isCustomProvider,
     modelDiscoveryLoading,
     onConfigChange,

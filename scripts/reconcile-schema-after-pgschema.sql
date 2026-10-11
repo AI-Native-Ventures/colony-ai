@@ -301,3 +301,14 @@ BEGIN
         RAISE EXCEPTION 'replica_heartbeat must contain its singleton row after pgschema apply';
     END IF;
 END $$;
+
+-- pgschema does not execute registry seed DML.
+INSERT INTO _operator_global_tables (table_name, reason) VALUES
+    ('account_ai_sessions', 'deployment-global payer authorization bound to a managed agent and community'),
+    ('account_ai_requests', 'deployment-global durable AI spend reservation and reconciliation journal')
+ON CONFLICT (table_name) DO NOTHING;
+DO $$ BEGIN
+    IF (SELECT count(*) FROM _operator_global_tables WHERE table_name IN ('account_ai_sessions', 'account_ai_requests')) <> 2 THEN
+        RAISE EXCEPTION 'AI gateway global-table registry is incomplete';
+    END IF;
+END $$;

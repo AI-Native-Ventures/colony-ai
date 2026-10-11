@@ -1,9 +1,10 @@
-import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { stat } from "node:fs/promises";
 import { createBrowserAgentHost } from "./browser-agent-host.mjs";
 import { createPageDriver } from "./page-driver.mjs";
+import { readPackagedGate } from "./packaged-gate.mjs";
 import { createEgressProxy } from "./egress-proxy.mjs";
+import { createUploadStagingStore } from "./upload-staging.mjs";
+import { createBrowserDownloadManager } from "./download-manager.mjs";
 
 export const BROWSER_BROKER_EVENT_CHANNEL = "colony:browser-broker-event";
 export const MAX_UPLOAD_BYTES = 32 * 1024 * 1024;
@@ -16,12 +17,23 @@ export async function createElectronBrowserAgentHost({
   scriptPath = fileURLToPath(new URL("./mcp-server.mjs", import.meta.url)),
   chooseFile = async () => null,
   socketPath,
-  // Only fixture launchers inject this. Production main never accepts exceptions.
+  gateEnvironment = process.env,
+  uploadStagingRoot,
+  uploadStagingOptions = {},
+  downloadOptions = {},
+  // Source fixtures may inject this; packaged main uses the dual-opt-in gate.
   fixturePrivateExceptions = [],
   proxyFactory = createEgressProxy,
   hostOptions = {},
 } = {}) {
   if (!enabled) return createBrowserAgentHost({ enabled: false });
+  const packagedGate = await readPackagedGate(gateEnvironment);
+  const staging = createUploadStagingStore({
+    ...uploadStagingOptions,
+    rootPath: uploadStagingRoot,
+  });
+  let uploadFailure = false;
+  let downloadFailure = false;
   const adapter = browserHost.agentAdapter;
   const profiles = new Map();
   let tail = Promise.resolve();
@@ -31,7 +43,23 @@ export async function createElectronBrowserAgentHost({
     tail = result.catch(() => undefined);
     return result;
   };
-  const driver = createPageDriver({ adapter });
+  const downloads = createBrowserDownloadManager({
+    ...downloadOptions,
+    staging,
+    downloadsPath: adapter.downloadDirectory(),
+    fetchForTab: (tabId, url, options) => {
+      const session = adapter.session(tabId);
+      if (!session?.fetch)
+        throw new Error("Browser download session unavailable");
+      return session.fetch(url, options);
+    },
+    remember: (...args) => adapter.rememberDownload(...args),
+    onRecovery: () => {
+      downloadFailure = true;
+      host.broker.notifyDownloadRecovery(adapter.tabIds(), true);
+    },
+  });
+  const driver = createPageDriver({ adapter, downloads });
   const host = await createBrowserAgentHost({
     ...hostOptions,
     enabled: true,
@@ -39,15 +67,59 @@ export async function createElectronBrowserAgentHost({
     execPath,
     scriptPath,
     socketPath,
-    chooseFile: async () => {
+    chooseFile: async (grantId) => {
+      const check = () => {
+        if (stopped || host.capabilities.getGrant(grantId)?.state !== "active")
+          throw new Error("No active grant for this upload");
+      };
+      check();
+      if (uploadFailure) throw new Error("Browser upload recovery is required");
       const filePath = await chooseFile();
       if (!filePath) return null;
-      const info = await stat(filePath);
-      if (!info.isFile() || info.size > MAX_UPLOAD_BYTES)
-        throw new Error("Choose a regular file no larger than 32 MiB");
-      return { path: filePath, name: path.basename(filePath), size: info.size };
+      check();
+      try {
+        const file = await staging.stage(grantId, filePath, { check });
+        return {
+          ...file,
+          cleanup: async () => {
+            try {
+              await staging.cleanup(file.id);
+            } catch {
+              uploadFailure = true;
+              throw new Error("Browser upload recovery is required");
+            }
+          },
+        };
+      } catch {
+        uploadFailure ||= staging
+          .pending()
+          .some((entry) => entry.cleanupRequired);
+        throw new Error("Browser upload could not be staged");
+      }
     },
   });
+
+  async function recoverUploads() {
+    try {
+      await downloads.recover();
+      if (downloadFailure) {
+        downloadFailure = false;
+        host.broker.notifyDownloadRecovery(adapter.tabIds(), false);
+      }
+      await staging.recover();
+      for (const entry of staging.pending()) {
+        if (host.capabilities.getGrant(entry.grantId)?.state !== "active")
+          await staging.cleanup(entry.id);
+      }
+      const recovered = uploadFailure;
+      uploadFailure = false;
+      if (recovered) host.broker.notifyUploadRecovery(adapter.tabIds(), false);
+    } catch {
+      // The staging store retains ownership records before any payload write.
+      uploadFailure = true;
+      throw new Error("Browser upload recovery is required");
+    }
+  }
 
   function ownedTab(payload, senderId) {
     const tab = adapter.getTab(payload.tabId);
@@ -63,7 +135,7 @@ export async function createElectronBrowserAgentHost({
     return grant;
   }
 
-  async function prepare(tab) {
+  async function prepare(tab, privateExceptions) {
     const session = adapter.session(tab.id);
     let profile = profiles.get(session);
     if (profile?.failure && !profileActive(session)) {
@@ -72,7 +144,7 @@ export async function createElectronBrowserAgentHost({
     }
     if (profile) return profile;
     const proxy = proxyFactory({
-      getPrivateExceptions: () => fixturePrivateExceptions,
+      getPrivateExceptions: () => privateExceptions,
     });
     const port = await proxy.start();
     profile = { proxy, session, tabId: tab.id, failure: null };
@@ -127,6 +199,11 @@ export async function createElectronBrowserAgentHost({
     )
       return;
     void serialize(async () => {
+      try {
+        await recoverUploads();
+      } catch {
+        host.broker.notifyUploadRecovery(adapter.tabIds(), true);
+      }
       for (const profile of profiles.values()) {
         if (profileActive(profile.session)) continue;
         try {
@@ -158,6 +235,8 @@ export async function createElectronBrowserAgentHost({
         enabled: true,
         recoveryRequired:
           host.broker.controlRecoveryRequired(tab.id) ||
+          uploadFailure ||
+          downloadFailure ||
           Boolean(profiles.get(adapter.session(tab.id))?.failure),
       };
     }
@@ -165,6 +244,7 @@ export async function createElectronBrowserAgentHost({
       const tab = ownedTab(payload, senderId);
       await host.broker.recoverControl(tab.id);
       await serialize(async () => {
+        await recoverUploads();
         const profile = profiles.get(adapter.session(tab.id));
         if (!profile?.failure) return;
         if (profileActive(profile.session))
@@ -178,6 +258,7 @@ export async function createElectronBrowserAgentHost({
     if (action === "agent-grant")
       return serialize(async () => {
         const tab = ownedTab(payload, senderId);
+        await recoverUploads();
         if (
           tab.businessId !== payload.businessId ||
           tab.clientId !== (payload.clientId ?? null)
@@ -187,16 +268,21 @@ export async function createElectronBrowserAgentHost({
           throw new Error("This tab already has an active browser task");
         if (payload.privateExceptions?.length)
           throw new Error("Private network browsing is not enabled");
-        const profile = await prepare(tab);
+        const privateExceptions = packagedGate
+          ? packagedGate.exceptionsFor(payload)
+          : fixturePrivateExceptions;
+        const profile = await prepare(tab, privateExceptions);
         if (profile.failure)
           throw new Error("Browser network containment requires recovery");
         // The tab may have closed or changed scope while setProxy was pending.
         try {
           ownedTab(payload, senderId);
-          return await host.handleRequest(action, {
+          const grant = await host.handleRequest(action, {
             ...payload,
-            privateExceptions: fixturePrivateExceptions,
+            privateExceptions,
           });
+          packagedGate?.consume();
+          return grant;
         } catch (error) {
           if (!profileActive(profile.session)) await cleanup(profile);
           throw error;
@@ -212,6 +298,8 @@ export async function createElectronBrowserAgentHost({
       !["agent-pending", "agent-log", "agent-grants"].includes(action)
     ) {
       ownedGrant(payload.grantId, senderId);
+      if (packagedGate && action === "agent-approve-origin")
+        throw new Error("Packaged gate fixture origin cannot be widened");
       if (payload.allowPrivate)
         throw new Error("Private network browsing is not enabled");
     }
@@ -241,12 +329,28 @@ export async function createElectronBrowserAgentHost({
 
   return {
     ...host,
+    // A cleared native or network fence cannot hide retained file cleanup.
+    onEvent: (listener) =>
+      host.onEvent((event) => {
+        if (event.type === "control-recovery" && !event.required)
+          listener({
+            ...event,
+            required:
+              uploadFailure ||
+              downloadFailure ||
+              host.broker.controlRecoveryRequired(event.tabId) ||
+              Boolean(profiles.get(adapter.session(event.tabId))?.failure),
+          });
+        else listener(event);
+      }),
     handleRequest,
     async stop() {
       stopped = true;
       unsubscribe();
       await host.stop();
+      await downloads.stop();
       await tail;
+      await staging.cleanupAll();
       for (const profile of profiles.values()) await cleanup(profile);
     },
   };

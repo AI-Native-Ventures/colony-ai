@@ -7,6 +7,11 @@ pub(crate) fn notice(error: &AcpError) -> Option<String> {
     let AcpError::AgentError { code, message } = error else {
         return None;
     };
+    // Credits failures may include an ambiguous billed request. Stop the outer
+    // harness queue too; a fresh agent attempt would allocate a fresh request id.
+    if *code == -32004 {
+        return Some(format!("⚠️ {}", credits_notice(message)));
+    }
     if *code != -32001 && !message.starts_with("llm:") && !message.starts_with("llm auth:") {
         return None;
     }
@@ -57,8 +62,33 @@ pub(crate) fn notice(error: &AcpError) -> Option<String> {
     Some(format!("⚠️ {provider} {problem}"))
 }
 
+/// Recovery copy for an interrupted paid turn whose outcome is ambiguous.
+pub(crate) fn credits_interrupted_notice() -> &'static str {
+    "⚠️ This Colony credits turn stopped before its result was confirmed. Usage may be recovering automatically. Automatic replay was stopped; check your balance before starting a new turn."
+}
+
+fn credits_notice(message: &str) -> &'static str {
+    match message {
+        "Out of credits. Top up to keep your Colony Agent working." => "Out of credits. Top up to keep your Colony Agent working.",
+        "Your Colony Agents are busy. Try again shortly." => "Your Colony Agents are busy. Try again shortly.",
+        "Usage is being recovered automatically. This turn was stopped; do not resend it automatically." => "Usage is being recovered automatically. This turn was stopped; do not resend it automatically.",
+        "This request was already charged. Its response could not be recovered. Start a new conversation turn." => "This request was already charged. Its response could not be recovered. Start a new conversation turn.",
+        "Managed session expired or unauthorized. Restart your Colony Agent." => "Managed session expired or unauthorized. Restart your Colony Agent.",
+        "Colony credits are unavailable. Try again later." => "Colony credits are unavailable. Try again later.",
+        "Colony credits currently support bounded text and function tools. This input cannot be sent." => "Colony credits currently support bounded text and function tools. This input cannot be sent.",
+        _ => "Colony credits could not complete this turn. Automatic replay was stopped. Check your balance and restart your Colony Agent if needed.",
+    }
+}
+
 /// Map provider failures to a dedicated onboarding recovery action without chat decoration.
 pub(crate) fn onboarding_notice(error: &AcpError) -> Option<String> {
+    if let AcpError::AgentError {
+        code: -32004,
+        message,
+    } = error
+    {
+        return Some(credits_notice(message).to_owned());
+    }
     let notice = notice(error)?;
     if notice.contains("rejected authentication") {
         Some("The provider rejected authentication. Sign in again or update your provider connection, then retry the test.".into())

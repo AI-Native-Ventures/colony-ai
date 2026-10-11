@@ -206,6 +206,7 @@ export type MockManagedAgentSeed = {
   about?: string | null;
   avatarUrl?: string | null;
   personaId?: string | null;
+  sessionPolicy?: "channel" | "thread";
   provider?: string | null;
   model?: string | null;
   modelSource?: RawManagedAgent["model_source"];
@@ -963,6 +964,8 @@ type E2eConfig = {
       model: string | null;
       preferred_runtime?: string | null;
     };
+    /** Native credits flag; default OFF in browser fixtures too. */
+    colonyCreditsGatewayEnabled?: boolean;
     /** Explicit owner-only agent-access capability; independent of baked defaults. */
     ownerOnlyAccessBuild?: boolean;
     /** File-layer config returned by runtime id. */
@@ -1324,6 +1327,7 @@ type RawRelayAgent = {
 };
 
 type RawManagedAgent = {
+  session_policy?: "channel" | "thread";
   pubkey: string;
   name: string;
   persona_id: string | null;
@@ -2504,6 +2508,7 @@ function cloneManagedAgent(agent: MockManagedAgent): RawManagedAgent {
     pubkey: agent.pubkey,
     name: agent.name,
     persona_id: agent.persona_id,
+    session_policy: agent.session_policy ?? "channel",
     team_id: agent.team_id ?? null,
     runtime: agent.runtime ?? null,
     relay_url: agent.relay_url,
@@ -3074,6 +3079,7 @@ function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
     pubkey: seed.pubkey,
     name: seed.name,
     persona_id: seed.personaId ?? null,
+    session_policy: seed.sessionPolicy ?? "channel",
     // Native serde always emits this key (`null` when unpinned) — the bridge
     // must mirror the wire shape, not omit the key.
     runtime: seed.runtime ?? null,
@@ -21756,6 +21762,8 @@ export function maybeInstallE2eTauriMocks() {
       }
       case "get_baked_build_env_keys":
         return (config?.mock?.bakedBuildEnv ?? []).map((entry) => entry.key);
+      case "colony_credits_gateway_enabled":
+        return config?.mock?.colonyCreditsGatewayEnabled ?? false;
       case "agent_access_owner_only":
         return config?.mock?.ownerOnlyAccessBuild ?? false;
       case "update_managed_agent":

@@ -113,7 +113,10 @@ fn windows_child_passthrough_env() -> impl Iterator<Item = &'static str> {
         .chain(crate::WINDOWS_SHELL_RESOLUTION_ENV.iter().copied())
 }
 
-type Client = RunningService<RoleClient, ()>;
+mod discovery;
+use discovery::{list_tools_bounded, DiscoveryHandler, ToolCatalog};
+
+type Client = RunningService<RoleClient, DiscoveryHandler>;
 
 #[derive(Clone)]
 struct ServerSpec {
@@ -184,14 +187,15 @@ fn check_restart_state(server: &Server, max_attempts: u32) -> Result<RestartChec
     }
 }
 
+#[derive(Clone)]
 struct Entry {
     server_idx: usize,
     bare: String,
 }
 
 pub struct McpRegistry {
-    by_qname: HashMap<String, Entry>,
-    defs: Vec<ToolDef>,
+    catalog: std::sync::Mutex<ToolCatalog>,
+    refresh_lock: AsyncMutex<()>,
     servers: Vec<Arc<Server>>,
     max_attempts: u32,
     backoff_base: Duration,
@@ -214,8 +218,8 @@ impl McpRegistry {
             )));
         }
         let mut reg = Self {
-            by_qname: HashMap::new(),
-            defs: Vec::new(),
+            catalog: std::sync::Mutex::new(ToolCatalog::default()),
+            refresh_lock: AsyncMutex::new(()),
             servers: Vec::new(),
 
             max_attempts: cfg.mcp_max_restart_attempts.max(1),
@@ -261,66 +265,49 @@ impl McpRegistry {
             });
             reg.servers.push(server);
 
-            for t in raw_tools {
-                if reg.defs.len() >= MAX_TOOLS_PER_SESSION {
-                    return Err(AgentError::Mcp(format!(
-                        "too many tools (>{MAX_TOOLS_PER_SESSION})"
-                    )));
-                }
-                let bare = t.name.to_string();
-                if !valid_name(&bare) || bare.contains("__") {
-                    return Err(AgentError::Mcp(format!("invalid tool name: {bare}")));
-                }
-                let qname = format!("{}{SEP}{}", s.name, bare);
-                if qname.len() > MAX_QNAME_LEN {
-                    return Err(AgentError::Mcp(format!(
-                        "qualified tool name too long: {} ({} > {MAX_QNAME_LEN})",
-                        qname,
-                        qname.len()
-                    )));
-                }
-                if reg.by_qname.contains_key(&qname) {
-                    return Err(AgentError::Mcp(format!("duplicate tool: {qname}")));
-                }
-                reg.defs.push(ToolDef {
-                    name: qname.clone(),
-                    description: clamp(
-                        t.description.as_deref().unwrap_or("").to_owned(),
-                        MAX_DESCRIPTION_BYTES,
-                    ),
-                    input_schema: cap_schema(&qname, Value::Object((*t.input_schema).clone())),
-                });
-                reg.by_qname.insert(qname, Entry { server_idx, bare });
-            }
+            let mut catalog = reg.catalog.lock().unwrap_or_else(|e| e.into_inner());
+            catalog.replace(server_idx, &s.name, raw_tools)?;
         }
         Ok(reg)
     }
 
     pub fn server_of(&self, qname: &str) -> Option<&str> {
-        self.by_qname
+        self.catalog
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .by_qname
             .get(qname)
             .map(|e| self.servers[e.server_idx].name.as_str())
     }
 
     pub fn has(&self, qname: &str) -> bool {
-        self.by_qname.contains_key(qname)
+        self.catalog
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .by_qname
+            .contains_key(qname)
     }
 
     /// True if `qname` resolves to a hidden hook tool (bare name starts
     /// with `_`). Used to reject hook calls coming from the LLM path —
     /// hooks are only callable via `call_hooks`.
     pub fn is_hook(&self, qname: &str) -> bool {
-        self.by_qname
+        self.catalog
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .by_qname
             .get(qname)
             .map(|e| e.bare.starts_with('_'))
             .unwrap_or(false)
     }
 
     pub fn tools(&self) -> Vec<ToolDef> {
-        self.defs
+        let catalog = self.catalog.lock().unwrap_or_else(|e| e.into_inner());
+        catalog
+            .defs
             .iter()
             .filter(|d| {
-                let entry = match self.by_qname.get(&d.name) {
+                let entry = match catalog.by_qname.get(&d.name) {
                     Some(e) => e,
                     None => return false,
                 };
@@ -363,7 +350,7 @@ impl McpRegistry {
                 continue;
             }
             let qname = format!("{}{SEP}{}", server.name, hook_name);
-            if self.by_qname.contains_key(&qname) {
+            if self.has(&qname) {
                 targets.push((idx, server.name.clone(), qname));
             }
         }
@@ -524,8 +511,12 @@ impl McpRegistry {
         cancel: &mut watch::Receiver<bool>,
     ) -> Result<ToolResult, AgentError> {
         let entry = self
+            .catalog
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
             .by_qname
             .get(qname)
+            .cloned()
             .ok_or_else(|| AgentError::Mcp(format!("unknown tool {qname}")))?;
         let server = self.servers[entry.server_idx].clone();
 
@@ -692,6 +683,8 @@ impl McpRegistry {
         );
         match spawn_one(&server.spec, self.init_timeout).await {
             Ok((client, pgid, tool_names, _raw_tools)) => {
+                // Reconcile metadata on the next model boundary after restart.
+                client.service().changed();
                 server.client.store(Arc::new(ClientState::Healthy {
                     client: Arc::new(client),
                     pgid,
@@ -779,17 +772,19 @@ async fn spawn_one(
         name: spec.name.clone(),
     };
 
-    let client: Client = match tokio::time::timeout(timeout, ().serve(transport)).await {
-        Ok(Ok(c)) => c,
-        Ok(Err(e)) => {
-            return Err(AgentError::Mcp(format!("init {}: {e}", spec.name)));
-        }
-        Err(_) => {
-            return Err(AgentError::Mcp(timeout_msg("init", &spec.name, timeout)));
-        }
-    };
+    let client: Client =
+        match tokio::time::timeout(timeout, DiscoveryHandler::default().serve(transport)).await {
+            Ok(Ok(c)) => c,
+            Ok(Err(e)) => {
+                return Err(AgentError::Mcp(format!("init {}: {e}", spec.name)));
+            }
+            Err(_) => {
+                return Err(AgentError::Mcp(timeout_msg("init", &spec.name, timeout)));
+            }
+        };
 
-    let tools = match tokio::time::timeout(timeout, client.peer().list_all_tools()).await {
+    let revision = client.service().revision();
+    let tools = match tokio::time::timeout(timeout, list_tools_bounded(&client)).await {
         Ok(Ok(t)) => t,
         Ok(Err(e)) => {
             return Err(AgentError::Mcp(format!("list_tools {}: {e}", spec.name)));
@@ -802,6 +797,7 @@ async fn spawn_one(
             )));
         }
     };
+    client.service().listed(revision);
     let names: Vec<String> = tools.iter().map(|t| t.name.to_string()).collect();
     guard.pgid = None;
     Ok((client, pgid, names, tools))

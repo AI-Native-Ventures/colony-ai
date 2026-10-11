@@ -416,7 +416,13 @@ export function getPersonaProviderOptions(
 
   return [
     ...options,
-    { id: trimmedProvider, label: `${trimmedProvider} (current)` },
+    {
+      id: trimmedProvider,
+      label:
+        trimmedProvider === "colony-credits"
+          ? "Colony credits (current)"
+          : `${trimmedProvider} (current)`,
+    },
   ];
 }
 
@@ -751,7 +757,10 @@ export function computeLocalModeGate({
   if (needsProviderSelection) {
     if (effectiveProvider.length === 0)
       missingNormalizedFields.push("provider");
-    if (effectiveModel.length === 0) missingNormalizedFields.push("model");
+    const relayOwnsModel =
+      runtimeId === "buzz-agent" && effectiveProvider === "colony-credits";
+    if (!relayOwnsModel && effectiveModel.length === 0)
+      missingNormalizedFields.push("model");
   }
 
   // Credential keys depend on the selected provider (empty provider → no keys

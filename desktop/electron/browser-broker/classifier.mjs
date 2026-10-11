@@ -390,6 +390,17 @@ export function classifyAction({
       "Text that looks like a secret cannot be typed into a page",
     );
 
+  if (action === "download") {
+    const scheme = externalProtocol(element.href);
+    if (!element.href || scheme)
+      add(
+        deny,
+        "external_protocol_link",
+        "Only direct HTTP(S) download links are allowed",
+      );
+    add(confirm, "file_download", "Downloading saves a file on this device");
+  }
+
   if (action === "upload")
     add(confirm, "file_upload", "Uploading a file shares it with the site");
 
@@ -479,7 +490,9 @@ export function confirmationSummary(
       ? "Type into"
       : action === "upload"
         ? "Upload to"
-        : "Click";
+        : action === "download"
+          ? "Download from"
+          : "Click";
   const where = page.origin ? ` on ${page.origin}` : "";
   const typed =
     action === "type" && typeof text === "string"

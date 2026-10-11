@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { QueryClient } from "@tanstack/react-query";
+import {
+  MutationObserver,
+  QueryClient,
+  QueryObserver,
+} from "@tanstack/react-query";
 
 import {
   applyLastMessages,
@@ -10,6 +14,7 @@ import {
   reconcileRefreshedCachedChannel,
   refreshChannelsQuery,
   requireFullChannelList,
+  setCanvasMutationOptions,
   sortChannels,
   upsertCachedChannel,
   upsertCachedChannelMember,
@@ -388,4 +393,82 @@ test("invalidateChannelMembersRosters dedupes and targets member keys", async ()
     ["channels", "ch-a", "members"],
     ["channels", "ch-b", "members"],
   ]);
+});
+
+// ── Canvas save ─────────────────────────────────────────────────────────────
+
+const CANVAS_KEY = ["channel-canvas", "ch-canvas"];
+const OLD_CANVAS = { content: "# Old note", updatedAt: 100, author: "aa" };
+const savedOk = async () => ({ ok: true, eventId: "e1" });
+
+function saveCanvas(queryClient, content, save = savedOk) {
+  const observer = new MutationObserver(
+    queryClient,
+    setCanvasMutationOptions(queryClient, "ch-canvas", save),
+  );
+  return observer.mutate(content);
+}
+
+test("a saved canvas is in the cache when the save resolves (editor closes onto it)", async () => {
+  const queryClient = new QueryClient();
+  queryClient.setQueryData(CANVAS_KEY, OLD_CANVAS);
+
+  await saveCanvas(queryClient, "# Gate note wk-1");
+
+  assert.equal(
+    queryClient.getQueryData(CANVAS_KEY).content,
+    "# Gate note wk-1",
+  );
+});
+
+test("a canvas fetch in flight before the save cannot land the old canvas over it", async () => {
+  const queryClient = new QueryClient();
+  queryClient.setQueryData(CANVAS_KEY, OLD_CANVAS);
+  let releaseStaleFetch;
+  const staleFetch = queryClient
+    .fetchQuery({
+      queryKey: CANVAS_KEY,
+      queryFn: () =>
+        new Promise((resolve) => {
+          releaseStaleFetch = () => resolve(OLD_CANVAS);
+        }),
+    })
+    .catch(() => undefined);
+
+  await saveCanvas(queryClient, "# Gate note wk-2");
+  releaseStaleFetch();
+  await staleFetch;
+
+  assert.equal(
+    queryClient.getQueryData(CANVAS_KEY).content,
+    "# Gate note wk-2",
+  );
+});
+
+test("a canvas save still refetches the relay copy for an open canvas", async () => {
+  const queryClient = new QueryClient();
+  const relayCopy = {
+    content: "# Gate note wk-3",
+    updatedAt: 200,
+    author: "bb",
+  };
+  let fetches = 0;
+  const observer = new QueryObserver(queryClient, {
+    queryKey: CANVAS_KEY,
+    queryFn: async () => {
+      fetches += 1;
+      return fetches === 1 ? OLD_CANVAS : relayCopy;
+    },
+  });
+  const unsubscribe = observer.subscribe(() => {});
+  await observer.refetch();
+
+  await saveCanvas(queryClient, "# Gate note wk-3");
+  while (queryClient.isFetching({ queryKey: CANVAS_KEY }) > 0) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  assert.equal(fetches, 2);
+  assert.deepEqual(queryClient.getQueryData(CANVAS_KEY), relayCopy);
+  unsubscribe();
 });

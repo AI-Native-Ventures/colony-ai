@@ -1,3 +1,4 @@
+import { BROWSER_APPROVAL_GUIDANCE } from "./approval-guidance.mjs";
 import { randomUUID } from "node:crypto";
 import { createActionLog, summarizeToolArgs } from "./action-log.mjs";
 import { classifyAction, confirmationSummary } from "./classifier.mjs";
@@ -48,7 +49,7 @@ export class BrokerError extends Error {
 }
 
 const MESSAGES = {
-  no_grant: "No browser access has been granted for this task.",
+  no_grant: BROWSER_APPROVAL_GUIDANCE,
   grant_expired: "The browser grant has expired.",
   grant_revoked: "The browser grant was revoked or taken over by the person.",
   fenced: "The action was cancelled because access changed.",
@@ -586,7 +587,7 @@ export function createBroker({
       requireApprovedPage(ctx, args.tab, fresh);
     }
     ctx.check();
-    return { info, entry, origin };
+    return { info, entry, origin, described, generation };
   }
 
   // ---- tools ---------------------------------------------------------------
@@ -850,6 +851,36 @@ export function createBroker({
       };
     },
 
+    async browser_download(ctx, args) {
+      const { described, generation } = await guardedElementAction(
+        ctx,
+        args,
+        "download",
+      );
+      const check = () => {
+        ctx.check();
+        if (registryFor(args.tab).generation !== generation)
+          throw new BrokerError("fenced");
+      };
+      const result = await driver.download(args.tab, described.element.href, {
+        grantId: ctx.grant.id,
+        signal: ctx.signal,
+        check,
+        authorize: async (url) => {
+          await approvedNavigationTarget(ctx, args.tab, url);
+          check();
+        },
+      });
+      check();
+      return {
+        tab: args.tab,
+        downloadId: result.downloadId,
+        name: sanitizeUntrusted(result.name, 255),
+        bytes: result.bytes,
+        cleanupRequired: result.cleanupRequired === true,
+      };
+    },
+
     async browser_upload(ctx, args) {
       const upload = uploads.get(args.uploadId);
       if (!upload || upload.grantId !== ctx.grant.id || upload.used)
@@ -864,7 +895,8 @@ export function createBroker({
         signal: ctx.signal,
         check: ctx.check,
       });
-      uploads.delete(args.uploadId);
+      // Chromium can read this File later, when the form is submitted.
+      // Keep its one-use record until grant end; main owns staged cleanup.
       ctx.check();
       return {
         tab: args.tab,
@@ -1034,6 +1066,28 @@ export function createBroker({
           summary: "Browser access revoked; network recovery required.",
         });
       emit("control-recovery", { tabId, required });
+    },
+    /** File ownership records stay in main while cleanup waits for recovery. */
+    notifyUploadRecovery(tabIds, required) {
+      for (const tabId of tabIds) {
+        if (required)
+          record(null, "browser_upload", { tab: tabId }, "error", now(), {
+            code: "upload_recovery_required",
+            summary: "Browser access revoked; file cleanup recovery required.",
+          });
+        emit("control-recovery", { tabId, required });
+      }
+    },
+    /** Main reports retained download cleanup without giving the agent file access. */
+    notifyDownloadRecovery(tabIds, required) {
+      for (const tabId of tabIds) {
+        if (required)
+          record(null, "browser_download", { tab: tabId }, "error", now(), {
+            code: "download_recovery_required",
+            summary: "Browser access revoked; file cleanup recovery required.",
+          });
+        emit("control-recovery", { tabId, required });
+      }
     },
     /** Host registers a file the person chose. The agent only gets the id. */
     registerUpload(grantId, { path, name, size }) {

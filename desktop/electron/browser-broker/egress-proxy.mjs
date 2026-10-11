@@ -185,6 +185,7 @@ export function createEgressProxy({
     const port = target.port ? Number(target.port) : 80;
     authorize(target.hostname, port)
       .then((verdict) => {
+        if (!server?.listening || req.aborted || res.destroyed) return;
         if (!verdict.ok) {
           deny(target.hostname, port, verdict.code);
           return refuse(403);
@@ -203,6 +204,11 @@ export function createEgressProxy({
           timeout: connectTimeoutMs,
         });
         stats.allowed += 1;
+        // A caller abort or proxy shutdown owns the upstream socket too.
+        // Otherwise an unfinished HTTP body survives its revoked client.
+        upstream.once("socket", (socket) => track(socket));
+        req.once("aborted", () => upstream.destroy());
+        res.once("close", () => upstream.destroy());
         upstream.once("response", (response) => {
           const out = {};
           for (const [name, value] of Object.entries(response.headers)) {

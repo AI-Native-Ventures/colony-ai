@@ -82,6 +82,7 @@ function createStore({
   downloadsPath = path.join(userDataPath, "Downloads"),
   emitTabEvent = () => {},
   showItemInFolder,
+  getTabForContents = () => ({ id: "tab-a" }),
 }) {
   return createBrowserSessionStore({
     session,
@@ -89,7 +90,7 @@ function createStore({
     maxProfiles,
     downloadsPath,
     showItemInFolder,
-    getTabForContents: () => ({ id: "tab-a" }),
+    getTabForContents,
     emitTabEvent,
     hasTab: () => true,
   });
@@ -407,4 +408,32 @@ test("forgetting everything clears every profile, waits for stopping downloads, 
     assert.equal(profile.session.clearedAuthCache, 1);
   }
   assert.deepEqual(await store.forgetAll(), { forgottenProfiles: 0 });
+});
+
+test("agent-controlled native downloads cannot bypass the confirmed tool", async (t) => {
+  const userDataPath = await makeUserDataDir(t);
+  const events = [];
+  const store = createStore({
+    userDataPath,
+    session: fakeElectronSessionApi(),
+    getTabForContents: () => ({ id: "tab-a", controlOwner: "agent" }),
+    emitTabEvent: (...args) => events.push(args),
+  });
+  const profile = await store.forScope("business-a", null, "tab-a");
+  let prevented = false;
+  profile.session.emit(
+    "will-download",
+    {
+      preventDefault() {
+        prevented = true;
+      },
+    },
+    new EventEmitter(),
+    { id: 1 },
+  );
+  assert.equal(prevented, true);
+  assert.equal(events[0][1], "download-blocked");
+  await assert.rejects(readdir(path.join(userDataPath, "Downloads")), {
+    code: "ENOENT",
+  });
 });

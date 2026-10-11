@@ -445,7 +445,7 @@ export function createOpenRouterService({
         outcome: {
           status: "unmanaged",
           message:
-            "This key uses a custom OpenRouter address. Manage it under Bring your own key.",
+            "This key uses a custom OpenRouter address. Manage it in Settings, Agents, under Bring your own key.",
         },
       };
     try {

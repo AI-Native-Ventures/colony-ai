@@ -330,6 +330,16 @@ fn deploy_refuses_resolved_relay_mesh_provider_with_padding() {
 }
 
 #[test]
+fn deploy_refuses_resolved_credits_provider_with_padding() {
+    let record = bare_agent_record(Some("p1"), None, None);
+    let personas = vec![persona_record("p1", None, Some("  colony-credits  "))];
+    let global = crate::managed_agents::GlobalAgentConfig::default();
+    let (_, provider) = resolve_deploy_model_provider(&record, &personas, &global);
+    let error = ensure_remote_provider_supported(provider.as_deref()).unwrap_err();
+    assert!(error.contains("bundled Colony Agent"));
+}
+
+#[test]
 fn created_avatar_prefers_explicit_input() {
     let resolved = resolve_created_avatar_url(
         Some(" https://x/input.png "),

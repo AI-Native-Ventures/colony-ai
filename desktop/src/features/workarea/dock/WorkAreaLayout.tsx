@@ -213,23 +213,20 @@ export function WorkAreaLayout({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [channelId]);
 
-  // Opening a tab from inside the dock (menu, empty state) keeps focus where
-  // the user's own action put it.
-  const channelType = channel?.channelType;
-  const isArchived = channel?.isArchived;
-  const currentPubkey = channel?.currentPubkey;
+  // Forward every caller-provided fact, including the active thread task.
+  // Rebuilding a subset here silently removes context from dock consumers.
   const channelContext = React.useMemo<WorkAreaChannel | null>(
     () =>
-      channelId && channelType !== undefined
+      channelId && channel
         ? {
+            ...channel,
             channelId,
-            channelType,
-            isArchived: isArchived ?? false,
-            currentPubkey,
           }
         : null,
-    [channelId, channelType, isArchived, currentPubkey],
+    [channelId, channel],
   );
+  // Opening a tab from inside the dock (menu, empty state) keeps focus where
+  // the user's own action put it.
   const openKind = React.useCallback(
     (kind: WorkAreaTabKind) => {
       if (!channelId) return;

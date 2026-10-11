@@ -26,6 +26,10 @@
 /// overridable; those have dedicated UI fields but power users may want
 /// to bypass them.
 pub(crate) const RESERVED_ENV_KEYS: &[&str] = &[
+    // Desktop-owned private credits authorization. Never persisted or user-overridden.
+    "COLONY_CREDITS_GATEWAY",
+    "COLONY_CREDITS_SESSION_ID",
+    "COLONY_CREDITS_MODEL",
     // Identity / secrets.
     "BUZZ_PRIVATE_KEY",
     "NOSTR_PRIVATE_KEY",

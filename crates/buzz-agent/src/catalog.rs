@@ -388,6 +388,7 @@ async fn fetch_v2_models_with_policy(
 
 fn catalog_error_kind(error: &AgentError) -> &'static str {
     match error {
+        AgentError::Credits(_) => "credits",
         AgentError::InvalidParams(_) => "invalid-params",
         AgentError::Llm(_) => "llm",
         AgentError::LlmAuth(_) => "auth",

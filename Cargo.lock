@@ -949,6 +949,7 @@ dependencies = [
  "getrandom 0.4.3",
  "hex",
  "nix 0.31.3",
+ "nostr 0.44.7",
  "rcgen",
  "reqwest 0.13.4",
  "rmcp",
@@ -963,6 +964,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "urlencoding",
+ "uuid",
  "webbrowser",
 ]
 

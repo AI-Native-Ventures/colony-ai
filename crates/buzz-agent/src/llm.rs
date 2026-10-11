@@ -37,6 +37,7 @@ enum DatabricksV2Route {
 }
 
 pub struct Llm {
+    credits: Option<crate::credits_gateway::CreditsGateway>,
     http: Client,
     /// One-shot sticky flag: set when a Chat Completions request comes
     /// back with a "use /v1/responses" provider error while `cfg.openai_api
@@ -70,6 +71,11 @@ impl Llm {
             .map_err(|e| AgentError::Llm(format!("http: {e}")))?;
         let auth = build_token_source(cfg)?;
         Ok(Self {
+            credits: if cfg.provider == Provider::ColonyCredits {
+                Some(crate::credits_gateway::CreditsGateway::from_env()?)
+            } else {
+                None
+            },
             http,
             auto_upgraded: AtomicBool::new(false),
             auth,
@@ -87,6 +93,17 @@ impl Llm {
         let effort = cfg.thinking_effort;
         let call_start = std::time::Instant::now();
         let result = match cfg.provider {
+            Provider::ColonyCredits => self
+                .post_credits(openai_body(
+                    cfg,
+                    system_prompt,
+                    history,
+                    tools,
+                    effective_model,
+                    None,
+                ))
+                .await
+                .and_then(parse_openai),
             Provider::Anthropic => self
                 .post_anthropic(
                     cfg,
@@ -249,6 +266,13 @@ impl Llm {
         let call_start = std::time::Instant::now();
         let result = (async {
             match cfg.provider {
+                Provider::ColonyCredits => {
+                    let body = json!({"messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ]});
+                    Ok(parse_openai(self.post_credits(body).await?)?.text)
+                }
                 Provider::Anthropic => {
                     let body = json!({
                         "model": effective_model,
@@ -355,6 +379,16 @@ impl Llm {
             );
         }
         result.map_err(|e| provider_failure(e, cfg.provider))
+    }
+
+    async fn post_credits(&self, body: Value) -> Result<Value, AgentError> {
+        self.credits
+            .as_ref()
+            .ok_or(AgentError::Credits(
+                crate::credits_gateway::CreditRefusal::Unavailable,
+            ))?
+            .complete(body)
+            .await
     }
 
     async fn post_anthropic(&self, cfg: &Config, body: &Value) -> Result<Value, AgentError> {
@@ -572,6 +606,7 @@ impl Llm {
 /// Keep terminal provider errors safe and identifiable across the ACP boundary.
 fn provider_failure(error: AgentError, provider: Provider) -> AgentError {
     let label = match provider {
+        Provider::ColonyCredits => "Colony credits",
         Provider::Anthropic => "Anthropic",
         Provider::OpenAi => "OpenAI",
         Provider::DeepSeek => "DeepSeek",
@@ -2102,6 +2137,7 @@ pub(crate) fn databricks_pkce_config(
 ///   flow; subsequent requests use the cache + refresh transparently.
 pub(crate) fn build_token_source(cfg: &Config) -> Result<Arc<dyn TokenSource>, AgentError> {
     match cfg.provider {
+        Provider::ColonyCredits => Ok(Arc::new(StaticTokenSource::new(String::new()))),
         Provider::Anthropic | Provider::OpenAi | Provider::DeepSeek | Provider::OpenRouter => {
             Ok(Arc::new(StaticTokenSource::new(cfg.api_key.clone())))
         }
@@ -2129,7 +2165,8 @@ pub(crate) fn build_token_source(cfg: &Config) -> Result<Arc<dyn TokenSource>, A
 pub(crate) fn summary_completion_cap(provider: Provider, max_output_tokens: u32) -> u32 {
     match provider {
         Provider::OpenRouter => max_output_tokens.saturating_mul(2),
-        Provider::Anthropic
+        Provider::ColonyCredits
+        | Provider::Anthropic
         | Provider::OpenAi
         | Provider::DeepSeek
         | Provider::Databricks
@@ -5902,6 +5939,7 @@ mod tests {
 
     fn llm_with(auth: Arc<dyn TokenSource>) -> Llm {
         Llm {
+            credits: None,
             http: Client::builder()
                 .timeout(Duration::from_secs(5))
                 .build()
@@ -8074,3 +8112,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "llm/credits_tests.rs"]
+mod credits_tests;

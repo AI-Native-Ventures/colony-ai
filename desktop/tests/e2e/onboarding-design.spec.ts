@@ -4,6 +4,7 @@ import { waitForAnimations } from "../helpers/animations";
 import {
   openR17BusinessSetup,
   completeR17BusinessSetup,
+  mockOpenRouterUnlinked,
   openR17ConnectionSetup,
   r17Runtime,
 } from "../helpers/onboarding";
@@ -107,27 +108,32 @@ test("connection choices preserve keyboard and pointer radio behavior", async ({
   );
   await openR17BusinessSetup(page);
   await completeR17BusinessSetup(page);
-  const subscriptions = page.getByRole("radio", {
-    name: "Subscriptions",
+  const group = page.getByRole("radiogroup", { name: "AI connection" });
+  await expect(group.getByRole("radio")).toHaveCount(2);
+  const subscriptions = group.getByRole("radio", {
+    name: "Claude Code or Codex",
+    exact: true,
+  });
+  const colonyAgent = group.getByRole("radio", {
+    name: "Colony Agent",
     exact: true,
   });
   await expect(subscriptions).toBeChecked();
   await subscriptions.focus();
   await page.keyboard.press("ArrowRight");
-  const credits = page.getByRole("radio", {
-    name: "Colony credits",
-    exact: true,
-  });
-  await expect(credits).toBeChecked();
-  await expect(credits).toBeFocused();
+  await expect(colonyAgent).toBeChecked();
+  await expect(colonyAgent).toBeFocused();
+  await expect(subscriptions).toHaveAttribute("tabindex", "-1");
+  await page.keyboard.press("ArrowRight");
+  await expect(subscriptions).toBeChecked();
+  await expect(subscriptions).toBeFocused();
   await page.keyboard.press("End");
-  await expect(
-    page.getByRole("radio", { name: "Bring your own key", exact: true }),
-  ).toBeChecked();
-  await page.getByRole("radio", { name: "OpenRouter", exact: true }).click();
-  await expect(
-    page.getByRole("radio", { name: "OpenRouter", exact: true }),
-  ).toBeChecked();
+  await expect(colonyAgent).toBeChecked();
+  await page.keyboard.press("Home");
+  await expect(subscriptions).toBeChecked();
+  await colonyAgent.click();
+  await expect(colonyAgent).toBeChecked();
+  await expect(page.getByTestId("openrouter-connection")).toBeVisible();
 });
 
 for (const viewport of [
@@ -195,7 +201,7 @@ for (const viewport of [
   { width: 1728, height: 1117 },
   { width: 1440, height: 900 },
 ]) {
-  test(`approved provider fields and unavailable credits at ${viewport.width}`, async ({
+  test(`Colony Agent offers OpenRouter and unavailable credits at ${viewport.width}`, async ({
     page,
   }) => {
     await page.setViewportSize(viewport);
@@ -205,37 +211,39 @@ for (const viewport of [
         r17Runtime("buzz-agent", "available", { status: "not_applicable" }),
       ],
     });
-    await page
-      .getByRole("radio", { name: "Colony credits", exact: true })
-      .click();
-    await expect(
-      page.getByRole("button", { name: "Connect", exact: true }),
-    ).toBeDisabled();
-    await expect(page.locator(".form-content .lede[role=status]")).toHaveCount(
-      0,
-    );
     await waitForAnimations(page);
     await page.screenshot({
-      path: `${SHOT_DIR}/runtime-credits-${viewport.width}.png`,
+      path: `${SHOT_DIR}/runtime-two-paths-${viewport.width}.png`,
     });
+    await mockOpenRouterUnlinked(page);
     await page
-      .getByRole("radio", { name: "Bring your own key", exact: true })
+      .getByRole("radio", { name: "Colony Agent", exact: true })
       .click();
-    await expect(page.getByTestId("onboarding-provider-key")).toHaveAttribute(
-      "type",
-      "password",
-    );
+    const colonyAgent = page.getByTestId("onboarding-colony-agent");
     await expect(
-      page.getByRole("button", { name: "Check key", exact: true }),
-    ).toBeDisabled();
+      colonyAgent.getByRole("button", {
+        name: "Connect OpenRouter",
+        exact: true,
+      }),
+    ).toBeEnabled();
+    await expect(
+      colonyAgent.getByTestId("onboarding-credits-coming-soon"),
+    ).toContainText("Coming soon");
+    await expect(page.getByTestId("onboarding-provider-key")).toHaveCount(0);
     await expect(page.getByLabel("Model", { exact: true })).toHaveCount(0);
     await expect(page.locator(".harness-state")).toHaveText("Included");
     await expect(page.locator(".harness-picker-copy strong")).toHaveText(
       "Colony Agent",
     );
+    await expect(
+      page.getByRole("button", { name: "Skip for now", exact: true }),
+    ).toBeEnabled();
+    await expect(page.locator(".form-content .lede[role=status]")).toHaveCount(
+      0,
+    );
     await waitForAnimations(page);
     await page.screenshot({
-      path: `${SHOT_DIR}/runtime-byok-${viewport.width}.png`,
+      path: `${SHOT_DIR}/runtime-colony-agent-${viewport.width}.png`,
     });
   });
 }

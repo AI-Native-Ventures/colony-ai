@@ -521,6 +521,153 @@ test("a blocked link keeps the page and reports once; a load failure is an error
   assert.match(getBrowserPage(key).error, /ERR_NAME_NOT_RESOLVED/u);
 });
 
+test("a failed host call is cleared by the next successful load state", async () => {
+  initBrowserTabsStore("community-a");
+  const key = openPage("chan", "example.com");
+  await settle();
+  host.reload = async () => {
+    throw new Error("fixture reload failure");
+  };
+  reloadBrowserPage(key);
+  await settle();
+  assert.notEqual(getBrowserPage(key).error, null);
+  host.emit({
+    type: "state",
+    tab: tabState("host-1", { url: "https://example.com/" }),
+  });
+  assert.equal(getBrowserPage(key).error, null);
+});
+
+test("a late failed host call cannot overwrite a successful load after grant", async () => {
+  initBrowserTabsStore("community-a");
+  const key = openPage("chan", "example.com");
+  await settle();
+  let reject;
+  host.reload = () =>
+    new Promise((_resolve, fail) => {
+      reject = fail;
+    });
+  reloadBrowserPage(key);
+  await settle();
+  // Even an otherwise identical loaded state is authoritative.
+  host.emit({
+    type: "state",
+    tab: tabState("host-1", {
+      url: "https://example.com/",
+      controlOwner: "agent",
+    }),
+  });
+  reject(new Error("fixture delayed reload failure"));
+  await settle();
+  assert.equal(getBrowserPage(key).error, null);
+});
+
+test("a successful host reply clears an earlier failure without another event", async () => {
+  initBrowserTabsStore("community-a");
+  const key = openPage("chan", "example.com");
+  await settle();
+  host.reload = async () => {
+    throw new Error("fixture reload failure");
+  };
+  reloadBrowserPage(key);
+  await settle();
+  assert.notEqual(getBrowserPage(key).error, null);
+  host.back = async () =>
+    tabState("host-1", { url: "https://example.com/", title: "Recovered" });
+  goBackBrowserPage(key);
+  await settle();
+  assert.equal(getBrowserPage(key).error, null);
+  assert.equal(getBrowserPage(key).title, "Recovered");
+});
+
+test("a late navigation rejection cannot hide the newly loaded approved page", async () => {
+  initBrowserTabsStore("community-a");
+  const key = openPage("chan", "example.com");
+  await settle();
+  let reject;
+  host.navigate = () =>
+    new Promise((_resolve, fail) => {
+      reject = fail;
+    });
+  navigateBrowserPage(key, "https://example.com/new");
+  await settle();
+  host.emit({
+    type: "state",
+    tab: tabState("host-1", {
+      url: "https://example.com/new",
+      controlOwner: "agent",
+    }),
+  });
+  reject(new Error("obsolete navigation failure"));
+  await settle();
+  assert.equal(getBrowserPage(key).error, null);
+  assert.equal(getBrowserPage(key).url, "https://example.com/new");
+});
+
+test("an old community call cannot poison a reopened page with the same key", async () => {
+  initBrowserTabsStore("community-a");
+  const key = openPage("chan", "example.com");
+  await settle();
+  let reject;
+  host.back = () =>
+    new Promise((_resolve, fail) => {
+      reject = fail;
+    });
+  goBackBrowserPage(key);
+  await settle();
+  resetBrowserTabsStore();
+  host = fakeHost();
+  setBrowserHostForTests(host);
+  counter = 0;
+  initBrowserTabsStore("community-b");
+  const reopened = openPage("chan", "other.example");
+  assert.equal(reopened, key);
+  await settle();
+  reject(new Error("obsolete community failure"));
+  await settle();
+  assert.equal(getBrowserPage(reopened).error, null);
+});
+
+test("an older successful reply cannot erase a newer load failure", async () => {
+  initBrowserTabsStore("community-a");
+  const key = openPage("chan", "example.com");
+  await settle();
+  let resolve;
+  host.back = () =>
+    new Promise((done) => {
+      resolve = done;
+    });
+  goBackBrowserPage(key);
+  await settle();
+  host.emit({
+    type: "state",
+    tab: tabState("host-1", {
+      error: "Navigation failed (ERR_NAME_NOT_RESOLVED)",
+    }),
+  });
+  resolve(tabState("host-1", { error: null }));
+  await settle();
+  assert.match(getBrowserPage(key).error, /ERR_NAME_NOT_RESOLVED/u);
+});
+
+test("a newer action fences a delayed failure from the previous action", async () => {
+  initBrowserTabsStore("community-a");
+  const key = openPage("chan", "example.com");
+  await settle();
+  let reject;
+  host.back = () =>
+    new Promise((_resolve, fail) => {
+      reject = fail;
+    });
+  goBackBrowserPage(key);
+  await settle();
+  navigateBrowserPage(key, "https://example.com/new");
+  await settle();
+  reject(new Error("obsolete back failure"));
+  await settle();
+  assert.equal(getBrowserPage(key).error, null);
+});
+
 test("when the host ends a tab the page is kept, dormant, and reloads on request", async () => {
   initBrowserTabsStore("community-a");
   const key = openPage("chan", "example.com");

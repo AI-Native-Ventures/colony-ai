@@ -151,6 +151,20 @@ run_unit_tests() {
 
   run_test_step "buzz-relay storage snapshot tests" \
     cargo test -p buzz-relay --lib storage_sweep::tests:: -- --nocapture
+
+  # Keep the infra-free payment selectors in step with just test-unit.
+  run_test_step "buzz-relay fake Stripe tests" \
+    cargo test -p buzz-relay --lib stripe::tests:: -- --nocapture
+  run_test_step "buzz-relay credit pack tests" \
+    cargo test -p buzz-relay --lib credit_packs::tests:: -- --nocapture
+  run_test_step "buzz-relay payment HTTP and payload tests" \
+    cargo test -p buzz-relay --lib api::payments::tests:: -- --nocapture
+  run_test_step "buzz-relay Stripe configuration tests" \
+    cargo test -p buzz-relay --lib config::tests::stripe_ -- --nocapture
+  run_test_step "buzz-relay policy URL configuration tests" \
+    cargo test -p buzz-relay --lib config::tests::credit_policy_ -- --nocapture
+  run_test_step "buzz-relay PayFast configuration tests" \
+    cargo test -p buzz-relay --lib config::tests::payments_config_ -- --nocapture
 }
 
 # ---- DB / integration tests (infra required) --------------------------------

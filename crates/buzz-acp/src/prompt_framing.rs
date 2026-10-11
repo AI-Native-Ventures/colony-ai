@@ -1,11 +1,24 @@
 //! Shared framing for standing prompt context.
 
+/// Rules for any task that involves a website: use the Colony browser, open
+/// the person's own browser only when their message asks for it, otherwise
+/// ask for access and wait, and never reach a site another way.
+///
+/// `web_tasks.md` is the one copy. The base prompt below ends with it, and the
+/// desktop app writes the same file into the agent working folder (the CLI
+/// skill and the managed section of `AGENTS.md`).
+pub const WEB_TASK_RULES: &str = include_str!("web_tasks.md");
+
 /// Base prompt every agent receives when no custom base file is configured.
 ///
 /// The one production read of `base_prompt.md`: both the runtime and the brand
 /// guard (`brand_guard_tests.rs`) go through this constant, so the guard scans
-/// exactly what agents are given.
-pub(crate) const DEFAULT_BASE_PROMPT: &str = include_str!("base_prompt.md");
+/// exactly what agents are given. It ends with [`WEB_TASK_RULES`].
+pub(crate) const DEFAULT_BASE_PROMPT: &str = concat!(
+    include_str!("base_prompt.md"),
+    "\n",
+    include_str!("web_tasks.md")
+);
 
 /// Wrap one standing-context body in an explicit paired boundary.
 ///
@@ -103,6 +116,49 @@ mod tests {
             semantic_section("agent-instructions", "\n keep this \n"),
             "<agent-instructions>\n\n keep this \n\n</agent-instructions>"
         );
+    }
+
+    #[test]
+    fn web_task_rules_reach_the_framed_system_prompt() {
+        for policy in [
+            crate::scope::SessionPolicy::Channel,
+            crate::scope::SessionPolicy::Thread,
+        ] {
+            let base = policy.append_session_model(DEFAULT_BASE_PROMPT);
+            let framed = crate::pool::framed_system_prompt(
+                "/Users/test/.colony",
+                Some(&base),
+                Some("You are Scout."),
+            )
+            .expect("a base and instructions frame a system prompt");
+            let rules = framed
+                .find(WEB_TASK_RULES.trim_end())
+                .expect("the web task rules reach every agent's system prompt");
+            let instructions = framed
+                .find("<agent-instructions>")
+                .expect("agent instructions are framed");
+            assert!(
+                rules < instructions,
+                "the rules belong to the standing base, not to editable instructions"
+            );
+        }
+    }
+
+    #[test]
+    fn web_task_rules_state_the_owner_decision() {
+        for phrase in [
+            "Use the Colony browser",
+            "only when their current message explicitly asks for that browser",
+            "ask the person to open the site in the Colony browser and allow you to use it",
+            "Then stop and wait for their reply.",
+            "no shell command that opens a browser or a link",
+            "no AppleScript or other desktop automation",
+            "no Playwright, Puppeteer, Selenium, or headless browser",
+            "no browser skill or plugin, even when one is installed",
+        ] {
+            assert!(WEB_TASK_RULES.contains(phrase), "missing rule: {phrase}");
+        }
+        assert!(!WEB_TASK_RULES.contains('\u{2014}'), "no em dashes");
     }
 
     #[test]

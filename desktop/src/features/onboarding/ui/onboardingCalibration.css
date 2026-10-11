@@ -2448,7 +2448,7 @@
 }
 .colony-onboarding-root .power-routes {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   border: 1px solid var(--line);
   padding: 5px;
   border-radius: 12px;
@@ -3939,7 +3939,7 @@
 }
 .colony-onboarding-root .power-routes {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 5px;
   padding: 5px;
   margin: 18px 0 27px;
@@ -4186,15 +4186,72 @@
   }
 }
 
-.colony-onboarding-root .more-tools {
-  margin-top: 16px;
+/* Colony Agent path: OpenRouter first, then Colony credits, then Skip. */
+.colony-onboarding-root .colony-agent-saved {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 23px;
 }
-.colony-onboarding-root .more-tools summary {
-  cursor: pointer;
+.colony-onboarding-root .colony-agent-saved .power-notice {
+  margin-top: 0;
+}
+.colony-onboarding-root .colony-agent-saved > .primary {
+  min-height: 46px;
+  font-size: 0.81rem;
+}
+.colony-onboarding-root .colony-agent-power > .power-notice:first-child {
+  margin-top: 0;
+  margin-bottom: 17px;
+}
+.colony-onboarding-root .colony-credits-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  margin-top: 23px;
+  padding: 15px 16px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--field);
+}
+.colony-onboarding-root .colony-credits-mark {
+  height: 41px;
+  width: 41px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--wash);
+  color: var(--accent);
+  flex: none;
+}
+.colony-onboarding-root .colony-credits-mark .ant {
+  height: 20px;
+  width: 25px;
+}
+.colony-onboarding-root .colony-credits-option h3 {
+  margin: 2px 0 0;
+}
+.colony-onboarding-root .colony-credits-option p {
+  font-size: 0.75rem;
+  line-height: 1.55;
   color: var(--muted);
+  margin: 5px 0 0;
 }
-.colony-onboarding-root .more-tools[open] .subscription-cards {
-  margin-top: 12px;
+.colony-onboarding-root .colony-credits-state {
+  margin-left: auto;
+  flex: none;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--wash);
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 0.64rem;
+  white-space: nowrap;
+}
+.colony-onboarding-root .colony-agent-skip {
+  display: flex;
+  justify-content: center;
 }
 /* Google account access uses the same secondary action as the frozen forms. */
 .colony-onboarding-root .account-google-action {

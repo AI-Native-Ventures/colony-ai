@@ -495,3 +495,36 @@ test("a recent exact-runtime reply overrides stale discovery auth, never a diffe
     false,
   );
 });
+
+test("saved keyless credits route keeps native prerequisites and bundled availability", () => {
+  const bundled = makeRuntime({
+    id: "buzz-agent",
+    authStatus: { status: "not_applicable" },
+  });
+  const config = makeConfig({
+    preferred_runtime: "buzz-agent",
+    provider: "colony-credits",
+  });
+  assert.equal(
+    resolveAgentReadiness([bundled], config, "preferred", null).ready,
+    true,
+  );
+  assert.equal(
+    resolveAgentReadiness([bundled], config, "preferred", undefined).ready,
+    false,
+  );
+  assert.equal(
+    resolveAgentReadiness([bundled], config, "preferred", { available: false })
+      .ready,
+    false,
+  );
+  assert.equal(
+    resolveAgentReadiness(
+      [{ ...bundled, availability: "not_installed" }],
+      config,
+      "preferred",
+      null,
+    ).ready,
+    false,
+  );
+});

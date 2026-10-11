@@ -11,6 +11,10 @@ const maxFileBytes = 25 * 1024 * 1024;
 const allowedHtml = new Set([
   "index.html",
   "404.html",
+  "terms.html",
+  "acceptable-use.html",
+  "refunds.html",
+  "privacy.html",
   "early-access-dialog.html",
   "hero-10/helix.html",
   "product-reference/workspace/demo-r23.html",

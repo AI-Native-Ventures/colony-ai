@@ -103,6 +103,9 @@ for (const size of sizes) {
       },
     });
     await completeR17BusinessSetup(page);
+    await page
+      .getByRole("radio", { name: "Colony Agent", exact: true })
+      .click();
     const skip = page.getByRole("button", {
       name: "Skip for now",
       exact: true,
@@ -110,7 +113,7 @@ for (const size of sizes) {
     const initialSkip = await skip.elementHandle();
     expect(initialSkip).not.toBeNull();
     await expect(
-      page.getByRole("button", { name: "Connect Colony Agent", exact: true }),
+      page.getByRole("button", { name: "Test Colony Agent", exact: true }),
     ).toBeEnabled();
     // Harness readiness must not remove the fallback under the pointer.
     expect(await initialSkip!.evaluate((element) => element.isConnected)).toBe(

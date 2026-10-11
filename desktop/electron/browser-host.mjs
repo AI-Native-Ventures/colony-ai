@@ -626,6 +626,15 @@ export function createBrowserHost({
 
   /** Main-process-only adapter. Never expose this object through preload. */
   const agentAdapter = {
+    downloadDirectory: () => downloadsPath,
+    rememberDownload: (tabId, id, destination, name, bytes) =>
+      browserSessions.rememberAgentDownload(
+        tabs.get(tabId),
+        id,
+        destination,
+        name,
+        bytes,
+      ),
     tabIds: () => [...tabs.keys()],
     getTab: (id) => (tabs.has(id) ? snapshot(tabs.get(id)) : null),
     webContents: (id) => tabs.get(id)?.webContents,

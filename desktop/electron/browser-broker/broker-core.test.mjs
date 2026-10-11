@@ -1152,3 +1152,62 @@ test("connect refuses a missing primary, another profile, human control or unapp
     );
   }
 });
+
+test("download needs explicit confirmation, fresh reference and approved link before driver fetch", async () => {
+  const env = setup();
+  const snapshot = await snapshotRefs(env);
+  const ref = env.refOf(snapshot, "Kettles");
+  const action = env.call("browser_download", { tab: "tab-1", ref });
+  const pending = await until(() =>
+    env.events.find((event) => event.type === "confirmation-requested"),
+  );
+  assert.equal(
+    env.driver.calls.filter((call) => call.op === "download").length,
+    0,
+  );
+  assert.match(pending.summary, /Download/u);
+  env.broker.confirm(pending.actionId);
+  const result = await action;
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(result.downloadId, "fixture-download");
+  assert.equal(
+    env.driver.calls.find((call) => call.op === "download").url,
+    "https://shop.example/k",
+  );
+  assert.equal(
+    (
+      await env.call("browser_download", {
+        tab: "tab-1",
+        ref,
+        url: "https://shop.example/secret",
+      })
+    ).code,
+    "invalid_input",
+  );
+});
+
+test("download rejection, link replacement and document changes cannot reach a fetch", async () => {
+  for (const mode of ["reject", "replace", "document"]) {
+    const env = setup();
+    const snapshot = await snapshotRefs(env);
+    const ref = env.refOf(snapshot, "Kettles");
+    const action = env.call("browser_download", { tab: "tab-1", ref });
+    const pending = await until(() =>
+      env.events.find((event) => event.type === "confirmation-requested"),
+    );
+    if (mode === "reject") env.broker.reject(pending.actionId);
+    else {
+      if (mode === "replace")
+        env.driver.tabs.get("tab-1").page.elements[0].extra.href =
+          "https://shop.example/changed";
+      else env.broker.notifyDocumentChanged("tab-1");
+      env.broker.confirm(pending.actionId);
+    }
+    assert.equal((await action).ok, false, mode);
+    assert.equal(
+      env.driver.calls.filter((call) => call.op === "download").length,
+      0,
+      mode,
+    );
+  }
+});

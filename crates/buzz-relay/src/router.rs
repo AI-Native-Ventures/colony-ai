@@ -53,6 +53,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     let accounts_router = Router::new().nest("/api/accounts", api::accounts::router(state.clone()));
     let payments_router = Router::new().nest("/api/payments", api::payments::router(state.clone()));
 
+    let credits_gateway_router = Router::new().nest(
+        "/api/credits-gateway",
+        api::credits_gateway::router(state.clone()),
+    );
+
     let admin_enabled = state.config.admin.is_some();
     let admin_web_dir = state
         .config
@@ -167,6 +172,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     let mut merged = api_router
         .merge(accounts_router)
         .merge(payments_router)
+        .merge(credits_gateway_router)
         .merge(media_router)
         .merge(git_router)
         .merge(git_policy_router);

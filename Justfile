@@ -491,8 +491,11 @@ test-unit:
         # non-postgres_tests cases only "pass" without a database by waiting out
         # the ~30s sqlx acquire timeout, so they do not belong in the infra-free
         # unit job either.
+        # Payment provider, catalog, policy configuration and HTTP rejection
+        # tests use fake upstreams or a bounded dead database. Execute them here;
+        # compiling the relay archive alone does not run these regression guards.
         cargo nextest run -p buzz-relay --lib \
-            -E '(test(/^api::admin::/) - test(=api::admin::tests::disabled_mode_allows_unauthenticated_requests_on_the_admin_host) - test(=api::admin::tests::nip98_mode_unrostered_signer_does_not_consume_a_replay_slot)) + test(=api::bridge::filter_bound_tests::http_bridge_accepts_ten_filters_and_rejects_eleven) + test(=api::accounts::signin_policy_tests::unverified_signin_does_not_skip_password_verification) + test(/^handlers::channel_authz::/) + test(/^handlers::moderation_authz::/) + test(/^handlers::side_effects::tests::/) + test(/^storage_sweep::tests::/)'
+            -E '(test(/^api::admin::/) - test(=api::admin::tests::disabled_mode_allows_unauthenticated_requests_on_the_admin_host) - test(=api::admin::tests::nip98_mode_unrostered_signer_does_not_consume_a_replay_slot)) + test(=api::bridge::filter_bound_tests::http_bridge_accepts_ten_filters_and_rejects_eleven) + test(=api::accounts::signin_policy_tests::unverified_signin_does_not_skip_password_verification) + test(/^handlers::channel_authz::/) + test(/^handlers::moderation_authz::/) + test(/^handlers::side_effects::tests::/) + test(/^storage_sweep::tests::/) + test(/^stripe::tests::/) + test(/^credit_packs::tests::/) + test(/^api::payments::tests::/) + test(/^config::tests::(stripe_|credit_policy_|payments_config_)/)'
         # ACP author-gate and queue tests protect the trust boundary between
         # relay events and agent prompts. They are infra-free; ignored lifecycle
         # tests remain excluded and run in their dedicated integration lanes.

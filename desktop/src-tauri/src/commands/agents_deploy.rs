@@ -179,6 +179,11 @@ pub(super) fn build_launch_block(
 }
 
 pub(super) fn ensure_remote_provider_supported(provider: Option<&str>) -> Result<(), String> {
+    if provider.map(str::trim) == Some("colony-credits") {
+        return Err(
+            "Colony credits require the bundled Colony Agent running on this computer.".into(),
+        );
+    }
     if provider.map(str::trim) == Some(crate::managed_agents::RELAY_MESH_PROVIDER_ID) {
         return Err(
             "shared-compute agents cannot be deployed remotely because the mesh endpoint is local to the desktop"

@@ -564,6 +564,8 @@ pub enum ContentBlock {
 
 #[derive(Debug)]
 pub enum AgentError {
+    /// Terminal private credits refusal. Never triggers provider fallback or replay.
+    Credits(crate::credits_gateway::CreditRefusal),
     InvalidParams(String),
     Llm(String),
     LlmAuth(String),
@@ -591,6 +593,7 @@ pub enum AgentError {
 impl std::fmt::Display for AgentError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Credits(refusal) => write!(f, "{refusal}"),
             Self::InvalidParams(s) => write!(f, "invalid params: {s}"),
             Self::Llm(s) => write!(f, "llm: {s}"),
             Self::LlmAuth(s) => write!(f, "llm auth: {s}"),
@@ -609,6 +612,7 @@ impl AgentError {
     pub fn json_rpc_code(&self) -> i32 {
         match self {
             Self::InvalidParams(_) => -32602,
+            Self::Credits(_) => -32004,
             Self::LlmAuth(_) => -32001,
             Self::LlmModelNotFound(_) => -32002,
             _ => -32000,

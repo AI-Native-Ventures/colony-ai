@@ -105,6 +105,9 @@ export function resolveAgentReadiness(
   if (!prerequisite.ready) return prerequisite;
 
   const provider = globalConfig.provider?.trim() ?? "";
+  // The managed relay chooses the model and authorizes the saved credits route at launch.
+  if (provider === "colony-credits")
+    return { ready: true, reason: "buzz-agent" };
   const model = globalConfig.model?.trim() ?? "";
   if (provider.length > 0 && model.length > 0) {
     const required = requiredCredentialEnvKeys(preferredRuntime.id, provider);

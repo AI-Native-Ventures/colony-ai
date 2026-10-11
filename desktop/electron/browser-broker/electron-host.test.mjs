@@ -1,9 +1,19 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import {
+  chmod,
+  mkdtemp,
+  rm,
+  writeFile,
+  readFile,
+  readdir,
+  symlink,
+} from "node:fs/promises";
+import * as filesystem from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { GATE_MARKER, GATE_HOME_PREFIX } from "./packaged-gate.mjs";
 import { createBrowserHost } from "../browser-host.mjs";
 import {
   createElectronBrowserAgentHost,
@@ -90,7 +100,11 @@ async function fixture(t, options = {}) {
   const host = await createElectronBrowserAgentHost({
     browserHost: browser,
     enabled: true,
+    uploadStagingRoot: path.join(dir, "uploads"),
+    chooseFile: options.chooseFile ?? (async () => null),
+    uploadStagingOptions: options.uploadStagingOptions ?? {},
     socketPath: path.join(dir, "s", "b.sock"),
+    gateEnvironment: options.gateEnvironment ?? {},
     proxyFactory: () => ({
       start: async () => 9999,
       stop: async () => network.push("stop-proxy"),
@@ -116,7 +130,7 @@ async function fixture(t, options = {}) {
       },
       sender.id,
     );
-  return { browser, host, sender, owner, tab, grant, network };
+  return { browser, host, sender, owner, tab, grant, network, dir };
 }
 
 test("flag off creates no adapter, proxy or socket and denies grants", async () => {
@@ -373,5 +387,278 @@ test("failed network cleanup is visible and retained for explicit person recover
       f.sender.id,
     ),
     { enabled: true, recoveryRequired: false },
+  );
+});
+
+async function selectedCopy(f) {
+  const [id] = await readdir(path.join(f.dir, "uploads", "payloads"));
+  const directory = path.join(f.dir, "uploads", "payloads", id);
+  const [name] = await readdir(directory);
+  return path.join(directory, name);
+}
+
+test("production person selection stages immutable bytes and exposes only an opaque ID", async (t) => {
+  let selected;
+  const f = await fixture(t, { chooseFile: async () => selected });
+  selected = path.join(f.dir, "original.txt");
+  await writeFile(selected, "person-approved-original");
+  const grant = await f.grant();
+  const result = await f.host.handleRequest(
+    "agent-choose-upload",
+    { grantId: grant.id },
+    f.sender.id,
+  );
+  assert.deepEqual(Object.keys(result).sort(), ["name", "size", "uploadId"]);
+  assert.equal(result.name, "original.txt");
+  const staged = await selectedCopy(f);
+  await writeFile(selected, "replaced-after-selection");
+  assert.equal(await readFile(staged, "utf8"), "person-approved-original");
+  assert.ok(!JSON.stringify(result).includes(f.dir));
+  await f.host.handleRequest(
+    "agent-revoke",
+    { grantId: grant.id },
+    f.sender.id,
+  );
+  await assert.rejects(readFile(staged), { code: "ENOENT" });
+  assert.equal(await readFile(selected, "utf8"), "replaced-after-selection");
+  assert.deepEqual(await readdir(path.join(f.dir, "uploads", "records")), []);
+});
+
+test("failed staged cleanup survives native and network recovery events until person retries", async (t) => {
+  let selected;
+  let fail = false;
+  const f = await fixture(t, {
+    chooseFile: async () => selected,
+    uploadStagingOptions: {
+      fs: {
+        ...filesystem,
+        rmdir: async (directory) => {
+          if (fail) throw new Error("private-fixture-cleanup-error");
+          await filesystem.rmdir(directory);
+        },
+      },
+    },
+  });
+  selected = path.join(f.dir, "original.txt");
+  await writeFile(selected, "approved");
+  const grant = await f.grant();
+  await f.host.handleRequest(
+    "agent-choose-upload",
+    { grantId: grant.id },
+    f.sender.id,
+  );
+  const events = [];
+  const unsubscribe = f.host.onEvent((event) => events.push(event));
+  fail = true;
+  await f.host.handleRequest(
+    "agent-revoke",
+    { grantId: grant.id },
+    f.sender.id,
+  );
+  assert.equal(
+    (
+      await f.host.handleRequest(
+        "agent-status",
+        { tabId: f.tab.id },
+        f.sender.id,
+      )
+    ).recoveryRequired,
+    true,
+  );
+  assert.equal(
+    (await readdir(path.join(f.dir, "uploads", "records"))).length,
+    1,
+  );
+  const recovery = events.filter((event) => event.type === "control-recovery");
+  assert.equal(recovery.at(-1).required, true);
+  const failureIndex = events.findIndex(
+    (event) =>
+      event.type === "agent-action" &&
+      event.entry.code === "upload_recovery_required",
+  );
+  assert.ok(failureIndex >= 0);
+  assert.ok(
+    events
+      .slice(failureIndex)
+      .filter((event) => event.type === "control-recovery")
+      .every((event) => event.required === true),
+    "file cleanup recovery must never disappear after its failure",
+  );
+  assert.ok(
+    !JSON.stringify(f.host.broker.getLog()).includes("private-fixture"),
+  );
+  await assert.rejects(
+    f.host.handleRequest(
+      "agent-recover-control",
+      { tabId: f.tab.id },
+      f.sender.id,
+    ),
+    /upload recovery/u,
+  );
+  fail = false;
+  await f.host.handleRequest(
+    "agent-recover-control",
+    { tabId: f.tab.id },
+    f.sender.id,
+  );
+  assert.deepEqual(await readdir(path.join(f.dir, "uploads", "records")), []);
+  assert.equal(
+    (
+      await f.host.handleRequest(
+        "agent-status",
+        { tabId: f.tab.id },
+        f.sender.id,
+      )
+    ).recoveryRequired,
+    false,
+  );
+  unsubscribe();
+});
+
+test("revocation while the person chooses a file prevents staging or issuing upload authority", async (t) => {
+  let finish;
+  const f = await fixture(t, {
+    chooseFile: () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  });
+  const selected = path.join(f.dir, "original.txt");
+  await writeFile(selected, "approved");
+  const grant = await f.grant();
+  const pending = f.host.handleRequest(
+    "agent-choose-upload",
+    { grantId: grant.id },
+    f.sender.id,
+  );
+  await f.host.handleRequest(
+    "agent-revoke",
+    { grantId: grant.id },
+    f.sender.id,
+  );
+  finish(selected);
+  await assert.rejects(pending, /active grant/u);
+  assert.deepEqual(await readdir(path.join(f.dir, "uploads", "records")), []);
+});
+
+async function gateFixture(t, changes = {}) {
+  const home = await mkdtemp(path.join(os.tmpdir(), GATE_HOME_PREFIX));
+  await chmod(home, 0o700);
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const config = {
+    schema: 1,
+    nonce: "c".repeat(64),
+    provider: "FAKE",
+    expiresAt: Date.now() + 60_000,
+    origin: "http://127.0.0.1:43210",
+    agentId: "a".repeat(64),
+    taskId: "conversation:11111111-1111-4111-8111-111111111111",
+    communityOrigin: "https://relay.example",
+    businessId: "business-a",
+    clientId: null,
+    ...changes,
+  };
+  const marker = path.join(home, GATE_MARKER);
+  await writeFile(marker, JSON.stringify(config), { mode: 0o600 });
+  const gateEnvironment = {
+    HOME: home,
+    COLONY_BROWSER_PACKAGED_GATE: "c".repeat(64),
+  };
+  return { home, marker, config, gateEnvironment };
+}
+
+test("packaged production grant needs BOTH gate opt-ins", async (t) => {
+  const gate = await gateFixture(t);
+  const absent = await fixture(t, { gateEnvironment: { HOME: gate.home } });
+  await assert.rejects(
+    absent.grant({ allowedOrigins: [gate.config.origin] }),
+    /public internet address/iu,
+  );
+  await rm(gate.marker);
+  await assert.rejects(fixture(t, gate), /ENOENT/u);
+});
+
+test("packaged gate rejects wrong nonce, provider, expiry, permissions and symlink marker", async (t) => {
+  for (const changes of [
+    { nonce: "d".repeat(64) },
+    { provider: "openai" },
+    { expiresAt: 0 },
+    { expiresAt: Date.now() + 3600_000 },
+    { origin: "http://localhost:43210" },
+    { origin: "http://127.0.0.1:43210/path" },
+  ]) {
+    const gate = await gateFixture(t, changes);
+    await assert.rejects(fixture(t, gate), /gate/iu);
+  }
+  const gate = await gateFixture(t);
+  await chmod(gate.home, 0o755);
+  await assert.rejects(fixture(t, gate), /private temporary HOME/u);
+  await chmod(gate.home, 0o700);
+  await chmod(gate.marker, 0o644);
+  await assert.rejects(fixture(t, gate), /marker/u);
+  await chmod(gate.marker, 0o600);
+  const target = path.join(gate.home, "target");
+  await writeFile(target, JSON.stringify(gate.config), { mode: 0o600 });
+  await rm(gate.marker);
+  await symlink(target, gate.marker);
+  await assert.rejects(fixture(t, gate), /marker/u);
+});
+
+test("packaged grant seam binds one task and origin, preserves refusal hooks and consumes once", async (t) => {
+  const gate = await gateFixture(t);
+  const f = await fixture(t, gate);
+  for (const changed of [
+    { agentId: "b".repeat(64) },
+    { taskId: "conversation:22222222-2222-4222-8222-222222222222" },
+    { communityOrigin: "https://other.example" },
+    { allowedOrigins: ["http://127.0.0.1:43211"] },
+    { allowedOrigins: [gate.config.origin, "https://example.com"] },
+  ])
+    await assert.rejects(
+      f.grant({ allowedOrigins: [gate.config.origin], ...changed }),
+      /exact fixture/u,
+    );
+  const grant = await f.grant({ allowedOrigins: [gate.config.origin] });
+  assert.deepEqual(grant.privateExceptions, ["127.0.0.1:43210"]);
+  for (const origin of ["https://127.0.0.1:43210", "https://other.example"]) {
+    await assert.rejects(
+      f.host.handleRequest(
+        "agent-approve-origin",
+        { grantId: grant.id, url: origin },
+        f.sender.id,
+      ),
+      /cannot be widened/u,
+    );
+  }
+  assert.deepEqual(f.host.capabilities.getGrant(grant.id).allowedOrigins, [
+    gate.config.origin,
+  ]);
+  const contents = f.browser.agentAdapter.webContents(f.tab.id);
+  for (const event of ["will-frame-navigate", "will-redirect"]) {
+    for (const [url, blocked] of [
+      [gate.config.origin + "/ok", false],
+      ["http://127.0.0.1:43211/private", true],
+      ["http://192.168.1.1/", true],
+      ["file:///private/secret", true],
+    ]) {
+      let cancelled = false;
+      contents.emit(event, {
+        url,
+        isMainFrame: true,
+        preventDefault() {
+          cancelled = true;
+        },
+      });
+      assert.equal(cancelled, blocked, `${event} ${url}`);
+    }
+  }
+  await f.host.handleRequest(
+    "agent-revoke",
+    { grantId: grant.id },
+    f.sender.id,
+  );
+  await assert.rejects(
+    f.grant({ allowedOrigins: [gate.config.origin] }),
+    /one exact/u,
   );
 });
