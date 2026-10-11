@@ -109,6 +109,8 @@ let persistDirty = false;
 let pages = new Map<string, BrowserPage>();
 let notices = new Map<string, readonly BrowserNotice[]>();
 const hostIndex = new Map<string, string>();
+/** Only the latest call may write a result; a host state supersedes it too. */
+const pendingHostCalls = new Map<string, symbol>();
 /** Host states that arrived before `createTab` returned the tab's id. */
 const pendingStates = new Map<string, BrowserTabState>();
 /** Host tabs a failed close left behind; closed again on the next action. */
@@ -362,6 +364,7 @@ export function initBrowserTabsStore(communityScope: string) {
   pages = new Map();
   notices = new Map();
   hostIndex.clear();
+  pendingHostCalls.clear();
   pendingStates.clear();
   reportedBlockedLinks.clear();
   addressFocusRequests.clear();
@@ -413,6 +416,7 @@ export function resetBrowserTabsStore() {
   notices = new Map();
   stored = {};
   hostIndex.clear();
+  pendingHostCalls.clear();
   pendingStates.clear();
   reportedBlockedLinks.clear();
   addressFocusRequests.clear();
@@ -520,6 +524,7 @@ function handleTabState(tab: BrowserTabState) {
     rememberPendingState(tab);
     return;
   }
+  pendingHostCalls.delete(found.key);
   // The tab's remembered label is its title, so a new title is worth saving too.
   const urlChanged = tab.url !== found.url && tab.url !== "about:blank";
   const titleChanged = tab.title !== "" && tab.title !== found.title;
@@ -562,6 +567,7 @@ function handleHostEvent(event: BrowserHostEvent) {
     case "closed": {
       const found = pageForHost(event.tabId);
       hostIndex.delete(event.tabId);
+      if (found) pendingHostCalls.delete(found.key);
       reportedBlockedLinks.delete(event.tabId);
       if (!found) return;
       // The host ended this tab (not us): keep the page, dormant.
@@ -721,14 +727,7 @@ export function navigateBrowserPage(
   retryOrphans();
   if (page.hostId) {
     updatePage(key, (current) => ({ ...current, error: null, loading: true }));
-    const hostId = page.hostId;
-    void callHost(() => host.navigate(hostId, result.url)).catch((error) => {
-      updatePage(key, (current) => ({
-        ...current,
-        loading: false,
-        error: describeHostFailure(error),
-      }));
-    });
+    hostCall(key, (hostId) => host.navigate(hostId, result.url));
   } else if (!page.opening) {
     updatePage(key, (current) => ({ ...current, url: result.url }), {
       persist: true,
@@ -743,6 +742,7 @@ export function navigateBrowserPage(
  * remembered address. The dock has already removed the tab.
  */
 export function closeBrowserPage(key: string) {
+  pendingHostCalls.delete(key);
   const page = pages.get(key);
   let channelId = page?.channelId;
   if (!channelId) {
@@ -769,17 +769,37 @@ export function closeBrowserPage(key: string) {
   notify();
 }
 
-function hostCall(key: string, run: (hostId: string) => Promise<unknown>) {
+function hostCall(
+  key: string,
+  run: (hostId: string) => Promise<BrowserTabState>,
+) {
   const page = pages.get(key);
   if (!page?.hostId) return;
   const hostId = page.hostId;
-  void callHost(() => run(hostId)).catch((error) => {
-    updatePage(key, (current) => ({
-      ...current,
-      loading: false,
-      error: describeHostFailure(error),
-    }));
-  });
+  const mine = generation;
+  const ticket = Symbol();
+  pendingHostCalls.set(key, ticket);
+  const current = () =>
+    mine === generation &&
+    pages.get(key)?.hostId === hostId &&
+    pendingHostCalls.get(key) === ticket;
+  void callHost(() => run(hostId))
+    .then((tab) => {
+      // Events can arrive before their IPC reply. Never replace a newer load,
+      // error or grant state with an obsolete reply (or its delayed failure).
+      if (current() && tab.id === hostId) handleTabState(tab);
+    })
+    .catch((error) => {
+      if (!current()) return;
+      updatePage(key, (live) => ({
+        ...live,
+        loading: false,
+        error: describeHostFailure(error),
+      }));
+    })
+    .finally(() => {
+      if (pendingHostCalls.get(key) === ticket) pendingHostCalls.delete(key);
+    });
 }
 
 export const goBackBrowserPage = (key: string) =>

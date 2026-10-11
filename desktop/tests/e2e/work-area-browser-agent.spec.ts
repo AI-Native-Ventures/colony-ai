@@ -405,3 +405,46 @@ test("forum post task reaches browser approval through the channel layout", asyn
   await page.getByRole("button", { name: "Back to posts" }).click();
   await expect(approve).toBeDisabled();
 });
+
+test("a late host failure keeps the approved native page visible through confirmation", async ({
+  page,
+}) => {
+  await boot(page);
+  await allow(page);
+  await page.evaluate(() => {
+    const host = window.colonyBrowserHost;
+    const fake = window.__browserFake;
+    if (!host || !fake) throw new Error("Browser fixture unavailable");
+    host.reload = async (id) => {
+      const tab = fake.tabs().find((item) => item.id === id);
+      if (!tab) throw new Error("Browser fixture tab missing");
+      fake.emit({
+        type: "state",
+        tab: { ...tab, loading: false, error: null },
+      });
+      throw new Error("fixture delayed reload failure");
+    };
+  });
+  await page.getByTestId("browser-reload").click();
+  await expect(page.getByTestId("browser-error")).toHaveCount(0);
+  await expect(page.getByTestId("browser-page-slot")).toBeVisible();
+  await page.evaluate(() =>
+    window.colonyBrowserControlFixture?.confirmation(
+      "send_or_post",
+      "Send message",
+    ),
+  );
+  const dialog = controls(page).getByRole("alertdialog");
+  await expect(dialog).toBeVisible();
+  expect(
+    await page.evaluate(() => window.colonyBrowserControlFixture?.confirmed()),
+  ).toBe(0);
+  await dialog
+    .getByRole("button", { name: "Confirm action", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId("browser-page-slot")).toBeVisible();
+  expect(
+    await page.evaluate(() => window.colonyBrowserControlFixture?.confirmed()),
+  ).toBe(1);
+});
