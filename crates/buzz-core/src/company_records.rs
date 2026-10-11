@@ -90,7 +90,7 @@ pub enum CompanyCommand {
     /// AI spend record mutation (kind 47043).
     AiSpendRecordAction(crate::company_spend::AiSpendRecordAction),
     /// Hire proposal, founder approval or completion (kind 47039).
-    HireAction(HireAction),
+    HireAction(Box<HireAction>),
     /// Employee duty lifecycle action (kind 47044).
     DutyAction(crate::company_duties::DutyAction),
     /// Employee lesson lifecycle action (kind 47045).
@@ -1587,9 +1587,8 @@ pub fn parse_company_command(
             serde_json::from_str::<crate::company_employee_history::EmployeeRevisionAction>(content)
                 .map(CompanyCommand::EmployeeRevisionAction)
         }
-        crate::kind::KIND_HIRE_ACTION => {
-            serde_json::from_str::<HireAction>(content).map(CompanyCommand::HireAction)
-        }
+        crate::kind::KIND_HIRE_ACTION => serde_json::from_str::<HireAction>(content)
+            .map(|action| CompanyCommand::HireAction(Box::new(action))),
         crate::kind::KIND_DUTY_ACTION => {
             serde_json::from_str::<crate::company_duties::DutyAction>(content)
                 .map(CompanyCommand::DutyAction)
@@ -3020,6 +3019,37 @@ mod tests {
             reason: None,
             time_zone: None,
         }
+    }
+
+    #[test]
+    fn hire_command_preserves_the_v2_payload_json() {
+        let mut proposal = hire_proposal();
+        proposal.role_pack = v2_role_pack();
+        let action = HireAction {
+            action: HireActionKind::Create,
+            expected_head_event_id: None,
+            proposal: Some(proposal),
+            employee_pubkey: None,
+            introduction_event_id: None,
+            ..complete_action()
+        };
+        let payload = serde_json::to_value(&action).expect("serialize hire action");
+        let content = serde_json::to_string(&payload).expect("serialize hire content");
+        let command = parse_company_command(crate::kind::KIND_HIRE_ACTION, &content)
+            .expect("parse v2 hire command");
+        let wrapped = serde_json::to_value(&command).expect("serialize hire command");
+        assert_eq!(
+            wrapped,
+            serde_json::json!({"kind": "hire_action", "record": payload})
+        );
+        assert_eq!(
+            serde_json::from_value::<CompanyCommand>(wrapped).expect("parse wrapped command"),
+            command
+        );
+        let CompanyCommand::HireAction(parsed) = command else {
+            panic!("hire event must parse as a hire command");
+        };
+        assert_eq!(serde_json::to_value(parsed).expect("hire payload"), payload);
     }
 
     #[test]
