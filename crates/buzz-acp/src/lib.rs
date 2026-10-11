@@ -4265,11 +4265,21 @@ fn commit_to_wake_ledger<'e>(
     events: impl IntoIterator<Item = &'e nostr::Event>,
     queue: &EventQueue,
 ) -> bool {
+    commit_to_wake_ledger_with_pending(ledger, events, queue.pending_events())
+}
+
+/// Commit before delivery while keeping every undispatched event replayable,
+/// including batches temporarily held outside the queue during dispatch.
+fn commit_to_wake_ledger_with_pending<'e, 'p>(
+    ledger: Option<&mut wake_ledger::WakeLedger>,
+    events: impl IntoIterator<Item = &'e nostr::Event>,
+    pending: impl IntoIterator<Item = &'p nostr::Event>,
+) -> bool {
     let Some(ledger) = ledger else {
         return true;
     };
     let saved = ledger
-        .commit(events, queue.pending_events(), wake_ledger::unix_now())
+        .commit(events, pending, wake_ledger::unix_now())
         .is_saved();
     if !saved {
         tracing::warn!("wake ledger could not be saved; new turns wait until it can");
@@ -4651,6 +4661,102 @@ mod wake_ledger_dispatch_tests {
             pool.join_set.abort_all();
             let _ = std::fs::remove_dir_all(&dir);
         }
+    }
+
+    #[tokio::test]
+    async fn dispatch_keeps_busy_owner_batches_replayable_in_the_first_saved_snapshot() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-held-{}", Uuid::new_v4()));
+        let path = dir.join("wake.json");
+        let agent_hex = "ab".repeat(32);
+        let mut idle = idle_worker().await;
+        idle.index = 1;
+        let mut pool = AgentPool::from_slots(vec![None, Some(idle)]);
+        let channel_id = Uuid::new_v4();
+        let held_scope = scope::SessionScope::Thread {
+            channel_id,
+            root_event_id: "cd".repeat(32),
+        };
+        pool.record_scope_owner(held_scope.clone(), 0);
+        let busy_task = pool.join_set.spawn(std::future::pending()).id();
+        pool.task_map_mut().insert(
+            busy_task,
+            pool::TaskMeta {
+                agent_index: 0,
+                channel_id: Some(channel_id),
+                scope: Some(scope::SessionScope::Thread {
+                    channel_id,
+                    root_event_id: "ef".repeat(32),
+                }),
+                turn_id: "busy-owner-turn".into(),
+                recoverable_batch: None,
+                control_tx: None,
+                steer_tx: None,
+                successful_steer_deliveries: HashSet::new(),
+            },
+        );
+        let mut held = mention(channel_id).0;
+        held.scope = held_scope.clone();
+        held.received_at = std::time::Instant::now() - Duration::from_secs(1);
+        held.event = EventBuilder::new(Kind::Custom(KIND_STREAM_MESSAGE as u16), "held wake")
+            .custom_created_at(nostr::Timestamp::from(NOW - 100))
+            .sign_with_keys(&Keys::generate())
+            .expect("sign held wake");
+        let held_event = held.event.clone();
+        let mut runnable = mention(Uuid::new_v4()).0;
+        let runnable_scope = runnable.scope.clone();
+        runnable.event =
+            EventBuilder::new(Kind::Custom(KIND_STREAM_MESSAGE as u16), "runnable wake")
+                .custom_created_at(nostr::Timestamp::from(NOW - 50))
+                .sign_with_keys(&Keys::generate())
+                .expect("sign runnable wake");
+        let runnable_event = runnable.event.clone();
+        let mut queue = EventQueue::new(DedupMode::Queue);
+        assert!(queue.push(held));
+        assert!(queue.push(runnable));
+        let mut ledger = wake_ledger::WakeLedger::open(path.clone(), RELAY, &agent_hex, NOW, NOW);
+        ledger.admit(&held_event, NOW);
+        ledger.admit(&runnable_event, NOW);
+        let ctx = Arc::new(test_prompt_context(&Keys::generate()));
+        let mut last_activity = tokio::time::Instant::now();
+        let dispatched = dispatch_pending(
+            &mut pool,
+            &mut queue,
+            &ctx,
+            &mut last_activity,
+            None,
+            Some(&mut ledger),
+        );
+        assert_eq!(dispatched.len(), 1);
+        assert_eq!(dispatched[0].0, runnable_scope);
+        assert!(
+            pool.held_since_contains(&held_scope),
+            "the older thread batch took the busy-owner hold path"
+        );
+        assert!(!queue.is_scope_in_flight(&held_scope));
+        assert_eq!(queue.pending_events().count(), 1);
+        // Inspect the dispatch write itself, before any background sync can
+        // repair an incorrect handled list after held batches are requeued.
+        let saved = std::fs::read_to_string(&path).expect("read first dispatch snapshot");
+        assert!(
+            !saved.contains(&held_event.id.to_hex()),
+            "held work is still undispatched"
+        );
+        assert!(saved.contains(&runnable_event.id.to_hex()));
+        let mut reopened =
+            wake_ledger::WakeLedger::open(path, RELAY, &agent_hex, NOW + 1_000, NOW + 1_000);
+        assert!(reopened
+            .catch_up_since()
+            .is_some_and(|floor| floor <= NOW - 100));
+        assert_eq!(
+            reopened.admit(&held_event, NOW + 1_000),
+            wake_ledger::Admission::CaughtUp
+        );
+        assert_eq!(
+            reopened.admit(&runnable_event, NOW + 1_000),
+            wake_ledger::Admission::Duplicate
+        );
+        pool.join_set.abort_all();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
@@ -5039,14 +5145,25 @@ fn dispatch_pending(
         // the ledger cannot be saved nothing starts: the worker goes back, the
         // batch goes back to the queue, and the main loop retries after the
         // write backoff.
-        if !commit_to_wake_ledger(
+        // Busy-owner batches flushed earlier in this cycle are still pending,
+        // even though they are temporarily outside EventQueue. Include them in
+        // the snapshot now, before they are requeued at the end of dispatch.
+        if !commit_to_wake_ledger_with_pending(
             ledger.as_deref_mut(),
             batch
                 .events
                 .iter()
                 .chain(batch.cancelled_events.iter())
                 .map(|queued| &queued.event),
-            queue,
+            queue
+                .pending_events()
+                .chain(held.iter().flat_map(|held_batch| {
+                    held_batch
+                        .events
+                        .iter()
+                        .chain(held_batch.cancelled_events.iter())
+                        .map(|queued| &queued.event)
+                })),
         ) {
             pool.return_agent(agent);
             queue.requeue_preserve_timestamps(batch);
