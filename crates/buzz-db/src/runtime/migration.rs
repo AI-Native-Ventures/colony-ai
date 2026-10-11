@@ -715,13 +715,15 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 55);
+        assert_eq!(migrations.len(), 56);
         assert_eq!(migrations[53].version, 54);
         assert_eq!(migrations[54].version, 55);
         assert!(migrations[54]
             .sql
             .as_str()
             .contains("CREATE TABLE account_ai_sessions"));
+        assert_eq!(migrations[55].version, 56);
+        assert!(migrations[55].sql.as_str().contains("'sign_in'"));
         assert_eq!(migrations[0].version, 1);
         assert_eq!(&*migrations[0].description, "initial schema");
         assert!(migrations[0]
