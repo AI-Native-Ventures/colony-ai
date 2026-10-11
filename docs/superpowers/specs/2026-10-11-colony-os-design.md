@@ -45,6 +45,10 @@ The interface is as small as the job allows: Today, Conversations, Team (each em
 | 21 | Look | A fresh look, keeping the Colony name, the ant mark and Manrope. The September theme catalogue is dropped. |
 | 22 | Website address | A separate domain for owner sites, apart from colony.global. The name is checked and bought before launch. |
 | 23 | Signing installers | Not yet. Installers are unsigned at launch, with clear install help; a Mac updates by downloading the new version. |
+| 24 | Weekly budgets | Scout $2, Maya $3, Naledi $5, Sipho $3, Leo $4, Grace $2: up to $19 a week. Setup suggests the $50 pack. Replaced by measured numbers after the real-run gate. |
+| 25 | Credit rules | Credits never expire, no self-serve refunds, partners cost nothing extra. |
+| 26 | Keeping data | A website pauses 7 days after a failed hosting payment; a paused website is kept 90 days; a closed company's data is deleted after 30 days; a copy on request before closing, no download in the app. |
+| 27 | Owners' public websites | A small "Made with Colony" credit the owner can switch off once their own domain is connected, and an "AI-made image" caption on any AI-made image. |
 
 Not objected, so treated as decided: Today sits on top of the conversation list; customer messages reach Grace by forwarding or pasting; closing the window keeps the team working, and only Quit stops it; one computer runs the team; new hires come through Scout's cards, with no catalogue screen; partners see every conversation and desk; owners with Shopify or Wix get pasted-change drafts, and a Colony site is optional; self-hosting is hidden.
 
@@ -111,14 +115,9 @@ About 110 screens, cards and states, 16 banners and 22 flows, each with an ID, i
 | Engineer design (sections 1 and 2) | On hold; the role becomes the Website Builder |
 | Current desktop app (1.0.x) | Stays for existing users until the new app ships and the move step exists |
 
-## 9. Questions still open for the owner
+## 9. Owner answers on money, data and the website
 
-Each file in the screen pack ends with "Defaults in this file": choices made while writing that stand unless the owner changes them. These four need a real answer, because they are about money, data or the brand:
-
-1. **Default weekly budgets and the first pack.** Recommendation: Scout $2, Maya $3, Naledi $5, Sipho $3, Leo $4, Grace $2 (up to $19 a week), with the $50 pack recommended at setup. Replace these with measured numbers after the real-run gate.
-2. **Credit basics.** Recommendation: credits never expire, there are no self-serve refunds (24 September), and partners cost nothing extra.
-3. **Keeping data.** Recommendation: a 7-day grace period after a failed hosting payment before the site pauses; a paused site kept for 90 days; a closed company's data deleted after 30 days; no download of everything at launch (the Colony team sends a copy on request).
-4. **On owners' public websites.** Recommendation: a small "Made with Colony" credit that owners can switch off once their own domain is connected, and a visible "AI-made image" caption on any AI-made image.
+The four questions left open by the screen pack were answered on 11 October (decisions 24 to 27 in section 3), all as recommended. Each file in the screen pack ends with "Defaults in this file": smaller choices made while writing that stand unless the owner changes them.
 
 ## 10. Not at launch
 
@@ -147,6 +146,6 @@ After the owner approves this design, give Codex the folder `docs/superpowers/sp
 
 ## 13. Next steps
 
-1. The owner reviews this design and the screen pack page, and answers section 9.
+1. The owner reviews this design and the screen pack page.
 2. Codex starts the designs (section 12) while engine phase 0 runs, because phase 0 has no interface.
 3. The writing-plans step turns engine phases 0 and 1 into tasks with proof gates.

@@ -350,7 +350,7 @@ Keyboard notes: Enter sends and Shift+Enter adds a new line in every message box
 
 ## Defaults in this file
 
-Chosen while writing. They stand unless the owner changes them. The few that need a real answer are collected in the product design, section 9.
+Chosen while writing. They stand unless the owner changes them. Items marked "Decided by the owner" were answered on 11 October.
 
 1. **Voice notes without credits.** Decided as a technical call: voice notes are written down on the computer itself, so they cost nothing and always work (E-18 holds the proof gate).
 2. **"Where this stands" line.** Scout keeps a one-line status at the top of every conversation so you never have to scroll back. Recommendation: yes, it cuts reading.

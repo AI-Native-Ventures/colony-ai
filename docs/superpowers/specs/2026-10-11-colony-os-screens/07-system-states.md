@@ -486,7 +486,7 @@ The reason for the order: nothing else can be trusted until this computer and Co
 | Let an employee go (M-06) | owner, partner | "Let Naledi go?" | "Naledi stops now, and Naledi's routines stop. Drafts, posts and photos stay where they are. Scout can hire a new Social Media Manager when you want." | "Let Naledi go" | "Keep Naledi" |
 | Remove a partner (S-05) | owner | "Remove Kagiso from Lerato Designs?" | "Kagiso loses access right away and is signed out. Decisions Kagiso made keep Kagiso's name." | "Remove Kagiso" | "Keep Kagiso" |
 | Cancel an invite (S-05) | owner, partner | "Cancel the invite for sizwe@leratodesigns.co.za?" | "The invite link stops working. You can invite Sizwe again later." | "Cancel invite" | "Keep invite" |
-| Close the company (S-08) | owner | "Close Lerato Designs?" | The full list from S-08: the team stops and everything in Colony is deleted; partners lose access; the website goes offline and its payment stops; unused credits ($18.40) can't be refunded in the app; payment records are kept by law; this can't be undone. Then: "Type Lerato Designs to confirm." | "Close Lerato Designs" (works only after the name is typed) | "Keep my company" |
+| Close the company (S-08) | owner | "Close Lerato Designs?" | The full list from S-08: the team stops now and everything in Colony is deleted after 30 days; partners lose access; the website goes offline and its payment stops; unused credits ($18.40) can't be refunded in the app; payment records are kept by law; this can't be undone. Then: "Type Lerato Designs to confirm." | "Close Lerato Designs" (works only after the name is typed) | "Keep my company" |
 | Leave the company (S-08) | partner | "Leave Lerato Designs?" | "You lose access right away. Decisions you made keep your name. Lerato can invite you again." | "Leave Lerato Designs" | "Stay" |
 | Move the team (S-07, X-13, N-01) | owner, partner | "Move your team to this computer?" | "Your team stops on Lerato's MacBook Air and starts here. Keep this computer on and connected so everyone can work." On an own plan, also: "Connect your Claude plan here too, or your team uses credits." | "Move team here" | "Keep it there" |
 | Sign out on the team computer (S-08) | anyone signed in there | "Sign out and stop your team?" | "Your team stops on this computer until someone signs in here again or moves the team." | "Sign out and stop team" | "Stay signed in" |
@@ -724,7 +724,7 @@ The reason for the order: nothing else can be trusted until this computer and Co
 
 ## Defaults in this file
 
-Chosen while writing. They stand unless the owner changes them. The few that need a real answer are collected in the product design, section 9.
+Chosen while writing. They stand unless the owner changes them. Items marked "Decided by the owner" were answered on 11 October.
 
 1. **When are credits "low"?** Recommendation: when they will last less than 3 days at the last week's pace, or fall below $2. This adapts to the size of the team.
 2. **Should a required update block the app until it is updated?** Recommendation: yes. The old version can't work with Colony's service anyway, and the screen always offers a download.

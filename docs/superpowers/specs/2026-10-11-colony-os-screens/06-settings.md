@@ -102,7 +102,7 @@ These rules apply to every S entry.
   - **Auto top-up ran:** a history line "Auto top-up: $15" and an email to the owner (W-06).
   - **Auto top-up failed:** "Auto top-up didn't go through: your card was declined. Update your card or buy credits." Then X-04 or X-05 as the balance falls.
   - **Auto top-up monthly limit reached:** "Auto top-up has bought credits 4 times this month. Buy more yourself or raise the limit."
-  - **Hosting payment problem:** "Your website payment didn't go through on 1 November. Update your card by 8 November or your website pauses." (7 days of grace, default). After that, the website shows W-09.
+  - **Hosting payment problem:** "Your website payment didn't go through on 1 November. Update your card by 8 November or your website pauses." (7 days of grace, owner, 11 October). After that, the website shows W-09.
   - **Own plan in use:** a line above the balance: "Your team runs on your Claude plan. Credits pay for AI-made images."
   - **No payments yet:** "No payments yet."
   - **Partner view:** packs, auto top-up, hosting payment and cards are read-only with "Only Lerato can buy credits or change billing." Balance, this week and history stay visible.
@@ -383,13 +383,13 @@ These rules apply to every S entry.
   - Change theme or text size (self) -> applies at once.
   - Sign out (self) -> on the team computer, a warning first (X-16): the team stops on this computer unless it is moved. Then the sign-in screen (O-01).
   - Close the company (owner only) -> a strong confirmation (X-16) where the owner types the company name. The consequences are listed before the final step:
-    - All six employees stop, and everything in Colony is deleted: conversations, desks, drafts, documents and photos.
+    - All six employees stop now. Everything in Colony (conversations, desks, drafts, documents and photos) is deleted 30 days after closing.
     - Partners lose access at once and get an email (W-06).
     - The Colony website goes offline and its monthly payment stops. The owner's own domain stays theirs.
     - Unused credits ($18.40) can't be refunded in the app.
     - Payment records are kept because the law requires it.
     - The owner's Colony account closes too, unless they belong to another company (default).
-    - This can't be undone. "Want a copy of your things first? Ask the Colony team before you close (Help and updates, S-09)." (default, see question 5)
+    - This can't be undone. "Want a copy of your things first? Ask the Colony team before you close (Help and updates, S-09)." (owner, 11 October)
   - Leave the company (partner) -> confirmation (X-16). The partner loses access at once; their past decisions keep their name. Then the sign-in screen (O-01) with "You left Lerato Designs."
   - Keyboard: every field and action is reachable with Tab. The close confirmation needs the typed company name before its final action works.
 - **States:**
@@ -402,7 +402,7 @@ These rules apply to every S entry.
 - **Words:**
   - "Kagiso Dlamini, partner. Signs in with Google."
   - "Signing out here stops your team on this computer. Move the team first, or it waits until someone signs in here again."
-  - "Close Lerato Designs? Your team stops and everything in Colony is deleted: conversations, desks, drafts, documents and photos. This can't be undone."
+  - "Close Lerato Designs? Your team stops now, and everything in Colony is deleted after 30 days: conversations, desks, drafts, documents and photos. This can't be undone."
   - "Unused credits ($18.40) can't be refunded in the app."
   - "Type Lerato Designs to confirm."
   - "Leave Lerato Designs? You'll lose access right away. Decisions you made keep your name."
@@ -459,10 +459,10 @@ These rules apply to every S entry.
 
 ## Defaults in this file
 
-Chosen while writing. They stand unless the owner changes them. The few that need a real answer are collected in the product design, section 9.
+Chosen while writing. They stand unless the owner changes them. Items marked "Decided by the owner" were answered on 11 October.
 
 1. **When your own plan reaches its limit, should the team switch to credits on its own?** Recommendation: off by default. The limit banner (X-06) offers "Use credits until it resets" as one tap, so spending only happens when someone chooses it.
 2. **Can partners change how the team is powered (own plan or credits)?** Recommendation: owner only, because it changes what the company spends.
 3. **Should "Decisions waiting" and "Urgent problems" notifications always stay on?** Recommendation: yes. Quiet hours hold decisions overnight; urgent problems come through unless the person turns that off.
 4. **Should auto top-up stop after 4 purchases in a month?** Recommendation: yes, with an email after each automatic purchase, so a runaway month can't drain the card.
-5. **When the owner closes the company, is everything deleted at once (except payment records), with no download in the app?** Recommendation: yes for launch. The close confirmation says the Colony team can send a copy if asked before closing.
+5. **Closing the company.** Decided by the owner on 11 October: the company's data is deleted 30 days after closing (payment records are kept as the law requires); there is no download in the app at launch, and the Colony team sends a copy if asked before closing.

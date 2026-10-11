@@ -141,16 +141,16 @@ Shared rules for every page and email in this file:
   1. **How you pay**, in one line: "Pay as you go with credits, or use your own ChatGPT or Claude plan."
   2. **Credit packs** in US dollars: $5, $15, $50 and $120. Each pack adds exactly that amount of credits. Your team's work takes credits as it happens, and the app shows what each employee used, every week.
   3. **A typical week.** "A starter team of six usually uses about $X to $Y a week." The numbers come from real starter teams measured before launch (the real-run gate). Until they are measured, this block is hidden: never guess. Below it, what makes a week cost more or less: more posts and images, more lead hunting, more website changes.
-  4. **What uses credits:** your employees' work (thinking, writing, research) and AI-made images. Voice notes are free: they are written down on your computer. Partners cost nothing extra (default).
+  4. **What uses credits:** your employees' work (thinking, writing, research) and AI-made images. Voice notes are free: they are written down on your computer. Partners cost nothing extra.
   5. **Using your own plan.** If you already pay for ChatGPT or Claude, connect your plan and your team's work runs on it instead of credits. Your plan's limits still apply: when you reach them, your team waits until the plan resets, or you can switch to credits. AI-made images still use credits (default).
   6. **Website hosting.** $10 a month per website, paid monthly by card. Includes your Colony web address (for example leratodesigns.colony.site, on a separate domain from colony.global; the name is confirmed before launch), connecting your own domain (bought separately from any domain seller), visit counts and a contact form. Cancel anytime: the site stays up until the end of the month you paid for (default).
   7. **No free trial.** "You start with credits from $5, or by connecting your plan."
   8. **When credits run out.** "Your team pauses. Nothing is lost. Add credits and they carry on." Optional automatic top-up.
   9. **Questions:**
-     - Do credits expire? (No (default).)
+     - Do credits expire? (No.)
      - Can I get a refund? (No self-serve refunds. If something went wrong, contact us.)
      - Which currency? (US dollars. Your bank may add a currency conversion fee.)
-     - Do partners cost extra? (No (default).)
+     - Do partners cost extra? (No.)
      - Can I limit what an employee spends? (Weekly budgets: include only if enforced at launch, E-15.)
 - **Actions:** Download (anyone) -> W-02. Read the terms (anyone) -> W-04. Contact (anyone) -> email to support. Questions expand and collapse (Enter or Space).
 - **States:** normal; typical week not yet measured (block 3 hidden); phone width.
@@ -179,10 +179,10 @@ Shared rules for every page and email in this file:
     4. AI providers: credits pay only for work done inside Colony. They are not access to AI that can be used elsewhere, and they can't be resold. Everyone must follow the AI providers' terms and each model's terms (the flow-down Colony's AI provider requires). Colony may pause an account that breaks them.
     5. Own plan: an owner who connects a ChatGPT or Claude plan stays bound by their own agreement with that provider, including its limits.
     6. AI-made images: labelled as AI-made, never real product photos, may resemble real things. The owner decides whether and where to use them and follows any disclosure rules.
-    7. Credits: prices, what uses credits, expiry (pending: none), no self-serve refunds, automatic top-up permission and how to stop it.
+    7. Credits: prices, what uses credits, expiry (none), no self-serve refunds, automatic top-up permission and how to stop it.
     8. Website hosting: monthly payment, what happens when a payment fails (grace period, then a paused site), cancellation, the owner's responsibility for the domain and the site's content, the "Made with Colony" credit.
     9. Availability: the team runs on the owner's computer and pauses when it is off or asleep. Colony does not promise that work happens while it is off.
-    10. Closing the company: what stops, what is deleted and when, and that unused credits are not refunded (pending).
+    10. Closing the company: what stops, what is deleted and when, and that unused credits are not refunded.
     11. Limits of liability, changes to the terms, governing law (default: South Africa), contact details.
   - **Privacy must cover:**
     1. What Colony collects: account details (name, email, Google sign-in details), the business profile, conversations, cards and documents, photos and files, voice notes and their transcripts, customer messages the owner forwards or pastes, website contact form messages, website visit counts, and payment status. Card details stay with Stripe.
@@ -191,7 +191,7 @@ Shared rules for every page and email in this file:
     4. Where data is stored: on Colony's servers (country to be confirmed) and on the computer that runs the team; how it is protected.
     5. Customers' personal information: the owner is responsible for it (the "responsible party" under South Africa's POPIA, the "controller" under the EU's GDPR) and Colony processes it on the owner's behalf, only to do the work asked.
     6. Partners see everything in the company.
-    7. How long data is kept, and what happens when someone leaves or the company closes (pending retention period).
+    7. How long data is kept, and what happens when someone leaves or the company closes (a closed company's data is deleted after 30 days; a paused website is kept for 90 days).
     8. People's rights (access, correction, deletion, objection) and how to use them.
     9. Cookies: Colony's site and owners' websites use no tracking cookies (default).
     10. Children: not for anyone under 18. Contact and complaints, including South Africa's Information Regulator.
@@ -202,7 +202,7 @@ Shared rules for every page and email in this file:
   - "We never sell your information." (default)
   - "Your customers' details are yours. We only use them to do the work you ask for."
   - "Credits pay for work inside Colony. They can't be used anywhere else."
-  - "If you close your company, we delete everything after 30 days." (pending)
+  - "If you close your company, we delete everything after 30 days."
 - **Data:** static pages (E-30). The version of the terms each person accepted is recorded at sign-up (default; with E-02).
 - **Not here:** the legal text itself (a lawyer writes it), a cookie banner, marketing copy.
 
@@ -251,9 +251,9 @@ Rules for every email: sent from "Colony" at a colony.global address (default); 
 | Credits low | Owner | The balance drops below about 3 days of the team's usual use (X-04) and automatic top-up is off | "Your team has about 3 days of credits left" | "Lerato Designs has $4.20 of credits left. At this week's pace that's about 3 days of work. Add credits to keep your team going." | "Add credits" -> Colony at S-02 |
 | Credits low: top-up failed (variant) | Owner | An automatic top-up is declined | "We couldn't top up your credits" | "Your card was declined, so we couldn't add credits automatically. Lerato Designs has $2.10 left. Update your card to keep your team going." | "Update card" -> W-05 |
 | Credits out | Owner | The balance reaches zero (X-05) | "Your team has paused: credits ran out" | "Lerato Designs ran out of credits at 14:20, so your team has paused. Nothing is lost. Add credits and they carry on where they stopped." | "Add credits" -> Colony at S-02 |
-| Hosting payment failed | Owner | A monthly hosting payment fails; reminders on day 3 and day 6 (default) | "We couldn't take your website payment" | "The $10 payment for leratodesigns.co.za didn't go through. Your website stays up for 7 more days (default). Update your card to keep it online." | "Update card" -> W-05 |
-| Website paused | Owner | The grace period ends unpaid (W-09) | "Your website is paused" | "We paused leratodesigns.co.za because the hosting payment didn't go through. Visitors now see a short 'taking a break' page. Pay and Leo puts it straight back, exactly as it was. We keep your site for 90 days (default)." | "Bring my website back" -> W-05 |
-| Company closed | Owner | The owner closes the company (F-22) | "Lerato Designs is closed" | "You closed Lerato Designs on 11 October. Your team has stopped, your website is offline and partners no longer have access. We delete everything on 10 November (default: 30 days). If this wasn't you, contact us now." | "Contact us" |
+| Hosting payment failed | Owner | A monthly hosting payment fails; reminders on day 3 and day 6 (default) | "We couldn't take your website payment" | "The $10 payment for leratodesigns.co.za didn't go through. Your website stays up for 7 more days. Update your card to keep it online." | "Update card" -> W-05 |
+| Website paused | Owner | The grace period ends unpaid (W-09) | "Your website is paused" | "We paused leratodesigns.co.za because the hosting payment didn't go through. Visitors now see a short 'taking a break' page. Pay and Leo puts it straight back, exactly as it was. We keep your site for 90 days." | "Bring my website back" -> W-05 |
+| Company closed | Owner | The owner closes the company (F-22) | "Lerato Designs is closed" | "You closed Lerato Designs on 11 October. Your team has stopped, your website is offline and partners no longer have access. We delete everything on 10 November, 30 days from now. If this wasn't you, contact us now." | "Contact us" |
 | Company closed: partner (variant) | Each partner | Same moment | "Lerato Designs is closed" | "Lerato closed Lerato Designs on Colony, so you no longer have access to it." | "Contact us" |
 
 - **Who:** owners, partners and invited people, as listed per email.
@@ -318,11 +318,11 @@ Rules for every email: sent from "Colony" at a colony.global address (default); 
   4. **Contact:** a form (name, email or phone, message, and what it's about: an order, a question, something else (default)), plus the WhatsApp, Instagram and email links the owner chose to show. Optional business hours and pop-up locations.
   5. **FAQ and policies:** delivery, returns, sizes, payment. The text comes from Grace's knowledge (D-06) and always matches it.
   6. **Campaign pages:** made by Leo for Maya's campaigns ("Spring linen launch: 1 November"), with the campaign's products, date, offer and buy links. Taken down when the campaign ends.
-  7. **On every page:** contact and social links, links to the policies, and a small "Made with Colony" credit (default).
+  7. **On every page:** contact and social links, links to the policies, and a small "Made with Colony" credit, which the owner can switch off once their own domain is connected (owner, 11 October).
   8. **Form sent:** "Thanks. Lerato Designs will get back to you soon."
   9. **Page not found:** one friendly line and a link to the home page.
   - **Buy link types** (the owner picks per product in D-05 (default)): the owner's own payment link from any provider; the product's page on a shop they already use; a WhatsApp chat with a ready-made message ("Hi, I'd like the Linen Wrap Dress in M"); the order form, which reaches Grace as an order request.
-  - **Photos:** product photos are always the owner's real photos. AI-made images may appear only as backgrounds or mood images, never as product photos, and each carries a small "AI-made image" caption (default).
+  - **Photos:** product photos are always the owner's real photos. AI-made images may appear only as backgrounds or mood images, never as product photos, and each carries a small "AI-made image" caption (owner, 11 October).
   - **Sharing:** every page has a title, a description and a sharing picture, so links look good in WhatsApp, Instagram and search results.
   - Prices on the site are in the owner's own currency (rand for the sample company), not in credits.
 - **Actions** (visitors): browse; open a buy link (leaves the site); send the contact or order form; open WhatsApp, Instagram or email. Everything works by keyboard and screen reader, on phones and computers, and loads quickly on slow mobile data.
@@ -367,10 +367,10 @@ Rules for every email: sent from "Colony" at a colony.global address (default); 
 
 ## Defaults in this file
 
-Chosen while writing. They stand unless the owner changes them. The few that need a real answer are collected in the product design, section 9.
+Chosen while writing. They stand unless the owner changes them. Items marked "Decided by the owner" were answered on 11 October.
 
 1. **The typical week on the pricing page.** Recommendation: measure real starter teams in the real-run gate, publish a range ("about $X to $Y a week"), refresh it monthly, and show no number until it has been measured.
 2. **Owners who use their own ChatGPT or Claude plan.** Recommendation: they can set up and run without credits; the first time they want AI-made images, Colony asks them to add credits. Voice notes are free.
-3. **Credit basics.** Recommendation: credits never expire, no self-serve refunds (as decided on 24 September), and partners cost nothing extra.
-4. **Grace periods and keeping data.** Recommendation: a 7-day grace period after a failed hosting payment before the site pauses; a paused site kept for 90 days; a closed company's data deleted after 30 days.
-5. **Extras on the owner's website.** Recommendation: a small "Made with Colony" credit, which the owner can switch off once their own domain is connected; and a visible "AI-made image" caption on any AI-made image used on the public site.
+3. **Credit basics.** Decided by the owner on 11 October: credits never expire, no self-serve refunds (as decided on 24 September), and partners cost nothing extra.
+4. **Grace periods and keeping data.** Decided by the owner on 11 October: a 7-day grace period after a failed hosting payment before the site pauses; a paused site kept for 90 days; a closed company's data deleted after 30 days.
+5. **Extras on the owner's website.** Decided by the owner on 11 October: a small "Made with Colony" credit, which the owner can switch off once their own domain is connected; and a visible "AI-made image" caption on any AI-made image used on the public site.

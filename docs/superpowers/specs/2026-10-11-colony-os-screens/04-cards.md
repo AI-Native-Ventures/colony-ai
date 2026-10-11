@@ -565,7 +565,7 @@ C-00 defines what every card shares. Each card entry after it lists what is spec
 
 ## Defaults in this file
 
-Chosen while writing. They stand unless the owner changes them. The few that need a real answer are collected in the product design, section 9.
+Chosen while writing. They stand unless the owner changes them. Items marked "Decided by the owner" were answered on 11 October.
 
 1. **Partners hiring.** Your rule "like you, minus billing" means partners can hire. Today the server lets only the owner give the final OK on a hire. Recommendation: let partners hire, and change the server.
 2. **Undo after deciding.** A 10-second Undo after Approve or Decline (G-06), then the decision is final.

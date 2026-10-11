@@ -545,7 +545,7 @@ Flows F-01 to F-08 also become the clickable prototype Codex delivers (00-index 
 
 ## Defaults in this file
 
-Chosen while writing. They stand unless the owner changes them. The few that need a real answer are collected in the product design, section 9.
+Chosen while writing. They stand unless the owner changes them. Items marked "Decided by the owner" were answered on 11 October.
 
 1. **Who may move the team to another computer?** Recommendation: the owner and partners (this follows "like you, minus billing"), with a notice to the owner whenever a partner moves it.
 2. **People in more than one company.** A company switcher shows only for them (G-01, default).

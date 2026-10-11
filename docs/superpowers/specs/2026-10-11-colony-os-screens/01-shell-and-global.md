@@ -364,7 +364,7 @@ Anything marked "(default)" was not decided by the owner. It is a sensible start
 
 ## Defaults in this file
 
-Chosen while writing. They stand unless the owner changes them. The few that need a real answer are collected in the product design, section 9.
+Chosen while writing. They stand unless the owner changes them. Items marked "Decided by the owner" were answered on 11 October.
 
 1. **Undo before an approval takes effect.** Approvals and declines are held for 10 seconds with Undo, then sent (G-06). Recommendation: keep it; it protects against misclicks at a cost of 10 seconds per decision.
 2. **People in more than one company.** A person who belongs to two companies (for example an owner with two businesses) gets a "Switch company" action (G-01). Recommendation: yes, shown only to people with more than one company.

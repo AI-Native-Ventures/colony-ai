@@ -734,7 +734,7 @@ Employees also work without a routine: when Scout or their manager asks, when a 
 
 ## Defaults in this file
 
-Chosen while writing. They stand unless the owner changes them. The few that need a real answer are collected in the product design, section 9.
+Chosen while writing. They stand unless the owner changes them. Items marked "Decided by the owner" were answered on 11 October.
 
 1. **Can partners let an employee go?** Recommendation: yes, with the confirmation in M-06. Partners can already approve hires, and someone let go can be hired again through Scout.
 2. **Can partners change an employee's weekly budget?** Recommendation: yes. It only spends credits the owner already bought; buying credits stays owner only.

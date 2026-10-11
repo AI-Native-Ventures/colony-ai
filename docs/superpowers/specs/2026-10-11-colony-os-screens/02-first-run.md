@@ -629,7 +629,7 @@ The questions:
 
 ## Defaults in this file
 
-Chosen while writing. They stand unless the owner changes them. The few that need a real answer are collected in the product design, section 9.
+Chosen while writing. They stand unless the owner changes them. Items marked "Decided by the owner" were answered on 11 October.
 
-1. **Default weekly budgets and the first pack.** Recommendation: Scout $2, Maya $3, Naledi $5 (AI-made images), Sipho $3, Leo $4, Grace $2, so up to $19 a week; recommend the $50 pack first (at least 2 weeks), with $15 as the smaller choice.
+1. **Default weekly budgets and the first pack.** Decided by the owner on 11 October: Scout $2, Maya $3, Naledi $5 (AI-made images), Sipho $3, Leo $4, Grace $2, so up to $19 a week; recommend the $50 pack first (at least 2 weeks), with $15 as the smaller choice.
 2. **Partners moving the team to their own computer.** Recommendation: allowed after the confirmation, as long as the team can be powered there by the company's existing credits or the partner's own plan.

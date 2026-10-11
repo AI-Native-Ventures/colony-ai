@@ -79,7 +79,7 @@ These were open when the pack was started and are now decided.
 | 2 | Web address for Colony-hosted websites | A separate domain from colony.global, for example leratodesigns.colony.site. The domain name is checked and bought before launch. | D-05, W-03, W-08, W-09 |
 | 3 | Paying for signed installers | Not yet. Installers are unsigned at launch: W-02 shows the extra install steps, and a Mac updates by downloading the new version (X-11, G-04l). | W-02, X-11, G-02, G-04, O-01 |
 
-The questions still open for the owner are collected in the product design, section 9.
+The owner's answers on budgets, credits, keeping data and owners' websites are in the product design, section 3 (decisions 24 to 27).
 
 ## 7. Sample company (use it in every design)
 
