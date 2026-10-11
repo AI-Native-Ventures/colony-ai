@@ -91,6 +91,17 @@ pub(super) async fn handle(
             None
         }
         HireActionKind::Complete => {
+            // A committed completion has already advanced the head past approval.
+            // Recognize its exact replay before checking that approval again.
+            if state
+                .db
+                .get_event_by_id_for_event_write(community_id, &event.id.to_bytes())
+                .await
+                .map_err(internal)?
+                .is_some()
+            {
+                return Ok(duplicate_result(&event));
+            }
             let stored = current_hire_head(state, community_id, &d_tag)
                 .await?
                 .ok_or_else(|| conflict("hire does not exist"))?;
