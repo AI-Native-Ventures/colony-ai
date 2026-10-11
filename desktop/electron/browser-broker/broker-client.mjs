@@ -47,6 +47,33 @@ export function createBrokerClient({
   let reconnectTimer = null;
   let helloTimer = null;
   const pending = new Map();
+  const readyWaiters = new Set();
+
+  function settleReady(error) {
+    for (const waiter of readyWaiters) {
+      clearTimer(waiter.timer);
+      if (error) waiter.reject(error);
+      else waiter.resolve();
+    }
+    readyWaiters.clear();
+  }
+
+  function waitForReady() {
+    if (ready) return Promise.resolve();
+    if (closed || terminal || !started)
+      return Promise.reject(new Error("Browser channel is unavailable"));
+    if (readyWaiters.size >= maxPending)
+      return Promise.reject(new Error("Browser discovery resource limit"));
+    return new Promise((resolve, reject) => {
+      const waiter = { resolve, reject, timer: null };
+      waiter.timer = setTimer(() => {
+        readyWaiters.delete(waiter);
+        reject(new Error("Browser channel hello timed out"));
+      }, helloTimeoutMs);
+      waiter.timer.unref?.();
+      readyWaiters.add(waiter);
+    });
+  }
 
   function failAll(code) {
     for (const [id, entry] of pending) {
@@ -60,6 +87,7 @@ export function createBrokerClient({
     if (closed || terminal || reconnectTimer) return;
     if (reconnectAttempts >= maxReconnectAttempts) {
       terminal = true;
+      settleReady(new Error("Browser channel reconnect budget exhausted"));
       onToolsChanged();
       return;
     }
@@ -156,6 +184,7 @@ export function createBrokerClient({
               clearTimer(helloTimer);
               helloTimer = null;
               backoff = BACKOFF_START_MS;
+              settleReady();
               onToolsChanged();
             }
           } catch {
@@ -206,8 +235,14 @@ export function createBrokerClient({
     },
     isReady: () => ready,
     listTools: async () => {
+      // An intentionally unconfigured server has no browser capability.
+      // A configured channel must finish hello before advertising its list.
+      if (!socketPath || !secret || !agent) return [];
+      await waitForReady();
       const reply = await request("tools");
-      return reply.ok && Array.isArray(reply.tools) ? reply.tools : [];
+      if (!reply.ok || !Array.isArray(reply.tools))
+        throw new Error("Browser tool discovery failed");
+      return reply.tools;
     },
     callTool: async (tool, args) => {
       const reply = await request("call", { tool, args });
@@ -230,6 +265,7 @@ export function createBrokerClient({
       clearTimer(reconnectTimer);
       clearTimer(helloTimer);
       failAll("connection_lost");
+      settleReady(new Error("Browser channel closed"));
       socket?.destroy();
       socket = null;
       buffer = "";

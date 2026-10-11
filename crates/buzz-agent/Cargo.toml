@@ -24,6 +24,11 @@ path = "src/main.rs"
 name = "fake-mcp"
 path = "tests/bin/fake_mcp.rs"
 
+# Test-only server for notification-driven discovery regressions.
+[[bin]]
+name = "fake-mcp-discovery"
+path = "tests/bin/fake_mcp_discovery.rs"
+
 # Test-only lock holder: a real second process that takes the coordinator's
 # cross-process advisory lock, so the auth tests can prove genuine
 # inter-process single-flight and crash-release rather than same-process

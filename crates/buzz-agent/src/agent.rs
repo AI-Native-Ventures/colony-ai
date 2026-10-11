@@ -397,6 +397,11 @@ impl RunCtx<'_> {
                 }
             }
 
+            tokio::select! {
+                biased;
+                _ = self.cancel.changed() => return Ok(StopReason::Cancelled),
+                result = self.mcp.refresh_tools() => result?,
+            }
             let mut tools = self.mcp.tools();
             // Inject the built-in load_skill tool when skills are available.
             if !self.skills.is_empty() {
