@@ -324,6 +324,67 @@ mod tests {
     }
 
     #[test]
+    fn each_fact_limit_accepts_its_boundary_and_rejects_only_its_overflow() {
+        use serde_json::json;
+
+        // Multibyte text distinguishes character limits from byte limits.
+        for (field, boundary, overflow) in [
+            ("title", json!("é".repeat(180)), json!("é".repeat(181))),
+            ("job", json!("é".repeat(4000)), json!("é".repeat(4001))),
+            ("owns", json!("é".repeat(500)), json!("é".repeat(501))),
+            (
+                "managerName",
+                json!("é".repeat(180)),
+                json!("é".repeat(181)),
+            ),
+            (
+                "askBefore",
+                json!(["é".repeat(120)]),
+                json!(["é".repeat(121)]),
+            ),
+            ("askBefore", json!(vec!["x"; 16]), json!(vec!["x"; 17])),
+            (
+                "onHireSources",
+                json!(["é".repeat(200)]),
+                json!(["é".repeat(201)]),
+            ),
+            ("onHireSources", json!(vec!["x"; 8]), json!(vec!["x"; 9])),
+        ] {
+            let mut role = json!({"title": "T", "job": "J"});
+            role[field] = boundary;
+            let raw = role.to_string();
+            assert!(
+                raw.len() < 32 * 1024,
+                "boundary must fit the raw size limit"
+            );
+            assert!(context(&raw).is_ok(), "rejected boundary for {field}");
+
+            role[field] = overflow;
+            let raw = role.to_string();
+            assert!(
+                raw.len() < 32 * 1024,
+                "overflow must fit the raw size limit"
+            );
+            assert!(context(&raw).is_err(), "accepted overflow for {field}");
+        }
+    }
+
+    #[test]
+    fn raw_size_limit_is_independent_of_recognized_fact_limits() {
+        let mut role = serde_json::json!({"title": "T", "job": "J", "ignored": ""});
+        let padding_len = 32 * 1024 - role.to_string().len();
+        role["ignored"] = serde_json::json!("x".repeat(padding_len));
+        let boundary = role.to_string();
+        assert_eq!(boundary.len(), 32 * 1024);
+        assert!(context(&boundary).is_ok(), "raw size boundary is valid");
+
+        role["ignored"] = serde_json::json!("x".repeat(padding_len + 1));
+        let overflow = role.to_string();
+        assert_eq!(overflow.len(), 32 * 1024 + 1);
+        assert!(context(&overflow).is_err(), "raw size overflow is invalid");
+    }
+
+    #[test]
     fn append_adds_the_block_only_when_supplied() {
         assert_eq!(
             append(Some("You are Naledi.".into()), None).expect("no role context"),
