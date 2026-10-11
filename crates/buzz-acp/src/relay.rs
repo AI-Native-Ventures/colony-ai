@@ -55,8 +55,10 @@ const WS_SEND_TIMEOUT_SECS: u64 = 10;
 /// The stability block resets `BgState::backoff_step` to 0 here so the next
 /// drop after a long healthy run retries at the short end of the ladder again.
 const STABLE_CONNECTION_SECS: u64 = 60;
-/// Seconds subtracted from `since` on resubscribe to tolerate clock skew.
-const SINCE_SKEW_SECS: u64 = 5;
+/// Seconds subtracted from `since` on every subscribe that carries a replay
+/// floor, to tolerate clock skew. The wake ledger relies on it: an id whose
+/// `created_at` is at or after `floor - SINCE_SKEW_SECS` can be replayed.
+pub(crate) const SINCE_SKEW_SECS: u64 = 5;
 /// Timeout for the NIP-42 auth handshake steps.
 ///
 /// Raised from 5s to 20s (≈2 RTTs at the observed 10s max round-trip on degraded
@@ -5459,6 +5461,50 @@ mod tests {
             state.channel_since(&channel_id),
             Some(membership_ts),
             "channel_since should use the dynamic replay floor until an event is seen"
+        );
+    }
+
+    #[tokio::test]
+    async fn first_subscribe_replays_from_a_floor_older_than_the_startup_watermark() {
+        let (mut client, mut server) = test_ws_pair().await;
+        let mut state = BgState::new();
+        state.startup_watermark = Some(10_000);
+        let caught_up = Uuid::new_v4();
+        let plain = Uuid::new_v4();
+        for (channel_id, replay_since) in [(caught_up, Some(4_000)), (plain, None)] {
+            assert!(
+                execute_connected_command(
+                    &mut client,
+                    &mut state,
+                    "agent-pubkey",
+                    RelayCommand::Subscribe {
+                        channel_id,
+                        filter: test_channel_filter(),
+                        replay_since,
+                    }
+                )
+                .await
+            );
+        }
+        let first = next_test_frame(&mut server).await;
+        assert_eq!(first[0], "REQ");
+        assert_eq!(first[1], channel_sub_id(caught_up));
+        assert_eq!(
+            first[2]["since"],
+            json!(4_000 - SINCE_SKEW_SECS),
+            "a restart floor older than the watermark is where the first REQ starts"
+        );
+        let second = next_test_frame(&mut server).await;
+        assert_eq!(second[1], channel_sub_id(plain));
+        assert_eq!(
+            second[2]["since"],
+            json!(10_000 - SINCE_SKEW_SECS),
+            "without a floor the first REQ starts at the startup watermark"
+        );
+        assert_eq!(
+            state.channel_since(&caught_up),
+            Some(4_000),
+            "a reconnect before any event keeps the restart floor"
         );
     }
 
