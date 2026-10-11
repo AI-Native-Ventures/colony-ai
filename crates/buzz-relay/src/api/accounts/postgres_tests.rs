@@ -1868,3 +1868,133 @@ async fn email_code_routes_reject_bad_input_and_respect_the_email_limit() {
     assert_eq!(limited_status, StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(limited_body["error"], "rate_limited");
 }
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn google_sign_in_records_terms_and_drops_a_password_nobody_proved() {
+    let (jwks_url, server) = fake_google_jwks().await;
+    let (state, pool, host) =
+        test_state(vec![TEST_GOOGLE_AUDIENCE.to_owned()], Some(jwks_url)).await;
+    let ip = unique_test_ip();
+
+    let squatted = format!("prehijack-{}@example.test", Uuid::new_v4().simple());
+    let squatter_password = "squatter-passphrase";
+    let (signup_status, _) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/signup",
+            &host,
+            ip,
+            json!({ "email": squatted, "password": squatter_password }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(signup_status, StatusCode::ACCEPTED);
+    let (google_status, google_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/google",
+            &host,
+            ip,
+            json!({
+                "id_token": google_token(&squatted, &format!("sub-{}", Uuid::new_v4().simple())),
+                "termsVersion": "2026-10-11",
+            }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(google_status, StatusCode::OK);
+    assert_eq!(google_body["account"]["has_password"], false);
+    let (squatter_status, _) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/signin",
+            &host,
+            ip,
+            json!({ "email": squatted, "password": squatter_password }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(
+        squatter_status,
+        StatusCode::UNAUTHORIZED,
+        "the squatter's password must not sign in after the owner proved the email"
+    );
+    let terms_version: Option<String> =
+        sqlx::query_scalar("SELECT terms_version FROM accounts WHERE email = $1")
+            .bind(&squatted)
+            .fetch_one(&pool)
+            .await
+            .expect("read Google terms");
+    assert_eq!(terms_version.as_deref(), Some("2026-10-11"));
+
+    let owned = format!("linked-{}@example.test", Uuid::new_v4().simple());
+    let (owner_signup, _) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/signup",
+            &host,
+            ip,
+            json!({ "email": owned, "password": "owner-passphrase" }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(owner_signup, StatusCode::ACCEPTED);
+    deliver_pending_mail(&state).await;
+    let verification_code = test_mail_code(&pool, &owned, "verify_email").await;
+    let (verify_status, _) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/verify",
+            &host,
+            ip,
+            json!({ "email": owned, "code": verification_code }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(verify_status, StatusCode::OK);
+    let (linked_status, linked_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/google",
+            &host,
+            ip,
+            json!({ "id_token": google_token(&owned, &format!("sub-{}", Uuid::new_v4().simple())) }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(linked_status, StatusCode::OK);
+    assert_eq!(
+        linked_body["account"]["has_password"], true,
+        "a password proven by its own email verification stays"
+    );
+    let owner_terms: Option<String> =
+        sqlx::query_scalar("SELECT terms_version FROM accounts WHERE email = $1")
+            .bind(&owned)
+            .fetch_one(&pool)
+            .await
+            .expect("read owner terms");
+    assert_eq!(
+        owner_terms, None,
+        "no terms version is recorded when none was sent"
+    );
+    server.abort();
+}

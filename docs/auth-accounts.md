@@ -75,7 +75,7 @@ rate-limited enumeration trade-off.
 | `POST /api/accounts/code/verify` | `{email, code, termsVersion, displayName?}` | `200` session payload plus `created` (true on the first verified sign-in); records `termsVersion` and its time; drops a password set before the email was proven; `400 invalid_code` (with `attempts_left` for a wrong code), `410 code_expired`, `429 too_many_attempts` once five wrong codes burn it |
 | `POST /api/accounts/resend-code` | `{email, purpose:"verify"\|"reset"}` | `202 {status:"verification_sent", retry_after_secs:30}`; `429 resend_cooldown` while the 30-second cooldown is active |
 | `POST /api/accounts/signin` | `{email, password}` | `200` session payload; `403 email_unverified` (a new code is sent) |
-| `POST /api/accounts/google` | `{id_token}` | `200` session payload; creates the account on first use (email taken from the verified Google token, marked verified); links to an existing account with the same verified email |
+| `POST /api/accounts/google` | `{id_token, termsVersion?}` | `200` session payload; creates the account on first use (email taken from the verified Google token, marked verified); links to an existing account with the same verified email, dropping a password that was set before that email was ever verified; records `termsVersion` and its time when sent |
 | `POST /api/accounts/reset/request` | `{email}` | `202 {status:"verification_sent", retry_after_secs:30}` always; emails a reset code if the account exists |
 | `POST /api/accounts/reset/check` | `{email, code}` | `200 {status:"code_valid"}`; validates without consuming the code |
 | `POST /api/accounts/reset/confirm` | `{email, code, new_password}` | `200` session payload (same key as before: history preserved) |
