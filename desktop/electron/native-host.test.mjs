@@ -212,7 +212,7 @@ const ambientBrowser = {
 };
 
 test("native launch removes ambient browser authority when disabled or missing", (t) => {
-  for (const flag of [undefined, "0", "true", "01", "1 "]) {
+  for (const flag of ["0", "true", "01", "1 ", ""]) {
     const env = { ...ambientBrowser, COLONY_BROWSER_AGENT: flag };
     assert.deepEqual(launchFixture(t, env, browserLaunch), {
       PATH: "/fixture/bin",
@@ -226,7 +226,7 @@ test("native launch removes ambient browser authority when disabled or missing",
     });
 });
 
-test("native launch forwards only generated live-host fields with exact opt-in", (t) => {
+test("native launch forwards only generated live-host fields when enabled", (t) => {
   const launched = launchFixture(t, ambientBrowser, browserLaunch);
   const { COLONY_BROWSER_BROKER_SECRET: _omitted, ...generated } =
     browserLaunch.env;
@@ -432,4 +432,21 @@ test("private request and response frames have a smaller strict bound", async (t
     payload: { value: "x".repeat(64 * 1024) },
   });
   assert.equal(host.ended, true);
+});
+
+test("default-on native launch adopts the live main host without an ambient flag", (t) => {
+  const env = { ...ambientBrowser };
+  delete env.COLONY_BROWSER_AGENT;
+  const launched = launchFixture(t, env, browserLaunch);
+  assert.equal(launched.COLONY_BROWSER_AGENT, "1");
+  assert.equal(
+    launched.COLONY_BROWSER_BROKER_MASTER,
+    browserLaunch.env.COLONY_BROWSER_BROKER_MASTER,
+  );
+  assert.equal(launched.COLONY_BROWSER_AGENT_ID, undefined);
+  assert.equal(launched.COLONY_BROWSER_BROKER_SECRET, undefined);
+  assert.deepEqual(launchFixture(t, env, { enabled: false }), {
+    PATH: "/fixture/bin",
+    COLONY_ELECTRON_HOST: "1",
+  });
 });
