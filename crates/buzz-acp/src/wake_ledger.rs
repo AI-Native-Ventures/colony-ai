@@ -3,10 +3,13 @@
 //! Every run used to subscribe from a startup watermark close to process
 //! start, so a mention or routine wake sent while the computer slept or Colony
 //! was closed never reached the employee. The ledger keeps one small JSON file
-//! per employee and relay: a floor, and the ids of recently handled events. On
-//! start the channel subscriptions replay from the floor (at most
+//! per employee and relay: a floor, an eviction exclusion boundary, and the ids
+//! of recently handled events. On start the channel subscriptions replay from
+//! the floor (at most
 //! [`MAX_LOOKBACK_SECS`] back) and every id already handled is skipped, so each
 //! missed event is processed once.
+//! The persisted exclusion boundary takes precedence over the startup watermark
+//! and time clamp, so evicted events stay excluded even after a clock rewind.
 //!
 //! Events are recorded as handled before a turn sees them: the listener calls
 //! [`WakeLedger::commit`] with a batch right before its turn starts, and with a
@@ -74,6 +77,10 @@ struct LedgerFile {
     relay_url: String,
     agent_pubkey: String,
     floor: u64,
+    /// Lowest floor that keeps evicted ids outside the relay's replay window.
+    /// Older version-one files have no eviction boundary recorded.
+    #[serde(default)]
+    evicted_floor: u64,
     handled: Vec<HandledEvent>,
 }
 
@@ -118,7 +125,8 @@ pub(crate) struct WakeLedger {
     catch_up_since: Option<u64>,
     /// Events created before this were delivered only by the catch-up.
     live_cutoff: u64,
-    /// The floor while the startup replay settles, and the lowest one after.
+    /// The replay start while startup settles, including the saved eviction boundary.
+    /// Pending or released events may lower snapshots only to that boundary.
     baseline: u64,
     settle_until: u64,
     /// Newest `created_at` delivered in this run, capped at the receive time.
@@ -146,6 +154,8 @@ impl WakeLedger {
     /// employee, relay or format, is logged and replaced on the next write;
     /// that start also keeps the startup watermark, so it can miss wakes but
     /// never runs one twice.
+    /// A saved eviction boundary overrides the usual time and startup clamps,
+    /// even when it temporarily lies after `now` or `startup_watermark`.
     pub(crate) fn open(
         path: PathBuf,
         relay_url: &str,
@@ -177,10 +187,12 @@ impl WakeLedger {
                 None
             }
         };
+        let evicted_floor = loaded.as_ref().map_or(0, |file| file.evicted_floor);
         let catch_up_since = loaded.as_ref().map(|file| {
             file.floor
                 .clamp(now.saturating_sub(MAX_LOOKBACK_SECS), now)
                 .min(startup_watermark)
+                .max(evicted_floor)
         });
         let mut ledger = Self {
             path,
@@ -194,7 +206,7 @@ impl WakeLedger {
             handled: VecDeque::new(),
             handled_ids: HashSet::new(),
             committed: HashSet::new(),
-            evicted_floor: 0,
+            evicted_floor,
             released: HashMap::new(),
             written: None,
             retry_at: None,
@@ -206,8 +218,9 @@ impl WakeLedger {
     }
 
     /// Where this run's channel subscriptions should start: the saved floor, at
-    /// most [`MAX_LOOKBACK_SECS`] back and never later than the startup
-    /// watermark. `None` keeps the startup watermark.
+    /// most [`MAX_LOOKBACK_SECS`] back and at or before the startup watermark,
+    /// unless the persisted eviction boundary requires a later start to exclude
+    /// handled events whose ids were evicted. `None` keeps the startup watermark.
     pub(crate) fn catch_up_since(&self) -> Option<u64> {
         self.catch_up_since
     }
@@ -390,6 +403,7 @@ impl WakeLedger {
             relay_url: self.relay_url.clone(),
             agent_pubkey: self.agent_pubkey.clone(),
             floor,
+            evicted_floor: self.evicted_floor,
             handled: self
                 .handled
                 .iter()
@@ -831,6 +845,124 @@ mod tests {
             !ledger.committed.contains(&oldest.id.to_hex()),
             "a forgotten id also leaves the committed set, so it stays bounded"
         );
+    }
+
+    #[test]
+    fn an_immediate_restart_keeps_evicted_events_out_of_replay() {
+        let temp = TempLedger::new();
+        let events: Vec<_> = (0..=MAX_HANDLED).map(|_| event_at(1_000)).collect();
+        let mut first = temp.open(1_000);
+        for event in &events {
+            first.admit(event, 1_000);
+        }
+        assert!(first.commit(&events, std::iter::empty(), 1_000).is_saved());
+        let file = temp.written();
+        assert_eq!(file.handled.len(), MAX_HANDLED);
+        assert!(file
+            .handled
+            .iter()
+            .all(|entry| entry.id != events[0].id.to_hex()));
+        assert_eq!(file.floor, 1_000 + SINCE_SKEW_SECS + 1);
+        assert_eq!(file.evicted_floor, file.floor);
+        drop(first);
+
+        let restarted = temp.open(1_001);
+        let since = restarted.catch_up_since().expect("saved replay floor");
+        assert!(
+            since.saturating_sub(SINCE_SKEW_SECS) > 1_000,
+            "the relay's inclusive since filter must exclude the evicted event"
+        );
+    }
+
+    #[test]
+    fn a_rewound_startup_watermark_cannot_replay_evicted_events() {
+        let temp = TempLedger::new();
+        let events: Vec<_> = (0..=MAX_HANDLED).map(|_| event_at(1_000)).collect();
+        let mut first = temp.open(1_000);
+        for event in &events {
+            first.admit(event, 1_000);
+        }
+        assert!(first.commit(&events, std::iter::empty(), 1_000).is_saved());
+        assert_eq!(temp.written().floor, 1_000 + SINCE_SKEW_SECS + 1);
+        drop(first);
+
+        let restarted = WakeLedger::open(temp.path(), RELAY, &agent(), 3_000, 900);
+        let since = restarted.catch_up_since().expect("saved replay floor");
+        assert!(
+            since.saturating_sub(SINCE_SKEW_SECS) > 1_000,
+            "a host replay watermark cannot override the eviction exclusion"
+        );
+    }
+
+    #[test]
+    fn an_older_queued_event_cannot_erase_an_eviction_after_restart() {
+        let temp = TempLedger::new();
+        let oldest = event_at(1_000);
+        let mut first = temp.open(1_000);
+        first.admit(&oldest, 1_000);
+        assert!(first
+            .commit([&oldest], std::iter::empty(), 1_000)
+            .is_saved());
+        for offset in 0..(MAX_HANDLED as u64 - 1) {
+            first.admit(&event_at(2_000 + offset), 2_000 + offset);
+        }
+        let late = event_at(900);
+        first.admit(&late, 2_600);
+        assert!(first.sync([&late], 2_600).is_saved());
+        let file = temp.written();
+        assert_eq!(file.handled.len(), MAX_HANDLED - 1);
+        assert_eq!(file.floor, 1_000 + SINCE_SKEW_SECS + 1);
+        assert!(file
+            .handled
+            .iter()
+            .all(|entry| entry.id != oldest.id.to_hex()));
+        drop(first);
+
+        let mut second = temp.open(3_000);
+        let queued = event_at(1_001);
+        assert_eq!(second.admit(&queued, 3_000), Admission::CaughtUp);
+        assert_eq!(second.handled.len(), MAX_HANDLED, "no new eviction");
+        assert!(second.sync([&queued], 3_001).is_saved());
+        let file = temp.written();
+        assert_eq!(file.handled.len(), MAX_HANDLED - 1);
+        assert_eq!(file.floor, 1_000 + SINCE_SKEW_SECS + 1);
+        assert_eq!(file.evicted_floor, file.floor);
+        drop(second);
+
+        let third = temp.open(4_000);
+        let since = third.catch_up_since().expect("saved replay floor");
+        assert!(
+            since.saturating_sub(SINCE_SKEW_SECS) > oldest.created_at.as_secs(),
+            "successive snapshots must preserve exclusion without a new eviction"
+        );
+    }
+
+    #[test]
+    fn a_version_one_file_without_an_eviction_boundary_still_loads() {
+        let temp = TempLedger::new();
+        let handled = event_at(1_000);
+        let legacy = serde_json::json!({
+            "version": 1,
+            "relayUrl": RELAY,
+            "agentPubkey": agent(),
+            "floor": 1_006,
+            "handled": [{ "id": handled.id.to_hex(), "createdAt": 1_000 }]
+        });
+        std::fs::create_dir_all(&temp.dir).expect("create ledger dir");
+        std::fs::write(
+            temp.path(),
+            serde_json::to_vec(&legacy).expect("encode legacy file"),
+        )
+        .expect("write legacy file");
+        let file = temp.written();
+        assert_eq!(file.version, 1);
+        assert_eq!(file.evicted_floor, 0);
+
+        let mut ledger = temp.open(1_001);
+        assert_eq!(ledger.catch_up_since(), Some(1_001));
+        assert_eq!(ledger.admit(&handled, 1_001), Admission::Duplicate);
+        assert!(ledger.sync(std::iter::empty(), 1_001).is_saved());
+        assert_eq!(temp.written().floor, 1_001);
     }
 
     #[test]
