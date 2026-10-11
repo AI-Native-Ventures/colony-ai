@@ -8,7 +8,12 @@ use std::time::Duration;
 use buzz_core::company_profile::{
     BusinessProfile, BusinessProfileAction, BUSINESS_PROFILE_D_TAG, BUSINESS_PROFILE_REVISION_TAG,
 };
-use buzz_core::kind::{KIND_BUSINESS_PROFILE_ACTION, KIND_BUSINESS_PROFILE_HEAD};
+use buzz_core::kind::{
+    KIND_BUSINESS_PROFILE_ACTION, KIND_BUSINESS_PROFILE_HEAD, KIND_TEAM_COMPUTER_HEAD,
+};
+use buzz_core::team_computer::{
+    TeamComputerAction, TeamComputerActionKind, TeamComputerHead, TEAM_COMPUTER_D_TAG,
+};
 use buzz_test_client::BuzzTestClient;
 use nostr::{Alphabet, Event, EventBuilder, Filter, Keys, Kind, SingleLetterTag, Tag};
 use serde_json::Value;
@@ -309,4 +314,153 @@ async fn business_profile_is_written_by_owners_and_admins_and_read_by_members_an
         assert_eq!(revision, current_revision);
         assert_eq!(profile.name, admin_name);
     }
+}
+
+fn computer_action(
+    action: TeamComputerActionKind,
+    computer_id: &str,
+    computer_name: &str,
+    force: bool,
+) -> TeamComputerAction {
+    TeamComputerAction {
+        action,
+        computer_id: computer_id.to_owned(),
+        computer_name: computer_name.to_owned(),
+        force,
+    }
+}
+
+async fn submit_computer(keys: &Keys, action: TeamComputerAction) -> Value {
+    let event = buzz_sdk::team_computer::build_team_computer_action(&action)
+        .expect("build team computer action")
+        .tag(
+            Tag::parse(["test_id", Uuid::new_v4().to_string().as_str()])
+                .expect("unique action tag"),
+        )
+        .sign_with_keys(keys)
+        .expect("sign team computer action");
+    post_event(keys, &event).await
+}
+
+async fn current_team_computer(keys: &Keys) -> TeamComputerHead {
+    let event = query_one(keys, KIND_TEAM_COMPUTER_HEAD, TEAM_COMPUTER_D_TAG)
+        .await
+        .expect("a team computer head exists");
+    serde_json::from_str(&event.content).expect("parse team computer head")
+}
+
+#[tokio::test]
+#[ignore]
+async fn team_computer_has_one_holder_heartbeats_releases_and_moves_by_force() {
+    use TeamComputerActionKind::{Claim, Heartbeat, Release};
+
+    let owner = Keys::generate();
+    let admin = Keys::generate();
+    let member = Keys::generate();
+    seed_relay_member(&owner, "owner").await;
+    seed_relay_member(&admin, "admin").await;
+    seed_relay_member(&member, "member").await;
+    let laptop = Uuid::new_v4().to_string();
+    let desktop = Uuid::new_v4().to_string();
+    let laptop_name = "Lerato's MacBook Air";
+    let desktop_name = "Kagiso's laptop";
+
+    // A forced claim gives every run a known starting point on the shared community.
+    assert_accepted(
+        &submit_computer(&owner, computer_action(Claim, &laptop, laptop_name, true)).await,
+    );
+    let head = current_team_computer(&owner).await;
+    assert_eq!(head.computer_id, laptop);
+    assert_eq!(head.claimed_by, owner.public_key().to_hex());
+    assert_eq!(head.released_at, None);
+
+    assert_rejected(
+        &submit_computer(
+            &admin,
+            computer_action(Claim, &desktop, desktop_name, false),
+        )
+        .await,
+        "the team runs on Lerato's MacBook Air",
+    );
+    assert_rejected(
+        &submit_computer(
+            &member,
+            computer_action(Claim, &desktop, "Member laptop", true),
+        )
+        .await,
+        "only a company owner or admin",
+    );
+    assert_accepted(
+        &submit_computer(&owner, computer_action(Claim, &laptop, laptop_name, false)).await,
+    );
+    assert_rejected(
+        &submit_computer(
+            &owner,
+            computer_action(Heartbeat, &laptop, laptop_name, false),
+        )
+        .await,
+        "rate-limited",
+    );
+    assert_rejected(
+        &submit_computer(
+            &admin,
+            computer_action(Heartbeat, &desktop, desktop_name, false),
+        )
+        .await,
+        "only the computer that runs the team",
+    );
+
+    assert_accepted(
+        &submit_computer(&admin, computer_action(Claim, &desktop, desktop_name, true)).await,
+    );
+    let moved = current_team_computer(&owner).await;
+    assert_eq!(moved.computer_id, desktop);
+    assert_eq!(moved.claimed_by, admin.public_key().to_hex());
+
+    assert_rejected(
+        &submit_computer(
+            &owner,
+            computer_action(Release, &laptop, laptop_name, false),
+        )
+        .await,
+        "only the computer that runs the team",
+    );
+    assert_accepted(
+        &submit_computer(
+            &admin,
+            computer_action(Release, &desktop, desktop_name, false),
+        )
+        .await,
+    );
+    assert!(current_team_computer(&owner).await.released_at.is_some());
+
+    assert_accepted(
+        &submit_computer(&owner, computer_action(Claim, &laptop, laptop_name, false)).await,
+    );
+    let reclaimed = current_team_computer(&owner).await;
+    assert_eq!(reclaimed.computer_id, laptop);
+    assert_eq!(reclaimed.released_at, None);
+
+    // Two computers racing for a free team: exactly one wins.
+    assert_accepted(
+        &submit_computer(
+            &owner,
+            computer_action(Release, &laptop, laptop_name, false),
+        )
+        .await,
+    );
+    let racer_a = Uuid::new_v4().to_string();
+    let racer_b = Uuid::new_v4().to_string();
+    let (first, second) = tokio::join!(
+        submit_computer(&owner, computer_action(Claim, &racer_a, "Racer A", false)),
+        submit_computer(&admin, computer_action(Claim, &racer_b, "Racer B", false)),
+    );
+    let winners = [&first, &second]
+        .iter()
+        .filter(|response| response["accepted"].as_bool() == Some(true))
+        .count();
+    assert_eq!(
+        winners, 1,
+        "exactly one computer may take a free team: {first} {second}"
+    );
 }

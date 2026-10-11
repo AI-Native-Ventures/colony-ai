@@ -1004,6 +1004,21 @@ every later write must name the current revision, so two people saving at once
 cannot overwrite each other. Members and employees read the head. Employees
 read it with `colony profile show`.
 
+## Team computer
+
+A company's employees run on exactly one computer. Kind 47047 carries
+`{ "action": "claim" | "heartbeat" | "release", "computerId", "computerName",
+"force" }` from an owner or admin, signed by the host on that computer;
+relay-signed head kind 30658 (`d` = `team-computer`) holds `computerId`,
+`computerName`, `claimedBy`, `claimedAt`, `lastSeenAt` and, after a release,
+`releasedAt` (Unix seconds, relay time). A claim takes a free or released team,
+refreshes the holder's own claim, or, with `force`, moves the team from another
+computer. A heartbeat comes only from the holder and at most once every 60
+seconds; a release comes only from the holder. Heads are replaced with a
+create-only or exact-revision precondition, so two computers claiming a free
+team at the same moment never both win. Claims and releases are stored;
+heartbeats only replace the head.
+
 ## Proof boundaries
 
 Kind registration and typed content live in `buzz-core`; relay, SDK, CLI, and

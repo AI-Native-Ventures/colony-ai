@@ -74,6 +74,10 @@ pub async fn handle_command(
         )
         .await;
     }
+    if kind == KIND_TEAM_COMPUTER_ACTION {
+        return super::company_singleton_records::handle_team_computer(tenant, state, event, auth)
+            .await;
+    }
     if buzz_core::kind::is_company_command_kind(kind) {
         return super::company_records::handle(tenant, state, event, auth).await;
     }

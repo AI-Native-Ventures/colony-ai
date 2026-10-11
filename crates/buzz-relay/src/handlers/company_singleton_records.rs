@@ -15,12 +15,21 @@ use buzz_core::company_profile::{
     next_profile_revision, validate_business_profile, BusinessProfile, BusinessProfileAction,
     ProfileRevisionConflict, BUSINESS_PROFILE_D_TAG, BUSINESS_PROFILE_REVISION_TAG,
 };
-use buzz_core::kind::{KIND_BUSINESS_PROFILE_ACTION, KIND_BUSINESS_PROFILE_HEAD};
+use buzz_core::kind::{
+    KIND_BUSINESS_PROFILE_ACTION, KIND_BUSINESS_PROFILE_HEAD, KIND_TEAM_COMPUTER_ACTION,
+    KIND_TEAM_COMPUTER_HEAD,
+};
+use buzz_core::team_computer::{
+    apply_team_computer_action, validate_team_computer_action, validate_team_computer_head,
+    TeamComputerAction, TeamComputerActionKind, TeamComputerHead, TeamComputerRefusal,
+    TEAM_COMPUTER_D_TAG,
+};
 use buzz_core::tenant::{CommunityId, TenantContext};
 use buzz_core::StoredEvent;
 use buzz_datastore_tracing::datastore_span;
 use buzz_db::replaceable::{ParameterizedReplacePrecondition, ParameterizedReplaceStatus};
 use buzz_db::EventQuery;
+use chrono::Utc;
 
 use super::ingest::{IngestAuth, IngestError, IngestResult};
 use crate::state::AppState;
@@ -110,6 +119,138 @@ pub(super) async fn handle_business_profile(
         accepted: true,
         message: format!("response:{}", serde_json::json!({ "revision": revision })),
     })
+}
+
+/// Handles an owner- or admin-signed team computer claim, heartbeat or
+/// release (kind 47047). Claims and releases are stored as events; a heartbeat
+/// only replaces the head, so a running team does not add one stored event a
+/// minute forever.
+#[datastore_span(name = "company_team_computer_action", system = "postgresql")]
+pub(super) async fn handle_team_computer(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    event: Event,
+    auth: IngestAuth,
+) -> Result<IngestResult, IngestError> {
+    if u32::from(event.kind.as_u16()) != KIND_TEAM_COMPUTER_ACTION {
+        return Err(IngestError::Rejected(
+            "restricted: unsupported team computer action kind".into(),
+        ));
+    }
+    let action = serde_json::from_str::<TeamComputerAction>(&event.content)
+        .map_err(|_| invalid("team computer action content is invalid"))?;
+    validate_team_computer_action(&action)
+        .map_err(|error| invalid(format!("team computer action: {error}")))?;
+    require_member_signed_global_action(&event, &auth, TEAM_COMPUTER_D_TAG)?;
+
+    let community_id = tenant.community();
+    let actor_pubkey = auth.pubkey().to_hex();
+    let stores_action = action.action != TeamComputerActionKind::Heartbeat;
+    let mut tx = begin_fenced_transaction(state, community_id).await?;
+    require_owner_or_admin(
+        &mut tx,
+        community_id,
+        &actor_pubkey,
+        "change which computer runs the team",
+    )
+    .await?;
+    if stores_action && event_already_stored(&mut tx, community_id, &event).await? {
+        tx.rollback().await.map_err(internal)?;
+        return Ok(duplicate_result(&event));
+    }
+    let (current_head_id, current_stored) = lock_current_head(
+        &mut tx,
+        state,
+        community_id,
+        KIND_TEAM_COMPUTER_HEAD,
+        TEAM_COMPUTER_D_TAG,
+    )
+    .await?;
+    let current = current_stored
+        .as_ref()
+        .map(parse_team_computer_head)
+        .transpose()?;
+    let next = apply_team_computer_action(
+        current.as_ref(),
+        &action,
+        &actor_pubkey,
+        Utc::now().timestamp(),
+    )
+    .map_err(team_computer_refusal)?;
+    let head_event = super::business_records::relay_global_head_event(
+        KIND_TEAM_COMPUTER_HEAD,
+        TEAM_COMPUTER_D_TAG,
+        &next,
+        current_stored.as_ref(),
+        state,
+    )?;
+    let stored_action = if stores_action {
+        let Some(stored) = insert_action(&mut tx, community_id, &event).await? else {
+            tx.rollback().await.map_err(internal)?;
+            return Ok(duplicate_result(&event));
+        };
+        Some(stored)
+    } else {
+        None
+    };
+    let stored_head = replace_head(
+        &mut tx,
+        state,
+        community_id,
+        &head_event,
+        TEAM_COMPUTER_D_TAG,
+        current_head_id.as_deref(),
+    )
+    .await?;
+    tx.commit().await.map_err(internal)?;
+    if let Some(stored_action) = stored_action {
+        super::event::dispatch_persistent_event(
+            tenant,
+            state,
+            &stored_action,
+            KIND_TEAM_COMPUTER_ACTION,
+            &actor_pubkey,
+            None,
+        )
+        .await;
+    }
+    super::event::dispatch_persistent_event(
+        tenant,
+        state,
+        &stored_head,
+        KIND_TEAM_COMPUTER_HEAD,
+        &state.relay_keypair.public_key().to_hex(),
+        None,
+    )
+    .await;
+    Ok(IngestResult {
+        event_id: event.id.to_hex(),
+        accepted: true,
+        message: String::new(),
+    })
+}
+
+fn parse_team_computer_head(stored: &StoredEvent) -> Result<TeamComputerHead, IngestError> {
+    let head = serde_json::from_str::<TeamComputerHead>(&stored.event.content)
+        .map_err(|_| IngestError::Internal("error: stored team computer head is invalid".into()))?;
+    validate_team_computer_head(&head)
+        .map_err(|error| internal(format!("stored team computer head: {error}")))?;
+    Ok(head)
+}
+
+fn team_computer_refusal(refusal: TeamComputerRefusal) -> IngestError {
+    match refusal {
+        TeamComputerRefusal::HeldElsewhere { computer_name } => conflict(format!(
+            "the team runs on {computer_name}; move it with a forced claim"
+        )),
+        TeamComputerRefusal::NoClaim => conflict("no computer holds the team; claim it first"),
+        TeamComputerRefusal::NotTheHolder => {
+            forbidden("only the computer that runs the team can do this")
+        }
+        TeamComputerRefusal::HeartbeatTooSoon { retry_after_secs } => IngestError::Rejected(format!(
+            "rate-limited: heartbeat at most once every 60 seconds; retry in {retry_after_secs} seconds"
+        )),
+    }
 }
 
 /// The signer must be the authenticated person, writing company-wide with
