@@ -706,16 +706,12 @@ async fn complete_publishes_exactly_one_workflow_tagged_kickoff() {
     );
 
     // A replay of the accepted command and a fresh complete both leave one kickoff.
-    match submit(&fixture, event.clone()).await {
-        Ok(result) => assert!(result.message.starts_with("duplicate:")),
-        Err(IngestError::Rejected(message)) => {
-            assert!(
-                message.contains("founder sign-off is required before hiring"),
-                "{message}"
-            )
-        }
-        Err(other) => panic!("unexpected replay result {other:?}"),
-    }
+    let replay = submit(&fixture, event.clone())
+        .await
+        .expect("an accepted completion replay returns its duplicate result");
+    assert!(replay.accepted);
+    assert_eq!(replay.event_id, event.id.to_hex());
+    assert!(replay.message.starts_with("duplicate:"));
     let mut second = complete.clone();
     second.expected_head_event_id = Some(
         hire_head(&fixture, complete.hire_id)
