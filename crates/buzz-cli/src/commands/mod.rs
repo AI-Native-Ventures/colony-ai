@@ -21,6 +21,7 @@ pub mod pack;
 pub mod patches;
 pub mod permissions;
 pub mod pr;
+pub mod profile;
 pub mod project_channel;
 pub mod projects;
 pub mod reactions;
