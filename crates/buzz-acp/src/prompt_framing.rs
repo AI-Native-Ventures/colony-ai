@@ -9,13 +9,26 @@
 /// skill and the managed section of `AGENTS.md`).
 pub const WEB_TASK_RULES: &str = include_str!("web_tasks.md");
 
+/// How every employee talks in a conversation: usually 1 to 5 sentences with
+/// the result first, no report formatting, long work in a document or a
+/// decision card, one question at a time, one pickup line followed only by
+/// results or blockers, and plain words for people who are not technical.
+///
+/// `voice.md` is the one copy. The base prompt below carries it between
+/// `base_prompt.md` and [`WEB_TASK_RULES`], and the host writes the same text
+/// into the employee's skill and the managed section of `AGENTS.md`.
+pub const VOICE_RULES: &str = include_str!("voice.md");
+
 /// Base prompt every agent receives when no custom base file is configured.
 ///
 /// The one production read of `base_prompt.md`: both the runtime and the brand
 /// guard (`brand_guard_tests.rs`) go through this constant, so the guard scans
-/// exactly what agents are given. It ends with [`WEB_TASK_RULES`].
+/// exactly what agents are given. It carries [`VOICE_RULES`] and ends with
+/// [`WEB_TASK_RULES`].
 pub(crate) const DEFAULT_BASE_PROMPT: &str = concat!(
     include_str!("base_prompt.md"),
+    "\n",
+    include_str!("voice.md"),
     "\n",
     include_str!("web_tasks.md")
 );
@@ -159,6 +172,77 @@ mod tests {
             assert!(WEB_TASK_RULES.contains(phrase), "missing rule: {phrase}");
         }
         assert!(!WEB_TASK_RULES.contains('\u{2014}'), "no em dashes");
+    }
+
+    #[test]
+    fn voice_rules_reach_every_framed_system_prompt_once() {
+        let rules = VOICE_RULES.trim_end();
+        for policy in [
+            crate::scope::SessionPolicy::Channel,
+            crate::scope::SessionPolicy::Thread,
+        ] {
+            let base = policy.append_session_model(DEFAULT_BASE_PROMPT);
+            // Modern agents get the standing context in `session/new`.
+            let session_new = crate::pool::framed_system_prompt(
+                "/Users/test/.colony",
+                Some(&base),
+                Some("You are Scout."),
+            )
+            .expect("a base and instructions frame a system prompt");
+            // Legacy agents get the same sections in their first turn.
+            let first_turn = crate::queue::StandingContext {
+                base_prompt: Some(&base),
+                system_prompt: Some("You are Scout."),
+                ..Default::default()
+            }
+            .sections()
+            .join("\n\n");
+            for (path, prompt) in [("session/new", &session_new), ("first turn", &first_turn)] {
+                assert_eq!(
+                    prompt.matches(rules).count(),
+                    1,
+                    "{policy:?} {path}: the voice rules appear exactly once"
+                );
+                let voice = prompt.find(rules).expect("voice rules are present");
+                let web = prompt
+                    .find(WEB_TASK_RULES.trim_end())
+                    .expect("web task rules are present");
+                let instructions = prompt
+                    .find("<agent-instructions>")
+                    .expect("agent instructions are framed");
+                assert!(
+                    voice < web && web < instructions,
+                    "{policy:?} {path}: voice sits in the standing base, before the web rules and the editable instructions"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn voice_rules_state_the_owner_decision() {
+        for phrase in [
+            "usually 1 to 5 sentences, result first, written like a teammate in chat",
+            "It may be longer when the situation truly needs it, which should be rare.",
+            "This is a default, not a forced cap.",
+            "No headings, tables or bullet walls in chat.",
+            "Long things (plans, research, drafts) go into a document or a decision card. The chat gets one line plus a link.",
+            "One question at a time. A decision becomes a decision card with a one-sentence summary.",
+            "One pickup line, then only results or blockers. Step-by-step work stays out of chat.",
+            "The people you work for are not technical",
+        ] {
+            assert!(VOICE_RULES.contains(phrase), "missing voice rule: {phrase}");
+        }
+    }
+
+    #[test]
+    fn standing_base_text_has_no_em_dashes() {
+        for (name, text) in [
+            ("web task rules", WEB_TASK_RULES),
+            ("voice rules", VOICE_RULES),
+            ("default base prompt", DEFAULT_BASE_PROMPT),
+        ] {
+            assert!(!text.contains('\u{2014}'), "{name} contains an em dash");
+        }
     }
 
     #[test]
