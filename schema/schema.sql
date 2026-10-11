@@ -2062,7 +2062,9 @@ CREATE TABLE accounts (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_signin_at TIMESTAMPTZ,
     failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
-    locked_until TIMESTAMPTZ
+    locked_until TIMESTAMPTZ,
+    terms_version TEXT CHECK (terms_version IS NULL OR length(terms_version) BETWEEN 1 AND 64),
+    terms_accepted_at TIMESTAMPTZ
 );
 CREATE UNIQUE INDEX accounts_email_lower_key ON accounts (lower(email));
 
@@ -2077,7 +2079,7 @@ CREATE INDEX account_google_identities_account_idx ON account_google_identities 
 CREATE TABLE account_codes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-    purpose TEXT NOT NULL CHECK (purpose IN ('verify_email', 'reset_password')),
+    purpose TEXT NOT NULL CHECK (purpose IN ('verify_email', 'reset_password', 'sign_in')),
     code_hash BYTEA NOT NULL CHECK (octet_length(code_hash) = 32),
     expires_at TIMESTAMPTZ NOT NULL,
     attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 5),
@@ -2093,7 +2095,7 @@ CREATE TABLE account_mail_outbox (
     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     code_id UUID NOT NULL UNIQUE REFERENCES account_codes(id) ON DELETE CASCADE,
     recipient TEXT NOT NULL CHECK (length(recipient) <= 254),
-    purpose TEXT NOT NULL CHECK (purpose IN ('verify_email', 'reset_password')),
+    purpose TEXT NOT NULL CHECK (purpose IN ('verify_email', 'reset_password', 'sign_in')),
     code_ciphertext BYTEA NOT NULL CHECK (octet_length(code_ciphertext) >= 16),
     nonce BYTEA NOT NULL CHECK (octet_length(nonce) = 12),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -2114,7 +2116,7 @@ CREATE TABLE account_test_mail (
     outbox_id UUID PRIMARY KEY REFERENCES account_mail_outbox(id) ON DELETE CASCADE,
     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     recipient TEXT NOT NULL CHECK (length(recipient) <= 254),
-    purpose TEXT NOT NULL CHECK (purpose IN ('verify_email', 'reset_password')),
+    purpose TEXT NOT NULL CHECK (purpose IN ('verify_email', 'reset_password', 'sign_in')),
     code TEXT NOT NULL CHECK (code ~ '^[0-9]{6}$'),
     delivered_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

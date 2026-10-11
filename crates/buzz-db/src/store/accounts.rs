@@ -123,6 +123,8 @@ pub enum AccountCodePurpose {
     VerifyEmail,
     /// Replace or create the account password.
     ResetPassword,
+    /// Sign in without a password; the first use also verifies the email.
+    SignIn,
 }
 
 impl AccountCodePurpose {
@@ -130,6 +132,7 @@ impl AccountCodePurpose {
         match self {
             Self::VerifyEmail => "verify_email",
             Self::ResetPassword => "reset_password",
+            Self::SignIn => "sign_in",
         }
     }
 }
@@ -188,6 +191,40 @@ pub enum IssueAccountCodeOutcome {
     /// A previous code reached its attempt limit and has not expired.
     Locked {
         /// Seconds until the locked code expires.
+        retry_after_secs: i64,
+    },
+}
+
+/// Result of starting a passwordless sign-in.
+pub enum StartSignInCodeOutcome {
+    /// A fresh sign-in code and its encrypted mail row were committed.
+    Issued,
+    /// The newest sign-in code used up its attempts and has not expired yet.
+    Locked {
+        /// Seconds until the locked code expires and a new one can be sent.
+        retry_after_secs: i64,
+    },
+}
+
+/// Result of consuming a passwordless sign-in code.
+pub enum ConsumeSignInCodeOutcome {
+    /// Code accepted; the account is verified and the terms are recorded.
+    Accepted {
+        /// The signed-in account.
+        account: Box<AccountRecord>,
+        /// True when the account had never verified its email before this code.
+        created: bool,
+    },
+    /// The supplied code does not match the active code.
+    Invalid {
+        /// Failed submissions remaining before this code is burned.
+        attempts_left: i32,
+    },
+    /// No active code exists, it expired, or it was already used.
+    Expired,
+    /// The active code used up its attempts.
+    AttemptsExceeded {
+        /// Seconds until the burned code expires.
         retry_after_secs: i64,
     },
 }
@@ -308,6 +345,11 @@ impl Db {
         )
         .await?;
         let mut tx = Transaction::begin(connection, None).await?;
+        // Code writers and consumers take the account lock before any code lock.
+        sqlx::query("SELECT id FROM accounts WHERE id = $1 FOR UPDATE")
+            .bind(account_id)
+            .execute(&mut *tx)
+            .await?;
         let active = sqlx::query(
             "SELECT attempts, expires_at FROM account_codes \
              WHERE account_id = $1 AND purpose = $2 \
@@ -331,6 +373,69 @@ impl Db {
         prune_old_account_mail(&mut tx).await?;
         tx.commit().await?;
         Ok(IssueAccountCodeOutcome::Issued)
+    }
+
+    /// Issue a sign-in code for an email. When no account owns the email, a
+    /// passwordless, unverified account is created in the same commit, so the
+    /// answer never depends on whether the email was known.
+    #[datastore_span(name = "account_start_sign_in_code", system = "postgresql")]
+    pub async fn start_sign_in_code(
+        &self,
+        candidate: &NewAccount,
+        code: &NewAccountCode,
+    ) -> Result<StartSignInCodeOutcome> {
+        let connection = observability::acquire_writer(
+            &self.pool,
+            observability::WriterOperation::Authorization,
+        )
+        .await?;
+        let mut tx = Transaction::begin(connection, None).await?;
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(format!("account-email:{}", candidate.email))
+            .execute(&mut *tx)
+            .await?;
+        let existing: Option<Uuid> =
+            sqlx::query_scalar("SELECT id FROM accounts WHERE lower(email) = lower($1) FOR UPDATE")
+                .bind(&candidate.email)
+                .fetch_optional(&mut *tx)
+                .await?;
+        let account_id = match existing {
+            Some(account_id) => account_id,
+            None => match insert_account(&mut tx, candidate).await? {
+                Some(account_id) => account_id,
+                None => {
+                    sqlx::query_scalar(
+                        "SELECT id FROM accounts WHERE lower(email) = lower($1) FOR UPDATE",
+                    )
+                    .bind(&candidate.email)
+                    .fetch_one(&mut *tx)
+                    .await?
+                }
+            },
+        };
+        let active = sqlx::query(
+            "SELECT attempts, expires_at FROM account_codes \
+             WHERE account_id = $1 AND purpose = $2 \
+             ORDER BY created_at DESC, id DESC LIMIT 1 FOR UPDATE",
+        )
+        .bind(account_id)
+        .bind(code.purpose.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(active) = active {
+            let attempts: i32 = active.try_get("attempts")?;
+            let expires_at: DateTime<Utc> = active.try_get("expires_at")?;
+            if attempts >= ACCOUNT_CODE_MAX_ATTEMPTS && expires_at > Utc::now() {
+                let retry_after_secs = retry_after_until(expires_at);
+                tx.rollback().await?;
+                return Ok(StartSignInCodeOutcome::Locked { retry_after_secs });
+            }
+        }
+        replace_active_code(&mut tx, account_id, code.purpose).await?;
+        insert_account_code(&mut tx, account_id, &candidate.email, code).await?;
+        prune_old_account_mail(&mut tx).await?;
+        tx.commit().await?;
+        Ok(StartSignInCodeOutcome::Issued)
     }
 
     /// Return how long a locked code remains blocked from resending.
@@ -357,6 +462,8 @@ impl Db {
     }
 
     /// Atomically compare, count, and consume a code while updating its account.
+    ///
+    /// Sign-in codes are consumed by [`Db::consume_sign_in_code`] instead.
     #[datastore_span(name = "account_consume_code", system = "postgresql")]
     pub async fn consume_account_code(
         &self,
@@ -365,90 +472,28 @@ impl Db {
         provided_hash: &[u8; 32],
         new_password_hash: Option<&str>,
     ) -> Result<ConsumeAccountCodeOutcome> {
+        if purpose == AccountCodePurpose::SignIn {
+            return Err(DbError::InvalidData(
+                "sign-in codes are consumed by consume_sign_in_code".to_owned(),
+            ));
+        }
         let connection = observability::acquire_writer(
             &self.pool,
             observability::WriterOperation::Authorization,
         )
         .await?;
         let mut tx = Transaction::begin(connection, None).await?;
-        let row = sqlx::query(
-            "SELECT c.id, c.account_id, c.code_hash, c.expires_at, c.attempts, c.consumed_at \
-             FROM account_codes c JOIN accounts a ON a.id = c.account_id \
-             WHERE lower(a.email) = lower($1) AND c.purpose = $2 \
-             ORDER BY c.created_at DESC, c.id DESC LIMIT 1 FOR UPDATE OF c",
-        )
-        .bind(email)
-        .bind(purpose.as_str())
-        .fetch_optional(&mut *tx)
-        .await?;
-        let Some(row) = row else {
-            tx.rollback().await?;
-            return Ok(ConsumeAccountCodeOutcome::Expired);
-        };
-
-        let code_id: Uuid = row.try_get("id")?;
-        let account_id: Uuid = row.try_get("account_id")?;
-        let stored_hash: Vec<u8> = row.try_get("code_hash")?;
-        let expires_at: DateTime<Utc> = row.try_get("expires_at")?;
-        let attempts: i32 = row.try_get("attempts")?;
-        let consumed_at: Option<DateTime<Utc>> = row.try_get("consumed_at")?;
-        if expires_at <= Utc::now() {
-            sqlx::query("UPDATE account_codes SET consumed_at = now() WHERE id = $1")
-                .bind(code_id)
-                .execute(&mut *tx)
-                .await?;
-            delete_code_outbox(&mut tx, code_id).await?;
-            tx.commit().await?;
-            return Ok(ConsumeAccountCodeOutcome::Expired);
-        }
-        if attempts >= ACCOUNT_CODE_MAX_ATTEMPTS {
-            if consumed_at.is_none() {
-                sqlx::query("UPDATE account_codes SET consumed_at = now() WHERE id = $1")
-                    .bind(code_id)
-                    .execute(&mut *tx)
-                    .await?;
-                delete_code_outbox(&mut tx, code_id).await?;
-            }
-            let retry_after_secs = retry_after_until(expires_at);
-            tx.commit().await?;
-            return Ok(ConsumeAccountCodeOutcome::AttemptsExceeded { retry_after_secs });
-        }
-        if consumed_at.is_some() {
-            tx.rollback().await?;
-            return Ok(ConsumeAccountCodeOutcome::Expired);
-        }
-
-        let matches = bool::from(stored_hash.as_slice().ct_eq(provided_hash.as_slice()));
-        if !matches {
-            let next_attempts = attempts.saturating_add(1);
-            sqlx::query(
-                "UPDATE account_codes SET attempts = $2, \
-                 consumed_at = CASE WHEN $2 >= $3 THEN now() ELSE consumed_at END \
-                 WHERE id = $1",
-            )
-            .bind(code_id)
-            .bind(next_attempts)
-            .bind(ACCOUNT_CODE_MAX_ATTEMPTS)
-            .execute(&mut *tx)
-            .await?;
-            let attempts_left = ACCOUNT_CODE_MAX_ATTEMPTS.saturating_sub(next_attempts);
-            if next_attempts >= ACCOUNT_CODE_MAX_ATTEMPTS {
-                delete_code_outbox(&mut tx, code_id).await?;
-            }
-            tx.commit().await?;
-            return Ok(if next_attempts >= ACCOUNT_CODE_MAX_ATTEMPTS {
-                ConsumeAccountCodeOutcome::AttemptsExceeded {
-                    retry_after_secs: retry_after_until(expires_at),
+        let (code_id, account_id) =
+            match lock_and_check_code(&mut tx, email, purpose, provided_hash).await? {
+                LockedCode::Matched {
+                    code_id,
+                    account_id,
+                } => (code_id, account_id),
+                LockedCode::Rejected { reason, commit } => {
+                    finish_rejected_code(tx, commit).await?;
+                    return Ok(reason.into_consume_outcome());
                 }
-            } else {
-                ConsumeAccountCodeOutcome::Invalid { attempts_left }
-            });
-        }
-
-        sqlx::query("UPDATE account_codes SET consumed_at = now() WHERE id = $1")
-            .bind(code_id)
-            .execute(&mut *tx)
-            .await?;
+            };
         match purpose {
             AccountCodePurpose::VerifyEmail => {
                 sqlx::query(
@@ -472,6 +517,11 @@ impl Db {
                 .execute(&mut *tx)
                 .await?;
             }
+            AccountCodePurpose::SignIn => {
+                return Err(DbError::InvalidData(
+                    "sign-in codes are consumed by consume_sign_in_code".to_owned(),
+                ));
+            }
         }
         delete_code_outbox(&mut tx, code_id).await?;
         let row = sqlx::query(sqlx::AssertSqlSafe(format!(
@@ -483,6 +533,74 @@ impl Db {
         let account = account_from_row(row)?;
         tx.commit().await?;
         Ok(ConsumeAccountCodeOutcome::Accepted(Box::new(account)))
+    }
+
+    /// Consume a passwordless sign-in code: verify the email (dropping a
+    /// password nobody proved), record the terms version, and, on the first
+    /// verified sign-in, store the person's profile event in the same commit.
+    #[datastore_span(name = "account_consume_sign_in_code", system = "postgresql")]
+    pub async fn consume_sign_in_code(
+        &self,
+        email: &str,
+        provided_hash: &[u8; 32],
+        terms_version: &str,
+        profile: Option<(&nostr::Event, CommunityId)>,
+    ) -> Result<ConsumeSignInCodeOutcome> {
+        let connection = observability::acquire_writer(
+            &self.pool,
+            observability::WriterOperation::Authorization,
+        )
+        .await?;
+        let mut tx = Transaction::begin(connection, None).await?;
+        let (code_id, account_id) =
+            match lock_and_check_code(&mut tx, email, AccountCodePurpose::SignIn, provided_hash)
+                .await?
+            {
+                LockedCode::Matched {
+                    code_id,
+                    account_id,
+                } => (code_id, account_id),
+                LockedCode::Rejected { reason, commit } => {
+                    finish_rejected_code(tx, commit).await?;
+                    return Ok(reason.into_sign_in_outcome());
+                }
+            };
+        let previously_verified: bool = sqlx::query_scalar(
+            "SELECT email_verified_at IS NOT NULL FROM accounts WHERE id = $1 FOR UPDATE",
+        )
+        .bind(account_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        sqlx::query(VERIFY_EMAIL_DROPPING_UNPROVEN_PASSWORD)
+            .bind(account_id)
+            .execute(&mut *tx)
+            .await?;
+        record_terms_acceptance(&mut tx, account_id, Some(terms_version)).await?;
+        let created = !previously_verified;
+        if created {
+            if let Some((event, community_id)) = profile {
+                crate::store::event::insert_event_in_transaction(
+                    &mut tx,
+                    community_id,
+                    event,
+                    None,
+                )
+                .await?;
+            }
+        }
+        delete_code_outbox(&mut tx, code_id).await?;
+        let row = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "{ACCOUNT_SELECT} WHERE a.id = $1"
+        )))
+        .bind(account_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        let account = account_from_row(row)?;
+        tx.commit().await?;
+        Ok(ConsumeSignInCodeOutcome::Accepted {
+            account: Box::new(account),
+            created,
+        })
     }
 
     /// Check a reset code without consuming a valid code or changing the
@@ -995,6 +1113,201 @@ async fn delete_code_outbox(tx: &mut Transaction<'_, Postgres>, code_id: Uuid) -
     Ok(())
 }
 
+/// Result of locking and comparing the newest code for one email and purpose.
+enum LockedCode {
+    /// The code matched and is now marked used inside the caller's transaction.
+    Matched {
+        /// The matched code row.
+        code_id: Uuid,
+        /// The account the code belongs to.
+        account_id: Uuid,
+    },
+    /// The code cannot be used. Any bookkeeping writes are already in the
+    /// transaction; `commit` says whether they must be kept.
+    Rejected {
+        /// Why the code was refused.
+        reason: CodeRejection,
+        /// Commit the transaction when true, roll it back when false.
+        commit: bool,
+    },
+}
+
+/// Why a submitted code was refused.
+enum CodeRejection {
+    Invalid { attempts_left: i32 },
+    Expired,
+    AttemptsExceeded { retry_after_secs: i64 },
+}
+
+impl CodeRejection {
+    fn into_consume_outcome(self) -> ConsumeAccountCodeOutcome {
+        match self {
+            Self::Invalid { attempts_left } => ConsumeAccountCodeOutcome::Invalid { attempts_left },
+            Self::Expired => ConsumeAccountCodeOutcome::Expired,
+            Self::AttemptsExceeded { retry_after_secs } => {
+                ConsumeAccountCodeOutcome::AttemptsExceeded { retry_after_secs }
+            }
+        }
+    }
+
+    fn into_sign_in_outcome(self) -> ConsumeSignInCodeOutcome {
+        match self {
+            Self::Invalid { attempts_left } => ConsumeSignInCodeOutcome::Invalid { attempts_left },
+            Self::Expired => ConsumeSignInCodeOutcome::Expired,
+            Self::AttemptsExceeded { retry_after_secs } => {
+                ConsumeSignInCodeOutcome::AttemptsExceeded { retry_after_secs }
+            }
+        }
+    }
+}
+
+/// Lock the newest code for `email` and `purpose`, count a wrong submission,
+/// burn the code at the attempt limit, and mark a matching code used.
+async fn lock_and_check_code(
+    tx: &mut Transaction<'_, Postgres>,
+    email: &str,
+    purpose: AccountCodePurpose,
+    provided_hash: &[u8; 32],
+) -> Result<LockedCode> {
+    // Match issuance and deletion: account first, then code. Otherwise a
+    // resend holding the account can deadlock against verification of its code.
+    sqlx::query("SELECT id FROM accounts WHERE lower(email) = lower($1) FOR UPDATE")
+        .bind(email)
+        .execute(&mut **tx)
+        .await?;
+    let row = sqlx::query(
+        "SELECT c.id, c.account_id, c.code_hash, c.expires_at, c.attempts, c.consumed_at \
+         FROM account_codes c JOIN accounts a ON a.id = c.account_id \
+         WHERE lower(a.email) = lower($1) AND c.purpose = $2 \
+         ORDER BY c.created_at DESC, c.id DESC LIMIT 1 FOR UPDATE OF c",
+    )
+    .bind(email)
+    .bind(purpose.as_str())
+    .fetch_optional(&mut **tx)
+    .await?;
+    let Some(row) = row else {
+        return Ok(LockedCode::Rejected {
+            reason: CodeRejection::Expired,
+            commit: false,
+        });
+    };
+
+    let code_id: Uuid = row.try_get("id")?;
+    let account_id: Uuid = row.try_get("account_id")?;
+    let stored_hash: Vec<u8> = row.try_get("code_hash")?;
+    let expires_at: DateTime<Utc> = row.try_get("expires_at")?;
+    let attempts: i32 = row.try_get("attempts")?;
+    let consumed_at: Option<DateTime<Utc>> = row.try_get("consumed_at")?;
+    if expires_at <= Utc::now() {
+        sqlx::query("UPDATE account_codes SET consumed_at = now() WHERE id = $1")
+            .bind(code_id)
+            .execute(&mut **tx)
+            .await?;
+        delete_code_outbox(tx, code_id).await?;
+        return Ok(LockedCode::Rejected {
+            reason: CodeRejection::Expired,
+            commit: true,
+        });
+    }
+    if attempts >= ACCOUNT_CODE_MAX_ATTEMPTS {
+        if consumed_at.is_none() {
+            sqlx::query("UPDATE account_codes SET consumed_at = now() WHERE id = $1")
+                .bind(code_id)
+                .execute(&mut **tx)
+                .await?;
+            delete_code_outbox(tx, code_id).await?;
+        }
+        return Ok(LockedCode::Rejected {
+            reason: CodeRejection::AttemptsExceeded {
+                retry_after_secs: retry_after_until(expires_at),
+            },
+            commit: true,
+        });
+    }
+    if consumed_at.is_some() {
+        return Ok(LockedCode::Rejected {
+            reason: CodeRejection::Expired,
+            commit: false,
+        });
+    }
+
+    let matches = bool::from(stored_hash.as_slice().ct_eq(provided_hash.as_slice()));
+    if !matches {
+        let next_attempts = attempts.saturating_add(1);
+        sqlx::query(
+            "UPDATE account_codes SET attempts = $2, \
+             consumed_at = CASE WHEN $2 >= $3 THEN now() ELSE consumed_at END \
+             WHERE id = $1",
+        )
+        .bind(code_id)
+        .bind(next_attempts)
+        .bind(ACCOUNT_CODE_MAX_ATTEMPTS)
+        .execute(&mut **tx)
+        .await?;
+        if next_attempts >= ACCOUNT_CODE_MAX_ATTEMPTS {
+            delete_code_outbox(tx, code_id).await?;
+            return Ok(LockedCode::Rejected {
+                reason: CodeRejection::AttemptsExceeded {
+                    retry_after_secs: retry_after_until(expires_at),
+                },
+                commit: true,
+            });
+        }
+        return Ok(LockedCode::Rejected {
+            reason: CodeRejection::Invalid {
+                attempts_left: ACCOUNT_CODE_MAX_ATTEMPTS.saturating_sub(next_attempts),
+            },
+            commit: true,
+        });
+    }
+
+    sqlx::query("UPDATE account_codes SET consumed_at = now() WHERE id = $1")
+        .bind(code_id)
+        .execute(&mut **tx)
+        .await?;
+    Ok(LockedCode::Matched {
+        code_id,
+        account_id,
+    })
+}
+
+/// Commit or roll back a transaction that ended in a refused code.
+async fn finish_rejected_code(tx: Transaction<'_, Postgres>, commit: bool) -> Result<()> {
+    if commit {
+        tx.commit().await?;
+    } else {
+        tx.rollback().await?;
+    }
+    Ok(())
+}
+
+/// Verify an account's email. A password set while the email was unproven is
+/// dropped, because whoever set it never proved they own the address.
+const VERIFY_EMAIL_DROPPING_UNPROVEN_PASSWORD: &str = "UPDATE accounts SET \
+     password_hash = CASE WHEN email_verified_at IS NULL THEN NULL ELSE password_hash END, \
+     failed_attempts = CASE WHEN email_verified_at IS NULL THEN 0 ELSE failed_attempts END, \
+     locked_until = CASE WHEN email_verified_at IS NULL THEN NULL ELSE locked_until END, \
+     email_verified_at = COALESCE(email_verified_at, now()), \
+     last_signin_at = now(), updated_at = now() WHERE id = $1";
+
+/// Record which terms version the person accepted, and when.
+async fn record_terms_acceptance(
+    tx: &mut Transaction<'_, Postgres>,
+    account_id: Uuid,
+    terms_version: Option<&str>,
+) -> Result<()> {
+    if let Some(terms_version) = terms_version {
+        sqlx::query(
+            "UPDATE accounts SET terms_version = $2, terms_accepted_at = now() WHERE id = $1",
+        )
+        .bind(account_id)
+        .bind(terms_version)
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
 async fn prune_old_account_mail(tx: &mut Transaction<'_, Postgres>) -> Result<()> {
     sqlx::query(
         "WITH stale AS ( \
@@ -1043,4 +1356,393 @@ fn account_from_row(row: sqlx::postgres::PgRow) -> Result<AccountRecord> {
         failed_attempts: row.try_get("failed_attempts")?,
         locked_until: row.try_get("locked_until")?,
     })
+}
+
+#[cfg(test)]
+mod sign_in_code_postgres_tests {
+    use super::*;
+    use sqlx::postgres::PgPoolOptions;
+
+    async fn setup_db() -> (Db, PgPool) {
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .connect(&crate::test_support::database_url())
+            .await
+            .expect("connect to the account test database");
+        (Db::from_pool(pool.clone()), pool)
+    }
+
+    fn candidate(email: &str) -> NewAccount {
+        let id = Uuid::new_v4();
+        NewAccount {
+            email: email.to_owned(),
+            pubkey: format!("{:064x}", id.as_u128()),
+            password_hash: None,
+            wrapped_dek: vec![1_u8; 28],
+            kek_id: "test-kek".to_owned(),
+            sealed_nsec: vec![2_u8; 16],
+            nonce: vec![3_u8; 12],
+            email_verified: false,
+        }
+    }
+
+    fn sign_in_code(hash_byte: u8) -> NewAccountCode {
+        NewAccountCode {
+            code_id: Uuid::new_v4(),
+            outbox_id: Uuid::new_v4(),
+            code_hash: [hash_byte; 32],
+            code_ciphertext: vec![4_u8; 16],
+            nonce: vec![5_u8; 12],
+            purpose: AccountCodePurpose::SignIn,
+        }
+    }
+
+    fn unique_email(prefix: &str) -> String {
+        format!("{prefix}-{}@example.invalid", Uuid::new_v4().simple())
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn start_creates_one_passwordless_account_and_reuses_it() {
+        let (db, pool) = setup_db().await;
+        let email = unique_email("start");
+        assert!(matches!(
+            db.start_sign_in_code(&candidate(&email), &sign_in_code(1))
+                .await
+                .expect("first start"),
+            StartSignInCodeOutcome::Issued
+        ));
+        assert!(matches!(
+            db.start_sign_in_code(&candidate(&email), &sign_in_code(2))
+                .await
+                .expect("second start"),
+            StartSignInCodeOutcome::Issued
+        ));
+
+        let account = db
+            .account_by_email(&email)
+            .await
+            .expect("load account")
+            .expect("start created the account");
+        assert!(account.email_verified_at.is_none());
+        assert!(account.password_hash().is_none());
+        let accounts: i64 = sqlx::query_scalar("SELECT count(*) FROM accounts WHERE email = $1")
+            .bind(&email)
+            .fetch_one(&pool)
+            .await
+            .expect("count accounts");
+        assert_eq!(accounts, 1, "a second start reuses the pending account");
+        let active: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM account_codes \
+             WHERE account_id = $1 AND purpose = 'sign_in' AND consumed_at IS NULL",
+        )
+        .bind(account.id)
+        .fetch_one(&pool)
+        .await
+        .expect("count active codes");
+        assert_eq!(active, 1, "only the newest sign-in code stays active");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn first_verified_sign_in_is_created_and_records_terms() {
+        let (db, pool) = setup_db().await;
+        let email = unique_email("consume");
+        db.start_sign_in_code(&candidate(&email), &sign_in_code(7))
+            .await
+            .expect("start");
+
+        match db
+            .consume_sign_in_code(&email, &[8_u8; 32], "2026-10-11", None)
+            .await
+            .expect("wrong code")
+        {
+            ConsumeSignInCodeOutcome::Invalid { attempts_left } => assert_eq!(attempts_left, 4),
+            _ => panic!("a wrong code must count one attempt"),
+        }
+        let first = match db
+            .consume_sign_in_code(&email, &[7_u8; 32], "2026-10-11", None)
+            .await
+            .expect("right code")
+        {
+            ConsumeSignInCodeOutcome::Accepted { account, created } => {
+                assert!(created, "the first verified sign-in creates the account");
+                account
+            }
+            _ => panic!("the right code must sign in"),
+        };
+        assert!(first.email_verified_at.is_some());
+        let terms: (Option<String>, bool) = sqlx::query_as(
+            "SELECT terms_version, terms_accepted_at IS NOT NULL FROM accounts WHERE id = $1",
+        )
+        .bind(first.id)
+        .fetch_one(&pool)
+        .await
+        .expect("read terms");
+        assert_eq!(terms, (Some("2026-10-11".to_owned()), true));
+
+        db.start_sign_in_code(&candidate(&email), &sign_in_code(9))
+            .await
+            .expect("second start");
+        match db
+            .consume_sign_in_code(&email, &[9_u8; 32], "2026-11-01", None)
+            .await
+            .expect("second sign-in")
+        {
+            ConsumeSignInCodeOutcome::Accepted { account, created } => {
+                assert!(
+                    !created,
+                    "a verified account signs in; it is not created again"
+                );
+                assert_eq!(account.id, first.id);
+            }
+            _ => panic!("the second code must sign in"),
+        }
+        let terms_version: Option<String> =
+            sqlx::query_scalar("SELECT terms_version FROM accounts WHERE id = $1")
+                .bind(first.id)
+                .fetch_one(&pool)
+                .await
+                .expect("read updated terms");
+        assert_eq!(terms_version.as_deref(), Some("2026-11-01"));
+        assert!(
+            matches!(
+                db.consume_sign_in_code(&email, &[9_u8; 32], "2026-11-01", None)
+                    .await
+                    .expect("reused code"),
+                ConsumeSignInCodeOutcome::Expired
+            ),
+            "a used code never works twice"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn five_wrong_codes_burn_the_code_and_lock_new_starts_until_it_expires() {
+        let (db, _pool) = setup_db().await;
+        let email = unique_email("burn");
+        db.start_sign_in_code(&candidate(&email), &sign_in_code(11))
+            .await
+            .expect("start");
+        for expected_left in [4, 3, 2, 1] {
+            match db
+                .consume_sign_in_code(&email, &[12_u8; 32], "2026-10-11", None)
+                .await
+                .expect("wrong code")
+            {
+                ConsumeSignInCodeOutcome::Invalid { attempts_left } => {
+                    assert_eq!(attempts_left, expected_left)
+                }
+                _ => panic!("wrong codes count down"),
+            }
+        }
+        assert!(matches!(
+            db.consume_sign_in_code(&email, &[12_u8; 32], "2026-10-11", None)
+                .await
+                .expect("fifth wrong code"),
+            ConsumeSignInCodeOutcome::AttemptsExceeded { .. }
+        ));
+        assert!(
+            matches!(
+                db.consume_sign_in_code(&email, &[11_u8; 32], "2026-10-11", None)
+                    .await
+                    .expect("right code after the burn"),
+                ConsumeSignInCodeOutcome::AttemptsExceeded { .. }
+            ),
+            "a burned code never signs in, even when it is right"
+        );
+        match db
+            .start_sign_in_code(&candidate(&email), &sign_in_code(13))
+            .await
+            .expect("start during the lock")
+        {
+            StartSignInCodeOutcome::Locked { retry_after_secs } => assert!(retry_after_secs > 0),
+            StartSignInCodeOutcome::Issued => panic!("no new code until the burned one expires"),
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn first_proof_of_the_email_drops_a_password_nobody_proved() {
+        let (db, _pool) = setup_db().await;
+        let squatted = unique_email("squatted");
+        let mut squatter = candidate(&squatted);
+        squatter.password_hash =
+            Some("$argon2id$v=19$m=19456,t=2,p=1$c3F1YXR0ZXI$c3F1YXR0ZXI".to_owned());
+        assert!(matches!(
+            db.create_account(&squatter, None)
+                .await
+                .expect("squatter signup"),
+            CreateAccountOutcome::Created(_)
+        ));
+        db.start_sign_in_code(&candidate(&squatted), &sign_in_code(21))
+            .await
+            .expect("owner start");
+        match db
+            .consume_sign_in_code(&squatted, &[21_u8; 32], "2026-10-11", None)
+            .await
+            .expect("owner proves the email")
+        {
+            ConsumeSignInCodeOutcome::Accepted { account, created } => {
+                assert!(created);
+                assert!(
+                    account.password_hash().is_none(),
+                    "the squatter's password must not survive"
+                );
+            }
+            _ => panic!("the owner's code must sign in"),
+        }
+
+        let owned = unique_email("owned");
+        let mut verified = candidate(&owned);
+        verified.email_verified = true;
+        verified.password_hash = Some("$argon2id$v=19$m=19456,t=2,p=1$b3duZXI$b3duZXI".to_owned());
+        db.create_account(&verified, None)
+            .await
+            .expect("verified password account");
+        db.start_sign_in_code(&candidate(&owned), &sign_in_code(22))
+            .await
+            .expect("start");
+        match db
+            .consume_sign_in_code(&owned, &[22_u8; 32], "2026-10-11", None)
+            .await
+            .expect("sign in")
+        {
+            ConsumeSignInCodeOutcome::Accepted { account, created } => {
+                assert!(!created);
+                assert!(account.password_hash().is_some(), "a proven password stays");
+            }
+            _ => panic!("the code must sign in"),
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn consume_account_code_refuses_sign_in_codes() {
+        let (db, _pool) = setup_db().await;
+        let email = unique_email("refuse");
+        db.start_sign_in_code(&candidate(&email), &sign_in_code(31))
+            .await
+            .expect("start");
+        assert!(db
+            .consume_account_code(&email, AccountCodePurpose::SignIn, &[31_u8; 32], None)
+            .await
+            .is_err());
+    }
+}
+
+#[cfg(test)]
+mod sign_in_lock_postgres_tests {
+    use super::*;
+    use sqlx::postgres::PgPoolOptions;
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn cluster_global_sign_in_locks_the_account_before_the_code() {
+        assert_account_locked_before_code(false).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn cluster_global_reissue_locks_the_account_before_the_code() {
+        assert_account_locked_before_code(true).await;
+    }
+
+    async fn assert_account_locked_before_code(reissue: bool) {
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .connect(&crate::test_support::database_url())
+            .await
+            .expect("connect to the account test database");
+        let db = Db::from_pool(pool.clone());
+        let email = format!("lock-{}@example.invalid", Uuid::new_v4().simple());
+        let candidate = NewAccount {
+            email: email.clone(),
+            pubkey: format!("{:064x}", Uuid::new_v4().as_u128()),
+            password_hash: None,
+            wrapped_dek: vec![1_u8; 28],
+            kek_id: "test-kek".to_owned(),
+            sealed_nsec: vec![2_u8; 16],
+            nonce: vec![3_u8; 12],
+            email_verified: false,
+        };
+        let code = NewAccountCode {
+            code_id: Uuid::new_v4(),
+            outbox_id: Uuid::new_v4(),
+            code_hash: [41; 32],
+            code_ciphertext: vec![4_u8; 16],
+            nonce: vec![5_u8; 12],
+            purpose: AccountCodePurpose::SignIn,
+        };
+        db.start_sign_in_code(&candidate, &code)
+            .await
+            .expect("issue code");
+
+        let mut blocker = pool.begin().await.expect("begin account blocker");
+        let blocker_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+            .fetch_one(&mut *blocker)
+            .await
+            .expect("blocker connection id");
+        let account_id: Uuid =
+            sqlx::query_scalar("SELECT id FROM accounts WHERE email = $1 FOR UPDATE")
+                .bind(&email)
+                .fetch_one(&mut *blocker)
+                .await
+                .expect("hold the account lock");
+        let original_code_id = code.code_id;
+        let operation = tokio::spawn(async move {
+            if reissue {
+                let replacement = NewAccountCode {
+                    code_id: Uuid::new_v4(),
+                    outbox_id: Uuid::new_v4(),
+                    ..code
+                };
+                db.issue_account_code(account_id, &email, &replacement)
+                    .await
+                    .map(|outcome| matches!(outcome, IssueAccountCodeOutcome::Issued))
+            } else {
+                db.consume_sign_in_code(&email, &[41; 32], "2026-10-11", None)
+                    .await
+                    .map(|outcome| matches!(outcome, ConsumeSignInCodeOutcome::Accepted { .. }))
+            }
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                let waiting: bool = sqlx::query_scalar(
+                    "SELECT EXISTS (SELECT 1 FROM pg_stat_activity \
+                     WHERE datname = current_database() \
+                       AND $1 = ANY(pg_blocking_pids(pid)))",
+                )
+                .bind(blocker_pid)
+                .fetch_one(&pool)
+                .await
+                .expect("observe account lock waiter");
+                if waiting {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("operation reaches the account lock within ten seconds");
+        let mut probe = pool.begin().await.expect("begin code lock probe");
+        let code_available = sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM account_codes WHERE id = $1 FOR UPDATE NOWAIT",
+        )
+        .bind(original_code_id)
+        .fetch_one(&mut *probe)
+        .await;
+        probe.rollback().await.expect("release code probe");
+        blocker.commit().await.expect("release account blocker");
+        let succeeded = tokio::time::timeout(std::time::Duration::from_secs(10), operation)
+            .await
+            .expect("code operation finishes within ten seconds")
+            .expect("join code operation")
+            .expect("complete code operation");
+        assert!(
+            code_available.is_ok(),
+            "code operations must wait for the account before locking its code"
+        );
+        assert!(succeeded);
+    }
 }

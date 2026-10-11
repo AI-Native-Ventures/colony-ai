@@ -629,6 +629,7 @@ async fn resend_code(
         let eligible = match purpose {
             AccountCodePurpose::VerifyEmail => account.email_verified_at.is_none(),
             AccountCodePurpose::ResetPassword => true,
+            AccountCodePurpose::SignIn => false,
         };
         if eligible {
             match queue_code(&state, &account, purpose).await {
@@ -1101,6 +1102,7 @@ fn code_purpose_key(purpose: AccountCodePurpose) -> &'static str {
     match purpose {
         AccountCodePurpose::VerifyEmail => "verify",
         AccountCodePurpose::ResetPassword => "reset",
+        AccountCodePurpose::SignIn => "sign_in",
     }
 }
 
