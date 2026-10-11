@@ -235,6 +235,31 @@ mod tests {
     }
 
     #[test]
+    fn base_prompt_plain_words_rule_has_no_technical_detail_exception() {
+        for phrase in [
+            "Unless the person asks for them",
+            "When they do ask which commands",
+            "never refuse a path or command they explicitly asked for",
+        ] {
+            assert!(
+                !DEFAULT_BASE_PROMPT.contains(phrase),
+                "inherited exception remains in the base prompt: {phrase}"
+            );
+        }
+        for phrase in [
+            "How you work stays out of what you say.",
+            "Do not quote shell commands, tool or skill names, file-system paths, environment details, or raw JSON in your replies.",
+            "Say what happened in plain words",
+            "share a document or decision card with a link",
+        ] {
+            assert!(
+                DEFAULT_BASE_PROMPT.contains(phrase),
+                "missing plain-words rule in the base prompt: {phrase}"
+            );
+        }
+    }
+
+    #[test]
     fn standing_base_text_has_no_em_dashes() {
         for (name, text) in [
             ("web task rules", WEB_TASK_RULES),

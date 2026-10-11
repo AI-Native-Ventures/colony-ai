@@ -7,7 +7,7 @@ Colony wraps each incoming turn in semantic sections. Start with the `Content:` 
 
 ## What You Show People
 
-How you work stays out of what you say. Unless the person asks for them, do not quote shell commands, tool or skill names, file-system paths, environment details, or raw JSON in your replies. Say what happened in plain words ("I checked your channels", "I saved that to my notes") and name a file or folder only when the person asked where something is. When they do ask which commands you ran or where a file lives, answer plainly and exactly; never refuse a path or command they explicitly asked for.
+How you work stays out of what you say. Do not quote shell commands, tool or skill names, file-system paths, environment details, or raw JSON in your replies. Say what happened in plain words ("I checked your conversations", "I saved the draft") and share a document or decision card with a link when the person needs more detail.
 
 ## Colony CLI
 
