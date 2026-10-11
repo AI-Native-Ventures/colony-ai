@@ -73,7 +73,7 @@ Code that changes:
 - Tauri persona records: `company_role` metadata (`desktop/src-tauri/src/commands/personas/create.rs`) and built-in personas (`desktop/src-tauri/src/managed_agents/personas.rs`).
 - Persona pack spec (`crates/buzz-persona/PERSONA_PACK_SPEC.md`) documents the company role block, so custom packs use the same format.
 
-Hire review shows the duties and the `askBefore` list. The founder's signature on the hire approves them. The relay creates the hire, the duty heads and their schedule workflows in one transaction (`crates/buzz-relay/src/handlers/company_hires.rs` with the helpers in `company_duties.rs`), so a hire never exists without its duties or the reverse.
+Hire review shows the duties, the goal from `owns` and the `askBefore` list. The founder's signature on the hire approves them. The relay creates the hire, its goal, the duty heads and their schedule workflows in one transaction (`crates/buzz-relay/src/handlers/company_hires.rs` with the helpers in `company_duties.rs`), so a hire never exists without its goal and duties or the reverse. The founder's signature is the authority this needs: only admins may create top-level goals (`crates/buzz-relay/src/handlers/company_records.rs:347-357`) and manage duties.
 
 Built-in packs ship inside the desktop app and appear in the Role catalog. Their content arrives with each role's design. This base ships the mechanism and one test fixture pack.
 
@@ -81,10 +81,10 @@ Built-in packs ship inside the desktop app and appear in the Role catalog. Their
 
 All steps use existing primitives: goals, work items, duties (schedule workflow with an `AskAgent` step), asks and workers.
 
-1. **Hire signed.** The employee, its duties and its home channel exist. It posts a one-line intro (existing hire success behavior).
+1. **Hire signed.** The employee, its goal, its duties and its home channel exist. It posts a one-line intro (existing hire success behavior).
 2. **Studies the startup.** It reads the business profile plus its `onHire` sources. Workers do the heavy reading.
 3. **Plan ask.** It writes the 2-week plan into its home channel canvas and raises one `Approval` ask with a one-line summary and a link. The founder (owner or admin) resolves it.
-4. **On approval.** It creates its goal (from `owns`) and the work items with `colony goals` and `colony work`, then starts the first item.
+4. **On approval.** It creates the plan's work items under its goal with `colony work`, then starts the first item.
 5. **Wake-ups.** Duties, @mentions and briefs from its manager wake it. Each time it picks the next work item, hands parts to workers, posts a one-line result with a link and marks the item done (unverified). It raises an ask only at its `askBefore` limits.
 6. **Plan refresh.** Every pack gets a built-in "Plan review" duty, Mondays 09:00 local. When the plan is 14 days old, it posts the next plan ask.
 
@@ -102,15 +102,15 @@ Known v1 limit: `askBefore` is enforced by the prompt plus tool consent for tool
 |-|-|
 | Plan rejected | The employee revises it with the founder's note and asks again |
 | Missing source (no code folder, no website) | One question ask, then it continues with what it has |
-| Allowance used up | Pauses with the reason and raises a raise ask (existing pause flow) |
-| Crash or stuck | Existing takeover flow; Scout flags it in the daily summary |
-| Laptop off or app closed | Missed duties catch up once (approved company design) |
+| Allowance used up | Pauses with the reason and raises a Money ask for a raise. New in this base: nothing enforces the weekly allowance today. The check compares the spend ledger (`crates/buzz-core/src/company_spend.rs`) with the hire's `weeklyAllowance` and uses the existing core pause (`crates/buzz-core/src/company_members.rs:340`) |
+| Crash or stuck | Scout flags it in the daily summary; the founder restarts it from its profile (existing `restart_managed_agent_runtime`). A takeover flow does not exist and is out of scope here |
+| Laptop off or app closed | Missed duties catch up once (existing bounded schedule catch-up, `crates/buzz-relay/src/api/workflows.rs:268`) |
 
 ## Testing and proof gate
 
 1. Contract tests: role pack v2 parsing in Rust and TypeScript, version 1 still accepted, the built-in exclusion removed only for packs with a company role.
 2. Prompt test: the base prompt contains the voice section exactly once and no longer tells agents to narrate (bound to the production prompt builder, like the web rules test).
-3. Relay tests (PostgreSQL): a signed hire creates the hire, its duties and workflows together; a failure creates none of them.
+3. Relay tests (PostgreSQL): a signed hire creates the hire, its goal, its duties and workflows together; a failure creates none of them. Spend reaching the weekly allowance pauses the employee and raises exactly one raise ask.
 4. Desktop e2e (smoke and integration projects): the catalog shows the fixture pack; hire review shows duties and limits; the home tab appears in the employee's channel.
 5. Real-run gate (packaged app, clean profile, real Claude Code): hire the fixture "Test Engineer" on a test repo with no prompting. Within 5 minutes it posts an intro and a plan ask. After approval a duty run leads to a PR on the test repo. Every chat reply in the run is measured: at least 9 in 10 are 5 sentences or fewer, and none is a report (headings, tables, bullet walls).
 
