@@ -497,6 +497,13 @@ Two drafted plans can be reused. Both are unreviewed drafts:
 - **Work:** help messages, problem reports with the details the person agreed to send (app version, type of computer, recent problem messages; never conversations unless pasted), and feedback reach a Colony support inbox and get an email reply.
 - **Size:** S. **Depends on:** E-01, E-30. **Phase:** Launch.
 
+### E-34 Agent browser in the new app
+
+- **Needed by:** O-07 (Scout reads the owner's links), D-04 (Sipho's lead research), D-02 (Maya's look at similar brands), D-03 (Naledi studies the owner's profiles).
+- **Today:** the old app has a browser for employees (`desktop/electron/browser-broker/`, about 16,000 lines, on by default since 1.0.7). The new app starts the host with it switched off (engine plan part E).
+- **Work:** port the browser broker into the new app shell, keep its permission rules, and switch it on for employees.
+- **Size:** L. **Depends on:** E-01. **Phase:** 2. Until then employees use their own web tools.
+
 ## e. Relay limits the new app must respect
 
 | Limit | Value and evidence | What it means for screens |

@@ -104,7 +104,7 @@ Targets for the owner's first run, from the first launch of the installed app to
   2. A 6-digit code entry that accepts typing and pasting.
   3. "Send a new code", available 30 seconds after the last one.
   4. "Use a different email".
-  5. A small hint: "The code works for 10 minutes. Check your spam folder if it's not there." (default 10 minutes)
+  5. A small hint: "The code works for 15 minutes. Check your spam folder if it's not there." (15 minutes: the relay's existing code lifetime, engine plan part A)
 - **Actions:**
   - Enter the code (anyone) -> checks it as soon as 6 digits are in; on success follows the route table. Keyboard: type or paste; Enter also submits.
   - Send a new code (anyone, after 30 seconds) -> sends another code; the old one stops working.

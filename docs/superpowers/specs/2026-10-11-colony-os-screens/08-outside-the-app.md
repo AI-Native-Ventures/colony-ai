@@ -245,7 +245,7 @@ Rules for every email: sent from "Colony" at a colony.global address (default); 
 
 | Email | To | When | Subject | Body | Action |
 |-|-|-|-|-|-|
-| Sign-in code | The person signing in | They ask for a code at O-02 | "Your Colony code: 482913" | "Here's your code to sign in to Colony: 482913. It works for 10 minutes (default). If you didn't ask for it, you can ignore this email." | The code itself (typed into O-02) |
+| Sign-in code | The person signing in | They ask for a code at O-02 | "Your Colony code: 482913" | "Here's your code to sign in to Colony: 482913. It works for 15 minutes. If you didn't ask for it, you can ignore this email." | The code itself (typed into O-02) |
 | Partner invite | The invited person | The owner sends an invite in S-05 | "Lerato invited you to Lerato Designs on Colony" | "Lerato Mokoena invited you to help run Lerato Designs. Colony is where her AI team works: you'll be able to talk to Scout, see everything the team does and approve their work. This invite works for 7 days (default)." | "Join Lerato Designs" -> W-07 |
 | Payment receipt | Owner | After every payment: credit pack, automatic top-up, monthly hosting | "Receipt: $15 of Colony credits" or "Receipt: website hosting, October" | What was paid, when, the card's last four digits, and the company. Default: Stripe's own receipt email, with Colony's name and logo set in Stripe. | "View in Colony" -> S-02 |
 | Credits low | Owner | The balance drops below about 3 days of the team's usual use (X-04) and automatic top-up is off | "Your team has about 3 days of credits left" | "Lerato Designs has $4.20 of credits left. At this week's pace that's about 3 days of work. Add credits to keep your team going." | "Add credits" -> Colony at S-02 |

@@ -376,6 +376,7 @@ Every "Data" line points at these. Status comes from the 11 October code survey 
 | E-31 | Photo library (owner photos and AI-made images, tags) | MISSING: media upload works |
 | E-32 | Search across conversations | WORKS: client work only |
 | E-33 | Support inbox: help messages, problem reports with consented details, feedback | MISSING |
+| E-34 | Agent browser in the new app: employees open web pages like a person | PARTIAL: exists in the old app (about 16,000 lines), not yet in the new app |
 
 ## 13. Coverage checks
 
