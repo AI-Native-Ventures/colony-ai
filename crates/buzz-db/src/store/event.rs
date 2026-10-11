@@ -1520,6 +1520,32 @@ pub async fn insert_event_with_thread_metadata_in_transaction(
     insert_event_with_thread_metadata_tx(tx, community_id, event, channel_id, thread_meta).await
 }
 
+/// Insert a relay-authored channel message with its thread metadata and its
+/// `p`-tag mention index in a caller-owned transaction.
+///
+/// A `#p` history read joins `event_mentions`, so an agent that was offline
+/// finds the message only when the index commits with the message itself.
+pub async fn insert_message_with_mentions_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    community_id: CommunityId,
+    event: &Event,
+    channel_id: Uuid,
+    thread_meta: Option<ThreadMetadataParams<'_>>,
+) -> Result<(StoredEvent, bool)> {
+    let inserted = insert_event_with_thread_metadata_tx(
+        tx,
+        community_id,
+        event,
+        Some(channel_id),
+        thread_meta,
+    )
+    .await?;
+    if inserted.1 {
+        crate::insert_mentions_in_transaction(tx, community_id, event, Some(channel_id)).await?;
+    }
+    Ok(inserted)
+}
+
 /// Atomically insert an event and its optional thread metadata.
 ///
 /// `insert_event` and `insert_thread_metadata` calls could leave reply counters
