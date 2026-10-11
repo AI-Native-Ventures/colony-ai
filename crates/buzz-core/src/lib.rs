@@ -19,6 +19,8 @@ pub mod company_employee_history;
 pub mod company_lessons;
 /// Typed content and validation for company member positions.
 pub mod company_members;
+/// Typed company business profile and its revision rule.
+pub mod company_profile;
 /// Typed content and validation for company records (goals and asks).
 pub mod company_records;
 /// Typed content and validation for employee allowances and AI spend.
