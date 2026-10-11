@@ -46,6 +46,8 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30654 | AI spend record head | Relay signed, replaceable | AI spend |
 | 30655 | Employee duty head | Relay signed, replaceable | Company duties |
 | 30656 | Employee lesson head | Relay signed, replaceable | Employee lessons |
+| 30657 | Business profile head | Relay signed, replaceable | Company profile |
+| 30658 | Team computer head | Relay signed, replaceable | Team runtime |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
@@ -61,6 +63,8 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47043 | AI spend record action | Brokered | AI spend |
 | 47044 | Employee duty action | Brokered | Company duties |
 | 47045 | Employee lesson action | Brokered | Employee lessons |
+| 47046 | Business profile action | Brokered | Company profile |
+| 47047 | Team computer action | Brokered | Team runtime |
 
 The Factory run record contract is in
 [`factory-run-records.md`](factory-run-records.md). It extends the company
