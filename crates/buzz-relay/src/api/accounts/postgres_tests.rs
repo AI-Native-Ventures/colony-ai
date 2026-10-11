@@ -1805,8 +1805,25 @@ async fn email_code_sign_in_does_not_reveal_accounts_and_burns_a_guessed_code() 
     deliver_pending_mail(&state).await;
     assert_eq!(
         test_mail_count(&pool, &unknown, "sign_in").await,
-        1,
-        "a locked email gets no new code"
+        0,
+        "burning the code deletes its outbox and cascades the delivered test mail"
+    );
+    let (code_count, burned_count, outbox_count): (i64, i64, i64) = sqlx::query_as(
+        "SELECT \
+         (SELECT count(*) FROM account_codes c WHERE c.account_id = a.id AND c.purpose = 'sign_in'), \
+         (SELECT count(*) FROM account_codes c WHERE c.account_id = a.id AND c.purpose = 'sign_in' \
+          AND c.attempts = 5 AND c.consumed_at IS NOT NULL), \
+         (SELECT count(*) FROM account_mail_outbox o WHERE o.account_id = a.id AND o.purpose = 'sign_in') \
+         FROM accounts a WHERE a.email = $1",
+    )
+    .bind(&unknown)
+    .fetch_one(&pool)
+    .await
+    .expect("read burned code and locked resend state");
+    assert_eq!(
+        (code_count, burned_count, outbox_count),
+        (1, 1, 0),
+        "a locked resend retains the burned code without issuing a new code or mail"
     );
 }
 
