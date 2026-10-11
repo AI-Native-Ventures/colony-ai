@@ -71,6 +71,8 @@ rate-limited enumeration trade-off.
 |---|---|---|
 | `POST /api/accounts/signup` | `{email, password, display_name?}` | `202 {status:"verification_sent", retry_after_secs:30}`; account created unverified, key generated and sealed |
 | `POST /api/accounts/verify` | `{email, code}` | `200 {account}` + `nsec` (see Session payload) |
+| `POST /api/accounts/code/start` | `{email}` | `200 {sent:true, resendAfterSeconds}` for every well-formed email; a new email gets a passwordless, unverified account; no new code while the 30-second cooldown or a burned code is active (the wait is in `resendAfterSeconds`) |
+| `POST /api/accounts/code/verify` | `{email, code, termsVersion, displayName?}` | `200` session payload plus `created` (true on the first verified sign-in); records `termsVersion` and its time; drops a password set before the email was proven; `400 invalid_code` (with `attempts_left` for a wrong code), `410 code_expired`, `429 too_many_attempts` once five wrong codes burn it |
 | `POST /api/accounts/resend-code` | `{email, purpose:"verify"\|"reset"}` | `202 {status:"verification_sent", retry_after_secs:30}`; `429 resend_cooldown` while the 30-second cooldown is active |
 | `POST /api/accounts/signin` | `{email, password}` | `200` session payload; `403 email_unverified` (a new code is sent) |
 | `POST /api/accounts/google` | `{id_token}` | `200` session payload; creates the account on first use (email taken from the verified Google token, marked verified); links to an existing account with the same verified email |
