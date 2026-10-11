@@ -59,6 +59,18 @@ export const ROWS = Object.freeze([
     ],
   },
   {
+    id: "download",
+    requires: "confirmed-download-slice",
+    steps: [
+      "Seed a synthetic report.txt collision under the throwaway Downloads",
+      "Reject a managed browser_download and observe zero requests and saved files",
+      "Confirm two fresh link-reference attempts through the visible controls",
+      "Observe identical fixture bytes in distinct saved files, preserving the collision",
+      "Confirm a private redirect attempt and observe refusal before the forbidden listener",
+      "Stop the grant and observe saved files survive with no private payload or ownership journals",
+    ],
+  },
+  {
     id: "private-url-refusal",
     requires: "runtime",
     steps: [
@@ -109,6 +121,7 @@ export function judgeRow(id, evidence = {}) {
     );
   if (
     !evidence.flagOn ||
+    !evidence.defaultFlagUnset ||
     !evidence.realControlUi ||
     !evidence.actionLogRedacted
   )
@@ -156,7 +169,7 @@ export function judgeRow(id, evidence = {}) {
   } else if (id === "upload") {
     if (!evidence.immutableUploadSliceInArtifact)
       return blocked(
-        "The artifact does not include the immutable upload slice from PR 266.",
+        "The artifact does not include the immutable upload slice from PR 280.",
       );
     if (
       !evidence.nativePickerUsed ||
@@ -165,11 +178,39 @@ export function judgeRow(id, evidence = {}) {
       !evidence.originalReplacedBeforeSubmit ||
       !/^[a-f0-9]{64}$/u.test(evidence.approvedDigest ?? "") ||
       evidence.receivedDigest !== evidence.approvedDigest ||
+      evidence.afterUploads !== 1 ||
+      !evidence.grantTerminated ||
       !zero(evidence.privatePayloads) ||
       !zero(evidence.ownershipRecords)
     )
       return fail(
         "Approved immutable bytes, rejected upload and grant-end cleanup were not all observed.",
+      );
+  } else if (id === "download") {
+    if (!evidence.confirmedDownloadSliceInArtifact)
+      return blocked(
+        "The artifact does not include the download slice from PR 282.",
+      );
+    if (
+      !evidence.downloadRejectedWithoutEffect ||
+      !evidence.personConfirmed ||
+      !evidence.toolSucceeded ||
+      !evidence.collisionPreserved ||
+      !evidence.distinctSavedFiles ||
+      !evidence.savedFilesSurviveStop ||
+      !evidence.redirectRefused ||
+      !evidence.grantTerminated ||
+      !/^[a-f0-9]{64}$/u.test(evidence.expectedDigest ?? "") ||
+      evidence.firstSavedDigest !== evidence.expectedDigest ||
+      evidence.secondSavedDigest !== evidence.expectedDigest ||
+      evidence.afterDownloads !== 2 ||
+      evidence.afterDownloadRequests !== 2 ||
+      !zero(evidence.forbiddenRequests) ||
+      !zero(evidence.privatePayloads) ||
+      !zero(evidence.ownershipRecords)
+    )
+      return fail(
+        "Confirmed download bytes, rejection, collision, redirect containment and grant-end cleanup were not all observed.",
       );
   } else {
     if (
