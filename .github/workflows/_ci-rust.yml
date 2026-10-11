@@ -65,6 +65,10 @@ jobs:
           tool: cargo-nextest@0.9.136
       - name: Unit tests
         run: just test-unit
+      - name: Colony accounts and company unit tests
+        run: |
+          cargo nextest run -p buzz-sdk --lib -E 'test(/^company_profile::tests::/) + test(/^team_computer::tests::/)'
+          cargo nextest run -p buzz-relay --lib -E 'test(/^api::accounts::mail::tests::/) + test(=api::self_provisioning::tests::config_reports_account_mode) + test(=config::tests::self_provision_modes_require_a_domain) + test(=handlers::ingest::postgres_tests::business_profile_and_team_computer_kinds_are_global_only_message_writes)'
 
   server-cross-compile:
     name: Server Cross-Compile
