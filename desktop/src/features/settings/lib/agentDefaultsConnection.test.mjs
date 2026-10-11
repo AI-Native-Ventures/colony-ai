@@ -88,3 +88,29 @@ test("provider credentials alone never claim a tested connection", () => {
     "key",
   );
 });
+
+test("keyless credits describe the saved route without claiming a live connection", () => {
+  const bundled = {
+    ...runtime,
+    id: "buzz-agent",
+    label: "Colony Agent",
+    providerEnvVar: "BUZZ_AGENT_PROVIDER",
+    authStatus: { status: "not_applicable" },
+  };
+  const saved = {
+    ...config,
+    preferred_runtime: "buzz-agent",
+    provider: "colony-credits",
+    model: null,
+  };
+  assert.equal(
+    agentDefaultsConnection(saved, [bundled]).label,
+    "Colony credits selected",
+  );
+  assert.equal(
+    agentDefaultsConnection(saved, [
+      { ...bundled, availability: "not_installed" },
+    ]).kind,
+    "unavailable",
+  );
+});

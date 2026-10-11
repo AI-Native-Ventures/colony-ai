@@ -24,7 +24,7 @@ const PROVIDER_KEYS: &[&str] = &[
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct Authorization {
+pub(crate) struct Authorization {
     session_id: uuid::Uuid,
     model: String,
     expires_in_seconds: u64,
@@ -32,13 +32,13 @@ pub(super) struct Authorization {
     auth_tag: Option<String>,
 }
 
-pub(super) fn enabled() -> bool {
+pub(crate) fn enabled() -> bool {
     std::env::var("COLONY_CREDITS_GATEWAY").ok().as_deref() == Some("1")
         || option_env!("COLONY_CREDITS_GATEWAY") == Some("1")
 }
 
 /// Refuse before network or process side effects. Only the saved provider opts in.
-pub(super) fn validate_selection(
+pub(crate) fn validate_selection(
     selected: bool,
     flag: bool,
     runtime: Option<&str>,
@@ -171,7 +171,7 @@ fn authorize_blocking(relay: &str, agent: &Keys, owner: &Keys) -> Result<Authori
 }
 
 /// Applied AFTER all saved env layers, so ephemeral authorization has one owner.
-pub(super) fn apply(command: &mut Command, authorization: Option<&Authorization>) {
+pub(crate) fn apply(command: &mut Command, authorization: Option<&Authorization>) {
     for key in ["COLONY_CREDITS_GATEWAY", SESSION_ENV, MODEL_ENV] {
         command.env_remove(key);
     }
@@ -193,6 +193,9 @@ pub(super) fn apply(command: &mut Command, authorization: Option<&Authorization>
             .env_remove("BUZZ_ACP_SETUP_PAYLOAD");
     }
 }
+
+mod connection_probe;
+pub(crate) use connection_probe::run as run_connection_probe;
 
 #[cfg(test)]
 mod tests;

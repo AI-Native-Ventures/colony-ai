@@ -1,4 +1,6 @@
 import * as React from "react";
+import { useCommunities } from "@/features/communities/useCommunities";
+import { SettingsColonyCreditsOption } from "./SettingsColonyCreditsOption";
 import { useQuery } from "@tanstack/react-query";
 import { OpenRouterConnectionPanel } from "@/shared/ui/OpenRouterConnectionPanel";
 import { getGlobalAgentConfig } from "@/shared/api/tauriGlobalAgentConfig";
@@ -10,7 +12,10 @@ import { agentDefaultsConnection } from "../lib/agentDefaultsConnection";
 import { SettingsOptionGroup } from "./SettingsOptionGroup";
 
 export function AgentDefaultsSettingsCard() {
+  const { activeCommunity } = useCommunities();
   const [revision, setRevision] = React.useState(0);
+  const [creditsBusy, setCreditsBusy] = React.useState(false);
+  const [otherSaving, setOtherSaving] = React.useState(false);
   const [openRouterExpanded, setOpenRouterExpanded] = React.useState(false);
   const config = useQuery({
     queryKey: globalAgentConfigQueryKey,
@@ -39,7 +44,11 @@ export function AgentDefaultsSettingsCard() {
       description="Defaults for your AI employees. Individual settings take priority."
       title="Agent defaults"
     >
-      <div className="px-4 py-4 space-y-4">
+      <fieldset
+        disabled={creditsBusy}
+        className="min-w-0 px-4 py-4 space-y-4"
+        data-testid="agent-defaults-editing"
+      >
         <section
           className="rounded-lg border border-border p-4"
           data-testid="agent-defaults-connection"
@@ -94,11 +103,41 @@ export function AgentDefaultsSettingsCard() {
             ) : null}
           </details>
         )}
-        <section aria-label="Bring your own key">
-          <h4 className="mb-3 text-sm font-semibold">Bring your own key</h4>
-          <AgentDefaultsEditor key={revision} layout="flat" />
-        </section>
-      </div>
+        <SettingsColonyCreditsOption
+          key={activeCommunity?.id ?? ""}
+          communityId={activeCommunity?.id ?? ""}
+          selected={
+            config.data?.provider === "colony-credits" &&
+            config.data?.preferred_runtime === "buzz-agent"
+          }
+          onSaved={() => setRevision((value) => value + 1)}
+          onBusyChange={setCreditsBusy}
+          disabled={otherSaving}
+        />
+        {config.data?.provider === "colony-credits" ? (
+          <details>
+            <summary className="cursor-pointer text-sm font-medium">
+              Bring your own key
+            </summary>
+            <div className="mt-3">
+              <AgentDefaultsEditor
+                key={revision}
+                layout="flat"
+                onSavingChange={setOtherSaving}
+              />
+            </div>
+          </details>
+        ) : (
+          <section aria-label="Bring your own key">
+            <h4 className="mb-3 text-sm font-semibold">Bring your own key</h4>
+            <AgentDefaultsEditor
+              key={revision}
+              layout="flat"
+              onSavingChange={setOtherSaving}
+            />
+          </section>
+        )}
+      </fieldset>
     </SettingsOptionGroup>
   );
 }
