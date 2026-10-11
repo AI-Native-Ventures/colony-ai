@@ -1,7 +1,7 @@
 # AI employees: shared base (design)
 
 - Date: 11 Oct 2026
-- Status: design approved in chat section by section (A, B, C, D); this written spec awaits owner review
+- Status: approved by the owner (sections A to D in chat, written spec on 11 Oct). Revised the same day after a code check: built in two phases (owner decision), Phase 1 now, Phase 2 (allowance enforcement) right after.
 - Sub-project 1 of 8: shared base, Scout, Engineer, Growth Marketer, Social Media Manager, Sales Director, onboarding, landing page
 
 ## Why
@@ -21,16 +21,29 @@ This base gives every employee the same voice, the same role pack format and the
 5. Social and Sales launch in draft mode (the final post or email is one founder click); real APIs come after.
 6. Agents talk short, concise and conversational, never long reports: usually 1 to 5 sentences, longer only when the situation needs it (not a hard cap).
 7. Each role gets its own design (native experience, skills, capabilities). This base only provides the slots.
+8. Everything reaches the founder through Scout unless the founder addresses an employee directly (Scout design, sub-project 2).
+9. Build in two phases: Phase 1 makes employees run and work; Phase 2 enforces allowances.
+
+## What the code check found (11 Oct)
+
+- A hire creates the agent with auto-start off, nothing triggers its first turn, and an agent subscribes from "now", so a wake-up sent while it is offline is lost.
+- Two hiring bugs: the desktop hire parser rejects a hire head once the relay adds the employee `p` tag (`companyHireModels.ts:288`), and persona `company_role` is dropped on save because `ManagedAgentRecord` has no such field (`desktop/src-tauri/src/managed_agents/types.rs:320-573`, `into_agent_record` 197-259). Also `defaultAllowance` is never carried into a proposal.
+- A duty head must name a source ask (`crates/buzz-core/src/company_duties.rs:169-189`); a direct hire has none.
+- Agents receive no role context (title, job, goal, limits, manager).
+- Allowance enforcement needs machinery that does not exist (see Phase 2).
+- No restart button on the employee profile; no employee to home channel mapping; no per-agent working folder.
 
 ## Scope
 
-In: voice rule for all agents, role pack v2 format, hire that approves duties, on-hire routine, work loop, home screen slot, per-employee work folder, proof gate.
+Phase 1 (this build): voice rule, role pack v2, the hiring bug fixes, role context for agents, hire completion that creates the goal and duties, employees that start with the app and get an on-hire kickoff, missed wake-up catch-up, home tab and profile section, restart button, per-employee work folder, proof gate.
 
-Out (later sub-projects): the content of each built-in role pack, each role's screens and skills, social posting and email sending APIs, onboarding and landing changes, cloud-run employees.
+Phase 2 (next build): allowance enforcement.
+
+Out (later sub-projects): the content of each built-in role pack, each role's screens and skills, Scout's routing and desk, social posting and email sending APIs, onboarding and landing changes, cloud-run employees.
 
 ## A. Voice (all agents)
 
-A new section "How you talk" in `crates/buzz-acp/src/base_prompt.md`, the shared prompt every managed agent loads. One copy only, the same pattern as `web_tasks.md`.
+A new single-source file `crates/buzz-acp/src/voice.md`, exported as `VOICE_RULES` and joined into `DEFAULT_BASE_PROMPT` between `base_prompt.md` and `web_tasks.md`, the same pattern as the web rules. The desktop nest skill and the managed `AGENTS.md` section include the same text.
 
 Rules:
 
@@ -40,10 +53,7 @@ Rules:
 4. One question at a time. A decision becomes an ask card with a one-sentence summary.
 5. One pickup line, then only results or blockers. Step-by-step work shows in the activity panel, not in chat.
 
-Existing lines that change in the same file:
-
-- "Use GitHub-flavored Markdown" (line 81) becomes Markdown for code blocks and links only.
-- "narrate as you go in brief messages" (line 123) becomes rule 5.
+Existing lines that change: `base_prompt.md` line 81 ("Use GitHub-flavored Markdown") becomes Markdown for code blocks and links only; line 123 ("narrate as you go in brief messages") becomes rule 5; `desktop/src-tauri/src/managed_agents/nest_skill.md` lines 143-148 (Markdown tables and headings) align with rule 2, with a `NEST_SKILL_VERSION` bump.
 
 Example:
 
@@ -54,72 +64,69 @@ Example:
 
 Today a role pack has `personaId`, `title`, `job`, `skills`, `tools` (name and risk), `workerMenu` and `defaultAllowance`.
 
-New fields:
+New optional fields:
 
 | Field | Meaning | Engineer example |
 |-|-|-|
-| `owns` | The outcome the role owns, used as its goal template | "Ship fixes and roadmap items every week" |
-| `channel` | Default home channel, created at hire if missing | `engineering` |
-| `duties` | Default duties: title, schedule (cron and time zone), instructions | 09:00 triage of #bugs and GitHub issues |
-| `onHire` | Sources to study and the plan horizon (14 days) | code folder, open issues |
+| `owns` | The outcome the role owns, used as its goal | "Ship fixes and roadmap items every week" |
+| `channel` | Default home channel name | `engineering` |
+| `duties` | Default duties: title, readable schedule, instructions | "Every day at 09:00": triage #bugs and GitHub issues |
+| `onHire` | Sources to study and the plan horizon (default 14 days) | code folder, open issues |
 | `askBefore` | Actions that always need the founder | merge, deploy |
 | `home` | The role's native screen id | `engineer.prs` |
 | `workFolder` | `none`, `optional` or `required` | `required` |
 
-Code that changes:
+Decisions:
 
-- Rust: `HireRolePack` (`crates/buzz-core/src/company_records.rs:688`) gains the new fields. It uses `deny_unknown_fields`, so this is hire schema version 2. The relay accepts versions 1 and 2.
-- TypeScript: the role pack parser and `companyHireRolePackFromPersona` in `desktop/src/features/company-hiring/companyHireModels.ts`. That function rejects built-in personas today (`persona.isBuiltIn`); built-in personas with a company role must be allowed.
-- Tauri persona records: `company_role` metadata (`desktop/src-tauri/src/commands/personas/create.rs`) and built-in personas (`desktop/src-tauri/src/managed_agents/personas.rs`).
-- Persona pack spec (`crates/buzz-persona/PERSONA_PACK_SPEC.md`) documents the company role block, so custom packs use the same format.
-
-Hire review shows the duties, the goal from `owns` and the `askBefore` list. The founder's signature on the hire approves them. The relay creates the hire, its goal, the duty heads and their schedule workflows in one transaction (`crates/buzz-relay/src/handlers/company_hires.rs` with the helpers in `company_duties.rs`), so a hire never exists without its goal and duties or the reverse. The founder's signature is the authority this needs: only admins may create top-level goals (`crates/buzz-relay/src/handlers/company_records.rs:347-357`) and manage duties.
-
-Built-in packs ship inside the desktop app and appear in the Role catalog. Their content arrives with each role's design. This base ships the mechanism and one test fixture pack.
+- The fields are additive and optional, with no schema version bump. Old packs still parse. Desktops at 1.0.7 or older reject records that carry new keys (their parsers reject unknown keys), so founders need the new desktop to see such hires.
+- Rust: `HireRolePack` (`crates/buzz-core/src/company_records.rs:686-704`) and the Tauri `CompanyRoleMetadata` (`desktop/src-tauri/src/managed_agents/types.rs:22-32`) gain the fields and validation. TypeScript: the role pack parser and `companyHireRolePackFromPersona` (`desktop/src/features/company-hiring/companyHireModels.ts`), which stops rejecting built-in personas that carry a company role and starts copying `defaultAllowance`.
+- Built-in packs: `BuiltInPersona` (`desktop/src-tauri/src/managed_agents/personas.rs:7-16`) gains a company role, and `merge_personas` refreshes built-in roles from code on every load. Phase 1 ships no production pack; a "Test Engineer" fixture pack exists only when `COLONY_FIXTURE_ROLE_PACKS=1`. Each role design adds its real pack.
+- Custom packs are created in the app as today; no persona pack file format change.
+- Hire review shows the job, `owns`, duties and `askBefore`. The founder's signature on the hire approves them.
 
 ## C. On-hire routine and work loop
 
-All steps use existing primitives: goals, work items, duties (schedule workflow with an `AskAgent` step), asks and workers.
-
-1. **Hire signed.** The employee, its goal, its duties and its home channel exist. It posts a one-line intro (existing hire success behavior).
-2. **Studies the startup.** It reads the business profile plus its `onHire` sources. Workers do the heavy reading.
-3. **Plan ask.** It writes the 2-week plan into its home channel canvas and raises one `Approval` ask with a one-line summary and a link. The founder (owner or admin) resolves it.
-4. **On approval.** It creates the plan's work items under its goal with `colony work`, then starts the first item.
-5. **Wake-ups.** Duties, @mentions and briefs from its manager wake it. Each time it picks the next work item, hands parts to workers, posts a one-line result with a link and marks the item done (unverified). It raises an ask only at its `askBefore` limits.
-6. **Plan refresh.** Every pack gets a built-in "Plan review" duty, Mondays 09:00 local. When the plan is 14 days old, it posts the next plan ask.
+1. **Hire completes.** In the relay transaction that completes the hire (`crates/buzz-relay/src/handlers/company_hires.rs:357-430`), the relay also creates the employee's goal (root goal from `owns`, owned by the employee, linked to the home channel) and its duties, each with its schedule workflow, plus a built-in "Plan review" duty ("Every Monday at 09:00"). All or nothing. Duty heads gain a hire source (`sourceHireId`) as the alternative to a source ask. The founder's time zone travels with the Complete action.
+2. **Employee starts.** The desktop creates the employee with start-on-launch on and starts it after completion. The relay posts a workflow-tagged on-hire kickoff in the home channel, so the agent's existing author gate accepts it.
+3. **Role context.** The desktop stores a role context on the employee (title, job, owns, ask-before list, manager, home channel, goal, on-hire sources, plan horizon) and passes it as `COLONY_ROLE_CONTEXT`; `buzz-acp` adds a `<colony-role>` block to the agent instructions, the same pattern as the business profile.
+4. **Studies and plans.** The employee reads the business profile and its on-hire sources (workers do the heavy reading), writes the 2-week plan into its home channel canvas and sends it to its manager. A human manager gets an `Approval` ask; when Scout is the manager, Scout brings it to the founder (Scout design).
+5. **Works on its own.** After approval it creates the plan's work items under its goal (`colony work`; members may create and self-assign) and starts. Duties, @mentions and manager briefs wake it. It posts one-line results with links and asks only at its `askBefore` limits.
+6. **Missed wake-ups.** When an agent starts, it processes mentions and duty wakes that arrived while it was offline, once each, instead of subscribing from "now".
+7. **Plan refresh.** The "Plan review" duty checks the plan every Monday; at 14 days old the employee sends the next plan.
 
 Known v1 limit: `askBefore` is enforced by the prompt plus tool consent for tools rated risky. A general shell command cannot be fully fenced.
 
-## D. Home screen slot, work folder, errors
+## D. Home tab, profile, work folder, errors
 
-**Home screen slot.** The pack's `home` screen shows as a tab in the work area dock of the employee's home channel (`desktop/src/features/workarea/dock/workAreaTabRegistry.tsx`) and as a section on its profile (`desktop/src/features/company-team/ui/EmployeeProfileScreen.tsx`). The base ships the slot with an empty state; each role design fills it.
-
-**Work folder.** Today every agent starts in the home folder (`default_agent_workdir`, `desktop/src-tauri/src/managed_agents/mod.rs:138`, used by `runtime.rs:602` and `backend.rs:86`). A hire can set a work folder when the pack's `workFolder` is `optional` or `required`; the runtime starts that employee there.
-
-**Errors.**
+- **Home tab.** A channel is an employee's home when one of its bot members has a hire head whose `introductionChannelId` is this channel (hire heads are found by the employee `p` tag). There the work area dock offers a "Home" tab for that employee (`desktop/src/features/workarea/dock/workAreaTabRegistry.tsx`). Until a role design fills it, it shows real data: the goal, the employee's open work items and its duties with next run.
+- **Profile.** The employee profile overview (`desktop/src/features/company-team/ui/EmployeeProfileScreen.tsx`) shows the same summary and gains a Restart button wired to the existing runtime restart.
+- **Work folder.** The employee record gains an optional working folder; the runtime starts that employee there (`desktop/src-tauri/src/managed_agents/runtime.rs:601-604`) and a change marks the employee as needing a restart. The hire configure step offers a folder picker when the pack's `workFolder` is `optional` or `required`.
 
 | Case | Behavior |
 |-|-|
-| Plan rejected | The employee revises it with the founder's note and asks again |
-| Missing source (no code folder, no website) | One question ask, then it continues with what it has |
-| Allowance used up | Pauses with the reason and raises a Money ask for a raise. New in this base: nothing enforces the weekly allowance today. The check compares the spend ledger (`crates/buzz-core/src/company_spend.rs`) with the hire's `weeklyAllowance` and uses the existing core pause (`crates/buzz-core/src/company_members.rs:340`) |
-| Crash or stuck | Scout flags it in the daily summary; the founder restarts it from its profile (existing `restart_managed_agent_runtime`). A takeover flow does not exist and is out of scope here |
-| Laptop off or app closed | Missed duties catch up once (existing bounded schedule catch-up, `crates/buzz-relay/src/api/workflows.rs:268`) |
+| Plan rejected | The employee revises it with the founder's note and sends it again |
+| Missing source (no code folder, no website) | One question, then it continues with what it has |
+| Crash or stuck | Scout flags it; the founder presses Restart on its profile |
+| Laptop off or app closed | Missed duties catch up once (existing scheduler catch-up) and missed wake-ups are processed at start |
+| Goal or duty creation fails | The hire does not complete; nothing partial is stored |
 
-## Testing and proof gate
+## Testing and proof gate (Phase 1)
 
-1. Contract tests: role pack v2 parsing in Rust and TypeScript, version 1 still accepted, the built-in exclusion removed only for packs with a company role.
-2. Prompt test: the base prompt contains the voice section exactly once and no longer tells agents to narrate (bound to the production prompt builder, like the web rules test).
-3. Relay tests (PostgreSQL): a signed hire creates the hire, its goal, its duties and workflows together; a failure creates none of them. Spend reaching the weekly allowance pauses the employee and raises exactly one raise ask.
-4. Desktop e2e (smoke and integration projects): the catalog shows the fixture pack; hire review shows duties and limits; the home tab appears in the employee's channel.
-5. Real-run gate (packaged app, clean profile, real Claude Code): hire the fixture "Test Engineer" on a test repo with no prompting. Within 5 minutes it posts an intro and a plan ask. After approval a duty run leads to a PR on the test repo. Every chat reply in the run is measured: at least 9 in 10 are 5 sentences or fewer, and none is a report (headings, tables, bullet walls).
+1. Contract tests: role pack v2 in Rust (core and Tauri) and TypeScript; old packs still parse; built-ins with a role reach the catalog; `defaultAllowance` survives; `company_role` survives a save and reload; a hire head with the employee `p` tag parses.
+2. Prompt tests: the voice rules reach every framed system prompt exactly once, before the agent instructions; no em dashes; brand guard passes; the nest skill version is bumped; the role block appears only when `COLONY_ROLE_CONTEXT` is set.
+3. Relay PostgreSQL tests: completing a hire creates the hire, goal, duties and workflows together; a failure creates none; the kickoff is published once with the workflow tags.
+4. Desktop e2e (smoke and integration projects): the catalog shows the fixture pack; review shows job, owns, duties and limits; the Home tab appears only in the home channel; Restart works.
+5. Real-run gate (packaged app, clean profile, real Claude Code, `COLONY_FIXTURE_ROLE_PACKS=1`): hire the Test Engineer on a test repo with no prompting. Within 5 minutes it posts an intro and sends its plan. After approval a duty run leads to a PR on the test repo. Quit and reopen the app while a duty fires: the missed wake is processed once. Replies measured: at least 9 in 10 are 5 sentences or fewer, and none is a report.
+
+## Phase 2: allowance enforcement (next build)
+
+Found missing on 11 Oct: spend is only recorded while the founder's Spend screen is open (`desktop/src/features/power/spendRelay.ts:178-304`); nothing reads spend per week on the relay; a paused employee keeps working and there is no resume; the relay cannot create asks; Colony credits turns and Codex turns are not priced in the ledger. Phase 2 adds background spend sync, a relay check when spend is recorded (effective allowance from the 30653 head, else the hire value), pause enforcement in the runtime, a resume action, and exactly one raise ask per employee per week. It gets its own short design and plan.
 
 ## Rollout
 
-- Relay first (accepts hire schema v1 and v2), then desktop.
-- No feature flag: the mechanism is invisible until packs exist, and the voice rule is a prompt change.
-- Desktops at 1.0.7 or older skip version 2 hire records (their parser rejects unknown keys), so founders need the new desktop to see new hires.
+- Relay first, then desktop. No feature flag: the mechanism is invisible until packs exist, and the voice rule is a prompt change.
+- Desktops at 1.0.7 or older skip hire and duty records that carry new keys.
 
 ## Next
 
-Scout design (sub-project 2), then Engineer, Growth Marketer, Social Media Manager, Sales Director, onboarding and the landing page last.
+Scout design (sub-project 2, in progress), then Engineer, Growth Marketer, Social Media Manager, Sales Director, onboarding and the landing page last.
