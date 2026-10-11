@@ -667,6 +667,7 @@ pub(super) fn parse_hire_head(event: &StoredEvent) -> Result<HireHead, IngestErr
             employee_pubkey: None,
             introduction_event_id: None,
             reason: None,
+            time_zone: None,
         })
         .is_err()
         || nostr::PublicKey::from_hex(&head.proposed_by_pubkey).is_err()

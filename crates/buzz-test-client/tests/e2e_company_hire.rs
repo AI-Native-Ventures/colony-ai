@@ -269,6 +269,7 @@ async fn company_hire_authority_name_collisions_and_founder_signoff_are_enforced
         employee_pubkey: None,
         introduction_event_id: None,
         reason: None,
+        time_zone: None,
     };
     assert_accepted(&submit_hire_action(&admin, &create).await);
     let (head_id, head) = current_hire_head(&owner, hire_id).await;
@@ -309,6 +310,7 @@ async fn company_hire_authority_name_collisions_and_founder_signoff_are_enforced
         employee_pubkey: None,
         introduction_event_id: None,
         reason: None,
+        time_zone: None,
     };
     assert_rejected(
         &submit_hire_action(&admin, &admin_approval).await,
@@ -324,6 +326,7 @@ async fn company_hire_authority_name_collisions_and_founder_signoff_are_enforced
         employee_pubkey: Some(manager.public_key().to_hex()),
         introduction_event_id: Some("e".repeat(64)),
         reason: None,
+        time_zone: None,
     };
     assert_rejected(
         &submit_hire_action(&owner, &incomplete_completion).await,

@@ -888,6 +888,9 @@ pub struct HireAction {
     /// Decision reason for denial or founder sign-off.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// The owner's IANA time zone for the employee's routine schedules; complete only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_zone: Option<String>,
 }
 
 /// Stable d-tag for one hire head.
@@ -1081,6 +1084,11 @@ pub fn validate_hire_action(action: &HireAction) -> Result<(), CompanyRecordErro
         action.expected_head_event_id.as_deref(),
         action.action == HireActionKind::Create,
     )?;
+    if action.time_zone.is_some() && action.action != HireActionKind::Complete {
+        return Err(CompanyRecordError::Invalid(
+            "timeZone is allowed only on complete",
+        ));
+    }
     match action.action {
         HireActionKind::Create => {
             let proposal = action.proposal.as_ref().ok_or(CompanyRecordError::Invalid(
@@ -1173,6 +1181,15 @@ pub fn validate_hire_action(action: &HireAction) -> Result<(), CompanyRecordErro
             if !is_hex_id(employee) || !is_hex_id(introduction) {
                 return Err(CompanyRecordError::Invalid(
                     "complete identity coordinates must be lowercase hex ids",
+                ));
+            }
+            if action
+                .time_zone
+                .as_deref()
+                .is_some_and(|zone| !crate::company_duties::is_timezone_label(zone))
+            {
+                return Err(CompanyRecordError::Invalid(
+                    "timeZone must be an IANA time zone name of 1 to 64 characters",
                 ));
             }
             Ok(())
@@ -2888,6 +2905,107 @@ mod tests {
         assert_role_pack_rejected("home over 80", |pack| pack.home = Some("h".repeat(81)));
     }
 
+    fn complete_action() -> HireAction {
+        HireAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            hire_id: Uuid::from_u128(42),
+            action: HireActionKind::Complete,
+            expected_head_event_id: Some(EV.into()),
+            proposal: None,
+            employee_pubkey: Some(PK_B.into()),
+            introduction_event_id: Some(EV.into()),
+            reason: None,
+            time_zone: None,
+        }
+    }
+
+    #[test]
+    fn complete_carries_an_optional_iana_time_zone_label() {
+        assert!(validate_hire_action(&complete_action()).is_ok());
+        for zone in [
+            "Africa/Johannesburg",
+            "UTC",
+            "America/Argentina/Buenos_Aires",
+            "Etc/GMT+2",
+        ] {
+            let mut action = complete_action();
+            action.time_zone = Some(zone.into());
+            assert!(validate_hire_action(&action).is_ok(), "{zone} is a label");
+        }
+        let too_long = "A".repeat(65);
+        for zone in ["", "Mars Base", "Europe/Paris;", too_long.as_str()] {
+            let mut action = complete_action();
+            action.time_zone = Some(zone.into());
+            assert!(
+                validate_hire_action(&action).is_err(),
+                "{zone:?} is not a label"
+            );
+        }
+
+        let mut action = complete_action();
+        action.time_zone = Some("UTC".into());
+        let json = serde_json::to_string(&action).expect("serialize complete");
+        assert!(json.contains(r#""timeZone":"UTC""#));
+        assert!(matches!(
+            parse_company_command(crate::kind::KIND_HIRE_ACTION, &json),
+            Ok(CompanyCommand::HireAction(parsed)) if parsed.time_zone.as_deref() == Some("UTC")
+        ));
+        let without = serde_json::to_string(&complete_action()).expect("serialize complete");
+        assert!(!without.contains("timeZone"));
+    }
+
+    #[test]
+    fn only_complete_may_carry_a_time_zone() {
+        let create = HireAction {
+            action: HireActionKind::Create,
+            expected_head_event_id: None,
+            proposal: Some(hire_proposal()),
+            employee_pubkey: None,
+            introduction_event_id: None,
+            ..complete_action()
+        };
+        let update = HireAction {
+            action: HireActionKind::Update,
+            expected_head_event_id: Some(EV.into()),
+            ..create.clone()
+        };
+        let approve = HireAction {
+            action: HireActionKind::Approve,
+            expected_head_event_id: Some(EV.into()),
+            proposal: None,
+            ..create.clone()
+        };
+        let attach = HireAction {
+            action: HireActionKind::AttachEmployee,
+            expected_head_event_id: Some(EV.into()),
+            proposal: None,
+            employee_pubkey: Some(PK_B.into()),
+            ..create.clone()
+        };
+        let deny = HireAction {
+            action: HireActionKind::Deny,
+            expected_head_event_id: Some(EV.into()),
+            proposal: None,
+            reason: Some("Role is not approved".into()),
+            time_zone: None,
+            ..create.clone()
+        };
+        for action in [create, update, approve, attach, deny] {
+            assert!(
+                validate_hire_action(&action).is_ok(),
+                "{:?} is valid without a time zone",
+                action.action
+            );
+            let mut with_zone = action.clone();
+            with_zone.time_zone = Some("UTC".into());
+            assert!(
+                validate_hire_action(&with_zone).is_err(),
+                "{:?} must not carry timeZone",
+                action.action
+            );
+        }
+    }
+
     fn tool_permission(now: chrono::DateTime<chrono::Utc>) -> ToolPermissionRecord {
         ToolPermissionRecord {
             schema_version: COMPANY_RECORD_SCHEMA_VERSION,
@@ -3100,6 +3218,7 @@ mod tests {
             employee_pubkey: None,
             introduction_event_id: None,
             reason: None,
+            time_zone: None,
         };
         assert!(validate_hire_action(&create).is_ok());
 
@@ -3123,6 +3242,7 @@ mod tests {
             employee_pubkey: None,
             introduction_event_id: None,
             reason: Some("The proposed scope is approved.".into()),
+            time_zone: None,
         };
         assert!(validate_hire_action(&approve).is_ok());
         let mut blank_approval_reason = approve.clone();
@@ -3150,6 +3270,7 @@ mod tests {
             employee_pubkey: Some(PK_B.into()),
             introduction_event_id: None,
             reason: None,
+            time_zone: None,
         };
         assert!(validate_hire_action(&attach).is_ok());
         let mut malformed_attach = attach;
@@ -3185,6 +3306,7 @@ mod tests {
             employee_pubkey: None,
             introduction_event_id: None,
             reason: Some("Role is not approved".into()),
+            time_zone: None,
         };
         assert!(validate_hire_action(&deny).is_ok());
     }
