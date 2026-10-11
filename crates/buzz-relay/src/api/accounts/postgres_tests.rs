@@ -1544,3 +1544,327 @@ async fn account_configuration_debug_never_contains_the_master_key() {
     assert!(debug.contains("[REDACTED]"));
     assert!(!debug.contains(&encoded_key));
 }
+
+async fn clear_sign_in_cooldown(state: &Arc<AppState>, email: &str) {
+    let digest = hex::encode(Sha256::digest(email.as_bytes()));
+    let key = format!("colony:account-code-cooldown:sign_in:{digest}");
+    let mut connection = state
+        .redis_pool
+        .get()
+        .await
+        .expect("account test Redis connection");
+    let _: i64 = redis::cmd("DEL")
+        .arg(key)
+        .query_async(&mut *connection)
+        .await
+        .expect("clear the sign-in cooldown");
+}
+
+async fn test_mail_count(pool: &PgPool, email: &str, purpose: &str) -> i64 {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM account_test_mail WHERE recipient = $1 AND purpose = $2",
+    )
+    .bind(email)
+    .bind(purpose)
+    .fetch_one(pool)
+    .await
+    .expect("count test-only mail")
+}
+
+async fn code_start(
+    state: &Arc<AppState>,
+    host: &str,
+    ip: Ipv4Addr,
+    email: &str,
+) -> (StatusCode, Value) {
+    json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/code/start",
+            host,
+            ip,
+            json!({ "email": email }),
+            None,
+        )
+        .await,
+    )
+    .await
+}
+
+async fn code_verify(
+    state: &Arc<AppState>,
+    host: &str,
+    ip: Ipv4Addr,
+    body: Value,
+) -> (StatusCode, Value) {
+    json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/code/verify",
+            host,
+            ip,
+            body,
+            None,
+        )
+        .await,
+    )
+    .await
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn email_code_sign_in_creates_a_passwordless_account_then_signs_it_in_again() {
+    let (state, pool, host) = test_state(Vec::new(), None).await;
+    let ip = unique_test_ip();
+    let email = format!("code-{}@example.test", Uuid::new_v4().simple());
+
+    let (start_status, start_body) = code_start(&state, &host, ip, &email).await;
+    assert_eq!(start_status, StatusCode::OK);
+    assert_eq!(
+        start_body,
+        json!({ "sent": true, "resendAfterSeconds": ACCOUNT_CODE_RESEND_COOLDOWN_SECS })
+    );
+    let (again_status, again_body) = code_start(&state, &host, ip, &email).await;
+    assert_eq!(again_status, StatusCode::OK);
+    assert_eq!(again_body["sent"], true);
+    let wait = again_body["resendAfterSeconds"]
+        .as_i64()
+        .expect("resend wait in seconds");
+    assert!((1..=ACCOUNT_CODE_RESEND_COOLDOWN_SECS).contains(&wait));
+
+    deliver_pending_mail(&state).await;
+    assert_eq!(
+        test_mail_count(&pool, &email, "sign_in").await,
+        1,
+        "a resend inside the cooldown sends no second code"
+    );
+    let code = test_mail_code(&pool, &email, "sign_in").await;
+    let (verify_status, verify_body) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({
+            "email": email,
+            "code": code,
+            "termsVersion": "2026-10-11",
+            "displayName": "Lerato Mokoena",
+        }),
+    )
+    .await;
+    assert_eq!(verify_status, StatusCode::OK);
+    assert_eq!(verify_body["created"], true);
+    assert_eq!(verify_body["account"]["has_password"], false);
+    assert!(verify_body["nsec"]
+        .as_str()
+        .is_some_and(|nsec| nsec.starts_with("nsec1")));
+    let pubkey = verify_body["account"]["pubkey"]
+        .as_str()
+        .expect("session public key")
+        .to_owned();
+
+    let terms: (Option<String>, bool) = sqlx::query_as(
+        "SELECT terms_version, terms_accepted_at IS NOT NULL FROM accounts WHERE email = $1",
+    )
+    .bind(&email)
+    .fetch_one(&pool)
+    .await
+    .expect("read recorded terms");
+    assert_eq!(terms, (Some("2026-10-11".to_owned()), true));
+
+    let community_id: Uuid = sqlx::query_scalar("SELECT id FROM communities WHERE host = $1")
+        .bind(&host)
+        .fetch_one(&pool)
+        .await
+        .expect("code sign-in community id");
+    let content: String = sqlx::query_scalar(
+        "SELECT content FROM events WHERE community_id = $1 AND pubkey = $2 AND kind = 0 \
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(community_id)
+    .bind(hex::decode(&pubkey).expect("decode profile pubkey"))
+    .fetch_one(&pool)
+    .await
+    .expect("display name profile event");
+    assert_eq!(
+        serde_json::from_str::<Value>(&content).expect("profile content"),
+        json!({ "display_name": "Lerato Mokoena" })
+    );
+
+    clear_sign_in_cooldown(&state, &email).await;
+    let (_, second_start) = code_start(&state, &host, ip, &email).await;
+    assert_eq!(second_start["sent"], true);
+    deliver_pending_mail(&state).await;
+    let second_code = test_mail_code(&pool, &email, "sign_in").await;
+    let (second_status, second_body) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({ "email": email, "code": second_code, "termsVersion": "2026-11-01" }),
+    )
+    .await;
+    assert_eq!(second_status, StatusCode::OK);
+    assert_eq!(second_body["created"], false);
+    assert_eq!(
+        second_body["account"]["pubkey"].as_str(),
+        Some(pubkey.as_str())
+    );
+    let terms_version: Option<String> =
+        sqlx::query_scalar("SELECT terms_version FROM accounts WHERE email = $1")
+            .bind(&email)
+            .fetch_one(&pool)
+            .await
+            .expect("read updated terms");
+    assert_eq!(terms_version.as_deref(), Some("2026-11-01"));
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn email_code_sign_in_does_not_reveal_accounts_and_burns_a_guessed_code() {
+    let (state, pool, host) = test_state(Vec::new(), None).await;
+    let ip = unique_test_ip();
+    let known = format!("known-{}@example.test", Uuid::new_v4().simple());
+    let unknown = format!("unknown-{}@example.test", Uuid::new_v4().simple());
+
+    let _ = code_start(&state, &host, ip, &known).await;
+    deliver_pending_mail(&state).await;
+    let known_code = test_mail_code(&pool, &known, "sign_in").await;
+    let (made_status, _) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({ "email": known, "code": known_code, "termsVersion": "2026-10-11" }),
+    )
+    .await;
+    assert_eq!(made_status, StatusCode::OK);
+    clear_sign_in_cooldown(&state, &known).await;
+
+    let known_answer = code_start(&state, &host, ip, &known).await;
+    let unknown_answer = code_start(&state, &host, ip, &unknown).await;
+    assert_eq!(
+        known_answer, unknown_answer,
+        "a known email and an unknown email get the same answer"
+    );
+    assert_eq!(
+        unknown_answer.1,
+        json!({ "sent": true, "resendAfterSeconds": ACCOUNT_CODE_RESEND_COOLDOWN_SECS })
+    );
+
+    deliver_pending_mail(&state).await;
+    let code = test_mail_code(&pool, &unknown, "sign_in").await;
+    let wrong = wrong_test_code(&code);
+    for attempts_left in [4, 3, 2, 1] {
+        let (status, body) = code_verify(
+            &state,
+            &host,
+            ip,
+            json!({ "email": unknown, "code": wrong, "termsVersion": "2026-10-11" }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            body,
+            json!({ "error": "invalid_code", "attempts_left": attempts_left })
+        );
+    }
+    let (fifth_status, fifth_body) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({ "email": unknown, "code": wrong, "termsVersion": "2026-10-11" }),
+    )
+    .await;
+    assert_eq!(fifth_status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(fifth_body["error"], "too_many_attempts");
+    let (burned_status, burned_body) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({ "email": unknown, "code": code, "termsVersion": "2026-10-11" }),
+    )
+    .await;
+    assert_eq!(
+        burned_status,
+        StatusCode::TOO_MANY_REQUESTS,
+        "a burned code never works, even when it is right"
+    );
+    assert_eq!(burned_body["error"], "too_many_attempts");
+
+    clear_sign_in_cooldown(&state, &unknown).await;
+    let (locked_status, locked_body) = code_start(&state, &host, ip, &unknown).await;
+    assert_eq!(locked_status, StatusCode::OK);
+    assert_eq!(locked_body["sent"], true);
+    assert!(
+        locked_body["resendAfterSeconds"]
+            .as_i64()
+            .unwrap_or_default()
+            > ACCOUNT_CODE_RESEND_COOLDOWN_SECS,
+        "no new code until the burned one expires"
+    );
+    deliver_pending_mail(&state).await;
+    assert_eq!(
+        test_mail_count(&pool, &unknown, "sign_in").await,
+        1,
+        "a locked email gets no new code"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn email_code_routes_reject_bad_input_and_respect_the_email_limit() {
+    let (state, _pool, host) = test_state(Vec::new(), None).await;
+    let ip = unique_test_ip();
+    let email = format!("limits-{}@example.test", Uuid::new_v4().simple());
+
+    let (bad_email_status, bad_email_body) = code_start(&state, &host, ip, "not-an-email").await;
+    assert_eq!(bad_email_status, StatusCode::BAD_REQUEST);
+    assert_eq!(bad_email_body, json!({ "error": "invalid_request" }));
+
+    let (no_code_status, no_code_body) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({ "email": email, "code": "123456", "termsVersion": "2026-10-11" }),
+    )
+    .await;
+    assert_eq!(no_code_status, StatusCode::GONE);
+    assert_eq!(no_code_body, json!({ "error": "code_expired" }));
+
+    let (malformed_status, malformed_body) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({ "email": email, "code": "12ab", "termsVersion": "2026-10-11" }),
+    )
+    .await;
+    assert_eq!(malformed_status, StatusCode::BAD_REQUEST);
+    assert_eq!(malformed_body, json!({ "error": "invalid_code" }));
+
+    let (missing_terms_status, missing_terms_body) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({ "email": email, "code": "123456" }),
+    )
+    .await;
+    assert_eq!(missing_terms_status, StatusCode::BAD_REQUEST);
+    assert_eq!(missing_terms_body, json!({ "error": "invalid_request" }));
+
+    let (long_terms_status, _) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({ "email": email, "code": "123456", "termsVersion": "x".repeat(65) }),
+    )
+    .await;
+    assert_eq!(long_terms_status, StatusCode::BAD_REQUEST);
+
+    for _ in 0..10 {
+        let (status, _) = code_start(&state, &host, ip, &email).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (limited_status, limited_body) = code_start(&state, &host, ip, &email).await;
+    assert_eq!(limited_status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(limited_body["error"], "rate_limited");
+}

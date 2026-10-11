@@ -26,7 +26,8 @@ use crate::config::{AccountConfig, AccountMailMode, Config};
 use crate::state::AppState;
 use buzz_db::accounts::{
     AccountCodePurpose, AccountRecord, CheckAccountCodeOutcome, ConsumeAccountCodeOutcome,
-    CreateAccountOutcome, IssueAccountCodeOutcome, NewAccount, NewAccountCode,
+    ConsumeSignInCodeOutcome, CreateAccountOutcome, IssueAccountCodeOutcome, NewAccount,
+    NewAccountCode, StartSignInCodeOutcome,
 };
 use buzz_pubsub::EventTopic;
 
@@ -79,6 +80,8 @@ pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/signup", post(signup))
         .route("/verify", post(verify_email))
+        .route("/code/start", post(code_start))
+        .route("/code/verify", post(code_verify))
         .route("/resend-code", post(resend_code))
         .route("/signin", post(signin))
         .route("/google", post(google_signin))
@@ -186,6 +189,24 @@ struct PasswordRequest {
     new_password: SecretString,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CodeStartRequest {
+    email: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct CodeVerifyRequest {
+    email: String,
+    code: SecretString,
+    terms_version: String,
+    #[serde(default)]
+    display_name: Option<String>,
+}
+
+const TERMS_VERSION_MAX_CHARS: usize = 64;
+
 struct SecretString(Zeroizing<String>);
 
 impl<'de> Deserialize<'de> for SecretString {
@@ -223,6 +244,13 @@ impl SecretString {
 struct SessionResponse {
     account: PublicAccount,
     nsec: SecretString,
+}
+
+#[derive(Serialize)]
+struct CodeSessionResponse {
+    account: PublicAccount,
+    nsec: SecretString,
+    created: bool,
 }
 
 #[derive(Serialize)]
@@ -297,6 +325,62 @@ fn normalize_display_name(
         return Err(invalid_request());
     }
     Ok(Some(display_name))
+}
+
+fn normalize_terms_version(raw: &str) -> Result<String, (StatusCode, Json<Value>)> {
+    let value = raw.trim();
+    if value.is_empty()
+        || value.chars().count() > TERMS_VERSION_MAX_CHARS
+        || value.chars().any(char::is_control)
+    {
+        return Err(invalid_request());
+    }
+    Ok(value.to_owned())
+}
+
+fn code_sent(resend_after_secs: i64) -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "sent": true,
+            "resendAfterSeconds": resend_after_secs.max(1),
+        })),
+    )
+}
+
+fn invalid_code(attempts_left: Option<i32>) -> (StatusCode, Json<Value>) {
+    let body = match attempts_left {
+        Some(attempts_left) => serde_json::json!({
+            "error": "invalid_code",
+            "attempts_left": attempts_left,
+        }),
+        None => serde_json::json!({ "error": "invalid_code" }),
+    };
+    (StatusCode::BAD_REQUEST, Json(body))
+}
+
+/// Sign the person's first profile (display name) with their own key.
+fn display_name_event(
+    config: &Config,
+    account: &AccountRecord,
+    display_name: &str,
+) -> Result<nostr::Event, (StatusCode, Json<Value>)> {
+    let nsec = crypto::open_nsec(
+        account_kek(config)?,
+        &account.pubkey,
+        account.kek_id(),
+        account.wrapped_dek(),
+        account.sealed_nsec(),
+        account.nonce(),
+    )
+    .map_err(|_| account_unavailable())?;
+    let keys = nostr::Keys::parse(nsec.as_str()).map_err(|_| account_unavailable())?;
+    nostr::EventBuilder::new(
+        nostr::Kind::Metadata,
+        serde_json::json!({ "display_name": display_name }).to_string(),
+    )
+    .sign_with_keys(&keys)
+    .map_err(|_| account_unavailable())
 }
 
 async fn tenant_from_headers(
@@ -585,6 +669,125 @@ async fn verify_email(
         ConsumeAccountCodeOutcome::Invalid { attempts_left } => Err(wrong_code(attempts_left)),
         ConsumeAccountCodeOutcome::Expired => Err(code_expired()),
         ConsumeAccountCodeOutcome::AttemptsExceeded { retry_after_secs } => {
+            Err(too_many_attempts(retry_after_secs))
+        }
+    }
+}
+
+/// `POST /api/accounts/code/start` sends a sign-in code. A new email gets a
+/// passwordless account in the same commit, so every well-formed email gets
+/// the same answer and nobody can learn which emails have accounts.
+async fn code_start(
+    State(state): State<Arc<AppState>>,
+    body: Bytes,
+) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
+    let request: CodeStartRequest = decode_body(&body)?;
+    let email = normalize_email(&request.email).ok_or_else(invalid_request)?;
+    email_rate_limit(&state, "/api/accounts/code/start", &email).await?;
+    ensure_mail_enabled(&state)?;
+    let purpose = AccountCodePurpose::SignIn;
+    let cooldown = match reserve_code_cooldown(&state, &email, purpose).await? {
+        CodeCooldownReservation::Acquired(lease) => lease,
+        CodeCooldownReservation::Active { retry_after_secs } => {
+            return Ok(code_sent(retry_after_secs));
+        }
+    };
+    let (identity_pubkey, nsec) =
+        crypto::generate_nostr_identity().map_err(|_| account_unavailable())?;
+    let candidate = new_account(&state.config, email.clone(), None, &nsec, false)?;
+    if candidate.pubkey != identity_pubkey {
+        release_code_cooldown(&state, &cooldown).await?;
+        return Err(account_unavailable());
+    }
+    let (clear_code, code) = new_code(account_kek(&state.config)?, purpose)?;
+    let outcome = match state.db.start_sign_in_code(&candidate, &code).await {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            release_code_cooldown(&state, &cooldown).await?;
+            return Err(map_db_error("code_start", error));
+        }
+    };
+    drop(clear_code);
+    Ok(match outcome {
+        StartSignInCodeOutcome::Issued => code_sent(ACCOUNT_CODE_RESEND_COOLDOWN_SECS),
+        StartSignInCodeOutcome::Locked { retry_after_secs } => code_sent(retry_after_secs),
+    })
+}
+
+/// `POST /api/accounts/code/verify` signs in with an email code, records the
+/// accepted terms version, and reports whether this created the account.
+async fn code_verify(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<CodeSessionResponse>, (StatusCode, Json<Value>)> {
+    let request: CodeVerifyRequest = decode_body(&body)?;
+    let email = normalize_email(&request.email).ok_or_else(invalid_request)?;
+    email_rate_limit(&state, "/api/accounts/code/verify", &email).await?;
+    let terms_version = normalize_terms_version(&request.terms_version)?;
+    let display_name = normalize_display_name(request.display_name)?;
+    let code = request.code.into_inner();
+    if !valid_code(&code) {
+        return Err(invalid_code(None));
+    }
+    let code_hash =
+        crypto::hash_code(account_kek(&state.config)?, &code).map_err(|_| account_unavailable())?;
+    let tenant = tenant_from_headers(&state, &headers).await?;
+    let profile_event = match display_name {
+        Some(display_name) => {
+            let Some(account) = state
+                .db
+                .account_by_email(&email)
+                .await
+                .map_err(|error| map_db_error("code_verify", error))?
+            else {
+                return Err(code_expired());
+            };
+            Some(display_name_event(&state.config, &account, &display_name)?)
+        }
+        None => None,
+    };
+    let outcome = state
+        .db
+        .consume_sign_in_code(
+            &email,
+            &code_hash,
+            &terms_version,
+            profile_event
+                .as_ref()
+                .map(|event| (event, tenant.community())),
+        )
+        .await
+        .map_err(|error| map_db_error("code_verify", error))?;
+    match outcome {
+        ConsumeSignInCodeOutcome::Accepted { account, created } => {
+            if created {
+                if let Some(event) = profile_event.as_ref() {
+                    if let Err(error) = state
+                        .pubsub
+                        .publish_event(&tenant, EventTopic::Global, event)
+                        .await
+                    {
+                        tracing::warn!(
+                            event_id = %event.id,
+                            error = %error,
+                            "account profile is stored and will be available to event queries"
+                        );
+                    }
+                }
+            }
+            let Json(SessionResponse { account, nsec }) = session(&state.config, &account)?;
+            Ok(Json(CodeSessionResponse {
+                account,
+                nsec,
+                created,
+            }))
+        }
+        ConsumeSignInCodeOutcome::Invalid { attempts_left } => {
+            Err(invalid_code(Some(attempts_left)))
+        }
+        ConsumeSignInCodeOutcome::Expired => Err(code_expired()),
+        ConsumeSignInCodeOutcome::AttemptsExceeded { retry_after_secs } => {
             Err(too_many_attempts(retry_after_secs))
         }
     }
