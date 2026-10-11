@@ -571,6 +571,20 @@ mod tests {
         let relay_hex = relay.public_key().to_hex();
         let mut tampered = head(&relay, "2", PROFILE);
         tampered["content"] = Value::String(r#"{"name":"Someone Else"}"#.into());
+        let changed_profile = PROFILE.replace("Lerato Designs", "Someone Else");
+        assert!(
+            snapshot_from_events(&[head(&relay, "2", &changed_profile)], &relay_hex).is_some(),
+            "the changed content is independently a valid profile"
+        );
+        let mut valid_tampered = head(&relay, "2", PROFILE);
+        valid_tampered["content"] = Value::String(changed_profile);
+        let wrong_kind = EventBuilder::new(Kind::Custom(1), PROFILE)
+            .tags([
+                Tag::parse(["d", PROFILE_D_TAG]).expect("d tag"),
+                Tag::parse(["revision", "2"]).expect("revision tag"),
+            ])
+            .sign_with_keys(&relay)
+            .expect("sign wrong-kind head");
         let oversized = format!(
             r#"{{"name":"Big","whatYouSell":"{}"}}"#,
             "x".repeat(MAX_PROFILE_BYTES)
@@ -581,6 +595,11 @@ mod tests {
                 head(&Keys::generate(), "1", PROFILE),
             ),
             ("changed after signing", tampered),
+            ("with valid content changed after signing", valid_tampered),
+            (
+                "with another event kind",
+                serde_json::to_value(wrong_kind).expect("serialize wrong-kind head"),
+            ),
             (
                 "under another d tag",
                 head_with(&relay, "other", "1", PROFILE),
