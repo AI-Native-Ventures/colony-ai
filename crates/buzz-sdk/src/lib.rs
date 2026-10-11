@@ -36,6 +36,8 @@ pub mod company_spend;
 pub mod company_work_tracking;
 pub mod mentions;
 pub mod nip_oa;
+/// Typed event builder for the company team computer record.
+pub mod team_computer;
 
 pub use builders::*;
 
