@@ -100,10 +100,15 @@ pub struct DutyHead {
     pub approved_by_pubkey: String,
     /// Approval timestamp in RFC 3339 format.
     pub approved_at: String,
-    /// Ask that created this duty.
-    pub source_ask_id: Uuid,
-    /// Channel containing the proposal ask.
-    pub source_ask_channel_id: Uuid,
+    /// Ask that created this duty; absent when a completed hire created it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_ask_id: Option<Uuid>,
+    /// Channel containing the proposal ask; present exactly when `source_ask_id` is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_ask_channel_id: Option<Uuid>,
+    /// Hire whose owner signature created this duty; the alternative to an ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_hire_id: Option<Uuid>,
     /// Hash of the active workflow definition.
     pub workflow_definition_hash: String,
     /// Creation timestamp in RFC 3339 format.
@@ -170,8 +175,6 @@ pub fn validate_duty_head(head: &DutyHead) -> Result<(), CompanyRecordError> {
     if head.schema_version != COMPANY_RECORD_SCHEMA_VERSION
         || head.duty_id.is_nil()
         || head.proposal.duty_id != head.duty_id
-        || head.source_ask_id.is_nil()
-        || head.source_ask_channel_id.is_nil()
         || !is_hex_id(&head.proposed_by_pubkey)
         || !is_hex_id(&head.approved_by_pubkey)
         || !is_hex_id(&head.source_action_event_id)
@@ -184,8 +187,26 @@ pub fn validate_duty_head(head: &DutyHead) -> Result<(), CompanyRecordError> {
             "duty head identity, approval and timestamps must be valid",
         ));
     }
+    if !has_exactly_one_source(head) {
+        return Err(CompanyRecordError::Invalid(
+            "a duty head names exactly one source: an ask with its channel, or a hire",
+        ));
+    }
     validate_duty_proposal(&head.proposal)?;
     Ok(())
+}
+
+/// A duty head names exactly one non-nil source: an ask with its channel, or a hire.
+fn has_exactly_one_source(head: &DutyHead) -> bool {
+    match (
+        head.source_ask_id,
+        head.source_ask_channel_id,
+        head.source_hire_id,
+    ) {
+        (Some(ask), Some(channel), None) => !ask.is_nil() && !channel.is_nil(),
+        (None, None, Some(hire)) => !hire.is_nil(),
+        _ => false,
+    }
 }
 
 /// Validate a member-signed duty lifecycle action.
@@ -368,5 +389,104 @@ mod tests {
             "company:duty:d14e1a58-a238-4a61-b0c7-9907cf8e659c"
         );
         assert!(validate_duty_d_tag(&duty_d_tag(id), id).is_ok());
+    }
+    fn duty_head() -> DutyHead {
+        let duty_id = Uuid::from_u128(7);
+        DutyHead {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            duty_id,
+            proposal: DutyProposal {
+                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+                duty_id,
+                employee_pubkey: "a".repeat(64),
+                title: "Plan check".into(),
+                schedule_text: "Every Monday at 09:00".into(),
+                schedule_cron: "0 9 * * 1".into(),
+                time_zone: "UTC".into(),
+                channel_id: Uuid::from_u128(8),
+                instructions: "Check your plan.".into(),
+            },
+            status: DutyStatus::Active,
+            proposed_by_pubkey: "b".repeat(64),
+            approved_by_pubkey: "b".repeat(64),
+            approved_at: "2026-10-11T09:00:00Z".into(),
+            source_ask_id: Some(Uuid::from_u128(9)),
+            source_ask_channel_id: Some(Uuid::from_u128(8)),
+            source_hire_id: None,
+            workflow_definition_hash: "c".repeat(64),
+            created_at: "2026-10-11T09:00:00Z".into(),
+            updated_at: "2026-10-11T09:00:00Z".into(),
+            source_action_event_id: "d".repeat(64),
+        }
+    }
+
+    #[test]
+    fn duty_heads_name_exactly_one_source() {
+        let ask = Some(Uuid::from_u128(9));
+        let channel = Some(Uuid::from_u128(8));
+        let hire = Some(Uuid::from_u128(10));
+        let nil = Some(Uuid::nil());
+        // (source_ask_id, source_ask_channel_id, source_hire_id, valid)
+        let cases = [
+            (ask, channel, None, true),
+            (None, None, hire, true),
+            (None, None, None, false),
+            (ask, None, None, false),
+            (None, channel, None, false),
+            (ask, channel, hire, false),
+            (ask, None, hire, false),
+            (None, channel, hire, false),
+            (nil, channel, None, false),
+            (ask, nil, None, false),
+            (None, None, nil, false),
+        ];
+        for (source_ask_id, source_ask_channel_id, source_hire_id, valid) in cases {
+            let mut head = duty_head();
+            head.source_ask_id = source_ask_id;
+            head.source_ask_channel_id = source_ask_channel_id;
+            head.source_hire_id = source_hire_id;
+            assert_eq!(
+                validate_duty_head(&head).is_ok(),
+                valid,
+                "ask {source_ask_id:?}, channel {source_ask_channel_id:?}, hire {source_hire_id:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn ask_sourced_heads_keep_parsing_and_hire_heads_omit_ask_keys() {
+        // The exact key set an ask-sourced duty head has always carried.
+        let old = serde_json::json!({
+            "schemaVersion": 1,
+            "dutyId": Uuid::from_u128(7).to_string(),
+            "proposal": serde_json::to_value(duty_head().proposal).expect("proposal json"),
+            "status": "active",
+            "proposedByPubkey": "b".repeat(64),
+            "approvedByPubkey": "b".repeat(64),
+            "approvedAt": "2026-10-11T09:00:00Z",
+            "sourceAskId": Uuid::from_u128(9).to_string(),
+            "sourceAskChannelId": Uuid::from_u128(8).to_string(),
+            "workflowDefinitionHash": "c".repeat(64),
+            "createdAt": "2026-10-11T09:00:00Z",
+            "updatedAt": "2026-10-11T09:00:00Z",
+            "sourceActionEventId": "d".repeat(64),
+        });
+        let parsed: DutyHead = serde_json::from_value(old).expect("ask-sourced head parses");
+        assert_eq!(parsed.source_ask_id, Some(Uuid::from_u128(9)));
+        assert_eq!(parsed.source_hire_id, None);
+        assert!(validate_duty_head(&parsed).is_ok());
+
+        let mut hired = duty_head();
+        hired.source_ask_id = None;
+        hired.source_ask_channel_id = None;
+        hired.source_hire_id = Some(Uuid::from_u128(10));
+        let json = serde_json::to_value(&hired).expect("hire head json");
+        assert!(json.get("sourceAskId").is_none());
+        assert!(json.get("sourceAskChannelId").is_none());
+        assert_eq!(json["sourceHireId"], Uuid::from_u128(10).to_string());
+        assert_eq!(
+            serde_json::from_value::<DutyHead>(json).expect("hire head parses"),
+            hired
+        );
     }
 }
