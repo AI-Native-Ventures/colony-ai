@@ -125,7 +125,7 @@ pub(crate) struct WakeLedger {
     catch_up_since: Option<u64>,
     /// Events created before this were delivered only by the catch-up.
     live_cutoff: u64,
-    /// The replay start while startup settles, including the saved eviction boundary.
+    /// The replay start while startup settles, including the eviction boundary.
     /// Pending or released events may lower snapshots only to that boundary.
     baseline: u64,
     settle_until: u64,
@@ -154,7 +154,7 @@ impl WakeLedger {
     /// employee, relay or format, is logged and replaced on the next write;
     /// that start also keeps the startup watermark, so it can miss wakes but
     /// never runs one twice.
-    /// A saved eviction boundary overrides the usual time and startup clamps,
+    /// A saved or load-time eviction boundary overrides the time and startup clamps,
     /// even when it temporarily lies after `now` or `startup_watermark`.
     pub(crate) fn open(
         path: PathBuf,
@@ -214,12 +214,18 @@ impl WakeLedger {
         for entry in loaded.map(|file| file.handled).unwrap_or_default() {
             ledger.remember(entry);
         }
+        // Trimming an older file can raise the exclusion boundary during load.
+        if let Some(since) = ledger.catch_up_since {
+            let since = since.max(ledger.evicted_floor);
+            ledger.catch_up_since = Some(since);
+            ledger.baseline = since;
+        }
         ledger
     }
 
     /// Where this run's channel subscriptions should start: the saved floor, at
     /// most [`MAX_LOOKBACK_SECS`] back and at or before the startup watermark,
-    /// unless the persisted eviction boundary requires a later start to exclude
+    /// unless the eviction boundary requires a later start to exclude
     /// handled events whose ids were evicted. `None` keeps the startup watermark.
     pub(crate) fn catch_up_since(&self) -> Option<u64> {
         self.catch_up_since
@@ -963,6 +969,48 @@ mod tests {
         assert_eq!(ledger.admit(&handled, 1_001), Admission::Duplicate);
         assert!(ledger.sync(std::iter::empty(), 1_001).is_saved());
         assert_eq!(temp.written().floor, 1_001);
+    }
+
+    #[test]
+    fn trimming_a_legacy_file_excludes_evicted_events_from_initial_replay() {
+        let temp = TempLedger::new();
+        let events: Vec<_> = (0..=MAX_HANDLED).map(|_| event_at(1_000)).collect();
+        let handled: Vec<_> = events
+            .iter()
+            .map(|event| HandledEvent {
+                id: event.id.to_hex(),
+                created_at: event.created_at.as_secs(),
+            })
+            .collect();
+        let legacy = serde_json::json!({
+            "version": 1,
+            "relayUrl": RELAY,
+            "agentPubkey": agent(),
+            "floor": 1_000,
+            "handled": handled
+        });
+        let bytes = serde_json::to_vec(&legacy).expect("encode legacy file");
+        assert!((bytes.len() as u64) < MAX_FILE_BYTES);
+        std::fs::create_dir_all(&temp.dir).expect("create ledger dir");
+        std::fs::write(temp.path(), bytes).expect("write legacy file");
+
+        let mut ledger = temp.open(1_001);
+        assert_eq!(ledger.handled.len(), MAX_HANDLED);
+        assert_eq!(ledger.handled_ids.len(), MAX_HANDLED);
+        let evicted_id = events[0].id.to_hex();
+        assert!(!ledger.handled_ids.contains(&evicted_id));
+        assert!(ledger.handled.iter().all(|entry| entry.id != evicted_id));
+        let since = ledger.catch_up_since().expect("saved replay floor");
+        assert!(
+            since.saturating_sub(SINCE_SKEW_SECS) > 1_000,
+            "trimming during load must exclude evicted events from the first subscription"
+        );
+        assert_eq!(ledger.baseline, since);
+        assert!(ledger.sync(std::iter::empty(), 1_001).is_saved());
+        let file = temp.written();
+        assert_eq!(file.handled.len(), MAX_HANDLED);
+        assert_eq!(file.evicted_floor, 1_000 + SINCE_SKEW_SECS + 1);
+        assert_eq!(file.floor, file.evicted_floor);
     }
 
     #[test]
