@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { build } from "esbuild";
 import {
   mkdtemp,
   rm,
@@ -16,6 +17,17 @@ import type {
   BrowserGrant,
 } from "../../src/shared/api/browserBroker";
 import type { BrowserHostApi } from "../../src/shared/api/browserHost";
+
+declare global {
+  interface Window {
+    colonyBrowserStoreFixture: {
+      page(): { hostId: string | null; error: string | null };
+      holdReload(): void;
+      rejectReload(): Promise<void>;
+      failures(): number;
+    };
+  }
+}
 
 test("real Electron browser broker: allowed actions, denied destinations, revoke and confirmed submit", async () => {
   test.setTimeout(120_000);
@@ -37,6 +49,11 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
     throw new Error("Denied probe did not bind");
   const deniedOrigin = `http://127.0.0.1:${deniedAddress.port}`;
   const server = createServer((request, response) => {
+    if (request.url === "/renderer-start") {
+      response.setHeader("content-type", "text/html");
+      response.end("<!doctype html><title>Renderer start</title>");
+      return;
+    }
     if (request.url === "/report.txt") {
       downloads += 1;
       downloadCookie = request.headers.cookie ?? "";
@@ -149,12 +166,96 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
         { action, payload },
       ) as Promise<T>;
     expect(await request("agent-status")).toEqual({ enabled: true });
-    const tab = await page.evaluate(async () => {
-      const host = window.colonyBrowserHost as BrowserHostApi;
-      const tab = await host.createTab({ businessId: "fixture-business" });
-      await host.attach(tab.id, { x: 0, y: 50, width: 900, height: 620 });
-      return tab;
+    // Bundle the real renderer store and viewport, not a test-only page model.
+    const renderer = await build({
+      stdin: {
+        contents: `
+          import * as React from "react";
+          import { createRoot } from "react-dom/client";
+          import { BrowserViewport } from "./src/features/workarea/browser/BrowserViewport";
+          import { createBrowserPage, ensureBrowserPage, getBrowserPage, initBrowserTabsStore,
+            reloadBrowserPage, setBrowserHostForTests, subscribeBrowserTabs } from "./src/features/workarea/browser/browserTabsStore";
+          const bridge = { ...window.colonyBrowserHost };
+          setBrowserHostForTests(bridge);
+          initBrowserTabsStore("fixture-business");
+          const { key } = createBrowserPage("fixture", { address: ${JSON.stringify(`${origin}/renderer-start`)} });
+          ensureBrowserPage("fixture", key);
+          const root = document.createElement("div");
+          root.style.cssText = "position:absolute;left:0;top:50px;width:900px;height:620px;display:flex;flex-direction:column";
+          document.body.append(root);
+          function View() {
+            const page = React.useSyncExternalStore(subscribeBrowserTabs, () => getBrowserPage(key));
+            return page ? React.createElement(BrowserViewport, { page, active: true }) : null;
+          }
+          createRoot(root).render(React.createElement(View));
+          const originalReload = bridge.reload;
+          let rejectReload;
+          let failures = 0;
+          subscribeBrowserTabs(() => { if (getBrowserPage(key)?.error) failures += 1; });
+          window.colonyBrowserStoreFixture = {
+            failures: () => failures,
+            page: () => getBrowserPage(key),
+            holdReload: () => {
+              failures = 0;
+              bridge.reload = () => new Promise((_resolve, reject) => { rejectReload = reject; });
+              reloadBrowserPage(key);
+            },
+            rejectReload: async () => {
+              bridge.reload = originalReload;
+              rejectReload(new Error("fixture delayed reload failure"));
+              await new Promise((resolve) => setTimeout(resolve, 0));
+            },
+          };
+        `,
+        resolveDir: path.resolve(import.meta.dirname, "../.."),
+        loader: "tsx",
+      },
+      bundle: true,
+      write: false,
+      format: "iife",
+      alias: { "@": path.resolve(import.meta.dirname, "../../src") },
+      define: { "process.env.NODE_ENV": '"production"' },
     });
+    await page.addStyleTag({
+      path: path.resolve(
+        import.meta.dirname,
+        "../../src/shared/styles/globals/colony-work-area-browser.css",
+      ),
+    });
+    await page.addScriptTag({ content: renderer.outputFiles[0].text });
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.colonyBrowserStoreFixture.page().hostId),
+      )
+      .not.toBeNull();
+    const hostId = await page.evaluate(
+      () => window.colonyBrowserStoreFixture.page().hostId,
+    );
+    const tab = (
+      await page.evaluate(() =>
+        (window.colonyBrowserHost as BrowserHostApi).listTabs(),
+      )
+    ).find((item) => item.id === hostId);
+    if (!tab) throw new Error("Renderer fixture did not create its host tab");
+    await expect(page.getByTestId("browser-page-slot")).toBeVisible();
+    await expect
+      .poll(async () => {
+        const live = await page.evaluate(
+          async (id) =>
+            (
+              await (window.colonyBrowserHost as BrowserHostApi).listTabs()
+            ).find((item) => item.id === id),
+          tab.id,
+        );
+        return Boolean(
+          live?.attached &&
+            live.visible &&
+            live.bounds &&
+            live.bounds.width > 100 &&
+            live.bounds.height > 100,
+        );
+      })
+      .toBe(true);
     const grant = await request<BrowserGrant>("agent-grant", {
       ...context,
       businessId: "fixture-business",
@@ -470,6 +571,27 @@ test("real Electron browser broker: allowed actions, denied destinations, revoke
       .find((line: string) => line.includes("Send message"));
     const sendRef = /\[ref=(e\d+)\]/u.exec(sendLine ?? "")?.[1];
     expect(sendRef).toBeTruthy();
+    await page.evaluate(() => window.colonyBrowserStoreFixture.holdReload());
+    await page.evaluate(async (id) => {
+      const host = window.colonyBrowserHost as BrowserHostApi;
+      const live = (await host.listTabs()).find((item) => item.id === id);
+      if (!live?.bounds)
+        throw new Error(
+          "The production viewport did not attach the native page",
+        );
+      await host.attach(id, live.bounds);
+    }, tab.id);
+    await page.evaluate(() => window.colonyBrowserStoreFixture.rejectReload());
+    expect(
+      await page.evaluate(() => window.colonyBrowserStoreFixture.failures()),
+    ).toBe(0);
+    await expect(page.getByTestId("browser-error")).toHaveCount(0);
+    await expect(page.getByTestId("browser-page-slot")).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.colonyBrowserStoreFixture.page().error),
+      )
+      .toBeNull();
     const pendingClick = call("browser_click", { ref: sendRef });
     await expect
       .poll(async () => (await request<unknown[]>("agent-pending")).length)
