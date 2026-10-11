@@ -3164,7 +3164,7 @@ async fn tokio_main() -> Result<()> {
 
         // Borrow result_rx and join_set simultaneously via split-borrow helper.
         pool.retain_held_scopes(|scope| queue.has_pending_scope(scope));
-        let hold_deadline = pool.next_hold_deadline(pool::HOLD_BUSY_OWNER_TIMEOUT);
+        let hold_deadline = wake_ledger_hold_deadline(&pool, handled_wakes.as_ref());
         // Restart catch-up: after a failed wake ledger write, queued work waits
         // for the write backoff. Wake the loop when it ends so that work is
         // retried even on a quiet channel.
@@ -4287,6 +4287,20 @@ fn commit_to_wake_ledger_with_pending<'e, 'p>(
     saved
 }
 
+/// Let the dedicated ledger retry own recovery while saves are failing.
+///
+/// An expired busy-owner hold stays stamped so recovery can dispatch at once,
+/// but must not keep winning the biased select before the write backoff ends.
+fn wake_ledger_hold_deadline(
+    pool: &AgentPool,
+    ledger: Option<&wake_ledger::WakeLedger>,
+) -> Option<tokio::time::Instant> {
+    if ledger.is_some_and(wake_ledger::WakeLedger::write_failed) {
+        return None;
+    }
+    pool.next_hold_deadline(pool::HOLD_BUSY_OWNER_TIMEOUT)
+}
+
 /// Schedule failed wake saves while work waits, including a deadline passed
 /// while another main-loop branch was running.
 fn wake_ledger_retry_delay(
@@ -4661,6 +4675,150 @@ mod wake_ledger_dispatch_tests {
             pool.join_set.abort_all();
             let _ = std::fs::remove_dir_all(&dir);
         }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn failed_wake_save_suppresses_expired_hold_until_ledger_retry_recovers() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-hold-retry-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let blocker = dir.join("blocker");
+        std::fs::write(&blocker, b"").expect("write blocker file");
+        let mut idle = idle_worker().await;
+        idle.index = 1;
+        let mut pool = AgentPool::from_slots(vec![None, Some(idle)]);
+        let channel_id = Uuid::new_v4();
+        let held_scope = scope::SessionScope::Thread {
+            channel_id,
+            root_event_id: "cd".repeat(32),
+        };
+        pool.record_scope_owner(held_scope.clone(), 0);
+        let busy_task = pool.join_set.spawn(std::future::pending()).id();
+        pool.task_map_mut().insert(
+            busy_task,
+            pool::TaskMeta {
+                agent_index: 0,
+                channel_id: Some(channel_id),
+                scope: Some(scope::SessionScope::Thread {
+                    channel_id,
+                    root_event_id: "ef".repeat(32),
+                }),
+                turn_id: "busy-owner-turn".into(),
+                recoverable_batch: None,
+                control_tx: None,
+                steer_tx: None,
+                successful_steer_deliveries: HashSet::new(),
+            },
+        );
+        let mut queued = mention(channel_id).0;
+        queued.scope = held_scope.clone();
+        let event_id = queued.event.id;
+        let mut queue = EventQueue::new(DedupMode::Queue);
+        assert!(queue.push(queued));
+        let ctx = Arc::new(test_prompt_context(&Keys::generate()));
+        let mut last_activity = tokio::time::Instant::now();
+        let now = wake_ledger::unix_now();
+        let mut ledger = wake_ledger::WakeLedger::open(
+            blocker.join("wake.json"),
+            RELAY,
+            &"ab".repeat(32),
+            now,
+            now,
+        );
+        assert!(dispatch_pending(
+            &mut pool,
+            &mut queue,
+            &ctx,
+            &mut last_activity,
+            None,
+            Some(&mut ledger)
+        )
+        .is_empty());
+        let original_deadline = pool
+            .next_hold_deadline(pool::HOLD_BUSY_OWNER_TIMEOUT)
+            .expect("hold was stamped");
+        assert_eq!(
+            wake_ledger_hold_deadline(&pool, Some(&ledger)),
+            Some(original_deadline)
+        );
+        assert_eq!(
+            wake_ledger_hold_deadline(&pool, None),
+            Some(original_deadline)
+        );
+        tokio::time::advance(pool::HOLD_BUSY_OWNER_TIMEOUT).await;
+        assert!(dispatch_pending(
+            &mut pool,
+            &mut queue,
+            &ctx,
+            &mut last_activity,
+            None,
+            Some(&mut ledger)
+        )
+        .is_empty());
+        assert!(ledger.write_failed());
+        assert!(pool.any_idle(), "failed save returns the claimed worker");
+        assert_eq!(
+            pool.next_hold_deadline(pool::HOLD_BUSY_OWNER_TIMEOUT),
+            Some(original_deadline),
+            "failure preserves the original hold age"
+        );
+        assert_eq!(
+            queue
+                .pending_events()
+                .map(|event| event.id)
+                .collect::<Vec<_>>(),
+            vec![event_id]
+        );
+        assert!(!queue.is_scope_in_flight(&held_scope));
+        let retry_now = wake_ledger::unix_now();
+        let retry_delay = wake_ledger_retry_delay(Some(&ledger), true, retry_now)
+            .expect("dedicated ledger retry remains available");
+        assert!(retry_delay > Duration::ZERO);
+        for advance in [Duration::ZERO, retry_delay] {
+            tokio::time::advance(advance).await;
+            let hold_deadline = wake_ledger_hold_deadline(&pool, Some(&ledger));
+            assert_eq!(
+                hold_deadline, None,
+                "failed storage suppresses the expired hold wake"
+            );
+            let hold_woke = tokio::select! {
+                biased;
+                _ = AgentPool::wait_for_hold_deadline(hold_deadline) => true,
+                _ = std::future::ready(()) => false,
+            };
+            assert!(
+                !hold_woke,
+                "an unrelated ready branch must remain reachable"
+            );
+        }
+        let retry_at = retry_now + retry_delay.as_secs();
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), true, retry_at),
+            Some(Duration::ZERO)
+        );
+        std::fs::remove_file(blocker).expect("unblock ledger directory");
+        assert!(sync_wake_ledger_retry(Some(&mut ledger), &queue, retry_at));
+        assert_eq!(
+            wake_ledger_hold_deadline(&pool, Some(&ledger)),
+            Some(original_deadline)
+        );
+        let dispatched = dispatch_pending(
+            &mut pool,
+            &mut queue,
+            &ctx,
+            &mut last_activity,
+            None,
+            Some(&mut ledger),
+        );
+        assert_eq!(
+            dispatched.len(),
+            1,
+            "recovery dispatches without another hold timeout"
+        );
+        assert_eq!(dispatched[0].0, held_scope);
+        assert!(!pool.held_since_contains(&held_scope));
+        assert_eq!(queue.pending_events().count(), 0);
+        pool.join_set.abort_all();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
