@@ -18,6 +18,7 @@ mod prompt_project;
 mod provider_failure;
 mod queue;
 mod relay;
+mod role_context;
 mod scope;
 mod setup_mode;
 mod tool_permissions;

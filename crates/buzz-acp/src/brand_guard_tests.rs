@@ -53,6 +53,9 @@ const THREAD_ROOT: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 /// What a fresh install gets as the working folder.
 const FRESH_CWD: &str = "/Users/test/.colony";
 
+/// A complete role context, as the host sends it for a hired employee.
+const ROLE_CONTEXT: &str = r#"{"title":"Social Media Manager","job":"Show up well on social media every week.","owns":"Showing up well on social media every week","askBefore":["anything public","customer photos or names","prices"],"managerName":"Maya","homeChannelId":"11111111-1111-4111-8111-111111111111","goalId":"22222222-2222-4222-8222-222222222222","onHireSources":["the business profile","the Instagram profile"],"planHorizonDays":14}"#;
+
 fn make_event(content: &str, tags: Vec<Tag>) -> Event {
     EventBuilder::new(Kind::Custom(9), content)
         .tags(tags)
@@ -266,6 +269,15 @@ fn surfaces() -> Vec<Surface> {
         "channel canvas section",
         render_canvas_section(&"e".repeat(64), "2026-10-06T08:00:00+00:00", CHANNEL_ID),
     ));
+    out.push(Surface::new(
+        "role context section",
+        crate::role_context::append(
+            Some("You are Naledi, the Social Media Manager of this business.".into()),
+            Some(ROLE_CONTEXT),
+        )
+        .expect("the fixture role context is valid")
+        .expect("a supplied role context always appends a block"),
+    ));
 
     out.extend(turn_prompt_surfaces());
     out
@@ -303,6 +315,7 @@ fn guard_corpus_covers_the_production_seams() {
     );
     assert!(find("core memory nudge"), "core nudge surface missing");
     assert!(find("channel canvas"), "canvas surface missing");
+    assert!(find("role context"), "role context surface missing");
     assert!(find("project home"), "project home turn missing");
     assert!(find("merged Interrupt"), "interrupt merge turn missing");
     // The base prompt is the real file, not an empty stand-in.

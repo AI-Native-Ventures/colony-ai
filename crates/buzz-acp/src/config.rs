@@ -298,6 +298,12 @@ pub struct CliArgs {
     #[arg(long, env = "COLONY_BUSINESS_PROFILE", hide = true)]
     pub business_profile: Option<String>,
 
+    /// Role facts for a hired Colony employee (title, job, always-ask list,
+    /// manager, home channel, goal, on-hire sources, plan length) as JSON from
+    /// the host. Rendered as a `<colony-role>` block after the business profile.
+    #[arg(long, env = "COLONY_ROLE_CONTEXT", hide = true)]
+    pub role_context: Option<String>,
+
     /// Number of parallel agent subprocesses.
     #[arg(long, env = "BUZZ_ACP_AGENTS", default_value_t = 1,
           value_parser = clap::value_parser!(u32).range(1..=32))]
@@ -970,6 +976,9 @@ impl Config {
 
         let system_prompt =
             crate::business_context::append(system_prompt, args.business_profile.as_deref())
+                .map_err(|error| ConfigError::ConfigFile(error.to_string()))?;
+        let system_prompt =
+            crate::role_context::append(system_prompt, args.role_context.as_deref())
                 .map_err(|error| ConfigError::ConfigFile(error.to_string()))?;
 
         if args.heartbeat_interval > 0 && args.heartbeat_interval < 10 {
@@ -3014,6 +3023,68 @@ channels = "ALL"
         ])
         .expect("parse malformed context");
         assert!(Config::from_args(args).is_err());
+    }
+
+    #[test]
+    fn role_context_reaches_config_through_the_real_cli_path() {
+        let facts = r#"{"name":"Lerato Designs","website":"https://leratodesigns.example","description":"Linen clothing made in Johannesburg."}"#;
+        let role = r#"{"title":"Social Media Manager","job":"Show up well on social media every week.","askBefore":["prices"],"planHorizonDays":14}"#;
+        let args = CliArgs::try_parse_from([
+            "buzz-acp",
+            "--private-key",
+            TEST_PRIVATE_KEY,
+            "--system-prompt",
+            "You are Naledi.",
+            "--business-profile",
+            facts,
+            "--role-context",
+            role,
+        ])
+        .expect("parse role context");
+        let prompt = Config::from_args(args)
+            .expect("role config")
+            .system_prompt
+            .expect("standing prompt");
+        assert_eq!(prompt.matches("<colony-role>").count(), 1);
+        let business = prompt
+            .find("<colony-business-profile>")
+            .expect("business block");
+        let role_at = prompt.find("<colony-role>").expect("role block");
+        assert!(
+            business < role_at,
+            "the role block follows the business profile"
+        );
+        assert!(prompt.contains("Title: Social Media Manager"));
+
+        let args = CliArgs::try_parse_from([
+            "buzz-acp",
+            "--private-key",
+            TEST_PRIVATE_KEY,
+            "--system-prompt",
+            "You are Naledi.",
+        ])
+        .expect("parse without role context");
+        let prompt = Config::from_args(args)
+            .expect("config")
+            .system_prompt
+            .expect("standing prompt");
+        assert!(
+            !prompt.contains("<colony-role>"),
+            "no role block without COLONY_ROLE_CONTEXT"
+        );
+
+        let args = CliArgs::try_parse_from([
+            "buzz-acp",
+            "--private-key",
+            TEST_PRIVATE_KEY,
+            "--role-context",
+            "invalid JSON",
+        ])
+        .expect("parse malformed role context");
+        assert!(
+            Config::from_args(args).is_err(),
+            "a malformed role context stops the employee start"
+        );
     }
 
     #[test]
