@@ -26,6 +26,8 @@ pub mod company_employee_history;
 pub mod company_lessons;
 /// Typed event builders for Colony company member positions.
 pub mod company_members;
+/// Typed event builder for the company business profile.
+pub mod company_profile;
 /// Typed event builders for Colony company records.
 pub mod company_records;
 /// Typed event builders for Colony AI allowances and spend records.
