@@ -356,6 +356,21 @@ async fn channel_workflows(fixture: &Fixture) -> Vec<buzz_db::workflow::Workflow
         .expect("list home channel workflows")
 }
 
+async fn kickoffs(fixture: &Fixture, hire_id: Uuid) -> Vec<StoredEvent> {
+    let mut query = EventQuery::for_community(fixture.tenant.community());
+    query.kinds = Some(vec![KIND_STREAM_MESSAGE as i32]);
+    query.channel_id = Some(fixture.channel_id);
+    query.p_tag_hex = Some(fixture.employee.public_key().to_hex());
+    query.custom_tag = Some(("colony:on-hire".to_owned(), hire_id.to_string()));
+    query.limit = Some(10);
+    fixture
+        .state
+        .db
+        .query_events_for_event_write(&query)
+        .await
+        .expect("query on-hire kickoffs")
+}
+
 /// Asserts a rejected `complete` left the hire approved and stored none of the
 /// records that command would have written.
 async fn assert_completion_left_nothing(fixture: &Fixture, complete: &HireAction, event: &Event) {
@@ -385,6 +400,10 @@ async fn assert_completion_left_nothing(fixture: &Fixture, complete: &HireAction
     assert!(
         channel_workflows(fixture).await.is_empty(),
         "no routine workflows"
+    );
+    assert!(
+        kickoffs(fixture, complete.hire_id).await.is_empty(),
+        "no on-hire kickoff"
     );
 }
 
@@ -632,4 +651,90 @@ async fn an_unknown_time_zone_rolls_back_the_completion() {
     assert!(message.contains("invalid schedule timezone"), "{message}");
     assert_completion_left_nothing(&fixture, &complete, &event).await;
     assert!(goal_heads(&fixture, complete.hire_id).await.is_empty());
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn complete_publishes_exactly_one_workflow_tagged_kickoff() {
+    let fixture = fixture().await;
+    let complete = hire_ready_to_complete(&fixture, role_pack()).await;
+    let event = sign_hire_action(&fixture.owner, &complete);
+    submit(&fixture, event.clone())
+        .await
+        .expect("complete the hire");
+
+    let found = kickoffs(&fixture, complete.hire_id).await;
+    assert_eq!(
+        found.len(),
+        1,
+        "one kickoff, found through the employee mention index"
+    );
+    let kickoff = &found[0];
+    assert_eq!(
+        kickoff.event.pubkey,
+        fixture.state.relay_keypair.public_key()
+    );
+    assert!(kickoff.event.verify().is_ok());
+    assert_eq!(kickoff.channel_id, Some(fixture.channel_id));
+    let owner = fixture.owner.public_key().to_hex();
+    let employee = fixture.employee.public_key().to_hex();
+    let expected = vec![
+        vec!["h".to_owned(), fixture.channel_id.to_string()],
+        vec!["p".to_owned(), owner.clone()],
+        vec!["p".to_owned(), employee.clone()],
+        vec!["buzz:workflow".to_owned(), "true".to_owned()],
+        vec!["buzz:workflow-owner".to_owned(), owner.clone()],
+        vec!["buzz:workflow-mention".to_owned(), employee.clone()],
+        vec!["colony:on-hire".to_owned(), complete.hire_id.to_string()],
+    ];
+    let tags = kickoff
+        .event
+        .tags
+        .iter()
+        .map(|tag| tag.as_slice().to_vec())
+        .collect::<Vec<_>>();
+    assert_eq!(tags, expected);
+    let proposal = parse_hire_head(&hire_head(&fixture, complete.hire_id).await)
+        .expect("parse the hire head")
+        .proposal;
+    assert_eq!(
+        kickoff.event.content,
+        format!(
+            "@{} you're hired. Study the business and your sources, then write your first 2-week plan and send it to your manager for approval.",
+            proposal.display_name
+        )
+    );
+
+    // A replay of the accepted command and a fresh complete both leave one kickoff.
+    match submit(&fixture, event.clone()).await {
+        Ok(result) => assert!(result.message.starts_with("duplicate:")),
+        Err(IngestError::Rejected(message)) => {
+            assert!(
+                message.contains("founder sign-off is required before hiring"),
+                "{message}"
+            )
+        }
+        Err(other) => panic!("unexpected replay result {other:?}"),
+    }
+    let mut second = complete.clone();
+    second.expected_head_event_id = Some(
+        hire_head(&fixture, complete.hire_id)
+            .await
+            .event
+            .id
+            .to_hex(),
+    );
+    let message = rejection(submit(&fixture, sign_hire_action(&fixture.owner, &second)).await);
+    assert!(
+        message.contains("founder sign-off is required before hiring"),
+        "{message}"
+    );
+    assert_eq!(
+        kickoffs(&fixture, complete.hire_id).await.len(),
+        1,
+        "once per hire"
+    );
+    assert_eq!(goal_heads(&fixture, complete.hire_id).await.len(), 1);
+    assert_eq!(duty_heads(&fixture).await.len(), 2);
+    assert_eq!(channel_workflows(&fixture).await.len(), 2);
 }

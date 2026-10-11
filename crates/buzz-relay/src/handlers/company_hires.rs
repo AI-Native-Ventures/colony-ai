@@ -467,7 +467,7 @@ pub(super) async fn handle(
         .await;
     }
     if let Some(records) = hire_records {
-        dispatch_hire_records(tenant, state, records).await;
+        dispatch_hire_records(tenant, state, records, &actor_pubkey).await;
     }
     Ok(IngestResult {
         event_id: event.id.to_hex(),
@@ -482,6 +482,8 @@ struct HireRecords {
     goal: StoredEvent,
     /// One routine head per role-pack duty plus the Plan check routine.
     duties: Vec<StoredEvent>,
+    /// The single on-hire kickoff message.
+    kickoff: StoredEvent,
 }
 
 /// Writes the records a completed hire creates inside the hire transaction, so
@@ -526,14 +528,107 @@ async fn create_hire_records(
         },
     )
     .await?;
-    Ok(HireRecords { goal, duties })
+    let kickoff = insert_on_hire_kickoff(tx, tenant.community(), hired, state).await?;
+    Ok(HireRecords {
+        goal,
+        duties,
+        kickoff,
+    })
 }
 
-/// Fans out a completed hire's records after commit; each is already durable.
+/// Tag naming the hire an on-hire kickoff belongs to.
+const ON_HIRE_TAG: &str = "colony:on-hire";
+
+/// Text of the on-hire kickoff addressed to the new employee.
+fn on_hire_kickoff_content(display_name: &str) -> String {
+    format!(
+        "@{display_name} you're hired. Study the business and your sources, then write your first 2-week plan and send it to your manager for approval."
+    )
+}
+
+/// Builds the relay-signed on-hire kickoff in the employee's home channel.
+///
+/// It carries the tags of a workflow agent wake, owned by the owner and
+/// mentioning the employee, so the employee's author gate accepts it.
+fn on_hire_kickoff_event(hired: &HireHead, state: &AppState) -> Result<Event, IngestError> {
+    let founder = hired
+        .founder_pubkey
+        .as_deref()
+        .ok_or_else(|| forbidden("founder sign-off is required before hiring"))?;
+    let employee = hired
+        .employee_pubkey
+        .as_deref()
+        .ok_or_else(|| invalid("complete needs employeePubkey"))?;
+    let channel_id = hired.proposal.introduction_channel_id.to_string();
+    let hire_id = hired.proposal.hire_id.to_string();
+    let tags = [
+        ["h", channel_id.as_str()],
+        ["p", founder],
+        ["p", employee],
+        ["buzz:workflow", "true"],
+        ["buzz:workflow-owner", founder],
+        ["buzz:workflow-mention", employee],
+        [ON_HIRE_TAG, hire_id.as_str()],
+    ]
+    .into_iter()
+    .map(|tag| Tag::parse(tag).map_err(|error| internal(format!("on-hire tag: {error}"))))
+    .collect::<Result<Vec<_>, _>>()?;
+    EventBuilder::new(
+        Kind::from(KIND_STREAM_MESSAGE as u16),
+        on_hire_kickoff_content(&hired.proposal.display_name),
+    )
+    .tags(tags)
+    .sign_with_keys(&state.relay_keypair)
+    .map_err(internal)
+}
+
+/// Stores the kickoff with its thread row and mention index in the hire
+/// transaction. The hire moves to hired once, so its kickoff exists once.
+async fn insert_on_hire_kickoff(
+    tx: &mut Transaction<'_, Postgres>,
+    community_id: CommunityId,
+    hired: &HireHead,
+    state: &AppState,
+) -> Result<StoredEvent, IngestError> {
+    let kickoff = on_hire_kickoff_event(hired, state)?;
+    let channel_id = hired.proposal.introduction_channel_id;
+    let created_secs = i64::try_from(kickoff.created_at.as_secs()).map_err(internal)?;
+    let created_at = chrono::DateTime::from_timestamp(created_secs, 0)
+        .ok_or_else(|| internal("on-hire kickoff timestamp is invalid"))?;
+    let event_id = kickoff.id.as_bytes().to_vec();
+    let thread_meta = buzz_db::event::ThreadMetadataParams {
+        event_id: &event_id,
+        event_created_at: created_at,
+        channel_id,
+        parent_event_id: None,
+        parent_event_created_at: None,
+        root_event_id: None,
+        root_event_created_at: None,
+        depth: 0,
+        broadcast: false,
+    };
+    let (stored, inserted) = buzz_db::event::insert_message_with_mentions_in_transaction(
+        tx,
+        community_id,
+        &kickoff,
+        channel_id,
+        Some(thread_meta),
+    )
+    .await
+    .map_err(internal)?;
+    if !inserted {
+        return Err(conflict("on-hire kickoff already exists"));
+    }
+    Ok(stored)
+}
+
+/// Fans out a completed hire's records after commit. Each record is already
+/// durable, so an employee that misses the live kickoff reads it when it catches up.
 async fn dispatch_hire_records(
     tenant: &TenantContext,
     state: &Arc<AppState>,
     records: HireRecords,
+    founder_pubkey: &str,
 ) {
     let relay_pubkey = state.relay_keypair.public_key().to_hex();
     super::event::dispatch_persistent_event(
@@ -556,6 +651,15 @@ async fn dispatch_hire_records(
         )
         .await;
     }
+    super::event::dispatch_persistent_event(
+        tenant,
+        state,
+        &records.kickoff,
+        KIND_STREAM_MESSAGE,
+        founder_pubkey,
+        None,
+    )
+    .await;
 }
 
 /// Serializes one employee name and checks real member profiles and open hires.
