@@ -156,3 +156,25 @@ const endedRow = async () => {
   const t = await waitTurns(sent, "browser-ended", x => x.some(y => y.step >= 2) || x.some(y => y.step === 0 && !(y.tools ?? []).some(n => /browser/.test(n))), 60000);
   return t.map(x => ({ step: x.step, browserTools: (x.tools ?? []).filter(n => /browser/.test(n)).length, r: (x.results ?? []).map(y => y.slice(0, 120)) }));
 };
+const grantMaybeWake = async () => {
+  const c = controls();
+  const sel = c.getByLabel("Agent", { exact: true });
+  if (!(await sel.isVisible().catch(() => false))) await c.getByRole("button", { name: "Allow an agent", exact: true }).click({ timeout: 15000 });
+  let opts = await sel.locator("option").evaluateAll(os => os.map(o => o.textContent)).catch(() => []);
+  let woke = false;
+  if (!opts.some(o => /Scout/.test(o))) {
+    woke = true;
+    await sendDm("what commands and tools did you use? wake candidate107c");
+    const end = Date.now() + 120000;
+    while (Date.now() < end) { opts = await sel.locator("option").evaluateAll(os => os.map(o => o.textContent)).catch(() => []); if (opts.some(o => /Scout/.test(o))) break; await sleep(700); }
+  }
+  await sel.selectOption(state.G.scoutPubkey);
+  await c.getByRole("button", { name: "Allow for this task", exact: true }).click({ timeout: 15000 });
+  await S.page.getByTestId("browser-controller").getByText(/has control/u).waitFor({ timeout: 15000 });
+  return { woke, grantAt: Date.now() };
+};
+const firstTurnAfter = async (since) => {
+  const t = (await fakeTurns(since)).filter(e => Date.parse(e.at) >= since).sort((a, b) => a.at.localeCompare(b.at));
+  const f = t[0];
+  return f ? { at: f.at, scenario: f.scenario, step: f.step, browserTools: (f.tools ?? []).filter(n => /browser/.test(n)).length, totalTools: (f.tools ?? []).length } : null;
+};
