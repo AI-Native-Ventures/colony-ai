@@ -693,6 +693,11 @@ pub(crate) fn is_global_only_kind(kind: u32) -> bool {
             | KIND_DUTY_ACTION
             | KIND_LESSON_HEAD
             | KIND_LESSON_ACTION
+            // The business profile and team computer are company-wide singletons.
+            | buzz_core::kind::KIND_BUSINESS_PROFILE_HEAD
+            | buzz_core::kind::KIND_BUSINESS_PROFILE_ACTION
+            | buzz_core::kind::KIND_TEAM_COMPUTER_HEAD
+            | buzz_core::kind::KIND_TEAM_COMPUTER_ACTION
             // NIP-34: git events use `a` tags (repo reference), not `h` tags (channel scope).
             // Parameterized replaceable kinds are keyed by (pubkey, kind, d_tag).
             | KIND_GIT_REPO_ANNOUNCEMENT
@@ -3875,6 +3880,28 @@ mod postgres_tests {
     fn factory_run_record_kinds_are_global_only_message_writes() {
         let event = make_dummy_event();
         for kind in [KIND_FACTORY_RUN_HEAD, KIND_FACTORY_RUN_ACTION] {
+            assert_eq!(
+                required_scope_for_kind(kind, &event),
+                Ok(Scope::MessagesWrite),
+                "kind {kind} should require MessagesWrite scope"
+            );
+            assert!(is_global_only_kind(kind), "kind {kind} must be global-only");
+            assert!(
+                !requires_h_channel_scope(kind),
+                "kind {kind} must not require an h tag"
+            );
+        }
+    }
+
+    #[test]
+    fn business_profile_and_team_computer_kinds_are_global_only_message_writes() {
+        let event = make_dummy_event();
+        for kind in [
+            buzz_core::kind::KIND_BUSINESS_PROFILE_HEAD,
+            buzz_core::kind::KIND_BUSINESS_PROFILE_ACTION,
+            buzz_core::kind::KIND_TEAM_COMPUTER_HEAD,
+            buzz_core::kind::KIND_TEAM_COMPUTER_ACTION,
+        ] {
             assert_eq!(
                 required_scope_for_kind(kind, &event),
                 Ok(Scope::MessagesWrite),
