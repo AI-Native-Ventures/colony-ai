@@ -248,6 +248,21 @@ async fn authenticate(
     Ok((tenant, pubkey))
 }
 
+/// Whether the signer holds a relay membership in the tenant community the
+/// request arrived on.
+async fn is_tenant_member(
+    state: &AppState,
+    tenant: &buzz_core::TenantContext,
+    pubkey_hex: &str,
+) -> Result<bool, (StatusCode, Json<Value>)> {
+    state
+        .db
+        .get_relay_member(tenant.community(), pubkey_hex)
+        .await
+        .map(|member| member.is_some())
+        .map_err(|e| internal_error(&format!("self-provision membership lookup: {e}")))
+}
+
 /// The requester must already be a relay member of the tenant community the
 /// request arrived on. Any role qualifies: membership is the customer gate,
 /// ownership of the new community is what the request grants.
@@ -259,18 +274,34 @@ async fn require_tenant_membership(
     tenant: &buzz_core::TenantContext,
     pubkey_hex: &str,
 ) -> Result<(), (StatusCode, Json<Value>)> {
-    let member = state
-        .db
-        .get_relay_member(tenant.community(), pubkey_hex)
-        .await
-        .map_err(|e| internal_error(&format!("self-provision membership lookup: {e}")))?;
-    if member.is_none() {
+    if !is_tenant_member(state, tenant, pubkey_hex).await? {
         return Err(api_error(
             StatusCode::FORBIDDEN,
             "only members of this community can create new communities",
         ));
     }
     Ok(())
+}
+
+/// Account mode admits a non-member only when the signer's Colony account has
+/// a verified email, which is scarcer than a freshly generated key.
+async fn require_verified_account(
+    state: &AppState,
+    pubkey_hex: &str,
+) -> Result<(), (StatusCode, Json<Value>)> {
+    let account = state
+        .db
+        .account_by_pubkey(pubkey_hex)
+        .await
+        .map_err(|e| internal_error(&format!("self-provision account lookup: {e}")))?;
+    if account.is_some_and(|account| account.email_verified_at.is_some()) {
+        Ok(())
+    } else {
+        Err(api_error(
+            StatusCode::FORBIDDEN,
+            "sign in with a verified Colony account to create a company",
+        ))
+    }
 }
 
 /// Resolve the client address for rate limiting.
@@ -318,22 +349,47 @@ async fn increment_public_create_counter(state: &AppState, key: &str) -> Result<
     Ok(count)
 }
 
-/// Public-mode abuse controls. The deployment counter advances on every
-/// attempt. Once it is exhausted, requests do not create new per-IP keys, so
+/// Hourly creation limits for one self-serve mode.
+struct CreateLimits {
+    /// Redis key namespace; distinct per mode and provisioning domain.
+    namespace: String,
+    /// Attempts allowed per source address per hour.
+    ip_limit: u32,
+    /// Attempts allowed across the deployment per hour.
+    global_limit: u32,
+}
+
+fn public_create_limits(state: &AppState, domain: &str) -> CreateLimits {
+    CreateLimits {
+        namespace: format!("colony:self-provision:{domain}"),
+        ip_limit: state.config.self_provision_public_ip_limit,
+        global_limit: state.config.self_provision_public_global_limit,
+    }
+}
+
+fn account_create_limits(state: &AppState, domain: &str) -> CreateLimits {
+    CreateLimits {
+        namespace: format!("colony:self-provision-accounts:{domain}"),
+        ip_limit: state.config.self_provision_account_ip_limit,
+        global_limit: state.config.self_provision_account_global_limit,
+    }
+}
+
+/// Shared abuse controls. The deployment counter advances on every attempt.
+/// Once it is exhausted, requests do not create new per-IP keys, so
 /// source-address sprays cannot grow Redis state without bound. Redis makes
 /// the limits apply across relay processes; failure to reach Redis fails
 /// closed.
-async fn public_create_rate_limited(
+async fn create_rate_limited(
     state: &AppState,
-    domain: &str,
+    limits: &CreateLimits,
     client_ip: Option<IpAddr>,
 ) -> Result<Option<&'static str>, ()> {
     use sha2::{Digest as _, Sha256};
 
-    let namespace = format!("colony:self-provision:{domain}");
     let global_count =
-        increment_public_create_counter(state, &format!("{namespace}:global")).await?;
-    if global_count > u64::from(state.config.self_provision_public_global_limit) {
+        increment_public_create_counter(state, &format!("{}:global", limits.namespace)).await?;
+    if global_count > u64::from(limits.global_limit) {
         return Ok(Some(
             "this relay has reached its hourly limit for new communities; try again later",
         ));
@@ -345,14 +401,30 @@ async fn public_create_rate_limited(
     let ip = client_ip.unwrap_or(IpAddr::from([0, 0, 0, 0]));
     let ip_digest = hex::encode(Sha256::digest(ip.to_string().as_bytes()));
     let ip_count =
-        increment_public_create_counter(state, &format!("{namespace}:ip:{ip_digest}")).await?;
-
-    if ip_count > u64::from(state.config.self_provision_public_ip_limit) {
+        increment_public_create_counter(state, &format!("{}:ip:{ip_digest}", limits.namespace))
+            .await?;
+    if ip_count > u64::from(limits.ip_limit) {
         return Ok(Some(
             "too many communities created from this network; try again later",
         ));
     }
     Ok(None)
+}
+
+/// Apply one mode's limits, mapping the outcome to the HTTP error.
+async fn enforce_create_limits(
+    state: &AppState,
+    limits: &CreateLimits,
+    client_ip: Option<IpAddr>,
+) -> Result<(), (StatusCode, Json<Value>)> {
+    match create_rate_limited(state, limits, client_ip).await {
+        Ok(Some(message)) => Err(api_error(StatusCode::TOO_MANY_REQUESTS, message)),
+        Ok(None) => Ok(()),
+        Err(()) => Err(api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "community creation is temporarily unavailable",
+        )),
+    }
 }
 
 /// `GET /api/communities/config` is the public description of this relay's
@@ -370,17 +442,24 @@ pub async fn provisioning_config(State(state): State<Arc<AppState>>) -> Json<Val
     Json(provisioning_config_body(
         state.config.self_provision_domain.as_deref(),
         state.config.self_provision_public,
+        state.config.self_provision_accounts,
         buzz_db::relay_members::max_communities_per_owner(),
     ))
 }
 
 /// Body of [`provisioning_config`], split out so the shape is unit-testable
 /// without standing up an [`AppState`].
-fn provisioning_config_body(domain: Option<&str>, public: bool, max_per_owner: i64) -> Value {
+fn provisioning_config_body(
+    domain: Option<&str>,
+    public: bool,
+    accounts: bool,
+    max_per_owner: i64,
+) -> Value {
     serde_json::json!({
         "self_serve": domain.is_some(),
         "domain": domain,
         "public": public,
+        "accounts": accounts,
         "max_per_owner": max_per_owner,
     })
 }
@@ -441,16 +520,14 @@ pub async fn create_community(
     .await?;
     let pubkey_hex = pubkey.to_hex();
 
+    let client_ip = client_ip(&headers, &extensions);
     if state.config.self_provision_public {
-        match public_create_rate_limited(&state, &domain, client_ip(&headers, &extensions)).await {
-            Ok(Some(message)) => return Err(api_error(StatusCode::TOO_MANY_REQUESTS, message)),
-            Ok(None) => {}
-            Err(()) => {
-                return Err(api_error(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "community creation is temporarily unavailable",
-                ));
-            }
+        enforce_create_limits(&state, &public_create_limits(&state, &domain), client_ip).await?;
+    } else if state.config.self_provision_accounts {
+        if !is_tenant_member(&state, &tenant, &pubkey_hex).await? {
+            require_verified_account(&state, &pubkey_hex).await?;
+            enforce_create_limits(&state, &account_create_limits(&state, &domain), client_ip)
+                .await?;
         }
     } else {
         require_tenant_membership(&state, &tenant, &pubkey_hex).await?;
@@ -649,8 +726,15 @@ mod tests {
     }
 
     #[test]
+    fn config_reports_account_mode() {
+        let body = provisioning_config_body(Some("example.test"), false, true, 5);
+        assert_eq!(body["accounts"], serde_json::json!(true));
+        assert_eq!(body["public"], serde_json::json!(false));
+    }
+
+    #[test]
     fn config_names_the_domain_when_provisioning_is_enabled() {
-        let body = provisioning_config_body(Some("colony.ainative.ventures"), false, 3);
+        let body = provisioning_config_body(Some("colony.ainative.ventures"), false, false, 3);
         assert_eq!(body["self_serve"], serde_json::json!(true));
         assert_eq!(
             body["domain"],
@@ -665,14 +749,14 @@ mod tests {
         // The client must be able to tell "no self-serve here" apart from a
         // transport failure, so this is a 200 with a null domain rather than
         // the 404 the create routes return.
-        let body = provisioning_config_body(None, false, 3);
+        let body = provisioning_config_body(None, false, false, 3);
         assert_eq!(body["self_serve"], serde_json::json!(false));
         assert_eq!(body["domain"], Value::Null);
     }
 
     #[test]
     fn config_reports_the_operator_raised_cap() {
-        let body = provisioning_config_body(Some("example.test"), true, 25);
+        let body = provisioning_config_body(Some("example.test"), true, false, 25);
         assert_eq!(body["max_per_owner"], serde_json::json!(25));
         assert_eq!(body["public"], serde_json::json!(true));
     }

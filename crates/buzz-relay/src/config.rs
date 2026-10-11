@@ -790,6 +790,17 @@ pub struct Config {
     /// Public-mode community creation attempts allowed across the relay deployment per hour.
     pub self_provision_public_global_limit: u32,
 
+    /// Allow signers holding a verified Colony account to create their first
+    /// community without an existing membership. Requires
+    /// `self_provision_domain`; the account-mode limits below apply to them.
+    pub self_provision_accounts: bool,
+
+    /// Account-mode community creation attempts allowed per source IP per hour.
+    pub self_provision_account_ip_limit: u32,
+
+    /// Account-mode community creation attempts allowed across the relay deployment per hour.
+    pub self_provision_account_global_limit: u32,
+
     /// Relay-owned KLIPY integration. Unset means GIF search is not advertised
     /// and its proxy routes return 404.
     pub klipy: Option<KlipyConfig>,
@@ -908,6 +919,21 @@ fn parse_positive_u32(name: &str, default: u32) -> Result<u32, ConfigError> {
         Err(std::env::VarError::NotUnicode(_)) => Err(ConfigError::InvalidValue(format!(
             "{name} must be valid Unicode"
         ))),
+    }
+}
+
+/// Explain why a self-serve provisioning mode combination is invalid.
+fn self_provision_mode_error(
+    domain_configured: bool,
+    public: bool,
+    accounts: bool,
+) -> Option<&'static str> {
+    if public && !domain_configured {
+        Some("BUZZ_SELF_PROVISION_PUBLIC requires BUZZ_SELF_PROVISION_DOMAIN")
+    } else if accounts && !domain_configured {
+        Some("BUZZ_SELF_PROVISION_ACCOUNTS requires BUZZ_SELF_PROVISION_DOMAIN")
+    } else {
+        None
     }
 }
 
@@ -1307,15 +1333,24 @@ impl Config {
         let self_provision_public = std::env::var("BUZZ_SELF_PROVISION_PUBLIC")
             .map(|value| value == "true" || value == "1")
             .unwrap_or(false);
-        if self_provision_public && self_provision_domain.is_none() {
-            return Err(ConfigError::InvalidValue(
-                "BUZZ_SELF_PROVISION_PUBLIC requires BUZZ_SELF_PROVISION_DOMAIN".to_string(),
-            ));
+        let self_provision_accounts = std::env::var("BUZZ_SELF_PROVISION_ACCOUNTS")
+            .map(|value| value == "true" || value == "1")
+            .unwrap_or(false);
+        if let Some(message) = self_provision_mode_error(
+            self_provision_domain.is_some(),
+            self_provision_public,
+            self_provision_accounts,
+        ) {
+            return Err(ConfigError::InvalidValue(message.to_string()));
         }
         let self_provision_public_ip_limit =
             parse_positive_u32("BUZZ_SELF_PROVISION_PUBLIC_IP_LIMIT", 3)?;
         let self_provision_public_global_limit =
             parse_positive_u32("BUZZ_SELF_PROVISION_PUBLIC_GLOBAL_LIMIT", 50)?;
+        let self_provision_account_ip_limit =
+            parse_positive_u32("BUZZ_SELF_PROVISION_ACCOUNT_IP_LIMIT", 10)?;
+        let self_provision_account_global_limit =
+            parse_positive_u32("BUZZ_SELF_PROVISION_ACCOUNT_GLOBAL_LIMIT", 500)?;
 
         let klipy = std::env::var("BUZZ_KLIPY_API_KEY")
             .ok()
@@ -1868,6 +1903,9 @@ impl Config {
             self_provision_public,
             self_provision_public_ip_limit,
             self_provision_public_global_limit,
+            self_provision_accounts,
+            self_provision_account_ip_limit,
+            self_provision_account_global_limit,
             klipy,
             media,
             media_max_concurrent_uploads,
@@ -1919,6 +1957,20 @@ mod tests {
         );
         assert_eq!(too_long.len(), 192);
         assert!(parse_self_provision_domain(&too_long).is_err());
+    }
+
+    #[test]
+    fn self_provision_modes_require_a_domain() {
+        assert_eq!(
+            self_provision_mode_error(false, true, false),
+            Some("BUZZ_SELF_PROVISION_PUBLIC requires BUZZ_SELF_PROVISION_DOMAIN")
+        );
+        assert_eq!(
+            self_provision_mode_error(false, false, true),
+            Some("BUZZ_SELF_PROVISION_ACCOUNTS requires BUZZ_SELF_PROVISION_DOMAIN")
+        );
+        assert_eq!(self_provision_mode_error(true, true, true), None);
+        assert_eq!(self_provision_mode_error(false, false, false), None);
     }
 
     #[test]
