@@ -8,6 +8,7 @@
 //   import { startFakeProvider } from "./fake-provider.mjs"; const fake = await startFakeProvider({ logFile });
 import { appendFileSync } from "node:fs";
 import http from "node:http";
+import { browserScenarioFor } from "./c107-browser-scenario.mjs";
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/giu;
 const HEX64 = /[0-9a-f]{64}/gu;
@@ -27,6 +28,8 @@ const TINY_PNG_B64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 export function scenarioFor(human, ctx) {
+  const browser = browserScenarioFor(human, ctx);
+  if (browser) return browser;
   const t = human.toLowerCase();
   const channel = ctx.generalId ?? ctx.channelId;
   if (/use every one of your tools/u.test(t))
@@ -259,7 +262,12 @@ export async function startFakeProvider({
         UUID.lastIndex = 0;
         return line?.match(UUID)?.[0] ?? null;
       })();
-      const ctx = { channelId, generalId, replyTo };
+      // Earlier tool results in this session: browser rows reuse the actual tab id they returned.
+      const history = messages
+        .slice(0, lastUser + 1)
+        .filter((m) => m.role === "tool")
+        .map((m) => textOf(m.content));
+      const ctx = { channelId, generalId, replyTo, history };
       const scenario = scenarioFor(human, ctx);
       const shell = pickShell(tools);
       const step = results.length;
@@ -275,7 +283,24 @@ export async function startFakeProvider({
         ctx,
         lastUserHead: userText.slice(0, 1500),
         lastResult: (results[results.length - 1] ?? "").slice(0, 800),
+        results: results.map((r) => r.slice(0, 1200)),
       });
+      // Browser fixture rows: keep what the agent was told at the start of each browser turn (system text and tool names).
+      if (logFile && scenario.name.startsWith("browser-") && step === 0)
+        appendFileSync(
+          `${logFile}.${scenario.name}-${sessions.requests}.json`,
+          JSON.stringify(
+            {
+              system: messages
+                .filter((m) => m.role === "system")
+                .map((m) => textOf(m.content)),
+              tools: tools.map((t) => t?.function?.name),
+              human,
+            },
+            null,
+            1,
+          ),
+        );
       if (!shell) {
         return reply(
           {

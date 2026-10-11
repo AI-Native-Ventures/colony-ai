@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { judgeRow } from "./rows.mjs";
+import { driveTransferRow } from "./transfer-driver.mjs";
 
 /**
  * Drive visible controls in a genuinely packaged, managed FAKE session.
@@ -8,14 +9,41 @@ import { judgeRow } from "./rows.mjs";
  * sendTask posts a real relay message; observe reads that session's results,
  * grant transitions and redacted log, never synthesizes a tool result.
  */
-export async function drivePackagedRow({ id, page, run, managed, provenance }) {
+export async function drivePackagedRow({
+  id,
+  page,
+  run,
+  managed,
+  provenance,
+  nativePicker,
+}) {
   if (
-    !["approve", "deny", "takeover", "stop", "private-url-refusal"].includes(id)
+    ![
+      "approve",
+      "deny",
+      "takeover",
+      "stop",
+      "upload",
+      "download",
+      "private-url-refusal",
+    ].includes(id)
   )
-    throw new Error("This driver covers packaged control and refusal rows");
+    throw new Error("Unknown packaged row");
+  provenance = {
+    ...provenance,
+    defaultFlagUnset:
+      run?.environment &&
+      !Object.hasOwn(run.environment, "COLONY_BROWSER_AGENT"),
+  };
   const prerequisites = { ...provenance, fixtureGranted: true };
   const preliminary = judgeRow(id, prerequisites);
   if (preliminary.status === "BLOCKED") return preliminary;
+  if (id === "upload" && typeof nativePicker?.selectFile !== "function")
+    return {
+      id,
+      status: "BLOCKED",
+      reason: "Actual native picker adapter was not supplied.",
+    };
   assert.deepEqual(managed.task, run.task);
   assert.equal(managed.agentId, run.task.agentId);
   assert.equal(managed.providerModel, "colony-browser-fake");
@@ -34,6 +62,15 @@ export async function drivePackagedRow({ id, page, run, managed, provenance }) {
     .getByTestId("browser-controller")
     .getByText(/has control/u)
     .waitFor({ timeout: 15_000 });
+  if (id === "upload" || id === "download")
+    return driveTransferRow({
+      id,
+      controls,
+      run,
+      managed,
+      provenance,
+      nativePicker,
+    });
   const before = run.fixtures.counters();
   assert.equal(before.submissions, 0);
   await managed.sendTask(
