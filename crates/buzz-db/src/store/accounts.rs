@@ -747,12 +747,17 @@ impl Db {
     }
 
     /// Sign in through a verified Google subject, creating or linking atomically.
+    ///
+    /// Linking proves the person controls the email, so a password set on a
+    /// never-verified account is dropped: whoever set it never proved the
+    /// address. A terms version, when given, is recorded with its time.
     #[datastore_span(name = "account_google_signin", system = "postgresql")]
     pub async fn account_google_signin(
         &self,
         sub: &str,
         verified_email: &str,
         new_account: &NewAccount,
+        terms_version: Option<&str>,
     ) -> Result<AccountRecord> {
         let connection = observability::acquire_writer(
             &self.pool,
@@ -789,6 +794,7 @@ impl Db {
             .bind(account_id)
             .execute(&mut *tx)
             .await?;
+            record_terms_acceptance(&mut tx, account_id, terms_version).await?;
             let account = load_account_by_id_tx(&mut tx, account_id).await?;
             tx.commit().await?;
             return Ok(account);
@@ -802,13 +808,10 @@ impl Db {
         .await?;
         let account_id = if let Some(row) = existing {
             let account_id: Uuid = row.try_get("id")?;
-            sqlx::query(
-                "UPDATE accounts SET email_verified_at = COALESCE(email_verified_at, now()), \
-                 last_signin_at = now(), updated_at = now() WHERE id = $1",
-            )
-            .bind(account_id)
-            .execute(&mut *tx)
-            .await?;
+            sqlx::query(VERIFY_EMAIL_DROPPING_UNPROVEN_PASSWORD)
+                .bind(account_id)
+                .execute(&mut *tx)
+                .await?;
             account_id
         } else if let Some(account_id) = insert_account(&mut tx, new_account).await? {
             sqlx::query("UPDATE accounts SET last_signin_at = now() WHERE id = $1")
@@ -824,13 +827,10 @@ impl Db {
             .fetch_one(&mut *tx)
             .await?;
             let account_id: Uuid = row.try_get("id")?;
-            sqlx::query(
-                "UPDATE accounts SET email_verified_at = COALESCE(email_verified_at, now()), \
-                 last_signin_at = now(), updated_at = now() WHERE id = $1",
-            )
-            .bind(account_id)
-            .execute(&mut *tx)
-            .await?;
+            sqlx::query(VERIFY_EMAIL_DROPPING_UNPROVEN_PASSWORD)
+                .bind(account_id)
+                .execute(&mut *tx)
+                .await?;
             account_id
         };
         sqlx::query(
@@ -847,6 +847,7 @@ impl Db {
                 .bind(sub)
                 .fetch_one(&mut *tx)
                 .await?;
+        record_terms_acceptance(&mut tx, linked_id, terms_version).await?;
         let account = load_account_by_id_tx(&mut tx, linked_id).await?;
         tx.commit().await?;
         Ok(account)

@@ -152,6 +152,8 @@ fn signin_decision(email_verified: bool, password_matches: Option<bool>) -> Sign
 #[serde(deny_unknown_fields)]
 struct GoogleRequest {
     id_token: SecretString,
+    #[serde(default, rename = "termsVersion")]
+    terms_version: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -936,6 +938,11 @@ async fn google_signin(
     body: Bytes,
 ) -> Result<Json<SessionResponse>, (StatusCode, Json<Value>)> {
     let request: GoogleRequest = decode_body(&body)?;
+    let terms_version = request
+        .terms_version
+        .as_deref()
+        .map(normalize_terms_version)
+        .transpose()?;
     if state.config.accounts.google_client_ids().is_empty() {
         return Err(account_unavailable());
     }
@@ -959,7 +966,12 @@ async fn google_signin(
     }
     let account = state
         .db
-        .account_google_signin(&identity.sub, &identity.email, &account)
+        .account_google_signin(
+            &identity.sub,
+            &identity.email,
+            &account,
+            terms_version.as_deref(),
+        )
         .await
         .map_err(|error| map_db_error("google_signin", error))?;
     session(&state.config, &account)
