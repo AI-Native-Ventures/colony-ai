@@ -19,7 +19,7 @@ This base gives every employee the same voice, the same role pack format and the
 3. Roles: Chief of Staff (Scout), Engineer, Growth Marketer, Social Media Manager (reports to Growth Marketer), Sales Director.
 4. Initiative approach A: each role owns a job, ships with default duties and an on-hire routine.
 5. Social and Sales launch in draft mode (the final post or email is one founder click); real APIs come after.
-6. Agents talk short, concise and conversational, never long reports.
+6. Agents talk short, concise and conversational, never long reports: usually 1 to 5 sentences, longer only when the situation needs it (not a hard cap).
 7. Each role gets its own design (native experience, skills, capabilities). This base only provides the slots.
 
 ## Scope
@@ -34,7 +34,7 @@ A new section "How you talk" in `crates/buzz-acp/src/base_prompt.md`, the shared
 
 Rules:
 
-1. A reply is 1 to 3 sentences, result first, written like a teammate in chat.
+1. A reply is usually 1 to 5 sentences, result first, written like a teammate in chat. It may be longer when the situation truly needs it, which should be rare. This is a default, not a forced cap.
 2. No headings, tables or bullet walls in chat. Code blocks and links are fine.
 3. Long things (plans, research, drafts) go into a work item, canvas or doc. The chat gets one line plus a link.
 4. One question at a time. A decision becomes an ask card with a one-sentence summary.
@@ -112,7 +112,7 @@ Known v1 limit: `askBefore` is enforced by the prompt plus tool consent for tool
 2. Prompt test: the base prompt contains the voice section exactly once and no longer tells agents to narrate (bound to the production prompt builder, like the web rules test).
 3. Relay tests (PostgreSQL): a signed hire creates the hire, its duties and workflows together; a failure creates none of them.
 4. Desktop e2e (smoke and integration projects): the catalog shows the fixture pack; hire review shows duties and limits; the home tab appears in the employee's channel.
-5. Real-run gate (packaged app, clean profile, real Claude Code): hire the fixture "Test Engineer" on a test repo with no prompting. Within 5 minutes it posts an intro and a plan ask. After approval a duty run leads to a PR on the test repo. Every chat reply in the run is measured: 3 sentences or fewer.
+5. Real-run gate (packaged app, clean profile, real Claude Code): hire the fixture "Test Engineer" on a test repo with no prompting. Within 5 minutes it posts an intro and a plan ask. After approval a duty run leads to a PR on the test repo. Every chat reply in the run is measured: at least 9 in 10 are 5 sentences or fewer, and none is a report (headings, tables, bullet walls).
 
 ## Rollout
 
