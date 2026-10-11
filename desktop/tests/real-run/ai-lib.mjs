@@ -348,7 +348,20 @@ export async function launch({
     `[sandbox-probe] PASS ${sandboxProof}; runtime process.env.HOME=${version.envHome}; Electron app.getPath(home)=${version.osHome}`,
   );
   const first = await application.firstWindow({ timeout: 30000 });
-  await first.setViewportSize({ width: 1440, height: 960 });
+  // Size the real window, never an emulated viewport: the browser tab attaches a native view at
+  // renderer coordinates, and the host refuses bounds outside the real window ("Browser bounds must
+  // fit within the app window"). GATE_VIEWPORT_EMULATION=1 restores the old 1440x960 emulation.
+  if (process.env.GATE_VIEWPORT_EMULATION === "1")
+    await first.setViewportSize({ width: 1440, height: 960 });
+  else
+    await application.evaluate(({ BrowserWindow, screen }) => {
+      const area = screen.getPrimaryDisplay().workAreaSize;
+      for (const window of BrowserWindow.getAllWindows())
+        window.setContentSize(
+          Math.min(1440, area.width),
+          Math.min(960, area.height - 40),
+        );
+    });
   await first.waitForLoadState("domcontentloaded", { timeout: 20000 });
   const current = () => {
     if (!first.isClosed()) return first;

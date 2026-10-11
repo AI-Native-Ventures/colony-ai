@@ -118,3 +118,41 @@ const grantWithWake = async () => {
   await S.page.getByTestId("browser-controller").getByText(/has control/u).waitFor({ timeout: 15000 });
   return { wakeMs: Date.now() - wake, opts };
 };
+// Send the control row until a managed turn actually carries browser tools (fresh harness sessions can start before the tool list refresh).
+const controlRoundRetry = async (label, action, attempts = 4) => {
+  const c = controls();
+  const before = S.fx.counters().submissions;
+  const dlg = c.getByRole("alertdialog");
+  const log = [];
+  for (let k = 1; k <= attempts; k++) {
+    const sent = await sendDm(`Fixture control row: snapshot this approved tab and click Send message. Wait for the person's confirmation. ${label} attempt${k}`);
+    const t = await waitTurns(sent, "browser-control", x => x.length > 0, 60000);
+    const tools = (t[0]?.tools ?? []).filter(n => /browser/.test(n)).length;
+    log.push({ k, turn: t.length > 0, browserTools: tools });
+    if (!t.length || !tools) continue;
+    let dialog = false; const e2 = Date.now() + 60000;
+    while (Date.now() < e2) { if (await dlg.isVisible().catch(() => false)) { dialog = true; break; } await sleep(400); }
+    if (!dialog) { log.push({ k, dialog: false }); continue; }
+    const atDialog = S.fx.counters().submissions;
+    const dialogText = (await dlg.innerText()).replace(/\n+/g, " | ");
+    await shot(S.page, rec, label + "-dialog");
+    if (action === "confirm") await dlg.getByRole("button", { name: "Confirm action", exact: true }).click();
+    if (action === "reject") await dlg.getByRole("button", { name: "Reject", exact: true }).click();
+    if (action === "stop" || action === "takeover") await c.getByRole("button", { name: action === "stop" ? "Stop" : "Take over", exact: true }).click();
+    const turns = await waitTurns(sent, "browser-control", x => x.some(y => y.step >= 3), 45000);
+    await sleep(2000);
+    const after = S.fx.counters().submissions;
+    const clickResult = turns.find(y => y.step >= 3)?.results?.[2] ?? null;
+    await shot(S.page, rec, label + "-after");
+    const controller = await S.page.getByTestId("browser-controller").innerText().catch(() => null);
+    const overlay = await S.page.getByTestId("work-area-panel").getByText("This page could not be opened").isVisible().catch(() => false);
+    const pageResult = await S.page.evaluate(() => window.colonyBrowserHost.listTabs()).then(ts => ts.map(x => x.title)).catch(() => null);
+    return { label, attempts: log, before, atDialog, after, dialog: true, dialogText, clickResult: clickResult?.slice(0, 300), controller, overlay, pageResult };
+  }
+  return { label, attempts: log, before, after: S.fx.counters().submissions, dialog: false };
+};
+const endedRow = async () => {
+  const sent = await sendDm("Fixture ended-control row: attempt another browser snapshot in this same task.");
+  const t = await waitTurns(sent, "browser-ended", x => x.some(y => y.step >= 2) || x.some(y => y.step === 0 && !(y.tools ?? []).some(n => /browser/.test(n))), 60000);
+  return t.map(x => ({ step: x.step, browserTools: (x.tools ?? []).filter(n => /browser/.test(n)).length, r: (x.results ?? []).map(y => y.slice(0, 120)) }));
+};
