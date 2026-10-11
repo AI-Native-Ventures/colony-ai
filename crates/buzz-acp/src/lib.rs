@@ -23,6 +23,14 @@ mod scope;
 mod setup_mode;
 mod tool_permissions;
 mod usage;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the listener uses every part of the ledger once restart catch-up is wired in"
+    )
+)]
+mod wake_ledger;
 
 pub use acp::{
     AcpClient, AcpError, EnvVar, McpServer, SessionNewResponse, StopReason, SystemPromptTransport,
