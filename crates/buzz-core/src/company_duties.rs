@@ -303,7 +303,10 @@ fn weekday_number(value: &str) -> Option<u8> {
     }
 }
 
-fn is_timezone_label(value: &str) -> bool {
+/// Returns `true` for an IANA-style time zone label: 1 to 64 ASCII letters,
+/// digits, `/`, `_`, `-` or `+`. The workflow engine checks the name against
+/// its zone database when a schedule is created.
+pub fn is_timezone_label(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 64
         && value
