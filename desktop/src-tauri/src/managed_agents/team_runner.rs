@@ -22,6 +22,8 @@ mod claim;
 mod claim_io;
 mod companies;
 mod computer;
+mod hire;
+mod hire_journal;
 mod launch;
 mod status;
 mod supervisor;
@@ -30,6 +32,7 @@ mod watch;
 pub(crate) use claim::{launch_candidates, TeamSpawn};
 pub(crate) use companies::{CompaniesFile, StoredCompany, NOT_SET_UP};
 pub(crate) use computer::ComputerIdentity;
+pub use hire::{HireCompleteInput, HireCompleteResult, HireCompleteState};
 pub(crate) use launch::{pause_company, resume_company, spawn_on_boot};
 
 /// Event carrying one [`EmployeeRuntimeStatus`] whenever an employee's state changes.
@@ -165,6 +168,8 @@ pub(crate) struct TeamRunnerState {
     activation: tokio::sync::Mutex<()>,
     /// The supervisor and heartbeat loops start once per host.
     loops_started: AtomicBool,
+    /// One hire at a time, so a resumed hire and a new call never race.
+    hire_lock: tokio::sync::Mutex<()>,
 }
 
 /// Run `f` on the supervisor book (a leaf lock).
@@ -443,6 +448,8 @@ mod claim_io_tests;
 mod claim_tests;
 #[cfg(test)]
 mod foundation_tests;
+#[cfg(test)]
+mod hire_tests;
 #[cfg(test)]
 mod hooks_tests;
 #[cfg(test)]
