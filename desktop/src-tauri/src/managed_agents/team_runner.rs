@@ -21,10 +21,12 @@ mod claim;
 mod claim_io;
 mod companies;
 mod computer;
+mod status;
 mod supervisor;
+mod watch;
 
 pub(crate) use claim::{launch_candidates, TeamSpawn};
-pub(crate) use companies::{CompaniesFile, StoredCompany};
+pub(crate) use companies::{CompaniesFile, StoredCompany, NOT_SET_UP};
 pub(crate) use computer::ComputerIdentity;
 
 /// Event carrying one [`EmployeeRuntimeStatus`] whenever an employee's state changes.
@@ -333,6 +335,101 @@ pub(crate) fn ensure_computer<R: Runtime>(app: &AppHandle<R>) -> Result<Computer
     Ok(identity)
 }
 
+/// Whether the host is shutting down (no restarts, no activations).
+pub(crate) fn shutting_down<R: Runtime>(app: &AppHandle<R>) -> bool {
+    app.try_state::<crate::app_state::AppState>()
+        .is_some_and(|state| {
+            state
+                .shutdown_started
+                .load(std::sync::atomic::Ordering::Acquire)
+        })
+}
+
+/// The signed-in person's public key (hex).
+pub(crate) fn identity<R: Runtime>(app: &AppHandle<R>) -> Result<String, String> {
+    let state = app
+        .try_state::<crate::app_state::AppState>()
+        .ok_or_else(|| "Colony is still starting.".to_string())?;
+    Ok(state.signing_keys()?.public_key().to_hex())
+}
+
+/// Whether the record for `relay_url` names this computer.
+pub(crate) fn runs_here<R: Runtime>(app: &AppHandle<R>, relay_url: &str) -> bool {
+    let Ok(me) = ensure_computer(app) else {
+        return false;
+    };
+    claim_view(app, relay_url)
+        .ok()
+        .flatten()
+        .and_then(|view| view.holder)
+        .is_some_and(|holder| holder.computer_id == me.computer_id)
+}
+
+/// The signed-in person's company when this computer holds its team, paused
+/// or not (the heartbeat keeps a paused team's record fresh).
+pub(crate) fn held_company<R: Runtime>(app: &AppHandle<R>) -> Option<StoredCompany> {
+    let identity = identity(app).ok()?;
+    let company = saved_companies(app).ok()?.active(&identity).cloned()?;
+    runs_here(app, &company.relay_url).then_some(company)
+}
+
+/// [`held_company`] when it is not paused: the team the supervisor keeps running.
+pub(crate) fn running_company<R: Runtime>(app: &AppHandle<R>) -> Option<StoredCompany> {
+    held_company(app).filter(|company| !company.is_paused())
+}
+
+/// The normalized relay when it belongs to a saved company.
+fn team_relay<R: Runtime>(app: &AppHandle<R>, relay_url: &str) -> Option<String> {
+    let relay = normalize_relay(relay_url).ok()?;
+    saved_companies(app)
+        .ok()?
+        .companies
+        .iter()
+        .any(|company| company.relay_url == relay)
+        .then_some(relay)
+}
+
+/// Spawn hook (`spawn_agent_child`): a saved company's employee that starts is
+/// one the team runner keeps running on that relay.
+pub(crate) fn note_spawned<R: Runtime>(app: &AppHandle<R>, pubkey: &str, relay_url: &str) {
+    if let Some(relay) = team_relay(app, relay_url) {
+        if let Err(error) = with_book(app, |book| book.expect_running(pubkey, &relay)) {
+            eprintln!("team runner: could not record a start: {error}");
+        }
+    }
+}
+
+/// Stop hook (`stop_managed_agent_pair`, `stop_managed_agent_runtime`): a pair
+/// stopped on purpose is never restarted by the supervisor.
+pub(crate) fn note_stopped_on_purpose<R: Runtime>(
+    app: &AppHandle<R>,
+    pubkey: &str,
+    relay_url: &str,
+) {
+    if let Some(relay) = team_relay(app, relay_url) {
+        if let Err(error) = with_book(app, |book| book.note_stopped(pubkey, &relay)) {
+            eprintln!("team runner: could not record a stop: {error}");
+        }
+    }
+}
+
+/// Plain words for each problem: never a path, code, key or model name.
+pub(crate) fn problem_detail(kind: ProblemKind, name: &str) -> String {
+    match kind {
+        ProblemKind::StartFailed => format!("{name} could not start. Colony will try again shortly."),
+        ProblemKind::Crashed => format!("{name} stopped unexpectedly. Colony is starting them again."),
+        ProblemKind::CrashLoop => format!(
+            "{name} keeps stopping, so Colony stopped restarting them. Restart them when you are ready."
+        ),
+        ProblemKind::CreditsOut => {
+            "Your credits ran out, so your team is paused. Add credits to continue.".to_string()
+        }
+        ProblemKind::DiskFull => {
+            format!("This computer is almost out of space, so {name} is waiting.")
+        }
+    }
+}
+
 #[cfg(test)]
 mod claim_io_tests;
 #[cfg(test)]
@@ -340,4 +437,10 @@ mod claim_tests;
 #[cfg(test)]
 mod foundation_tests;
 #[cfg(test)]
+mod hooks_tests;
+#[cfg(test)]
+mod status_tests;
+#[cfg(test)]
 mod supervisor_tests;
+#[cfg(test)]
+mod watch_tests;

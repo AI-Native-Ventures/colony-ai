@@ -51,7 +51,7 @@ use process::{
 };
 pub(crate) use process::{
     current_instance_id, probe_buzz_marker, process_belongs_to_us, process_has_buzz_marker,
-    process_is_running, terminate_process, terminate_untracked_pair_runtime,
+    process_is_running, request_graceful_exit, terminate_process, terminate_untracked_pair_runtime,
     valid_agent_runtime_receipt, MarkerProbe,
 };
 
@@ -914,6 +914,8 @@ pub fn spawn_agent_child(
         "colony-agent timing harness_spawn_ms={}",
         spawn_started.elapsed().as_millis()
     );
+    // A saved company's employee that starts is one the team runner keeps running.
+    super::team_runner::note_spawned(app, &record.pubkey, &runtime_key.relay_url);
 
     // Codex: stamp adapter availability for the Phase-2 badge drift check.
     // Cold cache returns `None` → drift check skipped until discovery warms it.

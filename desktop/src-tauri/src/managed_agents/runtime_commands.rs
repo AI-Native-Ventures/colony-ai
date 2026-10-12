@@ -352,6 +352,8 @@ pub fn stop_managed_agent_runtime(
     let mut records = load_managed_agents(&app)?;
     let record = find_managed_agent_mut(&mut records, &pubkey)?;
     let key = ManagedAgentRuntimeKey::new(pubkey, &relay_url)?;
+    // Stopped on purpose: the team runner never restarts this pair.
+    super::team_runner::note_stopped_on_purpose(&app, &key.pubkey, &key.relay_url);
     let mut runtimes = state
         .managed_agent_processes
         .lock()

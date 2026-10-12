@@ -12,7 +12,8 @@ pub(crate) const COMPANIES_FILE: &str = "team-companies.json";
 /// Most companies one computer keeps.
 pub(crate) const MAX_COMPANIES: usize = 5;
 const FILE_VERSION: u8 = 1;
-const NOT_SET_UP: &str = "This company is not set up on this computer.";
+/// Refusal for a relay that is not a saved company.
+pub(crate) const NOT_SET_UP: &str = "This company is not set up on this computer.";
 
 /// One saved company.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

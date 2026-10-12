@@ -328,6 +328,20 @@ pub(crate) fn terminate_process(pid: u32) -> Result<(), String> {
     Ok(())
 }
 
+/// Ask a harness to finish its current turn and exit: `SIGTERM` to its group.
+/// The harness drains in-flight turns for up to 30 seconds. The caller stops
+/// the pair afterwards.
+#[cfg(unix)]
+pub(crate) fn request_graceful_exit(pid: u32) -> Result<(), String> {
+    signal_process_group_or_leader(pid, libc::SIGTERM, "stop")
+}
+
+/// Windows has no signal a harness can drain on; the caller's stop follows at once.
+#[cfg(not(unix))]
+pub(crate) fn request_graceful_exit(_pid: u32) -> Result<(), String> {
+    Ok(())
+}
+
 #[cfg(windows)]
 pub(crate) fn terminate_process(pid: u32) -> Result<(), String> {
     // No job handle is available on this path (e.g. after an app restart, when
