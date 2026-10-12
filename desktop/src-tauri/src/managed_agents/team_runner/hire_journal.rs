@@ -73,6 +73,21 @@ pub(crate) struct HireJournal {
 }
 
 impl HireJournal {
+    /// Bound unfinished work without throwing away the records that make
+    /// retries safe. Existing hires can always resume.
+    pub(crate) fn ensure_capacity_for(&self, hire_id: Uuid) -> Result<(), String> {
+        if self.find(hire_id).is_none()
+            && self
+                .entries
+                .iter()
+                .filter(|entry| !entry.is_finished())
+                .count()
+                >= MAX_ENTRIES
+        {
+            return Err("Colony has too many unfinished hires on this computer. Finish one before starting another.".to_string());
+        }
+        Ok(())
+    }
     /// A startup restore never outruns an unfinished hire's Complete and
     /// first start. The journal resumes that first start with its replay floor.
     pub(crate) fn allows_restore(

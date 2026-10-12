@@ -607,3 +607,22 @@ fn launch_restore_waits_for_the_hire_and_only_its_journal_can_start_it_first() {
         assert!(journal.allows_restore(&record, "wss://another.example"));
     }
 }
+
+#[test]
+fn unfinished_hires_are_bounded_without_discarding_retry_records() {
+    let mut journal = HireJournal::default();
+    for _ in 0..200 {
+        let mut entry = fresh_entry();
+        entry.hire_id = Uuid::new_v4();
+        journal.upsert(entry);
+    }
+    assert!(journal.ensure_capacity_for(Uuid::new_v4()).is_err());
+    assert!(
+        journal
+            .ensure_capacity_for(journal.entries[0].hire_id)
+            .is_ok(),
+        "an existing hire can resume"
+    );
+    journal.entries[0].step = HireStep::Started;
+    assert!(journal.ensure_capacity_for(Uuid::new_v4()).is_ok());
+}

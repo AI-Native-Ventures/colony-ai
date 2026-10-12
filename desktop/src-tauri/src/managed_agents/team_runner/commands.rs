@@ -111,6 +111,7 @@ pub async fn team_hire_complete(
     let _one_hire_at_a_time = state.hire_lock.lock().await;
     let mut io = RelayHireIo::new(&app, &hire.relay_url).await?;
     let journal = io.journal()?;
+    journal.ensure_capacity_for(hire.hire_id)?;
     let (entry, outcome) = match journal.find(hire.hire_id) {
         Some(existing) => (existing.clone(), existing_entry_state(existing)),
         None => (

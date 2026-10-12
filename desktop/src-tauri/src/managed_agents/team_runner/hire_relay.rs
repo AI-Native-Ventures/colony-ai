@@ -41,6 +41,21 @@ pub(crate) fn time_zone_from_profile(content: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// The computer's zone is a fallback only when there is no profile head.
+/// A malformed existing profile must be repaired before a hire completes.
+pub(crate) fn resolve_company_time_zone(
+    profile_content: Option<&str>,
+    computer_zone: Option<&str>,
+) -> Result<String, String> {
+    let Some(content) = profile_content else {
+        return Ok(choose_time_zone(None, computer_zone));
+    };
+    let zone = time_zone_from_profile(content)
+        .filter(|zone| buzz_core_pkg::company_duties::is_timezone_label(zone))
+        .ok_or_else(|| "The company's time zone could not be read. Save the business profile before finishing this hire.".to_string())?;
+    Ok(zone)
+}
+
 /// The local employee made for `hire_id` (its role context goal), or the
 /// local record the hire head names.
 pub(crate) fn employee_for(
@@ -117,14 +132,12 @@ impl RelayHireIo {
                 "limit": 1
             }))
             .await?;
-        let profile_zone = self
-            .newest_relay_signed(heads)
-            .and_then(|head| time_zone_from_profile(&head.content));
+        let profile = self.newest_relay_signed(heads);
         let computer_zone = iana_time_zone::get_timezone().ok();
-        Ok(choose_time_zone(
-            profile_zone.as_deref(),
+        resolve_company_time_zone(
+            profile.as_ref().map(|head| head.content.as_str()),
             computer_zone.as_deref(),
-        ))
+        )
     }
 
     async fn query(&self, filter: Value) -> Result<Vec<nostr::Event>, String> {
@@ -438,6 +451,7 @@ impl HireIo for RelayHireIo {
 
     fn save(&mut self, entry: &HireJournalEntry) -> Result<(), String> {
         let mut journal = hire_journal::load(&self.journal_path)?;
+        journal.ensure_capacity_for(entry.hire_id)?;
         journal.upsert(entry.clone());
         journal.prune(now_unix());
         hire_journal::save(&self.journal_path, &journal)

@@ -102,3 +102,27 @@ fn a_resumed_hire_finds_the_employee_it_already_made() {
     );
     assert_eq!(employee_for(&[other], hire, None), None);
 }
+
+#[test]
+fn a_present_but_invalid_profile_never_uses_this_computers_time_zone() {
+    use super::hire_relay::resolve_company_time_zone;
+    assert_eq!(
+        resolve_company_time_zone(None, Some("Europe/London")).expect("no profile"),
+        "Europe/London"
+    );
+    assert_eq!(
+        resolve_company_time_zone(
+            Some(r#"{"timeZone":"Africa/Johannesburg"}"#),
+            Some("Europe/London")
+        )
+        .expect("profile"),
+        "Africa/Johannesburg"
+    );
+    for content in [
+        "not json",
+        r#"{"timeZone":"not a zone!"}"#,
+        r#"{"schemaVersion":1}"#,
+    ] {
+        assert!(resolve_company_time_zone(Some(content), Some("Europe/London")).is_err());
+    }
+}
