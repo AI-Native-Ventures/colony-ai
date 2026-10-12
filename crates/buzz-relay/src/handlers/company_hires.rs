@@ -705,7 +705,7 @@ pub(super) async fn validate_unique_name_in_transaction(
          WHERE community_id = $1 \
          AND (agent_owner_pubkey IS NOT NULL OR EXISTS ( \
              SELECT 1 FROM relay_members rm \
-             WHERE rm.community_id = users.community_id AND rm.pubkey = users.pubkey)) \
+             WHERE rm.community_id = users.community_id AND rm.pubkey = encode(users.pubkey, 'hex'))) \
          AND lower(btrim(COALESCE(display_name, ''))) = lower($2) \
          AND ($3::bytea IS NULL OR pubkey <> $3))",
     )
