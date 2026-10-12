@@ -11,7 +11,7 @@ use super::launch::{
     still_paused_message, stop_team, team_company, team_employee_pubkeys,
 };
 use super::{
-    claim_io, claim_view, ensure_computer, forget_claim, identity, now_unix, runner, runs_here,
+    claim_io, claim_view, ensure_computer, forget_claim, identity, now_unix, runner,
     saved_companies, update_companies, with_book, EmployeeRuntimeStatus, HireCompleteInput,
     HireCompleteResult, HireCompleteState, PauseReason, TeamCompany, TeamComputerStatus,
     NOT_SET_UP,
@@ -25,6 +25,8 @@ const PAUSED: &str = "Your team is paused. Resume it first.";
 /// released); a failure saves nothing, so a retry sees the same removal.
 #[tauri::command]
 pub async fn team_set_companies(companies: Vec<TeamCompany>, app: AppHandle) -> Result<(), String> {
+    let state = runner(&app)?;
+    let _activation = state.activation.lock().await;
     let next = super::companies::normalize(companies.clone())?;
     let removed: Vec<_> = saved_companies(&app)?
         .companies
@@ -36,8 +38,12 @@ pub async fn team_set_companies(companies: Vec<TeamCompany>, app: AppHandle) -> 
         })
         .collect();
     for company in &removed {
-        if runs_here(&app, &company.relay_url) {
-            stop_team(&app, &company.relay_url).await?;
+        // A removal before boot has read the claim must still release a held
+        // record. Offline, keep the durable list so the removal can retry.
+        let view = claim_io::refresh(&app, &company.relay_url).await?;
+        stop_team(&app, &company.relay_url).await?;
+        let me = ensure_computer(&app)?.computer_id;
+        if view.holder.is_some_and(|holder| holder.computer_id == me) {
             claim_io::release(&app, &company.relay_url).await?;
         }
     }

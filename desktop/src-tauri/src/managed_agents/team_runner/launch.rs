@@ -134,8 +134,6 @@ pub(crate) async fn activate(app: &AppHandle) -> Result<ActivationPlan, String> 
     match plan {
         ActivationPlan::StartTeam => {
             start_team(app, &company).await?;
-            // Hires a killed host left unfinished finish now, exactly once.
-            super::hire_relay::resume_unfinished(app, &company.relay_url);
         }
         ActivationPlan::Paused { credits: true } => {
             credits_pause::ensure_watcher(app, &company.relay_url)
@@ -269,7 +267,10 @@ pub(crate) async fn start_team(app: &AppHandle, company: &StoredCompany) -> Resu
             book.expect_running(pubkey, &company.relay_url);
         }
     })?;
-    crate::managed_agents::restore_managed_agents_on_launch(app, &state.shutdown_started).await
+    crate::managed_agents::restore_managed_agents_on_launch(app, &state.shutdown_started).await?;
+    // Boot, resume and restart-all finish first starts through the journal.
+    super::hire_relay::resume_unfinished(app, &company.relay_url);
+    Ok(())
 }
 
 fn live_pids(app: &AppHandle, relay: &str, employees: &[String]) -> Result<Vec<u32>, String> {

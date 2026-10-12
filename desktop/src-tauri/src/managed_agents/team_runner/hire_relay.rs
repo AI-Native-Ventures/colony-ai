@@ -15,7 +15,7 @@ use super::hire::{
     choose_time_zone, gate_hold_from, hire_view_from, run_hire, HireIo, HireView, GATE_HOLD,
 };
 use super::hire_journal::{self, HireJournal, HireJournalEntry, HireStep, JOURNAL_FILE};
-use super::{normalize_relay, now_unix, runner, team_dir, with_book};
+use super::{normalize_relay, now_unix, runner, team_dir};
 use crate::app_state::AppState;
 use crate::managed_agents::{CreateManagedAgentRequest, ManagedAgentRecord, RoleContext};
 
@@ -221,6 +221,14 @@ impl RelayHireIo {
 }
 
 impl HireIo for RelayHireIo {
+    async fn ensure_ready(&mut self) -> Result<(), String> {
+        let company = super::launch::team_company(&self.app, &self.relay_url)?;
+        super::launch::ensure_runs_here(&self.app, &company).await?;
+        if company.is_paused() {
+            return Err("Your team is paused. Resume it to finish this hire.".to_string());
+        }
+        Ok(())
+    }
     fn owner(&self) -> &str {
         &self.owner_hex
     }
@@ -434,7 +442,6 @@ impl HireIo for RelayHireIo {
         replay_floor: Option<u64>,
     ) -> Result<(), String> {
         let relay = self.relay_url.clone();
-        with_book(&self.app, |book| book.expect_running(employee, &relay))?;
         let (app, pubkey) = (self.app.clone(), employee.to_string());
         tauri::async_runtime::spawn_blocking(move || {
             crate::managed_agents::start_managed_agent_runtime_pair_with_floor(

@@ -270,6 +270,8 @@ pub(crate) fn gate_hold_from(gate: Option<&str>, hold_after: Option<&str>) -> Op
 
 /// The relay and host operations a hire needs. Each one is safe to repeat.
 pub(crate) trait HireIo {
+    /// Recheck company ownership, claim and pause before each side effect.
+    async fn ensure_ready(&mut self) -> Result<(), String>;
     /// The signed-in person, who signs every hire action.
     fn owner(&self) -> &str;
     /// Unix seconds now.
@@ -379,7 +381,12 @@ pub(crate) async fn run_hire<I: HireIo>(
 ) -> Result<String, String> {
     while entry.step != HireStep::Started {
         let before = entry.step;
-        if let Err(error) = advance(io, &mut entry).await {
+        let attempted = async {
+            io.ensure_ready().await?;
+            advance(io, &mut entry).await
+        }
+        .await;
+        if let Err(error) = attempted {
             entry.last_error = Some(error.clone());
             entry.updated_at = io.now();
             if let Err(save_error) = io.save(&entry) {

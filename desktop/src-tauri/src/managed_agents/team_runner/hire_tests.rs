@@ -23,6 +23,8 @@ const ZONE: &str = "Africa/Johannesburg";
 /// The relay and this computer: what a killed host leaves behind.
 struct World {
     status: String,
+    paused: bool,
+    pause_after_creation: bool,
     head_version: u32,
     founder: String,
     attached: Option<String>,
@@ -45,6 +47,8 @@ impl World {
     fn approved() -> Self {
         Self {
             status: "approved".into(),
+            paused: false,
+            pause_after_creation: false,
             head_version: 1,
             founder: OWNER.into(),
             attached: None,
@@ -133,6 +137,14 @@ fn view_of(world: &World) -> HireView {
 }
 
 impl HireIo for FakeIo<'_> {
+    async fn ensure_ready(&mut self) -> Result<(), String> {
+        self.boundary()?;
+        if self.world.paused {
+            return Err("team paused".to_string());
+        }
+        Ok(())
+    }
+
     fn owner(&self) -> &str {
         OWNER
     }
@@ -291,7 +303,11 @@ impl HireIo for FakeIo<'_> {
         self.boundary()
     }
 
-    async fn hold_after(&mut self, _step: HireStep) {}
+    async fn hold_after(&mut self, step: HireStep) {
+        if step == HireStep::EmployeeCreated && self.world.pause_after_creation {
+            self.world.paused = true;
+        }
+    }
 }
 
 fn input() -> HireCompleteInput {
@@ -625,4 +641,30 @@ fn unfinished_hires_are_bounded_without_discarding_retry_records() {
     );
     journal.entries[0].step = HireStep::Started;
     assert!(journal.ensure_capacity_for(Uuid::new_v4()).is_ok());
+}
+
+#[tokio::test]
+async fn pausing_an_inflight_hire_keeps_its_journal_and_resume_finishes_once() {
+    let mut world = World::approved();
+    world.pause_after_creation = true;
+    let entry = fresh_entry();
+    world.journal = Some(entry.clone());
+    assert!(run_hire(&mut FakeIo::new(&mut world, None), entry)
+        .await
+        .is_err());
+    assert_eq!(world.employees.len(), 1);
+    assert_eq!(world.completes, 0);
+    assert!(world.hellos.is_empty());
+    let saved = world.journal.clone().expect("retry record");
+    assert_eq!(saved.step, HireStep::EmployeeCreated);
+    assert!(saved.last_error.is_some());
+    world.paused = false;
+    world.pause_after_creation = false;
+    run_hire(&mut FakeIo::new(&mut world, None), saved)
+        .await
+        .expect("resumed");
+    assert_eq!(world.employees.len(), 1);
+    assert_eq!(world.completes, 1);
+    assert_eq!(world.hellos.len(), 1);
+    assert_eq!(world.running.len(), 1);
 }
