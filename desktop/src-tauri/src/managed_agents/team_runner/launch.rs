@@ -132,7 +132,11 @@ pub(crate) async fn activate(app: &AppHandle) -> Result<ActivationPlan, String> 
     let paused_for_credits = credits_pause::is_paused_for_credits(app, &company.relay_url);
     let plan = activation_plan(&view, &me, &company.pause_reasons, paused_for_credits);
     match plan {
-        ActivationPlan::StartTeam => start_team(app, &company).await?,
+        ActivationPlan::StartTeam => {
+            start_team(app, &company).await?;
+            // Hires a killed host left unfinished finish now, exactly once.
+            super::hire_relay::resume_unfinished(app, &company.relay_url);
+        }
         ActivationPlan::Paused { credits: true } => {
             credits_pause::ensure_watcher(app, &company.relay_url)
         }

@@ -24,6 +24,7 @@ mod companies;
 mod computer;
 mod hire;
 mod hire_journal;
+mod hire_relay;
 mod launch;
 mod status;
 mod supervisor;
@@ -448,6 +449,8 @@ mod claim_io_tests;
 mod claim_tests;
 #[cfg(test)]
 mod foundation_tests;
+#[cfg(test)]
+mod hire_relay_tests;
 #[cfg(test)]
 mod hire_tests;
 #[cfg(test)]
