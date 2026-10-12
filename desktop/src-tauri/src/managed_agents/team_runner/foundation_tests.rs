@@ -252,3 +252,50 @@ fn bridge_types_use_the_contract_wire_shape() {
             .expect("company");
     assert_eq!(input.owner_pubkey, OWNER);
 }
+
+#[test]
+fn simultaneous_requests_for_this_computer_use_the_same_install_id() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join(COMPUTER_FILE);
+    let cache = std::sync::Mutex::new(None);
+    let barrier = std::sync::Barrier::new(12);
+    let ids = std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..12)
+            .map(|_| {
+                scope.spawn(|| {
+                    barrier.wait();
+                    computer::cached_identity(&cache, &path)
+                        .expect("identity")
+                        .computer_id
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|handle| handle.join().expect("thread"))
+            .collect::<Vec<_>>()
+    });
+    assert!(ids.iter().all(|id| *id == ids[0]));
+    assert_eq!(
+        computer::load_or_create(&path)
+            .expect("durable id")
+            .computer_id,
+        ids[0]
+    );
+}
+
+#[test]
+fn a_load_error_keeps_the_spawn_cache_closed_until_a_successful_reload() {
+    let mut cache = companies::CompaniesCache::default();
+    assert!(cache
+        .remember_load(Err("damaged file".to_string()))
+        .is_err());
+    assert!(
+        cache.file().is_err(),
+        "a damaged file must not become no companies"
+    );
+    let mut saved = CompaniesFile::default();
+    saved.replace(vec![company(RELAY, OWNER)]).expect("company");
+    cache.remember_load(Ok(saved.clone())).expect("reloaded");
+    assert_eq!(cache.file().expect("file"), &saved);
+}

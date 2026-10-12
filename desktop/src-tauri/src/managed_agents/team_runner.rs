@@ -159,7 +159,7 @@ pub struct EmployeeProblem {
 pub(crate) struct TeamRunnerState {
     /// Cache of `team-companies.json`. Writers hold this lock across the
     /// durable write, so the file and the cache never disagree.
-    companies: Mutex<CompaniesFile>,
+    companies: Mutex<companies::CompaniesCache>,
     /// This install's id, loaded or created on first use.
     computer: Mutex<Option<ComputerIdentity>>,
     /// Latest team computer record seen per normalized company relay.
@@ -231,7 +231,7 @@ pub(crate) fn spawn_clearance<R: Runtime>(
     let Some(state) = app.try_state::<TeamRunnerState>() else {
         return Ok(SpawnClearance { team: None });
     };
-    let companies = state.companies.lock().map_err(|_| poisoned())?.clone();
+    let companies = saved_companies(app)?;
     let claims = state.claims.lock().map_err(|_| poisoned())?.clone();
     let computer = state.computer.lock().map_err(|_| poisoned())?.clone();
     claim::clearance_for(&companies, &claims, computer.as_ref(), relay_url)
@@ -328,10 +328,13 @@ pub(crate) fn emit_problem<R: Runtime>(app: &AppHandle<R>, problem: &EmployeePro
 /// anything can spawn. An unreadable file is an error: it never reads as
 /// "no companies", and it stays on disk untouched.
 pub(crate) fn load_saved_companies<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    let path = team_dir(app)?.join(companies::COMPANIES_FILE);
-    let file = companies::load(&path)?;
-    *runner(app)?.companies.lock().map_err(|_| poisoned())? = file;
-    Ok(())
+    let loaded =
+        team_dir(app).and_then(|dir| companies::load(&dir.join(companies::COMPANIES_FILE)));
+    runner(app)?
+        .companies
+        .lock()
+        .map_err(|_| poisoned())?
+        .remember_load(loaded)
 }
 
 /// A copy of the saved companies.
@@ -340,6 +343,7 @@ pub(crate) fn saved_companies<R: Runtime>(app: &AppHandle<R>) -> Result<Companie
         .companies
         .lock()
         .map_err(|_| poisoned())?
+        .file()?
         .clone())
 }
 
@@ -352,23 +356,18 @@ pub(crate) fn update_companies<R: Runtime, T>(
     let path = team_dir(app)?.join(companies::COMPANIES_FILE);
     let state = runner(app)?;
     let mut cache = state.companies.lock().map_err(|_| poisoned())?;
-    let mut next = cache.clone();
+    let mut next = cache.file()?.clone();
     let out = change(&mut next)?;
     companies::save(&path, &next)?;
-    *cache = next;
+    cache.remember_load(Ok(next))?;
     Ok(out)
 }
 
 /// This install's id, loaded or created once.
 pub(crate) fn ensure_computer<R: Runtime>(app: &AppHandle<R>) -> Result<ComputerIdentity, String> {
     let state = runner(app)?;
-    if let Some(identity) = state.computer.lock().map_err(|_| poisoned())?.clone() {
-        return Ok(identity);
-    }
     let path = team_dir(app)?.join(computer::COMPUTER_FILE);
-    let identity = computer::load_or_create(&path)?;
-    *state.computer.lock().map_err(|_| poisoned())? = Some(identity.clone());
-    Ok(identity)
+    computer::cached_identity(&state.computer, &path)
 }
 
 /// Whether the host is shutting down (no restarts, no activations).

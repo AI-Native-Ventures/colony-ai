@@ -17,6 +17,23 @@ pub(crate) struct ComputerIdentity {
     pub(crate) computer_id: String,
 }
 
+/// Read or create the install id under one leaf lock. Concurrent commands
+/// cannot write different ids to disk or return different ids to the relay.
+pub(crate) fn cached_identity(
+    cache: &std::sync::Mutex<Option<ComputerIdentity>>,
+    path: &Path,
+) -> Result<ComputerIdentity, String> {
+    let mut cached = cache
+        .lock()
+        .map_err(|_| "team state is unavailable".to_string())?;
+    if let Some(identity) = cached.as_ref() {
+        return Ok(identity.clone());
+    }
+    let identity = load_or_create(path)?;
+    *cached = Some(identity.clone());
+    Ok(identity)
+}
+
 fn is_install_id(value: &str) -> bool {
     uuid::Uuid::parse_str(value)
         .is_ok_and(|id| id.get_version_num() == 4 && id.to_string() == value)

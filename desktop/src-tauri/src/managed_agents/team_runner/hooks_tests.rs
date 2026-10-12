@@ -12,15 +12,19 @@ const ELSEWHERE: &str = "wss://elsewhere.colony.example";
 #[test]
 fn stop_hooks_only_track_saved_company_relays() {
     let state = TeamRunnerState::default();
-    state
-        .companies
-        .lock()
-        .expect("companies")
+    let mut companies = super::CompaniesFile::default();
+    companies
         .replace(vec![TeamCompany {
             relay_url: RELAY.into(),
             owner_pubkey: OWNER.into(),
         }])
         .expect("valid");
+    state
+        .companies
+        .lock()
+        .expect("companies")
+        .remember_load(Ok(companies))
+        .expect("loaded");
     let app = tauri::test::mock_builder()
         .manage(state)
         .build(tauri::test::mock_context(tauri::test::noop_assets()))

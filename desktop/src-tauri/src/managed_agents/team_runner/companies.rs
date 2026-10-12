@@ -5,6 +5,42 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+/// The last durable companies file and any failed load. A failed read never
+/// turns the default empty cache into permission to bypass the team fence.
+#[derive(Default)]
+pub(crate) struct CompaniesCache {
+    file: CompaniesFile,
+    error: Option<String>,
+}
+
+impl CompaniesCache {
+    /// Keep a load failure until the file can be read successfully.
+    pub(crate) fn remember_load(
+        &mut self,
+        result: Result<CompaniesFile, String>,
+    ) -> Result<(), String> {
+        match result {
+            Ok(file) => {
+                self.file = file;
+                self.error = None;
+                Ok(())
+            }
+            Err(error) => {
+                self.error = Some(error.clone());
+                Err(error)
+            }
+        }
+    }
+
+    /// The known file, or the unresolved load failure.
+    pub(crate) fn file(&self) -> Result<&CompaniesFile, String> {
+        match &self.error {
+            Some(error) => Err(error.clone()),
+            None => Ok(&self.file),
+        }
+    }
+}
+
 use super::{normalize_relay, PauseReason, TeamCompany};
 
 /// File name inside `<app data>/team`.
