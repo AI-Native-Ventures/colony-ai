@@ -647,6 +647,10 @@ introduction channel, or a time zone the schedule engine does not know. A
 replayed `complete` returns the stored duplicate result, and a second
 `complete` on a hired head is rejected, so each record exists once per hire.
 
+Member goal-create commands reject an id that already belongs to a hire head,
+so a goal cannot take a pending hire's reserved goal coordinate. A goal that
+predates the hire is preserved and causes the engine completion to roll back.
+
 The owner signature is the founder approval. Admins may prepare a hire and
 resolve hire asks, but an admin-only approval cannot transition the hire to an
 active employee. The screen confirmation is an explicit action, and relay role

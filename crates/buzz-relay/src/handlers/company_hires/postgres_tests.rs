@@ -229,7 +229,14 @@ async fn hire_head(fixture: &Fixture, hire_id: Uuid) -> StoredEvent {
 /// Drives one hire to the point where only `complete` remains and returns
 /// that unsigned action.
 async fn hire_ready_to_complete(fixture: &Fixture, role_pack: HireRolePack) -> HireAction {
-    let hire_id = Uuid::new_v4();
+    hire_ready_to_complete_at(fixture, role_pack, Uuid::new_v4()).await
+}
+
+async fn hire_ready_to_complete_at(
+    fixture: &Fixture,
+    role_pack: HireRolePack,
+    hire_id: Uuid,
+) -> HireAction {
     let mut create = hire_action(hire_id, HireActionKind::Create, None);
     create.proposal = Some(HireProposal {
         hire_id,
@@ -289,6 +296,36 @@ async fn hire_ready_to_complete(fixture: &Fixture, role_pack: HireRolePack) -> H
     complete.introduction_event_id = Some(introduction.id.to_hex());
     complete.time_zone = Some(DEFAULT_HIRE_TIME_ZONE.into());
     complete
+}
+
+fn goal_create_event(fixture: &Fixture, goal_id: Uuid) -> Event {
+    let create = GoalAction {
+        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+        goal_id,
+        action: GoalActionKind::Create,
+        expected_head_event_id: None,
+        goal: Some(GoalRecord {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            goal_id,
+            parent_goal_id: None,
+            title: "An existing company goal".into(),
+            owner_pubkey: fixture.owner.public_key().to_hex(),
+            due_date: None,
+            done_condition: "Already tracked".into(),
+            target: None,
+            linked_channel_ids: Vec::new(),
+        }),
+        progress: None,
+        status: None,
+        reason: None,
+    };
+    EventBuilder::new(
+        Kind::Custom(KIND_GOAL_ACTION as u16),
+        serde_json::to_string(&create).expect("serialize goal action"),
+    )
+    .tags([Tag::parse(["d", goal_d_tag(goal_id).as_str()]).expect("goal d tag")])
+    .sign_with_keys(&fixture.owner)
+    .expect("sign goal action")
 }
 
 async fn goal_heads(fixture: &Fixture, goal_id: Uuid) -> Vec<StoredEvent> {
@@ -489,42 +526,16 @@ async fn complete_with_time_zone_creates_the_employee_goal_with_the_hire() {
 #[ignore = "requires disposable Postgres"]
 async fn a_goal_at_the_hire_id_rolls_back_the_whole_completion() {
     let fixture = fixture().await;
-    let complete = hire_ready_to_complete(&fixture, role_pack()).await;
-    let existing = GoalAction {
-        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-        goal_id: complete.hire_id,
-        action: GoalActionKind::Create,
-        expected_head_event_id: None,
-        goal: Some(GoalRecord {
-            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
-            goal_id: complete.hire_id,
-            parent_goal_id: None,
-            title: "An existing company goal".into(),
-            owner_pubkey: fixture.owner.public_key().to_hex(),
-            due_date: None,
-            done_condition: "Already tracked".into(),
-            target: None,
-            linked_channel_ids: Vec::new(),
-        }),
-        progress: None,
-        status: None,
-        reason: None,
-    };
-    let goal_command = EventBuilder::new(
-        Kind::Custom(KIND_GOAL_ACTION as u16),
-        serde_json::to_string(&existing).expect("serialize goal action"),
-    )
-    .tags([Tag::parse(["d", goal_d_tag(complete.hire_id).as_str()]).expect("goal d tag")])
-    .sign_with_keys(&fixture.owner)
-    .expect("sign goal action");
+    let hire_id = Uuid::new_v4();
     crate::handlers::company_records::handle(
         &fixture.tenant,
         &fixture.state,
-        goal_command,
+        goal_create_event(&fixture, hire_id),
         auth(&fixture.owner),
     )
     .await
-    .expect("create the existing goal");
+    .expect("create the goal before the hire reserves the id");
+    let complete = hire_ready_to_complete_at(&fixture, role_pack(), hire_id).await;
 
     let event = sign_hire_action(&fixture.owner, &complete);
     let message = rejection(submit(&fixture, event.clone()).await);
@@ -537,6 +548,54 @@ async fn a_goal_at_the_hire_id_rolls_back_the_whole_completion() {
     assert_eq!(goals.len(), 1);
     let kept: GoalHead = serde_json::from_str(&goals[0].event.content).expect("goal head");
     assert_eq!(kept.title, "An existing company goal");
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn an_existing_hire_reserves_its_id_from_goal_creates() {
+    let fixture = fixture().await;
+    let complete = hire_ready_to_complete(&fixture, role_pack()).await;
+    let before = hire_head(&fixture, complete.hire_id).await;
+    let goal_command = goal_create_event(&fixture, complete.hire_id);
+    let message = rejection(
+        crate::handlers::company_records::handle(
+            &fixture.tenant,
+            &fixture.state,
+            goal_command.clone(),
+            auth(&fixture.owner),
+        )
+        .await,
+    );
+    assert!(
+        message.contains("goal id is reserved for an existing hire"),
+        "{message}"
+    );
+    assert!(goal_heads(&fixture, complete.hire_id).await.is_empty());
+    assert!(
+        fixture
+            .state
+            .db
+            .get_event_by_id_for_event_write(
+                fixture.tenant.community(),
+                &goal_command.id.to_bytes(),
+            )
+            .await
+            .expect("read the rejected goal command")
+            .is_none(),
+        "the rejected goal command is not stored"
+    );
+    assert_eq!(
+        hire_head(&fixture, complete.hire_id).await.event.id,
+        before.event.id
+    );
+
+    submit(&fixture, sign_hire_action(&fixture.owner, &complete))
+        .await
+        .expect("the rejected goal create leaves the hire able to complete");
+    let goals = goal_heads(&fixture, complete.hire_id).await;
+    assert_eq!(goals.len(), 1);
+    let head: GoalHead = serde_json::from_str(&goals[0].event.content).expect("hire goal head");
+    assert_eq!(head.title, OWNS);
 }
 
 #[tokio::test]

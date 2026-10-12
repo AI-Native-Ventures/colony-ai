@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use buzz_core::business_records::{validate_company_work_d_tag, CompanyWorkItemHead};
 use buzz_core::company_records::{
-    goal_d_tag, goal_parent_creates_cycle, parse_company_command, validate_goal_action,
+    goal_d_tag, goal_parent_creates_cycle, hire_d_tag, parse_company_command, validate_goal_action,
     validate_goal_d_tag, validate_goal_progress, validate_goal_record, CompanyCommand, GoalAction,
     GoalActionKind, GoalHead, GoalRecord, GoalStatus, RecordedGoalProgress,
     COMPANY_RECORD_SCHEMA_VERSION, MAX_GOAL_DEPTH,
@@ -202,6 +202,15 @@ async fn handle_goal_action(
     }
 
     authorize_action(&role, &actor_pubkey, &action, current.as_ref())?;
+
+    if action.action == GoalActionKind::Create
+        && super::company_hires::current_hire_head(state, community_id, &hire_d_tag(action.goal_id))
+            .await?
+            .is_some()
+    {
+        tx.rollback().await.map_err(internal)?;
+        return Err(conflict("goal id is reserved for an existing hire"));
+    }
 
     if let Some(record) = action.goal.as_ref() {
         validate_parent_and_cycle(
