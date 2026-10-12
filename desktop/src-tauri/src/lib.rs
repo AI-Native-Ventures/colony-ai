@@ -249,6 +249,7 @@ pub fn run() {
         .manage(native_relay_client::NativeRelayClient::default())
         .manage(observed_unread::ObservedUnreadStore::default())
         .manage(channel_head_cache::ChannelHeadCacheStore::default())
+        .manage(managed_agents::team_runner::TeamRunnerState::default())
         .setup(move |app| {
             let app_handle = app.handle().clone();
             electron_host::start(&app_handle)?;

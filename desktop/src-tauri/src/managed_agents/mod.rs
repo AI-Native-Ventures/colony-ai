@@ -50,6 +50,7 @@ pub(crate) mod storage;
 pub(crate) mod team_catalog;
 pub(crate) mod team_events;
 mod team_repair;
+pub(crate) mod team_runner;
 pub(crate) use team_repair::team_persona_key;
 mod teams;
 mod types;
