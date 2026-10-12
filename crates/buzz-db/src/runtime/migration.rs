@@ -493,6 +493,7 @@ mod postgres_tests {
             "accounts",
             "account_google_identities",
             "account_codes",
+            "account_code_failures",
             "account_mail_outbox",
             "account_test_mail",
             "account_credit_ledger",
@@ -715,7 +716,12 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 56);
+        assert_eq!(migrations.len(), 57);
+        assert_eq!(migrations[56].version, 57);
+        assert!(migrations[56]
+            .sql
+            .as_str()
+            .contains("CREATE TABLE account_code_failures"));
         assert_eq!(migrations[53].version, 54);
         assert_eq!(migrations[54].version, 55);
         assert!(migrations[54]

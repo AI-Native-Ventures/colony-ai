@@ -1615,6 +1615,190 @@ async fn code_verify(
 
 #[tokio::test]
 #[ignore = "requires Postgres and Redis"]
+async fn guessing_budget_survives_three_sign_in_and_reset_codes() {
+    let (state, pool, host) = test_state(Vec::new(), None).await;
+    for reset in [false, true] {
+        let ip = unique_test_ip();
+        let email = format!(
+            "persistent-code-budget-{}@example.test",
+            Uuid::new_v4().simple()
+        );
+        assert_eq!(
+            call(
+                state.clone(),
+                "POST",
+                "/api/accounts/signup",
+                &host,
+                ip,
+                json!({ "email": email, "password": "verified-budget-password" }),
+                None
+            )
+            .await
+            .status(),
+            StatusCode::ACCEPTED
+        );
+        deliver_pending_mail(&state).await;
+        let verify_code = test_mail_code(&pool, &email, "verify_email").await;
+        assert_eq!(
+            call(
+                state.clone(),
+                "POST",
+                "/api/accounts/verify",
+                &host,
+                ip,
+                json!({ "email": email, "code": verify_code }),
+                None
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+        let (purpose, start_path, verify_path) = if reset {
+            (
+                "reset_password",
+                "/api/accounts/reset/request",
+                "/api/accounts/reset/check",
+            )
+        } else {
+            (
+                "sign_in",
+                "/api/accounts/code/start",
+                "/api/accounts/code/verify",
+            )
+        };
+        let mut last_code = String::new();
+        for (generation, guesses) in [4, 4, 2].into_iter().enumerate() {
+            clear_code_cooldown_for_test(&state, &email, purpose).await;
+            let response = call(
+                state.clone(),
+                "POST",
+                start_path,
+                &host,
+                ip,
+                json!({ "email": email }),
+                None,
+            )
+            .await;
+            assert!(response.status().is_success());
+            deliver_pending_mail(&state).await;
+            last_code = test_mail_code(&pool, &email, purpose).await;
+            let wrong = wrong_test_code(&last_code);
+            for attempt in 0..guesses {
+                let body = if reset {
+                    json!({ "email": email, "code": wrong })
+                } else {
+                    json!({ "email": email, "code": wrong, "termsVersion": "2026-10-11" })
+                };
+                let (status, body) = json_response(
+                    call(state.clone(), "POST", verify_path, &host, ip, body, None).await,
+                )
+                .await;
+                if generation == 2 && attempt == 1 {
+                    assert_eq!(
+                        status,
+                        StatusCode::TOO_MANY_REQUESTS,
+                        "the tenth guess spans replacement codes"
+                    );
+                    assert_eq!(body["error"], "too_many_attempts");
+                    assert!(body["retry_after_secs"]
+                        .as_i64()
+                        .is_some_and(|wait| wait > 15 * 60));
+                } else {
+                    assert_eq!(status, StatusCode::BAD_REQUEST);
+                }
+            }
+        }
+        clear_email_rate_for_test(&state, verify_path, &email).await;
+        let correct = if reset {
+            json!({ "email": email, "code": last_code })
+        } else {
+            json!({ "email": email, "code": last_code, "termsVersion": "2026-10-11" })
+        };
+        assert_eq!(
+            call(
+                state.clone(),
+                "POST",
+                verify_path,
+                &host,
+                ip,
+                correct.clone(),
+                None
+            )
+            .await
+            .status(),
+            StatusCode::TOO_MANY_REQUESTS,
+            "the correct third code cannot bypass the email budget"
+        );
+        clear_code_cooldown_for_test(&state, &email, purpose).await;
+        assert!(call(
+            state.clone(),
+            "POST",
+            start_path,
+            &host,
+            ip,
+            json!({ "email": email }),
+            None
+        )
+        .await
+        .status()
+        .is_success());
+        let issued: i64 = sqlx::query_scalar("SELECT count(*) FROM account_codes c JOIN accounts a ON a.id = c.account_id WHERE a.email = $1 AND c.purpose = $2")
+            .bind(&email).bind(purpose).fetch_one(&pool).await.expect("issued code count");
+        assert_eq!(issued, 3, "a new start cannot reset the email budget");
+
+        sqlx::query("UPDATE account_code_failures SET window_started_at = now() - interval '61 minutes' WHERE email = $1")
+            .bind(&email).execute(&pool).await.expect("advance the failure window only");
+        assert_eq!(
+            call(state.clone(), "POST", verify_path, &host, ip, correct, None)
+                .await
+                .status(),
+            StatusCode::OK,
+            "the budget expires without replacing the active code"
+        );
+        if reset {
+            let (status, _) = json_response(call(state.clone(), "POST", "/api/accounts/reset/confirm", &host, ip,
+                json!({ "email": email, "code": last_code, "new_password": "recovered-budget-password" }), None).await).await;
+            assert_eq!(status, StatusCode::OK);
+        }
+        let failures: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM account_code_failures WHERE email = $1")
+                .bind(&email)
+                .fetch_one(&pool)
+                .await
+                .expect("successful sign-in resets failures");
+        assert_eq!(failures, 0);
+    }
+}
+
+async fn clear_code_cooldown_for_test(state: &Arc<AppState>, email: &str, purpose: &str) {
+    let digest = hex::encode(Sha256::digest(email.as_bytes()));
+    let key = format!("colony:account-code-cooldown:{purpose}:{digest}");
+    let mut connection = state.redis_pool.get().await.expect("test Redis connection");
+    let _: i64 = redis::cmd("DEL")
+        .arg(key)
+        .query_async(&mut *connection)
+        .await
+        .expect("advance resend cooldown only");
+}
+
+async fn clear_email_rate_for_test(state: &Arc<AppState>, route: &str, email: &str) {
+    let mut hasher = Sha256::new();
+    hasher.update(b"email\0");
+    hasher.update(email.as_bytes());
+    let key = format!(
+        "colony:account-rate:{route}:{}",
+        hex::encode(hasher.finalize())
+    );
+    let mut connection = state.redis_pool.get().await.expect("test Redis connection");
+    let _: i64 = redis::cmd("DEL")
+        .arg(key)
+        .query_async(&mut *connection)
+        .await
+        .expect("isolate durable guessing limit from the minute HTTP limit");
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
 async fn email_code_sign_in_creates_a_passwordless_account_then_signs_it_in_again() {
     let (state, pool, host) = test_state(Vec::new(), None).await;
     let ip = unique_test_ip();

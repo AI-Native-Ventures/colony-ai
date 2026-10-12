@@ -2090,6 +2090,13 @@ CREATE UNIQUE INDEX account_codes_one_active_purpose
     ON account_codes (account_id, purpose) WHERE consumed_at IS NULL;
 CREATE INDEX account_codes_expiry_idx ON account_codes (expires_at);
 
+CREATE TABLE account_code_failures (
+    email TEXT PRIMARY KEY CHECK (email = lower(btrim(email)) AND length(email) <= 254),
+    failed_attempts INTEGER NOT NULL CHECK (failed_attempts BETWEEN 1 AND 10),
+    window_started_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX account_code_failures_expiry_idx ON account_code_failures (window_started_at);
+
 CREATE TABLE account_mail_outbox (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -2125,6 +2132,7 @@ INSERT INTO _operator_global_tables (table_name, reason) VALUES
     ('accounts', 'deployment-global identities and server-held signing-key custody'),
     ('account_google_identities', 'deployment-global provider links to account identities'),
     ('account_codes', 'deployment-global one-time account recovery and verification codes'),
+    ('account_code_failures', 'deployment-global hourly email code guessing budgets'),
     ('account_mail_outbox', 'deployment-global durable account email delivery retry queue'),
     ('account_test_mail', 'development and CI account mail sink; not tenant-visible');
 
