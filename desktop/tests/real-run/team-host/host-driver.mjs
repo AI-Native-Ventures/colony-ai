@@ -45,8 +45,14 @@ export async function startHost({ binary, profile, nsec, extraEnv = {} }) {
       ...extraEnv,
     },
     timeout: 60_000,
+    shutdownGrace: 45_000,
   });
-  await host.ready;
+  try {
+    await host.ready;
+  } catch (error) {
+    await host.close();
+    throw error;
+  }
   return {
     invoke: (command, args = {}) => host.request("invoke", { command, args }),
     /** Hard kill, like a crash or a power cut. */

@@ -79,7 +79,7 @@ fn spawn_refusal_names_the_computer_that_runs_the_team() {
     let company = &file.companies[0];
     assert_eq!(
         spawn_refusal(company, Some(&held_by(OTHER, "Office iMac")), Some(ME)),
-        Some("Your team runs on Office iMac. Move it here to run it on this computer.".to_string())
+        Some("Your team runs on Office iMac. Open Colony there to run your employees.".to_string())
     );
     assert_eq!(
         spawn_refusal(

@@ -213,3 +213,20 @@ export function employeesForHire(store, hireId) {
 export function journalEntry(journal, hireId) {
   return journal?.entries?.find((entry) => entry.hireId === hireId) ?? null;
 }
+
+/** Persisted Complete actions for one hire, counted separately from its head. */
+export function completes(events, hireId) {
+  return (events ?? []).filter((event) => {
+    if (
+      event.kind !== 47039 ||
+      tagValue(event, "d") !== `company:hire:${hireId}`
+    )
+      return false;
+    try {
+      const body = JSON.parse(event.content);
+      return body.hireId === hireId && body.action === "complete";
+    } catch {
+      return false;
+    }
+  });
+}

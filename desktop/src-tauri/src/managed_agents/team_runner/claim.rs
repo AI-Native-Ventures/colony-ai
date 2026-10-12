@@ -112,7 +112,7 @@ pub(crate) fn spawn_refusal(
             company.is_paused().then(|| PAUSED_REFUSAL.to_string())
         }
         Some(holder) => Some(format!(
-            "Your team runs on {}. Move it here to run it on this computer.",
+            "Your team runs on {}. Open Colony there to run your employees.",
             holder.computer_name
         )),
         None => Some(CHECKING_REFUSAL.to_string()),

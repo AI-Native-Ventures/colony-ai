@@ -218,7 +218,7 @@ pub(crate) async fn ensure_runs_here(
     match view.holder {
         Some(holder) if holder.computer_id == me => Ok(()),
         Some(holder) => Err(format!(
-            "Your team runs on {}. Do this there, or move the team here first.",
+            "Your team runs on {}. Finish this on that computer.",
             holder.computer_name
         )),
         None => Err("No computer runs your team yet. Run it on this computer first.".to_string()),

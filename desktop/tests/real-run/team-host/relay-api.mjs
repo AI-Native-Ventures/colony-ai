@@ -32,6 +32,7 @@ async function send(url, method, body, keys) {
   const response = await fetch(url, {
     method,
     headers,
+    signal: AbortSignal.timeout(20_000),
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await response.text();
@@ -43,7 +44,7 @@ async function send(url, method, body, keys) {
   }
   if (!response.ok) {
     throw new Error(
-      `${method} ${new URL(url).pathname} answered ${response.status}: ${text.slice(0, 300)}`,
+      `${method} ${new URL(url).pathname} answered ${response.status}`,
     );
   }
   return json;
@@ -74,6 +75,7 @@ export async function createCompany(base, keys, slug) {
 export async function relaySelf(relayUrl) {
   const response = await fetch(httpBase(relayUrl), {
     headers: { accept: "application/nostr+json" },
+    signal: AbortSignal.timeout(20_000),
   });
   const document = await response.json();
   if (!document?.self) throw new Error("the relay did not name its own key");

@@ -4,10 +4,7 @@
 use tauri::AppHandle;
 
 use super::claim::status_from;
-use super::hire::{
-    existing_entry_state, new_entry, run_hire, validated_input, HireCompleteInput,
-    HireCompleteResult, HireCompleteState, HireIo,
-};
+use super::hire::{existing_entry_state, new_entry, run_hire, validated_input, HireIo};
 use super::hire_relay::RelayHireIo;
 use super::launch::{
     activate, activate_with_retry, close_company, ensure_runs_here, start_loops, start_team,
@@ -15,8 +12,9 @@ use super::launch::{
 };
 use super::{
     claim_io, claim_view, ensure_computer, forget_claim, identity, now_unix, runner, runs_here,
-    saved_companies, update_companies, with_book, EmployeeRuntimeStatus, PauseReason, TeamCompany,
-    TeamComputerStatus, NOT_SET_UP,
+    saved_companies, update_companies, with_book, EmployeeRuntimeStatus, HireCompleteInput,
+    HireCompleteResult, HireCompleteState, PauseReason, TeamCompany, TeamComputerStatus,
+    NOT_SET_UP,
 };
 use crate::managed_agents::credits_pause;
 

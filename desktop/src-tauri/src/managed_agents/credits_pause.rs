@@ -13,8 +13,10 @@ use tauri::AppHandle;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExitHandling {
     /// The company is paused for credits: do not restart.
+    #[allow(dead_code)] // Part I supplies this outcome; the phase 0 stub only returns Crash.
     PausedForCredits,
     /// Restart at once without counting a crash.
+    #[allow(dead_code)] // Part I supplies this outcome; the phase 0 stub only returns Crash.
     RestartNow,
     /// Apply the crash policy (backoff, crash loop).
     Crash,

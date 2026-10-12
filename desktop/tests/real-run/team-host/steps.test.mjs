@@ -160,3 +160,25 @@ test("a hire's employees are counted from the agent store and its journal entry 
   assert.equal(journalEntry(journal, HIRE)?.step, "employee_created");
   assert.equal(journalEntry(null, HIRE), null);
 });
+
+test("only persisted Complete actions for the interrupted hire count as proof", async () => {
+  const { completes } = await import("./steps.mjs");
+  const action = (body) => ({
+    kind: 47039,
+    tags: [["d", `company:hire:${HIRE}`]],
+    content: JSON.stringify(body),
+  });
+  const complete = action({ hireId: HIRE, action: "complete" });
+  assert.equal(
+    completes(
+      [
+        complete,
+        action({ hireId: HIRE, action: "approve" }),
+        action({ hireId: "other", action: "complete" }),
+      ],
+      HIRE,
+    ).length,
+    1,
+  );
+  assert.equal(completes([complete, complete], HIRE).length, 2);
+});

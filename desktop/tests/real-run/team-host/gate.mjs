@@ -14,6 +14,7 @@ import {
   NOT_OBSERVED,
   PASS,
   completeRows,
+  completes,
   createChannel,
   dutyTime,
   employeeMessages,
@@ -368,9 +369,18 @@ try {
       second.hireId,
       (item) => item.status === "hired",
     );
-    if (made !== 1 || posted !== 1 || head.employeePubkey !== second.employee) {
+    const actions = await api.query(context.relayUrl, context.owner, [
+      { kinds: [47039], "#d": [`company:hire:${second.hireId}`], limit: 100 },
+    ]);
+    const completed = completes(actions, second.hireId).length;
+    if (
+      made !== 1 ||
+      posted !== 1 ||
+      completed !== 1 ||
+      head.employeePubkey !== second.employee
+    ) {
       throw new Error(
-        `${made} employees, ${posted} hellos, hired employee ${head.employeePubkey}`,
+        `${made} employees, ${posted} hellos, ${completed} Complete actions, hired employee ${head.employeePubkey}`,
       );
     }
     return "killed after the employee was created; restarted: one employee, one hello, one Complete";
