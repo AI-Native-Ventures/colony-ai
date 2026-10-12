@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 mod claim;
+mod claim_io;
 mod companies;
 mod computer;
 
@@ -319,6 +320,8 @@ pub(crate) fn ensure_computer<R: Runtime>(app: &AppHandle<R>) -> Result<Computer
     Ok(identity)
 }
 
+#[cfg(test)]
+mod claim_io_tests;
 #[cfg(test)]
 mod claim_tests;
 #[cfg(test)]
