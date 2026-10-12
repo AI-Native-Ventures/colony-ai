@@ -229,7 +229,19 @@ pub(crate) fn start_managed_agent_runtime_pair_lazy(
     relay_url: String,
     app: AppHandle,
 ) -> Result<ManagedAgentRuntimeStatus, String> {
-    start_pair(pubkey, relay_url, true, None, app)
+    start_pair(pubkey, relay_url, true, None, None, app)
+}
+
+/// Start a newly hired employee's lazy pair with the harness replay floor at
+/// the moment just before its hire was completed, so the on-hire kickoff the
+/// relay posted is answered and nothing older is replayed.
+pub(crate) fn start_managed_agent_runtime_pair_with_floor(
+    pubkey: String,
+    relay_url: String,
+    replay_floor_unix: Option<u64>,
+    app: AppHandle,
+) -> Result<ManagedAgentRuntimeStatus, String> {
+    start_pair(pubkey, relay_url, true, None, replay_floor_unix, app)
 }
 
 #[tauri::command]
@@ -246,6 +258,7 @@ fn start_pair(
     relay_url: String,
     lazy: bool,
     expected_updated_at: Option<&str>,
+    replay_floor_unix: Option<u64>,
     app: AppHandle,
 ) -> Result<ManagedAgentRuntimeStatus, String> {
     let state = app.state::<AppState>();
@@ -288,8 +301,14 @@ fn start_pair(
         .lock()
         .ok()
         .map(|keys| keys.public_key().to_hex());
-    let mut process =
-        spawn_agent_child(&app, record, &key.relay_url, lazy, owner.as_deref(), None)?;
+    let mut process = spawn_agent_child(
+        &app,
+        record,
+        &key.relay_url,
+        lazy,
+        owner.as_deref(),
+        replay_floor_unix,
+    )?;
     let now = crate::util::now_iso();
     let receipt = ManagedAgentRuntimeReceipt {
         key: key.clone(),
@@ -389,7 +408,7 @@ pub fn restart_managed_agent_runtime(
     app: AppHandle,
 ) -> Result<ManagedAgentRuntimeStatus, String> {
     stop_managed_agent_runtime(pubkey.clone(), relay_url.clone(), app.clone())?;
-    start_pair(pubkey, relay_url, true, None, app)
+    start_pair(pubkey, relay_url, true, None, None, app)
 }
 
 /// Probe whether this agent can operate on `requested_relay_url`.
@@ -513,6 +532,7 @@ pub async fn reconcile_managed_agent_runtimes(
                         key.relay_url.clone(),
                         true,
                         Some(&record.updated_at),
+                        None,
                         app.clone(),
                     ) {
                         Ok(mut status) => {

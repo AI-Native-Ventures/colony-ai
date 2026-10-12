@@ -94,6 +94,12 @@ pub(crate) const RESERVED_ENV_KEYS: &[&str] = &[
     // for same-session sweep decisions.
     "BUZZ_MANAGED_AGENT",
     "BUZZ_MANAGED_AGENT_START_NONCE",
+    // Team employee environment: the role an employee was hired for, its wake
+    // ledger (answered-once catch-up) and the computer that runs the team
+    // come from the host alone.
+    "COLONY_ROLE_CONTEXT",
+    "COLONY_WAKE_LEDGER",
+    "COLONY_TEAM_COMPUTER_ID",
 ];
 
 pub(crate) fn is_reserved_env_key(key: &str) -> bool {

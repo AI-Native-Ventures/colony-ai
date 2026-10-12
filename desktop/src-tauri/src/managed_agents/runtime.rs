@@ -26,6 +26,11 @@ pub(crate) use metadata::{
     runtime_metadata_env_vars, DISPLAY_NAME_ENV_VAR, REPLAY_FLOOR_ENV_VAR, SESSION_TITLE_ENV_VAR,
 };
 
+mod employee_env;
+pub(crate) use employee_env::{apply_employee_env, employee_env_for, EmployeeEnvApplied};
+#[cfg(test)]
+mod employee_env_tests;
+
 mod setup_payload;
 use setup_payload::apply_setup_payload_env;
 
@@ -427,9 +432,13 @@ pub(crate) fn apply_effort_to_spawn_command(
 /// Spawn the agent command, consuming the `EffortApplied` proof token.
 /// Deleting `apply_effort_to_spawn_command` from `spawn_agent_child` leaves
 /// `effort` undefined here — a compile error CI catches before any test runs.
+///
+/// The `EmployeeEnvApplied` token binds `apply_employee_env` the same way:
+/// deleting that call from `spawn_agent_child` is a compile error too.
 pub(crate) fn spawn_with_effort_proof(
     cmd: &mut std::process::Command,
     _effort: EffortApplied,
+    _employee_env: EmployeeEnvApplied,
 ) -> std::io::Result<std::process::Child> {
     cmd.spawn()
 }
@@ -459,6 +468,12 @@ pub fn spawn_agent_child(
         return Err(error);
     }
     let runtime_key = ManagedAgentRuntimeKey::new(record.pubkey.clone(), relay_url)?;
+    // Team computer fence: a saved company's employee starts only on the
+    // computer its team computer record names, and only while the team is not
+    // paused. Checked before any side effect, like the refusals below. Every
+    // start path (launch restore, interactive start, the team runner) comes
+    // through here.
+    let team_clearance = super::team_runner::spawn_clearance(app, &runtime_key.relay_url)?;
     // Resolve the effective harness (agent command) from the linked persona, so
     // persona harness edits propagate on the next spawn; an explicit per-agent
     // override wins. `agent_args` and `mcp_command` are pure derivations of the
@@ -800,6 +815,18 @@ pub fn spawn_agent_child(
     // BUZZ_ACP_REPLAY_FLOOR — the shadow `apply_replay_floor` strips from the
     // provider payload's `launch.env` tier for the same reason.
     apply_replay_floor_env(&mut command, replay_floor_unix);
+    // Team employee environment: role context, wake ledger and this
+    // computer's id. The keys are reserved, so `descriptor.env` above never
+    // carries them; unset keys are removed so nothing is inherited. The token
+    // is consumed by the spawn below.
+    let employee_env = apply_employee_env(
+        &mut command,
+        &employee_env_for(
+            record,
+            team_clearance.team(),
+            &super::managed_agents_base_dir(app)?,
+        )?,
+    );
 
     // A1: for local claude agents, ANTHROPIC_MODEL is the single startup model authority.
     // BUZZ_ACP_MODEL is removed (live ACP switches only; two authorities in the same env
@@ -875,7 +902,7 @@ pub fn spawn_agent_child(
         ),
     )?;
     let spawn_started = std::time::Instant::now();
-    let child = spawn_with_effort_proof(&mut command, effort).map_err(|error| {
+    let child = spawn_with_effort_proof(&mut command, effort, employee_env).map_err(|error| {
         format!(
             "failed to spawn `{}` for agent {}: {error}",
             resolved_acp_command.display(),
