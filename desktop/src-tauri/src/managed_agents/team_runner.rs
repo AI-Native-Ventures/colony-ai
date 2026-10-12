@@ -10,15 +10,18 @@
 //! holds one while it calls runtime, store or relay code, and never takes one
 //! while it holds another.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
+mod claim;
 mod companies;
 mod computer;
 
+pub(crate) use claim::{launch_candidates, TeamSpawn};
 pub(crate) use companies::{CompaniesFile, StoredCompany};
 pub(crate) use computer::ComputerIdentity;
 
@@ -147,6 +150,79 @@ pub(crate) struct TeamRunnerState {
     companies: Mutex<CompaniesFile>,
     /// This install's id, loaded or created on first use.
     computer: Mutex<Option<ComputerIdentity>>,
+    /// Latest team computer record seen per normalized company relay.
+    claims: Mutex<HashMap<String, claim::ClaimView>>,
+}
+
+/// Proof that the team computer fence ran for one spawn. Only
+/// [`spawn_clearance`] makes one; `spawn_agent_child` builds the employee
+/// environment from it, so removing the fence is a compile error there.
+#[must_use]
+pub(crate) struct SpawnClearance {
+    team: Option<TeamSpawn>,
+}
+
+impl SpawnClearance {
+    /// The team facts, `None` when the spawn is not for a saved company.
+    pub(crate) fn team(&self) -> Option<&TeamSpawn> {
+        self.team.as_ref()
+    }
+}
+
+/// The team computer fence for one spawn on `relay_url`. A relay that is not
+/// a saved company passes untouched; a saved company's employee starts only
+/// on the computer its record names, and only while it is not paused.
+pub(crate) fn spawn_clearance<R: Runtime>(
+    app: &AppHandle<R>,
+    relay_url: &str,
+) -> Result<SpawnClearance, String> {
+    let Some(state) = app.try_state::<TeamRunnerState>() else {
+        return Ok(SpawnClearance { team: None });
+    };
+    let companies = state.companies.lock().map_err(|_| poisoned())?.clone();
+    let claims = state.claims.lock().map_err(|_| poisoned())?.clone();
+    let computer = state.computer.lock().map_err(|_| poisoned())?.clone();
+    claim::clearance_for(&companies, &claims, computer.as_ref(), relay_url)
+        .map(|team| SpawnClearance { team })
+}
+
+/// Remember what the relay said about `relay_url`'s record.
+pub(crate) fn record_claim<R: Runtime>(
+    app: &AppHandle<R>,
+    relay_url: &str,
+    view: claim::ClaimView,
+) -> Result<(), String> {
+    let relay = normalize_relay(relay_url)?;
+    runner(app)?
+        .claims
+        .lock()
+        .map_err(|_| poisoned())?
+        .insert(relay, view);
+    Ok(())
+}
+
+/// Forget `relay_url`'s record (the company was removed from this computer).
+pub(crate) fn forget_claim<R: Runtime>(app: &AppHandle<R>, relay_url: &str) {
+    let (Ok(relay), Ok(state)) = (normalize_relay(relay_url), runner(app)) else {
+        return;
+    };
+    if let Ok(mut claims) = state.claims.lock() {
+        claims.remove(&relay);
+    }
+}
+
+/// What this computer last learned about `relay_url`'s record.
+pub(crate) fn claim_view<R: Runtime>(
+    app: &AppHandle<R>,
+    relay_url: &str,
+) -> Result<Option<claim::ClaimView>, String> {
+    let relay = normalize_relay(relay_url)?;
+    Ok(runner(app)?
+        .claims
+        .lock()
+        .map_err(|_| poisoned())?
+        .get(&relay)
+        .cloned())
 }
 
 /// Unix seconds now.
@@ -243,5 +319,7 @@ pub(crate) fn ensure_computer<R: Runtime>(app: &AppHandle<R>) -> Result<Computer
     Ok(identity)
 }
 
+#[cfg(test)]
+mod claim_tests;
 #[cfg(test)]
 mod foundation_tests;
