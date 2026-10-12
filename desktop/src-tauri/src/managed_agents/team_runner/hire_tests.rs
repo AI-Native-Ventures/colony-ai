@@ -553,3 +553,57 @@ fn the_journal_keeps_unfinished_hires_and_prunes_old_finished_ones() {
         "an unreadable journal is never read as empty"
     );
 }
+
+#[test]
+fn launch_restore_waits_for_the_hire_and_only_its_journal_can_start_it_first() {
+    let pubkey = "ab".repeat(32);
+    let mut entry = fresh_entry();
+    entry.employee_pubkey = Some(pubkey.clone());
+    entry.replay_floor = Some(123);
+    let record: crate::managed_agents::ManagedAgentRecord =
+        serde_json::from_value(serde_json::json!({
+            "pubkey": pubkey,
+            "name": "Gate Tester",
+            "relay_url": RELAY,
+            "acp_command": "", "agent_command": "", "agent_args": [], "mcp_command": "",
+            "turn_timeout_seconds": 0, "parallelism": 1, "system_prompt": null,
+            "created_at": "", "updated_at": "", "last_started_at": null,
+            "last_stopped_at": null, "last_exit_code": null, "last_error": null,
+            "start_on_app_launch": true,
+            "role_context": role_context_for(&view_of(&World::approved()), None)
+        }))
+        .expect("record");
+    for step in [
+        HireStep::Opened,
+        HireStep::EmployeeCreated,
+        HireStep::EmployeeAttached,
+        HireStep::EmployeeInChannel,
+        HireStep::OwnerInChannel,
+        HireStep::HelloPosted,
+        HireStep::Completed,
+        HireStep::Started,
+    ] {
+        entry.step = step;
+        let journal = HireJournal {
+            entries: vec![entry.clone()],
+        };
+        assert_eq!(
+            journal.allows_restore(&record, RELAY),
+            step == HireStep::Started,
+            "{step:?}"
+        );
+        assert_eq!(
+            journal
+                .require_first_start(&record, RELAY, Some(123))
+                .is_ok(),
+            step >= HireStep::Completed,
+            "{step:?}"
+        );
+        assert_eq!(
+            journal.require_first_start(&record, RELAY, None).is_ok(),
+            step == HireStep::Started,
+            "{step:?}"
+        );
+        assert!(journal.allows_restore(&record, "wss://another.example"));
+    }
+}

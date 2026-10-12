@@ -474,6 +474,7 @@ pub fn spawn_agent_child(
     // start path (launch restore, interactive start, the team runner) comes
     // through here.
     let team_clearance = super::team_runner::spawn_clearance(app, &runtime_key.relay_url)?;
+    team_clearance.require_hire_start(app, record, &runtime_key.relay_url, replay_floor_unix)?;
     // Resolve the effective harness (agent command) from the linked persona, so
     // persona harness edits propagate on the next spawn; an explicit per-agent
     // override wins. `agent_args` and `mcp_command` are pure derivations of the

@@ -101,6 +101,17 @@ pub async fn restore_managed_agents_on_launch(
 
     let state = app.state::<AppState>();
 
+    // Read the team fence and journal before taking the agent store lock.
+    // Incomplete hires resume through their journal, with the first replay floor.
+    let relay_url = crate::relay::relay_ws_url_with_override(&state);
+    let clearance = super::team_runner::spawn_clearance(app, &relay_url);
+    let team_fenced = clearance.is_err();
+    let hire_journal = if clearance.as_ref().is_ok_and(|proof| proof.team().is_some()) {
+        Some(super::team_runner::load_hire_journal(app)?)
+    } else {
+        None
+    };
+
     // ── Phase A (under lock): housekeeping + collect agents to restore ──
     let mut agents_to_start: Vec<super::ManagedAgentRecord>;
     {
@@ -174,15 +185,17 @@ pub async fn restore_managed_agents_on_launch(
         // computer may not run (another computer holds it, or it is paused),
         // restore starts nothing instead of recording a refusal on every
         // employee. Spawns are fenced again in `spawn_agent_child`.
-        let team_fenced = super::team_runner::spawn_clearance(
-            app,
-            &crate::relay::relay_ws_url_with_override(&state),
-        )
-        .is_err();
         let candidates = super::team_runner::launch_candidates(&records, team_fenced);
 
         let mut to_start = Vec::new();
         for pubkey in &candidates {
+            if hire_journal.as_ref().is_some_and(|journal| {
+                records.iter().any(|record| {
+                    record.pubkey == *pubkey && !journal.allows_restore(record, &relay_url)
+                })
+            }) {
+                continue;
+            }
             if let Some(runtime) = runtimes
                 .iter_mut()
                 .find(|(key, _)| key.pubkey == *pubkey)

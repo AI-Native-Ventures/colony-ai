@@ -73,6 +73,56 @@ pub(crate) struct HireJournal {
 }
 
 impl HireJournal {
+    /// A startup restore never outruns an unfinished hire's Complete and
+    /// first start. The journal resumes that first start with its replay floor.
+    pub(crate) fn allows_restore(
+        &self,
+        record: &crate::managed_agents::ManagedAgentRecord,
+        relay_url: &str,
+    ) -> bool {
+        self.entry_for_employee(record, relay_url)
+            .is_none_or(HireJournalEntry::is_finished)
+    }
+
+    /// Only the journal can start an unfinished hire, after Complete, with
+    /// the replay floor it saved before Complete.
+    pub(crate) fn require_first_start(
+        &self,
+        record: &crate::managed_agents::ManagedAgentRecord,
+        relay_url: &str,
+        replay_floor: Option<u64>,
+    ) -> Result<(), String> {
+        if let Some(entry) = self.entry_for_employee(record, relay_url) {
+            if !entry.is_finished()
+                && (entry.step != HireStep::Completed
+                    || replay_floor.is_none()
+                    || replay_floor != entry.replay_floor)
+            {
+                return Err("This hire is still finishing. Colony will start the employee when it is ready.".to_string());
+            }
+        }
+        Ok(())
+    }
+
+    fn entry_for_employee(
+        &self,
+        record: &crate::managed_agents::ManagedAgentRecord,
+        relay_url: &str,
+    ) -> Option<&HireJournalEntry> {
+        let goal = record
+            .role_context
+            .as_ref()
+            .and_then(|role| role.goal_id.as_deref());
+        self.entries.iter().find(|entry| {
+            entry.relay_url.trim_end_matches('/') == relay_url.trim_end_matches('/')
+                && (goal.is_some_and(|goal| entry.hire_id.to_string() == goal)
+                    || entry
+                        .employee_pubkey
+                        .as_deref()
+                        .is_some_and(|pubkey| pubkey.eq_ignore_ascii_case(&record.pubkey)))
+        })
+    }
+
     /// The entry for `hire_id`.
     pub(crate) fn find(&self, hire_id: Uuid) -> Option<&HireJournalEntry> {
         self.entries.iter().find(|entry| entry.hire_id == hire_id)

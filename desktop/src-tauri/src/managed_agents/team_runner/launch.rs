@@ -227,6 +227,13 @@ pub(crate) async fn ensure_runs_here(
 
 /// The public keys of the company's employees on this computer.
 pub(crate) fn team_employee_pubkeys(app: &AppHandle) -> Result<Vec<String>, String> {
+    employee_pubkeys(app, None)
+}
+
+fn employee_pubkeys(
+    app: &AppHandle,
+    restoring: Option<(&super::hire_journal::HireJournal, &str)>,
+) -> Result<Vec<String>, String> {
     let state = app.state::<AppState>();
     let _store = state
         .managed_agents_store_lock
@@ -235,6 +242,9 @@ pub(crate) fn team_employee_pubkeys(app: &AppHandle) -> Result<Vec<String>, Stri
     Ok(crate::managed_agents::load_managed_agents(app)?
         .iter()
         .filter(|record| super::status::is_team_employee(record))
+        .filter(|record| {
+            restoring.is_none_or(|(journal, relay)| journal.allows_restore(record, relay))
+        })
         .map(|record| record.pubkey.to_ascii_lowercase())
         .collect())
 }
@@ -248,7 +258,8 @@ pub(crate) async fn start_team(app: &AppHandle, company: &StoredCompany) -> Resu
     state
         .managed_agent_restore_pending
         .store(false, Ordering::Release);
-    let employees = team_employee_pubkeys(app)?;
+    let journal = super::load_hire_journal(app)?;
+    let employees = employee_pubkeys(app, Some((&journal, &company.relay_url)))?;
     with_book(app, |book| {
         for pubkey in &employees {
             book.expect_running(pubkey, &company.relay_url);

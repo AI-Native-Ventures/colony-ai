@@ -197,6 +197,28 @@ impl SpawnClearance {
     pub(crate) fn team(&self) -> Option<&TeamSpawn> {
         self.team.as_ref()
     }
+
+    /// Keep ordinary start paths from outrunning an unfinished hire.
+    pub(crate) fn require_hire_start<R: Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        record: &super::ManagedAgentRecord,
+        relay_url: &str,
+        replay_floor: Option<u64>,
+    ) -> Result<(), String> {
+        if self.team().is_some() {
+            load_hire_journal(app)?.require_first_start(record, relay_url, replay_floor)?;
+        }
+        Ok(())
+    }
+}
+
+/// Read unfinished hire state before restore or spawn. A damaged journal
+/// blocks starts rather than forgetting a first start's replay floor.
+pub(crate) fn load_hire_journal<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<hire_journal::HireJournal, String> {
+    hire_journal::load(&team_dir(app)?.join(hire_journal::JOURNAL_FILE))
 }
 
 /// The team computer fence for one spawn on `relay_url`. A relay that is not
