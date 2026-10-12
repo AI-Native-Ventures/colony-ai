@@ -97,6 +97,8 @@ fn record(
         team_catalog_source: None,
         relay_mesh: None,
         effort_level: None,
+        company_role: None,
+        role_context: None,
         auto_restart_on_config_change: false,
         definition_respond_to: None,
         definition_respond_to_allowlist: vec![],

@@ -366,6 +366,9 @@ pub async fn create_managed_agent(
             return Err("parallelism must be between 1 and 32".to_string());
         }
     }
+    if let Some(context) = input.role_context.as_ref() {
+        crate::managed_agents::validate_role_context(context)?;
+    }
     crate::managed_agents::validate_user_env_keys(&input.env_vars)?;
 
     // Validate & normalize the respond-to allowlist BEFORE any side effects.
@@ -700,6 +703,8 @@ pub async fn create_managed_agent(
                 relay_mesh.clone()
             },
             effort_level: None,
+            company_role: None,
+            role_context: input.role_context.clone(),
         };
 
         records.push(record);

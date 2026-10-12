@@ -361,6 +361,8 @@ impl AgentDefinition {
             definition_parallelism: self.parallelism,
             relay_mesh: None,
             effort_level: None,
+            company_role: self.company_role,
+            role_context: None,
         }
     }
 }
@@ -373,7 +375,7 @@ impl ManagedAgentRecord {
     pub fn to_definition_view(&self) -> Option<AgentDefinition> {
         let slug = self.slug.clone()?;
         Some(AgentDefinition {
-            company_role: None,
+            company_role: self.company_role.clone(),
             id: slug,
             display_name: self
                 .display_name
@@ -676,6 +678,24 @@ pub struct ManagedAgentRecord {
     /// switches (invalid values skip-as-absent at projection time).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort_level: Option<String>,
+    /// Company role of a key-less definition record (a persona), so the role
+    /// survives `save_personas` and `load_personas`. Instances leave it unset
+    /// and read the role through their definition.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "lenient_optional"
+    )]
+    pub company_role: Option<CompanyRoleMetadata>,
+    /// What a hired employee knows about its role, exported at spawn as
+    /// `COLONY_ROLE_CONTEXT`. Unset for agents that were not hired. Its
+    /// `goal_id` is the hire id, which is how a resumed hire finds its employee.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "lenient_optional"
+    )]
+    pub role_context: Option<RoleContext>,
 }
 
 #[derive(Debug)]
@@ -1013,6 +1033,27 @@ fn default_record_active() -> bool {
     true
 }
 
+/// Read an optional stored value and degrade one this build cannot read to
+/// `None`, so one unreadable field never drops the whole agent store (the
+/// same rule `AcpSessionPolicy` follows). A record written by a newer build
+/// can carry role fields this build does not know.
+fn lenient_optional<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|value| match serde_json::from_value(value) {
+        Ok(parsed) => Some(parsed),
+        Err(error) => {
+            eprintln!(
+                "managed agent store: ignoring a stored role field this build cannot read: {error}"
+            );
+            None
+        }
+    }))
+}
+
 // ── Inbound author gate ──────────────────────────────────────────────────────
 //
 // Mirrors `buzz-acp`'s `--respond-to` CLI flag and the related
@@ -1184,6 +1225,8 @@ mod team_catalog_source;
 pub use team_catalog_source::{TeamCatalogSource, TeamMemberCatalogSource};
 mod teams;
 pub use teams::{CreateTeamRequest, TeamRecord, UpdateTeamRequest};
+mod role_context;
+pub use role_context::{validate_role_context, RoleContext};
 
 #[cfg(test)]
 mod company_role_tests;
