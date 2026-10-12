@@ -17,6 +17,7 @@ pub(crate) mod claude_config;
 mod colony_command;
 pub(crate) mod config_bridge;
 pub(crate) mod credits_gateway;
+pub(crate) mod credits_pause;
 pub(crate) mod custom_harnesses;
 mod definition_validation;
 mod discovery;

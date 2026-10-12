@@ -21,6 +21,7 @@ mod claim;
 mod claim_io;
 mod companies;
 mod computer;
+mod supervisor;
 
 pub(crate) use claim::{launch_candidates, TeamSpawn};
 pub(crate) use companies::{CompaniesFile, StoredCompany};
@@ -153,6 +154,18 @@ pub(crate) struct TeamRunnerState {
     computer: Mutex<Option<ComputerIdentity>>,
     /// Latest team computer record seen per normalized company relay.
     claims: Mutex<HashMap<String, claim::ClaimView>>,
+    /// Which employees should run, and their crash history.
+    book: Mutex<supervisor::SupervisorBook>,
+}
+
+/// Run `f` on the supervisor book (a leaf lock).
+pub(crate) fn with_book<R: Runtime, T>(
+    app: &AppHandle<R>,
+    f: impl FnOnce(&mut supervisor::SupervisorBook) -> T,
+) -> Result<T, String> {
+    let state = runner(app)?;
+    let mut book = state.book.lock().map_err(|_| poisoned())?;
+    Ok(f(&mut book))
 }
 
 /// Proof that the team computer fence ran for one spawn. Only
@@ -326,3 +339,5 @@ mod claim_io_tests;
 mod claim_tests;
 #[cfg(test)]
 mod foundation_tests;
+#[cfg(test)]
+mod supervisor_tests;
