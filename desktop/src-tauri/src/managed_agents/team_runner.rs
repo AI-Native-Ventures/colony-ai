@@ -20,6 +20,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 mod claim;
 mod claim_io;
+pub(crate) mod commands;
 mod companies;
 mod computer;
 mod hire;
@@ -447,6 +448,8 @@ pub(crate) fn problem_detail(kind: ProblemKind, name: &str) -> String {
 mod claim_io_tests;
 #[cfg(test)]
 mod claim_tests;
+#[cfg(test)]
+mod commands_tests;
 #[cfg(test)]
 mod foundation_tests;
 #[cfg(test)]

@@ -450,3 +450,19 @@ test("default-on native launch adopts the live main host without an ambient flag
     COLONY_ELECTRON_HOST: "1",
   });
 });
+
+test("team commands that wait on employees get longer deadlines", () => {
+  assert.equal(
+    nativeRequestTimeout("invoke", "team_hire_complete", 60_000),
+    300_000,
+  );
+  assert.equal(
+    nativeRequestTimeout("invoke", "team_restart_all", 60_000),
+    180_000,
+  );
+  assert.equal(nativeRequestTimeout("invoke", "team_status", 60_000), 60_000);
+  assert.equal(
+    nativeRequestTimeout("listen", "team_hire_complete", 60_000),
+    60_000,
+  );
+});
