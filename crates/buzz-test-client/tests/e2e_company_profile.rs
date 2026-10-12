@@ -566,6 +566,18 @@ async fn team_computer_has_one_holder_heartbeats_releases_and_moves_by_force() {
         !heartbeat_stored,
         "heartbeats only replace the canonical head"
     );
+    let (head_rows, live_heads): (i64, i64) = sqlx::query_as(
+        "SELECT count(*), count(*) FILTER (WHERE deleted_at IS NULL) FROM events \
+         WHERE community_id = $1 AND kind = $2 AND pubkey = $3 AND d_tag = $4",
+    )
+    .bind(community_id)
+    .bind(KIND_TEAM_COMPUTER_HEAD as i32)
+    .bind(after_heartbeat.pubkey.to_bytes())
+    .bind(TEAM_COMPUTER_D_TAG)
+    .fetch_one(&pool)
+    .await
+    .expect("count physical team computer heads");
+    assert_eq!((head_rows, live_heads), (1, 1));
     pool.close().await;
 
     assert_accepted(
