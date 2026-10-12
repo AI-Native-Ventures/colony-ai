@@ -63,6 +63,8 @@ fn agent(persona_id: &str, name: &str, display_name: Option<&str>) -> ManagedAge
         definition_parallelism: None,
         relay_mesh: None,
         effort_level: None,
+        company_role: None,
+        role_context: None,
     }
 }
 

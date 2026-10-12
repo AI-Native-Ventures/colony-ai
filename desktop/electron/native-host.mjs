@@ -16,6 +16,10 @@ const LONG_COMMANDS = new Map([
   ["install_acp_runtime", 12 * 60_000],
   // Native Google OAuth allows 180 seconds for the browser and 20 for exchange.
   ["google_desktop_sign_in", 210_000],
+  // Creating, joining and starting a new employee can outlast one minute.
+  ["team_hire_complete", 5 * 60_000],
+  // Restarting every employee waits for each one to finish its turn.
+  ["team_restart_all", 3 * 60_000],
 ]);
 
 export function nativeRequestTimeout(type, command, fallback) {

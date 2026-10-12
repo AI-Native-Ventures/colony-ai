@@ -100,6 +100,8 @@ fn record() -> ManagedAgentRecord {
         definition_parallelism: None,
         relay_mesh: None,
         effort_level: None,
+        company_role: None,
+        role_context: None,
     }
 }
 

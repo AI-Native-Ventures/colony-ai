@@ -1,8 +1,7 @@
 use super::{
     bestie_assignment::recover_pending_assignment_cleanup, find_managed_agent_mut,
     kill_stale_tracked_processes, load_managed_agents, load_personas, managed_agents_base_dir,
-    save_managed_agents, spawn_agent_child, sync_managed_agent_processes, BackendKind,
-    ManagedAgentProcess,
+    save_managed_agents, spawn_agent_child, sync_managed_agent_processes, ManagedAgentProcess,
 };
 use crate::app_state::AppState;
 use crate::util;
@@ -102,6 +101,17 @@ pub async fn restore_managed_agents_on_launch(
 
     let state = app.state::<AppState>();
 
+    // Read the team fence and journal before taking the agent store lock.
+    // Incomplete hires resume through their journal, with the first replay floor.
+    let relay_url = crate::relay::relay_ws_url_with_override(&state);
+    let clearance = super::team_runner::spawn_clearance(app, &relay_url);
+    let team_fenced = clearance.is_err();
+    let hire_journal = if clearance.as_ref().is_ok_and(|proof| proof.team().is_some()) {
+        Some(super::team_runner::load_hire_journal(app)?)
+    } else {
+        None
+    };
+
     // ── Phase A (under lock): housekeeping + collect agents to restore ──
     let mut agents_to_start: Vec<super::ManagedAgentRecord>;
     {
@@ -171,14 +181,21 @@ pub async fn restore_managed_agents_on_launch(
         // replacing the three separate kernel enumerations.
         super::sweep_untracked_bundle_harnesses(&tracked_pids);
 
-        let candidates: Vec<String> = records
-            .iter()
-            .filter(|record| record.start_on_app_launch && record.backend == BackendKind::Local)
-            .map(|record| record.pubkey.clone())
-            .collect();
+        // Team computer fence: when the open relay is a saved company this
+        // computer may not run (another computer holds it, or it is paused),
+        // restore starts nothing instead of recording a refusal on every
+        // employee. Spawns are fenced again in `spawn_agent_child`.
+        let candidates = super::team_runner::launch_candidates(&records, team_fenced);
 
         let mut to_start = Vec::new();
         for pubkey in &candidates {
+            if hire_journal.as_ref().is_some_and(|journal| {
+                records.iter().any(|record| {
+                    record.pubkey == *pubkey && !journal.allows_restore(record, &relay_url)
+                })
+            }) {
+                continue;
+            }
             if let Some(runtime) = runtimes
                 .iter_mut()
                 .find(|(key, _)| key.pubkey == *pubkey)

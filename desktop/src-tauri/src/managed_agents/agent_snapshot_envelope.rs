@@ -422,6 +422,8 @@ mod tests {
             definition_parallelism: None,
             relay_mesh: None,
             effort_level: None,
+            company_role: None,
+            role_context: None,
             agent_command_override: None,
             persona_source_version: None,
             provider: None,

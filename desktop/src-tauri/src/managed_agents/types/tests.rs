@@ -110,6 +110,12 @@ fn company_role_metadata_requires_a_unique_worker_menu_and_decimal_allowance() {
         }],
         worker_menu: vec!["runtime-discovered".to_string()],
         default_allowance: Some("25.50".to_string()),
+        owns: None,
+        channel: None,
+        duties: Vec::new(),
+        on_hire: None,
+        ask_before: Vec::new(),
+        home: None,
     };
     assert!(validate_company_role_metadata(&valid).is_ok());
 
@@ -854,4 +860,182 @@ fn summary_with_drift_serializes_restart_diff_entries() {
             "change": { "kind": "value", "before": "gpt-5", "after": "claude-4" },
         }]))
     );
+}
+
+// Hire fields on the unified agent store.
+
+fn employee_role() -> CompanyRoleMetadata {
+    serde_json::from_value(serde_json::json!({
+        "job": "Post one short note a day",
+        "skills": ["Writing short updates"],
+        "tools": [{ "name": "notes", "risk": "low" }],
+        "workerMenu": ["claude", "codex"],
+        "defaultAllowance": "2",
+        "owns": "One short note a day",
+        "channel": "test-employee",
+        "duties": [{
+            "title": "Daily note",
+            "scheduleText": "Every day at 09:00",
+            "instructions": "Post one short note."
+        }],
+        "onHire": { "sources": ["business profile"], "planHorizonDays": 14 },
+        "askBefore": ["anything public"],
+        "home": "test.note"
+    }))
+    .expect("employee role parses")
+}
+
+/// Save then load the way the persona shim does: `save_personas` folds each
+/// definition through `into_agent_record` and the store writer serializes
+/// with `serde_json::to_vec_pretty`; `load_personas` parses the store and
+/// reads each definition back through `to_definition_view`.
+fn store_round_trip(records: &[ManagedAgentRecord]) -> Vec<ManagedAgentRecord> {
+    let bytes = serde_json::to_vec_pretty(records).expect("agent store serializes");
+    serde_json::from_slice(&bytes).expect("agent store parses")
+}
+
+#[test]
+fn persona_company_role_survives_the_agent_store_round_trip() {
+    let mut persona = sample_persona();
+    persona.company_role = Some(employee_role());
+
+    let stored = store_round_trip(&[persona.clone().into_agent_record()]);
+    let view = stored[0]
+        .to_definition_view()
+        .expect("slugged record must present a persona view");
+
+    assert_eq!(view.company_role, persona.company_role);
+}
+use super::{validate_role_context, RoleContext};
+
+fn employee_context() -> RoleContext {
+    RoleContext {
+        title: "Test Employee".to_string(),
+        job: "Post one short note a day".to_string(),
+        owns: Some("One short note a day".to_string()),
+        ask_before: vec!["anything public".to_string()],
+        manager_name: Some("Scout".to_string()),
+        home_channel_id: Some("0b8f2a4c-6d1e-4f3a-8b9c-1d2e3f4a5b6c".to_string()),
+        goal_id: Some("6f1d6a8e-3c1b-4c5e-9a57-3f5c2b8d9e10".to_string()),
+        on_hire_sources: vec!["business profile".to_string()],
+        plan_horizon_days: 14,
+    }
+}
+
+#[test]
+fn legacy_agent_store_record_loads_without_hire_fields_and_writes_none() {
+    let record = sample_agent_record();
+    assert_eq!(record.company_role, None);
+    assert_eq!(record.role_context, None);
+    let json = serde_json::to_string(&record).expect("record serializes");
+    for key in ["company_role", "role_context"] {
+        assert!(
+            !json.contains(key),
+            "absent {key} must stay absent on disk: {json}"
+        );
+    }
+}
+
+#[test]
+fn hired_employee_role_context_survives_the_agent_store_round_trip() {
+    let mut record = sample_agent_record();
+    record.role_context = Some(employee_context());
+
+    let stored = store_round_trip(std::slice::from_ref(&record));
+    assert_eq!(stored[0], record);
+
+    let json = serde_json::to_value(&record).expect("record serializes");
+    assert_eq!(
+        json["role_context"]["askBefore"],
+        serde_json::json!(["anything public"]),
+        "the stored role context uses the camelCase shape the harness reads"
+    );
+    assert_eq!(
+        json["role_context"]["goalId"],
+        "6f1d6a8e-3c1b-4c5e-9a57-3f5c2b8d9e10"
+    );
+}
+
+#[test]
+fn role_context_serializes_every_key_and_loads_without_optional_ones() {
+    let mut context = employee_context();
+    context.owns = None;
+    context.ask_before = Vec::new();
+    let json = serde_json::to_value(&context).expect("role context serializes");
+    assert_eq!(json["owns"], serde_json::Value::Null);
+    assert_eq!(json["askBefore"], serde_json::json!([]));
+
+    let minimal: RoleContext =
+        serde_json::from_value(serde_json::json!({ "title": "Test Employee", "job": "Notes" }))
+            .expect("a role context without optional keys loads");
+    assert_eq!(minimal.plan_horizon_days, 14);
+    assert!(minimal.ask_before.is_empty());
+}
+
+#[test]
+fn role_context_bounds_are_enforced() {
+    validate_role_context(&employee_context()).expect("the sample context is valid");
+    let cases: Vec<(&str, fn(&mut RoleContext))> = vec![
+        ("title", |c| c.title = " ".to_string()),
+        ("job", |c| c.job = "j".repeat(2_001)),
+        ("owns", |c| c.owns = Some("o".repeat(501))),
+        ("ask-before", |c| c.ask_before = vec!["a".to_string(); 17]),
+        ("home channel", |c| {
+            c.home_channel_id = Some("not-a-uuid".to_string())
+        }),
+        ("goal", |c| c.goal_id = Some("not-a-uuid".to_string())),
+        ("on-hire sources", |c| {
+            c.on_hire_sources = vec!["s".repeat(201)]
+        }),
+        ("plan horizon", |c| c.plan_horizon_days = 0),
+    ];
+    for (rule, mutate) in cases {
+        let mut context = employee_context();
+        mutate(&mut context);
+        let Err(error) = validate_role_context(&context) else {
+            panic!("{rule} must be rejected");
+        };
+        assert!(error.contains(rule), "{rule}: unexpected error {error}");
+    }
+}
+
+#[test]
+fn unreadable_hire_fields_degrade_without_dropping_the_agent_store() {
+    let mut value = serde_json::to_value(sample_agent_record()).expect("serialize fixture");
+    value["company_role"] = serde_json::json!({
+        "job": "Review work",
+        "skills": [],
+        "tools": [],
+        "workerMenu": ["claude"],
+        "keyFromANewerBuild": true
+    });
+    value["role_context"] = serde_json::json!({ "title": 7 });
+    let records: Vec<ManagedAgentRecord> = serde_json::from_value(serde_json::json!([value]))
+        .unwrap_or_else(|error| panic!("one role field must not drop the agent store: {error}"));
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].company_role, None);
+    assert_eq!(records[0].role_context, None);
+}
+
+#[test]
+fn create_request_accepts_a_role_context() {
+    let request: CreateManagedAgentRequest = serde_json::from_value(serde_json::json!({
+        "name": "Gate Tester",
+        "relayUrl": null,
+        "acpCommand": "buzz-acp",
+        "agentCommand": "claude-agent-acp",
+        "mcpCommand": null,
+        "turnTimeoutSeconds": null,
+        "idleTimeoutSeconds": null,
+        "maxTurnDurationSeconds": null,
+        "parallelism": null,
+        "systemPrompt": null,
+        "avatarUrl": null,
+        "model": null,
+        "provider": null,
+        "roleContext": serde_json::to_value(employee_context()).expect("context serializes")
+    }))
+    .expect("create request parses");
+    assert_eq!(request.role_context, Some(employee_context()));
 }

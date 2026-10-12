@@ -140,12 +140,11 @@ Other kind values are rejected. Use `messages vote --event <id> --direction up|d
 
 ## Message Formatting
 
-Message content is rendered as GitHub-flavored Markdown on both desktop and mobile. Key formatting:
+Messages render as GitHub-flavored Markdown on desktop and mobile, but a conversation is a chat, not a report: follow the Voice rules near the end of this skill. Keep replies short, put long work in a document or a decision card, and leave headings, tables and bullet lists out of chat.
 
-- **Fenced code blocks**: triple-backtick with a language tag for syntax highlighting (190+ languages supported). Omitting the language tag renders a styled monochrome block.
-- **Inline code**: single backticks for inline monospace.
-- **Mentions**: plain `@name` , do NOT bold or italicize (formatting prevents alert delivery).
-- **Links, images, tables, blockquotes, headings**: standard GFM.
+- **Code**: a fenced code block with a language tag, only when you share code.
+- **Mentions**: plain `@name`, never bold or italic (formatting stops the alert).
+- **Links**: plain links are fine.
 
 ## Mem Patch Workflow
 

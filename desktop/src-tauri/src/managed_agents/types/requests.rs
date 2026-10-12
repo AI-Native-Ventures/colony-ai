@@ -206,6 +206,10 @@ pub struct CreateManagedAgentRequest {
     pub respond_to_allowlist: Vec<String>,
     #[serde(default)]
     pub relay_mesh: Option<RelayMeshConfig>,
+    /// Role context of a hired employee. Stored on the record in the same
+    /// save that creates it (the team runner's hire flow).
+    #[serde(default)]
+    pub role_context: Option<super::RoleContext>,
 }
 
 /// Patch request for updating a managed agent's mutable fields.

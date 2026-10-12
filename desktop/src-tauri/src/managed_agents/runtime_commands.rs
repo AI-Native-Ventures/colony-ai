@@ -229,7 +229,29 @@ pub(crate) fn start_managed_agent_runtime_pair_lazy(
     relay_url: String,
     app: AppHandle,
 ) -> Result<ManagedAgentRuntimeStatus, String> {
-    start_pair(pubkey, relay_url, true, None, app)
+    start_pair(pubkey, relay_url, true, None, None, None, app)
+}
+
+/// Start a queued supervisor restart only while its desired generation is current.
+pub(crate) fn start_managed_agent_runtime_pair_supervised(
+    pubkey: String,
+    relay_url: String,
+    generation: u64,
+    app: AppHandle,
+) -> Result<ManagedAgentRuntimeStatus, String> {
+    start_pair(pubkey, relay_url, true, None, None, Some(generation), app)
+}
+
+/// Start a newly hired employee's lazy pair with the harness replay floor at
+/// the moment just before its hire was completed, so the on-hire kickoff the
+/// relay posted is answered and nothing older is replayed.
+pub(crate) fn start_managed_agent_runtime_pair_with_floor(
+    pubkey: String,
+    relay_url: String,
+    replay_floor_unix: Option<u64>,
+    app: AppHandle,
+) -> Result<ManagedAgentRuntimeStatus, String> {
+    start_pair(pubkey, relay_url, true, None, replay_floor_unix, None, app)
 }
 
 #[tauri::command]
@@ -246,8 +268,11 @@ fn start_pair(
     relay_url: String,
     lazy: bool,
     expected_updated_at: Option<&str>,
+    replay_floor_unix: Option<u64>,
+    supervisor_generation: Option<u64>,
     app: AppHandle,
 ) -> Result<ManagedAgentRuntimeStatus, String> {
+    let key = ManagedAgentRuntimeKey::new(pubkey.clone(), &relay_url)?;
     let state = app.state::<AppState>();
     let _transition = state
         .managed_agent_runtime_transition
@@ -255,6 +280,16 @@ fn start_pair(
         .map_err(|e| e.to_string())?;
     if state.shutdown_started.load(Ordering::Acquire) {
         return Err("desktop shutdown has started".into());
+    }
+    if let Some(generation) = supervisor_generation {
+        let current = super::team_runner::with_book(&app, |book| {
+            book.restart_if_current(&key.pubkey, &key.relay_url, generation)
+        })?;
+        if !current {
+            return Err(
+                "This restart was cancelled because the employee's state changed.".to_string(),
+            );
+        }
     }
     let _store = state
         .managed_agents_store_lock
@@ -288,8 +323,14 @@ fn start_pair(
         .lock()
         .ok()
         .map(|keys| keys.public_key().to_hex());
-    let mut process =
-        spawn_agent_child(&app, record, &key.relay_url, lazy, owner.as_deref(), None)?;
+    let mut process = spawn_agent_child(
+        &app,
+        record,
+        &key.relay_url,
+        lazy,
+        owner.as_deref(),
+        replay_floor_unix,
+    )?;
     let now = crate::util::now_iso();
     let receipt = ManagedAgentRuntimeReceipt {
         key: key.clone(),
@@ -333,6 +374,8 @@ pub fn stop_managed_agent_runtime(
     let mut records = load_managed_agents(&app)?;
     let record = find_managed_agent_mut(&mut records, &pubkey)?;
     let key = ManagedAgentRuntimeKey::new(pubkey, &relay_url)?;
+    // Stopped on purpose: the team runner never restarts this pair.
+    super::team_runner::note_stopped_on_purpose(&app, &key.pubkey, &key.relay_url);
     let mut runtimes = state
         .managed_agent_processes
         .lock()
@@ -389,7 +432,7 @@ pub fn restart_managed_agent_runtime(
     app: AppHandle,
 ) -> Result<ManagedAgentRuntimeStatus, String> {
     stop_managed_agent_runtime(pubkey.clone(), relay_url.clone(), app.clone())?;
-    start_pair(pubkey, relay_url, true, None, app)
+    start_pair(pubkey, relay_url, true, None, None, None, app)
 }
 
 /// Probe whether this agent can operate on `requested_relay_url`.
@@ -513,6 +556,8 @@ pub async fn reconcile_managed_agent_runtimes(
                         key.relay_url.clone(),
                         true,
                         Some(&record.updated_at),
+                        None,
+                        None,
                         app.clone(),
                     ) {
                         Ok(mut status) => {

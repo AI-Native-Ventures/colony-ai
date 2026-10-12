@@ -249,6 +249,7 @@ pub fn run() {
         .manage(native_relay_client::NativeRelayClient::default())
         .manage(observed_unread::ObservedUnreadStore::default())
         .manage(channel_head_cache::ChannelHeadCacheStore::default())
+        .manage(managed_agents::team_runner::TeamRunnerState::default())
         .setup(move |app| {
             let app_handle = app.handle().clone();
             electron_host::start(&app_handle)?;
@@ -561,6 +562,13 @@ pub fn run() {
                     }
                 });
             }
+
+            // The team runner starts saved companies' employees with no
+            // interface: no `apply_workspace` is needed. Same gates as launch
+            // restore: nothing starts during repos or identity recovery.
+            if restore_agents && !recovery_mode {
+                managed_agents::team_runner::spawn_on_boot(app.handle().clone());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -608,6 +616,15 @@ pub fn run() {
             get_identity,
             get_nsec,
             google_desktop_sign_in,
+            managed_agents::team_runner::commands::team_set_companies,
+            managed_agents::team_runner::commands::team_claim_status,
+            managed_agents::team_runner::commands::team_claim,
+            managed_agents::team_runner::commands::team_hire_complete,
+            managed_agents::team_runner::commands::team_restart_employee,
+            managed_agents::team_runner::commands::team_restart_all,
+            managed_agents::team_runner::commands::team_pause,
+            managed_agents::team_runner::commands::team_resume,
+            managed_agents::team_runner::commands::team_status,
             generate_backup_passphrase,
             create_ncryptsec_backup,
             verify_ncryptsec_backup,

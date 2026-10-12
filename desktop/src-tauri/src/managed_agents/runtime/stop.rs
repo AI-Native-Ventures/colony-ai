@@ -43,6 +43,12 @@ fn stop_managed_agent_pair<R: tauri::Runtime>(
     runtimes: &mut HashMap<ManagedAgentRuntimeKey, ManagedAgentPairRuntime>,
     key: &ManagedAgentRuntimeKey,
 ) -> Result<(), String> {
+    // Stopped on purpose: the team runner never restarts this pair.
+    crate::managed_agents::team_runner::note_stopped_on_purpose(
+        app,
+        &record.pubkey,
+        &key.relay_url,
+    );
     let Some(mut runtime) = runtimes.remove(key) else {
         return Ok(());
     };
