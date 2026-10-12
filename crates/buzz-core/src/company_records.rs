@@ -90,7 +90,7 @@ pub enum CompanyCommand {
     /// AI spend record mutation (kind 47043).
     AiSpendRecordAction(crate::company_spend::AiSpendRecordAction),
     /// Hire proposal, founder approval or completion (kind 47039).
-    HireAction(HireAction),
+    HireAction(Box<HireAction>),
     /// Employee duty lifecycle action (kind 47044).
     DutyAction(crate::company_duties::DutyAction),
     /// Employee lesson lifecycle action (kind 47045).
@@ -682,6 +682,47 @@ pub struct HireTool {
     pub risk: HireToolRisk,
 }
 
+/// A default routine a role pack proposes; approved by the owner's hire signature.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct RoleDutyTemplate {
+    /// Routine title, 1 to 120 characters.
+    pub title: String,
+    /// Readable recurrence accepted by [`crate::company_duties::parse_readable_schedule`].
+    pub schedule_text: String,
+    /// Instructions the employee receives on each run, 1 to 2000 characters.
+    pub instructions: String,
+}
+
+/// What a new employee studies first and how long its first plan covers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct RoleOnHire {
+    /// Sources the employee studies before it writes its first plan.
+    pub sources: Vec<String>,
+    /// Days the first plan covers, 1 to 30.
+    #[serde(default = "default_plan_horizon_days")]
+    pub plan_horizon_days: u8,
+}
+
+/// Plan horizon used when a role pack names none: 14 days.
+pub fn default_plan_horizon_days() -> u8 {
+    14
+}
+
+// Role pack v2 limits. The new app's record parsers mirror them in phase 1.
+const MAX_ROLE_OWNS_CHARS: usize = 500;
+const MAX_ROLE_CHANNEL_CHARS: usize = 80;
+const MAX_ROLE_DUTIES: usize = 8;
+const MAX_ROLE_DUTY_TITLE_CHARS: usize = 120;
+const MAX_ROLE_DUTY_INSTRUCTIONS_CHARS: usize = 2000;
+const MAX_ROLE_ON_HIRE_SOURCES: usize = 8;
+const MAX_ROLE_ON_HIRE_SOURCE_CHARS: usize = 200;
+const MAX_PLAN_HORIZON_DAYS: u8 = 30;
+const MAX_ROLE_ASK_BEFORE: usize = 16;
+const MAX_ROLE_ASK_BEFORE_CHARS: usize = 120;
+const MAX_ROLE_HOME_CHARS: usize = 80;
+
 /// Role metadata projected from a real persona or team catalog record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -701,6 +742,24 @@ pub struct HireRolePack {
     /// Optional allowance metadata supplied by this real catalog record.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_allowance: Option<String>,
+    /// Outcome the role owns; becomes the employee's root goal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owns: Option<String>,
+    /// Default home conversation name offered while configuring the hire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
+    /// Default routines, approved by the owner's hire signature.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub duties: Vec<RoleDutyTemplate>,
+    /// Sources to study and the first plan's horizon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_hire: Option<RoleOnHire>,
+    /// Actions that always need a person.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ask_before: Vec<String>,
+    /// Identifier of the role's desk in the app.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home: Option<String>,
 }
 
 /// The requested role and configured employee values for one hire.
@@ -829,11 +888,94 @@ pub struct HireAction {
     /// Decision reason for denial or founder sign-off.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// The owner's IANA time zone for the employee's routine schedules; complete only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_zone: Option<String>,
 }
 
 /// Stable d-tag for one hire head.
 pub fn hire_d_tag(hire_id: Uuid) -> String {
     format!("company:hire:{hire_id}")
+}
+
+/// Validates the optional role pack v2 fields; absent fields are valid.
+fn validate_role_pack_v2(role_pack: &HireRolePack) -> Result<(), CompanyRecordError> {
+    if let Some(owns) = role_pack.owns.as_deref() {
+        require_text(
+            owns,
+            MAX_ROLE_OWNS_CHARS,
+            "role owns must have 1 to 500 characters",
+        )?;
+    }
+    if role_pack.channel.as_deref().is_some_and(|channel| {
+        channel.is_empty()
+            || channel.len() > MAX_ROLE_CHANNEL_CHARS
+            || !channel
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    }) {
+        return Err(CompanyRecordError::Invalid(
+            "role channel must be 1 to 80 characters of a-z, 0-9 and -",
+        ));
+    }
+    if role_pack.duties.len() > MAX_ROLE_DUTIES {
+        return Err(CompanyRecordError::Invalid(
+            "a role pack has at most 8 duties",
+        ));
+    }
+    for duty in &role_pack.duties {
+        require_text(
+            &duty.title,
+            MAX_ROLE_DUTY_TITLE_CHARS,
+            "role duty title must have 1 to 120 characters",
+        )?;
+        if char_len(&duty.schedule_text) > crate::company_duties::MAX_DUTY_SCHEDULE_CHARS
+            || crate::company_duties::parse_readable_schedule(&duty.schedule_text).is_none()
+        {
+            return Err(CompanyRecordError::Invalid(
+                "role duty scheduleText must be a supported recurring schedule",
+            ));
+        }
+        require_text(
+            &duty.instructions,
+            MAX_ROLE_DUTY_INSTRUCTIONS_CHARS,
+            "role duty instructions must have 1 to 2000 characters",
+        )?;
+    }
+    if let Some(on_hire) = &role_pack.on_hire {
+        if on_hire.sources.len() > MAX_ROLE_ON_HIRE_SOURCES
+            || on_hire.sources.iter().any(|source| {
+                source.trim().is_empty() || char_len(source) > MAX_ROLE_ON_HIRE_SOURCE_CHARS
+            })
+        {
+            return Err(CompanyRecordError::Invalid(
+                "onHire has at most 8 sources of 1 to 200 characters",
+            ));
+        }
+        if !(1..=MAX_PLAN_HORIZON_DAYS).contains(&on_hire.plan_horizon_days) {
+            return Err(CompanyRecordError::Invalid(
+                "onHire planHorizonDays must be 1 to 30",
+            ));
+        }
+    }
+    if role_pack.ask_before.len() > MAX_ROLE_ASK_BEFORE
+        || role_pack
+            .ask_before
+            .iter()
+            .any(|limit| limit.trim().is_empty() || char_len(limit) > MAX_ROLE_ASK_BEFORE_CHARS)
+    {
+        return Err(CompanyRecordError::Invalid(
+            "askBefore has at most 16 entries of 1 to 120 characters",
+        ));
+    }
+    if let Some(home) = role_pack.home.as_deref() {
+        require_text(
+            home,
+            MAX_ROLE_HOME_CHARS,
+            "role home must have 1 to 80 characters",
+        )?;
+    }
+    Ok(())
 }
 
 /// Validates role-pack metadata and the employee's selected configuration.
@@ -896,6 +1038,7 @@ pub fn validate_hire_proposal(proposal: &HireProposal) -> Result<(), CompanyReco
             ));
         }
     }
+    validate_role_pack_v2(&proposal.role_pack)?;
     if let Some(allowance) = proposal.weekly_allowance.as_deref() {
         if !is_decimal(allowance) {
             return Err(CompanyRecordError::Invalid(
@@ -941,6 +1084,11 @@ pub fn validate_hire_action(action: &HireAction) -> Result<(), CompanyRecordErro
         action.expected_head_event_id.as_deref(),
         action.action == HireActionKind::Create,
     )?;
+    if action.time_zone.is_some() && action.action != HireActionKind::Complete {
+        return Err(CompanyRecordError::Invalid(
+            "timeZone is allowed only on complete",
+        ));
+    }
     match action.action {
         HireActionKind::Create => {
             let proposal = action.proposal.as_ref().ok_or(CompanyRecordError::Invalid(
@@ -1035,6 +1183,15 @@ pub fn validate_hire_action(action: &HireAction) -> Result<(), CompanyRecordErro
                     "complete identity coordinates must be lowercase hex ids",
                 ));
             }
+            if action
+                .time_zone
+                .as_deref()
+                .is_some_and(|zone| !crate::company_duties::is_timezone_label(zone))
+            {
+                return Err(CompanyRecordError::Invalid(
+                    "timeZone must be an IANA time zone name of 1 to 64 characters",
+                ));
+            }
             Ok(())
         }
         HireActionKind::Deny => {
@@ -1052,6 +1209,109 @@ pub fn validate_hire_action(action: &HireAction) -> Result<(), CompanyRecordErro
             Ok(())
         }
     }
+}
+
+/// Title of the built-in routine that keeps every employee's plan current.
+pub const PLAN_CHECK_DUTY_TITLE: &str = "Plan check";
+/// Readable schedule of the built-in Plan check routine.
+pub const PLAN_CHECK_DUTY_SCHEDULE: &str = "Every Monday at 09:00";
+/// Instructions the employee receives on each Plan check run.
+pub const PLAN_CHECK_DUTY_INSTRUCTIONS: &str = "Check your 2-week plan. If it is 14 days old or finished, write the next 2-week plan and send it to your manager for approval.";
+/// Time zone of a hire's routines when the owner's `complete` names none.
+pub const DEFAULT_HIRE_TIME_ZONE: &str = "UTC";
+/// Done condition of a hire goal whose role pack names no `owns` outcome.
+pub const HIRE_GOAL_DEFAULT_DONE_CONDITION: &str = "Plan approved and delivered";
+
+/// Builds the root goal a completed hire creates for its employee.
+///
+/// The goal reuses the hire id, is owned by the employee and is linked to the
+/// introduction channel. Its title is the role's `owns` outcome, cut at a word
+/// to fit a goal title, or the hire title when the pack names none. Its done
+/// condition is the full `owns` text or [`HIRE_GOAL_DEFAULT_DONE_CONDITION`].
+pub fn hire_goal_record(
+    proposal: &HireProposal,
+    employee_pubkey: &str,
+) -> Result<GoalRecord, CompanyRecordError> {
+    let owns = proposal
+        .role_pack
+        .owns
+        .as_deref()
+        .map(str::trim)
+        .filter(|owns| !owns.is_empty());
+    let goal = GoalRecord {
+        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+        goal_id: proposal.hire_id,
+        parent_goal_id: None,
+        title: owns.map_or_else(|| proposal.title.clone(), goal_title_from_owns),
+        owner_pubkey: employee_pubkey.to_owned(),
+        due_date: None,
+        done_condition: owns.unwrap_or(HIRE_GOAL_DEFAULT_DONE_CONDITION).to_owned(),
+        target: None,
+        linked_channel_ids: vec![proposal.introduction_channel_id],
+    };
+    validate_goal_record(&goal)?;
+    Ok(goal)
+}
+
+/// Fits an `owns` outcome into a goal title, cutting after the last whole word.
+fn goal_title_from_owns(owns: &str) -> String {
+    if char_len(owns) <= MAX_TITLE_CHARS {
+        return owns.to_owned();
+    }
+    let hard_cut = owns.chars().take(MAX_TITLE_CHARS - 3).collect::<String>();
+    let word_cut = hard_cut
+        .rsplit_once(char::is_whitespace)
+        .map(|(head, _)| head.trim_end())
+        .filter(|head| !head.is_empty())
+        .unwrap_or(hard_cut.as_str());
+    format!("{word_cut}...")
+}
+
+/// Builds the routine proposals a completed hire creates: one per role-pack
+/// duty, then the built-in Plan check routine.
+///
+/// Every routine runs for the employee in the hire's introduction channel, in
+/// the owner's time zone or [`DEFAULT_HIRE_TIME_ZONE`]. `next_duty_id` supplies
+/// one new duty id per proposal, in order.
+pub fn hire_duty_proposals(
+    proposal: &HireProposal,
+    employee_pubkey: &str,
+    time_zone: Option<&str>,
+    mut next_duty_id: impl FnMut() -> Uuid,
+) -> Result<Vec<crate::company_duties::DutyProposal>, CompanyRecordError> {
+    let plan_check = RoleDutyTemplate {
+        title: PLAN_CHECK_DUTY_TITLE.to_owned(),
+        schedule_text: PLAN_CHECK_DUTY_SCHEDULE.to_owned(),
+        instructions: PLAN_CHECK_DUTY_INSTRUCTIONS.to_owned(),
+    };
+    let time_zone = time_zone.unwrap_or(DEFAULT_HIRE_TIME_ZONE);
+    proposal
+        .role_pack
+        .duties
+        .iter()
+        .chain(std::iter::once(&plan_check))
+        .map(|template| {
+            let schedule_cron = crate::company_duties::parse_readable_schedule(
+                &template.schedule_text,
+            )
+            .ok_or(CompanyRecordError::Invalid(
+                "role duty scheduleText must be a supported recurring schedule",
+            ))?;
+            let duty = crate::company_duties::DutyProposal {
+                schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+                duty_id: next_duty_id(),
+                employee_pubkey: employee_pubkey.to_owned(),
+                title: template.title.clone(),
+                schedule_text: template.schedule_text.clone(),
+                schedule_cron,
+                time_zone: time_zone.to_owned(),
+                channel_id: proposal.introduction_channel_id,
+                instructions: template.instructions.clone(),
+            };
+            crate::company_duties::validate_duty_proposal(&duty)?;
+            Ok(duty)
+        })
+        .collect()
 }
 
 /// Ask create or cancel.
@@ -1327,9 +1587,8 @@ pub fn parse_company_command(
             serde_json::from_str::<crate::company_employee_history::EmployeeRevisionAction>(content)
                 .map(CompanyCommand::EmployeeRevisionAction)
         }
-        crate::kind::KIND_HIRE_ACTION => {
-            serde_json::from_str::<HireAction>(content).map(CompanyCommand::HireAction)
-        }
+        crate::kind::KIND_HIRE_ACTION => serde_json::from_str::<HireAction>(content)
+            .map(|action| CompanyCommand::HireAction(Box::new(action))),
         crate::kind::KIND_DUTY_ACTION => {
             serde_json::from_str::<crate::company_duties::DutyAction>(content)
                 .map(CompanyCommand::DutyAction)
@@ -2542,6 +2801,12 @@ mod tests {
                 }],
                 worker_menu: vec!["runtime-available".into()],
                 default_allowance: None,
+                owns: None,
+                channel: None,
+                duties: Vec::new(),
+                on_hire: None,
+                ask_before: Vec::new(),
+                home: None,
             },
             display_name: "Social Media Manager".into(),
             title: "Social Media Manager".into(),
@@ -2552,6 +2817,428 @@ mod tests {
             model_id: Some("model-current".into()),
             weekly_allowance: None,
         }
+    }
+
+    fn v2_role_pack() -> HireRolePack {
+        HireRolePack {
+            owns: Some("Show up well on social media every week".into()),
+            channel: Some("social".into()),
+            duties: vec![RoleDutyTemplate {
+                title: "Next week's posts".into(),
+                schedule_text: "Every Monday at 10:00".into(),
+                instructions: "Draft next week's posts as one batch and send them for approval."
+                    .into(),
+            }],
+            on_hire: Some(RoleOnHire {
+                sources: vec!["instagram profile".into(), "product photos".into()],
+                plan_horizon_days: 14,
+            }),
+            ask_before: vec!["anything public".into(), "prices".into()],
+            home: Some("social.calendar".into()),
+            ..hire_proposal().role_pack
+        }
+    }
+
+    fn assert_role_pack_rejected(rule: &str, mutate: impl FnOnce(&mut HireRolePack)) {
+        let mut proposal = hire_proposal();
+        proposal.role_pack = v2_role_pack();
+        mutate(&mut proposal.role_pack);
+        assert!(
+            validate_hire_proposal(&proposal).is_err(),
+            "{rule} must be rejected"
+        );
+    }
+
+    #[test]
+    fn role_pack_v2_round_trips_and_v1_packs_keep_their_exact_shape() {
+        let v1 = hire_proposal().role_pack;
+        let v1_json = serde_json::to_value(&v1).expect("serialize v1 pack");
+        let v1_keys = v1_json
+            .as_object()
+            .expect("role pack object")
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            v1_keys,
+            BTreeSet::from(["job", "personaId", "skills", "title", "tools", "workerMenu"])
+        );
+        assert_eq!(
+            serde_json::from_value::<HireRolePack>(v1_json).expect("v1 pack parses"),
+            v1
+        );
+
+        let v2 = v2_role_pack();
+        let v2_json = serde_json::to_value(&v2).expect("serialize v2 pack");
+        assert_eq!(v2_json["owns"], "Show up well on social media every week");
+        assert_eq!(v2_json["channel"], "social");
+        assert_eq!(
+            v2_json["duties"][0]["scheduleText"],
+            "Every Monday at 10:00"
+        );
+        assert_eq!(v2_json["onHire"]["planHorizonDays"], 14);
+        assert_eq!(v2_json["askBefore"][1], "prices");
+        assert_eq!(v2_json["home"], "social.calendar");
+        assert_eq!(
+            serde_json::from_value::<HireRolePack>(v2_json.clone()).expect("v2 pack parses"),
+            v2
+        );
+
+        let defaulted: RoleOnHire =
+            serde_json::from_str(r#"{"sources":["website"]}"#).expect("horizon defaults");
+        assert_eq!(defaulted.plan_horizon_days, 14);
+        assert_eq!(default_plan_horizon_days(), 14);
+        assert!(serde_json::from_str::<RoleOnHire>(r#"{"sources":[],"extra":1}"#).is_err());
+        assert!(serde_json::from_str::<RoleDutyTemplate>(
+            r#"{"title":"a","scheduleText":"Every day at 09:00","instructions":"b","extra":1}"#
+        )
+        .is_err());
+        let mut unknown = serde_json::to_value(hire_proposal().role_pack).expect("pack json");
+        unknown["futureKey"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<HireRolePack>(unknown).is_err());
+        let mut with_folder = v2_json;
+        with_folder["workFolder"] = serde_json::json!("required");
+        assert!(
+            serde_json::from_value::<HireRolePack>(with_folder).is_err(),
+            "workFolder is not part of the role pack format"
+        );
+    }
+
+    #[test]
+    fn role_pack_v2_fields_accept_their_bounds() {
+        let mut proposal = hire_proposal();
+        proposal.role_pack = v2_role_pack();
+        assert!(validate_hire_proposal(&proposal).is_ok());
+        let template = RoleDutyTemplate {
+            title: "t".repeat(120),
+            schedule_text: "Every Friday at 17:30".into(),
+            instructions: "i".repeat(2000),
+        };
+        proposal.role_pack.owns = Some("o".repeat(500));
+        proposal.role_pack.channel = Some(format!("{}-9", "c".repeat(78)));
+        proposal.role_pack.duties = vec![template; 8];
+        proposal.role_pack.on_hire = Some(RoleOnHire {
+            sources: vec!["s".repeat(200); 8],
+            plan_horizon_days: 30,
+        });
+        proposal.role_pack.ask_before = vec!["a".repeat(120); 16];
+        proposal.role_pack.home = Some("h".repeat(80));
+        assert!(validate_hire_proposal(&proposal).is_ok());
+        proposal.role_pack.on_hire = Some(RoleOnHire {
+            sources: Vec::new(),
+            plan_horizon_days: 1,
+        });
+        assert!(validate_hire_proposal(&proposal).is_ok());
+    }
+
+    #[test]
+    fn role_pack_v2_rejects_each_field_rule() {
+        assert_role_pack_rejected("blank owns", |pack| pack.owns = Some(" \n".into()));
+        assert_role_pack_rejected("owns over 500", |pack| pack.owns = Some("o".repeat(501)));
+        assert_role_pack_rejected("empty channel", |pack| pack.channel = Some(String::new()));
+        assert_role_pack_rejected("channel with capitals", |pack| {
+            pack.channel = Some("Social".into())
+        });
+        assert_role_pack_rejected("channel with a space", |pack| {
+            pack.channel = Some("social team".into())
+        });
+        assert_role_pack_rejected("channel over 80", |pack| {
+            pack.channel = Some("c".repeat(81))
+        });
+        assert_role_pack_rejected("nine duties", |pack| {
+            pack.duties = vec![pack.duties[0].clone(); 9]
+        });
+        assert_role_pack_rejected("blank duty title", |pack| pack.duties[0].title = " ".into());
+        assert_role_pack_rejected("duty title over 120", |pack| {
+            pack.duties[0].title = "t".repeat(121)
+        });
+        assert_role_pack_rejected("unsupported schedule", |pack| {
+            pack.duties[0].schedule_text = "Tomorrow at 09:00".into()
+        });
+        assert_role_pack_rejected("padded schedule over 180", |pack| {
+            pack.duties[0].schedule_text = format!("Every{}day at 09:00", " ".repeat(180))
+        });
+        assert_role_pack_rejected("blank instructions", |pack| {
+            pack.duties[0].instructions = "\t".into()
+        });
+        assert_role_pack_rejected("instructions over 2000", |pack| {
+            pack.duties[0].instructions = "i".repeat(2001)
+        });
+        assert_role_pack_rejected("nine sources", |pack| {
+            pack.on_hire = Some(RoleOnHire {
+                sources: vec!["s".into(); 9],
+                plan_horizon_days: 14,
+            })
+        });
+        assert_role_pack_rejected("blank source", |pack| {
+            pack.on_hire = Some(RoleOnHire {
+                sources: vec![" ".into()],
+                plan_horizon_days: 14,
+            })
+        });
+        assert_role_pack_rejected("source over 200", |pack| {
+            pack.on_hire = Some(RoleOnHire {
+                sources: vec!["s".repeat(201)],
+                plan_horizon_days: 14,
+            })
+        });
+        assert_role_pack_rejected("zero-day plan", |pack| {
+            pack.on_hire = Some(RoleOnHire {
+                sources: Vec::new(),
+                plan_horizon_days: 0,
+            })
+        });
+        assert_role_pack_rejected("31-day plan", |pack| {
+            pack.on_hire = Some(RoleOnHire {
+                sources: Vec::new(),
+                plan_horizon_days: 31,
+            })
+        });
+        assert_role_pack_rejected("seventeen ask-before limits", |pack| {
+            pack.ask_before = vec!["prices".into(); 17]
+        });
+        assert_role_pack_rejected("blank ask-before limit", |pack| {
+            pack.ask_before = vec![" ".into()]
+        });
+        assert_role_pack_rejected("ask-before limit over 120", |pack| {
+            pack.ask_before = vec!["a".repeat(121)]
+        });
+        assert_role_pack_rejected("blank home", |pack| pack.home = Some(" ".into()));
+        assert_role_pack_rejected("home over 80", |pack| pack.home = Some("h".repeat(81)));
+    }
+
+    fn complete_action() -> HireAction {
+        HireAction {
+            schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+            hire_id: Uuid::from_u128(42),
+            action: HireActionKind::Complete,
+            expected_head_event_id: Some(EV.into()),
+            proposal: None,
+            employee_pubkey: Some(PK_B.into()),
+            introduction_event_id: Some(EV.into()),
+            reason: None,
+            time_zone: None,
+        }
+    }
+
+    #[test]
+    fn hire_command_preserves_the_v2_payload_json() {
+        let mut proposal = hire_proposal();
+        proposal.role_pack = v2_role_pack();
+        let action = HireAction {
+            action: HireActionKind::Create,
+            expected_head_event_id: None,
+            proposal: Some(proposal),
+            employee_pubkey: None,
+            introduction_event_id: None,
+            ..complete_action()
+        };
+        let payload = serde_json::to_value(&action).expect("serialize hire action");
+        let content = serde_json::to_string(&payload).expect("serialize hire content");
+        let command = parse_company_command(crate::kind::KIND_HIRE_ACTION, &content)
+            .expect("parse v2 hire command");
+        let wrapped = serde_json::to_value(&command).expect("serialize hire command");
+        assert_eq!(
+            wrapped,
+            serde_json::json!({"kind": "hire_action", "record": payload})
+        );
+        assert_eq!(
+            serde_json::from_value::<CompanyCommand>(wrapped).expect("parse wrapped command"),
+            command
+        );
+        let CompanyCommand::HireAction(parsed) = command else {
+            panic!("hire event must parse as a hire command");
+        };
+        assert_eq!(serde_json::to_value(parsed).expect("hire payload"), payload);
+    }
+
+    #[test]
+    fn complete_carries_an_optional_iana_time_zone_label() {
+        assert!(validate_hire_action(&complete_action()).is_ok());
+        for zone in [
+            "Africa/Johannesburg",
+            "UTC",
+            "America/Argentina/Buenos_Aires",
+            "Etc/GMT+2",
+        ] {
+            let mut action = complete_action();
+            action.time_zone = Some(zone.into());
+            assert!(validate_hire_action(&action).is_ok(), "{zone} is a label");
+        }
+        let too_long = "A".repeat(65);
+        for zone in ["", "Mars Base", "Europe/Paris;", too_long.as_str()] {
+            let mut action = complete_action();
+            action.time_zone = Some(zone.into());
+            assert!(
+                validate_hire_action(&action).is_err(),
+                "{zone:?} is not a label"
+            );
+        }
+
+        let mut action = complete_action();
+        action.time_zone = Some("UTC".into());
+        let json = serde_json::to_string(&action).expect("serialize complete");
+        assert!(json.contains(r#""timeZone":"UTC""#));
+        assert!(matches!(
+            parse_company_command(crate::kind::KIND_HIRE_ACTION, &json),
+            Ok(CompanyCommand::HireAction(parsed)) if parsed.time_zone.as_deref() == Some("UTC")
+        ));
+        let without = serde_json::to_string(&complete_action()).expect("serialize complete");
+        assert!(!without.contains("timeZone"));
+    }
+
+    #[test]
+    fn only_complete_may_carry_a_time_zone() {
+        let create = HireAction {
+            action: HireActionKind::Create,
+            expected_head_event_id: None,
+            proposal: Some(hire_proposal()),
+            employee_pubkey: None,
+            introduction_event_id: None,
+            ..complete_action()
+        };
+        let update = HireAction {
+            action: HireActionKind::Update,
+            expected_head_event_id: Some(EV.into()),
+            ..create.clone()
+        };
+        let approve = HireAction {
+            action: HireActionKind::Approve,
+            expected_head_event_id: Some(EV.into()),
+            proposal: None,
+            ..create.clone()
+        };
+        let attach = HireAction {
+            action: HireActionKind::AttachEmployee,
+            expected_head_event_id: Some(EV.into()),
+            proposal: None,
+            employee_pubkey: Some(PK_B.into()),
+            ..create.clone()
+        };
+        let deny = HireAction {
+            action: HireActionKind::Deny,
+            expected_head_event_id: Some(EV.into()),
+            proposal: None,
+            reason: Some("Role is not approved".into()),
+            time_zone: None,
+            ..create.clone()
+        };
+        for action in [create, update, approve, attach, deny] {
+            assert!(
+                validate_hire_action(&action).is_ok(),
+                "{:?} is valid without a time zone",
+                action.action
+            );
+            let mut with_zone = action.clone();
+            with_zone.time_zone = Some("UTC".into());
+            assert!(
+                validate_hire_action(&with_zone).is_err(),
+                "{:?} must not carry timeZone",
+                action.action
+            );
+        }
+    }
+
+    #[test]
+    fn hire_goal_takes_owns_or_falls_back_to_the_hire_title() {
+        let mut proposal = hire_proposal();
+        proposal.role_pack.owns = Some("Show up well on social media every week".into());
+        let goal = hire_goal_record(&proposal, PK_B).expect("goal from owns");
+        assert_eq!(goal.schema_version, COMPANY_RECORD_SCHEMA_VERSION);
+        assert_eq!(goal.goal_id, proposal.hire_id);
+        assert_eq!(goal.parent_goal_id, None);
+        assert_eq!(goal.title, "Show up well on social media every week");
+        assert_eq!(
+            goal.done_condition,
+            "Show up well on social media every week"
+        );
+        assert_eq!(goal.owner_pubkey, PK_B);
+        assert_eq!(goal.due_date, None);
+        assert_eq!(goal.target, None);
+        assert_eq!(
+            goal.linked_channel_ids,
+            vec![proposal.introduction_channel_id]
+        );
+
+        proposal.role_pack.owns = None;
+        let fallback = hire_goal_record(&proposal, PK_B).expect("goal from the hire title");
+        assert_eq!(fallback.title, proposal.title);
+        assert_eq!(fallback.done_condition, HIRE_GOAL_DEFAULT_DONE_CONDITION);
+        assert_eq!(
+            HIRE_GOAL_DEFAULT_DONE_CONDITION,
+            "Plan approved and delivered"
+        );
+
+        assert!(hire_goal_record(&proposal, "not-a-pubkey").is_err());
+    }
+
+    #[test]
+    fn a_long_owns_is_cut_at_a_word_for_the_goal_title() {
+        let owns = "Grow weekly signups ".repeat(25).trim_end().to_owned();
+        assert_eq!(owns.chars().count(), 499);
+        let mut proposal = hire_proposal();
+        proposal.role_pack.owns = Some(owns.clone());
+        assert!(validate_hire_proposal(&proposal).is_ok());
+        let goal = hire_goal_record(&proposal, PK_B).expect("goal from a long owns");
+        assert!(goal.title.chars().count() <= MAX_TITLE_CHARS);
+        let kept = goal
+            .title
+            .strip_suffix("...")
+            .expect("a cut title ends with ...");
+        assert!(owns.starts_with(kept));
+        assert!(!kept.ends_with(' '));
+        assert!(
+            owns[kept.len()..].starts_with(' '),
+            "the cut falls between words"
+        );
+        assert_eq!(goal.done_condition, owns);
+    }
+
+    #[test]
+    fn hire_routines_are_the_role_duties_then_plan_check_in_the_home_channel() {
+        let mut proposal = hire_proposal();
+        proposal.role_pack.duties = vec![RoleDutyTemplate {
+            title: "Follow-up check".into(),
+            schedule_text: "Every weekday at 08:00".into(),
+            instructions: "Draft today's follow-ups for leads that are due.".into(),
+        }];
+        let mut ids = (100..).map(Uuid::from_u128);
+        let duties = hire_duty_proposals(&proposal, PK_B, Some("Africa/Johannesburg"), || {
+            ids.next().expect("an id")
+        })
+        .expect("hire routines");
+        assert_eq!(duties.len(), 2);
+        assert_eq!(duties[0].duty_id, Uuid::from_u128(100));
+        assert_eq!(duties[0].title, "Follow-up check");
+        assert_eq!(duties[0].schedule_cron, "0 8 * * 1-5");
+        assert_eq!(duties[1].duty_id, Uuid::from_u128(101));
+        assert_eq!(duties[1].title, PLAN_CHECK_DUTY_TITLE);
+        assert_eq!(PLAN_CHECK_DUTY_TITLE, "Plan check");
+        assert_eq!(duties[1].schedule_text, PLAN_CHECK_DUTY_SCHEDULE);
+        assert_eq!(PLAN_CHECK_DUTY_SCHEDULE, "Every Monday at 09:00");
+        assert_eq!(duties[1].schedule_cron, "0 9 * * 1");
+        assert_eq!(duties[1].instructions, PLAN_CHECK_DUTY_INSTRUCTIONS);
+        for duty in &duties {
+            assert_eq!(duty.employee_pubkey, PK_B);
+            assert_eq!(duty.channel_id, proposal.introduction_channel_id);
+            assert_eq!(duty.time_zone, "Africa/Johannesburg");
+            assert!(crate::company_duties::validate_duty_proposal(duty).is_ok());
+        }
+
+        proposal.role_pack.duties.clear();
+        let plan_only =
+            hire_duty_proposals(&proposal, PK_B, None, Uuid::new_v4).expect("plan check only");
+        assert_eq!(plan_only.len(), 1);
+        assert_eq!(plan_only[0].title, PLAN_CHECK_DUTY_TITLE);
+        assert_eq!(plan_only[0].time_zone, DEFAULT_HIRE_TIME_ZONE);
+        assert_eq!(DEFAULT_HIRE_TIME_ZONE, "UTC");
+
+        proposal.role_pack.duties = vec![RoleDutyTemplate {
+            title: "Broken".into(),
+            schedule_text: "Tomorrow at 09:00".into(),
+            instructions: "Never runs.".into(),
+        }];
+        assert!(hire_duty_proposals(&proposal, PK_B, None, Uuid::new_v4).is_err());
     }
 
     fn tool_permission(now: chrono::DateTime<chrono::Utc>) -> ToolPermissionRecord {
@@ -2766,6 +3453,7 @@ mod tests {
             employee_pubkey: None,
             introduction_event_id: None,
             reason: None,
+            time_zone: None,
         };
         assert!(validate_hire_action(&create).is_ok());
 
@@ -2789,6 +3477,7 @@ mod tests {
             employee_pubkey: None,
             introduction_event_id: None,
             reason: Some("The proposed scope is approved.".into()),
+            time_zone: None,
         };
         assert!(validate_hire_action(&approve).is_ok());
         let mut blank_approval_reason = approve.clone();
@@ -2816,6 +3505,7 @@ mod tests {
             employee_pubkey: Some(PK_B.into()),
             introduction_event_id: None,
             reason: None,
+            time_zone: None,
         };
         assert!(validate_hire_action(&attach).is_ok());
         let mut malformed_attach = attach;
@@ -2851,6 +3541,7 @@ mod tests {
             employee_pubkey: None,
             introduction_event_id: None,
             reason: Some("Role is not approved".into()),
+            time_zone: None,
         };
         assert!(validate_hire_action(&deny).is_ok());
     }
