@@ -52,6 +52,7 @@ pub(crate) enum Settled {
 
 #[derive(Debug, Clone, Default)]
 struct Entry {
+    generation: u64,
     relay_url: String,
     expected: bool,
     exits: VecDeque<i64>,
@@ -77,6 +78,7 @@ impl SupervisorBook {
     /// The team runner wants `pubkey` running on `relay_url`.
     pub(crate) fn expect_running(&mut self, pubkey: &str, relay_url: &str) {
         let entry = self.entries.entry(key(pubkey)).or_default();
+        entry.generation = entry.generation.wrapping_add(1);
         entry.relay_url = relay_url.to_string();
         entry.expected = true;
         entry.down_since = None;
@@ -88,6 +90,7 @@ impl SupervisorBook {
     pub(crate) fn note_stopped(&mut self, pubkey: &str, relay_url: &str) {
         if let Some(entry) = self.entries.get_mut(&key(pubkey)) {
             if entry.relay_url == relay_url {
+                entry.generation = entry.generation.wrapping_add(1);
                 entry.expected = false;
                 entry.down_since = None;
                 entry.restart_at = None;
@@ -99,6 +102,7 @@ impl SupervisorBook {
     /// Forget the crash history: a person restarted the employee.
     pub(crate) fn reset(&mut self, pubkey: &str) {
         if let Some(entry) = self.entries.get_mut(&key(pubkey)) {
+            entry.generation = entry.generation.wrapping_add(1);
             entry.exits.clear();
             entry.streak = 0;
             entry.failing = false;
@@ -145,6 +149,10 @@ impl SupervisorBook {
         now: i64,
         handling: ExitHandling,
     ) -> Option<Settled> {
+        let entry = self.entries.get(&key(pubkey))?;
+        if !entry.expected || entry.failing {
+            return None;
+        }
         match handling {
             ExitHandling::PausedForCredits => {
                 self.entries.get_mut(&key(pubkey))?.restart_at = None;
@@ -170,6 +178,57 @@ impl SupervisorBook {
     /// A start attempt failed; counted like a crash.
     pub(crate) fn start_failed(&mut self, pubkey: &str, now: i64) -> Option<Settled> {
         self.count_failure(pubkey, now)
+    }
+
+    /// A generation identifies the desired pair across async exit handling
+    /// and queued restarts. Stops, fresh starts and manual resets revoke it.
+    pub(crate) fn generation(&self, pubkey: &str, relay_url: &str) -> Option<u64> {
+        self.entries
+            .get(&key(pubkey))
+            .filter(|entry| entry.expected && !entry.failing && entry.relay_url == relay_url)
+            .map(|entry| entry.generation)
+    }
+
+    /// Ignore a credits or crash result from a superseded desired pair.
+    pub(crate) fn settle_exit_if_current(
+        &mut self,
+        pubkey: &str,
+        relay_url: &str,
+        generation: u64,
+        now: i64,
+        handling: ExitHandling,
+    ) -> Option<Settled> {
+        (self.generation(pubkey, relay_url) == Some(generation))
+            .then(|| self.settle_exit(pubkey, now, handling))
+            .flatten()
+    }
+
+    /// Called under the runtime transition lock immediately before a
+    /// supervised start, so a completed stop cannot be undone by queued work.
+    pub(crate) fn restart_if_current(
+        &mut self,
+        pubkey: &str,
+        relay_url: &str,
+        generation: u64,
+    ) -> bool {
+        if self.generation(pubkey, relay_url) != Some(generation) {
+            return false;
+        }
+        self.restarting(pubkey);
+        true
+    }
+
+    /// A failed queued start belongs only to the generation that requested it.
+    pub(crate) fn start_failed_if_current(
+        &mut self,
+        pubkey: &str,
+        relay_url: &str,
+        generation: u64,
+        now: i64,
+    ) -> Option<Settled> {
+        (self.generation(pubkey, relay_url) == Some(generation))
+            .then(|| self.start_failed(pubkey, now))
+            .flatten()
     }
 
     fn count_failure(&mut self, pubkey: &str, now: i64) -> Option<Settled> {

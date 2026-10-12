@@ -197,3 +197,28 @@ fn state_changes_keep_their_first_time() {
         (30, true)
     );
 }
+
+#[test]
+fn an_async_exit_or_queued_restart_cannot_survive_a_stop_or_new_start() {
+    let mut book = SupervisorBook::default();
+    book.expect_running(PK, RELAY);
+    assert_eq!(book.observe_down(PK, 10), DownDecision::NewExit);
+    let old = book.generation(PK, RELAY).expect("expected");
+    book.note_stopped(PK, RELAY);
+    assert_eq!(
+        book.settle_exit_if_current(PK, RELAY, old, 11, ExitHandling::RestartNow),
+        None
+    );
+    assert!(!book.restart_if_current(PK, RELAY, old));
+    book.expect_running(PK, RELAY);
+    assert_ne!(book.generation(PK, RELAY), Some(old));
+    assert_eq!(
+        book.settle_exit_if_current(PK, RELAY, old, 12, ExitHandling::Crash),
+        None
+    );
+    assert_eq!(book.restarts_in_window(PK, 12), 0);
+    let current = book.generation(PK, RELAY).expect("expected");
+    assert!(book.restart_if_current(PK, RELAY, current));
+    book.reset(PK);
+    assert_eq!(book.start_failed_if_current(PK, RELAY, current, 13), None);
+}

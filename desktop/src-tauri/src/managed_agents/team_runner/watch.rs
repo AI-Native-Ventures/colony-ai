@@ -85,44 +85,52 @@ async fn tick(app: &AppHandle, disk: &mut DiskWatch) -> Result<(), String> {
                 book.note_up(&pubkey, now);
                 continue;
             }
+            let Some(generation) = book.generation(&pubkey, &relay) else {
+                continue;
+            };
             match book.observe_down(&pubkey, now) {
-                DownDecision::NewExit => new_exits.push(pubkey),
-                DownDecision::RestartNow => restarts.push(pubkey),
+                DownDecision::NewExit => new_exits.push((pubkey, generation)),
+                DownDecision::RestartNow => restarts.push((pubkey, generation)),
                 DownDecision::Wait | DownDecision::Ignore => {}
             }
         }
         (new_exits, restarts)
     })?;
 
-    for pubkey in new_exits {
+    for (pubkey, generation) in new_exits {
         let exit_code = records
             .iter()
             .find(|record| record.pubkey.eq_ignore_ascii_case(&pubkey))
             .and_then(|record| record.last_exit_code);
         let handling = credits_pause::on_harness_exit(app, &relay, &pubkey, exit_code).await;
-        match with_book(app, |book| book.settle_exit(&pubkey, now, handling))? {
+        match with_book(app, |book| {
+            book.settle_exit_if_current(&pubkey, &relay, generation, now, handling)
+        })? {
             Some(Settled::Crashed { .. }) => {
                 report(app, &pubkey, ProblemKind::Crashed, &name_of(&pubkey))
             }
             Some(Settled::CrashLoop) => {
                 report(app, &pubkey, ProblemKind::CrashLoop, &name_of(&pubkey))
             }
-            Some(Settled::RestartNow) => restarts.push(pubkey),
+            Some(Settled::RestartNow) => restarts.push((pubkey, generation)),
             Some(Settled::Paused) | None => {}
         }
     }
 
-    for pubkey in restarts {
-        with_book(app, |book| book.restarting(&pubkey))?;
+    for (pubkey, generation) in restarts {
         let started = {
             let (app, pubkey, relay) = (app.clone(), pubkey.clone(), relay.clone());
             tauri::async_runtime::spawn_blocking(move || {
-                crate::managed_agents::start_managed_agent_runtime_pair_lazy(pubkey, relay, app)
+                crate::managed_agents::start_managed_agent_runtime_pair_supervised(
+                    pubkey, relay, generation, app,
+                )
             })
             .await
         };
         if !matches!(started, Ok(Ok(_))) {
-            match with_book(app, |book| book.start_failed(&pubkey, now_unix()))? {
+            match with_book(app, |book| {
+                book.start_failed_if_current(&pubkey, &relay, generation, now_unix())
+            })? {
                 Some(Settled::CrashLoop) => {
                     report(app, &pubkey, ProblemKind::CrashLoop, &name_of(&pubkey))
                 }
