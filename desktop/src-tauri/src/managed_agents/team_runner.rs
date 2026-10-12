@@ -260,7 +260,7 @@ pub(crate) fn forget_claim<R: Runtime>(app: &AppHandle<R>, relay_url: &str) {
     };
     if let Ok(mut claims) = state.claims.lock() {
         claims.remove(&relay);
-    }
+    };
 }
 
 /// What this computer last learned about `relay_url`'s record.

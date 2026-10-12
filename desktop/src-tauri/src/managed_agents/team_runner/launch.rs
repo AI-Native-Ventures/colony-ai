@@ -274,12 +274,20 @@ fn live_pids(app: &AppHandle, relay: &str, employees: &[String]) -> Result<Vec<u
         .managed_agent_processes
         .lock()
         .map_err(|error| error.to_string())?;
-    Ok(runtimes
-        .iter_mut()
-        .filter(|(key, _)| key.relay_url == relay && employees.contains(&key.pubkey))
-        .filter(|(_, runtime)| runtime.child.try_wait().ok().flatten().is_none())
-        .map(|(_, runtime)| runtime.child.id())
-        .collect())
+    let mut pids = Vec::new();
+    for (key, runtime) in runtimes.iter_mut() {
+        if key.relay_url == relay
+            && employees.contains(&key.pubkey)
+            && runtime
+                .child
+                .try_wait()
+                .map_err(|error| error.to_string())?
+                .is_none()
+        {
+            pids.push(runtime.child.id());
+        }
+    }
+    Ok(pids)
 }
 
 /// Stop every employee of `relay_url` after its current turn: ask each
