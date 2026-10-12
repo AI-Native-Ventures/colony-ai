@@ -6,9 +6,10 @@
 //! pauses and resumes the team, and runs a company's employees only while
 //! this computer holds the company's team computer record.
 //!
-//! Lock order: the mutexes in [`TeamRunnerState`] are leaf locks. Code never
-//! holds one while it calls runtime, store or relay code, and never takes one
-//! while it holds another.
+//! Lock order: synchronous team mutexes are leaf locks. Code never holds one
+//! while it calls runtime or relay code, or takes another team mutex. The
+//! async activation and hire gates serialize whole workflows and are taken
+//! before store/process locks; those workflows never nest the two gates.
 
 use std::collections::HashMap;
 use std::path::PathBuf;

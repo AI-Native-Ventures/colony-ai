@@ -212,8 +212,12 @@ pub(crate) async fn ensure_runs_here(
 ) -> Result<(), String> {
     let me = ensure_computer(app)?.computer_id;
     let view = match claim_view(app, &company.relay_url)? {
-        Some(view) => view,
-        None => claim_io::refresh(app, &company.relay_url).await?,
+        Some(view)
+            if super::now_unix().saturating_sub(view.fetched_at) < HEARTBEAT_EVERY_SECS as i64 =>
+        {
+            view
+        }
+        _ => claim_io::refresh(app, &company.relay_url).await?,
     };
     match view.holder {
         Some(holder) if holder.computer_id == me => Ok(()),
