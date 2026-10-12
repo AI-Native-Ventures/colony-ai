@@ -235,8 +235,8 @@ pub enum ConsumeSignInCodeOutcome {
 pub struct AccountMailOutboxRecord {
     /// Outbox row id.
     pub id: Uuid,
-    /// Related account id.
-    pub account_id: Uuid,
+    /// Related account id, absent for an anonymous sign-in start.
+    pub account_id: Option<Uuid>,
     /// Normalized destination email.
     pub recipient: String,
     /// Account email purpose.
@@ -296,6 +296,7 @@ impl Db {
         )
         .await?;
         let mut tx = Transaction::begin(connection, None).await?;
+        lock_account_email(&mut tx, &account.email).await?;
         let account_id = insert_account(&mut tx, account).await?;
         let Some(account_id) = account_id else {
             let email_exists: bool = sqlx::query_scalar(
@@ -327,7 +328,7 @@ impl Db {
         }
 
         if let Some(code) = code {
-            insert_account_code(&mut tx, account_id, &account.email, code).await?;
+            insert_account_code(&mut tx, Some(account_id), &account.email, code).await?;
         }
         tx.commit().await?;
         Ok(CreateAccountOutcome::Created(account_id))
@@ -375,60 +376,48 @@ impl Db {
                 return Ok(IssueAccountCodeOutcome::Locked { retry_after_secs });
             }
         }
-        replace_active_code(&mut tx, account_id, code.purpose).await?;
-        insert_account_code(&mut tx, account_id, email, code).await?;
+        replace_active_code(&mut tx, email, code.purpose).await?;
+        insert_account_code(&mut tx, Some(account_id), email, code).await?;
         prune_old_account_mail(&mut tx).await?;
         tx.commit().await?;
         Ok(IssueAccountCodeOutcome::Issued)
     }
 
-    /// Issue a sign-in code for an email. When no account owns the email, a
-    /// passwordless, unverified account is created in the same commit, so the
-    /// answer never depends on whether the email was known.
+    /// Issue a sign-in code and durable mail without creating an account.
+    /// Unknown emails remain anonymous until successful code verification.
     #[datastore_span(name = "account_start_sign_in_code", system = "postgresql")]
     pub async fn start_sign_in_code(
         &self,
-        candidate: &NewAccount,
+        email: &str,
         code: &NewAccountCode,
     ) -> Result<StartSignInCodeOutcome> {
+        if code.purpose != AccountCodePurpose::SignIn {
+            return Err(DbError::InvalidData(
+                "sign-in start requires a sign-in code".to_owned(),
+            ));
+        }
         let connection = observability::acquire_writer(
             &self.pool,
             observability::WriterOperation::Authorization,
         )
         .await?;
         let mut tx = Transaction::begin(connection, None).await?;
-        lock_account_email(&mut tx, &candidate.email).await?;
-        if let Some(retry_after_secs) =
-            email_code_lockout_remaining(&mut tx, &candidate.email).await?
-        {
+        lock_account_email(&mut tx, email).await?;
+        let account_id: Option<Uuid> =
+            sqlx::query_scalar("SELECT id FROM accounts WHERE lower(email) = lower($1) FOR UPDATE")
+                .bind(email)
+                .fetch_optional(&mut *tx)
+                .await?;
+        if let Some(retry_after_secs) = email_code_lockout_remaining(&mut tx, email).await? {
             tx.rollback().await?;
             return Ok(StartSignInCodeOutcome::Locked { retry_after_secs });
         }
-        let existing: Option<Uuid> =
-            sqlx::query_scalar("SELECT id FROM accounts WHERE lower(email) = lower($1) FOR UPDATE")
-                .bind(&candidate.email)
-                .fetch_optional(&mut *tx)
-                .await?;
-        let account_id = match existing {
-            Some(account_id) => account_id,
-            None => match insert_account(&mut tx, candidate).await? {
-                Some(account_id) => account_id,
-                None => {
-                    sqlx::query_scalar(
-                        "SELECT id FROM accounts WHERE lower(email) = lower($1) FOR UPDATE",
-                    )
-                    .bind(&candidate.email)
-                    .fetch_one(&mut *tx)
-                    .await?
-                }
-            },
-        };
         let active = sqlx::query(
             "SELECT attempts, expires_at FROM account_codes \
-             WHERE account_id = $1 AND purpose = $2 \
+             WHERE email = lower($1) AND purpose = $2 \
              ORDER BY created_at DESC, id DESC LIMIT 1 FOR UPDATE",
         )
-        .bind(account_id)
+        .bind(email)
         .bind(code.purpose.as_str())
         .fetch_optional(&mut *tx)
         .await?;
@@ -441,8 +430,8 @@ impl Db {
                 return Ok(StartSignInCodeOutcome::Locked { retry_after_secs });
             }
         }
-        replace_active_code(&mut tx, account_id, code.purpose).await?;
-        insert_account_code(&mut tx, account_id, &candidate.email, code).await?;
+        replace_active_code(&mut tx, email, code.purpose).await?;
+        insert_account_code(&mut tx, account_id, email, code).await?;
         prune_old_account_mail(&mut tx).await?;
         tx.commit().await?;
         Ok(StartSignInCodeOutcome::Issued)
@@ -459,8 +448,7 @@ impl Db {
             "SELECT MAX(wait) FROM ( \
              SELECT GREATEST(1, CEIL(EXTRACT(EPOCH FROM (latest.expires_at - now())))::BIGINT) AS wait \
              FROM (SELECT c.attempts, c.expires_at FROM account_codes c \
-                   JOIN accounts a ON a.id = c.account_id \
-                   WHERE lower(a.email) = lower($1) AND c.purpose = $2 \
+                   WHERE c.email = lower($1) AND c.purpose = $2 \
                    ORDER BY c.created_at DESC, c.id DESC LIMIT 1) latest \
              WHERE latest.attempts >= $3 AND latest.expires_at > now() \
              UNION ALL SELECT GREATEST(1, CEIL(EXTRACT(EPOCH FROM \
@@ -511,6 +499,9 @@ impl Db {
                     return Ok(reason.into_consume_outcome());
                 }
             };
+        let account_id = account_id.ok_or_else(|| {
+            DbError::InvalidData("only sign-in codes may be anonymous".to_owned())
+        })?;
         match purpose {
             AccountCodePurpose::VerifyEmail => {
                 sqlx::query(
@@ -572,7 +563,12 @@ impl Db {
         )
         .await?;
         let mut tx = Transaction::begin(connection, None).await?;
-        let (code_id, account_id) = match lock_and_check_code(
+        if fresh_identity.email != email {
+            return Err(DbError::InvalidData(
+                "fresh identity must match the verified email".to_owned(),
+            ));
+        }
+        let code_id = match lock_and_check_code(
             &mut tx,
             email,
             AccountCodePurpose::SignIn,
@@ -581,22 +577,31 @@ impl Db {
         )
         .await?
         {
-            LockedCode::Matched {
-                code_id,
-                account_id,
-            } => (code_id, account_id),
+            LockedCode::Matched { code_id, .. } => code_id,
             LockedCode::Rejected { reason, commit } => {
                 finish_rejected_code(tx, commit).await?;
                 return Ok(reason.into_sign_in_outcome());
             }
         };
-        let previously_verified: bool = sqlx::query_scalar(
-            "SELECT email_verified_at IS NOT NULL FROM accounts WHERE id = $1 FOR UPDATE",
+        let existing: Option<(Uuid, bool)> = sqlx::query_as(
+            "SELECT id, email_verified_at IS NOT NULL FROM accounts WHERE email = $1 FOR UPDATE",
         )
-        .bind(account_id)
-        .fetch_one(&mut *tx)
+        .bind(email)
+        .fetch_optional(&mut *tx)
         .await?;
+        let (account_id, previously_verified) = match existing {
+            Some(existing) => existing,
+            None => (
+                insert_account(&mut tx, fresh_identity)
+                    .await?
+                    .ok_or_else(|| {
+                        DbError::InvalidData("fresh identity insert conflicted".to_owned())
+                    })?,
+                false,
+            ),
+        };
         prove_account_email(&mut tx, account_id, fresh_identity).await?;
+        bind_matched_account_code(&mut tx, account_id, code_id).await?;
         record_terms_acceptance(&mut tx, account_id, Some(terms_version)).await?;
         let created = !previously_verified;
         if created {
@@ -667,7 +672,12 @@ impl Db {
         &self,
         account_id: Uuid,
     ) -> Result<Option<AccountRecord>> {
-        let mut tx = self.pool.begin().await?;
+        let connection = observability::acquire_writer(
+            &self.pool,
+            observability::WriterOperation::Authorization,
+        )
+        .await?;
+        let mut tx = Transaction::begin(connection, None).await?;
         let email: Option<String> = sqlx::query_scalar("SELECT email FROM accounts WHERE id = $1")
             .bind(account_id)
             .fetch_optional(&mut *tx)
@@ -941,7 +951,6 @@ impl Db {
     pub async fn record_account_test_mail(
         &self,
         outbox_id: Uuid,
-        account_id: Uuid,
         recipient: &str,
         purpose: &str,
         code: &str,
@@ -954,10 +963,10 @@ impl Db {
         let mut tx = Transaction::begin(connection, None).await?;
         sqlx::query(
             "INSERT INTO account_test_mail (outbox_id, account_id, recipient, purpose, code) \
-             VALUES ($1, $2, $3, $4, $5) ON CONFLICT (outbox_id) DO NOTHING",
+             SELECT id, account_id, $2, $3, $4 FROM account_mail_outbox WHERE id = $1 \
+             ON CONFLICT (outbox_id) DO NOTHING",
         )
         .bind(outbox_id)
-        .bind(account_id)
         .bind(recipient)
         .bind(purpose)
         .bind(code)
@@ -1002,6 +1011,34 @@ async fn lock_account_email(tx: &mut Transaction<'_, Postgres>, email: &str) -> 
         .bind(format!("account-email:{}", email.to_ascii_lowercase()))
         .execute(&mut **tx)
         .await?;
+    Ok(())
+}
+
+async fn bind_matched_account_code(
+    tx: &mut Transaction<'_, Postgres>,
+    account_id: Uuid,
+    code_id: Uuid,
+) -> Result<()> {
+    sqlx::query("UPDATE account_codes SET account_id = $1 WHERE id = $2 AND account_id IS NULL")
+        .bind(account_id)
+        .bind(code_id)
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query(
+        "UPDATE account_mail_outbox SET account_id = $1 WHERE code_id = $2 AND account_id IS NULL",
+    )
+    .bind(account_id)
+    .bind(code_id)
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query(
+        "UPDATE account_test_mail SET account_id = $1 WHERE outbox_id IN \
+             (SELECT id FROM account_mail_outbox WHERE code_id = $2) AND account_id IS NULL",
+    )
+    .bind(account_id)
+    .bind(code_id)
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 
@@ -1075,18 +1112,19 @@ async fn insert_account(
 
 async fn insert_account_code(
     tx: &mut Transaction<'_, Postgres>,
-    account_id: Uuid,
+    account_id: Option<Uuid>,
     email: &str,
     code: &NewAccountCode,
 ) -> Result<()> {
     sqlx::query(
-        "INSERT INTO account_codes (id, account_id, purpose, code_hash, expires_at) \
-         VALUES ($1, $2, $3, $4, now() + interval '15 minutes')",
+        "INSERT INTO account_codes (id, account_id, purpose, code_hash, expires_at, email) \
+         VALUES ($1, $2, $3, $4, now() + interval '15 minutes', lower($5))",
     )
     .bind(code.code_id)
     .bind(account_id)
     .bind(code.purpose.as_str())
     .bind(code.code_hash.as_slice())
+    .bind(email)
     .execute(&mut **tx)
     .await?;
     sqlx::query(
@@ -1107,23 +1145,23 @@ async fn insert_account_code(
 
 async fn replace_active_code(
     tx: &mut Transaction<'_, Postgres>,
-    account_id: Uuid,
+    email: &str,
     purpose: AccountCodePurpose,
 ) -> Result<()> {
     sqlx::query(
         "DELETE FROM account_mail_outbox WHERE code_id IN ( \
-             SELECT id FROM account_codes WHERE account_id = $1 AND purpose = $2 \
+             SELECT id FROM account_codes WHERE email = lower($1) AND purpose = $2 \
                AND consumed_at IS NULL)",
     )
-    .bind(account_id)
+    .bind(email)
     .bind(purpose.as_str())
     .execute(&mut **tx)
     .await?;
     sqlx::query(
         "UPDATE account_codes SET consumed_at = now() \
-         WHERE account_id = $1 AND purpose = $2 AND consumed_at IS NULL",
+         WHERE email = lower($1) AND purpose = $2 AND consumed_at IS NULL",
     )
-    .bind(account_id)
+    .bind(email)
     .bind(purpose.as_str())
     .execute(&mut **tx)
     .await?;
@@ -1144,8 +1182,8 @@ enum LockedCode {
     Matched {
         /// The matched code row.
         code_id: Uuid,
-        /// The account the code belongs to.
-        account_id: Uuid,
+        /// The account, absent until anonymous first proof.
+        account_id: Option<Uuid>,
     },
     /// The code cannot be used. Any bookkeeping writes are already in the
     /// transaction; `commit` says whether they must be kept.
@@ -1210,8 +1248,8 @@ async fn lock_and_check_code(
         .await?;
     let row = sqlx::query(
         "SELECT c.id, c.account_id, c.code_hash, c.expires_at, c.attempts, c.consumed_at \
-         FROM account_codes c JOIN accounts a ON a.id = c.account_id \
-         WHERE lower(a.email) = lower($1) AND c.purpose = $2 \
+         FROM account_codes c \
+         WHERE c.email = lower($1) AND c.purpose = $2 \
          ORDER BY c.created_at DESC, c.id DESC LIMIT 1 FOR UPDATE OF c",
     )
     .bind(email)
@@ -1226,7 +1264,7 @@ async fn lock_and_check_code(
     };
 
     let code_id: Uuid = row.try_get("id")?;
-    let account_id: Uuid = row.try_get("account_id")?;
+    let account_id: Option<Uuid> = row.try_get("account_id")?;
     let stored_hash: Vec<u8> = row.try_get("code_hash")?;
     let expires_at: DateTime<Utc> = row.try_get("expires_at")?;
     let attempts: i32 = row.try_get("attempts")?;
@@ -1477,40 +1515,38 @@ mod sign_in_code_postgres_tests {
 
     #[tokio::test]
     #[ignore = "requires Postgres"]
-    async fn start_creates_one_passwordless_account_and_reuses_it() {
+    async fn start_replaces_an_anonymous_code_without_creating_an_account() {
         let (db, pool) = setup_db().await;
         let email = unique_email("start");
         assert!(matches!(
-            db.start_sign_in_code(&candidate(&email), &sign_in_code(1))
+            db.start_sign_in_code(&email, &sign_in_code(1))
                 .await
                 .expect("first start"),
             StartSignInCodeOutcome::Issued
         ));
         assert!(matches!(
-            db.start_sign_in_code(&candidate(&email), &sign_in_code(2))
+            db.start_sign_in_code(&email, &sign_in_code(2))
                 .await
                 .expect("second start"),
             StartSignInCodeOutcome::Issued
         ));
 
-        let account = db
+        assert!(db
             .account_by_email(&email)
             .await
             .expect("load account")
-            .expect("start created the account");
-        assert!(account.email_verified_at.is_none());
-        assert!(account.password_hash().is_none());
+            .is_none());
         let accounts: i64 = sqlx::query_scalar("SELECT count(*) FROM accounts WHERE email = $1")
             .bind(&email)
             .fetch_one(&pool)
             .await
             .expect("count accounts");
-        assert_eq!(accounts, 1, "a second start reuses the pending account");
+        assert_eq!(accounts, 0, "starting a code never reserves an account");
         let active: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM account_codes \
-             WHERE account_id = $1 AND purpose = 'sign_in' AND consumed_at IS NULL",
+             WHERE email = $1 AND purpose = 'sign_in' AND account_id IS NULL AND consumed_at IS NULL",
         )
-        .bind(account.id)
+        .bind(&email)
         .fetch_one(&pool)
         .await
         .expect("count active codes");
@@ -1519,10 +1555,47 @@ mod sign_in_code_postgres_tests {
 
     #[tokio::test]
     #[ignore = "requires Postgres"]
+    async fn first_anonymous_proof_rolls_back_account_creation_and_code_use_on_failure() {
+        let (db, pool) = setup_db().await;
+        let email = unique_email("atomic-proof");
+        let fresh = candidate(&email);
+        let code = sign_in_code(6);
+        db.start_sign_in_code(&email, &code)
+            .await
+            .expect("anonymous start");
+        assert!(
+            db.consume_sign_in_code(&email, &[6; 32], "", &fresh, None)
+                .await
+                .is_err(),
+            "invalid terms fail after account creation inside the transaction"
+        );
+        assert!(db
+            .account_by_email(&email)
+            .await
+            .expect("rolled back account")
+            .is_none());
+        let code_state: (bool, bool) = sqlx::query_as(
+            "SELECT consumed_at IS NULL, account_id IS NULL FROM account_codes WHERE id = $1",
+        )
+        .bind(code.code_id)
+        .fetch_one(&pool)
+        .await
+        .expect("rolled back code state");
+        assert_eq!(code_state, (true, true));
+        assert!(matches!(
+            db.consume_sign_in_code(&email, &[6; 32], "2026-10-11", &fresh, None)
+                .await
+                .expect("retry proof"),
+            ConsumeSignInCodeOutcome::Accepted { created: true, .. }
+        ));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
     async fn first_verified_sign_in_is_created_and_records_terms() {
         let (db, pool) = setup_db().await;
         let email = unique_email("consume");
-        db.start_sign_in_code(&candidate(&email), &sign_in_code(7))
+        db.start_sign_in_code(&email, &sign_in_code(7))
             .await
             .expect("start");
 
@@ -1555,7 +1628,7 @@ mod sign_in_code_postgres_tests {
         .expect("read terms");
         assert_eq!(terms, (Some("2026-10-11".to_owned()), true));
 
-        db.start_sign_in_code(&candidate(&email), &sign_in_code(9))
+        db.start_sign_in_code(&email, &sign_in_code(9))
             .await
             .expect("second start");
         match db
@@ -1605,7 +1678,7 @@ mod sign_in_code_postgres_tests {
     async fn five_wrong_codes_burn_the_code_and_lock_new_starts_until_it_expires() {
         let (db, _pool) = setup_db().await;
         let email = unique_email("burn");
-        db.start_sign_in_code(&candidate(&email), &sign_in_code(11))
+        db.start_sign_in_code(&email, &sign_in_code(11))
             .await
             .expect("start");
         for expected_left in [4, 3, 2, 1] {
@@ -1642,7 +1715,7 @@ mod sign_in_code_postgres_tests {
             "a burned code never signs in, even when it is right"
         );
         match db
-            .start_sign_in_code(&candidate(&email), &sign_in_code(13))
+            .start_sign_in_code(&email, &sign_in_code(13))
             .await
             .expect("start during the lock")
         {
@@ -1665,7 +1738,7 @@ mod sign_in_code_postgres_tests {
                 .expect("squatter signup"),
             CreateAccountOutcome::Created(_)
         ));
-        db.start_sign_in_code(&candidate(&squatted), &sign_in_code(21))
+        db.start_sign_in_code(&squatted, &sign_in_code(21))
             .await
             .expect("owner start");
         match db
@@ -1696,7 +1769,7 @@ mod sign_in_code_postgres_tests {
         db.create_account(&verified, None)
             .await
             .expect("verified password account");
-        db.start_sign_in_code(&candidate(&owned), &sign_in_code(22))
+        db.start_sign_in_code(&owned, &sign_in_code(22))
             .await
             .expect("start");
         match db
@@ -1717,7 +1790,7 @@ mod sign_in_code_postgres_tests {
     async fn consume_account_code_refuses_sign_in_codes() {
         let (db, _pool) = setup_db().await;
         let email = unique_email("refuse");
-        db.start_sign_in_code(&candidate(&email), &sign_in_code(31))
+        db.start_sign_in_code(&email, &sign_in_code(31))
             .await
             .expect("start");
         assert!(db
@@ -1770,7 +1843,10 @@ mod sign_in_lock_postgres_tests {
             nonce: vec![5_u8; 12],
             purpose: AccountCodePurpose::SignIn,
         };
-        db.start_sign_in_code(&candidate, &code)
+        db.create_account(&candidate, None)
+            .await
+            .expect("existing account for lock ordering");
+        db.start_sign_in_code(&email, &code)
             .await
             .expect("issue code");
 

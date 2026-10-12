@@ -716,7 +716,8 @@ mod postgres_tests {
         let mut migrations: Vec<_> = MIGRATOR.iter().collect();
         migrations.sort_by_key(|migration| migration.version);
 
-        assert_eq!(migrations.len(), 57);
+        assert_eq!(migrations.len(), 58);
+        assert_eq!(migrations[57].version, 58);
         assert_eq!(migrations[56].version, 57);
         assert!(migrations[56]
             .sql
@@ -2221,8 +2222,8 @@ mod postgres_tests {
     /// are independent sources of the same schema. This test bootstraps one
     /// probe database through the real `bin/pgschema apply` binary, runs the
     /// required reconciliation script, migrates another probe database through
-    /// all committed migrations, and compares admin and account payment table columns and
-    /// indexes. Columns are keyed by name because migrations may append them
+    /// all committed migrations, and compares admin and account table columns,
+    /// indexes and check constraints. Columns are keyed by name because migrations may append them
     /// with `ALTER TABLE` while desired state declares them inline.
     ///
     /// The real pgschema binary is required because it can discard per-key
@@ -2364,6 +2365,10 @@ mod postgres_tests {
             "relay_admin_outbox",
             "relay_operator_audit",
             "accounts",
+            "account_codes",
+            "account_code_failures",
+            "account_mail_outbox",
+            "account_test_mail",
             "account_credit_ledger",
             "account_payment_intents",
             "account_site_subscriptions",
@@ -2428,15 +2433,20 @@ mod postgres_tests {
                 5_000_000_000
             );
         }
-        for table in ["account_payment_intents", "account_payment_notifications"] {
+        for table in [
+            "account_codes",
+            "account_code_failures",
+            "account_payment_intents",
+            "account_payment_notifications",
+        ] {
             let constraints = |pool: PgPool| async move {
                 sqlx::query_as::<_, (String, String)>("SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = $1::regclass AND contype = 'c' ORDER BY conname")
-                    .bind(table).fetch_all(&pool).await.expect("payment constraints")
+                    .bind(table).fetch_all(&pool).await.expect("table check constraints")
             };
             assert_eq!(
                 constraints(desired.clone()).await,
                 constraints(migrated.clone()).await,
-                "payment constraint parity for {table}"
+                "check constraint parity for {table}"
             );
         }
 

@@ -2078,16 +2078,18 @@ CREATE INDEX account_google_identities_account_idx ON account_google_identities 
 
 CREATE TABLE account_codes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    account_id UUID REFERENCES accounts(id) ON DELETE CASCADE,
+    email TEXT NOT NULL CHECK (email = lower(btrim(email)) AND length(email) <= 254),
     purpose TEXT NOT NULL CHECK (purpose IN ('verify_email', 'reset_password', 'sign_in')),
     code_hash BYTEA NOT NULL CHECK (octet_length(code_hash) = 32),
     expires_at TIMESTAMPTZ NOT NULL,
     attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 5),
     consumed_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT account_codes_pending_sign_in_check CHECK (account_id IS NOT NULL OR purpose = 'sign_in')
 );
 CREATE UNIQUE INDEX account_codes_one_active_purpose
-    ON account_codes (account_id, purpose) WHERE consumed_at IS NULL;
+    ON account_codes (email, purpose) WHERE consumed_at IS NULL;
 CREATE INDEX account_codes_expiry_idx ON account_codes (expires_at);
 
 CREATE TABLE account_code_failures (
@@ -2099,7 +2101,7 @@ CREATE INDEX account_code_failures_expiry_idx ON account_code_failures (window_s
 
 CREATE TABLE account_mail_outbox (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    account_id UUID REFERENCES accounts(id) ON DELETE CASCADE,
     code_id UUID NOT NULL UNIQUE REFERENCES account_codes(id) ON DELETE CASCADE,
     recipient TEXT NOT NULL CHECK (length(recipient) <= 254),
     purpose TEXT NOT NULL CHECK (purpose IN ('verify_email', 'reset_password', 'sign_in')),
@@ -2121,7 +2123,7 @@ CREATE INDEX account_mail_outbox_due_idx
 -- delivery never writes plaintext verification codes to this table.
 CREATE TABLE account_test_mail (
     outbox_id UUID PRIMARY KEY REFERENCES account_mail_outbox(id) ON DELETE CASCADE,
-    account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    account_id UUID REFERENCES accounts(id) ON DELETE CASCADE,
     recipient TEXT NOT NULL CHECK (length(recipient) <= 254),
     purpose TEXT NOT NULL CHECK (purpose IN ('verify_email', 'reset_password', 'sign_in')),
     code TEXT NOT NULL CHECK (code ~ '^[0-9]{6}$'),
