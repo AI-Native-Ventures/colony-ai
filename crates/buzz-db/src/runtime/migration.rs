@@ -2355,6 +2355,12 @@ mod postgres_tests {
         .execute(&desired)
         .await
         .expect("run post-pgschema desired-state reconciliation");
+        sqlx::raw_sql(include_str!(
+            "../../../../scripts/reconcile-schema-after-pgschema.sql"
+        ))
+        .execute(&desired)
+        .await
+        .expect("post-pgschema reconciliation is idempotent");
         MIGRATOR
             .run(&migrated)
             .await
@@ -2448,6 +2454,36 @@ mod postgres_tests {
                 constraints(migrated.clone()).await,
                 "check constraint parity for {table}"
             );
+        }
+
+        // Both bootstrap paths must enforce the anonymous-code contract in
+        // PostgreSQL, even when pgschema omits the table-level declaration.
+        for pool in [&desired, &migrated] {
+            for purpose in ["verify_email", "reset_password", "sign_in"] {
+                let result = sqlx::query(
+                    "INSERT INTO account_codes (email, purpose, code_hash, expires_at) \
+                     VALUES ($1, $2, $3, now() + interval '15 minutes')",
+                )
+                .bind(format!(
+                    "anonymous-parity-{}@example.test",
+                    uuid::Uuid::new_v4().simple()
+                ))
+                .bind(purpose)
+                .bind(vec![0_u8; 32])
+                .execute(pool)
+                .await;
+                if purpose == "sign_in" {
+                    result.expect("anonymous sign-in codes are allowed on both schemas");
+                } else {
+                    let error = result.expect_err("other code purposes require an account");
+                    let database_error = error.as_database_error().expect("check constraint error");
+                    assert_eq!(database_error.code().as_deref(), Some("23514"));
+                    assert_eq!(
+                        database_error.constraint(),
+                        Some("account_codes_pending_sign_in_check")
+                    );
+                }
+            }
         }
 
         desired.close().await;
