@@ -19,6 +19,8 @@ use crate::{observability, Db};
 pub const ACCOUNT_CODE_TTL: Duration = Duration::minutes(15);
 /// Maximum number of submissions checked for one issued code.
 pub const ACCOUNT_CODE_MAX_ATTEMPTS: i32 = 5;
+/// Maximum wrong submissions across every code for one email in an hour.
+pub const ACCOUNT_EMAIL_CODE_FAILURE_LIMIT: i32 = 10;
 /// Number of failed password attempts before a temporary account lock.
 pub const ACCOUNT_PASSWORD_FAILURE_LIMIT: i32 = 5;
 /// Duration of the progressive password lockout.
@@ -346,10 +348,15 @@ impl Db {
         .await?;
         let mut tx = Transaction::begin(connection, None).await?;
         // Code writers and consumers take the account lock before any code lock.
+        lock_account_email(&mut tx, email).await?;
         sqlx::query("SELECT id FROM accounts WHERE id = $1 FOR UPDATE")
             .bind(account_id)
             .execute(&mut *tx)
             .await?;
+        if let Some(retry_after_secs) = email_code_lockout_remaining(&mut tx, email).await? {
+            tx.rollback().await?;
+            return Ok(IssueAccountCodeOutcome::Locked { retry_after_secs });
+        }
         let active = sqlx::query(
             "SELECT attempts, expires_at FROM account_codes \
              WHERE account_id = $1 AND purpose = $2 \
@@ -390,10 +397,13 @@ impl Db {
         )
         .await?;
         let mut tx = Transaction::begin(connection, None).await?;
-        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
-            .bind(format!("account-email:{}", candidate.email))
-            .execute(&mut *tx)
-            .await?;
+        lock_account_email(&mut tx, &candidate.email).await?;
+        if let Some(retry_after_secs) =
+            email_code_lockout_remaining(&mut tx, &candidate.email).await?
+        {
+            tx.rollback().await?;
+            return Ok(StartSignInCodeOutcome::Locked { retry_after_secs });
+        }
         let existing: Option<Uuid> =
             sqlx::query_scalar("SELECT id FROM accounts WHERE lower(email) = lower($1) FOR UPDATE")
                 .bind(&candidate.email)
@@ -446,16 +456,23 @@ impl Db {
         purpose: AccountCodePurpose,
     ) -> Result<Option<i64>> {
         sqlx::query_scalar(
-            "SELECT GREATEST(1, CEIL(EXTRACT(EPOCH FROM (latest.expires_at - now())))::BIGINT) \
+            "SELECT MAX(wait) FROM ( \
+             SELECT GREATEST(1, CEIL(EXTRACT(EPOCH FROM (latest.expires_at - now())))::BIGINT) AS wait \
              FROM (SELECT c.attempts, c.expires_at FROM account_codes c \
                    JOIN accounts a ON a.id = c.account_id \
                    WHERE lower(a.email) = lower($1) AND c.purpose = $2 \
                    ORDER BY c.created_at DESC, c.id DESC LIMIT 1) latest \
-             WHERE latest.attempts >= $3 AND latest.expires_at > now()",
+             WHERE latest.attempts >= $3 AND latest.expires_at > now() \
+             UNION ALL SELECT GREATEST(1, CEIL(EXTRACT(EPOCH FROM \
+                 (window_started_at + interval '1 hour' - now())))::BIGINT) AS wait \
+             FROM account_code_failures WHERE email = lower($1) \
+                 AND failed_attempts >= $4 AND window_started_at > now() - interval '1 hour' \
+             ) limits HAVING MAX(wait) IS NOT NULL",
         )
         .bind(email)
         .bind(purpose.as_str())
         .bind(ACCOUNT_CODE_MAX_ATTEMPTS)
+        .bind(ACCOUNT_EMAIL_CODE_FAILURE_LIMIT)
         .fetch_optional(&self.pool)
         .await
         .map_err(Into::into)
@@ -484,7 +501,7 @@ impl Db {
         .await?;
         let mut tx = Transaction::begin(connection, None).await?;
         let (code_id, account_id) =
-            match lock_and_check_code(&mut tx, email, purpose, provided_hash).await? {
+            match lock_and_check_code(&mut tx, email, purpose, provided_hash, true).await? {
                 LockedCode::Matched {
                     code_id,
                     account_id,
@@ -524,6 +541,7 @@ impl Db {
             }
         }
         delete_code_outbox(&mut tx, code_id).await?;
+        clear_email_code_failures(&mut tx, email).await?;
         let row = sqlx::query(sqlx::AssertSqlSafe(format!(
             "{ACCOUNT_SELECT} WHERE a.id = $1"
         )))
@@ -554,19 +572,24 @@ impl Db {
         )
         .await?;
         let mut tx = Transaction::begin(connection, None).await?;
-        let (code_id, account_id) =
-            match lock_and_check_code(&mut tx, email, AccountCodePurpose::SignIn, provided_hash)
-                .await?
-            {
-                LockedCode::Matched {
-                    code_id,
-                    account_id,
-                } => (code_id, account_id),
-                LockedCode::Rejected { reason, commit } => {
-                    finish_rejected_code(tx, commit).await?;
-                    return Ok(reason.into_sign_in_outcome());
-                }
-            };
+        let (code_id, account_id) = match lock_and_check_code(
+            &mut tx,
+            email,
+            AccountCodePurpose::SignIn,
+            provided_hash,
+            true,
+        )
+        .await?
+        {
+            LockedCode::Matched {
+                code_id,
+                account_id,
+            } => (code_id, account_id),
+            LockedCode::Rejected { reason, commit } => {
+                finish_rejected_code(tx, commit).await?;
+                return Ok(reason.into_sign_in_outcome());
+            }
+        };
         let previously_verified: bool = sqlx::query_scalar(
             "SELECT email_verified_at IS NOT NULL FROM accounts WHERE id = $1 FOR UPDATE",
         )
@@ -588,6 +611,7 @@ impl Db {
             }
         }
         delete_code_outbox(&mut tx, code_id).await?;
+        clear_email_code_failures(&mut tx, email).await?;
         let row = sqlx::query(sqlx::AssertSqlSafe(format!(
             "{ACCOUNT_SELECT} WHERE a.id = $1"
         )))
@@ -617,83 +641,24 @@ impl Db {
         )
         .await?;
         let mut tx = Transaction::begin(connection, None).await?;
-        let row = sqlx::query(
-            "SELECT c.id, c.code_hash, c.expires_at, c.attempts, c.consumed_at \
-             FROM account_codes c JOIN accounts a ON a.id = c.account_id \
-             WHERE lower(a.email) = lower($1) AND c.purpose = $2 \
-             ORDER BY c.created_at DESC, c.id DESC LIMIT 1 FOR UPDATE OF c",
-        )
-        .bind(email)
-        .bind(purpose.as_str())
-        .fetch_optional(&mut *tx)
-        .await?;
-        let Some(row) = row else {
-            tx.rollback().await?;
-            return Ok(CheckAccountCodeOutcome::Expired);
-        };
-
-        let code_id: Uuid = row.try_get("id")?;
-        let stored_hash: Vec<u8> = row.try_get("code_hash")?;
-        let expires_at: DateTime<Utc> = row.try_get("expires_at")?;
-        let attempts: i32 = row.try_get("attempts")?;
-        let consumed_at: Option<DateTime<Utc>> = row.try_get("consumed_at")?;
-        if expires_at <= Utc::now() {
-            if consumed_at.is_none() {
-                sqlx::query("UPDATE account_codes SET consumed_at = now() WHERE id = $1")
-                    .bind(code_id)
-                    .execute(&mut *tx)
-                    .await?;
-                delete_code_outbox(&mut tx, code_id).await?;
+        match lock_and_check_code(&mut tx, email, purpose, provided_hash, false).await? {
+            LockedCode::Matched { .. } => {
+                tx.commit().await?;
+                Ok(CheckAccountCodeOutcome::Valid)
             }
-            tx.commit().await?;
-            return Ok(CheckAccountCodeOutcome::Expired);
-        }
-        if attempts >= ACCOUNT_CODE_MAX_ATTEMPTS {
-            if consumed_at.is_none() {
-                sqlx::query("UPDATE account_codes SET consumed_at = now() WHERE id = $1")
-                    .bind(code_id)
-                    .execute(&mut *tx)
-                    .await?;
-                delete_code_outbox(&mut tx, code_id).await?;
+            LockedCode::Rejected { reason, commit } => {
+                finish_rejected_code(tx, commit).await?;
+                Ok(match reason {
+                    CodeRejection::Invalid { attempts_left } => {
+                        CheckAccountCodeOutcome::Invalid { attempts_left }
+                    }
+                    CodeRejection::Expired => CheckAccountCodeOutcome::Expired,
+                    CodeRejection::AttemptsExceeded { retry_after_secs } => {
+                        CheckAccountCodeOutcome::AttemptsExceeded { retry_after_secs }
+                    }
+                })
             }
-            let retry_after_secs = retry_after_until(expires_at);
-            tx.commit().await?;
-            return Ok(CheckAccountCodeOutcome::AttemptsExceeded { retry_after_secs });
         }
-        if consumed_at.is_some() {
-            tx.rollback().await?;
-            return Ok(CheckAccountCodeOutcome::Expired);
-        }
-
-        let matches = bool::from(stored_hash.as_slice().ct_eq(provided_hash.as_slice()));
-        if matches {
-            tx.commit().await?;
-            return Ok(CheckAccountCodeOutcome::Valid);
-        }
-
-        let next_attempts = attempts.saturating_add(1);
-        sqlx::query(
-            "UPDATE account_codes SET attempts = $2, \
-             consumed_at = CASE WHEN $2 >= $3 THEN now() ELSE consumed_at END \
-             WHERE id = $1",
-        )
-        .bind(code_id)
-        .bind(next_attempts)
-        .bind(ACCOUNT_CODE_MAX_ATTEMPTS)
-        .execute(&mut *tx)
-        .await?;
-        let outcome = if next_attempts >= ACCOUNT_CODE_MAX_ATTEMPTS {
-            delete_code_outbox(&mut tx, code_id).await?;
-            CheckAccountCodeOutcome::AttemptsExceeded {
-                retry_after_secs: retry_after_until(expires_at),
-            }
-        } else {
-            CheckAccountCodeOutcome::Invalid {
-                attempts_left: ACCOUNT_CODE_MAX_ATTEMPTS.saturating_sub(next_attempts),
-            }
-        };
-        tx.commit().await?;
-        Ok(outcome)
     }
 
     /// Update last sign-in and clear password lockout after a valid password.
@@ -702,6 +667,16 @@ impl Db {
         &self,
         account_id: Uuid,
     ) -> Result<Option<AccountRecord>> {
+        let mut tx = self.pool.begin().await?;
+        let email: Option<String> = sqlx::query_scalar("SELECT email FROM accounts WHERE id = $1")
+            .bind(account_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+        let Some(email) = email else {
+            tx.rollback().await?;
+            return Ok(None);
+        };
+        lock_account_email(&mut tx, &email).await?;
         let row = sqlx::query(
             "UPDATE accounts SET last_signin_at = now(), updated_at = now(), \
              failed_attempts = 0, locked_until = NULL \
@@ -709,18 +684,22 @@ impl Db {
                AND (locked_until IS NULL OR locked_until <= now()) RETURNING id",
         )
         .bind(account_id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await?;
         if row.is_none() {
+            tx.rollback().await?;
             return Ok(None);
         }
         let row = sqlx::query(sqlx::AssertSqlSafe(format!(
             "{ACCOUNT_SELECT} WHERE a.id = $1"
         )))
         .bind(account_id)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await?;
-        account_from_row(row).map(Some)
+        let account = account_from_row(row)?;
+        clear_email_code_failures(&mut tx, &email).await?;
+        tx.commit().await?;
+        Ok(Some(account))
     }
 
     /// Increment a failed password attempt and start a 15 minute lock at five.
@@ -768,10 +747,7 @@ impl Db {
             .bind(format!("account-google-sub:{sub}"))
             .execute(&mut *tx)
             .await?;
-        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
-            .bind(format!("account-google-email:{verified_email}"))
-            .execute(&mut *tx)
-            .await?;
+        lock_account_email(&mut tx, verified_email).await?;
 
         let linked = sqlx::query(sqlx::AssertSqlSafe(format!(
             "{ACCOUNT_SELECT} JOIN account_google_identities gi ON gi.account_id = a.id \
@@ -795,6 +771,7 @@ impl Db {
             .await?;
             record_terms_acceptance(&mut tx, account_id, terms_version).await?;
             let account = load_account_by_id_tx(&mut tx, account_id).await?;
+            clear_email_code_failures(&mut tx, &account.email).await?;
             tx.commit().await?;
             return Ok(account);
         }
@@ -842,6 +819,7 @@ impl Db {
                 .await?;
         record_terms_acceptance(&mut tx, linked_id, terms_version).await?;
         let account = load_account_by_id_tx(&mut tx, linked_id).await?;
+        clear_email_code_failures(&mut tx, verified_email).await?;
         tx.commit().await?;
         Ok(account)
     }
@@ -1019,6 +997,59 @@ async fn load_account_by_id_tx(
     account_from_row(row)
 }
 
+async fn lock_account_email(tx: &mut Transaction<'_, Postgres>, email: &str) -> Result<()> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!("account-email:{}", email.to_ascii_lowercase()))
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
+async fn email_code_lockout_remaining(
+    tx: &mut Transaction<'_, Postgres>,
+    email: &str,
+) -> Result<Option<i64>> {
+    sqlx::query_scalar(
+        "SELECT GREATEST(1, CEIL(EXTRACT(EPOCH FROM \
+            (window_started_at + interval '1 hour' - now())))::BIGINT) \
+         FROM account_code_failures WHERE email = lower($1) \
+            AND failed_attempts >= $2 AND window_started_at > now() - interval '1 hour'",
+    )
+    .bind(email)
+    .bind(ACCOUNT_EMAIL_CODE_FAILURE_LIMIT)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(Into::into)
+}
+
+async fn record_email_code_failure(
+    tx: &mut Transaction<'_, Postgres>,
+    email: &str,
+) -> Result<Option<i64>> {
+    sqlx::query(
+        "INSERT INTO account_code_failures (email, failed_attempts) VALUES (lower($1), 1) \
+         ON CONFLICT (email) DO UPDATE SET failed_attempts = CASE \
+             WHEN account_code_failures.window_started_at <= now() - interval '1 hour' THEN 1 \
+             ELSE LEAST(account_code_failures.failed_attempts + 1, $2) END, \
+         window_started_at = CASE \
+             WHEN account_code_failures.window_started_at <= now() - interval '1 hour' THEN now() \
+             ELSE account_code_failures.window_started_at END",
+    )
+    .bind(email)
+    .bind(ACCOUNT_EMAIL_CODE_FAILURE_LIMIT)
+    .execute(&mut **tx)
+    .await?;
+    email_code_lockout_remaining(tx, email).await
+}
+
+async fn clear_email_code_failures(tx: &mut Transaction<'_, Postgres>, email: &str) -> Result<()> {
+    sqlx::query("DELETE FROM account_code_failures WHERE email = lower($1)")
+        .bind(email)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
 async fn insert_account(
     tx: &mut Transaction<'_, Postgres>,
     account: &NewAccount,
@@ -1162,9 +1193,17 @@ async fn lock_and_check_code(
     email: &str,
     purpose: AccountCodePurpose,
     provided_hash: &[u8; 32],
+    consume: bool,
 ) -> Result<LockedCode> {
     // Match issuance and deletion: account first, then code. Otherwise a
     // resend holding the account can deadlock against verification of its code.
+    lock_account_email(tx, email).await?;
+    if let Some(retry_after_secs) = email_code_lockout_remaining(tx, email).await? {
+        return Ok(LockedCode::Rejected {
+            reason: CodeRejection::AttemptsExceeded { retry_after_secs },
+            commit: false,
+        });
+    }
     sqlx::query("SELECT id FROM accounts WHERE lower(email) = lower($1) FOR UPDATE")
         .bind(email)
         .execute(&mut **tx)
@@ -1227,6 +1266,7 @@ async fn lock_and_check_code(
 
     let matches = bool::from(stored_hash.as_slice().ct_eq(provided_hash.as_slice()));
     if !matches {
+        let email_lockout = record_email_code_failure(tx, email).await?;
         let next_attempts = attempts.saturating_add(1);
         sqlx::query(
             "UPDATE account_codes SET attempts = $2, \
@@ -1238,6 +1278,12 @@ async fn lock_and_check_code(
         .bind(ACCOUNT_CODE_MAX_ATTEMPTS)
         .execute(&mut **tx)
         .await?;
+        if let Some(retry_after_secs) = email_lockout {
+            return Ok(LockedCode::Rejected {
+                reason: CodeRejection::AttemptsExceeded { retry_after_secs },
+                commit: true,
+            });
+        }
         if next_attempts >= ACCOUNT_CODE_MAX_ATTEMPTS {
             delete_code_outbox(tx, code_id).await?;
             return Ok(LockedCode::Rejected {
@@ -1255,10 +1301,12 @@ async fn lock_and_check_code(
         });
     }
 
-    sqlx::query("UPDATE account_codes SET consumed_at = now() WHERE id = $1")
-        .bind(code_id)
-        .execute(&mut **tx)
-        .await?;
+    if consume {
+        sqlx::query("UPDATE account_codes SET consumed_at = now() WHERE id = $1")
+            .bind(code_id)
+            .execute(&mut **tx)
+            .await?;
+    }
     Ok(LockedCode::Matched {
         code_id,
         account_id,
@@ -1325,6 +1373,16 @@ async fn record_terms_acceptance(
 }
 
 async fn prune_old_account_mail(tx: &mut Transaction<'_, Postgres>) -> Result<()> {
+    sqlx::query(
+        "WITH stale AS ( \
+             SELECT email FROM account_code_failures \
+             WHERE window_started_at <= now() - interval '1 hour' \
+             ORDER BY window_started_at, email LIMIT $1 FOR UPDATE SKIP LOCKED \
+         ) DELETE FROM account_code_failures f USING stale WHERE f.email = stale.email",
+    )
+    .bind(ACCOUNT_RETENTION_BATCH_LIMIT)
+    .execute(&mut **tx)
+    .await?;
     sqlx::query(
         "WITH stale AS ( \
              SELECT id FROM account_mail_outbox \
