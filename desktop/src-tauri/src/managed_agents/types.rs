@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::PathBuf, process::Child};
 
+/// Role pack v2 building blocks. The desktop depends on buzz-core, so the
+/// company role reuses the relay's own types and the two cannot drift.
+pub use buzz_core_pkg::company_records::{RoleDutyTemplate, RoleOnHire};
+
 /// Human-reviewed risk label for a tool named by company role metadata.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -19,6 +23,9 @@ pub struct CompanyRoleTool {
 }
 
 /// Non-authoritative company role metadata stored on a real persona catalog entry.
+///
+/// The v2 fields are optional and omitted when empty, so a role written before
+/// them serializes byte for byte as it did.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct CompanyRoleMetadata {
@@ -29,6 +36,24 @@ pub struct CompanyRoleMetadata {
     pub worker_menu: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_allowance: Option<String>,
+    /// The outcome the role owns, used as the title of its goal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owns: Option<String>,
+    /// Default home channel name (`a-z`, `0-9` and `-`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
+    /// Default routines, approved by the founder's hire signature.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub duties: Vec<RoleDutyTemplate>,
+    /// What a new employee studies first and how long its first plan covers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_hire: Option<RoleOnHire>,
+    /// Actions that always need a person first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ask_before: Vec<String>,
+    /// The role's desk screen id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home: Option<String>,
 }
 
 /// Validate company role metadata before persisting or publishing it.
@@ -75,6 +100,87 @@ pub fn validate_company_role_metadata(value: &CompanyRoleMetadata) -> Result<(),
                 "company role default allowance must be a non-negative decimal".to_string(),
             );
         }
+    }
+    validate_company_role_v2(value)
+}
+
+/// Non-blank text of at most `max` characters, counted untrimmed the way the
+/// core hire validator counts, so a role the desktop accepts the relay accepts.
+fn role_text_within(text: &str, max: usize) -> bool {
+    !text.trim().is_empty() && text.chars().count() <= max
+}
+
+/// Role pack v2 rules. They mirror `validate_hire_proposal` in buzz-core,
+/// which the relay runs on the role pack a hire copies from this role.
+fn validate_company_role_v2(value: &CompanyRoleMetadata) -> Result<(), String> {
+    if value
+        .owns
+        .as_deref()
+        .is_some_and(|owns| !role_text_within(owns, 500))
+    {
+        return Err("company role owns must be 1 to 500 characters".to_string());
+    }
+    if value.channel.as_deref().is_some_and(|channel| {
+        channel.is_empty()
+            || channel.len() > 80
+            || !channel
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    }) {
+        return Err(
+            "company role channel must be 1 to 80 characters of a-z, 0-9 and -".to_string(),
+        );
+    }
+    if value.duties.len() > 8 {
+        return Err("company role duties are limited to 8".to_string());
+    }
+    for duty in &value.duties {
+        if !role_text_within(&duty.title, 120) {
+            return Err("company role duty title must be 1 to 120 characters".to_string());
+        }
+        let schedule = &duty.schedule_text;
+        if buzz_core_pkg::company_duties::parse_readable_schedule(schedule).is_none() {
+            return Err(format!(
+                "company role duty schedule {schedule:?} is not a supported schedule"
+            ));
+        }
+        if !role_text_within(&duty.instructions, 2_000) {
+            return Err("company role duty instructions must be 1 to 2000 characters".to_string());
+        }
+    }
+    if let Some(on_hire) = &value.on_hire {
+        if on_hire.sources.len() > 8
+            || on_hire
+                .sources
+                .iter()
+                .any(|source| !role_text_within(source, 200))
+        {
+            return Err(
+                "company role on-hire sources must be 1 to 200 characters and limited to 8"
+                    .to_string(),
+            );
+        }
+        if !(1..=30).contains(&on_hire.plan_horizon_days) {
+            return Err("company role plan horizon must be 1 to 30 days".to_string());
+        }
+    }
+    if value.ask_before.len() > 16
+        || value
+            .ask_before
+            .iter()
+            .any(|action| !role_text_within(action, 120))
+    {
+        return Err(
+            "company role ask-before entries must be 1 to 120 characters and limited to 16"
+                .to_string(),
+        );
+    }
+    if value
+        .home
+        .as_deref()
+        .is_some_and(|home| !role_text_within(home, 80))
+    {
+        return Err("company role home must be 1 to 80 characters".to_string());
     }
     Ok(())
 }
@@ -1079,5 +1185,7 @@ pub use team_catalog_source::{TeamCatalogSource, TeamMemberCatalogSource};
 mod teams;
 pub use teams::{CreateTeamRequest, TeamRecord, UpdateTeamRequest};
 
+#[cfg(test)]
+mod company_role_tests;
 #[cfg(test)]
 mod tests;

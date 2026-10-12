@@ -110,6 +110,12 @@ fn company_role_metadata_requires_a_unique_worker_menu_and_decimal_allowance() {
         }],
         worker_menu: vec!["runtime-discovered".to_string()],
         default_allowance: Some("25.50".to_string()),
+        owns: None,
+        channel: None,
+        duties: Vec::new(),
+        on_hire: None,
+        ask_before: Vec::new(),
+        home: None,
     };
     assert!(validate_company_role_metadata(&valid).is_ok());
 
