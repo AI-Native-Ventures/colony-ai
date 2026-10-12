@@ -442,3 +442,101 @@ fn stock_scout_prompt_migrates_and_custom_instructions_survive() {
     assert_eq!(kept.system_prompt, custom.system_prompt);
     assert_eq!(kept.display_name, custom.display_name);
 }
+
+// Code-owned company roles and the real-run gate's fixture.
+
+use super::{
+    fixture_duty_schedule_from, fixture_role_packs_enabled_from, merge_personas_with,
+    test_employee_role, BuiltInPersona, FIXTURE_PERSONAS, TEST_EMPLOYEE_PERSONA_ID,
+    TEST_EMPLOYEE_SYSTEM_PROMPT,
+};
+
+const NOW: &str = "2026-10-11T00:00:00Z";
+
+fn with_fixture() -> Vec<&'static BuiltInPersona> {
+    BUILT_IN_PERSONAS
+        .iter()
+        .chain(FIXTURE_PERSONAS.iter())
+        .collect()
+}
+
+#[test]
+fn built_in_company_roles_are_refreshed_from_code_on_every_load() {
+    let built_ins = with_fixture();
+    let (mut stored, _) = merge_personas_with(Vec::new(), NOW, &built_ins);
+    let tester = stored
+        .iter_mut()
+        .find(|persona| persona.id == TEST_EMPLOYEE_PERSONA_ID)
+        .expect("the fixture is merged in");
+    let mut stale = tester.company_role.clone().expect("the fixture has a role");
+    stale.job = "An old job".to_string();
+    tester.company_role = Some(stale);
+
+    let (merged, changed) = merge_personas_with(stored, NOW, &built_ins);
+    assert!(changed);
+    let refreshed = merged
+        .iter()
+        .find(|persona| persona.id == TEST_EMPLOYEE_PERSONA_ID)
+        .expect("kept");
+    assert_eq!(refreshed.company_role, Some(test_employee_role()));
+    assert!(refreshed.is_builtin);
+
+    let (_, changed_again) = merge_personas_with(merged, NOW, &built_ins);
+    assert!(!changed_again, "an up-to-date role is not written again");
+}
+
+#[test]
+fn the_fixture_pack_is_off_unless_the_gate_turns_it_on() {
+    assert!(fixture_role_packs_enabled_from(Some("1")));
+    for value in [None, Some(""), Some("0"), Some("true"), Some("yes")] {
+        assert!(!fixture_role_packs_enabled_from(value), "{value:?}");
+    }
+    assert!(
+        built_in_persona_records(NOW)
+            .iter()
+            .all(|persona| persona.id != TEST_EMPLOYEE_PERSONA_ID),
+        "without the flag, no fixture reaches anyone's catalog"
+    );
+}
+
+#[test]
+fn the_gate_sets_the_fixture_routine_time() {
+    assert_eq!(
+        fixture_duty_schedule_from(Some("14:35")),
+        "Every day at 14:35"
+    );
+    assert_eq!(fixture_duty_schedule_from(None), "Every day at 09:00");
+    for bad in ["25:00", "9:00", "noon", "14:60", "14:35:00"] {
+        assert_eq!(
+            fixture_duty_schedule_from(Some(bad)),
+            "Every day at 09:00",
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn the_fixture_role_is_a_valid_hire_role_pack() {
+    let role = test_employee_role();
+    crate::managed_agents::validate_company_role_metadata(&role).expect("the desktop accepts it");
+    let mut pack = serde_json::to_value(&role).expect("role serializes");
+    pack["personaId"] = serde_json::json!(TEST_EMPLOYEE_PERSONA_ID);
+    pack["title"] = serde_json::json!("Test Employee");
+    let proposal: buzz_core_pkg::company_records::HireProposal =
+        serde_json::from_value(serde_json::json!({
+            "hireId": "6f1d6a8e-3c1b-4c5e-9a57-3f5c2b8d9e10",
+            "rolePack": pack,
+            "displayName": "Gate Tester",
+            "title": "Test Employee",
+            "introductionChannelId": "0b8f2a4c-6d1e-4f3a-8b9c-1d2e3f4a5b6c",
+            "runtimeId": "claude"
+        }))
+        .expect("a hire proposal");
+    buzz_core_pkg::company_records::validate_hire_proposal(&proposal)
+        .expect("the relay accepts the role pack");
+    for text in [TEST_EMPLOYEE_SYSTEM_PROMPT, role.job.as_str()] {
+        for banned in ["Buzz", "Fizz", "Honey", "\u{2014}"] {
+            assert!(!text.contains(banned), "{banned} in {text}");
+        }
+    }
+}

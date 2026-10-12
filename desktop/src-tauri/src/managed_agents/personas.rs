@@ -2,7 +2,10 @@ use std::fs;
 
 use tauri::AppHandle;
 
-use crate::{managed_agents::AgentDefinition, util::now_iso};
+use crate::{
+    managed_agents::{AgentDefinition, CompanyRoleMetadata, RoleDutyTemplate, RoleOnHire},
+    util::now_iso,
+};
 
 struct BuiltInPersona {
     id: &'static str,
@@ -13,6 +16,9 @@ struct BuiltInPersona {
     model: Option<&'static str>,
     runtime: Option<&'static str>,
     default_active: bool,
+    /// The role a hire copies. Code-owned: `merge_personas` refreshes the
+    /// stored built-in from it on every load.
+    company_role: Option<fn() -> CompanyRoleMetadata>,
 }
 
 pub(crate) const SCOUT_SYSTEM_PROMPT: &str =
@@ -44,6 +50,7 @@ const BUILT_IN_PERSONAS: &[BuiltInPersona] = &[
         model: None,
         runtime: None,
         default_active: true,
+        company_role: None,
     },
     BuiltInPersona {
         id: "builtin:honey",
@@ -54,6 +61,7 @@ const BUILT_IN_PERSONAS: &[BuiltInPersona] = &[
         model: None,
         runtime: None,
         default_active: false,
+        company_role: None,
     },
     BuiltInPersona {
         id: POLLEN_PERSONA_ID,
@@ -64,12 +72,110 @@ const BUILT_IN_PERSONAS: &[BuiltInPersona] = &[
         model: None,
         runtime: None,
         default_active: false,
+        company_role: None,
     },
 ];
 
+/// Persona id of the real-run gate's fixture employee.
+pub(crate) const TEST_EMPLOYEE_PERSONA_ID: &str = "builtin:test-employee";
+/// `1` turns the fixture role pack on (real-run gate only).
+pub(crate) const FIXTURE_ROLE_PACKS_ENV: &str = "COLONY_FIXTURE_ROLE_PACKS";
+/// The fixture's daily note time, `HH:MM` in the company time zone (gate only).
+pub(crate) const FIXTURE_DUTY_TIME_ENV: &str = "COLONY_FIXTURE_DUTY_TIME";
+const DEFAULT_FIXTURE_DUTY_TIME: &str = "09:00";
+
+const TEST_EMPLOYEE_SYSTEM_PROMPT: &str = "You are a test employee that shows Colony runs a team by itself. When you are hired, reply once in your conversation with one short sentence saying you are ready. When your Daily note routine wakes you, post one short note in your conversation saying the daily note ran, with today's date. Never post anything else.";
+
+/// Built-ins that exist only when the real-run gate turns them on.
+const FIXTURE_PERSONAS: &[BuiltInPersona] = &[BuiltInPersona {
+    id: TEST_EMPLOYEE_PERSONA_ID,
+    display_name: "Test Employee",
+    avatar_url: Some(include_str!("scout_avatar.txt")),
+    system_prompt: TEST_EMPLOYEE_SYSTEM_PROMPT,
+    name_pool: &["Gate Tester"],
+    model: None,
+    runtime: None,
+    default_active: true,
+    company_role: Some(test_employee_role),
+}];
+
+/// Whether `value` (of `COLONY_FIXTURE_ROLE_PACKS`) turns the fixture on: only `1`.
+pub(crate) fn fixture_role_packs_enabled_from(value: Option<&str>) -> bool {
+    value == Some("1")
+}
+
+fn fixture_role_packs_enabled() -> bool {
+    fixture_role_packs_enabled_from(std::env::var(FIXTURE_ROLE_PACKS_ENV).ok().as_deref())
+}
+
+fn is_clock(value: &str) -> bool {
+    let Some((hour, minute)) = value.split_once(':') else {
+        return false;
+    };
+    hour.len() == 2
+        && minute.len() == 2
+        && hour.parse::<u8>().is_ok_and(|hour| hour < 24)
+        && minute.parse::<u8>().is_ok_and(|minute| minute < 60)
+}
+
+/// The fixture routine's schedule: `Every day at HH:MM` from the gate, else 09:00.
+pub(crate) fn fixture_duty_schedule_from(value: Option<&str>) -> String {
+    let time = value
+        .map(str::trim)
+        .filter(|time| is_clock(time))
+        .unwrap_or(DEFAULT_FIXTURE_DUTY_TIME);
+    let schedule = format!("Every day at {time}");
+    if buzz_core_pkg::company_duties::parse_readable_schedule(&schedule).is_some() {
+        schedule
+    } else {
+        format!("Every day at {DEFAULT_FIXTURE_DUTY_TIME}")
+    }
+}
+
+/// The fixture's role pack.
+fn test_employee_role() -> CompanyRoleMetadata {
+    CompanyRoleMetadata {
+        job: "Post one short note in your conversation every day, so the owner can see the team runs by itself.".to_string(),
+        skills: vec!["Writing one short note".to_string()],
+        tools: Vec::new(),
+        worker_menu: vec![
+            "claude".to_string(),
+            "codex".to_string(),
+            "buzz-agent".to_string(),
+        ],
+        default_allowance: None,
+        owns: Some("One short note in the home channel every day".to_string()),
+        channel: Some("test-employee".to_string()),
+        duties: vec![RoleDutyTemplate {
+            title: "Daily note".to_string(),
+            schedule_text: fixture_duty_schedule_from(
+                std::env::var(FIXTURE_DUTY_TIME_ENV).ok().as_deref(),
+            ),
+            instructions: "Post one short note in this conversation saying the daily note ran, with today's date.".to_string(),
+        }],
+        on_hire: Some(RoleOnHire {
+            sources: vec!["business profile".to_string()],
+            plan_horizon_days: 14,
+        }),
+        ask_before: vec!["posting anywhere other than this conversation".to_string()],
+        home: Some("test.note".to_string()),
+    }
+}
+
+/// The code-owned built-ins: the launch personas, then the fixture when the
+/// real-run gate turned it on.
+fn built_in_personas() -> Vec<&'static BuiltInPersona> {
+    let fixtures: &'static [BuiltInPersona] = if fixture_role_packs_enabled() {
+        FIXTURE_PERSONAS
+    } else {
+        &[]
+    };
+    BUILT_IN_PERSONAS.iter().chain(fixtures.iter()).collect()
+}
+
 pub(crate) fn built_in_persona_avatar_url(id: &str) -> Option<&'static str> {
-    BUILT_IN_PERSONAS
-        .iter()
+    built_in_personas()
+        .into_iter()
         .find(|persona| persona.id == id)
         .and_then(|persona| persona.avatar_url)
 }
@@ -114,10 +220,14 @@ const RETIRED_PERSONAS: &[(&str, &str)] = &[
 ];
 
 fn built_in_persona_records(now: &str) -> Vec<AgentDefinition> {
-    BUILT_IN_PERSONAS
+    persona_records(&built_in_personas(), now)
+}
+
+fn persona_records(built_ins: &[&'static BuiltInPersona], now: &str) -> Vec<AgentDefinition> {
+    built_ins
         .iter()
         .map(|persona| AgentDefinition {
-            company_role: None,
+            company_role: persona.company_role.map(|role| role()),
             id: persona.id.to_string(),
             display_name: persona.display_name.to_string(),
             avatar_url: persona.avatar_url.map(|s| s.to_string()),
@@ -152,7 +262,7 @@ pub(crate) fn built_in_persona_definition(id: &str, now: &str) -> Option<AgentDe
 }
 
 fn built_in_order(id: &str) -> Option<usize> {
-    BUILT_IN_PERSONAS
+    built_in_personas()
         .iter()
         .position(|persona| persona.id == id)
 }
@@ -185,13 +295,29 @@ pub(crate) fn is_stock_scout_prompt(prompt: &str) -> bool {
         || prompt.trim() == "You are Scout, an energetic maker who turns ideas into action. Be upbeat, practical, and decisive. Help users plan, create, solve problems, and finish work."
 }
 
-fn merge_personas(mut stored: Vec<AgentDefinition>, now: &str) -> (Vec<AgentDefinition>, bool) {
+fn merge_personas(stored: Vec<AgentDefinition>, now: &str) -> (Vec<AgentDefinition>, bool) {
+    merge_personas_with(stored, now, &built_in_personas())
+}
+
+/// [`merge_personas`] against an explicit built-in list, so tests can merge
+/// the fixture without touching the process environment.
+fn merge_personas_with(
+    mut stored: Vec<AgentDefinition>,
+    now: &str,
+    built_ins: &[&'static BuiltInPersona],
+) -> (Vec<AgentDefinition>, bool) {
     let mut changed = false;
 
-    for built_in in built_in_persona_records(now) {
+    for built_in in persona_records(built_ins, now) {
         if let Some(existing) = stored.iter_mut().find(|record| record.id == built_in.id) {
             if !existing.is_builtin {
                 existing.is_builtin = true;
+                changed = true;
+            }
+            // A built-in's company role is code-owned: refresh it on every load.
+            if existing.company_role != built_in.company_role {
+                existing.company_role = built_in.company_role.clone();
+                existing.updated_at = now.to_string();
                 changed = true;
             }
         } else {
@@ -261,7 +387,7 @@ fn merge_personas(mut stored: Vec<AgentDefinition>, now: &str) -> (Vec<AgentDefi
     // working; the user can delete it from the catalog like any custom
     // persona once they no longer need it.
     for record in stored.iter_mut() {
-        if record.is_builtin && built_in_order(&record.id).is_none() {
+        if record.is_builtin && !built_ins.iter().any(|persona| persona.id == record.id) {
             record.is_builtin = false;
             record.updated_at = now.to_string();
             changed = true;
