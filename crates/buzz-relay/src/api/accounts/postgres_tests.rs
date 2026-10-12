@@ -10,7 +10,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use buzz_db::Db;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use nostr::{EventBuilder, JsonUtil, Keys, Kind, Tag};
+use nostr::{EventBuilder, JsonUtil, Keys, Kind, Tag, ToBech32};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
@@ -1884,6 +1884,95 @@ async fn email_code_routes_reject_bad_input_and_respect_the_email_limit() {
     let (limited_status, limited_body) = code_start(&state, &host, ip, &email).await;
     assert_eq!(limited_status, StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(limited_body["error"], "rate_limited");
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn first_code_and_google_sign_ins_replace_a_key_claimed_before_email_proof() {
+    let (jwks_url, server) = fake_google_jwks().await;
+    let (state, pool, host) =
+        test_state(vec![TEST_GOOGLE_AUDIENCE.to_owned()], Some(jwks_url)).await;
+    for use_google in [false, true] {
+        let ip = unique_test_ip();
+        let email = format!(
+            "claimed-first-proof-{}@example.test",
+            Uuid::new_v4().simple()
+        );
+        let attacker = Keys::generate();
+        let claimed_nsec = attacker
+            .secret_key()
+            .to_bech32()
+            .expect("test claim secret");
+        let (claim_status, _) = json_response(
+            call(
+                state.clone(),
+                "POST",
+                "/api/accounts/claim",
+                &host,
+                ip,
+                json!({ "email": email, "password": "unproven-claim-password", "nsec": claimed_nsec }),
+                Some(&attacker),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(claim_status, StatusCode::ACCEPTED);
+        let claimed = state
+            .db
+            .account_by_email(&email)
+            .await
+            .expect("claimed row")
+            .expect("claim exists");
+        assert_eq!(claimed.pubkey, attacker.public_key().to_hex());
+        assert!(claimed.email_verified_at.is_none());
+
+        let (status, session) = if use_google {
+            json_response(call(
+                state.clone(), "POST", "/api/accounts/google", &host, ip,
+                json!({ "id_token": google_token(&email, &format!("sub-{}", Uuid::new_v4().simple())), "termsVersion": "2026-10-11" }),
+                None,
+            ).await).await
+        } else {
+            assert_eq!(
+                code_start(&state, &host, ip, &email).await.0,
+                StatusCode::OK
+            );
+            deliver_pending_mail(&state).await;
+            let code = test_mail_code(&pool, &email, "sign_in").await;
+            code_verify(&state, &host, ip, json!({ "email": email, "code": code, "termsVersion": "2026-10-11", "displayName": "Verified owner" })).await
+        };
+        assert_eq!(status, StatusCode::OK);
+        assert!(session["nsec"]
+            .as_str()
+            .is_some_and(|value| value != claimed_nsec));
+        let pubkey = session["account"]["pubkey"]
+            .as_str()
+            .expect("verified public key");
+        assert_ne!(pubkey, attacker.public_key().to_hex());
+        assert_eq!(session["account"]["has_password"], false);
+        if !use_google {
+            assert_eq!(session["created"], true);
+            let profile_count: i64 = sqlx::query_scalar("SELECT count(*) FROM events WHERE kind = 0 AND pubkey = $1 AND content::jsonb->>'display_name' = 'Verified owner'")
+                .bind(hex::decode(pubkey).expect("profile public key"))
+                .fetch_one(&pool).await.expect("profile belongs to the fresh key");
+            assert_eq!(profile_count, 1);
+        }
+        let (password_status, _) = json_response(
+            call(
+                state.clone(),
+                "POST",
+                "/api/accounts/signin",
+                &host,
+                ip,
+                json!({ "email": email, "password": "unproven-claim-password" }),
+                None,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(password_status, StatusCode::UNAUTHORIZED);
+    }
+    server.abort();
 }
 
 #[tokio::test]

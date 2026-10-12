@@ -363,20 +363,10 @@ fn invalid_code(attempts_left: Option<i32>) -> (StatusCode, Json<Value>) {
 
 /// Sign the person's first profile (display name) with their own key.
 fn display_name_event(
-    config: &Config,
-    account: &AccountRecord,
+    nsec: &str,
     display_name: &str,
 ) -> Result<nostr::Event, (StatusCode, Json<Value>)> {
-    let nsec = crypto::open_nsec(
-        account_kek(config)?,
-        &account.pubkey,
-        account.kek_id(),
-        account.wrapped_dek(),
-        account.sealed_nsec(),
-        account.nonce(),
-    )
-    .map_err(|_| account_unavailable())?;
-    let keys = nostr::Keys::parse(nsec.as_str()).map_err(|_| account_unavailable())?;
+    let keys = nostr::Keys::parse(nsec).map_err(|_| account_unavailable())?;
     nostr::EventBuilder::new(
         nostr::Kind::Metadata,
         serde_json::json!({ "display_name": display_name }).to_string(),
@@ -735,26 +725,19 @@ async fn code_verify(
     let code_hash =
         crypto::hash_code(account_kek(&state.config)?, &code).map_err(|_| account_unavailable())?;
     let tenant = tenant_from_headers(&state, &headers).await?;
-    let profile_event = match display_name {
-        Some(display_name) => {
-            let Some(account) = state
-                .db
-                .account_by_email(&email)
-                .await
-                .map_err(|error| map_db_error("code_verify", error))?
-            else {
-                return Err(code_expired());
-            };
-            Some(display_name_event(&state.config, &account, &display_name)?)
-        }
-        None => None,
-    };
+    let (_, nsec) = crypto::generate_nostr_identity().map_err(|_| account_unavailable())?;
+    let fresh_identity = new_account(&state.config, email.clone(), None, &nsec, true)?;
+    let profile_event = display_name
+        .as_deref()
+        .map(|name| display_name_event(&nsec, name))
+        .transpose()?;
     let outcome = state
         .db
         .consume_sign_in_code(
             &email,
             &code_hash,
             &terms_version,
+            &fresh_identity,
             profile_event
                 .as_ref()
                 .map(|event| (event, tenant.community())),
