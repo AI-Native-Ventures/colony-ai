@@ -82,3 +82,34 @@ fn problem_details_are_plain_words() {
         "This computer is almost out of space, so Naledi is waiting."
     );
 }
+
+#[test]
+fn a_ledger_warning_split_across_two_ticks_is_still_reported() {
+    let dir = tempfile::tempdir().expect("dir");
+    let log = dir.path().join("agent.log");
+    std::fs::write(&log, b"").expect("write");
+    let mut watch = DiskWatch::default();
+    assert!(!watch.check("employee", &log, 1000));
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&log)
+        .expect("open");
+    file.write_all(b"wake ledger could ").expect("append");
+    assert!(!watch.check("employee", &log, 1002));
+    file.write_all(b"not be saved\n").expect("append");
+    assert!(watch.check("employee", &log, 1004));
+}
+
+#[test]
+fn a_failed_log_read_is_retried_from_the_same_cursor() {
+    let dir = tempfile::tempdir().expect("dir");
+    let log = dir.path().join("agent.log");
+    std::fs::write(&log, b"").expect("write");
+    let mut watch = DiskWatch::default();
+    assert!(!watch.check("employee", &log, 1000));
+    std::fs::write(&log, b"wake ledger could not be saved\n").expect("write");
+    assert!(!watch.check_with("employee", &log, 1002, |_, _, _| {
+        Err(std::io::Error::other("temporary read failure"))
+    }));
+    assert!(watch.check("employee", &log, 1004));
+}

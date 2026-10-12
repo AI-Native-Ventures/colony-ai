@@ -217,21 +217,43 @@ impl DiskWatch {
     /// for the first time is read from its current end: older lines may come
     /// from an earlier run.
     pub(crate) fn check(&mut self, pubkey: &str, log_path: &Path, now: i64) -> bool {
-        let len = std::fs::metadata(log_path).map_or(0, |meta| meta.len());
+        self.check_with(pubkey, log_path, now, read_range)
+    }
+
+    /// Production cursor logic with a reader seam for transient I/O failures.
+    pub(crate) fn check_with(
+        &mut self,
+        pubkey: &str,
+        log_path: &Path,
+        now: i64,
+        read: impl FnOnce(&Path, u64, u64) -> std::io::Result<Vec<u8>>,
+    ) -> bool {
+        let Ok(metadata) = std::fs::metadata(log_path) else {
+            return false;
+        };
+        let len = metadata.len();
         let cursor = self.cursors.entry(pubkey.to_string()).or_default();
         if cursor.path != log_path {
             cursor.path = log_path.to_path_buf();
             cursor.offset = len;
             return false;
         }
-        let (start, take) = read_window(len, cursor.offset);
-        cursor.offset = len;
-        if take == 0 {
+        if len == cursor.offset {
             return false;
         }
-        let Ok(chunk) = read_range(log_path, start, take) else {
+        // Keep enough overlap to find a warning split between two appends.
+        let offset = if len < cursor.offset {
+            0
+        } else {
+            cursor
+                .offset
+                .saturating_sub((LEDGER_FAILURE_TEXT.len() - 1) as u64)
+        };
+        let (start, take) = read_window(len, offset);
+        let Ok(chunk) = read(log_path, start, take) else {
             return false;
         };
+        cursor.offset = start + chunk.len() as u64;
         if !contains_ledger_failure(&chunk) {
             return false;
         }
