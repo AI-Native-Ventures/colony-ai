@@ -304,6 +304,31 @@ BEGIN
     END IF;
 END $$;
 
+-- pgschema omits this table-level check. Restore it before anonymous account
+-- codes are accepted and verify the live catalog contains a validated guard.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'account_codes'::regclass
+          AND conname = 'account_codes_pending_sign_in_check'
+    ) THEN
+        ALTER TABLE account_codes
+            ADD CONSTRAINT account_codes_pending_sign_in_check
+            CHECK (account_id IS NOT NULL OR purpose = 'sign_in');
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'account_codes'::regclass
+          AND conname = 'account_codes_pending_sign_in_check'
+          AND contype = 'c'
+          AND convalidated
+    ) THEN
+        RAISE EXCEPTION 'anonymous account codes must have a validated sign-in-only check after pgschema apply';
+    END IF;
+END $$;
+
 -- pgschema does not execute registry seed DML.
 INSERT INTO _operator_global_tables (table_name, reason) VALUES
     ('account_ai_sessions', 'deployment-global payer authorization bound to a managed agent and community'),

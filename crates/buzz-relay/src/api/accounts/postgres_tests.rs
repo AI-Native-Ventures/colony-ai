@@ -1653,14 +1653,16 @@ async fn guessing_budget_survives_three_sign_in_and_reset_codes() {
             .status(),
             StatusCode::OK
         );
-        let (purpose, start_path, verify_path) = if reset {
+        let (purpose, database_purpose, start_path, verify_path) = if reset {
             (
+                AccountCodePurpose::ResetPassword,
                 "reset_password",
                 "/api/accounts/reset/request",
                 "/api/accounts/reset/check",
             )
         } else {
             (
+                AccountCodePurpose::SignIn,
                 "sign_in",
                 "/api/accounts/code/start",
                 "/api/accounts/code/verify",
@@ -1681,7 +1683,16 @@ async fn guessing_budget_survives_three_sign_in_and_reset_codes() {
             .await;
             assert!(response.status().is_success());
             deliver_pending_mail(&state).await;
-            last_code = test_mail_code(&pool, &email, purpose).await;
+            let issued: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM account_codes WHERE email = $1 AND purpose = $2",
+            )
+            .bind(&email)
+            .bind(database_purpose)
+            .fetch_one(&pool)
+            .await
+            .expect("each generation issued a distinct code");
+            assert_eq!(issued, generation as i64 + 1);
+            last_code = test_mail_code(&pool, &email, database_purpose).await;
             let wrong = wrong_test_code(&last_code);
             for attempt in 0..guesses {
                 let body = if reset {
@@ -1710,7 +1721,8 @@ async fn guessing_budget_survives_three_sign_in_and_reset_codes() {
                             StatusCode::UNPROCESSABLE_ENTITY
                         } else {
                             StatusCode::BAD_REQUEST
-                        }
+                        },
+                        "generation {generation}, attempt {attempt}: {body}"
                     );
                 }
             }
@@ -1750,7 +1762,7 @@ async fn guessing_budget_survives_three_sign_in_and_reset_codes() {
         .status()
         .is_success());
         let issued: i64 = sqlx::query_scalar("SELECT count(*) FROM account_codes c JOIN accounts a ON a.id = c.account_id WHERE a.email = $1 AND c.purpose = $2")
-            .bind(&email).bind(purpose).fetch_one(&pool).await.expect("issued code count");
+            .bind(&email).bind(database_purpose).fetch_one(&pool).await.expect("issued code count");
         assert_eq!(issued, 3, "a new start cannot reset the email budget");
 
         sqlx::query("UPDATE account_code_failures SET window_started_at = now() - interval '61 minutes' WHERE email = $1")
@@ -1777,9 +1789,16 @@ async fn guessing_budget_survives_three_sign_in_and_reset_codes() {
     }
 }
 
-async fn clear_code_cooldown_for_test(state: &Arc<AppState>, email: &str, purpose: &str) {
+async fn clear_code_cooldown_for_test(
+    state: &Arc<AppState>,
+    email: &str,
+    purpose: AccountCodePurpose,
+) {
     let digest = hex::encode(Sha256::digest(email.as_bytes()));
-    let key = format!("colony:account-code-cooldown:{purpose}:{digest}");
+    let key = format!(
+        "colony:account-code-cooldown:{}:{digest}",
+        code_purpose_key(purpose)
+    );
     let mut connection = state.redis_pool.get().await.expect("test Redis connection");
     let _: i64 = redis::cmd("DEL")
         .arg(key)
