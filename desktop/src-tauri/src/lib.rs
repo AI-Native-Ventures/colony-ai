@@ -562,6 +562,13 @@ pub fn run() {
                     }
                 });
             }
+
+            // The team runner starts saved companies' employees with no
+            // interface: no `apply_workspace` is needed. Same gates as launch
+            // restore: nothing starts during repos or identity recovery.
+            if restore_agents && !recovery_mode {
+                managed_agents::team_runner::spawn_on_boot(app.handle().clone());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
