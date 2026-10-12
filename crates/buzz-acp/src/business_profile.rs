@@ -780,7 +780,13 @@ mod tests {
         let relay = Keys::generate();
         let relay_hex = relay.public_key().to_hex();
         let base: Value = serde_json::from_str(PROFILE).expect("base profile");
+        assert!(
+            snapshot_from_events(&[head(&relay, "1", PROFILE)], &relay_hex).is_some(),
+            "the base profile is independently valid"
+        );
         for (field, value) in [
+            ("name", serde_json::json!("")),
+            ("name", serde_json::json!("  ")),
             ("schemaVersion", serde_json::json!(2)),
             ("timeZone", serde_json::json!("Mars/Olympus")),
             ("name", serde_json::json!("é".repeat(121))),
