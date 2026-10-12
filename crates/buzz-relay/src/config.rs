@@ -122,6 +122,10 @@ pub struct AccountConfig {
     mail_mode: Option<AccountMailMode>,
     google_client_ids: Vec<String>,
     google_jwks_url: Option<String>,
+    /// Deployment-wide hourly cap on anonymous code-start requests.
+    pub(crate) code_start_limit_per_hour: u64,
+    /// Trust Fly's overwritten address header only behind its HTTP proxy.
+    pub(crate) trust_fly_client_ip: bool,
 }
 
 /// Checkout settings and public policy links for deployment-global account credits.
@@ -453,6 +457,8 @@ impl AccountConfig {
             mail_mode,
             google_client_ids,
             google_jwks_url,
+            code_start_limit_per_hour: 500,
+            trust_fly_client_ip: false,
         }
     }
 }
@@ -477,6 +483,8 @@ impl std::fmt::Debug for AccountConfig {
                 }),
             )
             .field("google_client_ids", &self.google_client_ids)
+            .field("code_start_limit_per_hour", &self.code_start_limit_per_hour)
+            .field("trust_fly_client_ip", &self.trust_fly_client_ip)
             .field(
                 "google_jwks_url",
                 &self.google_jwks_url.as_ref().map(|_| "[CONFIGURED]"),
@@ -488,6 +496,33 @@ impl std::fmt::Debug for AccountConfig {
 fn account_config_from_lookup(
     lookup: impl Fn(&str) -> Option<String>,
 ) -> Result<AccountConfig, ConfigError> {
+    let trust_fly_client_ip = match lookup("COLONY_ACCOUNT_TRUST_FLY_CLIENT_IP")
+        .as_deref()
+        .map(str::trim)
+    {
+        Some("true" | "1") => true,
+        Some("false" | "0") => false,
+        None => lookup("FLY_APP_NAME").is_some_and(|value| !value.trim().is_empty()),
+        Some(_) => {
+            return Err(ConfigError::InvalidValue(
+                "COLONY_ACCOUNT_TRUST_FLY_CLIENT_IP must be true or false".to_owned(),
+            ))
+        }
+    };
+    let code_start_limit_per_hour = lookup("COLONY_ACCOUNT_CODE_START_LIMIT_PER_HOUR")
+        .map(|value| value.trim().parse::<u64>())
+        .transpose()
+        .map_err(|_| {
+            ConfigError::InvalidValue(
+                "COLONY_ACCOUNT_CODE_START_LIMIT_PER_HOUR must be a positive integer".to_owned(),
+            )
+        })?
+        .unwrap_or(500);
+    if code_start_limit_per_hour == 0 {
+        return Err(ConfigError::InvalidValue(
+            "COLONY_ACCOUNT_CODE_START_LIMIT_PER_HOUR must be a positive integer".to_owned(),
+        ));
+    }
     let account_kek = match lookup("COLONY_ACCOUNT_KEK") {
         Some(mut encoded) => {
             let decoded = BASE64.decode(encoded.trim());
@@ -589,6 +624,8 @@ fn account_config_from_lookup(
         mail_mode,
         google_client_ids,
         google_jwks_url,
+        code_start_limit_per_hour,
+        trust_fly_client_ip,
     })
 }
 
@@ -2119,6 +2156,59 @@ mod tests {
         assert!(
             payments_config_from_lookup(env_of(&[("COLONY_PAYMENTS_SANDBOX", "maybe")])).is_err()
         );
+    }
+
+    #[test]
+    fn account_code_start_limit_is_positive_and_configurable() {
+        assert_eq!(
+            account_config_from_lookup(env_of(&[]))
+                .expect("defaults")
+                .code_start_limit_per_hour,
+            500
+        );
+        assert_eq!(
+            account_config_from_lookup(env_of(&[(
+                "COLONY_ACCOUNT_CODE_START_LIMIT_PER_HOUR",
+                "17"
+            )]))
+            .expect("configured cap")
+            .code_start_limit_per_hour,
+            17
+        );
+        for value in ["0", "-1", "invalid", ""] {
+            assert!(account_config_from_lookup(env_of(&[(
+                "COLONY_ACCOUNT_CODE_START_LIMIT_PER_HOUR",
+                value
+            )]))
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn account_fly_address_trust_defaults_to_the_deployment_and_can_be_disabled() {
+        assert!(
+            !account_config_from_lookup(env_of(&[]))
+                .expect("direct default")
+                .trust_fly_client_ip
+        );
+        assert!(
+            account_config_from_lookup(env_of(&[("FLY_APP_NAME", "test-relay")]))
+                .expect("Fly default")
+                .trust_fly_client_ip
+        );
+        assert!(
+            !account_config_from_lookup(env_of(&[
+                ("FLY_APP_NAME", "test-relay"),
+                ("COLONY_ACCOUNT_TRUST_FLY_CLIENT_IP", "false")
+            ]))
+            .expect("explicit direct mode")
+            .trust_fly_client_ip
+        );
+        assert!(account_config_from_lookup(env_of(&[(
+            "COLONY_ACCOUNT_TRUST_FLY_CLIENT_IP",
+            "invalid"
+        )]))
+        .is_err());
     }
 
     #[test]

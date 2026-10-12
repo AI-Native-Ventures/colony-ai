@@ -311,7 +311,10 @@ async fn require_verified_account(
 /// real source. A relay exposed directly would see a spoofable header here;
 /// that is why the deployment-wide limit exists as an unspoofable backstop
 /// and why this address is used only for rate limiting, never for authz.
-fn client_ip(headers: &HeaderMap, extensions: &axum::http::Extensions) -> Option<IpAddr> {
+pub(super) fn client_ip(
+    headers: &HeaderMap,
+    extensions: &axum::http::Extensions,
+) -> Option<IpAddr> {
     headers
         .get("fly-client-ip")
         .and_then(|value| value.to_str().ok())

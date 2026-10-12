@@ -1704,7 +1704,14 @@ async fn guessing_budget_survives_three_sign_in_and_reset_codes() {
                         .as_i64()
                         .is_some_and(|wait| wait > 15 * 60));
                 } else {
-                    assert_eq!(status, StatusCode::BAD_REQUEST);
+                    assert_eq!(
+                        status,
+                        if reset {
+                            StatusCode::UNPROCESSABLE_ENTITY
+                        } else {
+                            StatusCode::BAD_REQUEST
+                        }
+                    );
                 }
             }
         }
@@ -1795,6 +1802,195 @@ async fn clear_email_rate_for_test(state: &Arc<AppState>, route: &str, email: &s
         .query_async(&mut *connection)
         .await
         .expect("isolate durable guessing limit from the minute HTTP limit");
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn account_routes_limit_fly_clients_independently_behind_one_proxy() {
+    let (mut state, _pool, host) = test_state(Vec::new(), None).await;
+    Arc::make_mut(
+        &mut Arc::get_mut(&mut state)
+            .expect("unshared test state")
+            .config,
+    )
+    .accounts
+    .trust_fly_client_ip = true;
+    let proxy = unique_test_ip();
+    let client = unique_test_ip();
+    for attempt in 0..=IP_RATE_LIMIT {
+        let mut request = request_with_ip(
+            "GET",
+            "/api/accounts/me",
+            &host,
+            proxy,
+            b"{}".to_vec(),
+            None,
+        );
+        request.headers_mut().insert(
+            "fly-client-ip",
+            client.to_string().parse().expect("client header"),
+        );
+        let response = crate::router::build_router(state.clone())
+            .oneshot(request)
+            .await
+            .expect("account middleware response");
+        if attempt == IP_RATE_LIMIT {
+            assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        } else {
+            assert_ne!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        }
+    }
+    for real_client in [None, Some(unique_test_ip().to_string())] {
+        let mut request = request_with_ip(
+            "GET",
+            "/api/accounts/me",
+            &host,
+            proxy,
+            b"{}".to_vec(),
+            None,
+        );
+        if let Some(real_client) = real_client {
+            request.headers_mut().insert(
+                "fly-client-ip",
+                real_client.parse().expect("second client header"),
+            );
+        }
+        let response = crate::router::build_router(state.clone())
+            .oneshot(request)
+            .await
+            .expect("independent client response");
+        assert_ne!(
+            response.status(),
+            StatusCode::TOO_MANY_REQUESTS,
+            "one Fly client must not exhaust the proxy or another client bucket"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn account_routes_ignore_forged_fly_addresses_on_a_direct_listener() {
+    let (state, _pool, host) = test_state(Vec::new(), None).await;
+    let peer = unique_test_ip();
+    for attempt in 0..=IP_RATE_LIMIT {
+        let mut request =
+            request_with_ip("GET", "/api/accounts/me", &host, peer, b"{}".to_vec(), None);
+        request.headers_mut().insert(
+            "fly-client-ip",
+            unique_test_ip().to_string().parse().expect("forged header"),
+        );
+        let response = crate::router::build_router(state.clone())
+            .oneshot(request)
+            .await
+            .expect("direct account middleware response");
+        if attempt == IP_RATE_LIMIT {
+            assert_eq!(
+                response.status(),
+                StatusCode::TOO_MANY_REQUESTS,
+                "rotating a forged header cannot reset the socket address bucket"
+            );
+        } else {
+            assert_ne!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        }
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn unknown_email_starts_have_a_global_cap_and_create_accounts_only_after_proof() {
+    let (mut state, pool, host) = test_state(Vec::new(), None).await;
+    Arc::make_mut(
+        &mut Arc::get_mut(&mut state)
+            .expect("unshared test state")
+            .config,
+    )
+    .accounts
+    .code_start_limit_per_hour = 2;
+    let emails: Vec<_> = (0..3)
+        .map(|_| format!("anonymous-code-{}@example.test", Uuid::new_v4().simple()))
+        .collect();
+    for email in &emails[..2] {
+        assert_eq!(
+            code_start(&state, &host, unique_test_ip(), email).await.0,
+            StatusCode::OK
+        );
+        assert!(state
+            .db
+            .account_by_email(email)
+            .await
+            .expect("pending account lookup")
+            .is_none());
+    }
+    let (limited_status, limited_body) =
+        code_start(&state, &host, unique_test_ip(), &emails[2]).await;
+    assert_eq!(limited_status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(limited_body, json!({ "error": "rate_limited" }));
+    let blocked_rows: (i64, i64) = sqlx::query_as("SELECT (SELECT count(*) FROM account_codes WHERE email = $1), (SELECT count(*) FROM account_mail_outbox WHERE recipient = $1)")
+        .bind(&emails[2]).fetch_one(&pool).await.expect("blocked start leaves no code or mail");
+    assert_eq!(blocked_rows, (0, 0));
+
+    deliver_pending_mail(&state).await;
+    let code = test_mail_code(&pool, &emails[0], "sign_in").await;
+    let (status, session) = code_verify(
+        &state,
+        &host,
+        unique_test_ip(),
+        json!({ "email": emails[0], "code": code, "termsVersion": "2026-10-11" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(session["created"], true);
+    let account = state
+        .db
+        .account_by_email(&emails[0])
+        .await
+        .expect("verified lookup")
+        .expect("proof creates the account");
+    let linked: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM account_codes WHERE email = $1 AND account_id = $2",
+    )
+    .bind(&emails[0])
+    .bind(account.id)
+    .fetch_one(&pool)
+    .await
+    .expect("pending code bound atomically");
+    assert_eq!(linked, 1);
+    clear_sign_in_cooldown(&state, &emails[0]).await;
+    assert_eq!(
+        code_start(&state, &host, unique_test_ip(), &emails[0])
+            .await
+            .0,
+        StatusCode::TOO_MANY_REQUESTS,
+        "the cap responds uniformly for known and unknown emails"
+    );
+
+    sqlx::query("UPDATE account_codes SET expires_at = now() - interval '2 days' WHERE email = $1")
+        .bind(&emails[1])
+        .execute(&pool)
+        .await
+        .expect("expire the anonymous code");
+    state
+        .db
+        .claim_account_mail_outbox(1)
+        .await
+        .expect("production maintenance prunes expired anonymous state");
+    let retained: (i64, i64, i64) = sqlx::query_as("SELECT (SELECT count(*) FROM account_codes WHERE email = $1), (SELECT count(*) FROM account_mail_outbox WHERE recipient = $1), (SELECT count(*) FROM account_test_mail WHERE recipient = $1)")
+        .bind(&emails[1]).fetch_one(&pool).await.expect("anonymous retention count");
+    assert_eq!(retained, (0, 0, 0));
+    let expired = code_verify(
+        &state,
+        &host,
+        unique_test_ip(),
+        json!({ "email": emails[1], "code": "123456", "termsVersion": "2026-10-11" }),
+    )
+    .await;
+    assert_eq!(expired.0, StatusCode::GONE);
+    assert!(state
+        .db
+        .account_by_email(&emails[1])
+        .await
+        .expect("expired account lookup")
+        .is_none());
 }
 
 #[tokio::test]
@@ -1994,11 +2190,10 @@ async fn email_code_sign_in_does_not_reveal_accounts_and_burns_a_guessed_code() 
     );
     let (code_count, burned_count, outbox_count): (i64, i64, i64) = sqlx::query_as(
         "SELECT \
-         (SELECT count(*) FROM account_codes c WHERE c.account_id = a.id AND c.purpose = 'sign_in'), \
-         (SELECT count(*) FROM account_codes c WHERE c.account_id = a.id AND c.purpose = 'sign_in' \
+         (SELECT count(*) FROM account_codes c WHERE c.email = $1 AND c.purpose = 'sign_in'), \
+         (SELECT count(*) FROM account_codes c WHERE c.email = $1 AND c.purpose = 'sign_in' \
           AND c.attempts = 5 AND c.consumed_at IS NOT NULL), \
-         (SELECT count(*) FROM account_mail_outbox o WHERE o.account_id = a.id AND o.purpose = 'sign_in') \
-         FROM accounts a WHERE a.email = $1",
+         (SELECT count(*) FROM account_mail_outbox o WHERE o.recipient = $1 AND o.purpose = 'sign_in')",
     )
     .bind(&unknown)
     .fetch_one(&pool)

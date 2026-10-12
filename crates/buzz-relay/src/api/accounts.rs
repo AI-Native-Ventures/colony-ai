@@ -4,12 +4,11 @@ mod crypto;
 mod google;
 mod mail;
 
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::{Body, Bytes};
-use axum::extract::{ConnectInfo, State};
+use axum::extract::State;
 use axum::http::{HeaderMap, Request, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -468,10 +467,14 @@ async fn ip_rate_limit_middleware(
     request: Request<Body>,
     next: Next,
 ) -> Response {
-    let peer_ip = request
-        .extensions()
-        .get::<ConnectInfo<SocketAddr>>()
-        .map(|info| info.0.ip().to_string())
+    let socket_only_headers = HeaderMap::new();
+    let address_headers = if state.config.accounts.trust_fly_client_ip {
+        request.headers()
+    } else {
+        &socket_only_headers
+    };
+    let peer_ip = super::self_provisioning::client_ip(address_headers, request.extensions())
+        .map(|ip| ip.to_string())
         .unwrap_or_else(|| "unknown".to_owned());
     let route = request.uri().path();
     if let Err(response) = check_rate_limit(&state, "ip", route, &peer_ip, IP_RATE_LIMIT).await {
@@ -497,6 +500,29 @@ async fn email_rate_limit(
     email: &str,
 ) -> Result<(), (StatusCode, Json<Value>)> {
     check_rate_limit(state, "email", route, email, EMAIL_RATE_LIMIT).await
+}
+
+async fn limit_email_code_starts(state: &AppState) -> Result<(), (StatusCode, Json<Value>)> {
+    const SCRIPT: &str = "local n=redis.call('INCR',KEYS[1]); if n==1 or redis.call('TTL',KEYS[1])<0 then redis.call('EXPIRE',KEYS[1],3600); end; return n";
+    // The configured relay URL is stable across processes and all tenant hosts.
+    let deployment = hex::encode(Sha256::digest(state.config.relay_url.as_bytes()));
+    let key = format!("colony:account-code-start:{deployment}:requests");
+    let mut connection = state
+        .redis_pool
+        .get()
+        .await
+        .map_err(|_| account_unavailable())?;
+    let count: u64 = redis::cmd("EVAL")
+        .arg(SCRIPT)
+        .arg(1)
+        .arg(key)
+        .query_async(&mut *connection)
+        .await
+        .map_err(|_| account_unavailable())?;
+    if count > state.config.accounts.code_start_limit_per_hour {
+        return Err(json_error(StatusCode::TOO_MANY_REQUESTS, "rate_limited"));
+    }
+    Ok(())
 }
 
 async fn check_rate_limit(
@@ -667,16 +693,18 @@ async fn verify_email(
 }
 
 /// `POST /api/accounts/code/start` sends a sign-in code. A new email gets a
-/// passwordless account in the same commit, so every well-formed email gets
-/// the same answer and nobody can learn which emails have accounts.
+/// temporary code and mail record. Unknown emails create an account only at
+/// successful verification. All starts share the hourly deployment cap so
+/// rate-limit responses do not disclose whether an account exists.
 async fn code_start(
     State(state): State<Arc<AppState>>,
     body: Bytes,
 ) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
     let request: CodeStartRequest = decode_body(&body)?;
     let email = normalize_email(&request.email).ok_or_else(invalid_request)?;
-    email_rate_limit(&state, "/api/accounts/code/start", &email).await?;
     ensure_mail_enabled(&state)?;
+    limit_email_code_starts(&state).await?;
+    email_rate_limit(&state, "/api/accounts/code/start", &email).await?;
     let purpose = AccountCodePurpose::SignIn;
     let cooldown = match reserve_code_cooldown(&state, &email, purpose).await? {
         CodeCooldownReservation::Acquired(lease) => lease,
@@ -684,15 +712,8 @@ async fn code_start(
             return Ok(code_sent(retry_after_secs));
         }
     };
-    let (identity_pubkey, nsec) =
-        crypto::generate_nostr_identity().map_err(|_| account_unavailable())?;
-    let candidate = new_account(&state.config, email.clone(), None, &nsec, false)?;
-    if candidate.pubkey != identity_pubkey {
-        release_code_cooldown(&state, &cooldown).await?;
-        return Err(account_unavailable());
-    }
     let (clear_code, code) = new_code(account_kek(&state.config)?, purpose)?;
-    let outcome = match state.db.start_sign_in_code(&candidate, &code).await {
+    let outcome = match state.db.start_sign_in_code(&email, &code).await {
         Ok(outcome) => outcome,
         Err(error) => {
             release_code_cooldown(&state, &cooldown).await?;
@@ -1480,13 +1501,7 @@ async fn deliver_mail(state: &AppState, message: &buzz_db::accounts::AccountMail
     let delivered = match state.config.accounts.mail_mode() {
         Some(AccountMailMode::Log) => state
             .db
-            .record_account_test_mail(
-                message.id,
-                message.account_id,
-                &message.recipient,
-                &message.purpose,
-                &code,
-            )
+            .record_account_test_mail(message.id, &message.recipient, &message.purpose, &code)
             .await
             .map_err(|_| "sink_write_failed"),
         Some(AccountMailMode::Resend) => mail::send_resend(
