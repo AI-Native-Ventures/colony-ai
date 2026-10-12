@@ -2,6 +2,7 @@
 
 mod browser_runtime;
 mod business_context;
+mod business_profile;
 
 mod acp;
 #[cfg(test)]
@@ -18,16 +19,18 @@ mod prompt_project;
 mod provider_failure;
 mod queue;
 mod relay;
+mod role_context;
 mod scope;
 mod setup_mode;
 mod tool_permissions;
 mod usage;
+mod wake_ledger;
 
 pub use acp::{
     AcpClient, AcpError, EnvVar, McpServer, SessionNewResponse, StopReason, SystemPromptTransport,
 };
 pub use observer::{ObserverContext, ObserverEvent, ObserverHandle};
-pub use prompt_framing::WEB_TASK_RULES;
+pub use prompt_framing::{VOICE_RULES, WEB_TASK_RULES};
 pub use usage::TurnUsage;
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -652,6 +655,7 @@ impl QueuedNormalListenerEvent {
         pool: &mut AgentPool,
         queue: &mut EventQueue,
         steer_ack_tx: &mpsc::UnboundedSender<SteerAckEvent>,
+        ledger: Option<&mut wake_ledger::WakeLedger>,
     ) {
         if !self.accepted || !queue.is_scope_in_flight(&self.scope) {
             return;
@@ -659,6 +663,14 @@ impl QueuedNormalListenerEvent {
         let Some(signal) = mode_gate_signal(handling, &self.effective_author, owner) else {
             return;
         };
+        // Restart catch-up: a steered event reaches the running turn now, so it
+        // is recorded as handled first. When the ledger cannot be saved it stays
+        // queued and runs after this turn instead.
+        if matches!(signal, ControlSignal::Steer)
+            && !commit_to_wake_ledger(ledger, [&self.event_for_steer], queue)
+        {
+            return;
+        }
         let native_attempted = matches!(signal, ControlSignal::Steer)
             && try_native_steer(
                 pool,
@@ -2582,6 +2594,27 @@ async fn tokio_main() -> Result<()> {
 
     let pubkey_hex = config.keys.public_key().to_hex();
 
+    // Restart catch-up uses the saved floor, at most seven days back. Keep the
+    // ledger and its floor after a failed startup save: every new turn waits
+    // for the dedicated retry to recover storage.
+    let mut handled_wakes = open_wake_ledger(
+        config.wake_ledger_path.clone(),
+        &config.relay_url,
+        &pubkey_hex,
+        now_unix,
+        startup_watermark,
+    );
+    let catch_up_since = handled_wakes
+        .as_ref()
+        .and_then(wake_ledger::WakeLedger::catch_up_since);
+    if let Some(since) = catch_up_since {
+        tracing::info!(
+            since,
+            startup_watermark,
+            "catching up on wake events sent while the employee was offline"
+        );
+    }
+
     // Parse BUZZ_AUTH_TAG into a nostr::Tag for NIP-OA relay membership delegation.
     let relay_auth_tag: Option<nostr::Tag> = std::env::var("BUZZ_AUTH_TAG")
         .ok()
@@ -2731,7 +2764,11 @@ async fn tokio_main() -> Result<()> {
     }
     let mut subscribed_channel_ids = HashSet::with_capacity(channel_filters.len());
     for (channel_id, filter) in &channel_filters {
-        if let Err(e) = relay.subscribe_channel(*channel_id, filter.clone()).await {
+        // `None` keeps the startup watermark, exactly as before.
+        if let Err(e) = relay
+            .subscribe_channel_from(*channel_id, filter.clone(), catch_up_since)
+            .await
+        {
             tracing::warn!("failed to subscribe to channel {channel_id}: {e}");
         } else {
             subscribed_channel_ids.insert(*channel_id);
@@ -2818,6 +2855,7 @@ async fn tokio_main() -> Result<()> {
         memory_enabled: config.memory_enabled,
         harness_name: crate::config::normalize_agent_command_identity(&config.agent_command),
         relay_url: config.relay_url.clone(),
+        business_profile: business_profile::BusinessProfileCache::new(),
     });
 
     if !config.memory_enabled {
@@ -2997,6 +3035,7 @@ async fn tokio_main() -> Result<()> {
         SteerAck(SteerAckEvent),
         Wake(u32, Result<AgentPool, String>),
         HoldDeadline,
+        LedgerRetry,
     }
 
     loop {
@@ -3076,6 +3115,7 @@ async fn tokio_main() -> Result<()> {
                     &ctx,
                     &mut last_activity,
                     observer.as_ref(),
+                    handled_wakes.as_mut(),
                 ) {
                     typing_channels.insert(scope, thread_tags);
                 }
@@ -3132,14 +3172,29 @@ async fn tokio_main() -> Result<()> {
                 &ctx,
                 &mut last_activity,
                 observer.as_ref(),
+                handled_wakes.as_mut(),
             ) {
                 typing_channels.insert(scope, thread_tags);
             }
         }
 
+        // Save ignored and queued events before waiting. During write failure
+        // the dedicated LedgerRetry owns recovery and preserves queued work.
+        if let Some(ledger) = handled_wakes.as_mut() {
+            if !ledger.write_failed() {
+                ledger.sync(queue.pending_events(), wake_ledger::unix_now());
+            }
+        }
+
         // Borrow result_rx and join_set simultaneously via split-borrow helper.
         pool.retain_held_scopes(|scope| queue.has_pending_scope(scope));
-        let hold_deadline = pool.next_hold_deadline(pool::HOLD_BUSY_OWNER_TIMEOUT);
+        let hold_deadline = wake_ledger_hold_deadline(&pool, handled_wakes.as_ref());
+        // Recover failed saves even with a quiet queue or a sleeping lazy pool.
+        // The retry renews or clears failure before the next wait.
+        let ledger_retry_at =
+            wake_ledger_retry_delay(handled_wakes.as_ref(), wake_ledger::unix_now())
+                .map(|delay| tokio::time::Instant::now() + delay);
+
         let pool_event: Option<PoolEvent> = {
             let (result_rx, join_set) = pool.rx_and_join_set();
             tokio::select! {
@@ -3184,6 +3239,14 @@ async fn tokio_main() -> Result<()> {
                 } => None,
                 _ = pool::AgentPool::wait_for_hold_deadline(hold_deadline), if pool_ready => {
                     Some(PoolEvent::HoldDeadline)
+                },
+                _ = async {
+                    match ledger_retry_at {
+                        Some(at) => tokio::time::sleep_until(at).await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    Some(PoolEvent::LedgerRetry)
                 },
                 Some(Err(error)) = wake_tasks.join_next(), if !wake_tasks.is_empty() => {
                     if let Some(attempt) = pool_lifecycle.waking_attempt() {
@@ -3356,6 +3419,25 @@ async fn tokio_main() -> Result<()> {
                                         );
                                     }
                                 }
+                                continue;
+                            }
+
+                            // Restart catch-up: skip an event this employee
+                            // already handled, and drop a control command that
+                            // only arrived because the subscription replayed
+                            // from the wake ledger floor.
+                            if !wake_ledger_admits(
+                                handled_wakes.as_mut(),
+                                &buzz_event.event,
+                                kind_u32,
+                                &pubkey_hex,
+                                wake_ledger::unix_now(),
+                            ) {
+                                tracing::debug!(
+                                    channel_id = %buzz_event.channel_id,
+                                    event_id = %buzz_event.event.id.to_hex(),
+                                    "wake ledger skipped an already handled event or a stale control command"
+                                );
                                 continue;
                             }
 
@@ -3572,10 +3654,11 @@ async fn tokio_main() -> Result<()> {
                                 &mut pool,
                                 &mut queue,
                                 &steer_ack_tx,
+                                handled_wakes.as_mut(),
                             );
                             if pool_ready {
                                 for (scope, thread_tags) in
-                                    dispatch_pending(&mut pool, &mut queue, &ctx, &mut last_activity, observer.as_ref())
+                                    dispatch_pending(&mut pool, &mut queue, &ctx, &mut last_activity, observer.as_ref(), handled_wakes.as_mut())
                                 {
                                     typing_channels.insert(scope, thread_tags);
                                 }
@@ -3675,12 +3758,12 @@ async fn tokio_main() -> Result<()> {
                     } else if queue.has_flushable_work() {
                         tracing::debug!("heartbeat_skipped_events");
                         for (scope, thread_tags) in
-                            dispatch_pending(&mut pool, &mut queue, &ctx, &mut last_activity, observer.as_ref())
+                            dispatch_pending(&mut pool, &mut queue, &ctx, &mut last_activity, observer.as_ref(), handled_wakes.as_mut())
                         {
                             typing_channels.insert(scope, thread_tags);
                         }
                     } else if pool.any_idle() {
-                        dispatch_heartbeat(&mut pool, &ctx, &mut heartbeat_in_flight);
+                        dispatch_heartbeat(&mut pool, &ctx, &mut heartbeat_in_flight, handled_wakes.as_ref());
                     } else {
                         tracing::debug!("heartbeat_skipped_busy");
                     }
@@ -3783,6 +3866,7 @@ async fn tokio_main() -> Result<()> {
                     &ctx,
                     &mut last_activity,
                     observer.as_ref(),
+                    handled_wakes.as_mut(),
                 ) {
                     typing_channels.insert(scope, thread_tags);
                 }
@@ -3813,6 +3897,7 @@ async fn tokio_main() -> Result<()> {
                     &ctx,
                     &mut last_activity,
                     observer.as_ref(),
+                    handled_wakes.as_mut(),
                 ) {
                     typing_channels.insert(scope, thread_tags);
                 }
@@ -3971,6 +4056,7 @@ async fn tokio_main() -> Result<()> {
                     &ctx,
                     &mut last_activity,
                     observer.as_ref(),
+                    handled_wakes.as_mut(),
                 ) {
                     typing_channels.insert(scope, thread_tags);
                 }
@@ -4003,6 +4089,7 @@ async fn tokio_main() -> Result<()> {
                             &ctx,
                             &mut last_activity,
                             observer.as_ref(),
+                            handled_wakes.as_mut(),
                         ) {
                             typing_channels.insert(scope, thread_tags);
                         }
@@ -4031,12 +4118,36 @@ async fn tokio_main() -> Result<()> {
                     &ctx,
                     &mut last_activity,
                     observer.as_ref(),
+                    handled_wakes.as_mut(),
+                ) {
+                    typing_channels.insert(scope, thread_tags);
+                }
+            }
+            Some(PoolEvent::LedgerRetry) => {
+                // Save pending-preserving state even if no worker can claim the
+                // queue. A failed write renews the backoff; a saved write clears
+                // it, so an elapsed deadline cannot rearm an immediate loop.
+                // Failed commitments were rolled back, leaving unsent events
+                // replayable until dispatch commits them before starting a turn.
+                sync_wake_ledger_retry(handled_wakes.as_mut(), &queue, wake_ledger::unix_now());
+                for (scope, thread_tags) in dispatch_pending(
+                    &mut pool,
+                    &mut queue,
+                    &ctx,
+                    &mut last_activity,
+                    observer.as_ref(),
+                    handled_wakes.as_mut(),
                 ) {
                     typing_channels.insert(scope, thread_tags);
                 }
             }
             None => {} // relay/heartbeat/shutdown branches handled inline above
         }
+    }
+
+    // Events still queued stay replayable on the next start.
+    if let Some(ledger) = handled_wakes.as_mut() {
+        ledger.sync(queue.pending_events(), wake_ledger::unix_now());
     }
 
     // Drain wake tasks gracefully rather than aborting: an in-flight
@@ -4185,6 +4296,1062 @@ fn is_owner_control_command(
     kind_u32 == KIND_STREAM_MESSAGE
         && event.content.trim() == command
         && event_mentions_agent(event, agent_pubkey_hex)
+}
+
+/// Open and save the configured ledger without disabling catch-up on failure.
+/// Keeping its retry state blocks turns until storage recovers.
+fn open_wake_ledger(
+    path: Option<std::path::PathBuf>,
+    relay_url: &str,
+    agent_pubkey_hex: &str,
+    now: u64,
+    startup_watermark: u64,
+) -> Option<wake_ledger::WakeLedger> {
+    let mut ledger =
+        wake_ledger::WakeLedger::open(path?, relay_url, agent_pubkey_hex, now, startup_watermark);
+    if !ledger.sync(std::iter::empty(), now).is_saved() {
+        tracing::warn!("wake ledger could not be saved; new turns wait until it can");
+    }
+    Some(ledger)
+}
+
+/// Record events as handled in the wake ledger before a turn sees them.
+///
+/// Returns `true` when there is no ledger, or when the ledger now holds the
+/// events on disk. Returns `false` when it could not be saved: the caller must
+/// not show the events to a turn yet, because a crash during that turn would
+/// replay them and the employee would answer twice.
+fn commit_to_wake_ledger<'e>(
+    ledger: Option<&mut wake_ledger::WakeLedger>,
+    events: impl IntoIterator<Item = &'e nostr::Event>,
+    queue: &EventQueue,
+) -> bool {
+    commit_to_wake_ledger_with_pending(ledger, events, queue.pending_events())
+}
+
+/// Owner control commands the listener consumes instead of prompting. Keep in
+/// step with the `!shutdown`, `!cancel` and `!rotate` checks in the relay
+/// branch of the main loop, so [`wake_ledger_admits`] drops every stale one.
+const OWNER_CONTROL_COMMANDS: [&str; 3] = ["!shutdown", "!cancel", "!rotate"];
+
+/// Whether a channel event reaches the listener, given the wake ledger.
+///
+/// Without a ledger every event passes, as before. With one, an event this
+/// employee already handled (before a restart or earlier in this run) is
+/// skipped, and a control command that only arrived through the restart
+/// catch-up is dropped: it was meant for the process that is gone, and a stale
+/// `!shutdown` must not stop the new one.
+fn wake_ledger_admits(
+    ledger: Option<&mut wake_ledger::WakeLedger>,
+    event: &nostr::Event,
+    kind_u32: u32,
+    agent_pubkey_hex: &str,
+    now: u64,
+) -> bool {
+    let Some(ledger) = ledger else {
+        return true;
+    };
+    // The relay subtracts its clock-skew allowance from the subscription floor.
+    // Enforce the exact seven-day bound here, before recording admission.
+    if event.created_at.as_secs() < now.saturating_sub(wake_ledger::MAX_LOOKBACK_SECS) {
+        return false;
+    }
+    match ledger.admit(event, now) {
+        wake_ledger::Admission::Duplicate => false,
+        wake_ledger::Admission::Live => true,
+        wake_ledger::Admission::CaughtUp => !OWNER_CONTROL_COMMANDS
+            .iter()
+            .any(|command| is_owner_control_command(event, kind_u32, command, agent_pubkey_hex)),
+    }
+}
+
+/// Commit before delivery while keeping every undispatched event replayable,
+/// including batches temporarily held outside the queue during dispatch.
+fn commit_to_wake_ledger_with_pending<'e, 'p>(
+    ledger: Option<&mut wake_ledger::WakeLedger>,
+    events: impl IntoIterator<Item = &'e nostr::Event>,
+    pending: impl IntoIterator<Item = &'p nostr::Event>,
+) -> bool {
+    let Some(ledger) = ledger else {
+        return true;
+    };
+    let saved = ledger
+        .commit(events, pending, wake_ledger::unix_now())
+        .is_saved();
+    if !saved {
+        tracing::warn!("wake ledger could not be saved; new turns wait until it can");
+    }
+    saved
+}
+
+/// Let the dedicated ledger retry own recovery while saves are failing.
+///
+/// An expired busy-owner hold stays stamped so recovery can dispatch at once,
+/// but must not keep winning the biased select before the write backoff ends.
+fn wake_ledger_hold_deadline(
+    pool: &AgentPool,
+    ledger: Option<&wake_ledger::WakeLedger>,
+) -> Option<tokio::time::Instant> {
+    if ledger.is_some_and(wake_ledger::WakeLedger::write_failed) {
+        return None;
+    }
+    pool.next_hold_deadline(pool::HOLD_BUSY_OWNER_TIMEOUT)
+}
+
+/// Schedule every failed wake save, including quiet queues and deadlines
+/// passed while another main-loop branch was running.
+fn wake_ledger_retry_delay(ledger: Option<&wake_ledger::WakeLedger>, now: u64) -> Option<Duration> {
+    let ledger = ledger.filter(|ledger| ledger.write_failed())?;
+    Some(ledger.retry_delay(now).unwrap_or(Duration::ZERO))
+}
+
+/// Retry a save without treating queued, undispatched events as handled.
+///
+/// Updating the write result before dispatch renews or clears the retry timer
+/// even when the worker pool is busy or the queue's scope is held.
+fn sync_wake_ledger_retry(
+    ledger: Option<&mut wake_ledger::WakeLedger>,
+    queue: &EventQueue,
+    now: u64,
+) -> bool {
+    let Some(ledger) = ledger else {
+        return true;
+    };
+    let saved = ledger.sync(queue.pending_events(), now).is_saved();
+    if !saved {
+        tracing::warn!("wake ledger could not be saved; new turns wait until it can");
+    }
+    saved
+}
+
+#[cfg(test)]
+mod wake_ledger_dispatch_tests {
+    use super::*;
+    use nostr::{EventBuilder, Keys, Kind};
+
+    const RELAY: &str = "wss://relay.example.com";
+    const NOW: u64 = 20_000;
+
+    fn test_prompt_context(keys: &Keys) -> PromptContext {
+        let rest = || relay::RestClient {
+            http: reqwest::Client::new(),
+            base_url: "http://127.0.0.1:0".to_string(),
+            keys: keys.clone(),
+            auth_tag_json: None,
+        };
+        PromptContext {
+            mcp_servers: vec![],
+            initial_message: None,
+            idle_timeout: Duration::from_secs(60),
+            max_turn_duration: Duration::from_secs(120),
+            turn_liveness_interval: Duration::ZERO,
+            dedup_mode: DedupMode::Queue,
+            system_prompt: None,
+            session_title: None,
+            team_instructions: None,
+            heartbeat_prompt: None,
+            base_prompt: None,
+            cwd: ".".to_string(),
+            rest_client: rest(),
+            channel_info: pool::ChannelInfoResolver::new(HashMap::new(), rest()),
+            context_message_limit: 0,
+            max_turns_per_session: 0,
+            permission_mode: config::PermissionMode::Default,
+            agent_keys: keys.clone(),
+            agent_owner_pubkey: None,
+            memory_enabled: false,
+            harness_name: "goose".to_string(),
+            relay_url: "ws://127.0.0.1:3000".to_string(),
+            business_profile: business_profile::BusinessProfileCache::disabled(),
+        }
+    }
+
+    /// An idle worker whose process does nothing, so a spawned turn can be
+    /// observed and then aborted.
+    async fn idle_worker() -> OwnedAgent {
+        let acp = AcpClient::spawn("bash", &["-c".into(), "sleep 10".into()], &[], false)
+            .await
+            .expect("spawn a stand-in agent process");
+        OwnedAgent {
+            index: 0,
+            acp,
+            state: SessionState::default(),
+            model_capabilities: None,
+            desired_model: None,
+            model_overridden: false,
+            desired_model_request_id: None,
+            desired_model_pending_ack: false,
+            startup_effort: None,
+            agent_name: "test".into(),
+            goose_system_prompt_supported: None,
+            protocol_version: 2,
+        }
+    }
+
+    fn mention(channel_id: Uuid) -> (QueuedEvent, String) {
+        let event = EventBuilder::new(
+            Kind::Custom(KIND_STREAM_MESSAGE as u16),
+            "plan the spring launch",
+        )
+        .sign_with_keys(&Keys::generate())
+        .expect("sign a test mention");
+        let id = event.id.to_hex();
+        (
+            QueuedEvent {
+                channel_id,
+                scope: scope::SessionScope::Conversation { channel_id },
+                event,
+                received_at: std::time::Instant::now(),
+                prompt_tag: "mention".into(),
+            },
+            id,
+        )
+    }
+
+    fn startup_failed_ledger(
+        dir: &std::path::Path,
+        now: u64,
+    ) -> (std::path::PathBuf, wake_ledger::WakeLedger) {
+        let path = dir.join("wake.json");
+        let agent = "ab".repeat(32);
+        assert!(
+            wake_ledger::WakeLedger::open(path.clone(), RELAY, &agent, now - 100, now - 100)
+                .sync(std::iter::empty(), now - 100)
+                .is_saved()
+        );
+        // The saved file remains readable, but its atomic-write path is blocked.
+        std::fs::create_dir(path.with_extension("tmp")).expect("block startup write");
+        let ledger = open_wake_ledger(Some(path.clone()), RELAY, &agent, now, now)
+            .expect("startup keeps the ledger after its first write fails");
+        assert!(ledger.write_failed());
+        assert_eq!(ledger.catch_up_since(), Some(now - 100));
+        (path, ledger)
+    }
+
+    #[test]
+    fn startup_failure_retries_and_recovers_with_a_quiet_empty_queue() {
+        assert!(open_wake_ledger(None, RELAY, &"ab".repeat(32), NOW, NOW).is_none());
+        let dir = std::env::temp_dir().join(format!("colony-wake-quiet-{}", Uuid::new_v4()));
+        let (path, mut ledger) = startup_failed_ledger(&dir, NOW);
+        let queue = EventQueue::new(DedupMode::Queue);
+        let deadline = NOW + wake_ledger::WRITE_RETRY_SECS;
+        assert_eq!(queue.pending_events().count(), 0);
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), NOW),
+            Some(Duration::from_secs(wake_ledger::WRITE_RETRY_SECS))
+        );
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), deadline),
+            Some(Duration::ZERO)
+        );
+        assert!(!sync_wake_ledger_retry(Some(&mut ledger), &queue, deadline));
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), deadline),
+            Some(Duration::from_secs(wake_ledger::WRITE_RETRY_SECS))
+        );
+        std::fs::remove_dir(path.with_extension("tmp")).expect("unblock startup write");
+        let retry = deadline + wake_ledger::WRITE_RETRY_SECS;
+        assert!(sync_wake_ledger_retry(Some(&mut ledger), &queue, retry));
+        assert_eq!(wake_ledger_retry_delay(Some(&ledger), retry), None);
+        assert!(!ledger.write_failed());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn startup_failed_save_blocks_dispatch_until_the_same_ledger_recovers() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-startup-{}", Uuid::new_v4()));
+        let now = wake_ledger::unix_now();
+        let (path, mut ledger) = startup_failed_ledger(&dir, now);
+        let mut pool = AgentPool::from_slots(vec![Some(idle_worker().await)]);
+        let ctx = Arc::new(test_prompt_context(&Keys::generate()));
+        let mut queue = EventQueue::new(DedupMode::Queue);
+        let (queued, _) = mention(Uuid::new_v4());
+        let scope = queued.scope.clone();
+        let event = queued.event.clone();
+        assert!(queue.push(queued));
+        let mut last_activity = tokio::time::Instant::now();
+        assert!(dispatch_pending(
+            &mut pool,
+            &mut queue,
+            &ctx,
+            &mut last_activity,
+            None,
+            Some(&mut ledger)
+        )
+        .is_empty());
+        assert!(pool.any_idle());
+        assert!(pool.join_set.is_empty());
+        assert!(pool.task_map().is_empty());
+        assert!(!queue.is_scope_in_flight(&scope));
+        assert_eq!(queue.pending_events().count(), 1);
+        std::fs::remove_dir(path.with_extension("tmp")).expect("unblock startup write");
+        assert!(sync_wake_ledger_retry(
+            Some(&mut ledger),
+            &queue,
+            now + wake_ledger::WRITE_RETRY_SECS
+        ));
+        assert_eq!(
+            dispatch_pending(
+                &mut pool,
+                &mut queue,
+                &ctx,
+                &mut last_activity,
+                None,
+                Some(&mut ledger)
+            )
+            .len(),
+            1
+        );
+        assert!(queue.is_scope_in_flight(&scope));
+        assert_eq!(pool.task_map().len(), 1);
+        let mut reopened = wake_ledger::WakeLedger::open(path, RELAY, &"ab".repeat(32), now, now);
+        assert_eq!(
+            reopened.admit(&event, now),
+            wake_ledger::Admission::Duplicate,
+            "the event was saved before its turn started"
+        );
+        pool.join_set.abort_all();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn startup_failed_save_blocks_heartbeat_until_the_same_ledger_recovers() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-heartbeat-{}", Uuid::new_v4()));
+        let now = wake_ledger::unix_now();
+        let (path, mut ledger) = startup_failed_ledger(&dir, now);
+        let mut pool = AgentPool::from_slots(vec![Some(idle_worker().await)]);
+        let ctx = Arc::new(test_prompt_context(&Keys::generate()));
+        let mut heartbeat_in_flight = false;
+        dispatch_heartbeat(&mut pool, &ctx, &mut heartbeat_in_flight, Some(&ledger));
+        assert!(!heartbeat_in_flight);
+        assert!(pool.any_idle(), "failed storage must not claim the worker");
+        assert!(pool.join_set.is_empty());
+        assert!(pool.task_map().is_empty());
+        std::fs::remove_dir(path.with_extension("tmp")).expect("unblock startup write");
+        assert!(sync_wake_ledger_retry(
+            Some(&mut ledger),
+            &EventQueue::new(DedupMode::Queue),
+            now + wake_ledger::WRITE_RETRY_SECS
+        ));
+        dispatch_heartbeat(&mut pool, &ctx, &mut heartbeat_in_flight, Some(&ledger));
+        assert!(
+            heartbeat_in_flight,
+            "a recovered ledger permits heartbeat immediately"
+        );
+        assert!(!pool.any_idle());
+        assert_eq!(pool.task_map().len(), 1);
+        pool.join_set.abort_all();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn heartbeat_without_a_ledger_keeps_existing_behavior() {
+        let mut pool = AgentPool::from_slots(vec![Some(idle_worker().await)]);
+        let ctx = Arc::new(test_prompt_context(&Keys::generate()));
+        let mut heartbeat_in_flight = false;
+        dispatch_heartbeat(&mut pool, &ctx, &mut heartbeat_in_flight, None);
+        assert!(heartbeat_in_flight);
+        assert_eq!(pool.task_map().len(), 1);
+        dispatch_heartbeat(&mut pool, &ctx, &mut heartbeat_in_flight, None);
+        assert_eq!(
+            pool.task_map().len(),
+            1,
+            "no second heartbeat while one is in flight"
+        );
+        pool.join_set.abort_all();
+    }
+
+    #[test]
+    fn commit_helper_passes_without_a_ledger_and_reports_failed_writes() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-commit-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        std::fs::write(dir.join("blocker"), b"").expect("write blocker file");
+        let queue = EventQueue::new(DedupMode::Queue);
+        let (queued, _) = mention(Uuid::new_v4());
+        assert!(
+            commit_to_wake_ledger(None, [&queued.event], &queue),
+            "without a ledger every turn may start, as before"
+        );
+        let mut blocked = wake_ledger::WakeLedger::open(
+            dir.join("blocker").join("wake.json"),
+            RELAY,
+            &"ab".repeat(32),
+            NOW,
+            NOW,
+        );
+        assert!(!commit_to_wake_ledger(
+            Some(&mut blocked),
+            [&queued.event],
+            &queue
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn wake_retry_scheduling_keeps_exact_and_elapsed_deadlines_ready() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-retry-time-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        std::fs::write(dir.join("blocker"), b"").expect("write blocker file");
+        let mut ledger = wake_ledger::WakeLedger::open(
+            dir.join("blocker").join("wake.json"),
+            RELAY,
+            &"ab".repeat(32),
+            NOW,
+            NOW,
+        );
+        assert_eq!(wake_ledger_retry_delay(None, NOW), None);
+        assert_eq!(wake_ledger_retry_delay(Some(&ledger), NOW), None);
+        assert_eq!(
+            ledger.sync(std::iter::empty(), NOW),
+            wake_ledger::SyncOutcome::Failed
+        );
+        let deadline = NOW + wake_ledger::WRITE_RETRY_SECS;
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), deadline - 1),
+            Some(Duration::from_secs(1))
+        );
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), deadline),
+            Some(Duration::ZERO)
+        );
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), deadline + 1),
+            Some(Duration::ZERO)
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn wake_retry_renews_or_clears_failure_when_no_worker_can_take_pending_work() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-retry-save-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let blocker = dir.join("blocker");
+        std::fs::write(&blocker, b"").expect("write blocker file");
+        let path = blocker.join("wake.json");
+        let mut ledger =
+            wake_ledger::WakeLedger::open(path.clone(), RELAY, &"ab".repeat(32), NOW, NOW);
+        let mut queue = EventQueue::new(DedupMode::Queue);
+        let (queued, _) = mention(Uuid::new_v4());
+        let event = queued.event.clone();
+        assert!(queue.push(queued));
+        assert_eq!(
+            ledger.commit([&event], queue.pending_events(), NOW),
+            wake_ledger::SyncOutcome::Failed
+        );
+        let first_deadline = NOW + wake_ledger::WRITE_RETRY_SECS;
+        assert!(!sync_wake_ledger_retry(
+            Some(&mut ledger),
+            &queue,
+            first_deadline
+        ));
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), first_deadline),
+            Some(Duration::from_secs(wake_ledger::WRITE_RETRY_SECS))
+        );
+
+        let mut pool = AgentPool::from_slots(vec![]);
+        let ctx = Arc::new(test_prompt_context(&Keys::generate()));
+        let mut last_activity = tokio::time::Instant::now();
+        assert!(dispatch_pending(
+            &mut pool,
+            &mut queue,
+            &ctx,
+            &mut last_activity,
+            None,
+            Some(&mut ledger)
+        )
+        .is_empty());
+        assert_eq!(queue.pending_events().count(), 1);
+
+        std::fs::remove_file(blocker).expect("unblock ledger directory");
+        let second_deadline = first_deadline + wake_ledger::WRITE_RETRY_SECS;
+        assert!(sync_wake_ledger_retry(
+            Some(&mut ledger),
+            &queue,
+            second_deadline
+        ));
+        assert!(!ledger.write_failed());
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), second_deadline),
+            None
+        );
+        assert!(dispatch_pending(
+            &mut pool,
+            &mut queue,
+            &ctx,
+            &mut last_activity,
+            None,
+            Some(&mut ledger)
+        )
+        .is_empty());
+        assert_eq!(
+            queue.pending_events().count(),
+            1,
+            "work stays queued without a worker"
+        );
+        let mut reopened = wake_ledger::WakeLedger::open(
+            path,
+            RELAY,
+            &"ab".repeat(32),
+            second_deadline,
+            second_deadline,
+        );
+        assert_ne!(
+            reopened.admit(&event, second_deadline),
+            wake_ledger::Admission::Duplicate,
+            "retry sync must not mark undispatched work as handled"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn mid_turn_steering_waits_for_a_saved_ledger_on_both_delivery_paths() {
+        for native in [true, false] {
+            let dir = std::env::temp_dir().join(format!("colony-wake-steer-{}", Uuid::new_v4()));
+            std::fs::create_dir_all(&dir).expect("create test dir");
+            std::fs::write(dir.join("blocker"), b"").expect("write blocker file");
+            let channel_id = Uuid::new_v4();
+            let scope = scope::SessionScope::Conversation { channel_id };
+            let mut queue = EventQueue::new(DedupMode::Queue);
+            queue.push(mention(channel_id).0);
+            let _in_flight = queue.flush_next().expect("start an in-flight turn");
+            let (queued, event_id) = mention(channel_id);
+            let event = queued.event.clone();
+            assert!(queue.push(queued));
+            let queued_listener_event = || QueuedNormalListenerEvent {
+                accepted: true,
+                scope: scope.clone(),
+                effective_author: event.pubkey.to_hex(),
+                event_id_hex: event_id.clone(),
+                event_for_steer: event.clone(),
+                prompt_tag_for_steer: "mention".into(),
+            };
+            let mut pool = AgentPool::from_slots(vec![]);
+            let (control_tx, mut control_rx) = tokio::sync::oneshot::channel();
+            let (native_tx, mut native_rx) = mpsc::channel(1);
+            let task_id = pool.join_set.spawn(std::future::pending()).id();
+            pool.task_map_mut().insert(
+                task_id,
+                pool::TaskMeta {
+                    agent_index: 0,
+                    channel_id: Some(channel_id),
+                    scope: Some(scope.clone()),
+                    turn_id: "wake-ledger-steer-test".into(),
+                    recoverable_batch: None,
+                    control_tx: Some(control_tx),
+                    steer_tx: native.then_some(native_tx),
+                    successful_steer_deliveries: HashSet::new(),
+                },
+            );
+            let (ack_tx, _ack_rx) = mpsc::unbounded_channel();
+            let mut blocked = wake_ledger::WakeLedger::open(
+                dir.join("blocker").join("wake.json"),
+                RELAY,
+                &"ab".repeat(32),
+                NOW,
+                NOW,
+            );
+            queued_listener_event().steer_or_interrupt(
+                MultipleEventHandling::Steer,
+                None,
+                &mut pool,
+                &mut queue,
+                &ack_tx,
+                Some(&mut blocked),
+            );
+            assert!(
+                native_rx.try_recv().is_err(),
+                "failed saves never reach native steering"
+            );
+            assert!(
+                matches!(
+                    control_rx.try_recv(),
+                    Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+                ),
+                "failed saves never reach cancel-and-merge steering"
+            );
+            assert_eq!(queue.pending_events().count(), 1, "the event stays queued");
+
+            let path = dir.join("ok").join("wake.json");
+            let mut healthy =
+                wake_ledger::WakeLedger::open(path.clone(), RELAY, &"ab".repeat(32), NOW, NOW);
+            queued_listener_event().steer_or_interrupt(
+                MultipleEventHandling::Steer,
+                None,
+                &mut pool,
+                &mut queue,
+                &ack_tx,
+                Some(&mut healthy),
+            );
+            assert!(
+                std::fs::read_to_string(path)
+                    .expect("read saved ledger")
+                    .contains(&event_id),
+                "the event is persisted before either steer delivery"
+            );
+            if native {
+                let request = native_rx.try_recv().expect("native steer delivered");
+                assert!(request
+                    .prompt_blocks
+                    .iter()
+                    .any(|block| block.contains(&event_id)));
+                assert_eq!(
+                    queue.pending_events().count(),
+                    0,
+                    "native delivery withholds the event"
+                );
+                assert!(matches!(
+                    control_rx.try_recv(),
+                    Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+                ));
+            } else {
+                assert_eq!(
+                    control_rx.try_recv().expect("fallback steer delivered"),
+                    ControlSignal::Steer
+                );
+                assert_eq!(
+                    queue.pending_events().count(),
+                    1,
+                    "fallback merges the queued event"
+                );
+            }
+            pool.join_set.abort_all();
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn failed_wake_save_suppresses_expired_hold_until_ledger_retry_recovers() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-hold-retry-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let blocker = dir.join("blocker");
+        std::fs::write(&blocker, b"").expect("write blocker file");
+        let mut idle = idle_worker().await;
+        idle.index = 1;
+        let mut pool = AgentPool::from_slots(vec![None, Some(idle)]);
+        let channel_id = Uuid::new_v4();
+        let held_scope = scope::SessionScope::Thread {
+            channel_id,
+            root_event_id: "cd".repeat(32),
+        };
+        pool.record_scope_owner(held_scope.clone(), 0);
+        let busy_task = pool.join_set.spawn(std::future::pending()).id();
+        pool.task_map_mut().insert(
+            busy_task,
+            pool::TaskMeta {
+                agent_index: 0,
+                channel_id: Some(channel_id),
+                scope: Some(scope::SessionScope::Thread {
+                    channel_id,
+                    root_event_id: "ef".repeat(32),
+                }),
+                turn_id: "busy-owner-turn".into(),
+                recoverable_batch: None,
+                control_tx: None,
+                steer_tx: None,
+                successful_steer_deliveries: HashSet::new(),
+            },
+        );
+        let mut queued = mention(channel_id).0;
+        queued.scope = held_scope.clone();
+        let event_id = queued.event.id;
+        let mut queue = EventQueue::new(DedupMode::Queue);
+        assert!(queue.push(queued));
+        let ctx = Arc::new(test_prompt_context(&Keys::generate()));
+        let mut last_activity = tokio::time::Instant::now();
+        let now = wake_ledger::unix_now();
+        let mut ledger = wake_ledger::WakeLedger::open(
+            blocker.join("wake.json"),
+            RELAY,
+            &"ab".repeat(32),
+            now,
+            now,
+        );
+        assert!(dispatch_pending(
+            &mut pool,
+            &mut queue,
+            &ctx,
+            &mut last_activity,
+            None,
+            Some(&mut ledger)
+        )
+        .is_empty());
+        let original_deadline = pool
+            .next_hold_deadline(pool::HOLD_BUSY_OWNER_TIMEOUT)
+            .expect("hold was stamped");
+        assert_eq!(
+            wake_ledger_hold_deadline(&pool, Some(&ledger)),
+            Some(original_deadline)
+        );
+        assert_eq!(
+            wake_ledger_hold_deadline(&pool, None),
+            Some(original_deadline)
+        );
+        tokio::time::advance(pool::HOLD_BUSY_OWNER_TIMEOUT).await;
+        assert!(dispatch_pending(
+            &mut pool,
+            &mut queue,
+            &ctx,
+            &mut last_activity,
+            None,
+            Some(&mut ledger)
+        )
+        .is_empty());
+        assert!(ledger.write_failed());
+        assert!(pool.any_idle(), "failed save returns the claimed worker");
+        assert_eq!(
+            pool.next_hold_deadline(pool::HOLD_BUSY_OWNER_TIMEOUT),
+            Some(original_deadline),
+            "failure preserves the original hold age"
+        );
+        assert_eq!(
+            queue
+                .pending_events()
+                .map(|event| event.id)
+                .collect::<Vec<_>>(),
+            vec![event_id]
+        );
+        assert!(!queue.is_scope_in_flight(&held_scope));
+        let retry_now = wake_ledger::unix_now();
+        let retry_delay = wake_ledger_retry_delay(Some(&ledger), retry_now)
+            .expect("dedicated ledger retry remains available");
+        assert!(retry_delay > Duration::ZERO);
+        for advance in [Duration::ZERO, retry_delay] {
+            tokio::time::advance(advance).await;
+            let hold_deadline = wake_ledger_hold_deadline(&pool, Some(&ledger));
+            assert_eq!(
+                hold_deadline, None,
+                "failed storage suppresses the expired hold wake"
+            );
+            let hold_woke = tokio::select! {
+                biased;
+                _ = AgentPool::wait_for_hold_deadline(hold_deadline) => true,
+                _ = std::future::ready(()) => false,
+            };
+            assert!(
+                !hold_woke,
+                "an unrelated ready branch must remain reachable"
+            );
+        }
+        let retry_at = retry_now + retry_delay.as_secs();
+        assert_eq!(
+            wake_ledger_retry_delay(Some(&ledger), retry_at),
+            Some(Duration::ZERO)
+        );
+        std::fs::remove_file(blocker).expect("unblock ledger directory");
+        assert!(sync_wake_ledger_retry(Some(&mut ledger), &queue, retry_at));
+        assert_eq!(
+            wake_ledger_hold_deadline(&pool, Some(&ledger)),
+            Some(original_deadline)
+        );
+        let dispatched = dispatch_pending(
+            &mut pool,
+            &mut queue,
+            &ctx,
+            &mut last_activity,
+            None,
+            Some(&mut ledger),
+        );
+        assert_eq!(
+            dispatched.len(),
+            1,
+            "recovery dispatches without another hold timeout"
+        );
+        assert_eq!(dispatched[0].0, held_scope);
+        assert!(!pool.held_since_contains(&held_scope));
+        assert_eq!(queue.pending_events().count(), 0);
+        pool.join_set.abort_all();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn dispatch_keeps_busy_owner_batches_replayable_in_the_first_saved_snapshot() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-held-{}", Uuid::new_v4()));
+        let path = dir.join("wake.json");
+        let agent_hex = "ab".repeat(32);
+        let mut idle = idle_worker().await;
+        idle.index = 1;
+        let mut pool = AgentPool::from_slots(vec![None, Some(idle)]);
+        let channel_id = Uuid::new_v4();
+        let held_scope = scope::SessionScope::Thread {
+            channel_id,
+            root_event_id: "cd".repeat(32),
+        };
+        pool.record_scope_owner(held_scope.clone(), 0);
+        let busy_task = pool.join_set.spawn(std::future::pending()).id();
+        pool.task_map_mut().insert(
+            busy_task,
+            pool::TaskMeta {
+                agent_index: 0,
+                channel_id: Some(channel_id),
+                scope: Some(scope::SessionScope::Thread {
+                    channel_id,
+                    root_event_id: "ef".repeat(32),
+                }),
+                turn_id: "busy-owner-turn".into(),
+                recoverable_batch: None,
+                control_tx: None,
+                steer_tx: None,
+                successful_steer_deliveries: HashSet::new(),
+            },
+        );
+        let mut held = mention(channel_id).0;
+        held.scope = held_scope.clone();
+        held.received_at = std::time::Instant::now() - Duration::from_secs(1);
+        held.event = EventBuilder::new(Kind::Custom(KIND_STREAM_MESSAGE as u16), "held wake")
+            .custom_created_at(nostr::Timestamp::from(NOW - 100))
+            .sign_with_keys(&Keys::generate())
+            .expect("sign held wake");
+        let held_event = held.event.clone();
+        let mut runnable = mention(Uuid::new_v4()).0;
+        let runnable_scope = runnable.scope.clone();
+        runnable.event =
+            EventBuilder::new(Kind::Custom(KIND_STREAM_MESSAGE as u16), "runnable wake")
+                .custom_created_at(nostr::Timestamp::from(NOW - 50))
+                .sign_with_keys(&Keys::generate())
+                .expect("sign runnable wake");
+        let runnable_event = runnable.event.clone();
+        let mut queue = EventQueue::new(DedupMode::Queue);
+        assert!(queue.push(held));
+        assert!(queue.push(runnable));
+        let mut ledger = wake_ledger::WakeLedger::open(path.clone(), RELAY, &agent_hex, NOW, NOW);
+        ledger.admit(&held_event, NOW);
+        ledger.admit(&runnable_event, NOW);
+        let ctx = Arc::new(test_prompt_context(&Keys::generate()));
+        let mut last_activity = tokio::time::Instant::now();
+        let dispatched = dispatch_pending(
+            &mut pool,
+            &mut queue,
+            &ctx,
+            &mut last_activity,
+            None,
+            Some(&mut ledger),
+        );
+        assert_eq!(dispatched.len(), 1);
+        assert_eq!(dispatched[0].0, runnable_scope);
+        assert!(
+            pool.held_since_contains(&held_scope),
+            "the older thread batch took the busy-owner hold path"
+        );
+        assert!(!queue.is_scope_in_flight(&held_scope));
+        assert_eq!(queue.pending_events().count(), 1);
+        // Inspect the dispatch write itself, before any background sync can
+        // repair an incorrect handled list after held batches are requeued.
+        let saved = std::fs::read_to_string(&path).expect("read first dispatch snapshot");
+        assert!(
+            !saved.contains(&held_event.id.to_hex()),
+            "held work is still undispatched"
+        );
+        assert!(saved.contains(&runnable_event.id.to_hex()));
+        let mut reopened =
+            wake_ledger::WakeLedger::open(path, RELAY, &agent_hex, NOW + 1_000, NOW + 1_000);
+        assert!(reopened
+            .catch_up_since()
+            .is_some_and(|floor| floor <= NOW - 100));
+        assert_eq!(
+            reopened.admit(&held_event, NOW + 1_000),
+            wake_ledger::Admission::CaughtUp
+        );
+        assert_eq!(
+            reopened.admit(&runnable_event, NOW + 1_000),
+            wake_ledger::Admission::Duplicate
+        );
+        pool.join_set.abort_all();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn no_turn_starts_until_the_wake_ledger_is_saved() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-dispatch-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        // A file where the ledger folder should be makes every write fail.
+        std::fs::write(dir.join("blocker"), b"").expect("write blocker file");
+        let agent_hex = "ab".repeat(32);
+        let keys = Keys::generate();
+        let ctx = Arc::new(test_prompt_context(&keys));
+        let mut pool = AgentPool::from_slots(vec![Some(idle_worker().await)]);
+        let mut queue = EventQueue::new(DedupMode::Queue);
+        let channel_id = Uuid::new_v4();
+        let (queued, event_id) = mention(channel_id);
+        queue.push(queued);
+        let mut last_activity = tokio::time::Instant::now();
+
+        let mut blocked = wake_ledger::WakeLedger::open(
+            dir.join("blocker").join("wake.json"),
+            RELAY,
+            &agent_hex,
+            NOW,
+            NOW,
+        );
+        let dispatched = dispatch_pending(
+            &mut pool,
+            &mut queue,
+            &ctx,
+            &mut last_activity,
+            None,
+            Some(&mut blocked),
+        );
+        assert!(
+            dispatched.is_empty(),
+            "no turn starts while the ledger cannot be saved"
+        );
+        assert!(pool.join_set.is_empty(), "no prompt task was spawned");
+        assert_eq!(
+            queue.pending_channels(),
+            1,
+            "the mention waits in the queue"
+        );
+        assert!(
+            !queue.is_scope_in_flight(&scope::SessionScope::Conversation { channel_id }),
+            "the conversation is free for the retry"
+        );
+        assert!(
+            blocked.retry_delay(wake_ledger::unix_now()).is_some(),
+            "the main loop learns when to retry"
+        );
+
+        let path = dir.join("ok").join("wake.json");
+        let mut ledger = wake_ledger::WakeLedger::open(path.clone(), RELAY, &agent_hex, NOW, NOW);
+        let dispatched = dispatch_pending(
+            &mut pool,
+            &mut queue,
+            &ctx,
+            &mut last_activity,
+            None,
+            Some(&mut ledger),
+        );
+        assert_eq!(
+            dispatched.len(),
+            1,
+            "the worker went back to the pool and now takes the batch"
+        );
+        let saved = std::fs::read_to_string(&path).expect("the ledger was written");
+        assert!(
+            saved.contains(&event_id),
+            "the mention is recorded as handled when its turn starts"
+        );
+
+        pool.join_set.abort_all();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod wake_ledger_admission_tests {
+    use super::*;
+    use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
+
+    const RELAY: &str = "wss://relay.example.com";
+    const NOW: u64 = 20_000;
+
+    fn message(content: &str, created_at: u64, agent: &str) -> nostr::Event {
+        EventBuilder::new(Kind::Custom(KIND_STREAM_MESSAGE as u16), content)
+            .tags([Tag::parse(["p", agent]).expect("p tag")])
+            .custom_created_at(Timestamp::from(created_at))
+            .sign_with_keys(&Keys::generate())
+            .expect("sign test event")
+    }
+
+    /// A ledger that saved floor 10_000 last run and restarted at `NOW`.
+    fn restarted_ledger(dir: &std::path::Path, agent: &str) -> wake_ledger::WakeLedger {
+        let path = dir.join("wake.json");
+        wake_ledger::WakeLedger::open(path.clone(), RELAY, agent, 10_000, 10_000)
+            .sync(std::iter::empty(), 10_000);
+        wake_ledger::WakeLedger::open(path, RELAY, agent, NOW, NOW)
+    }
+
+    #[test]
+    fn restart_catch_up_admission_table() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-admission-{}", Uuid::new_v4()));
+        let agent = "ab".repeat(32);
+        let mut ledger = restarted_ledger(&dir, &agent);
+
+        let missed = message("draft next week's posts", 15_000, &agent);
+        let live = message("post the carousel", NOW, &agent);
+        let cases: Vec<(&str, &nostr::Event, bool)> = vec![
+            ("a mention sent while offline runs", &missed, true),
+            ("the same mention replayed again is skipped", &missed, false),
+            ("a mention sent after start runs", &live, true),
+            (
+                "a mention already handled in this run is skipped",
+                &live,
+                false,
+            ),
+        ];
+        for (case, event, expected) in cases {
+            assert_eq!(
+                wake_ledger_admits(Some(&mut ledger), event, KIND_STREAM_MESSAGE, &agent, NOW),
+                expected,
+                "{case}"
+            );
+        }
+        for command in OWNER_CONTROL_COMMANDS {
+            let stale = message(command, 15_000, &agent);
+            assert!(
+                !wake_ledger_admits(Some(&mut ledger), &stale, KIND_STREAM_MESSAGE, &agent, NOW),
+                "{command} sent while offline is dropped"
+            );
+            let fresh = message(command, NOW, &agent);
+            assert!(
+                wake_ledger_admits(Some(&mut ledger), &fresh, KIND_STREAM_MESSAGE, &agent, NOW),
+                "{command} sent after start still reaches the owner checks"
+            );
+            assert!(
+                !wake_ledger_admits(Some(&mut ledger), &fresh, KIND_STREAM_MESSAGE, &agent, NOW),
+                "{command} is not handled twice"
+            );
+        }
+        for event in [&missed, &live] {
+            assert!(
+                wake_ledger_admits(None, event, KIND_STREAM_MESSAGE, &agent, NOW),
+                "without a ledger every event passes, as before"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn admission_enforces_the_seven_day_bound_after_relay_clock_skew() {
+        let dir = std::env::temp_dir().join(format!("colony-wake-bound-{}", Uuid::new_v4()));
+        let agent = "ab".repeat(32);
+        let now = wake_ledger::MAX_LOOKBACK_SECS + NOW;
+        let cutoff = now - wake_ledger::MAX_LOOKBACK_SECS;
+        restarted_ledger(&dir, &agent);
+        let mut ledger =
+            wake_ledger::WakeLedger::open(dir.join("wake.json"), RELAY, &agent, now, now);
+        assert_eq!(ledger.catch_up_since(), Some(cutoff));
+        let too_old = message("before the seven day boundary", cutoff - 1, &agent);
+        let boundary = message("at the seven day boundary", cutoff, &agent);
+        assert!(!wake_ledger_admits(
+            Some(&mut ledger),
+            &too_old,
+            KIND_STREAM_MESSAGE,
+            &agent,
+            now
+        ));
+        assert!(wake_ledger_admits(
+            Some(&mut ledger),
+            &boundary,
+            KIND_STREAM_MESSAGE,
+            &agent,
+            now
+        ));
+        assert!(!wake_ledger_admits(
+            Some(&mut ledger),
+            &boundary,
+            KIND_STREAM_MESSAGE,
+            &agent,
+            now
+        ));
+        assert!(wake_ledger_admits(
+            None,
+            &too_old,
+            KIND_STREAM_MESSAGE,
+            &agent,
+            now
+        ));
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
 
 // ── signal_in_flight_task ─────────────────────────────────────────────────────
@@ -4408,6 +5575,7 @@ fn dispatch_pending(
     ctx: &Arc<PromptContext>,
     last_activity: &mut tokio::time::Instant,
     observer: Option<&observer::ObserverHandle>,
+    mut ledger: Option<&mut wake_ledger::WakeLedger>,
 ) -> Vec<(scope::SessionScope, ThreadTags)> {
     // Keyed by the exact session scope, not the channel: two threads dispatching
     // concurrently in one channel get distinct typing entries so completing one
@@ -4491,6 +5659,36 @@ fn dispatch_pending(
                 break;
             }
         };
+        // Restart catch-up: the batch is recorded as handled before its turn
+        // starts, so a crash during the turn can never answer it twice. When
+        // the ledger cannot be saved nothing starts: the worker goes back, the
+        // batch goes back to the queue, and the main loop retries after the
+        // write backoff.
+        // Busy-owner batches flushed earlier in this cycle are still pending,
+        // even though they are temporarily outside EventQueue. Include them in
+        // the snapshot now, before they are requeued at the end of dispatch.
+        if !commit_to_wake_ledger_with_pending(
+            ledger.as_deref_mut(),
+            batch
+                .events
+                .iter()
+                .chain(batch.cancelled_events.iter())
+                .map(|queued| &queued.event),
+            queue
+                .pending_events()
+                .chain(held.iter().flat_map(|held_batch| {
+                    held_batch
+                        .events
+                        .iter()
+                        .chain(held_batch.cancelled_events.iter())
+                        .map(|queued| &queued.event)
+                })),
+        ) {
+            pool.return_agent(agent);
+            queue.requeue_preserve_timestamps(batch);
+            queue.mark_complete(&scope);
+            break;
+        }
         // Consume a bounded hold only after a worker was actually claimed.
         // If every slot is checked out, the expired stamp remains sticky and
         // the worker-return event retries immediately instead of waiting for a
@@ -5254,8 +6452,9 @@ fn dispatch_heartbeat(
     pool: &mut AgentPool,
     ctx: &Arc<PromptContext>,
     heartbeat_in_flight: &mut bool,
+    ledger: Option<&wake_ledger::WakeLedger>,
 ) {
-    if *heartbeat_in_flight {
+    if *heartbeat_in_flight || ledger.is_some_and(wake_ledger::WakeLedger::write_failed) {
         return;
     }
     let agent = match pool.try_claim(None) {
@@ -9231,6 +10430,7 @@ mod build_mcp_servers_tests {
             lazy_pool: false,
             idle_pool_sleep_secs: 0,
             replay_floor_unix: None,
+            wake_ledger_path: None,
             agent_owner: None,
             no_base_prompt: false,
             base_prompt_content: None,
@@ -9458,6 +10658,7 @@ mod error_outcome_emission_tests {
             lazy_pool: false,
             idle_pool_sleep_secs: 0,
             replay_floor_unix: None,
+            wake_ledger_path: None,
             agent_owner: None,
             no_base_prompt: false,
             base_prompt_content: None,
