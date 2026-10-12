@@ -537,13 +537,15 @@ impl Db {
 
     /// Consume a passwordless sign-in code: verify the email (dropping a
     /// password nobody proved), record the terms version, and, on the first
-    /// verified sign-in, store the person's profile event in the same commit.
+    /// verified sign-in, replace unproven custody with the relay-generated
+    /// fresh identity and store its profile event in the same commit.
     #[datastore_span(name = "account_consume_sign_in_code", system = "postgresql")]
     pub async fn consume_sign_in_code(
         &self,
         email: &str,
         provided_hash: &[u8; 32],
         terms_version: &str,
+        fresh_identity: &NewAccount,
         profile: Option<(&nostr::Event, CommunityId)>,
     ) -> Result<ConsumeSignInCodeOutcome> {
         let connection = observability::acquire_writer(
@@ -571,10 +573,7 @@ impl Db {
         .bind(account_id)
         .fetch_one(&mut *tx)
         .await?;
-        sqlx::query(VERIFY_EMAIL_DROPPING_UNPROVEN_PASSWORD)
-            .bind(account_id)
-            .execute(&mut *tx)
-            .await?;
+        prove_account_email(&mut tx, account_id, fresh_identity).await?;
         record_terms_acceptance(&mut tx, account_id, Some(terms_version)).await?;
         let created = !previously_verified;
         if created {
@@ -808,10 +807,7 @@ impl Db {
         .await?;
         let account_id = if let Some(row) = existing {
             let account_id: Uuid = row.try_get("id")?;
-            sqlx::query(VERIFY_EMAIL_DROPPING_UNPROVEN_PASSWORD)
-                .bind(account_id)
-                .execute(&mut *tx)
-                .await?;
+            prove_account_email(&mut tx, account_id, new_account).await?;
             account_id
         } else if let Some(account_id) = insert_account(&mut tx, new_account).await? {
             sqlx::query("UPDATE accounts SET last_signin_at = now() WHERE id = $1")
@@ -827,10 +823,7 @@ impl Db {
             .fetch_one(&mut *tx)
             .await?;
             let account_id: Uuid = row.try_get("id")?;
-            sqlx::query(VERIFY_EMAIL_DROPPING_UNPROVEN_PASSWORD)
-                .bind(account_id)
-                .execute(&mut *tx)
-                .await?;
+            prove_account_email(&mut tx, account_id, new_account).await?;
             account_id
         };
         sqlx::query(
@@ -1282,14 +1275,36 @@ async fn finish_rejected_code(tx: Transaction<'_, Postgres>, commit: bool) -> Re
     Ok(())
 }
 
-/// Verify an account's email. A password set while the email was unproven is
-/// dropped, because whoever set it never proved they own the address.
-const VERIFY_EMAIL_DROPPING_UNPROVEN_PASSWORD: &str = "UPDATE accounts SET \
+/// First proof replaces untrusted custody material and removes any unproven
+/// password atomically. Subsequent proofs preserve the verified identity.
+async fn prove_account_email(
+    tx: &mut Transaction<'_, Postgres>,
+    account_id: Uuid,
+    fresh_identity: &NewAccount,
+) -> Result<()> {
+    sqlx::query(
+        "UPDATE accounts SET \
+     pubkey = CASE WHEN email_verified_at IS NULL THEN $2 ELSE pubkey END, \
+     wrapped_dek = CASE WHEN email_verified_at IS NULL THEN $3 ELSE wrapped_dek END, \
+     kek_id = CASE WHEN email_verified_at IS NULL THEN $4 ELSE kek_id END, \
+     sealed_nsec = CASE WHEN email_verified_at IS NULL THEN $5 ELSE sealed_nsec END, \
+     nonce = CASE WHEN email_verified_at IS NULL THEN $6 ELSE nonce END, \
      password_hash = CASE WHEN email_verified_at IS NULL THEN NULL ELSE password_hash END, \
      failed_attempts = CASE WHEN email_verified_at IS NULL THEN 0 ELSE failed_attempts END, \
      locked_until = CASE WHEN email_verified_at IS NULL THEN NULL ELSE locked_until END, \
      email_verified_at = COALESCE(email_verified_at, now()), \
-     last_signin_at = now(), updated_at = now() WHERE id = $1";
+     last_signin_at = now(), updated_at = now() WHERE id = $1",
+    )
+    .bind(account_id)
+    .bind(&fresh_identity.pubkey)
+    .bind(&fresh_identity.wrapped_dek)
+    .bind(&fresh_identity.kek_id)
+    .bind(&fresh_identity.sealed_nsec)
+    .bind(&fresh_identity.nonce)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
 
 /// Record which terms version the person accepted, and when.
 async fn record_terms_acceptance(
@@ -1454,7 +1469,7 @@ mod sign_in_code_postgres_tests {
             .expect("start");
 
         match db
-            .consume_sign_in_code(&email, &[8_u8; 32], "2026-10-11", None)
+            .consume_sign_in_code(&email, &[8_u8; 32], "2026-10-11", &candidate(&email), None)
             .await
             .expect("wrong code")
         {
@@ -1462,7 +1477,7 @@ mod sign_in_code_postgres_tests {
             _ => panic!("a wrong code must count one attempt"),
         }
         let first = match db
-            .consume_sign_in_code(&email, &[7_u8; 32], "2026-10-11", None)
+            .consume_sign_in_code(&email, &[7_u8; 32], "2026-10-11", &candidate(&email), None)
             .await
             .expect("right code")
         {
@@ -1486,7 +1501,7 @@ mod sign_in_code_postgres_tests {
             .await
             .expect("second start");
         match db
-            .consume_sign_in_code(&email, &[9_u8; 32], "2026-11-01", None)
+            .consume_sign_in_code(&email, &[9_u8; 32], "2026-11-01", &candidate(&email), None)
             .await
             .expect("second sign-in")
         {
@@ -1496,6 +1511,10 @@ mod sign_in_code_postgres_tests {
                     "a verified account signs in; it is not created again"
                 );
                 assert_eq!(account.id, first.id);
+                assert_eq!(
+                    account.pubkey, first.pubkey,
+                    "verified custody stays stable"
+                );
             }
             _ => panic!("the second code must sign in"),
         }
@@ -1508,9 +1527,15 @@ mod sign_in_code_postgres_tests {
         assert_eq!(terms_version.as_deref(), Some("2026-11-01"));
         assert!(
             matches!(
-                db.consume_sign_in_code(&email, &[9_u8; 32], "2026-11-01", None)
-                    .await
-                    .expect("reused code"),
+                db.consume_sign_in_code(
+                    &email,
+                    &[9_u8; 32],
+                    "2026-11-01",
+                    &candidate(&email),
+                    None
+                )
+                .await
+                .expect("reused code"),
                 ConsumeSignInCodeOutcome::Expired
             ),
             "a used code never works twice"
@@ -1527,7 +1552,7 @@ mod sign_in_code_postgres_tests {
             .expect("start");
         for expected_left in [4, 3, 2, 1] {
             match db
-                .consume_sign_in_code(&email, &[12_u8; 32], "2026-10-11", None)
+                .consume_sign_in_code(&email, &[12_u8; 32], "2026-10-11", &candidate(&email), None)
                 .await
                 .expect("wrong code")
             {
@@ -1538,16 +1563,22 @@ mod sign_in_code_postgres_tests {
             }
         }
         assert!(matches!(
-            db.consume_sign_in_code(&email, &[12_u8; 32], "2026-10-11", None)
+            db.consume_sign_in_code(&email, &[12_u8; 32], "2026-10-11", &candidate(&email), None)
                 .await
                 .expect("fifth wrong code"),
             ConsumeSignInCodeOutcome::AttemptsExceeded { .. }
         ));
         assert!(
             matches!(
-                db.consume_sign_in_code(&email, &[11_u8; 32], "2026-10-11", None)
-                    .await
-                    .expect("right code after the burn"),
+                db.consume_sign_in_code(
+                    &email,
+                    &[11_u8; 32],
+                    "2026-10-11",
+                    &candidate(&email),
+                    None
+                )
+                .await
+                .expect("right code after the burn"),
                 ConsumeSignInCodeOutcome::AttemptsExceeded { .. }
             ),
             "a burned code never signs in, even when it is right"
@@ -1580,7 +1611,13 @@ mod sign_in_code_postgres_tests {
             .await
             .expect("owner start");
         match db
-            .consume_sign_in_code(&squatted, &[21_u8; 32], "2026-10-11", None)
+            .consume_sign_in_code(
+                &squatted,
+                &[21_u8; 32],
+                "2026-10-11",
+                &candidate(&squatted),
+                None,
+            )
             .await
             .expect("owner proves the email")
         {
@@ -1605,7 +1642,7 @@ mod sign_in_code_postgres_tests {
             .await
             .expect("start");
         match db
-            .consume_sign_in_code(&owned, &[22_u8; 32], "2026-10-11", None)
+            .consume_sign_in_code(&owned, &[22_u8; 32], "2026-10-11", &candidate(&owned), None)
             .await
             .expect("sign in")
         {
@@ -1702,7 +1739,7 @@ mod sign_in_lock_postgres_tests {
                     .await
                     .map(|outcome| matches!(outcome, IssueAccountCodeOutcome::Issued))
             } else {
-                db.consume_sign_in_code(&email, &[41; 32], "2026-10-11", None)
+                db.consume_sign_in_code(&email, &[41; 32], "2026-10-11", &candidate, None)
                     .await
                     .map(|outcome| matches!(outcome, ConsumeSignInCodeOutcome::Accepted { .. }))
             }
