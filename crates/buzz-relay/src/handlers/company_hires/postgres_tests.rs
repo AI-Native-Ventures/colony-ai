@@ -287,6 +287,7 @@ async fn hire_ready_to_complete(fixture: &Fixture, role_pack: HireRolePack) -> H
     );
     complete.employee_pubkey = Some(fixture.employee.public_key().to_hex());
     complete.introduction_event_id = Some(introduction.id.to_hex());
+    complete.time_zone = Some(DEFAULT_HIRE_TIME_ZONE.into());
     complete
 }
 
@@ -409,7 +410,43 @@ async fn assert_completion_left_nothing(fixture: &Fixture, complete: &HireAction
 
 #[tokio::test]
 #[ignore = "requires disposable Postgres"]
-async fn complete_creates_the_employee_goal_with_the_hire() {
+async fn a_complete_without_time_zone_keeps_the_legacy_hire_behavior() {
+    let fixture = fixture_with(true, false).await;
+    let mut complete = hire_ready_to_complete(&fixture, role_pack()).await;
+    complete.time_zone = None;
+    let event = sign_hire_action(&fixture.owner, &complete);
+    submit(&fixture, event.clone())
+        .await
+        .expect("complete the hire without opting into the new engine");
+
+    let hired =
+        parse_hire_head(&hire_head(&fixture, complete.hire_id).await).expect("parse the hire head");
+    assert_eq!(hired.status, HireStatus::Hired);
+    assert_eq!(hired.source_action_event_id, event.id.to_hex());
+    assert_eq!(hired.employee_pubkey, complete.employee_pubkey);
+    assert_eq!(hired.introduction_event_id, complete.introduction_event_id);
+    assert_eq!(member_heads(&fixture).await.len(), 1);
+    assert!(goal_heads(&fixture, complete.hire_id).await.is_empty());
+    assert!(duty_heads(&fixture).await.is_empty());
+    assert!(channel_workflows(&fixture).await.is_empty());
+    assert!(kickoffs(&fixture, complete.hire_id).await.is_empty());
+
+    let replay = submit(&fixture, event.clone())
+        .await
+        .expect("replay the legacy completion");
+    assert!(replay.accepted);
+    assert_eq!(replay.event_id, event.id.to_hex());
+    assert!(replay.message.starts_with("duplicate:"));
+    assert_eq!(member_heads(&fixture).await.len(), 1);
+    assert!(goal_heads(&fixture, complete.hire_id).await.is_empty());
+    assert!(duty_heads(&fixture).await.is_empty());
+    assert!(channel_workflows(&fixture).await.is_empty());
+    assert!(kickoffs(&fixture, complete.hire_id).await.is_empty());
+}
+
+#[tokio::test]
+#[ignore = "requires disposable Postgres"]
+async fn complete_with_time_zone_creates_the_employee_goal_with_the_hire() {
     let fixture = fixture().await;
     let complete = hire_ready_to_complete(&fixture, role_pack()).await;
     let event = sign_hire_action(&fixture.owner, &complete);
@@ -443,6 +480,9 @@ async fn complete_creates_the_employee_goal_with_the_hire() {
     assert_eq!(goal.owner_pubkey, fixture.employee.public_key().to_hex());
     assert_eq!(goal.parent_goal_id, None);
     assert_eq!(goal.linked_channel_ids, vec![fixture.channel_id]);
+    assert_eq!(duty_heads(&fixture).await.len(), 2);
+    assert_eq!(channel_workflows(&fixture).await.len(), 2);
+    assert_eq!(kickoffs(&fixture, complete.hire_id).await.len(), 1);
 }
 
 #[tokio::test]

@@ -441,10 +441,12 @@ pub(super) async fn handle(
     } else {
         None
     };
-    let hire_records = if action.action == HireActionKind::Complete {
-        Some(create_hire_records(&mut tx, tenant, state, &next, action.time_zone.as_deref()).await?)
-    } else {
-        None
+    // The engine opts in with timeZone; shipping desktops keep legacy completion.
+    let hire_records = match (action.action, action.time_zone.as_deref()) {
+        (HireActionKind::Complete, Some(time_zone)) => {
+            Some(create_hire_records(&mut tx, tenant, state, &next, time_zone).await?)
+        }
+        _ => None,
     };
     tx.commit().await.map_err(internal)?;
 
@@ -497,14 +499,15 @@ struct HireRecords {
     kickoff: StoredEvent,
 }
 
-/// Writes the records a completed hire creates inside the hire transaction, so
-/// they commit with the hired head and member position or not at all.
+/// Writes an engine hire's records inside the hire transaction, so they commit
+/// with the hired head and member position or not at all. The caller requires
+/// an explicit time zone to opt in to these records.
 async fn create_hire_records(
     tx: &mut Transaction<'_, Postgres>,
     tenant: &TenantContext,
     state: &AppState,
     hired: &HireHead,
-    time_zone: Option<&str>,
+    time_zone: &str,
 ) -> Result<HireRecords, IngestError> {
     let employee = hired
         .employee_pubkey
@@ -524,7 +527,7 @@ async fn create_hire_records(
         &hired.source_action_event_id,
     )
     .await?;
-    let proposals = hire_duty_proposals(&hired.proposal, employee, time_zone, Uuid::new_v4)
+    let proposals = hire_duty_proposals(&hired.proposal, employee, Some(time_zone), Uuid::new_v4)
         .map_err(|error| invalid(format!("hire routines: {error}")))?;
     let duties = super::company_duties::create_hire_duties_in_transaction(
         tx,

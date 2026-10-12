@@ -606,8 +606,9 @@ runtime and model catalog. The hire remains recoverable until the managed agent
 has been created, joined to the selected channel, and posted its introduction.
 The app sends the introduction as the managed employee and uses an idempotent
 marker so a retry cannot publish a duplicate. `complete` verifies the real agent and introduction event, then atomically
-advances the hire head, creates the employee member-position head, and creates
-the hire records described below. The profile opens with the configured title,
+advances the hire head and creates the employee member-position head. When the
+action carries `timeZone`, it also creates the hire records described below.
+The profile opens with the configured title,
 manager, channel, and runtime values after that transaction succeeds.
 
 Role packs may carry optional v2 fields: `owns` (the outcome the role owns,
@@ -620,8 +621,11 @@ app). A pack without them keeps its exact shape. The owner's signature on the
 hire approves the role's routines.
 
 `complete` may carry the owner's IANA `timeZone`; no other hire action may.
-In the same transaction as the hired head and the member position, the relay
-writes:
+Its presence opts in to the new engine behavior. A Complete without `timeZone`
+keeps the shipping 1.0.7 behavior: only the hired head and member position are
+written, with no goal, routines, workflows or kickoff. The new engine always
+sends `timeZone`. With it, in the same transaction as the hired head and the
+member position, the relay writes:
 
 - the employee's root goal at `company:goal:<hire-uuid>`: title from `owns`
   (cut at a word to 180 characters) or the hire title, done condition `owns`
@@ -629,7 +633,7 @@ writes:
   introduction channel;
 - one routine (duty head) per role-pack duty plus the built-in "Plan check"
   routine (`Every Monday at 09:00`), each in the introduction channel, in
-  `timeZone` or UTC, with `sourceHireId`, approved by the owner, and each with
+  the supplied `timeZone`, with `sourceHireId`, approved by the owner, and each with
   its schedule workflow owned by the owner;
 - one relay-signed kind 9 on-hire kickoff in the introduction channel with
   `p` tags for the owner and the employee, `buzz:workflow`,
@@ -637,7 +641,7 @@ writes:
   `["colony:on-hire", <hire-uuid>]`. It is stored with its mention index and
   fanned out after commit, so an employee that starts later still finds it.
 
-Any failure rejects `complete` and stores none of these records: a goal
+Any failure rejects an engine `complete` and stores none of these records: a goal
 already at the hire id, an employee or owner that is not a member of the
 introduction channel, or a time zone the schedule engine does not know. A
 replayed `complete` returns the stored duplicate result, and a second
