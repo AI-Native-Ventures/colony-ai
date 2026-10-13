@@ -1,5 +1,5 @@
 import type * as React from "react";
-import { Bell, Building2, Search } from "lucide-react";
+import { Bell, Building2, Search, X } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
@@ -21,6 +21,7 @@ import {
 } from "@/shared/constants/kinds";
 import { Markdown } from "@/shared/ui/markdown";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { ColonyAntAvatar } from "@/shared/ui/ColonyAntAvatar";
 import { WorkspaceTopBar } from "@/shared/ui/workspace-topbar";
 import { Button } from "@/shared/ui/button";
 
@@ -235,7 +236,10 @@ function AskDetailMemberScreen({
   };
 
   return (
-    <div className="colony-ask-detail-screen" data-testid="ask-detail-screen">
+    <div
+      className="colony-ask-detail-screen colony-canary-ask-detail"
+      data-testid="ask-detail-screen"
+    >
       <WorkspaceTopBar
         actions={
           <>
@@ -273,22 +277,19 @@ function AskDetailMemberScreen({
       </WorkspaceTopBar>
       <main className="colony-ask-detail-scroll">
         <div className="colony-ask-detail-content">
-          <Link className="colony-ask-detail-back" to="/today">
-            ‹ Back
+          <Link
+            aria-label="Close card"
+            className="colony-ask-detail-back"
+            to="/today"
+          >
+            <X aria-hidden="true" size={18} />
           </Link>
           {specializedAskTitle ? (
             <div className="colony-ask-detail-title-row">
-              <h1 data-testid="ask-thread-title">{specializedAskTitle}</h1>
-              <Link
-                className="colony-ask-special-raise"
-                search={{
-                  channelId,
-                  threadRootEventId: record?.head.ask.threadRootEventId ?? null,
-                }}
-                to="/asks/new"
-              >
-                Raise an ask
-              </Link>
+              <div>
+                <span className="colony-canary-ask-viewer-kind">Decision</span>
+                <h1 data-testid="ask-thread-title">{specializedAskTitle}</h1>
+              </div>
             </div>
           ) : null}
           {!specializedAskTitle && formattedRoot ? (
@@ -299,11 +300,15 @@ function AskDetailMemberScreen({
                 className="colony-ask-thread-root"
                 data-testid="ask-thread-root"
               >
-                <UserAvatar
-                  avatarUrl={formattedRoot.avatarUrl ?? null}
-                  displayName={formattedRoot.author}
-                  size="md"
-                />
+                {formattedRoot.isAgent ? (
+                  <ColonyAntAvatar decorative name={formattedRoot.author} />
+                ) : (
+                  <UserAvatar
+                    avatarUrl={formattedRoot.avatarUrl ?? null}
+                    displayName={formattedRoot.author}
+                    size="md"
+                  />
+                )}
                 <div className="colony-ask-thread-root-content">
                   <header>
                     <strong>{formattedRoot.author}</strong>
@@ -335,6 +340,23 @@ function AskDetailMemberScreen({
               queryState={askState}
               showDetailLink={false}
             />
+          ) : null}
+          {record &&
+          channel?.isMember &&
+          record.head.status === "open" &&
+          specializedAskTitle ? (
+            <Link
+              className="colony-ask-special-work-link"
+              params={{ channelId }}
+              search={{
+                messageId: record.head.ask.threadRootEventId,
+                threadRootId: record.head.ask.threadRootEventId,
+                thread: record.head.ask.threadRootEventId,
+              }}
+              to="/channels/$channelId"
+            >
+              Open conversation
+            </Link>
           ) : null}
           {record?.head.status === "open" &&
           record.head.ask.category === "secret" ? (

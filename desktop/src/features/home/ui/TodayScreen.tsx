@@ -23,6 +23,7 @@ import type { TeamMember } from "@/features/company-team/teamModels";
 import { useEmployeeRuntime } from "@/features/company-team/useEmployeeRuntime";
 import type { FeedItem } from "@/shared/api/types";
 import { ColonyAntAvatar } from "@/shared/ui/ColonyAntAvatar";
+import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { Button } from "@/shared/ui/button";
 import { WorkspaceTopBar } from "@/shared/ui/workspace-topbar";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
@@ -107,21 +108,40 @@ function AskNeedsMeRow({
   record,
   currentPubkey,
   profiles,
+  teamMembers,
   channelName,
   onOpen,
 }: {
   record: AskHeadRecord;
   currentPubkey?: string;
   profiles?: UserProfileLookup;
+  teamMembers: TeamMember[];
   channelName: string;
   onOpen: (record: AskHeadRecord) => void;
 }) {
   const ask = record.head.ask;
+  const askerProfile = profiles?.[normalizePubkey(record.head.askerPubkey)];
+  const employee = teamMembers.find(
+    (member) =>
+      member.kind === "employee" &&
+      normalizePubkey(member.pubkey) ===
+        normalizePubkey(record.head.askerPubkey),
+  );
   const asker = resolveUserLabel({
     pubkey: record.head.askerPubkey,
     currentPubkey,
     profiles,
   });
+  const actorName = employee?.fallbackName?.trim() || asker;
+  const askerIsAgent = employee !== undefined || askerProfile?.isAgent === true;
+  const preview = ask.body?.trim() || ask.toolConsent?.actionPreview?.trim();
+  const receivedAt = Date.parse(record.head.createdAt);
+  const receivedTime = Number.isFinite(receivedAt)
+    ? new Intl.DateTimeFormat("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(receivedAt))
+    : null;
   const overdue =
     ask.decideBy !== undefined &&
     ask.decideBy !== null &&
@@ -135,18 +155,51 @@ function AskNeedsMeRow({
       onClick={() => onOpen(record)}
       type="button"
     >
-      <span className="colony-needs-me-copy">
-        <strong>{ask.title}</strong>
-        <small>
-          {asker} · #{channelName} · {needsMeDateLabel(ask.decideBy)}
-        </small>
+      <span className="colony-canary-ask-topline">
+        <span>✓ Waiting for you</span>
+        {receivedTime ? (
+          <time dateTime={record.head.createdAt}>{receivedTime}</time>
+        ) : null}
       </span>
-      <span className="colony-needs-me-type">{needsMeAskLabel(ask)}</span>
+      <span className="colony-canary-ask-kind">{needsMeAskLabel(ask)}</span>
+      <strong className="colony-canary-ask-title">{ask.title}</strong>
+      {preview ? (
+        <span className="colony-canary-ask-preview">{preview}</span>
+      ) : null}
+      <span className="colony-canary-ask-source">
+        {askerIsAgent ? (
+          <ColonyAntAvatar className="size-8" decorative name={actorName} />
+        ) : askerProfile ? (
+          <span aria-hidden="true">
+            <UserAvatar
+              avatarUrl={askerProfile.avatarUrl ?? null}
+              displayName={asker}
+              size="sm"
+            />
+          </span>
+        ) : (
+          <span
+            aria-hidden="true"
+            className="colony-canary-ask-avatar-pending"
+          />
+        )}
+        <span className="colony-canary-ask-author">{actorName}</span>
+        <span className="colony-canary-ask-channel">
+          {channelName === "conversation"
+            ? "In conversation"
+            : `In #${channelName}`}
+        </span>
+      </span>
       {overdue ? (
         <span className="colony-needs-me-overdue">Overdue</span>
       ) : null}
-      <span aria-hidden="true" className="colony-needs-me-chevron">
-        ›
+      {ask.decideBy ? (
+        <span className="colony-canary-ask-deadline">
+          Decide by {needsMeDateLabel(ask.decideBy)}
+        </span>
+      ) : null}
+      <span className="colony-canary-ask-open" aria-hidden="true">
+        Open <ArrowRight size={14} />
       </span>
     </button>
   );
@@ -470,6 +523,7 @@ export function TodayScreen({
           channelName={channelName(item.record.channelId)}
           currentPubkey={identityQuery.data?.pubkey}
           profiles={needsMeProfiles}
+          teamMembers={teamQuery.data?.members ?? []}
           key={needsMeItemKey(item)}
           onOpen={openAsk}
           record={item.record}

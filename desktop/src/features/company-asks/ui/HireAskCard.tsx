@@ -6,6 +6,7 @@ import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { Button } from "@/shared/ui/button";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { ColonyAntAvatar } from "@/shared/ui/ColonyAntAvatar";
 import { hirePrimaryButtonClass } from "@/features/company-hiring/ui/HirePresentation";
 import { useCompanyHireHeadQuery } from "@/features/company-hiring/hireRelay";
 import type { AskHeadRecord, HireProposal } from "../askRecords";
@@ -104,11 +105,15 @@ export function HireAskCard({
           <header className="colony-ask-special-header">
             <div className="colony-ask-special-identity">
               <span aria-hidden="true">
-                <UserAvatar
-                  avatarUrl={askerProfile?.avatarUrl ?? null}
-                  displayName={asker}
-                  size="md"
-                />
+                {askerIsAgent ? (
+                  <ColonyAntAvatar decorative name={asker} />
+                ) : (
+                  <UserAvatar
+                    avatarUrl={askerProfile?.avatarUrl ?? null}
+                    displayName={asker}
+                    size="md"
+                  />
+                )}
               </span>
               <div>
                 <strong>{asker}</strong>

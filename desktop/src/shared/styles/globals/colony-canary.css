@@ -518,6 +518,116 @@
 .colony-canary-decision-grid .colony-needs-me-copy small {
   white-space: normal;
 }
+.colony-canary-today .colony-needs-me-row {
+  align-items: stretch;
+  background: var(--colony-canary-canvas);
+  border: 1px solid var(--colony-canary-line);
+  border-radius: 0.75rem;
+  color: var(--colony-canary-ink);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-height: 12rem;
+  padding: 1.25rem;
+  position: relative;
+  text-align: left;
+}
+.colony-canary-today .colony-needs-me-row:hover {
+  background: var(--colony-canary-canvas);
+  border-color: var(--colony-canary-accent);
+}
+.colony-canary-today .colony-needs-me-row:focus-visible {
+  outline: 2px solid var(--colony-canary-accent);
+  outline-offset: 3px;
+}
+.colony-canary-ask-topline {
+  align-items: center;
+  color: var(--colony-canary-accent);
+  display: flex;
+  font-size: var(--text-2xs);
+  justify-content: space-between;
+  line-height: 1.4;
+}
+.colony-canary-ask-topline time {
+  color: var(--colony-canary-muted);
+}
+.colony-canary-ask-kind {
+  color: var(--colony-canary-muted);
+  font-size: var(--text-2xs);
+  margin-top: 0.35rem;
+  text-transform: capitalize;
+}
+.colony-canary-ask-title {
+  font-size: var(--text-base);
+  font-weight: 700;
+  line-height: 1.35;
+}
+.colony-canary-ask-preview {
+  color: var(--colony-canary-muted);
+  display: -webkit-box;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.colony-canary-ask-source {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  margin-top: auto;
+  min-width: 0;
+  padding-top: 0.6rem;
+}
+.colony-canary-ask-avatar-pending {
+  background: var(--colony-canary-line);
+  border-radius: 0.5rem;
+  flex: none;
+  height: 2rem;
+  width: 2rem;
+}
+.colony-canary-ask-author {
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.colony-canary-ask-channel {
+  color: var(--colony-canary-muted);
+  font-size: var(--text-2xs);
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.colony-canary-today .colony-needs-me-row .colony-needs-me-overdue {
+  align-self: start;
+  margin: 0;
+}
+.colony-canary-ask-deadline {
+  color: var(--colony-canary-muted);
+  font-size: var(--text-2xs);
+}
+.colony-canary-ask-open {
+  align-items: center;
+  border-top: 1px solid var(--colony-canary-line);
+  color: var(--colony-canary-accent);
+  display: flex;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  gap: 0.4rem;
+  margin: 0.25rem -1.25rem -1.25rem;
+  padding: 0.85rem 1.25rem;
+}
+.colony-canary-today .colony-needs-me-group {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.colony-canary-today .colony-needs-me-group .colony-needs-me-row {
+  margin-bottom: 0.75rem;
+}
 .colony-canary-today .colony-today-needs-me-empty {
   border-bottom: 1px solid var(--colony-canary-line);
   padding: 1.25rem 0;
@@ -613,6 +723,131 @@
   }
   .colony-canary-decision-grid,
   .colony-canary-team-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The ask route keeps the existing signed decision form in the pack's viewer. */
+.colony-canary-ask-detail .colony-ask-detail-scroll {
+  background: var(--colony-canary-canvas);
+  padding: 2rem clamp(1rem, 3vw, 3rem);
+}
+.colony-canary-ask-detail .colony-ask-detail-content {
+  background: var(--colony-canary-canvas);
+  border: 1px solid var(--colony-canary-line);
+  border-radius: 1rem;
+  color: var(--colony-canary-ink);
+  margin: 0 auto;
+  max-width: 62rem;
+  padding: 2rem;
+  position: relative;
+}
+.colony-canary-ask-detail .colony-ask-detail-back {
+  align-items: center;
+  border: 0;
+  border-radius: 0.5rem;
+  color: var(--colony-canary-muted);
+  display: flex;
+  height: 2.5rem;
+  justify-content: center;
+  margin: 0;
+  position: absolute;
+  right: 1.5rem;
+  top: 1.5rem;
+  width: 2.5rem;
+}
+.colony-canary-ask-detail .colony-ask-detail-back:hover {
+  background: hsl(var(--muted) / 0.45);
+  color: var(--colony-canary-ink);
+}
+.colony-canary-ask-detail .colony-ask-detail-back:focus-visible {
+  outline: 2px solid var(--colony-canary-accent);
+  outline-offset: 2px;
+}
+.colony-canary-ask-detail .colony-ask-detail-title-row {
+  display: block;
+  margin: 0 3.5rem 1.25rem 0;
+}
+.colony-canary-ask-viewer-kind {
+  color: var(--colony-canary-muted);
+  display: block;
+  font-size: var(--text-2xs);
+  margin-bottom: 0.5rem;
+}
+.colony-canary-ask-detail .colony-ask-detail-title-row h1 {
+  color: var(--colony-canary-ink);
+  font-size: var(--text-2xl);
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  line-height: 1.25;
+  margin: 0;
+}
+.colony-canary-ask-detail .colony-ask-detail-content > .colony-ask-card {
+  border: 0;
+  margin: 0;
+  max-width: none;
+  padding: 0;
+}
+.colony-canary-ask-detail .colony-ask-special-grid {
+  display: block;
+}
+.colony-canary-ask-detail .colony-ask-special-request,
+.colony-canary-ask-detail .colony-ask-special-context {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+.colony-canary-ask-detail .colony-ask-special-request > h2 {
+  color: var(--colony-canary-accent);
+  font-size: var(--text-xs);
+  margin: 0 0 1.1rem;
+}
+.colony-canary-ask-detail .colony-ask-special-header {
+  align-items: flex-start;
+  margin-bottom: 1.35rem;
+}
+.colony-canary-ask-detail .colony-ask-special-description {
+  color: var(--colony-canary-ink);
+  margin: 0 0 1.25rem;
+}
+.colony-canary-ask-detail .colony-ask-response-form {
+  border-top: 1px solid var(--colony-canary-line);
+  margin-top: 1.75rem;
+  padding-top: 1.5rem;
+}
+.colony-canary-ask-detail .colony-ask-special-context {
+  border-top: 1px solid var(--colony-canary-line);
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+}
+.colony-canary-ask-detail .colony-ask-special-context > h2 {
+  color: var(--colony-canary-muted);
+  font-size: var(--text-xs);
+  margin: 0;
+}
+.colony-canary-ask-detail .colony-ask-special-context dl {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0.75rem 0 0;
+}
+.colony-canary-ask-detail .colony-ask-special-context dl > div {
+  border: 0;
+  display: block;
+  padding: 0;
+}
+.colony-canary-ask-detail .colony-ask-special-context dd {
+  margin-top: 0.25rem;
+}
+@media (max-width: 700px) {
+  .colony-canary-ask-detail .colony-ask-detail-scroll {
+    padding: 1rem;
+  }
+  .colony-canary-ask-detail .colony-ask-detail-content {
+    padding: 1.35rem;
+  }
+  .colony-canary-ask-detail .colony-ask-special-context dl {
     grid-template-columns: minmax(0, 1fr);
   }
 }

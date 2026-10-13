@@ -7,7 +7,8 @@ import {
 } from "nostr-tools/pure";
 
 import { KIND_ASK_HEAD } from "../../src/shared/constants/kinds";
-import { installMockBridge } from "../helpers/bridge";
+import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { waitForAnimations } from "../helpers/animations";
 import { setup } from "../helpers/companyTeamFixture";
 
 test("Today presents real team members as ants and opens the Needs you view", async ({
@@ -61,7 +62,7 @@ test("a real pending decision opens its source discussion", async ({
 }) => {
   const relaySecret = generateSecretKey();
   const askId = "7245ba1a-e078-42ef-b896-00be34a94f11";
-  const channelId = "e18cc18b-9685-48c6-941a-910fbaf8f13d";
+  const channelId = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
   const now = new Date();
   const askHead = finalizeEvent(
     {
@@ -70,14 +71,14 @@ test("a real pending decision opens its source discussion", async ({
       tags: [
         ["d", `channel:${channelId}:ask:${askId}`],
         ["h", channelId],
-        ["e", "c".repeat(64)],
+        ["e", "d".repeat(64)],
         ["t", "tool_consent"],
       ],
       content: JSON.stringify({
         schemaVersion: 1,
         askId,
         status: "open",
-        askerPubkey: "1".repeat(64),
+        askerPubkey: TEST_IDENTITIES.alice.pubkey,
         createdAt: now.toISOString(),
         ask: {
           schemaVersion: 1,
@@ -85,7 +86,8 @@ test("a real pending decision opens its source discussion", async ({
           type: "tool_consent",
           category: "tool",
           title: "Approve the launch email",
-          threadRootEventId: "c".repeat(64),
+          body: "Send the approved launch message to a customer.",
+          threadRootEventId: "d".repeat(64),
           addresseePubkey: null,
           decideBy: new Date(now.getTime() + 4 * 60_000).toISOString(),
           toolConsent: {
@@ -105,14 +107,68 @@ test("a real pending decision opens its source discussion", async ({
     relayRequiresMembership: true,
     companyAskRelayPrivateKeyHex: bytesToHex(relaySecret),
     companyAskHeads: [askHead],
+    searchProfiles: [
+      {
+        pubkey: TEST_IDENTITIES.alice.pubkey,
+        displayName: "Maya",
+        isAgent: true,
+      },
+    ],
+    relayAgents: [
+      {
+        pubkey: TEST_IDENTITIES.alice.pubkey,
+        ownerPubkey: TEST_IDENTITIES.tyler.pubkey,
+        name: "Maya",
+        agentType: "agent",
+      },
+    ],
   });
   await page.goto("/#/today");
 
   const card = page.getByTestId(`today-ask-${askId}`);
   await expect(card).toBeVisible();
-  await card.click();
+  await expect(card).toContainText("Waiting for you");
+  await expect(card).toContainText("Send the approved launch message");
+  await expect(card.locator('[data-ant-portrait="Maya"]')).toBeVisible();
+  if (process.env.COLONY_CANARY_CARD_SHOT) {
+    await waitForAnimations(page);
+    await page.screenshot({ path: process.env.COLONY_CANARY_CARD_SHOT });
+  }
+  await card.focus();
+  await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/companyToolConsentInbox=true/);
+  await expect(
+    page.getByTestId("ask-card").locator('[data-ant-portrait="Maya"]'),
+  ).toBeVisible();
+  if (process.env.COLONY_CANARY_CARD_DETAIL_SHOT) {
+    await waitForAnimations(page);
+    await page.screenshot({ path: process.env.COLONY_CANARY_CARD_DETAIL_SHOT });
+  }
   await expect(page.getByTestId("tool-consent-preview")).toContainText(
     "Send the launch email to the customer.",
   );
+  await page.getByRole("link", { name: "Open conversation" }).click();
+  await expect(page.getByTestId("message-thread-panel")).toContainText(
+    "React to me with a custom emoji",
+  );
+  await page.goBack();
+  await expect(page.getByTestId("ask-card")).toBeVisible();
+  await page.getByLabel("Reason").fill("The launch email is ready.");
+  await page.getByRole("button", { name: "Record tool decision" }).click();
+  await expect(page.getByTestId("ask-resolved")).toContainText(
+    "Approved by You",
+  );
+  await page.setViewportSize({ width: 700, height: 700 });
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(700);
+  if (process.env.COLONY_CANARY_CARD_NARROW_SHOT) {
+    await waitForAnimations(page);
+    await page.screenshot({ path: process.env.COLONY_CANARY_CARD_NARROW_SHOT });
+  }
+  const close = page.getByRole("link", { name: "Close card" });
+  await close.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/#\/today$/);
+  await expect(page.getByTestId(`today-ask-${askId}`)).toHaveCount(0);
 });

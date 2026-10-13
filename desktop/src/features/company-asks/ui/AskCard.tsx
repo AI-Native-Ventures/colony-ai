@@ -25,6 +25,7 @@ import { resolveUserLabel } from "@/features/profile/lib/identity";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { Button } from "@/shared/ui/button";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { ColonyAntAvatar } from "@/shared/ui/ColonyAntAvatar";
 import { useAskHeadQuery } from "../hooks";
 import type { AskHeadQueryState } from "../hooks";
 import { mapSpecializedAskCard } from "../askCardMapping";
@@ -877,11 +878,15 @@ export function AskCard({
             <header className="colony-ask-special-header">
               <div className="colony-ask-special-identity">
                 <span aria-hidden="true">
-                  <UserAvatar
-                    avatarUrl={askerProfile?.avatarUrl ?? null}
-                    displayName={asker}
-                    size="md"
-                  />
+                  {askerIsAgent ? (
+                    <ColonyAntAvatar decorative name={asker} />
+                  ) : (
+                    <UserAvatar
+                      avatarUrl={askerProfile?.avatarUrl ?? null}
+                      displayName={asker}
+                      size="md"
+                    />
+                  )}
                 </span>
                 <div>
                   <strong>{asker}</strong>
@@ -1009,11 +1014,15 @@ export function AskCard({
           <header className="colony-ask-special-header">
             <div className="colony-ask-special-identity">
               <span aria-hidden="true">
-                <UserAvatar
-                  avatarUrl={askerProfile?.avatarUrl ?? null}
-                  displayName={asker}
-                  size="md"
-                />
+                {askerIsAgent ? (
+                  <ColonyAntAvatar decorative name={asker} />
+                ) : (
+                  <UserAvatar
+                    avatarUrl={askerProfile?.avatarUrl ?? null}
+                    displayName={asker}
+                    size="md"
+                  />
+                )}
               </span>
               <div>
                 <h3>{decisionHeading}</h3>
