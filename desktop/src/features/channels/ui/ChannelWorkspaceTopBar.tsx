@@ -11,7 +11,11 @@ import {
 } from "lucide-react";
 import { ChannelMemberAvatarStack } from "@/features/channels/ui/ChannelMemberAvatarStack";
 import { WORK_AREA_PANEL_ID } from "@/features/workarea/dock/WorkAreaPanel";
-import { toggleWorkAreaFrom } from "@/features/workarea/dock/workAreaActions";
+import {
+  closeWorkAreaRestoringFocus,
+  openWorkAreaFrom,
+  toggleWorkAreaFrom,
+} from "@/features/workarea/dock/workAreaActions";
 import { useWorkAreaDock } from "@/features/workarea/dock/useWorkAreaDock";
 import { requestWorkAreaTab } from "@/features/workarea/dock/workAreaRequests";
 import { isBrowserHostAvailable } from "@/shared/api/browserHost";
@@ -19,6 +23,7 @@ import type { ChannelMember } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
 import { ColonyAntAvatar } from "@/shared/ui/ColonyAntAvatar";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,6 +43,8 @@ export function ChannelWorkspaceTopBar({
   isCanaryConversation = false,
   isThreadOpen,
   currentPubkey,
+  agentPubkeys,
+  agentIdentityUnresolved = false,
   members,
   onToggleMembers,
   onManageChannel,
@@ -49,6 +56,8 @@ export function ChannelWorkspaceTopBar({
   isCanaryConversation?: boolean;
   isThreadOpen: boolean;
   currentPubkey?: string;
+  agentPubkeys?: ReadonlySet<string>;
+  agentIdentityUnresolved?: boolean;
   members: ChannelMember[];
   onToggleMembers: () => void;
   onManageChannel?: () => void;
@@ -85,9 +94,13 @@ export function ChannelWorkspaceTopBar({
               aria-controls={workArea.open ? WORK_AREA_PANEL_ID : undefined}
               aria-expanded={workArea.open}
               data-testid="channel-work-area-trigger"
-              onClick={(event) =>
-                toggleWorkAreaFrom(channelId, event.currentTarget)
-              }
+              onClick={(event) => {
+                if (workArea.open && workArea.activeTabId === "shared") {
+                  closeWorkAreaRestoringFocus(channelId);
+                } else {
+                  openWorkAreaFrom(channelId, "shared", event.currentTarget);
+                }
+              }}
               size="sm"
               type="button"
               variant="ghost"
@@ -130,30 +143,41 @@ export function ChannelWorkspaceTopBar({
             type="button"
             aria-label="View conversation members"
           >
-            {members.slice(0, 5).map((member) => (
-              <span
-                className="colony-canary-conversation-participant"
-                key={member.pubkey}
-              >
-                {member.isAgent ? (
-                  <ColonyAntAvatar
-                    name={member.displayName ?? "Agent"}
-                    className="size-7"
-                    decorative
-                  />
-                ) : (
-                  <UserAvatar
-                    avatarUrl={null}
-                    displayName={member.displayName ?? "Member"}
-                    className="!h-7 !w-7 text-2xs"
-                    fallbackDelayMs={0}
-                  />
-                )}
-                <span>
-                  {member.displayName ?? (member.isAgent ? "Agent" : "Member")}
+            {members.slice(0, 5).map((member) => {
+              const isAgent =
+                member.isAgent ||
+                agentPubkeys?.has(normalizePubkey(member.pubkey));
+              return (
+                <span
+                  className="colony-canary-conversation-participant"
+                  key={member.pubkey}
+                >
+                  {isAgent ? (
+                    <ColonyAntAvatar
+                      name={member.displayName ?? "Agent"}
+                      className="size-7"
+                      decorative
+                    />
+                  ) : agentIdentityUnresolved ? (
+                    <span
+                      aria-label={`Loading portrait for ${member.displayName ?? "participant"}`}
+                      className="colony-canary-conversation-participant-pending"
+                      role="img"
+                    />
+                  ) : (
+                    <UserAvatar
+                      avatarUrl={null}
+                      displayName={member.displayName ?? "Member"}
+                      className="!h-7 !w-7 text-2xs"
+                      fallbackDelayMs={0}
+                    />
+                  )}
+                  <span>
+                    {member.displayName ?? (isAgent ? "Agent" : "Member")}
+                  </span>
                 </span>
-              </span>
-            ))}
+              );
+            })}
             {members.length > 5 ? (
               <span className="colony-canary-participant-overflow">
                 +{members.length - 5}

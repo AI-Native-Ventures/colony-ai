@@ -40,6 +40,10 @@ import {
 import { useWorkAreaDock } from "./useWorkAreaDock";
 import { WorkAreaDivider } from "./WorkAreaDivider";
 import { WorkAreaPanel } from "./WorkAreaPanel";
+import {
+  WorkAreaConversationContext,
+  type WorkAreaConversation,
+} from "./workAreaConversationContext";
 
 /** True while the layout is too narrow to fit conversation and dock side by side. */
 function useOverlayMode(layoutRef: React.RefObject<HTMLDivElement | null>) {
@@ -71,11 +75,14 @@ function useOverlayMode(layoutRef: React.RefObject<HTMLDivElement | null>) {
 export function WorkAreaLayout({
   channelId,
   channel,
+  conversation,
   children,
 }: {
   channelId: string | null;
   /** Facts about the channel that tabs need (canvas edit rights, archive state). */
   channel?: Omit<WorkAreaChannel, "channelId">;
+  /** Loaded conversation rows for the canary's recent shared-item view. */
+  conversation?: WorkAreaConversation;
   children: React.ReactNode;
 }) {
   const state = useWorkAreaDock(channelId);
@@ -290,15 +297,17 @@ export function WorkAreaLayout({
       ) : null}
       {openChannelId !== null ? (
         <WorkAreaChannelContext.Provider value={channelContext}>
-          <WorkAreaPanel
-            activeTabId={activeTabId}
-            channelId={openChannelId}
-            onClose={() => closeWorkAreaRestoringFocus(openChannelId)}
-            onCloseTab={closeTab}
-            onOpenKind={openKind}
-            onSelect={(tabId) => selectWorkAreaTab(openChannelId, tabId)}
-            tabs={tabs}
-          />
+          <WorkAreaConversationContext.Provider value={conversation ?? null}>
+            <WorkAreaPanel
+              activeTabId={activeTabId}
+              channelId={openChannelId}
+              onClose={() => closeWorkAreaRestoringFocus(openChannelId)}
+              onCloseTab={closeTab}
+              onOpenKind={openKind}
+              onSelect={(tabId) => selectWorkAreaTab(openChannelId, tabId)}
+              tabs={tabs}
+            />
+          </WorkAreaConversationContext.Provider>
         </WorkAreaChannelContext.Provider>
       ) : null}
     </div>

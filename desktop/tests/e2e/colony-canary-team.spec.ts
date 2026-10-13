@@ -68,6 +68,19 @@ test("Message employee opens the product's direct conversation", async ({
   );
 });
 
+test("a known employee remains an ant in the conversation member strip", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.goto("/#/channels/9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50");
+  const participant = page
+    .getByTestId("colony-conversation-header")
+    .locator(".colony-canary-conversation-participant")
+    .filter({ hasText: "Mina" });
+  await expect(participant).toBeVisible();
+  await expect(participant.locator('[data-ant-portrait="Mina"]')).toBeVisible();
+});
+
 test("Team and desk remain usable in a narrow window with keyboard tabs", async ({
   page,
 }) => {

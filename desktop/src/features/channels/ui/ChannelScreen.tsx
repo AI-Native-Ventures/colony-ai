@@ -853,6 +853,8 @@ export function ChannelScreen({
               description={getChannelDetail(activeChannel)}
               isCanaryConversation={activeChannel.channelType === "stream"}
               currentPubkey={currentPubkey}
+              agentPubkeys={agentPubkeys}
+              agentIdentityUnresolved={headerAgentIdentityUnresolved}
               channelId={activeChannel.id}
               isThreadOpen={Boolean(openThreadHeadId)}
               members={channelMembers ?? []}
@@ -862,6 +864,17 @@ export function ChannelScreen({
             />
           ) : null}
           <WorkAreaLayout
+            conversation={activeChannel?.channelType === "stream" ? {
+              messages: timelineMessages,
+              loading: isTimelineLoading,
+              failed: messagesQuery.isError,
+              hasOlderMessages,
+              onRetry: () => { void messagesQuery.refetch(); },
+              onDiscuss: (rootId) => {
+                const root = timelineMessages.find((message) => message.id === rootId);
+                if (root) handleOpenThreadAndCloseAgentSession(root);
+              },
+            } : undefined}
             channel={
               activeChannel
                 ? {

@@ -4,6 +4,7 @@ import {
   FileText,
   Globe,
   Pencil,
+  LayoutGrid,
   SquareTerminal,
   type LucideIcon,
 } from "lucide-react";
@@ -17,6 +18,7 @@ import {
   newBrowserTabId,
 } from "../browser/browserTabKind";
 import { WorkAreaBrowserTab } from "./tabs/WorkAreaBrowserTab";
+import { WorkAreaSharedTab } from "./tabs/WorkAreaSharedTab";
 import { WorkAreaCanvasTab } from "./tabs/WorkAreaCanvasTab";
 import { WorkAreaFilesTab } from "./tabs/WorkAreaFilesTab";
 import { WorkAreaKnowledgeTab } from "./tabs/WorkAreaKnowledgeTab";
@@ -66,6 +68,13 @@ export type WorkAreaTabDefinition = {
  * of the add menu and the empty state, as in the r15 reference (Browser first).
  */
 const DEFINITIONS: Record<WorkAreaTabKind, WorkAreaTabDefinition> = {
+  shared: {
+    kind: "shared",
+    label: "Workspace",
+    icon: LayoutGrid,
+    available: true,
+    Panel: WorkAreaSharedTab,
+  },
   browser: {
     kind: "browser",
     label: "Browser",
