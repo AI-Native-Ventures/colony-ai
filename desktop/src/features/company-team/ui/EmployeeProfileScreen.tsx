@@ -213,6 +213,7 @@ export function EmployeeProfileScreen({
   teamData,
   initialTab,
   canManage,
+  canManageLifecycle,
   onBack,
   onEditPosition,
   onOpenMember,
@@ -223,6 +224,7 @@ export function EmployeeProfileScreen({
   profiles: Record<string, ProfileSummary>;
   teamData: CompanyTeamData;
   canManage: boolean;
+  canManageLifecycle: boolean;
   initialTab?: "overview" | "salary" | "history";
   onBack: () => void;
   onEditPosition: () => void;
@@ -680,7 +682,12 @@ export function EmployeeProfileScreen({
     );
   }
 
-  if (reviewRehire && currentPosition && member.position && canManage) {
+  if (
+    reviewRehire &&
+    currentPosition &&
+    member.position &&
+    canManageLifecycle
+  ) {
     return (
       <EmployeeRehireReview
         position={currentPosition}
@@ -768,12 +775,16 @@ export function EmployeeProfileScreen({
                 <Button variant="outline" onClick={onEditPosition}>
                   Edit role and reporting
                 </Button>
-                {currentPosition && positionStatus !== "terminated" ? (
+                {canManageLifecycle &&
+                currentPosition &&
+                positionStatus !== "terminated" ? (
                   <Button variant="ghost" onClick={onTerminate}>
                     Terminate employee
                   </Button>
                 ) : null}
-                {positionStatus === "terminated" && currentPosition ? (
+                {canManageLifecycle &&
+                positionStatus === "terminated" &&
+                currentPosition ? (
                   <Button
                     className="mt-3 h-11 rounded-company-control bg-colony-info text-xs shadow-none"
                     onClick={() => setReviewRehire(true)}
@@ -960,7 +971,9 @@ export function EmployeeProfileScreen({
                 ? "Existing work and history stay visible. Pausing employees is unavailable."
                 : "Definition, lessons and history are retained. Rehire requires founder review."}
             </p>
-            {status === "terminated" && canManage && currentPosition ? (
+            {status === "terminated" &&
+            canManageLifecycle &&
+            currentPosition ? (
               <Button
                 className="mt-3 h-11 rounded-company-control bg-colony-info text-xs shadow-none"
                 onClick={() => setReviewRehire(true)}
@@ -969,7 +982,7 @@ export function EmployeeProfileScreen({
               </Button>
             ) : null}
             {status === "terminated" &&
-            canManage &&
+            canManageLifecycle &&
             isManagedAgentActive(agent) ? (
               <Button variant="outline" className="mt-3" onClick={onTerminate}>
                 Retry stopping runtime
@@ -1005,6 +1018,7 @@ export function EmployeeProfileScreen({
           >
             <CompanyEmployeeProfileActions
               canManage={canManage}
+              canManageLifecycle={canManageLifecycle}
               employeePubkey={employeePubkey}
               managerName={managerName}
               onEdit={onEditPosition}
@@ -1156,7 +1170,7 @@ export function EmployeeProfileScreen({
           <section data-testid="employee-lessons">
             <EmployeeLessonsPanel
               actorPubkey={actorPubkey}
-              canManage={canManage}
+              canManage={canManageLifecycle}
               employeePubkey={employeePubkey}
             />
             <div className="border-t border-border pt-5">

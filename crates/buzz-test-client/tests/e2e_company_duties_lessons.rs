@@ -358,9 +358,15 @@ fn duty_proposal(duty_id: Uuid, employee: &Keys, channel_id: Uuid) -> DutyPropos
 async fn company_duty_ask_requires_owner_or_admin_and_creates_the_versioned_workflow() {
     let owner = Keys::generate();
     let admin = Keys::generate();
+    let partner = Keys::generate();
     let proposer = Keys::generate();
     let employee = Keys::generate();
-    for (keys, role) in [(&owner, "owner"), (&admin, "admin"), (&proposer, "member")] {
+    for (keys, role) in [
+        (&owner, "owner"),
+        (&admin, "admin"),
+        (&partner, "partner"),
+        (&proposer, "member"),
+    ] {
         seed_relay_member(keys, role).await;
     }
     register_employee(&employee, &owner).await;
@@ -480,9 +486,9 @@ async fn company_duty_ask_requires_owner_or_admin_and_creates_the_versioned_work
     };
     assert_rejected(
         &submit_duty_action(&proposer, &pause).await,
-        "only a community owner or admin can manage duties",
+        "only a community owner, partner or admin can manage duties",
     );
-    assert_accepted(&submit_duty_action(&admin, &pause).await);
+    assert_accepted(&submit_duty_action(&partner, &pause).await);
     let (paused_head_id, paused): (String, DutyHead) =
         current_head(&owner, KIND_DUTY_HEAD, &duty_tag, None).await;
     assert_eq!(paused.status, DutyStatus::Paused);

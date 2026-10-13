@@ -115,10 +115,10 @@ pub(super) async fn handle(
     .await
     .map_err(internal)?
     .ok_or_else(|| forbidden("actor is not a member of this community"))?;
-    if !is_admin(&role) {
+    if !can_manage_duties(&role) {
         tx.rollback().await.map_err(internal)?;
         return Err(forbidden(
-            "only a community owner or admin can manage duties",
+            "only a community owner, partner or admin can manage duties",
         ));
     }
     let duplicate = command_exists(&mut tx, community_id, &event).await?;
@@ -725,8 +725,8 @@ fn ensure_command_employee_tag(event: &Event, employee_pubkey: &str) -> Result<(
     }
 }
 
-fn is_admin(role: &str) -> bool {
-    matches!(role, "owner" | "admin")
+fn can_manage_duties(role: &str) -> bool {
+    matches!(role, "owner" | "admin" | "partner")
 }
 
 fn duplicate_result(event: &Event) -> IngestResult {

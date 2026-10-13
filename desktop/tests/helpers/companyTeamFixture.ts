@@ -12,6 +12,7 @@ type Opts = {
   relaySelf?: "null" | "delay";
   noPositions?: boolean;
   emptyRoster?: boolean;
+  aliceRole?: "member" | "partner";
 };
 
 /** Seed a signed mixed roster for Team recovery and lifecycle browser tests. */
@@ -93,7 +94,12 @@ export async function setup(
           .filter((p) => p.kind === "human")
           .map((p) => ({
             pubkey: p.pubkey,
-            role: p.pubkey === owner ? "owner" : "member",
+            role:
+              p.pubkey === owner
+                ? "owner"
+                : p.pubkey === TEST_IDENTITIES.alice.pubkey
+                  ? (o.aliceRole ?? "member")
+                  : "member",
           })),
     relayAgents: o.emptyRoster
       ? []

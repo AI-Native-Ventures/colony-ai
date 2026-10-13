@@ -68,6 +68,32 @@ test("Message employee opens the product's direct conversation", async ({
   );
 });
 
+test("partner can edit an employee position but cannot terminate or edit a human position", async ({
+  page,
+}) => {
+  const { minaPk, owner } = await setup(page, {
+    identity: "alice",
+    aliceRole: "partner",
+  });
+  await page.goto(`/#/team/detail/${minaPk}`);
+  const desk = page.getByTestId("company-employee-profile");
+  await expect(desk).toBeVisible();
+  await desk.getByRole("tab", { name: "Settings" }).click();
+  await expect(
+    desk.getByRole("button", { name: "Edit role and reporting" }),
+  ).toBeVisible();
+  await expect(
+    desk.getByRole("button", { name: "Terminate employee" }),
+  ).toHaveCount(0);
+  await desk.getByRole("button", { name: "Edit role and reporting" }).click();
+  await expect(page.getByTestId("company-team-edit-screen")).toBeVisible();
+
+  await page.goto(`/#/team/archive/${minaPk}`);
+  await expect(page.getByText(/Only an authorized company/)).toBeVisible();
+  await page.goto(`/#/team/edit/${owner}`);
+  await expect(page.getByText(/Only an authorized company/)).toBeVisible();
+});
+
 test("a known employee remains an ant in the conversation member strip", async ({
   page,
 }) => {

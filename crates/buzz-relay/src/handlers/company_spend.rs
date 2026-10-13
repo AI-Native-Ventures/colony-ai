@@ -329,10 +329,15 @@ async fn persist_global_head_action<T: serde::Serialize>(
     .fetch_optional(&mut *tx)
     .await
     .map_err(internal)?;
-    if !matches!(actor_role.as_deref(), Some("owner" | "admin")) {
-        return Err(forbidden(
-            "only company owners and admins can change AI spend",
-        ));
+    let can_write = matches!(actor_role.as_deref(), Some("owner" | "admin"))
+        || (actor_role.as_deref() == Some("partner")
+            && head_kind == KIND_EMPLOYEE_AI_ALLOWANCE_HEAD);
+    if !can_write {
+        return Err(forbidden(if head_kind == KIND_EMPLOYEE_AI_ALLOWANCE_HEAD {
+            "only company owners, partners and admins can change employee allowances"
+        } else {
+            "only company owners and admins can change AI spend"
+        }));
     }
     if let Some(employee_pubkey) = employee_pubkey {
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
