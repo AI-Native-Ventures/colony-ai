@@ -187,8 +187,30 @@ async function capture(
   });
 }
 
+test("onboarding: flag OFF leaves Colony credits out of the Colony Agent path", async ({
+  page,
+}) => {
+  const state = await setup(page, "onboarding", { flag: false });
+  const colonyAgent = page.getByTestId("onboarding-colony-agent");
+  await expect(
+    colonyAgent.getByRole("button", {
+      name: "Connect OpenRouter",
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await expect(colonyAgent).not.toContainText("Colony credits");
+  await expect(page.getByTestId("onboarding-credits-coming-soon")).toHaveCount(
+    0,
+  );
+  await expect(page.getByTestId("colony-credits-option")).toHaveCount(0);
+  expect(await saveCount(page)).toBe(0);
+  expect(state.capabilities()).toBe(0);
+});
+
 for (const surface of ["onboarding", "settings"] as const) {
   for (const gate of ["flag", "gateway", "stripe"] as const) {
+    // Onboarding hides the option entirely while the flag is off (above).
+    if (surface === "onboarding" && gate === "flag") continue;
     test(`${surface}: ${gate} OFF keeps Coming soon with no paid action`, async ({
       page,
     }) => {

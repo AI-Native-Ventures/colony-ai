@@ -19,6 +19,7 @@ import {
 } from "./onboardingConnectionTest";
 import { buildOnboardingRuntimeCandidate } from "./saveOnboardingRuntime";
 import { readCreditsGateway } from "@/features/credits/creditsGateway";
+import { useColonyCreditsLaunched } from "@/features/credits/useColonyCreditsLaunched";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import {
@@ -579,6 +580,7 @@ export function ConnectSetupStep({
   onContinue,
 }: ConnectSetupStepProps) {
   const queryClient = useQueryClient();
+  const creditsLaunched = useColonyCreditsLaunched();
   const [selectedRuntimeId, setSelectedRuntimeId] = React.useState<
     string | null
   >(null);
@@ -617,7 +619,8 @@ export function ConnectSetupStep({
   );
   const [saveError, setSaveError] = React.useState<string | null>(null);
   // Two onboarding paths: the person's own Claude Code or Codex subscription
-  // ("connect"), or Colony Agent powered by OpenRouter or Colony credits.
+  // ("connect"), or Colony Agent powered by OpenRouter. Colony credits join
+  // the Colony Agent path only once the native launch flag is on.
   const [connectionScene, setConnectionScene] = React.useState<
     "connect" | "colony"
   >("connect");
@@ -924,21 +927,23 @@ export function ConnectSetupStep({
                   setOpenRouterScene(`openrouter-${state}`)
                 }
               />
-              <ColonyCreditsOption
-                communityId={communityId}
-                selected={
-                  globalConfig.provider === "colony-credits" &&
-                  globalConfig.preferred_runtime === "buzz-agent"
-                }
-                canSelect={
-                  !saving &&
-                  bundledPrerequisite.ready &&
-                  bundled?.availability === "available" &&
-                  !!bundled.command &&
-                  !!bundled.binaryPath
-                }
-                onSelect={continueWithRuntime}
-              />
+              {creditsLaunched ? (
+                <ColonyCreditsOption
+                  communityId={communityId}
+                  selected={
+                    globalConfig.provider === "colony-credits" &&
+                    globalConfig.preferred_runtime === "buzz-agent"
+                  }
+                  canSelect={
+                    !saving &&
+                    bundledPrerequisite.ready &&
+                    bundled?.availability === "available" &&
+                    !!bundled.command &&
+                    !!bundled.binaryPath
+                  }
+                  onSelect={continueWithRuntime}
+                />
+              ) : null}
             </div>
           )}
           {saveError && colonyPath ? <p role="alert">{saveError}</p> : null}

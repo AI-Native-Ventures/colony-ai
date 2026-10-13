@@ -228,7 +228,7 @@ for (const viewport of [
     ).toBeEnabled();
     await expect(
       colonyAgent.getByTestId("onboarding-credits-coming-soon"),
-    ).toContainText("Coming soon");
+    ).toHaveCount(0);
     await expect(page.getByTestId("onboarding-provider-key")).toHaveCount(0);
     await expect(page.getByLabel("Model", { exact: true })).toHaveCount(0);
     await expect(page.locator(".harness-state")).toHaveText("Included");

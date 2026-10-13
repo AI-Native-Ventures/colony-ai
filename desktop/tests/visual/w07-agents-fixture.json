@@ -1,5 +1,6 @@
 {
   "appMockData": {
+    "colonyCreditsGatewayEnabled": true,
     "visualChannels": [
       {
         "id": "b5e2f8a1-3c44-5912-9e67-4a8d1f2b3c4e",

@@ -748,7 +748,7 @@ function OpenRouterState({
             <ul>
               <li>Keep your existing OpenRouter account.</li>
               <li>Review its balance and limits here.</li>
-              <li>OpenRouter billing stays separate from Colony credits.</li>
+              <li>OpenRouter bills you directly.</li>
             </ul>
           </div>
           <button className="primary full" disabled={!enabled} type="button">
