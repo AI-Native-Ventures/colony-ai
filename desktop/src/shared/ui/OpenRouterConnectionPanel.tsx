@@ -229,7 +229,7 @@ export function OpenRouterConnectionPanel({
             <ul className="list-disc pl-5 space-y-1">
               <li>Keep your existing OpenRouter account.</li>
               <li>Review its balance and limits here.</li>
-              <li>OpenRouter billing stays separate from Colony credits.</li>
+              <li>OpenRouter bills you directly.</li>
             </ul>
           </div>
           <button
