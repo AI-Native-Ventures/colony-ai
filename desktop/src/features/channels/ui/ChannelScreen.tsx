@@ -359,6 +359,12 @@ export function ChannelScreen({
       (messageProfilePubkeys.length > 0 &&
         (messageProfilesQuery.isPending ||
           messageProfilesQuery.isPlaceholderData)));
+  const headerAgentIdentityUnresolved =
+    agentPubkeysPending ||
+    channelMembersQuery.isError ||
+    managedAgentsQuery.isError ||
+    relayAgentsQuery.isError ||
+    messageProfilesQuery.isError;
   const {
     agentSessionCandidates,
     botTypingEntries,
@@ -754,6 +760,8 @@ export function ChannelScreen({
     () => (
       <ChannelScreenHeader
         activeChannel={activeChannel}
+        agentPubkeys={agentPubkeys}
+        agentPubkeysPending={headerAgentIdentityUnresolved}
         activeChannelEphemeralDisplay={activeChannelEphemeralDisplay}
         activeChannelTitle={activeChannelTitle}
         referenceThreadPresentation={referenceThreadPresentation}
@@ -781,6 +789,8 @@ export function ChannelScreen({
     ),
     [
       activeChannel,
+      agentPubkeys,
+      headerAgentIdentityUnresolved,
       activeChannelEphemeralDisplay,
       activeChannelTitle,
       referenceThreadPresentation,

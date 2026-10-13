@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft } from "lucide-react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { useOpenDmMutation } from "@/features/channels/hooks";
 import { useIsManagedAgent } from "@/features/agent-memory/hooks";
 import {
   MemoryRefreshButton,
@@ -51,11 +52,14 @@ import { TeamPage, TeamPageTitle, handleTeamTabKeys } from "./TeamPage";
 import { EmployeeAvatar } from "./EmployeeAvatar";
 import { EmployeeRuntimeSummary } from "./EmployeeRuntimeSummary";
 import { useEmployeeRuntime } from "../useEmployeeRuntime";
+import { EmployeeSchedulePanel } from "./EmployeeSchedulePanel";
 import { Textarea } from "@/shared/ui/textarea";
 import { truncateNpub } from "@/shared/lib/pubkey";
 
 type EmployeeTab =
   | "overview"
+  | "schedule"
+  | "settings"
   | "instructions"
   | "model-runtime"
   | "tools-access"
@@ -67,14 +71,20 @@ type EmployeeTab =
   | "history";
 
 const TABS: Array<{ id: EmployeeTab; label: string }> = [
-  { id: "overview", label: "Overview" },
+  { id: "overview", label: "Desk" },
+  { id: "duties", label: "Plan" },
+  { id: "schedule", label: "Schedule" },
+  { id: "activity", label: "Activity" },
+  { id: "settings", label: "Settings" },
+];
+
+const SETTINGS_TABS: Array<{ id: EmployeeTab; label: string }> = [
   { id: "instructions", label: "Instructions" },
   { id: "model-runtime", label: "Model & runtime" },
   { id: "tools-access", label: "Tools & access" },
-  { id: "salary", label: "Salary" },
+  { id: "salary", label: "Allowance" },
   { id: "workers", label: "Workers" },
-  { id: "duties", label: "Duties" },
-  { id: "lessons", label: "Lessons" },
+  { id: "lessons", label: "Lessons & memory" },
   { id: "history", label: "History" },
 ];
 
@@ -222,7 +232,8 @@ export function EmployeeProfileScreen({
   const [reviewRehire, setReviewRehire] = React.useState(false);
   const agent = member.managedAgent;
   const identity = useIdentityQuery();
-  const { goCompanyWork, goPower } = useAppNavigation();
+  const { goCompanyWork, goPower, goChannel } = useAppNavigation();
+  const openDmMutation = useOpenDmMutation();
   const personasQuery = usePersonasQuery();
   const runtimesQuery = useAcpRuntimesQuery({ enabled: true });
   const employeePubkey = member.pubkey.toLowerCase();
@@ -270,9 +281,12 @@ export function EmployeeProfileScreen({
     : null;
   const status = currentPosition?.status;
   const employeeRuntime = useEmployeeRuntime(member);
-  const subtitle = [currentPosition?.title, "Employee", employeeRuntime.label]
-    .filter(Boolean)
-    .join(" · ");
+  const displayStatus =
+    status === "paused"
+      ? "Paused"
+      : status === "terminated"
+        ? "Let go"
+        : employeeRuntime.label;
   const relaySelf = teamData.relaySelf;
   const secretsQuery = useQuery({
     queryKey: ["company-secret-bindings", relaySelf],
@@ -287,6 +301,7 @@ export function EmployeeProfileScreen({
     null,
   );
   const [notice, setNotice] = React.useState<string | null>(null);
+  const [messageError, setMessageError] = React.useState<string | null>(null);
   const [runtimeDialogOpen, setRuntimeDialogOpen] = React.useState(false);
   const [runtimeDialogBefore, setRuntimeDialogBefore] =
     React.useState<EmployeeConfigSnapshot | null>(null);
@@ -811,38 +826,64 @@ export function EmployeeProfileScreen({
   }
 
   const historyNeedsSync = pendingRevisions.length > 0;
+  const settingsSelected =
+    tab === "settings" || SETTINGS_TABS.some((item) => item.id === tab);
 
   return (
-    <TeamPage title={fullName} testId="company-employee-profile">
+    <TeamPage title={fullName} testId="company-employee-profile" canary>
       <button
-        className="mb-4 inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground"
+        className="colony-canary-desk-back"
         onClick={onBack}
         type="button"
       >
-        <ChevronLeft aria-hidden="true" className="size-3.5" /> Back
+        <ChevronLeft aria-hidden="true" className="size-3.5" /> Team
       </button>
       <div
-        className="mb-6 mt-2 flex flex-wrap items-center justify-between gap-4"
+        className="colony-canary-employee-hero"
         data-testid="company-position-header"
       >
-        <div className="flex min-w-0 items-center gap-4">
+        <div className="colony-canary-employee-identity">
           <EmployeeAvatar
             name={fullName}
-            profile={profile?.avatarUrl}
-            instance={agent.avatarUrl}
-            definition={persona?.avatarUrl}
-            personaId={agent.personaId}
-            className="size-12 shrink-0"
+            className="size-28 shrink-0 rounded-2xl"
             testId="employee-header-avatar"
           />
-          <div className="min-w-0">
-            <TeamPageTitle>{fullName}</TeamPageTitle>
-            <p className="mt-[1.875rem] truncate text-compact text-muted-foreground">
-              {subtitle}
-            </p>
+          <div className="colony-canary-employee-identity-copy">
+            <span className="colony-canary-team-eyebrow">
+              {currentPosition?.title ?? "Employee"}
+            </span>
+            <div className="colony-canary-employee-name-row">
+              <TeamPageTitle className="colony-canary-employee-name">
+                {fullName}
+              </TeamPageTitle>
+              <span className="colony-canary-employee-status">
+                {displayStatus}
+              </span>
+            </div>
+            {managerName ? <p>Reports to {managerName}</p> : null}
+            {status === "paused" || status === "terminated" ? (
+              <p>{currentPosition?.reason}</p>
+            ) : null}
           </div>
         </div>
+        <Button
+          disabled={openDmMutation.isPending}
+          onClick={() => {
+            setMessageError(null);
+            void openDmMutation
+              .mutateAsync({ pubkeys: [employeePubkey] })
+              .then((channel) => goChannel(channel.id))
+              .catch(() =>
+                setMessageError("The conversation could not open. Try again."),
+              );
+          }}
+          type="button"
+          variant="outline"
+        >
+          Message {fullName}
+        </Button>
       </div>
+      {messageError ? <p role="alert">{messageError}</p> : null}
       {notice ? (
         <p className="mb-4 text-sm text-muted-foreground" role="status">
           {notice}
@@ -860,14 +901,16 @@ export function EmployeeProfileScreen({
       ) : null}
       <div
         aria-label="Employee profile"
-        className="flex gap-6 overflow-x-auto border-b border-border"
+        className="colony-canary-employee-tabs"
         role="tablist"
       >
         {TABS.map((item) => (
           <button
             aria-controls="employee-profile-tabpanel"
-            aria-selected={tab === item.id}
-            className={`-mb-px shrink-0 border-b-2 px-0 py-2.5 text-xs ${tab === item.id ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+            aria-selected={
+              item.id === "settings" ? settingsSelected : tab === item.id
+            }
+            className={`-mb-px shrink-0 border-b-2 px-0 py-2.5 text-xs ${(item.id === "settings" ? settingsSelected : tab === item.id) ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
             data-testid={`employee-tab-${item.id}`}
             id={`employee-tab-${item.id}`}
             key={item.id}
@@ -875,7 +918,11 @@ export function EmployeeProfileScreen({
               setTab(item.id);
               setEditInstructions(false);
             }}
-            tabIndex={tab === item.id ? 0 : -1}
+            tabIndex={
+              (item.id === "settings" ? settingsSelected : tab === item.id)
+                ? 0
+                : -1
+            }
             onKeyDown={handleTeamTabKeys}
             role="tab"
             type="button"
@@ -885,7 +932,7 @@ export function EmployeeProfileScreen({
         ))}
       </div>
       <div
-        aria-labelledby={`employee-tab-${tab}`}
+        aria-labelledby={`employee-tab-${settingsSelected ? "settings" : tab}`}
         className="min-h-80 py-6"
         data-testid="employee-profile-tabpanel"
         id="employee-profile-tabpanel"
@@ -930,21 +977,62 @@ export function EmployeeProfileScreen({
             ) : null}
           </section>
         ) : null}
+        {SETTINGS_TABS.some((item) => item.id === tab) ? (
+          <Button
+            className="mb-5"
+            onClick={() => setTab("settings")}
+            type="button"
+            variant="ghost"
+          >
+            <ChevronLeft aria-hidden="true" /> Employee settings
+          </Button>
+        ) : null}
         {tab === "overview" ? (
-          <CompanyEmployeeProfileActions
-            canManage={canManage}
-            employeePubkey={employeePubkey}
-            managerName={managerName}
-            onEdit={onEditPosition}
-            onOpenReport={onOpenMember}
-            onTerminate={onTerminate}
-            position={currentPosition}
+          <section
+            className="colony-canary-employee-desk"
+            data-testid="employee-desk"
           >
             <MemberDoingNowSection
               memberPubkey={employeePubkey}
               testId="employee-doing-now"
             />
-          </CompanyEmployeeProfileActions>
+          </section>
+        ) : null}
+        {tab === "settings" ? (
+          <section
+            className="colony-canary-employee-settings"
+            data-testid="employee-settings"
+          >
+            <CompanyEmployeeProfileActions
+              canManage={canManage}
+              employeePubkey={employeePubkey}
+              managerName={managerName}
+              onEdit={onEditPosition}
+              onOpenReport={onOpenMember}
+              onTerminate={onTerminate}
+              position={currentPosition}
+            />
+            <nav
+              aria-label="Employee settings"
+              className="colony-canary-employee-settings-list"
+            >
+              {SETTINGS_TABS.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setTab(item.id)}
+                  type="button"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+          </section>
+        ) : null}
+        {tab === "schedule" ? (
+          <EmployeeSchedulePanel
+            employeePubkey={employeePubkey}
+            onOpenPlan={() => setTab("duties")}
+          />
         ) : null}
         {tab === "instructions" ? instructionsContent() : null}
         {tab === "model-runtime" ? (
