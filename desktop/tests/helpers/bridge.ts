@@ -170,6 +170,8 @@ type MockBridgeOptions = {
   windowLabel?: string;
   /** Account state returned by the mocked account API. Defaults to linked. */
   accountLinked?: boolean;
+  /** Exercise the approved passwordless first-run screen in the E2E build. */
+  legacyAccountFlow?: boolean;
   /** Linked account address returned by the mocked account API. */
   accountEmail?: string;
   /** Current user status event returned by the mocked relay. */

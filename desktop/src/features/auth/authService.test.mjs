@@ -109,6 +109,12 @@ function createService(baseUrl, options = {}) {
 }
 
 function successFor(method, path) {
+  if (method === "POST" && path === "/api/accounts/code/start") {
+    return { status: 200, body: { sent: true, resendAfterSeconds: 30 } };
+  }
+  if (method === "POST" && path === "/api/accounts/code/verify") {
+    return { status: 200, body: { ...SERVER_SESSION, created: true } };
+  }
   if (method === "POST" && path === "/api/accounts/signup") {
     return { status: 202, body: { status: "verification_sent" } };
   }
@@ -174,6 +180,24 @@ test("service covers every account endpoint and signs protected routes", async (
     async (baseUrl) => {
       const auth = createService(baseUrl);
       assert.deepEqual(
+        await auth.service.startEmailSignIn(" founder@example.com "),
+        { sent: true, retryAfterSecs: 30 },
+      );
+      assert.deepEqual(
+        await auth.service.verifyEmailSignIn(
+          "founder@example.com",
+          "012345",
+          "2026-10-13",
+        ),
+        {
+          id: ACCOUNT.id,
+          email: ACCOUNT.email,
+          pubkey: ACCOUNT.pubkey,
+          hasPassword: true,
+          googleLinked: false,
+        },
+      );
+      assert.deepEqual(
         await auth.service.signUp(
           " founder@example.com ",
           "correct horse",
@@ -202,7 +226,7 @@ test("service covers every account endpoint and signs protected routes", async (
         { status: "verification_sent" },
       );
       await auth.service.signIn("founder@example.com", "password");
-      await auth.service.signInWithGoogle();
+      await auth.service.signInWithGoogle("2026-10-13");
       await auth.service.requestReset("founder@example.com");
       await auth.service.checkResetCode("founder@example.com", "654321");
       await auth.service.confirmReset(
@@ -232,6 +256,8 @@ test("service covers every account endpoint and signs protected routes", async (
         "DELETE /api/accounts/me",
         "GET /api/accounts/me",
         "POST /api/accounts/claim",
+        "POST /api/accounts/code/start",
+        "POST /api/accounts/code/verify",
         "POST /api/accounts/google",
         "POST /api/accounts/password",
         "POST /api/accounts/resend-code",
@@ -242,11 +268,23 @@ test("service covers every account endpoint and signs protected routes", async (
         "POST /api/accounts/signup",
         "POST /api/accounts/verify",
       ]);
-      assert.equal(requests.length, 13);
+      assert.equal(requests.length, 15);
 
       const signup = requests.find(
         (request) => request.path === "/api/accounts/signup",
       );
+      const emailStart = requests.find(
+        (request) => request.path === "/api/accounts/code/start",
+      );
+      assert.deepEqual(emailStart.body, { email: "founder@example.com" });
+      const emailVerify = requests.find(
+        (request) => request.path === "/api/accounts/code/verify",
+      );
+      assert.deepEqual(emailVerify.body, {
+        email: "founder@example.com",
+        code: "012345",
+        termsVersion: "2026-10-13",
+      });
       assert.deepEqual(signup.body, {
         email: "founder@example.com",
         password: "correct horse",
@@ -262,7 +300,10 @@ test("service covers every account endpoint and signs protected routes", async (
       const google = requests.find(
         (request) => request.path === "/api/accounts/google",
       );
-      assert.deepEqual(google.body, { id_token: "test.google.id.token" });
+      assert.deepEqual(google.body, {
+        id_token: "test.google.id.token",
+        termsVersion: "2026-10-13",
+      });
       const reset = requests.find(
         (request) => request.path === "/api/accounts/reset/confirm",
       );
@@ -360,6 +401,7 @@ test("session nsec reaches import_identity, is blanked, and is absent from the r
 test("contract errors map to typed failures and preserve the retry hint without replay", async () => {
   const cases = [
     [400, "invalid_request", "invalid_request"],
+    [400, "invalid_code", "invalid_code"],
     [401, "invalid_credentials", "invalid_credentials"],
     [403, "email_unverified", "email_unverified"],
     [409, "email_taken", "email_taken"],
@@ -387,7 +429,7 @@ test("contract errors map to typed failures and preserve the retry hint without 
             error,
             ...(status === 429
               ? { retry_after_secs: 37, remaining_attempts: 2 }
-              : error === "wrong_code"
+              : error === "wrong_code" || error === "invalid_code"
                 ? { attempts_left: 3 }
                 : {}),
           },

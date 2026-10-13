@@ -15,6 +15,7 @@ export type AuthErrorCode =
   | "email_taken"
   | "identity_taken"
   | "code_expired"
+  | "invalid_code"
   | "wrong_code"
   | "too_many_attempts"
   | "resend_cooldown"
@@ -72,6 +73,12 @@ export type AuthAccount = {
 export type VerificationSent = {
   status: "verification_sent";
   retryAfterSecs?: number;
+};
+
+/** Generic sign-in code response for both known and unknown email addresses. */
+export type EmailSignInCodeSent = {
+  sent: true;
+  retryAfterSecs: number;
 };
 
 /** Internal response shape consumed by the native identity importer. */
@@ -196,6 +203,19 @@ function verificationSentFrom(value: unknown): VerificationSent {
   };
 }
 
+function emailSignInCodeSentFrom(value: unknown): EmailSignInCodeSent {
+  if (
+    !isRecord(value) ||
+    value.sent !== true ||
+    typeof value.resendAfterSeconds !== "number" ||
+    !Number.isSafeInteger(value.resendAfterSeconds) ||
+    value.resendAfterSeconds < 1
+  ) {
+    throw new AuthApiError("invalid_response");
+  }
+  return { sent: true, retryAfterSecs: value.resendAfterSeconds };
+}
+
 function retryAfter(value: unknown): number | undefined {
   if (!isRecord(value)) return undefined;
   const secs = value.retry_after_secs;
@@ -286,6 +306,12 @@ function errorFromResponse(status: number, value: unknown): AuthApiError {
   }
   if (status === 400 && serverCode === "invalid_request") {
     return new AuthApiError("invalid_request", { status });
+  }
+  if (status === 400 && serverCode === "invalid_code") {
+    return new AuthApiError("invalid_code", {
+      status,
+      remainingAttempts: remainingAttempts(value),
+    });
   }
   if (status === 401 && serverCode === "invalid_credentials") {
     return new AuthApiError("invalid_credentials", {
@@ -416,6 +442,30 @@ export function createAuthApi(options: AuthApiOptions) {
   }
 
   return {
+    async startEmailSignIn(email: string): Promise<EmailSignInCodeSent> {
+      const body = await expectStatus(
+        request("POST", "/api/accounts/code/start", { email }),
+        200,
+      );
+      return emailSignInCodeSentFrom(body);
+    },
+
+    async verifyEmailSignIn(
+      email: string,
+      code: string,
+      termsVersion: string,
+    ): Promise<AuthSession> {
+      const body = await expectStatus(
+        request("POST", "/api/accounts/code/verify", {
+          email,
+          code,
+          termsVersion,
+        }),
+        200,
+      );
+      return sessionFrom(body);
+    },
+
     async signUp(
       email: string,
       password: string,
@@ -459,9 +509,15 @@ export function createAuthApi(options: AuthApiOptions) {
       return sessionFrom(body);
     },
 
-    async signInWithGoogle(idToken: string): Promise<AuthSession> {
+    async signInWithGoogle(
+      idToken: string,
+      termsVersion?: string,
+    ): Promise<AuthSession> {
       const body = await expectStatus(
-        request("POST", "/api/accounts/google", { id_token: idToken }),
+        request("POST", "/api/accounts/google", {
+          id_token: idToken,
+          ...(termsVersion ? { termsVersion } : {}),
+        }),
         200,
       );
       return sessionFrom(body);

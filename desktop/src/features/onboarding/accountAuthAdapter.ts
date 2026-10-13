@@ -6,11 +6,14 @@ export type AccountAuthTestCall = {
   route: string;
   email?: string;
   displayName?: string;
+  termsVersion?: string;
   purpose?: "verify" | "reset";
 };
 
 declare global {
   interface Window {
+    /** E2E-only compatibility entry for the older password onboarding specs. */
+    __BUZZ_E2E_LEGACY_ACCOUNT_FLOW__?: boolean;
     __BUZZ_E2E_ACCOUNT_AUTH_CLIENT__?: AccountAuthClient;
     __BUZZ_E2E_ACCOUNT_AUTH_CALLS__?: AccountAuthTestCall[];
     __BUZZ_E2E_QUEUE_ACCOUNT_AUTH_ERROR__?: (

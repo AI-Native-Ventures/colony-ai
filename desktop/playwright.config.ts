@@ -98,6 +98,7 @@ export default defineConfig({
         "**/colony-canary-today.spec.ts",
         "**/colony-canary-conversation.spec.ts",
         "**/colony-canary-team.spec.ts",
+        "**/colony-canary-auth.spec.ts",
         "**/avatar-discoverability.spec.ts",
         "**/activity-row-plain-labels.spec.ts",
         "**/tool-names-plain.spec.ts",

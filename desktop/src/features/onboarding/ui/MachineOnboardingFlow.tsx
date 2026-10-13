@@ -19,6 +19,7 @@ import type {
   AccountAuthClient,
   AccountAuthRecord,
 } from "../accountAuthClient";
+import { CanaryEmailAuthFlow } from "./CanaryEmailAuthFlow";
 import { AccountAuthFlow } from "./AccountAuthFlow";
 import { BackupStep } from "./BackupStep";
 import { DefaultConfigStep } from "./DefaultConfigStep";
@@ -583,8 +584,39 @@ export function MachineOnboardingFlow({
   }
 
   if (page === "account-auth") {
+    // The old password screen remains in the E2E harness for its existing
+    // compatibility suite. Installed and ordinary local builds use the
+    // approved email-code flow below.
+    if (
+      import.meta.env.MODE === "e2e" &&
+      window.__BUZZ_E2E_LEGACY_ACCOUNT_FLOW__ === true
+    ) {
+      return (
+        <AccountAuthFlow
+          authClient={authClient}
+          inviteBrand={
+            pendingInvite ? <InviteBrand invite={pendingInvite} /> : undefined
+          }
+          onHaveInviteLink={
+            pendingInvite
+              ? undefined
+              : () => {
+                  setTransitionDirection("forward");
+                  setPage("invite-link");
+                }
+          }
+          onAdvanced={() => {
+            setAccountAuthenticated(false);
+            setTransitionDirection("forward");
+            setPage("identity");
+          }}
+          onAuthenticated={installAccount}
+          standalone
+        />
+      );
+    }
     return (
-      <AccountAuthFlow
+      <CanaryEmailAuthFlow
         authClient={authClient}
         inviteBrand={
           pendingInvite ? <InviteBrand invite={pendingInvite} /> : undefined
@@ -603,7 +635,6 @@ export function MachineOnboardingFlow({
           setPage("identity");
         }}
         onAuthenticated={installAccount}
-        standalone
       />
     );
   }

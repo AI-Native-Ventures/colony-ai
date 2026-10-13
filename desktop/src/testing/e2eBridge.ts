@@ -423,6 +423,8 @@ type E2eConfig = {
     } | null;
     /** Account state returned by the mocked account API. Defaults to linked. */
     accountLinked?: boolean;
+    /** Preserve the older password onboarding UI for compatibility specs. */
+    legacyAccountFlow?: boolean;
     /** Linked account address returned by the mocked account API. */
     accountEmail?: string;
     /** Current user status event returned by the mocked relay. */
@@ -18220,6 +18222,9 @@ export function maybeInstallE2eTauriMocks() {
   }
 
   let mockAccountLinked = config.mock?.accountLinked ?? true;
+  let mockAccountHasPassword = true;
+  window.__BUZZ_E2E_LEGACY_ACCOUNT_FLOW__ =
+    config.mock?.legacyAccountFlow ?? true;
   let mockAccountEmail = config.mock?.accountEmail ?? "person@example.com";
   const accountAuthCalls: AccountAuthTestCall[] = [];
   const queuedAccountAuthErrors: Array<{
@@ -18230,7 +18235,7 @@ export function maybeInstallE2eTauriMocks() {
     id: "e2e-account",
     email,
     pubkey: DEFAULT_MOCK_IDENTITY.pubkey,
-    hasPassword: true,
+    hasPassword: mockAccountHasPassword,
     googleLinked: false,
   });
   const verificationSent = () => ({ status: "verification_sent" as const });
@@ -18241,12 +18246,14 @@ export function maybeInstallE2eTauriMocks() {
     purpose: "verify" | "reset" | undefined,
     result: () => T,
     displayName?: string,
+    termsVersion?: string,
   ): Promise<T> => {
     accountAuthCalls.push({
       method,
       route,
       ...(email ? { email } : {}),
       ...(displayName ? { displayName } : {}),
+      ...(termsVersion ? { termsVersion } : {}),
       ...(purpose ? { purpose } : {}),
     });
     const errorIndex = queuedAccountAuthErrors.findIndex(
@@ -18289,6 +18296,32 @@ export function maybeInstallE2eTauriMocks() {
     if (email) mockAccountEmail = email;
   };
   window.__BUZZ_E2E_ACCOUNT_AUTH_CLIENT__ = {
+    startEmailSignIn: (email) =>
+      accountAuthCall(
+        "startEmailSignIn",
+        "POST /api/accounts/code/start",
+        email,
+        undefined,
+        () => {
+          mockAccountEmail = email;
+          return { sent: true, retryAfterSecs: 30 };
+        },
+      ),
+    verifyEmailSignIn: (email, _code, termsVersion) =>
+      accountAuthCall(
+        "verifyEmailSignIn",
+        "POST /api/accounts/code/verify",
+        email,
+        undefined,
+        () => {
+          mockAccountEmail = email;
+          mockAccountLinked = true;
+          mockAccountHasPassword = false;
+          return accountRecord(email);
+        },
+        undefined,
+        termsVersion,
+      ),
     signUp: (email, _password, displayName) =>
       accountAuthCall(
         "signUp",
@@ -18333,7 +18366,7 @@ export function maybeInstallE2eTauriMocks() {
           return accountRecord(email);
         },
       ),
-    signInWithGoogle: () =>
+    signInWithGoogle: (termsVersion) =>
       accountAuthCall(
         "signInWithGoogle",
         "POST /api/accounts/google",
@@ -18344,6 +18377,8 @@ export function maybeInstallE2eTauriMocks() {
           mockAccountLinked = true;
           return accountRecord(mockAccountEmail);
         },
+        undefined,
+        termsVersion,
       ),
     requestReset: (email) =>
       accountAuthCall(

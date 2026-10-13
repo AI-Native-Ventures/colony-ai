@@ -5,15 +5,26 @@ import {
   type AuthApi,
   type AuthApiOptions,
   type AuthSession,
+  type EmailSignInCodeSent,
   type SignRelayEvent,
   type VerificationSent,
 } from "./authApi";
 
 export { AuthApiError } from "./authApi";
-export type { AuthAccount, VerificationSent } from "./authApi";
+export type {
+  AuthAccount,
+  EmailSignInCodeSent,
+  VerificationSent,
+} from "./authApi";
 
 /** Operations exposed to onboarding and persistent account prompts. */
 export type AuthService = {
+  startEmailSignIn(email: string): Promise<EmailSignInCodeSent>;
+  verifyEmailSignIn(
+    email: string,
+    code: string,
+    termsVersion: string,
+  ): Promise<AuthAccount>;
   signUp(
     email: string,
     password: string,
@@ -25,7 +36,7 @@ export type AuthService = {
     purpose: "verify" | "reset",
   ): Promise<VerificationSent>;
   signIn(email: string, password: string): Promise<AuthAccount>;
-  signInWithGoogle(): Promise<AuthAccount>;
+  signInWithGoogle(termsVersion?: string): Promise<AuthAccount>;
   requestReset(email: string): Promise<VerificationSent>;
   checkResetCode(email: string, code: string): Promise<void>;
   confirmReset(
@@ -171,6 +182,17 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
   }
 
   return {
+    async startEmailSignIn(email) {
+      const { api } = await apiFor();
+      return api.startEmailSignIn(email.trim());
+    },
+
+    async verifyEmailSignIn(email, code, termsVersion) {
+      return sessionRequest((api) =>
+        api.verifyEmailSignIn(email.trim(), code, termsVersion),
+      );
+    },
+
     async signUp(email, password, displayName) {
       const { api } = await apiFor();
       return displayName === undefined
@@ -191,7 +213,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       return sessionRequest((api) => api.signIn(email.trim(), password));
     },
 
-    async signInWithGoogle() {
+    async signInWithGoogle(termsVersion) {
       if (!deps.googleSignIn) {
         throw new AuthApiError("google_sign_in_unavailable");
       }
@@ -200,7 +222,9 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         idToken = await deps.googleSignIn();
         if (!idToken) throw new AuthApiError("google_sign_in_failed");
         const { api } = await apiFor();
-        return await consumeSession(await api.signInWithGoogle(idToken));
+        return await consumeSession(
+          await api.signInWithGoogle(idToken, termsVersion),
+        );
       } catch (error) {
         throw safeGoogleError(error);
       } finally {
