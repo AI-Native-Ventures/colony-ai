@@ -607,3 +607,127 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Conversation chrome uses the live stream, thread and work-area systems. */
+.colony-canary-conversation-header {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  margin: 0 4.5rem;
+  padding: 1.125rem 0 1.25rem;
+  border-bottom: 1px solid var(--colony-canary-line);
+  color: var(--colony-canary-ink);
+}
+
+.colony-canary-conversation-title-row,
+.colony-canary-conversation-title,
+.colony-canary-conversation-actions {
+  display: flex;
+  align-items: center;
+}
+
+.colony-canary-conversation-title-row {
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.colony-canary-conversation-title {
+  min-width: 0;
+  gap: 0.875rem;
+}
+
+.colony-canary-conversation-heading {
+  overflow: hidden;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.colony-canary-conversation-title .colony-workspace-history {
+  border: 0;
+  padding: 0;
+}
+
+.colony-canary-conversation-title
+  .colony-workspace-history
+  button:nth-child(2) {
+  display: none;
+}
+
+.colony-canary-conversation-actions {
+  gap: 0.375rem;
+}
+
+.colony-canary-conversation-actions button {
+  color: var(--colony-canary-ink);
+}
+
+.colony-canary-conversation-actions svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.colony-canary-conversation-participants {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  align-self: flex-start;
+  text-align: left;
+}
+
+.colony-canary-conversation-participant {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.colony-canary-participant-overflow,
+.colony-canary-thread-breadcrumb {
+  color: var(--colony-canary-muted);
+  font-size: var(--text-xs);
+}
+
+.colony-canary-conversation-description {
+  color: var(--colony-canary-muted);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.colony-canary-conversation-empty {
+  display: flex;
+  min-height: 20rem;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  color: var(--colony-canary-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.colony-channel-route[data-colony-conversation="true"] .composer-dock {
+  margin-inline: 3.375rem;
+}
+
+@media (max-width: 760px) {
+  .colony-canary-conversation-header {
+    margin: 0 1.25rem;
+  }
+
+  .colony-canary-conversation-participants {
+    gap: 0.5rem;
+  }
+
+  .colony-channel-route[data-colony-conversation="true"] .composer-dock {
+    margin-inline: 0;
+  }
+}

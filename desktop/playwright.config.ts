@@ -96,6 +96,7 @@ export default defineConfig({
       testMatch: [
         "**/colony-canary-shell.spec.ts",
         "**/colony-canary-today.spec.ts",
+        "**/colony-canary-conversation.spec.ts",
         "**/avatar-discoverability.spec.ts",
         "**/activity-row-plain-labels.spec.ts",
         "**/tool-names-plain.spec.ts",

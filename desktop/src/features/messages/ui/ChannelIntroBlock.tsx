@@ -2,6 +2,7 @@ import type * as React from "react";
 import { Hash } from "lucide-react";
 
 import { cn } from "@/shared/lib/cn";
+import { ColonyAntAvatar } from "@/shared/ui/ColonyAntAvatar";
 
 export type ChannelIntroAction = {
   description?: string;
@@ -18,6 +19,7 @@ export type ChannelIntro = {
   description?: string | null;
   hideBeginning?: boolean;
   icon?: React.ReactNode;
+  variant?: "colony-conversation";
 };
 
 /**
@@ -34,6 +36,22 @@ export function ChannelIntroBlock({
   className?: string;
   intro: ChannelIntro;
 }) {
+  if (intro.variant === "colony-conversation") {
+    return (
+      <div
+        className={cn("colony-canary-conversation-empty", className)}
+        data-testid="message-channel-intro"
+      >
+        <ColonyAntAvatar
+          name="Scout"
+          className="size-12 rounded-full grayscale"
+          decorative
+        />
+        <p>What would you like to work on?</p>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(

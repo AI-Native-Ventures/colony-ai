@@ -62,7 +62,6 @@ import {
 } from "@/features/channels/ui/ChannelPane.helpers";
 import { HuddleStartingView, HuddleTranscriptIntro } from "@/features/huddle";
 import { ChannelGlyph } from "@/features/channels/ui/ChannelGlyph";
-import { ChannelWorkspaceTabs } from "@/features/channels/ui/ChannelWorkspaceTabs";
 import { useSearchHighlightProps } from "@/features/channels/ui/useSearchHighlightProps";
 import { useChannelIntro } from "@/features/channels/ui/useChannelIntro";
 import type { ChannelPaneProps } from "@/features/channels/ui/ChannelPane.types";
@@ -381,7 +380,13 @@ export const ChannelPane = React.memo(function ChannelPane({
   const hasOpenMessageThread = Boolean(openThreadHeadId || threadHeadMessage);
   const workspaceChrome = !isHuddleTranscript && window.innerWidth >= 1440;
   const channelIntro =
-    isHuddleTranscript || hasOpenMessageThread ? null : standardChannelIntro;
+    isHuddleTranscript ||
+    hasOpenMessageThread ||
+    (activeChannel?.channelType === "stream" &&
+      activeChannel.isMember &&
+      messages.length > 0)
+      ? null
+      : standardChannelIntro;
   const {
     mainTimelineEntries: channelTimelineEntries,
     recentMentions,
@@ -700,9 +705,6 @@ export const ChannelPane = React.memo(function ChannelPane({
             }
           >
             {isHuddleTranscript ? null : header}
-            {workspaceChrome && activeChannel?.channelType === "stream" ? (
-              <ChannelWorkspaceTabs />
-            ) : null}
             {isHuddleTranscript && huddleThreadRepliesError ? (
               <div className="px-5 pt-3">
                 <ThreadRepliesErrorCard onRetry={onRetryHuddleThreadReplies} />

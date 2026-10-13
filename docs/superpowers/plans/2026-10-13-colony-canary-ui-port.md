@@ -32,6 +32,8 @@ Refactor `desktop/src/features/home/ui/TodayScreen.tsx` and its scoped styles ag
 
 Port T-02 to T-08 over the existing stream channel, message and thread APIs. Keep a channel-like conversation timeline with a message or card thread in a side panel. The conversation workspace indexes real files, media, links and browser references with a source-thread relationship. Test read/write, reconnect, search, attachment failure, keyboard navigation and permission boundaries. No session-only mock records in the product path.
 
+**Local slice evidence, 13 October:** Stream conversations now use the approved title, real member identities, description and Workspace entry. The old duplicate header, tab strip and intro action cards are absent for joined stream channels. Existing messages show agent ants, and a focused E2E case opens a real message thread beside the conversation and toggles the existing work area. A second case verifies the quiet empty state. TypeScript/E2E build and two focused conversation smoke cases pass. The workspace's file/browser/media tabs remain backed by existing product code, but a unified asset index linked to source threads, message send/attachment failure, reconnect and permission paths remain to be implemented and proven.
+
 ## Phase 4: Team and employee desks
 
 Port M-01 to M-08 and D-01 to D-06c over the company-role, hire and managed-agent runtime contracts. Bundle only ant portraits for the six starter employees. Use real lifecycle and budget state, not fixture counters. Keep owner and partner permissions at the mutation boundary. The unmerged account/host-run gates must pass before claiming real hire, pause, move or execution behavior.
