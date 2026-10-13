@@ -58,6 +58,7 @@ async function openProfile(
     role?: "owner" | "admin" | "member";
     errors?: string[];
     conflictHead?: ReturnType<typeof signedHead>;
+    section?: "business-profile" | "connections";
   } = {},
 ) {
   await installMockBridge(page, {
@@ -69,8 +70,16 @@ async function openProfile(
     businessProfileActionErrors: options.errors,
     businessProfileConflictHead: options.conflictHead,
   });
-  await page.goto("/#/settings?section=business-profile");
-  await expect(page.getByTestId("settings-business-profile")).toBeVisible();
+  await page.goto(
+    `/#/settings?section=${options.section ?? "business-profile"}`,
+  );
+  await expect(
+    page.getByTestId(
+      options.section === "connections"
+        ? "settings-connections"
+        : "settings-business-profile",
+    ),
+  ).toBeVisible();
 }
 
 test("Settings reads a signed shared profile, saves a revision and reads it after restart", async ({
@@ -311,7 +320,7 @@ test("Business profile remains editable in a narrow desktop window", async ({
     });
   }
   await page.getByRole("button", { name: "Change in Connections" }).click();
-  await expect(page).toHaveURL(/\/power\?section=connections/);
+  await expect(page).toHaveURL(/\/settings\?section=connections/);
 });
 
 test("Settings rejects a profile whose relay signature no longer matches", async ({
@@ -328,4 +337,134 @@ test("Settings rejects a profile whose relay signature no longer matches", async
   await expect(page.getByLabel("Business name", { exact: true })).toHaveCount(
     0,
   );
+});
+
+test("Connections saves social names to the signed profile and updates Business profile", async ({
+  page,
+}) => {
+  await openProfile(page, { section: "connections" });
+  await expect(page.getByLabel("Instagram")).toHaveValue("@leratodesigns");
+  await expect(
+    page.getByText("Email forwarding is not connected yet."),
+  ).toBeVisible();
+  await expect(page.getByText(/inbox\.colony\.global/)).toHaveCount(0);
+  if (process.env.COLONY_CANARY_CONNECTIONS_WIDE_SHOT) {
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: process.env.COLONY_CANARY_CONNECTIONS_WIDE_SHOT,
+    });
+  }
+  await page.getByLabel("Instagram").fill("@leratostudio");
+  await page.getByLabel("TikTok").fill("@leratostudio");
+  await page.getByRole("button", { name: "Save accounts" }).click();
+  await expect(
+    page.getByRole("button", { name: "Save accounts" }),
+  ).toBeDisabled();
+  await page.goto("/#/settings?section=business-profile");
+  await expect(
+    page.getByText("Instagram @leratostudio, TikTok @leratostudio"),
+  ).toBeVisible();
+  const savedProfile = await page.evaluate(() => {
+    const events = JSON.parse(
+      localStorage.getItem("buzz-e2e-business-profile-events-v1") ?? "[]",
+    );
+    const latest = events.find(
+      (event: { kind: number }) => event.kind === 30657,
+    );
+    return latest ? JSON.parse(latest.content) : null;
+  });
+  expect(savedProfile).toMatchObject({
+    socialAccounts: { instagram: "@leratostudio", tiktok: "@leratostudio" },
+    contact: { email: "hello@leratodesigns.co.za" },
+    invoice: { registeredName: "Lerato Designs Pty Ltd" },
+  });
+});
+
+test("Connections rebases edited accounts over unrelated concurrent facts", async ({
+  page,
+}) => {
+  await openProfile(page, {
+    section: "connections",
+    errors: ["conflict: business profile changed; current revision is 2."],
+    conflictHead: signedHead(2, {
+      ...profile,
+      contact: { ...profile.contact, phone: "011 555 0300" },
+    }),
+  });
+  await page.getByLabel("Facebook").fill("leratodesigns");
+  await page.getByRole("button", { name: "Save accounts" }).click();
+  await page.getByRole("button", { name: "Use my changes" }).click();
+  const savedProfile = await page.evaluate(() => {
+    const events = JSON.parse(
+      localStorage.getItem("buzz-e2e-business-profile-events-v1") ?? "[]",
+    );
+    const latest = events.find(
+      (event: { kind: number }) => event.kind === 30657,
+    );
+    return latest ? JSON.parse(latest.content) : null;
+  });
+  expect(savedProfile).toMatchObject({
+    contact: { phone: "011 555 0300" },
+    socialAccounts: { facebook: "leratodesigns" },
+  });
+});
+
+test("a member can see social names without editing them", async ({ page }) => {
+  await openProfile(page, { role: "member", section: "connections" });
+  await expect(page.getByLabel("Instagram")).toHaveValue("@leratodesigns");
+  await expect(page.getByLabel("Instagram")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Save accounts" })).toHaveCount(
+    0,
+  );
+});
+
+test("Connections keeps social edits through an outage and rejected write", async ({
+  page,
+}) => {
+  await openProfile(page, {
+    section: "connections",
+    errors: ["error: relay temporarily unavailable"],
+  });
+  await page.getByLabel("TikTok").fill("@leratostudio");
+  await page.evaluate(() =>
+    window.__BUZZ_E2E_SET_RELAY_CONNECTION_STATE__?.("disconnected"),
+  );
+  await expect(page.getByLabel("TikTok")).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Save accounts" }),
+  ).toBeDisabled();
+  await page.evaluate(() =>
+    window.__BUZZ_E2E_SET_RELAY_CONNECTION_STATE__?.("connected"),
+  );
+  await expect(page.getByLabel("TikTok")).toHaveValue("@leratostudio");
+  await page.getByRole("button", { name: "Save accounts" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "relay temporarily unavailable",
+  );
+  await expect(page.getByLabel("TikTok")).toHaveValue("@leratostudio");
+  await page.getByRole("button", { name: "Save accounts" }).click();
+  await expect(
+    page.getByRole("button", { name: "Save accounts" }),
+  ).toBeDisabled();
+});
+
+test("Connections is usable in a narrow desktop window", async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 700 });
+  await openProfile(page, { section: "connections" });
+  await page.getByLabel("Instagram").fill("@leratostudio");
+  await page
+    .getByRole("button", { name: "Save accounts" })
+    .scrollIntoViewIfNeeded();
+  await expect(
+    page.getByRole("button", { name: "Save accounts" }),
+  ).toBeInViewport();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    ),
+  ).toBe(false);
+  if (process.env.COLONY_CANARY_CONNECTIONS_SHOT) {
+    await waitForAnimations(page);
+    await page.screenshot({ path: process.env.COLONY_CANARY_CONNECTIONS_SHOT });
+  }
 });

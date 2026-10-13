@@ -415,7 +415,7 @@ function ProfileEditor({
           <Button
             onClick={() =>
               void navigate({
-                to: "/power",
+                to: "/settings",
                 search: { section: "connections" },
               })
             }

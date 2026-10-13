@@ -78,6 +78,7 @@ import {
 } from "./SettingsOptionGroup";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { AccountProfileSettingsPanel } from "./AccountProfileSettingsPanel";
+import { ColonyConnectionsSettingsPanel } from "./ColonyConnectionsSettingsPanel";
 import { AccountSecuritySettingsPanel } from "./AccountSecuritySettingsPanel";
 import { AvatarEditorProfileContext } from "./AvatarEditorProfileContext";
 import { UpdateChecker } from "../UpdateChecker";
@@ -112,6 +113,7 @@ export type SettingsSection =
   | "appearance"
   | "accessibility"
   | "business-profile"
+  | "connections"
   | "people"
   | "shortcuts"
   | "community-members"
@@ -192,6 +194,7 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
     icon: BriefcaseBusiness,
     sections: [
       { value: "business-profile", label: "Profile" },
+      { value: "connections", label: "Connections" },
       { value: "people", label: "People & access" },
     ],
   },
@@ -277,6 +280,7 @@ const SETTINGS_SECTION_VALUES: readonly SettingsSection[] = [
   "appearance",
   "accessibility",
   "business-profile",
+  "connections",
   "people",
   "shortcuts",
   "community-members",
@@ -1063,6 +1067,14 @@ export function renderSettingsSection(
       return <AccessibilitySettingsPanel onClose={props.onClose} />;
     case "business-profile":
       return <BusinessProfileSettingsPanel />;
+    case "connections":
+      return (
+        <ColonyConnectionsSettingsPanel
+          onOpenBusinessProfile={() =>
+            props.onSectionChange?.("business-profile")
+          }
+        />
+      );
     case "people":
       return (
         <CommunityMembersSettingsCard

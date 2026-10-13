@@ -86,6 +86,7 @@ const R19_SETTINGS_LAYOUT_SECTIONS = new Set<SettingsSection>([
   "shortcuts",
   "accessibility",
   "business-profile",
+  "connections",
   "moderation",
   "audit",
   "custom-emoji",
@@ -106,7 +107,7 @@ const CANARY_SETTINGS_SECTIONS: Array<{
   { label: "Business profile", section: "business-profile" },
   { label: "Credits and billing", powerSection: "history" },
   { label: "How your team is powered", section: "agent-defaults" },
-  { label: "Connections", powerSection: "connections" },
+  { label: "Connections", section: "connections" },
   { label: "People", section: "people" },
   { label: "Notifications", section: "notifications" },
   { label: "Running", section: "app" },
@@ -118,6 +119,7 @@ function canarySettingsSection(
   section: SettingsSection,
 ): SettingsSection | null {
   if (section === "business-profile") return "business-profile";
+  if (section === "connections") return "connections";
   if (section === "people" || section === "community-members") return "people";
   if (["agent-defaults", "agents", "harnesses", "compute"].includes(section))
     return "agent-defaults";

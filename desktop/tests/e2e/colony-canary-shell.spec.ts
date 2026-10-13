@@ -187,7 +187,8 @@ test("Settings sections open the existing product controls", async ({
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Connections", exact: true })
     .click();
-  await expect(page).toHaveURL(/#\/power\?.*section=connections/);
+  await expect(page).toHaveURL(/#\/settings\?.*section=connections/);
+  await expect(page.getByTestId("settings-connections")).toBeVisible();
 });
 
 test("Settings uses the same layout in dark mode", async ({ page }) => {

@@ -20,6 +20,14 @@ export type CompanyBusinessInvoice = {
   bankDetails?: string | null;
 };
 
+export type CompanyBusinessSocialAccounts = {
+  instagram?: string | null;
+  facebook?: string | null;
+  tiktok?: string | null;
+  linkedin?: string | null;
+  x?: string | null;
+};
+
 export type CompanyBusinessProfile = {
   schemaVersion: 1;
   name: string;
@@ -38,7 +46,7 @@ export type CompanyBusinessProfile = {
   contact?: CompanyBusinessContact;
   buyLink?: string | null;
   invoice?: CompanyBusinessInvoice;
-  socialAccounts?: Record<string, string | null>;
+  socialAccounts?: CompanyBusinessSocialAccounts;
 };
 
 export type CompanyBusinessProfileHead = {
