@@ -89,6 +89,11 @@ export const KIND_GIT_STATUS_DRAFT = 1633;
 // h-tags = currently-hidden DM channel ids).
 export const KIND_DM_VISIBILITY = 30622;
 
+// Company-wide business profile. Owners/admins publish actions; the relay
+// advances one signed revision head at the fixed business-profile coordinate.
+export const KIND_BUSINESS_PROFILE_HEAD = 30657;
+export const KIND_BUSINESS_PROFILE_ACTION = 47046;
+
 // Colony Phase 2 business-record kinds. Canonical NIP-33 heads are relay-signed;
 // member actions and immutable versions are stored under the client channel.
 export const KIND_PARTY_HEAD = 30630;

@@ -187,6 +187,7 @@ function asProfile(draft: BusinessDraft): OnboardingBusinessProfile {
     timeZone: draft.timeZone,
     goals: draft.goals,
     goalText: draft.goalText.trim(),
+    profileSyncRequired: true,
   };
 }
 
@@ -252,6 +253,15 @@ export function GuidedBusinessSetupStep({
       );
       return;
     }
+    if (
+      question === 5 &&
+      draft.linkInput.trim() &&
+      !draft.links.includes(draft.linkInput.trim()) &&
+      draft.links.length >= 10
+    ) {
+      setError("You can add up to 10 links for now.");
+      return;
+    }
     save({
       ...draft,
       links:
@@ -292,6 +302,10 @@ export function GuidedBusinessSetupStep({
       setError(
         "That doesn't look like a link or an @name. Try again, or skip it.",
       );
+      return;
+    }
+    if (!draft.links.includes(link) && draft.links.length >= 10) {
+      setError("You can add up to 10 links for now.");
       return;
     }
     save({
@@ -525,6 +539,7 @@ export function GuidedBusinessSetupStep({
                   </label>
                   <input
                     id="business-detail"
+                    maxLength={350}
                     value={draft.detail}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
@@ -588,6 +603,7 @@ export function GuidedBusinessSetupStep({
                       </label>
                       <input
                         id="business-goal"
+                        maxLength={500}
                         value={draft.goalText}
                         onChange={(event) =>
                           save({ ...draft, goalText: event.target.value })
@@ -608,6 +624,7 @@ export function GuidedBusinessSetupStep({
                     <div className="colony-canary-business-link-row">
                       <input
                         id="business-link"
+                        maxLength={500}
                         ref={inputRef}
                         value={draft.linkInput}
                         onChange={(event) =>
@@ -651,6 +668,7 @@ export function GuidedBusinessSetupStep({
                   <input
                     key={question}
                     id="business-answer"
+                    maxLength={question === 1 ? 120 : 500}
                     ref={inputRef}
                     autoComplete={
                       question === 0

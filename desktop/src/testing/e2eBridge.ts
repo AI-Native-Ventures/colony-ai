@@ -124,6 +124,8 @@ import {
   KIND_FACTORY_RUN_HEAD,
   KIND_GOAL_ACTION,
   KIND_GOAL_HEAD,
+  KIND_BUSINESS_PROFILE_ACTION,
+  KIND_BUSINESS_PROFILE_HEAD,
   KIND_HIRE_ACTION,
   KIND_HIRE_HEAD,
   KIND_EMPLOYEE_AI_ALLOWANCE_ACTION,
@@ -770,6 +772,14 @@ type E2eConfig = {
     goalEvents?: RelayEvent[];
     /** Synthetic relay key used only to broker goal actions in focused E2E tests. */
     goalRelayPrivateKey?: string;
+    /** Relay-signed shared business profile heads for focused E2E coverage. */
+    businessProfileEvents?: RelayEvent[];
+    /** Synthetic relay signer for revisioned business profile writes. */
+    businessProfileRelayPrivateKey?: string;
+    /** Reject successive business profile actions, then accept later writes. */
+    businessProfileActionErrors?: string[];
+    /** Replace the head with this signed edit before a conflict response. */
+    businessProfileConflictHead?: RelayEvent;
     /** Relay-signed company hire heads used by Company Hire E2E coverage. */
     companyHireHeads?: RelayEvent[];
     /** Synthetic relay key used to broker hire actions in focused E2E tests. */
@@ -10730,6 +10740,7 @@ function mulberry32(seed: number) {
 
 let mockProjectEventStore: RelayEvent[] | null = null;
 let mockGoalEventStore: RelayEvent[] | null = null;
+let mockBusinessProfileEventStore: RelayEvent[] | null = null;
 let mockCompanyWorkEventStore: RelayEvent[] | null = null;
 const MOCK_PROJECT_BRANCHES_KEY = "buzz-e2e-project-branches";
 let mockFactoryRuns: FactoryRun[] = [];
@@ -11054,6 +11065,133 @@ function persistMockGoalEventStore(): void {
     "buzz-e2e-goal-events-v1",
     JSON.stringify(getMockGoalEventStore()),
   );
+}
+
+function getMockBusinessProfileEventStore(): RelayEvent[] {
+  if (!mockBusinessProfileEventStore) {
+    const persisted = window.localStorage.getItem(
+      "buzz-e2e-business-profile-events-v1",
+    );
+    try {
+      const value: unknown = persisted ? JSON.parse(persisted) : null;
+      mockBusinessProfileEventStore = Array.isArray(value)
+        ? (value as RelayEvent[])
+        : structuredClone(getConfig()?.mock?.businessProfileEvents ?? []);
+    } catch {
+      mockBusinessProfileEventStore = structuredClone(
+        getConfig()?.mock?.businessProfileEvents ?? [],
+      );
+    }
+  }
+  return mockBusinessProfileEventStore;
+}
+
+function brokerMockBusinessProfileAction(event: RelayEvent): string | null {
+  // Mock-mode sign_event uses the fixed test pubkey and a synthetic signature.
+  // Real-signer fixtures still need a valid Nostr signature here.
+  if (!verifyEvent(event) && event.pubkey !== DEFAULT_MOCK_IDENTITY.pubkey) {
+    return "invalid: profile signature is invalid.";
+  }
+  if (
+    event.tags.length !== 1 ||
+    event.tags[0]?.[0] !== "d" ||
+    event.tags[0]?.[1] !== "business-profile"
+  ) {
+    return "invalid: business profile requires its global d tag.";
+  }
+  const role = getConfig()?.mock?.relayRole;
+  if (role !== undefined && role !== "owner" && role !== "admin") {
+    return "forbidden: only owners and admins can change the business profile.";
+  }
+  const configuredError =
+    getConfig()?.mock?.businessProfileActionErrors?.shift();
+  if (configuredError) {
+    const concurrent = getConfig()?.mock?.businessProfileConflictHead;
+    if (configuredError.startsWith("conflict:") && concurrent) {
+      const store = getMockBusinessProfileEventStore();
+      const currentIndex = store.findIndex(
+        (candidate) => candidate.kind === KIND_BUSINESS_PROFILE_HEAD,
+      );
+      if (currentIndex >= 0) store.splice(currentIndex, 1);
+      store.push(concurrent);
+      window.localStorage.setItem(
+        "buzz-e2e-business-profile-events-v1",
+        JSON.stringify(store),
+      );
+    }
+    return configuredError;
+  }
+  const store = getMockBusinessProfileEventStore();
+  if (store.some((candidate) => candidate.id === event.id)) return null;
+  let action: { profile?: Record<string, unknown>; expectedRevision?: unknown };
+  try {
+    action = JSON.parse(event.content);
+  } catch {
+    return "invalid: business profile action is not JSON.";
+  }
+  if (
+    action.profile?.schemaVersion !== 1 ||
+    typeof action.profile?.name !== "string" ||
+    typeof action.profile?.timeZone !== "string"
+  ) {
+    return "invalid: business profile is incomplete.";
+  }
+  const current = store.find(
+    (candidate) => candidate.kind === KIND_BUSINESS_PROFILE_HEAD,
+  );
+  const revision = Number(
+    current?.tags.find((tag) => tag[0] === "revision")?.[1] ?? 0,
+  );
+  if (action.expectedRevision !== (current ? revision : null)) {
+    return `conflict: business profile changed; current revision is ${revision}.`;
+  }
+  const privateKey = getConfig()?.mock?.businessProfileRelayPrivateKey;
+  if (!privateKey) return "error: mock profile relay key is not configured.";
+  if (
+    getPublicKey(hexToBytes(privateKey)).toLowerCase() !==
+    getConfig()?.mock?.relaySelf?.toLowerCase()
+  ) {
+    return "error: mock profile relay key does not match relay self.";
+  }
+  const head = finalizeEvent(
+    {
+      kind: KIND_BUSINESS_PROFILE_HEAD,
+      created_at: Math.max(
+        Math.floor(Date.now() / 1_000),
+        (current?.created_at ?? 0) + 1,
+      ),
+      tags: [
+        ["d", "business-profile"],
+        ["revision", String(revision + 1)],
+      ],
+      content: JSON.stringify(action.profile),
+    },
+    hexToBytes(privateKey),
+  );
+  if (current) store.splice(store.indexOf(current), 1);
+  store.push(event, head);
+  window.localStorage.setItem(
+    "buzz-e2e-business-profile-events-v1",
+    JSON.stringify(store),
+  );
+  return null;
+}
+
+function filterMockBusinessProfileEvents(filter: MockFilter): RelayEvent[] {
+  return getMockBusinessProfileEventStore()
+    .filter(
+      (event) =>
+        (!filter.kinds || filter.kinds.includes(event.kind)) &&
+        (!filter.authors ||
+          filter.authors.some(
+            (author) => author.toLowerCase() === event.pubkey.toLowerCase(),
+          )) &&
+        (!filter["#d"] ||
+          event.tags.some(
+            (tag) => tag[0] === "d" && filter["#d"]?.includes(tag[1]),
+          )),
+    )
+    .slice(0, filter.limit ?? 100);
 }
 
 function mockGoalHeadByDTag(dTag: string): RelayEvent | undefined {
@@ -17321,6 +17459,20 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (
+      filter.kinds?.some(
+        (kind) =>
+          kind === KIND_BUSINESS_PROFILE_ACTION ||
+          kind === KIND_BUSINESS_PROFILE_HEAD,
+      )
+    ) {
+      for (const event of filterMockBusinessProfileEvents(filter)) {
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     const relaySelf = getConfig()?.mock?.relaySelf?.toLowerCase();
     const companyWorkHeadQuery = Boolean(
       filter.kinds?.includes(KIND_WORK_ITEM_HEAD) &&
@@ -17893,6 +18045,20 @@ function sendToMockSocket(args: {
       const headEvent = dTag ? mockGoalHeadByDTag(dTag) : undefined;
       if (actionEvent) emitMockGlobalEvent(actionEvent);
       if (headEvent) emitMockGlobalEvent(headEvent);
+      sendWsText(socket.handler, ["OK", event.id, true, ""]);
+      return;
+    }
+
+    if (event.kind === KIND_BUSINESS_PROFILE_ACTION) {
+      const error = brokerMockBusinessProfileAction(event);
+      if (error) {
+        sendWsText(socket.handler, ["OK", event.id, false, error]);
+        return;
+      }
+      const head = getMockBusinessProfileEventStore().find(
+        (candidate) => candidate.kind === KIND_BUSINESS_PROFILE_HEAD,
+      );
+      if (head) emitMockGlobalEvent(head);
       sendWsText(socket.handler, ["OK", event.id, true, ""]);
       return;
     }

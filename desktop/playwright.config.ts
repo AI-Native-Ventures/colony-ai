@@ -100,6 +100,7 @@ export default defineConfig({
         "**/colony-canary-team.spec.ts",
         "**/colony-canary-auth.spec.ts",
         "**/colony-canary-business.spec.ts",
+        "**/colony-canary-profile.spec.ts",
         "**/avatar-discoverability.spec.ts",
         "**/activity-row-plain-labels.spec.ts",
         "**/tool-names-plain.spec.ts",

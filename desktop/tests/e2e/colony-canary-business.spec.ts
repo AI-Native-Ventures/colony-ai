@@ -1,16 +1,28 @@
 import { expect, test, type Page } from "@playwright/test";
+import { verifyEvent } from "nostr-tools/pure";
 
-import { installMockBridge } from "../helpers/bridge";
+import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
 
 const ACCOUNT_PUBKEY = "deadbeef".repeat(8);
 const COMMUNITY_ID = "62a30d54-a5d8-42c2-a20f-1024a413ff2e";
 const HOST = "lerato-designs.accounts-test.colony.ainative.ventures";
 
-async function openBusiness(page: Page) {
+async function openBusiness(page: Page, withProfileRelay = false) {
   await installMockBridge(
     page,
-    { accountLinked: true, legacyAccountFlow: false, joinPolicy: null },
+    {
+      accountLinked: true,
+      legacyAccountFlow: false,
+      joinPolicy: null,
+      ...(withProfileRelay
+        ? {
+            relaySelf: TEST_IDENTITIES.charlie.pubkey,
+            businessProfileRelayPrivateKey: TEST_IDENTITIES.charlie.privateKey,
+            relayRole: "owner" as const,
+          }
+        : {}),
+    },
     { skipCommunitySeed: true, skipOnboardingSeed: true },
   );
   await page.route("**/api/communities/config", (route) =>
@@ -167,6 +179,64 @@ test("Scout asks one question at a time, keeps the draft and creates the real co
       ),
     )
     .toBeNull();
+});
+
+test("finishing first run publishes Scout's answers as the signed company profile", async ({
+  page,
+}) => {
+  await openBusiness(page, true);
+  await answerThroughSummary(page);
+  await page.route("**/api/communities/availability?*", (route) =>
+    route.fulfill({ json: { name: "lerato-designs", available: true } }),
+  );
+  await page.route("**/api/communities", (route) =>
+    route.fulfill({
+      json: {
+        community: {
+          id: COMMUNITY_ID,
+          name: "lerato-designs",
+          slug: "lerato-designs",
+          normalized_host: HOST,
+          owner_pubkey: ACCOUNT_PUBKEY,
+        },
+      },
+    }),
+  );
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
+  await page.getByRole("button", { name: "Skip for now" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const events = JSON.parse(
+          localStorage.getItem("buzz-e2e-business-profile-events-v1") ?? "[]",
+        );
+        return events.find((event: { kind: number }) => event.kind === 30657);
+      }),
+    )
+    .toMatchObject({
+      kind: 30657,
+      pubkey: TEST_IDENTITIES.charlie.pubkey,
+      tags: [
+        ["d", "business-profile"],
+        ["revision", "1"],
+      ],
+    });
+  const head = await page.evaluate(() => {
+    const events = JSON.parse(
+      localStorage.getItem("buzz-e2e-business-profile-events-v1") ?? "[]",
+    );
+    return events.find((event: { kind: number }) => event.kind === 30657);
+  });
+  expect(verifyEvent(head)).toBe(true);
+  expect(JSON.parse(head.content)).toMatchObject({
+    name: "Lerato Designs",
+    whatYouSell: "Clothing and fashion. Linen clothing",
+    whoBuys: "Women in Joburg",
+    whereYouSell: ["Instagram"],
+    links: ["@leratodesigns"],
+    goals: ["More sales"],
+  });
 });
 
 test("closing halfway resumes at the same question with the typed answer", async ({

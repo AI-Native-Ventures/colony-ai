@@ -262,6 +262,14 @@ type MockBridgeOptions = {
   goalEvents?: RelayEvent[];
   /** Synthetic relay key used only to broker goal actions in focused E2E tests. */
   goalRelayPrivateKey?: string;
+  /** Relay-signed shared business profile heads for focused E2E coverage. */
+  businessProfileEvents?: RelayEvent[];
+  /** Synthetic relay signer for revisioned business profile writes. */
+  businessProfileRelayPrivateKey?: string;
+  /** Reject successive business profile actions, then accept later writes. */
+  businessProfileActionErrors?: string[];
+  /** Replace the head with this signed edit before a conflict response. */
+  businessProfileConflictHead?: RelayEvent;
   /** Relay-signed member-position heads for Company Team E2E coverage. */
   companyMemberPositionEvents?: RelayEvent[];
   /** Relay-signed member-position actions for Company Team history coverage. */

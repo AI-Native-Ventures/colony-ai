@@ -39,6 +39,7 @@ export type OnboardingBusinessProfile = {
   timeZone?: string;
   goals?: string[];
   goalText?: string;
+  profileSyncRequired?: boolean;
 };
 
 type BusinessSetupStepProps = {
@@ -119,6 +120,7 @@ export function readOnboardingBusinessProfile(
         : undefined,
       goalText:
         typeof profile.goalText === "string" ? profile.goalText : undefined,
+      profileSyncRequired: profile.profileSyncRequired === true,
     };
   } catch {
     return null;

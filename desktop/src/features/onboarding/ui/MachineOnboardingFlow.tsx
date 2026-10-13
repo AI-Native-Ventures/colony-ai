@@ -792,6 +792,9 @@ export function MachineOnboardingFlow({
             firstCommunityPage: "owned",
             relayUrl: businessCommunityRelayUrl(selected),
             businessCommunityId: selected.id,
+            sharedBusinessProfileRequired:
+              readOnboardingBusinessProfile(selected.id)
+                ?.profileSyncRequired === true,
             communityName:
               readOnboardingBusinessProfile(selected.id)?.name ||
               selected.name ||
@@ -877,6 +880,8 @@ export function MachineOnboardingFlow({
             firstCommunityPage: "create",
             relayUrl: businessCommunityRelayUrl(createdCommunity),
             businessCommunityId: createdCommunity.id,
+            sharedBusinessProfileRequired:
+              businessProfile.profileSyncRequired === true,
             communityName:
               businessProfile.name ||
               createdCommunity.name ||

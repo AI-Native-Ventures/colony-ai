@@ -7,6 +7,8 @@ import {
 import { initializeStarterChannels } from "../hooks";
 import { useClaimInvite } from "../useClaimInvite";
 import { ensureOnboardingProfile } from "../onboardingProfile";
+import { readOnboardingBusinessProfile } from "./BusinessSetupStep";
+import { ensureSharedBusinessProfile } from "@/features/business-profile/businessProfileRelay";
 import {
   takePendingWelcomeChannelForDirectEntry,
   WELCOME_SURFACE_READY_EVENT,
@@ -123,6 +125,18 @@ export function CommunityOnboardingFlow({
         throw new Error("relay_membership_required");
       await ensureOnboardingProfile(isCurrent);
       if (!isCurrent()) return;
+      if (transaction?.sharedBusinessProfileRequired) {
+        const local = transaction.businessCommunityId
+          ? readOnboardingBusinessProfile(transaction.businessCommunityId)
+          : null;
+        if (!local) {
+          throw new Error(
+            "Your business answers are missing from this computer. Return to business setup before continuing.",
+          );
+        }
+        await ensureSharedBusinessProfile(local, isCurrent);
+        if (!isCurrent()) return;
+      }
       if (transaction?.inviteCode) {
         // Joined by invite: land in the workspace's shared channels. The
         // private Welcome and business setup belong to the owner.
@@ -170,6 +184,8 @@ export function CommunityOnboardingFlow({
     update,
     transaction?.id,
     transaction?.inviteCode,
+    transaction?.businessCommunityId,
+    transaction?.sharedBusinessProfileRequired,
   ]);
 
   React.useEffect(() => {
