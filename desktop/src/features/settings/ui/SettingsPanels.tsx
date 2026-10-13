@@ -1100,7 +1100,11 @@ export function renderSettingsSection(
     case "mobile":
       return <MobilePairingCard currentPubkey={props.currentPubkey} />;
     case "updates":
-      return <UpdateChecker />;
+      return (
+        <UpdateChecker
+          onOpenFeedback={() => props.onSectionChange?.("feedback")}
+        />
+      );
     case "feedback":
       return <FeedbackSettingsPanel />;
     case "settings/themes":

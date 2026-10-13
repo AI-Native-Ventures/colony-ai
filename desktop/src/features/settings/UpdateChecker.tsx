@@ -6,13 +6,17 @@ import {
   SettingsOptionRow,
 } from "./ui/SettingsOptionGroup";
 import { SettingsSectionHeader } from "./ui/SettingsSectionHeader";
-export function UpdateChecker() {
+export function UpdateChecker({
+  onOpenFeedback,
+}: {
+  onOpenFeedback?: () => void;
+}) {
   const { status, checkForUpdate, installAndRelaunch } = useUpdaterContext();
 
   return (
     <section className="min-w-0" data-testid="settings-updates">
       <SettingsSectionHeader
-        title="Updates"
+        title="Help and updates"
         description="Keep Colony up to date with the latest features and fixes."
       />
 
@@ -167,6 +171,18 @@ export function UpdateChecker() {
           </SettingsOptionRow>
         )}
       </SettingsOptionGroup>
+      {onOpenFeedback ? (
+        <SettingsOptionGroup title="Message the Colony team">
+          <SettingsOptionRow>
+            <p className="text-sm text-muted-foreground">
+              Tell us what happened or share an idea.
+            </p>
+            <Button onClick={onOpenFeedback} type="button" variant="outline">
+              Send feedback
+            </Button>
+          </SettingsOptionRow>
+        </SettingsOptionGroup>
+      ) : null}
     </section>
   );
 }

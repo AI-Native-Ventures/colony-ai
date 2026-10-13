@@ -1,5 +1,13 @@
 import * as React from "react";
-import { ArrowLeft, ArrowRight, Search, Settings, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronRight,
+  Search,
+  Settings,
+  X,
+} from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 
 import { cn } from "@/shared/lib/cn";
 import {
@@ -89,6 +97,42 @@ const R19_SETTINGS_LAYOUT_SECTIONS = new Set<SettingsSection>([
   "experimental",
   "feedback",
 ]);
+
+const CANARY_SETTINGS_SECTIONS: Array<{
+  label: string;
+  section?: SettingsSection;
+  powerSection?: "history" | "connections";
+}> = [
+  { label: "Business profile", section: "business-profile" },
+  { label: "Credits and billing", powerSection: "history" },
+  { label: "How your team is powered", section: "agent-defaults" },
+  { label: "Connections", powerSection: "connections" },
+  { label: "People", section: "people" },
+  { label: "Notifications", section: "notifications" },
+  { label: "Running", section: "app" },
+  { label: "Account", section: "profile" },
+  { label: "Help and updates", section: "updates" },
+];
+
+function canarySettingsSection(
+  section: SettingsSection,
+): SettingsSection | null {
+  if (section === "business-profile") return "business-profile";
+  if (section === "people" || section === "community-members") return "people";
+  if (["agent-defaults", "agents", "harnesses", "compute"].includes(section))
+    return "agent-defaults";
+  if (["notifications", "voice", "shortcuts"].includes(section))
+    return "notifications";
+  if (["app", "privacy", "mobile", "experimental"].includes(section))
+    return "app";
+  if (
+    ["profile", "security", "appearance", "accessibility"].includes(section) ||
+    section.startsWith("settings/theme")
+  )
+    return "profile";
+  if (section === "updates" || section === "feedback") return "updates";
+  return null;
+}
 
 function safeReadLastSections(): Partial<
   Record<SettingsGroupId, SettingsSection>
@@ -192,6 +236,7 @@ export function SettingsView({
   onSetSoundForSlot,
   section,
 }: SettingsViewProps) {
+  const navigate = useNavigate();
   const { isMobile, open: sidebarOpen, setOpen: setSidebarOpen } = useSidebar();
   const [isLoaded, setIsLoaded] = React.useState(false);
   const [search, setSearch] = React.useState("");
@@ -619,6 +664,43 @@ export function SettingsView({
           className="w20-settings-surface"
           data-testid="settings-content-surface"
         >
+          <header className="colony-canary-settings-intro">
+            <span className="colony-canary-settings-eyebrow">
+              {activeCommunity?.name ?? "Your company"}
+            </span>
+            <h1 className="colony-canary-settings-title">Settings.</h1>
+            <p>Keep the details your team needs close at hand.</p>
+          </header>
+          <nav
+            aria-label="Settings sections"
+            className="colony-canary-settings-nav"
+            data-testid="settings-canary-sections"
+          >
+            {CANARY_SETTINGS_SECTIONS.map((entry) => (
+              <button
+                aria-current={
+                  entry.section === canarySettingsSection(activeSection)
+                    ? "page"
+                    : undefined
+                }
+                key={entry.label}
+                onClick={() => {
+                  if (entry.section) {
+                    chooseSection(entry.section);
+                  } else if (entry.powerSection) {
+                    void navigate({
+                      to: "/power",
+                      search: { section: entry.powerSection },
+                    });
+                  }
+                }}
+                type="button"
+              >
+                <span>{entry.label}</span>
+                <ChevronRight aria-hidden="true" className="size-3.5" />
+              </button>
+            ))}
+          </nav>
           {activeGroup.id === "account" && avatarEditorContext ? null : (
             <div
               aria-label={`${activeGroup.label} settings sections`}

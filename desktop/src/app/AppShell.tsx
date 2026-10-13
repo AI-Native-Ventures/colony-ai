@@ -71,7 +71,6 @@ import { useAgentMetricArchiveSeed } from "@/features/local-archive/useAgentMetr
 import { useProfileQuery } from "@/features/profile/hooks";
 import { SendFeedbackController } from "@/features/settings/ui/SendFeedbackController";
 import {
-  DEFAULT_SETTINGS_SECTION,
   type SettingsSection,
   isSettingsSection,
 } from "@/features/settings/ui/SettingsPanels";
@@ -209,7 +208,7 @@ export function AppShell() {
     locationSearchSection,
   )
     ? locationSearchSection
-    : DEFAULT_SETTINGS_SECTION;
+    : "business-profile";
   const startupReady = useDeferredStartup();
   const identityQuery = useIdentityQuery();
   const { mutedChannelIds, muteChannel, unmuteChannel } = useChannelMutes(
@@ -676,7 +675,7 @@ export function AppShell() {
     [goHome, hideDmMutation, selectedChannelId],
   );
   const handleOpenSettings = React.useCallback(
-    (section: SettingsSection = DEFAULT_SETTINGS_SECTION) => {
+    (section: SettingsSection = "business-profile") => {
       setIsChannelManagementOpen(false);
       void goSettings(section);
     },
