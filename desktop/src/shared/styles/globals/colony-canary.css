@@ -1,0 +1,370 @@
+/* Approved Colony screen-pack shell. Keep this scoped while the canary replaces
+   legacy routes so the old implementation can be retired only after proof. */
+:root:has([data-colony-canary-ui]) {
+  --colony-canary-ink: #242738;
+  --colony-canary-muted: #3e4250;
+  --colony-canary-accent: #34377f;
+  --colony-canary-line: #dcdde4;
+  --colony-canary-canvas: #fff;
+  --colony-canary-gradient: linear-gradient(
+    139.4deg,
+    #fae7ed 0%,
+    #f3e8f7 44%,
+    #94b4fa 100%
+  );
+}
+
+:root.dark:has([data-colony-canary-ui]) {
+  --colony-canary-ink: #f4f2fa;
+  --colony-canary-muted: #c9c9d6;
+  --colony-canary-accent: #c3cbff;
+  --colony-canary-line: #4b4d65;
+  --colony-canary-canvas: #1b1d2d;
+  --colony-canary-gradient: linear-gradient(
+    139.4deg,
+    #413244 0%,
+    #30304e 44%,
+    #283e67 100%
+  );
+}
+
+:root:has([data-colony-canary-ui])
+  [data-buzz-content-surface]:not([data-buzz-content-unframed]) {
+  margin: 0;
+  border-radius: 0;
+  background: var(--colony-canary-canvas);
+}
+
+:root:has([data-colony-canary-ui])
+  [data-buzz-content-surface]
+  [data-buzz-content-layer] {
+  background: var(--colony-canary-canvas);
+}
+
+.colony-canary-sidebar,
+[data-mobile="true"]:has(.colony-canary-sidebar-inner) {
+  color: var(--colony-canary-ink);
+  font-family: "Manrope Variable", Manrope, sans-serif;
+}
+
+:root[data-buzz-sidebar]:has([data-colony-canary-ui])
+  .buzz-theme-gradient-underlay {
+  background-image: var(--colony-canary-gradient);
+}
+
+:root[data-buzz-sidebar]:has([data-colony-canary-ui])
+  .group\/sidebar-wrapper
+  [data-testid="app-sidebar"]
+  [data-sidebar="sidebar"].bg-sidebar:not([data-buzz-flat]),
+:root:has([data-colony-canary-ui])
+  [data-mobile="true"]:has(.colony-canary-sidebar-inner) {
+  background-color: transparent;
+  background-image: var(--colony-canary-gradient);
+  border-right: 1px solid var(--colony-canary-line);
+}
+
+.colony-canary-sidebar-inner {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 28px 16px 12px;
+}
+
+.colony-canary-sidebar button {
+  cursor: pointer;
+}
+.colony-canary-sidebar button:focus-visible,
+[data-mobile="true"] .colony-canary-sidebar-inner button:focus-visible {
+  outline: 2px solid var(--colony-canary-accent);
+  outline-offset: 2px;
+}
+
+.colony-canary-brand {
+  align-items: center;
+  align-self: flex-start;
+  display: flex;
+  gap: 9px;
+  margin: 0 12px 24px;
+  text-align: left;
+}
+.colony-canary-brand svg {
+  width: 39px;
+  height: 26px;
+}
+.colony-canary-brand strong {
+  font-size: 1.43rem;
+  font-weight: 750;
+  letter-spacing: -0.06rem;
+}
+.colony-canary-company {
+  margin: 0 11px 27px;
+  position: relative;
+}
+.colony-canary-company > button {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  font-size: 0.93rem;
+  font-weight: 650;
+  text-align: left;
+}
+.colony-canary-company > button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.colony-canary-company-menu {
+  background: var(--colony-canary-canvas);
+  border: 1px solid var(--colony-canary-line);
+  border-radius: 10px;
+  box-shadow: 0 12px 30px #1f23432b;
+  left: -12px;
+  padding: 7px;
+  position: absolute;
+  top: 32px;
+  width: 200px;
+  z-index: 30;
+}
+.colony-canary-company-menu button {
+  align-items: center;
+  border-radius: 6px;
+  display: flex;
+  font-size: 0.85rem;
+  justify-content: space-between;
+  padding: 8px;
+  text-align: left;
+  width: 100%;
+}
+.colony-canary-company-menu button:hover {
+  background: #ffffff80;
+}
+
+.colony-canary-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.colony-canary-nav > button {
+  align-items: center;
+  border-radius: 7px;
+  color: var(--colony-canary-muted);
+  display: flex;
+  font-size: 0.95rem;
+  font-weight: 550;
+  gap: 12px;
+  min-height: 42px;
+  padding: 11px 13px;
+  text-align: left;
+  width: 100%;
+}
+.colony-canary-nav > button.active {
+  background: #ffffffb8;
+  color: var(--colony-canary-accent);
+  font-weight: 700;
+}
+.colony-canary-nav > button:hover {
+  background: #ffffff8f;
+  color: var(--colony-canary-ink);
+}
+.colony-canary-nav > button.colony-canary-needs {
+  margin-top: 13px;
+}
+.colony-canary-needs-icon {
+  align-items: center;
+  border: 1.5px solid currentColor;
+  border-radius: 5px;
+  display: flex;
+  height: 18px;
+  justify-content: center;
+  width: 18px;
+}
+.colony-canary-needs-count {
+  align-items: center;
+  background: var(--colony-canary-accent);
+  border-radius: 6px;
+  color: var(--colony-canary-canvas);
+  display: flex;
+  font-size: 0.79rem;
+  font-weight: 650;
+  height: 23px;
+  justify-content: center;
+  margin-left: auto;
+  min-width: 23px;
+  padding-inline: 3px;
+}
+
+.colony-canary-conversation-list {
+  border-left: 1px solid var(--colony-canary-line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 5px 0 22px;
+  max-height: 28vh;
+  overflow-y: auto;
+  padding-left: 8px;
+}
+.colony-canary-sidebar-inner .colony-canary-conversation-list > span {
+  color: var(--colony-canary-muted);
+  font-size: 0.75rem;
+  padding: 6px;
+}
+.colony-canary-conversation-list button {
+  align-items: center;
+  border-radius: 5px;
+  color: var(--colony-canary-muted);
+  display: flex;
+  font-size: 0.78rem;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 7px;
+  text-align: left;
+  width: 100%;
+}
+.colony-canary-conversation-list button:hover,
+.colony-canary-conversation-list button.selected {
+  background: #ffffff8f;
+  color: var(--colony-canary-accent);
+}
+.colony-canary-conversation-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.colony-canary-unread {
+  background: var(--colony-canary-accent);
+  border-radius: 50%;
+  height: 6px;
+  width: 6px;
+}
+
+.colony-canary-tools {
+  border-top: 1px solid var(--colony-canary-line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 23px 10px 0;
+  padding-top: 18px;
+}
+.colony-canary-tools > button {
+  align-items: center;
+  color: var(--colony-canary-muted);
+  display: flex;
+  font-size: 0.81rem;
+  gap: 9px;
+  padding: 8px 0;
+  text-align: left;
+  white-space: nowrap;
+}
+.colony-canary-tools > button:hover {
+  color: var(--colony-canary-accent);
+}
+.colony-canary-tools [data-testid="open-search"] {
+  background: none;
+  color: var(--colony-canary-muted);
+  font-size: 0.81rem;
+  height: auto;
+  padding: 8px 0;
+}
+.colony-canary-tools [data-testid="open-search"]:hover {
+  background: none;
+  color: var(--colony-canary-accent);
+}
+.colony-canary-tools [data-testid="open-search"] svg {
+  color: currentColor;
+  height: 17px;
+  width: 17px;
+}
+
+.colony-canary-bottom {
+  margin-top: auto;
+  padding-top: 20px;
+}
+.colony-canary-team-link {
+  align-items: center;
+  border-bottom: 1px solid var(--colony-canary-line);
+  display: flex;
+  gap: 9px;
+  padding: 12px 9px 20px;
+  text-align: left;
+  width: 100%;
+}
+.colony-canary-team-link strong,
+.colony-canary-account strong {
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+.colony-canary-team-link small,
+.colony-canary-account small {
+  color: var(--colony-canary-muted);
+  display: block;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+.colony-canary-team-link > svg,
+.colony-canary-account > svg {
+  color: var(--colony-canary-muted);
+  margin-left: auto;
+}
+.colony-canary-orbit {
+  border: 2px solid var(--colony-canary-accent);
+  border-radius: 50%;
+  flex: none;
+  height: 9px;
+  width: 9px;
+}
+.colony-canary-account {
+  align-items: center;
+  display: flex;
+  gap: 9px;
+  padding: 17px 7px 2px;
+  text-align: left;
+  width: 100%;
+}
+.colony-canary-initials {
+  align-items: center;
+  background: #e7e8ee;
+  border-radius: 50%;
+  color: #33384b;
+  display: inline-flex;
+  flex: none;
+  font-size: 0.72rem;
+  font-weight: 700;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+.colony-canary-mobile-trigger {
+  display: none;
+}
+
+:root.dark .colony-canary-nav > button.active {
+  background: #ffffff23;
+}
+:root.dark .colony-canary-nav > button:hover,
+:root.dark .colony-canary-conversation-list button:hover,
+:root.dark .colony-canary-conversation-list button.selected {
+  background: #ffffff18;
+}
+
+@media (max-width: 767px) {
+  .colony-canary-mobile-trigger {
+    align-items: center;
+    background: var(--colony-canary-canvas);
+    border: 1px solid var(--colony-canary-line);
+    border-radius: 7px;
+    color: var(--colony-canary-ink);
+    display: flex;
+    height: 36px;
+    justify-content: center;
+    left: 12px;
+    position: fixed;
+    top: 14px;
+    width: 36px;
+    z-index: 40;
+  }
+}
