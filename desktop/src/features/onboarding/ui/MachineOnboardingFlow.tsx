@@ -70,6 +70,10 @@ import {
   readOnboardingBusinessProfile,
   type OnboardingBusinessProfile,
 } from "./BusinessSetupStep";
+import {
+  GuidedBusinessSetupStep,
+  hasPendingGuidedBusinessHandoff,
+} from "./GuidedBusinessSetupStep";
 import { ConnectSetupStep } from "./ConnectSetupStep";
 import type { SelfServeCommunity } from "@/features/communities/selfProvisioningApi";
 import {
@@ -138,6 +142,7 @@ export function MachineOnboardingFlow({
   const [isPending, setIsPending] = React.useState(false);
   const [identityWasImported, setIdentityWasImported] = React.useState(false);
   const [accountAuthenticated, setAccountAuthenticated] = React.useState(false);
+  const [guidedBusiness, setGuidedBusiness] = React.useState(false);
   const communityOnboarding = useCommunityOnboarding();
   // A workspace invite waiting for this person (deep link or pasted link). It
   // lives in the persisted transaction, so it survives a restart mid sign-up.
@@ -383,9 +388,19 @@ export function MachineOnboardingFlow({
             return profile ? { ...community, name: profile.name } : community;
           });
         setOwnedCommunities(owned);
-        setBusinessBackPage(owned.length > 0 ? "businesses" : "account-auth");
+        const pendingHandoff = owned.some(
+          (community) =>
+            !readOnboardingBusinessProfile(community.id) &&
+            hasPendingGuidedBusinessHandoff(account.pubkey, community),
+        );
+        if (pendingHandoff) setGuidedBusiness(true);
+        setBusinessBackPage(
+          owned.length > 0 && !pendingHandoff ? "businesses" : "account-auth",
+        );
         setTransitionDirection("forward");
-        setPage(owned.length > 0 ? "businesses" : "business");
+        setPage(
+          owned.length > 0 && !pendingHandoff ? "businesses" : "business",
+        );
       } catch {
         setOwnedCommunities([]);
         setBusinessListError(
@@ -634,7 +649,10 @@ export function MachineOnboardingFlow({
           setTransitionDirection("forward");
           setPage("identity");
         }}
-        onAuthenticated={installAccount}
+        onAuthenticated={(account) => {
+          setGuidedBusiness(true);
+          return installAccount(account);
+        }}
       />
     );
   }
@@ -793,6 +811,25 @@ export function MachineOnboardingFlow({
   }
 
   if (page === "business") {
+    if (guidedBusiness && businessBackPage === "account-auth") {
+      return (
+        <GuidedBusinessSetupStep
+          email={accountIdentity.email}
+          ownerName={accountIdentity.name}
+          onBack={() => {
+            setTransitionDirection("backward");
+            setPage("account-auth");
+          }}
+          onCreated={(community, profile) => {
+            setCreatedCommunity(community);
+            setBusinessProfile(profile);
+            setTransitionDirection("forward");
+            setPage("connect");
+          }}
+          pubkey={selectedPubkey ?? ""}
+        />
+      );
+    }
     return (
       <BusinessSetupStep
         additional={businessBackPage === "businesses"}
