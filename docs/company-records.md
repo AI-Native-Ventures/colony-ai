@@ -46,6 +46,8 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 30654 | AI spend record head | Relay signed, replaceable | AI spend |
 | 30655 | Employee duty head | Relay signed, replaceable | Company duties |
 | 30656 | Employee lesson head | Relay signed, replaceable | Employee lessons |
+| 30657 | Business profile head | Relay signed, replaceable | Company profile |
+| 30658 | Team computer head | Relay signed, replaceable | Team runtime |
 | 47006 | Shared work item action | Brokered | Company work |
 | 47031 | Goal action | Brokered | Company goals |
 | 47032 | Ask action | Brokered | Company asks |
@@ -61,6 +63,8 @@ mirrored in `mobile/lib/shared/relay/nostr_models.dart`.
 | 47043 | AI spend record action | Brokered | AI spend |
 | 47044 | Employee duty action | Brokered | Company duties |
 | 47045 | Employee lesson action | Brokered | Employee lessons |
+| 47046 | Business profile action | Brokered | Company profile |
+| 47047 | Team computer action | Brokered | Team runtime |
 
 The Factory run record contract is in
 [`factory-run-records.md`](factory-run-records.md). It extends the company
@@ -1031,6 +1035,36 @@ unavailable until the confidence input has a frozen design.
 Agent memory kind 30174 and the existing buzz memory CLI remain a separate
 Memory section within Lessons. Memory entries are not lesson records and are
 not changed by lesson create, edit, approval, deprecation, or restore actions.
+
+## Business profile
+
+The business profile is one company-wide record: the facts every employee
+works from, and the company name people see. An owner or admin writes kind
+47046 with `{ "profile": <profile>, "expectedRevision": <n or null> }`; the
+relay validates the profile (name 1 to 120 characters, general text at most
+500, general lists at most 10 items, optional `bestSellers` with at most three
+strings of 120 characters each, optional `priceRange` as a string of at most
+120 characters or null, an IANA time zone, no unknown keys, at most 16 KB) and
+writes relay-signed head kind 30657 with `d` = `business-profile` and a
+`["revision", "<n>"]` tag. The first write sends `expectedRevision: null`;
+every later write must name the current revision, so two people saving at once
+cannot overwrite each other. Members and employees read the head. Employees
+read it with `colony profile show`.
+
+## Team computer
+
+A company's employees run on exactly one computer. Kind 47047 carries
+`{ "action": "claim" | "heartbeat" | "release", "computerId", "computerName",
+"force" }` from an owner or admin, signed by the host on that computer;
+relay-signed head kind 30658 (`d` = `team-computer`) holds `computerId`,
+`computerName`, `claimedBy`, `claimedAt`, `lastSeenAt` and, after a release,
+`releasedAt` (Unix seconds, relay time). A claim takes a free or released team,
+refreshes the holder's own claim, or, with `force`, moves the team from another
+computer. A heartbeat comes only from the holder and at most once every 60
+seconds; a release comes only from the holder. Heads are replaced with a
+create-only or exact-revision precondition, so two computers claiming a free
+team at the same moment never both win. Claims and releases are stored;
+heartbeats only replace the head.
 
 ## Proof boundaries
 

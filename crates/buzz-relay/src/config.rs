@@ -122,6 +122,10 @@ pub struct AccountConfig {
     mail_mode: Option<AccountMailMode>,
     google_client_ids: Vec<String>,
     google_jwks_url: Option<String>,
+    /// Deployment-wide hourly cap on anonymous code-start requests.
+    pub(crate) code_start_limit_per_hour: u64,
+    /// Trust Fly's overwritten address header only behind its HTTP proxy.
+    pub(crate) trust_fly_client_ip: bool,
 }
 
 /// Checkout settings and public policy links for deployment-global account credits.
@@ -453,6 +457,8 @@ impl AccountConfig {
             mail_mode,
             google_client_ids,
             google_jwks_url,
+            code_start_limit_per_hour: 500,
+            trust_fly_client_ip: false,
         }
     }
 }
@@ -477,6 +483,8 @@ impl std::fmt::Debug for AccountConfig {
                 }),
             )
             .field("google_client_ids", &self.google_client_ids)
+            .field("code_start_limit_per_hour", &self.code_start_limit_per_hour)
+            .field("trust_fly_client_ip", &self.trust_fly_client_ip)
             .field(
                 "google_jwks_url",
                 &self.google_jwks_url.as_ref().map(|_| "[CONFIGURED]"),
@@ -488,6 +496,33 @@ impl std::fmt::Debug for AccountConfig {
 fn account_config_from_lookup(
     lookup: impl Fn(&str) -> Option<String>,
 ) -> Result<AccountConfig, ConfigError> {
+    let trust_fly_client_ip = match lookup("COLONY_ACCOUNT_TRUST_FLY_CLIENT_IP")
+        .as_deref()
+        .map(str::trim)
+    {
+        Some("true" | "1") => true,
+        Some("false" | "0") => false,
+        None => lookup("FLY_APP_NAME").is_some_and(|value| !value.trim().is_empty()),
+        Some(_) => {
+            return Err(ConfigError::InvalidValue(
+                "COLONY_ACCOUNT_TRUST_FLY_CLIENT_IP must be true or false".to_owned(),
+            ))
+        }
+    };
+    let code_start_limit_per_hour = lookup("COLONY_ACCOUNT_CODE_START_LIMIT_PER_HOUR")
+        .map(|value| value.trim().parse::<u64>())
+        .transpose()
+        .map_err(|_| {
+            ConfigError::InvalidValue(
+                "COLONY_ACCOUNT_CODE_START_LIMIT_PER_HOUR must be a positive integer".to_owned(),
+            )
+        })?
+        .unwrap_or(500);
+    if code_start_limit_per_hour == 0 {
+        return Err(ConfigError::InvalidValue(
+            "COLONY_ACCOUNT_CODE_START_LIMIT_PER_HOUR must be a positive integer".to_owned(),
+        ));
+    }
     let account_kek = match lookup("COLONY_ACCOUNT_KEK") {
         Some(mut encoded) => {
             let decoded = BASE64.decode(encoded.trim());
@@ -589,6 +624,8 @@ fn account_config_from_lookup(
         mail_mode,
         google_client_ids,
         google_jwks_url,
+        code_start_limit_per_hour,
+        trust_fly_client_ip,
     })
 }
 
@@ -790,6 +827,17 @@ pub struct Config {
     /// Public-mode community creation attempts allowed across the relay deployment per hour.
     pub self_provision_public_global_limit: u32,
 
+    /// Allow signers holding a verified Colony account to create their first
+    /// community without an existing membership. Requires
+    /// `self_provision_domain`; the account-mode limits below apply to them.
+    pub self_provision_accounts: bool,
+
+    /// Account-mode community creation attempts allowed per source IP per hour.
+    pub self_provision_account_ip_limit: u32,
+
+    /// Account-mode community creation attempts allowed across the relay deployment per hour.
+    pub self_provision_account_global_limit: u32,
+
     /// Relay-owned KLIPY integration. Unset means GIF search is not advertised
     /// and its proxy routes return 404.
     pub klipy: Option<KlipyConfig>,
@@ -908,6 +956,21 @@ fn parse_positive_u32(name: &str, default: u32) -> Result<u32, ConfigError> {
         Err(std::env::VarError::NotUnicode(_)) => Err(ConfigError::InvalidValue(format!(
             "{name} must be valid Unicode"
         ))),
+    }
+}
+
+/// Explain why a self-serve provisioning mode combination is invalid.
+fn self_provision_mode_error(
+    domain_configured: bool,
+    public: bool,
+    accounts: bool,
+) -> Option<&'static str> {
+    if public && !domain_configured {
+        Some("BUZZ_SELF_PROVISION_PUBLIC requires BUZZ_SELF_PROVISION_DOMAIN")
+    } else if accounts && !domain_configured {
+        Some("BUZZ_SELF_PROVISION_ACCOUNTS requires BUZZ_SELF_PROVISION_DOMAIN")
+    } else {
+        None
     }
 }
 
@@ -1307,15 +1370,24 @@ impl Config {
         let self_provision_public = std::env::var("BUZZ_SELF_PROVISION_PUBLIC")
             .map(|value| value == "true" || value == "1")
             .unwrap_or(false);
-        if self_provision_public && self_provision_domain.is_none() {
-            return Err(ConfigError::InvalidValue(
-                "BUZZ_SELF_PROVISION_PUBLIC requires BUZZ_SELF_PROVISION_DOMAIN".to_string(),
-            ));
+        let self_provision_accounts = std::env::var("BUZZ_SELF_PROVISION_ACCOUNTS")
+            .map(|value| value == "true" || value == "1")
+            .unwrap_or(false);
+        if let Some(message) = self_provision_mode_error(
+            self_provision_domain.is_some(),
+            self_provision_public,
+            self_provision_accounts,
+        ) {
+            return Err(ConfigError::InvalidValue(message.to_string()));
         }
         let self_provision_public_ip_limit =
             parse_positive_u32("BUZZ_SELF_PROVISION_PUBLIC_IP_LIMIT", 3)?;
         let self_provision_public_global_limit =
             parse_positive_u32("BUZZ_SELF_PROVISION_PUBLIC_GLOBAL_LIMIT", 50)?;
+        let self_provision_account_ip_limit =
+            parse_positive_u32("BUZZ_SELF_PROVISION_ACCOUNT_IP_LIMIT", 10)?;
+        let self_provision_account_global_limit =
+            parse_positive_u32("BUZZ_SELF_PROVISION_ACCOUNT_GLOBAL_LIMIT", 500)?;
 
         let klipy = std::env::var("BUZZ_KLIPY_API_KEY")
             .ok()
@@ -1868,6 +1940,9 @@ impl Config {
             self_provision_public,
             self_provision_public_ip_limit,
             self_provision_public_global_limit,
+            self_provision_accounts,
+            self_provision_account_ip_limit,
+            self_provision_account_global_limit,
             klipy,
             media,
             media_max_concurrent_uploads,
@@ -1919,6 +1994,20 @@ mod tests {
         );
         assert_eq!(too_long.len(), 192);
         assert!(parse_self_provision_domain(&too_long).is_err());
+    }
+
+    #[test]
+    fn self_provision_modes_require_a_domain() {
+        assert_eq!(
+            self_provision_mode_error(false, true, false),
+            Some("BUZZ_SELF_PROVISION_PUBLIC requires BUZZ_SELF_PROVISION_DOMAIN")
+        );
+        assert_eq!(
+            self_provision_mode_error(false, false, true),
+            Some("BUZZ_SELF_PROVISION_ACCOUNTS requires BUZZ_SELF_PROVISION_DOMAIN")
+        );
+        assert_eq!(self_provision_mode_error(true, true, true), None);
+        assert_eq!(self_provision_mode_error(false, false, false), None);
     }
 
     #[test]
@@ -2067,6 +2156,59 @@ mod tests {
         assert!(
             payments_config_from_lookup(env_of(&[("COLONY_PAYMENTS_SANDBOX", "maybe")])).is_err()
         );
+    }
+
+    #[test]
+    fn account_code_start_limit_is_positive_and_configurable() {
+        assert_eq!(
+            account_config_from_lookup(env_of(&[]))
+                .expect("defaults")
+                .code_start_limit_per_hour,
+            500
+        );
+        assert_eq!(
+            account_config_from_lookup(env_of(&[(
+                "COLONY_ACCOUNT_CODE_START_LIMIT_PER_HOUR",
+                "17"
+            )]))
+            .expect("configured cap")
+            .code_start_limit_per_hour,
+            17
+        );
+        for value in ["0", "-1", "invalid", ""] {
+            assert!(account_config_from_lookup(env_of(&[(
+                "COLONY_ACCOUNT_CODE_START_LIMIT_PER_HOUR",
+                value
+            )]))
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn account_fly_address_trust_defaults_to_the_deployment_and_can_be_disabled() {
+        assert!(
+            !account_config_from_lookup(env_of(&[]))
+                .expect("direct default")
+                .trust_fly_client_ip
+        );
+        assert!(
+            account_config_from_lookup(env_of(&[("FLY_APP_NAME", "test-relay")]))
+                .expect("Fly default")
+                .trust_fly_client_ip
+        );
+        assert!(
+            !account_config_from_lookup(env_of(&[
+                ("FLY_APP_NAME", "test-relay"),
+                ("COLONY_ACCOUNT_TRUST_FLY_CLIENT_IP", "false")
+            ]))
+            .expect("explicit direct mode")
+            .trust_fly_client_ip
+        );
+        assert!(account_config_from_lookup(env_of(&[(
+            "COLONY_ACCOUNT_TRUST_FLY_CLIENT_IP",
+            "invalid"
+        )]))
+        .is_err());
     }
 
     #[test]

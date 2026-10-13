@@ -19,6 +19,8 @@ pub mod company_employee_history;
 pub mod company_lessons;
 /// Typed content and validation for company member positions.
 pub mod company_members;
+/// Typed company business profile and its revision rule.
+pub mod company_profile;
 /// Typed content and validation for company records (goals and asks).
 pub mod company_records;
 /// Typed content and validation for employee allowances and AI spend.
@@ -55,6 +57,8 @@ pub mod presence;
 pub mod private_managed_agent;
 /// Canonical relay runtime identities.
 pub mod relay;
+/// Typed team computer record: which single computer runs a company's employees.
+pub mod team_computer;
 /// Tenant identity — the server-resolved community key carried on scoped paths.
 pub mod tenant;
 /// Schnorr signature and event ID verification.

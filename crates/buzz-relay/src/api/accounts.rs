@@ -4,12 +4,11 @@ mod crypto;
 mod google;
 mod mail;
 
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::{Body, Bytes};
-use axum::extract::{ConnectInfo, State};
+use axum::extract::State;
 use axum::http::{HeaderMap, Request, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -26,7 +25,8 @@ use crate::config::{AccountConfig, AccountMailMode, Config};
 use crate::state::AppState;
 use buzz_db::accounts::{
     AccountCodePurpose, AccountRecord, CheckAccountCodeOutcome, ConsumeAccountCodeOutcome,
-    CreateAccountOutcome, IssueAccountCodeOutcome, NewAccount, NewAccountCode,
+    ConsumeSignInCodeOutcome, CreateAccountOutcome, IssueAccountCodeOutcome, NewAccount,
+    NewAccountCode, StartSignInCodeOutcome,
 };
 use buzz_pubsub::EventTopic;
 
@@ -79,6 +79,8 @@ pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/signup", post(signup))
         .route("/verify", post(verify_email))
+        .route("/code/start", post(code_start))
+        .route("/code/verify", post(code_verify))
         .route("/resend-code", post(resend_code))
         .route("/signin", post(signin))
         .route("/google", post(google_signin))
@@ -149,6 +151,8 @@ fn signin_decision(email_verified: bool, password_matches: Option<bool>) -> Sign
 #[serde(deny_unknown_fields)]
 struct GoogleRequest {
     id_token: SecretString,
+    #[serde(default, rename = "termsVersion")]
+    terms_version: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -185,6 +189,24 @@ struct ClaimRequest {
 struct PasswordRequest {
     new_password: SecretString,
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CodeStartRequest {
+    email: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct CodeVerifyRequest {
+    email: String,
+    code: SecretString,
+    terms_version: String,
+    #[serde(default)]
+    display_name: Option<String>,
+}
+
+const TERMS_VERSION_MAX_CHARS: usize = 64;
 
 struct SecretString(Zeroizing<String>);
 
@@ -223,6 +245,13 @@ impl SecretString {
 struct SessionResponse {
     account: PublicAccount,
     nsec: SecretString,
+}
+
+#[derive(Serialize)]
+struct CodeSessionResponse {
+    account: PublicAccount,
+    nsec: SecretString,
+    created: bool,
 }
 
 #[derive(Serialize)]
@@ -297,6 +326,52 @@ fn normalize_display_name(
         return Err(invalid_request());
     }
     Ok(Some(display_name))
+}
+
+fn normalize_terms_version(raw: &str) -> Result<String, (StatusCode, Json<Value>)> {
+    let value = raw.trim();
+    if value.is_empty()
+        || value.chars().count() > TERMS_VERSION_MAX_CHARS
+        || value.chars().any(char::is_control)
+    {
+        return Err(invalid_request());
+    }
+    Ok(value.to_owned())
+}
+
+fn code_sent(resend_after_secs: i64) -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "sent": true,
+            "resendAfterSeconds": resend_after_secs.max(1),
+        })),
+    )
+}
+
+fn invalid_code(attempts_left: Option<i32>) -> (StatusCode, Json<Value>) {
+    let body = match attempts_left {
+        Some(attempts_left) => serde_json::json!({
+            "error": "invalid_code",
+            "attempts_left": attempts_left,
+        }),
+        None => serde_json::json!({ "error": "invalid_code" }),
+    };
+    (StatusCode::BAD_REQUEST, Json(body))
+}
+
+/// Sign the person's first profile (display name) with their own key.
+fn display_name_event(
+    nsec: &str,
+    display_name: &str,
+) -> Result<nostr::Event, (StatusCode, Json<Value>)> {
+    let keys = nostr::Keys::parse(nsec).map_err(|_| account_unavailable())?;
+    nostr::EventBuilder::new(
+        nostr::Kind::Metadata,
+        serde_json::json!({ "display_name": display_name }).to_string(),
+    )
+    .sign_with_keys(&keys)
+    .map_err(|_| account_unavailable())
 }
 
 async fn tenant_from_headers(
@@ -392,10 +467,14 @@ async fn ip_rate_limit_middleware(
     request: Request<Body>,
     next: Next,
 ) -> Response {
-    let peer_ip = request
-        .extensions()
-        .get::<ConnectInfo<SocketAddr>>()
-        .map(|info| info.0.ip().to_string())
+    let socket_only_headers = HeaderMap::new();
+    let address_headers = if state.config.accounts.trust_fly_client_ip {
+        request.headers()
+    } else {
+        &socket_only_headers
+    };
+    let peer_ip = super::self_provisioning::client_ip(address_headers, request.extensions())
+        .map(|ip| ip.to_string())
         .unwrap_or_else(|| "unknown".to_owned());
     let route = request.uri().path();
     if let Err(response) = check_rate_limit(&state, "ip", route, &peer_ip, IP_RATE_LIMIT).await {
@@ -421,6 +500,29 @@ async fn email_rate_limit(
     email: &str,
 ) -> Result<(), (StatusCode, Json<Value>)> {
     check_rate_limit(state, "email", route, email, EMAIL_RATE_LIMIT).await
+}
+
+async fn limit_email_code_starts(state: &AppState) -> Result<(), (StatusCode, Json<Value>)> {
+    const SCRIPT: &str = "local n=redis.call('INCR',KEYS[1]); if n==1 or redis.call('TTL',KEYS[1])<0 then redis.call('EXPIRE',KEYS[1],3600); end; return n";
+    // The configured relay URL is stable across processes and all tenant hosts.
+    let deployment = hex::encode(Sha256::digest(state.config.relay_url.as_bytes()));
+    let key = format!("colony:account-code-start:{deployment}:requests");
+    let mut connection = state
+        .redis_pool
+        .get()
+        .await
+        .map_err(|_| account_unavailable())?;
+    let count: u64 = redis::cmd("EVAL")
+        .arg(SCRIPT)
+        .arg(1)
+        .arg(key)
+        .query_async(&mut *connection)
+        .await
+        .map_err(|_| account_unavailable())?;
+    if count > state.config.accounts.code_start_limit_per_hour {
+        return Err(json_error(StatusCode::TOO_MANY_REQUESTS, "rate_limited"));
+    }
+    Ok(())
 }
 
 async fn check_rate_limit(
@@ -590,6 +692,113 @@ async fn verify_email(
     }
 }
 
+/// `POST /api/accounts/code/start` sends a sign-in code. A new email gets a
+/// temporary code and mail record. Unknown emails create an account only at
+/// successful verification. All starts share the hourly deployment cap so
+/// rate-limit responses do not disclose whether an account exists.
+async fn code_start(
+    State(state): State<Arc<AppState>>,
+    body: Bytes,
+) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
+    let request: CodeStartRequest = decode_body(&body)?;
+    let email = normalize_email(&request.email).ok_or_else(invalid_request)?;
+    ensure_mail_enabled(&state)?;
+    limit_email_code_starts(&state).await?;
+    email_rate_limit(&state, "/api/accounts/code/start", &email).await?;
+    let purpose = AccountCodePurpose::SignIn;
+    let cooldown = match reserve_code_cooldown(&state, &email, purpose).await? {
+        CodeCooldownReservation::Acquired(lease) => lease,
+        CodeCooldownReservation::Active { retry_after_secs } => {
+            return Ok(code_sent(retry_after_secs));
+        }
+    };
+    let (clear_code, code) = new_code(account_kek(&state.config)?, purpose)?;
+    let outcome = match state.db.start_sign_in_code(&email, &code).await {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            release_code_cooldown(&state, &cooldown).await?;
+            return Err(map_db_error("code_start", error));
+        }
+    };
+    drop(clear_code);
+    Ok(match outcome {
+        StartSignInCodeOutcome::Issued => code_sent(ACCOUNT_CODE_RESEND_COOLDOWN_SECS),
+        StartSignInCodeOutcome::Locked { retry_after_secs } => code_sent(retry_after_secs),
+    })
+}
+
+/// `POST /api/accounts/code/verify` signs in with an email code, records the
+/// accepted terms version, and reports whether this created the account.
+async fn code_verify(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<CodeSessionResponse>, (StatusCode, Json<Value>)> {
+    let request: CodeVerifyRequest = decode_body(&body)?;
+    let email = normalize_email(&request.email).ok_or_else(invalid_request)?;
+    email_rate_limit(&state, "/api/accounts/code/verify", &email).await?;
+    let terms_version = normalize_terms_version(&request.terms_version)?;
+    let display_name = normalize_display_name(request.display_name)?;
+    let code = request.code.into_inner();
+    if !valid_code(&code) {
+        return Err(invalid_code(None));
+    }
+    let code_hash =
+        crypto::hash_code(account_kek(&state.config)?, &code).map_err(|_| account_unavailable())?;
+    let tenant = tenant_from_headers(&state, &headers).await?;
+    let (_, nsec) = crypto::generate_nostr_identity().map_err(|_| account_unavailable())?;
+    let fresh_identity = new_account(&state.config, email.clone(), None, &nsec, true)?;
+    let profile_event = display_name
+        .as_deref()
+        .map(|name| display_name_event(&nsec, name))
+        .transpose()?;
+    let outcome = state
+        .db
+        .consume_sign_in_code(
+            &email,
+            &code_hash,
+            &terms_version,
+            &fresh_identity,
+            profile_event
+                .as_ref()
+                .map(|event| (event, tenant.community())),
+        )
+        .await
+        .map_err(|error| map_db_error("code_verify", error))?;
+    match outcome {
+        ConsumeSignInCodeOutcome::Accepted { account, created } => {
+            if created {
+                if let Some(event) = profile_event.as_ref() {
+                    if let Err(error) = state
+                        .pubsub
+                        .publish_event(&tenant, EventTopic::Global, event)
+                        .await
+                    {
+                        tracing::warn!(
+                            event_id = %event.id,
+                            error = %error,
+                            "account profile is stored and will be available to event queries"
+                        );
+                    }
+                }
+            }
+            let Json(SessionResponse { account, nsec }) = session(&state.config, &account)?;
+            Ok(Json(CodeSessionResponse {
+                account,
+                nsec,
+                created,
+            }))
+        }
+        ConsumeSignInCodeOutcome::Invalid { attempts_left } => {
+            Err(invalid_code(Some(attempts_left)))
+        }
+        ConsumeSignInCodeOutcome::Expired => Err(code_expired()),
+        ConsumeSignInCodeOutcome::AttemptsExceeded { retry_after_secs } => {
+            Err(too_many_attempts(retry_after_secs))
+        }
+    }
+}
+
 /// `POST /api/accounts/resend-code` always returns the same response.
 async fn resend_code(
     State(state): State<Arc<AppState>>,
@@ -629,6 +838,7 @@ async fn resend_code(
         let eligible = match purpose {
             AccountCodePurpose::VerifyEmail => account.email_verified_at.is_none(),
             AccountCodePurpose::ResetPassword => true,
+            AccountCodePurpose::SignIn => false,
         };
         if eligible {
             match queue_code(&state, &account, purpose).await {
@@ -732,6 +942,11 @@ async fn google_signin(
     body: Bytes,
 ) -> Result<Json<SessionResponse>, (StatusCode, Json<Value>)> {
     let request: GoogleRequest = decode_body(&body)?;
+    let terms_version = request
+        .terms_version
+        .as_deref()
+        .map(normalize_terms_version)
+        .transpose()?;
     if state.config.accounts.google_client_ids().is_empty() {
         return Err(account_unavailable());
     }
@@ -755,7 +970,12 @@ async fn google_signin(
     }
     let account = state
         .db
-        .account_google_signin(&identity.sub, &identity.email, &account)
+        .account_google_signin(
+            &identity.sub,
+            &identity.email,
+            &account,
+            terms_version.as_deref(),
+        )
         .await
         .map_err(|error| map_db_error("google_signin", error))?;
     session(&state.config, &account)
@@ -1101,6 +1321,7 @@ fn code_purpose_key(purpose: AccountCodePurpose) -> &'static str {
     match purpose {
         AccountCodePurpose::VerifyEmail => "verify",
         AccountCodePurpose::ResetPassword => "reset",
+        AccountCodePurpose::SignIn => "sign_in",
     }
 }
 
@@ -1280,13 +1501,7 @@ async fn deliver_mail(state: &AppState, message: &buzz_db::accounts::AccountMail
     let delivered = match state.config.accounts.mail_mode() {
         Some(AccountMailMode::Log) => state
             .db
-            .record_account_test_mail(
-                message.id,
-                message.account_id,
-                &message.recipient,
-                &message.purpose,
-                &code,
-            )
+            .record_account_test_mail(message.id, &message.recipient, &message.purpose, &code)
             .await
             .map_err(|_| "sink_write_failed"),
         Some(AccountMailMode::Resend) => mail::send_resend(

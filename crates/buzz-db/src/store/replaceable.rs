@@ -166,7 +166,11 @@ async fn replace_parameterized_event_in_transaction_impl(
             let parts = tag.as_slice();
             parts.len() == 2 && parts[0] == "k" && parts[1] == "buzz-mesh-status"
         });
-    let hard_delete_superseded = is_nip_rs || is_buzz_mesh_status;
+    let is_team_computer_head = kind_i32 == buzz_core::kind::KIND_TEAM_COMPUTER_HEAD as i32
+        && d_tag == buzz_core::team_computer::TEAM_COMPUTER_D_TAG
+        && d_tag_count == 1
+        && has_exact_d_tag;
+    let hard_delete_superseded = is_nip_rs || is_buzz_mesh_status || is_team_computer_head;
 
     let existing: Option<(DateTime<Utc>, Vec<u8>)> = sqlx::query_as(
         "SELECT created_at, id FROM events \
@@ -263,7 +267,7 @@ async fn replace_parameterized_event_in_transaction_impl(
     }
 
     let mut savepoint = tx.begin().await?;
-    if existing.is_some() {
+    if existing.is_some() || is_team_computer_head {
         let previous_nip_rs_hard_delete: Option<String> = if is_nip_rs {
             sqlx::query_scalar(
                 "SELECT NULLIF(current_setting('buzz.nip_rs_hard_delete', true), '')",
@@ -278,7 +282,16 @@ async fn replace_parameterized_event_in_transaction_impl(
                 .execute(&mut *savepoint)
                 .await?;
         }
-        let statement = if hard_delete_superseded {
+        let statement = if is_team_computer_head {
+            // Retire physical history from older relays as well as the live head.
+            "WITH superseded AS (\
+                 DELETE FROM events \
+                 WHERE community_id = $1 AND kind = $2 AND pubkey = $3 AND d_tag = $4 \
+                 RETURNING community_id, id\
+             ) DELETE FROM event_mentions AS mention USING superseded \
+             WHERE mention.community_id = superseded.community_id \
+             AND mention.event_id = superseded.id"
+        } else if hard_delete_superseded {
             "DELETE FROM events \
              WHERE community_id = $1 AND kind = $2 AND pubkey = $3 AND d_tag = $4 AND deleted_at IS NULL"
         } else {
@@ -301,7 +314,7 @@ async fn replace_parameterized_event_in_transaction_impl(
                 .await?;
         }
 
-        if hard_delete_superseded {
+        if hard_delete_superseded && !is_team_computer_head {
             if let Some((_, existing_id)) = &existing {
                 sqlx::query("DELETE FROM event_mentions WHERE community_id = $1 AND event_id = $2")
                     .bind(community_id.as_uuid())
@@ -1495,6 +1508,139 @@ mod postgres_tests {
                 .1,
             "an older event must not replace the live head",
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn team_computer_heartbeats_keep_one_physical_head_and_rollback_restores_it() {
+        use buzz_core::team_computer::{
+            apply_team_computer_action, TeamComputerAction, TeamComputerActionKind,
+            TeamComputerHead, TEAM_COMPUTER_D_TAG,
+        };
+        use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
+
+        let pool = PgPool::connect(&crate::test_support::database_url())
+            .await
+            .expect("connect to disposable team computer database");
+        let db = Db::from_pool(pool);
+        let community = CommunityId::from_uuid(make_community(&db.pool).await);
+        let keys = Keys::generate();
+        let actor = keys.public_key().to_hex();
+        let base = i64::try_from(Timestamp::now().as_secs()).expect("test time fits i64");
+        let mut current = TeamComputerHead {
+            computer_id: Uuid::new_v4().to_string(),
+            computer_name: "Team computer".into(),
+            claimed_by: actor.clone(),
+            claimed_at: base - 120,
+            last_seen_at: base,
+            released_at: None,
+        };
+        let head_event = |head: &TeamComputerHead| {
+            EventBuilder::new(
+                Kind::Custom(buzz_core::kind::KIND_TEAM_COMPUTER_HEAD as u16),
+                serde_json::to_string(head).expect("serialize team computer head"),
+            )
+            .tag(Tag::parse(["d", TEAM_COMPUTER_D_TAG]).expect("team computer coordinate"))
+            .custom_created_at(Timestamp::from_secs(
+                u64::try_from(head.last_seen_at).expect("positive head time"),
+            ))
+            .sign_with_keys(&keys)
+            .expect("sign team computer head")
+        };
+        let initial = head_event(&current);
+        assert!(
+            db.replace_parameterized_event(community, &initial, TEAM_COMPUTER_D_TAG, None)
+                .await
+                .expect("insert team computer claim")
+                .1
+        );
+
+        // Represent history retained by a relay before bounded head retention.
+        let legacy = head_event(&TeamComputerHead {
+            last_seen_at: base - 60,
+            ..current.clone()
+        });
+        assert!(
+            event::insert_event(&db.pool, community, &legacy, None)
+                .await
+                .expect("insert legacy team computer history")
+                .1
+        );
+        let retired =
+            sqlx::query("UPDATE events SET deleted_at = NOW() WHERE community_id = $1 AND id = $2")
+                .bind(community.as_uuid())
+                .bind(legacy.id.as_bytes().as_slice())
+                .execute(&db.pool)
+                .await
+                .expect("soft delete legacy team computer history");
+        assert_eq!(retired.rows_affected(), 1);
+
+        let heartbeat = TeamComputerAction {
+            action: TeamComputerActionKind::Heartbeat,
+            computer_id: current.computer_id.clone(),
+            computer_name: current.computer_name.clone(),
+            force: false,
+        };
+        let mut newest = initial;
+        for offset in 1..=3 {
+            current =
+                apply_team_computer_action(Some(&current), &heartbeat, &actor, base + offset * 60)
+                    .expect("accept a heartbeat at the next interval");
+            newest = head_event(&current);
+            assert!(
+                db.replace_parameterized_event(community, &newest, TEAM_COMPUTER_D_TAG, None)
+                    .await
+                    .expect("replace heartbeat head through production persistence")
+                    .1
+            );
+        }
+        let (rows, live): (i64, i64) = sqlx::query_as(
+            "SELECT count(*), count(*) FILTER (WHERE deleted_at IS NULL) FROM events \
+             WHERE community_id = $1 AND kind = $2 AND pubkey = $3 AND d_tag = $4",
+        )
+        .bind(community.as_uuid())
+        .bind(buzz_core::kind::KIND_TEAM_COMPUTER_HEAD as i32)
+        .bind(keys.public_key().to_bytes())
+        .bind(TEAM_COMPUTER_D_TAG)
+        .fetch_one(&db.pool)
+        .await
+        .expect("count all team computer head rows after three heartbeats");
+        assert_eq!((rows, live), (1, 1));
+
+        current = apply_team_computer_action(Some(&current), &heartbeat, &actor, base + 240)
+            .expect("build the next heartbeat");
+        let replacement = head_event(&current);
+        let mut tx = db
+            .begin_event_write_transaction()
+            .await
+            .expect("begin heartbeat replacement transaction");
+        let outcome = db
+            .replace_parameterized_event_in_transaction(
+                &mut tx,
+                community,
+                &replacement,
+                TEAM_COMPUTER_D_TAG,
+                None,
+                ParameterizedReplacePrecondition::ExpectedRevision(newest.id.as_bytes().as_slice()),
+            )
+            .await
+            .expect("replace heartbeat head in caller transaction");
+        assert_eq!(outcome.status, ParameterizedReplaceStatus::Inserted);
+        tx.rollback()
+            .await
+            .expect("roll back heartbeat replacement");
+        let stored_ids: Vec<Vec<u8>> = sqlx::query_scalar(
+            "SELECT id FROM events \
+             WHERE community_id = $1 AND kind = $2 AND pubkey = $3 AND d_tag = $4",
+        )
+        .bind(community.as_uuid())
+        .bind(buzz_core::kind::KIND_TEAM_COMPUTER_HEAD as i32)
+        .bind(keys.public_key().to_bytes())
+        .bind(TEAM_COMPUTER_D_TAG)
+        .fetch_all(&db.pool)
+        .await
+        .expect("read retained head after rollback");
+        assert_eq!(stored_ids, vec![newest.id.as_bytes().to_vec()]);
     }
 
     #[tokio::test]

@@ -490,3 +490,154 @@ async fn public_mode_fails_closed_when_the_shared_limiter_is_unavailable() {
         .expect("check community after rate limiter outage")
         .is_none());
 }
+
+fn with_account_mode(state: Arc<AppState>, ip_limit: u32, global_limit: u32) -> Arc<AppState> {
+    let mut config = (*state.config).clone();
+    config.self_provision_public = false;
+    config.self_provision_accounts = true;
+    config.self_provision_account_ip_limit = ip_limit;
+    config.self_provision_account_global_limit = global_limit;
+    let mut next = (*state).clone();
+    next.config = Arc::new(config);
+    Arc::new(next)
+}
+
+async fn insert_test_account(pool: &PgPool, keys: &Keys, verified: bool) {
+    sqlx::query(
+        "INSERT INTO accounts (email, email_verified_at, pubkey, wrapped_dek, kek_id, \
+         sealed_nsec, nonce) VALUES ($1, CASE WHEN $2 THEN now() ELSE NULL END, $3, $4, \
+         'test-kek', $5, $6)",
+    )
+    .bind(format!("company-{}@example.test", Uuid::new_v4().simple()))
+    .bind(verified)
+    .bind(keys.public_key().to_hex())
+    .bind(vec![1_u8; 28])
+    .bind(vec![2_u8; 16])
+    .bind(vec![3_u8; 12])
+    .execute(pool)
+    .await
+    .expect("insert self-serve test account");
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn account_mode_lets_a_verified_account_create_its_first_company() {
+    let (state, pool, ingress_host, domain) = test_state(false, 3, 50).await;
+    let state = with_account_mode(state, 10, 500);
+    let newcomer = Keys::generate();
+    insert_test_account(&pool, &newcomer, true).await;
+    let slug = format!("first-{}", Uuid::new_v4().simple());
+
+    let response = create_request(
+        state.clone(),
+        &newcomer,
+        &ingress_host,
+        &slug,
+        Some("198.51.100.30"),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    let host = format!("{slug}.{domain}");
+    assert_eq!(body["community"]["normalized_host"], host);
+    let record = state
+        .db
+        .lookup_community_by_host(&host)
+        .await
+        .expect("lookup created company")
+        .expect("created company exists");
+    let membership = state
+        .db
+        .get_relay_member(record.id, &newcomer.public_key().to_hex())
+        .await
+        .expect("lookup owner membership")
+        .expect("owner membership exists");
+    assert_eq!(membership.role, "owner");
+
+    let config = response_json(
+        build_router(state)
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/communities/config")
+                    .header(header::HOST, &ingress_host)
+                    .body(Body::empty())
+                    .expect("config request"),
+            )
+            .await
+            .expect("config response"),
+    )
+    .await;
+    assert_eq!(config["accounts"], true);
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn account_mode_refuses_unknown_and_unverified_signers() {
+    let (state, pool, ingress_host, _domain) = test_state(false, 3, 50).await;
+    let state = with_account_mode(state, 10, 500);
+    let stranger = Keys::generate();
+    let unverified = Keys::generate();
+    insert_test_account(&pool, &unverified, false).await;
+
+    for keys in [&stranger, &unverified] {
+        let response = create_request(
+            state.clone(),
+            keys,
+            &ingress_host,
+            &format!("refused-{}", Uuid::new_v4().simple()),
+            Some("198.51.100.31"),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert!(response_json(response).await["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("verified Colony account")));
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn account_mode_limits_new_accounts_per_network_but_not_existing_members() {
+    let (state, pool, ingress_host, _domain) = test_state(false, 3, 50).await;
+    let state = with_account_mode(state, 1, 500);
+    let first = Keys::generate();
+    let second = Keys::generate();
+    let member = Keys::generate();
+    insert_test_account(&pool, &first, true).await;
+    insert_test_account(&pool, &second, true).await;
+    add_member(&state, &ingress_host, &member).await;
+    let network = "198.51.100.32";
+
+    let allowed = create_request(
+        state.clone(),
+        &first,
+        &ingress_host,
+        &format!("net-{}", Uuid::new_v4().simple()),
+        Some(network),
+    )
+    .await;
+    assert_eq!(allowed.status(), StatusCode::OK);
+    let limited = create_request(
+        state.clone(),
+        &second,
+        &ingress_host,
+        &format!("net-{}", Uuid::new_v4().simple()),
+        Some(network),
+    )
+    .await;
+    assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
+    let member_create = create_request(
+        state,
+        &member,
+        &ingress_host,
+        &format!("net-{}", Uuid::new_v4().simple()),
+        Some(network),
+    )
+    .await;
+    assert_eq!(
+        member_create.status(),
+        StatusCode::OK,
+        "existing members are not limited by the new-account network limit"
+    );
+}
