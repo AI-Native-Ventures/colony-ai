@@ -79,6 +79,7 @@ import {
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { AccountProfileSettingsPanel } from "./AccountProfileSettingsPanel";
 import { ColonyConnectionsSettingsPanel } from "./ColonyConnectionsSettingsPanel";
+import { ColonyPeopleSettingsPanel } from "./ColonyPeopleSettingsPanel";
 import { AccountSecuritySettingsPanel } from "./AccountSecuritySettingsPanel";
 import { AvatarEditorProfileContext } from "./AvatarEditorProfileContext";
 import { UpdateChecker } from "../UpdateChecker";
@@ -1076,12 +1077,7 @@ export function renderSettingsSection(
         />
       );
     case "people":
-      return (
-        <CommunityMembersSettingsCard
-          currentPubkey={props.currentPubkey}
-          onBack={() => props.onSectionChange?.("business-profile")}
-        />
-      );
+      return <ColonyPeopleSettingsPanel currentPubkey={props.currentPubkey} />;
     case "shortcuts":
       return <KeyboardShortcutsCard />;
     case "community-members":

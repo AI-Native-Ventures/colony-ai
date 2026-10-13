@@ -152,7 +152,7 @@ test("Settings sections open the existing product controls", async ({
       panel: "settings-global-agent-config",
       shot: "powered",
     },
-    { label: "People", panel: "settings-community-members", shot: "people" },
+    { label: "People", panel: "settings-people", shot: "people" },
     {
       label: "Notifications",
       panel: "settings-notifications",
