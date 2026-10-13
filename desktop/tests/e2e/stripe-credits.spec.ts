@@ -36,6 +36,7 @@ async function setup(
   await installMockBridge(page, {
     referenceWorkspace: true,
     accountLinked: true,
+    colonyCreditsGatewayEnabled: true,
     openerError: options.openerError,
   });
   await page.route("**/api/payments/**", async (route) => {
@@ -262,4 +263,36 @@ test("unavailable catalogue blocks purchase and can be retried with the keyboard
     checkout.getByRole("button", { name: "Continue to checkout" }),
   ).toBeEnabled();
   expect(state.calls).toHaveLength(0);
+});
+
+test("launch flag OFF: Power offers no checkout and shows Coming soon", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    referenceWorkspace: true,
+    accountLinked: true,
+  });
+  await page.route("**/api/payments/**", (route) =>
+    route.fulfill({ status: 404, json: { error: "not_found" } }),
+  );
+  await page.goto("/#/power?section=history");
+  const history = page.getByTestId("power-history");
+  await expect(history).toContainText("Colony credits are coming soon.");
+  await expect(page.getByRole("button", { name: "Add credits" })).toHaveCount(
+    0,
+  );
+  await expect(history).not.toContainText("payment service is disconnected");
+
+  // An old checkout link lands on billing history with nothing to buy.
+  await page.goto("/#/power?section=checkout");
+  await expect(page.getByTestId("power-history")).toBeVisible();
+  await expect(page.getByTestId("power-checkout")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add credits" })).toHaveCount(
+    0,
+  );
+
+  await page.goto("/#/power?section=connections");
+  const connections = page.getByTestId("power-connections");
+  await expect(connections).toContainText("Colony credits");
+  await expect(connections).toContainText("Coming soon");
 });

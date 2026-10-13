@@ -224,7 +224,10 @@ test.describe("W07 agent workspace smoke", () => {
   test("supervision and billing show only available backend state", async ({
     page,
   }) => {
-    await installMockBridge(page, { managedAgents: [] });
+    await installMockBridge(page, {
+      managedAgents: [],
+      colonyCreditsGatewayEnabled: true,
+    });
     await page.route("**/api/payments/**", (route) =>
       route.fulfill({ status: 503, json: { error: "payments_unavailable" } }),
     );

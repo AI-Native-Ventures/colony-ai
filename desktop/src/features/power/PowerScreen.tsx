@@ -8,6 +8,7 @@ import { useAcpRuntimesQuery } from "@/features/agents/hooks";
 import { agentHarnessLabel } from "@/features/agents/agentDirectoryModel";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { CreditCheckout } from "@/features/credits/CreditCheckout";
+import { useColonyCreditsLaunched } from "@/features/credits/useColonyCreditsLaunched";
 import {
   readCredits,
   type CreditIntent,
@@ -74,7 +75,7 @@ export function parsePowerSection(
 }
 
 export function PowerScreen({
-  section,
+  section: requestedSection,
   panel,
   employeePubkey,
   recordId,
@@ -98,6 +99,12 @@ export function PowerScreen({
   onRemoveCost: (recordId: string) => void;
   onClosePanel: () => void;
 }) {
+  // Until credits launch, checkout is not offered and its link shows history.
+  const creditsLaunched = useColonyCreditsLaunched();
+  const section =
+    requestedSection === "checkout" && !creditsLaunched
+      ? "history"
+      : requestedSection;
   const { activeCommunity } = useCommunities();
   const communityId = activeCommunity?.id ?? "";
   const { goSettings } = useAppNavigation();
@@ -285,7 +292,7 @@ export function PowerScreen({
                     </Button>
                   ) : null}
                 </div>
-              ) : section === "history" ? (
+              ) : section === "history" && creditsLaunched ? (
                 <Button
                   onClick={() => onSectionChange("checkout")}
                   size="sm"
@@ -333,6 +340,7 @@ export function PowerScreen({
           ) : section === "connections" ? (
             <PowerConnections
               credits={credits}
+              creditsLaunched={creditsLaunched}
               isCreditsLoading={creditsQuery.isLoading}
               onManage={() => void goSettings("agents")}
             />
@@ -340,7 +348,9 @@ export function PowerScreen({
             <BillingHistory
               intents={creditsQuery.data?.intents ?? []}
               creditsUnavailable={credits.status === "unavailable"}
-              onAddCredits={() => onSectionChange("checkout")}
+              onAddCredits={
+                creditsLaunched ? () => onSectionChange("checkout") : undefined
+              }
             />
           )}
         </>
@@ -380,10 +390,12 @@ function PowerNavigation({
 
 function PowerConnections({
   credits,
+  creditsLaunched,
   isCreditsLoading,
   onManage,
 }: {
   credits: { status: string; balanceUsdCents?: number };
+  creditsLaunched: boolean;
   isCreditsLoading: boolean;
   onManage: () => void;
 }) {
@@ -399,12 +411,14 @@ function PowerConnections({
         detail="Pay for supported agent work"
         onManage={onManage}
         status={
-          isCreditsLoading
-            ? "Loading"
-            : credits.status === "available" &&
-                credits.balanceUsdCents !== undefined
-              ? moneyFromCents(credits.balanceUsdCents)
-              : "Unavailable"
+          !creditsLaunched
+            ? "Coming soon"
+            : isCreditsLoading
+              ? "Loading"
+              : credits.status === "available" &&
+                  credits.balanceUsdCents !== undefined
+                ? moneyFromCents(credits.balanceUsdCents)
+                : "Unavailable"
         }
         title="Colony credits"
       />
@@ -642,7 +656,8 @@ function BillingHistory({
 }: {
   intents: CreditIntent[];
   creditsUnavailable: boolean;
-  onAddCredits: () => void;
+  /** Absent until Colony credits launch: no purchase action, Coming soon. */
+  onAddCredits?: () => void;
 }) {
   return (
     <section className="space-y-4" data-testid="power-history">
@@ -679,7 +694,17 @@ function BillingHistory({
                 <td />
               </tr>
             ))}
-            {!creditsUnavailable && intents.length === 0 ? (
+            {!onAddCredits && intents.length === 0 ? (
+              <tr>
+                <td
+                  className="px-4 py-8 text-center text-sm text-muted-foreground"
+                  colSpan={5}
+                >
+                  Colony credits are coming soon.
+                </td>
+              </tr>
+            ) : null}
+            {onAddCredits && !creditsUnavailable && intents.length === 0 ? (
               <tr>
                 <td
                   className="px-4 py-8 text-center text-sm text-muted-foreground"
@@ -689,7 +714,7 @@ function BillingHistory({
                 </td>
               </tr>
             ) : null}
-            {creditsUnavailable ? (
+            {onAddCredits && creditsUnavailable ? (
               <tr>
                 <td
                   className="px-4 py-8 text-center text-sm text-muted-foreground"
@@ -703,11 +728,13 @@ function BillingHistory({
           </tbody>
         </table>
       </div>
-      <div className="flex justify-end">
-        <Button onClick={onAddCredits} size="sm" type="button">
-          Add credits
-        </Button>
-      </div>
+      {onAddCredits ? (
+        <div className="flex justify-end">
+          <Button onClick={onAddCredits} size="sm" type="button">
+            Add credits
+          </Button>
+        </div>
+      ) : null}
     </section>
   );
 }

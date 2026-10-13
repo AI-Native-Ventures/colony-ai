@@ -113,7 +113,7 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Colony credits", exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(page.getByLabel("Provider", { exact: true })).toHaveCount(0);
   await page
     .getByRole("radio", { name: "Claude Code or Codex", exact: true })
@@ -310,7 +310,7 @@ test("R17 Agent Defaults keep a failed save editable and allow retry", async ({
   ).toBe(2);
 });
 
-test("R17 bundled agent without a provider is not ready and credits are coming soon", async ({
+test("R17 bundled agent without a provider is not ready and credits stay hidden", async ({
   page,
 }) => {
   await openR17ConnectionSetup(page, {
@@ -328,10 +328,13 @@ test("R17 bundled agent without a provider is not ready and credits are coming s
   await expect(
     page.getByRole("radio", { name: "Colony Agent", exact: true }),
   ).toBeChecked();
-  const credits = page.getByTestId("onboarding-credits-coming-soon");
-  await expect(credits).toContainText("Colony credits");
-  await expect(credits).toContainText("Coming soon");
-  await expect(credits.getByRole("button")).toHaveCount(0);
+  // Colony credits stay out of onboarding until the launch flag is on.
+  await expect(page.getByTestId("onboarding-credits-coming-soon")).toHaveCount(
+    0,
+  );
+  await expect(page.getByTestId("onboarding-colony-agent")).not.toContainText(
+    "Colony credits",
+  );
   await expect(page.getByTestId("onboarding-colony-agent-saved")).toHaveCount(
     0,
   );
@@ -339,7 +342,6 @@ test("R17 bundled agent without a provider is not ready and credits are coming s
     page.getByRole("button", { name: "Connect OpenRouter", exact: true }),
   ).toBeVisible();
   await expect(page.locator(".form-content .lede[role=status]")).toHaveCount(0);
-  await expect(credits).not.toContainText(/balance|Unavailable|12\.50/);
   await expect(page.getByRole("button", { name: "Reload prices" })).toHaveCount(
     0,
   );

@@ -15,6 +15,13 @@ const dependencies = {
   credits: readCredits,
 };
 
+/** The native launch flag alone. Off means credits stay out of onboarding and checkout. */
+export function readColonyCreditsLaunched(
+  deps: Pick<typeof dependencies, "enabled"> = dependencies,
+): Promise<boolean> {
+  return deps.enabled();
+}
+
 /** Confirm both relay services before reading account data or offering a paid test. */
 export async function readCreditsGateway(
   deps = dependencies,

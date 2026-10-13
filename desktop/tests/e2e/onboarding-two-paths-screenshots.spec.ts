@@ -79,8 +79,8 @@ for (const viewport of [
         exact: true,
       }),
     ).toBeEnabled();
-    const credits = colonyAgent.getByTestId("onboarding-credits-coming-soon");
-    await expect(credits).toContainText("Coming soon");
+    // Colony credits stay out of onboarding until the launch flag is on.
+    await expect(colonyAgent).not.toContainText("Colony credits");
     await expect(page.getByTestId("onboarding-provider-key")).toHaveCount(0);
     await routes.scrollIntoViewIfNeeded();
     await waitForAnimations(page);
