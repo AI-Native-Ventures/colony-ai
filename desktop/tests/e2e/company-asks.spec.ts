@@ -436,6 +436,9 @@ test("Needs me opens each ask type, records a response, and returns to its threa
     await expect(row).toBeVisible();
     await row.click();
     await expect(page.getByTestId("ask-detail-screen")).toBeVisible();
+    const questionViewer =
+      ask.category === "general" &&
+      ["question", "choice", "checklist"].includes(ask.type);
     if (ask.category === "money") {
       await expect(page.getByTestId("ask-thread-title")).toHaveText(ask.title);
       await expect(page.getByTestId("ask-detail-breadcrumb")).toHaveText(
@@ -447,6 +450,9 @@ test("Needs me opens each ask type, records a response, and returns to its threa
       await expect(
         page.getByRole("heading", { name: "Decision context" }),
       ).toBeVisible();
+    } else if (questionViewer) {
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await expect(page.getByTestId("ask-thread-title")).toHaveText(ask.title);
     } else {
       await expect(page.getByTestId("ask-thread-title")).toHaveText(
         `Decision in ${ask.threadTitle}`,
@@ -493,7 +499,9 @@ test("Needs me opens each ask type, records a response, and returns to its threa
     if (ask.type === "approval") {
       await page.getByLabel("Reason").fill("The launch plan is ready.");
     } else if (ask.type === "question") {
-      await page.getByLabel("Your answer").fill("Prioritise the launch date.");
+      await page
+        .getByLabel("Answer", { exact: true })
+        .fill("Prioritise the launch date.");
     } else if (ask.type === "choice") {
       await page
         .getByLabel("Choose a direction")
@@ -510,14 +518,18 @@ test("Needs me opens each ask type, records a response, and returns to its threa
         name:
           ask.category === "money"
             ? "Record funding decision"
-            : "Record response",
+            : questionViewer
+              ? "Send answer"
+              : "Record response",
       })
       .click();
     await expect(page.getByTestId("ask-resolved")).toBeVisible();
     await page
       .getByRole("link", {
         name:
-          ask.category === "money" ? "Open conversation" : "Back to discussion",
+          ask.category === "money" || questionViewer
+            ? "Open conversation"
+            : "Back to discussion",
       })
       .click();
     await expect(page.getByTestId("message-thread-panel")).toBeVisible();

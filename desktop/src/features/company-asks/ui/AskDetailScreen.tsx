@@ -1,9 +1,10 @@
 import type * as React from "react";
 import { Bell, Building2, Search, X } from "lucide-react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
+import { TodayScreen } from "@/features/home/ui/TodayScreen";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { mapSpecializedAskCard } from "@/features/company-asks/askCardMapping";
@@ -24,6 +25,12 @@ import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { ColonyAntAvatar } from "@/shared/ui/ColonyAntAvatar";
 import { WorkspaceTopBar } from "@/shared/ui/workspace-topbar";
 import { Button } from "@/shared/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/shared/ui/dialog";
 
 function isChannelRootMessage(
   event: RelayEvent,
@@ -149,8 +156,13 @@ function AskDetailMemberScreen({
   const threadTitle = formattedRoot
     ? rootThreadTitle(formattedRoot.body)
     : "Decision";
+  const questionViewer =
+    record?.head.ask.category === "general" &&
+    (record.head.ask.type === "question" ||
+      record.head.ask.type === "choice" ||
+      record.head.ask.type === "checklist");
   const specializedAskTitle =
-    record && mapSpecializedAskCard(record.head.ask)
+    record && (questionViewer || mapSpecializedAskCard(record.head.ask))
       ? record.head.ask.title
       : null;
   const pageTitle = specializedAskTitle ?? `Decision in ${threadTitle}`;
@@ -234,168 +246,203 @@ function AskDetailMemberScreen({
       .querySelector<HTMLButtonElement>('[data-testid="open-search"]')
       ?.click();
   };
+  const navigate = useNavigate();
+
+  const detailContent = (
+    <main className="colony-ask-detail-scroll">
+      <div className="colony-ask-detail-content">
+        <Link
+          aria-label="Close card"
+          className="colony-ask-detail-back"
+          to="/today"
+        >
+          <X aria-hidden="true" size={18} />
+        </Link>
+        {questionViewer && specializedAskTitle ? (
+          <DialogTitle className="sr-only" data-testid="ask-thread-title">
+            {specializedAskTitle}
+          </DialogTitle>
+        ) : specializedAskTitle ? (
+          <div className="colony-ask-detail-title-row">
+            <div>
+              <span className="colony-canary-ask-viewer-kind">Decision</span>
+              <h1 data-testid="ask-thread-title">{specializedAskTitle}</h1>
+            </div>
+          </div>
+        ) : null}
+        {!specializedAskTitle && formattedRoot ? (
+          <>
+            <h1 data-testid="ask-thread-title">Decision in {threadTitle}</h1>
+            <article
+              aria-label="Message anchoring this ask"
+              className="colony-ask-thread-root"
+              data-testid="ask-thread-root"
+            >
+              {formattedRoot.isAgent ? (
+                <ColonyAntAvatar decorative name={formattedRoot.author} />
+              ) : (
+                <UserAvatar
+                  avatarUrl={formattedRoot.avatarUrl ?? null}
+                  displayName={formattedRoot.author}
+                  size="md"
+                />
+              )}
+              <div className="colony-ask-thread-root-content">
+                <header>
+                  <strong>{formattedRoot.author}</strong>
+                  <time
+                    dateTime={new Date(
+                      formattedRoot.createdAt * 1_000,
+                    ).toISOString()}
+                  >
+                    {formattedRoot.time}
+                  </time>
+                </header>
+                <Markdown
+                  className="colony-ask-thread-root-body"
+                  content={rootDisplayBody}
+                  interactive={false}
+                  messageId={formattedRoot.id}
+                />
+              </div>
+            </article>
+          </>
+        ) : null}
+        {detailState}
+        {record ? (
+          <AskCard
+            askId={askId}
+            channelId={channelId}
+            currentPubkey={currentPubkey}
+            profiles={profilesQuery.data?.profiles}
+            questionViewer={questionViewer}
+            queryState={askState}
+            showDetailLink={false}
+          />
+        ) : null}
+        {record &&
+        channel?.isMember &&
+        (record.head.status === "open" || questionViewer) &&
+        specializedAskTitle ? (
+          <Link
+            className="colony-ask-special-work-link"
+            params={{ channelId }}
+            search={{
+              messageId: record.head.ask.threadRootEventId,
+              threadRootId: record.head.ask.threadRootEventId,
+              thread: record.head.ask.threadRootEventId,
+            }}
+            to="/channels/$channelId"
+          >
+            Open conversation
+          </Link>
+        ) : null}
+        {record?.head.status === "open" &&
+        record.head.ask.category === "secret" ? (
+          <Link
+            className="inline-flex rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            search={{
+              askId,
+              bindingId: null,
+              channelId,
+              state: "request",
+            }}
+            to="/secrets"
+          >
+            Enter securely
+          </Link>
+        ) : null}
+        {!specializedAskTitle ? (
+          <nav
+            aria-label="Ask navigation"
+            className="colony-ask-detail-actions"
+          >
+            {channel?.isMember ? (
+              <Link
+                params={{ channelId }}
+                search={{
+                  messageId: rootId ?? undefined,
+                  threadRootId: rootId ?? undefined,
+                  thread: rootId ?? undefined,
+                }}
+                to="/channels/$channelId"
+              >
+                Back to discussion
+              </Link>
+            ) : null}
+            <Link to="/today">Needs me</Link>
+          </nav>
+        ) : null}
+      </div>
+    </main>
+  );
 
   return (
     <div
-      className="colony-ask-detail-screen colony-canary-ask-detail"
+      className={`colony-ask-detail-screen colony-canary-ask-detail${questionViewer ? " colony-canary-question-detail" : ""}`}
       data-testid="ask-detail-screen"
     >
-      <WorkspaceTopBar
-        actions={
-          <>
-            <button
-              aria-label="Search workspace"
-              onClick={searchWorkspace}
-              type="button"
-            >
-              <Search aria-hidden="true" />
-            </button>
-            <button
-              aria-label="Open Inbox"
-              onClick={() => void goHome()}
-              type="button"
-            >
-              <Bell aria-hidden="true" />
-            </button>
-          </>
-        }
-      >
-        <Building2 aria-hidden="true" />
-        <span>Company</span>
-        <span
-          aria-hidden="true"
-          className="colony-workspace-breadcrumb-separator"
-        >
-          /
-        </span>
-        <span
-          className="colony-ask-detail-breadcrumb-label"
-          data-testid="ask-detail-breadcrumb"
-        >
-          {pageTitle}
-        </span>
-      </WorkspaceTopBar>
-      <main className="colony-ask-detail-scroll">
-        <div className="colony-ask-detail-content">
-          <Link
-            aria-label="Close card"
-            className="colony-ask-detail-back"
-            to="/today"
+      {questionViewer ? (
+        <>
+          <TodayScreen />
+          <Dialog
+            onOpenChange={(open) => {
+              if (!open) void navigate({ to: "/today" });
+            }}
+            open
           >
-            <X aria-hidden="true" size={18} />
-          </Link>
-          {specializedAskTitle ? (
-            <div className="colony-ask-detail-title-row">
-              <div>
-                <span className="colony-canary-ask-viewer-kind">Decision</span>
-                <h1 data-testid="ask-thread-title">{specializedAskTitle}</h1>
-              </div>
-            </div>
-          ) : null}
-          {!specializedAskTitle && formattedRoot ? (
-            <>
-              <h1 data-testid="ask-thread-title">Decision in {threadTitle}</h1>
-              <article
-                aria-label="Message anchoring this ask"
-                className="colony-ask-thread-root"
-                data-testid="ask-thread-root"
-              >
-                {formattedRoot.isAgent ? (
-                  <ColonyAntAvatar decorative name={formattedRoot.author} />
-                ) : (
-                  <UserAvatar
-                    avatarUrl={formattedRoot.avatarUrl ?? null}
-                    displayName={formattedRoot.author}
-                    size="md"
-                  />
-                )}
-                <div className="colony-ask-thread-root-content">
-                  <header>
-                    <strong>{formattedRoot.author}</strong>
-                    <time
-                      dateTime={new Date(
-                        formattedRoot.createdAt * 1_000,
-                      ).toISOString()}
-                    >
-                      {formattedRoot.time}
-                    </time>
-                  </header>
-                  <Markdown
-                    className="colony-ask-thread-root-body"
-                    content={rootDisplayBody}
-                    interactive={false}
-                    messageId={formattedRoot.id}
-                  />
-                </div>
-              </article>
-            </>
-          ) : null}
-          {detailState}
-          {record ? (
-            <AskCard
-              askId={askId}
-              channelId={channelId}
-              currentPubkey={currentPubkey}
-              profiles={profilesQuery.data?.profiles}
-              queryState={askState}
-              showDetailLink={false}
-            />
-          ) : null}
-          {record &&
-          channel?.isMember &&
-          record.head.status === "open" &&
-          specializedAskTitle ? (
-            <Link
-              className="colony-ask-special-work-link"
-              params={{ channelId }}
-              search={{
-                messageId: record.head.ask.threadRootEventId,
-                threadRootId: record.head.ask.threadRootEventId,
-                thread: record.head.ask.threadRootEventId,
-              }}
-              to="/channels/$channelId"
+            <DialogContent
+              className="colony-canary-question-dialog"
+              showCloseButton={false}
+              surface="none"
             >
-              Open conversation
-            </Link>
-          ) : null}
-          {record?.head.status === "open" &&
-          record.head.ask.category === "secret" ? (
-            <Link
-              className="inline-flex rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              search={{
-                askId,
-                bindingId: null,
-                channelId,
-                state: "request",
-              }}
-              to="/secrets"
-            >
-              Enter securely
-            </Link>
-          ) : null}
-          {!specializedAskTitle ? (
-            <nav
-              aria-label="Ask navigation"
-              className="colony-ask-detail-actions"
-            >
-              {channel?.isMember ? (
-                <Link
-                  params={{ channelId }}
-                  search={{
-                    messageId: rootId ?? undefined,
-                    threadRootId: rootId ?? undefined,
-                    thread: rootId ?? undefined,
-                  }}
-                  to="/channels/$channelId"
+              <DialogDescription className="sr-only">
+                Answer the question or open its source conversation.
+              </DialogDescription>
+              {detailContent}
+            </DialogContent>
+          </Dialog>
+        </>
+      ) : (
+        <>
+          <WorkspaceTopBar
+            actions={
+              <>
+                <button
+                  aria-label="Search workspace"
+                  onClick={searchWorkspace}
+                  type="button"
                 >
-                  Back to discussion
-                </Link>
-              ) : null}
-              <Link to="/today">Needs me</Link>
-            </nav>
-          ) : null}
-        </div>
-      </main>
+                  <Search aria-hidden="true" />
+                </button>
+                <button
+                  aria-label="Open Inbox"
+                  onClick={() => void goHome()}
+                  type="button"
+                >
+                  <Bell aria-hidden="true" />
+                </button>
+              </>
+            }
+          >
+            <Building2 aria-hidden="true" />
+            <span>Company</span>
+            <span
+              aria-hidden="true"
+              className="colony-workspace-breadcrumb-separator"
+            >
+              /
+            </span>
+            <span
+              className="colony-ask-detail-breadcrumb-label"
+              data-testid="ask-detail-breadcrumb"
+            >
+              {pageTitle}
+            </span>
+          </WorkspaceTopBar>
+          {detailContent}
+        </>
+      )}
     </div>
   );
 }

@@ -102,7 +102,15 @@ function accessReason(input: {
   return null;
 }
 
-function AskResponseForm({ record }: { record: AskHeadRecord }) {
+function AskResponseForm({
+  record,
+  answerLabel = "Your answer",
+  submitLabel,
+}: {
+  record: AskHeadRecord;
+  answerLabel?: string;
+  submitLabel?: string;
+}) {
   const idPrefix = React.useId();
   const queryClient = useQueryClient();
   const [outcome, setOutcome] = React.useState<AskOutcome>(
@@ -431,7 +439,7 @@ function AskResponseForm({ record }: { record: AskHeadRecord }) {
       ) : null}
       {ask.type === "question" ? (
         <>
-          <label htmlFor={`${idPrefix}-answer`}>Your answer</label>
+          <label htmlFor={`${idPrefix}-answer`}>{answerLabel}</label>
           <textarea
             id={`${idPrefix}-answer`}
             maxLength={4000}
@@ -490,7 +498,9 @@ function AskResponseForm({ record }: { record: AskHeadRecord }) {
           ? "Recording…"
           : error
             ? "Retry response"
-            : (specializedVariant?.submitLabel ?? "Record response")}
+            : (submitLabel ??
+              specializedVariant?.submitLabel ??
+              "Record response")}
       </Button>
     </form>
   );
@@ -553,6 +563,7 @@ export function AskCard({
   queryState,
   showDetailLink = true,
   lazyQueryEnabled = true,
+  questionViewer = false,
 }: {
   askId: string;
   channelId: string | null;
@@ -561,6 +572,7 @@ export function AskCard({
   queryState?: AskHeadQueryState;
   showDetailLink?: boolean;
   lazyQueryEnabled?: boolean;
+  questionViewer?: boolean;
 }) {
   const localQueryState = useAskHeadQuery(
     channelId,
@@ -730,6 +742,12 @@ export function AskCard({
       ? outcomeLabel(head.resolution.outcome)
       : head.status;
   const specializedVariant = mapSpecializedAskCard(head.ask);
+  const showQuestionViewer =
+    questionViewer &&
+    head.ask.category === "general" &&
+    (head.ask.type === "question" ||
+      head.ask.type === "choice" ||
+      head.ask.type === "checklist");
   const specializedDetail = Boolean(
     specializedVariant &&
       (!showDetailLink ||
@@ -857,6 +875,88 @@ export function AskCard({
         statusText={statusText}
         key={askId}
       />
+    );
+  }
+
+  if (showQuestionViewer) {
+    return (
+      <section
+        aria-label={`${typeLabel(head.ask.type)} ask`}
+        className="colony-ask-card colony-ask-card-question-viewer"
+        data-ask-id={askId}
+        data-testid="ask-card"
+      >
+        <div className="colony-question-status-row">
+          <span data-testid="ask-status">
+            {needsYou ? "✓ Waiting for you" : statusText}
+          </span>
+          <time dateTime={head.createdAt}>
+            {new Intl.DateTimeFormat("en-GB", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }).format(new Date(Date.parse(head.createdAt)))}
+          </time>
+        </div>
+        <span className="colony-question-kind">{typeLabel(head.ask.type)}</span>
+        <h2>{head.ask.title}</h2>
+        {head.ask.body ? (
+          <p className="colony-question-body">{head.ask.body}</p>
+        ) : null}
+        {head.status === "open" ? (
+          checksReady && !deniedReason ? (
+            <AskResponseForm
+              answerLabel="Answer"
+              record={headRecord}
+              submitLabel="Send answer"
+            />
+          ) : (
+            <div
+              className="colony-ask-denied"
+              data-testid="ask-cannot-resolve"
+              role={accessFailure ? "alert" : "status"}
+            >
+              <strong>You can view this ask, but cannot respond.</strong>
+              <p>
+                {accessFailure
+                  ? "Access could not be verified. Try again after the relay is available."
+                  : !checksReady
+                    ? "Checking whether you can respond…"
+                    : deniedReason}
+              </p>
+            </div>
+          )
+        ) : (
+          <AskResolution
+            currentPubkey={currentPubkey}
+            head={head}
+            profiles={profiles}
+          />
+        )}
+        <div className="colony-question-author">
+          <span aria-hidden="true">
+            {askerIsAgent ? (
+              <ColonyAntAvatar decorative name={asker} />
+            ) : (
+              <UserAvatar
+                avatarUrl={askerProfile?.avatarUrl ?? null}
+                displayName={asker}
+                size="sm"
+              />
+            )}
+          </span>
+          <span>
+            <strong>{asker}</strong>
+            <small>{askerIsAgent ? "AI employee" : "Person"}</small>
+          </span>
+          <span className="colony-question-channel">In {channelName}</span>
+        </div>
+        {liveState === "unavailable" && head.status === "open" ? (
+          <p className="colony-ask-live-status" role="status">
+            Live updates are unavailable. The ask will refresh when the relay
+            reconnects.
+          </p>
+        ) : null}
+      </section>
     );
   }
 

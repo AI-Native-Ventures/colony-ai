@@ -172,3 +172,107 @@ test("a real pending decision opens its source discussion", async ({
   await expect(page).toHaveURL(/#\/today$/);
   await expect(page.getByTestId(`today-ask-${askId}`)).toHaveCount(0);
 });
+
+test("a signed question keeps its answer tied to the source conversation", async ({
+  page,
+}) => {
+  const viewerPubkey = "deadbeef".repeat(8);
+  const relaySecret = generateSecretKey();
+  const askId = "7245ba1a-e078-42ef-b896-00be34a94f12";
+  const channelId = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+  const now = new Date();
+  const askHead = finalizeEvent(
+    {
+      kind: KIND_ASK_HEAD,
+      created_at: Math.floor(now.getTime() / 1_000),
+      tags: [
+        ["d", `channel:${channelId}:ask:${askId}`],
+        ["h", channelId],
+        ["e", "d".repeat(64)],
+        ["t", "question"],
+      ],
+      content: JSON.stringify({
+        schemaVersion: 1,
+        askId,
+        status: "open",
+        askerPubkey: TEST_IDENTITIES.alice.pubkey,
+        createdAt: now.toISOString(),
+        ask: {
+          schemaVersion: 1,
+          askId,
+          type: "question",
+          category: "general",
+          title: "Which sizes does the linen dress come in?",
+          body: "We need the available sizes before writing product copy.",
+          threadRootEventId: "d".repeat(64),
+          addresseePubkey: viewerPubkey,
+          decideBy: new Date(now.getTime() + 60_000).toISOString(),
+        },
+        resolution: null,
+        cancellation: null,
+        sourceActionEventId: "a".repeat(64),
+      }),
+    },
+    relaySecret,
+  );
+  await installMockBridge(page, {
+    relaySelf: getPublicKey(relaySecret),
+    relayRequiresMembership: true,
+    companyAskRelayPrivateKeyHex: bytesToHex(relaySecret),
+    companyAskHeads: [askHead],
+    searchProfiles: [
+      {
+        pubkey: TEST_IDENTITIES.alice.pubkey,
+        displayName: "Naledi",
+        isAgent: true,
+      },
+    ],
+    relayAgents: [
+      {
+        pubkey: TEST_IDENTITIES.alice.pubkey,
+        ownerPubkey: viewerPubkey,
+        name: "Naledi",
+        agentType: "agent",
+      },
+    ],
+  });
+  await page.goto("/#/today?view=needs-you");
+  const card = page.getByTestId(`today-ask-${askId}`);
+  await expect(card).toContainText("question");
+  await expect(card).toContainText("We need the available sizes");
+  await expect(card.locator('[data-ant-portrait="Naledi"]')).toBeVisible();
+  await card.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByTestId("ask-card")).toBeVisible();
+  await expect(page.getByTestId("ask-thread-title")).toHaveText(
+    "Which sizes does the linen dress come in?",
+  );
+  if (process.env.COLONY_CANARY_QUESTION_SHOT) {
+    await waitForAnimations(page);
+    await page.screenshot({ path: process.env.COLONY_CANARY_QUESTION_SHOT });
+  }
+  await page.getByRole("link", { name: "Open conversation" }).click();
+  await expect(page.getByTestId("message-thread-panel")).toContainText(
+    "React to me with a custom emoji",
+  );
+  await page.goBack();
+  await page.getByLabel("Answer", { exact: true }).fill("XS, S, M, L and XL.");
+  await page.getByRole("button", { name: "Send answer" }).click();
+  await expect(page.getByTestId("ask-resolved")).toContainText(
+    "Answered by You",
+  );
+  await page.setViewportSize({ width: 700, height: 700 });
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(700);
+  if (process.env.COLONY_CANARY_QUESTION_NARROW_SHOT) {
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: process.env.COLONY_CANARY_QUESTION_NARROW_SHOT,
+    });
+  }
+  await page.keyboard.press("Escape");
+  await expect(page).toHaveURL(/#\/today$/);
+  await expect(page.getByTestId(`today-ask-${askId}`)).toHaveCount(0);
+});
