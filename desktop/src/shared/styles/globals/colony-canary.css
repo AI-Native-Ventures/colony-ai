@@ -285,6 +285,13 @@
   margin-top: auto;
   padding-top: 20px;
 }
+.colony-canary-relay-recovery {
+  margin: 0 0 0.75rem;
+  min-width: 0;
+}
+.colony-canary-relay-recovery [data-testid="sidebar-relay-unreachable"] {
+  width: 100%;
+}
 .colony-canary-team-link {
   align-items: center;
   border-bottom: 1px solid var(--colony-canary-line);

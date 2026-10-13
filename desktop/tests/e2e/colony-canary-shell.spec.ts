@@ -71,6 +71,33 @@ test("conversation navigation opens an existing stream and offers a mobile menu"
   ).toBeVisible();
 });
 
+test("a relay outage keeps a visible reconnect action in the canary sidebar", async ({
+  page,
+}) => {
+  await page.goto("/#/today");
+  await page.waitForFunction(
+    () => window.__BUZZ_E2E_GET_RELAY_CONNECTION_STATE__?.() === "connected",
+  );
+  await page.evaluate(() =>
+    window.__BUZZ_E2E_SET_RELAY_CONNECTION_STATE__?.("disconnected"),
+  );
+  const sidebar = page.getByTestId("app-sidebar");
+  const card = sidebar.getByTestId("sidebar-relay-unreachable");
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("Can't reach the relay");
+  await expect(sidebar.getByTestId("sidebar-reconnect")).toBeEnabled();
+  await expect(sidebar.locator(".colony-canary-account")).toBeVisible();
+  if (process.env.COLONY_CANARY_RECONNECT_SHOT) {
+    await waitForAnimations(page);
+    await page.screenshot({ path: process.env.COLONY_CANARY_RECONNECT_SHOT });
+  }
+  await sidebar.getByTestId("sidebar-reconnect").click();
+  await page.evaluate(() =>
+    window.__BUZZ_E2E_SET_RELAY_CONNECTION_STATE__?.("connected"),
+  );
+  await expect(card).toContainText("Connected");
+});
+
 test("Settings uses one Colony sidebar and the approved section list", async ({
   page,
 }) => {

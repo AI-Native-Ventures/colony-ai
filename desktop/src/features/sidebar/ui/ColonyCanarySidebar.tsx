@@ -17,6 +17,8 @@ import { useNeedsMeQuery } from "@/features/home/needsMeHooks";
 import { buildNeedsMeItems } from "@/features/home/needsMeOrdering";
 import type { AppSidebarProps } from "@/features/sidebar/ui/AppSidebar.types";
 import { CreateChannelDialog } from "@/features/sidebar/ui/CreateChannelDialog";
+import { SidebarRelayConnectionCard } from "@/features/sidebar/ui/SidebarRelayConnectionCard";
+import { SidebarRelayErrorNotice } from "@/features/sidebar/ui/SidebarRelayErrorNotice";
 import { Sidebar, useSidebar } from "@/shared/ui/sidebar";
 
 function AntMark() {
@@ -49,6 +51,7 @@ export function ColonyCanarySidebar({
   channels,
   communities,
   currentPubkey,
+  errorMessage,
   fallbackDisplayName,
   isCreateChannelOpen,
   isCreatingChannel,
@@ -62,6 +65,7 @@ export function ColonyCanarySidebar({
   onSelectToday,
   onSwitchCommunity,
   profile,
+  relayConnectionCard,
   searchChannels,
   searchFocusRequests,
   selectedChannelId,
@@ -102,6 +106,9 @@ export function ColonyCanarySidebar({
     needsMe.asksError || needsMe.workflowApprovalsError || needsMe.isPending
       ? null
       : buildNeedsMeItems(needsMe.data).length;
+  const showRelayRecovery =
+    relayConnectionCard.showSidebarRelayConnectionCard ||
+    Boolean(errorMessage && !relayConnectionCard.hasRelayUnreachableError);
   const todayActive =
     !settingsActive && !needsYouActive && selectedView === "today";
   const conversationsActive = !settingsActive && selectedView === "channel";
@@ -316,21 +323,43 @@ export function ColonyCanarySidebar({
             />
           </div>
           <div className="colony-canary-bottom">
-            <button
-              className="colony-canary-team-link"
-              onClick={() => {
-                onSelectTeam();
-                closeMobile();
-              }}
-              type="button"
-            >
-              <span aria-hidden="true" className="colony-canary-orbit" />
-              <span>
-                <strong>Team</strong>
-                <small>View your team</small>
-              </span>
-              <ArrowUpRight aria-hidden="true" size={14} />
-            </button>
+            {relayConnectionCard.showSidebarRelayConnectionCard ? (
+              <div className="colony-canary-relay-recovery">
+                <SidebarRelayConnectionCard
+                  isConnected={relayConnectionCard.isRelayConnectionSuccess}
+                  isReconnectPending={
+                    relayConnectionCard.isRelayReconnectPending
+                  }
+                  isWaitingOnReconnectHook={
+                    relayConnectionCard.isWaitingOnReconnectHook
+                  }
+                  onDismiss={relayConnectionCard.onDismissRelayConnectionCard}
+                  onReconnect={relayConnectionCard.onReconnectRelay}
+                />
+              </div>
+            ) : errorMessage &&
+              !relayConnectionCard.hasRelayUnreachableError ? (
+              <div className="colony-canary-relay-recovery">
+                <SidebarRelayErrorNotice message={errorMessage} />
+              </div>
+            ) : null}
+            {!showRelayRecovery ? (
+              <button
+                className="colony-canary-team-link"
+                onClick={() => {
+                  onSelectTeam();
+                  closeMobile();
+                }}
+                type="button"
+              >
+                <span aria-hidden="true" className="colony-canary-orbit" />
+                <span>
+                  <strong>Team</strong>
+                  <small>View your team</small>
+                </span>
+                <ArrowUpRight aria-hidden="true" size={14} />
+              </button>
+            ) : null}
             <button
               className="colony-canary-account"
               onClick={() => {

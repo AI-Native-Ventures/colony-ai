@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { KIND_CHANNEL_THREAD_SUMMARY } from "../../src/shared/constants/kinds";
 import { installMockBridge } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
 
@@ -163,4 +164,73 @@ test("conversation workspace is usable as a narrow overlay and returns keyboard 
   await page.keyboard.press("Escape");
   await expect(panel).toHaveCount(0);
   await expect(trigger).toBeFocused();
+});
+
+test("a failed conversation send keeps the draft and a retry reaches the timeline", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    sendMessageErrors: ["Mock relay rejected the event."],
+  });
+  await page.goto("/#/channels/9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50");
+  const input = page
+    .getByTestId("work-area-conversation")
+    .getByTestId("message-input")
+    .first();
+  const message = `Retry this conversation message ${Date.now()}`;
+  await input.fill(message);
+  await page
+    .getByTestId("work-area-conversation")
+    .getByTestId("send-message")
+    .first()
+    .click();
+  await expect(input).toContainText(message);
+  await expect(
+    page.getByTestId("message-row").filter({ hasText: message }),
+  ).toHaveCount(0);
+  await page
+    .getByTestId("work-area-conversation")
+    .getByTestId("send-message")
+    .first()
+    .click();
+  await expect(page.getByTestId("message-timeline")).toContainText(message);
+});
+
+test("thread reply remains visible when the channel live subscription closes and returns", async ({
+  page,
+}) => {
+  await installMockBridge(page, { closeChannelLiveSubscriptionOnce: true });
+  await page.goto("/#/channels/9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50");
+  const seed = `Thread reconnect root ${Date.now()}`;
+  await page
+    .getByTestId("work-area-conversation")
+    .getByTestId("message-input")
+    .first()
+    .fill(seed);
+  await page
+    .getByTestId("work-area-conversation")
+    .getByTestId("send-message")
+    .first()
+    .click();
+  await expect(page.getByTestId("message-timeline")).toContainText(seed);
+  const root = page.getByTestId("message-row").filter({ hasText: seed });
+  await root.hover();
+  await root.getByRole("button", { name: "Reply" }).click();
+  const thread = page.getByTestId("message-thread-panel");
+  const reply = `Thread reply after reconnect ${Date.now()}`;
+  await thread.getByTestId("message-input").fill(reply);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (kind) =>
+          window.__BUZZ_E2E_HAS_MOCK_LIVE_SUBSCRIPTION__?.({
+            channelName: "general",
+            kind,
+          }) ?? false,
+        KIND_CHANNEL_THREAD_SUMMARY,
+      ),
+    )
+    .toBe(true);
+  await thread.getByTestId("send-message").click();
+  await expect(thread).toContainText(reply);
 });
