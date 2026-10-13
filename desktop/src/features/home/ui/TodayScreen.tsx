@@ -1,5 +1,13 @@
-import { Bot, Bell, CircleAlert, House, Search } from "lucide-react";
+import {
+  ArrowRight,
+  Bot,
+  Bell,
+  CircleAlert,
+  House,
+  Search,
+} from "lucide-react";
 import * as React from "react";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useHomeFeedQuery } from "@/features/home/hooks";
@@ -10,7 +18,11 @@ import { getThreadReference } from "@/features/messages/lib/threading";
 import type { AskHeadRecord } from "@/features/company-asks/askRecords";
 import type { PendingWorkflowApproval } from "@/features/home/needsMe";
 import { useChannelsQuery } from "@/features/channels/hooks";
+import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
+import type { TeamMember } from "@/features/company-team/teamModels";
+import { useEmployeeRuntime } from "@/features/company-team/useEmployeeRuntime";
 import type { FeedItem } from "@/shared/api/types";
+import { ColonyAntAvatar } from "@/shared/ui/ColonyAntAvatar";
 import { Button } from "@/shared/ui/button";
 import { WorkspaceTopBar } from "@/shared/ui/workspace-topbar";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
@@ -25,6 +37,7 @@ import {
   type NeedsMeItem,
 } from "@/features/home/needsMeOrdering";
 import { needsMeAskLabel } from "@/features/company-asks/askCardMapping";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 
 function formatActivityTime(createdAt: number) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -290,6 +303,28 @@ function TodayTopBar({ onOpenInbox }: { onOpenInbox: () => void }) {
   );
 }
 
+function TodayEmployeeLine({
+  member,
+  name,
+  onOpen,
+}: {
+  member: TeamMember;
+  name: string;
+  onOpen: () => void;
+}) {
+  const runtime = useEmployeeRuntime(member);
+  return (
+    <button className="colony-canary-team-line" onClick={onOpen} type="button">
+      <ColonyAntAvatar className="size-10" decorative name={name} />
+      <span>
+        <strong>{name}</strong>
+        <small>{member.position?.head.title || "Employee"}</small>
+      </span>
+      <span className="colony-canary-team-status">{runtime.label}</span>
+    </button>
+  );
+}
+
 export function TodayScreen({
   showUpdatesAction = false,
 }: {
@@ -299,6 +334,11 @@ export function TodayScreen({
   const needsMe = useNeedsMeQuery();
   const channelsQuery = useChannelsQuery();
   const identityQuery = useIdentityQuery();
+  const teamQuery = useCompanyTeamQuery();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const needsYouView =
+    (location.search as { view?: unknown }).view === "needs-you";
   const [needsMeGrouping, setNeedsMeGrouping] =
     React.useState<NeedsMeGrouping>("deadline");
   const [showOverdueOnly, setShowOverdueOnly] = React.useState(false);
@@ -307,16 +347,26 @@ export function TodayScreen({
     () => [
       ...new Set([
         ...(needsMe.data?.asks ?? []).map((record) => record.head.askerPubkey),
+        ...(feedQuery.data?.feed.agentActivity ?? []).map(
+          (item) => item.pubkey,
+        ),
+        ...(teamQuery.data?.members ?? []).map((member) => member.pubkey),
         ...(identityQuery.data?.pubkey ? [identityQuery.data.pubkey] : []),
       ]),
     ],
-    [identityQuery.data?.pubkey, needsMe.data?.asks],
+    [
+      identityQuery.data?.pubkey,
+      needsMe.data?.asks,
+      feedQuery.data?.feed.agentActivity,
+      teamQuery.data?.members,
+    ],
   );
   const needsMeProfilesQuery = useUsersBatchQuery(needsMeProfilePubkeys, {
     enabled: needsMeProfilePubkeys.length > 0,
   });
   const needsMeProfiles = needsMeProfilesQuery.data?.profiles;
-  const { goAskDetail, goChannel, goHome, goPulse } = useAppNavigation();
+  const { goAskDetail, goChannel, goHome, goPulse, goTeam, goTeamMember } =
+    useAppNavigation();
   const needsMeErrors = [
     ...new Set(
       [
@@ -333,6 +383,43 @@ export function TodayScreen({
     () => movingForwardItems(feedQuery.data?.feed),
     [feedQuery.data],
   );
+  const scoutBrief = React.useMemo(
+    () =>
+      (feedQuery.data?.feed.agentActivity ?? []).find((item) => {
+        const profile = needsMeProfiles?.[normalizePubkey(item.pubkey)];
+        const author = profile?.displayName || profile?.name || "";
+        return (
+          author.trim().toLowerCase() === "scout" &&
+          /\bbrief\b/i.test(item.content)
+        );
+      }) ?? null,
+    [feedQuery.data?.feed.agentActivity, needsMeProfiles],
+  );
+  const employeeMembers = (teamQuery.data?.members ?? []).filter(
+    (member) =>
+      member.kind === "employee" &&
+      member.position?.head.status !== "terminated",
+  );
+  const now = new Date();
+  const dateLabel = new Intl.DateTimeFormat("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(now);
+  const dayPart =
+    now.getHours() < 12
+      ? "Good morning"
+      : now.getHours() < 17
+        ? "Good afternoon"
+        : "Good evening";
+  const firstName =
+    identityQuery.data?.displayName?.trim().split(/\s+/)[0] ?? "";
+  const greeting =
+    firstName &&
+    firstName.length < 30 &&
+    !firstName.toLowerCase().startsWith("npub")
+      ? `${dayPart}, ${firstName}.`
+      : `${dayPart}.`;
 
   const openItem = React.useCallback(
     (item: FeedItem) => {
@@ -408,11 +495,30 @@ export function TodayScreen({
   }, [needsMe.refetch]);
 
   return (
-    <div className="colony-today-screen">
+    <div
+      className="colony-today-screen colony-canary-today"
+      data-testid="colony-canary-today"
+    >
       <TodayTopBar onOpenInbox={() => void goHome()} />
       <div className="colony-today-scroll">
         <div className="colony-today-heading">
-          <h1>Today</h1>
+          {needsYouView ? (
+            <>
+              <button
+                className="colony-canary-back"
+                onClick={() => void navigate({ to: "/today", search: {} })}
+                type="button"
+              >
+                Today
+              </button>
+              <h1>Needs you.</h1>
+            </>
+          ) : (
+            <div>
+              <span className="colony-canary-date">{dateLabel}</span>
+              <h1>{greeting}</h1>
+            </div>
+          )}
           {showUpdatesAction ? (
             <Button
               className="colony-secondary-button"
@@ -426,15 +532,61 @@ export function TodayScreen({
           ) : null}
         </div>
 
-        <section aria-label="Needs me" className="colony-today-needs-me">
+        {!needsYouView ? (
+          <section
+            aria-label="Scout's latest brief"
+            className="colony-canary-scout-brief"
+          >
+            <ColonyAntAvatar className="size-14" decorative name="Scout" />
+            <div>
+              <div className="colony-canary-brief-meta">
+                <strong>
+                  Scout · {scoutBrief ? "Latest brief" : "Morning brief"}
+                </strong>
+                {scoutBrief ? (
+                  <span>{formatActivityTime(scoutBrief.createdAt)}</span>
+                ) : null}
+              </div>
+              <p>
+                {scoutBrief
+                  ? scoutBrief.content
+                  : "Scout's brief will appear here when it arrives."}
+              </p>
+              {scoutBrief ? (
+                <button onClick={() => openItem(scoutBrief)} type="button">
+                  Open brief <ArrowRight aria-hidden="true" size={14} />
+                </button>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        <section aria-label="Needs you" className="colony-today-needs-me">
           <div className="colony-today-needs-me-heading">
             <div className="colony-today-needs-me-summary">
-              <p>
-                {needsMeErrors.length > 0
-                  ? "Open asks unavailable"
-                  : `Needs me · ${needItems.length} open ${needItems.length === 1 ? "decision" : "decisions"}`}
-              </p>
-              {needItems.length > 0 && overdueItems.length > 0 ? (
+              <h2>Needs you</h2>
+              {needsMeErrors.length === 0 && needItems.length > 0 ? (
+                <span className="colony-canary-soft-count">
+                  {needItems.length}
+                </span>
+              ) : null}
+              {!needsYouView ? (
+                <button
+                  className="colony-canary-see-all"
+                  onClick={() =>
+                    void navigate({
+                      to: "/today",
+                      search: { view: "needs-you" },
+                    })
+                  }
+                  type="button"
+                >
+                  See all <ArrowRight aria-hidden="true" size={14} />
+                </button>
+              ) : null}
+              {needsYouView &&
+              needItems.length > 0 &&
+              overdueItems.length > 0 ? (
                 <button
                   aria-label={
                     showingOverdueOnly
@@ -451,7 +603,7 @@ export function TodayScreen({
                 </button>
               ) : null}
             </div>
-            {needItems.length > 0 ? (
+            {needsYouView && needItems.length > 0 ? (
               <fieldset className="colony-needs-me-group-controls">
                 <legend className="sr-only">Group decisions</legend>
                 {(
@@ -474,21 +626,31 @@ export function TodayScreen({
               </fieldset>
             ) : null}
           </div>
-          {overdueItems.length > 0 ? (
+          {needsYouView && overdueItems.length > 0 ? (
             <div className="colony-needs-me-overdue-note" role="status">
               <strong>{overdueItems.length} asks are overdue</strong>
               <p>They stay open until answered, withdrawn or expired.</p>
             </div>
           ) : null}
           {needItems.length > 0 ? (
-            <div className="colony-today-needs-me-list">
-              {groupedItems.overdue.length > 0 ? (
+            <div
+              className={
+                needsYouView
+                  ? "colony-today-needs-me-list"
+                  : "colony-canary-decision-grid"
+              }
+            >
+              {!needsYouView
+                ? needItems.slice(0, 2).map(renderNeedsMeItem)
+                : null}
+              {needsYouView && groupedItems.overdue.length > 0 ? (
                 <section aria-label="Overdue" className="colony-needs-me-group">
                   <h3>Overdue</h3>
                   {groupedItems.overdue.map(renderNeedsMeItem)}
                 </section>
               ) : null}
-              {!showingOverdueOnly || needsMeGrouping !== "deadline"
+              {needsYouView &&
+              (!showingOverdueOnly || needsMeGrouping !== "deadline")
                 ? groupedItems.groups.map((group) => (
                     <section
                       aria-label={group.label}
@@ -500,7 +662,7 @@ export function TodayScreen({
                     </section>
                   ))
                 : null}
-              {visibleSource.length > visibleItems.length ? (
+              {needsYouView && visibleSource.length > visibleItems.length ? (
                 <div className="colony-needs-me-show-more">
                   <Button
                     data-testid="needs-me-show-more"
@@ -521,8 +683,8 @@ export function TodayScreen({
             </p>
           ) : needsMeErrors.length === 0 ? (
             <div className="colony-today-needs-me-empty" role="status">
-              <h3>You’re up to date.</h3>
-              <p>No open asks are addressed to you.</p>
+              <h3>Nothing needs you right now.</h3>
+              <p>Your next decision will appear here.</p>
             </div>
           ) : null}
           {needsMeErrors.length > 0 ? (
@@ -530,7 +692,7 @@ export function TodayScreen({
               <p>
                 {needItems.length > 0
                   ? "Some decisions may be unavailable or out of date."
-                  : "Needs me could not be loaded."}
+                  : "Needs you could not be loaded."}
               </p>
               <ul>
                 {needsMeErrors.map((message) => (
@@ -549,7 +711,7 @@ export function TodayScreen({
           ) : null}
         </section>
 
-        {forwardItems.length > 0 || feedQuery.error ? (
+        {!needsYouView && (forwardItems.length > 0 || feedQuery.error) ? (
           <section
             aria-label="Moving forward"
             className="colony-today-moving-forward"
@@ -565,6 +727,53 @@ export function TodayScreen({
             {forwardItems.map((item) => (
               <AttentionRow item={item} key={item.id} onOpen={openItem} />
             ))}
+          </section>
+        ) : null}
+
+        {!needsYouView ? (
+          <section aria-label="Your team" className="colony-canary-today-team">
+            <div className="colony-canary-section-heading">
+              <h2>Your team</h2>
+              <button onClick={() => void goTeam()} type="button">
+                See the team <ArrowRight aria-hidden="true" size={14} />
+              </button>
+            </div>
+            {teamQuery.isLoading ? (
+              <p role="status">Loading your team…</p>
+            ) : null}
+            {teamQuery.isError ? (
+              <div role="alert">
+                <p>Team information could not load.</p>
+                <button onClick={() => void teamQuery.refetch()} type="button">
+                  Try again
+                </button>
+              </div>
+            ) : null}
+            {!teamQuery.isLoading &&
+            !teamQuery.isError &&
+            employeeMembers.length === 0 ? (
+              <p>No employees yet.</p>
+            ) : null}
+            {employeeMembers.length > 0 ? (
+              <div className="colony-canary-team-grid">
+                {employeeMembers.slice(0, 6).map((member) => {
+                  const profile =
+                    needsMeProfiles?.[normalizePubkey(member.pubkey)];
+                  const name =
+                    profile?.displayName?.trim() ||
+                    member.fallbackName?.trim() ||
+                    "Employee";
+                  return (
+                    <TodayEmployeeLine
+                      key={member.pubkey}
+                      member={member}
+                      name={name}
+                      onOpen={() => void goTeamMember(member.pubkey)}
+                    />
+                  );
+                })}
+              </div>
+            ) : null}
           </section>
         ) : null}
       </div>

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useLocation } from "@tanstack/react-router";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ArrowUpRight,
   Check,
@@ -69,6 +69,7 @@ export function ColonyCanarySidebar({
   unreadChannelIds,
 }: AppSidebarProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const needsMe = useNeedsMeQuery();
   const { isMobile, setOpenMobile, toggleSidebar } = useSidebar();
   const [localCreateOpen, setLocalCreateOpen] = React.useState(false);
@@ -94,11 +95,15 @@ export function ColonyCanarySidebar({
     [searchChannels],
   );
   const settingsActive = location.pathname === "/settings";
+  const needsYouActive =
+    location.pathname === "/today" &&
+    (location.search as { view?: unknown }).view === "needs-you";
   const needsYouCount =
     needsMe.asksError || needsMe.workflowApprovalsError || needsMe.isPending
       ? null
       : buildNeedsMeItems(needsMe.data).length;
-  const todayActive = !settingsActive && selectedView === "today";
+  const todayActive =
+    !settingsActive && !needsYouActive && selectedView === "today";
   const conversationsActive = !settingsActive && selectedView === "channel";
   const teamActive = !settingsActive && selectedView === "team";
   const displayName =
@@ -109,13 +114,8 @@ export function ColonyCanarySidebar({
     if (isMobile) setOpenMobile(false);
   };
   const goNeedsYou = () => {
-    onSelectToday();
+    void navigate({ to: "/today", search: { view: "needs-you" } });
     closeMobile();
-    window.setTimeout(() => {
-      document
-        .querySelector(".colony-today-needs-me")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 100);
   };
   const createOpen = Boolean(isCreateChannelOpen || localCreateOpen);
   const changeCreateOpen = (open: boolean) => {
@@ -246,7 +246,8 @@ export function ColonyCanarySidebar({
               <span>Settings</span>
             </button>
             <button
-              className="colony-canary-needs"
+              aria-current={needsYouActive ? "page" : undefined}
+              className={`colony-canary-needs${needsYouActive ? " active" : ""}`}
               onClick={goNeedsYou}
               type="button"
             >

@@ -26,6 +26,8 @@
 
 Refactor `desktop/src/features/home/ui/TodayScreen.tsx` and its scoped styles against T-01 and T-05. Adapt `useHomeFeedQuery`, `useNeedsMeQuery`, the company ask records, identity and team queries. Show a brief only when an actual Scout brief exists; otherwise use the pack's honest first-day or empty state. Preserve permissions and decision history. Check opening an ask in its source conversation, an offline/error retry, partner billing limits and the smallest window.
 
+**Local slice evidence, 13 October:** Today now reads the existing feed, ask, identity and team queries. It shows an ant Scout and an honest pending-brief state until a real brief exists; employee rows render ant portraits. Needs you has its own route and the real ask card opens its source tool-consent discussion. TypeScript/E2E build and five focused shell/Today smoke cases pass. This is a partial phase gate: offline/retry, partner billing, narrow-window, native runtime and relay integration remain unverified.
+
 ## Phase 3: Conversations and workspace
 
 Port T-02 to T-08 over the existing stream channel, message and thread APIs. Keep a channel-like conversation timeline with a message or card thread in a side panel. The conversation workspace indexes real files, media, links and browser references with a source-thread relationship. Test read/write, reconnect, search, attachment failure, keyboard navigation and permission boundaries. No session-only mock records in the product path.
