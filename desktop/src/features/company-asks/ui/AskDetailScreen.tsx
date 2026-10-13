@@ -464,7 +464,8 @@ export function AskDetailScreen({
   const currentPubkey = identityQuery.data?.pubkey;
   const canResolveCompanyAsk =
     membershipQuery.data?.role === "owner" ||
-    membershipQuery.data?.role === "admin";
+    membershipQuery.data?.role === "admin" ||
+    membershipQuery.data?.role === "partner";
   const canOpenCompanyToolConsent =
     companyToolConsentInbox && canResolveCompanyAsk;
   const searchWorkspace = () => {

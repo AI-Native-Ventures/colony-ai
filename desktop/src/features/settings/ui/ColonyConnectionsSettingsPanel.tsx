@@ -200,7 +200,7 @@ function SocialAccountsEditor({
           </div>
           {!canEdit ? (
             <p className="text-xs text-muted-foreground">
-              Owners and admins can edit these shared account names.
+              Owners and partners can edit these shared account names.
             </p>
           ) : null}
         </form>
@@ -218,7 +218,7 @@ export function ColonyConnectionsSettingsPanel({
   const membership = useMyRelayMembershipLookupQuery();
   const profile = useCompanyBusinessProfileQuery(Boolean(activeCommunity));
   const connection = useRelayConnection();
-  const canEdit = ["owner", "admin"].includes(
+  const canEdit = ["owner", "admin", "partner"].includes(
     membership.data?.membership?.role ?? "",
   );
 

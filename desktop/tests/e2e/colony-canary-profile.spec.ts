@@ -55,7 +55,7 @@ async function openProfile(
   page: import("@playwright/test").Page,
   options: {
     events?: ReturnType<typeof signedHead>[];
-    role?: "owner" | "admin" | "member";
+    role?: "owner" | "admin" | "partner" | "member";
     errors?: string[];
     conflictHead?: ReturnType<typeof signedHead>;
     section?: "business-profile" | "connections";
@@ -268,6 +268,19 @@ test("a member can read the signed profile but cannot edit it", async ({
   );
 });
 
+test("a partner saves a shared business profile revision", async ({ page }) => {
+  await openProfile(page, { role: "partner" });
+  await page.getByLabel("Who buys from you").fill("Wholesale shops");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(
+    page.getByRole("button", { name: "Save changes" }),
+  ).toBeDisabled();
+  await page.reload();
+  await expect(page.getByLabel("Who buys from you")).toHaveValue(
+    "Wholesale shops",
+  );
+});
+
 test("a disconnected profile is readable and keeps an unfinished draft", async ({
   page,
 }) => {
@@ -416,6 +429,17 @@ test("a member can see social names without editing them", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Save accounts" })).toHaveCount(
     0,
   );
+});
+
+test("a partner saves social names for the company", async ({ page }) => {
+  await openProfile(page, { role: "partner", section: "connections" });
+  await page.getByLabel("TikTok").fill("@leratostudio");
+  await page.getByRole("button", { name: "Save accounts" }).click();
+  await expect(
+    page.getByRole("button", { name: "Save accounts" }),
+  ).toBeDisabled();
+  await page.reload();
+  await expect(page.getByLabel("TikTok")).toHaveValue("@leratostudio");
 });
 
 test("Connections keeps social edits through an outage and rejected write", async ({

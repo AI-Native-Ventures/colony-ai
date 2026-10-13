@@ -273,7 +273,12 @@ export function AskCreateScreen({
   }));
   const moneyApproverPubkeys = new Set(
     (moneyTeamQuery.data?.relayMembers ?? [])
-      .filter((member) => member.role === "owner" || member.role === "admin")
+      .filter(
+        (member) =>
+          member.role === "owner" ||
+          member.role === "admin" ||
+          member.role === "partner",
+      )
       .map((member) => normalizePubkey(member.pubkey)),
   );
   const moneyRecipientMembers = (membersQuery.data ?? []).filter(

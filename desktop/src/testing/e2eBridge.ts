@@ -833,11 +833,11 @@ type E2eConfig = {
     relayRequiresMembership?: boolean;
     /** Delay EOSE for membership snapshots after delivering the event. */
     relayMembershipEoseDelayMs?: number;
-    relayRole?: "owner" | "admin" | "member" | null;
+    relayRole?: "owner" | "admin" | "partner" | "member" | null;
     /** Exact NIP-43 membership snapshot for visual-reference fixtures. */
     relayMembers?: Array<{
       pubkey: string;
-      role: "owner" | "admin" | "member";
+      role: "owner" | "admin" | "partner" | "member";
     }>;
     /** Verified relay-signed ask heads used by company ask E2E coverage. */
     companyAskHeads?: RelayEvent[];
@@ -1089,7 +1089,7 @@ type RawBlobDescriptor = {
 
 type RawRelayMember = {
   pubkey: string;
-  role: "owner" | "admin" | "member";
+  role: "owner" | "admin" | "partner" | "member";
   added_by: string | null;
   created_at: string;
 };
@@ -1610,7 +1610,8 @@ function updateMockRelayMembershipFromAdminEvent(event: RelayEvent): boolean {
 
   if (event.kind === 9030) {
     const role = event.tags.find((tag) => tag[0] === "role")?.[1] ?? "member";
-    if (role !== "admin" && role !== "member") return false;
+    if (role !== "admin" && role !== "partner" && role !== "member")
+      return false;
     if (mockRelayMembers.some((member) => member.pubkey === targetPubkey)) {
       return true;
     }
@@ -1632,7 +1633,8 @@ function updateMockRelayMembershipFromAdminEvent(event: RelayEvent): boolean {
 
   if (event.kind === 9032) {
     const role = event.tags.find((tag) => tag[0] === "role")?.[1];
-    if (role !== "admin" && role !== "member") return false;
+    if (role !== "admin" && role !== "partner" && role !== "member")
+      return false;
     mockRelayMembers = mockRelayMembers.map((member) =>
       member.pubkey === targetPubkey ? { ...member, role } : member,
     );
@@ -11100,8 +11102,13 @@ function brokerMockBusinessProfileAction(event: RelayEvent): string | null {
     return "invalid: business profile requires its global d tag.";
   }
   const role = getConfig()?.mock?.relayRole;
-  if (role !== undefined && role !== "owner" && role !== "admin") {
-    return "forbidden: only owners and admins can change the business profile.";
+  if (
+    role !== undefined &&
+    role !== "owner" &&
+    role !== "admin" &&
+    role !== "partner"
+  ) {
+    return "forbidden: only owners, admins and partners can change the business profile.";
   }
   const configuredError =
     getConfig()?.mock?.businessProfileActionErrors?.shift();

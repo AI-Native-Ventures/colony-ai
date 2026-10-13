@@ -820,7 +820,7 @@ export async function fetchAskHeads(
 
 /**
  * Fetch tool-consent asks across community channels. The relay permits this
- * global filter only for community owners and admins, then limits results to
+ * global filter only for owners, admins and partners, then limits results to
  * relay-signed tool-consent heads.
  */
 export async function fetchCompanyToolConsentAskHeads(

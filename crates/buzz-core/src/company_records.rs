@@ -2621,6 +2621,8 @@ pub enum CommunityRole {
     Owner,
     /// Community admin.
     Admin,
+    /// Colony partner: may resolve company decisions without relay admin powers.
+    Partner,
     /// Ordinary member.
     Member,
 }
@@ -2640,7 +2642,7 @@ pub struct AskResolver<'a> {
 
 /// Returns why `resolver` may not resolve `ask`, or `None` when allowed.
 ///
-/// Owner decision D2: owners and admins resolve money, hire, tool, secret and
+/// Colony owners, admins and partners resolve money, hire, tool, secret and
 /// duty asks and agents never may; an addressed general ask is resolved by its
 /// addressee (agents only for questions and verdicts); an unaddressed general
 /// ask by any human member of the channel.
@@ -2650,7 +2652,7 @@ pub fn ask_resolution_denied_reason(
 ) -> Option<&'static str> {
     let authority_resolver = matches!(
         resolver.community_role,
-        Some(CommunityRole::Owner | CommunityRole::Admin)
+        Some(CommunityRole::Owner | CommunityRole::Admin | CommunityRole::Partner)
     );
     if !(resolver.is_channel_member || ask.category.requires_authority() && authority_resolver) {
         return Some("Only members of this conversation can answer");
@@ -2660,8 +2662,8 @@ pub fn ask_resolution_denied_reason(
             return Some("Agents cannot decide spending, hires, tools, secrets or duties");
         }
         return match resolver.community_role {
-            Some(CommunityRole::Owner | CommunityRole::Admin) => None,
-            _ => Some("Only company owners and admins can decide this"),
+            Some(CommunityRole::Owner | CommunityRole::Admin | CommunityRole::Partner) => None,
+            _ => Some("Only company owners, partners and admins can decide this"),
         };
     }
     if ask.member_proposal.is_some() {
@@ -2670,7 +2672,7 @@ pub fn ask_resolution_denied_reason(
         }
         if matches!(
             resolver.community_role,
-            Some(CommunityRole::Owner | CommunityRole::Admin)
+            Some(CommunityRole::Owner | CommunityRole::Admin | CommunityRole::Partner)
         ) {
             return None;
         }
@@ -4085,6 +4087,10 @@ mod tests {
             ask_resolution_denied_reason(&money, human(Some(CommunityRole::Admin), true)).is_none()
         );
         assert!(
+            ask_resolution_denied_reason(&money, human(Some(CommunityRole::Partner), false))
+                .is_none()
+        );
+        assert!(
             ask_resolution_denied_reason(&money, human(Some(CommunityRole::Owner), false))
                 .is_none()
         );
@@ -4109,6 +4115,10 @@ mod tests {
         );
         assert!(
             ask_resolution_denied_reason(&duty, human(Some(CommunityRole::Admin), true)).is_none()
+        );
+        assert!(
+            ask_resolution_denied_reason(&duty, human(Some(CommunityRole::Partner), false))
+                .is_none()
         );
         assert!(
             ask_resolution_denied_reason(&duty, human(Some(CommunityRole::Member), true)).is_some()

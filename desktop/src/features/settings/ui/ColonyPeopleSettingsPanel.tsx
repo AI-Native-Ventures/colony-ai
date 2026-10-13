@@ -155,7 +155,8 @@ export function ColonyPeopleSettingsPanel({
   const membership = useMyRelayMembershipLookupQuery();
   const role = membership.data?.membership?.role;
   const canManage = role === "owner" || role === "admin";
-  const teamQuery = useCompanyTeamQuery(canManage);
+  const canViewPeople = canManage || role === "partner";
+  const teamQuery = useCompanyTeamQuery(canViewPeople);
   const members = React.useMemo(
     () =>
       (teamQuery.data?.members ?? []).filter(
@@ -165,7 +166,7 @@ export function ColonyPeopleSettingsPanel({
   );
   const profilesQuery = useUsersBatchQuery(
     members.map((member) => member.pubkey),
-    { enabled: canManage && members.length > 0 },
+    { enabled: canViewPeople && members.length > 0 },
   );
   const profiles = profilesQuery.data?.profiles;
   const people = members.filter(
@@ -194,7 +195,7 @@ export function ColonyPeopleSettingsPanel({
               Try again
             </Button>
           </div>
-        ) : !canManage ? (
+        ) : !canViewPeople ? (
           <div className="py-3">
             <p className="text-sm text-muted-foreground">
               {membership.data?.membershipRequired
@@ -270,6 +271,12 @@ export function ColonyPeopleSettingsPanel({
         ) : null}
       </section>
       {canManage ? <MemberInviteLink offline={offline} /> : null}
+      {role === "partner" ? (
+        <p className="text-xs text-muted-foreground">
+          Partner invitations are being prepared. Only the owner can remove
+          people.
+        </p>
+      ) : null}
       {canManage ? (
         <p className="text-xs text-muted-foreground">
           Recent activity and invitation history are not available yet.

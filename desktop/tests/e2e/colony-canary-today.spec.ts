@@ -57,7 +57,7 @@ test("the live Team route keeps employee portraits as ants", async ({
   );
 });
 
-test("a real pending decision opens its source discussion", async ({
+test("a partner can decide a pending ask and open its source discussion", async ({
   page,
 }) => {
   const relaySecret = generateSecretKey();
@@ -105,6 +105,7 @@ test("a real pending decision opens its source discussion", async ({
   await installMockBridge(page, {
     relaySelf: getPublicKey(relaySecret),
     relayRequiresMembership: true,
+    relayRole: "partner",
     companyAskRelayPrivateKeyHex: bytesToHex(relaySecret),
     companyAskHeads: [askHead],
     searchProfiles: [

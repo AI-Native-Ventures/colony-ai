@@ -100,6 +100,26 @@ test("People does not offer invite creation to a member", async ({ page }) => {
   await expect(people.getByTestId("people-copy-invite")).toHaveCount(0);
 });
 
+test("Partner sees the people roster without removal or unfinished invites", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    relayRequiresMembership: true,
+    relayRole: "partner",
+    relaySelf,
+  });
+  await page.goto("/#/settings?section=people");
+
+  const people = page.getByTestId("settings-people");
+  await expect(people.getByText("partner", { exact: true })).toBeVisible();
+  await expect(people.getByText("member", { exact: true })).toBeVisible();
+  await expect(
+    people.getByText(/Only the owner can remove people/),
+  ).toBeVisible();
+  await expect(people.getByTestId("people-copy-invite")).toHaveCount(0);
+  await expect(people.getByRole("button", { name: /Remove/ })).toHaveCount(0);
+});
+
 test("People mints a one-use seven-day member link once and keeps it when copied again", async ({
   page,
 }) => {

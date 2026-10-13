@@ -592,7 +592,7 @@ async fn money_ask_approval_atomically_commits_allowance_for_an_authorized_human
     };
     assert_rejected(
         &submit_ask_response(&member, channel_id, &unauthorized_response).await,
-        "Only company owners and admins can decide this",
+        "Only company owners, partners and admins can decide this",
     );
     let (_, still_open_ask) = current_ask_head(&owner, channel_id, ask_id).await;
     assert_eq!(still_open_ask.status, AskStatus::Open);

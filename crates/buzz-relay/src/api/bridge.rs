@@ -2669,6 +2669,11 @@ mod postgres_tests {
             &relay,
             Some("admin")
         ));
+        assert!(crate::handlers::req::can_read_tool_consent_inbox(
+            &filter,
+            &relay,
+            Some("partner")
+        ));
         assert!(!crate::handlers::req::can_read_tool_consent_inbox(
             &filter,
             &relay,

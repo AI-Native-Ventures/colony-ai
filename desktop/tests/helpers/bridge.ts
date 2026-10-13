@@ -183,7 +183,7 @@ type MockBridgeOptions = {
   /** Override the current member role in reference client channels. */
   referenceWorkspaceRole?: "owner" | "admin" | "member";
   /** Override the active community role when testing relay-authorized actions. */
-  relayRole?: "owner" | "admin" | "member" | null;
+  relayRole?: "owner" | "admin" | "partner" | "member" | null;
   /** Make the mock relay expose its NIP-43 community membership snapshot. */
   relayRequiresMembership?: boolean;
   /** Override record statuses to exercise reference workspace boundaries. */
@@ -606,11 +606,11 @@ type MockBridgeOptions = {
    * the active identity from the membership list entirely (admin-path branch
    * evaluates false).
    */
-  relayRole?: "owner" | "admin" | "member" | null;
+  relayRole?: "owner" | "admin" | "partner" | "member" | null;
   /** Exact NIP-43 membership snapshot for visual-reference fixtures. */
   relayMembers?: Array<{
     pubkey: string;
-    role: "owner" | "admin" | "member";
+    role: "owner" | "admin" | "partner" | "member";
   }>;
   /**
    * Descriptors returned by the mocked `pick_and_upload_media` /

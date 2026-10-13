@@ -1141,7 +1141,7 @@ pub(crate) fn apply_channel_scope_to_query(
     }
 }
 
-/// Apply the ordinary reader channel boundary or the narrow owner/admin
+/// Apply the ordinary reader channel boundary or the narrow company decision
 /// tool-consent inbox boundary before the query limit is evaluated.
 pub(crate) fn apply_reader_channel_scope(
     query: &mut EventQuery,
@@ -1210,14 +1210,14 @@ pub(crate) fn is_tool_consent_inbox_filter(
         && filter.ids.is_none()
 }
 
-/// Global tool-consent ask reads are reserved for community owners and admins.
+/// Global tool-consent ask reads are reserved for company decision makers.
 pub(crate) fn can_read_tool_consent_inbox(
     filter: &Filter,
     relay_pubkey: &nostr::PublicKey,
     community_role: Option<&str>,
 ) -> bool {
     is_tool_consent_inbox_filter(filter, relay_pubkey)
-        && matches!(community_role, Some("owner" | "admin"))
+        && matches!(community_role, Some("owner" | "admin" | "partner"))
 }
 
 /// Verify the subtype after the indexed `t=tool_consent` query constraint.
@@ -1788,6 +1788,11 @@ mod tests {
             &filter,
             &relay_pubkey,
             Some("admin")
+        ));
+        assert!(can_read_tool_consent_inbox(
+            &filter,
+            &relay_pubkey,
+            Some("partner")
         ));
 
         let channel = uuid::Uuid::new_v4();

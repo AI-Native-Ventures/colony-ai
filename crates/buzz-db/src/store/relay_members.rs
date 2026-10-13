@@ -20,7 +20,7 @@ use crate::{observability, replaceable, CommunityId, Db, RouteDecision, RoutePre
 pub struct RelayMember {
     /// 64-char lowercase hex pubkey.
     pub pubkey: String,
-    /// Role: `"owner"`, `"admin"`, or `"member"`.
+    /// Role: `"owner"`, `"admin"`, `"partner"`, or `"member"`.
     pub role: String,
     /// Hex pubkey of who added this member, or `None` for bootstrap entries.
     pub added_by: Option<String>,

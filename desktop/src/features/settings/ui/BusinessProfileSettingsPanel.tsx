@@ -469,7 +469,7 @@ function ProfileEditor({
       </div>
       {!canEdit ? (
         <p className="text-xs text-muted-foreground">
-          Owners and admins can edit this shared profile.
+          Owners and partners can edit this shared profile.
         </p>
       ) : null}
     </form>
@@ -482,7 +482,7 @@ export function BusinessProfileSettingsPanel() {
   const membership = useMyRelayMembershipLookupQuery();
   const profile = useCompanyBusinessProfileQuery(Boolean(activeCommunity));
   const role = membership.data?.membership?.role;
-  const canEdit = role === "owner" || role === "admin";
+  const canEdit = role === "owner" || role === "admin" || role === "partner";
 
   return (
     <section className="min-w-0" data-testid="settings-business-profile">

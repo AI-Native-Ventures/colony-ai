@@ -1,10 +1,11 @@
 //! Brokers for company-wide singleton records.
 //!
 //! A company has exactly one business profile (kind 47046 to head 30657) and
-//! exactly one team computer record (kind 47047 to head 30658). Owners and
-//! admins write both. Each accepted action becomes a relay-signed head with a
-//! fixed `d` coordinate, replaced only with a create-only or exact-revision
-//! precondition so concurrent writers cannot both win.
+//! exactly one team computer record (kind 47047 to head 30658). Owners,
+//! partners and admins may write the business profile. Each accepted action
+//! becomes a relay-signed head with a fixed `d` coordinate, replaced only
+//! with a create-only or exact-revision precondition so concurrent writers
+//! cannot both win.
 
 use std::sync::Arc;
 
@@ -25,7 +26,7 @@ use buzz_db::EventQuery;
 use super::ingest::{IngestAuth, IngestError, IngestResult};
 use crate::state::AppState;
 
-/// Handles an owner- or admin-signed business profile replacement (kind 47046).
+/// Handles an owner-, partner- or admin-signed business profile replacement (kind 47046).
 #[datastore_span(name = "company_business_profile_action", system = "postgresql")]
 pub(super) async fn handle_business_profile(
     tenant: &TenantContext,
@@ -47,7 +48,7 @@ pub(super) async fn handle_business_profile(
     let community_id = tenant.community();
     let actor_pubkey = auth.pubkey().to_hex();
     let mut tx = begin_fenced_transaction(state, community_id).await?;
-    require_owner_or_admin(
+    require_profile_editor(
         &mut tx,
         community_id,
         &actor_pubkey,
@@ -165,7 +166,7 @@ async fn begin_fenced_transaction(
     Ok(tx)
 }
 
-async fn require_owner_or_admin(
+async fn require_profile_editor(
     tx: &mut Transaction<'static, Postgres>,
     community_id: CommunityId,
     actor_pubkey: &str,
@@ -179,11 +180,11 @@ async fn require_owner_or_admin(
     .fetch_optional(&mut **tx)
     .await
     .map_err(internal)?;
-    if matches!(role.as_deref(), Some("owner" | "admin")) {
+    if matches!(role.as_deref(), Some("owner" | "admin" | "partner")) {
         Ok(())
     } else {
         Err(forbidden(format!(
-            "only a company owner or admin can {what}"
+            "only a company owner, partner or admin can {what}"
         )))
     }
 }

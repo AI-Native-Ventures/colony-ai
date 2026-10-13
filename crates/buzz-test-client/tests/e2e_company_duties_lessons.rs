@@ -435,7 +435,7 @@ async fn company_duty_ask_requires_owner_or_admin_and_creates_the_versioned_work
     };
     assert_rejected(
         &submit_ask_response(&proposer, channel_id, &response).await,
-        "Only company owners and admins can decide this",
+        "Only company owners, partners and admins can decide this",
     );
     assert_accepted(&submit_ask_response(&admin, channel_id, &response).await);
 

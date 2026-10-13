@@ -301,7 +301,7 @@ export type {
 
 // ── Relay Members ────────────────────────────────────────────────────────────
 
-export type RelayMemberRole = "owner" | "admin" | "member";
+export type RelayMemberRole = "owner" | "admin" | "partner" | "member";
 
 export type RelayMember = {
   pubkey: string;

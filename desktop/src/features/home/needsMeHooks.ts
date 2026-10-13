@@ -50,7 +50,8 @@ export function useNeedsMeQuery() {
   const channelIdsKey = channelIds.join(",");
   const canResolveToolConsent =
     membershipQuery.data?.role === "owner" ||
-    membershipQuery.data?.role === "admin";
+    membershipQuery.data?.role === "admin" ||
+    membershipQuery.data?.role === "partner";
   const askHeads = useAskHeadsQuery(channelIds, canResolveToolConsent);
   const refetchInterval = useFocusedRefetchInterval(
     TODAY_NEEDS_ME_REFETCH_INTERVAL_MS,
@@ -129,7 +130,8 @@ export function useNeedsMeQuery() {
         return (
           record.head.ask.type === "tool_consent" &&
           (membershipQuery.data?.role === "owner" ||
-            membershipQuery.data?.role === "admin")
+            membershipQuery.data?.role === "admin" ||
+            membershipQuery.data?.role === "partner")
         );
       }),
     [askHeads.query.data, currentPubkey, membershipQuery.data?.role],

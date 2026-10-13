@@ -77,12 +77,24 @@ function accessReason(input: {
   if (head.ask.category !== "general") {
     if (isAgent)
       return "Agents cannot decide spending, hires, tools, secrets or duties";
-    if (communityRole !== "owner" && communityRole !== "admin") {
-      return "Only company owners and admins can decide this";
+    if (
+      communityRole !== "owner" &&
+      communityRole !== "admin" &&
+      communityRole !== "partner"
+    ) {
+      return "Only company owners, partners and admins can decide this";
     }
     return null;
   }
   if (!channelMember) return "Only members of this conversation can answer";
+  if (
+    head.ask.memberProposal &&
+    (communityRole === "owner" ||
+      communityRole === "admin" ||
+      communityRole === "partner")
+  ) {
+    return null;
+  }
   const addressee = head.ask.addresseePubkey;
   if (addressee) {
     if (normalizePubkey(addressee) !== normalizePubkey(pubkey)) {

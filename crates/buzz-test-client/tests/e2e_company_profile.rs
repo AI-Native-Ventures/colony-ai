@@ -233,19 +233,22 @@ async fn current_profile(keys: &Keys) -> Option<(u32, BusinessProfile)> {
 
 #[tokio::test]
 #[ignore]
-async fn business_profile_is_written_by_owners_and_admins_and_read_by_members_and_employees() {
+async fn business_profile_is_written_by_owners_partners_and_admins_and_read_by_members_and_employees(
+) {
     let owner = Keys::generate();
     let admin = Keys::generate();
+    let partner = Keys::generate();
     let member = Keys::generate();
     let employee = Keys::generate();
     seed_relay_member(&owner, "owner").await;
     seed_relay_member(&admin, "admin").await;
+    seed_relay_member(&partner, "partner").await;
     seed_relay_member(&member, "member").await;
     mark_managed_agent(&employee, &owner).await;
 
     assert_rejected(
         &submit_profile(&member, sample_profile("Member Designs"), None).await,
-        "only a company owner or admin",
+        "only a company owner, partner or admin",
     );
 
     let before = current_profile(&owner).await.map(|(revision, _)| revision);
@@ -286,7 +289,17 @@ async fn business_profile_is_written_by_owners_and_admins_and_read_by_members_an
         "business profile changed",
     );
 
-    let current_revision = first_revision + 1;
+    let partner_name = format!("Lerato Designs Partners {}", Uuid::new_v4().simple());
+    assert_accepted(
+        &submit_profile(
+            &partner,
+            sample_profile(&partner_name),
+            Some(first_revision + 1),
+        )
+        .await,
+    );
+
+    let current_revision = first_revision + 2;
     let mut bad_zone = sample_profile(&owner_name);
     bad_zone.time_zone = "Mars/Olympus".into();
     let invalid = BusinessProfileAction {
@@ -308,7 +321,7 @@ async fn business_profile_is_written_by_owners_and_admins_and_read_by_members_an
             .await
             .expect("members and employees read the profile");
         assert_eq!(revision, current_revision);
-        assert_eq!(profile.name, admin_name);
+        assert_eq!(profile.name, partner_name);
         assert_eq!(
             profile.website.as_deref(),
             Some("https://leratodesigns.co.za")
