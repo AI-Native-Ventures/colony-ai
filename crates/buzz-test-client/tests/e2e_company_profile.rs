@@ -184,6 +184,7 @@ fn sample_profile(name: &str) -> BusinessProfile {
         "country": "South Africa",
         "timeZone": "Africa/Johannesburg",
         "links": ["https://leratodesigns.co.za"],
+        "website": "https://leratodesigns.co.za",
         "voiceWords": ["warm", "confident", "local"],
         "goals": ["More sales"],
         "contact": { "email": "hello@leratodesigns.co.za", "phone": null, "whatsapp": null, "address": null },
@@ -308,5 +309,13 @@ async fn business_profile_is_written_by_owners_and_admins_and_read_by_members_an
             .expect("members and employees read the profile");
         assert_eq!(revision, current_revision);
         assert_eq!(profile.name, admin_name);
+        assert_eq!(
+            profile.website.as_deref(),
+            Some("https://leratodesigns.co.za")
+        );
+        assert_eq!(
+            profile.contact.email.as_deref(),
+            Some("hello@leratodesigns.co.za")
+        );
     }
 }

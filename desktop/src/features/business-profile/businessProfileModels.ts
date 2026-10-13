@@ -6,6 +6,20 @@ import type { OnboardingBusinessProfile } from "@/features/onboarding/ui/Busines
 
 export const BUSINESS_PROFILE_D_TAG = "business-profile";
 
+export type CompanyBusinessContact = {
+  email?: string | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+  address?: string | null;
+};
+
+export type CompanyBusinessInvoice = {
+  registeredName?: string | null;
+  registrationNumber?: string | null;
+  vatNumber?: string | null;
+  bankDetails?: string | null;
+};
+
 export type CompanyBusinessProfile = {
   schemaVersion: 1;
   name: string;
@@ -16,13 +30,14 @@ export type CompanyBusinessProfile = {
   city?: string | null;
   country?: string | null;
   links?: string[];
+  website?: string | null;
   goals?: string[];
   bestSellers?: string[];
   priceRange?: string | null;
   voiceWords?: string[];
-  contact?: Record<string, string | null>;
+  contact?: CompanyBusinessContact;
   buyLink?: string | null;
-  invoice?: Record<string, string | null>;
+  invoice?: CompanyBusinessInvoice;
   socialAccounts?: Record<string, string | null>;
 };
 
@@ -109,6 +124,8 @@ export function onboardingToCompanyBusinessProfile(
     city: city || null,
     country: countryParts.join(", ") || null,
     links: profile.links ?? [],
+    website:
+      profile.links?.find((link) => /^https?:\/\//i.test(link.trim())) ?? null,
     goals: [...(profile.goals ?? []), profile.goalText?.trim() || ""].filter(
       Boolean,
     ),
@@ -130,6 +147,7 @@ export function onboardingFieldsMatch(
     current.timeZone === expected.timeZone &&
     JSON.stringify(current.links ?? []) ===
       JSON.stringify(expected.links ?? []) &&
+    (current.website ?? null) === (expected.website ?? null) &&
     JSON.stringify(current.goals ?? []) === JSON.stringify(expected.goals ?? [])
   );
 }

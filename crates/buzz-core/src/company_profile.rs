@@ -6,6 +6,7 @@
 //! it was based on, so two people saving at once cannot overwrite each other.
 
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 use crate::company_records::CompanyRecordError;
 
@@ -119,6 +120,9 @@ pub struct BusinessProfile {
     /// Website and social links employees may read.
     #[serde(default)]
     pub links: Vec<String>,
+    /// Primary customer-facing website, when one exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub website: Option<String>,
     /// How the business sounds, in a few words.
     #[serde(default)]
     pub voice_words: Vec<String>,
@@ -184,6 +188,7 @@ pub fn validate_business_profile(profile: &BusinessProfile) -> Result<(), Compan
         &profile.who_buys,
         &profile.city,
         &profile.country,
+        &profile.website,
         &profile.buy_link,
         &profile.contact.email,
         &profile.contact.phone,
@@ -201,6 +206,16 @@ pub fn validate_business_profile(profile: &BusinessProfile) -> Result<(), Compan
     ];
     for text in texts.into_iter().flatten() {
         check_text(text)?;
+    }
+    for web_address in [&profile.website, &profile.buy_link].into_iter().flatten() {
+        let url = Url::parse(web_address).map_err(|_| {
+            CompanyRecordError::Invalid("website and buyLink must be HTTP web addresses")
+        })?;
+        if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
+            return Err(CompanyRecordError::Invalid(
+                "website and buyLink must be HTTP web addresses",
+            ));
+        }
     }
     if profile.best_sellers.len() > MAX_PROFILE_BEST_SELLERS {
         return Err(CompanyRecordError::Invalid(
@@ -328,6 +343,23 @@ mod tests {
         let mut nested = contract_json();
         nested["contact"]["fax"] = serde_json::json!("011 555 0100");
         assert!(serde_json::from_value::<BusinessProfile>(nested).is_err());
+    }
+
+    #[test]
+    fn primary_website_is_part_of_the_signed_profile_contract() {
+        let mut profile = sample();
+        profile.website = Some("https://leratodesigns.co.za".into());
+        validate_business_profile(&profile).expect("a customer website is valid");
+        let encoded = serde_json::to_value(&profile).expect("serialize profile");
+        assert_eq!(encoded["website"], "https://leratodesigns.co.za");
+        let decoded: BusinessProfile =
+            serde_json::from_value(encoded).expect("read a saved website");
+        assert_eq!(decoded.website, profile.website);
+        profile.website = Some("javascript:alert(1)".into());
+        assert!(validate_business_profile(&profile).is_err());
+        profile.website = None;
+        profile.buy_link = Some("not a payment link".into());
+        assert!(validate_business_profile(&profile).is_err());
     }
 
     #[test]

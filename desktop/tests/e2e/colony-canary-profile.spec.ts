@@ -18,6 +18,22 @@ const profile = {
   timeZone: "Africa/Johannesburg",
   links: ["@leratodesigns"],
   goals: ["More sales"],
+  bestSellers: ["Linen shirts"],
+  website: "https://leratodesigns.co.za",
+  buyLink: "https://shop.leratodesigns.co.za",
+  contact: {
+    email: "hello@leratodesigns.co.za",
+    phone: "011 555 0100",
+    whatsapp: null,
+    address: null,
+  },
+  invoice: {
+    registeredName: "Lerato Designs Pty Ltd",
+    registrationNumber: null,
+    vatNumber: null,
+    bankDetails: null,
+  },
+  socialAccounts: { instagram: "@leratodesigns" },
 };
 
 function signedHead(revision = 1, details = profile) {
@@ -61,15 +77,35 @@ test("Settings reads a signed shared profile, saves a revision and reads it afte
   page,
 }) => {
   await openProfile(page);
-  await expect(page.getByLabel("Business name")).toHaveValue("Lerato Designs");
+  await expect(page.getByLabel("Business name", { exact: true })).toHaveValue(
+    "Lerato Designs",
+  );
   await expect(page.getByLabel("Who buys from you")).toHaveValue(
     "Local shoppers",
   );
+  await expect(page.getByLabel("Website", { exact: true })).toHaveValue(
+    "https://leratodesigns.co.za",
+  );
+  await expect(page.getByLabel("Customer email")).toHaveValue(
+    "hello@leratodesigns.co.za",
+  );
+  await expect(page.getByLabel("Registered business name")).toHaveValue(
+    "Lerato Designs Pty Ltd",
+  );
+  await expect(page.getByText("Instagram @leratodesigns")).toBeVisible();
+  await expect(page.getByLabel("Next 3 months")).toHaveCount(0);
   if (process.env.COLONY_CANARY_PROFILE_SHOT) {
     await waitForAnimations(page);
     await page.screenshot({ path: process.env.COLONY_CANARY_PROFILE_SHOT });
   }
   await page.getByLabel("Who buys from you").fill("Women in Joburg");
+  await page
+    .getByLabel("Where customers buy")
+    .fill("https://buy.leratodesigns.co.za");
+  await page.getByLabel("Customer email").fill("orders@leratodesigns.co.za");
+  await page
+    .getByLabel("Banking details for invoices, optional")
+    .fill("Bank account 1234");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(
     page.getByRole("button", { name: "Save changes" }),
@@ -93,6 +129,29 @@ test("Settings reads a signed shared profile, saves a revision and reads it afte
   await expect(page.getByLabel("Who buys from you")).toHaveValue(
     "Women in Joburg",
   );
+  await expect(page.getByLabel("Customer email")).toHaveValue(
+    "orders@leratodesigns.co.za",
+  );
+  await expect(
+    page.getByLabel("Banking details for invoices, optional"),
+  ).toHaveValue("Bank account 1234");
+  const savedProfile = await page.evaluate(() => {
+    const events = JSON.parse(
+      localStorage.getItem("buzz-e2e-business-profile-events-v1") ?? "[]",
+    );
+    const latest = events.find(
+      (event: { kind: number }) => event.kind === 30657,
+    );
+    return latest ? JSON.parse(latest.content) : null;
+  });
+  expect(savedProfile).toMatchObject({
+    website: "https://leratodesigns.co.za",
+    buyLink: "https://buy.leratodesigns.co.za",
+    contact: { email: "orders@leratodesigns.co.za" },
+    invoice: { bankDetails: "Bank account 1234" },
+    goals: ["More sales"],
+    bestSellers: ["Linen shirts"],
+  });
   expect(
     await page.evaluate(() =>
       localStorage.getItem("colony-business-profile.v1"),
@@ -119,6 +178,47 @@ test("a concurrent revision preserves the draft until the owner loads the latest
   await expect(page.getByLabel("Who buys from you")).toHaveValue(
     "Wholesale shops",
   );
+});
+
+test("using my changes keeps unrelated facts from a newer revision", async ({
+  page,
+}) => {
+  await openProfile(page, {
+    errors: ["conflict: business profile changed; current revision is 2."],
+    conflictHead: signedHead(2, { ...profile, city: "Pretoria" }),
+  });
+  await page.getByLabel("Who buys from you").fill("Online shoppers");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(
+    page.getByRole("button", { name: "Use my changes" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Use my changes" }).click();
+  await expect(page.getByLabel("City", { exact: true })).toHaveValue(
+    "Pretoria",
+  );
+  await expect(page.getByLabel("Who buys from you")).toHaveValue(
+    "Online shoppers",
+  );
+  const savedProfile = await page.evaluate(() => {
+    const events = JSON.parse(
+      localStorage.getItem("buzz-e2e-business-profile-events-v1") ?? "[]",
+    );
+    const latest = events.find(
+      (event: { kind: number }) => event.kind === 30657,
+    );
+    return latest
+      ? {
+          revision: latest.tags?.find(
+            (tag: string[]) => tag[0] === "revision",
+          )?.[1],
+          profile: JSON.parse(latest.content),
+        }
+      : null;
+  });
+  expect(savedProfile).toMatchObject({
+    revision: "3",
+    profile: { city: "Pretoria", whoBuys: "Online shoppers" },
+  });
 });
 
 test("a rejected profile save keeps typed changes and offers a retry", async ({
@@ -148,11 +248,70 @@ test("a member can read the signed profile but cannot edit it", async ({
   page,
 }) => {
   await openProfile(page, { role: "member" });
-  await expect(page.getByLabel("Business name")).toHaveValue("Lerato Designs");
-  await expect(page.getByLabel("Business name")).toBeDisabled();
+  await expect(page.getByLabel("Business name", { exact: true })).toHaveValue(
+    "Lerato Designs",
+  );
+  await expect(
+    page.getByLabel("Business name", { exact: true }),
+  ).toBeDisabled();
   await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(
     0,
   );
+});
+
+test("a disconnected profile is readable and keeps an unfinished draft", async ({
+  page,
+}) => {
+  await openProfile(page);
+  await page.getByLabel("Phone", { exact: true }).fill("011 555 0200");
+  await page.evaluate(() =>
+    window.__BUZZ_E2E_SET_RELAY_CONNECTION_STATE__?.("disconnected"),
+  );
+  await expect(
+    page.getByText("Connection lost. Your business facts are readable."),
+  ).toBeVisible();
+  await expect(page.getByLabel("Phone", { exact: true })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Save changes" }),
+  ).toBeDisabled();
+  await page.evaluate(() =>
+    window.__BUZZ_E2E_SET_RELAY_CONNECTION_STATE__?.("connected"),
+  );
+  await expect(page.getByLabel("Phone", { exact: true })).toBeEnabled();
+  await expect(page.getByLabel("Phone", { exact: true })).toHaveValue(
+    "011 555 0200",
+  );
+  await expect(
+    page.getByRole("button", { name: "Save changes" }),
+  ).toBeEnabled();
+});
+
+test("Business profile remains editable in a narrow desktop window", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 700, height: 700 });
+  await openProfile(page);
+  await page
+    .getByLabel("Banking details for invoices, optional")
+    .fill("Bank account 1234");
+  await page
+    .getByRole("button", { name: "Save changes" })
+    .scrollIntoViewIfNeeded();
+  await expect(
+    page.getByRole("button", { name: "Save changes" }),
+  ).toBeInViewport();
+  const horizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(horizontalOverflow).toBe(false);
+  if (process.env.COLONY_CANARY_PROFILE_NARROW_SHOT) {
+    await waitForAnimations(page);
+    await page.screenshot({
+      path: process.env.COLONY_CANARY_PROFILE_NARROW_SHOT,
+    });
+  }
+  await page.getByRole("button", { name: "Change in Connections" }).click();
+  await expect(page).toHaveURL(/\/power\?section=connections/);
 });
 
 test("Settings rejects a profile whose relay signature no longer matches", async ({
@@ -166,5 +325,7 @@ test("Settings rejects a profile whose relay signature no longer matches", async
   await expect(page.getByRole("alert")).toContainText(
     "business profile could not be loaded",
   );
-  await expect(page.getByLabel("Business name")).toHaveCount(0);
+  await expect(page.getByLabel("Business name", { exact: true })).toHaveCount(
+    0,
+  );
 });
