@@ -19,6 +19,7 @@ import {
 import { ChannelScreenEmptyState } from "@/features/channels/ui/ChannelScreenEmptyState";
 import { ChannelScreenHeader } from "@/features/channels/ui/ChannelScreenHeader";
 import { ChannelWorkspaceTopBar } from "@/features/channels/ui/ChannelWorkspaceTopBar";
+import { getChannelDetail } from "@/features/channels/lib/channelDescription";
 import { WorkAreaLayout } from "@/features/workarea/dock/WorkAreaLayout";
 import { WelcomeAgentCreateDialog } from "@/features/channels/ui/WelcomeAgentCreateDialog";
 import { ForumChannelContent } from "@/features/channels/ui/ForumChannelContent";
@@ -358,6 +359,12 @@ export function ChannelScreen({
       (messageProfilePubkeys.length > 0 &&
         (messageProfilesQuery.isPending ||
           messageProfilesQuery.isPlaceholderData)));
+  const headerAgentIdentityUnresolved =
+    agentPubkeysPending ||
+    channelMembersQuery.isError ||
+    managedAgentsQuery.isError ||
+    relayAgentsQuery.isError ||
+    messageProfilesQuery.isError;
   const {
     agentSessionCandidates,
     botTypingEntries,
@@ -753,6 +760,8 @@ export function ChannelScreen({
     () => (
       <ChannelScreenHeader
         activeChannel={activeChannel}
+        agentPubkeys={agentPubkeys}
+        agentPubkeysPending={headerAgentIdentityUnresolved}
         activeChannelEphemeralDisplay={activeChannelEphemeralDisplay}
         activeChannelTitle={activeChannelTitle}
         referenceThreadPresentation={referenceThreadPresentation}
@@ -780,6 +789,8 @@ export function ChannelScreen({
     ),
     [
       activeChannel,
+      agentPubkeys,
+      headerAgentIdentityUnresolved,
       activeChannelEphemeralDisplay,
       activeChannelTitle,
       referenceThreadPresentation,
@@ -825,7 +836,10 @@ export function ChannelScreen({
           }}
           open={emptyDeleteId !== null}
         />
-        <div className="colony-channel-route">
+        <div
+          className="colony-channel-route"
+          data-colony-conversation={activeChannel?.channelType === "stream" ? "true" : undefined}
+        >
           {kickoffError ? (
             <div role="alert" data-testid="welcome-kickoff-recovery" className="flex items-center gap-3 border-b border-border px-4 py-3 text-sm">
               <p>{kickoffError}</p>
@@ -836,15 +850,31 @@ export function ChannelScreen({
           {activeChannel && !hideWorkspaceTopBar && !isHuddleTranscript ? (
             <ChannelWorkspaceTopBar
               channelTitle={activeChannelTitle}
+              description={getChannelDetail(activeChannel)}
+              isCanaryConversation={activeChannel.channelType === "stream"}
               currentPubkey={currentPubkey}
+              agentPubkeys={agentPubkeys}
+              agentIdentityUnresolved={headerAgentIdentityUnresolved}
               channelId={activeChannel.id}
               isThreadOpen={Boolean(openThreadHeadId)}
               members={channelMembers ?? []}
               onToggleMembers={handleToggleMembers}
+              onManageChannel={handleManageChannel}
               onOpenInbox={() => void goHome()}
             />
           ) : null}
           <WorkAreaLayout
+            conversation={activeChannel?.channelType === "stream" ? {
+              messages: timelineMessages,
+              loading: isTimelineLoading,
+              failed: messagesQuery.isError,
+              hasOlderMessages,
+              onRetry: () => { void messagesQuery.refetch(); },
+              onDiscuss: (rootId) => {
+                const root = timelineMessages.find((message) => message.id === rootId);
+                if (root) handleOpenThreadAndCloseAgentSession(root);
+              },
+            } : undefined}
             channel={
               activeChannel
                 ? {
@@ -903,7 +933,7 @@ export function ChannelScreen({
                   currentPubkey={currentPubkey}
                   canResetThreadPanelWidth={canResetThreadPanelWidth}
                   fetchOlder={fetchOlder}
-                  header={channelHeader}
+                  header={activeChannel?.channelType === "stream" && activeChannel.isMember ? null : channelHeader}
                   {...{ idleAuxiliaryHeaderActions, idleAuxiliaryOverridesThread, idleAuxiliaryPanel, idleAuxiliaryTitle, hasOlderMessages, historyExhausted }}
                   {...{ onAddFiles }}
                   onAddAgent={handleOpenAddBot}

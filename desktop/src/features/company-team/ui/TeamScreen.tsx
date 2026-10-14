@@ -12,6 +12,7 @@ import { TeamPage, TeamPageTitle } from "./TeamPage";
 import { Button } from "@/shared/ui/button";
 import { useCompanyTeamQuery } from "../teamRelay";
 import { buildTeamTreeRows, type TeamMember } from "../teamModels";
+import { CanaryTeamRoster } from "./CanaryTeamRoster";
 
 type TeamScreenProps = { view: "everyone" | "org" };
 
@@ -239,8 +240,14 @@ export function TeamScreen({ view }: TeamScreenProps) {
     !teamQuery.data?.membershipSnapshotFound
   ) {
     return (
-      <TeamPage title="Team" testId="company-team-screen">
-        <TeamPageTitle>Team</TeamPageTitle>
+      <TeamPage
+        title="Team"
+        testId="company-team-screen"
+        canary={view === "everyone"}
+      >
+        <TeamPageTitle>
+          {view === "everyone" ? "Your team." : "Team"}
+        </TeamPageTitle>
         {teamQuery.isLoading ? (
           <p aria-live="polite" className="mt-6 text-sm text-muted-foreground">
             Loading Team
@@ -324,6 +331,18 @@ export function TeamScreen({ view }: TeamScreenProps) {
     event.preventDefault();
     items[nextIndex]?.focus();
   };
+
+  if (view === "everyone") {
+    return (
+      <TeamPage title="Team" testId="company-team-screen" canary>
+        <CanaryTeamRoster
+          members={members}
+          profiles={profiles}
+          canHire={canHire}
+        />
+      </TeamPage>
+    );
+  }
 
   return (
     <TeamPage title="Team" testId="company-team-screen">

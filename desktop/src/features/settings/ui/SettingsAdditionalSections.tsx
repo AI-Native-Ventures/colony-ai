@@ -4,8 +4,6 @@ import { RotateCcw, Send } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
-import { CommunityIconSettingsCard } from "@/features/communities/ui/CommunityIconSettingsCard";
-import { useCommunities } from "@/features/communities/useCommunities";
 import {
   useArchivedIdentitiesQuery,
   useUnarchiveIdentityMutation,
@@ -40,38 +38,7 @@ import { KeepAddressedAgentsSettingsCard } from "./KeepAddressedAgentsSettingsCa
 import { ModerationQueueCard } from "./ModerationQueueCard";
 import { SendFeedbackController } from "./SendFeedbackController";
 
-export function BusinessProfileSettingsPanel() {
-  const { activeCommunity } = useCommunities();
-  return (
-    <section className="min-w-0" data-testid="settings-business-profile">
-      <SettingsSectionHeader
-        title="Business profile"
-        description="The workspace identity people see when they connect."
-      />
-      <SettingsOptionGroup title="Workspace">
-        {activeCommunity ? (
-          <>
-            <SettingsOptionRow>
-              <div className="min-w-0">
-                <p className="text-sm font-medium">{activeCommunity.name}</p>
-                <p className="break-all text-xs text-muted-foreground">
-                  {activeCommunity.relayUrl}
-                </p>
-              </div>
-            </SettingsOptionRow>
-            <CommunityIconSettingsCard compact />
-          </>
-        ) : (
-          <SettingsOptionRow>
-            <p className="text-sm text-muted-foreground">
-              No active workspace is connected.
-            </p>
-          </SettingsOptionRow>
-        )}
-      </SettingsOptionGroup>
-    </section>
-  );
-}
+export { BusinessProfileSettingsPanel } from "./BusinessProfileSettingsPanel";
 
 export function HarnessLifecycleSettingsPanel() {
   return <HarnessesSettingsPanel />;

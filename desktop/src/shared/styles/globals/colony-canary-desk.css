@@ -1,0 +1,661 @@
+/* Employee desk: the advanced controls stay under Settings. */
+.colony-canary-desk-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-bottom: 2rem;
+  color: var(--colony-canary-muted);
+  font-size: var(--text-xs);
+}
+
+.colony-canary-desk-back:hover {
+  color: var(--colony-canary-accent);
+}
+
+.colony-canary-employee-hero,
+.colony-canary-employee-identity,
+.colony-canary-employee-name-row {
+  display: flex;
+  align-items: center;
+}
+
+.colony-canary-employee-hero {
+  justify-content: space-between;
+  gap: 2rem;
+  margin-bottom: 3rem;
+}
+
+.colony-canary-employee-identity {
+  min-width: 0;
+  gap: 1.5rem;
+}
+
+.colony-canary-employee-identity-copy {
+  min-width: 0;
+}
+
+.colony-canary-employee-name-row {
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.25rem;
+}
+
+.colony-canary-employee-name {
+  color: var(--colony-canary-ink);
+  font-size: var(--text-3xl);
+}
+
+.colony-canary-employee-status {
+  color: var(--colony-canary-accent);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.colony-canary-employee-status::before {
+  display: inline-block;
+  width: 0.375rem;
+  height: 0.375rem;
+  margin-right: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+  vertical-align: middle;
+}
+
+.colony-canary-employee-identity-copy p {
+  margin-top: 0.75rem;
+  color: var(--colony-canary-muted);
+  font-size: var(--text-sm);
+}
+
+.colony-canary-employee-tabs {
+  display: flex;
+  gap: 2rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--colony-canary-line);
+}
+
+.colony-canary-employee-tabs button[aria-selected="true"] {
+  color: var(--colony-canary-accent);
+  border-color: var(--colony-canary-accent);
+}
+
+.colony-canary-employee-desk,
+.colony-canary-employee-schedule,
+.colony-canary-employee-settings {
+  color: var(--colony-canary-ink);
+}
+
+.colony-canary-desk-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.colony-canary-desk-section-title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+
+.colony-canary-employee-schedule > p,
+.colony-canary-employee-schedule > div[role="alert"] {
+  color: var(--colony-canary-muted);
+  font-size: var(--text-sm);
+}
+
+.colony-canary-employee-schedule li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 0;
+  border-top: 1px solid var(--colony-canary-line);
+  font-size: var(--text-sm);
+}
+
+.colony-canary-employee-schedule li span {
+  display: block;
+  margin-top: 0.375rem;
+  color: var(--colony-canary-muted);
+  font-size: var(--text-xs);
+}
+
+.colony-canary-employee-settings-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 2rem;
+  margin-top: 2.5rem;
+}
+
+.colony-canary-employee-settings-list button {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--colony-canary-line);
+  color: var(--colony-canary-ink);
+  font-size: var(--text-sm);
+  text-align: left;
+}
+
+.colony-canary-employee-settings-list button:hover {
+  color: var(--colony-canary-accent);
+}
+
+@media (max-width: 760px) {
+  .colony-canary-employee-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .colony-canary-employee-settings-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* First run: O-01/O-02 over the account service, without a password step. */
+.colony-canary-first-run {
+  display: grid;
+  grid-template-columns: minmax(17rem, 30%) minmax(0, 1fr);
+  min-height: 100dvh;
+  color: #242738;
+  background: #fff;
+  font-family: "Manrope Variable", Manrope, sans-serif;
+}
+
+.colony-canary-first-run-aside {
+  display: flex;
+  min-height: 100dvh;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 6rem 3.5rem 2.5rem;
+  border-right: 1px solid #d9dce6;
+  background: #f4f6fa;
+}
+
+.colony-canary-first-run-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #30347c;
+  font-size: var(--text-lg);
+}
+
+.colony-canary-first-run-brand svg {
+  width: 2.25rem;
+  height: 1.75rem;
+}
+
+.colony-canary-first-run-aside > p {
+  max-width: 16rem;
+  margin-top: 1.75rem;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.colony-canary-first-run-scout {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-top: auto;
+  font-size: var(--text-xs);
+}
+
+.colony-canary-first-run-scout [data-ant-portrait] {
+  width: 2rem;
+  height: 2rem;
+}
+
+.colony-canary-first-run-main {
+  position: relative;
+  min-width: 0;
+  padding: 6.75rem clamp(2rem, 8vw, 7.5rem) 4rem;
+}
+
+.colony-canary-first-run-form {
+  width: min(100%, 35rem);
+}
+
+.colony-canary-first-run-eyebrow {
+  display: block;
+  margin-bottom: 1.25rem;
+  font-size: var(--text-2xs);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.colony-canary-first-run-form h1 {
+  margin: 0;
+  font-size: var(--text-4xl);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+}
+
+.colony-canary-first-run-subtitle {
+  margin: 1rem 0 2rem;
+  font-size: var(--text-sm);
+}
+
+.colony-canary-first-run-google,
+.colony-canary-first-run-form input {
+  display: flex;
+  width: 100%;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #8a90a6;
+  border-radius: 0.375rem;
+  background: #fff;
+  color: #242738;
+  font-size: var(--text-sm);
+}
+
+.colony-canary-first-run-google:hover,
+.colony-canary-first-run-form input:hover {
+  border-color: #34377f;
+}
+
+.colony-canary-first-run-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  margin: 1.5rem 0;
+  color: #45495a;
+  font-size: var(--text-xs);
+}
+
+.colony-canary-first-run-divider::before,
+.colony-canary-first-run-divider::after {
+  height: 1px;
+  flex: 1;
+  background: #d7dae3;
+  content: "";
+}
+
+.colony-canary-first-run-form form label {
+  display: block;
+  margin-bottom: 0.55rem;
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.colony-canary-first-run-form input:focus-visible,
+.colony-canary-first-run-form button:focus-visible {
+  outline: 2px solid #34377f;
+  outline-offset: 2px;
+}
+
+.colony-canary-first-run-primary {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.375rem;
+  background: #34377f;
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.colony-canary-first-run-primary:hover:not(:disabled) {
+  background: #282b69;
+}
+
+.colony-canary-first-run-primary:disabled,
+.colony-canary-first-run-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.colony-canary-first-run-legal,
+.colony-canary-first-run-hint {
+  margin-top: 1.3rem;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+
+.colony-canary-first-run-age {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+  font-size: var(--text-xs);
+}
+
+.colony-canary-first-run-age input {
+  accent-color: #34377f;
+}
+
+.colony-canary-first-run-legal button,
+.colony-canary-first-run-help-link,
+.colony-canary-first-run-help button,
+.colony-canary-first-run-code-actions button {
+  color: #34377f;
+  text-decoration: underline;
+  text-underline-offset: 0.15rem;
+}
+
+.colony-canary-first-run-help-link {
+  display: block;
+  margin-top: 1.1rem;
+  font-size: var(--text-sm);
+}
+
+.colony-canary-first-run-help {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.8rem;
+  font-size: var(--text-sm);
+}
+
+.colony-canary-first-run-help button {
+  justify-self: start;
+}
+
+.colony-canary-first-run-back {
+  position: absolute;
+  top: 3.25rem;
+  left: clamp(2rem, 8vw, 7.5rem);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: var(--text-sm);
+}
+
+.colony-canary-first-run-mail-icon {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  place-items: center;
+  margin: 2rem 0 1.5rem;
+  border-radius: 0.9rem;
+  background: #eef0ff;
+  color: #34377f;
+}
+
+.colony-canary-first-run-code-intro {
+  margin-bottom: 1.5rem;
+  font-size: var(--text-sm);
+}
+
+.colony-canary-first-run-form #canary-auth-code-input {
+  width: min(100%, 16.25rem);
+  font-size: var(--text-lg);
+  letter-spacing: 0.25em;
+}
+
+.colony-canary-first-run-code-actions {
+  display: flex;
+  width: min(100%, 30rem);
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-top: 1.25rem;
+  font-size: var(--text-sm);
+}
+
+.colony-canary-first-run-feedback {
+  margin-top: 1.25rem;
+  color: #9c263c;
+  font-size: var(--text-sm);
+}
+
+.colony-canary-business .colony-canary-first-run-aside {
+  background: linear-gradient(139.4deg, #fae7ed 0%, #f3e8f7 44%, #94b4fa 100%);
+}
+
+.colony-canary-business .colony-canary-first-run-main {
+  padding-top: 5rem;
+}
+
+.colony-canary-business-form {
+  width: min(100%, 39rem);
+}
+
+.colony-canary-business-progress {
+  margin: 1.5rem 0 1rem;
+  color: #555a6d;
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.colony-canary-business-prompt {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.colony-canary-business-prompt [data-ant-portrait] {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.colony-canary-business-prompt p {
+  margin: 0;
+  padding-top: 0.3rem;
+  font-size: var(--text-base);
+  line-height: 1.5;
+}
+
+.colony-canary-business-form label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.colony-canary-business-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0 1.35rem;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+
+.colony-canary-business-options button,
+.colony-canary-business-link-row button,
+.colony-canary-business-skip {
+  min-height: 2.5rem;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid #a1a5b6;
+  border-radius: 999px;
+  background: #fff;
+  color: #242738;
+  font-size: var(--text-sm);
+}
+
+.colony-canary-business-options button.selected {
+  border-color: #34377f;
+  background: #eef0ff;
+  color: #282b69;
+  font-weight: 700;
+}
+
+.colony-canary-business-link-row {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.colony-canary-business-link-row button {
+  border-radius: 0.375rem;
+}
+
+.colony-canary-business-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.colony-canary-business-links span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: 100%;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  background: #eef0ff;
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.colony-canary-business-links button {
+  display: inline-flex;
+  align-items: center;
+}
+
+.colony-canary-business-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.colony-canary-business-actions .colony-canary-first-run-primary {
+  margin-top: 0;
+}
+
+.colony-canary-business-skip {
+  border-color: transparent;
+}
+
+.colony-canary-business-summary {
+  margin: 0.75rem 0 1rem;
+  border: 1px solid #d9dce6;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.colony-canary-business-summary > div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.9rem;
+  border-bottom: 1px solid #d9dce6;
+}
+
+.colony-canary-business-summary > div:last-child {
+  border-bottom: 0;
+}
+
+.colony-canary-business-summary span {
+  display: grid;
+  min-width: 0;
+  gap: 0.2rem;
+}
+
+.colony-canary-business-summary small {
+  color: #555a6d;
+  font-size: var(--text-xs);
+}
+
+.colony-canary-business-summary strong {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.colony-canary-business-summary button {
+  color: #34377f;
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+:root.dark .colony-canary-business .colony-canary-first-run-aside {
+  background: linear-gradient(139.4deg, #413244 0%, #30304e 44%, #283e67 100%);
+}
+
+:root.dark .colony-canary-business-options button,
+:root.dark .colony-canary-business-link-row button,
+:root.dark .colony-canary-business-skip {
+  border-color: #777b9b;
+  background: #24263a;
+  color: #f4f2fa;
+}
+
+:root.dark .colony-canary-business-options button.selected,
+:root.dark .colony-canary-business-links span {
+  background: #3d4268;
+  color: #f4f2fa;
+}
+
+:root.dark .colony-canary-business-summary,
+:root.dark .colony-canary-business-summary > div {
+  border-color: #4b4d65;
+}
+
+:root.dark .colony-canary-business-summary small,
+:root.dark .colony-canary-business-progress {
+  color: #c9c9d6;
+}
+
+:root.dark .colony-canary-business-summary button {
+  color: #c3cbff;
+}
+
+:root.dark .colony-canary-first-run {
+  color: #f4f2fa;
+  background: #1b1d2d;
+}
+
+:root.dark .colony-canary-first-run-aside {
+  border-color: #4b4d65;
+  background: #292b3f;
+}
+
+:root.dark .colony-canary-first-run-google,
+:root.dark .colony-canary-first-run-form input {
+  border-color: #777b9b;
+  background: #24263a;
+  color: #f4f2fa;
+}
+
+:root.dark .colony-canary-first-run-legal button,
+:root.dark .colony-canary-first-run-help-link,
+:root.dark .colony-canary-first-run-help button,
+:root.dark .colony-canary-first-run-code-actions button {
+  color: #c3cbff;
+}
+
+@media (max-width: 760px) {
+  .colony-canary-first-run {
+    grid-template-columns: 1fr;
+  }
+
+  .colony-canary-first-run-aside {
+    min-height: auto;
+    padding: 3.5rem 2rem 1.5rem;
+  }
+
+  .colony-canary-first-run-aside > p {
+    margin-top: 0.75rem;
+    font-size: var(--text-base);
+  }
+
+  .colony-canary-first-run-scout {
+    display: none;
+  }
+
+  .colony-canary-first-run-main {
+    padding: 3.5rem 2rem 4rem;
+  }
+
+  .colony-canary-business .colony-canary-first-run-main {
+    padding-top: 3.5rem;
+  }
+
+  .colony-canary-first-run-back {
+    top: 1rem;
+    left: 2rem;
+  }
+
+  .colony-canary-first-run-form h1 {
+    font-size: var(--text-3xl);
+  }
+}

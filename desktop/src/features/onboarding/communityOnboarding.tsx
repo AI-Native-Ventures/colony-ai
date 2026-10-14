@@ -44,6 +44,7 @@ export type CommunityOnboardingTransaction = {
   token?: string;
   reposDir?: string;
   businessCommunityId?: string;
+  sharedBusinessProfileRequired?: boolean;
   clientChannelId?: string;
   /**
    * Join-policy acceptance receipt minted before the claim (bound to the
@@ -87,6 +88,7 @@ export type StartCommunityOnboardingInput = {
   token?: string;
   reposDir?: string;
   businessCommunityId?: string;
+  sharedBusinessProfileRequired?: boolean;
   clientChannelId?: string;
   policyReceipt?: string;
 };
@@ -203,6 +205,9 @@ export function startCommunityOnboarding(
       token: input.token?.trim() || existing.token,
       reposDir: input.reposDir ?? existing.reposDir,
       businessCommunityId: input.businessCommunityId,
+      sharedBusinessProfileRequired:
+        input.sharedBusinessProfileRequired ??
+        existing.sharedBusinessProfileRequired,
       clientChannelId: input.clientChannelId,
       policyReceipt: input.policyReceipt ?? existing.policyReceipt,
       updatedAt: now.toISOString(),
@@ -227,6 +232,7 @@ export function startCommunityOnboarding(
     token: input.token?.trim() || undefined,
     reposDir: input.reposDir,
     businessCommunityId: input.businessCommunityId,
+    sharedBusinessProfileRequired: input.sharedBusinessProfileRequired,
     clientChannelId: input.clientChannelId,
     policyReceipt: input.policyReceipt,
     createdAt: timestamp,

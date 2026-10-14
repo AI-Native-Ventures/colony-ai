@@ -78,6 +78,8 @@ import {
 } from "./SettingsOptionGroup";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { AccountProfileSettingsPanel } from "./AccountProfileSettingsPanel";
+import { ColonyConnectionsSettingsPanel } from "./ColonyConnectionsSettingsPanel";
+import { ColonyPeopleSettingsPanel } from "./ColonyPeopleSettingsPanel";
 import { AccountSecuritySettingsPanel } from "./AccountSecuritySettingsPanel";
 import { AvatarEditorProfileContext } from "./AvatarEditorProfileContext";
 import { UpdateChecker } from "../UpdateChecker";
@@ -112,6 +114,7 @@ export type SettingsSection =
   | "appearance"
   | "accessibility"
   | "business-profile"
+  | "connections"
   | "people"
   | "shortcuts"
   | "community-members"
@@ -192,6 +195,7 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
     icon: BriefcaseBusiness,
     sections: [
       { value: "business-profile", label: "Profile" },
+      { value: "connections", label: "Connections" },
       { value: "people", label: "People & access" },
     ],
   },
@@ -277,6 +281,7 @@ const SETTINGS_SECTION_VALUES: readonly SettingsSection[] = [
   "appearance",
   "accessibility",
   "business-profile",
+  "connections",
   "people",
   "shortcuts",
   "community-members",
@@ -1063,13 +1068,16 @@ export function renderSettingsSection(
       return <AccessibilitySettingsPanel onClose={props.onClose} />;
     case "business-profile":
       return <BusinessProfileSettingsPanel />;
-    case "people":
+    case "connections":
       return (
-        <CommunityMembersSettingsCard
-          currentPubkey={props.currentPubkey}
-          onBack={() => props.onSectionChange?.("business-profile")}
+        <ColonyConnectionsSettingsPanel
+          onOpenBusinessProfile={() =>
+            props.onSectionChange?.("business-profile")
+          }
         />
       );
+    case "people":
+      return <ColonyPeopleSettingsPanel currentPubkey={props.currentPubkey} />;
     case "shortcuts":
       return <KeyboardShortcutsCard />;
     case "community-members":
@@ -1100,7 +1108,11 @@ export function renderSettingsSection(
     case "mobile":
       return <MobilePairingCard currentPubkey={props.currentPubkey} />;
     case "updates":
-      return <UpdateChecker />;
+      return (
+        <UpdateChecker
+          onOpenFeedback={() => props.onSectionChange?.("feedback")}
+        />
+      );
     case "feedback":
       return <FeedbackSettingsPanel />;
     case "settings/themes":

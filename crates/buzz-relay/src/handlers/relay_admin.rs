@@ -319,14 +319,14 @@ async fn execute_relay_admin_command(
             // Default role is "member" when no role tag is present.
             let role = extract_tag_value(event, "role").unwrap_or_else(|| "member".to_string());
 
-            // Owners can add admins or members; admins can only add members.
+            // Owners can add admins, partners or members; admins can only add members.
             if role == "owner" {
                 return Err("invalid role: use kind:9032 to promote to owner".to_string());
             }
-            if role == "admin" && sender_role != "owner" {
-                return Err("actor not authorized: only owner can grant admin role".to_string());
+            if matches!(role.as_str(), "admin" | "partner") && sender_role != "owner" {
+                return Err("actor not authorized: only owner can grant this role".to_string());
             }
-            if role != "admin" && role != "member" {
+            if role != "admin" && role != "partner" && role != "member" {
                 return Err(format!("invalid role: {role}"));
             }
 
@@ -439,7 +439,7 @@ async fn execute_relay_admin_command(
             if new_role == "owner" {
                 return Err("cannot set role to owner".to_string());
             }
-            if new_role != "admin" && new_role != "member" {
+            if new_role != "admin" && new_role != "partner" && new_role != "member" {
                 return Err(format!("invalid role: {new_role}"));
             }
 
@@ -770,6 +770,26 @@ mod postgres_tests {
         handle_relay_admin_event(tenant, state, &event).await
     }
 
+    async fn submit_member_command(
+        state: &Arc<AppState>,
+        tenant: &TenantContext,
+        keys: &Keys,
+        kind: u16,
+        target: &Keys,
+        role: Option<&str>,
+    ) -> Result<(), RelayAdminError> {
+        let target_hex = target.public_key().to_hex();
+        let mut tags = vec![Tag::parse(["p", target_hex.as_str()]).expect("target tag")];
+        if let Some(role) = role {
+            tags.push(Tag::parse(["role", role]).expect("role tag"));
+        }
+        let event = EventBuilder::new(Kind::Custom(kind), "")
+            .tags(tags)
+            .sign_with_keys(keys)
+            .expect("sign member command");
+        handle_relay_admin_event(tenant, state, &event).await
+    }
+
     async fn stored_icon(state: &Arc<AppState>, tenant: &TenantContext) -> Option<String> {
         state
             .db
@@ -895,5 +915,77 @@ mod postgres_tests {
             stored_icon(&state, &tenant).await.as_deref(),
             Some("https://example.com/closed.png")
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn partner_role_can_be_granted_by_owner_without_relay_admin_powers() {
+        let host = format!("partner-role-{}.example", uuid::Uuid::new_v4().simple());
+        let (state, tenant) = workspace_profile_test_state(&host, true).await;
+        let owner = Keys::generate();
+        let admin = Keys::generate();
+        let partner = Keys::generate();
+        let member = Keys::generate();
+        let outsider = Keys::generate();
+        for (keys, role) in [(&owner, "owner"), (&admin, "admin"), (&member, "member")] {
+            state
+                .db
+                .add_relay_member(tenant.community(), &keys.public_key().to_hex(), role, None)
+                .await
+                .expect("seed relay member");
+        }
+
+        submit_member_command(&state, &tenant, &owner, 9030, &partner, Some("partner"))
+            .await
+            .expect("owner grants partner role");
+        let stored = state
+            .db
+            .get_relay_member(tenant.community(), &partner.public_key().to_hex())
+            .await
+            .expect("load partner")
+            .expect("partner persisted");
+        assert_eq!(stored.role, "partner");
+
+        for (kind, target, role) in [
+            (9030, &outsider, None),
+            (9031, &member, None),
+            (9032, &member, Some("admin")),
+        ] {
+            assert!(
+                submit_member_command(&state, &tenant, &partner, kind, target, role)
+                    .await
+                    .is_err(),
+                "partner must not exercise relay admin kind {kind}"
+            );
+        }
+        assert!(
+            submit_9033(&state, &tenant, &partner, "https://example.com/icon.png")
+                .await
+                .is_err()
+        );
+        assert!(state
+            .db
+            .get_relay_member(tenant.community(), &member.public_key().to_hex())
+            .await
+            .expect("member after denied removal")
+            .is_some());
+        assert!(state
+            .db
+            .get_relay_member(tenant.community(), &outsider.public_key().to_hex())
+            .await
+            .expect("outsider after denied add")
+            .is_none());
+
+        assert!(
+            submit_member_command(&state, &tenant, &admin, 9030, &outsider, Some("partner"))
+                .await
+                .is_err()
+        );
+        assert!(state
+            .db
+            .get_relay_member(tenant.community(), &outsider.public_key().to_hex())
+            .await
+            .expect("outsider after denied grant")
+            .is_none());
     }
 }

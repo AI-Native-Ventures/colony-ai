@@ -20,6 +20,8 @@ import { UserNameIndicators } from "@/features/user-status/ui/UserNameIndicators
 import { Button } from "@/shared/ui/button";
 import type { Channel, PresenceStatus } from "@/shared/api/types";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { ColonyAntAvatar } from "@/shared/ui/ColonyAntAvatar";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 import {
   toggleTerminalPanel,
   useTerminalPanel,
@@ -42,6 +44,8 @@ type ChannelScreenHeaderProps = {
   activeDmPresenceStatus: PresenceStatus | null;
   chromeWrapperRef?: React.Ref<HTMLDivElement>;
   currentPubkey?: string;
+  agentPubkeys?: ReadonlySet<string>;
+  agentPubkeysPending?: boolean;
   headerEndActions?: React.ReactNode;
   isAddBotOpen?: boolean;
   isJoining?: boolean;
@@ -64,6 +68,8 @@ export function ChannelScreenHeader({
   activeDmPresenceStatus,
   chromeWrapperRef,
   currentPubkey,
+  agentPubkeys,
+  agentPubkeysPending = false,
   headerEndActions,
   isAddBotOpen,
   isJoining = false,
@@ -78,6 +84,11 @@ export function ChannelScreenHeader({
     activeChannel?.channelType === "dm" &&
     activeDmHeaderParticipants.length > 1;
   const activeDmParticipant = activeDmHeaderParticipants[0] ?? null;
+  const activeDmIsAgent = Boolean(
+    activeDmParticipant &&
+      (activeDmParticipant.isAgent ||
+        agentPubkeys?.has(normalizePubkey(activeDmParticipant.pubkey))),
+  );
   const showJoinButton =
     activeChannel !== null &&
     !activeChannel.isMember &&
@@ -159,29 +170,58 @@ export function ChannelScreenHeader({
         activeChannel?.channelType === "dm" ? (
           isGroupDm ? (
             <DmHeaderParticipantStack
+              agentPubkeys={agentPubkeys}
+              agentPubkeysPending={agentPubkeysPending}
               participants={activeDmHeaderParticipants}
             />
           ) : activeDmParticipant ? (
-            <UserProfilePopover
-              pubkey={activeDmParticipant.pubkey}
-              role={activeDmParticipant.isAgent ? "bot" : undefined}
-              triggerAriaLabel={`Open profile for ${activeChannelTitle}`}
-              triggerElement="span"
-            >
-              <ProfileAvatarWithStatus
-                avatarClassName="text-xs"
-                avatarUrl={activeDmAvatarUrl}
-                className="mr-1.5 h-8 w-8"
-                geometry={DM_HEADER_AVATAR_STATUS_GEOMETRY}
-                iconClassName="h-4 w-4"
-                label={activeChannelTitle}
-                shape={activeDmParticipant.isAgent ? "squircle" : "circle"}
-                size={DM_HEADER_AVATAR_SIZE}
-                status={activeDmPresenceStatus ?? "offline"}
-                statusTestId="chat-presence-badge"
-                testId="chat-header-dm-avatar"
+            agentPubkeysPending && !activeDmIsAgent ? (
+              <span
+                aria-label="Loading participant portrait"
+                className="colony-canary-dm-avatar-pending"
+                data-testid="chat-header-dm-avatar"
+                role="img"
               />
-            </UserProfilePopover>
+            ) : (
+              <UserProfilePopover
+                pubkey={activeDmParticipant.pubkey}
+                role={activeDmIsAgent ? "bot" : undefined}
+                triggerAriaLabel={`Open profile for ${activeChannelTitle}`}
+                triggerElement="span"
+              >
+                {activeDmIsAgent ? (
+                  <span className="colony-canary-dm-ant-wrap">
+                    <ColonyAntAvatar
+                      name={activeChannelTitle}
+                      className="size-8"
+                      decorative
+                      testId="chat-header-dm-avatar"
+                    />
+                    <span
+                      aria-label={`Status: ${activeDmPresenceStatus ?? "offline"}`}
+                      className="colony-canary-dm-presence"
+                      data-presence={activeDmPresenceStatus ?? "offline"}
+                      data-testid="chat-presence-badge"
+                      role="img"
+                    />
+                  </span>
+                ) : (
+                  <ProfileAvatarWithStatus
+                    avatarClassName="text-xs"
+                    avatarUrl={activeDmAvatarUrl}
+                    className="mr-1.5 h-8 w-8"
+                    geometry={DM_HEADER_AVATAR_STATUS_GEOMETRY}
+                    iconClassName="h-4 w-4"
+                    label={activeChannelTitle}
+                    shape="circle"
+                    size={DM_HEADER_AVATAR_SIZE}
+                    status={activeDmPresenceStatus ?? "offline"}
+                    statusTestId="chat-presence-badge"
+                    testId="chat-header-dm-avatar"
+                  />
+                )}
+              </UserProfilePopover>
+            )
           ) : (
             <ProfileAvatarWithStatus
               avatarClassName="text-xs"
@@ -246,8 +286,12 @@ export function ChannelScreenHeader({
 }
 
 function DmHeaderParticipantStack({
+  agentPubkeys,
+  agentPubkeysPending,
   participants,
 }: {
+  agentPubkeys?: ReadonlySet<string>;
+  agentPubkeysPending: boolean;
   participants: ActiveDmHeaderParticipant[];
 }) {
   const { hiddenCount, visibleParticipants } =
@@ -259,34 +303,61 @@ function DmHeaderParticipantStack({
       className="mr-1.5 flex shrink-0 items-center"
       data-testid="chat-header-dm-avatar-stack"
     >
-      {visibleParticipants.map((participant, index) => (
-        <UserProfilePopover
-          key={participant.pubkey}
-          pubkey={participant.pubkey}
-          triggerAriaLabel={`Open profile for ${participant.displayName}`}
-          triggerElement="span"
-          role={participant.isAgent ? "bot" : undefined}
-        >
+      {visibleParticipants.map((participant, index) =>
+        agentPubkeysPending &&
+        !participant.isAgent &&
+        !agentPubkeys?.has(normalizePubkey(participant.pubkey)) ? (
           <span
-            className={index > 0 ? "-ml-2" : ""}
+            aria-label="Loading participant portrait"
+            className={`${index > 0 ? "-ml-2" : ""} colony-canary-dm-avatar-pending`}
             data-testid="chat-header-dm-avatar-stack-participant"
+            key={participant.pubkey}
+            role="img"
             style={{ zIndex: index + 1 }}
+          />
+        ) : (
+          <UserProfilePopover
+            key={participant.pubkey}
+            pubkey={participant.pubkey}
+            triggerAriaLabel={`Open profile for ${participant.displayName}`}
+            triggerElement="span"
+            role={
+              participant.isAgent ||
+              agentPubkeys?.has(normalizePubkey(participant.pubkey))
+                ? "bot"
+                : undefined
+            }
           >
-            <UserAvatar
-              accent={participant.isAgent === true}
-              avatarUrl={participant.avatarUrl}
-              className={
-                index < stackItemCount - 1
-                  ? "h-8 w-8 text-xs ring-2 ring-background"
-                  : "h-8 w-8 text-xs"
-              }
-              displayName={participant.displayName}
-              shape={participant.isAgent ? "squircle" : "circle"}
-              size="sm"
-            />
-          </span>
-        </UserProfilePopover>
-      ))}
+            <span
+              className={index > 0 ? "-ml-2" : ""}
+              data-testid="chat-header-dm-avatar-stack-participant"
+              style={{ zIndex: index + 1 }}
+            >
+              {participant.isAgent ||
+              agentPubkeys?.has(normalizePubkey(participant.pubkey)) ? (
+                <ColonyAntAvatar
+                  name={participant.displayName}
+                  className="size-8 ring-2 ring-background"
+                  decorative
+                />
+              ) : (
+                <UserAvatar
+                  accent={false}
+                  avatarUrl={participant.avatarUrl}
+                  className={
+                    index < stackItemCount - 1
+                      ? "h-8 w-8 text-xs ring-2 ring-background"
+                      : "h-8 w-8 text-xs"
+                  }
+                  displayName={participant.displayName}
+                  shape="circle"
+                  size="sm"
+                />
+              )}
+            </span>
+          </UserProfilePopover>
+        ),
+      )}
       {hiddenCount > 0 ? (
         <div
           className={visibleParticipants.length > 0 ? "-ml-2" : ""}

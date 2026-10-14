@@ -31,6 +31,9 @@
 @import "./globals/colony-workspace-updates.css";
 @import "./globals/colony-shell.css";
 @import "./globals/appearance-chrome.css";
+@import "./globals/colony-canary.css";
+@import "./globals/colony-canary-conversation.css";
+@import "./globals/colony-canary-desk.css";
 
 @config "../../../tailwind.config.js";
 

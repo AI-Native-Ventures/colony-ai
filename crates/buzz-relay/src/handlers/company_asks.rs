@@ -764,6 +764,13 @@ impl ActorFacts {
             Some(CommunityRole::Owner | CommunityRole::Admin)
         )
     }
+
+    fn can_decide_company_asks(&self) -> bool {
+        matches!(
+            self.community_role,
+            Some(CommunityRole::Owner | CommunityRole::Admin | CommunityRole::Partner)
+        )
+    }
 }
 
 async fn actor_facts(
@@ -794,6 +801,7 @@ async fn actor_facts(
         .and_then(|member| match member.role.as_str() {
             "owner" => Some(CommunityRole::Owner),
             "admin" => Some(CommunityRole::Admin),
+            "partner" => Some(CommunityRole::Partner),
             "member" => Some(CommunityRole::Member),
             _ => None,
         });
@@ -878,9 +886,12 @@ async fn validate_member_proposal_route(
     }
 
     if ask.category == AskCategory::Hire {
-        if !matches!(addressee_member.role.as_str(), "owner" | "admin") {
+        if !matches!(
+            addressee_member.role.as_str(),
+            "owner" | "admin" | "partner"
+        ) {
             return Err(invalid(
-                "termination and rehire proposals must be addressed to an owner or admin",
+                "termination and rehire proposals must be addressed to an owner, partner or admin",
             ));
         }
         return Ok(());
@@ -902,9 +913,12 @@ async fn validate_member_proposal_route(
                 "member proposal must be addressed to the target's human direct manager",
             ));
         }
-    } else if !matches!(addressee_member.role.as_str(), "owner" | "admin") {
+    } else if !matches!(
+        addressee_member.role.as_str(),
+        "owner" | "admin" | "partner"
+    ) {
         return Err(invalid(
-            "member proposal without a human direct manager must be addressed to an owner or admin",
+            "member proposal without a human direct manager must be addressed to an owner, partner or admin",
         ));
     }
     Ok(())
@@ -920,7 +934,7 @@ async fn validate_member_proposal_resolver(
     if actor.is_agent {
         return Err(forbidden("agents cannot approve member-position proposals"));
     }
-    if actor.is_community_admin() || ask.category == AskCategory::Hire {
+    if actor.can_decide_company_asks() || ask.category == AskCategory::Hire {
         return Ok(());
     }
     let Some((_, position)) = super::company_member_records::load_position_for_proposal(
@@ -931,7 +945,7 @@ async fn validate_member_proposal_resolver(
     .await?
     else {
         return Err(forbidden(
-            "only a company owner or admin can approve an initial member position",
+            "only a company owner, partner or admin can approve an initial member position",
         ));
     };
     if position.kind != MemberKind::Human
@@ -1971,11 +1985,13 @@ mod postgres_tests {
         let fixture = fixture().await;
         let owner = fixture.owner.clone();
         let admin = Keys::generate();
+        let partner = Keys::generate();
         let member = Keys::generate();
         let other_member = Keys::generate();
         let agent = Keys::generate();
         let outside = Keys::generate();
         add_actor(&fixture, &admin, Some("admin"), false, true).await;
+        add_actor(&fixture, &partner, Some("partner"), false, true).await;
         add_actor(&fixture, &member, Some("member"), false, true).await;
         add_actor(&fixture, &other_member, Some("member"), false, true).await;
         add_actor(&fixture, &agent, Some("member"), true, true).await;
@@ -1985,10 +2001,11 @@ mod postgres_tests {
             for (resolver, expected_reason) in [
                 (
                     &member,
-                    Some("Only company owners and admins can decide this"),
+                    Some("Only company owners, partners and admins can decide this"),
                 ),
                 (&owner, None),
                 (&admin, None),
+                (&partner, None),
                 (
                     &agent,
                     Some("Agents cannot decide spending, hires, tools, secrets or duties"),
@@ -2023,7 +2040,7 @@ mod postgres_tests {
                     None => {
                         assert!(
                             result
-                                .expect("owner or admin resolves protected ask")
+                                .expect("company decision maker resolves protected ask")
                                 .accepted
                         );
                     }
@@ -2248,7 +2265,7 @@ mod postgres_tests {
         assert!(matches!(
             member_result,
             Err(IngestError::AuthFailed(message))
-                if message.contains("Only company owners and admins")
+                if message.contains("Only company owners, partners and admins")
         ));
         assert!(fixture
             .state
@@ -2276,10 +2293,12 @@ mod postgres_tests {
         let asker = Keys::generate();
         let other_member = Keys::generate();
         let admin = Keys::generate();
+        let partner = Keys::generate();
         let outside = Keys::generate();
         add_actor(&fixture, &asker, Some("member"), false, true).await;
         add_actor(&fixture, &other_member, Some("member"), false, true).await;
         add_actor(&fixture, &admin, Some("admin"), false, true).await;
+        add_actor(&fixture, &partner, Some("partner"), false, true).await;
         add_actor(&fixture, &outside, Some("member"), false, false).await;
 
         let (_, head) = create_ask(
@@ -2350,6 +2369,33 @@ mod postgres_tests {
             )
             .await
             .expect("check unauthorized cancel was not stored")
+            .is_none());
+
+        let partner_cancel = sign_cancel(
+            &partner,
+            fixture.channel_id,
+            current.ask_id,
+            &head.event.id.to_hex(),
+        );
+        assert!(matches!(
+            company_records::handle(
+                &fixture.tenant,
+                &fixture.state,
+                partner_cancel.clone(),
+                auth(&partner),
+            )
+            .await,
+            Err(IngestError::AuthFailed(message)) if message.contains("only the asker or a company owner or admin")
+        ));
+        assert!(fixture
+            .state
+            .db
+            .get_event_by_id_for_event_write(
+                fixture.tenant.community(),
+                &partner_cancel.id.to_bytes(),
+            )
+            .await
+            .expect("check partner cancel was not stored")
             .is_none());
 
         let owner_cancel = sign_cancel(

@@ -480,6 +480,7 @@ export function AgentProfileView({
                 {companyMember?.kind === "employee" ? (
                   <CompanyEmployeeProfileActions
                     canManage={canManageCompany}
+                    canManageLifecycle={canManageCompany}
                     employeePubkey={agent.pubkey}
                     managerName={managerName}
                     onEdit={() => void goTeamEdit(agent.pubkey)}

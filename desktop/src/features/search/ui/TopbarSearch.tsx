@@ -43,6 +43,7 @@ type TopbarSearchProps = {
   onCreateAgent?: () => void | Promise<void>;
   onCreateChannel?: () => void | Promise<void>;
   suggestionChannels?: Channel[];
+  triggerLabel?: string;
   scopeFocusRequest?: number;
   variant?: "bar" | "icon";
 };
@@ -388,6 +389,7 @@ export function TopbarSearch({
   onCreateChannel,
   scopeFocusRequest = 0,
   suggestionChannels,
+  triggerLabel = "Find anything",
   variant = "bar",
 }: TopbarSearchProps) {
   const [isOpen, setIsOpen] = React.useState(false);
@@ -925,7 +927,7 @@ export function TopbarSearch({
     <div className={cn("relative", className)}>
       <Dialog open={isOpen} onOpenChange={handleSearchOpenChange}>
         <button
-          aria-label="Find anything"
+          aria-label={triggerLabel}
           className={
             isIconVariant
               ? "group/search flex size-6 items-center justify-center rounded p-1 text-sidebar-foreground/50 transition-colors hover:bg-sidebar-border/35 hover:text-sidebar-foreground focus-visible:bg-sidebar-border/35 focus-visible:text-sidebar-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-sidebar-ring"
@@ -934,7 +936,7 @@ export function TopbarSearch({
           data-testid="open-search"
           onClick={() => openSearchDialog(null)}
           ref={triggerRef}
-          title="Find anything"
+          title={triggerLabel}
           type="button"
         >
           <Search
@@ -954,7 +956,7 @@ export function TopbarSearch({
                     : "text-sidebar-foreground/55",
                 )}
               >
-                {query || "Find anything"}
+                {query || triggerLabel}
               </span>
               <kbd className="shrink-0 text-3xs text-sidebar-foreground/45">
                 &#x2318; K

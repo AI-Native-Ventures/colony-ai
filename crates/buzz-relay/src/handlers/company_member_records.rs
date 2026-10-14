@@ -108,14 +108,19 @@ pub(super) async fn handle(
     let actor_role = memberships
         .get(&actor_pubkey)
         .ok_or_else(|| forbidden("actor is not a member of this community"))?;
-    if !is_admin(actor_role) {
+    if !matches!(actor_role.as_str(), "owner" | "admin" | "partner") {
         return Err(forbidden(
-            "only a company owner or admin can directly change a member position",
+            "only a company owner, partner or admin can directly change a member position",
         ));
     }
     let kind = member_kind_in_transaction(&mut tx, community_id, &target_pubkey)
         .await?
         .ok_or_else(|| invalid("target account is unavailable or is a runtime worker"))?;
+    if actor_role.as_str() == "partner" && !partner_may_manage_position(kind, action.action) {
+        return Err(forbidden(
+            "partners can edit employee roles and reporting; lifecycle and human positions require the owner",
+        ));
+    }
     if kind == MemberKind::Human && !memberships.contains_key(&target_pubkey) {
         return Err(invalid("target is not a member of this community"));
     }
@@ -611,8 +616,39 @@ async fn member_kind_in_transaction(
     })
 }
 
-fn is_admin(role: &str) -> bool {
-    matches!(role, "owner" | "admin")
+fn partner_may_manage_position(kind: MemberKind, action: MemberPositionActionKind) -> bool {
+    kind == MemberKind::Employee
+        && matches!(
+            action,
+            MemberPositionActionKind::SetTitle
+                | MemberPositionActionKind::SetManager
+                | MemberPositionActionKind::SetPosition
+        )
+}
+
+#[cfg(test)]
+mod partner_role_tests {
+    use super::*;
+
+    #[test]
+    fn partner_position_actions_keep_human_and_lifecycle_mutations_closed() {
+        for action in [
+            MemberPositionActionKind::SetTitle,
+            MemberPositionActionKind::SetManager,
+            MemberPositionActionKind::SetPosition,
+        ] {
+            assert!(partner_may_manage_position(MemberKind::Employee, action));
+            assert!(!partner_may_manage_position(MemberKind::Human, action));
+        }
+        for action in [
+            MemberPositionActionKind::Pause,
+            MemberPositionActionKind::Terminate,
+            MemberPositionActionKind::Rehire,
+        ] {
+            assert!(!partner_may_manage_position(MemberKind::Employee, action));
+            assert!(!partner_may_manage_position(MemberKind::Human, action));
+        }
+    }
 }
 
 fn duplicate_result(event: &Event) -> IngestResult {

@@ -12,6 +12,7 @@
  * store, `features/workarea/browser/browserTabsStore.ts`.
  */
 export const WORK_AREA_TAB_KINDS = [
+  "shared",
   "browser",
   "terminal",
   "files",
@@ -23,6 +24,7 @@ export type WorkAreaTabKind = (typeof WORK_AREA_TAB_KINDS)[number];
 
 /** Kinds that may exist at most once per channel. Their tab id is the kind. */
 export const WORK_AREA_SINGLETON_KINDS: readonly WorkAreaTabKind[] = [
+  "shared",
   "terminal",
   "files",
   "canvas",

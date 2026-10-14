@@ -94,6 +94,15 @@ export function useChannelIntro({
       };
     }
 
+    if (activeChannel.channelType === "stream" && activeChannel.isMember) {
+      return {
+        actions: [],
+        channelKindLabel: "conversation",
+        channelName: activeChannel.name,
+        variant: "colony-conversation" as const,
+      };
+    }
+
     if (!activeChannel.archivedAt && activeChannel.isMember) {
       if (onAddFiles) {
         actions.push({

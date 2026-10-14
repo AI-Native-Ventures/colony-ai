@@ -57,15 +57,7 @@ import {
   type AskComposerType,
 } from "../askComposer";
 import { recipientDescription, threadLabel } from "./askThreadLabels";
-
-const ASK_TYPES: Array<{ value: AskComposerType; label: string }> = [
-  { value: "approval", label: "Approval" },
-  { value: "question", label: "Question" },
-  { value: "choice", label: "Choice" },
-  { value: "checklist", label: "Checklist" },
-  { value: "verdict", label: "Verdict" },
-  { value: "hire_proposal", label: "Hire proposal" },
-];
+import { ASK_TYPES } from "./askTypeLabels";
 
 /** Ask creation surface for a real channel and discussion thread. */
 export function AskCreateScreen({
@@ -273,7 +265,12 @@ export function AskCreateScreen({
   }));
   const moneyApproverPubkeys = new Set(
     (moneyTeamQuery.data?.relayMembers ?? [])
-      .filter((member) => member.role === "owner" || member.role === "admin")
+      .filter(
+        (member) =>
+          member.role === "owner" ||
+          member.role === "admin" ||
+          member.role === "partner",
+      )
       .map((member) => normalizePubkey(member.pubkey)),
   );
   const moneyRecipientMembers = (membersQuery.data ?? []).filter(

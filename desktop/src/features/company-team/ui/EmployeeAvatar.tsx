@@ -1,14 +1,8 @@
-import scoutArt from "@/features/onboarding/assets/scout.svg";
-import { UserAvatar } from "@/shared/ui/UserAvatar";
-import { employeeAvatarSource } from "../employeePresentation";
+import { ColonyAntAvatar } from "@/shared/ui/ColonyAntAvatar";
 
-/** Employee artwork with the frozen Scout ant as the built-in identity fallback. */
+/** Keep every employee visibly an ant in the approved Colony UI. */
 export function EmployeeAvatar({
   name,
-  profile,
-  instance,
-  definition,
-  personaId,
   className,
   testId,
 }: {
@@ -20,21 +14,5 @@ export function EmployeeAvatar({
   className?: string;
   testId?: string;
 }) {
-  return (
-    <UserAvatar
-      avatarUrl={employeeAvatarSource({
-        name,
-        profile,
-        instance,
-        definition,
-        personaId,
-        scoutArt,
-      })}
-      displayName={name}
-      className={className}
-      testId={testId}
-      shape="squircle"
-      fallbackVariant="muted"
-    />
-  );
+  return <ColonyAntAvatar className={className} name={name} testId={testId} />;
 }

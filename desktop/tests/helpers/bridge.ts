@@ -170,6 +170,8 @@ type MockBridgeOptions = {
   windowLabel?: string;
   /** Account state returned by the mocked account API. Defaults to linked. */
   accountLinked?: boolean;
+  /** Exercise the approved passwordless first-run screen in the E2E build. */
+  legacyAccountFlow?: boolean;
   /** Linked account address returned by the mocked account API. */
   accountEmail?: string;
   /** Current user status event returned by the mocked relay. */
@@ -181,7 +183,7 @@ type MockBridgeOptions = {
   /** Override the current member role in reference client channels. */
   referenceWorkspaceRole?: "owner" | "admin" | "member";
   /** Override the active community role when testing relay-authorized actions. */
-  relayRole?: "owner" | "admin" | "member" | null;
+  relayRole?: "owner" | "admin" | "partner" | "member" | null;
   /** Make the mock relay expose its NIP-43 community membership snapshot. */
   relayRequiresMembership?: boolean;
   /** Override record statuses to exercise reference workspace boundaries. */
@@ -260,6 +262,14 @@ type MockBridgeOptions = {
   goalEvents?: RelayEvent[];
   /** Synthetic relay key used only to broker goal actions in focused E2E tests. */
   goalRelayPrivateKey?: string;
+  /** Relay-signed shared business profile heads for focused E2E coverage. */
+  businessProfileEvents?: RelayEvent[];
+  /** Synthetic relay signer for revisioned business profile writes. */
+  businessProfileRelayPrivateKey?: string;
+  /** Reject successive business profile actions, then accept later writes. */
+  businessProfileActionErrors?: string[];
+  /** Replace the head with this signed edit before a conflict response. */
+  businessProfileConflictHead?: RelayEvent;
   /** Relay-signed member-position heads for Company Team E2E coverage. */
   companyMemberPositionEvents?: RelayEvent[];
   /** Relay-signed member-position actions for Company Team history coverage. */
@@ -596,11 +606,11 @@ type MockBridgeOptions = {
    * the active identity from the membership list entirely (admin-path branch
    * evaluates false).
    */
-  relayRole?: "owner" | "admin" | "member" | null;
+  relayRole?: "owner" | "admin" | "partner" | "member" | null;
   /** Exact NIP-43 membership snapshot for visual-reference fixtures. */
   relayMembers?: Array<{
     pubkey: string;
-    role: "owner" | "admin" | "member";
+    role: "owner" | "admin" | "partner" | "member";
   }>;
   /**
    * Descriptors returned by the mocked `pick_and_upload_media` /

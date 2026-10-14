@@ -1,30 +1,66 @@
-import { Bell, Globe, Hash, PanelLeft, Search, Users } from "lucide-react";
+import {
+  Bell,
+  Ellipsis,
+  FolderOpen,
+  Globe,
+  Hash,
+  PanelLeft,
+  Search,
+  Settings2,
+  Users,
+} from "lucide-react";
 import { ChannelMemberAvatarStack } from "@/features/channels/ui/ChannelMemberAvatarStack";
 import { WORK_AREA_PANEL_ID } from "@/features/workarea/dock/WorkAreaPanel";
-import { toggleWorkAreaFrom } from "@/features/workarea/dock/workAreaActions";
+import {
+  closeWorkAreaRestoringFocus,
+  openWorkAreaFrom,
+  toggleWorkAreaFrom,
+} from "@/features/workarea/dock/workAreaActions";
 import { useWorkAreaDock } from "@/features/workarea/dock/useWorkAreaDock";
 import { requestWorkAreaTab } from "@/features/workarea/dock/workAreaRequests";
 import { isBrowserHostAvailable } from "@/shared/api/browserHost";
 import type { ChannelMember } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
-import { WorkspaceTopBar } from "@/shared/ui/workspace-topbar";
+import { ColonyAntAvatar } from "@/shared/ui/ColonyAntAvatar";
+import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { normalizePubkey } from "@/shared/lib/pubkey";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/shared/ui/dropdown-menu";
+import {
+  NavigationHistoryControls,
+  WorkspaceTopBar,
+} from "@/shared/ui/workspace-topbar";
 
 /** Reference workspace chrome for the active channel and optional thread. */
 export function ChannelWorkspaceTopBar({
   channelId,
   channelTitle,
+  description,
+  isCanaryConversation = false,
   isThreadOpen,
   currentPubkey,
+  agentPubkeys,
+  agentIdentityUnresolved = false,
   members,
   onToggleMembers,
+  onManageChannel,
   onOpenInbox,
 }: {
   channelId: string;
   channelTitle: string;
+  description?: string | null;
+  isCanaryConversation?: boolean;
   isThreadOpen: boolean;
   currentPubkey?: string;
+  agentPubkeys?: ReadonlySet<string>;
+  agentIdentityUnresolved?: boolean;
   members: ChannelMember[];
   onToggleMembers: () => void;
+  onManageChannel?: () => void;
   onOpenInbox: () => void;
 }) {
   const workArea = useWorkAreaDock(channelId);
@@ -33,6 +69,130 @@ export function ChannelWorkspaceTopBar({
       .querySelector<HTMLButtonElement>('[data-testid="open-search"]')
       ?.click();
   };
+
+  if (isCanaryConversation) {
+    return (
+      <header
+        className="colony-canary-conversation-header"
+        data-testid="colony-conversation-header"
+      >
+        <div className="colony-canary-conversation-title-row">
+          <div className="colony-canary-conversation-title">
+            <NavigationHistoryControls />
+            <h1
+              className="colony-canary-conversation-heading"
+              data-testid="chat-title"
+            >
+              {channelTitle}
+            </h1>
+            {isThreadOpen ? (
+              <span className="colony-canary-thread-breadcrumb">/ Thread</span>
+            ) : null}
+          </div>
+          <div className="colony-canary-conversation-actions">
+            <Button
+              aria-controls={workArea.open ? WORK_AREA_PANEL_ID : undefined}
+              aria-expanded={workArea.open}
+              data-testid="channel-work-area-trigger"
+              onClick={(event) => {
+                if (workArea.open && workArea.activeTabId === "shared") {
+                  closeWorkAreaRestoringFocus(channelId);
+                } else {
+                  openWorkAreaFrom(channelId, "shared", event.currentTarget);
+                }
+              }}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <FolderOpen aria-hidden="true" />
+              Workspace
+            </Button>
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  aria-label="Conversation actions"
+                  data-testid="colony-conversation-actions"
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <Ellipsis aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={onToggleMembers}>
+                  <Users aria-hidden="true" /> Members
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={openSearch}>
+                  <Search aria-hidden="true" /> Search
+                </DropdownMenuItem>
+                {onManageChannel ? (
+                  <DropdownMenuItem onSelect={onManageChannel}>
+                    <Settings2 aria-hidden="true" /> Conversation settings
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+        {members.length > 0 ? (
+          <button
+            className="colony-canary-conversation-participants"
+            onClick={onToggleMembers}
+            type="button"
+            aria-label="View conversation members"
+          >
+            {members.slice(0, 5).map((member) => {
+              const isAgent =
+                member.isAgent ||
+                agentPubkeys?.has(normalizePubkey(member.pubkey));
+              return (
+                <span
+                  className="colony-canary-conversation-participant"
+                  key={member.pubkey}
+                >
+                  {isAgent ? (
+                    <ColonyAntAvatar
+                      name={member.displayName ?? "Agent"}
+                      className="size-7"
+                      decorative
+                    />
+                  ) : agentIdentityUnresolved ? (
+                    <span
+                      aria-label={`Loading portrait for ${member.displayName ?? "participant"}`}
+                      className="colony-canary-conversation-participant-pending"
+                      role="img"
+                    />
+                  ) : (
+                    <UserAvatar
+                      avatarUrl={null}
+                      displayName={member.displayName ?? "Member"}
+                      className="!h-7 !w-7 text-2xs"
+                      fallbackDelayMs={0}
+                    />
+                  )}
+                  <span>
+                    {member.displayName ?? (isAgent ? "Agent" : "Member")}
+                  </span>
+                </span>
+              );
+            })}
+            {members.length > 5 ? (
+              <span className="colony-canary-participant-overflow">
+                +{members.length - 5}
+              </span>
+            ) : null}
+          </button>
+        ) : null}
+        {description ? (
+          <p className="colony-canary-conversation-description">
+            {description}
+          </p>
+        ) : null}
+      </header>
+    );
+  }
 
   return (
     <WorkspaceTopBar

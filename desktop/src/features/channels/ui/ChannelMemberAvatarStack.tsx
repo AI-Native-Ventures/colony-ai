@@ -5,6 +5,7 @@ import { resolveUserLabel } from "@/features/profile/lib/identity";
 import type { ChannelMember } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { ColonyAntAvatar } from "@/shared/ui/ColonyAntAvatar";
 
 const MAX_VISIBLE_AVATARS = 3;
 
@@ -79,13 +80,21 @@ export function ChannelMemberAvatarStack({
             key={normalizedPubkey}
             style={{ zIndex: index + 1 }}
           >
-            <UserAvatar
-              avatarUrl={profile?.avatarUrl ?? null}
-              className={`${avatarSizeClass} border-2 border-background text-2xs`}
-              displayName={avatarLabel}
-              fallbackDelayMs={0}
-              shape={profile?.isAgent ? "squircle" : "circle"}
-            />
+            {member.isAgent || profile?.isAgent ? (
+              <ColonyAntAvatar
+                name={avatarLabel}
+                className={`${avatarSizeClass} border-2 border-background`}
+                decorative
+              />
+            ) : (
+              <UserAvatar
+                avatarUrl={profile?.avatarUrl ?? null}
+                className={`${avatarSizeClass} border-2 border-background text-2xs`}
+                displayName={avatarLabel}
+                fallbackDelayMs={0}
+                shape="circle"
+              />
+            )}
           </span>
         );
       })}

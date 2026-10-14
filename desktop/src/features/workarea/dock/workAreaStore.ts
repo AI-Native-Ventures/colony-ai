@@ -5,6 +5,7 @@ import {
   EMPTY_WORK_AREA_STATE,
   isWorkAreaTabKind,
   WORK_AREA_DEFAULT_WIDTH,
+  WORK_AREA_MIN_WIDTH,
   type WorkAreaChannelState,
   type WorkAreaTab,
   type WorkAreaTabKind,
@@ -242,15 +243,20 @@ export function openWorkArea(
   kind?: WorkAreaTabKind,
   tabId?: string,
 ) {
-  commit(channelId, (current) =>
-    kind
+  commit(channelId, (current) => {
+    const next = kind
       ? withTab(current, kind, tabId ?? kind)
       : {
           ...current,
           open: true,
           activeTabId: current.activeTabId ?? current.tabs[0]?.id ?? null,
-        },
-  );
+        };
+    // A new conversation's shared workspace is a slim reference pane. Keep
+    // existing widths and the older tool dock's default intact.
+    return kind === "shared" && current === EMPTY_WORK_AREA_STATE
+      ? { ...next, width: WORK_AREA_MIN_WIDTH }
+      : next;
+  });
 }
 
 export function closeWorkArea(channelId: string) {

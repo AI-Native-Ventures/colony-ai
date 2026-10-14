@@ -6,23 +6,33 @@ export function TeamPage({
   title,
   children,
   testId,
+  canary = false,
 }: {
   title: string;
   children: ReactNode;
   testId?: string;
+  canary?: boolean;
 }) {
   return (
     <section
-      className="min-h-0 w-full flex-1 overflow-y-auto"
+      className={`min-h-0 w-full flex-1 overflow-y-auto ${canary ? "colony-canary-team-page" : ""}`}
       data-testid={testId}
     >
-      <header className="flex h-[4.875rem] items-center gap-3 border-b border-border px-6">
-        {title === "Team" ? <NavigationHistoryControls /> : null}
-        <nav aria-label="Breadcrumb" className="text-sm font-semibold">
-          Company / {title}
-        </nav>
-      </header>
-      <div className="mx-auto w-full max-w-[76.875rem] px-5 pb-[3.125rem] pt-[2.1875rem] sm:px-10">
+      {canary ? null : (
+        <header className="flex h-[4.875rem] items-center gap-3 border-b border-border px-6">
+          {title === "Team" ? <NavigationHistoryControls /> : null}
+          <nav aria-label="Breadcrumb" className="text-sm font-semibold">
+            Company / {title}
+          </nav>
+        </header>
+      )}
+      <div
+        className={
+          canary
+            ? "colony-canary-team-content"
+            : "mx-auto w-full max-w-[76.875rem] px-5 pb-[3.125rem] pt-[2.1875rem] sm:px-10"
+        }
+      >
         {children}
       </div>
     </section>
@@ -30,7 +40,13 @@ export function TeamPage({
 }
 
 /** The frozen company page title, using the named zoom-safe type scale. */
-export function TeamPageTitle({ children }: { children: ReactNode }) {
+export function TeamPageTitle({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   const ref = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     ref.current?.focus({ preventScroll: true });
@@ -39,7 +55,7 @@ export function TeamPageTitle({ children }: { children: ReactNode }) {
     <h1
       ref={ref}
       tabIndex={-1}
-      className="text-company-title font-semibold tracking-tight outline-none"
+      className={`text-company-title font-semibold tracking-tight outline-none ${className}`}
     >
       {children}
     </h1>

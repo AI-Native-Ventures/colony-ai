@@ -103,7 +103,9 @@ export function TeamMemberScreen({
     (candidate) =>
       candidate.pubkey.toLowerCase() === identity.data?.pubkey.toLowerCase(),
   )?.role;
-  const canManage = role === "owner" || role === "admin";
+  const canManageLifecycle = role === "owner" || role === "admin";
+  const canManage =
+    canManageLifecycle || (role === "partner" && member?.kind === "employee");
   const title = member?.position?.head.title ?? "";
   const managerPubkey = member?.position?.head.managerPubkey ?? "";
   const reportsTo = managerPubkey
@@ -192,10 +194,14 @@ export function TeamMemberScreen({
       <AppError>This member is not available in the active community.</AppError>
     );
   }
-  if (!canManage && mode !== "detail") {
+  if (
+    (!canManage || (mode === "archive" && !canManageLifecycle)) &&
+    mode !== "detail"
+  ) {
     return (
       <AppError>
-        Only a community owner or admin can make this change directly.
+        Only an authorized company owner, partner or admin can make this change
+        directly.
       </AppError>
     );
   }
@@ -225,6 +231,7 @@ export function TeamMemberScreen({
     return (
       <EmployeeProfileScreen
         canManage={canManage}
+        canManageLifecycle={canManageLifecycle}
         fullName={fullName}
         member={member}
         initialTab={salaryPanel === "salary" ? "salary" : initialTab}

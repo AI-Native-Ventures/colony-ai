@@ -10,7 +10,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use buzz_db::Db;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use nostr::{EventBuilder, JsonUtil, Keys, Kind, Tag};
+use nostr::{EventBuilder, JsonUtil, Keys, Kind, Tag, ToBech32};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
@@ -1543,4 +1543,962 @@ async fn account_configuration_debug_never_contains_the_master_key() {
     let encoded_key = BASE64.encode(TEST_KEK);
     assert!(debug.contains("[REDACTED]"));
     assert!(!debug.contains(&encoded_key));
+}
+
+async fn clear_sign_in_cooldown(state: &Arc<AppState>, email: &str) {
+    let digest = hex::encode(Sha256::digest(email.as_bytes()));
+    let key = format!("colony:account-code-cooldown:sign_in:{digest}");
+    let mut connection = state
+        .redis_pool
+        .get()
+        .await
+        .expect("account test Redis connection");
+    let _: i64 = redis::cmd("DEL")
+        .arg(key)
+        .query_async(&mut *connection)
+        .await
+        .expect("clear the sign-in cooldown");
+}
+
+async fn test_mail_count(pool: &PgPool, email: &str, purpose: &str) -> i64 {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM account_test_mail WHERE recipient = $1 AND purpose = $2",
+    )
+    .bind(email)
+    .bind(purpose)
+    .fetch_one(pool)
+    .await
+    .expect("count test-only mail")
+}
+
+async fn code_start(
+    state: &Arc<AppState>,
+    host: &str,
+    ip: Ipv4Addr,
+    email: &str,
+) -> (StatusCode, Value) {
+    json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/code/start",
+            host,
+            ip,
+            json!({ "email": email }),
+            None,
+        )
+        .await,
+    )
+    .await
+}
+
+async fn code_verify(
+    state: &Arc<AppState>,
+    host: &str,
+    ip: Ipv4Addr,
+    body: Value,
+) -> (StatusCode, Value) {
+    json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/code/verify",
+            host,
+            ip,
+            body,
+            None,
+        )
+        .await,
+    )
+    .await
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn guessing_budget_survives_three_sign_in_and_reset_codes() {
+    let (state, pool, host) = test_state(Vec::new(), None).await;
+    for reset in [false, true] {
+        let ip = unique_test_ip();
+        let email = format!(
+            "persistent-code-budget-{}@example.test",
+            Uuid::new_v4().simple()
+        );
+        assert_eq!(
+            call(
+                state.clone(),
+                "POST",
+                "/api/accounts/signup",
+                &host,
+                ip,
+                json!({ "email": email, "password": "verified-budget-password" }),
+                None
+            )
+            .await
+            .status(),
+            StatusCode::ACCEPTED
+        );
+        deliver_pending_mail(&state).await;
+        let verify_code = test_mail_code(&pool, &email, "verify_email").await;
+        assert_eq!(
+            call(
+                state.clone(),
+                "POST",
+                "/api/accounts/verify",
+                &host,
+                ip,
+                json!({ "email": email, "code": verify_code }),
+                None
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+        let (purpose, database_purpose, start_path, verify_path) = if reset {
+            (
+                AccountCodePurpose::ResetPassword,
+                "reset_password",
+                "/api/accounts/reset/request",
+                "/api/accounts/reset/check",
+            )
+        } else {
+            (
+                AccountCodePurpose::SignIn,
+                "sign_in",
+                "/api/accounts/code/start",
+                "/api/accounts/code/verify",
+            )
+        };
+        let mut last_code = String::new();
+        for (generation, guesses) in [4, 4, 2].into_iter().enumerate() {
+            clear_code_cooldown_for_test(&state, &email, purpose).await;
+            let response = call(
+                state.clone(),
+                "POST",
+                start_path,
+                &host,
+                ip,
+                json!({ "email": email }),
+                None,
+            )
+            .await;
+            assert!(response.status().is_success());
+            deliver_pending_mail(&state).await;
+            let issued: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM account_codes WHERE email = $1 AND purpose = $2",
+            )
+            .bind(&email)
+            .bind(database_purpose)
+            .fetch_one(&pool)
+            .await
+            .expect("each generation issued a distinct code");
+            assert_eq!(issued, generation as i64 + 1);
+            last_code = test_mail_code(&pool, &email, database_purpose).await;
+            let wrong = wrong_test_code(&last_code);
+            for attempt in 0..guesses {
+                let body = if reset {
+                    json!({ "email": email, "code": wrong })
+                } else {
+                    json!({ "email": email, "code": wrong, "termsVersion": "2026-10-11" })
+                };
+                let (status, body) = json_response(
+                    call(state.clone(), "POST", verify_path, &host, ip, body, None).await,
+                )
+                .await;
+                if generation == 2 && attempt == 1 {
+                    assert_eq!(
+                        status,
+                        StatusCode::TOO_MANY_REQUESTS,
+                        "the tenth guess spans replacement codes"
+                    );
+                    assert_eq!(body["error"], "too_many_attempts");
+                    assert!(body["retry_after_secs"]
+                        .as_i64()
+                        .is_some_and(|wait| wait > 15 * 60));
+                } else {
+                    assert_eq!(
+                        status,
+                        if reset {
+                            StatusCode::UNPROCESSABLE_ENTITY
+                        } else {
+                            StatusCode::BAD_REQUEST
+                        },
+                        "generation {generation}, attempt {attempt}: {body}"
+                    );
+                }
+            }
+        }
+        clear_email_rate_for_test(&state, verify_path, &email).await;
+        let correct = if reset {
+            json!({ "email": email, "code": last_code })
+        } else {
+            json!({ "email": email, "code": last_code, "termsVersion": "2026-10-11" })
+        };
+        assert_eq!(
+            call(
+                state.clone(),
+                "POST",
+                verify_path,
+                &host,
+                ip,
+                correct.clone(),
+                None
+            )
+            .await
+            .status(),
+            StatusCode::TOO_MANY_REQUESTS,
+            "the correct third code cannot bypass the email budget"
+        );
+        clear_code_cooldown_for_test(&state, &email, purpose).await;
+        assert!(call(
+            state.clone(),
+            "POST",
+            start_path,
+            &host,
+            ip,
+            json!({ "email": email }),
+            None
+        )
+        .await
+        .status()
+        .is_success());
+        let issued: i64 = sqlx::query_scalar("SELECT count(*) FROM account_codes c JOIN accounts a ON a.id = c.account_id WHERE a.email = $1 AND c.purpose = $2")
+            .bind(&email).bind(database_purpose).fetch_one(&pool).await.expect("issued code count");
+        assert_eq!(issued, 3, "a new start cannot reset the email budget");
+
+        sqlx::query("UPDATE account_code_failures SET window_started_at = now() - interval '61 minutes' WHERE email = $1")
+            .bind(&email).execute(&pool).await.expect("advance the failure window only");
+        assert_eq!(
+            call(state.clone(), "POST", verify_path, &host, ip, correct, None)
+                .await
+                .status(),
+            StatusCode::OK,
+            "the budget expires without replacing the active code"
+        );
+        if reset {
+            let (status, _) = json_response(call(state.clone(), "POST", "/api/accounts/reset/confirm", &host, ip,
+                json!({ "email": email, "code": last_code, "new_password": "recovered-budget-password" }), None).await).await;
+            assert_eq!(status, StatusCode::OK);
+        }
+        let failures: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM account_code_failures WHERE email = $1")
+                .bind(&email)
+                .fetch_one(&pool)
+                .await
+                .expect("successful sign-in resets failures");
+        assert_eq!(failures, 0);
+    }
+}
+
+async fn clear_code_cooldown_for_test(
+    state: &Arc<AppState>,
+    email: &str,
+    purpose: AccountCodePurpose,
+) {
+    let digest = hex::encode(Sha256::digest(email.as_bytes()));
+    let key = format!(
+        "colony:account-code-cooldown:{}:{digest}",
+        code_purpose_key(purpose)
+    );
+    let mut connection = state.redis_pool.get().await.expect("test Redis connection");
+    let _: i64 = redis::cmd("DEL")
+        .arg(key)
+        .query_async(&mut *connection)
+        .await
+        .expect("advance resend cooldown only");
+}
+
+async fn clear_email_rate_for_test(state: &Arc<AppState>, route: &str, email: &str) {
+    let mut hasher = Sha256::new();
+    hasher.update(b"email\0");
+    hasher.update(email.as_bytes());
+    let key = format!(
+        "colony:account-rate:{route}:{}",
+        hex::encode(hasher.finalize())
+    );
+    let mut connection = state.redis_pool.get().await.expect("test Redis connection");
+    let _: i64 = redis::cmd("DEL")
+        .arg(key)
+        .query_async(&mut *connection)
+        .await
+        .expect("isolate durable guessing limit from the minute HTTP limit");
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn account_routes_limit_fly_clients_independently_behind_one_proxy() {
+    let (mut state, _pool, host) = test_state(Vec::new(), None).await;
+    Arc::make_mut(
+        &mut Arc::get_mut(&mut state)
+            .expect("unshared test state")
+            .config,
+    )
+    .accounts
+    .trust_fly_client_ip = true;
+    let proxy = unique_test_ip();
+    let client = unique_test_ip();
+    for attempt in 0..=IP_RATE_LIMIT {
+        let mut request = request_with_ip(
+            "GET",
+            "/api/accounts/me",
+            &host,
+            proxy,
+            b"{}".to_vec(),
+            None,
+        );
+        request.headers_mut().insert(
+            "fly-client-ip",
+            client.to_string().parse().expect("client header"),
+        );
+        let response = crate::router::build_router(state.clone())
+            .oneshot(request)
+            .await
+            .expect("account middleware response");
+        if attempt == IP_RATE_LIMIT {
+            assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        } else {
+            assert_ne!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        }
+    }
+    for real_client in [None, Some(unique_test_ip().to_string())] {
+        let mut request = request_with_ip(
+            "GET",
+            "/api/accounts/me",
+            &host,
+            proxy,
+            b"{}".to_vec(),
+            None,
+        );
+        if let Some(real_client) = real_client {
+            request.headers_mut().insert(
+                "fly-client-ip",
+                real_client.parse().expect("second client header"),
+            );
+        }
+        let response = crate::router::build_router(state.clone())
+            .oneshot(request)
+            .await
+            .expect("independent client response");
+        assert_ne!(
+            response.status(),
+            StatusCode::TOO_MANY_REQUESTS,
+            "one Fly client must not exhaust the proxy or another client bucket"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn account_routes_ignore_forged_fly_addresses_on_a_direct_listener() {
+    let (state, _pool, host) = test_state(Vec::new(), None).await;
+    let peer = unique_test_ip();
+    for attempt in 0..=IP_RATE_LIMIT {
+        let mut request =
+            request_with_ip("GET", "/api/accounts/me", &host, peer, b"{}".to_vec(), None);
+        request.headers_mut().insert(
+            "fly-client-ip",
+            unique_test_ip().to_string().parse().expect("forged header"),
+        );
+        let response = crate::router::build_router(state.clone())
+            .oneshot(request)
+            .await
+            .expect("direct account middleware response");
+        if attempt == IP_RATE_LIMIT {
+            assert_eq!(
+                response.status(),
+                StatusCode::TOO_MANY_REQUESTS,
+                "rotating a forged header cannot reset the socket address bucket"
+            );
+        } else {
+            assert_ne!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        }
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn unknown_email_starts_have_a_global_cap_and_create_accounts_only_after_proof() {
+    let (mut state, pool, host) = test_state(Vec::new(), None).await;
+    Arc::make_mut(
+        &mut Arc::get_mut(&mut state)
+            .expect("unshared test state")
+            .config,
+    )
+    .accounts
+    .code_start_limit_per_hour = 2;
+    let emails: Vec<_> = (0..3)
+        .map(|_| format!("anonymous-code-{}@example.test", Uuid::new_v4().simple()))
+        .collect();
+    for email in &emails[..2] {
+        assert_eq!(
+            code_start(&state, &host, unique_test_ip(), email).await.0,
+            StatusCode::OK
+        );
+        assert!(state
+            .db
+            .account_by_email(email)
+            .await
+            .expect("pending account lookup")
+            .is_none());
+    }
+    let (limited_status, limited_body) =
+        code_start(&state, &host, unique_test_ip(), &emails[2]).await;
+    assert_eq!(limited_status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(limited_body, json!({ "error": "rate_limited" }));
+    let blocked_rows: (i64, i64) = sqlx::query_as("SELECT (SELECT count(*) FROM account_codes WHERE email = $1), (SELECT count(*) FROM account_mail_outbox WHERE recipient = $1)")
+        .bind(&emails[2]).fetch_one(&pool).await.expect("blocked start leaves no code or mail");
+    assert_eq!(blocked_rows, (0, 0));
+
+    deliver_pending_mail(&state).await;
+    let code = test_mail_code(&pool, &emails[0], "sign_in").await;
+    let (status, session) = code_verify(
+        &state,
+        &host,
+        unique_test_ip(),
+        json!({ "email": emails[0], "code": code, "termsVersion": "2026-10-11" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(session["created"], true);
+    let account = state
+        .db
+        .account_by_email(&emails[0])
+        .await
+        .expect("verified lookup")
+        .expect("proof creates the account");
+    let linked: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM account_codes WHERE email = $1 AND account_id = $2",
+    )
+    .bind(&emails[0])
+    .bind(account.id)
+    .fetch_one(&pool)
+    .await
+    .expect("pending code bound atomically");
+    assert_eq!(linked, 1);
+    clear_sign_in_cooldown(&state, &emails[0]).await;
+    assert_eq!(
+        code_start(&state, &host, unique_test_ip(), &emails[0])
+            .await
+            .0,
+        StatusCode::TOO_MANY_REQUESTS,
+        "the cap responds uniformly for known and unknown emails"
+    );
+
+    sqlx::query("UPDATE account_codes SET expires_at = now() - interval '2 days' WHERE email = $1")
+        .bind(&emails[1])
+        .execute(&pool)
+        .await
+        .expect("expire the anonymous code");
+    state
+        .db
+        .claim_account_mail_outbox(1)
+        .await
+        .expect("production maintenance prunes expired anonymous state");
+    let retained: (i64, i64, i64) = sqlx::query_as("SELECT (SELECT count(*) FROM account_codes WHERE email = $1), (SELECT count(*) FROM account_mail_outbox WHERE recipient = $1), (SELECT count(*) FROM account_test_mail WHERE recipient = $1)")
+        .bind(&emails[1]).fetch_one(&pool).await.expect("anonymous retention count");
+    assert_eq!(retained, (0, 0, 0));
+    let expired = code_verify(
+        &state,
+        &host,
+        unique_test_ip(),
+        json!({ "email": emails[1], "code": "123456", "termsVersion": "2026-10-11" }),
+    )
+    .await;
+    assert_eq!(expired.0, StatusCode::GONE);
+    assert!(state
+        .db
+        .account_by_email(&emails[1])
+        .await
+        .expect("expired account lookup")
+        .is_none());
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn email_code_sign_in_creates_a_passwordless_account_then_signs_it_in_again() {
+    let (state, pool, host) = test_state(Vec::new(), None).await;
+    let ip = unique_test_ip();
+    let email = format!("code-{}@example.test", Uuid::new_v4().simple());
+
+    let (start_status, start_body) = code_start(&state, &host, ip, &email).await;
+    assert_eq!(start_status, StatusCode::OK);
+    assert_eq!(
+        start_body,
+        json!({ "sent": true, "resendAfterSeconds": ACCOUNT_CODE_RESEND_COOLDOWN_SECS })
+    );
+    let (again_status, again_body) = code_start(&state, &host, ip, &email).await;
+    assert_eq!(again_status, StatusCode::OK);
+    assert_eq!(again_body["sent"], true);
+    let wait = again_body["resendAfterSeconds"]
+        .as_i64()
+        .expect("resend wait in seconds");
+    assert!((1..=ACCOUNT_CODE_RESEND_COOLDOWN_SECS).contains(&wait));
+
+    deliver_pending_mail(&state).await;
+    assert_eq!(
+        test_mail_count(&pool, &email, "sign_in").await,
+        1,
+        "a resend inside the cooldown sends no second code"
+    );
+    let code = test_mail_code(&pool, &email, "sign_in").await;
+    let (verify_status, verify_body) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({
+            "email": email,
+            "code": code,
+            "termsVersion": "2026-10-11",
+            "displayName": "Lerato Mokoena",
+        }),
+    )
+    .await;
+    assert_eq!(verify_status, StatusCode::OK);
+    assert_eq!(verify_body["created"], true);
+    assert_eq!(verify_body["account"]["has_password"], false);
+    assert!(verify_body["nsec"]
+        .as_str()
+        .is_some_and(|nsec| nsec.starts_with("nsec1")));
+    let pubkey = verify_body["account"]["pubkey"]
+        .as_str()
+        .expect("session public key")
+        .to_owned();
+
+    let terms: (Option<String>, bool) = sqlx::query_as(
+        "SELECT terms_version, terms_accepted_at IS NOT NULL FROM accounts WHERE email = $1",
+    )
+    .bind(&email)
+    .fetch_one(&pool)
+    .await
+    .expect("read recorded terms");
+    assert_eq!(terms, (Some("2026-10-11".to_owned()), true));
+
+    let community_id: Uuid = sqlx::query_scalar("SELECT id FROM communities WHERE host = $1")
+        .bind(&host)
+        .fetch_one(&pool)
+        .await
+        .expect("code sign-in community id");
+    let content: String = sqlx::query_scalar(
+        "SELECT content FROM events WHERE community_id = $1 AND pubkey = $2 AND kind = 0 \
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(community_id)
+    .bind(hex::decode(&pubkey).expect("decode profile pubkey"))
+    .fetch_one(&pool)
+    .await
+    .expect("display name profile event");
+    assert_eq!(
+        serde_json::from_str::<Value>(&content).expect("profile content"),
+        json!({ "display_name": "Lerato Mokoena" })
+    );
+
+    clear_sign_in_cooldown(&state, &email).await;
+    let (_, second_start) = code_start(&state, &host, ip, &email).await;
+    assert_eq!(second_start["sent"], true);
+    deliver_pending_mail(&state).await;
+    let second_code = test_mail_code(&pool, &email, "sign_in").await;
+    let (second_status, second_body) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({ "email": email, "code": second_code, "termsVersion": "2026-11-01" }),
+    )
+    .await;
+    assert_eq!(second_status, StatusCode::OK);
+    assert_eq!(second_body["created"], false);
+    assert_eq!(
+        second_body["account"]["pubkey"].as_str(),
+        Some(pubkey.as_str())
+    );
+    let terms_version: Option<String> =
+        sqlx::query_scalar("SELECT terms_version FROM accounts WHERE email = $1")
+            .bind(&email)
+            .fetch_one(&pool)
+            .await
+            .expect("read updated terms");
+    assert_eq!(terms_version.as_deref(), Some("2026-11-01"));
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn email_code_sign_in_does_not_reveal_accounts_and_burns_a_guessed_code() {
+    let (state, pool, host) = test_state(Vec::new(), None).await;
+    let ip = unique_test_ip();
+    let known = format!("known-{}@example.test", Uuid::new_v4().simple());
+    let unknown = format!("unknown-{}@example.test", Uuid::new_v4().simple());
+
+    let _ = code_start(&state, &host, ip, &known).await;
+    deliver_pending_mail(&state).await;
+    let known_code = test_mail_code(&pool, &known, "sign_in").await;
+    let (made_status, _) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({ "email": known, "code": known_code, "termsVersion": "2026-10-11" }),
+    )
+    .await;
+    assert_eq!(made_status, StatusCode::OK);
+    clear_sign_in_cooldown(&state, &known).await;
+
+    let known_answer = code_start(&state, &host, ip, &known).await;
+    let unknown_answer = code_start(&state, &host, ip, &unknown).await;
+    assert_eq!(
+        known_answer, unknown_answer,
+        "a known email and an unknown email get the same answer"
+    );
+    assert_eq!(
+        unknown_answer.1,
+        json!({ "sent": true, "resendAfterSeconds": ACCOUNT_CODE_RESEND_COOLDOWN_SECS })
+    );
+
+    deliver_pending_mail(&state).await;
+    let code = test_mail_code(&pool, &unknown, "sign_in").await;
+    let wrong = wrong_test_code(&code);
+    for attempts_left in [4, 3, 2, 1] {
+        let (status, body) = code_verify(
+            &state,
+            &host,
+            ip,
+            json!({ "email": unknown, "code": wrong, "termsVersion": "2026-10-11" }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            body,
+            json!({ "error": "invalid_code", "attempts_left": attempts_left })
+        );
+    }
+    let (fifth_status, fifth_body) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({ "email": unknown, "code": wrong, "termsVersion": "2026-10-11" }),
+    )
+    .await;
+    assert_eq!(fifth_status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(fifth_body["error"], "too_many_attempts");
+    let (burned_status, burned_body) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({ "email": unknown, "code": code, "termsVersion": "2026-10-11" }),
+    )
+    .await;
+    assert_eq!(
+        burned_status,
+        StatusCode::TOO_MANY_REQUESTS,
+        "a burned code never works, even when it is right"
+    );
+    assert_eq!(burned_body["error"], "too_many_attempts");
+
+    clear_sign_in_cooldown(&state, &unknown).await;
+    let (locked_status, locked_body) = code_start(&state, &host, ip, &unknown).await;
+    assert_eq!(locked_status, StatusCode::OK);
+    assert_eq!(locked_body["sent"], true);
+    assert!(
+        locked_body["resendAfterSeconds"]
+            .as_i64()
+            .unwrap_or_default()
+            > ACCOUNT_CODE_RESEND_COOLDOWN_SECS,
+        "no new code until the burned one expires"
+    );
+    deliver_pending_mail(&state).await;
+    assert_eq!(
+        test_mail_count(&pool, &unknown, "sign_in").await,
+        0,
+        "burning the code deletes its outbox and cascades the delivered test mail"
+    );
+    let (code_count, burned_count, outbox_count): (i64, i64, i64) = sqlx::query_as(
+        "SELECT \
+         (SELECT count(*) FROM account_codes c WHERE c.email = $1 AND c.purpose = 'sign_in'), \
+         (SELECT count(*) FROM account_codes c WHERE c.email = $1 AND c.purpose = 'sign_in' \
+          AND c.attempts = 5 AND c.consumed_at IS NOT NULL), \
+         (SELECT count(*) FROM account_mail_outbox o WHERE o.recipient = $1 AND o.purpose = 'sign_in')",
+    )
+    .bind(&unknown)
+    .fetch_one(&pool)
+    .await
+    .expect("read burned code and locked resend state");
+    assert_eq!(
+        (code_count, burned_count, outbox_count),
+        (1, 1, 0),
+        "a locked resend retains the burned code without issuing a new code or mail"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn email_code_routes_reject_bad_input_and_respect_the_email_limit() {
+    let (state, _pool, host) = test_state(Vec::new(), None).await;
+    let ip = unique_test_ip();
+    let email = format!("limits-{}@example.test", Uuid::new_v4().simple());
+
+    let (bad_email_status, bad_email_body) = code_start(&state, &host, ip, "not-an-email").await;
+    assert_eq!(bad_email_status, StatusCode::BAD_REQUEST);
+    assert_eq!(bad_email_body, json!({ "error": "invalid_request" }));
+
+    let (no_code_status, no_code_body) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({ "email": email, "code": "123456", "termsVersion": "2026-10-11" }),
+    )
+    .await;
+    assert_eq!(no_code_status, StatusCode::GONE);
+    assert_eq!(no_code_body, json!({ "error": "code_expired" }));
+
+    let (malformed_status, malformed_body) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({ "email": email, "code": "12ab", "termsVersion": "2026-10-11" }),
+    )
+    .await;
+    assert_eq!(malformed_status, StatusCode::BAD_REQUEST);
+    assert_eq!(malformed_body, json!({ "error": "invalid_code" }));
+
+    let (missing_terms_status, missing_terms_body) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({ "email": email, "code": "123456" }),
+    )
+    .await;
+    assert_eq!(missing_terms_status, StatusCode::BAD_REQUEST);
+    assert_eq!(missing_terms_body, json!({ "error": "invalid_request" }));
+
+    let (long_terms_status, _) = code_verify(
+        &state,
+        &host,
+        ip,
+        json!({ "email": email, "code": "123456", "termsVersion": "x".repeat(65) }),
+    )
+    .await;
+    assert_eq!(long_terms_status, StatusCode::BAD_REQUEST);
+
+    for _ in 0..10 {
+        let (status, _) = code_start(&state, &host, ip, &email).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (limited_status, limited_body) = code_start(&state, &host, ip, &email).await;
+    assert_eq!(limited_status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(limited_body["error"], "rate_limited");
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn first_code_and_google_sign_ins_replace_a_key_claimed_before_email_proof() {
+    let (jwks_url, server) = fake_google_jwks().await;
+    let (state, pool, host) =
+        test_state(vec![TEST_GOOGLE_AUDIENCE.to_owned()], Some(jwks_url)).await;
+    for use_google in [false, true] {
+        let ip = unique_test_ip();
+        let email = format!(
+            "claimed-first-proof-{}@example.test",
+            Uuid::new_v4().simple()
+        );
+        let attacker = Keys::generate();
+        let claimed_nsec = attacker
+            .secret_key()
+            .to_bech32()
+            .expect("test claim secret");
+        let (claim_status, _) = json_response(
+            call(
+                state.clone(),
+                "POST",
+                "/api/accounts/claim",
+                &host,
+                ip,
+                json!({ "email": email, "password": "unproven-claim-password", "nsec": claimed_nsec }),
+                Some(&attacker),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(claim_status, StatusCode::ACCEPTED);
+        let claimed = state
+            .db
+            .account_by_email(&email)
+            .await
+            .expect("claimed row")
+            .expect("claim exists");
+        assert_eq!(claimed.pubkey, attacker.public_key().to_hex());
+        assert!(claimed.email_verified_at.is_none());
+
+        let (status, session) = if use_google {
+            json_response(call(
+                state.clone(), "POST", "/api/accounts/google", &host, ip,
+                json!({ "id_token": google_token(&email, &format!("sub-{}", Uuid::new_v4().simple())), "termsVersion": "2026-10-11" }),
+                None,
+            ).await).await
+        } else {
+            assert_eq!(
+                code_start(&state, &host, ip, &email).await.0,
+                StatusCode::OK
+            );
+            deliver_pending_mail(&state).await;
+            let code = test_mail_code(&pool, &email, "sign_in").await;
+            code_verify(&state, &host, ip, json!({ "email": email, "code": code, "termsVersion": "2026-10-11", "displayName": "Verified owner" })).await
+        };
+        assert_eq!(status, StatusCode::OK);
+        assert!(session["nsec"]
+            .as_str()
+            .is_some_and(|value| value != claimed_nsec));
+        let pubkey = session["account"]["pubkey"]
+            .as_str()
+            .expect("verified public key");
+        assert_ne!(pubkey, attacker.public_key().to_hex());
+        assert_eq!(session["account"]["has_password"], false);
+        if !use_google {
+            assert_eq!(session["created"], true);
+            let profile_count: i64 = sqlx::query_scalar("SELECT count(*) FROM events WHERE kind = 0 AND pubkey = $1 AND content::jsonb->>'display_name' = 'Verified owner'")
+                .bind(hex::decode(pubkey).expect("profile public key"))
+                .fetch_one(&pool).await.expect("profile belongs to the fresh key");
+            assert_eq!(profile_count, 1);
+        }
+        let (password_status, _) = json_response(
+            call(
+                state.clone(),
+                "POST",
+                "/api/accounts/signin",
+                &host,
+                ip,
+                json!({ "email": email, "password": "unproven-claim-password" }),
+                None,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(password_status, StatusCode::UNAUTHORIZED);
+    }
+    server.abort();
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres and Redis"]
+async fn google_sign_in_records_terms_and_drops_a_password_nobody_proved() {
+    let (jwks_url, server) = fake_google_jwks().await;
+    let (state, pool, host) =
+        test_state(vec![TEST_GOOGLE_AUDIENCE.to_owned()], Some(jwks_url)).await;
+    let ip = unique_test_ip();
+
+    let squatted = format!("prehijack-{}@example.test", Uuid::new_v4().simple());
+    let squatter_password = "squatter-passphrase";
+    let (signup_status, _) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/signup",
+            &host,
+            ip,
+            json!({ "email": squatted, "password": squatter_password }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(signup_status, StatusCode::ACCEPTED);
+    let (google_status, google_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/google",
+            &host,
+            ip,
+            json!({
+                "id_token": google_token(&squatted, &format!("sub-{}", Uuid::new_v4().simple())),
+                "termsVersion": "2026-10-11",
+            }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(google_status, StatusCode::OK);
+    assert_eq!(google_body["account"]["has_password"], false);
+    let (squatter_status, _) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/signin",
+            &host,
+            ip,
+            json!({ "email": squatted, "password": squatter_password }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(
+        squatter_status,
+        StatusCode::UNAUTHORIZED,
+        "the squatter's password must not sign in after the owner proved the email"
+    );
+    let terms_version: Option<String> =
+        sqlx::query_scalar("SELECT terms_version FROM accounts WHERE email = $1")
+            .bind(&squatted)
+            .fetch_one(&pool)
+            .await
+            .expect("read Google terms");
+    assert_eq!(terms_version.as_deref(), Some("2026-10-11"));
+
+    let owned = format!("linked-{}@example.test", Uuid::new_v4().simple());
+    let (owner_signup, _) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/signup",
+            &host,
+            ip,
+            json!({ "email": owned, "password": "owner-passphrase" }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(owner_signup, StatusCode::ACCEPTED);
+    deliver_pending_mail(&state).await;
+    let verification_code = test_mail_code(&pool, &owned, "verify_email").await;
+    let (verify_status, _) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/verify",
+            &host,
+            ip,
+            json!({ "email": owned, "code": verification_code }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(verify_status, StatusCode::OK);
+    let (linked_status, linked_body) = json_response(
+        call(
+            state.clone(),
+            "POST",
+            "/api/accounts/google",
+            &host,
+            ip,
+            json!({ "id_token": google_token(&owned, &format!("sub-{}", Uuid::new_v4().simple())) }),
+            None,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(linked_status, StatusCode::OK);
+    assert_eq!(
+        linked_body["account"]["has_password"], true,
+        "a password proven by its own email verification stays"
+    );
+    let owner_terms: Option<String> =
+        sqlx::query_scalar("SELECT terms_version FROM accounts WHERE email = $1")
+            .bind(&owned)
+            .fetch_one(&pool)
+            .await
+            .expect("read owner terms");
+    assert_eq!(
+        owner_terms, None,
+        "no terms version is recorded when none was sent"
+    );
+    server.abort();
 }

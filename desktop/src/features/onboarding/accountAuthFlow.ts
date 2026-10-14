@@ -25,6 +25,7 @@ export type AccountAuthFailureCode =
   | "identity_taken"
   | "code_expired"
   | "wrong_code"
+  | "invalid_code"
   | "too_many_attempts"
   | "resend_cooldown"
   | "weak_password"
@@ -207,6 +208,7 @@ function normalizedFailureCode(raw: unknown): AccountAuthFailureCode {
     case "identity_taken":
     case "code_expired":
     case "wrong_code":
+    case "invalid_code":
     case "too_many_attempts":
     case "resend_cooldown":
     case "weak_password":
@@ -287,6 +289,7 @@ export function accountAuthFailureMessage(
     case "code_expired":
       return "This code has expired. Request a new one to continue.";
     case "wrong_code":
+    case "invalid_code":
       return failure.remainingAttempts === undefined
         ? "That code isn’t right. Check the six digits and try again."
         : `That code isn’t right. ${failure.remainingAttempts} ${failure.remainingAttempts === 1 ? "attempt" : "attempts"} left. Check the six digits and try again.`;

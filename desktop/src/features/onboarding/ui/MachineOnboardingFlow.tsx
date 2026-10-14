@@ -19,6 +19,7 @@ import type {
   AccountAuthClient,
   AccountAuthRecord,
 } from "../accountAuthClient";
+import { CanaryEmailAuthFlow } from "./CanaryEmailAuthFlow";
 import { AccountAuthFlow } from "./AccountAuthFlow";
 import { BackupStep } from "./BackupStep";
 import { DefaultConfigStep } from "./DefaultConfigStep";
@@ -69,6 +70,10 @@ import {
   readOnboardingBusinessProfile,
   type OnboardingBusinessProfile,
 } from "./BusinessSetupStep";
+import {
+  GuidedBusinessSetupStep,
+  hasPendingGuidedBusinessHandoff,
+} from "./GuidedBusinessSetupStep";
 import { ConnectSetupStep } from "./ConnectSetupStep";
 import type { SelfServeCommunity } from "@/features/communities/selfProvisioningApi";
 import {
@@ -137,6 +142,7 @@ export function MachineOnboardingFlow({
   const [isPending, setIsPending] = React.useState(false);
   const [identityWasImported, setIdentityWasImported] = React.useState(false);
   const [accountAuthenticated, setAccountAuthenticated] = React.useState(false);
+  const [guidedBusiness, setGuidedBusiness] = React.useState(false);
   const communityOnboarding = useCommunityOnboarding();
   // A workspace invite waiting for this person (deep link or pasted link). It
   // lives in the persisted transaction, so it survives a restart mid sign-up.
@@ -382,9 +388,19 @@ export function MachineOnboardingFlow({
             return profile ? { ...community, name: profile.name } : community;
           });
         setOwnedCommunities(owned);
-        setBusinessBackPage(owned.length > 0 ? "businesses" : "account-auth");
+        const pendingHandoff = owned.some(
+          (community) =>
+            !readOnboardingBusinessProfile(community.id) &&
+            hasPendingGuidedBusinessHandoff(account.pubkey, community),
+        );
+        if (pendingHandoff) setGuidedBusiness(true);
+        setBusinessBackPage(
+          owned.length > 0 && !pendingHandoff ? "businesses" : "account-auth",
+        );
         setTransitionDirection("forward");
-        setPage(owned.length > 0 ? "businesses" : "business");
+        setPage(
+          owned.length > 0 && !pendingHandoff ? "businesses" : "business",
+        );
       } catch {
         setOwnedCommunities([]);
         setBusinessListError(
@@ -583,8 +599,39 @@ export function MachineOnboardingFlow({
   }
 
   if (page === "account-auth") {
+    // The old password screen remains in the E2E harness for its existing
+    // compatibility suite. Installed and ordinary local builds use the
+    // approved email-code flow below.
+    if (
+      import.meta.env.MODE === "e2e" &&
+      window.__BUZZ_E2E_LEGACY_ACCOUNT_FLOW__ === true
+    ) {
+      return (
+        <AccountAuthFlow
+          authClient={authClient}
+          inviteBrand={
+            pendingInvite ? <InviteBrand invite={pendingInvite} /> : undefined
+          }
+          onHaveInviteLink={
+            pendingInvite
+              ? undefined
+              : () => {
+                  setTransitionDirection("forward");
+                  setPage("invite-link");
+                }
+          }
+          onAdvanced={() => {
+            setAccountAuthenticated(false);
+            setTransitionDirection("forward");
+            setPage("identity");
+          }}
+          onAuthenticated={installAccount}
+          standalone
+        />
+      );
+    }
     return (
-      <AccountAuthFlow
+      <CanaryEmailAuthFlow
         authClient={authClient}
         inviteBrand={
           pendingInvite ? <InviteBrand invite={pendingInvite} /> : undefined
@@ -602,8 +649,10 @@ export function MachineOnboardingFlow({
           setTransitionDirection("forward");
           setPage("identity");
         }}
-        onAuthenticated={installAccount}
-        standalone
+        onAuthenticated={(account) => {
+          setGuidedBusiness(true);
+          return installAccount(account);
+        }}
       />
     );
   }
@@ -743,6 +792,9 @@ export function MachineOnboardingFlow({
             firstCommunityPage: "owned",
             relayUrl: businessCommunityRelayUrl(selected),
             businessCommunityId: selected.id,
+            sharedBusinessProfileRequired:
+              readOnboardingBusinessProfile(selected.id)
+                ?.profileSyncRequired === true,
             communityName:
               readOnboardingBusinessProfile(selected.id)?.name ||
               selected.name ||
@@ -762,6 +814,25 @@ export function MachineOnboardingFlow({
   }
 
   if (page === "business") {
+    if (guidedBusiness && businessBackPage === "account-auth") {
+      return (
+        <GuidedBusinessSetupStep
+          email={accountIdentity.email}
+          ownerName={accountIdentity.name}
+          onBack={() => {
+            setTransitionDirection("backward");
+            setPage("account-auth");
+          }}
+          onCreated={(community, profile) => {
+            setCreatedCommunity(community);
+            setBusinessProfile(profile);
+            setTransitionDirection("forward");
+            setPage("connect");
+          }}
+          pubkey={selectedPubkey ?? ""}
+        />
+      );
+    }
     return (
       <BusinessSetupStep
         additional={businessBackPage === "businesses"}
@@ -809,6 +880,8 @@ export function MachineOnboardingFlow({
             firstCommunityPage: "create",
             relayUrl: businessCommunityRelayUrl(createdCommunity),
             businessCommunityId: createdCommunity.id,
+            sharedBusinessProfileRequired:
+              businessProfile.profileSyncRequired === true,
             communityName:
               businessProfile.name ||
               createdCommunity.name ||

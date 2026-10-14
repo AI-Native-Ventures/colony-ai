@@ -94,6 +94,14 @@ export default defineConfig({
     {
       name: "smoke",
       testMatch: [
+        "**/colony-canary-shell.spec.ts",
+        "**/colony-canary-people.spec.ts",
+        "**/colony-canary-today.spec.ts",
+        "**/colony-canary-conversation.spec.ts",
+        "**/colony-canary-team.spec.ts",
+        "**/colony-canary-auth.spec.ts",
+        "**/colony-canary-business.spec.ts",
+        "**/colony-canary-profile.spec.ts",
         "**/avatar-discoverability.spec.ts",
         "**/activity-row-plain-labels.spec.ts",
         "**/tool-names-plain.spec.ts",

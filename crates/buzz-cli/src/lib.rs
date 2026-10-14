@@ -277,6 +277,9 @@ enum Cmd {
     /// Read and update company member positions
     #[command(subcommand)]
     Team(TeamCmd),
+    /// Read the company's business profile
+    #[command(subcommand)]
+    Profile(ProfileCmd),
     /// Propose and manage employee duties
     #[command(subcommand)]
     Duties(DutiesCmd),
@@ -1319,6 +1322,13 @@ pub enum TeamCmd {
         #[arg(long, conflicts_with = "manager")]
         clear_manager: bool,
     },
+}
+
+/// Commands for reading the company business profile.
+#[derive(Subcommand)]
+pub enum ProfileCmd {
+    /// Show the company's current business profile (relay-signed head)
+    Show,
 }
 
 #[derive(Subcommand)]
@@ -3118,6 +3128,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Asks(sub) => commands::asks::dispatch(sub, &client).await,
         Cmd::Goals(sub) => commands::goals::dispatch(sub, &client).await,
         Cmd::Team(sub) => commands::team::dispatch(sub, &client).await,
+        Cmd::Profile(sub) => commands::profile::dispatch(sub, &client).await,
         Cmd::Duties(sub) => commands::company_duties_lessons::dispatch_duties(sub, &client).await,
         Cmd::Lessons(sub) => commands::company_duties_lessons::dispatch_lessons(sub, &client).await,
         Cmd::Spend(sub) => commands::spend::dispatch(sub, &client).await,
@@ -3313,6 +3324,7 @@ mod tests {
             "patches",
             "permissions",
             "pr",
+            "profile",
             "projects",
             "reactions",
             "repos",
@@ -3628,6 +3640,7 @@ mod tests {
             ("patches", 4),
             ("permissions", 3),
             ("pr", 5),
+            ("profile", 1),
             ("projects", 8),
             ("reactions", 3),
             ("repos", 6),

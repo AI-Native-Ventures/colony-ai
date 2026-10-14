@@ -95,7 +95,7 @@ export function AccountProfileSettingsPanel({
       data-testid="settings-profile"
       data-ready={!isLoading ? "true" : "false"}
     >
-      <AccountSettingsHeader onBackToToday={onClose} title="Profile" />
+      <AccountSettingsHeader onBackToToday={onClose} title="Account" />
 
       <div className="w20-account-profile-grid">
         <section

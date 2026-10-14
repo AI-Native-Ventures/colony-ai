@@ -68,6 +68,12 @@ pub async fn handle_command(
     if kind == KIND_MEMBER_POSITION_ACTION {
         return super::company_member_records::handle(tenant, state, event, auth).await;
     }
+    if kind == KIND_BUSINESS_PROFILE_ACTION {
+        return super::company_singleton_records::handle_business_profile(
+            tenant, state, event, auth,
+        )
+        .await;
+    }
     if buzz_core::kind::is_company_command_kind(kind) {
         return super::company_records::handle(tenant, state, event, auth).await;
     }

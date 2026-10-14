@@ -46,6 +46,7 @@ import { cn } from "@/shared/lib/cn";
 import { useMeasuredCssVariable } from "@/shared/layout/useMeasuredCssVariable";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { ColonyAntAvatar } from "@/shared/ui/ColonyAntAvatar";
 import { useChannelNavigation } from "@/shared/context/ChannelNavigationContext";
 import { parseImetaTags } from "@/shared/ui/markdown/parseImeta";
 import { useMessageEmoji } from "@/features/messages/lib/useMessageEmoji";
@@ -551,20 +552,23 @@ export const MessageRow = React.memo(
 
     const avatarNode = (
       <div className="relative shrink-0">
-        <UserAvatar
-          accent={message.accent}
-          avatarUrl={message.avatarUrl ?? null}
-          className={cn(
-            "h-7 w-7 shrink-0 rounded-md text-2xs",
-            message.isAgent
-              ? "colony-workspace-agent-message-avatar"
-              : "colony-workspace-human-message-avatar",
-          )}
-          displayName={message.author}
-          fallbackVariant="muted"
-          shape="square"
-          testId="message-avatar"
-        />
+        {profilePopoverRole === "bot" ? (
+          <ColonyAntAvatar
+            className="size-7 rounded-md"
+            name={message.author}
+            testId="message-avatar"
+          />
+        ) : (
+          <UserAvatar
+            accent={message.accent}
+            avatarUrl={message.avatarUrl ?? null}
+            className="colony-workspace-human-message-avatar h-7 w-7 shrink-0 rounded-md text-2xs"
+            displayName={message.author}
+            fallbackVariant="muted"
+            shape="square"
+            testId="message-avatar"
+          />
+        )}
         {showRespondToIndicator &&
         !hideAgentAccessBadge &&
         !isThreadReplyLayout ? (

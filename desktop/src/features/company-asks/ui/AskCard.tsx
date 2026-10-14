@@ -1,43 +1,26 @@
-import * as React from "react";
 import { Link } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
 
 import { useChannelMembersQuery } from "@/features/channels/hooks";
 import { useChannelsQuery } from "@/features/channels/hooks";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
-import {
-  useManagedAgentsQuery,
-  useRelayAgentsQuery,
-  useStopManagedAgentMutation,
-} from "@/features/agents/hooks";
-import {
-  isManagedAgentActive,
-  stopManagedAgentWithRules,
-} from "@/features/agents/lib/managedAgentControlActions";
-import { clearActiveTurnsForAgentOnStop } from "@/features/agents/managedAgentRuntimeHooks";
+import { useRelayAgentsQuery } from "@/features/agents/hooks";
 import { useClientRecordsQuery } from "@/features/clients/useBusinessRecords";
 import { useIdentityQuery } from "@/shared/api/hooks";
-import { relayClient } from "@/shared/api/relayClient";
-import { signRelayEvent } from "@/shared/api/tauri";
-import { KIND_ASK_RESPONSE } from "@/shared/constants/kinds";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { Button } from "@/shared/ui/button";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { ColonyAntAvatar } from "@/shared/ui/ColonyAntAvatar";
 import { useAskHeadQuery } from "../hooks";
 import type { AskHeadQueryState } from "../hooks";
 import { mapSpecializedAskCard } from "../askCardMapping";
 import { DutyAskCard } from "./DutyAskCard";
 import { HireAskCard } from "./HireAskCard";
+import { AskResponseForm } from "./AskResponseForm";
 import { formatAskDate } from "./askCardFormatting";
 import { formatUsdCents } from "@/features/power/spendModels";
-import type {
-  AskHead,
-  AskHeadRecord,
-  AskOutcome,
-  AskType,
-} from "../askRecords";
+import type { AskHead, AskOutcome, AskType } from "../askRecords";
 
 function outcomeLabel(outcome: AskOutcome) {
   switch (outcome) {
@@ -76,12 +59,24 @@ function accessReason(input: {
   if (head.ask.category !== "general") {
     if (isAgent)
       return "Agents cannot decide spending, hires, tools, secrets or duties";
-    if (communityRole !== "owner" && communityRole !== "admin") {
-      return "Only company owners and admins can decide this";
+    if (
+      communityRole !== "owner" &&
+      communityRole !== "admin" &&
+      communityRole !== "partner"
+    ) {
+      return "Only company owners, partners and admins can decide this";
     }
     return null;
   }
   if (!channelMember) return "Only members of this conversation can answer";
+  if (
+    head.ask.memberProposal &&
+    (communityRole === "owner" ||
+      communityRole === "admin" ||
+      communityRole === "partner")
+  ) {
+    return null;
+  }
   const addressee = head.ask.addresseePubkey;
   if (addressee) {
     if (normalizePubkey(addressee) !== normalizePubkey(pubkey)) {
@@ -99,400 +94,6 @@ function accessReason(input: {
   if (isAgent)
     return "Only people can answer an ask that is not addressed to anyone";
   return null;
-}
-
-function AskResponseForm({ record }: { record: AskHeadRecord }) {
-  const idPrefix = React.useId();
-  const queryClient = useQueryClient();
-  const [outcome, setOutcome] = React.useState<AskOutcome>(
-    record.head.ask.type === "approval" ||
-      record.head.ask.type === "tool_consent"
-      ? "approved"
-      : record.head.ask.type === "verdict"
-        ? "pass"
-        : record.head.ask.type === "choice"
-          ? "chosen"
-          : record.head.ask.type === "checklist"
-            ? "confirmed"
-            : "answered",
-  );
-  const [reason, setReason] = React.useState("");
-  const [reasonTouched, setReasonTouched] = React.useState(false);
-  const [answer, setAnswer] = React.useState("");
-  const [optionId, setOptionId] = React.useState("");
-  const [checkedIds, setCheckedIds] = React.useState<string[]>([]);
-  const [pendingEvent, setPendingEvent] = React.useState<Awaited<
-    ReturnType<typeof signRelayEvent>
-  > | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-  const [submitting, setSubmitting] = React.useState(false);
-  const ask = record.head.ask;
-  const specializedVariant = mapSpecializedAskCard(ask);
-  const currentHeadId = record.event.id;
-  const reasonInvalid = reasonTouched && reason.trim().length === 0;
-  const memberProposal = ask.memberProposal;
-  const needsRuntimeStop =
-    outcome === "approved" &&
-    (memberProposal?.action === "pause" ||
-      memberProposal?.action === "terminate");
-  const managedAgentsQuery = useManagedAgentsQuery({
-    enabled: needsRuntimeStop,
-  });
-  const relayAgentsQuery = useRelayAgentsQuery({ enabled: needsRuntimeStop });
-  const channelsQuery = useChannelsQuery({ enabled: needsRuntimeStop });
-  const stopManagedAgent = useStopManagedAgentMutation();
-  const runtimeStoppedForHead = React.useRef<string | null>(null);
-
-  React.useEffect(() => {
-    if (runtimeStoppedForHead.current !== currentHeadId) {
-      runtimeStoppedForHead.current = null;
-    }
-  }, [currentHeadId]);
-
-  React.useEffect(() => {
-    if (!pendingEvent) return;
-    try {
-      const content = JSON.parse(pendingEvent.content) as {
-        expectedHeadEventId?: string;
-      };
-      if (content.expectedHeadEventId !== currentHeadId) {
-        setPendingEvent(null);
-      }
-    } catch {
-      setPendingEvent(null);
-    }
-  }, [currentHeadId, pendingEvent]);
-
-  const updateForm = <T,>(setter: (value: T) => void, value: T) => {
-    setter(value);
-    setPendingEvent(null);
-    setError(null);
-  };
-
-  const toggleItem = (itemId: string, checked: boolean) => {
-    setCheckedIds((current) =>
-      checked
-        ? [...new Set([...current, itemId])]
-        : current.filter((value) => value !== itemId),
-    );
-    setPendingEvent(null);
-    setError(null);
-  };
-
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (submitting) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      if (needsRuntimeStop && memberProposal) {
-        let managedAgent = managedAgentsQuery.data?.find(
-          (candidate) =>
-            normalizePubkey(candidate.pubkey) ===
-            normalizePubkey(memberProposal.pubkey),
-        );
-        if (!managedAgent) {
-          const refreshed = await managedAgentsQuery.refetch();
-          managedAgent = refreshed.data?.find(
-            (candidate) =>
-              normalizePubkey(candidate.pubkey) ===
-              normalizePubkey(memberProposal.pubkey),
-          );
-        }
-        if (!managedAgent) {
-          throw new Error(
-            "The employee runtime cannot be stopped from this device, so the approval was not recorded.",
-          );
-        }
-        if (
-          isManagedAgentActive(managedAgent) &&
-          runtimeStoppedForHead.current !== currentHeadId
-        ) {
-          const channels =
-            channelsQuery.data ?? (await channelsQuery.refetch()).data ?? [];
-          const relayAgents =
-            relayAgentsQuery.data ??
-            (await relayAgentsQuery.refetch()).data ??
-            [];
-          const result = await stopManagedAgentWithRules({
-            agent: managedAgent,
-            channels,
-            relayAgents,
-            stopManagedAgent: stopManagedAgent.mutateAsync,
-          });
-          if (result.noticeMessage) throw new Error(result.noticeMessage);
-          clearActiveTurnsForAgentOnStop(memberProposal.pubkey);
-        }
-        runtimeStoppedForHead.current = currentHeadId;
-      }
-      let signedEvent = pendingEvent;
-      if (!signedEvent) {
-        const response = {
-          schemaVersion: 1,
-          askId: ask.askId,
-          expectedHeadEventId: currentHeadId,
-          outcome,
-          ...(ask.type === "approval" ||
-          ask.type === "verdict" ||
-          ask.type === "tool_consent"
-            ? { reason: reason.trim() }
-            : {}),
-          ...(ask.type === "question" ? { answer: answer.trim() } : {}),
-          ...(ask.type === "choice" ? { optionId } : {}),
-          ...(ask.type === "checklist" ? { checkedItemIds: checkedIds } : {}),
-        };
-        signedEvent = await signRelayEvent({
-          kind: KIND_ASK_RESPONSE,
-          content: JSON.stringify(response),
-          tags: [
-            ["h", record.channelId],
-            ["d", `channel:${record.channelId}:ask:${ask.askId}`],
-          ],
-        });
-        setPendingEvent(signedEvent);
-      }
-      await relayClient.publishEvent(
-        signedEvent,
-        "The ask response timed out before the relay confirmed it.",
-        "The ask response could not be sent.",
-      );
-      setPendingEvent(null);
-      await queryClient.invalidateQueries({
-        queryKey: ["company-ask-head", record.channelId, ask.askId],
-        exact: false,
-      });
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "The response was not recorded. Your answers are kept; you can retry.",
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const readyToSubmit =
-    (ask.type === "approval" ||
-    ask.type === "verdict" ||
-    ask.type === "tool_consent"
-      ? reason.trim().length > 0
-      : ask.type === "question"
-        ? answer.trim().length > 0
-        : ask.type === "choice"
-          ? Boolean(optionId)
-          : (ask.items?.length ?? 0) > 0 &&
-            checkedIds.length === ask.items?.length) && !submitting;
-
-  return (
-    <form
-      className="colony-ask-response-form"
-      onSubmit={(event) => void submit(event)}
-    >
-      {ask.type === "approval" ? (
-        <>
-          <label htmlFor={`${idPrefix}-decision`}>Decision</label>
-          <select
-            id={`${idPrefix}-decision`}
-            onChange={(event) =>
-              updateForm(
-                setOutcome,
-                event.target.value as
-                  | "approved"
-                  | "revision_requested"
-                  | "rejected",
-              )
-            }
-            value={outcome}
-          >
-            <option value="approved">Approve</option>
-            <option value="revision_requested">Request revision</option>
-            <option value="rejected">Reject</option>
-          </select>
-          <label htmlFor={`${idPrefix}-reason`}>Reason</label>
-          <textarea
-            aria-describedby={`${idPrefix}-reason-count${reasonInvalid ? ` ${idPrefix}-reason-error` : ""}`}
-            aria-invalid={reasonInvalid}
-            id={`${idPrefix}-reason`}
-            maxLength={1000}
-            onBlur={() => setReasonTouched(true)}
-            onChange={(event) => {
-              setReasonTouched(true);
-              updateForm(setReason, event.target.value);
-            }}
-            required
-            rows={3}
-            value={reason}
-          />
-          <small id={`${idPrefix}-reason-count`}>
-            {Array.from(reason).length} / 1,000 characters · Required
-          </small>
-          {reasonInvalid ? (
-            <span
-              className="colony-ask-compose-error"
-              id={`${idPrefix}-reason-error`}
-              role="alert"
-            >
-              A reason is required. Use 1 to 1,000 characters. Spaces alone are
-              not a reason.
-            </span>
-          ) : null}
-        </>
-      ) : null}
-      {ask.type === "verdict" ? (
-        <>
-          <label htmlFor={`${idPrefix}-decision`}>Verdict</label>
-          <select
-            id={`${idPrefix}-decision`}
-            onChange={(event) =>
-              updateForm(setOutcome, event.target.value as "pass" | "fail")
-            }
-            value={outcome}
-          >
-            <option value="pass">Pass</option>
-            <option value="fail">Fail</option>
-          </select>
-          <label htmlFor={`${idPrefix}-reason`}>Reason</label>
-          <textarea
-            aria-describedby={`${idPrefix}-reason-count${reasonInvalid ? ` ${idPrefix}-reason-error` : ""}`}
-            aria-invalid={reasonInvalid}
-            id={`${idPrefix}-reason`}
-            maxLength={1000}
-            onBlur={() => setReasonTouched(true)}
-            onChange={(event) => {
-              setReasonTouched(true);
-              updateForm(setReason, event.target.value);
-            }}
-            required
-            rows={3}
-            value={reason}
-          />
-          <small id={`${idPrefix}-reason-count`}>
-            {Array.from(reason).length} / 1,000 characters · Required
-          </small>
-          {reasonInvalid ? (
-            <span
-              className="colony-ask-compose-error"
-              id={`${idPrefix}-reason-error`}
-              role="alert"
-            >
-              A reason is required. Use 1 to 1,000 characters. Spaces alone are
-              not a reason.
-            </span>
-          ) : null}
-        </>
-      ) : null}
-      {ask.type === "tool_consent" ? (
-        <>
-          <label htmlFor={`${idPrefix}-decision`}>Decision</label>
-          <select
-            id={`${idPrefix}-decision`}
-            onChange={(event) =>
-              updateForm(
-                setOutcome,
-                event.target.value as "approved" | "rejected",
-              )
-            }
-            value={outcome}
-          >
-            <option value="approved">Approve</option>
-            <option value="rejected">Reject</option>
-          </select>
-          <label htmlFor={`${idPrefix}-reason`}>Reason</label>
-          <textarea
-            aria-describedby={`${idPrefix}-reason-count${reasonInvalid ? ` ${idPrefix}-reason-error` : ""}`}
-            aria-invalid={reasonInvalid}
-            id={`${idPrefix}-reason`}
-            maxLength={1000}
-            onBlur={() => setReasonTouched(true)}
-            onChange={(event) => {
-              setReasonTouched(true);
-              updateForm(setReason, event.target.value);
-            }}
-            required
-            rows={3}
-            value={reason}
-          />
-          <small id={`${idPrefix}-reason-count`}>
-            {Array.from(reason).length} / 1,000 characters · Required
-          </small>
-          {reasonInvalid ? (
-            <span
-              className="colony-ask-compose-error"
-              id={`${idPrefix}-reason-error`}
-              role="alert"
-            >
-              A reason is required. Use 1 to 1,000 characters. Spaces alone are
-              not a reason.
-            </span>
-          ) : null}
-        </>
-      ) : null}
-      {ask.type === "question" ? (
-        <>
-          <label htmlFor={`${idPrefix}-answer`}>Your answer</label>
-          <textarea
-            id={`${idPrefix}-answer`}
-            maxLength={4000}
-            onChange={(event) => updateForm(setAnswer, event.target.value)}
-            required
-            rows={3}
-            value={answer}
-          />
-        </>
-      ) : null}
-      {ask.type === "choice" ? (
-        <>
-          <label htmlFor={`${idPrefix}-choice`}>Choose a direction</label>
-          <select
-            id={`${idPrefix}-choice`}
-            onChange={(event) => updateForm(setOptionId, event.target.value)}
-            required
-            value={optionId}
-          >
-            <option value="">Choose an option</option>
-            {(ask.options ?? []).map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </>
-      ) : null}
-      {ask.type === "checklist" ? (
-        <fieldset className="colony-ask-checklist">
-          <legend className="sr-only">Checklist response</legend>
-          {(ask.items ?? []).map((item) => (
-            <label key={item.id}>
-              <input
-                checked={checkedIds.includes(item.id)}
-                onChange={(event) => toggleItem(item.id, event.target.checked)}
-                type="checkbox"
-              />
-              <span>{item.label}</span>
-            </label>
-          ))}
-        </fieldset>
-      ) : null}
-      {error ? (
-        <p className="colony-ask-submit-error" role="alert">
-          <span>{error}</span>
-          <span className="colony-ask-kept-input">Your response is kept.</span>
-        </p>
-      ) : null}
-      <Button
-        className="colony-ask-submit-button"
-        disabled={!readyToSubmit}
-        type="submit"
-      >
-        {submitting
-          ? "Recording…"
-          : error
-            ? "Retry response"
-            : (specializedVariant?.submitLabel ?? "Record response")}
-      </Button>
-    </form>
-  );
 }
 
 function AskResolution({
@@ -552,6 +153,7 @@ export function AskCard({
   queryState,
   showDetailLink = true,
   lazyQueryEnabled = true,
+  questionViewer = false,
 }: {
   askId: string;
   channelId: string | null;
@@ -560,6 +162,7 @@ export function AskCard({
   queryState?: AskHeadQueryState;
   showDetailLink?: boolean;
   lazyQueryEnabled?: boolean;
+  questionViewer?: boolean;
 }) {
   const localQueryState = useAskHeadQuery(
     channelId,
@@ -729,6 +332,12 @@ export function AskCard({
       ? outcomeLabel(head.resolution.outcome)
       : head.status;
   const specializedVariant = mapSpecializedAskCard(head.ask);
+  const showQuestionViewer =
+    questionViewer &&
+    head.ask.category === "general" &&
+    (head.ask.type === "question" ||
+      head.ask.type === "choice" ||
+      head.ask.type === "checklist");
   const specializedDetail = Boolean(
     specializedVariant &&
       (!showDetailLink ||
@@ -859,6 +468,88 @@ export function AskCard({
     );
   }
 
+  if (showQuestionViewer) {
+    return (
+      <section
+        aria-label={`${typeLabel(head.ask.type)} ask`}
+        className="colony-ask-card colony-ask-card-question-viewer"
+        data-ask-id={askId}
+        data-testid="ask-card"
+      >
+        <div className="colony-question-status-row">
+          <span data-testid="ask-status">
+            {needsYou ? "✓ Waiting for you" : statusText}
+          </span>
+          <time dateTime={head.createdAt}>
+            {new Intl.DateTimeFormat("en-GB", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }).format(new Date(Date.parse(head.createdAt)))}
+          </time>
+        </div>
+        <span className="colony-question-kind">{typeLabel(head.ask.type)}</span>
+        <h2>{head.ask.title}</h2>
+        {head.ask.body ? (
+          <p className="colony-question-body">{head.ask.body}</p>
+        ) : null}
+        {head.status === "open" ? (
+          checksReady && !deniedReason ? (
+            <AskResponseForm
+              answerLabel="Answer"
+              record={headRecord}
+              submitLabel="Send answer"
+            />
+          ) : (
+            <div
+              className="colony-ask-denied"
+              data-testid="ask-cannot-resolve"
+              role={accessFailure ? "alert" : "status"}
+            >
+              <strong>You can view this ask, but cannot respond.</strong>
+              <p>
+                {accessFailure
+                  ? "Access could not be verified. Try again after the relay is available."
+                  : !checksReady
+                    ? "Checking whether you can respond…"
+                    : deniedReason}
+              </p>
+            </div>
+          )
+        ) : (
+          <AskResolution
+            currentPubkey={currentPubkey}
+            head={head}
+            profiles={profiles}
+          />
+        )}
+        <div className="colony-question-author">
+          <span aria-hidden="true">
+            {askerIsAgent ? (
+              <ColonyAntAvatar decorative name={asker} />
+            ) : (
+              <UserAvatar
+                avatarUrl={askerProfile?.avatarUrl ?? null}
+                displayName={asker}
+                size="sm"
+              />
+            )}
+          </span>
+          <span>
+            <strong>{asker}</strong>
+            <small>{askerIsAgent ? "AI employee" : "Person"}</small>
+          </span>
+          <span className="colony-question-channel">In {channelName}</span>
+        </div>
+        {liveState === "unavailable" && head.status === "open" ? (
+          <p className="colony-ask-live-status" role="status">
+            Live updates are unavailable. The ask will refresh when the relay
+            reconnects.
+          </p>
+        ) : null}
+      </section>
+    );
+  }
+
   return (
     <section
       aria-label={`${typeLabel(head.ask.type)} ask`}
@@ -877,11 +568,15 @@ export function AskCard({
             <header className="colony-ask-special-header">
               <div className="colony-ask-special-identity">
                 <span aria-hidden="true">
-                  <UserAvatar
-                    avatarUrl={askerProfile?.avatarUrl ?? null}
-                    displayName={asker}
-                    size="md"
-                  />
+                  {askerIsAgent ? (
+                    <ColonyAntAvatar decorative name={asker} />
+                  ) : (
+                    <UserAvatar
+                      avatarUrl={askerProfile?.avatarUrl ?? null}
+                      displayName={asker}
+                      size="md"
+                    />
+                  )}
                 </span>
                 <div>
                   <strong>{asker}</strong>
@@ -1009,11 +704,15 @@ export function AskCard({
           <header className="colony-ask-special-header">
             <div className="colony-ask-special-identity">
               <span aria-hidden="true">
-                <UserAvatar
-                  avatarUrl={askerProfile?.avatarUrl ?? null}
-                  displayName={asker}
-                  size="md"
-                />
+                {askerIsAgent ? (
+                  <ColonyAntAvatar decorative name={asker} />
+                ) : (
+                  <UserAvatar
+                    avatarUrl={askerProfile?.avatarUrl ?? null}
+                    displayName={asker}
+                    size="md"
+                  />
+                )}
               </span>
               <div>
                 <h3>{decisionHeading}</h3>

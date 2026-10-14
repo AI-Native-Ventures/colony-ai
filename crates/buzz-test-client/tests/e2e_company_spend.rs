@@ -168,6 +168,14 @@ async fn submit_spend_action(keys: &Keys, action: &AiSpendRecordAction) -> Value
     post_event(keys, &event).await
 }
 
+async fn submit_allowance_action(keys: &Keys, action: &EmployeeAllowanceAction) -> Value {
+    let event = buzz_sdk::company_spend::build_employee_allowance_action(action)
+        .expect("build employee allowance action")
+        .sign_with_keys(keys)
+        .expect("sign employee allowance action");
+    post_event(keys, &event).await
+}
+
 async fn submit_member_position(keys: &Keys, member: &Keys) {
     let action = MemberPositionAction {
         schema_version: COMPANY_RECORD_SCHEMA_VERSION,
@@ -183,6 +191,46 @@ async fn submit_member_position(keys: &Keys, member: &Keys) {
         .sign_with_keys(keys)
         .expect("sign employee position");
     assert_accepted(&post_event(keys, &event).await);
+}
+
+async fn submit_member_position_action(keys: &Keys, action: &MemberPositionAction) -> Value {
+    let event = buzz_sdk::company_members::build_member_position_action(action)
+        .expect("build member position action")
+        .sign_with_keys(keys)
+        .expect("sign member position action");
+    post_event(keys, &event).await
+}
+
+#[tokio::test]
+#[ignore]
+async fn partner_direct_position_edits_are_limited_to_employees() {
+    let owner = Keys::generate();
+    let partner = Keys::generate();
+    let employee = Keys::generate();
+    seed_relay_member(&owner, "owner").await;
+    seed_relay_member(&partner, "partner").await;
+    mark_managed_agent(&employee, &owner).await;
+
+    let employee_action = MemberPositionAction {
+        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+        pubkey: employee.public_key().to_hex(),
+        action: MemberPositionActionKind::SetPosition,
+        expected_head_event_id: None,
+        title: Some("Partner-managed employee".into()),
+        manager_pubkey: Some(None),
+        reason: None,
+    };
+    assert_accepted(&submit_member_position_action(&partner, &employee_action).await);
+
+    let human_action = MemberPositionAction {
+        pubkey: owner.public_key().to_hex(),
+        title: Some("Changed founder".into()),
+        ..employee_action
+    };
+    assert_rejected(
+        &submit_member_position_action(&partner, &human_action).await,
+        "partners can edit employee roles and reporting",
+    );
 }
 
 async fn current_spend_head(keys: &Keys, record_id: &str) -> (String, AiSpendRecordHead) {
@@ -249,10 +297,12 @@ async fn current_allowance_head(
 async fn company_spend_records_require_authority_and_verified_employee_turn_evidence() {
     let owner = Keys::generate();
     let admin = Keys::generate();
+    let partner = Keys::generate();
     let member = Keys::generate();
     let employee = Keys::generate();
     seed_relay_member(&owner, "owner").await;
     seed_relay_member(&admin, "admin").await;
+    seed_relay_member(&partner, "partner").await;
     seed_relay_member(&member, "member").await;
     mark_managed_agent(&employee, &owner).await;
     submit_member_position(&owner, &employee).await;
@@ -274,6 +324,10 @@ async fn company_spend_records_require_authority_and_verified_employee_turn_evid
     };
     assert_rejected(
         &submit_spend_action(&member, &create_cost).await,
+        "only company owners and admins can change AI spend",
+    );
+    assert_rejected(
+        &submit_spend_action(&partner, &create_cost).await,
         "only company owners and admins can change AI spend",
     );
     assert_accepted(&submit_spend_action(&owner, &create_cost).await);
@@ -514,10 +568,12 @@ async fn current_ask_head(keys: &Keys, channel_id: Uuid, ask_id: Uuid) -> (Strin
 async fn money_ask_approval_atomically_commits_allowance_for_an_authorized_human() {
     let owner = Keys::generate();
     let admin = Keys::generate();
+    let partner = Keys::generate();
     let member = Keys::generate();
     let employee = Keys::generate();
     seed_relay_member(&owner, "owner").await;
     seed_relay_member(&admin, "admin").await;
+    seed_relay_member(&partner, "partner").await;
     seed_relay_member(&member, "member").await;
     mark_managed_agent(&employee, &owner).await;
     submit_member_position(&owner, &employee).await;
@@ -592,7 +648,7 @@ async fn money_ask_approval_atomically_commits_allowance_for_an_authorized_human
     };
     assert_rejected(
         &submit_ask_response(&member, channel_id, &unauthorized_response).await,
-        "Only company owners and admins can decide this",
+        "Only company owners, partners and admins can decide this",
     );
     let (_, still_open_ask) = current_ask_head(&owner, channel_id, ask_id).await;
     assert_eq!(still_open_ask.status, AskStatus::Open);
@@ -626,4 +682,26 @@ async fn money_ask_approval_atomically_commits_allowance_for_an_authorized_human
     );
     assert_eq!(allowance_head.actor_pubkey, admin.public_key().to_hex());
     assert_ne!(allowance_event_id, ask_head_id);
+
+    let direct_change = EmployeeAllowanceAction {
+        schema_version: COMPANY_RECORD_SCHEMA_VERSION,
+        employee_pubkey: employee_pubkey.clone(),
+        expected_head_event_id: Some(allowance_event_id),
+        allowance: AllowanceValue {
+            amount_cents: "12400".into(),
+            period: AllowancePeriod::Week,
+        },
+        temporary_allowance: None,
+        funding_order: vec!["E2E provider subscription".into()],
+    };
+    assert_rejected(
+        &submit_allowance_action(&member, &direct_change).await,
+        "only company owners, partners and admins can change employee allowances",
+    );
+    assert_accepted(&submit_allowance_action(&partner, &direct_change).await);
+    let (_, changed_head) = current_allowance_head(&owner, &employee_pubkey)
+        .await
+        .expect("partner change committed an allowance head");
+    assert_eq!(changed_head.allowance.amount_cents, "12400");
+    assert_eq!(changed_head.actor_pubkey, partner.public_key().to_hex());
 }

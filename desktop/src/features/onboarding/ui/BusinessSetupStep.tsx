@@ -31,6 +31,15 @@ export type OnboardingBusinessProfile = {
   description: string;
   logoDataUrl: string | null;
   logoUrl: string | null;
+  category?: string;
+  buyers?: string;
+  channels?: string[];
+  links?: string[];
+  location?: string;
+  timeZone?: string;
+  goals?: string[];
+  goalText?: string;
+  profileSyncRequired?: boolean;
 };
 
 type BusinessSetupStepProps = {
@@ -53,6 +62,13 @@ function businessSlug(name: string) {
 
 function profileKey(communityId: string) {
   return `${PROFILE_STORAGE_KEY}:${communityId}`;
+}
+
+export function saveOnboardingBusinessProfile(
+  communityId: string,
+  profile: OnboardingBusinessProfile,
+) {
+  localStorage.setItem(profileKey(communityId), JSON.stringify(profile));
 }
 
 export function readOnboardingBusinessProfile(
@@ -80,6 +96,31 @@ export function readOnboardingBusinessProfile(
       description: profile.description,
       logoDataUrl: profile.logoDataUrl,
       logoUrl: profile.logoUrl ?? null,
+      category:
+        typeof profile.category === "string" ? profile.category : undefined,
+      buyers: typeof profile.buyers === "string" ? profile.buyers : undefined,
+      channels: Array.isArray(profile.channels)
+        ? profile.channels.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : undefined,
+      links: Array.isArray(profile.links)
+        ? profile.links.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : undefined,
+      location:
+        typeof profile.location === "string" ? profile.location : undefined,
+      timeZone:
+        typeof profile.timeZone === "string" ? profile.timeZone : undefined,
+      goals: Array.isArray(profile.goals)
+        ? profile.goals.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : undefined,
+      goalText:
+        typeof profile.goalText === "string" ? profile.goalText : undefined,
+      profileSyncRequired: profile.profileSyncRequired === true,
     };
   } catch {
     return null;

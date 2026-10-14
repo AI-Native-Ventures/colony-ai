@@ -8,6 +8,7 @@ import type { MemberPositionHead } from "../teamModels";
 
 export function CompanyEmployeeProfileActions({
   canManage,
+  canManageLifecycle,
   children,
   employeePubkey,
   managerName,
@@ -17,6 +18,7 @@ export function CompanyEmployeeProfileActions({
   position,
 }: {
   canManage: boolean;
+  canManageLifecycle: boolean;
   children?: React.ReactNode;
   employeePubkey: string;
   managerName: string | null;
@@ -139,7 +141,9 @@ export function CompanyEmployeeProfileActions({
         </div>
         <div className="mt-6">
           <h3 className="text-sm font-semibold">Manager actions</h3>
-          {!children && canManage && position?.status === "terminated" ? (
+          {!children &&
+          canManageLifecycle &&
+          position?.status === "terminated" ? (
             <Button
               className="mt-3 bg-colony-info text-xs"
               onClick={() => onOpenReport(employeePubkey)}
@@ -151,7 +155,9 @@ export function CompanyEmployeeProfileActions({
             Assign work, propose hires and raises. Money and sensitive access
             require an authorized human.
           </p>
-          {canManage && position && position.status !== "terminated" ? (
+          {canManageLifecycle &&
+          position &&
+          position.status !== "terminated" ? (
             <Button
               className="mt-2 h-11 w-full text-xs text-destructive"
               onClick={onTerminate}

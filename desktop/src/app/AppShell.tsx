@@ -71,13 +71,12 @@ import { useAgentMetricArchiveSeed } from "@/features/local-archive/useAgentMetr
 import { useProfileQuery } from "@/features/profile/hooks";
 import { SendFeedbackController } from "@/features/settings/ui/SendFeedbackController";
 import {
-  DEFAULT_SETTINGS_SECTION,
   type SettingsSection,
   isSettingsSection,
 } from "@/features/settings/ui/SettingsPanels";
 import { useDueReminderBadgeCount } from "@/features/reminders/hooks";
 import { useReminderNotifications } from "@/features/reminders/useReminderNotifications";
-import { AppSidebar } from "@/features/sidebar/ui/AppSidebar";
+import { ColonyCanarySidebar } from "@/features/sidebar/ui/ColonyCanarySidebar";
 import "@/features/settings/ui/AppearanceWorkspaceSelection.css";
 import type { CreateChannelFormDraft } from "@/features/sidebar/lib/useCreateChannelForm";
 import { requestFocusedThreadClose } from "@/features/channels/focusedThreadCloseRequest";
@@ -209,7 +208,7 @@ export function AppShell() {
     locationSearchSection,
   )
     ? locationSearchSection
-    : DEFAULT_SETTINGS_SECTION;
+    : "business-profile";
   const startupReady = useDeferredStartup();
   const identityQuery = useIdentityQuery();
   const { mutedChannelIds, muteChannel, unmuteChannel } = useChannelMutes(
@@ -676,7 +675,7 @@ export function AppShell() {
     [goHome, hideDmMutation, selectedChannelId],
   );
   const handleOpenSettings = React.useCallback(
-    (section: SettingsSection = DEFAULT_SETTINGS_SECTION) => {
+    (section: SettingsSection = "business-profile") => {
       setIsChannelManagementOpen(false);
       void goSettings(section);
     },
@@ -759,6 +758,116 @@ export function AppShell() {
     markChannelRead,
     selectedView,
   });
+  const canarySidebar = !isHuddleRoom ? (
+    <ColonyCanarySidebar
+      activeCommunity={communitiesHook.activeCommunity}
+      channels={sidebarChannels}
+      currentPubkey={identityQuery.data?.pubkey}
+      errorMessage={channelsErrorDisplay}
+      fallbackDisplayName={identityQuery.data?.displayName}
+      homeBadgeCount={homeBadgeCount + dueReminderBadge}
+      isPowerActive={location.pathname === "/power"}
+      isSavedForLaterActive={
+        location.pathname === "/" &&
+        (location.search as { filter?: unknown }).filter === "reminders"
+      }
+      addCommunityPrefill={addCommunityDialog.prefill}
+      isAddCommunityOpen={addCommunityDialog.open}
+      relayConnectionCard={relayConnectionCard}
+      isCreatingChannel={createChannelMutation.isPending}
+      isCreatingForum={createForumMutation.isPending}
+      isLoading={channelsQuery.isLoading}
+      isCreateChannelOpen={isCreateChannelOpen}
+      createChannelTemplateDraft={createChannelTemplateDraft}
+      createChannelTemplateId={createChannelTemplateId}
+      createChannelTemplateKind={createChannelTemplateKind}
+      isHuddleCompanionOpen={isHuddleCompanionOpen}
+      isPresencePending={presenceSession.isPending}
+      onAddCommunity={(community) => {
+        const id = communitiesHook.addCommunity({
+          ...community,
+          pubkey: community.pubkey ?? identityQuery.data?.pubkey,
+        });
+        handleSwitchCommunity(id);
+      }}
+      onAddCommunityOpenChange={addCommunityDialog.onOpenChange}
+      onNewMessage={goNewMessage}
+      onBackgroundClick={requestFocusedThreadClose}
+      onCreateChannelOpenChange={(open) => {
+        setIsCreateChannelOpen(open);
+        if (!open) handleClearChannelTemplateRequest();
+      }}
+      onClearChannelTemplateRequest={handleClearChannelTemplateRequest}
+      onOpenTemplatePicker={handleOpenTemplatePicker}
+      onOpenAddCommunity={addCommunityDialog.openDialog}
+      onSendFeedback={() => setIsSendFeedbackOpen(true)}
+      onUpdateCommunity={communitiesHook.updateCommunity}
+      onRemoveCommunity={handleRemoveCommunity}
+      onSwitchCommunity={handleSwitchCommunity}
+      onCreateAgent={() => requestOpenCreateAgent()}
+      selfPresenceStatus={presenceSession.currentStatus}
+      communities={communitiesHook.communities}
+      onCreateChannel={handleCreateChannel}
+      onCreateForum={handleCreateForum}
+      onHideDm={handleHideDm}
+      onHuddleEnded={handleHuddleEnded}
+      onMarkAllChannelsRead={markAllChannelsRead}
+      onMarkChannelRead={markChannelRead}
+      onMarkChannelUnread={markChannelUnread}
+      onBrowseChannels={handleOpenBrowseChannels}
+      onOpenDm={async ({ pubkeys }) => {
+        const directMessage = await openDmMutation.mutateAsync({
+          pubkeys,
+        });
+        await goChannel(directMessage.id);
+      }}
+      onSelectToday={() => void goToday()}
+      onSelectSavedForLater={() => void goSavedForLater()}
+      onSelectPower={() => void goPower()}
+      onSelectChannel={handleSidebarChannelSelect}
+      onOpenSearchResult={handleOpenSearchResult}
+      searchChannels={channels}
+      searchFocusRequests={[searchFocusRequest, scopeSearchFocusRequest]}
+      onSelectHome={() => void goHome()}
+      onSelectFactory={() => void goFactory()}
+      onSelectGoals={() => void goGoals()}
+      onSelectTeam={() => void goTeam()}
+      onSelectClients={() => void goClients()}
+      onSelectWork={() => void goWork()}
+      onSelectSettings={handleOpenSettings}
+      onSelectWorkflows={() => void goWorkflows()}
+      onSetPresenceStatus={(status) => presenceSession.setStatus(status)}
+      onSetUserStatus={setUserStatusMutation.mutate}
+      onClearUserStatus={() =>
+        setUserStatusMutation.mutate({
+          text: "",
+          emoji: "",
+        })
+      }
+      profile={profileQuery.data}
+      showSidebarCollapseButton
+      suppressTodaySelection={location.pathname.startsWith("/navigation/")}
+      selfUserStatus={
+        deferredPubkey
+          ? (visibleUserStatus(
+              selfStatusQuery.data?.[deferredPubkey.toLowerCase()],
+            ) ?? undefined)
+          : undefined
+      }
+      selectedChannelId={selectedChannelId}
+      selectedView={selectedView}
+      unreadChannelIds={unreadChannelIds}
+      {...{ highPriorityUnreadChannelIds }}
+      previewActivityChannelIds={unreadThreadChannelIds}
+      unreadChannelCounts={unreadChannelCounts}
+      mutedChannelIds={mutedChannelIds}
+      onMuteChannel={muteChannel}
+      onUnmuteChannel={unmuteChannel}
+      starredChannelIds={starredChannelIds}
+      onStarChannel={starChannel}
+      onUnstarChannel={unstarChannel}
+    />
+  ) : null;
   return (
     <PreventSleepProvider>
       {!isHuddleRoom ? (
@@ -834,6 +943,7 @@ export function AppShell() {
             ) : null}
             <SidebarProvider
               className="relative z-10 min-h-0 min-w-0 flex-1 flex-col overflow-visible"
+              style={{ "--sidebar-width": "216px" } as React.CSSProperties}
               data-colony-workspace-route={
                 !settingsOpen &&
                 !isHuddleRoom &&
@@ -853,7 +963,11 @@ export function AppShell() {
               <AppProfilePanelProvider>
                 <AppWorkflowEditorOverlayProvider>
                   {settingsOpen ? (
-                    <div className="flex min-h-0 flex-1 overflow-hidden">
+                    <div
+                      className="flex min-h-0 flex-1 overflow-hidden"
+                      data-colony-canary-settings
+                    >
+                      {canarySidebar}
                       <React.Suspense fallback={null}>
                         <LazySettingsScreen
                           canGoBack={canGoBack}
@@ -901,134 +1015,7 @@ export function AppShell() {
                       className="relative flex min-h-0 flex-1 overflow-visible"
                       data-colony-workspace-frame-content
                     >
-                      {!isHuddleRoom ? (
-                        <AppSidebar
-                          activeCommunity={communitiesHook.activeCommunity}
-                          channels={sidebarChannels}
-                          currentPubkey={identityQuery.data?.pubkey}
-                          errorMessage={channelsErrorDisplay}
-                          fallbackDisplayName={identityQuery.data?.displayName}
-                          homeBadgeCount={homeBadgeCount + dueReminderBadge}
-                          isPowerActive={location.pathname === "/power"}
-                          isSavedForLaterActive={
-                            location.pathname === "/" &&
-                            (location.search as { filter?: unknown }).filter ===
-                              "reminders"
-                          }
-                          addCommunityPrefill={addCommunityDialog.prefill}
-                          isAddCommunityOpen={addCommunityDialog.open}
-                          relayConnectionCard={relayConnectionCard}
-                          isCreatingChannel={createChannelMutation.isPending}
-                          isCreatingForum={createForumMutation.isPending}
-                          isLoading={channelsQuery.isLoading}
-                          isCreateChannelOpen={isCreateChannelOpen}
-                          createChannelTemplateDraft={
-                            createChannelTemplateDraft
-                          }
-                          createChannelTemplateId={createChannelTemplateId}
-                          createChannelTemplateKind={createChannelTemplateKind}
-                          isHuddleCompanionOpen={isHuddleCompanionOpen}
-                          isPresencePending={presenceSession.isPending}
-                          onAddCommunity={(community) => {
-                            const id = communitiesHook.addCommunity({
-                              ...community,
-                              pubkey:
-                                community.pubkey ?? identityQuery.data?.pubkey,
-                            });
-                            handleSwitchCommunity(id);
-                          }}
-                          onAddCommunityOpenChange={
-                            addCommunityDialog.onOpenChange
-                          }
-                          onNewMessage={goNewMessage}
-                          onBackgroundClick={requestFocusedThreadClose}
-                          onCreateChannelOpenChange={(open) => {
-                            setIsCreateChannelOpen(open);
-                            if (!open) handleClearChannelTemplateRequest();
-                          }}
-                          onClearChannelTemplateRequest={
-                            handleClearChannelTemplateRequest
-                          }
-                          onOpenTemplatePicker={handleOpenTemplatePicker}
-                          onOpenAddCommunity={addCommunityDialog.openDialog}
-                          onSendFeedback={() => setIsSendFeedbackOpen(true)}
-                          onUpdateCommunity={communitiesHook.updateCommunity}
-                          onRemoveCommunity={handleRemoveCommunity}
-                          onSwitchCommunity={handleSwitchCommunity}
-                          onCreateAgent={() => requestOpenCreateAgent()}
-                          selfPresenceStatus={presenceSession.currentStatus}
-                          communities={communitiesHook.communities}
-                          onCreateChannel={handleCreateChannel}
-                          onCreateForum={handleCreateForum}
-                          onHideDm={handleHideDm}
-                          onHuddleEnded={handleHuddleEnded}
-                          onMarkAllChannelsRead={markAllChannelsRead}
-                          onMarkChannelRead={markChannelRead}
-                          onMarkChannelUnread={markChannelUnread}
-                          onBrowseChannels={handleOpenBrowseChannels}
-                          onOpenDm={async ({ pubkeys }) => {
-                            const directMessage =
-                              await openDmMutation.mutateAsync({
-                                pubkeys,
-                              });
-                            await goChannel(directMessage.id);
-                          }}
-                          onSelectToday={() => void goToday()}
-                          onSelectSavedForLater={() => void goSavedForLater()}
-                          onSelectPower={() => void goPower()}
-                          onSelectChannel={handleSidebarChannelSelect}
-                          onOpenSearchResult={handleOpenSearchResult}
-                          searchChannels={channels}
-                          searchFocusRequests={[
-                            searchFocusRequest,
-                            scopeSearchFocusRequest,
-                          ]}
-                          onSelectHome={() => void goHome()}
-                          onSelectFactory={() => void goFactory()}
-                          onSelectGoals={() => void goGoals()}
-                          onSelectTeam={() => void goTeam()}
-                          onSelectClients={() => void goClients()}
-                          onSelectWork={() => void goWork()}
-                          onSelectSettings={handleOpenSettings}
-                          onSelectWorkflows={() => void goWorkflows()}
-                          onSetPresenceStatus={(status) =>
-                            presenceSession.setStatus(status)
-                          }
-                          onSetUserStatus={setUserStatusMutation.mutate}
-                          onClearUserStatus={() =>
-                            setUserStatusMutation.mutate({
-                              text: "",
-                              emoji: "",
-                            })
-                          }
-                          profile={profileQuery.data}
-                          showSidebarCollapseButton
-                          suppressTodaySelection={location.pathname.startsWith(
-                            "/navigation/",
-                          )}
-                          selfUserStatus={
-                            deferredPubkey
-                              ? (visibleUserStatus(
-                                  selfStatusQuery.data?.[
-                                    deferredPubkey.toLowerCase()
-                                  ],
-                                ) ?? undefined)
-                              : undefined
-                          }
-                          selectedChannelId={selectedChannelId}
-                          selectedView={selectedView}
-                          unreadChannelIds={unreadChannelIds}
-                          {...{ highPriorityUnreadChannelIds }}
-                          previewActivityChannelIds={unreadThreadChannelIds}
-                          unreadChannelCounts={unreadChannelCounts}
-                          mutedChannelIds={mutedChannelIds}
-                          onMuteChannel={muteChannel}
-                          onUnmuteChannel={unmuteChannel}
-                          starredChannelIds={starredChannelIds}
-                          onStarChannel={starChannel}
-                          onUnstarChannel={unstarChannel}
-                        />
-                      ) : null}
+                      {canarySidebar}
                       <TerminalContextOverrideProvider
                         onChange={setTerminalContextOverride}
                       >

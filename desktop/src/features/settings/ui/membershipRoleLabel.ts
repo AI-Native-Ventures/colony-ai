@@ -2,6 +2,7 @@
 export function membershipRoleLabel(role: string | undefined) {
   if (role === "owner") return "Owner";
   if (role === "admin") return "Admin";
+  if (role === "partner") return "Partner";
   if (role === "member") return "Member";
   return "";
 }
