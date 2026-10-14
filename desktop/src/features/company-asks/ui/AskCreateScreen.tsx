@@ -57,15 +57,7 @@ import {
   type AskComposerType,
 } from "../askComposer";
 import { recipientDescription, threadLabel } from "./askThreadLabels";
-
-const ASK_TYPES: Array<{ value: AskComposerType; label: string }> = [
-  { value: "approval", label: "Approval" },
-  { value: "question", label: "Question" },
-  { value: "choice", label: "Choice" },
-  { value: "checklist", label: "Checklist" },
-  { value: "verdict", label: "Verdict" },
-  { value: "hire_proposal", label: "Hire proposal" },
-];
+import { ASK_TYPES } from "./askTypeLabels";
 
 /** Ask creation surface for a real channel and discussion thread. */
 export function AskCreateScreen({
