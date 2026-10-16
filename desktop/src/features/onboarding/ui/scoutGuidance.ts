@@ -33,7 +33,7 @@ export function scoutGuidance(
   else if (/subscription|credits|openrouter|connect|funding/.test(scene))
     guidance = {
       title: "Let’s connect your first agent.",
-      copy: "Use your own Claude Code or Codex plan, or let Colony Agent do the work. Other tools and keys live in Settings.",
+      copy: "Start free, or use your own Claude Code, Codex or OpenRouter. Other tools and keys live in Settings.",
       status: "Your turn",
       pose: "waiting",
     };

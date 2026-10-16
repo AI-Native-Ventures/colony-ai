@@ -419,3 +419,7 @@ matches the code is worse than no rule; a new pattern that isn't written down
 here will be broken by the next agent that never learns it existed. Reviewers:
 treat a config-behavior diff without a matching AGENTS.md diff (or an explicit
 "no rules changed" note) as incomplete.
+
+## Start free contract
+
+Connect opens on "Start free" (selected) above "Use your own AI", which holds the subscription and Colony Agent paths unchanged. Start free installs Colony's own OpenCode through `install_acp_runtime("opencode")` (pinned release and SHA256 in `managed_opencode.rs`, installed under `<data_dir>/Colony/runtimes/opencode`, never an install script, never the user's own OpenCode), then runs the normal connection proof with `{preferred_runtime: "opencode", provider: "opencode-free", model: "opencode/deepseek-v4.1-flash-free"}` and saves only after a real reply. Provider `opencode-free` sets `BUZZ_ACP_REQUIRE_MODEL=1` for spawns and the proof: anonymous OpenCode silently falls back to `opencode/big-pickle` when a model is missing, so buzz-acp fails the session with `free model ended: <id>` and posts one "Free AI has ended" notice per refused turn instead. The proof returns `code: "model_unavailable"`, which Connect shows as the ended screen. Colony never calls OpenCode's API directly. Specs: `start-free-opencode.spec.ts`; existing onboarding specs open Use your own AI through `openR17ConnectionSetup`.

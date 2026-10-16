@@ -18,6 +18,13 @@ import {
   type OnboardingConnectionProof,
 } from "./onboardingConnectionTest";
 import { buildOnboardingRuntimeCandidate } from "./saveOnboardingRuntime";
+import { installAcpRuntime } from "@/shared/api/tauri";
+import {
+  buildStartFreeConfig,
+  START_FREE_RUNTIME_ID,
+  startFreeFailureKind,
+} from "./startFree";
+import { StartFreePanel, type StartFreeState } from "./StartFreePanel";
 import { readCreditsGateway } from "@/features/credits/creditsGateway";
 import { useColonyCreditsLaunched } from "@/features/credits/useColonyCreditsLaunched";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -55,6 +62,15 @@ import {
   harnessInstallLabel,
 } from "./harnessDetectionState";
 import { getRuntimeDisplayLabel, RuntimeIcon } from "./RuntimeIcon";
+
+/** An explicit candidate that bypasses the selected-runtime path. */
+type CandidateOverride = {
+  config: GlobalAgentConfig;
+  runtimeId: string;
+  credits: boolean;
+  /** Fresh catalog after an install, before React re-renders the query. */
+  runtimes?: readonly AcpRuntimeCatalogEntry[];
+};
 
 type ConnectSetupStepProps = {
   business: OnboardingBusinessProfile;
@@ -585,8 +601,13 @@ export function ConnectSetupStep({
     string | null
   >(null);
   const [saving, setSaving] = React.useState(false);
-  const creditsAttempt = React.useRef<GlobalAgentConfig | undefined>(undefined);
+  // The last explicit candidate (Colony credits or Start free), reused by Retry.
+  const lastOverride = React.useRef<CandidateOverride | undefined>(undefined);
   const [testedCredits, setTestedCredits] = React.useState(false);
+  // Start free is the first and default Connect choice.
+  const [mode, setMode] = React.useState<"free" | "own">("free");
+  const [freeState, setFreeState] = React.useState<StartFreeState>("idle");
+  const [freeHint, setFreeHint] = React.useState<string | null>(null);
   const [selectedModel, setSelectedModel] = React.useState<
     string | null | undefined
   >(undefined);
@@ -738,10 +759,13 @@ export function ConnectSetupStep({
     proofModels.data?.models.find((model) => model.id === proof?.model)?.name ||
     proof?.model;
 
-  const continueWithRuntime = async (creditsCandidate?: GlobalAgentConfig) => {
-    if (!creditsCandidate && !aiReady) {
+  const continueWithRuntime = async (candidateOverride?: CandidateOverride) => {
+    if (!candidateOverride && !aiReady) {
       return;
     }
+    const creditsCandidate = candidateOverride?.credits
+      ? candidateOverride.config
+      : undefined;
     const attempt = ++generation.current;
     const isCurrent = () => generation.current === attempt;
     setSaving(true);
@@ -750,7 +774,9 @@ export function ConnectSetupStep({
     setConnectionPhase("starting");
     setTestState("testing");
     try {
-      const runtimeId = colonyPath ? "buzz-agent" : selectedRuntimeId;
+      const runtimeId =
+        candidateOverride?.runtimeId ??
+        (colonyPath ? "buzz-agent" : selectedRuntimeId);
       if (!runtimeId) throw new Error("Choose an AI app before testing.");
       setTestedRuntimeId(runtimeId);
       if (
@@ -768,13 +794,13 @@ export function ConnectSetupStep({
             "Colony credits are unavailable or out of funds. Go back to check your balance or buy credits.",
           );
       }
-      creditsAttempt.current = creditsCandidate;
+      lastOverride.current = candidateOverride;
       setTestedCredits(!!creditsCandidate);
       const candidate = buildOnboardingRuntimeCandidate(
-        creditsCandidate ?? globalConfig,
+        candidateOverride?.config ?? globalConfig,
         runtimeId,
-        runtimes.data ?? [],
-        colonyPath ? undefined : selectedModel,
+        candidateOverride?.runtimes ?? runtimes.data ?? [],
+        candidateOverride || colonyPath ? undefined : selectedModel,
       );
       const result = await runOnboardingBusinessConnectionTest(
         candidate,
@@ -797,6 +823,15 @@ export function ConnectSetupStep({
       setTestState("connected");
     } catch (failure) {
       if (!isCurrent()) return;
+      if (
+        candidateOverride?.runtimeId === START_FREE_RUNTIME_ID &&
+        startFreeFailureKind(failure) === "ended"
+      ) {
+        // OpenCode no longer offers the free model: say so on Connect.
+        setFreeState("ended");
+        setTestState("connect");
+        return;
+      }
       setSaveError(
         failure instanceof Error
           ? failure.message
@@ -806,6 +841,50 @@ export function ConnectSetupStep({
     } finally {
       if (isCurrent()) setSaving(false);
     }
+  };
+
+  const startFree = async () => {
+    setFreeHint(null);
+    setFreeState("installing");
+    try {
+      const result = await installAcpRuntime(START_FREE_RUNTIME_ID);
+      if (!result.success) {
+        setFreeHint(result.steps.at(-1)?.hint ?? null);
+        setFreeState("install-failed");
+        return;
+      }
+      const refreshed = await runtimes.refetch();
+      setFreeState("idle");
+      await continueWithRuntime({
+        config: buildStartFreeConfig(globalConfig),
+        runtimeId: START_FREE_RUNTIME_ID,
+        credits: false,
+        runtimes: refreshed.data,
+      });
+    } catch (failure) {
+      setFreeHint(failure instanceof Error ? failure.message : null);
+      setFreeState("install-failed");
+    }
+  };
+  const connectionMode = {
+    value: mode,
+    onChange: (next: "free" | "own") => {
+      setMode(next);
+      if (next === "free") setFreeState("idle");
+    },
+    freeContent: (
+      <StartFreePanel
+        disabled={saving}
+        hint={freeHint}
+        onSkip={() => onContinue()}
+        onStart={() => void startFree()}
+        onUseOwn={() => {
+          setMode("own");
+          setFreeState("idle");
+        }}
+        state={freeState}
+      />
+    ),
   };
 
   if (testState !== "connect") {
@@ -844,7 +923,7 @@ export function ConnectSetupStep({
             return;
           }
           if (scene === "testing") {
-            void continueWithRuntime(creditsAttempt.current);
+            void continueWithRuntime(lastOverride.current);
             return;
           }
           if (testState === "testing" && connectionPhase === "saving") return;
@@ -861,6 +940,7 @@ export function ConnectSetupStep({
 
   return (
     <OnboardingScenePresentation
+      connectionMode={connectionMode}
       connectionContentOverride={
         <>
           {connectionScene === "connect" ? (
@@ -941,7 +1021,13 @@ export function ConnectSetupStep({
                     !!bundled.command &&
                     !!bundled.binaryPath
                   }
-                  onSelect={continueWithRuntime}
+                  onSelect={(config) =>
+                    continueWithRuntime({
+                      config,
+                      runtimeId: "buzz-agent",
+                      credits: true,
+                    })
+                  }
                 />
               ) : null}
             </div>
@@ -986,7 +1072,12 @@ export function ConnectSetupStep({
       }
       data={{
         ...data,
-        ...(colonyPath
+        // Start free never mounts the app scanner, so its header must not
+        // leave Scout on "Checking your installed apps."
+        ...(mode === "free"
+          ? { harnessLabel: "OpenCode", harnessStatus: "Free" }
+          : {}),
+        ...(mode === "own" && colonyPath
           ? {
               harnessLabel: "Colony Agent",
               harnessStatus: bundled

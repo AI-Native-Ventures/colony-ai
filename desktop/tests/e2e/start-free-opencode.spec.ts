@@ -1,0 +1,128 @@
+import { expect, test } from "@playwright/test";
+import { openR17ConnectionSetup, r17Runtime } from "../helpers/onboarding";
+
+// Start free: Colony installs its own OpenCode and runs agents on OpenCode's
+// free model. These specs pin the Connect contract (default choice, install,
+// failure, ended) against the mock bridge; the packaged gate proves the real
+// download and reply.
+
+const opencodeMissing = r17Runtime("opencode", "not_installed", {
+  status: "unknown",
+});
+const opencodeInstalled = r17Runtime("opencode", "available", {
+  status: "not_applicable",
+});
+
+test("start free is the default and finishes with a real reply", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    startFree: true,
+    runtimes: [opencodeMissing],
+    mock: {
+      acpRuntimesCatalogAfterInstall: [opencodeInstalled],
+      installAcpRuntimeOutputLines: ["Downloading OpenCode v1.19.2"],
+      installAcpRuntimeResult: { success: true, steps: [] },
+      onboardingConnectionResult: {
+        reply: "Hello! What shall we work on first?",
+        model: "opencode/deepseek-v4.1-flash-free",
+        startupMs: 20,
+        totalMs: 50,
+      },
+    },
+  });
+  await expect(page.getByTestId("onboarding-mode-free")).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await expect(
+    page.getByText("Free while OpenCode offers it.", { exact: false }),
+  ).toBeVisible();
+  await page.getByTestId("start-free-continue").click();
+  await expect(
+    page.getByText("Hello! What shall we work on first?"),
+  ).toBeVisible();
+});
+
+test("start free install failure offers retry and own AI", async ({ page }) => {
+  await openR17ConnectionSetup(page, {
+    startFree: true,
+    runtimes: [opencodeMissing],
+    mock: {
+      installAcpRuntimeResult: {
+        success: false,
+        steps: [
+          {
+            step: "opencode",
+            command: "Colony OpenCode v1.19.2",
+            success: false,
+            stdout: "",
+            stderr: "download OpenCode HTTP 503: Service Unavailable",
+            exit_code: null,
+            hint: "Check your internet connection and try again. Choose Use your own AI to connect Claude Code, Codex or OpenRouter instead.",
+          },
+        ],
+      },
+    },
+  });
+  await page.getByTestId("start-free-continue").click();
+  await expect(page.getByTestId("start-free-retry")).toBeVisible();
+  await expect(
+    page.getByText("Check your internet connection and try again.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await page.getByTestId("start-free-use-own").click();
+  await expect(page.getByTestId("onboarding-mode-own")).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+});
+
+test("start free shows the ended screen when the free model is gone", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    startFree: true,
+    runtimes: [opencodeInstalled],
+    mock: {
+      installAcpRuntimeResult: { success: true, steps: [] },
+      onboardingConnectionResult: {
+        error:
+          "Selected model is unavailable or this harness does not support model switching. Choose another model.",
+        code: "model_unavailable",
+      },
+    },
+  });
+  await page.getByTestId("start-free-continue").click();
+  await expect(
+    page.getByText(
+      "OpenCode's free AI has ended. Connect your own AI to continue.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByText(/big-pickle/i)).toHaveCount(0);
+  await page.getByTestId("start-free-use-own").click();
+  await expect(page.getByTestId("onboarding-mode-own")).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+});
+
+test("mode choice is a keyboard radio group", async ({ page }) => {
+  await openR17ConnectionSetup(page, {
+    startFree: true,
+    runtimes: [opencodeMissing],
+  });
+  await page.getByTestId("onboarding-mode-free").focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByTestId("onboarding-mode-own")).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await expect(page.getByTestId("onboarding-mode-own")).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(page.getByTestId("onboarding-mode-free")).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+});

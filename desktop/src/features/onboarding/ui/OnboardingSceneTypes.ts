@@ -58,6 +58,12 @@ export type OnboardingSceneActions = {
   pending?: boolean;
   contentOverride?: React.ReactNode;
   connectionContentOverride?: React.ReactNode;
+  /** Start free vs Use your own AI on the Connect step; absent in visual-only scenes. */
+  connectionMode?: {
+    value: "free" | "own";
+    onChange: (mode: "free" | "own") => void;
+    freeContent: React.ReactNode;
+  };
   harnessMark?: React.ReactNode;
   businessChoices?: OnboardingBusinessChoice[];
   onSelectBusiness?: (id: string) => void;

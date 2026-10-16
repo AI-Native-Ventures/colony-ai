@@ -108,6 +108,7 @@ test("connection choices preserve keyboard and pointer radio behavior", async ({
   );
   await openR17BusinessSetup(page);
   await completeR17BusinessSetup(page);
+  await page.getByTestId("onboarding-mode-own").click();
   const group = page.getByRole("radiogroup", { name: "AI connection" });
   await expect(group.getByRole("radio")).toHaveCount(2);
   const subscriptions = group.getByRole("radio", {

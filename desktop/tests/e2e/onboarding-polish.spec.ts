@@ -103,6 +103,7 @@ for (const size of sizes) {
       },
     });
     await completeR17BusinessSetup(page);
+    await page.getByTestId("onboarding-mode-own").click();
     await page
       .getByRole("radio", { name: "Colony Agent", exact: true })
       .click();
