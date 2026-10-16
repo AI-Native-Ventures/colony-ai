@@ -119,6 +119,7 @@ export default defineConfig({
         "**/stripe-credits.spec.ts",
         "**/credits-gateway-option.spec.ts",
         "**/start-free-opencode.spec.ts",
+        "**/start-free-screenshots.spec.ts",
         "**/colony-public-icons.spec.ts",
         "**/openrouter-oauth.spec.ts",
         "**/self-serve-community-onboarding.spec.ts",
