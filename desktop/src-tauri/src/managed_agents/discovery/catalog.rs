@@ -153,4 +153,49 @@ pub(crate) const KNOWN_ACP_RUNTIMES: &[KnownAcpRuntime] = &[
         login_hint: None,
         auth_probe_args: None,
     },
+    KnownAcpRuntime {
+        id: "opencode",
+        label: "OpenCode",
+        commands: &["opencode"],
+        aliases: &[],
+        avatar_url: "",
+        mcp_command: None,
+        mcp_hooks: false,
+        underlying_cli: None,
+        cli_install_commands: &[],
+        cli_install_commands_windows: &[],
+        adapter_install_commands: &[],
+        cli_install_instructions_url: "https://opencode.ai/docs",
+        adapter_install_instructions_url: "",
+        cli_install_hint: "Colony installs its own copy of OpenCode and talks to it through ACP (opencode acp).",
+        adapter_install_hint: "",
+        skill_dir: None,
+        supports_acp_model_switching: true,
+        model_env_var: None,
+        provider_env_var: None,
+        provider_locked: false,
+        // Pin the downloaded binary and keep sharing off. The model is chosen
+        // per agent through BUZZ_ACP_MODEL, never here, so Settings users can
+        // run OpenCode with their own provider.
+        default_env: &[(
+            "OPENCODE_CONFIG_CONTENT",
+            r#"{"autoupdate":false,"share":"disabled"}"#,
+        )],
+        config_file_path: None,
+        config_file_format: None,
+        supports_acp_native_config: false,
+        thinking_env_var: None,
+        effort_normalization: None, // opencode: no effort control in v1
+        effort_accepted_values: None, // opencode: no effort control in v1
+        max_tokens_env_var: None,
+        context_limit_env_var: None,
+        max_rounds_env_var: None,
+        required_normalized_fields: &[],
+        login_hint: None,
+        auth_probe_args: None,
+    },
 ];
+
+#[cfg(test)]
+#[path = "catalog_tests.rs"]
+mod tests;

@@ -314,7 +314,7 @@ pub fn try_record_agent_command(
 
 fn default_agent_args(command: &str) -> Option<Vec<String>> {
     match normalize_command_identity(command).as_str() {
-        "goose" => Some(vec!["acp".to_string()]),
+        "goose" | "opencode" => Some(vec!["acp".to_string()]),
         "codex" | "codex-acp" | "claude-agent-acp" | "claude-code-acp" | "claude-code"
         | "claudecode" | "buzz-agent" => Some(Vec::new()),
         _ => None,
@@ -987,7 +987,8 @@ fn discover_acp_runtime_phase1(runtime: &'static KnownAcpRuntime, force: bool) -
         .unwrap_or_default();
 
     let can_auto_install = !runtime.cli_install_commands_for_os().is_empty()
-        || !runtime.adapter_install_commands.is_empty();
+        || !runtime.adapter_install_commands.is_empty()
+        || super::managed_binary_runtime(runtime.id);
 
     let cli_hint = runtime.cli_install_hint;
     let adapter_hint = runtime.adapter_install_hint;

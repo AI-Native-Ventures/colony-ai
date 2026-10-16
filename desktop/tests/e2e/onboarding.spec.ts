@@ -1849,6 +1849,7 @@ test("R17 provider discovery failure keeps workspace entry available", async ({
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
   await completeR17BusinessSetup(page);
+  await page.getByTestId("onboarding-mode-own").click();
 
   await expect(page.getByRole("alert")).toContainText(
     "We couldn’t check this computer.",
@@ -2117,6 +2118,7 @@ test("R17 connection setup opens the designed workspace route", async ({
   await expect(
     page.getByRole("heading", { name: "Let’s connect your first agent." }),
   ).toBeVisible();
+  await page.getByTestId("onboarding-mode-own").click();
   await expect(
     page.getByRole("radio", { name: "Claude Code or Codex", exact: true }),
   ).toBeVisible();

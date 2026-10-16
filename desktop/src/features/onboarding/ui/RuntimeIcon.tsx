@@ -14,6 +14,8 @@ import { RUNTIME_MARKS } from "./HarnessMarks";
 const RUNTIME_LOGOS: Record<string, string> = {
   claude: claudeLogoUrl,
   codex: codexLogoUrl,
+  // Compiled-in since Start free; Colony installs its own copy.
+  opencode: "/harness-logos/opencode.svg",
 };
 
 // Public-path logos for bundled presets. Served from /harness-logos/ at runtime.
@@ -23,7 +25,6 @@ export const PRESET_LOGOS: Record<string, string> = {
   omp: "/harness-logos/omp.svg",
   pi: "/harness-logos/pi.svg",
   grok: "/harness-logos/grok.svg",
-  opencode: "/harness-logos/opencode.svg",
   kimi: "/harness-logos/kimi.png",
   amp: "/harness-logos/amp.png",
   hermes: "/harness-logos/hermes.png",

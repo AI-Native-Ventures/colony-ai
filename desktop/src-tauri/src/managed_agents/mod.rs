@@ -46,6 +46,7 @@ mod runtime_types;
 mod session_policy;
 pub(crate) mod snapshot_avatar;
 pub(crate) mod spawn_snapshot;
+mod start_free;
 pub(crate) mod storage;
 pub(crate) mod team_catalog;
 pub(crate) mod team_events;
@@ -120,6 +121,7 @@ pub use storage::*;
 pub use teams::*;
 pub use types::*;
 
+pub(crate) use start_free::apply_start_free_env;
 #[cfg(test)]
 pub(crate) use teams::delete_catalog_team_at;
 

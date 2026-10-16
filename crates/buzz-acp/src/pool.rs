@@ -1503,6 +1503,18 @@ struct NewSessionChannelContext<'a> {
     channel_type: Option<&'a str>,
 }
 
+/// Start free: the session cannot run without its required model, so the
+/// turn fails with a stable marker the prompt-result path turns into notice.
+fn required_model_missing(desired: &str) -> AcpError {
+    AcpError::AgentError {
+        code: -32002,
+        message: format!(
+            "{}{desired}",
+            crate::provider_failure::FREE_MODEL_ENDED_PREFIX
+        ),
+    }
+}
+
 async fn create_session_and_apply_model(
     agent: &mut OwnedAgent,
     ctx: &PromptContext,
@@ -1609,6 +1621,10 @@ async fn create_session_and_apply_model(
     //   `None`        → no switch, or the adapter rejected/does-not-know the
     //                   model; the session/new snapshot is cached as-is and
     //                   `switch_succeeded` stays false.
+    if agent.acp.require_model() && agent.desired_model.is_none() {
+        // A strict session without a model would run on the adapter default.
+        return Err(required_model_missing("(no model set)"));
+    }
     let post_switch_snapshot: Option<serde_json::Value> = if let Some(ref desired) =
         agent.desired_model
     {
@@ -1680,6 +1696,9 @@ async fn create_session_and_apply_model(
                                 "requestId": agent.desired_model_request_id,
                             }),
                         );
+                        if agent.acp.require_model() {
+                            return Err(required_model_missing(desired));
+                        }
                         None
                     }
                 }
@@ -1703,6 +1722,9 @@ async fn create_session_and_apply_model(
                         "requestId": agent.desired_model_request_id,
                     }),
                 );
+                if agent.acp.require_model() {
+                    return Err(required_model_missing(desired));
+                }
                 None
             }
         }
@@ -11930,6 +11952,99 @@ done"#
         assert_eq!(results.len(), 1);
         assert_eq!(results[0]["status"], "unsupported_model");
         assert_eq!(results[0]["modelId"], "model-z");
+    }
+
+    #[tokio::test]
+    async fn test_require_model_refuses_missing_model() {
+        // Start free: the required model is absent from the session/new
+        // catalog. The session must fail instead of running on the default.
+        let acp = spawn_switch_acp(OPTS_MODEL_A_AND_B, r#""result":{"ok":true}"#).await;
+        let mut agent = switching_agent(acp, "model-z");
+        agent.acp.set_require_model(true);
+
+        let ctx = make_prompt_context_no_owner();
+        let err = create_session_and_apply_model(
+            &mut agent,
+            &ctx,
+            None,
+            NewSessionChannelContext {
+                huddle_instructions: None,
+                canvas: None,
+                name: None,
+                scope: None,
+                channel_type: None,
+            },
+        )
+        .await
+        .expect_err("a required model that is not offered must fail the session");
+        match err {
+            AcpError::AgentError { code, message } => {
+                assert_eq!(code, -32002);
+                assert_eq!(message, "free model ended: model-z");
+            }
+            other => panic!("expected AgentError, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_require_model_refuses_a_session_without_a_model() {
+        let acp = spawn_switch_acp(OPTS_MODEL_A_AND_B, r#""result":{"ok":true}"#).await;
+        let mut agent = switching_agent(acp, "model-a");
+        agent.desired_model = None;
+        agent.acp.set_require_model(true);
+
+        let ctx = make_prompt_context_no_owner();
+        let err = create_session_and_apply_model(
+            &mut agent,
+            &ctx,
+            None,
+            NewSessionChannelContext {
+                huddle_instructions: None,
+                canvas: None,
+                name: None,
+                scope: None,
+                channel_type: None,
+            },
+        )
+        .await
+        .expect_err("a strict session with no model must not run on the default");
+        assert!(
+            matches!(&err, AcpError::AgentError { code: -32002, message } if message == "free model ended: (no model set)"),
+            "got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_require_model_refuses_rejected_switch() {
+        // The adapter refuses the switch; the session is still on its default
+        // model, so a required model must fail the session too.
+        let acp = spawn_switch_acp(
+            OPTS_MODEL_A_AND_B,
+            r#""error":{"code":-32602,"message":"model not accepted"}"#,
+        )
+        .await;
+        let mut agent = switching_agent(acp, "model-b");
+        agent.acp.set_require_model(true);
+
+        let ctx = make_prompt_context_no_owner();
+        let err = create_session_and_apply_model(
+            &mut agent,
+            &ctx,
+            None,
+            NewSessionChannelContext {
+                huddle_instructions: None,
+                canvas: None,
+                name: None,
+                scope: None,
+                channel_type: None,
+            },
+        )
+        .await
+        .expect_err("a rejected required model must fail the session");
+        assert!(
+            matches!(&err, AcpError::AgentError { code: -32002, message } if message == "free model ended: model-b"),
+            "got {err:?}"
+        );
     }
 
     /// Scripted ACP whose `session/new` (request #1) returns a full result body

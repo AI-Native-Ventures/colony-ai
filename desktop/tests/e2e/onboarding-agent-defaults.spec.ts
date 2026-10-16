@@ -98,7 +98,9 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
 
   // Onboarding offers two paths only. Bring-your-own-key and the other
   // harnesses stay under Settings > Agents.
-  await expect(page.getByRole("radio")).toHaveCount(2);
+  await expect(
+    page.getByRole("radiogroup", { name: "AI connection" }).getByRole("radio"),
+  ).toHaveCount(2);
   await expect(
     page.getByRole("radio", { name: "Bring your own key" }),
   ).toHaveCount(0);

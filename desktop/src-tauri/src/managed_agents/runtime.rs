@@ -702,6 +702,12 @@ pub fn spawn_agent_child(
     } else {
         command.env_remove("BUZZ_ACP_MODEL");
     }
+    super::apply_start_free_env(
+        &mut command,
+        runtime_meta.map(|meta| meta.id),
+        effective_provider.as_deref(),
+        acp_model.as_deref(),
+    );
     // Session title for the harness to pass out-of-band on `session/new`. The
     // adapter names the session after it; it never reaches the prompt, so this
     // is display metadata only. The spawn-config snapshot records the same

@@ -714,6 +714,7 @@ type MockBridgeOptions = {
     reply?: string;
     model?: string | null;
     error?: string;
+    code?: string;
     startupMs?: number;
     totalMs?: number;
   };

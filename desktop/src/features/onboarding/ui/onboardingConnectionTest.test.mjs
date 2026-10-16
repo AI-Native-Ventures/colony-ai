@@ -87,3 +87,18 @@ test("explicit selection persists only after a completed reply", async () => {
   assert.equal(writes, 1);
   assert.equal(result.config.model, "explicit-model");
 });
+test("a missing model keeps its machine code for the Start free ended screen", async () => {
+  await assert.rejects(
+    runOnboardingConnectionTest(
+      config,
+      () => true,
+      async () => ({
+        error:
+          "Selected model is unavailable or this harness does not support model switching. Choose another model.",
+        code: "model_unavailable",
+      }),
+      async () => assert.fail("must not persist"),
+    ),
+    (error) => error.code === "model_unavailable",
+  );
+});
