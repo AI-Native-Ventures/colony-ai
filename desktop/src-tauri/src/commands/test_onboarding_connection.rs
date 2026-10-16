@@ -187,6 +187,7 @@ pub async fn test_onboarding_connection(
     if let Some(model) = &config.model {
         command.env("BUZZ_ACP_MODEL", model);
     }
+    crate::managed_agents::apply_start_free_env(&mut command, config.provider.as_deref());
     crate::managed_agents::apply_runtime_startup_model_env(
         &mut command,
         runtime.id == "claude",
