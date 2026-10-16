@@ -6,15 +6,44 @@ use std::path::Path;
 use std::time::Duration;
 use std::{io::Read, io::Write};
 
+/// Download `url` to `dest`, refusing anything over `max_bytes` or not
+/// matching `expected_sha256`. A failed download never leaves `dest` behind.
+/// `on_progress(downloaded, total)` is called after every chunk.
 pub(super) fn download_verified(
     url: &str,
     dest: &Path,
     expected_sha256: &str,
     max_bytes: u64,
     label: &str,
+    total_timeout: Duration,
+    on_progress: &dyn Fn(u64, Option<u64>),
+) -> Result<(), String> {
+    let result = stream_verified(
+        url,
+        dest,
+        expected_sha256,
+        max_bytes,
+        label,
+        total_timeout,
+        on_progress,
+    );
+    if result.is_err() {
+        let _ = std::fs::remove_file(dest);
+    }
+    result
+}
+
+fn stream_verified(
+    url: &str,
+    dest: &Path,
+    expected_sha256: &str,
+    max_bytes: u64,
+    label: &str,
+    total_timeout: Duration,
+    on_progress: &dyn Fn(u64, Option<u64>),
 ) -> Result<(), String> {
     let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(5 * 60))
+        .timeout(total_timeout)
         .build()
         .map_err(|e| format!("build {label} download client: {e}"))?;
     let response = client
@@ -28,7 +57,8 @@ pub(super) fn download_verified(
             response.status().canonical_reason().unwrap_or("unknown")
         ));
     }
-    if let Some(total) = response.content_length() {
+    let total_len = response.content_length();
+    if let Some(total) = total_len {
         if total > max_bytes {
             return Err(format!(
                 "download {label} too large: {total} bytes (max {max_bytes})"
@@ -59,6 +89,7 @@ pub(super) fn download_verified(
         file.write_all(&buffer[..read])
             .map_err(|e| format!("write {label} archive: {e}"))?;
         hasher.update(&buffer[..read]);
+        on_progress(downloaded, total_len);
     }
     file.flush()
         .map_err(|e| format!("flush {label} archive: {e}"))?;

@@ -291,7 +291,7 @@ fn install_acp_runtime_blocking(
     // Colony downloads managed binaries itself (pinned, checksummed); they
     // never use the CLI or adapter installer phases below.
     if crate::managed_agents::managed_binary_runtime(runtime.id) {
-        if let Err(step) = ensure_managed_opencode_blocking() {
+        if let Err(step) = ensure_managed_opencode_blocking(&reporter) {
             reporter.record_step(&mut steps, *step);
             return Ok(reporter.failed(steps));
         }

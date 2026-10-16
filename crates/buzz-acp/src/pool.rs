@@ -1605,6 +1605,10 @@ async fn create_session_and_apply_model(
     //   `None`        → no switch, or the adapter rejected/does-not-know the
     //                   model; the session/new snapshot is cached as-is and
     //                   `switch_succeeded` stays false.
+    if agent.acp.require_model() && agent.desired_model.is_none() {
+        // A strict session without a model would run on the adapter default.
+        return Err(required_model_missing("(no model set)"));
+    }
     let post_switch_snapshot: Option<serde_json::Value> = if let Some(ref desired) =
         agent.desired_model
     {
@@ -11776,6 +11780,34 @@ done"#
             }
             other => panic!("expected AgentError, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_require_model_refuses_a_session_without_a_model() {
+        let acp = spawn_switch_acp(OPTS_MODEL_A_AND_B, r#""result":{"ok":true}"#).await;
+        let mut agent = switching_agent(acp, "model-a");
+        agent.desired_model = None;
+        agent.acp.set_require_model(true);
+
+        let ctx = make_prompt_context_no_owner();
+        let err = create_session_and_apply_model(
+            &mut agent,
+            &ctx,
+            None,
+            NewSessionChannelContext {
+                huddle_instructions: None,
+                canvas: None,
+                name: None,
+                scope: None,
+                channel_type: None,
+            },
+        )
+        .await
+        .expect_err("a strict session with no model must not run on the default");
+        assert!(
+            matches!(&err, AcpError::AgentError { code: -32002, message } if message == "free model ended: (no model set)"),
+            "got {err:?}"
+        );
     }
 
     #[tokio::test]

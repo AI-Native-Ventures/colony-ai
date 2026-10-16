@@ -7,6 +7,10 @@ type StartFreePanelProps = {
   state: StartFreeState;
   /** Install failure guidance from the native install step, when it has one. */
   hint: string | null;
+  /** What went wrong, from the native install step. */
+  reason?: string | null;
+  /** False when retrying cannot help (unsupported computer). */
+  canRetry?: boolean;
   disabled?: boolean;
   onStart: () => void;
   onUseOwn: () => void;
@@ -24,6 +28,8 @@ const INSTALL_FALLBACK =
 export function StartFreePanel({
   state,
   hint,
+  reason = null,
+  canRetry = true,
   disabled = false,
   onStart,
   onUseOwn,
@@ -58,9 +64,12 @@ export function StartFreePanel({
               ? "OpenCode's free AI has ended. Connect your own AI to continue."
               : (hint ?? INSTALL_FALLBACK)}
           </p>
+          {state === "install-failed" && reason ? (
+            <p className="start-free-reason">{reason}</p>
+          ) : null}
         </div>
         <div className="power-cta">
-          {state === "install-failed" ? (
+          {state === "install-failed" && canRetry ? (
             <button
               className="primary full"
               data-testid="start-free-retry"
@@ -72,7 +81,7 @@ export function StartFreePanel({
             </button>
           ) : null}
           <button
-            className={state === "ended" ? "primary full" : "back"}
+            className={state === "ended" || !canRetry ? "primary full" : "back"}
             data-testid="start-free-use-own"
             onClick={onUseOwn}
             type="button"

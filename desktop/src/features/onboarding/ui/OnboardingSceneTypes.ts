@@ -63,6 +63,8 @@ export type OnboardingSceneActions = {
     value: "free" | "own";
     onChange: (mode: "free" | "own") => void;
     freeContent: React.ReactNode;
+    /** True while Start free installs: the choice and Back are locked. */
+    locked?: boolean;
   };
   harnessMark?: React.ReactNode;
   businessChoices?: OnboardingBusinessChoice[];

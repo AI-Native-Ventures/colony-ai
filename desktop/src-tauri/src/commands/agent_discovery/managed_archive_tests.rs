@@ -1,5 +1,7 @@
 use super::*;
 
+const TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Build a zip archive on disk with the supplied entries (zip::ZipArchive
 /// requires Seek, so the bytes go through a temp file).
 fn zip_with(entries: &[(&str, &[u8])]) -> tempfile::NamedTempFile {
@@ -76,7 +78,7 @@ fn download_verified_accepts_matching_digest() {
     let url = serve_once(body.clone());
     let dir = tempfile::tempdir().unwrap();
     let dest = dir.path().join("archive.zip.download");
-    download_verified(&url, &dest, &digest, 1024, "OpenCode").unwrap();
+    download_verified(&url, &dest, &digest, 1024, "OpenCode", TIMEOUT, &|_, _| {}).unwrap();
     assert_eq!(std::fs::read(&dest).unwrap(), body);
 }
 
@@ -85,7 +87,16 @@ fn download_verified_rejects_digest_mismatch_and_removes_file() {
     let url = serve_once(b"not the pinned bytes".to_vec());
     let dir = tempfile::tempdir().unwrap();
     let dest = dir.path().join("archive.zip.download");
-    let err = download_verified(&url, &dest, &"0".repeat(64), 1024, "OpenCode").unwrap_err();
+    let err = download_verified(
+        &url,
+        &dest,
+        &"0".repeat(64),
+        1024,
+        "OpenCode",
+        TIMEOUT,
+        &|_, _| {},
+    )
+    .unwrap_err();
     assert!(err.starts_with("download OpenCode hash mismatch"), "{err}");
     assert!(!dest.exists());
 }
@@ -95,11 +106,58 @@ fn download_verified_rejects_oversize_body() {
     let url = serve_once(vec![7_u8; 4096]);
     let dir = tempfile::tempdir().unwrap();
     let dest = dir.path().join("archive.zip.download");
-    let err = download_verified(&url, &dest, &"0".repeat(64), 1024, "OpenCode").unwrap_err();
+    let err = download_verified(
+        &url,
+        &dest,
+        &"0".repeat(64),
+        1024,
+        "OpenCode",
+        TIMEOUT,
+        &|_, _| {},
+    )
+    .unwrap_err();
     assert!(
         err.starts_with("download OpenCode too large")
             || err.starts_with("download OpenCode exceeded max size"),
         "{err}"
     );
     assert!(!dest.exists());
+}
+
+#[test]
+fn download_verified_reports_progress_and_removes_a_truncated_file() {
+    // Content-Length promises more bytes than arrive: the stream ends early,
+    // the digest cannot match, and no partial archive is left behind.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            let mut request = [0_u8; 2048];
+            let _ = stream.read(&mut request);
+            let _ = stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 600\r\nConnection: close\r\n\r\n");
+            let _ = stream.write_all(&[1_u8; 300]);
+        }
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("archive.zip.download");
+    let seen = std::sync::Mutex::new(Vec::new());
+    let err = download_verified(
+        &format!("http://{addr}/archive.zip"),
+        &dest,
+        &"0".repeat(64),
+        1024,
+        "OpenCode",
+        TIMEOUT,
+        &|done, total| seen.lock().unwrap().push((done, total)),
+    )
+    .unwrap_err();
+    assert!(err.starts_with("download OpenCode"), "{err}");
+    assert!(!dest.exists(), "partial archive removed");
+    let seen = seen.into_inner().unwrap();
+    assert!(
+        seen.iter()
+            .any(|(done, total)| *done > 0 && *total == Some(600)),
+        "{seen:?}"
+    );
 }

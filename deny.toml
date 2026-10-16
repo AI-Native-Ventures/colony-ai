@@ -15,7 +15,7 @@ ignore = [
     # remove these when upstream catches up.
     { id = "RUSTSEC-2026-0194", reason = "transitive via rust-s3 and mesh-llm→plist; trusted-input XML only; no upstream fix available yet" },
     { id = "RUSTSEC-2026-0195", reason = "transitive via rust-s3 and mesh-llm→plist; trusted-input XML only; no upstream fix available yet" },
-    # unsafe-libyaml — unmaintained notice (no known vulnerability). Transitive via
+    # unsafe-libyaml: unmaintained notice (no known vulnerability). Transitive via
     # serde_yaml; cargo-deny reports no safe upgrade. Remove once serde_yaml moves
     # to a maintained YAML backend or we replace serde_yaml.
     { id = "RUSTSEC-2024-0449", reason = "unmaintained notice only, transitive via serde_yaml; no safe upgrade available" },

@@ -126,3 +126,65 @@ test("mode choice is a keyboard radio group", async ({ page }) => {
     "true",
   );
 });
+
+test("mode choice and Back are locked while Start free installs", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    startFree: true,
+    runtimes: [opencodeMissing],
+    mock: {
+      installAcpRuntimeDelayMs: 2000,
+      installAcpRuntimeResult: {
+        success: false,
+        steps: [
+          {
+            step: "opencode",
+            command: "Colony OpenCode v1.19.2",
+            success: false,
+            stdout: "",
+            stderr: "download OpenCode request failed: timed out",
+            exit_code: null,
+          },
+        ],
+      },
+    },
+  });
+  await page.getByTestId("start-free-continue").click();
+  await expect(page.getByTestId("start-free-installing")).toBeVisible();
+  await expect(page.getByTestId("onboarding-mode-own")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Back" })).toHaveCount(0);
+  await expect(page.getByTestId("start-free-retry")).toBeVisible();
+  await expect(page.getByTestId("onboarding-mode-own")).toBeEnabled();
+});
+
+test("an unsupported computer shows the reason and no retry", async ({
+  page,
+}) => {
+  await openR17ConnectionSetup(page, {
+    startFree: true,
+    runtimes: [opencodeMissing],
+    mock: {
+      installAcpRuntimeResult: {
+        success: false,
+        steps: [
+          {
+            step: "opencode-unsupported",
+            command: "Colony OpenCode v1.19.2",
+            success: false,
+            stdout: "",
+            stderr: "Start free is not available on linux-riscv64 yet.",
+            exit_code: null,
+            hint: "Choose Use your own AI to connect Claude Code, Codex or OpenRouter instead.",
+          },
+        ],
+      },
+    },
+  });
+  await page.getByTestId("start-free-continue").click();
+  await expect(
+    page.getByText("Start free is not available on linux-riscv64 yet."),
+  ).toBeVisible();
+  await expect(page.getByTestId("start-free-retry")).toHaveCount(0);
+  await expect(page.getByTestId("start-free-use-own")).toBeVisible();
+});

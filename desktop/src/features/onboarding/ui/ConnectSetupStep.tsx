@@ -608,6 +608,8 @@ export function ConnectSetupStep({
   const [mode, setMode] = React.useState<"free" | "own">("free");
   const [freeState, setFreeState] = React.useState<StartFreeState>("idle");
   const [freeHint, setFreeHint] = React.useState<string | null>(null);
+  const [freeReason, setFreeReason] = React.useState<string | null>(null);
+  const [freeCanRetry, setFreeCanRetry] = React.useState(true);
   const [selectedModel, setSelectedModel] = React.useState<
     string | null | undefined
   >(undefined);
@@ -844,16 +846,27 @@ export function ConnectSetupStep({
   };
 
   const startFree = async () => {
+    // Fence the install like a connection attempt: unmount or a mode change
+    // bumps the generation, so a late install result cannot save Start free.
+    const attempt = ++generation.current;
+    const isCurrent = () => generation.current === attempt;
     setFreeHint(null);
+    setFreeReason(null);
+    setFreeCanRetry(true);
     setFreeState("installing");
     try {
       const result = await installAcpRuntime(START_FREE_RUNTIME_ID);
+      if (!isCurrent()) return;
       if (!result.success) {
-        setFreeHint(result.steps.at(-1)?.hint ?? null);
+        const failed = result.steps.at(-1);
+        setFreeHint(failed?.hint ?? null);
+        setFreeReason(failed?.stderr.trim().split("\n")[0] || null);
+        setFreeCanRetry(failed?.step !== "opencode-unsupported");
         setFreeState("install-failed");
         return;
       }
       const refreshed = await runtimes.refetch();
+      if (!isCurrent()) return;
       setFreeState("idle");
       await continueWithRuntime({
         config: buildStartFreeConfig(globalConfig),
@@ -862,6 +875,7 @@ export function ConnectSetupStep({
         runtimes: refreshed.data,
       });
     } catch (failure) {
+      if (!isCurrent()) return;
       setFreeHint(failure instanceof Error ? failure.message : null);
       setFreeState("install-failed");
     }
@@ -869,13 +883,17 @@ export function ConnectSetupStep({
   const connectionMode = {
     value: mode,
     onChange: (next: "free" | "own") => {
+      if (freeState === "installing") return;
       setMode(next);
       if (next === "free") setFreeState("idle");
     },
+    locked: freeState === "installing",
     freeContent: (
       <StartFreePanel
         disabled={saving}
+        canRetry={freeCanRetry}
         hint={freeHint}
+        reason={freeReason}
         onSkip={() => onContinue()}
         onStart={() => void startFree()}
         onUseOwn={() => {

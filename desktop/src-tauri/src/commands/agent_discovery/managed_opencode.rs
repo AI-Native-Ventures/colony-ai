@@ -2,8 +2,12 @@
 //! OpenCode GitHub release, checked against a pinned SHA256, unpacked into
 //! Colony's app-data folder. Never runs OpenCode's install script and never
 //! touches an OpenCode the user installed themselves.
+use std::cell::Cell;
 use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 
+use super::install_capture::LineObserver;
+use super::install_report::InstallReporter;
 use super::managed_archive::{download_verified, extract_archive};
 use crate::managed_agents::{
     buzz_managed_opencode_dir, managed_opencode_platform, InstallStepResult,
@@ -11,6 +15,9 @@ use crate::managed_agents::{
 };
 
 const OPENCODE_MAX_BYTES: u64 = 80 * 1024 * 1024;
+/// Generous enough for a 62 MB archive on a slow connection (about 300 kbit/s).
+const OPENCODE_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const MB: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct OpenCodeArtifact {
@@ -90,9 +97,12 @@ pub(super) fn opencode_binary_ready(dir: &std::path::Path) -> bool {
 const OPENCODE_HINT: &str =
     "Choose Use your own AI to connect Claude Code, Codex or OpenRouter instead.";
 
+/// Step id the UI uses to hide Retry: an unsupported platform cannot succeed.
+pub(super) const OPENCODE_UNSUPPORTED_STEP: &str = "opencode-unsupported";
+
 pub(super) fn opencode_unsupported_step(os: &str, arch: &str) -> InstallStepResult {
     InstallStepResult {
-        step: "opencode".to_string(),
+        step: OPENCODE_UNSUPPORTED_STEP.to_string(),
         command: format!("Colony OpenCode {MANAGED_OPENCODE_VERSION}"),
         success: false,
         stdout: String::new(),
@@ -128,8 +138,27 @@ fn unsupported_here() -> Box<InstallStepResult> {
     ))
 }
 
+/// Progress line for the install screen, at most every 4 MB and at the end.
+pub(super) fn progress_line(done: u64, total: Option<u64>, last: &Cell<u64>) -> Option<String> {
+    let finished = total == Some(done);
+    if done < last.get() + 4 * MB && !finished {
+        return None;
+    }
+    last.set(done);
+    Some(match total {
+        Some(total) => format!(
+            "Downloading OpenCode: {} of {} MB",
+            done.div_ceil(MB),
+            total.div_ceil(MB)
+        ),
+        None => format!("Downloading OpenCode: {} MB", done.div_ceil(MB)),
+    })
+}
+
 /// Install Colony's pinned OpenCode if it is not already in place.
-pub(super) fn ensure_managed_opencode_blocking() -> Result<(), Box<InstallStepResult>> {
+pub(super) fn ensure_managed_opencode_blocking(
+    reporter: &InstallReporter,
+) -> Result<(), Box<InstallStepResult>> {
     let (Some(platform), Some(final_dir)) =
         (managed_opencode_platform(), buzz_managed_opencode_dir())
     else {
@@ -153,7 +182,10 @@ pub(super) fn ensure_managed_opencode_blocking() -> Result<(), Box<InstallStepRe
     if opencode_binary_ready(&final_dir) {
         return Ok(());
     }
-    install(&final_dir, artifact).map_err(|err| Box::new(opencode_failed_step(err)))?;
+    reporter.start_attempt();
+    let observer = reporter.line_observer();
+    install(&final_dir, artifact, observer.as_ref())
+        .map_err(|err| Box::new(opencode_failed_step(err)))?;
     if opencode_binary_ready(&final_dir) {
         Ok(())
     } else {
@@ -163,7 +195,11 @@ pub(super) fn ensure_managed_opencode_blocking() -> Result<(), Box<InstallStepRe
     }
 }
 
-fn install(final_dir: &std::path::Path, artifact: OpenCodeArtifact) -> Result<(), String> {
+fn install(
+    final_dir: &std::path::Path,
+    artifact: OpenCodeArtifact,
+    observer: Option<&LineObserver>,
+) -> Result<(), String> {
     let parent = final_dir
         .parent()
         .ok_or("OpenCode install folder has no parent")?;
@@ -173,7 +209,7 @@ fn install(final_dir: &std::path::Path, artifact: OpenCodeArtifact) -> Result<()
     if temp_dir.exists() {
         std::fs::remove_dir_all(&temp_dir).map_err(|e| format!("remove stale temp dir: {e}"))?;
     }
-    let result = unpack_into_place(final_dir, &temp_dir, &archive_path, artifact);
+    let result = unpack_into_place(final_dir, &temp_dir, &archive_path, artifact, observer);
     let _ = std::fs::remove_file(&archive_path);
     let _ = std::fs::remove_dir_all(&temp_dir);
     result
@@ -184,14 +220,26 @@ fn unpack_into_place(
     temp_dir: &std::path::Path,
     archive_path: &std::path::Path,
     artifact: OpenCodeArtifact,
+    observer: Option<&LineObserver>,
 ) -> Result<(), String> {
+    let last = Cell::new(0);
+    let report = |done: u64, total: Option<u64>| {
+        if let (Some(observer), Some(line)) = (observer, progress_line(done, total, &last)) {
+            observer(&line);
+        }
+    };
     download_verified(
         &download_url(artifact),
         archive_path,
         artifact.sha256,
         OPENCODE_MAX_BYTES,
         "OpenCode",
+        OPENCODE_DOWNLOAD_TIMEOUT,
+        &report,
     )?;
+    if let Some(observer) = observer {
+        observer("Unpacking OpenCode");
+    }
     std::fs::create_dir_all(temp_dir).map_err(|e| format!("create temp dir: {e}"))?;
     extract_archive(archive_path, temp_dir, artifact.filename, "OpenCode")?;
     let binary = temp_dir.join(opencode_binary_name());

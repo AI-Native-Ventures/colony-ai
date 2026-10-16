@@ -325,6 +325,8 @@ fn install_managed_node_runtime(
         artifact.sha256,
         MANAGED_NODE_MAX_BYTES,
         "Node.js",
+        Duration::from_secs(5 * 60),
+        &|_, _| {},
     )?;
 
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("create temp dir: {e}"))?;

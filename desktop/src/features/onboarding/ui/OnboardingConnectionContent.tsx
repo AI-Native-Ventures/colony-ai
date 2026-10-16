@@ -64,11 +64,17 @@ export function ConnectionShell({
     return (
       <>
         {heading}
-        <ConnectionModeChoice onChange={mode.onChange} value="free" />
+        <ConnectionModeChoice
+          disabled={mode.locked}
+          onChange={mode.onChange}
+          value="free"
+        />
         <section aria-label="Start free" className="power-body">
           {mode.freeContent}
         </section>
-        <BackButton onClick={() => onNavigate?.("business")}>Back</BackButton>
+        {mode.locked ? null : (
+          <BackButton onClick={() => onNavigate?.("business")}>Back</BackButton>
+        )}
       </>
     );
   }

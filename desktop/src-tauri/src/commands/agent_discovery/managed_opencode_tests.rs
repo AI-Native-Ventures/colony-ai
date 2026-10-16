@@ -42,6 +42,7 @@ fn download_url_uses_pinned_release() {
 fn unsupported_platform_step_has_hint() {
     let step = opencode_unsupported_step("linux", "riscv64");
     assert!(!step.success);
+    assert_eq!(step.step, OPENCODE_UNSUPPORTED_STEP);
     assert!(step.stderr.contains("linux-riscv64"), "{}", step.stderr);
     assert_eq!(
         step.hint.as_deref(),
@@ -69,4 +70,20 @@ fn installed_binary_check_requires_executable_file() {
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
     assert!(opencode_binary_ready(dir.path()));
+}
+
+#[test]
+fn progress_lines_are_throttled_to_four_megabytes_and_the_end() {
+    let last = std::cell::Cell::new(0);
+    let total = Some(10 * MB);
+    assert_eq!(progress_line(MB, total, &last), None);
+    assert_eq!(
+        progress_line(4 * MB, total, &last).as_deref(),
+        Some("Downloading OpenCode: 4 of 10 MB")
+    );
+    assert_eq!(progress_line(5 * MB, total, &last), None);
+    assert_eq!(
+        progress_line(10 * MB, total, &last).as_deref(),
+        Some("Downloading OpenCode: 10 of 10 MB")
+    );
 }

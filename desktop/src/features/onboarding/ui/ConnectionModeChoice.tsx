@@ -6,6 +6,8 @@ export type ConnectionMode = "free" | "own";
 export type ConnectionModeChoiceProps = {
   value: ConnectionMode;
   onChange: (mode: ConnectionMode) => void;
+  /** Locked while Start free installs, so the choice cannot change under it. */
+  disabled?: boolean;
 };
 
 const MODES: ReadonlyArray<{
@@ -33,6 +35,7 @@ const MODES: ReadonlyArray<{
 export function ConnectionModeChoice({
   value,
   onChange,
+  disabled = false,
 }: ConnectionModeChoiceProps) {
   const refs = React.useRef<Array<HTMLButtonElement | null>>([]);
   const select = (index: number) => {
@@ -57,6 +60,7 @@ export function ConnectionModeChoice({
             aria-describedby={bodyId}
             className="connection-mode"
             data-testid={`onboarding-mode-${mode.id}`}
+            disabled={disabled}
             key={mode.id}
             onClick={() => onChange(mode.id)}
             onKeyDown={(event) => {
