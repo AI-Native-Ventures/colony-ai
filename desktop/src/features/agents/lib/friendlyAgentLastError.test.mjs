@@ -5,6 +5,7 @@ import {
   friendlyAgentLastError,
   friendlyTurnErrorCopy,
   CLI_ACP_INTERNAL_ERROR_COPY,
+  FREE_MODEL_ENDED_COPY,
   MODEL_NOT_FOUND_COPY,
   PROVIDER_KEY_REJECTED_COPY,
   RELAY_MESH_DENIED_COPY,
@@ -336,5 +337,28 @@ test("genuine relay denial alone uses community membership guidance", () => {
       -32001,
     )?.copy,
     PROVIDER_KEY_REJECTED_COPY,
+  );
+});
+
+test("Start free model ended -> Free AI has ended copy", () => {
+  assert.equal(
+    FREE_MODEL_ENDED_COPY,
+    "Free AI has ended. Connect your own AI in Settings.",
+  );
+  for (const [raw, code] of [
+    ["free model ended: opencode/deepseek-v4.1-flash-free", -32002],
+    [
+      "Agent reported error (code -32002): free model ended: opencode/deepseek-v4.1-flash-free",
+      null,
+    ],
+  ]) {
+    assert.deepEqual(friendlyAgentLastError(raw, code), {
+      severity: "denied",
+      copy: FREE_MODEL_ENDED_COPY,
+    });
+  }
+  assert.equal(
+    friendlyAgentLastError("llm model not found: (x) 404", -32002).copy,
+    MODEL_NOT_FOUND_COPY,
   );
 });

@@ -45,6 +45,12 @@ export const PROVIDER_KEY_REJECTED_COPY =
 export const MODEL_NOT_FOUND_COPY =
   "The configured model is not available - open agent settings and select a different one from the dropdown.";
 
+/** Start free: OpenCode no longer offers the free model (buzz-acp strict mode). */
+export const FREE_MODEL_ENDED_COPY =
+  "Free AI has ended. Connect your own AI in Settings.";
+
+const FREE_MODEL_ENDED_PREFIX = "free model ended: ";
+
 export const CLI_ACP_INTERNAL_ERROR_COPY =
   "The agent's harness reported an internal error. For Codex agents this can mean the configured model isn't supported by your installed codex-acp - check the model in `~/.codex/config.toml` or upgrade the adapter (`brew upgrade codex-acp`).";
 
@@ -94,8 +100,15 @@ export function friendlyAgentLastError(
             : PROVIDER_KEY_REJECTED_COPY,
         };
       }
-      case -32002:
-        return { severity: "denied", copy: MODEL_NOT_FOUND_COPY };
+      case -32002: {
+        const detail = embedded?.remainder ?? trimmed;
+        return {
+          severity: "denied",
+          copy: detail.startsWith(FREE_MODEL_ENDED_PREFIX)
+            ? FREE_MODEL_ENDED_COPY
+            : MODEL_NOT_FOUND_COPY,
+        };
+      }
       case -32603: {
         // Standard JSON-RPC "Internal error" - emitted by external harnesses
         // (e.g. codex-acp) when the configured model is unsupported. Only

@@ -216,6 +216,9 @@ pub struct AcpClient {
     /// a JSON-RPC *success*, not `-32601` — which the main loop would read as
     /// a delivered steer and drop the user's message from the queue.
     steering_supported: bool,
+    /// Start free: refuse a session whose desired model is missing or
+    /// rejected instead of continuing on the adapter's default model.
+    require_model: bool,
     /// Per-turn channel for receiving goose-native non-cancelling steer
     /// requests from the main loop. Installed by
     /// [`install_steer_rx`](Self::install_steer_rx) at dispatch and
@@ -622,6 +625,7 @@ impl AcpClient {
             observer_context: ObserverContext::default(),
             active_run_id: None,
             steering_supported: false,
+            require_model: false,
             steer_rx: None,
             goose_usage: UsageTracker::default(),
             standard_usage: StandardUsageTracker::default(),
@@ -982,6 +986,16 @@ impl AcpClient {
     /// for the supervisor's post-initialize log line.
     pub fn steering_supported(&self) -> bool {
         self.steering_supported
+    }
+
+    /// Whether a missing or rejected desired model must fail the session.
+    pub fn require_model(&self) -> bool {
+        self.require_model
+    }
+
+    /// Set from `BUZZ_ACP_REQUIRE_MODEL` when the pool spawns this agent.
+    pub fn set_require_model(&mut self, require: bool) {
+        self.require_model = require;
     }
 
     /// Consume per-turn usage for NIP-AM publishing. Goose/buzz-agent is an

@@ -117,6 +117,7 @@ function SceneBody(props: PresentationProps) {
         }
         data={data}
         harnessMark={props.harnessMark}
+        mode={props.connectionMode}
         onNavigate={onNavigate}
         onSelectConnection={onSelectConnection}
         onChooseHarness={props.onChooseHarness}

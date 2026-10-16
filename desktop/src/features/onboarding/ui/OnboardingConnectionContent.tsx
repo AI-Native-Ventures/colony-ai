@@ -6,9 +6,13 @@ import primeLogoUrl from "../assets/harness-logos/prime-mark.jpg?url";
 import claudeLogoUrl from "../assets/harness-logos/claude.png?inline";
 import codexLogoUrl from "../assets/harness-logos/codex.webp?url";
 import type { OnboardingSceneId } from "./onboardingScenes";
-import type { OnboardingSceneData } from "./OnboardingSceneTypes";
+import type {
+  OnboardingSceneActions,
+  OnboardingSceneData,
+} from "./OnboardingSceneTypes";
 import { AntMark, BackButton, Glyph } from "./OnboardingScenePrimitives";
 import { CreditReviewDialog } from "./OnboardingSceneOverlays";
+import { ConnectionModeChoice } from "./ConnectionModeChoice";
 
 /**
  * Onboarding offers two paths: the person's own Claude Code or Codex
@@ -38,22 +42,48 @@ export function ConnectionShell({
   onNavigate,
   onSelectConnection,
   onChooseHarness,
+  mode,
 }: {
   scene: OnboardingSceneId;
   data: OnboardingSceneData;
   content: React.ReactNode;
   harnessMark?: React.ReactNode;
+  mode?: OnboardingSceneActions["connectionMode"];
   onNavigate?: (scene: OnboardingSceneId) => void;
   onSelectConnection?: (scene: OnboardingSceneId) => void;
   onChooseHarness?: () => void;
 }) {
   const routeRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
+  const heading = (
+    <div className="power-heading">
+      <h2>Connect your AI.</h2>
+      <p className="lede">Your AI. Your models. Your way.</p>
+    </div>
+  );
+  if (mode?.value === "free") {
+    return (
+      <>
+        {heading}
+        <ConnectionModeChoice
+          disabled={mode.locked}
+          onChange={mode.onChange}
+          value="free"
+        />
+        <section aria-label="Start free" className="power-body">
+          {mode.freeContent}
+        </section>
+        {mode.locked ? null : (
+          <BackButton onClick={() => onNavigate?.("business")}>Back</BackButton>
+        )}
+      </>
+    );
+  }
   return (
     <>
-      <div className="power-heading">
-        <h2>Connect your AI.</h2>
-        <p className="lede">Your AI. Your models. Your way.</p>
-      </div>
+      {heading}
+      {mode ? (
+        <ConnectionModeChoice onChange={mode.onChange} value="own" />
+      ) : null}
       <button
         aria-label={`Choose AI app. Current: ${data.harnessLabel ?? "Finding AI apps"}`}
         className="harness-picker"

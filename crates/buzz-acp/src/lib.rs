@@ -3086,7 +3086,8 @@ async fn tokio_main() -> Result<()> {
         while let Ok(rr) = respawn_rx.try_recv() {
             crash_history[rr.index].respawn_in_flight = false;
             match rr.result {
-                Ok((acp, protocol_version, agent_name)) => {
+                Ok((mut acp, protocol_version, agent_name)) => {
+                    acp.set_require_model(config.require_model);
                     let agent = OwnedAgent {
                         index: rr.index,
                         acp,
@@ -4785,6 +4786,17 @@ fn handle_prompt_result(
                 } else {
                     hard_timeout_fate_suffix = Some(" — requeued for retry (recently active)");
                 }
+            } else if let Some(content) = match &result.outcome {
+                PromptOutcome::Error(error) => provider_failure::free_model_ended_notice(error),
+                _ => None,
+            } {
+                // Start free never falls back to another model; retrying cannot help.
+                tracing::warn!(
+                    channel_id = %batch.channel_id,
+                    events = batch.events.len(),
+                    "dead-lettering batch immediately: required free model is gone"
+                );
+                spawn_failure_notice(rest_client, &batch, content);
             } else if matches!(
                 &result.outcome,
                 PromptOutcome::Error(acp::AcpError::AgentError { code: -32002, message })
@@ -5501,6 +5513,7 @@ struct PoolStartup {
     extra_env: Vec<(String, String)>,
     has_generated_codex_config: bool,
     model: Option<String>,
+    require_model: bool,
     effort_level: Option<String>,
     observer: Option<observer::ObserverHandle>,
 }
@@ -5514,6 +5527,7 @@ impl PoolStartup {
             extra_env: config.persona_env_vars.clone(),
             has_generated_codex_config: config.has_generated_codex_config,
             model: config.model.clone(),
+            require_model: config.require_model,
             effort_level: config.effort_level.clone(),
             observer,
         }
@@ -5579,6 +5593,7 @@ async fn initialize_agent_pool(
                             }),
                         );
                         let agent_name = normalized_agent_name(&init_result);
+                        acp.set_require_model(startup.require_model);
                         agent_slots.push(Some(OwnedAgent {
                             index: i,
                             acp,
@@ -9217,6 +9232,7 @@ mod build_mcp_servers_tests {
             typing_enabled: true,
             memory_enabled: false,
             model: None,
+            require_model: false,
             effort_level: None,
             session_title: None,
             permission_mode: config::PermissionMode::BypassPermissions,
@@ -9444,6 +9460,7 @@ mod error_outcome_emission_tests {
             typing_enabled: true,
             memory_enabled: false,
             model: None,
+            require_model: false,
             effort_level: None,
             session_title: None,
             permission_mode: config::PermissionMode::BypassPermissions,
@@ -11082,6 +11099,7 @@ mod error_outcome_emission_tests {
 
     #[tokio::test]
     async fn model_not_found_posts_recovery_notice_without_retrying() {
+        assert_terminal_notice(-32002, "free model ended: opencode/deepseek-v4.1-flash-free", "⚠️ Free AI has ended. OpenCode no longer offers the free model. Connect your own AI in Settings, then re-send your request.").await;
         assert_terminal_notice(-32002, "llm model not found: (gpt-6-astra) 404 Not Found", "⚠️ I couldn't process the last request: the configured model wasn't found at the provider's endpoint. Open agent settings, select a different model from the dropdown, and save your changes. Restart the agent to apply the new configuration, then re-send your request.").await;
     }
 

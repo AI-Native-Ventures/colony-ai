@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invokeTauri } from "@/shared/api/tauri";
 import { setGlobalAgentConfig } from "@/shared/api/tauriGlobalAgentConfig";
 import type { GlobalAgentConfig } from "@/shared/api/types";
+import { OnboardingConnectionError } from "./startFree";
 
 export type OnboardingConnectionProof = {
   reply: string;
@@ -63,10 +64,9 @@ async function invokeConnection(
     );
     if (activeRequestId !== requestId)
       throw new Error("Connection test cancelled.");
-    return await invokeTauri<OnboardingConnectionProof & { error?: string }>(
-      "test_onboarding_connection",
-      { config, requestId, business },
-    );
+    return await invokeTauri<
+      OnboardingConnectionProof & { error?: string; code?: string }
+    >("test_onboarding_connection", { config, requestId, business });
   } finally {
     unlisten();
     if (activeRequestId === requestId) activeRequestId = null;
@@ -83,7 +83,7 @@ export async function runOnboardingConnectionTest(
   reportProgress("starting");
   const proof = await invoke(config);
   if (!isCurrent()) throw new Error("Connection test cancelled.");
-  if (proof.error) throw new Error(proof.error);
+  if (proof.error) throw new OnboardingConnectionError(proof.error, proof.code);
   if (typeof proof.reply !== "string" || !proof.reply.trim()) {
     throw new Error(
       "Your agent returned no reply. Check sign-in and usage, then try again.",

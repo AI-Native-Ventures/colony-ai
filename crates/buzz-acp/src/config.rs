@@ -446,6 +446,12 @@ pub struct CliArgs {
     #[arg(long, env = "BUZZ_ACP_MODEL")]
     pub model: Option<String>,
 
+    /// Refuse to run a turn when the desired model is not offered, instead of
+    /// falling back to the agent's default model. Set for Start free so a
+    /// session never moves to a different OpenCode model.
+    #[arg(long, env = "BUZZ_ACP_REQUIRE_MODEL", default_value_t = false)]
+    pub require_model: bool,
+
     /// Persisted effort level value (e.g. "high", "medium", "low") to apply via
     /// `session/set_config_option` at the first session creation. The configId is
     /// resolved from the adapter's advertised `thought_level` capability — not
@@ -582,6 +588,8 @@ pub struct Config {
     pub memory_enabled: bool,
     /// Desired LLM model ID. Applied after every `session_new_full()`.
     pub model: Option<String>,
+    /// See `CliArgs::require_model`.
+    pub require_model: bool,
     /// Persisted effort level value (e.g. "high", "medium", "low"). Held as a
     /// per-worker spawn-scoped value and applied at the first session creation
     /// by pairing with the adapter's advertised `thought_level` configId.
@@ -1217,6 +1225,7 @@ impl Config {
             typing_enabled: !args.no_typing,
             memory_enabled: args.memory && !args.no_memory,
             model,
+            require_model: args.require_model,
             effort_level: args.effort_level,
             session_title: args
                 .session_title
@@ -1597,6 +1606,7 @@ mod tests {
             typing_enabled: true,
             memory_enabled: true,
             model: None,
+            require_model: false,
             effort_level: None,
             session_title: None,
             permission_mode: PermissionMode::BypassPermissions,

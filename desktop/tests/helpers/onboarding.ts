@@ -10,9 +10,16 @@ export const R17_BUSINESS_PROFILE_KEY = `colony-business-profile.v1:${R17_BUSINE
 const BUSINESS_DOMAIN = "accounts-test.colony.ainative.ventures";
 const MOCK_ACCOUNT_PUBKEY = "deadbeef".repeat(8);
 
-export type R17RuntimeId = "claude" | "codex" | "goose" | "buzz-agent";
+export type R17RuntimeId =
+  | "claude"
+  | "codex"
+  | "goose"
+  | "buzz-agent"
+  | "opencode";
 export type R17ConnectionSetupOptions = {
   pauseAtPendingInvite?: boolean;
+  /** Stay on the default Start free choice instead of opening Use your own AI. */
+  startFree?: boolean;
   mock?: Partial<NonNullable<Parameters<typeof installMockBridge>[1]>>;
   runtimes?: Array<Record<string, unknown>>;
   discoveryDelayMs?: number;
@@ -30,11 +37,13 @@ export function r17Runtime(
     label:
       id === "buzz-agent"
         ? "Colony Agent"
-        : id === "goose"
-          ? "Goose"
-          : id === "codex"
-            ? "Codex"
-            : "Claude Code",
+        : id === "opencode"
+          ? "OpenCode"
+          : id === "goose"
+            ? "Goose"
+            : id === "codex"
+              ? "Codex"
+              : "Claude Code",
     avatar_url: "",
     availability,
     command: availability === "available" ? id : null,
@@ -174,6 +183,10 @@ export async function openR17ConnectionSetup(
 ) {
   await openR17BusinessSetup(page, options);
   await completeR17BusinessSetup(page);
+  // Start free is the default choice; existing specs exercise Use your own AI.
+  if (!options.startFree) {
+    await page.getByTestId("onboarding-mode-own").click();
+  }
 }
 
 /**
