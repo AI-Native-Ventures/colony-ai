@@ -2495,43 +2495,159 @@
   border-color: #baa6cc;
   box-shadow: 0 2px 7px #4e355c10;
 }
-/* Start free vs Use your own AI. Placeholder styling; the visual pass owns it. */
+/* Top-level Connect choices share the runtime cards' selected treatment. */
 .colony-onboarding-root .connection-modes {
   display: grid;
-  gap: 8px;
+  gap: 12px;
   margin-bottom: 22px;
 }
-.colony-onboarding-root .connection-modes button {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+.colony-onboarding-root .connection-mode {
+  display: grid;
+  grid-template-columns: 17px minmax(0, 1fr);
+  align-items: start;
+  gap: 13px;
+  width: 100%;
+  min-width: 0;
   text-align: left;
-  background: var(--wash);
+  background: var(--field);
   color: var(--muted);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: 13px;
+  padding: 16px;
+  box-shadow: 0 3px 12px #493d5403;
 }
-.colony-onboarding-root .connection-modes strong {
+.colony-onboarding-root .connection-mode .connection-mode-radio {
+  width: 17px;
+  height: 17px;
+  margin-top: 3px;
+  border: 1px solid #c6b8d1;
+  border-radius: 50%;
+  background: var(--field);
+}
+.colony-onboarding-root .connection-mode .connection-mode-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.colony-onboarding-root .connection-mode .connection-mode-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  min-height: 23px;
+}
+.colony-onboarding-root .connection-mode strong {
   color: var(--ink);
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-.colony-onboarding-root .connection-modes span {
-  font-size: 0.82rem;
+  font-size: 0.91rem;
+  font-weight: var(--onboarding-font-weight-semibold);
+  letter-spacing: var(--onboarding-tracking-subheading);
   line-height: 1.4;
 }
-.colony-onboarding-root .connection-modes [aria-checked="true"] {
-  background: var(--paper);
-  border-color: #baa6cc;
-  box-shadow: 0 2px 7px #4e355c10;
+.colony-onboarding-root .connection-mode .connection-mode-description {
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+.colony-onboarding-root .connection-mode[aria-checked="true"] {
+  background: linear-gradient(145deg, #faf7fc, var(--field));
+  border-color: #9a7ab5;
+  box-shadow: 0 0 0 1px #9a7ab522;
+}
+.colony-onboarding-root
+  .connection-mode[aria-checked="true"]
+  .connection-mode-radio {
+  background: #7753a6;
+  border-color: #9775bc;
+  box-shadow: inset 0 0 0 4px #f5eefc;
+}
+.colony-onboarding-root .start-free-recommended {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--wash);
+  color: var(--accent);
+  font-size: 0.65rem;
+  font-weight: var(--onboarding-font-weight-semibold);
+  line-height: 1.4;
+}
+.colony-onboarding-root .start-free-panel {
+  min-width: 0;
 }
 .colony-onboarding-root .start-free-fine-print {
   color: var(--muted);
-  font-size: 0.85rem;
-  line-height: 1.5;
-  margin-bottom: 18px;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  margin: 0;
+}
+.colony-onboarding-root .start-free-actions {
+  display: grid;
+  gap: 8px;
+}
+.colony-onboarding-root .start-free-secondary {
+  justify-self: center;
+  margin: 0;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+.colony-onboarding-root .start-free-notice {
+  margin-top: 0;
+  overflow-wrap: anywhere;
+}
+.colony-onboarding-root .start-free-notice .start-free-reason {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+.colony-onboarding-root .connection-mode:disabled {
+  cursor: default;
+}
+.colony-onboarding-root .start-free-installing {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 17px 16px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--wash);
+}
+.colony-onboarding-root .start-free-installing > .spinner {
+  margin-top: 3px;
+}
+.colony-onboarding-root .start-free-progress {
+  min-width: 0;
+}
+.colony-onboarding-root .start-free-progress h3 {
+  margin: 0;
+  font-size: 0.91rem;
+  font-weight: var(--onboarding-font-weight-semibold);
+  letter-spacing: var(--onboarding-tracking-subheading);
+  line-height: 1.55;
+}
+.colony-onboarding-root .start-free-progress p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 620px) {
+  .colony-onboarding-root .connection-modes {
+    gap: 9px;
+    margin-bottom: 18px;
+  }
+  .colony-onboarding-root .connection-mode {
+    gap: 11px;
+    padding: 12px 14px;
+  }
+  .colony-onboarding-root .start-free-panel > .start-free-actions.power-cta {
+    margin-top: 16px;
+    padding-top: 0;
+  }
+  .colony-onboarding-root .start-free-secondary {
+    min-height: 32px;
+    padding-block: 6px;
+  }
 }
 .colony-onboarding-root .power-body h3 {
   font-size: 1rem;

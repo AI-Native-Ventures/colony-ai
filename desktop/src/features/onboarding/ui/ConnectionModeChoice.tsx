@@ -89,8 +89,20 @@ export function ConnectionModeChoice({
             tabIndex={checked ? 0 : -1}
             type="button"
           >
-            <strong>{mode.title}</strong>
-            <span id={bodyId}>{mode.body}</span>
+            <span aria-hidden="true" className="connection-mode-radio" />
+            <span className="connection-mode-copy">
+              <span className="connection-mode-heading">
+                <strong>{mode.title}</strong>
+                {mode.id === "free" ? (
+                  <span aria-hidden="true" className="start-free-recommended">
+                    Recommended
+                  </span>
+                ) : null}
+              </span>
+              <span className="connection-mode-description" id={bodyId}>
+                {mode.body}
+              </span>
+            </span>
           </button>
         );
       })}

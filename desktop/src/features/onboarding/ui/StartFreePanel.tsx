@@ -44,13 +44,15 @@ export function StartFreePanel({
     return (
       <div
         aria-live="polite"
-        className="start-free-panel"
+        className="start-free-panel start-free-installing"
         data-testid="start-free-installing"
         role="status"
       >
-        <span className="spinner" />
-        <h3>Setting up free AI...</h3>
-        {installLine ? <p>{installLine}</p> : null}
+        <span aria-hidden="true" className="spinner" />
+        <div className="start-free-progress">
+          <h3>Setting up free AI...</h3>
+          {installLine ? <p>{installLine}</p> : null}
+        </div>
       </div>
     );
   }
@@ -58,7 +60,7 @@ export function StartFreePanel({
   if (state === "install-failed" || state === "ended") {
     return (
       <div className="start-free-panel" data-testid="start-free-problem">
-        <div className="power-notice is-error" role="alert">
+        <div className="power-notice is-error start-free-notice" role="alert">
           <p>
             {state === "ended"
               ? "OpenCode's free AI has ended. Connect your own AI to continue."
@@ -68,7 +70,7 @@ export function StartFreePanel({
             <p className="start-free-reason">{reason}</p>
           ) : null}
         </div>
-        <div className="power-cta">
+        <div className="power-cta start-free-actions">
           {state === "install-failed" && canRetry ? (
             <button
               className="primary full"
@@ -81,7 +83,11 @@ export function StartFreePanel({
             </button>
           ) : null}
           <button
-            className={state === "ended" || !canRetry ? "primary full" : "back"}
+            className={
+              state === "ended" || !canRetry
+                ? "primary full"
+                : "back start-free-secondary"
+            }
             data-testid="start-free-use-own"
             onClick={onUseOwn}
             type="button"
@@ -99,7 +105,7 @@ export function StartFreePanel({
         Runs through OpenCode on your computer. Chats aren't stored or used for
         training. Free while OpenCode offers it.
       </p>
-      <div className="power-cta">
+      <div className="power-cta start-free-actions">
         <button
           className="primary full"
           data-testid="start-free-continue"
@@ -110,7 +116,7 @@ export function StartFreePanel({
           Start free <span aria-hidden="true">→</span>
         </button>
         <button
-          className="back"
+          className="back start-free-secondary"
           data-testid="start-free-skip"
           onClick={onSkip}
           type="button"
