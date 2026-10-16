@@ -11,6 +11,7 @@ fn owned_pi(acp: AcpClient, protocol_version: u32) -> OwnedAgent {
         model_overridden: false,
         desired_model_request_id: None,
         desired_model_pending_ack: false,
+        require_desired_model: false,
         startup_effort: None,
         agent_name: BUZZ_PI_ACP_NAME.into(),
         goose_system_prompt_supported: None,

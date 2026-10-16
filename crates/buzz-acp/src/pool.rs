@@ -288,6 +288,9 @@ pub struct OwnedAgent {
     /// already emits its terminal immediately — so this gate prevents a
     /// double-emit there. Consumed (reset) at apply time.
     pub desired_model_pending_ack: bool,
+    /// When true, a missing or rejected `desired_model` fails the session
+    /// instead of continuing on the agent's default model (Start free).
+    pub require_desired_model: bool,
     /// Persisted startup effort value from `BUZZ_ACP_EFFORT_LEVEL` (carried from
     /// the Desktop record via `Config.effort_level`). Held per-worker and applied
     /// once, at the first session creation, by pairing with the adapter's
@@ -6946,6 +6949,7 @@ done"#
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
+            require_desired_model: false,
             startup_effort: None,
             agent_name: "legacy-test-agent".into(),
             goose_system_prompt_supported: None,
@@ -7046,6 +7050,7 @@ done"#
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
+            require_desired_model: false,
             startup_effort: None,
             agent_name: "legacy-test-agent".into(),
             goose_system_prompt_supported: None,
@@ -7233,6 +7238,7 @@ done"#
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
+            require_desired_model: false,
             startup_effort: None,
             agent_name: "legacy-test-agent".into(),
             goose_system_prompt_supported: None,
@@ -7441,6 +7447,7 @@ done"#
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
+            require_desired_model: false,
             startup_effort: None,
             agent_name: "legacy-test-agent".into(),
             goose_system_prompt_supported: None,
@@ -7595,6 +7602,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
+            require_desired_model: false,
             startup_effort: None,
             agent_name: "legacy-test-agent".into(),
             goose_system_prompt_supported: None,
@@ -8304,6 +8312,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
+            require_desired_model: false,
             startup_effort: None,
             agent_name: "test".into(),
             goose_system_prompt_supported: None,
@@ -8386,6 +8395,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
+            require_desired_model: false,
             startup_effort: None,
             agent_name: "test".into(),
             goose_system_prompt_supported: None,
@@ -9442,6 +9452,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
+            require_desired_model: false,
             startup_effort: None,
             agent_name: "unknown".into(),
             goose_system_prompt_supported: None,
@@ -9503,6 +9514,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
+            require_desired_model: false,
             startup_effort: None,
             agent_name: "unknown".into(),
             goose_system_prompt_supported: None,
@@ -10618,6 +10630,7 @@ done"#
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
+            require_desired_model: false,
             startup_effort: None,
             agent_name: "boundary-test-agent".into(),
             goose_system_prompt_supported: None,
@@ -11012,6 +11025,7 @@ mod startup_effort_tests {
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
+            require_desired_model: false,
             startup_effort: startup_effort.map(str::to_string),
             agent_name: "effort-test-agent".into(),
             goose_system_prompt_supported: None,
@@ -11272,6 +11286,7 @@ mod model_switch_tests {
             model_overridden: true,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
+            require_desired_model: false,
             startup_effort: None,
             agent_name: "switch-test-agent".into(),
             goose_system_prompt_supported: None,
@@ -11728,6 +11743,71 @@ done"#
         assert_eq!(results[0]["modelId"], "model-z");
     }
 
+    #[tokio::test]
+    async fn test_require_model_refuses_missing_model() {
+        // Start free: the required model is absent from the session/new
+        // catalog. The session must fail instead of running on the default.
+        let acp = spawn_switch_acp(OPTS_MODEL_A_AND_B, r#""result":{"ok":true}"#).await;
+        let mut agent = switching_agent(acp, "model-z");
+        agent.require_desired_model = true;
+
+        let ctx = make_prompt_context_no_owner();
+        let err = create_session_and_apply_model(
+            &mut agent,
+            &ctx,
+            None,
+            NewSessionChannelContext {
+                huddle_instructions: None,
+                canvas: None,
+                name: None,
+                scope: None,
+                channel_type: None,
+            },
+        )
+        .await
+        .expect_err("a required model that is not offered must fail the session");
+        match err {
+            AcpError::AgentError { code, message } => {
+                assert_eq!(code, -32002);
+                assert_eq!(message, "free model ended: model-z");
+            }
+            other => panic!("expected AgentError, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_require_model_refuses_rejected_switch() {
+        // The adapter refuses the switch; the session is still on its default
+        // model, so a required model must fail the session too.
+        let acp = spawn_switch_acp(
+            OPTS_MODEL_A_AND_B,
+            r#""error":{"code":-32602,"message":"model not accepted"}"#,
+        )
+        .await;
+        let mut agent = switching_agent(acp, "model-b");
+        agent.require_desired_model = true;
+
+        let ctx = make_prompt_context_no_owner();
+        let err = create_session_and_apply_model(
+            &mut agent,
+            &ctx,
+            None,
+            NewSessionChannelContext {
+                huddle_instructions: None,
+                canvas: None,
+                name: None,
+                scope: None,
+                channel_type: None,
+            },
+        )
+        .await
+        .expect_err("a rejected required model must fail the session");
+        assert!(
+            matches!(&err, AcpError::AgentError { code: -32002, message } if message == "free model ended: model-b"),
+            "got {err:?}"
+        );
+    }
+
     /// Scripted ACP whose `session/new` (request #1) returns a full result body
     /// `session_new_result` (a JSON object minus the outer envelope), and whose
     /// model-switch `set_config_option` (request #2) replies with `switch_reply`
@@ -11847,6 +11927,7 @@ done"#
             model_overridden: true,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
+            require_desired_model: false,
             startup_effort: Some(startup_effort.to_string()),
             agent_name: "switch-effort-test-agent".into(),
             goose_system_prompt_supported: None,
