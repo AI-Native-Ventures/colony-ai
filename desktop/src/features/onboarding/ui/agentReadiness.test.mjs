@@ -528,3 +528,28 @@ test("saved keyless credits route keeps native prerequisites and bundled availab
     false,
   );
 });
+
+test("resolveAgentReadiness_start_free_opencode_is_ready_after_a_verified_test", () => {
+  // Start free: OpenCode has no sign-in, so Welcome readiness rests on the
+  // verified connection receipt for the preferred runtime.
+  const opencode = makeRuntime({
+    id: "opencode",
+    label: "OpenCode",
+    command: "opencode",
+    authStatus: { status: "not_applicable" },
+  });
+  const config = makeConfig({
+    preferred_runtime: "opencode",
+    provider: "opencode-free",
+    model: "opencode/deepseek-v4.1-flash-free",
+  });
+  assert.equal(
+    resolveAgentReadiness([opencode], config, "preferred", null, "opencode")
+      .ready,
+    true,
+  );
+  assert.equal(
+    resolveAgentReadiness([opencode], config, "preferred", null, null).ready,
+    false,
+  );
+});
