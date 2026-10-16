@@ -2594,8 +2594,13 @@
   margin-top: 0;
   overflow-wrap: anywhere;
 }
+.colony-onboarding-root .power-notice.start-free-notice {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
 .colony-onboarding-root .start-free-notice .start-free-reason {
-  margin-top: 6px;
+  margin-top: 2px;
   font-size: 0.8rem;
   opacity: 0.8;
 }
