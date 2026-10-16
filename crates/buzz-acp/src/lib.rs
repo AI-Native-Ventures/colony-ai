@@ -3086,7 +3086,8 @@ async fn tokio_main() -> Result<()> {
         while let Ok(rr) = respawn_rx.try_recv() {
             crash_history[rr.index].respawn_in_flight = false;
             match rr.result {
-                Ok((acp, protocol_version, agent_name)) => {
+                Ok((mut acp, protocol_version, agent_name)) => {
+                    acp.set_require_model(config.require_model);
                     let agent = OwnedAgent {
                         index: rr.index,
                         acp,
@@ -3096,7 +3097,6 @@ async fn tokio_main() -> Result<()> {
                         model_overridden: false,
                         desired_model_request_id: None,
                         desired_model_pending_ack: false,
-                        require_desired_model: config.require_model,
                         startup_effort: config.effort_level.clone(),
                         agent_name,
                         goose_system_prompt_supported: None,
@@ -5593,6 +5593,7 @@ async fn initialize_agent_pool(
                             }),
                         );
                         let agent_name = normalized_agent_name(&init_result);
+                        acp.set_require_model(startup.require_model);
                         agent_slots.push(Some(OwnedAgent {
                             index: i,
                             acp,
@@ -5602,7 +5603,6 @@ async fn initialize_agent_pool(
                             model_overridden: false,
                             desired_model_request_id: None,
                             desired_model_pending_ack: false,
-                            require_desired_model: startup.require_model,
                             startup_effort: startup.effort_level.clone(),
                             agent_name,
                             goose_system_prompt_supported: None,
@@ -9512,7 +9512,6 @@ mod error_outcome_emission_tests {
             model_overridden: false,
             desired_model_request_id: None,
             desired_model_pending_ack: false,
-            require_desired_model: false,
             startup_effort: None,
             agent_name: "unknown".into(),
             goose_system_prompt_supported: None,
