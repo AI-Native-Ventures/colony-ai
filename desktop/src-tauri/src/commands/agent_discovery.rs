@@ -288,6 +288,24 @@ fn install_acp_runtime_blocking(
 
     let mut steps = Vec::new();
 
+    // Colony downloads managed binaries itself (pinned, checksummed); they
+    // never use the CLI or adapter installer phases below.
+    if crate::managed_agents::managed_binary_runtime(runtime.id) {
+        if let Err(step) = ensure_managed_opencode_blocking() {
+            reporter.record_step(&mut steps, *step);
+            return Ok(reporter.failed(steps));
+        }
+        crate::managed_agents::clear_resolve_cache();
+        post_install_verification::run(runtime_id, &mut steps, &reporter);
+        return Ok(InstallRuntimeResult {
+            success: steps.iter().all(|step| step.success),
+            steps,
+            restarted_count: 0,
+            failed_restart_count: 0,
+            log_path: reporter.log_path(),
+        });
+    }
+
     // Phase 1: Install CLI if missing and commands are available.
     // Today every entry in `cli_install_commands` is a curl-pipe; npm-backed
     // adapter installs live in Phase 2 below where they are rewritten to a
@@ -992,10 +1010,12 @@ use install_report::InstallReporter;
 // ── managed Node/npm runtime ──────────────────────────────────────────────────
 mod managed_archive;
 mod managed_node;
+mod managed_opencode;
 use managed_node::{
     ensure_managed_node_runtime_blocking, managed_node_runtime_supported, managed_npm_command,
     npm_eacces_hint, resolve_adapter_path,
 };
+use managed_opencode::ensure_managed_opencode_blocking;
 
 #[tauri::command]
 pub async fn discover_managed_agent_prereqs(

@@ -44,6 +44,37 @@ pub(crate) fn buzz_managed_node_bin_path() -> Option<PathBuf> {
     })
 }
 
+pub(crate) const MANAGED_OPENCODE_VERSION: &str = "v1.19.2";
+
+/// Runtimes whose binary Colony downloads itself instead of running an installer.
+pub(crate) fn managed_binary_runtime(runtime_id: &str) -> bool {
+    runtime_id == "opencode"
+}
+
+pub(crate) fn managed_opencode_platform() -> Option<&'static str> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => Some("darwin-arm64"),
+        ("macos", "x86_64") => Some("darwin-x64"),
+        ("linux", "x86_64") => Some("linux-x64"),
+        ("linux", "aarch64") => Some("linux-arm64"),
+        ("windows", "x86_64") => Some("windows-x64"),
+        ("windows", "aarch64") => Some("windows-arm64"),
+        _ => None,
+    }
+}
+
+/// Colony's own OpenCode folder for this platform (Start free).
+pub(crate) fn buzz_managed_opencode_dir() -> Option<PathBuf> {
+    let platform = managed_opencode_platform()?;
+    dirs::data_dir().map(|dir| {
+        dir.join("Colony")
+            .join("runtimes")
+            .join("opencode")
+            .join(MANAGED_OPENCODE_VERSION)
+            .join(platform)
+    })
+}
+
 pub(crate) fn buzz_managed_npm_bin_dir() -> Option<PathBuf> {
     buzz_managed_npm_prefix().map(|prefix| {
         #[cfg(windows)]
@@ -61,13 +92,18 @@ pub(crate) fn buzz_managed_command_path(command: &str, basename: &str) -> Option
     if command.contains(std::path::MAIN_SEPARATOR)
         || !matches!(
             command,
-            "codex-acp" | "claude-agent-acp" | "claude-code-acp" | "node" | "npm"
+            "codex-acp" | "claude-agent-acp" | "claude-code-acp" | "node" | "npm" | "opencode"
         )
     {
         return None;
     }
 
     let mut dirs = Vec::new();
+    if command == "opencode" {
+        if let Some(opencode_dir) = buzz_managed_opencode_dir() {
+            dirs.push(opencode_dir);
+        }
+    }
     if let Some(managed_bin) = buzz_managed_npm_bin_dir() {
         dirs.push(managed_bin);
     }
@@ -97,5 +133,40 @@ fn is_executable_file(path: &std::path::Path) -> bool {
     #[cfg(not(unix))]
     {
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn managed_command_path_prefers_managed_opencode() {
+        assert!(buzz_managed_command_path("not-a-colony-tool", "not-a-colony-tool").is_none());
+        let Some(dir) = buzz_managed_opencode_dir() else {
+            return;
+        };
+        let basename = if cfg!(windows) {
+            "opencode.exe"
+        } else {
+            "opencode"
+        };
+        let candidate = dir.join(basename);
+        assert_eq!(
+            buzz_managed_command_path("opencode", basename),
+            is_executable_file(&candidate).then_some(candidate)
+        );
+    }
+
+    #[test]
+    fn managed_opencode_dir_is_versioned_under_colony_runtimes() {
+        let Some(dir) = buzz_managed_opencode_dir() else {
+            return;
+        };
+        let text = dir.to_string_lossy().replace('\\', "/");
+        assert!(
+            text.contains("/Colony/runtimes/opencode/v1.19.2/"),
+            "{text}"
+        );
     }
 }
