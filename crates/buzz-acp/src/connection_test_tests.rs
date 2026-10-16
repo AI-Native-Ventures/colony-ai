@@ -80,6 +80,7 @@ async fn unavailable_model_fails_the_production_probe_before_prompt() {
         .as_str()
         .expect("failure")
         .contains("Selected model is unavailable"));
+    assert_eq!(result["code"], "model_unavailable");
     assert!(result.get("reply").is_none());
 }
 

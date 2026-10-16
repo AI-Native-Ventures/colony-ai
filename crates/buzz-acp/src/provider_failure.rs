@@ -62,6 +62,22 @@ pub(crate) fn notice(error: &AcpError) -> Option<String> {
     Some(format!("⚠️ {provider} {problem}"))
 }
 
+/// Message prefix for a session refused because its required model is gone.
+pub(crate) const FREE_MODEL_ENDED_PREFIX: &str = "free model ended: ";
+
+/// Channel notice when Start free's model is no longer offered.
+pub(crate) fn free_model_ended_notice(error: &AcpError) -> Option<String> {
+    match error {
+        AcpError::AgentError {
+            code: -32002,
+            message,
+        } if message.starts_with(FREE_MODEL_ENDED_PREFIX) => Some(
+            "⚠️ Free AI has ended. OpenCode no longer offers the free model. Connect your own AI in Settings, then re-send your request.".to_string(),
+        ),
+        _ => None,
+    }
+}
+
 /// Recovery copy for an interrupted paid turn whose outcome is ambiguous.
 pub(crate) fn credits_interrupted_notice() -> &'static str {
     "⚠️ This Colony credits turn stopped before its result was confirmed. Usage may be recovering automatically. Automatic replay was stopped; check your balance before starting a new turn."
@@ -162,5 +178,31 @@ mod tests {
         })
         .is_none());
         assert!(notice(&AcpError::WriteTimeout(std::time::Duration::from_secs(1))).is_none());
+    }
+}
+
+#[cfg(test)]
+mod free_model_tests {
+    use super::*;
+
+    #[test]
+    fn free_model_ended_notice_text() {
+        let error = AcpError::AgentError {
+            code: -32002,
+            message: format!("{FREE_MODEL_ENDED_PREFIX}opencode/deepseek-v4.1-flash-free"),
+        };
+        assert_eq!(
+            free_model_ended_notice(&error).as_deref(),
+            Some("⚠️ Free AI has ended. OpenCode no longer offers the free model. Connect your own AI in Settings, then re-send your request.")
+        );
+    }
+
+    #[test]
+    fn other_model_errors_are_not_free_model_ended() {
+        let error = AcpError::AgentError {
+            code: -32002,
+            message: "model not found: gpt-x".into(),
+        };
+        assert!(free_model_ended_notice(&error).is_none());
     }
 }

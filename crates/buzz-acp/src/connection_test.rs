@@ -38,6 +38,8 @@ fn effective_model(raw: &Value) -> Option<String> {
         })
 }
 
+const MODEL_UNAVAILABLE: &str = "Selected model is unavailable or this harness does not support model switching. Choose another model.";
+
 #[derive(Debug)]
 struct ConnectionFailure(&'static str);
 impl std::fmt::Display for ConnectionFailure {
@@ -117,9 +119,20 @@ async fn probe_turn(
     let model = if let Some(desired) = desired {
         if effective_model(&session.raw).as_deref() != Some(desired) {
             match resolve_model_switch_method(&session.raw, desired) {
-                Some(ModelSwitchMethod::ConfigOption { config_id, option_value }) => { client.session_set_config_option(&session.session_id, &config_id, &option_value).await?; }
-                Some(ModelSwitchMethod::SetModel { model_id }) => { client.session_set_model(&session.session_id, &model_id).await?; }
-                None => bail!(ConnectionFailure("Selected model is unavailable or this harness does not support model switching. Choose another model.")),
+                Some(ModelSwitchMethod::ConfigOption {
+                    config_id,
+                    option_value,
+                }) => {
+                    client
+                        .session_set_config_option(&session.session_id, &config_id, &option_value)
+                        .await?;
+                }
+                Some(ModelSwitchMethod::SetModel { model_id }) => {
+                    client
+                        .session_set_model(&session.session_id, &model_id)
+                        .await?;
+                }
+                None => bail!(ConnectionFailure(MODEL_UNAVAILABLE)),
             }
         }
         Some(desired.to_owned())
@@ -157,7 +170,12 @@ async fn probe_turn(
 }
 
 fn error_result(error: &anyhow::Error) -> Value {
-    let notice = error.downcast_ref::<ConnectionFailure>().map(ToString::to_string)
+    let failure = error.downcast_ref::<ConnectionFailure>();
+    if failure.is_some_and(|failure| failure.0 == MODEL_UNAVAILABLE) {
+        // A stable code lets onboarding tell "free model ended" from other failures.
+        return json!({"error": MODEL_UNAVAILABLE, "code": "model_unavailable"});
+    }
+    let notice = failure.map(ToString::to_string)
         .or_else(|| error.downcast_ref::<crate::AcpError>().and_then(crate::provider_failure::onboarding_notice))
         .unwrap_or_else(|| "The agent could not reply. Check this harness's sign-in, model and usage, then try again.".to_owned());
     json!({"error": notice})

@@ -1490,6 +1490,18 @@ struct NewSessionChannelContext<'a> {
     channel_type: Option<&'a str>,
 }
 
+/// Start free: the session cannot run without its required model, so the
+/// turn fails with a stable marker the prompt-result path turns into notice.
+fn required_model_missing(desired: &str) -> AcpError {
+    AcpError::AgentError {
+        code: -32002,
+        message: format!(
+            "{}{desired}",
+            crate::provider_failure::FREE_MODEL_ENDED_PREFIX
+        ),
+    }
+}
+
 async fn create_session_and_apply_model(
     agent: &mut OwnedAgent,
     ctx: &PromptContext,
@@ -1667,6 +1679,9 @@ async fn create_session_and_apply_model(
                                 "requestId": agent.desired_model_request_id,
                             }),
                         );
+                        if agent.require_desired_model {
+                            return Err(required_model_missing(desired));
+                        }
                         None
                     }
                 }
@@ -1690,6 +1705,9 @@ async fn create_session_and_apply_model(
                         "requestId": agent.desired_model_request_id,
                     }),
                 );
+                if agent.require_desired_model {
+                    return Err(required_model_missing(desired));
+                }
                 None
             }
         }
