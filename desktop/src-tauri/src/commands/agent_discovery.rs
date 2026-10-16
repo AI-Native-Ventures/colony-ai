@@ -990,6 +990,7 @@ use install_exec::run_install_command_with_retry;
 use install_report::InstallReporter;
 
 // ── managed Node/npm runtime ──────────────────────────────────────────────────
+mod managed_archive;
 mod managed_node;
 use managed_node::{
     ensure_managed_node_runtime_blocking, managed_node_runtime_supported, managed_npm_command,

@@ -1,8 +1,7 @@
-use sha2::{Digest, Sha256};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
-use std::{io::Read, io::Write};
 
+use super::managed_archive::{download_verified, extract_archive};
 use crate::managed_agents::{is_npm_global_install, InstallStepResult};
 
 const MANAGED_NODE_VERSION: &str = "v24.18.0";
@@ -320,10 +319,16 @@ fn install_managed_node_runtime(
         "https://nodejs.org/dist/{MANAGED_NODE_VERSION}/{}",
         artifact.filename
     );
-    download_managed_node_archive(&url, &archive_path, artifact.sha256)?;
+    download_verified(
+        &url,
+        &archive_path,
+        artifact.sha256,
+        MANAGED_NODE_MAX_BYTES,
+        "Node.js",
+    )?;
 
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("create temp dir: {e}"))?;
-    extract_managed_node_archive(&archive_path, &temp_dir, artifact.filename)?;
+    extract_archive(&archive_path, &temp_dir, artifact.filename, "Node.js")?;
     let _ = std::fs::remove_file(&archive_path);
 
     let extracted_dir = temp_dir.join(
@@ -358,205 +363,13 @@ fn install_managed_node_runtime(
     Ok(())
 }
 
-fn download_managed_node_archive(
-    url: &str,
-    dest: &std::path::Path,
-    expected_sha256: &str,
-) -> Result<(), String> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(5 * 60))
-        .build()
-        .map_err(|e| format!("build Node.js download client: {e}"))?;
-    let response = client
-        .get(url)
-        .send()
-        .map_err(|e| format!("download Node.js request failed: {e}"))?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "download Node.js HTTP {}: {}",
-            response.status().as_u16(),
-            response.status().canonical_reason().unwrap_or("unknown")
-        ));
-    }
-    if let Some(total) = response.content_length() {
-        if total > MANAGED_NODE_MAX_BYTES {
-            return Err(format!(
-                "download Node.js too large: {total} bytes (max {MANAGED_NODE_MAX_BYTES})"
-            ));
-        }
-    }
-
-    let mut response = response;
-    let mut file =
-        std::fs::File::create(dest).map_err(|e| format!("create Node.js archive: {e}"))?;
-    let mut hasher = Sha256::new();
-    let mut downloaded = 0_u64;
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let read = response
-            .read(&mut buffer)
-            .map_err(|e| format!("download Node.js stream error: {e}"))?;
-        if read == 0 {
-            break;
-        }
-        downloaded += read as u64;
-        if downloaded > MANAGED_NODE_MAX_BYTES {
-            let _ = std::fs::remove_file(dest);
-            return Err(format!(
-                "download Node.js exceeded max size: {downloaded} bytes (max {MANAGED_NODE_MAX_BYTES})"
-            ));
-        }
-        file.write_all(&buffer[..read])
-            .map_err(|e| format!("write Node.js archive: {e}"))?;
-        hasher.update(&buffer[..read]);
-    }
-    file.flush()
-        .map_err(|e| format!("flush Node.js archive: {e}"))?;
-
-    let actual = hex::encode(hasher.finalize());
-    if actual != expected_sha256 {
-        let _ = std::fs::remove_file(dest);
-        return Err(format!(
-            "download Node.js hash mismatch: expected {expected_sha256}, got {actual}"
-        ));
-    }
-    Ok(())
-}
-
-fn extract_managed_node_archive(
-    archive_path: &std::path::Path,
-    dest_dir: &std::path::Path,
-    filename: &str,
-) -> Result<(), String> {
-    if filename.ends_with(".tar.gz") {
-        let file =
-            std::fs::File::open(archive_path).map_err(|e| format!("open Node.js archive: {e}"))?;
-        let decoder = flate2::read::GzDecoder::new(file);
-        let mut archive = tar::Archive::new(decoder);
-        validate_managed_node_archive_entries(&mut archive)?;
-
-        let file = std::fs::File::open(archive_path)
-            .map_err(|e| format!("open Node.js archive for extraction: {e}"))?;
-        let decoder = flate2::read::GzDecoder::new(file);
-        let mut archive = tar::Archive::new(decoder);
-        archive
-            .unpack(dest_dir)
-            .map_err(|e| format!("extract Node.js archive: {e}"))
-    } else if filename.ends_with(".zip") {
-        let file =
-            std::fs::File::open(archive_path).map_err(|e| format!("open Node.js archive: {e}"))?;
-        let mut archive =
-            zip::ZipArchive::new(file).map_err(|e| format!("read Node.js zip archive: {e}"))?;
-        validate_managed_node_zip_entries(&archive)?;
-        extract_managed_node_zip(&mut archive, dest_dir)
-    } else {
-        Err(format!("unsupported managed Node.js archive: {filename}"))
-    }
-}
-
-/// Validate ZIP entry names using platform-neutral string logic.
-///
-/// `std::path::Path` is intentionally avoided: its `is_absolute()` and
-/// `Component` parsing use BUILD-HOST grammar, so `/etc/passwd` is not
-/// `is_absolute()` on Windows (no drive prefix), causing the check to lie on
-/// the platform this guard exists to protect.  Instead we apply pure string
-/// rules that produce identical results on every host:
-///
-/// - Unix-rooted: starts with `/`
-/// - Windows-rooted: starts with `\`, has a drive prefix (`X:`), or is UNC
-///   (`\\` / `//`)
-/// - Traversal: any component that is `..` when split on EITHER `/` or `\`
+/// Kept for `managed_node_tests.rs`, which pins the shared validator through
+/// the Node.js wording.
+#[cfg(test)]
 fn validate_managed_node_zip_entries(
     archive: &zip::ZipArchive<std::fs::File>,
 ) -> Result<(), String> {
-    for i in 0..archive.len() {
-        let name = archive
-            .name_for_index(i)
-            .ok_or_else(|| format!("Node.js zip entry {i}: missing name"))?;
-
-        // Absolute-path checks (platform-neutral).
-        if name.starts_with('/') || name.starts_with('\\') {
-            return Err(format!("Node.js zip contains absolute path: {name}"));
-        }
-        // Drive prefix: one ASCII letter followed by ':'
-        if name.len() >= 2 && name.as_bytes()[1] == b':' && name.as_bytes()[0].is_ascii_alphabetic()
-        {
-            return Err(format!("Node.js zip contains absolute path: {name}"));
-        }
-        // UNC prefix: // or \\ (covered by starts_with checks above for \\,
-        // and // is caught by starts_with('/') then a second '/' — belt + suspenders).
-        // (Already caught by the starts_with checks above; explicit for clarity.)
-
-        // Traversal: split on both separators and check each component.
-        let has_traversal = name.split(['/', '\\']).any(|component| component == "..");
-        if has_traversal {
-            return Err(format!("Node.js zip contains path traversal: {name}"));
-        }
-    }
-    Ok(())
-}
-
-fn extract_managed_node_zip(
-    archive: &mut zip::ZipArchive<std::fs::File>,
-    dest_dir: &std::path::Path,
-) -> Result<(), String> {
-    for i in 0..archive.len() {
-        let mut entry = archive
-            .by_index(i)
-            .map_err(|e| format!("Node.js zip entry {i}: {e}"))?;
-        let outpath = match entry.enclosed_name() {
-            Some(p) => dest_dir.join(p),
-            None => {
-                return Err(format!(
-                    "Node.js zip contains unsafe path: {}",
-                    entry.name()
-                ))
-            }
-        };
-        if entry.is_dir() {
-            std::fs::create_dir_all(&outpath)
-                .map_err(|e| format!("create dir in Node.js zip: {e}"))?;
-        } else {
-            if let Some(parent) = outpath.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| format!("create parent dir in Node.js zip: {e}"))?;
-            }
-            let mut out = std::fs::File::create(&outpath)
-                .map_err(|e| format!("create file in Node.js zip: {e}"))?;
-            std::io::copy(&mut entry, &mut out)
-                .map_err(|e| format!("extract file in Node.js zip: {e}"))?;
-        }
-    }
-    Ok(())
-}
-
-fn validate_managed_node_archive_entries<R: std::io::Read>(
-    archive: &mut tar::Archive<R>,
-) -> Result<(), String> {
-    let entries = archive
-        .entries()
-        .map_err(|e| format!("read Node.js archive entries: {e}"))?;
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Node.js archive entry: {e}"))?;
-        let path = entry
-            .path()
-            .map_err(|e| format!("Node.js archive entry path: {e}"))?;
-        let path_str = path.to_string_lossy();
-        if path.is_absolute() {
-            return Err(format!(
-                "Node.js archive contains absolute path: {path_str}"
-            ));
-        }
-        if path
-            .components()
-            .any(|component| matches!(component, std::path::Component::ParentDir))
-        {
-            return Err(format!(
-                "Node.js archive contains path traversal: {path_str}"
-            ));
-        }
-    }
-    Ok(())
+    super::managed_archive::validate_zip_entries(archive, "Node.js")
 }
 
 fn verify_node_tree(dir: &std::path::Path) -> Result<(), String> {
