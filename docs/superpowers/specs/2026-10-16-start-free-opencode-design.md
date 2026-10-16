@@ -111,11 +111,14 @@ and built the same way:
 
 ### 4. Ended state at runtime
 
-- `crates/buzz-acp/src/provider_failure.rs`: classify OpenCode's
-  missing-model and `FreeTierError` replies as `free_model_ended`. The exact
-  error text is captured during the spike and pinned in a test.
-- On that class, post one channel notice per agent (reusing the existing
-  onboarding notice path) and stop retrying the batch.
+- Spike finding: OpenCode never errors on a missing model. It silently runs
+  its default `opencode/big-pickle` (a model whose data may be used for
+  training). So the guard lives in buzz-acp: with `BUZZ_ACP_REQUIRE_MODEL=1`
+  (set by the desktop only for provider `opencode-free`), a session whose
+  required model is missing or rejected fails with `free model ended: <id>`
+  instead of falling back.
+- `crates/buzz-acp/src/provider_failure.rs` maps that failure to the
+  channel notice. Each refused turn posts the notice once and is not retried.
 - `desktop/src/features/agents/lib/friendlyAgentLastError.ts` maps it to
   "Free AI has ended. Connect your own AI in Settings."
 
