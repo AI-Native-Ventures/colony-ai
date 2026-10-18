@@ -16,7 +16,8 @@ static CONNECTION_TEST: LazyLock<tokio::sync::Mutex<()>> =
 // A cancellation file belongs to a single fresh probe directory. No user files are read.
 static LATEST_REQUEST: Mutex<Option<(String, CancellationToken)>> = Mutex::new(None);
 static ACTIVE_TEST: Mutex<Option<(String, PathBuf)>> = Mutex::new(None);
-const CONNECTION_TIMEOUT_SECS: u64 = 40;
+// Free models can queue for minutes; buzz-acp retries a silent attempt inside this budget.
+const CONNECTION_TIMEOUT_SECS: u64 = 300;
 const CONNECTION_OUTER_TIMEOUT_SECS: u64 = CONNECTION_TIMEOUT_SECS + 20;
 
 /// Native launch flag, default OFF. Exposes no authorization or credentials.

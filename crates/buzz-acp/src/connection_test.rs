@@ -1,5 +1,6 @@
 //! A bounded first hello through the same ACP client used for normal turns.
 use std::{
+    future::Future,
     path::Path,
     time::{Duration, Instant},
 };
@@ -16,7 +17,15 @@ use crate::{
     AcpClient, StopReason,
 };
 
-const DEFAULT_TIMEOUT_SECS: u64 = 40;
+/// The whole test's budget across every attempt. Free models can queue for minutes.
+const DEFAULT_TIMEOUT_SECS: u64 = 300;
+/// Silence after the hello prompt before an attempt is abandoned for a fresh one.
+/// A stuck free-model request rarely recovers; a new request usually answers in seconds.
+const SILENCE_SECS: u64 = 45;
+/// Fresh attempts are bounded so a persistently failing provider stops.
+const MAX_ATTEMPTS: u32 = 4;
+/// A retry needs room to start an agent and wait out a reply.
+const MIN_RETRY_ROOM: Duration = Duration::from_secs(15);
 const PROMPT: &str = "This is a connection test. Do not use tools or read files. Reply with a short hello and ask what we shall work on first.";
 
 fn effective_model(raw: &Value) -> Option<String> {
@@ -39,6 +48,56 @@ fn effective_model(raw: &Value) -> Option<String> {
 }
 
 const MODEL_UNAVAILABLE: &str = "Selected model is unavailable or this harness does not support model switching. Choose another model.";
+const AI_BUSY: &str =
+    "Your AI is busy and did not answer. Try again in a minute, or choose another connection.";
+
+/// Limits for one connection test, shared by every attempt.
+#[derive(Clone, Copy)]
+struct ProbeLimits {
+    /// Absolute end of the whole test.
+    deadline: tokio::time::Instant,
+    /// The whole test's budget, named in the failure copy.
+    total: Duration,
+    /// Silence after the prompt that abandons one attempt.
+    silence: Duration,
+}
+
+impl ProbeLimits {
+    fn new(total: Duration, silence: Duration) -> Self {
+        Self {
+            deadline: tokio::time::Instant::now() + total,
+            total,
+            silence,
+        }
+    }
+}
+
+/// One attempt's JSON outcome, and whether a fresh attempt may still succeed.
+struct Attempt {
+    outcome: Value,
+    retry: bool,
+}
+
+/// A slow or briefly failing provider, as opposed to a setup problem a retry cannot fix.
+fn transient(error: &anyhow::Error) -> bool {
+    match error.downcast_ref::<crate::AcpError>() {
+        Some(crate::AcpError::IdleTimeout(_) | crate::AcpError::HardTimeout { .. }) => true,
+        Some(crate::AcpError::AgentError {
+            code: -32603,
+            message,
+        }) => message.contains("Internal Server Error"),
+        _ => false,
+    }
+}
+
+fn budget_words(total: Duration) -> String {
+    let secs = total.as_secs();
+    if secs >= 120 && secs % 60 == 0 {
+        format!("{} minutes", secs / 60)
+    } else {
+        format!("{secs} seconds")
+    }
+}
 
 #[derive(Debug)]
 struct ConnectionFailure(&'static str);
@@ -99,6 +158,7 @@ async fn wait_for_cancellation(path: Option<&Path>) {
 async fn probe_turn(
     client: &mut AcpClient,
     desired: Option<&str>,
+    limits: &ProbeLimits,
     progress: Option<&Path>,
     started: Instant,
 ) -> Result<Value> {
@@ -156,8 +216,8 @@ async fn probe_turn(
         .session_prompt_with_idle_timeout(
             &session.session_id,
             &prompt,
-            Duration::from_secs(20),
-            Duration::from_secs(30),
+            limits.silence,
+            limits.total,
         )
         .await?;
     if client.connection_tool_requested() {
@@ -177,6 +237,7 @@ fn error_result(error: &anyhow::Error) -> Value {
     }
     let notice = failure.map(ToString::to_string)
         .or_else(|| error.downcast_ref::<crate::AcpError>().and_then(crate::provider_failure::onboarding_notice))
+        .or_else(|| transient(error).then(|| AI_BUSY.to_owned()))
         .unwrap_or_else(|| "The agent could not reply. Check this harness's sign-in, model and usage, then try again.".to_owned());
     json!({"error": notice})
 }
@@ -184,24 +245,61 @@ fn error_result(error: &anyhow::Error) -> Value {
 async fn bounded_probe(
     client: &mut AcpClient,
     desired: Option<&str>,
-    timeout_secs: u64,
+    limits: &ProbeLimits,
     cancel_path: Option<&Path>,
     progress: Option<&Path>,
     started: Instant,
-) -> Value {
-    let result = tokio::time::timeout(Duration::from_secs(timeout_secs), async {
+) -> Attempt {
+    let result = tokio::time::timeout_at(limits.deadline, async {
         tokio::select! {
-            result = probe_turn(client, desired, progress, started) => result,
+            result = probe_turn(client, desired, limits, progress, started) => result,
             _ = wait_for_cancellation(cancel_path) => Err(ConnectionFailure("Connection test cancelled.").into()),
         }
     }).await;
     client.shutdown().await;
     match result {
-        Ok(Ok(reply)) => reply,
-        Ok(Err(error)) => error_result(&error),
-        Err(_) => {
-            json!({"error": format!("The agent did not reply within {timeout_secs} seconds. Check sign-in and usage, then try again.")})
+        Ok(Ok(reply)) => Attempt {
+            outcome: reply,
+            retry: false,
+        },
+        Ok(Err(error)) => Attempt {
+            outcome: error_result(&error),
+            retry: transient(&error),
+        },
+        Err(_) => Attempt {
+            outcome: json!({"error": format!("Your AI did not answer within {}. It may be busy right now. Try again later, or choose another connection.", budget_words(limits.total))}),
+            retry: false,
+        },
+    }
+}
+
+/// Run attempts on fresh agents until one answers, a failure is not transient,
+/// the attempt cap is reached, or the shared deadline leaves no room to retry.
+async fn probe_with_retries<S, F>(
+    mut spawn: S,
+    desired: Option<&str>,
+    limits: &ProbeLimits,
+    cancel_path: Option<&Path>,
+    progress: Option<&Path>,
+    started: Instant,
+) -> Result<Value>
+where
+    S: FnMut() -> F,
+    F: Future<Output = Result<AcpClient>>,
+{
+    let mut attempt = 1;
+    loop {
+        let mut client = spawn().await?;
+        let result =
+            bounded_probe(&mut client, desired, limits, cancel_path, progress, started).await;
+        let room = limits
+            .deadline
+            .saturating_duration_since(tokio::time::Instant::now())
+            >= MIN_RETRY_ROOM;
+        if !result.retry || attempt >= MAX_ATTEMPTS || !room {
+            return Ok(result.outcome);
         }
+        attempt += 1;
     }
 }
 
@@ -210,8 +308,6 @@ pub(crate) async fn run(args: ModelsArgs) -> Result<()> {
     let started = Instant::now();
     let agent_args =
         crate::config::normalize_agent_args(&args.agent.agent_command, args.agent.agent_args);
-    let mut client =
-        AcpClient::spawn_connection_probe(&args.agent.agent_command, &agent_args).await?;
     let timeout_secs = std::env::var("COLONY_CONNECTION_TIMEOUT_SECS")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
@@ -223,15 +319,25 @@ pub(crate) async fn run(args: ModelsArgs) -> Result<()> {
     let desired = std::env::var("COLONY_CONNECTION_MODEL")
         .ok()
         .filter(|value| !value.trim().is_empty());
-    let outcome = bounded_probe(
-        &mut client,
+    let limits = ProbeLimits::new(
+        Duration::from_secs(timeout_secs),
+        Duration::from_secs(SILENCE_SECS),
+    );
+    let command = args.agent.agent_command.as_str();
+    let agent_args = agent_args.as_slice();
+    let outcome = probe_with_retries(
+        move || async move {
+            AcpClient::spawn_connection_probe(command, agent_args)
+                .await
+                .map_err(anyhow::Error::from)
+        },
         desired.as_deref(),
-        timeout_secs,
+        &limits,
         cancel_path.as_deref(),
         progress.as_deref(),
         started,
     )
-    .await;
+    .await?;
     println!(
         "{}",
         serde_json::to_string(&outcome).context("encode connection result")?
