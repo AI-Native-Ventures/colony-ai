@@ -19,6 +19,14 @@ ignore = [
     # serde_yaml; cargo-deny reports no safe upgrade. Remove once serde_yaml moves
     # to a maintained YAML backend or we replace serde_yaml.
     { id = "RUSTSEC-2024-0449", reason = "unmaintained notice only, transitive via serde_yaml; no safe upgrade available" },
+    # zip 2.4.2: extract() keeps SUID/SGID bits (0367), follows symlink targets
+    # outside the destination (0368) and applies permissions through symlinks
+    # (0369). Only reachable through mesh-llm, a buzz-relay dev-dependency for
+    # tests and examples, so it never ships. The fix (zip >= 9) is unreachable
+    # until mesh-llm moves off zip 2.x; remove these when it does.
+    { id = "RUSTSEC-2026-0367", reason = "zip 2.x via mesh-llm dev-dependency only; not shipped; no upgrade until mesh-llm bumps zip" },
+    { id = "RUSTSEC-2026-0368", reason = "zip 2.x via mesh-llm dev-dependency only; not shipped; no upgrade until mesh-llm bumps zip" },
+    { id = "RUSTSEC-2026-0369", reason = "zip 2.x via mesh-llm dev-dependency only; not shipped; no upgrade until mesh-llm bumps zip" },
 ]
 
 [licenses]

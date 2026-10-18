@@ -188,3 +188,24 @@ test("an unsupported computer shows the reason and no retry", async ({
   await expect(page.getByTestId("start-free-retry")).toHaveCount(0);
   await expect(page.getByTestId("start-free-use-own")).toBeVisible();
 });
+
+test("a slow first hello says it is still waiting", async ({ page }) => {
+  await openR17ConnectionSetup(page, {
+    startFree: true,
+    runtimes: [opencodeInstalled],
+    mock: {
+      installAcpRuntimeResult: { success: true, steps: [] },
+      onboardingConnectionDelayMs: 120_000,
+    },
+  });
+  await page.clock.install();
+  await page.getByTestId("start-free-continue").click();
+  const hint = page.getByTestId("onboarding-slow-reply");
+  await expect(hint).toBeAttached();
+  await expect(hint).toHaveText("");
+  await page.clock.fastForward(21_000);
+  await expect(hint).toHaveText(
+    "Still waiting. When the AI is busy, this can take a few minutes. You can keep waiting or cancel.",
+  );
+  await expect(page.getByRole("button", { name: "Cancel test" })).toBeEnabled();
+});
