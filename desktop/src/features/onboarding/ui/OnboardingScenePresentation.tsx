@@ -33,6 +33,29 @@ export type {
   OnboardingSceneActions,
 } from "./OnboardingSceneTypes";
 
+const SLOW_REPLY_MS = 20_000;
+export const SLOW_REPLY_COPY =
+  "Still waiting. When the AI is busy, this can take a few minutes. You can keep waiting or cancel.";
+
+/** Reassures the owner when a first hello is slow: busy free models can take minutes. */
+function SlowReplyHint() {
+  const [slow, setSlow] = React.useState(false);
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setSlow(true), SLOW_REPLY_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return (
+    <p
+      aria-live="polite"
+      className="hint"
+      data-testid="onboarding-slow-reply"
+      role="status"
+    >
+      {slow ? SLOW_REPLY_COPY : null}
+    </p>
+  );
+}
+
 function SceneBody(props: PresentationProps) {
   const {
     data,
@@ -217,6 +240,9 @@ function SceneBody(props: PresentationProps) {
               : "Waiting for a reply"}
           </li>
         </ol>
+        {data.connectionPhase === "waiting" && !data.visualOnly ? (
+          <SlowReplyHint />
+        ) : null}
         <button
           className="secondary full"
           onClick={props.onCancelTest ?? (() => onNavigate?.("connect"))}
