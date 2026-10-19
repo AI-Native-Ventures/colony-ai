@@ -139,7 +139,11 @@ mod tests {
             config_digest(&changed).expect("changed"),
             proof.config_digest
         );
-        proof.completed = Instant::now() - TTL;
-        assert!(!proof.matches("claude", &config.env_vars));
+        // Windows counts Instant from boot, so a freshly booted CI runner
+        // cannot step back a full TTL; macOS and Linux always can.
+        if let Some(expired) = Instant::now().checked_sub(TTL) {
+            proof.completed = expired;
+            assert!(!proof.matches("claude", &config.env_vars));
+        }
     }
 }

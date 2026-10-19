@@ -16,6 +16,10 @@ test("long native commands receive a longer deadline", () => {
   );
   assert.equal(nativeRequestTimeout("invoke", "sign_out", 60_000), 60_000);
   assert.equal(
+    nativeRequestTimeout("invoke", "test_onboarding_connection", 120_000),
+    360_000,
+  );
+  assert.equal(
     nativeRequestTimeout("invoke", "google_desktop_sign_in", 60_000),
     210_000,
   );
