@@ -7,7 +7,10 @@ import { isStockScoutPrompt } from "./scoutPersona";
 import { readWelcomeBusinessContext } from "./welcomeConnection";
 import scoutSvg from "./assets/scout.svg?raw";
 import { resolveLegacyWelcomeRuntime } from "./ui/agentReadiness";
-import { stopManagedAgent } from "@/shared/api/tauriManagedAgents";
+import {
+  startManagedAgent,
+  stopManagedAgent,
+} from "@/shared/api/tauriManagedAgents";
 import {
   buildInstanceInputForDefinition,
   resolveStartRuntimeForDefinition,
@@ -267,6 +270,7 @@ export async function buildWelcomeStarterCreateInput(
 export function welcomeStarterRuntimeUpdate(
   existing: ManagedAgent,
   desired: CreateManagedAgentInput,
+  runtimeDefaultArgs: readonly string[] = [],
 ) {
   if (!desired.agentCommand) return null;
 
@@ -274,11 +278,21 @@ export function welcomeStarterRuntimeUpdate(
   const desiredModel = desired.model ?? null;
   const desiredProvider = desired.provider ?? null;
   const desiredMcpCommand = desired.mcpCommand ?? "";
+  // The summary carries resolved launch values. Empty desired args resolve to
+  // the runtime defaults, and a persona-linked agent's model and provider
+  // resolve from its definition or the global config, never from the record.
+  const argsMatch =
+    existing.agentArgs.join(",") === desiredArgs.join(",") ||
+    (desiredArgs.length === 0 &&
+      existing.agentArgs.join(",") === runtimeDefaultArgs.join(","));
+  const inheritsModel = existing.personaId != null;
   if (
     existing.agentCommand === desired.agentCommand &&
-    existing.agentArgs.join(",") === desiredArgs.join(",") &&
-    existing.model === desiredModel &&
-    existing.provider === desiredProvider &&
+    argsMatch &&
+    (existing.model === desiredModel ||
+      (inheritsModel && desiredModel === null)) &&
+    (existing.provider === desiredProvider ||
+      (inheritsModel && desiredProvider === null)) &&
     existing.mcpCommand === desiredMcpCommand &&
     (!desired.envVars?.COLONY_BUSINESS_PROFILE ||
       existing.envVars.COLONY_BUSINESS_PROFILE ===
@@ -311,14 +325,22 @@ export function welcomeStarterRuntimeUpdate(
   };
 }
 
-/** Stop a running starter before applying changed launch fields, so kickoff starts the new runtime. */
+/** Stop a running starter before applying changed launch fields, then start it again on the new runtime. */
 export async function reconcileWelcomeStarter(
   existing: ManagedAgent,
   desired: CreateManagedAgentInput,
   stop = stopManagedAgent,
   update = updateManagedAgent,
+  options: {
+    start?: typeof startManagedAgent;
+    runtimeDefaultArgs?: readonly string[];
+  } = {},
 ): Promise<ManagedAgent> {
-  const runtimeUpdate = welcomeStarterRuntimeUpdate(existing, desired);
+  const runtimeUpdate = welcomeStarterRuntimeUpdate(
+    existing,
+    desired,
+    options.runtimeDefaultArgs,
+  );
   const stockPromptUpdate =
     existing.personaId === WELCOME_GUIDE_PERSONA_ID &&
     desired.systemPrompt != null &&
@@ -339,8 +361,9 @@ export async function reconcileWelcomeStarter(
     !Object.keys(stockNameUpdate).length
   )
     return existing;
-  if (existing.status === "running") await stop(existing.pubkey);
-  return (
+  const wasRunning = existing.status === "running";
+  if (wasRunning) await stop(existing.pubkey);
+  const updated = (
     await update({
       pubkey: existing.pubkey,
       ...runtimeUpdate,
@@ -348,6 +371,10 @@ export async function reconcileWelcomeStarter(
       ...stockNameUpdate,
     })
   ).agent;
+  // Kickoff only starts the lead before its first message, so a starter that
+  // was running must not be left stopped by this reconcile.
+  if (!wasRunning) return updated;
+  return (options.start ?? startManagedAgent)(existing.pubkey);
 }
 
 export function welcomeTeammateHasExpectedAccess(
@@ -459,7 +486,19 @@ async function provisionWelcomeTeam(
       desired.agentCommand,
     );
     if (existing) {
-      agents.push(await reconcileWelcomeStarter(existing, desired));
+      agents.push(
+        await reconcileWelcomeStarter(
+          existing,
+          desired,
+          stopManagedAgent,
+          updateManagedAgent,
+          {
+            runtimeDefaultArgs: runtimes.find(
+              (runtime) => runtime.command === desired.agentCommand,
+            )?.defaultArgs,
+          },
+        ),
+      );
       continue;
     }
 
