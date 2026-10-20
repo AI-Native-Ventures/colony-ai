@@ -91,13 +91,13 @@ export function communityCreateErrorMessage(code: string): string {
     return "Your community was created, but setup needs another try. Retry to finish.";
   }
   if (code === "only members of this community can create new communities") {
-    return "This relay requires an existing community membership before you can create one.";
+    return "You need to be a member of a community before you can create one.";
   }
   if (
     code ===
     "this relay has reached its hourly limit for new communities; try again later"
   ) {
-    return "This relay has reached its hourly creation limit. Try again later.";
+    return "The hourly limit for new communities has been reached. Try again later.";
   }
   if (
     code === "too many communities created from this network; try again later"

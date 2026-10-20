@@ -151,7 +151,7 @@ export function OnboardingFooter({
         // The docked slot is click-through (`pointer-events-none`); re-enable
         // pointer events on the CTA group itself. Inline (no slot) needs no
         // override since it sits in normal flow.
-        target && "pointer-events-auto",
+        target && "pointer-events-none [&_button]:pointer-events-auto",
         className,
       )}
     >

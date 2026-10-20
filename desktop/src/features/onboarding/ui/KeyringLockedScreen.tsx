@@ -18,7 +18,7 @@ export function KeyringLockedScreen() {
   const handleReimportClick = React.useCallback(() => {
     if (!canImport) return;
     const confirmed = window.confirm(
-      "Importing a different nsec replaces the identity currently locked in the keyring for this install. The previous identity will no longer be accessible. Continue?",
+      "Using a different recovery key replaces the sign-in locked on this device. The previous sign-in will no longer be accessible. Continue?",
     );
     if (confirmed) {
       setShowImport(true);

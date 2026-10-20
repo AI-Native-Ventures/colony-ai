@@ -134,6 +134,7 @@ export default defineConfig({
         "**/tooltip-semantics.spec.ts",
         "**/search-scope-screenshots.spec.ts",
         "**/onboarding-docked-cta-screenshots.spec.ts",
+        "**/reskin-gate-screenshots.spec.ts",
         "**/onboarding-two-paths-screenshots.spec.ts",
         "**/onboarding-design.spec.ts",
         "**/onboarding-polish.spec.ts",

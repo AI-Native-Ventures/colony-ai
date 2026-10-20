@@ -720,7 +720,7 @@ function RuntimeProvidersSection({
         <h1 className="text-title font-normal text-foreground">
           {method === "subscription"
             ? "Continue with an AI subscription"
-            : "Choose a harness"}
+            : "Choose an AI tool"}
         </h1>
         <p
           className={cn(
@@ -729,8 +729,8 @@ function RuntimeProvidersSection({
           )}
         >
           {method === "subscription"
-            ? "Subscriptions connect through a compatible harness, like Claude Code or Codex. Choose yours to sign in."
-            : "Choose how your agents will connect to AI providers. You can change this at any time."}
+            ? "Your subscription works with compatible apps such as Claude Code or Codex. Choose the app you use to sign in."
+            : "Choose how Colony connects to AI services. You can change this later."}
         </p>
       </div>
 

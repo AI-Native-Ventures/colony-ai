@@ -610,7 +610,7 @@ export function AccountAuthFlow({
             onClick={onAdvanced}
             type="button"
           >
-            Advanced: use an existing Nostr identity
+            Advanced sign-in options
           </button>
         </div>
       ) : null}

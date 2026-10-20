@@ -1,3 +1,4 @@
+import { mkdirSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
@@ -14,11 +15,20 @@ const BLANK_TYLER_IDENTITY = {
   username: "",
 };
 
-const SHOT_DIR = "test-results/onboarding-docked-cta";
-const COMMUNITY_ONBOARDING_TRANSACTION_STORAGE_KEY =
-  "buzz-community-onboarding-transaction.v1";
+const SHOT_DIR = "/Users/mac/worktrees/.lanes/reskin/shots";
 
 test.use({ viewport: { width: 1280, height: 800 } });
+
+async function captureReskinState(page: Page, name: string) {
+  const originalViewport = page.viewportSize();
+  mkdirSync(SHOT_DIR, { recursive: true });
+  for (const width of [1440, 900]) {
+    await page.setViewportSize({ width, height: 900 });
+    await waitForAnimations(page);
+    await page.screenshot({ path: `${SHOT_DIR}/${name}-${width}.png` });
+  }
+  if (originalViewport) await page.setViewportSize(originalViewport);
+}
 
 async function expectSharedCardGeometry(page: Page, expectedWidth = 610) {
   const geometry = await page
@@ -47,6 +57,7 @@ async function expectSharedCardGeometry(page: Page, expectedWidth = 610) {
 }
 
 async function expectProfileFooterMatchesContentGutters(page: Page) {
+  await waitForAnimations(page);
   const geometry = await page.evaluate(() => {
     const input = document
       .querySelector<HTMLElement>("#onboarding-display-name")
@@ -77,8 +88,7 @@ test("R17 signup and email verification screens fit the onboarding card", async 
 }) => {
   await startR17AccountAuth(page);
   await expect(page.getByTestId("onboarding-scene-signin")).toBeVisible();
-  await waitForAnimations(page);
-  await page.screenshot({ path: `${SHOT_DIR}/01-account-sign-in.png` });
+  await captureReskinState(page, "account-sign-in");
 
   await page.getByRole("button", { name: "Create an account" }).click();
   await expect(
@@ -89,20 +99,18 @@ test("R17 signup and email verification screens fit the onboarding card", async 
   await page
     .getByRole("textbox", { name: "Password" })
     .fill("correct-horse-12");
-  await waitForAnimations(page);
-  await page.screenshot({ path: `${SHOT_DIR}/02-account-create.png` });
+  await captureReskinState(page, "account-create");
 
   await page
     .getByRole("button", { name: "Create account", exact: true })
     .click();
   await expect(page.getByTestId("account-auth-screen-verify")).toBeVisible();
   for (let index = 1; index <= 6; index += 1) {
-    await expect(page.getByLabel("Digit " + index + " of 6")).toBeVisible();
+    await expect(page.getByLabel(`Digit ${index} of 6`)).toBeVisible();
   }
   await expect(page.getByTestId("otp-continue")).toBeDisabled();
   await expect(page.locator("body")).not.toContainText(/\bkey\b|nsec1/i);
-  await waitForAnimations(page);
-  await page.screenshot({ path: `${SHOT_DIR}/03-email-code.png` });
+  await captureReskinState(page, "account-email-code");
 });
 
 test("R17 password reset code stays in view at a short desktop height", async ({
@@ -126,8 +134,7 @@ test("R17 password reset code stays in view at a short desktop height", async ({
   expect((digitBox?.y ?? 0) + (digitBox?.height ?? 0)).toBeLessThan(620);
   await expect(page.getByTestId("otp-continue")).toBeVisible();
   await expect(page.locator("body")).not.toContainText(/\bkey\b|nsec1/i);
-  await waitForAnimations(page);
-  await page.screenshot({ path: `${SHOT_DIR}/04-reset-code-short.png` });
+  await captureReskinState(page, "account-password-reset-code");
 });
 
 test("R17 business details lead into the designed provider connection screen", async ({
@@ -135,8 +142,7 @@ test("R17 business details lead into the designed provider connection screen", a
 }) => {
   await openR17BusinessSetup(page);
   await expect(page.getByTestId("onboarding-scene-business")).toBeVisible();
-  await waitForAnimations(page);
-  await page.screenshot({ path: `${SHOT_DIR}/05-business-details.png` });
+  await captureReskinState(page, "business-details");
 
   await completeR17BusinessSetup(page);
   await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
@@ -147,8 +153,7 @@ test("R17 business details lead into the designed provider connection screen", a
     page.getByRole("button", { name: "Skip for now" }),
   ).toBeEnabled();
   await expect(page.locator("body")).not.toContainText(/\bkey\b|nsec1/i);
-  await waitForAnimations(page);
-  await page.screenshot({ path: `${SHOT_DIR}/06-provider-connect.png` });
+  await captureReskinState(page, "business-provider-connect");
 });
 
 test("relay onboarding: profile and avatar docked CTAs", async ({ page }) => {
@@ -160,15 +165,13 @@ test("relay onboarding: profile and avatar docked CTAs", async ({ page }) => {
   await expectSharedCardGeometry(page, 610);
   await expect(page.getByTestId("onboarding-back")).toBeVisible();
   await page.getByTestId("onboarding-display-name").fill("Ada Lovelace");
-  await waitForAnimations(page);
   await expectProfileFooterMatchesContentGutters(page);
-  await page.screenshot({ path: `${SHOT_DIR}/04-profile.png` });
+  await captureReskinState(page, "profile-details");
 
   await page.getByTestId("onboarding-next").click();
   await expect(page.getByTestId("onboarding-page-avatar")).toBeVisible();
   await page
     .getByTestId("onboarding-avatar-url")
     .fill("https://example.com/onboarding-avatar.png");
-  await waitForAnimations(page);
-  await page.screenshot({ path: `${SHOT_DIR}/05-avatar.png` });
+  await captureReskinState(page, "profile-avatar");
 });
