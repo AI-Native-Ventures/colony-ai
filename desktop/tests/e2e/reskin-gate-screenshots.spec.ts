@@ -19,9 +19,11 @@ test("legacy fallback screens render in the Colony visual shell", async ({
 }) => {
   await page.goto("/tests/visual/onboarding.html?reskin=account-legacy");
   await expect(page.getByTestId("reskin-account-card")).toBeVisible();
-  await page.evaluate(() => {
-    (document.activeElement as HTMLElement | null)?.blur();
-  });
+  const legacyHeading = page.locator(
+    '[data-testid="reskin-account-card"] h1[tabindex="-1"]',
+  );
+  await expect(legacyHeading).toBeFocused();
+  await expect(legacyHeading).toHaveCSS("outline-style", "none");
   await captureReskinState(page, "account-legacy-fallback");
 
   await page.goto("/tests/visual/onboarding.html?reskin=identity-intro");

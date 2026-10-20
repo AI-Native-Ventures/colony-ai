@@ -42,9 +42,16 @@ async function openOwnedCommunityReconnect(page: Page) {
 
 async function captureOwnerChoice(page: Page, prefix: string) {
   await page.waitForTimeout(350);
-  await page.evaluate(() => {
-    (document.activeElement as HTMLElement | null)?.blur();
-  });
+  const focusedHeading = page.locator(
+    ".colony-onboarding-root .form-content h1:focus, .colony-onboarding-root .form-content h2:focus",
+  );
+  if (await focusedHeading.count()) {
+    await expect(focusedHeading).toHaveCSS("outline-style", "none");
+  } else {
+    await page.evaluate(() => {
+      (document.activeElement as HTMLElement | null)?.blur();
+    });
+  }
   await captureReskinState(page, prefix);
 }
 
@@ -579,7 +586,25 @@ test("first-community choices route join, create, owner, and member intents", as
   });
   await page.goto("/");
 
+  const welcomeHeading = page.getByRole("heading", {
+    name: "Join or create a community",
+  });
+  await expect(welcomeHeading).toBeFocused();
+  await expect(welcomeHeading).toHaveCSS("outline-style", "none");
   await captureOwnerChoice(page, "welcome-choice");
+  const joinChoice = page.getByTestId("community-choice-join");
+  const unfocusedShadow = await joinChoice.evaluate(
+    (element) => getComputedStyle(element).boxShadow,
+  );
+  await page.keyboard.press("Tab");
+  await expect(joinChoice).toBeFocused();
+  expect(
+    await joinChoice.evaluate((element) => element.matches(":focus-visible")),
+  ).toBe(true);
+  expect(
+    await joinChoice.evaluate((element) => getComputedStyle(element).boxShadow),
+  ).not.toBe(unfocusedShadow);
+
   await expect(
     page.getByRole("button", { name: /Join a community/ }),
   ).toBeVisible();
