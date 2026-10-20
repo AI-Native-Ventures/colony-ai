@@ -110,7 +110,9 @@ test("avatar step uses the compact prototype emoji picker", async ({
   const cardColor = await page
     .getByTestId("onboarding-content-card")
     .evaluate((element) => window.getComputedStyle(element).backgroundColor);
-  expect(activeSegmentColor).toBe(cardColor);
+  // The card uses the warm surface while the selected segment uses the canvas.
+  expect(cardColor).toBe("rgb(255, 254, 253)");
+  expect(activeSegmentColor).toBe("rgb(243, 241, 245)");
   await expectSmoothCorners(page.getByTestId("onboarding-avatar-emoji-picker"));
   await waitForAnimations(page);
   await page.screenshot({
@@ -247,8 +249,9 @@ test("avatar step keeps a stable card and compact horizontal navigation", async 
 
   const card = page.getByTestId("onboarding-content-card");
   await expect(card).toBeVisible();
+  // Measure the outer box so the one-pixel border on each side is included.
   const profileCardWidth = await card.evaluate(
-    (element) => element.clientWidth,
+    (element) => element.getBoundingClientRect().width,
   );
   expect(profileCardWidth).toBe(610);
 
@@ -257,7 +260,9 @@ test("avatar step keeps a stable card and compact horizontal navigation", async 
   await expect(page.getByTestId("onboarding-page-avatar")).toBeVisible();
 
   const modeShell = page.getByTestId("onboarding-avatar-mode-content-shell");
-  const cardWidths = [await card.evaluate((element) => element.clientWidth)];
+  const cardWidths = [
+    await card.evaluate((element) => element.getBoundingClientRect().width),
+  ];
   expect(cardWidths[0]).toBeGreaterThan(profileCardWidth);
   const skipBox = await page.getByTestId("onboarding-skip").boundingBox();
   const nextBox = await page.getByTestId("onboarding-next").boundingBox();
