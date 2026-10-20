@@ -172,18 +172,18 @@ export function WelcomeSetup({
           : "community-entry";
 
   return (
-    <OnboardingScenePresentation
-      data={{
-        name: "",
-        email: "",
-        business: "",
-        website: "",
-        description: "",
-        hideProgress: true,
-      }}
-      scene={onboardingScene}
-      contentOverride={
-        <OnboardingFooterProvider backAction={backAction}>
+    <OnboardingFooterProvider backAction={backAction}>
+      <OnboardingScenePresentation
+        data={{
+          name: "",
+          email: "",
+          business: "",
+          website: "",
+          description: "",
+          hideProgress: true,
+        }}
+        scene={onboardingScene}
+        contentOverride={
           <div
             className="relative flex min-h-0 w-full max-w-[920px] flex-1 flex-col items-center text-center"
             data-testid="welcome-setup"
@@ -204,7 +204,7 @@ export function WelcomeSetup({
                     one you already have.
                   </p>
                 </div>
-                <div className="flex w-full flex-1 flex-col items-center justify-center gap-20 py-8">
+                <div className="flex w-full flex-1 flex-col items-center justify-center gap-3 py-8">
                   <Card asChild className={COMMUNITY_OPTION_CARD_CLASS}>
                     <button
                       data-testid="community-choice-join"
@@ -249,7 +249,7 @@ export function WelcomeSetup({
                     Tell us your role so we can find the fastest way back in.
                   </p>
                 </div>
-                <div className="flex w-full flex-1 flex-col items-center justify-center gap-20 py-8">
+                <div className="flex w-full flex-1 flex-col items-center justify-center gap-3 py-8">
                   <Card asChild className={COMMUNITY_OPTION_CARD_CLASS}>
                     <button
                       data-testid="existing-choice-owner"
@@ -325,7 +325,7 @@ export function WelcomeSetup({
                   ) : (
                     ownedBusinesses.map((business) => (
                       <Button
-                        className="h-auto justify-start rounded-2xl border border-border bg-card px-5 py-4 text-left shadow-sm"
+                        className="h-auto justify-start rounded-2xl border border-border bg-card px-5 py-4 text-left shadow-sm dark:border-white/20 dark:bg-white/5 dark:hover:bg-white/10"
                         data-testid={`welcome-owned-business-${business.id}`}
                         key={business.id}
                         onClick={() => {
@@ -458,8 +458,8 @@ export function WelcomeSetup({
               </OnboardingSlideTransition>
             )}
           </div>
-        </OnboardingFooterProvider>
-      }
-    />
+        }
+      />
+    </OnboardingFooterProvider>
   );
 }

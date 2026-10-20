@@ -44,6 +44,14 @@ for (const width of [1440, 900]) {
 
     await page.getByTestId("add-community-create").click();
     await expect(page.getByLabel("Community address")).toBeVisible();
+    const dialog = page.getByTestId("add-community-dialog");
+    await expect(
+      dialog.getByRole("heading", { name: "Create a community" }),
+    ).toHaveCount(1);
+    await expect(dialog.getByTestId("add-community-back")).toBeVisible();
+    await expect(
+      dialog.getByRole("button", { name: "Back", exact: true }),
+    ).toHaveCount(0);
     await expect(page.getByText(/Builderlab/i)).toHaveCount(0);
     await captureReskinAtWidth(page, "add-community-create", width);
 
