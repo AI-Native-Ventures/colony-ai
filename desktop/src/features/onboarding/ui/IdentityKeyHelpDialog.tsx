@@ -71,7 +71,7 @@ export function IdentityKeyHelpDialog({
       type="button"
       variant="link"
     >
-      {inline ? "Learn how identity keys work" : "What’s an identity key?"}
+      {inline ? "How your sign-in stays safe" : "How your account stays yours"}
     </Button>
   );
 
@@ -95,16 +95,16 @@ export function IdentityKeyHelpDialog({
         <OnboardingFooter className="max-w-none">{trigger}</OnboardingFooter>
       )}
       <DialogContent
-        className="buzz-onboarding-neutral-theme max-w-[47.5rem] -translate-y-5"
+        className="max-w-[47.5rem] -translate-y-5"
         closeButtonClassName={ONBOARDING_INK_ICON_CLASS}
         data-system-color-scheme="light"
         data-testid="identity-key-help-dialog"
         overlayVariant="transparent"
-        surface="textured"
+        surface="default"
       >
         <div className="mx-auto w-full max-w-[35rem] py-14 text-left max-sm:py-6">
           <DialogTitle className="text-balance pr-8 text-3xl font-normal text-foreground">
-            What’s an identity key?
+            How your account stays yours
           </DialogTitle>
           <DialogDescription
             asChild
@@ -124,15 +124,14 @@ function IdentityKeyHelpBody() {
   return (
     <>
       <p>
-        Colony will create a Nostr identity with two parts: a private key that
-        signs you in and a public key you can safely share. You can find your
-        public identity anytime in Colony settings.
+        Colony gives you a sign-in that belongs to you. You can use it on
+        another device and in compatible apps. Find the code you can share in
+        Colony settings.
       </p>
       <p>
-        This identity belongs to you, not Colony, and can move with you to
-        another device or compatible Nostr app. Because only you control the
-        private key, Colony can’t reset or recover it. Keep a backup somewhere
-        safe, and never share it.
+        Only you can restore this sign-in. Keep its recovery details somewhere
+        safe, and never share them. If you lose them, Colony can’t get them back
+        for you.
       </p>
     </>
   );
@@ -143,7 +142,7 @@ export function IdentityKeyHelpContent() {
   return (
     <div className="w-full" data-testid="identity-key-help-dialog">
       <h1 className="text-title font-normal text-foreground">
-        What’s an identity key?
+        How your account stays yours
       </h1>
       <div
         className="mt-2 w-full space-y-4 text-pretty text-base leading-7 text-foreground/80"

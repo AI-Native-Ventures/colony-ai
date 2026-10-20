@@ -98,10 +98,10 @@ export function CommunityChangeOverlay({
       <div aria-hidden="true" className="absolute inset-0" onClick={onClose} />
       <div className="relative z-10 w-full max-w-md rounded-2xl border border-border bg-background p-8 shadow-2xl">
         <h2 className="text-xl font-semibold tracking-tight">
-          Change community
+          Change business
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Update your community name or relay URL.
+          Update your business name or connection address.
         </p>
         <div className="mt-6">
           <CommunityEditForm

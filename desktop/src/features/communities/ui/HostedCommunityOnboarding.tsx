@@ -468,7 +468,6 @@ export function HostedCommunityOnboarding({
         asChild
         className={`${FUZZY_SURFACE_CLASS} !py-10 [--buzz-card-textured-min-height:176px]`}
         data-testid="hosted-community-create-surface"
-        variant="textured"
       >
         <form id="hosted-community-create-form" onSubmit={create}>
           <div
@@ -502,7 +501,7 @@ export function HostedCommunityOnboarding({
       }}
     >
       <DialogContent
-        className="buzz-onboarding-neutral-theme max-w-[560px] text-foreground [&_button]:shadow-none"
+        className="max-w-[560px] text-foreground [&_button]:shadow-none"
         closeButtonClassName={ONBOARDING_INK_ICON_CLASS}
         data-system-color-scheme="light"
         overlayClassName="bg-[rgb(var(--buzz-hosted-community-modal-overlay-bg)/0.25)]"
@@ -646,7 +645,6 @@ export function HostedCommunityOnboarding({
                 <Card
                   className={`${FUZZY_SURFACE_CLASS} !max-w-[760px]`}
                   data-testid="hosted-community-list-surface"
-                  variant="textured"
                 >
                   <section className={COMMUNITY_LIST_CLASS}>
                     <h2 className="text-center text-sm font-medium">
@@ -788,7 +786,6 @@ export function HostedCommunityOnboarding({
               <Card
                 className={`${FUZZY_SURFACE_CLASS} !max-w-[760px]`}
                 data-testid="hosted-community-empty-state"
-                variant="textured"
               >
                 <p className="text-center text-sm">
                   There are no communities available to reconnect.
@@ -797,11 +794,7 @@ export function HostedCommunityOnboarding({
             )}
           </>
         ) : (
-          <Card
-            aria-hidden
-            className={`${FUZZY_SURFACE_CLASS} opacity-70`}
-            variant="textured"
-          />
+          <Card aria-hidden className={`${FUZZY_SURFACE_CLASS} opacity-70`} />
         )}
       </div>
 

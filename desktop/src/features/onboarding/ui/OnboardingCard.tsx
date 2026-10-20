@@ -4,7 +4,6 @@ import { cn } from "@/shared/lib/cn";
 import { Card } from "@/shared/ui/card";
 import { useSmoothCorners } from "@/shared/ui/smoothCorners";
 import { StartupWindowDragRegion } from "@/shared/ui/StartupWindowDragRegion";
-import { OnboardingChrome } from "./OnboardingChrome";
 import {
   type OnboardingBackAction,
   OnboardingFooterProvider,
@@ -25,12 +24,9 @@ export function OnboardingCard({
   allowWideContent = false,
   backAction,
   children,
-  current,
-  showStepIndicator = true,
   stableWideWidth = false,
   systemColorScheme,
   testId,
-  total,
 }: {
   allowWideContent?: boolean;
   backAction?: OnboardingBackAction;
@@ -48,17 +44,14 @@ export function OnboardingCard({
 
   return (
     <div
-      className="buzz-onboarding-neutral-theme buzz-startup-shell flex max-h-dvh items-center justify-center overflow-x-hidden overflow-y-auto px-4 py-6 text-foreground"
+      className="flex max-h-dvh items-center justify-center overflow-x-hidden overflow-y-auto bg-background px-4 py-6 text-foreground"
       data-system-color-scheme={systemColorScheme}
       data-testid={testId}
     >
       <StartupWindowDragRegion />
-      {showStepIndicator ? (
-        <OnboardingChrome current={current} total={total} />
-      ) : null}
       <Card
         className={cn(
-          "flex h-[min(41.5rem,calc(100dvh-3rem))] min-w-0 flex-col overflow-hidden rounded-[2rem] border-0 bg-white p-6 text-left shadow-lg min-[44rem]:p-12",
+          "flex h-[min(41.5rem,calc(100dvh-3rem))] min-w-0 flex-col overflow-hidden rounded-[2rem] border border-border bg-card p-6 text-left shadow-lg min-[44rem]:p-12",
           stableWideWidth
             ? "w-[min(calc(100vw-2rem),50rem)]"
             : "w-[min(calc(100vw-2rem),calc(38rem+2px))]",

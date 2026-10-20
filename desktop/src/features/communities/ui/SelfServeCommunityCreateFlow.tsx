@@ -24,10 +24,12 @@ import {
 } from "../selfProvisioningApi";
 
 type SelfServeCommunityCreateFlowProps = {
+  onComplete?: () => void;
   onBack: () => void;
 };
 
 export function SelfServeCommunityCreateFlow({
+  onComplete,
   onBack,
 }: SelfServeCommunityCreateFlowProps) {
   const onboarding = useCommunityOnboarding();
@@ -161,10 +163,18 @@ export function SelfServeCommunityCreateFlow({
         setFeedback(
           "Your community is ready. Finish the community connection already in progress, then connect here.",
         );
+      } else {
+        onComplete?.();
       }
       return true;
     },
-    [localPubkey, onboarding, provisioning?.domain, validation.slug],
+    [
+      localPubkey,
+      onComplete,
+      onboarding,
+      provisioning?.domain,
+      validation.slug,
+    ],
   );
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -246,7 +256,7 @@ export function SelfServeCommunityCreateFlow({
         </p>
       </div>
 
-      <Card className="mt-8 w-full p-6 text-left" variant="textured">
+      <Card className="mt-8 w-full rounded-2xl border border-border bg-card p-6 text-left shadow-sm">
         {configLoading ? (
           <p
             className="flex items-center gap-2 text-sm text-foreground/75"

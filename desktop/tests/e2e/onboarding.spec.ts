@@ -1,3 +1,4 @@
+import { mkdirSync } from "node:fs";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { expect, test, type Page } from "@playwright/test";
 import { nsecEncode, npubEncode } from "nostr-tools/nip19";
@@ -7,6 +8,7 @@ import {
   openChannelBrowser,
   TEST_IDENTITIES,
 } from "../helpers/bridge";
+import { waitForAnimations } from "../helpers/animations";
 import { expectEmojiMartStylesInstalled } from "../helpers/css";
 import {
   invokeMockCommand,
@@ -35,6 +37,16 @@ type RelayConnectionState =
 async function openOwnedCommunityReconnect(page: Page) {
   await page.getByTestId("community-choice-existing").click();
   await page.getByTestId("existing-choice-owner").click();
+}
+
+async function captureOwnerChoice(page: Page, prefix: string) {
+  const output = "/Users/mac/worktrees/.lanes/reskin/shots";
+  mkdirSync(output, { recursive: true });
+  for (const width of [1440, 900]) {
+    await page.setViewportSize({ width, height: 900 });
+    await waitForAnimations(page);
+    await page.screenshot({ path: `${output}/${prefix}-${width}.png` });
+  }
 }
 
 /**
@@ -1039,7 +1051,7 @@ test("first-community choices route join, create, owner, and member intents", as
   await expect(page.getByTestId("invite-redeem-submit")).toBeEnabled();
 });
 
-test("first-community owner reconnect path does not expose Builderlab creation", async ({
+test("Welcome owner path selects a Colony business and starts connecting", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
@@ -1058,57 +1070,52 @@ test("first-community owner reconnect path does not expose Builderlab creation",
       skipCommunitySeed: true,
     },
   );
-  await page.goto("/");
-
-  await openOwnedCommunityReconnect(page);
-  await page.getByRole("button", { name: "Sign in to continue" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Finish connecting Colony" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Connect and continue" }).click();
-  await expect(
-    page.getByRole("heading", { name: "No communities to connect" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("hosted-community-empty-state")).toBeVisible();
-  await expect(page.getByTestId("hosted-community-create-form")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Next" })).toHaveCount(0);
-});
-
-test("first-community X cancels a pending sign-in", async ({ page }) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await page.addInitScript((pubkey) => {
-    window.localStorage.setItem(
-      `buzz-machine-onboarding-complete.v2:${pubkey}`,
-      "true",
-    );
-  }, BLANK_TYLER_IDENTITY.pubkey);
-  await installMockBridge(
-    page,
-    { builderlabLoginDelayMs: 5_000 },
-    {
-      relayWsUrl: "ws://localhost:3000",
-      skipOnboardingSeed: true,
-      skipCommunitySeed: true,
-    },
+  await page.route("**/api/communities/mine", (route) =>
+    route.fulfill({
+      json: {
+        owner_pubkey: BLANK_TYLER_IDENTITY.pubkey,
+        communities: [
+          {
+            id: "owned-business",
+            name: "Owned Business",
+            slug: "owned-business",
+            normalized_host: "owned-business.example.test",
+            owner_pubkey: BLANK_TYLER_IDENTITY.pubkey,
+          },
+        ],
+      },
+    }),
   );
   await page.goto("/");
 
   await openOwnedCommunityReconnect(page);
-  await page.getByRole("button", { name: "Sign in to continue" }).click();
-  await expect(page.getByText("Waiting for your browser…")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Cancel sign-in" }),
-  ).toHaveCount(0);
-  await page.getByRole("button", { name: "Close" }).click();
-  await expect(
-    page.getByRole("button", { name: /Create a community/ }),
+    page.getByRole("heading", { name: "Your businesses" }),
   ).toBeVisible();
+  await expect(
+    page.getByTestId("welcome-owned-business-owned-business"),
+  ).toBeVisible();
+  await captureOwnerChoice(page, "owner-business-list");
+  await page.getByTestId("welcome-owned-business-owned-business").click();
   await expect
-    .poll(() => page.evaluate(() => window.__BUZZ_E2E_COMMANDS__ ?? []))
-    .toEqual(expect.arrayContaining(["cancel_builderlab_login"]));
+    .poll(() =>
+      page.evaluate(() =>
+        JSON.parse(
+          window.localStorage.getItem(
+            "buzz-community-onboarding-transaction.v1",
+          ) ?? "null",
+        ),
+      ),
+    )
+    .toMatchObject({
+      source: "first-community",
+      firstCommunityPage: "owned",
+      businessCommunityId: "owned-business",
+      relayUrl: "wss://owned-business.example.test",
+    });
 });
 
-test("first-community owner can replace a mismatched account identity", async ({
+test("Welcome owner path offers business creation when the account has none", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
@@ -1120,324 +1127,30 @@ test("first-community owner can replace a mismatched account identity", async ({
   }, BLANK_TYLER_IDENTITY.pubkey);
   await installMockBridge(
     page,
-    {
-      builderlabAuth: {
-        email: "old-owner@example.com",
-        expiresAt: "2099-01-01T00:00:00Z",
-      },
-      builderlabIdentity: {
-        pubkey_hex: "f".repeat(64),
-        // Contradiction: the server npub spells this device's key, not the
-        // bound pubkey_hex the mismatch gate and recovery actions use.
-        npub: npubEncode(BLANK_TYLER_IDENTITY.pubkey),
-      },
-    },
+    {},
     {
       relayWsUrl: "ws://localhost:3000",
       skipOnboardingSeed: true,
       skipCommunitySeed: true,
     },
   );
-  await page.goto("/");
-
-  await openOwnedCommunityReconnect(page);
-  await expect(
-    page.getByRole("heading", {
-      name: "This account uses a different Colony identity",
+  await page.route("**/api/communities/mine", (route) =>
+    route.fulfill({
+      json: { owner_pubkey: BLANK_TYLER_IDENTITY.pubkey, communities: [] },
     }),
-  ).toBeVisible();
-  // The account row must show the authoritative bound key's npub, never the
-  // contradictory hosted npub (which here spells the device key) or raw hex.
-  const identityRows = page.getByText(/^Account: npub1/);
-  await expect(identityRows).toContainText(
-    `Account: ${npubEncode("f".repeat(64))}`,
-  );
-  await expect(identityRows).toContainText(
-    `This device: ${npubEncode(BLANK_TYLER_IDENTITY.pubkey)}`,
-  );
-  await expect(identityRows).not.toContainText(
-    `Account: ${npubEncode(BLANK_TYLER_IDENTITY.pubkey)}`,
-  );
-  await expect(page.getByText("f".repeat(64))).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "Use this device's identity" })
-    .click();
-  await expect
-    .poll(() => page.evaluate(() => window.__BUZZ_E2E_COMMANDS__ ?? []))
-    .toEqual(
-      expect.arrayContaining([
-        "delete_builderlab_nostr_identity",
-        "bind_builderlab_nostr_identity",
-      ]),
-    );
-  await expect(
-    page.getByRole("heading", { name: "No communities to connect" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("hosted-community-empty-state")).toBeVisible();
-  await expect(
-    page.getByRole("textbox", { name: "Community name" }),
-  ).toHaveCount(0);
-});
-
-test("first-community owner recovers from an npub-only account identity", async ({
-  page,
-}) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await page.addInitScript((pubkey) => {
-    window.localStorage.setItem(
-      `buzz-machine-onboarding-complete.v2:${pubkey}`,
-      "true",
-    );
-  }, BLANK_TYLER_IDENTITY.pubkey);
-  await installMockBridge(
-    page,
-    {
-      builderlabAuth: {
-        email: "old-owner@example.com",
-        expiresAt: "2099-01-01T00:00:00Z",
-      },
-      builderlabIdentity: {
-        // Identity object present, but no authoritative pubkey_hex. only
-        // the independent server npub, spelled for a different key.
-        npub: npubEncode("f".repeat(64)),
-      },
-      builderlabCommunities: [
-        {
-          id: "owned-community",
-          name: "North Star",
-          normalized_host: "north-star.communities.buzz.xyz",
-        },
-      ],
-    },
-    {
-      relayWsUrl: "ws://localhost:3000",
-      skipOnboardingSeed: true,
-      skipCommunitySeed: true,
-    },
-  );
-  await page.goto("/");
-
-  await openOwnedCommunityReconnect(page);
-  // Presence of the identity object must not read as a linked, ready
-  // account: the mismatch recovery modal drives the flow instead.
-  await expect(
-    page.getByRole("heading", {
-      name: "This account uses a different Colony identity",
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(`Account: ${npubEncode("f".repeat(64))}`),
-  ).toHaveCount(0);
-  await expect(page.getByText("Account: Unavailable")).toBeVisible();
-  await expect(
-    page.getByText(`This device: ${npubEncode(BLANK_TYLER_IDENTITY.pubkey)}`),
-  ).toBeVisible();
-  // No create/connect surface is exposed behind the recovery modal.
-  await expect(page.getByTestId("hosted-community-create-surface")).toHaveCount(
-    0,
-  );
-  await expect(
-    page.getByRole("button", { name: "Connect", exact: true }),
-  ).toHaveCount(0);
-
-  // Recovery rebinds the device key and restores readiness.
-  await page
-    .getByRole("button", { name: "Use this device's identity" })
-    .click();
-  await expect
-    .poll(() => page.evaluate(() => window.__BUZZ_E2E_COMMANDS__ ?? []))
-    .toEqual(
-      expect.arrayContaining([
-        "delete_builderlab_nostr_identity",
-        "bind_builderlab_nostr_identity",
-      ]),
-    );
-  await expect(
-    page.getByRole("heading", { name: "Choose a community" }),
-  ).toBeVisible();
-  await expect(page.getByText("North Star")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Connect", exact: true }),
-  ).toBeEnabled();
-});
-
-test("first-community owner never rebinds over a same-key spelling in the hex field", async ({
-  page,
-}) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await page.addInitScript((pubkey) => {
-    window.localStorage.setItem(
-      `buzz-machine-onboarding-complete.v2:${pubkey}`,
-      "true",
-    );
-  }, BLANK_TYLER_IDENTITY.pubkey);
-  await installMockBridge(
-    page,
-    {
-      builderlabAuth: {
-        email: "old-owner@example.com",
-        expiresAt: "2099-01-01T00:00:00Z",
-      },
-      builderlabIdentity: {
-        // A checksum-valid npub stored in the authoritative hex field,
-        // spelling this very device's key. It is not a hex key: recovery
-        // owns the flow, the spelling never renders as the account's key,
-        // and no delete/rebind of the identity the device already holds
-        // is demanded for it.
-        pubkey_hex: npubEncode(BLANK_TYLER_IDENTITY.pubkey),
-      },
-      builderlabCommunities: [
-        {
-          id: "owned-community",
-          name: "North Star",
-          normalized_host: "north-star.communities.buzz.xyz",
-        },
-      ],
-    },
-    {
-      relayWsUrl: "ws://localhost:3000",
-      skipOnboardingSeed: true,
-      skipCommunitySeed: true,
-    },
   );
   await page.goto("/");
 
   await openOwnedCommunityReconnect(page);
   await expect(
-    page.getByRole("heading", {
-      name: "This account uses a different Colony identity",
-    }),
-  ).toBeVisible();
-  await expect(page.getByText("Account: Unavailable")).toBeVisible();
-  await expect(
-    page.getByText(`Account: ${npubEncode(BLANK_TYLER_IDENTITY.pubkey)}`),
-  ).toHaveCount(0);
-  await expect(
-    page.getByText(`This device: ${npubEncode(BLANK_TYLER_IDENTITY.pubkey)}`),
+    page.getByText("This account doesn’t own a business yet."),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Connect", exact: true }),
-  ).toHaveCount(0);
-});
-
-test("first-community owner with a padded same-key hex is ready, not mismatched", async ({
-  page,
-}) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await page.addInitScript((pubkey) => {
-    window.localStorage.setItem(
-      `buzz-machine-onboarding-complete.v2:${pubkey}`,
-      "true",
-    );
-  }, BLANK_TYLER_IDENTITY.pubkey);
-  await installMockBridge(
-    page,
-    {
-      builderlabAuth: {
-        email: "owner@example.com",
-        expiresAt: "2099-01-01T00:00:00Z",
-      },
-      builderlabIdentity: {
-        // The device's own key, padded and uppercased: the same key after
-        // normalization, so the account is ready. never a mismatch
-        // demanding a delete/rebind of the identity it already holds.
-        pubkey_hex: `  ${BLANK_TYLER_IDENTITY.pubkey.toUpperCase()}  `,
-      },
-    },
-    {
-      relayWsUrl: "ws://localhost:3000",
-      skipOnboardingSeed: true,
-      skipCommunitySeed: true,
-    },
-  );
-  await page.goto("/");
-
-  await openOwnedCommunityReconnect(page);
-  await expect(
-    page.getByRole("heading", {
-      name: "This account uses a different Colony identity",
-    }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("heading", { name: "No communities to connect" }),
+    page.getByRole("button", { name: "Create a business" }),
   ).toBeVisible();
-  await expect(page.getByTestId("hosted-community-empty-state")).toBeVisible();
-  await expect(
-    page.getByRole("textbox", { name: "Community name" }),
-  ).toHaveCount(0);
-});
-
-test("first-community explains when the local identity belongs to another account", async ({
-  page,
-}) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await page.addInitScript((pubkey) => {
-    window.localStorage.setItem(
-      `buzz-machine-onboarding-complete.v2:${pubkey}`,
-      "true",
-    );
-  }, BLANK_TYLER_IDENTITY.pubkey);
-  await installMockBridge(
-    page,
-    {
-      builderlabAuth: {
-        email: "wrong-owner@example.com",
-        expiresAt: "2099-01-01T00:00:00Z",
-      },
-      builderlabIdentity: { pubkey_hex: "e".repeat(64) },
-      builderlabBindError: { code: "pubkey_already_bound" },
-    },
-    {
-      relayWsUrl: "ws://localhost:3000",
-      skipOnboardingSeed: true,
-      skipCommunitySeed: true,
-    },
-  );
-  await page.goto("/");
-
-  await openOwnedCommunityReconnect(page);
-  await page
-    .getByRole("button", { name: "Use this device's identity" })
-    .click();
-  await expect(page.getByRole("alert")).toContainText(
-    "This device's Colony identity belongs to a different Builderlab account and can't be moved from here. Sign out, then sign in with the account that already owns this identity.",
-  );
-  await expect(
-    page.getByRole("heading", { name: "Finish connecting Colony" }),
-  ).toBeVisible();
-});
-
-test("back clears Builderlab auth before returning to first-community choices", async ({
-  page,
-}) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await page.addInitScript((pubkey) => {
-    window.localStorage.setItem(
-      `buzz-machine-onboarding-complete.v2:${pubkey}`,
-      "true",
-    );
-  }, BLANK_TYLER_IDENTITY.pubkey);
-  await installMockBridge(
-    page,
-    {
-      builderlabAuth: {
-        email: "owner@example.com",
-        expiresAt: "2099-01-01T00:00:00Z",
-      },
-      builderlabIdentity: { pubkey_hex: BLANK_TYLER_IDENTITY.pubkey },
-    },
-    {
-      relayWsUrl: "ws://localhost:3000",
-      skipOnboardingSeed: true,
-      skipCommunitySeed: true,
-    },
-  );
-  await page.goto("/");
-
-  await openOwnedCommunityReconnect(page);
-  await page.getByRole("button", { name: "Back" }).click();
-  await openOwnedCommunityReconnect(page);
-  await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
+  await captureOwnerChoice(page, "owner-no-business");
+  await page.getByRole("button", { name: "Create a business" }).click();
+  await expect(page.getByTestId("self-serve-community-create")).toBeVisible();
 });
 
 test("first-community shows the scenario cards for localhost", async ({

@@ -128,7 +128,7 @@ export function EditCommunityDialog({
         <DialogHeader>
           <DialogTitle>Edit Community</DialogTitle>
           <DialogDescription>
-            Update this community's name or relay URL.
+            Update this business name or connection address.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -167,7 +167,7 @@ export function EditCommunityDialog({
               className="text-sm font-medium text-foreground"
               htmlFor="edit-ws-relay-url"
             >
-              Relay URL
+              Connection address
             </label>
             <Input
               id="edit-ws-relay-url"
