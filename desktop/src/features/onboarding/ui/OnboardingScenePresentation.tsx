@@ -300,7 +300,24 @@ export function OnboardingScenePresentation(props: PresentationProps) {
     scene: string;
     id: string;
   }>();
-  const rootRef = React.useRef<HTMLDivElement>(null);
+  const rootRef = React.useRef<HTMLElement>(null);
+  React.useEffect(() => {
+    const root = rootRef.current;
+    const documentRoot = document.documentElement;
+    if (!root) return;
+
+    const syncTheme = () => {
+      root.classList.toggle("dark", documentRoot.classList.contains("dark"));
+    };
+    syncTheme();
+
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(documentRoot, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Focus follows rendered scene and new error feedback.
   React.useEffect(() => {
     // Connection tabs keep roving keyboard focus within the same form.

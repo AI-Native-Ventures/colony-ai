@@ -251,7 +251,7 @@ function AgentDefaultsSection({
                   className="text-sm font-medium"
                   htmlFor="global-agent-default-harness"
                 >
-                  Default harness
+                  Default AI tool
                 </label>
               </div>
               <AgentDropdownSelect
@@ -263,7 +263,7 @@ function AgentDefaultsSection({
                 id="global-agent-default-harness"
                 onValueChange={handleHarnessChange}
                 options={harnessOptions}
-                placeholder="Select a harness"
+                placeholder="Choose an AI tool"
                 placeholderClassName="text-foreground/70"
                 testId="global-agent-default-harness"
                 value={selectedRuntimeId}
@@ -324,7 +324,7 @@ function AgentDefaultsSection({
                 type="button"
                 variant="link"
               >
-                Use a different harness
+                Choose a different AI tool
               </Button>
             </div>
           ) : null}
@@ -337,7 +337,7 @@ function AgentDefaultsSection({
 /**
  * Machine onboarding page 4 — default model configuration. Presents the
  * global agent defaults (provider, model, effort, env vars) centered under
- * the onboarding card's "Choose your model settings" heading.
+ * the onboarding card's "Choose your AI defaults" heading.
  */
 export function DefaultConfigStep({
   actions,
@@ -395,15 +395,15 @@ export function DefaultConfigStep({
       >
         <h1 className="text-title font-normal text-foreground">
           {actions.useDifferentHarness
-            ? "Connect with an API key"
-            : "Choose your model settings"}
+            ? "Connect an AI service"
+            : "Choose your AI defaults"}
         </h1>
         <p
           className={`w-full text-foreground/80 ${cardLayout ? "mt-2 text-base leading-6" : "mx-auto mt-3 max-w-[440px] text-sm leading-5"}`}
         >
           {actions.useDifferentHarness
-            ? "Choose your provider and enter an API key to connect to the Colony harness."
-            : "Select the model and effort level your agents will use by default."}
+            ? "Choose your AI service and enter its key to connect it to Colony."
+            : "Choose the AI tool and response detail Colony should use by default."}
         </p>
       </div>
 

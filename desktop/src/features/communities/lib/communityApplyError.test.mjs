@@ -15,7 +15,7 @@ test("known membership error becomes plain copy and keeps the raw text", () => {
   });
   assert.equal(
     copy.message,
-    "This sign-in is not a member of Colony. Switch to another community or remove this one.",
+    "You don’t have access to Colony. Switch to another community or remove it from this device.",
   );
   assert.equal(copy.detail, MEMBERSHIP_ERROR);
   assert.equal(copy.isMembershipError, true);
@@ -30,7 +30,7 @@ test("membership copy does not point at other communities when there are none", 
   });
   assert.equal(
     copy.message,
-    "This sign-in is not a member of Colony. Remove it from this device, or ask for an invitation.",
+    "You don’t have access to Colony. Remove it from this device, or ask the owner for an invitation.",
   );
 });
 
@@ -40,7 +40,7 @@ test("membership copy falls back to a neutral name", () => {
     error: "restricted: not a relay member",
     hasOtherCommunities: true,
   });
-  assert.match(copy.message, /not a member of this community\./);
+  assert.match(copy.message, /You don’t have access to this community\./);
   assert.equal(copy.isMembershipError, true);
 });
 
@@ -69,7 +69,7 @@ test("every refusal the workspace detects gets the plain membership copy", () =>
       hasOtherCommunities: false,
     });
     assert.equal(copy.isMembershipError, true, shape);
-    assert.match(copy.message, /^This sign-in is not a member of Colony\./);
+    assert.match(copy.message, /^You don’t have access to Colony\./);
   }
 });
 

@@ -16,7 +16,6 @@ type MembershipDeniedProps = {
   /** The relay that denied membership, used as the target for bare-code invites. */
   activeRelayUrl: string;
   embedded?: boolean;
-  onBack: () => void;
   onChangeCommunity: () => void;
   onImportKey: (nsec: string) => Promise<void>;
   onRetry: () => void;
@@ -26,7 +25,6 @@ type MembershipDeniedProps = {
 export function MembershipDenied({
   activeRelayUrl,
   embedded = false,
-  onBack,
   onChangeCommunity,
   onImportKey,
   onRetry,
@@ -41,6 +39,7 @@ export function MembershipDenied({
   const npub =
     identityNpub ?? (pubkey ? UNAVAILABLE_KEY_LABEL : "Unknown public key");
   const [copied, setCopied] = React.useState(false);
+  const [technicalDetailsOpen, setTechnicalDetailsOpen] = React.useState(false);
   const [importError, setImportError] = React.useState<string | null>(null);
   const [isImportFormOpen, setIsImportFormOpen] = React.useState(false);
   const [isImportingKey, setIsImportingKey] = React.useState(false);
@@ -115,53 +114,69 @@ export function MembershipDenied({
         }
       >
         <div className="space-y-3">
-          <Badge variant="warning">Membership required</Badge>
+          <Badge variant="warning">Invitation needed</Badge>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
               <ShieldX className="h-4 w-4 text-destructive" />
             </div>
             <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-              Not a member yet
+              {embedded
+                ? "You’re not in this community yet"
+                : "You’re not in this business yet"}
             </h2>
           </div>
           <p className="text-sm leading-6 text-muted-foreground">
-            This relay requires an invitation. Ask a relay admin to add you as a
-            member, then come back and try again.
+            {embedded
+              ? "Ask the community owner to invite you, or sign in with the account that owns it."
+              : "Ask the owner to invite you, or sign in with the account that owns this business."}
           </p>
         </div>
 
-        <div className="mt-6 space-y-3">
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Your public key (npub)
-            </p>
-            <div className="flex items-center gap-2">
-              <code className="min-w-0 flex-1 truncate rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5 font-mono text-xs text-foreground">
-                {npub}
-              </code>
-              <Button
-                className="shrink-0"
-                disabled={!identityNpub}
-                onClick={() => {
-                  void handleCopy();
-                }}
-                size="icon"
-                title="Copy npub"
-                type="button"
-                variant="outline"
-              >
-                {copied ? (
-                  <Check className="h-4 w-4 text-emerald-500" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </Button>
+        <div className="mt-6 text-left text-xs text-muted-foreground">
+          <button
+            aria-expanded={technicalDetailsOpen}
+            className="w-fit rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => setTechnicalDetailsOpen((isOpen) => !isOpen)}
+            type="button"
+          >
+            Technical details
+          </button>
+          {technicalDetailsOpen ? (
+            <div className="mt-3 space-y-3">
+              <div className="space-y-1.5">
+                <p className="font-medium">Your account code</p>
+                <div className="flex items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5 font-mono text-xs text-foreground">
+                    {npub}
+                  </code>
+                  <Button
+                    className="shrink-0"
+                    disabled={!identityNpub}
+                    onClick={() => {
+                      void handleCopy();
+                    }}
+                    size="icon"
+                    aria-label={
+                      copied ? "Account code copied" : "Copy account code"
+                    }
+                    type="button"
+                    variant="outline"
+                  >
+                    {copied ? (
+                      <Check className="h-4 w-4 text-emerald-500" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+              <p className="leading-5">
+                {embedded
+                  ? "Share this code with the community owner so they can invite you."
+                  : "Share this code with the business owner so they can invite you."}
+              </p>
             </div>
-          </div>
-          <p className="text-xs leading-5 text-muted-foreground">
-            This is your public identity. It&apos;s safe to share. Send it to
-            the relay admin so they can invite you.
-          </p>
+          ) : null}
         </div>
 
         <div className="mt-6 flex flex-col gap-2">
@@ -213,7 +228,7 @@ export function MembershipDenied({
                   <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   <div className="min-w-0 space-y-0.5">
                     <p className="font-medium text-foreground">
-                      This will use this Nostr identity:
+                      This is the account you’re adding:
                     </p>
                     <p className="break-all font-mono text-2xs text-muted-foreground">
                       {previewNpub}
@@ -265,19 +280,11 @@ export function MembershipDenied({
               <div className="flex gap-2">
                 <Button
                   className="flex-1 text-muted-foreground hover:text-accent-foreground"
-                  onClick={onBack}
-                  type="button"
-                  variant="ghost"
-                >
-                  Back
-                </Button>
-                <Button
-                  className="flex-1 text-muted-foreground hover:text-accent-foreground"
                   onClick={onChangeCommunity}
                   type="button"
                   variant="ghost"
                 >
-                  Change community
+                  {embedded ? "Change community" : "Change business"}
                 </Button>
               </div>
               <button

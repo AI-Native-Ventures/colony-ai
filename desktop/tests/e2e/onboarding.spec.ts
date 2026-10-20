@@ -1,19 +1,22 @@
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { expect, test, type Page } from "@playwright/test";
-import { nsecEncode, npubEncode } from "nostr-tools/nip19";
+import { nsecEncode } from "nostr-tools/nip19";
 
 import {
   installMockBridge,
   openChannelBrowser,
   TEST_IDENTITIES,
 } from "../helpers/bridge";
-import { expectEmojiMartStylesInstalled } from "../helpers/css";
+import { waitForAnimations } from "../helpers/animations";
+import {
+  captureReskinState,
+  seedReskinTheme,
+} from "../helpers/reskinScreenshots";
 import {
   invokeMockCommand,
   publishWelcomeTeamPresence,
   waitForWelcomeTeam,
 } from "../helpers/welcomeTeam";
-import { installFakeCamera } from "../helpers/fakeCamera";
 import {
   E2E_IDENTITY_OVERRIDE_STORAGE_KEY,
   completeR17BusinessSetup,
@@ -36,6 +39,23 @@ async function openOwnedCommunityReconnect(page: Page) {
   await page.getByTestId("community-choice-existing").click();
   await page.getByTestId("existing-choice-owner").click();
 }
+
+async function captureOwnerChoice(page: Page, prefix: string) {
+  await page.waitForTimeout(350);
+  const focusedHeading = page.locator(
+    ".colony-onboarding-root .form-content h1:focus, .colony-onboarding-root .form-content h2:focus",
+  );
+  if (await focusedHeading.count()) {
+    await expect(focusedHeading).toHaveCSS("outline-style", "none");
+  } else {
+    await page.evaluate(() => {
+      (document.activeElement as HTMLElement | null)?.blur();
+    });
+  }
+  await captureReskinState(page, prefix);
+}
+
+test.beforeEach(async ({ page }) => seedReskinTheme(page));
 
 /**
  * Drive the mock relay connection state via the E2E bridge seam.
@@ -75,11 +95,8 @@ async function setRelayConnectionState(
   }, state);
 }
 
-const HOME_SEEN_STORAGE_KEY_PREFIX = "buzz-home-feed-seen.v1:";
 const COMMUNITY_ONBOARDING_TRANSACTION_STORAGE_KEY =
   "buzz-community-onboarding-transaction.v1";
-const ONE_PIXEL_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 const DEFAULT_MOCK_PUBKEY = "deadbeef".repeat(8);
 const BLANK_TYLER_IDENTITY = {
   ...TEST_IDENTITIES.tyler,
@@ -95,11 +112,6 @@ const BLANK_AVATAR_EMOJI_IDENTITY = {
   pubkey: "2".repeat(64),
   username: "",
 };
-const FIRST_RUN_ALICE = {
-  ...TEST_IDENTITIES.alice,
-  username: "",
-};
-
 async function commandCount(page: Page, command: string) {
   return page.evaluate((commandName) => {
     const bridgeWindow = window as Window & {
@@ -122,60 +134,6 @@ async function seedOnboardingCompletion(page: Page, pubkey: string) {
       storageKey: `buzz-onboarding-complete.v1:${pubkey}`,
     },
   );
-}
-
-async function seedCommunityProfileStage(page: Page, id: string) {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await page.addInitScript(
-    ({ pubkey, transactionId, transactionStorageKey }) => {
-      window.localStorage.setItem(
-        `buzz-machine-onboarding-complete.v2:${pubkey}`,
-        "true",
-      );
-      const timestamp = new Date().toISOString();
-      window.localStorage.setItem(
-        transactionStorageKey,
-        JSON.stringify({
-          id: transactionId,
-          source: "first-community",
-          stage: "profile",
-          relayUrl: "wss://default.example.com",
-          communityName: "Default",
-          communityId: "e2e-default-community",
-          addedCommunity: true,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        }),
-      );
-    },
-    {
-      pubkey: BLANK_TYLER_IDENTITY.pubkey,
-      transactionId: id,
-      transactionStorageKey: COMMUNITY_ONBOARDING_TRANSACTION_STORAGE_KEY,
-    },
-  );
-}
-
-async function uploadCommunityAvatar(page: Page, filename: string) {
-  await page.getByTestId("community-avatar-open").click();
-  await page.getByTestId("community-avatar-input").setInputFiles({
-    buffer: Buffer.from(ONE_PIXEL_PNG_BASE64, "base64"),
-    mimeType: "image/png",
-    name: filename,
-  });
-  await page.getByTestId("community-avatar-done").click();
-}
-
-async function readHomeSeenStorageKeys(page: Page) {
-  return page.evaluate((prefix) => {
-    return Object.keys(window.localStorage).filter((key) =>
-      key.startsWith(prefix),
-    );
-  }, HOME_SEEN_STORAGE_KEY_PREFIX);
-}
-
-async function expectNoHomeSeenEntries(page: Page) {
-  await expect.poll(async () => readHomeSeenStorageKeys(page)).toEqual([]);
 }
 
 async function selectFirstEmojiFromPicker(page: Page) {
@@ -206,351 +164,10 @@ async function expectHomeView(page: Page) {
   await expect(page.getByTestId("home-inbox-list")).toBeVisible();
 }
 
-async function expectWiderThanTall(locator: Locator) {
-  const box = await locator.boundingBox();
-  if (!box) {
-    throw new Error("Could not measure welcome intro action card");
-  }
-
-  expect(box.width).toBeGreaterThan(box.height);
-}
-
-async function expectIntroActionIconStackedAboveTitle(
-  action: Locator,
-  title: string,
-) {
-  const iconBox = await action.locator("svg").first().boundingBox();
-  const titleBox = await action.getByText(title, { exact: true }).boundingBox();
-  if (!iconBox || !titleBox) {
-    throw new Error("Could not measure welcome intro action content");
-  }
-
-  expect(titleBox.y).toBeGreaterThan(iconBox.y + iconBox.height);
-}
-
-async function expectWelcomeComposerBannerLayout(page: Page) {
-  const banner = page.getByTestId("welcome-composer-guide-banner");
-  const personaMention = page.getByTestId("welcome-composer-persona-mention");
-  const composer = page.getByTestId("message-composer");
-  const bannerBox = await banner.boundingBox();
-  const personaMentionBox = await personaMention.boundingBox();
-  const composerBox = await composer.boundingBox();
-  const dockBackdropBox = await page
-    .getByTestId("composer-dock-backdrop")
-    .locator("div")
-    .boundingBox();
-  const guidanceLayer = page.getByTestId("welcome-composer-guidance-layer");
-  const guidanceLayerBox = await guidanceLayer.boundingBox();
-  const guidanceBackdrop = page.getByTestId(
-    "welcome-composer-guidance-backdrop",
-  );
-  const guidanceBackdropBox = await guidanceBackdrop.boundingBox();
-
-  if (
-    !bannerBox ||
-    !personaMentionBox ||
-    !composerBox ||
-    !dockBackdropBox ||
-    !guidanceLayerBox ||
-    !guidanceBackdropBox
-  ) {
-    throw new Error("Could not measure welcome composer banner layout");
-  }
-
-  expect(
-    await composer.getByTestId("welcome-composer-guide-banner").count(),
-  ).toBe(0);
-  expect(bannerBox.y).toBeLessThan(composerBox.y);
-  // Banner is in normal flow above the composer, no overlap.
-  expect(bannerBox.y + bannerBox.height).toBeLessThanOrEqual(composerBox.y);
-  // The dock backdrop is absolute inset-y-0 inside composer-dock, which now
-  // contains the guidance layer + composer in flow, so its top aligns with the
-  // guidance layer top (not the composer top).
-  expect(Math.abs(dockBackdropBox.y - guidanceLayerBox.y)).toBeLessThanOrEqual(
-    1,
-  );
-  expect(guidanceBackdropBox.y).toBeLessThanOrEqual(bannerBox.y);
-  // The guidance backdrop extends bottom-3 (12px) short of the banner's bottom,
-  // visually connecting up to the composer.
-  expect(guidanceBackdropBox.y + guidanceBackdropBox.height).toBeLessThan(
-    composerBox.y,
-  );
-  expect(
-    await page
-      .getByTestId("channel-composer-overlay")
-      .getByTestId("welcome-composer-guidance-layer")
-      .count(),
-  ).toBe(1);
-  expect(
-    await page
-      .getByTestId("composer-dock-backdrop")
-      .getByTestId("welcome-composer-guidance-layer")
-      .count(),
-  ).toBe(0);
-
-  const radii = await banner.evaluate((element) => {
-    const styles = window.getComputedStyle(element);
-    return {
-      backdropFilter: styles.backdropFilter,
-      backgroundColor: styles.backgroundColor,
-      bottomLeft: styles.borderBottomLeftRadius,
-      bottomRight: styles.borderBottomRightRadius,
-      filter: styles.filter,
-      zIndex: styles.zIndex,
-      topLeft: styles.borderTopLeftRadius,
-      topRight: styles.borderTopRightRadius,
-      transform: styles.transform,
-      willChange: styles.willChange,
-    };
-  });
-  const composerBackgroundColor = await composer.evaluate(
-    (element) => window.getComputedStyle(element).backgroundColor,
-  );
-  const dockBackdropFilter = await page
-    .getByTestId("composer-dock-backdrop")
-    .locator("div")
-    .evaluate((element) => window.getComputedStyle(element).backdropFilter);
-  const guidanceBackdropFilter = await guidanceBackdrop.evaluate(
-    (element) => window.getComputedStyle(element).backdropFilter,
-  );
-
-  expect(radii.topLeft).toBe(radii.topRight);
-  expect(radii.bottomLeft).toBe("0px");
-  expect(radii.bottomRight).toBe("0px");
-  expect(radii.backdropFilter).toBe("none");
-  expect(radii.backgroundColor).not.toBe(composerBackgroundColor);
-  expect(dockBackdropFilter).not.toBe("none");
-  expect(guidanceBackdropFilter).toBe(dockBackdropFilter);
-  expect(radii.filter).toBe("none");
-  expect(radii.transform).toBe("none");
-  expect(radii.willChange).toBe("auto");
-  expect(radii.zIndex).toBe("1");
-  expect(personaMentionBox.width).toBeGreaterThan(0);
-}
-
-async function expectWelcomePersonaMention(page: Page) {
-  const banner = page.getByTestId("welcome-composer-guide-banner");
-  const personaMention = page.getByTestId("welcome-composer-persona-mention");
-  await expect(personaMention).toBeVisible();
-  await expect(personaMention).toHaveAttribute("data-persona-options", "Scout");
-  await expect(personaMention).toHaveAttribute("data-active-persona", "Scout");
-  await expect(personaMention).toHaveAttribute(
-    "data-animation-target",
-    "per-character",
-  );
-
-  const activePersona = await personaMention.getAttribute(
-    "data-active-persona",
-  );
-  expect(activePersona).not.toBeNull();
-  await expect(personaMention).toContainText(`@${activePersona}`);
-  expect(
-    await personaMention
-      .getByTestId("welcome-composer-persona-character")
-      .count(),
-  ).toBeGreaterThanOrEqual(4);
-  expect(
-    await personaMention
-      .getByTestId("welcome-composer-persona-character")
-      .first()
-      .evaluate((element) => window.getComputedStyle(element).filter),
-  ).toBe("none");
-
-  const transition = await personaMention.evaluate((element) => {
-    const styles = window.getComputedStyle(element);
-    const durationMs = Number(
-      element.getAttribute("data-width-animation-duration-ms"),
-    );
-    return {
-      duration: styles.transitionDuration,
-      durationMs,
-      property: styles.transitionProperty,
-    };
-  });
-  expect(transition.durationMs).toBeGreaterThanOrEqual(700);
-  expect(transition.durationMs).toBeLessThanOrEqual(740);
-  expect(Math.round(Number.parseFloat(transition.duration) * 1000)).toBe(
-    transition.durationMs,
-  );
-  expect(transition.property).toContain("width");
-
-  const alignment = await personaMention.evaluate((element) => {
-    const mentionStyles = window.getComputedStyle(element);
-    const bannerStyles = window.getComputedStyle(
-      element.closest('[data-testid="welcome-composer-guide-banner"]') ??
-        element,
-    );
-    return {
-      display: mentionStyles.display,
-      lineHeightMatchesBanner:
-        mentionStyles.lineHeight === bannerStyles.lineHeight,
-      verticalAlign: mentionStyles.verticalAlign,
-    };
-  });
-  expect(alignment.display).toBe("inline-block");
-  expect(alignment.verticalAlign).toBe("baseline");
-  expect(alignment.lineHeightMatchesBanner).toBe(true);
-  await expect(banner).toContainText("Mention");
-}
-
 async function expectPrivateWelcomeLanding(page: Page) {
   await expect(page).toHaveURL(/#\/channels\/[^/?#]+$/);
   await expect(page.getByTestId("channel-Welcome")).toBeVisible();
   await expect(page.getByTestId("chat-title")).toContainText("Welcome");
-}
-
-async function expectWelcomeView(page: Page) {
-  await expectPrivateWelcomeLanding(page);
-  await expect(page.getByTestId("channel-general")).toBeVisible();
-  await expect(page.getByTestId("channel-welcome-everyone")).toBeVisible();
-  await expect(page.getByTestId("channel-ephemeral-Welcome")).toHaveCount(0);
-  await expect(page.getByTestId("chat-ephemeral-badge")).toHaveCount(0);
-  await expect(page.getByTestId("message-unread-pill")).toHaveCount(0);
-  await expect(page.getByTestId("message-channel-intro")).toBeVisible();
-  await expect(page.getByTestId("message-channel-intro")).toContainText(
-    "private welcome channel",
-  );
-  await expect(
-    page.getByTestId("message-channel-intro").getByRole("button"),
-  ).toHaveText(["Browse channels", "Create a channel", "Create an agent"]);
-  await expect(
-    page.getByTestId("welcome-intro-action-browse-channels"),
-  ).toBeVisible();
-  await expectWiderThanTall(
-    page.getByTestId("welcome-intro-action-browse-channels"),
-  );
-  await expectIntroActionIconStackedAboveTitle(
-    page.getByTestId("welcome-intro-action-browse-channels"),
-    "Browse channels",
-  );
-  await page.getByTestId("welcome-intro-action-browse-channels").click();
-  await expect(page.getByTestId("channel-browser-dialog")).toBeVisible();
-  await expect(page.getByTestId("channel-browser-search")).toBeFocused();
-  await expect(page.getByRole("tab", { name: "All channels" })).toHaveAttribute(
-    "data-state",
-    "active",
-  );
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("channel-browser-dialog")).toHaveCount(0);
-  await expect(
-    page.getByTestId("welcome-intro-action-create-channel"),
-  ).toBeVisible();
-  await expectWiderThanTall(
-    page.getByTestId("welcome-intro-action-create-channel"),
-  );
-  await expectIntroActionIconStackedAboveTitle(
-    page.getByTestId("welcome-intro-action-create-channel"),
-    "Create a channel",
-  );
-  await expect(
-    page
-      .getByTestId("welcome-intro-action-create-channel")
-      .getByText("Create a channel", { exact: true }),
-  ).toHaveCSS("white-space", "normal");
-  await expect(
-    page.getByTestId("welcome-intro-action-create-agent"),
-  ).toBeVisible();
-  await expectWiderThanTall(
-    page.getByTestId("welcome-intro-action-create-agent"),
-  );
-  await expectIntroActionIconStackedAboveTitle(
-    page.getByTestId("welcome-intro-action-create-agent"),
-    "Create an agent",
-  );
-  await expect(page.getByTestId("message-composer")).toBeVisible();
-  // Measure the empty-channel intro before presence releases the live kickoff.
-  // Its message arrival can remount the timeline while bounding boxes are read.
-  await publishWelcomeTeamPresence(page);
-  await expect(page.getByTestId("welcome-composer-guide-banner")).toBeVisible();
-  await expect(page.getByTestId("welcome-composer-guide-banner")).toContainText(
-    "Mention",
-  );
-  await expect(page.getByTestId("welcome-composer-guide-banner")).toContainText(
-    "whenever you want their help.",
-  );
-  await expectWelcomePersonaMention(page);
-  await expectWelcomeComposerBannerLayout(page);
-}
-
-async function expectWelcomeComposerBannerCompletesAfterPersonaMention(
-  page: Page,
-) {
-  const banner = page.getByTestId("welcome-composer-guide-banner");
-  const channelIntro = page.getByTestId("message-channel-intro");
-  const composer = page.getByTestId("message-composer");
-  const initialComposerBox = await composer.boundingBox();
-  if (!initialComposerBox) {
-    throw new Error("Could not measure the Welcome composer");
-  }
-
-  // The fixture has a seeded Scout and this new member's starter Scout. A
-  // manually typed name cannot choose between them or complete onboarding.
-  const input = page.getByTestId("message-input");
-  const content = "Thanks @Scout";
-  const sentRecipients = () =>
-    page.evaluate(
-      (content) =>
-        (window.__BUZZ_E2E_SIGNED_EVENTS__ ?? [])
-          .filter((event) => event.content.trim() === content)
-          .map((event) =>
-            event.tags.filter((tag) => tag[0] === "p").map((tag) => tag[1]),
-          ),
-      content,
-    );
-  await input.fill(content);
-  await input.press("Escape");
-  await page.getByTestId("send-message").click();
-  await expect(
-    page.getByText("The mention @Scout is ambiguous.", { exact: false }),
-  ).toBeVisible();
-  await expect(input).toHaveText(content);
-  await expect(banner).toHaveAttribute("data-state", "prompt");
-  expect(await sentRecipients()).toEqual([]);
-
-  const agents = await invokeMockCommand<
-    Array<{ pubkey: string; persona_id: string | null; status: string }>
-  >(page, "list_managed_agents");
-  const sameNameAgents = agents.filter(
-    (agent) => agent.persona_id === "builtin:fizz",
-  );
-  expect(sameNameAgents).toHaveLength(2);
-  // Onboarding starts the new member's starter; the pre-existing mock stays
-  // stopped. This identifies the fixture key, not a production routing rule.
-  const fizz = sameNameAgents.filter((agent) => agent.status === "running");
-  expect(fizz).toHaveLength(1);
-  // Make selection intent explicit; do not remove the colliding fixture or
-  // relax extraction. The resulting event must tag only our starter identity.
-  await input.fill("");
-  await input.fill(content);
-  await page.getByTestId(`mention-suggestion-${fizz[0].pubkey}`).click();
-  await page.getByTestId("send-message").click();
-  await expect.poll(sentRecipients).toEqual([[fizz[0].pubkey]]);
-
-  await expect(banner).toHaveAttribute("data-state", "complete");
-  await expect(banner).toHaveAttribute("data-tone", "success");
-  await expect(
-    banner.getByTestId("welcome-composer-complete-icon"),
-  ).toBeVisible();
-  await expect(
-    banner.locator('[data-animation-target="success-icon"]'),
-  ).toBeVisible();
-  await expect(
-    banner.locator('[data-animation-target="success-copy"]'),
-  ).toBeVisible();
-  await expect(banner).toContainText("Nice work.");
-  await expect(banner).not.toContainText("Try mentioning");
-  await expect(channelIntro).toBeVisible();
-  const completeComposerBox = await composer.boundingBox();
-  expect(completeComposerBox).not.toBeNull();
-  expect(
-    Math.abs((completeComposerBox?.y ?? 0) - initialComposerBox.y),
-  ).toBeLessThanOrEqual(1);
-  await expect(banner).toHaveCount(0, { timeout: 6_000 });
-  const hiddenComposerBox = await composer.boundingBox();
-  expect(hiddenComposerBox).not.toBeNull();
-  expect(
-    Math.abs((hiddenComposerBox?.y ?? 0) - initialComposerBox.y),
-  ).toBeLessThanOrEqual(1);
 }
 
 async function getMockChannels(page: Page) {
@@ -587,23 +204,6 @@ async function getMockChannels(page: Page) {
       }> | null;
     };
     return payload.channels ?? [];
-  });
-}
-
-async function seedCurrentAvatar(page: Page, avatarUrl: string) {
-  await page.waitForFunction(() => {
-    const bridgeWindow = window as Window & {
-      __BUZZ_E2E_INVOKE_MOCK_COMMAND__?: unknown;
-      __TAURI_INTERNALS__?: { invoke?: unknown };
-    };
-    return (
-      typeof bridgeWindow.__BUZZ_E2E_INVOKE_MOCK_COMMAND__ === "function" ||
-      typeof bridgeWindow.__TAURI_INTERNALS__?.invoke === "function"
-    );
-  });
-  await invokeMockCommand(page, "update_profile", { avatarUrl });
-  await page.evaluate(() => {
-    window.__BUZZ_E2E_COMMAND_PAYLOADS__ = [];
   });
 }
 
@@ -986,6 +586,25 @@ test("first-community choices route join, create, owner, and member intents", as
   });
   await page.goto("/");
 
+  const welcomeHeading = page.getByRole("heading", {
+    name: "Join or create a community",
+  });
+  await expect(welcomeHeading).toBeFocused();
+  await expect(welcomeHeading).toHaveCSS("outline-style", "none");
+  await captureOwnerChoice(page, "welcome-choice");
+  const joinChoice = page.getByTestId("community-choice-join");
+  const unfocusedShadow = await joinChoice.evaluate(
+    (element) => getComputedStyle(element).boxShadow,
+  );
+  await page.keyboard.press("Tab");
+  await expect(joinChoice).toBeFocused();
+  expect(
+    await joinChoice.evaluate((element) => element.matches(":focus-visible")),
+  ).toBe(true);
+  expect(
+    await joinChoice.evaluate((element) => getComputedStyle(element).boxShadow),
+  ).not.toBe(unfocusedShadow);
+
   await expect(
     page.getByRole("button", { name: /Join a community/ }),
   ).toBeVisible();
@@ -1001,8 +620,9 @@ test("first-community choices route join, create, owner, and member intents", as
   await expect(
     page.getByRole("heading", { name: "Reconnect to your community" }),
   ).toBeVisible();
+  await captureOwnerChoice(page, "welcome-existing-choice");
   await expect(
-    page.getByRole("button", { name: "I own the community" }),
+    page.getByRole("button", { name: "I own the business" }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "I’m a member or admin" }),
@@ -1012,17 +632,20 @@ test("first-community choices route join, create, owner, and member intents", as
   await expect(
     page.getByRole("heading", { name: "Reconnect to your community" }),
   ).toBeVisible();
+  await captureOwnerChoice(page, "welcome-member-form");
   const accessInput = page.getByTestId("invite-redeem-input");
   await expect(accessInput).toHaveAttribute(
     "placeholder",
-    "Invite link or community URL",
+    "Paste your invite link or community link",
   );
   await accessInput.fill("https://default.example.com");
   await expect(page.getByTestId("invite-redeem-submit")).toBeEnabled();
   // Back from the member form returns to the role choice, then to the hub.
-  await page.getByRole("button", { name: "Back" }).click();
+  const memberBack = page.getByTestId("welcome-member-back");
+  await memberBack.focus();
+  await memberBack.press("Enter");
   await expect(
-    page.getByRole("button", { name: "I own the community" }),
+    page.getByRole("button", { name: "I own the business" }),
   ).toBeVisible();
   await page.getByTestId("existing-back").click();
 
@@ -1030,16 +653,29 @@ test("first-community choices route join, create, owner, and member intents", as
   await expect(
     page.getByRole("heading", { name: "Join a community" }),
   ).toBeVisible();
+  await captureOwnerChoice(page, "welcome-join-form");
   await expect(page.getByText("Joining a private community?")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Technical details" }),
+  ).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("welcome-join-npub")).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(/npub1/i);
+  await page.getByRole("button", { name: "Technical details" }).click();
+  await expect(
+    page.getByRole("button", { name: "Technical details" }),
+  ).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByTestId("welcome-join-npub")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Copy public ID" }),
+    page.getByRole("button", { name: "Copy account code" }),
   ).toBeVisible();
+  await captureOwnerChoice(page, "welcome-join-technical-details");
+  await page.getByRole("button", { name: "Technical details" }).press("Space");
+  await expect(page.getByTestId("welcome-join-npub")).toHaveCount(0);
   await accessInput.fill("https://default.example.com/invite/abc123");
   await expect(page.getByTestId("invite-redeem-submit")).toBeEnabled();
 });
 
-test("first-community owner reconnect path does not expose Builderlab creation", async ({
+test("Welcome owner path selects a Colony business and starts connecting", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
@@ -1058,57 +694,52 @@ test("first-community owner reconnect path does not expose Builderlab creation",
       skipCommunitySeed: true,
     },
   );
-  await page.goto("/");
-
-  await openOwnedCommunityReconnect(page);
-  await page.getByRole("button", { name: "Sign in to continue" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Finish connecting Colony" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Connect and continue" }).click();
-  await expect(
-    page.getByRole("heading", { name: "No communities to connect" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("hosted-community-empty-state")).toBeVisible();
-  await expect(page.getByTestId("hosted-community-create-form")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Next" })).toHaveCount(0);
-});
-
-test("first-community X cancels a pending sign-in", async ({ page }) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await page.addInitScript((pubkey) => {
-    window.localStorage.setItem(
-      `buzz-machine-onboarding-complete.v2:${pubkey}`,
-      "true",
-    );
-  }, BLANK_TYLER_IDENTITY.pubkey);
-  await installMockBridge(
-    page,
-    { builderlabLoginDelayMs: 5_000 },
-    {
-      relayWsUrl: "ws://localhost:3000",
-      skipOnboardingSeed: true,
-      skipCommunitySeed: true,
-    },
+  await page.route("**/api/communities/mine", (route) =>
+    route.fulfill({
+      json: {
+        owner_pubkey: BLANK_TYLER_IDENTITY.pubkey,
+        communities: [
+          {
+            id: "owned-business",
+            name: "Owned Business",
+            slug: "owned-business",
+            normalized_host: "owned-business.example.test",
+            owner_pubkey: BLANK_TYLER_IDENTITY.pubkey,
+          },
+        ],
+      },
+    }),
   );
   await page.goto("/");
 
   await openOwnedCommunityReconnect(page);
-  await page.getByRole("button", { name: "Sign in to continue" }).click();
-  await expect(page.getByText("Waiting for your browser…")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Cancel sign-in" }),
-  ).toHaveCount(0);
-  await page.getByRole("button", { name: "Close" }).click();
-  await expect(
-    page.getByRole("button", { name: /Create a community/ }),
+    page.getByRole("heading", { name: "Your businesses" }),
   ).toBeVisible();
+  await expect(
+    page.getByTestId("welcome-owned-business-owned-business"),
+  ).toBeVisible();
+  await captureOwnerChoice(page, "owner-business-list");
+  await page.getByTestId("welcome-owned-business-owned-business").click();
   await expect
-    .poll(() => page.evaluate(() => window.__BUZZ_E2E_COMMANDS__ ?? []))
-    .toEqual(expect.arrayContaining(["cancel_builderlab_login"]));
+    .poll(() =>
+      page.evaluate(() =>
+        JSON.parse(
+          window.localStorage.getItem(
+            "buzz-community-onboarding-transaction.v1",
+          ) ?? "null",
+        ),
+      ),
+    )
+    .toMatchObject({
+      source: "first-community",
+      firstCommunityPage: "owned",
+      businessCommunityId: "owned-business",
+      relayUrl: "wss://owned-business.example.test",
+    });
 });
 
-test("first-community owner can replace a mismatched account identity", async ({
+test("Welcome owner path offers business creation when the account has none", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
@@ -1120,148 +751,54 @@ test("first-community owner can replace a mismatched account identity", async ({
   }, BLANK_TYLER_IDENTITY.pubkey);
   await installMockBridge(
     page,
-    {
-      builderlabAuth: {
-        email: "old-owner@example.com",
-        expiresAt: "2099-01-01T00:00:00Z",
-      },
-      builderlabIdentity: {
-        pubkey_hex: "f".repeat(64),
-        // Contradiction: the server npub spells this device's key, not the
-        // bound pubkey_hex the mismatch gate and recovery actions use.
-        npub: npubEncode(BLANK_TYLER_IDENTITY.pubkey),
-      },
-    },
+    {},
     {
       relayWsUrl: "ws://localhost:3000",
       skipOnboardingSeed: true,
       skipCommunitySeed: true,
     },
   );
-  await page.goto("/");
-
-  await openOwnedCommunityReconnect(page);
-  await expect(
-    page.getByRole("heading", {
-      name: "This account uses a different Colony identity",
+  await page.route("**/api/communities/mine", (route) =>
+    route.fulfill({
+      json: { owner_pubkey: BLANK_TYLER_IDENTITY.pubkey, communities: [] },
     }),
-  ).toBeVisible();
-  // The account row must show the authoritative bound key's npub, never the
-  // contradictory hosted npub (which here spells the device key) or raw hex.
-  const identityRows = page.getByText(/^Account: npub1/);
-  await expect(identityRows).toContainText(
-    `Account: ${npubEncode("f".repeat(64))}`,
   );
-  await expect(identityRows).toContainText(
-    `This device: ${npubEncode(BLANK_TYLER_IDENTITY.pubkey)}`,
-  );
-  await expect(identityRows).not.toContainText(
-    `Account: ${npubEncode(BLANK_TYLER_IDENTITY.pubkey)}`,
-  );
-  await expect(page.getByText("f".repeat(64))).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "Use this device's identity" })
-    .click();
-  await expect
-    .poll(() => page.evaluate(() => window.__BUZZ_E2E_COMMANDS__ ?? []))
-    .toEqual(
-      expect.arrayContaining([
-        "delete_builderlab_nostr_identity",
-        "bind_builderlab_nostr_identity",
-      ]),
-    );
-  await expect(
-    page.getByRole("heading", { name: "No communities to connect" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("hosted-community-empty-state")).toBeVisible();
-  await expect(
-    page.getByRole("textbox", { name: "Community name" }),
-  ).toHaveCount(0);
-});
-
-test("first-community owner recovers from an npub-only account identity", async ({
-  page,
-}) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await page.addInitScript((pubkey) => {
-    window.localStorage.setItem(
-      `buzz-machine-onboarding-complete.v2:${pubkey}`,
-      "true",
-    );
-  }, BLANK_TYLER_IDENTITY.pubkey);
-  await installMockBridge(
-    page,
-    {
-      builderlabAuth: {
-        email: "old-owner@example.com",
-        expiresAt: "2099-01-01T00:00:00Z",
+  await page.route("**/api/communities/config", (route) =>
+    route.fulfill({
+      json: {
+        self_serve: true,
+        domain: "example.test",
+        public: true,
+        max_per_owner: 3,
       },
-      builderlabIdentity: {
-        // Identity object present, but no authoritative pubkey_hex. only
-        // the independent server npub, spelled for a different key.
-        npub: npubEncode("f".repeat(64)),
-      },
-      builderlabCommunities: [
-        {
-          id: "owned-community",
-          name: "North Star",
-          normalized_host: "north-star.communities.buzz.xyz",
-        },
-      ],
-    },
-    {
-      relayWsUrl: "ws://localhost:3000",
-      skipOnboardingSeed: true,
-      skipCommunitySeed: true,
-    },
-  );
-  await page.goto("/");
-
-  await openOwnedCommunityReconnect(page);
-  // Presence of the identity object must not read as a linked, ready
-  // account: the mismatch recovery modal drives the flow instead.
-  await expect(
-    page.getByRole("heading", {
-      name: "This account uses a different Colony identity",
     }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(`Account: ${npubEncode("f".repeat(64))}`),
-  ).toHaveCount(0);
-  await expect(page.getByText("Account: Unavailable")).toBeVisible();
-  await expect(
-    page.getByText(`This device: ${npubEncode(BLANK_TYLER_IDENTITY.pubkey)}`),
-  ).toBeVisible();
-  // No create/connect surface is exposed behind the recovery modal.
-  await expect(page.getByTestId("hosted-community-create-surface")).toHaveCount(
-    0,
   );
-  await expect(
-    page.getByRole("button", { name: "Connect", exact: true }),
-  ).toHaveCount(0);
+  await page.route("**/api/communities/availability?**", (route) => {
+    const slug = new URL(route.request().url()).searchParams.get("name") ?? "";
+    return route.fulfill({
+      json: {
+        name: slug,
+        normalized_host: `${slug}.example.test`,
+        available: true,
+      },
+    });
+  });
+  await page.goto("/");
 
-  // Recovery rebinds the device key and restores readiness.
-  await page
-    .getByRole("button", { name: "Use this device's identity" })
-    .click();
-  await expect
-    .poll(() => page.evaluate(() => window.__BUZZ_E2E_COMMANDS__ ?? []))
-    .toEqual(
-      expect.arrayContaining([
-        "delete_builderlab_nostr_identity",
-        "bind_builderlab_nostr_identity",
-      ]),
-    );
+  await openOwnedCommunityReconnect(page);
   await expect(
-    page.getByRole("heading", { name: "Choose a community" }),
+    page.getByText("This account doesn’t own a business yet."),
   ).toBeVisible();
-  await expect(page.getByText("North Star")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Connect", exact: true }),
-  ).toBeEnabled();
+    page.getByRole("button", { name: "Create a business" }),
+  ).toBeVisible();
+  await captureOwnerChoice(page, "owner-no-business");
+  await page.getByRole("button", { name: "Create a business" }).click();
+  await expect(page.getByTestId("self-serve-community-create")).toBeVisible();
+  await captureOwnerChoice(page, "welcome-create-entry");
 });
 
-test("first-community owner never rebinds over a same-key spelling in the hex field", async ({
+test("Welcome owner path shows a retry when business loading fails", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
@@ -1273,171 +810,34 @@ test("first-community owner never rebinds over a same-key spelling in the hex fi
   }, BLANK_TYLER_IDENTITY.pubkey);
   await installMockBridge(
     page,
-    {
-      builderlabAuth: {
-        email: "old-owner@example.com",
-        expiresAt: "2099-01-01T00:00:00Z",
-      },
-      builderlabIdentity: {
-        // A checksum-valid npub stored in the authoritative hex field,
-        // spelling this very device's key. It is not a hex key: recovery
-        // owns the flow, the spelling never renders as the account's key,
-        // and no delete/rebind of the identity the device already holds
-        // is demanded for it.
-        pubkey_hex: npubEncode(BLANK_TYLER_IDENTITY.pubkey),
-      },
-      builderlabCommunities: [
-        {
-          id: "owned-community",
-          name: "North Star",
-          normalized_host: "north-star.communities.buzz.xyz",
-        },
-      ],
-    },
+    {},
     {
       relayWsUrl: "ws://localhost:3000",
       skipOnboardingSeed: true,
       skipCommunitySeed: true,
     },
   );
+  let requests = 0;
+  await page.route("**/api/communities/mine", (route) => {
+    requests += 1;
+    return requests === 1
+      ? route.fulfill({ status: 500, json: { error: "temporary_failure" } })
+      : route.fulfill({
+          json: { owner_pubkey: BLANK_TYLER_IDENTITY.pubkey, communities: [] },
+        });
+  });
   await page.goto("/");
-
   await openOwnedCommunityReconnect(page);
+
   await expect(
-    page.getByRole("heading", {
-      name: "This account uses a different Colony identity",
-    }),
+    page.getByText("Could not load your businesses. Try again."),
   ).toBeVisible();
-  await expect(page.getByText("Account: Unavailable")).toBeVisible();
+  await captureOwnerChoice(page, "owner-load-error");
+  await page.getByRole("button", { name: "Try again" }).click();
   await expect(
-    page.getByText(`Account: ${npubEncode(BLANK_TYLER_IDENTITY.pubkey)}`),
-  ).toHaveCount(0);
-  await expect(
-    page.getByText(`This device: ${npubEncode(BLANK_TYLER_IDENTITY.pubkey)}`),
+    page.getByText("This account doesn’t own a business yet."),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Connect", exact: true }),
-  ).toHaveCount(0);
-});
-
-test("first-community owner with a padded same-key hex is ready, not mismatched", async ({
-  page,
-}) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await page.addInitScript((pubkey) => {
-    window.localStorage.setItem(
-      `buzz-machine-onboarding-complete.v2:${pubkey}`,
-      "true",
-    );
-  }, BLANK_TYLER_IDENTITY.pubkey);
-  await installMockBridge(
-    page,
-    {
-      builderlabAuth: {
-        email: "owner@example.com",
-        expiresAt: "2099-01-01T00:00:00Z",
-      },
-      builderlabIdentity: {
-        // The device's own key, padded and uppercased: the same key after
-        // normalization, so the account is ready. never a mismatch
-        // demanding a delete/rebind of the identity it already holds.
-        pubkey_hex: `  ${BLANK_TYLER_IDENTITY.pubkey.toUpperCase()}  `,
-      },
-    },
-    {
-      relayWsUrl: "ws://localhost:3000",
-      skipOnboardingSeed: true,
-      skipCommunitySeed: true,
-    },
-  );
-  await page.goto("/");
-
-  await openOwnedCommunityReconnect(page);
-  await expect(
-    page.getByRole("heading", {
-      name: "This account uses a different Colony identity",
-    }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("heading", { name: "No communities to connect" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("hosted-community-empty-state")).toBeVisible();
-  await expect(
-    page.getByRole("textbox", { name: "Community name" }),
-  ).toHaveCount(0);
-});
-
-test("first-community explains when the local identity belongs to another account", async ({
-  page,
-}) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await page.addInitScript((pubkey) => {
-    window.localStorage.setItem(
-      `buzz-machine-onboarding-complete.v2:${pubkey}`,
-      "true",
-    );
-  }, BLANK_TYLER_IDENTITY.pubkey);
-  await installMockBridge(
-    page,
-    {
-      builderlabAuth: {
-        email: "wrong-owner@example.com",
-        expiresAt: "2099-01-01T00:00:00Z",
-      },
-      builderlabIdentity: { pubkey_hex: "e".repeat(64) },
-      builderlabBindError: { code: "pubkey_already_bound" },
-    },
-    {
-      relayWsUrl: "ws://localhost:3000",
-      skipOnboardingSeed: true,
-      skipCommunitySeed: true,
-    },
-  );
-  await page.goto("/");
-
-  await openOwnedCommunityReconnect(page);
-  await page
-    .getByRole("button", { name: "Use this device's identity" })
-    .click();
-  await expect(page.getByRole("alert")).toContainText(
-    "This device's Colony identity belongs to a different Builderlab account and can't be moved from here. Sign out, then sign in with the account that already owns this identity.",
-  );
-  await expect(
-    page.getByRole("heading", { name: "Finish connecting Colony" }),
-  ).toBeVisible();
-});
-
-test("back clears Builderlab auth before returning to first-community choices", async ({
-  page,
-}) => {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await page.addInitScript((pubkey) => {
-    window.localStorage.setItem(
-      `buzz-machine-onboarding-complete.v2:${pubkey}`,
-      "true",
-    );
-  }, BLANK_TYLER_IDENTITY.pubkey);
-  await installMockBridge(
-    page,
-    {
-      builderlabAuth: {
-        email: "owner@example.com",
-        expiresAt: "2099-01-01T00:00:00Z",
-      },
-      builderlabIdentity: { pubkey_hex: BLANK_TYLER_IDENTITY.pubkey },
-    },
-    {
-      relayWsUrl: "ws://localhost:3000",
-      skipOnboardingSeed: true,
-      skipCommunitySeed: true,
-    },
-  );
-  await page.goto("/");
-
-  await openOwnedCommunityReconnect(page);
-  await page.getByRole("button", { name: "Back" }).click();
-  await openOwnedCommunityReconnect(page);
-  await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
+  expect(requests).toBe(2);
 });
 
 test("first-community shows the scenario cards for localhost", async ({
@@ -1506,6 +906,7 @@ test("first-community shows the scenario cards for localhost", async ({
   ).toHaveAttribute("data-onboarding-effect", "line-slide");
   const joinBack = page.getByTestId("welcome-join-back");
   await expect(joinBack).toBeVisible();
+  await waitForAnimations(page);
   await joinBack.click();
   await expect(
     page
@@ -1517,13 +918,17 @@ test("first-community shows the scenario cards for localhost", async ({
   await expect(page.getByTestId("onboarding-page-config")).toBeVisible();
   await expect(
     page.getByRole("heading", {
-      name: "Choose your model settings",
+      name: "Choose your AI defaults",
     }),
   ).toBeVisible();
   await expect(page.getByTestId("global-agent-default-harness")).toHaveText(
     "Claude Code",
   );
   await expect(page.getByTestId("onboarding-finish")).toBeEnabled();
+  await captureOwnerChoice(page, "machine-onboarding-config");
+  await page.getByTestId("onboarding-back").click();
+  await expect(page.getByTestId("onboarding-page-2")).toBeVisible();
+  await captureOwnerChoice(page, "machine-onboarding-setup");
 });
 
 test("first-community direct join recovery can cancel community edits safely", async ({
@@ -2750,7 +2155,7 @@ test("onboarding relay reconnect. connected without a prior click does not show 
   await expect(card).not.toContainText("Connected");
 });
 
-test("membership denied shows all four affordances and change-community edits non-destructively", async ({
+test("membership denied shows recovery choices and business editing is non-destructive", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
@@ -2771,22 +2176,39 @@ test("membership denied shows all four affordances and change-community edits no
   // Membership-denied screen renders with all four affordances.
   const denied = page.getByTestId("membership-denied");
   await expect(denied).toBeVisible();
-  await expect(denied.getByRole("button", { name: "Try again" })).toBeVisible();
-  await expect(denied.getByRole("button", { name: "Back" })).toBeVisible();
   await expect(
-    denied.getByRole("button", { name: "Change community" }),
+    denied.getByRole("heading", { name: "You’re not in this business yet" }),
+  ).toBeVisible();
+  await expect(denied.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(denied.getByRole("button", { name: "Back" })).toHaveCount(0);
+  await expect(
+    denied.getByRole("button", { name: "Change business" }),
   ).toBeVisible();
   await expect(page.getByTestId("membership-denied-change-key")).toBeVisible();
   await expect(
     page.getByTestId("membership-denied-redeem-invite"),
   ).toBeVisible();
+  await captureOwnerChoice(page, "membership-denied-standalone");
+  const technicalDetails = denied.getByRole("button", {
+    name: "Technical details",
+  });
+  await expect(technicalDetails).toHaveAttribute("aria-expanded", "false");
+  await technicalDetails.click();
+  await expect(technicalDetails).toHaveAttribute("aria-expanded", "true");
+  await expect(denied.getByText("Your account code")).toBeVisible();
+  await captureOwnerChoice(
+    page,
+    "membership-denied-standalone-technical-details",
+  );
+  await technicalDetails.press("Space");
+  await expect(technicalDetails).toHaveAttribute("aria-expanded", "false");
 
-  // Click "Change community" → the overlay opens.
-  await denied.getByRole("button", { name: "Change community" }).click();
+  // Change business opens the existing community editor.
+  await denied.getByRole("button", { name: "Change business" }).click();
   const overlay = page.getByTestId("community-change-overlay");
   await expect(overlay).toBeVisible();
 
-  // Change the relay URL to a new one. The probe will time out for a fake URL
+  // Change the community address to a new one. The probe will time out for a fake URL
   // so we wait for the "Use anyway" button.
   await overlay
     .locator("#community-edit-url")
@@ -2826,7 +2248,7 @@ test("membership denied shows all four affordances and change-community edits no
     .toBe(true);
 });
 
-test("cancel from profile Back preserves drafts and denied Back returns to interrupted page", async ({
+test("profile and denied community editing preserve the current draft", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
@@ -2855,19 +2277,19 @@ test("cancel from profile Back preserves drafts and denied Back returns to inter
   await expect(page.getByTestId("onboarding-page-1")).toBeVisible();
   await expect(nameInput).toHaveValue("Morty QA");
 
-  // --- Profile → membership denied → Back returns to profile ---
-  // Advance triggers membership check → denied (relayRole is null).
+  // Advance triggers membership check and shows the denied screen.
   await page.getByTestId("onboarding-next").click();
-  await expect(page.getByTestId("membership-denied")).toBeVisible();
-
-  // Press Back on the denied screen. should return to the profile page
-  // (deniedFromPage = "profile") with the name draft intact.
+  const denied = page.getByTestId("membership-denied");
+  await expect(denied).toBeVisible();
+  await expect(denied.getByRole("button", { name: "Back" })).toHaveCount(0);
+  await denied.getByRole("button", { name: "Change business" }).click();
+  await expect(page.getByTestId("community-change-overlay")).toBeVisible();
   await page
-    .getByTestId("membership-denied")
-    .getByRole("button", { name: "Back" })
+    .getByTestId("community-change-overlay")
+    .getByRole("button", { name: "Cancel" })
     .click();
-  await expect(page.getByTestId("onboarding-page-1")).toBeVisible();
-  await expect(nameInput).toHaveValue("Morty QA");
+  await expect(page.getByTestId("community-change-overlay")).toHaveCount(0);
+  await expect(denied).toBeVisible();
 });
 
 test("denied on relay A then paste relay B invite URL switches community to B", async ({

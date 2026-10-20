@@ -7,8 +7,15 @@ import {
   completeR17BusinessSetup,
 } from "../helpers/onboarding";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import {
+  captureReskinState,
+  seedReskinTheme,
+} from "../helpers/reskinScreenshots";
 
 const pubkey = "deadbeef".repeat(8);
+
+test.beforeEach(async ({ page }) => seedReskinTheme(page));
+
 async function openEntry(
   page: Parameters<typeof installMockBridge>[0],
   mock = {},
@@ -142,8 +149,35 @@ test("membership denial retains invitation, identity and community recovery", as
   await expect(page.getByTestId("membership-denied")).toBeVisible();
   await expect(page.getByTestId("membership-denied-change-key")).toBeVisible();
   await expect(
+    page
+      .getByTestId("membership-denied")
+      .getByRole("heading", { name: "You’re not in this community yet" }),
+  ).toBeVisible();
+  await expect(
     page.getByTestId("membership-denied-redeem-invite"),
   ).toBeVisible();
+  await expect(
+    page
+      .getByTestId("membership-denied")
+      .getByRole("button", { name: "Change community" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("membership-denied")).not.toContainText(
+    /business|Nostr|npub|nsec|private key|public key/i,
+  );
+  await captureReskinState(page, "membership-denied-embedded");
+  const technicalDetails = page
+    .getByTestId("membership-denied")
+    .getByRole("button", { name: "Technical details" });
+  await expect(technicalDetails).toHaveAttribute("aria-expanded", "false");
+  await technicalDetails.click();
+  await expect(technicalDetails).toHaveAttribute("aria-expanded", "true");
+  await expect(
+    page.getByTestId("membership-denied").getByText("Your account code"),
+  ).toBeVisible();
+  await captureReskinState(
+    page,
+    "membership-denied-embedded-technical-details",
+  );
   await page
     .getByRole("button", { name: "Change community", exact: true })
     .click();

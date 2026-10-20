@@ -935,6 +935,8 @@ type E2eConfig = {
     // When true, `get_identity` returns `locked: true` until `import_identity` is
     // called. Drives the keyring-locked screen in tests.
     identityLocked?: boolean;
+    /** When true, get_identity reports that local recovery did not complete. */
+    identityResetFailed?: boolean;
     /** Delay (ms) applied to identity import so specs can observe pending navigation. */
     identityImportDelayMs?: number;
     /**
@@ -19879,16 +19881,23 @@ export function maybeInstallE2eTauriMocks() {
         const isLocked =
           !mockIdentityLockedCleared &&
           activeConfig?.mock?.identityLocked === true;
+        const resetFailed = activeConfig?.mock?.identityResetFailed === true;
         if (identity) {
           return {
             pubkey: identity.pubkey,
             display_name: identity.username,
             lost: false,
             locked: false,
+            reset_failed: resetFailed,
           };
         }
 
-        return { ...DEFAULT_MOCK_IDENTITY, lost: isLost, locked: isLocked };
+        return {
+          ...DEFAULT_MOCK_IDENTITY,
+          lost: isLost,
+          locked: isLocked,
+          reset_failed: resetFailed,
+        };
       }
       case "is_shared_identity":
         // Match the default Rust command: the E2E identity is local to the

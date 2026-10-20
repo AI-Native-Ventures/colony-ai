@@ -1,6 +1,10 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
+import {
+  captureReskinState,
+  seedReskinTheme,
+} from "../helpers/reskinScreenshots";
 
 // The relay behind "Colony" refuses this sign-in with the same text the real
 // desktop backend returns when the identity is not a member.
@@ -58,6 +62,53 @@ function readStorage(page: Page, key: string) {
 }
 
 test.describe("community connection error screen", () => {
+  test.beforeEach(async ({ page }) => seedReskinTheme(page));
+
+  test("captures connection recovery states at both review widths", async ({
+    page,
+  }) => {
+    await openWithFailingColony(page, [COLONY, COLONY_AI]);
+    const screen = page.getByTestId("community-apply-error");
+    const capture = async (name: string) => {
+      await captureReskinState(page, `community-error-${name}`);
+    };
+
+    await capture("switch-retry-edit-remove");
+    await screen.getByRole("button", { name: "Retry" }).click();
+    await expect(screen).toBeVisible();
+    await capture("retry-result");
+
+    const disclosure = screen.getByRole("button", {
+      name: "Technical details",
+    });
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    await capture("technical-details");
+    await disclosure.click();
+
+    await screen.getByRole("button", { name: /^Edit this community/ }).click();
+    await expect(page.getByTestId("community-change-overlay")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Change community" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Community address")).toBeVisible();
+    await expect(
+      page.getByText("Enter the address provided by the community owner."),
+    ).toBeVisible();
+    await capture("edit-overlay");
+    await page.keyboard.press("Escape");
+
+    const remove = screen.getByRole("button", {
+      name: /^Remove this community from this device/,
+    });
+    await remove.focus();
+    await page.keyboard.press("Space");
+    await expect(
+      screen.getByTestId("community-escape-remove-confirm-panel"),
+    ).toBeVisible();
+    await capture("remove-confirm");
+  });
+
   test("explains the membership error and switches to the other community by keyboard", async ({
     page,
   }) => {
@@ -68,24 +119,31 @@ test.describe("community connection error screen", () => {
     await expect(
       screen.getByTestId("community-apply-error-message"),
     ).toHaveText(
-      "This sign-in is not a member of Colony. Switch to another community or remove this one.",
+      "You don’t have access to Colony. Switch to another community or remove it from this device.",
     );
+    const switchButton = screen.getByRole("button", {
+      name: "Switch to Colony AI",
+    });
+    await expect(switchButton).toBeFocused();
+    const disclosure = screen.getByRole("button", {
+      name: "Technical details",
+    });
+    await expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    await disclosure.focus();
+    await disclosure.press("Enter");
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
     await expect(
       screen.getByTestId("community-apply-error-details"),
     ).toContainText(MEMBERSHIP_ERROR);
     await expect(screen).not.toContainText(/buzz/i);
 
-    const switchButton = screen.getByRole("button", {
-      name: "Switch to Colony AI",
-    });
     const retry = screen.getByRole("button", { name: "Retry" });
     const edit = screen.getByRole("button", { name: /^Edit this community/ });
     const remove = screen.getByRole("button", {
       name: /^Remove this community from this device/,
     });
 
-    // The switch action is the first action and holds focus on arrival.
-    await expect(switchButton).toBeFocused();
+    await switchButton.focus();
     await expect(
       screen.getByRole("button", { name: "Change community" }),
     ).toHaveCount(0);
@@ -132,7 +190,7 @@ test.describe("community connection error screen", () => {
     await expect(screen).toBeVisible();
     await expect(
       screen.getByTestId("community-apply-error-message"),
-    ).toContainText("not a member of Colony");
+    ).toContainText("You don’t have access to Colony");
 
     await screen.getByRole("button", { name: "Switch to Colony AI" }).click();
     await expect(page.getByTestId("community-apply-error")).toHaveCount(0);
@@ -205,7 +263,7 @@ test.describe("community connection error screen", () => {
     await expect(
       screen.getByTestId("community-apply-error-message"),
     ).toHaveText(
-      "This sign-in is not a member of Colony. Remove it from this device, or ask for an invitation.",
+      "You don’t have access to Colony. Remove it from this device, or ask the owner for an invitation.",
     );
     await expect(screen.getByRole("button", { name: "Retry" })).toBeFocused();
 

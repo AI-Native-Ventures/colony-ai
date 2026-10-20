@@ -101,7 +101,7 @@ export function CommunityChangeOverlay({
           Change community
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Update your community name or relay URL.
+          Update the community name or its address.
         </p>
         <div className="mt-6">
           <CommunityEditForm

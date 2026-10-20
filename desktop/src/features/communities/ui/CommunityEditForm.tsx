@@ -99,7 +99,7 @@ export function CommunityEditForm({
       }
       const normalizedUrl = normalizeRelayUrl(relayUrl);
       if (!normalizedUrl) {
-        setError("Enter a valid ws:// or wss:// relay URL.");
+        setError("Enter a valid connection address.");
         return;
       }
 
@@ -159,7 +159,7 @@ export function CommunityEditForm({
       }
 
       if (!reachable) {
-        setProbeWarning("Can't reach this relay — check the URL");
+        setProbeWarning("Can't reach this address. Check it and try again.");
         return;
       }
 
@@ -224,9 +224,10 @@ export function CommunityEditForm({
           className="text-sm font-medium text-foreground"
           htmlFor="community-edit-url"
         >
-          Community URL
+          Community address
         </label>
         <Input
+          aria-describedby="community-edit-url-help"
           className="h-10 bg-background"
           disabled={isProbing}
           id="community-edit-url"
@@ -240,10 +241,16 @@ export function CommunityEditForm({
             setAgeConfirmed(false);
             setAgreementConfirmed(false);
           }}
-          placeholder="wss://relay.example.com"
+          placeholder="wss://community.example.com"
           type="text"
           value={relayUrl}
         />
+        <p
+          className="text-xs leading-5 text-muted-foreground"
+          id="community-edit-url-help"
+        >
+          Enter the address provided by the community owner.
+        </p>
       </div>
 
       <AnimatePresence initial={false}>

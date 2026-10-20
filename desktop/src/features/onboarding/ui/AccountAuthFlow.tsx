@@ -610,7 +610,7 @@ export function AccountAuthFlow({
             onClick={onAdvanced}
             type="button"
           >
-            Advanced: use an existing Nostr identity
+            Advanced sign-in options
           </button>
         </div>
       ) : null}
@@ -1060,7 +1060,7 @@ export function AccountAuthFlow({
   if (standalone && mode === "onboarding") {
     return (
       <div
-        className="buzz-onboarding-neutral-theme buzz-startup-shell buzz-onboarding-welcome flex max-h-dvh items-start justify-center overflow-x-hidden overflow-y-auto px-4 py-8 text-foreground"
+        className="flex max-h-dvh items-start justify-center overflow-x-hidden overflow-y-auto bg-background px-4 py-8 text-foreground"
         data-testid="machine-onboarding-gate"
       >
         <StartupWindowDragRegion />

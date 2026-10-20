@@ -20,11 +20,11 @@ import { StartupWindowDragRegion } from "@/shared/ui/StartupWindowDragRegion";
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
 
 const COPY_SUCCESS_MESSAGE =
-  "Signed response copied. Paste it into the Colony admin console.";
+  "Confirmation copied. Paste it into the Colony website.";
 const PREVIEW_COPY_SUCCESS_MESSAGE = "Preview response copied.";
 const COPY_FAILURE_MESSAGE = "Colony couldn't access the clipboard. Try again.";
 const EXPIRED_LINK_MESSAGE =
-  "This binding link has expired. Request a new one from the requesting app.";
+  "This link has expired. Request a new one from the app that sent it.";
 const VERIFICATION_CODE_LENGTH = 6;
 const VERIFICATION_CODE_DIGIT_KEYS = ["1", "2", "3", "4", "5", "6"] as const;
 const VERIFICATION_CODE_MISMATCH_MESSAGE =
@@ -139,7 +139,7 @@ async function returnSignedResponseToBrowser(
     return null;
   } catch (error) {
     console.warn("return signed nostr binding response failed:", error);
-    return "Could not open the browser. Copy the response below to finish manually.";
+    return "Could not open the browser. Copy the confirmation below to finish manually.";
   }
 }
 
@@ -154,17 +154,10 @@ function SignedResponseControls({
   onCopy: () => void;
   signedResponse: string;
 }) {
+  const [technicalDetailsOpen, setTechnicalDetailsOpen] = React.useState(false);
+
   return (
     <div className="space-y-4" data-testid="nostr-bind-manual-fallback-content">
-      <pre
-        className="max-h-56 w-full overflow-auto rounded-2xl border border-border/70 bg-muted/60 p-4 text-left shadow-xs"
-        data-testid="nostr-bind-signed-response"
-      >
-        <code className="whitespace-pre-wrap break-all font-mono text-xs leading-5 text-foreground">
-          {signedResponse}
-        </code>
-      </pre>
-
       {copyFailed ? (
         <p className="w-full rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-left text-sm text-destructive">
           {COPY_FAILURE_MESSAGE}
@@ -188,12 +181,12 @@ function SignedResponseControls({
           <span
             className={cn(
               COPY_BUTTON_LABEL_CLASS,
-              copyLabel === "Copy response"
+              copyLabel === "Copy confirmation"
                 ? "translate-y-0 opacity-100"
                 : "-translate-y-0.5 opacity-0",
             )}
           >
-            Copy response
+            Copy confirmation
           </span>
           <span
             className={cn(
@@ -207,6 +200,35 @@ function SignedResponseControls({
           </span>
         </span>
       </Button>
+
+      <div className="w-full overflow-hidden rounded-2xl border border-border/70 bg-muted/30 text-left shadow-xs">
+        <Button
+          aria-expanded={technicalDetailsOpen}
+          className="flex h-11 w-full items-center justify-between rounded-none px-4 text-sm font-medium"
+          data-testid="nostr-bind-technical-details"
+          onClick={() => setTechnicalDetailsOpen((isOpen) => !isOpen)}
+          type="button"
+          variant="ghost"
+        >
+          Technical details
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150",
+              technicalDetailsOpen ? "rotate-180" : "",
+            )}
+          />
+        </Button>
+        {technicalDetailsOpen ? (
+          <pre
+            className="max-h-56 w-full overflow-auto border-t border-border/55 bg-muted/60 p-4 text-left"
+            data-testid="nostr-bind-signed-response"
+          >
+            <code className="whitespace-pre-wrap break-all font-mono text-xs leading-5 text-foreground">
+              {signedResponse}
+            </code>
+          </pre>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -247,7 +269,7 @@ export function NostrBindConsentDialog() {
   const isVerificationCodeValid =
     payload !== null && enteredVerificationCode === payload.verificationCode;
   const copyButtonLabel = isSigning ? "Signing…" : "Continue";
-  const finishCopyButtonLabel = isCopied ? "Copied" : "Copy response";
+  const finishCopyButtonLabel = isCopied ? "Copied" : "Copy confirmation";
 
   const clearCopiedState = React.useCallback(() => {
     if (copiedTimerRef.current) {
@@ -649,7 +671,7 @@ export function NostrBindConsentDialog() {
         {payload ? (
           <DialogPrimitive.Content
             aria-describedby="nostr-bind-description"
-            className="buzz-onboarding-neutral-theme buzz-startup-shell fixed inset-0 z-50 flex overflow-y-auto bg-background px-4 py-12 text-foreground outline-hidden"
+            className="fixed inset-0 z-50 flex overflow-y-auto bg-background px-4 py-12 text-foreground outline-hidden"
             data-system-color-scheme={systemColorScheme}
             data-testid="nostr-bind-page"
           >
@@ -680,7 +702,7 @@ export function NostrBindConsentDialog() {
                   >
                     {payload.returnMode === "browser_fragment_v1"
                       ? "Colony opened your browser to finish verification."
-                      : "Copy the response below, then paste it into the Colony website to finish verification."}
+                      : "Copy the confirmation, then paste it into the Colony website to finish verification."}
                   </DialogPrimitive.Description>
 
                   {error ? (
@@ -690,30 +712,43 @@ export function NostrBindConsentDialog() {
                   ) : null}
 
                   {payload.returnMode === "browser_fragment_v1" ? (
-                    <details
-                      className="group mt-10 w-full overflow-hidden rounded-2xl border border-border/70 bg-muted/30 text-left shadow-xs"
+                    <div
+                      className="mt-10 w-full overflow-hidden rounded-2xl border border-border/70 bg-muted/30 text-left shadow-xs"
+                      data-expanded={isManualFallbackOpen}
                       data-testid="nostr-bind-manual-fallback"
-                      onToggle={(event) =>
-                        setIsManualFallbackOpen(event.currentTarget.open)
-                      }
-                      open={isManualFallbackOpen}
                     >
-                      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 text-sm font-medium transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-                        <span>Pairing didn’t finish automatically?</span>
-                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150 group-open:rotate-180" />
-                      </summary>
-                      <div className="space-y-4 border-t border-border/55 p-4">
-                        <p className="text-sm leading-6 text-muted-foreground">
-                          Copy this response and paste it into the pairing page.
-                        </p>
-                        <SignedResponseControls
-                          copyFailed={copyFailed}
-                          copyLabel={finishCopyButtonLabel}
-                          onCopy={handleCopyAgain}
-                          signedResponse={signedResponse}
+                      <Button
+                        aria-expanded={isManualFallbackOpen}
+                        className="flex h-11 w-full items-center justify-between rounded-none px-4 text-sm font-medium"
+                        onClick={() =>
+                          setIsManualFallbackOpen((isOpen) => !isOpen)
+                        }
+                        type="button"
+                        variant="ghost"
+                      >
+                        Pairing didn’t finish automatically?
+                        <ChevronDown
+                          className={cn(
+                            "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-150",
+                            isManualFallbackOpen ? "rotate-180" : "",
+                          )}
                         />
-                      </div>
-                    </details>
+                      </Button>
+                      {isManualFallbackOpen ? (
+                        <div className="space-y-4 border-t border-border/55 p-4">
+                          <p className="text-sm leading-6 text-muted-foreground">
+                            Copy the confirmation and paste it into the pairing
+                            page.
+                          </p>
+                          <SignedResponseControls
+                            copyFailed={copyFailed}
+                            copyLabel={finishCopyButtonLabel}
+                            onCopy={handleCopyAgain}
+                            signedResponse={signedResponse}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
                   ) : (
                     <div className="mt-10 w-full">
                       <SignedResponseControls

@@ -199,6 +199,16 @@ test("add community starts with create and join choices", async ({ page }) => {
   );
   await expect(page.getByLabel("API Token")).toHaveCount(0);
   await expect(page.getByLabel("Repos Directory")).toHaveCount(0);
+  await page.route("**/api/communities/config", (route) =>
+    route.fulfill({
+      json: {
+        self_serve: true,
+        domain: "example.test",
+        public: true,
+        max_per_owner: 3,
+      },
+    }),
+  );
 
   await page.getByTestId("add-community-join").click();
   await expect(
@@ -209,10 +219,8 @@ test("add community starts with create and join choices", async ({ page }) => {
 
   await page.getByTestId("add-community-create").click();
   await expect(
-    page.getByRole("heading", { name: "Create a new community" }),
+    page.getByRole("heading", { name: "Create a community" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Continue to Builderlab" }).click();
-  await page.getByRole("button", { name: "Connect and continue" }).click();
   await expect(page.getByLabel("Community address")).toBeVisible();
 });
 
