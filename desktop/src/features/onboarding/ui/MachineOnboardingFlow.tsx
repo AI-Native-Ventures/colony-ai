@@ -71,10 +71,7 @@ import {
 } from "./BusinessSetupStep";
 import { ConnectSetupStep } from "./ConnectSetupStep";
 import type { SelfServeCommunity } from "@/features/communities/selfProvisioningApi";
-import {
-  getSelfProvisioningHttpBase,
-  listMyCommunities,
-} from "@/features/communities/selfProvisioningApi";
+import { listOwnedBusinesses } from "@/features/communities/selfProvisioningApi";
 import {
   OnboardingScenePresentation,
   type OnboardingBusinessChoice,
@@ -87,15 +84,15 @@ type BackupSubview = "created" | "password";
 function unavailableBody(capability: NativeCapability): string {
   switch (capability) {
     case "identity-backup":
-      return "Identity backup and private-key export are not available in this Electron build yet. Your key has not been exported or replaced.";
+      return "Saving a recovery copy is not available in this version of Colony yet. Your sign-in has not been changed.";
     case "identity-import":
-      return "Importing an existing identity is not available in this Electron build yet. No identity data was read or changed.";
+      return "Adding an existing sign-in is not available in this version of Colony yet. Nothing has been changed.";
     case "identity-recovery":
-      return "Identity recovery is not available in this Electron build yet. Unlock or recover the identity in a supported Colony desktop build.";
+      return "Restoring your sign-in is not available in this version of Colony yet. Open Colony on a supported desktop version and try again.";
     case "identity-create":
-      return "Creating or replacing an identity is not available in this Electron build yet.";
+      return "Creating or replacing your sign-in is not available in this version of Colony yet.";
     default:
-      return "This native identity operation is not available in this Electron build yet.";
+      return "This action is not available in this version of Colony yet.";
   }
 }
 
@@ -366,21 +363,10 @@ export function MachineOnboardingFlow({
         return;
       }
       try {
-        const httpBase = await getSelfProvisioningHttpBase();
-        const mine = await listMyCommunities(httpBase);
-        if (mine.owner_pubkey.toLowerCase() !== account.pubkey.toLowerCase()) {
-          throw new Error("business_owner_mismatch");
-        }
-        const owned = mine.communities
-          .filter(
-            (community) =>
-              community.owner_pubkey.toLowerCase() ===
-              account.pubkey.toLowerCase(),
-          )
-          .map((community) => {
-            const profile = readOnboardingBusinessProfile(community.id);
-            return profile ? { ...community, name: profile.name } : community;
-          });
+        const owned = await listOwnedBusinesses(
+          account.pubkey,
+          (id) => readOnboardingBusinessProfile(id)?.name ?? null,
+        );
         setOwnedCommunities(owned);
         setBusinessBackPage(owned.length > 0 ? "businesses" : "account-auth");
         setTransitionDirection("forward");
@@ -611,7 +597,7 @@ export function MachineOnboardingFlow({
   if (page === "identity") {
     return (
       <div
-        className="buzz-onboarding-neutral-theme buzz-startup-shell buzz-onboarding-welcome flex max-h-dvh items-start justify-center overflow-x-hidden overflow-y-auto px-4 py-8 text-foreground"
+        className="flex max-h-dvh items-start justify-center overflow-x-hidden overflow-y-auto bg-background px-4 py-8 text-foreground"
         data-testid="machine-onboarding-gate"
       >
         <StartupWindowDragRegion />

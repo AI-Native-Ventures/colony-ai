@@ -46,8 +46,8 @@ export function describeCommunityApplyError({
   const name = communityName?.trim() || "this community";
   return {
     message: hasOtherCommunities
-      ? `This sign-in is not a member of ${name}. Switch to another community or remove this one.`
-      : `This sign-in is not a member of ${name}. Remove it from this device, or ask for an invitation.`,
+      ? `You don’t have access to ${name}. Switch to another community or remove it from this device.`
+      : `You don’t have access to ${name}. Remove it from this device, or ask the owner for an invitation.`,
     detail: relayMembershipDenialDetail(error),
     isMembershipError: true,
   };

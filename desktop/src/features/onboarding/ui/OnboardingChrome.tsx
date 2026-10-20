@@ -25,7 +25,7 @@ export const ONBOARDING_SECURITY_PRIMARY_CTA_CLASS = `${ONBOARDING_CTA_SHAPE} bg
  * chartreuse label (`--buzz-welcome-chartreuse`). The blue label is reserved
  * for the CTAs inside the steps.
  */
-export const ONBOARDING_LANDING_CTA_CLASS = `${ONBOARDING_CTA_SHAPE} text-[var(--buzz-welcome-chartreuse)]`;
+export const ONBOARDING_LANDING_CTA_CLASS = `${ONBOARDING_CTA_SHAPE} text-[var(--buzz-onboarding-cta-label)]`;
 
 /** Shared quiet pill for secondary actions throughout onboarding. */
 export const ONBOARDING_SECONDARY_CTA_CLASS =

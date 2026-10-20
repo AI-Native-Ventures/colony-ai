@@ -29,6 +29,37 @@ export type MyCommunitiesResponse = {
   communities: SelfServeCommunity[];
 };
 
+export function filterOwnedBusinesses(
+  mine: MyCommunitiesResponse,
+  identityPubkey: string,
+  profileName: (communityId: string) => string | null = () => null,
+): SelfServeCommunity[] {
+  if (mine.owner_pubkey.toLowerCase() !== identityPubkey.toLowerCase()) {
+    throw new Error("business_owner_mismatch");
+  }
+  return mine.communities
+    .filter(
+      (community) =>
+        community.owner_pubkey.toLowerCase() === identityPubkey.toLowerCase(),
+    )
+    .map((community) => {
+      const name = profileName(community.id);
+      return name ? { ...community, name } : community;
+    });
+}
+
+export async function listOwnedBusinesses(
+  identityPubkey: string,
+  profileName?: (communityId: string) => string | null,
+): Promise<SelfServeCommunity[]> {
+  const httpBase = await getSelfProvisioningHttpBase();
+  return filterOwnedBusinesses(
+    await listMyCommunities(httpBase),
+    identityPubkey,
+    profileName,
+  );
+}
+
 export class CommunityProvisioningRequestError extends Error {
   readonly status: number;
   readonly code: string;

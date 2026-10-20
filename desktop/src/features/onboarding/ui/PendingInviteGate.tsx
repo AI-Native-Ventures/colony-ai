@@ -17,7 +17,7 @@ export function PendingInviteGate() {
 
   return (
     <div
-      className="buzz-onboarding-neutral-theme buzz-startup-shell fixed inset-0 z-50 flex items-center justify-center bg-background px-4 py-8 text-foreground"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background px-4 py-8 text-foreground"
       data-system-color-scheme={systemColorScheme}
       data-testid="pending-invite-gate"
     >

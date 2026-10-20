@@ -16,7 +16,7 @@ export function NativeUnavailableScreen({
 }) {
   return (
     <div
-      className="buzz-onboarding-neutral-theme buzz-startup-shell flex min-h-dvh items-center justify-center bg-background px-4 py-8 text-foreground"
+      className="flex min-h-dvh items-center justify-center bg-background px-4 py-8 text-foreground"
       data-testid={testId}
     >
       <StartupWindowDragRegion />

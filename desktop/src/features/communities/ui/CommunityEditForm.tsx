@@ -99,7 +99,7 @@ export function CommunityEditForm({
       }
       const normalizedUrl = normalizeRelayUrl(relayUrl);
       if (!normalizedUrl) {
-        setError("Enter a valid ws:// or wss:// relay URL.");
+        setError("Enter a valid connection address.");
         return;
       }
 
@@ -159,7 +159,7 @@ export function CommunityEditForm({
       }
 
       if (!reachable) {
-        setProbeWarning("Can't reach this relay — check the URL");
+        setProbeWarning("Can't reach this address. Check it and try again.");
         return;
       }
 
@@ -224,7 +224,7 @@ export function CommunityEditForm({
           className="text-sm font-medium text-foreground"
           htmlFor="community-edit-url"
         >
-          Community URL
+          Connection address
         </label>
         <Input
           className="h-10 bg-background"

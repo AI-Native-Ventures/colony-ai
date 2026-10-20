@@ -19,7 +19,7 @@ export function RecoveryScreen({
 
   return (
     <div
-      className="buzz-onboarding-neutral-theme buzz-startup-shell flex items-center justify-center bg-background px-4 py-8 text-foreground"
+      className="flex min-h-dvh items-center justify-center bg-background px-4 py-8 text-foreground"
       data-system-color-scheme={systemColorScheme}
       data-testid={testId}
     >
@@ -44,8 +44,8 @@ export function RecoveryScreen({
             data-testid="identity-recovery-unsupported"
             role="status"
           >
-            Identity recovery is not available in this Electron build yet.
-            Continue in a supported Colony desktop build.
+            Restoring your sign-in is not available in this version of Colony
+            yet. Open Colony on a supported desktop version and try again.
           </p>
         )}
       </div>

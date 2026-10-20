@@ -649,7 +649,7 @@ export function NostrBindConsentDialog() {
         {payload ? (
           <DialogPrimitive.Content
             aria-describedby="nostr-bind-description"
-            className="buzz-onboarding-neutral-theme buzz-startup-shell fixed inset-0 z-50 flex overflow-y-auto bg-background px-4 py-12 text-foreground outline-hidden"
+            className="fixed inset-0 z-50 flex overflow-y-auto bg-background px-4 py-12 text-foreground outline-hidden"
             data-system-color-scheme={systemColorScheme}
             data-testid="nostr-bind-page"
           >

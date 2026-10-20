@@ -336,9 +336,8 @@ export function NostrKeyImportForm({
               </div>
             ) : (
               <Card
-                className="w-full px-8 py-12"
+                className="w-full rounded-2xl border border-border bg-card px-8 py-12 shadow-sm"
                 data-testid="nostr-import-card"
-                variant="textured"
               >
                 <div className="relative w-full">
                   <Input
