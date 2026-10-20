@@ -97,7 +97,6 @@ export function IdentityKeyHelpDialog({
       <DialogContent
         className="max-w-[47.5rem] -translate-y-5"
         closeButtonClassName={ONBOARDING_INK_ICON_CLASS}
-        data-system-color-scheme="light"
         data-testid="identity-key-help-dialog"
         overlayVariant="transparent"
         surface="default"

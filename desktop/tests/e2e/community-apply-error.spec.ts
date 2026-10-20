@@ -1,10 +1,10 @@
-import { expect, test, type Page } from "@playwright/test";
-import { mkdirSync } from "node:fs";
+import { expect, test } from "@playwright/test";
 
-import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
-
-const SHOT_DIR = "/Users/mac/worktrees/.lanes/reskin/shots";
+import {
+  captureReskinState,
+  seedReskinTheme,
+} from "../helpers/reskinScreenshots";
 
 // The relay behind "Colony" refuses this sign-in with the same text the real
 // desktop backend returns when the identity is not a member.
@@ -62,22 +62,15 @@ function readStorage(page: Page, key: string) {
 }
 
 test.describe("community connection error screen", () => {
+  test.beforeEach(async ({ page }) => seedReskinTheme(page));
+
   test("captures connection recovery states at both review widths", async ({
     page,
   }) => {
-    mkdirSync(SHOT_DIR, { recursive: true });
     await openWithFailingColony(page, [COLONY, COLONY_AI]);
     const screen = page.getByTestId("community-apply-error");
     const capture = async (name: string) => {
-      const originalViewport = page.viewportSize();
-      for (const width of [1440, 900]) {
-        await page.setViewportSize({ width, height: 900 });
-        await waitForAnimations(page);
-        await page.screenshot({
-          path: `${SHOT_DIR}/community-error-${name}-${width}.png`,
-        });
-      }
-      if (originalViewport) await page.setViewportSize(originalViewport);
+      await captureReskinState(page, `community-error-${name}`);
     };
 
     await capture("switch-retry-edit-remove");
@@ -95,6 +88,13 @@ test.describe("community connection error screen", () => {
 
     await screen.getByRole("button", { name: /^Edit this community/ }).click();
     await expect(page.getByTestId("community-change-overlay")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Change community" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Community address")).toBeVisible();
+    await expect(
+      page.getByText("Enter the address provided by the community owner."),
+    ).toBeVisible();
     await capture("edit-overlay");
     await page.keyboard.press("Escape");
 

@@ -1,13 +1,13 @@
-import { mkdirSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 
-import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
-
-const OUTDIR = "/Users/mac/worktrees/.lanes/reskin/shots";
+import {
+  captureReskinAtWidth,
+  seedReskinTheme,
+} from "../helpers/reskinScreenshots";
 
 test.beforeEach(async ({ page }) => {
-  mkdirSync(OUTDIR, { recursive: true });
+  await seedReskinTheme(page);
   await page.route("**/api/communities/config", (route) =>
     route.fulfill({
       json: {
@@ -40,25 +40,16 @@ for (const width of [1440, 900]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.getByTestId("add-community-create")).toBeVisible();
     await expect(page.getByTestId("add-community-join")).toBeVisible();
-    await waitForAnimations(page);
-    await page.screenshot({
-      path: `${OUTDIR}/add-community-choices-${width}.png`,
-    });
+    await captureReskinAtWidth(page, "add-community-choices", width);
 
     await page.getByTestId("add-community-create").click();
     await expect(page.getByLabel("Community address")).toBeVisible();
     await expect(page.getByText(/Builderlab/i)).toHaveCount(0);
-    await waitForAnimations(page);
-    await page.screenshot({
-      path: `${OUTDIR}/add-community-create-${width}.png`,
-    });
+    await captureReskinAtWidth(page, "add-community-create", width);
 
     await page.getByTestId("add-community-back").click();
     await page.getByTestId("add-community-join").click();
     await expect(page.getByTestId("invite-redeem-input")).toBeVisible();
-    await waitForAnimations(page);
-    await page.screenshot({
-      path: `${OUTDIR}/add-community-join-${width}.png`,
-    });
+    await captureReskinAtWidth(page, "add-community-join", width);
   });
 }

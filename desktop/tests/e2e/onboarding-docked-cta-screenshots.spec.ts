@@ -1,8 +1,11 @@
-import { mkdirSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import {
+  captureReskinState,
+  seedReskinTheme,
+} from "../helpers/reskinScreenshots";
 import {
   completeR17BusinessSetup,
   openR17BusinessSetup,
@@ -15,20 +18,9 @@ const BLANK_TYLER_IDENTITY = {
   username: "",
 };
 
-const SHOT_DIR = "/Users/mac/worktrees/.lanes/reskin/shots";
-
 test.use({ viewport: { width: 1280, height: 800 } });
 
-async function captureReskinState(page: Page, name: string) {
-  const originalViewport = page.viewportSize();
-  mkdirSync(SHOT_DIR, { recursive: true });
-  for (const width of [1440, 900]) {
-    await page.setViewportSize({ width, height: 900 });
-    await waitForAnimations(page);
-    await page.screenshot({ path: `${SHOT_DIR}/${name}-${width}.png` });
-  }
-  if (originalViewport) await page.setViewportSize(originalViewport);
-}
+test.beforeEach(async ({ page }) => seedReskinTheme(page));
 
 async function expectSharedCardGeometry(page: Page, expectedWidth = 610) {
   const geometry = await page

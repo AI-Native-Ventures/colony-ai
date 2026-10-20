@@ -19,8 +19,13 @@ import {
 } from "./GoogleAccountPresentation";
 import { AccountAuthFlow } from "./AccountAuthFlow";
 import type { AccountAuthClient } from "../accountAuthClient";
-import { IdentityKeyHelpContent } from "./IdentityKeyHelpDialog";
+import { ThemeProvider } from "@/shared/theme/ThemeProvider";
+import {
+  IdentityKeyHelpContent,
+  IdentityKeyHelpDialog,
+} from "./IdentityKeyHelpDialog";
 import { IdentityKeyIntroduction } from "./IdentityKeyIntroduction";
+import { MachineIdentityLanding } from "./MachineIdentityLanding";
 import { NativeUnavailableScreen } from "./NativeUnavailableScreen";
 import { OnboardingCard } from "./OnboardingCard";
 
@@ -69,24 +74,74 @@ const data: OnboardingSceneData = {
 
 createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    {requestedReskin ? (
-      <ReskinVisual requested={requestedReskin} />
-    ) : googleScene ? (
-      <GoogleAccountPresentation
-        email=""
-        name=""
-        onCancel={() => undefined}
-        password=""
-        scene={googleScene}
-      />
-    ) : (
-      <OnboardingScenePresentation data={data} scene={scene} />
-    )}
+    <ThemeProvider>
+      {requestedReskin ? (
+        <ReskinVisual requested={requestedReskin} />
+      ) : googleScene ? (
+        <GoogleAccountPresentation
+          email=""
+          name=""
+          onCancel={() => undefined}
+          password=""
+          scene={googleScene}
+        />
+      ) : (
+        <OnboardingScenePresentation data={data} scene={scene} />
+      )}
+    </ThemeProvider>
   </React.StrictMode>,
 );
 
 function ReskinVisual({ requested }: { requested: string }) {
   const [showHelp, setShowHelp] = React.useState(false);
+  if (requested === "machine-identity") {
+    return showHelp ? (
+      <div className="flex min-h-dvh items-center justify-center bg-background px-4 py-6 text-foreground">
+        <OnboardingCard
+          current={2}
+          showStepIndicator={false}
+          testId="machine-onboarding-gate"
+        >
+          <IdentityKeyHelpContent />
+        </OnboardingCard>
+      </div>
+    ) : (
+      <MachineIdentityLanding
+        error={null}
+        hasSelectedIdentity={false}
+        isPending={false}
+        onBack={() => undefined}
+        onContinue={() => undefined}
+        onOpenHelp={() => setShowHelp(true)}
+        onUseExistingKey={() => undefined}
+        transitionDirection="forward"
+      />
+    );
+  }
+
+  if (requested === "machine-identity-error") {
+    return (
+      <MachineIdentityLanding
+        error="Native identity-read failed: secure storage was unavailable."
+        hasSelectedIdentity
+        isPending={false}
+        onBack={() => undefined}
+        onContinue={() => undefined}
+        onOpenHelp={() => setShowHelp(true)}
+        onUseExistingKey={() => undefined}
+        transitionDirection="forward"
+      />
+    );
+  }
+
+  if (requested === "identity-help-dialog") {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-background px-4 py-6 text-foreground">
+        <IdentityKeyHelpDialog />
+      </div>
+    );
+  }
+
   if (requested === "identity-intro" || requested === "identity-help") {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-background px-4 py-6 text-foreground">

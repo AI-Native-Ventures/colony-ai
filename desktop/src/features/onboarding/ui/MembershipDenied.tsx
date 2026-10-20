@@ -16,7 +16,6 @@ type MembershipDeniedProps = {
   /** The relay that denied membership, used as the target for bare-code invites. */
   activeRelayUrl: string;
   embedded?: boolean;
-  onBack: () => void;
   onChangeCommunity: () => void;
   onImportKey: (nsec: string) => Promise<void>;
   onRetry: () => void;
@@ -121,12 +120,15 @@ export function MembershipDenied({
               <ShieldX className="h-4 w-4 text-destructive" />
             </div>
             <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-              You’re not in this business yet
+              {embedded
+                ? "You’re not in this community yet"
+                : "You’re not in this business yet"}
             </h2>
           </div>
           <p className="text-sm leading-6 text-muted-foreground">
-            Ask the owner to invite you, or sign in with the account that owns
-            this business.
+            {embedded
+              ? "Ask the community owner to invite you, or sign in with the account that owns it."
+              : "Ask the owner to invite you, or sign in with the account that owns this business."}
           </p>
         </div>
 
@@ -169,7 +171,9 @@ export function MembershipDenied({
                 </div>
               </div>
               <p className="leading-5">
-                Share this code with the business owner so they can invite you.
+                {embedded
+                  ? "Share this code with the community owner so they can invite you."
+                  : "Share this code with the business owner so they can invite you."}
               </p>
             </div>
           ) : null}
@@ -280,7 +284,7 @@ export function MembershipDenied({
                   type="button"
                   variant="ghost"
                 >
-                  Change business
+                  {embedded ? "Change community" : "Change business"}
                 </Button>
               </div>
               <button
