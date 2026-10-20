@@ -171,8 +171,8 @@ test("avatar step uses the compact prototype emoji picker", async ({
       toneControlRadius: window.getComputedStyle(toneControl).borderRadius,
     };
   });
-  expect(pickerGeometry).toEqual({
-    categoryLabelBackground: "rgb(245, 245, 245)",
+  expect(pickerGeometry.categoryLabelBackground).toBe(surfaceColors[1]);
+  expect(pickerGeometry).toMatchObject({
     categoryLabelDisplay: "block",
     categoryLabelPosition: "sticky",
     categoryLabelZIndex: "5",
@@ -289,10 +289,14 @@ test("avatar step keeps a stable card and compact horizontal navigation", async 
   await page.screenshot({ path: `${SHOTS}/01-avatar-actions.png` });
 
   await page.getByTestId("onboarding-avatar-mode-emoji").click();
-  cardWidths.push(await card.evaluate((element) => element.clientWidth));
+  cardWidths.push(
+    await card.evaluate((element) => element.getBoundingClientRect().width),
+  );
 
   await page.getByTestId("onboarding-avatar-mode-animated").click();
-  cardWidths.push(await card.evaluate((element) => element.clientWidth));
+  cardWidths.push(
+    await card.evaluate((element) => element.getBoundingClientRect().width),
+  );
   expect(new Set(cardWidths).size).toBe(1);
 
   const iphoneBox = await page

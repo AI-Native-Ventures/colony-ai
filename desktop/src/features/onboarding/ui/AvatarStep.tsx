@@ -50,13 +50,6 @@ function ErrorBanner({ message }: { message: string | null }) {
   );
 }
 
-const NEUTRAL_EMOJI_PICKER_THEME_VARS = {
-  "--buzz-emoji-picker-rgb-background":
-    "var(--buzz-onboarding-emoji-picker-background)",
-  "--buzz-emoji-picker-rgb-color": "var(--buzz-onboarding-emoji-picker-color)",
-  "--buzz-emoji-picker-rgb-input": "var(--buzz-onboarding-emoji-picker-input)",
-} as React.CSSProperties;
-
 const AVATAR_ACTIONS_MOTION_TRANSITION = {
   duration: 0.25,
   ease: "easeOut",
@@ -396,7 +389,6 @@ export function AvatarStep({
             avatarUrl={avatar.draftUrl}
             disabled={isSaving}
             emojiPickerTheme="auto"
-            emojiPickerThemeVars={NEUTRAL_EMOJI_PICKER_THEME_VARS}
             onAnimatedAvatarApply={handleAnimatedAvatarApply}
             onAnimatedPreviewActiveChange={setIsAnimatedPreviewActive}
             onAnimatedPreviewCaptionChange={setAnimatedPreviewCaption}
