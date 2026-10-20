@@ -295,6 +295,118 @@ test("existing Welcome starter needs no update when runtime already matches", ()
   );
 });
 
+// The agent summary carries resolved launch values: OpenCode's default
+// ["acp"] args and the global Start free model and provider. The Welcome
+// definition leaves all three to inherit, so they are not a mismatch.
+function startFreeScout(overrides = {}) {
+  return makeAgent({
+    personaId: WELCOME_GUIDE_PERSONA_ID,
+    agentCommand: "opencode",
+    agentArgs: ["acp"],
+    mcpCommand: "",
+    model: "opencode/deepseek-v4.1-flash-free",
+    provider: "opencode-free",
+    ...overrides,
+  });
+}
+
+const START_FREE_DESIRED = {
+  name: "Scout",
+  personaId: WELCOME_GUIDE_PERSONA_ID,
+  agentCommand: "opencode",
+  agentArgs: [],
+  mcpCommand: "",
+  parallelism: 1,
+};
+
+test("existing Start free Scout needs no update when it inherits OpenCode defaults", () => {
+  assert.equal(
+    welcomeStarterRuntimeUpdate(startFreeScout(), START_FREE_DESIRED, ["acp"]),
+    null,
+  );
+});
+
+test("existing Welcome starter still clears frozen args that differ from the runtime default", () => {
+  const update = welcomeStarterRuntimeUpdate(
+    startFreeScout({ agentArgs: ["--old"] }),
+    START_FREE_DESIRED,
+    ["acp"],
+  );
+  assert.deepEqual(update?.agentArgs, []);
+});
+
+test("definition-less starter still clears its own stale model", () => {
+  const update = welcomeStarterRuntimeUpdate(
+    startFreeScout({ personaId: null }),
+    START_FREE_DESIRED,
+    ["acp"],
+  );
+  assert.equal(update?.model, null);
+  assert.equal(update?.provider, null);
+});
+
+test("reconcile leaves a running Start free Scout running", async () => {
+  const running = startFreeScout({ status: "running" });
+  const result = await reconcileWelcomeStarter(
+    running,
+    START_FREE_DESIRED,
+    async () => assert.fail("a matching running Scout must not be stopped"),
+    async () => assert.fail("a matching Scout needs no update"),
+    {
+      start: async () => assert.fail("a matching Scout must not restart"),
+      runtimeDefaultArgs: ["acp"],
+    },
+  );
+  assert.equal(result, running);
+});
+
+test("reconcile restarts a running starter it stopped to apply a runtime change", async () => {
+  const calls = [];
+  const running = startFreeScout({ status: "running" });
+  const result = await reconcileWelcomeStarter(
+    running,
+    { ...START_FREE_DESIRED, agentCommand: "codex-acp" },
+    async (pubkey) => {
+      calls.push(["stop", pubkey]);
+      return { ...running, status: "stopped" };
+    },
+    async (input) => {
+      calls.push(["update", input.agentCommand]);
+      return { agent: { ...running, ...input, status: "stopped" } };
+    },
+    {
+      start: async (pubkey) => {
+        calls.push(["start", pubkey]);
+        return { ...running, agentCommand: "codex-acp", status: "running" };
+      },
+      runtimeDefaultArgs: [],
+    },
+  );
+  assert.deepEqual(calls, [
+    ["stop", running.pubkey],
+    ["update", "codex-acp"],
+    ["start", running.pubkey],
+  ]);
+  assert.equal(result.status, "running");
+  assert.equal(result.agentCommand, "codex-acp");
+});
+
+test("reconcile does not start a stopped starter after updating it", async () => {
+  const stopped = startFreeScout({ status: "stopped" });
+  const result = await reconcileWelcomeStarter(
+    stopped,
+    { ...START_FREE_DESIRED, agentCommand: "codex-acp" },
+    async () => assert.fail("a stopped starter needs no stop"),
+    async (input) => ({ agent: { ...stopped, ...input } }),
+    {
+      start: async () => assert.fail("kickoff owns the first start"),
+      runtimeDefaultArgs: [],
+    },
+  );
+  assert.equal(result.agentCommand, "codex-acp");
+  assert.equal(result.status, "stopped");
+});
+
 test("welcome team starter definitions and role identities are stable", () => {
   assert.equal(WELCOME_TEAM_ID, "builtin-team:welcome");
   assert.deepEqual(WELCOME_TEAM_STARTERS, [
@@ -606,7 +718,7 @@ test("Welcome refuses a missing selected runtime instead of falling back to bund
   );
 });
 
-test("changing a running lead stops it before updating so kickoff can launch the chosen runtime", async () => {
+test("changing a running lead stops it, updates it, then starts the chosen runtime", async () => {
   const order = [];
   const existing = makeAgent({ status: "running" });
   const result = await reconcileWelcomeStarter(
@@ -632,12 +744,23 @@ test("changing a running lead stops it before updating so kickoff can launch the
         },
       };
     },
+    {
+      start: async (pubkey) => {
+        order.push(["start", pubkey]);
+        return {
+          ...existing,
+          status: "running",
+          agentCommand: "claude-code-acp",
+        };
+      },
+    },
   );
   assert.deepEqual(order, [
     ["stop", existing.pubkey],
     ["update", "claude-code-acp"],
+    ["start", existing.pubkey],
   ]);
-  assert.equal(result.status, "stopped");
+  assert.equal(result.status, "running");
 });
 
 test("native Scout seed uses the exact approved SVG in the safe inline catalog format", () => {
