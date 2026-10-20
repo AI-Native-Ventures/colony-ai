@@ -34,11 +34,11 @@ export function IdentityKeyIntroduction({
     >
       <div className="w-full shrink-0 text-left">
         <h1 className="text-title font-normal text-foreground">
-          Create a private identity key
+          Create your Colony sign-in
         </h1>
         <p className="mt-2 text-base leading-6 text-foreground/75">
-          This key will be how you log into Colony. You can use it across Colony
-          communities and other platforms.
+          This sign-in belongs to you. Use it across Colony communities and
+          compatible apps.
         </p>
         <div className="mt-2">
           <IdentityKeyHelpDialog inline onOpen={onOpenHelp} />
@@ -75,7 +75,8 @@ export function IdentityKeyIntroduction({
               <CircleSlash2 aria-hidden className="size-5" />
             </span>
             <p className="text-base leading-6 text-foreground">
-              Never share it—anyone with this key can sign in as you
+              Never share your recovery details. Anyone with them can sign in as
+              you.
             </p>
           </div>
           <div className="flex min-h-14 items-center gap-4 text-left">
@@ -86,7 +87,7 @@ export function IdentityKeyIntroduction({
               <HardDriveDownload aria-hidden className="size-5" />
             </span>
             <p className="text-base leading-6 text-foreground">
-              Use a secure backup to recover your account
+              Use a secure backup to recover your sign-in
             </p>
           </div>
         </div>
@@ -100,7 +101,7 @@ export function IdentityKeyIntroduction({
           onClick={onCreate}
           type="button"
         >
-          {disabled ? "Creating key…" : "Create my private key"}
+          {disabled ? "Creating sign-in…" : "Create my sign-in"}
         </Button>
       </OnboardingFooter>
     </OnboardingSlideTransition>

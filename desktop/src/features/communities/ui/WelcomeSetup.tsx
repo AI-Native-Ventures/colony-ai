@@ -204,7 +204,7 @@ export function WelcomeSetup({
                     one you already have.
                   </p>
                 </div>
-                <div className="flex w-full flex-1 translate-y-16 flex-col items-center justify-center gap-20 py-8">
+                <div className="flex w-full flex-1 flex-col items-center justify-center gap-20 py-8">
                   <Card asChild className={COMMUNITY_OPTION_CARD_CLASS}>
                     <button
                       data-testid="community-choice-join"
@@ -249,7 +249,7 @@ export function WelcomeSetup({
                     Tell us your role so we can find the fastest way back in.
                   </p>
                 </div>
-                <div className="flex w-full flex-1 translate-y-16 flex-col items-center justify-center gap-20 py-8">
+                <div className="flex w-full flex-1 flex-col items-center justify-center gap-20 py-8">
                   <Card asChild className={COMMUNITY_OPTION_CARD_CLASS}>
                     <button
                       data-testid="existing-choice-owner"
@@ -278,6 +278,7 @@ export function WelcomeSetup({
               >
                 <SelfServeCommunityCreateFlow
                   onBack={() => showPage("welcome")}
+                  showBackButton={false}
                 />
               </OnboardingSlideTransition>
             ) : page === "owned" ? (

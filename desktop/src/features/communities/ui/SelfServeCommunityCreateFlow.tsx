@@ -26,11 +26,13 @@ import {
 type SelfServeCommunityCreateFlowProps = {
   onComplete?: () => void;
   onBack: () => void;
+  showBackButton?: boolean;
 };
 
 export function SelfServeCommunityCreateFlow({
   onComplete,
   onBack,
+  showBackButton = true,
 }: SelfServeCommunityCreateFlowProps) {
   const onboarding = useCommunityOnboarding();
   const identityQuery = useIdentityQuery();
@@ -51,6 +53,7 @@ export function SelfServeCommunityCreateFlow({
   const [retryable, setRetryable] = React.useState(false);
 
   const validation = validateCommunitySlug(name);
+  const visibleValidationError = name.trim() ? validation.error : null;
   const localPubkey = identityQuery.data?.pubkey ?? null;
   const configRequestGeneration = React.useRef(0);
 
@@ -70,7 +73,7 @@ export function SelfServeCommunityCreateFlow({
         setHttpBase(null);
         setProvisioning(null);
         setConfigError(
-          "Could not check whether this relay can create communities.",
+          "Could not check whether communities can be created right now.",
         );
       })
       .finally(() => {
@@ -91,10 +94,10 @@ export function SelfServeCommunityCreateFlow({
       !httpBase ||
       !provisioning?.selfServe ||
       !provisioning.domain ||
-      validation.error
+      visibleValidationError
     ) {
       setAvailability(null);
-      setAvailabilityMessage(validation.error ?? "");
+      setAvailabilityMessage(visibleValidationError ?? "");
       setChecking(false);
       return;
     }
@@ -133,7 +136,7 @@ export function SelfServeCommunityCreateFlow({
     httpBase,
     provisioning?.domain,
     provisioning?.selfServe,
-    validation.error,
+    visibleValidationError,
     validation.slug,
   ]);
 
@@ -281,11 +284,13 @@ export function SelfServeCommunityCreateFlow({
         ) : selfServeDisabled ? (
           <div aria-live="polite" className="space-y-3" role="status">
             <p className="text-sm text-foreground/75">
-              Community creation is not enabled on this relay.
+              Community creation is not available right now.
             </p>
-            <Button onClick={onBack} type="button" variant="outline">
-              Back
-            </Button>
+            {showBackButton ? (
+              <Button onClick={onBack} type="button" variant="outline">
+                Back
+              </Button>
+            ) : null}
           </div>
         ) : (
           <form className="space-y-5" onSubmit={submit}>
@@ -300,7 +305,7 @@ export function SelfServeCommunityCreateFlow({
                 <Input
                   aria-describedby="self-serve-community-availability"
                   aria-invalid={Boolean(
-                    validation.error || availability === false,
+                    visibleValidationError || availability === false,
                   )}
                   autoComplete="off"
                   autoCapitalize="none"
@@ -327,7 +332,7 @@ export function SelfServeCommunityCreateFlow({
               <p
                 aria-live="polite"
                 className={
-                  availability === false || validation.error
+                  availability === false || visibleValidationError
                     ? "min-h-5 text-sm text-destructive"
                     : "min-h-5 text-sm text-foreground/65"
                 }
@@ -362,10 +367,14 @@ export function SelfServeCommunityCreateFlow({
               </p>
             ) : null}
 
-            <div className="flex flex-wrap justify-between gap-3">
-              <Button onClick={onBack} type="button" variant="outline">
-                Back
-              </Button>
+            <div
+              className={`flex flex-wrap gap-3 ${showBackButton ? "justify-between" : "justify-end"}`}
+            >
+              {showBackButton ? (
+                <Button onClick={onBack} type="button" variant="outline">
+                  Back
+                </Button>
+              ) : null}
               <Button
                 data-testid="self-serve-community-submit"
                 disabled={!canSubmit}

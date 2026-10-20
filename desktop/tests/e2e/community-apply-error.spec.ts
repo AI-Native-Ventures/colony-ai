@@ -1,6 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mkdirSync } from "node:fs";
 
+import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
+
+const SHOT_DIR = "/Users/mac/worktrees/.lanes/reskin/shots";
 
 // The relay behind "Colony" refuses this sign-in with the same text the real
 // desktop backend returns when the identity is not a member.
@@ -58,6 +62,53 @@ function readStorage(page: Page, key: string) {
 }
 
 test.describe("community connection error screen", () => {
+  test("captures connection recovery states at both review widths", async ({
+    page,
+  }) => {
+    mkdirSync(SHOT_DIR, { recursive: true });
+    await openWithFailingColony(page, [COLONY, COLONY_AI]);
+    const screen = page.getByTestId("community-apply-error");
+    const capture = async (name: string) => {
+      const originalViewport = page.viewportSize();
+      for (const width of [1440, 900]) {
+        await page.setViewportSize({ width, height: 900 });
+        await waitForAnimations(page);
+        await page.screenshot({
+          path: `${SHOT_DIR}/community-error-${name}-${width}.png`,
+        });
+      }
+      if (originalViewport) await page.setViewportSize(originalViewport);
+    };
+
+    await capture("switch-retry-edit-remove");
+    await screen.getByRole("button", { name: "Retry" }).click();
+    await expect(screen).toBeVisible();
+    await capture("retry-result");
+
+    const disclosure = screen.getByRole("button", {
+      name: "Technical details",
+    });
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+    await capture("technical-details");
+    await disclosure.click();
+
+    await screen.getByRole("button", { name: /^Edit this community/ }).click();
+    await expect(page.getByTestId("community-change-overlay")).toBeVisible();
+    await capture("edit-overlay");
+    await page.keyboard.press("Escape");
+
+    const remove = screen.getByRole("button", {
+      name: /^Remove this community from this device/,
+    });
+    await remove.focus();
+    await page.keyboard.press("Space");
+    await expect(
+      screen.getByTestId("community-escape-remove-confirm-panel"),
+    ).toBeVisible();
+    await capture("remove-confirm");
+  });
+
   test("explains the membership error and switches to the other community by keyboard", async ({
     page,
   }) => {

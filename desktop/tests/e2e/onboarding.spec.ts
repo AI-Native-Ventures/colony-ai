@@ -39,12 +39,18 @@ async function openOwnedCommunityReconnect(page: Page) {
 
 async function captureOwnerChoice(page: Page, prefix: string) {
   const output = "/Users/mac/worktrees/.lanes/reskin/shots";
+  const originalViewport = page.viewportSize();
   mkdirSync(output, { recursive: true });
   for (const width of [1440, 900]) {
     await page.setViewportSize({ width, height: 900 });
     await waitForAnimations(page);
+    await page.waitForTimeout(350);
+    await page.evaluate(() => {
+      (document.activeElement as HTMLElement | null)?.blur();
+    });
     await page.screenshot({ path: `${output}/${prefix}-${width}.png` });
   }
+  if (originalViewport) await page.setViewportSize(originalViewport);
 }
 
 /**
@@ -576,6 +582,7 @@ test("first-community choices route join, create, owner, and member intents", as
   });
   await page.goto("/");
 
+  await captureOwnerChoice(page, "welcome-choice");
   await expect(
     page.getByRole("button", { name: /Join a community/ }),
   ).toBeVisible();
@@ -591,8 +598,9 @@ test("first-community choices route join, create, owner, and member intents", as
   await expect(
     page.getByRole("heading", { name: "Reconnect to your community" }),
   ).toBeVisible();
+  await captureOwnerChoice(page, "welcome-existing-choice");
   await expect(
-    page.getByRole("button", { name: "I own the community" }),
+    page.getByRole("button", { name: "I own the business" }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "I’m a member or admin" }),
@@ -602,6 +610,7 @@ test("first-community choices route join, create, owner, and member intents", as
   await expect(
     page.getByRole("heading", { name: "Reconnect to your community" }),
   ).toBeVisible();
+  await captureOwnerChoice(page, "welcome-member-form");
   const accessInput = page.getByTestId("invite-redeem-input");
   await expect(accessInput).toHaveAttribute(
     "placeholder",
@@ -610,9 +619,11 @@ test("first-community choices route join, create, owner, and member intents", as
   await accessInput.fill("https://default.example.com");
   await expect(page.getByTestId("invite-redeem-submit")).toBeEnabled();
   // Back from the member form returns to the role choice, then to the hub.
-  await page.getByRole("button", { name: "Back" }).click();
+  const memberBack = page.getByTestId("welcome-member-back");
+  await memberBack.focus();
+  await memberBack.press("Enter");
   await expect(
-    page.getByRole("button", { name: "I own the community" }),
+    page.getByRole("button", { name: "I own the business" }),
   ).toBeVisible();
   await page.getByTestId("existing-back").click();
 
@@ -620,6 +631,7 @@ test("first-community choices route join, create, owner, and member intents", as
   await expect(
     page.getByRole("heading", { name: "Join a community" }),
   ).toBeVisible();
+  await captureOwnerChoice(page, "welcome-join-form");
   await expect(page.getByText("Joining a private community?")).toBeVisible();
   await expect(page.getByTestId("welcome-join-npub")).toBeVisible();
   await expect(
@@ -717,6 +729,26 @@ test("Welcome owner path offers business creation when the account has none", as
       json: { owner_pubkey: BLANK_TYLER_IDENTITY.pubkey, communities: [] },
     }),
   );
+  await page.route("**/api/communities/config", (route) =>
+    route.fulfill({
+      json: {
+        self_serve: true,
+        domain: "example.test",
+        public: true,
+        max_per_owner: 3,
+      },
+    }),
+  );
+  await page.route("**/api/communities/availability?**", (route) => {
+    const slug = new URL(route.request().url()).searchParams.get("name") ?? "";
+    return route.fulfill({
+      json: {
+        name: slug,
+        normalized_host: `${slug}.example.test`,
+        available: true,
+      },
+    });
+  });
   await page.goto("/");
 
   await openOwnedCommunityReconnect(page);
@@ -729,6 +761,49 @@ test("Welcome owner path offers business creation when the account has none", as
   await captureOwnerChoice(page, "owner-no-business");
   await page.getByRole("button", { name: "Create a business" }).click();
   await expect(page.getByTestId("self-serve-community-create")).toBeVisible();
+  await captureOwnerChoice(page, "welcome-create-entry");
+});
+
+test("Welcome owner path shows a retry when business loading fails", async ({
+  page,
+}) => {
+  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
+  await page.addInitScript((pubkey) => {
+    window.localStorage.setItem(
+      `buzz-machine-onboarding-complete.v2:${pubkey}`,
+      "true",
+    );
+  }, BLANK_TYLER_IDENTITY.pubkey);
+  await installMockBridge(
+    page,
+    {},
+    {
+      relayWsUrl: "ws://localhost:3000",
+      skipOnboardingSeed: true,
+      skipCommunitySeed: true,
+    },
+  );
+  let requests = 0;
+  await page.route("**/api/communities/mine", (route) => {
+    requests += 1;
+    return requests === 1
+      ? route.fulfill({ status: 500, json: { error: "temporary_failure" } })
+      : route.fulfill({
+          json: { owner_pubkey: BLANK_TYLER_IDENTITY.pubkey, communities: [] },
+        });
+  });
+  await page.goto("/");
+  await openOwnedCommunityReconnect(page);
+
+  await expect(
+    page.getByText("Could not load your businesses. Try again."),
+  ).toBeVisible();
+  await captureOwnerChoice(page, "owner-load-error");
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(
+    page.getByText("This account doesn’t own a business yet."),
+  ).toBeVisible();
+  expect(requests).toBe(2);
 });
 
 test("first-community shows the scenario cards for localhost", async ({
@@ -797,6 +872,7 @@ test("first-community shows the scenario cards for localhost", async ({
   ).toHaveAttribute("data-onboarding-effect", "line-slide");
   const joinBack = page.getByTestId("welcome-join-back");
   await expect(joinBack).toBeVisible();
+  await waitForAnimations(page);
   await joinBack.click();
   await expect(
     page
@@ -808,13 +884,17 @@ test("first-community shows the scenario cards for localhost", async ({
   await expect(page.getByTestId("onboarding-page-config")).toBeVisible();
   await expect(
     page.getByRole("heading", {
-      name: "Choose your model settings",
+      name: "Choose your AI defaults",
     }),
   ).toBeVisible();
   await expect(page.getByTestId("global-agent-default-harness")).toHaveText(
     "Claude Code",
   );
   await expect(page.getByTestId("onboarding-finish")).toBeEnabled();
+  await captureOwnerChoice(page, "machine-onboarding-config");
+  await page.getByTestId("onboarding-back").click();
+  await expect(page.getByTestId("onboarding-page-2")).toBeVisible();
+  await captureOwnerChoice(page, "machine-onboarding-setup");
 });
 
 test("first-community direct join recovery can cancel community edits safely", async ({
