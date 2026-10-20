@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 
 import { waitForAnimations } from "./animations";
 
-const SHOT_DIR = "/Users/mac/worktrees/.lanes/reskin/shots";
+const SHOT_DIR = process.env.COLONY_RESKIN_SHOT_DIR ?? "test-results/reskin";
 
 const screenshotTheme =
   process.env.COLONY_RESKIN_SCREENSHOT_THEME === "dark" ? "dark" : "light";

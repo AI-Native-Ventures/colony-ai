@@ -219,7 +219,7 @@ test("add community starts with create and join choices", async ({ page }) => {
 
   await page.getByTestId("add-community-create").click();
   await expect(
-    page.getByRole("heading", { name: "Create a new community" }),
+    page.getByRole("heading", { name: "Create a community" }),
   ).toBeVisible();
   await expect(page.getByLabel("Community address")).toBeVisible();
 });
