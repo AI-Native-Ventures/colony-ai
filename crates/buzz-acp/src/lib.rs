@@ -3038,6 +3038,7 @@ async fn tokio_main() -> Result<()> {
         LedgerRetry,
     }
 
+    let mut free_model_exit: Option<FreeModelExit> = None;
     loop {
         // Whether buffered work is waiting on a lazy pool. Also gates the
         // retry-deadline sleep arm below: a `Failed` lifecycle keeps its
@@ -3829,7 +3830,7 @@ async fn tokio_main() -> Result<()> {
                 if let Some(scope) = result.source.scope() {
                     typing_channels.remove(scope);
                 }
-                if handle_prompt_result(
+                match handle_prompt_result(
                     &mut pool,
                     &mut queue,
                     &config,
@@ -3841,9 +3842,13 @@ async fn tokio_main() -> Result<()> {
                     &mut respawn_tasks,
                     observer.clone(),
                     Some(&ctx.rest_client),
-                ) == LoopAction::Exit
-                {
-                    break;
+                ) {
+                    LoopAction::Continue => {}
+                    LoopAction::Exit => break,
+                    LoopAction::FreeModelEnded(exit) => {
+                        free_model_exit = Some(exit);
+                        break;
+                    }
                 }
                 if drain_ready_join_results(
                     &mut pool,
@@ -3857,7 +3862,8 @@ async fn tokio_main() -> Result<()> {
                     &mut respawn_tasks,
                     observer.clone(),
                     Some(&ctx.rest_client),
-                ) == LoopAction::Exit
+                )
+                .is_exit()
                 {
                     break;
                 }
@@ -4151,6 +4157,17 @@ async fn tokio_main() -> Result<()> {
         ledger.sync(queue.pending_events(), wake_ledger::unix_now());
     }
 
+    // The ended-model notice is the person's only explanation; let it land
+    // before the relay connection closes.
+    if let Some(notice) = free_model_exit.as_mut().and_then(|exit| exit.notice.take()) {
+        if tokio::time::timeout(Duration::from_secs(10), notice)
+            .await
+            .is_err()
+        {
+            tracing::warn!("free model ended notice did not finish before shutdown");
+        }
+    }
+
     // Drain wake tasks gracefully rather than aborting: an in-flight
     // initialize_agent_pool observes the shutdown watch at its biased per-slot
     // select and reaps its partially-spawned agents itself. `shutdown()` here
@@ -4272,13 +4289,33 @@ async fn tokio_main() -> Result<()> {
     relay.shutdown().await;
 
     tracing::info!("buzz-acp stopped");
+    if let Some(exit) = free_model_exit {
+        // The desktop reads this bare line from the agent log as the agent's
+        // last error and shows "Free AI has ended" instead of "Running".
+        eprintln!("{}", exit.error);
+        return Err(anyhow::anyhow!(exit.error));
+    }
     Ok(())
 }
 
-#[derive(PartialEq)]
 enum LoopAction {
     Continue,
     Exit,
+    /// Start free: the required free model has ended. The harness stops after
+    /// posting its notice so the agent shows the ended state, not "Running".
+    FreeModelEnded(FreeModelExit),
+}
+
+impl LoopAction {
+    fn is_exit(&self) -> bool {
+        !matches!(self, LoopAction::Continue)
+    }
+}
+
+struct FreeModelExit {
+    /// `AcpError` display text, written to the log as the agent's last error.
+    error: String,
+    notice: Option<tokio::task::JoinHandle<()>>,
 }
 
 fn event_mentions_agent(event: &nostr::Event, agent_pubkey_hex: &str) -> bool {
@@ -5838,18 +5875,26 @@ fn spawn_failure_notice(
     batch: &FlushBatch,
     content: String,
 ) {
-    if let Some(rest) = rest_client {
-        let thread_tags = batch
-            .events
-            .last()
-            .map(|be| queue::parse_thread_tags(&be.event))
-            .unwrap_or_default();
-        let rest = rest.clone();
-        let channel_id = batch.channel_id;
-        tokio::spawn(async move {
-            pool::post_failure_notice(&rest, channel_id, &thread_tags, &content).await;
-        });
-    }
+    let _ = spawn_failure_notice_task(rest_client, batch, content);
+}
+
+/// Like `spawn_failure_notice`, but returns the task so a caller that is about
+/// to stop the harness can wait for the notice to land.
+fn spawn_failure_notice_task(
+    rest_client: Option<&relay::RestClient>,
+    batch: &FlushBatch,
+    content: String,
+) -> Option<tokio::task::JoinHandle<()>> {
+    let rest = rest_client?.clone();
+    let thread_tags = batch
+        .events
+        .last()
+        .map(|be| queue::parse_thread_tags(&be.event))
+        .unwrap_or_default();
+    let channel_id = batch.channel_id;
+    Some(tokio::spawn(async move {
+        pool::post_failure_notice(&rest, channel_id, &thread_tags, &content).await;
+    }))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -5902,6 +5947,7 @@ fn handle_prompt_result(
     // branch below records what actually happened; only the hard-timeout
     // match arm in the death_message construction reads it.
     let mut hard_timeout_fate_suffix: Option<&'static str> = None;
+    let mut free_model_exit: Option<FreeModelExit> = None;
 
     // Requeue BEFORE mark_complete: requeue() sets retry_after with a future
     // deadline, and mark_complete() checks for it to decide whether to preserve
@@ -5984,17 +6030,23 @@ fn handle_prompt_result(
                 } else {
                     hard_timeout_fate_suffix = Some(" — requeued for retry (recently active)");
                 }
-            } else if let Some(content) = match &result.outcome {
-                PromptOutcome::Error(error) => provider_failure::free_model_ended_notice(error),
+            } else if let Some((content, error)) = match &result.outcome {
+                PromptOutcome::Error(error) => provider_failure::free_model_ended_notice(error)
+                    .map(|content| (content, error.to_string())),
                 _ => None,
             } {
-                // Start free never falls back to another model; retrying cannot help.
+                // Start free never falls back to another model; retrying cannot
+                // help, and every later turn would fail the same way. Stop the
+                // harness so the agent shows the ended state.
                 tracing::warn!(
                     channel_id = %batch.channel_id,
                     events = batch.events.len(),
-                    "dead-lettering batch immediately: required free model is gone"
+                    "dead-lettering batch and stopping: required free model is gone"
                 );
-                spawn_failure_notice(rest_client, &batch, content);
+                free_model_exit = Some(FreeModelExit {
+                    error,
+                    notice: spawn_failure_notice_task(rest_client, &batch, content),
+                });
             } else if matches!(
                 &result.outcome,
                 PromptOutcome::Error(acp::AcpError::AgentError { code: -32002, message })
@@ -6297,7 +6349,10 @@ fn handle_prompt_result(
             }
         }
     }
-    LoopAction::Continue
+    match free_model_exit {
+        Some(exit) => LoopAction::FreeModelEnded(exit),
+        None => LoopAction::Continue,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -12299,6 +12354,40 @@ mod error_outcome_emission_tests {
     }
 
     #[tokio::test]
+    async fn free_model_ended_stops_the_harness_after_its_notice() {
+        let action = assert_failure_notice(
+            -32002,
+            "free model ended: opencode/deepseek-v4.1-flash-free",
+            "⚠️ Free AI has ended. OpenCode no longer offers the free model. Connect your own AI in Settings, then re-send your request.",
+            0,
+        )
+        .await;
+        let LoopAction::FreeModelEnded(exit) = action else {
+            panic!("a free model that has ended must stop the harness");
+        };
+        // The desktop reads this exact line from the agent log.
+        assert_eq!(
+            exit.error,
+            "Agent reported error (code -32002): free model ended: opencode/deepseek-v4.1-flash-free"
+        );
+        let notice = exit.notice.expect("notice task");
+        tokio::time::timeout(Duration::from_secs(3), notice)
+            .await
+            .expect("notice task finishes")
+            .expect("notice task does not panic");
+
+        // A wrong model in the person's own settings keeps the harness running.
+        let action = assert_failure_notice(
+            -32002,
+            "llm model not found: (gpt-6-astra) 404 Not Found",
+            "⚠️ I couldn't process the last request: the configured model wasn't found at the provider's endpoint. Open agent settings, select a different model from the dropdown, and save your changes. Restart the agent to apply the new configuration, then re-send your request.",
+            0,
+        )
+        .await;
+        assert!(matches!(action, LoopAction::Continue));
+    }
+
+    #[tokio::test]
     async fn model_not_found_posts_recovery_notice_without_retrying() {
         assert_terminal_notice(-32002, "free model ended: opencode/deepseek-v4.1-flash-free", "⚠️ Free AI has ended. OpenCode no longer offers the free model. Connect your own AI in Settings, then re-send your request.").await;
         assert_terminal_notice(-32002, "llm model not found: (gpt-6-astra) 404 Not Found", "⚠️ I couldn't process the last request: the configured model wasn't found at the provider's endpoint. Open agent settings, select a different model from the dropdown, and save your changes. Restart the agent to apply the new configuration, then re-send your request.").await;
@@ -12456,7 +12545,7 @@ mod error_outcome_emission_tests {
         raw_error: &str,
         expected_notice: &str,
         retry_count: u32,
-    ) {
+    ) -> LoopAction {
         use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -12533,7 +12622,7 @@ mod error_outcome_emission_tests {
             outcome: PromptOutcome::Error(model_error),
             batch: Some(batch),
         };
-        handle_prompt_result(
+        let action = handle_prompt_result(
             &mut pool,
             &mut queue,
             &config,
@@ -12617,6 +12706,7 @@ mod error_outcome_emission_tests {
         let threading = queue::parse_thread_tags(&notice);
         assert_eq!(threading.root_event_id, Some(root.to_hex()));
         assert_eq!(threading.parent_event_id, Some(parent.to_hex()));
+        action
     }
 
     #[tokio::test]
