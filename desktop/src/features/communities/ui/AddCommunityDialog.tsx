@@ -50,6 +50,11 @@ export function AddCommunityDialog({
     setJoinError(null);
   }, [onOpenChange]);
 
+  const handleBackToOptions = React.useCallback(() => {
+    setJoinError(null);
+    setMode("choose");
+  }, []);
+
   const startConnection = React.useCallback(
     ({
       relayUrl,
@@ -80,7 +85,7 @@ export function AddCommunityDialog({
 
   const title =
     mode === "create"
-      ? "Create a new community"
+      ? "Create a community"
       : mode === "join"
         ? "Join an existing community"
         : "Add community";
@@ -111,16 +116,15 @@ export function AddCommunityDialog({
                 aria-label="Back to add community options"
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:bg-accent hover:text-accent-foreground focus:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                 data-testid="add-community-back"
-                onClick={() => {
-                  setJoinError(null);
-                  setMode("choose");
-                }}
+                onClick={handleBackToOptions}
                 type="button"
               >
                 <ArrowLeft className="h-4 w-4" />
               </button>
             ) : null}
-            <DialogTitle className="truncate">{title}</DialogTitle>
+            <DialogTitle className="truncate" id="add-community-dialog-title">
+              {title}
+            </DialogTitle>
           </div>
           <DialogDescription
             className={mode === "create" ? "sr-only" : undefined}
@@ -190,8 +194,10 @@ export function AddCommunityDialog({
             />
           ) : (
             <SelfServeCommunityCreateFlow
-              onBack={() => setMode("choose")}
+              onBack={handleBackToOptions}
               onComplete={handleClose}
+              showBackButton={false}
+              showTitle={false}
             />
           )}
         </div>

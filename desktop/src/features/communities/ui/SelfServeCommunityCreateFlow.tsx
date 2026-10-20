@@ -27,12 +27,14 @@ type SelfServeCommunityCreateFlowProps = {
   onComplete?: () => void;
   onBack: () => void;
   showBackButton?: boolean;
+  showTitle?: boolean;
 };
 
 export function SelfServeCommunityCreateFlow({
   onComplete,
   onBack,
   showBackButton = true,
+  showTitle = true,
 }: SelfServeCommunityCreateFlowProps) {
   const onboarding = useCommunityOnboarding();
   const identityQuery = useIdentityQuery();
@@ -245,21 +247,30 @@ export function SelfServeCommunityCreateFlow({
 
   return (
     <section
-      aria-labelledby="self-serve-community-title"
+      aria-labelledby={
+        showTitle ? "self-serve-community-title" : "add-community-dialog-title"
+      }
       className="flex w-full max-w-[620px] flex-col items-center text-center"
       data-testid="self-serve-community-create"
     >
-      <div className="w-full">
-        <h1 className="text-title font-normal" id="self-serve-community-title">
-          Create a community
-        </h1>
-        <p className="mt-3 text-sm leading-6 text-foreground/80">
-          Choose an address for your community. You’ll be its owner when you
-          connect.
-        </p>
-      </div>
+      {showTitle ? (
+        <div className="w-full">
+          <h1
+            className="text-title font-normal"
+            id="self-serve-community-title"
+          >
+            Create a community
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-foreground/80">
+            Choose an address for your community. You’ll be its owner when you
+            connect.
+          </p>
+        </div>
+      ) : null}
 
-      <Card className="mt-8 w-full rounded-2xl border border-border bg-card p-6 text-left shadow-sm">
+      <Card
+        className={`${showTitle ? "mt-8 " : ""}w-full rounded-2xl border border-border bg-card p-6 text-left shadow-sm`}
+      >
         {configLoading ? (
           <p
             className="flex items-center gap-2 text-sm text-foreground/75"

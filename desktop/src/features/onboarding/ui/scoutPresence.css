@@ -149,7 +149,7 @@
 .colony-onboarding-root .dark .scout-indicator {
   border-color: #493a5c;
 }
-.colony-onboarding-root .dark .scout-status {
+.colony-onboarding-root.dark .scout-status {
   color: #ded0e5;
 }
 .colony-onboarding-root .dark .agent-avatar.scout-rendered {
