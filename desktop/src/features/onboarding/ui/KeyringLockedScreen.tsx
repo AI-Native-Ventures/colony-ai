@@ -18,7 +18,7 @@ export function KeyringLockedScreen() {
   const handleReimportClick = React.useCallback(() => {
     if (!canImport) return;
     const confirmed = window.confirm(
-      "Importing a different nsec replaces the identity currently locked in the keyring for this install. The previous identity will no longer be accessible. Continue?",
+      "Using a different recovery key replaces the sign-in locked on this device. The previous sign-in will no longer be accessible. Continue?",
     );
     if (confirmed) {
       setShowImport(true);
@@ -39,19 +39,19 @@ export function KeyringLockedScreen() {
 
   return (
     <div
-      className="buzz-onboarding-neutral-theme buzz-startup-shell flex items-center justify-center bg-background px-4 py-8 text-foreground"
+      className="flex min-h-dvh items-center justify-center bg-background px-4 py-8 text-foreground"
       data-system-color-scheme={systemColorScheme}
       data-testid="keyring-locked"
     >
       <StartupWindowDragRegion />
       <div className="relative flex w-full max-w-[500px] flex-col items-center text-center">
         <h1 className="text-3xl font-semibold tracking-tight">
-          Unlock your system keyring
+          Your sign-in is locked
         </h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          Your identity is safe in the OS keyring, but it's unreachable this
-          session. Unlock your keyring or sign into your desktop session, then
-          relaunch Colony.
+          Your account is safe on this device, but Colony can’t open it right
+          now. Unlock your device or sign into your desktop account, then
+          restart Colony.
         </p>
 
         {!canRelaunch && !canImport ? (
@@ -60,9 +60,8 @@ export function KeyringLockedScreen() {
             data-testid="identity-recovery-unsupported"
             role="status"
           >
-            Unlock or recover this identity in a supported Colony desktop build,
-            then relaunch it. Electron identity recovery is not available in
-            this build yet.
+            This version of Colony can’t restore your sign-in yet. Open Colony
+            on a supported desktop version, then try again.
           </p>
         ) : showImport && canImport ? (
           <NostrKeyImportForm
@@ -91,7 +90,7 @@ export function KeyringLockedScreen() {
                 type="button"
                 variant="secondary"
               >
-                Re-import your key instead
+                Use a recovery key instead
               </Button>
             ) : null}
           </div>

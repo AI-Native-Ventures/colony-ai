@@ -145,7 +145,7 @@ function OnboardingRelayConnectionErrorCard({
   }
 
   return createPortal(
-    <div className="buzz-onboarding-neutral-theme fixed bottom-4 left-4 z-50 w-[calc(100vw-2rem)] text-left sm:bottom-6 sm:left-6 sm:w-[22rem]">
+    <div className="fixed bottom-4 left-4 z-50 w-[calc(100vw-2rem)] text-left sm:bottom-6 sm:left-6 sm:w-[22rem]">
       <SidebarRelayConnectionCompactCard
         actionTestId="onboarding-reconnect-relay"
         dismissClassName="pointer-events-auto [&>span]:opacity-100"

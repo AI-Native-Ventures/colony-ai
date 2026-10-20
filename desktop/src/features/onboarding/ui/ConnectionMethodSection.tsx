@@ -7,12 +7,12 @@ import type { HarnessConnectionMethod } from "./harnessConnectionOptions";
 const CONNECTION_METHOD_CHOICES = [
   {
     icon: CreditCard,
-    label: "Log in with a subscription",
+    label: "Sign in with a subscription",
     method: "subscription",
   },
   {
     icon: KeyRound,
-    label: "Use an API key",
+    label: "Use a key from your AI service",
     method: "api",
   },
 ] as const satisfies ReadonlyArray<{
@@ -33,10 +33,10 @@ export function ConnectionMethodSection({
     >
       <div className="shrink-0">
         <h1 className="text-title font-normal text-foreground">
-          Connect your AI provider
+          Connect Colony to AI
         </h1>
         <p className="mt-2 text-base leading-6 text-foreground/80">
-          Choose how your agents will access AI. You can change this later.
+          Choose how Colony should connect to the AI tools you use.
         </p>
       </div>
 

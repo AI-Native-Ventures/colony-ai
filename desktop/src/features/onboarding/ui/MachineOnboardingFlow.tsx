@@ -1,5 +1,4 @@
 import * as React from "react";
-import { Brand } from "./OnboardingScenePrimitives";
 import type { QueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "motion/react";
 
@@ -14,7 +13,6 @@ import {
 } from "@/shared/api/nativeBridge";
 import type { IdentityStorage } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
-import { StartupWindowDragRegion } from "@/shared/ui/StartupWindowDragRegion";
 import type {
   AccountAuthClient,
   AccountAuthRecord,
@@ -28,28 +26,22 @@ import {
   resetEncryptedBackupSession,
   useEncryptedBackupSession,
 } from "./EncryptedBackupCreator";
-import {
-  IdentityKeyHelpContent,
-  IdentityKeyHelpDialog,
-} from "./IdentityKeyHelpDialog";
+import { IdentityKeyHelpContent } from "./IdentityKeyHelpDialog";
 import { IdentityKeyIntroduction } from "./IdentityKeyIntroduction";
 import { IdentityRecoveryPairing } from "./IdentityRecoveryPairing";
 import {
   NostrKeyImportForm,
   type NostrKeyImportStage,
 } from "./NostrKeyImportForm";
-import {
-  ONBOARDING_LANDING_CTA_CLASS,
-  ONBOARDING_SECONDARY_CTA_CLASS,
-} from "./OnboardingChrome";
+import { ONBOARDING_SECONDARY_CTA_CLASS } from "./OnboardingChrome";
 import { OnboardingCard } from "./OnboardingCard";
-import { OnboardingFooterProvider } from "./OnboardingFooter";
 import { NativeUnavailableScreen } from "./NativeUnavailableScreen";
 import {
   type OnboardingTransitionDirection,
   OnboardingSlideTransition,
 } from "./OnboardingSlideTransition";
 import { SetupStep } from "./SetupStep";
+import { MachineIdentityLanding } from "./MachineIdentityLanding";
 import type { HarnessConnectionMethod } from "./harnessConnectionOptions";
 import {
   resolveInitialMachineOnboardingState,
@@ -71,10 +63,7 @@ import {
 } from "./BusinessSetupStep";
 import { ConnectSetupStep } from "./ConnectSetupStep";
 import type { SelfServeCommunity } from "@/features/communities/selfProvisioningApi";
-import {
-  getSelfProvisioningHttpBase,
-  listMyCommunities,
-} from "@/features/communities/selfProvisioningApi";
+import { listOwnedBusinesses } from "@/features/communities/selfProvisioningApi";
 import {
   OnboardingScenePresentation,
   type OnboardingBusinessChoice,
@@ -87,15 +76,15 @@ type BackupSubview = "created" | "password";
 function unavailableBody(capability: NativeCapability): string {
   switch (capability) {
     case "identity-backup":
-      return "Identity backup and private-key export are not available in this Electron build yet. Your key has not been exported or replaced.";
+      return "Saving a recovery copy is not available in this version of Colony yet. Your sign-in has not been changed.";
     case "identity-import":
-      return "Importing an existing identity is not available in this Electron build yet. No identity data was read or changed.";
+      return "Adding an existing sign-in is not available in this version of Colony yet. Nothing has been changed.";
     case "identity-recovery":
-      return "Identity recovery is not available in this Electron build yet. Unlock or recover the identity in a supported Colony desktop build.";
+      return "Restoring your sign-in is not available in this version of Colony yet. Open Colony on a supported desktop version and try again.";
     case "identity-create":
-      return "Creating or replacing an identity is not available in this Electron build yet.";
+      return "Creating or replacing your sign-in is not available in this version of Colony yet.";
     default:
-      return "This native identity operation is not available in this Electron build yet.";
+      return "This action is not available in this version of Colony yet.";
   }
 }
 
@@ -366,21 +355,10 @@ export function MachineOnboardingFlow({
         return;
       }
       try {
-        const httpBase = await getSelfProvisioningHttpBase();
-        const mine = await listMyCommunities(httpBase);
-        if (mine.owner_pubkey.toLowerCase() !== account.pubkey.toLowerCase()) {
-          throw new Error("business_owner_mismatch");
-        }
-        const owned = mine.communities
-          .filter(
-            (community) =>
-              community.owner_pubkey.toLowerCase() ===
-              account.pubkey.toLowerCase(),
-          )
-          .map((community) => {
-            const profile = readOnboardingBusinessProfile(community.id);
-            return profile ? { ...community, name: profile.name } : community;
-          });
+        const owned = await listOwnedBusinesses(
+          account.pubkey,
+          (id) => readOnboardingBusinessProfile(id)?.name ?? null,
+        );
         setOwnedCommunities(owned);
         setBusinessBackPage(owned.length > 0 ? "businesses" : "account-auth");
         setTransitionDirection("forward");
@@ -610,99 +588,43 @@ export function MachineOnboardingFlow({
 
   if (page === "identity") {
     return (
-      <div
-        className="buzz-onboarding-neutral-theme buzz-startup-shell buzz-onboarding-welcome flex max-h-dvh items-start justify-center overflow-x-hidden overflow-y-auto px-4 py-8 text-foreground"
-        data-testid="machine-onboarding-gate"
-      >
-        <StartupWindowDragRegion />
-        <OnboardingFooterProvider>
-          <div className="relative my-auto flex w-full max-w-[1040px] flex-col items-center text-center">
-            <OnboardingSlideTransition
-              className="flex w-full max-w-[720px] flex-col items-center text-center"
-              direction={transitionDirection}
-              transitionKey={`machine-identity-${transitionDirection}`}
-            >
-              <div className="text-4xl">
-                <Brand />
-              </div>
-              <p className="mt-2 max-w-[560px] text-center text-2xl font-normal leading-none text-foreground">
-                Your people, your agents, your projects,
-                <br />
-                all in one place.
-              </p>
-              {error ? (
-                <p className="mt-4 text-sm text-destructive">{error}</p>
-              ) : null}
-              <div className="mt-10 flex flex-col items-center gap-3">
-                <Button
-                  className={ONBOARDING_LANDING_CTA_CLASS}
-                  disabled={isPending}
-                  onClick={() => {
-                    if (
-                      selectedPubkey &&
-                      !supportsNativeCapability("identity-read")
-                    ) {
-                      showUnsupported("identity-read");
-                      return;
-                    }
-                    if (selectedPubkey) {
-                      void loadFreshIdentity();
-                      return;
-                    }
-                    setTransitionDirection("forward");
-                    setPage("identity-key-intro");
-                  }}
-                  type="button"
-                >
-                  {isPending
-                    ? "Loading identity…"
-                    : selectedPubkey
-                      ? "Continue setup"
-                      : "Create a new identity key"}
-                </Button>
-                <Button
-                  className={`${ONBOARDING_SECONDARY_CTA_CLASS} px-5`}
-                  disabled={isPending}
-                  onClick={() => {
-                    if (!supportsNativeCapability("identity-import")) {
-                      showUnsupported("identity-import");
-                      return;
-                    }
-                    setKeyImportDialog(null);
-                    setKeyImportStage("key-entry");
-                    setTransitionDirection("forward");
-                    setPage("key-import");
-                  }}
-                  type="button"
-                  variant="ghost"
-                >
-                  {selectedPubkey
-                    ? "Use a different key instead"
-                    : "Use an existing key"}
-                </Button>
-              </div>
-              <IdentityKeyHelpDialog
-                onOpen={() => {
-                  setIdentityKeyHelpReturnPage("identity");
-                  setTransitionDirection("forward");
-                  setPage("identity-key-help");
-                }}
-              />
-              <button
-                className="mt-2 rounded-sm px-2 py-1 text-sm text-muted-foreground underline decoration-muted-foreground/50 underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                data-testid="account-auth-back-from-advanced"
-                onClick={() => {
-                  setTransitionDirection("backward");
-                  setPage("account-auth");
-                }}
-                type="button"
-              >
-                Back to account options
-              </button>
-            </OnboardingSlideTransition>
-          </div>
-        </OnboardingFooterProvider>
-      </div>
+      <MachineIdentityLanding
+        error={error}
+        hasSelectedIdentity={selectedPubkey !== null}
+        isPending={isPending}
+        onBack={() => {
+          setTransitionDirection("backward");
+          setPage("account-auth");
+        }}
+        onContinue={() => {
+          if (selectedPubkey && !supportsNativeCapability("identity-read")) {
+            showUnsupported("identity-read");
+            return;
+          }
+          if (selectedPubkey) {
+            void loadFreshIdentity();
+            return;
+          }
+          setTransitionDirection("forward");
+          setPage("identity-key-intro");
+        }}
+        onOpenHelp={() => {
+          setIdentityKeyHelpReturnPage("identity");
+          setTransitionDirection("forward");
+          setPage("identity-key-help");
+        }}
+        onUseExistingKey={() => {
+          if (!supportsNativeCapability("identity-import")) {
+            showUnsupported("identity-import");
+            return;
+          }
+          setKeyImportDialog(null);
+          setKeyImportStage("key-entry");
+          setTransitionDirection("forward");
+          setPage("key-import");
+        }}
+        transitionDirection={transitionDirection}
+      />
     );
   }
 

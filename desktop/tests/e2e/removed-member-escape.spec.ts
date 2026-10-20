@@ -127,11 +127,20 @@ async function expectNoRawRelayText(page: Page) {
 // The small Details line: the relay's own reason in plain words, same text on
 // the first view and after every Retry.
 async function expectPlainDetails(page: Page) {
-  await expect(
-    page
-      .getByTestId("community-apply-error")
-      .getByTestId("community-apply-error-details"),
-  ).toHaveText(`Details: ${PLAIN_REASON}`);
+  const screen = page.getByTestId("community-apply-error");
+  const disclosure = screen.getByRole("button", {
+    name: "Technical details",
+  });
+  const isExpanded = await disclosure.getAttribute("aria-expanded");
+  expect(isExpanded).toMatch(/^(false|true)$/);
+  if (isExpanded === "false") {
+    await disclosure.focus();
+    await disclosure.press("Enter");
+  }
+  await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+  await expect(screen.getByTestId("community-apply-error-details")).toHaveText(
+    PLAIN_REASON,
+  );
   await expectNoRawRelayText(page);
 }
 
@@ -155,7 +164,7 @@ test.describe("removed member escape", () => {
     await expect(
       screen.getByTestId("community-apply-error-message"),
     ).toHaveText(
-      "This sign-in is not a member of Colony. Remove it from this device, or ask for an invitation.",
+      "You don’t have access to Colony. Remove it from this device, or ask the owner for an invitation.",
     );
     await expect(screen.getByTestId("community-escape-switch")).toHaveCount(0);
     await expect(screen.getByRole("button", { name: "Retry" })).toBeFocused();
@@ -202,7 +211,7 @@ test.describe("removed member escape", () => {
     await expect(
       screen.getByTestId("community-apply-error-message"),
     ).toHaveText(
-      "This sign-in is not a member of Colony. Switch to another community or remove this one.",
+      "You don’t have access to Colony. Switch to another community or remove it from this device.",
     );
     await expect(page.locator("body")).not.toContainText(RAW_RELAY_TEXT);
 
@@ -270,7 +279,7 @@ test.describe("removed member escape", () => {
     await expect(screen).toBeVisible({ timeout: 15_000 });
     await expect(
       screen.getByTestId("community-apply-error-message"),
-    ).toContainText("not a member of Colony");
+    ).toContainText("You don’t have access to Colony");
     await expectPlainDetails(page);
 
     // Added back: Retry opens the workspace again.
@@ -303,7 +312,7 @@ test.describe("removed member escape", () => {
       await expect(
         screen.getByTestId("community-apply-error-message"),
       ).toHaveText(
-        "This sign-in is not a member of Colony. Switch to another community or remove this one.",
+        "You don’t have access to Colony. Switch to another community or remove it from this device.",
       );
       await expectPlainDetails(page);
     }

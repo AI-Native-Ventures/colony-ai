@@ -84,6 +84,41 @@ export function resolveCommunityUpdateResult(
 }
 
 /**
+ * Pure merge for addCommunity. A community whose relay URL is already saved
+ * updates that entry in place instead of adding a second one.
+ *
+ * A business can be deleted and recreated at the same host, so a business id
+ * from the server replaces the saved one. Keeping the old id made the native
+ * membership check report "not a member" to the business owner. The saved
+ * client channel belonged to the old business, so it goes with it.
+ */
+export function mergeAddedCommunity(
+  communities: Community[],
+  community: Community,
+): Community[] {
+  const dup = communities.find((w) => w.relayUrl === community.relayUrl);
+  if (!dup) return [...communities, community];
+  const businessChanged =
+    community.businessCommunityId !== undefined &&
+    community.businessCommunityId !== dup.businessCommunityId;
+  return communities.map((w) =>
+    w.id === dup.id
+      ? {
+          ...w,
+          name: community.name || w.name,
+          token: community.token ?? w.token,
+          pubkey: community.pubkey ?? w.pubkey,
+          businessCommunityId:
+            community.businessCommunityId ?? w.businessCommunityId,
+          clientChannelId: businessChanged
+            ? community.clientChannelId
+            : (community.clientChannelId ?? w.clientChannelId),
+        }
+      : w,
+  );
+}
+
+/**
  * Permute `communities` so that its order matches `orderedIds`.
  *
  * - Communities whose id appears in `orderedIds` are placed first, in the
@@ -198,22 +233,7 @@ function useCommunitiesInternal(): UseCommunitiesReturn {
     );
     const resolvedId = existing?.id ?? community.id;
     setCommunitiesState((prev) => {
-      const dup = prev.find((w) => w.relayUrl === community.relayUrl);
-      let next: Community[];
-      if (dup) {
-        next = prev.map((w) =>
-          w.id === dup.id
-            ? {
-                ...w,
-                name: community.name || w.name,
-                token: community.token ?? w.token,
-                pubkey: community.pubkey ?? w.pubkey,
-              }
-            : w,
-        );
-      } else {
-        next = [...prev, community];
-      }
+      const next = mergeAddedCommunity(prev, community);
       saveCommunities(next);
       return next;
     });

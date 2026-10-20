@@ -260,7 +260,7 @@ test("rejects an expired request without signing", async ({ page }) => {
 
   await expect(
     page.getByText(
-      "This binding link has expired. Request a new one from the requesting app.",
+      "This link has expired. Request a new one from the app that sent it.",
     ),
   ).toBeVisible();
   await pasteCode(
@@ -291,6 +291,12 @@ test("signs a valid request, shows the response, and copies it", async ({
 
   await expect(page.getByTestId("nostr-bind-finish-step")).toBeVisible();
   const response = page.getByTestId("nostr-bind-signed-response");
+  const technicalDetails = page.getByTestId("nostr-bind-technical-details");
+  await expect(technicalDetails).toHaveAttribute("aria-expanded", "false");
+  await expect(response).toBeHidden();
+  await technicalDetails.focus();
+  await technicalDetails.press("Enter");
+  await expect(technicalDetails).toHaveAttribute("aria-expanded", "true");
   await expect(response).toContainText("e2e-signed-nostr-binding");
   await expect
     .poll(() => signCommandPayloads(page))
@@ -362,15 +368,26 @@ test("returns a signed response in the callback fragment after consent", async (
     page.getByRole("heading", { name: "Continue in your browser" }),
   ).toBeVisible();
   const manualFallback = page.getByTestId("nostr-bind-manual-fallback");
-  await expect(manualFallback).not.toHaveAttribute("open", "");
-  await expect(page.getByTestId("nostr-bind-signed-response")).toBeHidden();
+  await expect(manualFallback).toHaveAttribute("data-expanded", "false");
+  const signedResponse = page.getByTestId("nostr-bind-signed-response");
+  await expect(signedResponse).toBeHidden();
   await expect(page.getByTestId("nostr-bind-copy-response")).toBeHidden();
 
-  const fallbackSummary = manualFallback.locator("summary");
-  await fallbackSummary.focus();
-  await fallbackSummary.press("Enter");
-  await expect(manualFallback).toHaveAttribute("open", "");
-  const signedResponse = page.getByTestId("nostr-bind-signed-response");
+  const fallbackToggle = manualFallback.getByRole("button", {
+    name: "Pairing didn’t finish automatically?",
+  });
+  await fallbackToggle.focus();
+  await fallbackToggle.press("Enter");
+  await expect(manualFallback).toHaveAttribute("data-expanded", "true");
+  await expect(page.getByTestId("nostr-bind-copy-response")).toBeVisible();
+  const technicalDetails = manualFallback.getByTestId(
+    "nostr-bind-technical-details",
+  );
+  await expect(technicalDetails).toHaveAttribute("aria-expanded", "false");
+  await expect(signedResponse).toBeHidden();
+  await technicalDetails.focus();
+  await technicalDetails.press("Space");
+  await expect(technicalDetails).toHaveAttribute("aria-expanded", "true");
   await expect(signedResponse).toContainText("e2e-signed-nostr-binding");
   const copyResponse = page.getByTestId("nostr-bind-copy-response");
   await expect(copyResponse).toBeVisible();
@@ -429,12 +446,12 @@ test("opens the manual fallback when returning to the browser fails", async ({
 
   await expect(
     page.getByText(
-      "Could not open the browser. Copy the response below to finish manually.",
+      "Could not open the browser. Copy the confirmation below to finish manually.",
     ),
   ).toBeVisible();
   await expect(page.getByTestId("nostr-bind-manual-fallback")).toHaveAttribute(
-    "open",
-    "",
+    "data-expanded",
+    "true",
   );
   await expect(page.getByTestId("nostr-bind-copy-response")).toBeVisible();
 });
@@ -456,10 +473,13 @@ test("keeps the signed response available when clipboard access fails", async ({
       .getByTestId("nostr-bind-manual-fallback-content")
       .getByText("Colony couldn't access the clipboard. Try again."),
   ).toBeVisible();
+  const technicalDetails = page.getByTestId("nostr-bind-technical-details");
+  await expect(technicalDetails).toHaveAttribute("aria-expanded", "false");
+  await technicalDetails.click();
   await expect(page.getByTestId("nostr-bind-signed-response")).toContainText(
     "e2e-signed-nostr-binding",
   );
   await expect(
     page.getByTestId("nostr-bind-copy-response"),
-  ).toHaveAccessibleName("Copy response");
+  ).toHaveAccessibleName("Copy confirmation");
 });

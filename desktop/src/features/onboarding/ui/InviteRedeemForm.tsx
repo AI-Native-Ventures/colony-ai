@@ -360,7 +360,6 @@ export function InviteRedeemForm({
         <Card
           className="w-[min(calc(100%+12rem),calc(100vw-2rem))] max-w-[1120px] translate-y-8 px-8 py-6"
           data-testid="invite-redeem-input-frame"
-          variant="textured"
         >
           <div
             className={SPOTLIGHT_TEXTURE_CONTENT_CLASS}

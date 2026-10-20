@@ -171,8 +171,6 @@ export function OnboardingFlow({
   const [membershipRetryPage, setMembershipRetryPage] = React.useState<
     OnboardingPage | "complete"
   >("avatar");
-  const [deniedFromPage, setDeniedFromPage] =
-    React.useState<OnboardingPage>("profile");
   const [isCommunityChangeOpen, setIsCommunityChangeOpen] =
     React.useState(false);
   const [membershipError, setMembershipError] = React.useState<{
@@ -243,9 +241,6 @@ export function OnboardingFlow({
           } catch {
             setDeniedPubkey("");
           }
-          setDeniedFromPage((prev) =>
-            currentPage === "membership-denied" ? prev : currentPage,
-          );
           setMembershipRetryPage(nextPage);
           setCurrentPage("membership-denied");
           return;
@@ -280,9 +275,6 @@ export function OnboardingFlow({
               } catch {
                 setDeniedPubkey("");
               }
-              setDeniedFromPage((prev) =>
-                currentPage === "membership-denied" ? prev : currentPage,
-              );
               setMembershipRetryPage(nextPage);
               setCurrentPage("membership-denied");
               return;
@@ -303,7 +295,6 @@ export function OnboardingFlow({
       }
     },
     [
-      currentPage,
       initialProfileDecisionSettled,
       isProfileAdvancePending,
       profileDraft,
@@ -468,10 +459,6 @@ export function OnboardingFlow({
       <>
         <MembershipDenied
           activeRelayUrl={activeCommunity?.relayUrl ?? ""}
-          onBack={() => {
-            setTransitionDirection("backward");
-            setCurrentPage(deniedFromPage);
-          }}
           onChangeCommunity={() => setIsCommunityChangeOpen(true)}
           onImportKey={importExistingKey}
           onRetry={() => {

@@ -355,6 +355,23 @@ fn meaningful_agent_error_from_log_promotes_wrapped_llm_auth() {
 }
 
 #[test]
+fn meaningful_agent_error_from_log_reads_the_free_model_ended_exit() {
+    // buzz-acp's last two lines when the Start free model has ended: its own
+    // bare error line, then the `Error:` line printed for the returned error.
+    let file = write_log(
+        "noise\n\
+         Agent reported error (code -32002): free model ended: opencode/deepseek-v4.1-flash-free\n\
+         Error: Agent reported error (code -32002): free model ended: opencode/deepseek-v4.1-flash-free\n",
+    );
+    let result = super::meaningful_agent_error_from_log(file.path()).unwrap();
+    assert_eq!(
+        result.message,
+        "Agent reported error (code -32002): free model ended: opencode/deepseek-v4.1-flash-free"
+    );
+    assert_eq!(result.code, Some(-32002));
+}
+
+#[test]
 fn meaningful_agent_error_from_log_promotes_unwrapped_llm_auth() {
     let file = write_log("noise\nllm auth: denied\n");
     let result = super::meaningful_agent_error_from_log(file.path()).unwrap();

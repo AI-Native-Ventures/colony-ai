@@ -42,7 +42,7 @@ export const OnboardingInput = React.forwardRef<
           : "contents",
         smooth &&
           isFocused &&
-          "shadow-[0_0_0_3px_white,0_0_0_6px_rgba(0,0,0,0.06)]",
+          "shadow-[0_0_0_3px_white,0_0_0_6px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_3px_rgba(255,255,255,0.08),0_0_0_6px_rgba(255,255,255,0.04)]",
       )}
       data-focused={isFocused ? "true" : undefined}
     >

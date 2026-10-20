@@ -155,8 +155,9 @@ for (const size of sizes) {
       .first();
     await expect(row).toBeVisible();
     await waitForAnimations(page);
-    await row.hover();
-    await waitForAnimations(page);
+    await row.getByTestId("message-body").hover({
+      position: { x: 48, y: 12 },
+    });
     await expect(row.locator('[data-testid^="message-action-bar-"]')).toHaveCSS(
       "opacity",
       "1",

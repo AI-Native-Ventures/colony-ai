@@ -2,7 +2,7 @@ import * as React from "react";
 import { ArrowLeft, ChevronRight, Link2, Plus } from "lucide-react";
 
 import type { AddCommunityPrefillRequest } from "@/features/communities/addCommunityPrefill";
-import { HostedCommunityCreateFlow } from "@/features/communities/ui/HostedCommunityCreateFlow";
+import { SelfServeCommunityCreateFlow } from "@/features/communities/ui/SelfServeCommunityCreateFlow";
 import { useCommunityOnboarding } from "@/features/onboarding/communityOnboarding";
 import { InviteRedeemForm } from "@/features/onboarding/ui/InviteRedeemForm";
 import {
@@ -50,6 +50,11 @@ export function AddCommunityDialog({
     setJoinError(null);
   }, [onOpenChange]);
 
+  const handleBackToOptions = React.useCallback(() => {
+    setJoinError(null);
+    setMode("choose");
+  }, []);
+
   const startConnection = React.useCallback(
     ({
       relayUrl,
@@ -80,14 +85,14 @@ export function AddCommunityDialog({
 
   const title =
     mode === "create"
-      ? "Create a new community"
+      ? "Create a community"
       : mode === "join"
         ? "Join an existing community"
         : "Add community";
 
   const description =
     mode === "create"
-      ? "Opens Builderlab in your browser."
+      ? "Choose a name and create a business space for your team."
       : mode === "join"
         ? "Use the community URL or invite link you received."
         : "Create a new community or join one you already have.";
@@ -111,16 +116,15 @@ export function AddCommunityDialog({
                 aria-label="Back to add community options"
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:bg-accent hover:text-accent-foreground focus:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                 data-testid="add-community-back"
-                onClick={() => {
-                  setJoinError(null);
-                  setMode("choose");
-                }}
+                onClick={handleBackToOptions}
                 type="button"
               >
                 <ArrowLeft className="h-4 w-4" />
               </button>
             ) : null}
-            <DialogTitle className="truncate">{title}</DialogTitle>
+            <DialogTitle className="truncate" id="add-community-dialog-title">
+              {title}
+            </DialogTitle>
           </div>
           <DialogDescription
             className={mode === "create" ? "sr-only" : undefined}
@@ -189,7 +193,12 @@ export function AddCommunityDialog({
               variant="add-community"
             />
           ) : (
-            <HostedCommunityCreateFlow onComplete={handleClose} />
+            <SelfServeCommunityCreateFlow
+              onBack={handleBackToOptions}
+              onComplete={handleClose}
+              showBackButton={false}
+              showTitle={false}
+            />
           )}
         </div>
       </DialogContent>

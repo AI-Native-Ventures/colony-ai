@@ -234,7 +234,6 @@ export function CommunityOnboardingFlow({
               embedded
               activeRelayUrl={transaction.relayUrl}
               pubkey={pubkey}
-              onBack={onChangeCommunity}
               onChangeCommunity={onChangeCommunity}
               onRetry={retry}
               onImportKey={async (nsec) => {

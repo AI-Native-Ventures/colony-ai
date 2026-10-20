@@ -596,7 +596,7 @@
   .buzz-onboarding-runtime-setup[data-setup-flash="true"]::after {
     animation: buzz-onboarding-runtime-setup-ring 560ms
       cubic-bezier(0.22, 1, 0.36, 1) both;
-    border: 1px solid var(--buzz-welcome-chartreuse);
+    border: 1px solid hsl(var(--primary) / 45%);
     border-radius: inherit;
     content: "";
     inset: -0.25rem;
@@ -748,7 +748,7 @@
 
     .buzz-onboarding-runtime-setup[data-setup-flash="true"] {
       animation: none;
-      outline: 2px solid var(--buzz-welcome-chartreuse);
+      outline: 2px solid hsl(var(--primary) / 70%);
       outline-offset: 2px;
       will-change: auto;
     }

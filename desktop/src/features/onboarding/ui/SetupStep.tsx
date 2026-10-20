@@ -101,7 +101,7 @@ function RuntimeReadinessIndicator({
   return (
     <span
       aria-hidden="true"
-      className="pointer-events-none absolute right-8 top-8 flex h-8 w-8 items-center justify-center rounded-full border border-[var(--buzz-welcome-chartreuse)] bg-[var(--buzz-welcome-chartreuse)]"
+      className="pointer-events-none absolute right-8 top-8 flex h-8 w-8 items-center justify-center rounded-full border border-primary bg-primary"
       data-testid={`onboarding-runtime-check-${runtime.id}`}
     >
       <Check
@@ -257,7 +257,7 @@ function RuntimeStatus({
       return (
         <Button
           aria-label={`Check ${runtime.label} again`}
-          className="buzz-onboarding-runtime-setup h-5 rounded-md bg-[var(--buzz-welcome-chartreuse)]/30 px-2.5 text-xs font-medium text-foreground hover:bg-[var(--buzz-welcome-chartreuse)]/40"
+          className="buzz-onboarding-runtime-setup h-5 rounded-md bg-primary/15 px-2.5 text-xs font-medium text-foreground hover:bg-primary/25"
           data-testid={`onboarding-runtime-recheck-${runtime.id}`}
           onClick={() => void runtimesQuery.forceRefresh()}
           type="button"
@@ -277,7 +277,7 @@ function RuntimeStatus({
     return (
       <Button
         aria-label={`Check ${runtime.label} again`}
-        className="buzz-onboarding-runtime-setup h-5 rounded-md bg-[var(--buzz-welcome-chartreuse)]/30 px-2.5 text-xs font-medium text-foreground hover:bg-[var(--buzz-welcome-chartreuse)]/40"
+        className="buzz-onboarding-runtime-setup h-5 rounded-md bg-primary/15 px-2.5 text-xs font-medium text-foreground hover:bg-primary/25"
         disabled={runtimesQuery.isFetching}
         onClick={() => void runtimesQuery.forceRefresh()}
         type="button"
@@ -293,7 +293,7 @@ function RuntimeStatus({
     return (
       <Button
         aria-label={`${installError ? "Retry installing" : "Install"} ${runtime.label}`}
-        className="buzz-onboarding-runtime-setup h-5 rounded-md bg-[var(--buzz-welcome-chartreuse)]/30 px-2.5 text-xs font-medium text-foreground hover:bg-[var(--buzz-welcome-chartreuse)]/40"
+        className="buzz-onboarding-runtime-setup h-5 rounded-md bg-primary/15 px-2.5 text-xs font-medium text-foreground hover:bg-primary/25"
         data-testid={`onboarding-runtime-install-${runtime.id}`}
         onClick={onInstall}
         type="button"
@@ -307,7 +307,7 @@ function RuntimeStatus({
   return (
     <Button
       aria-label={`View ${runtime.label} install instructions`}
-      className="buzz-onboarding-runtime-setup h-5 rounded-md bg-[var(--buzz-welcome-chartreuse)]/30 px-2.5 text-xs font-medium text-foreground hover:bg-[var(--buzz-welcome-chartreuse)]/40"
+      className="buzz-onboarding-runtime-setup h-5 rounded-md bg-primary/15 px-2.5 text-xs font-medium text-foreground hover:bg-primary/25"
       data-testid={`onboarding-runtime-instructions-${runtime.id}`}
       onClick={() => void openUrl(runtime.installInstructionsUrl)}
       type="button"
@@ -590,7 +590,6 @@ function RuntimeCard({
       )}
       data-ready={isReady ? "true" : "false"}
       data-testid={`onboarding-runtime-${runtime.id}`}
-      variant="textured"
     >
       <RuntimeReadinessIndicator ready={isReady} runtime={runtime} />
 
@@ -721,7 +720,7 @@ function RuntimeProvidersSection({
         <h1 className="text-title font-normal text-foreground">
           {method === "subscription"
             ? "Continue with an AI subscription"
-            : "Choose a harness"}
+            : "Choose an AI tool"}
         </h1>
         <p
           className={cn(
@@ -730,8 +729,8 @@ function RuntimeProvidersSection({
           )}
         >
           {method === "subscription"
-            ? "Subscriptions connect through a compatible harness, like Claude Code or Codex. Choose yours to sign in."
-            : "Choose how your agents will connect to AI providers. You can change this at any time."}
+            ? "Your subscription works with compatible apps such as Claude Code or Codex. Choose the app you use to sign in."
+            : "Choose how Colony connects to AI services. You can change this later."}
         </p>
       </div>
 
