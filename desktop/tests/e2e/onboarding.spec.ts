@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { expect, test, type Page } from "@playwright/test";
-import { nsecEncode, npubEncode } from "nostr-tools/nip19";
+import { nsecEncode } from "nostr-tools/nip19";
 
 import {
   installMockBridge,
@@ -9,13 +9,11 @@ import {
   TEST_IDENTITIES,
 } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
-import { expectEmojiMartStylesInstalled } from "../helpers/css";
 import {
   invokeMockCommand,
   publishWelcomeTeamPresence,
   waitForWelcomeTeam,
 } from "../helpers/welcomeTeam";
-import { installFakeCamera } from "../helpers/fakeCamera";
 import {
   E2E_IDENTITY_OVERRIDE_STORAGE_KEY,
   completeR17BusinessSetup,
@@ -87,11 +85,8 @@ async function setRelayConnectionState(
   }, state);
 }
 
-const HOME_SEEN_STORAGE_KEY_PREFIX = "buzz-home-feed-seen.v1:";
 const COMMUNITY_ONBOARDING_TRANSACTION_STORAGE_KEY =
   "buzz-community-onboarding-transaction.v1";
-const ONE_PIXEL_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 const DEFAULT_MOCK_PUBKEY = "deadbeef".repeat(8);
 const BLANK_TYLER_IDENTITY = {
   ...TEST_IDENTITIES.tyler,
@@ -107,11 +102,6 @@ const BLANK_AVATAR_EMOJI_IDENTITY = {
   pubkey: "2".repeat(64),
   username: "",
 };
-const FIRST_RUN_ALICE = {
-  ...TEST_IDENTITIES.alice,
-  username: "",
-};
-
 async function commandCount(page: Page, command: string) {
   return page.evaluate((commandName) => {
     const bridgeWindow = window as Window & {
@@ -134,60 +124,6 @@ async function seedOnboardingCompletion(page: Page, pubkey: string) {
       storageKey: `buzz-onboarding-complete.v1:${pubkey}`,
     },
   );
-}
-
-async function seedCommunityProfileStage(page: Page, id: string) {
-  await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
-  await page.addInitScript(
-    ({ pubkey, transactionId, transactionStorageKey }) => {
-      window.localStorage.setItem(
-        `buzz-machine-onboarding-complete.v2:${pubkey}`,
-        "true",
-      );
-      const timestamp = new Date().toISOString();
-      window.localStorage.setItem(
-        transactionStorageKey,
-        JSON.stringify({
-          id: transactionId,
-          source: "first-community",
-          stage: "profile",
-          relayUrl: "wss://default.example.com",
-          communityName: "Default",
-          communityId: "e2e-default-community",
-          addedCommunity: true,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        }),
-      );
-    },
-    {
-      pubkey: BLANK_TYLER_IDENTITY.pubkey,
-      transactionId: id,
-      transactionStorageKey: COMMUNITY_ONBOARDING_TRANSACTION_STORAGE_KEY,
-    },
-  );
-}
-
-async function uploadCommunityAvatar(page: Page, filename: string) {
-  await page.getByTestId("community-avatar-open").click();
-  await page.getByTestId("community-avatar-input").setInputFiles({
-    buffer: Buffer.from(ONE_PIXEL_PNG_BASE64, "base64"),
-    mimeType: "image/png",
-    name: filename,
-  });
-  await page.getByTestId("community-avatar-done").click();
-}
-
-async function readHomeSeenStorageKeys(page: Page) {
-  return page.evaluate((prefix) => {
-    return Object.keys(window.localStorage).filter((key) =>
-      key.startsWith(prefix),
-    );
-  }, HOME_SEEN_STORAGE_KEY_PREFIX);
-}
-
-async function expectNoHomeSeenEntries(page: Page) {
-  await expect.poll(async () => readHomeSeenStorageKeys(page)).toEqual([]);
 }
 
 async function selectFirstEmojiFromPicker(page: Page) {
@@ -218,351 +154,10 @@ async function expectHomeView(page: Page) {
   await expect(page.getByTestId("home-inbox-list")).toBeVisible();
 }
 
-async function expectWiderThanTall(locator: Locator) {
-  const box = await locator.boundingBox();
-  if (!box) {
-    throw new Error("Could not measure welcome intro action card");
-  }
-
-  expect(box.width).toBeGreaterThan(box.height);
-}
-
-async function expectIntroActionIconStackedAboveTitle(
-  action: Locator,
-  title: string,
-) {
-  const iconBox = await action.locator("svg").first().boundingBox();
-  const titleBox = await action.getByText(title, { exact: true }).boundingBox();
-  if (!iconBox || !titleBox) {
-    throw new Error("Could not measure welcome intro action content");
-  }
-
-  expect(titleBox.y).toBeGreaterThan(iconBox.y + iconBox.height);
-}
-
-async function expectWelcomeComposerBannerLayout(page: Page) {
-  const banner = page.getByTestId("welcome-composer-guide-banner");
-  const personaMention = page.getByTestId("welcome-composer-persona-mention");
-  const composer = page.getByTestId("message-composer");
-  const bannerBox = await banner.boundingBox();
-  const personaMentionBox = await personaMention.boundingBox();
-  const composerBox = await composer.boundingBox();
-  const dockBackdropBox = await page
-    .getByTestId("composer-dock-backdrop")
-    .locator("div")
-    .boundingBox();
-  const guidanceLayer = page.getByTestId("welcome-composer-guidance-layer");
-  const guidanceLayerBox = await guidanceLayer.boundingBox();
-  const guidanceBackdrop = page.getByTestId(
-    "welcome-composer-guidance-backdrop",
-  );
-  const guidanceBackdropBox = await guidanceBackdrop.boundingBox();
-
-  if (
-    !bannerBox ||
-    !personaMentionBox ||
-    !composerBox ||
-    !dockBackdropBox ||
-    !guidanceLayerBox ||
-    !guidanceBackdropBox
-  ) {
-    throw new Error("Could not measure welcome composer banner layout");
-  }
-
-  expect(
-    await composer.getByTestId("welcome-composer-guide-banner").count(),
-  ).toBe(0);
-  expect(bannerBox.y).toBeLessThan(composerBox.y);
-  // Banner is in normal flow above the composer, no overlap.
-  expect(bannerBox.y + bannerBox.height).toBeLessThanOrEqual(composerBox.y);
-  // The dock backdrop is absolute inset-y-0 inside composer-dock, which now
-  // contains the guidance layer + composer in flow, so its top aligns with the
-  // guidance layer top (not the composer top).
-  expect(Math.abs(dockBackdropBox.y - guidanceLayerBox.y)).toBeLessThanOrEqual(
-    1,
-  );
-  expect(guidanceBackdropBox.y).toBeLessThanOrEqual(bannerBox.y);
-  // The guidance backdrop extends bottom-3 (12px) short of the banner's bottom,
-  // visually connecting up to the composer.
-  expect(guidanceBackdropBox.y + guidanceBackdropBox.height).toBeLessThan(
-    composerBox.y,
-  );
-  expect(
-    await page
-      .getByTestId("channel-composer-overlay")
-      .getByTestId("welcome-composer-guidance-layer")
-      .count(),
-  ).toBe(1);
-  expect(
-    await page
-      .getByTestId("composer-dock-backdrop")
-      .getByTestId("welcome-composer-guidance-layer")
-      .count(),
-  ).toBe(0);
-
-  const radii = await banner.evaluate((element) => {
-    const styles = window.getComputedStyle(element);
-    return {
-      backdropFilter: styles.backdropFilter,
-      backgroundColor: styles.backgroundColor,
-      bottomLeft: styles.borderBottomLeftRadius,
-      bottomRight: styles.borderBottomRightRadius,
-      filter: styles.filter,
-      zIndex: styles.zIndex,
-      topLeft: styles.borderTopLeftRadius,
-      topRight: styles.borderTopRightRadius,
-      transform: styles.transform,
-      willChange: styles.willChange,
-    };
-  });
-  const composerBackgroundColor = await composer.evaluate(
-    (element) => window.getComputedStyle(element).backgroundColor,
-  );
-  const dockBackdropFilter = await page
-    .getByTestId("composer-dock-backdrop")
-    .locator("div")
-    .evaluate((element) => window.getComputedStyle(element).backdropFilter);
-  const guidanceBackdropFilter = await guidanceBackdrop.evaluate(
-    (element) => window.getComputedStyle(element).backdropFilter,
-  );
-
-  expect(radii.topLeft).toBe(radii.topRight);
-  expect(radii.bottomLeft).toBe("0px");
-  expect(radii.bottomRight).toBe("0px");
-  expect(radii.backdropFilter).toBe("none");
-  expect(radii.backgroundColor).not.toBe(composerBackgroundColor);
-  expect(dockBackdropFilter).not.toBe("none");
-  expect(guidanceBackdropFilter).toBe(dockBackdropFilter);
-  expect(radii.filter).toBe("none");
-  expect(radii.transform).toBe("none");
-  expect(radii.willChange).toBe("auto");
-  expect(radii.zIndex).toBe("1");
-  expect(personaMentionBox.width).toBeGreaterThan(0);
-}
-
-async function expectWelcomePersonaMention(page: Page) {
-  const banner = page.getByTestId("welcome-composer-guide-banner");
-  const personaMention = page.getByTestId("welcome-composer-persona-mention");
-  await expect(personaMention).toBeVisible();
-  await expect(personaMention).toHaveAttribute("data-persona-options", "Scout");
-  await expect(personaMention).toHaveAttribute("data-active-persona", "Scout");
-  await expect(personaMention).toHaveAttribute(
-    "data-animation-target",
-    "per-character",
-  );
-
-  const activePersona = await personaMention.getAttribute(
-    "data-active-persona",
-  );
-  expect(activePersona).not.toBeNull();
-  await expect(personaMention).toContainText(`@${activePersona}`);
-  expect(
-    await personaMention
-      .getByTestId("welcome-composer-persona-character")
-      .count(),
-  ).toBeGreaterThanOrEqual(4);
-  expect(
-    await personaMention
-      .getByTestId("welcome-composer-persona-character")
-      .first()
-      .evaluate((element) => window.getComputedStyle(element).filter),
-  ).toBe("none");
-
-  const transition = await personaMention.evaluate((element) => {
-    const styles = window.getComputedStyle(element);
-    const durationMs = Number(
-      element.getAttribute("data-width-animation-duration-ms"),
-    );
-    return {
-      duration: styles.transitionDuration,
-      durationMs,
-      property: styles.transitionProperty,
-    };
-  });
-  expect(transition.durationMs).toBeGreaterThanOrEqual(700);
-  expect(transition.durationMs).toBeLessThanOrEqual(740);
-  expect(Math.round(Number.parseFloat(transition.duration) * 1000)).toBe(
-    transition.durationMs,
-  );
-  expect(transition.property).toContain("width");
-
-  const alignment = await personaMention.evaluate((element) => {
-    const mentionStyles = window.getComputedStyle(element);
-    const bannerStyles = window.getComputedStyle(
-      element.closest('[data-testid="welcome-composer-guide-banner"]') ??
-        element,
-    );
-    return {
-      display: mentionStyles.display,
-      lineHeightMatchesBanner:
-        mentionStyles.lineHeight === bannerStyles.lineHeight,
-      verticalAlign: mentionStyles.verticalAlign,
-    };
-  });
-  expect(alignment.display).toBe("inline-block");
-  expect(alignment.verticalAlign).toBe("baseline");
-  expect(alignment.lineHeightMatchesBanner).toBe(true);
-  await expect(banner).toContainText("Mention");
-}
-
 async function expectPrivateWelcomeLanding(page: Page) {
   await expect(page).toHaveURL(/#\/channels\/[^/?#]+$/);
   await expect(page.getByTestId("channel-Welcome")).toBeVisible();
   await expect(page.getByTestId("chat-title")).toContainText("Welcome");
-}
-
-async function expectWelcomeView(page: Page) {
-  await expectPrivateWelcomeLanding(page);
-  await expect(page.getByTestId("channel-general")).toBeVisible();
-  await expect(page.getByTestId("channel-welcome-everyone")).toBeVisible();
-  await expect(page.getByTestId("channel-ephemeral-Welcome")).toHaveCount(0);
-  await expect(page.getByTestId("chat-ephemeral-badge")).toHaveCount(0);
-  await expect(page.getByTestId("message-unread-pill")).toHaveCount(0);
-  await expect(page.getByTestId("message-channel-intro")).toBeVisible();
-  await expect(page.getByTestId("message-channel-intro")).toContainText(
-    "private welcome channel",
-  );
-  await expect(
-    page.getByTestId("message-channel-intro").getByRole("button"),
-  ).toHaveText(["Browse channels", "Create a channel", "Create an agent"]);
-  await expect(
-    page.getByTestId("welcome-intro-action-browse-channels"),
-  ).toBeVisible();
-  await expectWiderThanTall(
-    page.getByTestId("welcome-intro-action-browse-channels"),
-  );
-  await expectIntroActionIconStackedAboveTitle(
-    page.getByTestId("welcome-intro-action-browse-channels"),
-    "Browse channels",
-  );
-  await page.getByTestId("welcome-intro-action-browse-channels").click();
-  await expect(page.getByTestId("channel-browser-dialog")).toBeVisible();
-  await expect(page.getByTestId("channel-browser-search")).toBeFocused();
-  await expect(page.getByRole("tab", { name: "All channels" })).toHaveAttribute(
-    "data-state",
-    "active",
-  );
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("channel-browser-dialog")).toHaveCount(0);
-  await expect(
-    page.getByTestId("welcome-intro-action-create-channel"),
-  ).toBeVisible();
-  await expectWiderThanTall(
-    page.getByTestId("welcome-intro-action-create-channel"),
-  );
-  await expectIntroActionIconStackedAboveTitle(
-    page.getByTestId("welcome-intro-action-create-channel"),
-    "Create a channel",
-  );
-  await expect(
-    page
-      .getByTestId("welcome-intro-action-create-channel")
-      .getByText("Create a channel", { exact: true }),
-  ).toHaveCSS("white-space", "normal");
-  await expect(
-    page.getByTestId("welcome-intro-action-create-agent"),
-  ).toBeVisible();
-  await expectWiderThanTall(
-    page.getByTestId("welcome-intro-action-create-agent"),
-  );
-  await expectIntroActionIconStackedAboveTitle(
-    page.getByTestId("welcome-intro-action-create-agent"),
-    "Create an agent",
-  );
-  await expect(page.getByTestId("message-composer")).toBeVisible();
-  // Measure the empty-channel intro before presence releases the live kickoff.
-  // Its message arrival can remount the timeline while bounding boxes are read.
-  await publishWelcomeTeamPresence(page);
-  await expect(page.getByTestId("welcome-composer-guide-banner")).toBeVisible();
-  await expect(page.getByTestId("welcome-composer-guide-banner")).toContainText(
-    "Mention",
-  );
-  await expect(page.getByTestId("welcome-composer-guide-banner")).toContainText(
-    "whenever you want their help.",
-  );
-  await expectWelcomePersonaMention(page);
-  await expectWelcomeComposerBannerLayout(page);
-}
-
-async function expectWelcomeComposerBannerCompletesAfterPersonaMention(
-  page: Page,
-) {
-  const banner = page.getByTestId("welcome-composer-guide-banner");
-  const channelIntro = page.getByTestId("message-channel-intro");
-  const composer = page.getByTestId("message-composer");
-  const initialComposerBox = await composer.boundingBox();
-  if (!initialComposerBox) {
-    throw new Error("Could not measure the Welcome composer");
-  }
-
-  // The fixture has a seeded Scout and this new member's starter Scout. A
-  // manually typed name cannot choose between them or complete onboarding.
-  const input = page.getByTestId("message-input");
-  const content = "Thanks @Scout";
-  const sentRecipients = () =>
-    page.evaluate(
-      (content) =>
-        (window.__BUZZ_E2E_SIGNED_EVENTS__ ?? [])
-          .filter((event) => event.content.trim() === content)
-          .map((event) =>
-            event.tags.filter((tag) => tag[0] === "p").map((tag) => tag[1]),
-          ),
-      content,
-    );
-  await input.fill(content);
-  await input.press("Escape");
-  await page.getByTestId("send-message").click();
-  await expect(
-    page.getByText("The mention @Scout is ambiguous.", { exact: false }),
-  ).toBeVisible();
-  await expect(input).toHaveText(content);
-  await expect(banner).toHaveAttribute("data-state", "prompt");
-  expect(await sentRecipients()).toEqual([]);
-
-  const agents = await invokeMockCommand<
-    Array<{ pubkey: string; persona_id: string | null; status: string }>
-  >(page, "list_managed_agents");
-  const sameNameAgents = agents.filter(
-    (agent) => agent.persona_id === "builtin:fizz",
-  );
-  expect(sameNameAgents).toHaveLength(2);
-  // Onboarding starts the new member's starter; the pre-existing mock stays
-  // stopped. This identifies the fixture key, not a production routing rule.
-  const fizz = sameNameAgents.filter((agent) => agent.status === "running");
-  expect(fizz).toHaveLength(1);
-  // Make selection intent explicit; do not remove the colliding fixture or
-  // relax extraction. The resulting event must tag only our starter identity.
-  await input.fill("");
-  await input.fill(content);
-  await page.getByTestId(`mention-suggestion-${fizz[0].pubkey}`).click();
-  await page.getByTestId("send-message").click();
-  await expect.poll(sentRecipients).toEqual([[fizz[0].pubkey]]);
-
-  await expect(banner).toHaveAttribute("data-state", "complete");
-  await expect(banner).toHaveAttribute("data-tone", "success");
-  await expect(
-    banner.getByTestId("welcome-composer-complete-icon"),
-  ).toBeVisible();
-  await expect(
-    banner.locator('[data-animation-target="success-icon"]'),
-  ).toBeVisible();
-  await expect(
-    banner.locator('[data-animation-target="success-copy"]'),
-  ).toBeVisible();
-  await expect(banner).toContainText("Nice work.");
-  await expect(banner).not.toContainText("Try mentioning");
-  await expect(channelIntro).toBeVisible();
-  const completeComposerBox = await composer.boundingBox();
-  expect(completeComposerBox).not.toBeNull();
-  expect(
-    Math.abs((completeComposerBox?.y ?? 0) - initialComposerBox.y),
-  ).toBeLessThanOrEqual(1);
-  await expect(banner).toHaveCount(0, { timeout: 6_000 });
-  const hiddenComposerBox = await composer.boundingBox();
-  expect(hiddenComposerBox).not.toBeNull();
-  expect(
-    Math.abs((hiddenComposerBox?.y ?? 0) - initialComposerBox.y),
-  ).toBeLessThanOrEqual(1);
 }
 
 async function getMockChannels(page: Page) {
@@ -599,23 +194,6 @@ async function getMockChannels(page: Page) {
       }> | null;
     };
     return payload.channels ?? [];
-  });
-}
-
-async function seedCurrentAvatar(page: Page, avatarUrl: string) {
-  await page.waitForFunction(() => {
-    const bridgeWindow = window as Window & {
-      __BUZZ_E2E_INVOKE_MOCK_COMMAND__?: unknown;
-      __TAURI_INTERNALS__?: { invoke?: unknown };
-    };
-    return (
-      typeof bridgeWindow.__BUZZ_E2E_INVOKE_MOCK_COMMAND__ === "function" ||
-      typeof bridgeWindow.__TAURI_INTERNALS__?.invoke === "function"
-    );
-  });
-  await invokeMockCommand(page, "update_profile", { avatarUrl });
-  await page.evaluate(() => {
-    window.__BUZZ_E2E_COMMAND_PAYLOADS__ = [];
   });
 }
 
