@@ -7,6 +7,14 @@
   color: var(--otp-ink);
 }
 
+.colony-onboarding-root.dark .otp-content {
+  --otp-accent: #bd9dff;
+  --otp-line: rgb(255 255 255 / 12%);
+  --otp-soft: #2b2731;
+  --otp-ink: #f2eff6;
+  --otp-muted: #b3acba;
+}
+
 .colony-onboarding-root .form-content:has(.otp-content) {
   max-width: 26.25rem;
 }
@@ -62,11 +70,19 @@
   font-weight: 600;
 }
 
+.colony-onboarding-root.dark .otp-text {
+  color: #cbb6ff;
+}
+
 .colony-onboarding-root .otp-primary {
   width: 100%;
   background: #49679d;
   color: #fff;
   font-weight: 600;
+}
+
+.colony-onboarding-root.dark .otp-primary {
+  background: #8b5cf6;
 }
 
 .colony-onboarding-root .otp-actions {
@@ -115,9 +131,18 @@
   box-shadow: 0 0 0 3px #49679d22;
 }
 
+.colony-onboarding-root.dark .otp-fields input:focus {
+  box-shadow: 0 0 0 3px rgb(189 157 255 / 18%);
+}
+
 .colony-onboarding-root .otp-fields input[aria-invalid="true"] {
   border-color: #b77068;
   background: #fff8f5;
+}
+
+.colony-onboarding-root.dark .otp-fields input[aria-invalid="true"] {
+  border-color: #e4918b;
+  background: #352527;
 }
 
 .colony-onboarding-root .otp-help {
@@ -155,9 +180,19 @@
   color: #975649;
 }
 
+.colony-onboarding-root.dark .otp-status-error {
+  background: rgb(201 91 91 / 12%);
+  color: #f1a6a0;
+}
+
 .colony-onboarding-root .otp-status-sent {
   background: #edf4ed;
   color: #507456;
+}
+
+.colony-onboarding-root.dark .otp-status-sent {
+  background: rgb(82 143 100 / 14%);
+  color: #b4dbba;
 }
 
 .colony-onboarding-root .otp-status strong {
@@ -204,6 +239,10 @@
   line-height: 1.5;
 }
 
+.colony-onboarding-root.dark .otp-error {
+  color: #f1a6a0;
+}
+
 .colony-onboarding-root .otp-success {
   display: grid;
   width: 3rem;
@@ -214,6 +253,11 @@
   background: #eaf3e9;
   color: #597c5c;
   font-size: 1.4rem;
+}
+
+.colony-onboarding-root.dark .otp-success {
+  background: #304336;
+  color: #b6e0b2;
 }
 
 .colony-onboarding-root .otp-sr {
@@ -232,6 +276,11 @@
   border-top-color: #52699b;
   border-radius: 50%;
   animation: otp-spin 800ms linear infinite;
+}
+
+.colony-onboarding-root.dark .otp-spinner {
+  border-color: rgb(255 255 255 / 24%);
+  border-top-color: #bd9dff;
 }
 
 .colony-onboarding-root .otp-primary {

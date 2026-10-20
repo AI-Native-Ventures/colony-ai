@@ -1,21 +1,12 @@
-import { mkdirSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 
-import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
+import {
+  captureReskinState,
+  seedReskinTheme,
+} from "../helpers/reskinScreenshots";
 
-const SHOT_DIR = "/Users/mac/worktrees/.lanes/reskin/shots";
-
-async function capture(page: Page, name: string) {
-  const originalViewport = page.viewportSize();
-  mkdirSync(SHOT_DIR, { recursive: true });
-  for (const width of [1440, 900]) {
-    await page.setViewportSize({ width, height: 900 });
-    await waitForAnimations(page);
-    await page.screenshot({ path: `${SHOT_DIR}/${name}-${width}.png` });
-  }
-  if (originalViewport) await page.setViewportSize(originalViewport);
-}
+test.beforeEach(async ({ page }) => seedReskinTheme(page));
 
 async function pasteCode(page: Page, code: string) {
   const firstDigit = page.getByTestId("nostr-bind-code-digit-1");
@@ -28,18 +19,65 @@ test("legacy fallback screens render in the Colony visual shell", async ({
 }) => {
   await page.goto("/tests/visual/onboarding.html?reskin=account-legacy");
   await expect(page.getByTestId("reskin-account-card")).toBeVisible();
-  await capture(page, "account-legacy-fallback");
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+  });
+  await captureReskinState(page, "account-legacy-fallback");
 
   await page.goto("/tests/visual/onboarding.html?reskin=identity-intro");
   await expect(page.getByTestId("onboarding-page-key-intro")).toBeVisible();
-  await capture(page, "identity-introduction");
+  await captureReskinState(page, "identity-introduction");
   await page.getByTestId("identity-key-help-trigger").click();
   await expect(page.getByTestId("identity-key-help-body")).toBeVisible();
-  await capture(page, "identity-key-help");
+  await captureReskinState(page, "identity-key-help");
 
   await page.goto("/tests/visual/onboarding.html?reskin=native-unavailable");
   await expect(page.getByTestId("native-unavailable")).toBeVisible();
-  await capture(page, "native-unavailable");
+  await captureReskinState(page, "native-unavailable");
+});
+
+test("machine identity landing and help fit both review widths", async ({
+  page,
+}) => {
+  await page.goto("/tests/visual/onboarding.html?reskin=machine-identity");
+  await expect(page.getByTestId("machine-onboarding-gate")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Create a Colony sign-in" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Use a sign-in I already have" }),
+  ).toBeVisible();
+  await captureReskinState(page, "machine-identity-landing");
+
+  await page.getByTestId("identity-key-help-trigger").click();
+  await expect(page.getByTestId("identity-key-help-body")).toBeVisible();
+  // This route reuses the shared help screen captured with identity intro.
+});
+
+test("identity help dialog and machine sign-in error follow the selected theme", async ({
+  page,
+}) => {
+  await page.goto("/tests/visual/onboarding.html?reskin=identity-help-dialog");
+  const helpTrigger = page.getByTestId("identity-key-help-trigger");
+  await expect(helpTrigger).toHaveCSS("opacity", "1");
+  await helpTrigger.click();
+  await expect(page.getByTestId("identity-key-help-dialog")).toBeVisible();
+  await captureReskinState(page, "identity-key-help-dialog");
+
+  await page.goto(
+    "/tests/visual/onboarding.html?reskin=machine-identity-error",
+  );
+  await expect(page.getByTestId("machine-onboarding-gate")).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("Native identity-read");
+  const detailsButton = page.getByRole("button", {
+    name: "Technical details",
+  });
+  await expect(detailsButton).toHaveAttribute("aria-expanded", "false");
+  await captureReskinState(page, "machine-identity-error");
+  await detailsButton.click();
+  await expect(page.locator("body")).toContainText("Native identity-read");
+  await expect(detailsButton).toHaveAttribute("aria-expanded", "true");
+  await captureReskinState(page, "machine-identity-error-technical-details");
 });
 
 test("locked sign-in screen fits both review widths", async ({ page }) => {
@@ -50,7 +88,7 @@ test("locked sign-in screen fits both review widths", async ({ page }) => {
   );
   await page.goto("/");
   await expect(page.getByTestId("keyring-locked")).toBeVisible();
-  await capture(page, "keyring-locked");
+  await captureReskinState(page, "keyring-locked");
 });
 
 test("recovery failure screen fits both review widths", async ({ page }) => {
@@ -61,7 +99,7 @@ test("recovery failure screen fits both review widths", async ({ page }) => {
   );
   await page.goto("/");
   await expect(page.getByTestId("reset-failed")).toBeVisible();
-  await capture(page, "recovery-failed");
+  await captureReskinState(page, "recovery-failed");
 });
 
 test("pending community link gate fits both review widths", async ({
@@ -75,7 +113,7 @@ test("pending community link gate fits both review widths", async ({
         {
           id: "reskin-connect-link",
           kind: "connect",
-          relayUrl: "wss://hive.example.com",
+          relayUrl: "wss://studio.example.com",
           code: null,
         },
       ],
@@ -84,7 +122,7 @@ test("pending community link gate fits both review widths", async ({
   );
   await page.goto("/");
   await expect(page.getByTestId("pending-invite-gate")).toBeVisible();
-  await capture(page, "pending-invite-gate");
+  await captureReskinState(page, "pending-invite-gate");
 });
 
 test("Nostr bind consent and completion fit both review widths", async ({
@@ -119,8 +157,17 @@ test("Nostr bind consent and completion fit both review widths", async ({
     });
   });
   await expect(page.getByTestId("nostr-bind-page")).toBeVisible();
-  await capture(page, "nostr-bind-consent");
+  await captureReskinState(page, "nostr-bind-consent");
   await pasteCode(page, "123456");
   await expect(page.getByTestId("nostr-bind-finish-step")).toBeVisible();
-  await capture(page, "nostr-bind-complete");
+  await expect(
+    page.getByTestId("nostr-bind-technical-details"),
+  ).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("nostr-bind-signed-response")).toHaveCount(0);
+  await captureReskinState(page, "nostr-bind-complete");
+  const technicalDetails = page.getByTestId("nostr-bind-technical-details");
+  await technicalDetails.click();
+  await expect(technicalDetails).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByTestId("nostr-bind-signed-response")).toBeVisible();
+  await captureReskinState(page, "nostr-bind-complete-technical-details");
 });

@@ -1,4 +1,3 @@
-import { mkdirSync } from "node:fs";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { expect, test, type Page } from "@playwright/test";
 import { nsecEncode } from "nostr-tools/nip19";
@@ -9,6 +8,10 @@ import {
   TEST_IDENTITIES,
 } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
+import {
+  captureReskinState,
+  seedReskinTheme,
+} from "../helpers/reskinScreenshots";
 import {
   invokeMockCommand,
   publishWelcomeTeamPresence,
@@ -38,20 +41,14 @@ async function openOwnedCommunityReconnect(page: Page) {
 }
 
 async function captureOwnerChoice(page: Page, prefix: string) {
-  const output = "/Users/mac/worktrees/.lanes/reskin/shots";
-  const originalViewport = page.viewportSize();
-  mkdirSync(output, { recursive: true });
-  for (const width of [1440, 900]) {
-    await page.setViewportSize({ width, height: 900 });
-    await waitForAnimations(page);
-    await page.waitForTimeout(350);
-    await page.evaluate(() => {
-      (document.activeElement as HTMLElement | null)?.blur();
-    });
-    await page.screenshot({ path: `${output}/${prefix}-${width}.png` });
-  }
-  if (originalViewport) await page.setViewportSize(originalViewport);
+  await page.waitForTimeout(350);
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+  });
+  await captureReskinState(page, prefix);
 }
+
+test.beforeEach(async ({ page }) => seedReskinTheme(page));
 
 /**
  * Drive the mock relay connection state via the E2E bridge seam.
@@ -614,7 +611,7 @@ test("first-community choices route join, create, owner, and member intents", as
   const accessInput = page.getByTestId("invite-redeem-input");
   await expect(accessInput).toHaveAttribute(
     "placeholder",
-    "Invite link or community URL",
+    "Paste your invite link or community link",
   );
   await accessInput.fill("https://default.example.com");
   await expect(page.getByTestId("invite-redeem-submit")).toBeEnabled();
@@ -633,10 +630,22 @@ test("first-community choices route join, create, owner, and member intents", as
   ).toBeVisible();
   await captureOwnerChoice(page, "welcome-join-form");
   await expect(page.getByText("Joining a private community?")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Technical details" }),
+  ).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("welcome-join-npub")).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(/npub1/i);
+  await page.getByRole("button", { name: "Technical details" }).click();
+  await expect(
+    page.getByRole("button", { name: "Technical details" }),
+  ).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByTestId("welcome-join-npub")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Copy public ID" }),
+    page.getByRole("button", { name: "Copy account code" }),
   ).toBeVisible();
+  await captureOwnerChoice(page, "welcome-join-technical-details");
+  await page.getByRole("button", { name: "Technical details" }).press("Space");
+  await expect(page.getByTestId("welcome-join-npub")).toHaveCount(0);
   await accessInput.fill("https://default.example.com/invite/abc123");
   await expect(page.getByTestId("invite-redeem-submit")).toBeEnabled();
 });
@@ -2121,7 +2130,7 @@ test("onboarding relay reconnect. connected without a prior click does not show 
   await expect(card).not.toContainText("Connected");
 });
 
-test("membership denied shows all four affordances and change-community edits non-destructively", async ({
+test("membership denied shows recovery choices and business editing is non-destructive", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
@@ -2142,22 +2151,39 @@ test("membership denied shows all four affordances and change-community edits no
   // Membership-denied screen renders with all four affordances.
   const denied = page.getByTestId("membership-denied");
   await expect(denied).toBeVisible();
-  await expect(denied.getByRole("button", { name: "Try again" })).toBeVisible();
-  await expect(denied.getByRole("button", { name: "Back" })).toBeVisible();
   await expect(
-    denied.getByRole("button", { name: "Change community" }),
+    denied.getByRole("heading", { name: "You’re not in this business yet" }),
+  ).toBeVisible();
+  await expect(denied.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(denied.getByRole("button", { name: "Back" })).toHaveCount(0);
+  await expect(
+    denied.getByRole("button", { name: "Change business" }),
   ).toBeVisible();
   await expect(page.getByTestId("membership-denied-change-key")).toBeVisible();
   await expect(
     page.getByTestId("membership-denied-redeem-invite"),
   ).toBeVisible();
+  await captureOwnerChoice(page, "membership-denied-standalone");
+  const technicalDetails = denied.getByRole("button", {
+    name: "Technical details",
+  });
+  await expect(technicalDetails).toHaveAttribute("aria-expanded", "false");
+  await technicalDetails.click();
+  await expect(technicalDetails).toHaveAttribute("aria-expanded", "true");
+  await expect(denied.getByText("Your account code")).toBeVisible();
+  await captureOwnerChoice(
+    page,
+    "membership-denied-standalone-technical-details",
+  );
+  await technicalDetails.press("Space");
+  await expect(technicalDetails).toHaveAttribute("aria-expanded", "false");
 
-  // Click "Change community" → the overlay opens.
-  await denied.getByRole("button", { name: "Change community" }).click();
+  // Change business opens the existing community editor.
+  await denied.getByRole("button", { name: "Change business" }).click();
   const overlay = page.getByTestId("community-change-overlay");
   await expect(overlay).toBeVisible();
 
-  // Change the relay URL to a new one. The probe will time out for a fake URL
+  // Change the community address to a new one. The probe will time out for a fake URL
   // so we wait for the "Use anyway" button.
   await overlay
     .locator("#community-edit-url")
@@ -2197,7 +2223,7 @@ test("membership denied shows all four affordances and change-community edits no
     .toBe(true);
 });
 
-test("cancel from profile Back preserves drafts and denied Back returns to interrupted page", async ({
+test("profile and denied community editing preserve the current draft", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
@@ -2226,19 +2252,19 @@ test("cancel from profile Back preserves drafts and denied Back returns to inter
   await expect(page.getByTestId("onboarding-page-1")).toBeVisible();
   await expect(nameInput).toHaveValue("Morty QA");
 
-  // --- Profile → membership denied → Back returns to profile ---
-  // Advance triggers membership check → denied (relayRole is null).
+  // Advance triggers membership check and shows the denied screen.
   await page.getByTestId("onboarding-next").click();
-  await expect(page.getByTestId("membership-denied")).toBeVisible();
-
-  // Press Back on the denied screen. should return to the profile page
-  // (deniedFromPage = "profile") with the name draft intact.
+  const denied = page.getByTestId("membership-denied");
+  await expect(denied).toBeVisible();
+  await expect(denied.getByRole("button", { name: "Back" })).toHaveCount(0);
+  await denied.getByRole("button", { name: "Change business" }).click();
+  await expect(page.getByTestId("community-change-overlay")).toBeVisible();
   await page
-    .getByTestId("membership-denied")
-    .getByRole("button", { name: "Back" })
+    .getByTestId("community-change-overlay")
+    .getByRole("button", { name: "Cancel" })
     .click();
-  await expect(page.getByTestId("onboarding-page-1")).toBeVisible();
-  await expect(nameInput).toHaveValue("Morty QA");
+  await expect(page.getByTestId("community-change-overlay")).toHaveCount(0);
+  await expect(denied).toBeVisible();
 });
 
 test("denied on relay A then paste relay B invite URL switches community to B", async ({

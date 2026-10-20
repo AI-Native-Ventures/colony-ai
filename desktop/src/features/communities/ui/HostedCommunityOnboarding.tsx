@@ -503,7 +503,6 @@ export function HostedCommunityOnboarding({
       <DialogContent
         className="max-w-[560px] text-foreground [&_button]:shadow-none"
         closeButtonClassName={ONBOARDING_INK_ICON_CLASS}
-        data-system-color-scheme="light"
         overlayClassName="bg-[rgb(var(--buzz-hosted-community-modal-overlay-bg)/0.25)]"
         surface="textured"
       >

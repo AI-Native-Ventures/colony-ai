@@ -224,9 +224,10 @@ export function CommunityEditForm({
           className="text-sm font-medium text-foreground"
           htmlFor="community-edit-url"
         >
-          Connection address
+          Community address
         </label>
         <Input
+          aria-describedby="community-edit-url-help"
           className="h-10 bg-background"
           disabled={isProbing}
           id="community-edit-url"
@@ -240,10 +241,16 @@ export function CommunityEditForm({
             setAgeConfirmed(false);
             setAgreementConfirmed(false);
           }}
-          placeholder="wss://relay.example.com"
+          placeholder="wss://community.example.com"
           type="text"
           value={relayUrl}
         />
+        <p
+          className="text-xs leading-5 text-muted-foreground"
+          id="community-edit-url-help"
+        >
+          Enter the address provided by the community owner.
+        </p>
       </div>
 
       <AnimatePresence initial={false}>
