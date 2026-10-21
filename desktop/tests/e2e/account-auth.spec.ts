@@ -29,10 +29,11 @@ async function startFirstRun(
     normalized_host: string;
     owner_pubkey: string;
   }> = [],
+  mock: Partial<NonNullable<Parameters<typeof installMockBridge>[1]>> = {},
 ) {
   await installMockBridge(
     page,
-    { accountLinked: true },
+    { ...mock, accountLinked: true },
     { skipCommunitySeed: true, skipOnboardingSeed: true },
   );
   await page.route("**/api/communities/config", (route) =>
@@ -297,28 +298,157 @@ test("sign in reaches the workspace setup path", async ({ page }) => {
   );
 });
 
-test("returning account can open an owned business", async ({ page }) => {
-  const community = {
-    id: "41cce33a-57f9-4d4c-bd2c-7c9c9d30d33b",
-    name: "North Star",
-    slug: "north-star",
-    normalized_host: `north-star.${BUSINESS_DOMAIN}`,
-    owner_pubkey: MOCK_ACCOUNT_PUBKEY,
-  };
-  await startFirstRun(page, [community]);
+const RETURNING_COMMUNITY = {
+  id: "41cce33a-57f9-4d4c-bd2c-7c9c9d30d33b",
+  name: "North Star",
+  slug: "north-star",
+  normalized_host: `north-star.${BUSINESS_DOMAIN}`,
+  owner_pubkey: MOCK_ACCOUNT_PUBKEY,
+};
+
+async function signInToOwnedBusinesses(page: Page) {
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.getByLabel("Email address").fill("returning@example.com");
   await page
     .getByRole("textbox", { name: "Password" })
     .fill("correct-horse-12");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-
   await expect(page.getByTestId("onboarding-scene-businesses")).toBeVisible();
   await expect(page.getByTestId("onboarding-business-list")).toContainText(
-    community.name,
+    RETURNING_COMMUNITY.name,
   );
-  await page.getByTestId(`onboarding-business-${community.id}`).click();
+}
+
+function e2eCommands(page: Page) {
+  return page.evaluate(() => window.__BUZZ_E2E_COMMANDS__ ?? []);
+}
+
+test("returning account on a device with no AI connects before opening its business", async ({
+  page,
+}) => {
+  const opencode = (availability: string, status: string) => ({
+    id: "opencode",
+    label: "OpenCode",
+    avatar_url: "",
+    availability,
+    command: availability === "available" ? "opencode" : null,
+    binary_path:
+      availability === "available" ? "/usr/local/bin/opencode" : null,
+    default_args: [],
+    mcp_command: null,
+    install_hint: "Install opencode",
+    install_instructions_url: "https://example.com",
+    can_auto_install: true,
+    underlying_cli_path: null,
+    node_required: false,
+    auth_status: { status },
+    login_hint: "Sign in to opencode",
+  });
+  let businessCreates = 0;
+  await startFirstRun(page, [RETURNING_COMMUNITY], {
+    acpRuntimesCatalog: [opencode("not_installed", "unknown")],
+    acpRuntimesCatalogAfterInstall: [opencode("available", "not_applicable")],
+    installAcpRuntimeResult: { success: true, steps: [] },
+    onboardingConnectionResult: {
+      reply: "Hello again. What shall we work on?",
+      model: "opencode/deepseek-v4.1-flash-free",
+      startupMs: 20,
+      totalMs: 50,
+    },
+  });
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/api/communities"
+    )
+      businessCreates += 1;
+  });
+  await signInToOwnedBusinesses(page);
+
+  await page
+    .getByTestId(`onboarding-business-${RETURNING_COMMUNITY.id}`)
+    .click();
+  await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
+  await expect(page.getByTestId("onboarding-mode-free")).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  // Back returns to the businesses the person picked from.
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page.getByTestId("onboarding-scene-businesses")).toBeVisible();
+  await page
+    .getByTestId(`onboarding-business-${RETURNING_COMMUNITY.id}`)
+    .click();
+  await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
+
+  await page.getByTestId("start-free-continue").click();
+  await expect(page.getByTestId("onboarding-scene-connected")).toBeVisible();
+  await expect(
+    page.getByText("Hello again. What shall we work on?"),
+  ).toBeVisible();
+  const saved = await page.evaluate(async () =>
+    window.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.("get_global_agent_config", null),
+  );
+  expect(saved).toMatchObject({
+    preferred_runtime: "opencode",
+    provider: "opencode-free",
+  });
+  // The proof is filed under the existing business, not a new one.
+  expect(
+    await page.evaluate(
+      (id) =>
+        window.localStorage.getItem(`colony-welcome-connection.v1:${id}`) !==
+        null,
+      RETURNING_COMMUNITY.id,
+    ),
+  ).toBe(true);
+
+  await page
+    .getByRole("button", { name: "Open my Colony", exact: true })
+    .click();
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  expect(businessCreates).toBe(0);
+});
+
+test("returning account on a connected device opens its business directly", async ({
+  page,
+}) => {
+  await startFirstRun(page, [RETURNING_COMMUNITY], {
+    globalAgentConfig: {
+      env_vars: {},
+      provider: null,
+      model: null,
+      preferred_runtime: "claude",
+    },
+    acpRuntimesCatalog: [
+      {
+        id: "claude",
+        label: "Claude Code",
+        avatar_url: "",
+        availability: "available",
+        command: "claude",
+        binary_path: "/usr/local/bin/claude",
+        default_args: [],
+        mcp_command: null,
+        install_hint: "Install claude",
+        install_instructions_url: "https://example.com",
+        can_auto_install: true,
+        underlying_cli_path: null,
+        node_required: false,
+        auth_status: { status: "logged_in" },
+        login_hint: "Sign in to claude",
+      },
+    ],
+  });
+  await signInToOwnedBusinesses(page);
+
+  await page
+    .getByTestId(`onboarding-business-${RETURNING_COMMUNITY.id}`)
+    .click();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await expect(page.getByTestId("onboarding-scene-connect")).toHaveCount(0);
+  // The direct path was decided by reading the runtimes, not by skipping it.
+  expect(await e2eCommands(page)).toContain("discover_acp_providers");
 });
 
 test("first-run account access offers email and Google signup and sign-in", async ({

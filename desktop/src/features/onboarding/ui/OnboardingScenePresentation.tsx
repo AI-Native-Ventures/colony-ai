@@ -117,6 +117,7 @@ function SceneBody(props: PresentationProps) {
         onCreateBusiness={props.onCreateBusiness}
         onNavigate={onNavigate}
         onSelectBusiness={props.onSelectBusiness}
+        pending={props.pending}
       />
     );
   if (scene === "invite") return <InviteScene {...props} />;
