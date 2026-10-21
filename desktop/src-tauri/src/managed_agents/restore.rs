@@ -1,8 +1,7 @@
 use super::{
     bestie_assignment::recover_pending_assignment_cleanup, find_managed_agent_mut,
     kill_stale_tracked_processes, load_managed_agents, load_personas, managed_agents_base_dir,
-    save_managed_agents, spawn_agent_child, sync_managed_agent_processes, BackendKind,
-    ManagedAgentProcess,
+    save_managed_agents, spawn_agent_child, sync_managed_agent_processes, ManagedAgentProcess,
 };
 use crate::app_state::AppState;
 use crate::util;
@@ -171,9 +170,12 @@ pub async fn restore_managed_agents_on_launch(
         // replacing the three separate kernel enumerations.
         super::sweep_untracked_bundle_harnesses(&tracked_pids);
 
+        // Another account's agents are skipped, not refused: a refusal would
+        // write `last_error` onto a record this owner does not own.
+        let launch_owner = super::delegation::signed_in_owner_hex(&state)?;
         let candidates: Vec<String> = records
             .iter()
-            .filter(|record| record.start_on_app_launch && record.backend == BackendKind::Local)
+            .filter(|record| super::delegation::auto_start_eligible(record, &launch_owner))
             .map(|record| record.pubkey.clone())
             .collect();
 

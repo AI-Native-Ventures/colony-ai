@@ -470,11 +470,14 @@ pub async fn reconcile_managed_agent_runtimes(
     use futures_util::{stream, StreamExt};
 
     let records = load_managed_agents(&app)?;
+    // Another account's agents are skipped before the relay access probe, so
+    // they neither start nor surface the relay's 403 as a failed row.
+    let owner_hex = super::delegation::signed_in_owner_hex(&app.state::<AppState>())?;
     let mut jobs = Vec::new();
     for community in communities {
         for record in records
             .iter()
-            .filter(|record| record.start_on_app_launch && record.backend == BackendKind::Local)
+            .filter(|record| super::delegation::auto_start_eligible(record, &owner_hex))
         // The legacy per-record relay pin is deliberately ignored here — see
         // `effective_agent_relay_url`. Every local auto-start agent fans out
         // to every configured community.

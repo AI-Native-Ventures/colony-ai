@@ -11,7 +11,10 @@ pub use forum::{get_forum_posts, get_forum_thread};
 use crate::{
     app_state::AppState,
     events,
-    managed_agents::{find_managed_agent_mut, load_managed_agents, ManagedAgentRecord},
+    managed_agents::{
+        delegation::{find_delegated_agent_mut, signed_in_owner_hex},
+        load_managed_agents, ManagedAgentRecord,
+    },
     models::{
         FeedItemCategory, FeedItemInfo, FeedMeta, FeedResponse, FeedSections, SearchResponse,
         SendChannelMessageResponse, ThreadRepliesResponse,
@@ -720,6 +723,7 @@ pub async fn send_managed_agent_channel_message(
         .filter(|value| !value.is_empty())
         .map(str::to_string);
     let requested_pubkey = agent_pubkey.trim().to_ascii_lowercase();
+    let owner_hex = signed_in_owner_hex(&state)?;
 
     let record = {
         let _store_guard = state
@@ -727,7 +731,9 @@ pub async fn send_managed_agent_channel_message(
             .lock()
             .map_err(|error| error.to_string())?;
         let mut records = load_managed_agents(&app)?;
-        find_managed_agent_mut(&mut records, &requested_pubkey)?.clone()
+        // Another account's agent cannot post here: the relay refuses its
+        // auth tag, and posting as it would act for the wrong account.
+        find_delegated_agent_mut(&mut records, &requested_pubkey, &owner_hex)?.clone()
     };
 
     let keys = Keys::parse(record.private_key_nsec.trim())
