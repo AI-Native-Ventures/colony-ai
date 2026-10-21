@@ -17,11 +17,15 @@ pub(super) async fn ensure(
 
     let app_for_load = app.clone();
     let speaker_for_load = speaker_pubkey.to_ascii_lowercase();
+    let owner_hex = crate::managed_agents::delegation::signed_in_owner_hex(state)?;
     let record = tokio::task::spawn_blocking(move || {
         crate::managed_agents::load_managed_agents(&app_for_load).map(|agents| {
+            // Another account's agent is not this owner's speaker: the relay
+            // would refuse its auth tag on the audio socket.
             agents.into_iter().find(|agent| {
                 agent.pubkey.eq_ignore_ascii_case(&speaker_for_load)
                     && !agent.private_key_nsec.trim().is_empty()
+                    && crate::managed_agents::delegation::record_delegated_by(agent, &owner_hex)
             })
         })
     })

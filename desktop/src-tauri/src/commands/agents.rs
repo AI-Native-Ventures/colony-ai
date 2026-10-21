@@ -7,9 +7,10 @@ use crate::{
     app_state::AppState,
     managed_agents::{
         bestie_assignment::{recover_pending_assignment_cleanup, with_agent_assignments_cleared},
-        build_managed_agent_summary, current_instance_id, ensure_persona_is_active,
-        find_managed_agent_mut, load_managed_agents, load_personas, load_teams,
-        managed_agents_base_dir, normalize_agent_args, resolve_provider_binary,
+        build_managed_agent_summary, current_instance_id,
+        delegation::{delegated_records, find_delegated_agent_mut, foreign_delegation_refusal},
+        ensure_persona_is_active, find_managed_agent_mut, load_managed_agents, load_personas,
+        load_teams, managed_agents_base_dir, normalize_agent_args, resolve_provider_binary,
         save_managed_agents, start_managed_agent_process, stop_managed_agent_process,
         stop_managed_agent_workspace_pair, sync_managed_agent_processes, try_regenerate_nest,
         validate_provider_config, BackendKind, CreateManagedAgentRequest,
@@ -23,8 +24,7 @@ use crate::{
 /// Read the workspace owner pubkey without holding the lock. Used to populate `BUZZ_ACP_AGENT_OWNER`
 /// as a fallback for legacy agent records that have no NIP-OA `auth_tag`.
 pub(super) fn workspace_owner_hex(state: &AppState) -> Result<String, String> {
-    let keys = state.keys.lock().map_err(|e| e.to_string())?;
-    Ok(keys.public_key().to_hex())
+    crate::managed_agents::delegation::signed_in_owner_hex(state)
 }
 
 #[path = "agents_pending.rs"]
@@ -83,6 +83,7 @@ pub(super) async fn start_local_agent_pairs_with_preflight(
     pubkey: &str,
     relay_urls: &[String],
 ) -> Result<ManagedAgentSummary, String> {
+    let owner_hex = workspace_owner_hex(state)?;
     let record_snapshot = {
         let _store_guard = state
             .managed_agents_store_lock
@@ -93,6 +94,11 @@ pub(super) async fn start_local_agent_pairs_with_preflight(
             .find(|record| record.pubkey == pubkey)
             .ok_or_else(|| format!("agent {pubkey} not found"))?
     };
+    // Refuse another account's agent before the persona snapshot below is
+    // saved onto its record; the spawn would be refused anyway.
+    if let Some(error) = foreign_delegation_refusal(&record_snapshot, &owner_hex) {
+        return Err(error);
+    }
     if record_snapshot.backend != BackendKind::Local {
         return Err(format!("agent {pubkey} is not a local agent"));
     }
@@ -303,6 +309,7 @@ pub async fn list_managed_agents(app: AppHandle) -> Result<Vec<ManagedAgentSumma
     use tauri::Manager;
     tokio::task::spawn_blocking(move || {
         let state = app.state::<AppState>();
+        let owner_hex = workspace_owner_hex(&state)?;
         let _store_guard = state
             .managed_agents_store_lock
             .lock()
@@ -329,8 +336,12 @@ pub async fn list_managed_agents(app: AppHandle) -> Result<Vec<ManagedAgentSumma
         let teams = load_teams(&app).unwrap_or_default();
         let global_config =
             crate::managed_agents::load_global_agent_config(&app).unwrap_or_default();
-        records
-            .iter()
+        // Only the signed-in account's agents (and legacy untagged records)
+        // are listed. Another account's records were synced and saved above
+        // untouched; hiding them here lets onboarding create a fresh agent
+        // this owner actually delegated instead of reusing one the relay
+        // refuses.
+        delegated_records(&records, &owner_hex)
             .map(|record| {
                 build_managed_agent_summary(
                     &app,
@@ -899,7 +910,9 @@ pub async fn start_managed_agent(
             state.clear_agent_session_caches(pubkey);
         }
 
-        let record = find_managed_agent_mut(&mut records, &pubkey)?;
+        // Refuse another account's agent before any preflight, deploy or
+        // profile work: the relay rejects its auth tag on every connection.
+        let record = find_delegated_agent_mut(&mut records, &pubkey, &owner_hex)?;
 
         // Resolve the effective harness for the avatar-fallback derivation in
         // profile reconcile (the create-time snapshot may be empty or stale for

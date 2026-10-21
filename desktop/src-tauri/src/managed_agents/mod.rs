@@ -19,6 +19,7 @@ pub(crate) mod config_bridge;
 pub(crate) mod credits_gateway;
 pub(crate) mod custom_harnesses;
 mod definition_validation;
+pub(crate) mod delegation;
 mod discovery;
 pub(crate) mod effective_config;
 mod env_vars;

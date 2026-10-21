@@ -125,8 +125,10 @@ pub(crate) fn load_pending_profile_reconciliations(
     let pending = crate::migration::read_profile_reconcile_queue(&queue_path)?;
     let records = crate::managed_agents::load_managed_agents(app)?;
     let personas = crate::managed_agents::load_personas(app).unwrap_or_default();
-    Ok(records
-        .iter()
+    let owner_hex = workspace_owner_hex(&state)?;
+    // Another account's queued items stay queued, unexecuted, for that
+    // account: reconciling would backfill its record and publish as it.
+    Ok(delegated_records(&records, &owner_hex)
         // A queue write deliberately precedes the migrated agent-store write.
         // If the process dies between them, retain (but do not execute) the
         // stale item until the next boot finishes renaming the record.
@@ -289,6 +291,17 @@ pub(crate) async fn reconcile_profile_at(
     }
     let agent_keys = Keys::parse(&data.private_key_nsec)
         .map_err(|e| format!("failed to parse agent keys: {e}"))?;
+    // Checked before the avatar upload below, which already authenticates as
+    // the agent. An error (not a skip) keeps queued work for the account that
+    // owns the agent, so signing back in still reconciles it.
+    let signed_in_owner = workspace_owner_hex(state)?;
+    if !crate::managed_agents::delegation::auth_tag_delegated_by(
+        &agent_keys.public_key().to_hex(),
+        data.auth_tag.as_deref(),
+        &signed_in_owner,
+    ) {
+        return Err(crate::managed_agents::delegation::FOREIGN_DELEGATION_ERROR.to_string());
+    }
     let expected_avatar = crate::relay::profile_avatar::localize_avatar(
         state,
         relay_url,

@@ -841,3 +841,38 @@ fn remote_launch_never_exports_local_browser_authority() {
             .all(|key| !key.to_ascii_uppercase().starts_with("COLONY_BROWSER_")));
     }
 }
+
+/// Every provider deploy (start, create, workspace apply, inbound policy
+/// refresh) builds its payload through `build_deploy_payload`. An agent whose
+/// auth tag names a previous account is refused there, before any disk read
+/// or provider call.
+#[test]
+fn deploy_payload_refuses_another_accounts_agent() {
+    use crate::managed_agents::{delegation::FOREIGN_DELEGATION_ERROR, BackendKind};
+
+    let owner = nostr::Keys::generate();
+    let previous_owner = nostr::Keys::generate();
+    let agent = nostr::Keys::generate();
+    let state = crate::app_state::build_app_state();
+    *state.keys.lock().unwrap() = owner;
+    let app = tauri::test::mock_builder()
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .expect("mock app builds headless");
+
+    let mut record = bare_agent_record(None, None, None);
+    record.pubkey = agent.public_key().to_hex();
+    record.private_key_nsec = "nsec1present".to_string();
+    record.backend = BackendKind::Provider {
+        id: "provider".to_string(),
+        config: serde_json::json!({}),
+    };
+    record.backend_agent_id = Some("existing-provider-agent".to_string());
+    record.auth_tag = Some(
+        buzz_sdk_pkg::nip_oa::compute_auth_tag(&previous_owner, &agent.public_key(), "")
+            .expect("auth tag"),
+    );
+
+    let error = build_deploy_payload(app.handle(), &state, &record)
+        .expect_err("another account's agent must not deploy");
+    assert_eq!(error, FOREIGN_DELEGATION_ERROR);
+}

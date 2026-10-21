@@ -550,3 +550,89 @@ async fn removed_source_projection_query_uses_fixed_signer_and_cannot_redirect()
     assert!(trap.state.data.lock().unwrap().requests.is_empty());
     assert_eq!(picture(&b), projected);
 }
+
+/// An agent whose auth tag names a previous account never authenticates as
+/// itself: no avatar read, no upload, no kind:0. Both kind:0 seams are
+/// covered: the shared writer and the startup/restore reconcile, which
+/// uploads the avatar before reaching the writer.
+#[tokio::test]
+async fn another_accounts_agent_never_reads_uploads_or_publishes_its_profile() {
+    use crate::commands::{reconcile_profile_at, ProfileReconcileData};
+    use crate::managed_agents::delegation::FOREIGN_DELEGATION_ERROR;
+    use nostr::ToBech32;
+    let a = server().await;
+    let b = server().await;
+    let state = state(&[&a, &b]);
+    let owner = Keys::generate();
+    let previous_owner = Keys::generate();
+    let agent = Keys::generate();
+    *state.keys.lock().unwrap() = owner.clone();
+    let foreign_tag =
+        buzz_sdk_pkg::nip_oa::compute_auth_tag(&previous_owner, &agent.public_key(), "").unwrap();
+    let avatar = seed(&a, image(1));
+
+    let error = crate::relay::sync_managed_agent_profile(
+        &state,
+        &b.state.base,
+        &agent,
+        "Scout",
+        Some(&avatar),
+        None,
+        Some(&foreign_tag),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error, FOREIGN_DELEGATION_ERROR);
+
+    let data = ProfileReconcileData {
+        private_key_nsec: agent.secret_key().to_bech32().unwrap(),
+        name: "Scout".into(),
+        relay_url: a.state.base.clone(),
+        target_relay_url: Some(b.state.base.clone()),
+        avatar_url: Some(avatar.clone()),
+        auth_tag: Some(foreign_tag),
+        pubkey: agent.public_key().to_hex(),
+        agent_command: "goose".into(),
+        persona_id: None,
+        about: None,
+    };
+    let error = reconcile_profile_at(
+        &state,
+        &b.state.base,
+        &data,
+        data.avatar_url.as_deref(),
+        None,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error, FOREIGN_DELEGATION_ERROR);
+
+    for server in [&a, &b] {
+        let data = server.state.data.lock().unwrap();
+        assert!(
+            data.requests.is_empty(),
+            "no request authenticated as the agent"
+        );
+        assert!(data.profiles.is_empty());
+    }
+
+    // The signed-in owner's own agent still publishes, tag attached.
+    let own_tag = buzz_sdk_pkg::nip_oa::compute_auth_tag(&owner, &agent.public_key(), "").unwrap();
+    crate::relay::sync_managed_agent_profile(
+        &state,
+        &b.state.base,
+        &agent,
+        "Scout",
+        None,
+        None,
+        Some(&own_tag),
+    )
+    .await
+    .unwrap();
+    let data = b.state.data.lock().unwrap();
+    assert_eq!(data.profiles.len(), 1);
+    assert!(data.profiles[0]
+        .tags
+        .iter()
+        .any(|tag| tag.as_slice().first().map(String::as_str) == Some("auth")));
+}

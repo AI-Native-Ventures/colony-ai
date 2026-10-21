@@ -181,6 +181,15 @@ fn collect_restart_candidates(
     };
     use tauri::Manager;
     let state = app.state::<AppState>();
+    let owner_hex = match crate::managed_agents::delegation::signed_in_owner_hex(&state) {
+        Ok(owner_hex) => owner_hex,
+        Err(e) => {
+            eprintln!(
+                "buzz-desktop: set_global_agent_config: failed to read the signed-in owner for restart scan: {e}"
+            );
+            return (Vec::new(), Vec::new());
+        }
+    };
     let mut runtimes = state
         .managed_agent_processes
         .lock()
@@ -190,6 +199,11 @@ fn collect_restart_candidates(
         .iter()
         .filter(|record| {
             if record.backend != BackendKind::Local {
+                return false;
+            }
+            // Another account's agent is never restarted: its start would be
+            // refused at spawn after the stop already ran.
+            if !crate::managed_agents::delegation::record_delegated_by(record, &owner_hex) {
                 return false;
             }
             let has_live_runtime = runtimes.iter_mut().any(|(key, runtime)| {

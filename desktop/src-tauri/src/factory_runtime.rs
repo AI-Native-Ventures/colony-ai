@@ -694,6 +694,14 @@ fn resolve_launch(
         .iter()
         .find(|record| record.pubkey.eq_ignore_ascii_case(agent_id))
         .ok_or_else(|| "Factory agent was not found".to_string())?;
+    let owner_hex = crate::managed_agents::delegation::signed_in_owner_hex(
+        &app.state::<crate::app_state::AppState>(),
+    )?;
+    if let Some(error) =
+        crate::managed_agents::delegation::foreign_delegation_refusal(record, &owner_hex)
+    {
+        return Err(error);
+    }
     if !matches!(record.backend, crate::managed_agents::BackendKind::Local) {
         return Err("Factory runs currently require a local ACP agent".to_string());
     }
