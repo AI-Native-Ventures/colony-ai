@@ -7,11 +7,15 @@ import {
   type SelfServeCommunity,
 } from "@/features/communities/selfProvisioningApi";
 import { useCommunityOnboarding } from "@/features/onboarding/communityOnboarding";
+import { useDeviceAiConnectionCheck } from "@/features/onboarding/deviceAiConnection";
 import { OnboardingScenePresentation } from "@/features/onboarding/ui/OnboardingScenePresentation";
 import {
   businessCommunityRelayUrl,
+  ownedBusinessProfile,
   readOnboardingBusinessProfile,
+  type OnboardingBusinessProfile,
 } from "@/features/onboarding/ui/BusinessSetupStep";
+import { ConnectSetupStep } from "@/features/onboarding/ui/ConnectSetupStep";
 import { InviteRedeemForm } from "@/features/onboarding/ui/InviteRedeemForm";
 import { OnboardingFooterProvider } from "@/features/onboarding/ui/OnboardingFooter";
 import {
@@ -30,6 +34,7 @@ type WelcomeSetupPage =
   | "join"
   | "member"
   | "owned"
+  | "connect"
   | "create";
 type WelcomeTransitionMode = "initial" | OnboardingTransitionDirection;
 
@@ -60,7 +65,15 @@ export function WelcomeSetup({
   const [showJoinTechnicalDetails, setShowJoinTechnicalDetails] =
     React.useState(false);
   const [copiedNpub, setCopiedNpub] = React.useState(false);
+  const [connectTarget, setConnectTarget] = React.useState<{
+    business: SelfServeCommunity;
+    profile: OnboardingBusinessProfile;
+  } | null>(null);
+  const [connectError, setConnectError] = React.useState<string | null>(null);
   const communityOnboarding = useCommunityOnboarding();
+  // Opening an owned business on a device with no working AI goes through
+  // Connect first, the same as the first-run business chooser.
+  const deviceConnection = useDeviceAiConnectionCheck(page === "owned");
   const identityQuery = useIdentityQuery();
   const npub = identityQuery.data?.pubkey
     ? pubkeyToNpub(identityQuery.data.pubkey)
@@ -129,6 +142,57 @@ export function WelcomeSetup({
     showPage("owned");
     void loadOwnedBusinesses();
   }, [loadOwnedBusinesses, showPage]);
+
+  const openOwnedBusiness = (business: SelfServeCommunity) =>
+    communityOnboarding.start({
+      source: "first-community",
+      firstCommunityPage: "owned",
+      relayUrl: businessCommunityRelayUrl(business),
+      businessCommunityId: business.id,
+      communityName:
+        readOnboardingBusinessProfile(business.id)?.name ||
+        business.name ||
+        business.slug,
+    });
+
+  const selectOwnedBusiness = (business: SelfServeCommunity) => {
+    if (deviceConnection.checking) return;
+    void deviceConnection.resolve().then((connected) => {
+      if (connected === null) return;
+      if (!connected) {
+        setConnectTarget({ business, profile: ownedBusinessProfile(business) });
+        setConnectError(null);
+        showPage("connect");
+        return;
+      }
+      if (!openOwnedBusiness(business)) {
+        setBusinessListError(
+          "Finish the business setup already in progress before opening this business.",
+        );
+      }
+    });
+  };
+
+  if (page === "connect" && connectTarget) {
+    return (
+      <ConnectSetupStep
+        business={connectTarget.profile}
+        communityId={connectTarget.business.id}
+        error={connectError}
+        onBack={() => {
+          setConnectError(null);
+          showPage("owned", "backward");
+        }}
+        onContinue={() => {
+          if (!openOwnedBusiness(connectTarget.business)) {
+            setConnectError(
+              "Finish the business setup already in progress before opening this business.",
+            );
+          }
+        }}
+      />
+    );
+  }
 
   const transitionDirection =
     transitionMode === "backward" ? "backward" : "forward";
@@ -327,25 +391,9 @@ export function WelcomeSetup({
                       <Button
                         className="h-auto justify-start rounded-2xl border border-border bg-card px-5 py-4 text-left shadow-sm dark:border-white/20 dark:bg-white/5 dark:hover:bg-white/10"
                         data-testid={`welcome-owned-business-${business.id}`}
+                        disabled={deviceConnection.checking}
                         key={business.id}
-                        onClick={() => {
-                          const started = communityOnboarding.start({
-                            source: "first-community",
-                            firstCommunityPage: "owned",
-                            relayUrl: businessCommunityRelayUrl(business),
-                            businessCommunityId: business.id,
-                            communityName:
-                              readOnboardingBusinessProfile(business.id)
-                                ?.name ||
-                              business.name ||
-                              business.slug,
-                          });
-                          if (!started) {
-                            setBusinessListError(
-                              "Finish the business setup already in progress before opening this business.",
-                            );
-                          }
-                        }}
+                        onClick={() => selectOwnedBusiness(business)}
                         type="button"
                         variant="outline"
                       >
@@ -353,6 +401,15 @@ export function WelcomeSetup({
                       </Button>
                     ))
                   )}
+                  {deviceConnection.checking ? (
+                    <p
+                      role="status"
+                      className="py-2 text-sm text-muted-foreground"
+                      data-testid="welcome-owned-business-checking"
+                    >
+                      Checking your AI connection
+                    </p>
+                  ) : null}
                 </div>
               </OnboardingSlideTransition>
             ) : (
