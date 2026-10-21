@@ -652,6 +652,7 @@ export function BusinessChooser({
   onNavigate,
   onCreateBusiness,
   onSelectBusiness,
+  pending = false,
 }: {
   data: OnboardingSceneData;
   businessChoices?: OnboardingBusinessChoice[];
@@ -659,6 +660,8 @@ export function BusinessChooser({
   onNavigate?: (scene: OnboardingSceneId) => void;
   onCreateBusiness?: () => void;
   onSelectBusiness?: (id: string) => void;
+  /** A business was picked and its AI connection is being checked. */
+  pending?: boolean;
 }) {
   const choices =
     businessChoices ??
@@ -677,11 +680,16 @@ export function BusinessChooser({
       <h2>Where shall we go?</h2>
       <p className="lede">Choose a business to pick up your work.</p>
       {error ? <InlineAlert>{error}</InlineAlert> : null}
-      <div className="business-list" data-testid="onboarding-business-list">
+      <div
+        aria-busy={pending}
+        className="business-list"
+        data-testid="onboarding-business-list"
+      >
         {choices.map((choice) => (
           <button
             className="business-choice"
             data-testid={`onboarding-business-${choice.id}`}
+            disabled={pending}
             key={choice.id}
             onClick={() => onSelectBusiness?.(choice.id)}
             type="button"
@@ -695,6 +703,11 @@ export function BusinessChooser({
           </button>
         ))}
       </div>
+      {pending ? (
+        <p role="status" data-testid="onboarding-business-checking">
+          <span className="spinner" /> Checking your AI connection
+        </p>
+      ) : null}
       <button
         className="back"
         onClick={onCreateBusiness ?? (() => onNavigate?.("additional"))}

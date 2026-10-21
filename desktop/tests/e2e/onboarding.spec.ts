@@ -675,7 +675,7 @@ test("first-community choices route join, create, owner, and member intents", as
   await expect(page.getByTestId("invite-redeem-submit")).toBeEnabled();
 });
 
-test("Welcome owner path selects a Colony business and starts connecting", async ({
+test("Welcome owner path connects AI, then opens a Colony business", async ({
   page,
 }) => {
   await seedActiveIdentity(page, BLANK_TYLER_IDENTITY);
@@ -721,6 +721,19 @@ test("Welcome owner path selects a Colony business and starts connecting", async
   ).toBeVisible();
   await captureOwnerChoice(page, "owner-business-list");
   await page.getByTestId("welcome-owned-business-owned-business").click();
+  // This device has no AI connection yet, so Connect comes first.
+  await expect(page.getByTestId("onboarding-scene-connect")).toBeVisible();
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Your businesses" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      window.localStorage.getItem("buzz-community-onboarding-transaction.v1"),
+    ),
+  ).toBeNull();
+  await page.getByTestId("welcome-owned-business-owned-business").click();
+  await page.getByTestId("start-free-skip").click();
   await expect
     .poll(() =>
       page.evaluate(() =>

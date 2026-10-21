@@ -86,6 +86,20 @@ export function readOnboardingBusinessProfile(
   }
 }
 
+/** Connect details for a business the account already owns, saved here or not. */
+export function ownedBusinessProfile(
+  community: SelfServeCommunity,
+): OnboardingBusinessProfile {
+  const saved = readOnboardingBusinessProfile(community.id);
+  return {
+    name: saved?.name || community.name || community.slug,
+    website: saved?.website ?? "",
+    description: saved?.description ?? "",
+    logoDataUrl: saved?.logoDataUrl ?? null,
+    logoUrl: saved?.logoUrl ?? null,
+  };
+}
+
 export function BusinessSetupStep({
   additional = false,
   onBack,

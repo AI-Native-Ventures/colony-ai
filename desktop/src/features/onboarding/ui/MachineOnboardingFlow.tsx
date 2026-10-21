@@ -49,6 +49,7 @@ import {
 } from "./machineOnboardingStartup";
 import type { DefaultConfigDraft } from "./types";
 import { useCommunityOnboarding } from "../communityOnboarding";
+import { useDeviceAiConnectionCheck } from "../deviceAiConnection";
 import {
   firstRunInviteFromTransaction,
   type FirstRunInvite,
@@ -58,6 +59,7 @@ import { InviteBrand, InviteJoinScene, InviteLinkScene } from "./InviteScenes";
 import {
   BusinessSetupStep,
   businessCommunityRelayUrl,
+  ownedBusinessProfile,
   readOnboardingBusinessProfile,
   type OnboardingBusinessProfile,
 } from "./BusinessSetupStep";
@@ -72,6 +74,14 @@ import {
 export type { MachineOnboardingPage } from "./machineOnboardingStartup";
 
 type BackupSubview = "created" | "password";
+
+/** The business Connect sets up AI for, and how the person reached it. */
+type ConnectTarget = {
+  community: SelfServeCommunity;
+  profile: OnboardingBusinessProfile;
+  /** "create" made the business here; "owned" opens one the account has. */
+  origin: "create" | "owned";
+};
 
 function unavailableBody(capability: NativeCapability): string {
   switch (capability) {
@@ -127,6 +137,9 @@ export function MachineOnboardingFlow({
   const [identityWasImported, setIdentityWasImported] = React.useState(false);
   const [accountAuthenticated, setAccountAuthenticated] = React.useState(false);
   const communityOnboarding = useCommunityOnboarding();
+  // A returning person picking a business on a device with no working AI is
+  // sent through Connect first, instead of into a workspace that cannot reply.
+  const deviceConnection = useDeviceAiConnectionCheck(page === "businesses");
   // A workspace invite waiting for this person (deep link or pasted link). It
   // lives in the persisted transaction, so it survives a restart mid sign-up.
   const pendingInvite = firstRunInviteFromTransaction(
@@ -142,10 +155,8 @@ export function MachineOnboardingFlow({
     email: "",
     name: "",
   });
-  const [createdCommunity, setCreatedCommunity] =
-    React.useState<SelfServeCommunity | null>(null);
-  const [businessProfile, setBusinessProfile] =
-    React.useState<OnboardingBusinessProfile | null>(null);
+  const [connectTarget, setConnectTarget] =
+    React.useState<ConnectTarget | null>(null);
   const [ownedCommunities, setOwnedCommunities] = React.useState<
     SelfServeCommunity[]
   >([]);
@@ -653,6 +664,7 @@ export function MachineOnboardingFlow({
           setPage("business");
         }}
         onSelectBusiness={(id) => {
+          if (deviceConnection.checking) return;
           const selected = ownedCommunities.find(
             (community) => community.id === id,
           );
@@ -660,24 +672,40 @@ export function MachineOnboardingFlow({
             setBusinessListError("That business is no longer available.");
             return;
           }
-          const started = communityOnboarding.start({
-            source: "first-community",
-            firstCommunityPage: "owned",
-            relayUrl: businessCommunityRelayUrl(selected),
-            businessCommunityId: selected.id,
-            communityName:
-              readOnboardingBusinessProfile(selected.id)?.name ||
-              selected.name ||
-              selected.slug,
+          setBusinessListError(null);
+          void deviceConnection.resolve().then((connected) => {
+            if (connected === null) return;
+            if (connected) {
+              const started = communityOnboarding.start({
+                source: "first-community",
+                firstCommunityPage: "owned",
+                relayUrl: businessCommunityRelayUrl(selected),
+                businessCommunityId: selected.id,
+                communityName:
+                  readOnboardingBusinessProfile(selected.id)?.name ||
+                  selected.name ||
+                  selected.slug,
+              });
+              if (!started) {
+                setBusinessListError(
+                  "Finish the community setup already in progress before opening this business.",
+                );
+                return;
+              }
+              complete(selectedPubkey);
+              return;
+            }
+            setConnectTarget({
+              community: selected,
+              profile: ownedBusinessProfile(selected),
+              origin: "owned",
+            });
+            setError(null);
+            setTransitionDirection("forward");
+            setPage("connect");
           });
-          if (!started) {
-            setBusinessListError(
-              "Finish the community setup already in progress before opening this business.",
-            );
-            return;
-          }
-          complete(selectedPubkey);
         }}
+        pending={deviceConnection.checking}
         scene="businesses"
       />
     );
@@ -693,8 +721,7 @@ export function MachineOnboardingFlow({
           setPage(businessBackPage);
         }}
         onCreated={(community, profile) => {
-          setCreatedCommunity(community);
-          setBusinessProfile(profile);
+          setConnectTarget({ community, profile, origin: "create" });
           setError(null);
           setTransitionDirection("forward");
           setPage("connect");
@@ -705,7 +732,7 @@ export function MachineOnboardingFlow({
   }
 
   if (page === "connect") {
-    if (!createdCommunity || !businessProfile || !selectedPubkey) {
+    if (!connectTarget || !selectedPubkey) {
       return (
         <NativeUnavailableScreen
           body="Business setup is incomplete. Return to business details and retry before connecting."
@@ -715,26 +742,25 @@ export function MachineOnboardingFlow({
         />
       );
     }
+    const { community, profile, origin } = connectTarget;
     return (
       <ConnectSetupStep
-        business={businessProfile}
-        communityId={createdCommunity.id}
+        business={profile}
+        communityId={community.id}
         error={error}
         onBack={() => {
           setError(null);
           setTransitionDirection("backward");
-          setPage("business");
+          // An owned business goes back to the list it was picked from.
+          setPage(origin === "owned" ? "businesses" : "business");
         }}
         onContinue={(destination) => {
           const started = communityOnboarding.start({
             source: "first-community",
-            firstCommunityPage: "create",
-            relayUrl: businessCommunityRelayUrl(createdCommunity),
-            businessCommunityId: createdCommunity.id,
-            communityName:
-              businessProfile.name ||
-              createdCommunity.name ||
-              createdCommunity.slug,
+            firstCommunityPage: origin,
+            relayUrl: businessCommunityRelayUrl(community),
+            businessCommunityId: community.id,
+            communityName: profile.name || community.name || community.slug,
           });
           if (!started) {
             setError(
