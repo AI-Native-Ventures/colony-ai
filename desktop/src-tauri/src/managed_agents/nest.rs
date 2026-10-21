@@ -972,8 +972,14 @@ pub async fn regenerate_nest_context<R: tauri::Runtime>(
     }
 
     let personas = load_personas(app)?;
-    let agents = load_managed_agents(app)?;
     let state = app.state::<AppState>();
+    // The roster lists teammates running agents can reach. Another account's
+    // agents cannot run under this owner, so they are left out.
+    let owner_hex = super::delegation::signed_in_owner_hex(&state)?;
+    let agents: Vec<ManagedAgentRecord> = load_managed_agents(app)?
+        .into_iter()
+        .filter(|agent| super::delegation::record_delegated_by(agent, &owner_hex))
+        .collect();
     // Capture the relay target once, before any network work, so this
     // generation's rendered footer, NIP-11 signer, and snapshot query all
     // belong to one relay even if a workspace switch changes the override

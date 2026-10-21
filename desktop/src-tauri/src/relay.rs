@@ -637,6 +637,17 @@ pub async fn sync_managed_agent_profile(
     about: Option<&str>,
     auth_tag: Option<&str>, // NIP-OA auth tag JSON
 ) -> Result<(), String> {
+    // Every kind:0 an agent publishes (create, start and restore reconcile,
+    // renames, persona about edits, snapshot imports) goes through here. An
+    // agent another account delegated never publishes under this owner.
+    let signed_in_owner = crate::managed_agents::delegation::signed_in_owner_hex(state)?;
+    if !crate::managed_agents::delegation::auth_tag_delegated_by(
+        &agent_keys.public_key().to_hex(),
+        auth_tag,
+        &signed_in_owner,
+    ) {
+        return Err(crate::managed_agents::delegation::FOREIGN_DELEGATION_ERROR.to_string());
+    }
     crate::relay_admission::wait_for_rate_limit().await;
     // Resolve media before replacing the complete profile. A failed transfer
     // leaves the previous kind:0 untouched and the saved source available to retry.

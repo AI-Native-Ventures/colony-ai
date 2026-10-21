@@ -141,6 +141,14 @@ pub(crate) fn project_owner_identity(
     if let Some(error) = spawn_key_refusal(record) {
         return Err(error);
     }
+    // Signing as another account's agent would publish under an auth tag the
+    // relay refuses, on behalf of an owner who is not signed in.
+    if let Some(error) = crate::managed_agents::delegation::foreign_delegation_refusal(
+        record,
+        &viewer_keys.public_key().to_hex(),
+    ) {
+        return Err(error);
+    }
     let keys = Keys::parse(&record.private_key_nsec)
         .map_err(|error| format!("managed agent signing key is invalid: {error}"))?;
     if keys.public_key().to_hex() != target_owner {

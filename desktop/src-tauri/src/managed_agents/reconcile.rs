@@ -115,19 +115,27 @@ fn reconcile_agents_in_dir_at(
 /// Retain `record`'s kind:30177 identity record, marking it `pending_sync`
 /// for the flush loop, when its projection differs from the retained head.
 /// Returns `Ok(true)` when a row was (re)written and `Ok(false)` when the
-/// retained content already matches (a true no-op — no `pending_sync` churn).
+/// retained content already matches (a true no-op, no `pending_sync` churn)
+/// or when another Colony account delegated the record.
 ///
 /// This is the single content-diff + monotonic-bump engine shared by the
 /// boot-time reconcile above and the interactive edit paths
-/// (`retain_managed_agent_pending`, persona-rename propagation). Every
-/// mutation of an agent's published identity must go through it so the
-/// retained record can never silently drift from `managed-agents.json`.
+/// (`retain_managed_agent_pending`, persona-rename propagation, snapshot
+/// imports). Every mutation of an agent's published identity must go through
+/// it so the retained record can never silently drift from
+/// `managed-agents.json`.
 pub(crate) fn retain_agent_record(
     conn: &rusqlite::Connection,
     keys: &nostr::Keys,
     record: &ManagedAgentRecord,
 ) -> Result<bool, String> {
     let owner_pubkey = keys.public_key().to_hex();
+    // Never publish another account's agent under this owner: the coordinate
+    // would claim it for the wrong account and its auth tag names an owner
+    // the relay may no longer admit. The record itself is left untouched.
+    if !super::delegation::record_delegated_by(record, &owner_pubkey) {
+        return Ok(false);
+    }
     let existing = get_retained_event(conn, KIND_MANAGED_AGENT, &owner_pubkey, &record.pubkey)?;
 
     // Build the event first and compare ITS content, so the comparison and
