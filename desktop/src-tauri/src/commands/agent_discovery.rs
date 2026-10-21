@@ -447,6 +447,10 @@ async fn restart_setup_mode_agents_after_install(
 
         // Read the runtimes map to check setup_mode stamps.
         let state_inner = app_for_scan.state::<AppState>();
+        let Ok(owner_hex) = crate::managed_agents::delegation::signed_in_owner_hex(&state_inner)
+        else {
+            return Vec::new();
+        };
         let runtimes = state_inner
             .managed_agent_processes
             .lock()
@@ -454,6 +458,11 @@ async fn restart_setup_mode_agents_after_install(
 
         records
             .iter()
+            // Another account's agent is never restarted: its start would be
+            // refused at spawn after the stop already ran.
+            .filter(|record| {
+                crate::managed_agents::delegation::record_delegated_by(record, &owner_hex)
+            })
             .filter(|record| {
                 let is_local = record.backend == BackendKind::Local;
                 let effective_cmd = record_agent_command(record, &personas);

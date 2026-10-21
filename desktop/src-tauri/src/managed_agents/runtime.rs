@@ -458,6 +458,16 @@ pub fn spawn_agent_child(
     if let Some(error) = spawn_key_refusal(record) {
         return Err(error);
     }
+    // Every local spawn (interactive start, launch restore, community
+    // reconcile, config and install restarts, lazy pairs) passes through
+    // here, so another account's agent can never start: the relay refuses
+    // its auth tag forever. Read the live identity rather than `owner_hex`,
+    // which callers may pass as `None`. Checked before any side effect.
+    let signed_in_owner =
+        super::delegation::signed_in_owner_hex(&app.state::<crate::app_state::AppState>())?;
+    if let Some(error) = super::delegation::foreign_delegation_refusal(record, &signed_in_owner) {
+        return Err(error);
+    }
     let runtime_key = ManagedAgentRuntimeKey::new(record.pubkey.clone(), relay_url)?;
     // Resolve the effective harness (agent command) from the linked persona, so
     // persona harness edits propagate on the next spawn; an explicit per-agent

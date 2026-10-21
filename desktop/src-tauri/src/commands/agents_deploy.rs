@@ -202,6 +202,15 @@ pub(crate) fn build_deploy_payload<R: tauri::Runtime>(
     if let Some(err) = crate::managed_agents::spawn_key_refusal(record) {
         return Err(err);
     }
+    // Every provider deploy builds its payload here (start, create, workspace
+    // apply reconcile, inbound policy refresh), so another account's agent is
+    // refused before any disk read or provider call.
+    let owner_pubkey = super::workspace_owner_hex(state)?;
+    if let Some(err) =
+        crate::managed_agents::delegation::foreign_delegation_refusal(record, &owner_pubkey)
+    {
+        return Err(err);
+    }
 
     let global = crate::managed_agents::load_global_agent_config(app).unwrap_or_default();
     let personas = load_personas(app).unwrap_or_default();
@@ -221,7 +230,6 @@ pub(crate) fn build_deploy_payload<R: tauri::Runtime>(
     let descriptor =
         crate::managed_agents::resolve_effective_harness_descriptor(record, &personas, &global)
             .map_err(|error| crate::managed_agents::user_facing_harness_error(&error))?;
-    let owner_pubkey = super::workspace_owner_hex(state)?;
     let launch = build_launch_block_for_policy(
         record,
         &descriptor,

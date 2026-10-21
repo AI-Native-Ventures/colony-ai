@@ -400,3 +400,68 @@ fn retain_agent_record_is_noop_when_unchanged() {
         "no pending_sync churn for an unchanged record"
     );
 }
+
+/// The 19 Oct incident: a boot reconcile re-published the previous account's
+/// agents under the new owner. The shared publish engine must skip any record
+/// whose auth tag names another account, at boot and on every edit path.
+#[test]
+fn another_accounts_agent_is_never_published_under_this_owner() {
+    let dir = TempDir::new().unwrap();
+    let owner = nostr::Keys::generate();
+    let previous_owner = nostr::Keys::generate();
+    let tagged = |agent: &nostr::Keys, delegator: &nostr::Keys, name: &str| {
+        let mut record = sample_record(&agent.public_key().to_hex(), name);
+        record.auth_tag = Some(
+            buzz_sdk_pkg::nip_oa::compute_auth_tag(delegator, &agent.public_key(), "").unwrap(),
+        );
+        record
+    };
+    let own = nostr::Keys::generate();
+    let foreign = nostr::Keys::generate();
+    let legacy = "e".repeat(64);
+    write_store(
+        &dir,
+        &[
+            tagged(&own, &owner, "own-agent"),
+            tagged(&foreign, &previous_owner, "old-scout"),
+            sample_record(&legacy, "legacy-agent"),
+        ],
+    );
+
+    assert_eq!(reconcile_agents_in_dir(dir.path(), &owner).unwrap(), 2);
+
+    let conn = open_retention_db(&dir.path().join("retention.db")).unwrap();
+    let mut published: Vec<String> = get_pending_sync(&conn)
+        .unwrap()
+        .into_iter()
+        .map(|row| row.d_tag)
+        .collect();
+    published.sort();
+    let mut expected = vec![own.public_key().to_hex(), legacy];
+    expected.sort();
+    assert_eq!(published, expected);
+    assert!(get_retained_event(
+        &conn,
+        KIND_MANAGED_AGENT,
+        &owner.public_key().to_hex(),
+        &foreign.public_key().to_hex(),
+    )
+    .unwrap()
+    .is_none());
+
+    // The interactive edit path uses the same engine and skips it too.
+    assert!(!retain_agent_record(
+        &conn,
+        &owner,
+        &tagged(&foreign, &previous_owner, "old-scout-renamed")
+    )
+    .unwrap());
+
+    // The account that made it still publishes it after signing back in.
+    assert!(retain_agent_record(
+        &conn,
+        &previous_owner,
+        &tagged(&foreign, &previous_owner, "old-scout")
+    )
+    .unwrap());
+}

@@ -29,14 +29,19 @@ struct ProviderAccessTarget {
     agent_json: Result<serde_json::Value, String>,
 }
 
+/// Another account's deployments are skipped, not refused: workspace apply
+/// fails closed on any target error, so one foreign record would otherwise
+/// block every community load for the signed-in owner.
 fn collect_targets_with(
     records: Vec<ManagedAgentRecord>,
     owner_only_access: bool,
+    owner_hex: &str,
     mut build_payload: impl FnMut(&ManagedAgentRecord) -> Result<serde_json::Value, String>,
 ) -> Vec<ProviderAccessTarget> {
     records
         .into_iter()
         .filter(|record| needs_reconciliation_with_policy(record, owner_only_access))
+        .filter(|record| crate::managed_agents::delegation::record_delegated_by(record, owner_hex))
         .map(|record| match record.backend.clone() {
             BackendKind::Provider { id, config } => ProviderAccessTarget {
                 agent_json: build_payload(&record),
@@ -63,14 +68,18 @@ pub(crate) async fn reconcile_on_workspace_apply(
     state: &AppState,
 ) -> Result<(), String> {
     let owner_only_access = crate::managed_agents::owner_only_access_build();
+    let owner_hex = super::workspace_owner_hex(state)?;
     let targets = {
         let _store_guard = state
             .managed_agents_store_lock
             .lock()
             .map_err(|error| error.to_string())?;
-        collect_targets_with(load_managed_agents(app)?, owner_only_access, |record| {
-            super::build_deploy_payload(app, state, record)
-        })
+        collect_targets_with(
+            load_managed_agents(app)?,
+            owner_only_access,
+            &owner_hex,
+            |record| super::build_deploy_payload(app, state, record),
+        )
     };
 
     for target in targets {
@@ -134,6 +143,9 @@ pub(crate) fn persist_failure(
 mod tests {
     use super::*;
 
+    /// Signed-in owner for fixtures without an auth tag (legacy records).
+    const OWNER: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+
     fn record(backend: BackendKind, backend_agent_id: Option<&str>) -> ManagedAgentRecord {
         let mut record: ManagedAgentRecord = serde_json::from_value(serde_json::json!({
             "pubkey": "agent", "name": "Agent", "relay_url": "", "acp_command": "",
@@ -168,7 +180,7 @@ mod tests {
             record(BackendKind::Local, Some("stale")),
         ];
 
-        let targets = collect_targets_with(records, true, |_| {
+        let targets = collect_targets_with(records, true, OWNER, |_| {
             Ok(serde_json::json!({"respond_to": "owner-only"}))
         });
 
@@ -201,7 +213,7 @@ mod tests {
             Some("existing-ordinary"),
         );
 
-        let targets = collect_targets_with(vec![ordinary, pending], false, |record| {
+        let targets = collect_targets_with(vec![ordinary, pending], false, OWNER, |record| {
             Ok(serde_json::json!({"pubkey": record.pubkey}))
         });
 
@@ -227,9 +239,48 @@ mod tests {
         let mut local = record(BackendKind::Local, Some("stale-provider-id"));
         local.provider_policy_pending = true;
 
-        assert!(collect_targets_with(vec![undeployed, local], false, |_| {
+        assert!(
+            collect_targets_with(vec![undeployed, local], false, OWNER, |_| {
+                Ok(serde_json::Value::Null)
+            })
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn workspace_apply_skips_another_accounts_deployment_without_building_it() {
+        let owner = nostr::Keys::generate();
+        let previous_owner = nostr::Keys::generate();
+        let tagged = |agent: &nostr::Keys, delegator: &nostr::Keys| {
+            let mut record = record(
+                BackendKind::Provider {
+                    id: "provider".into(),
+                    config: serde_json::json!({}),
+                },
+                Some("existing"),
+            );
+            record.pubkey = agent.public_key().to_hex();
+            record.auth_tag = Some(
+                buzz_sdk_pkg::nip_oa::compute_auth_tag(delegator, &agent.public_key(), "")
+                    .expect("auth tag"),
+            );
+            record
+        };
+        let own_agent = nostr::Keys::generate();
+        let foreign_agent = nostr::Keys::generate();
+        let records = vec![
+            tagged(&foreign_agent, &previous_owner),
+            tagged(&own_agent, &owner),
+        ];
+
+        let mut built = Vec::new();
+        let targets = collect_targets_with(records, true, &owner.public_key().to_hex(), |record| {
+            built.push(record.pubkey.clone());
             Ok(serde_json::Value::Null)
-        })
-        .is_empty());
+        });
+
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].pubkey, own_agent.public_key().to_hex());
+        assert_eq!(built, vec![own_agent.public_key().to_hex()]);
     }
 }
