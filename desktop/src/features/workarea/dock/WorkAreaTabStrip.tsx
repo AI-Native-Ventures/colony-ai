@@ -15,6 +15,7 @@ import {
 import type { WorkAreaTab } from "./workAreaTypes";
 
 type WorkAreaTabStripProps = {
+  channelId: string;
   tabs: readonly WorkAreaTab[];
   activeTabId: string | null;
   onSelect: (tabId: string) => void;
@@ -34,6 +35,7 @@ export const workAreaPanelDomId = (tabId: string) => `work-area-panel-${tabId}`;
  * its own label, so no label has two owners.
  */
 export function WorkAreaTabStrip({
+  channelId,
   tabs,
   activeTabId,
   onSelect,
@@ -83,17 +85,16 @@ export function WorkAreaTabStrip({
   };
 
   return (
-    <>
-      {tabs.length === 0 ? (
-        <div className="colony-work-area-tabs" />
-      ) : (
+    <div className="colony-work-area-tabs">
+      {tabs.length > 0 ? (
         <div
           aria-label="Work area tabs"
-          className="colony-work-area-tabs"
+          className="colony-work-area-tablist"
           role="tablist"
         >
           {tabs.map((tab, index) => (
             <WorkAreaTabItem
+              channelId={channelId}
               index={index}
               key={tab.id}
               onClose={onClose}
@@ -105,17 +106,17 @@ export function WorkAreaTabStrip({
             />
           ))}
         </div>
-      )}
+      ) : null}
       {addable.length > 0 ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               aria-label="Add work area tab"
-              className="colony-work-area-icon-button"
+              className="colony-work-area-add"
               data-testid="work-area-add-tab"
               type="button"
             >
-              <Plus aria-hidden="true" />
+              <Plus aria-hidden="true" strokeWidth={2.4} />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -145,7 +146,7 @@ export function WorkAreaTabStrip({
           </DropdownMenuContent>
         </DropdownMenu>
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -163,6 +164,7 @@ function useWorkAreaTabLabel(tab: WorkAreaTab): string {
 }
 
 function WorkAreaTabItem({
+  channelId,
   tab,
   index,
   selected,
@@ -171,6 +173,7 @@ function WorkAreaTabItem({
   onClose,
   onKeyDown,
 }: {
+  channelId: string;
   tab: WorkAreaTab;
   index: number;
   selected: boolean;
@@ -185,6 +188,8 @@ function WorkAreaTabItem({
   const definition = getWorkAreaTabDefinition(tab.kind);
   const Icon = definition.icon;
   const label = useWorkAreaTabLabel(tab);
+  const Badge = definition.Badge;
+  const badgeId = `${workAreaTabDomId(tab.id)}-count`;
   return (
     <div
       className="colony-work-area-tab"
@@ -193,6 +198,7 @@ function WorkAreaTabItem({
     >
       <button
         aria-controls={workAreaPanelDomId(tab.id)}
+        aria-describedby={Badge ? badgeId : undefined}
         aria-selected={selected}
         className="colony-work-area-tab-select"
         data-testid={`work-area-tab-${tab.id}`}
@@ -211,15 +217,16 @@ function WorkAreaTabItem({
         <Icon aria-hidden="true" />
         <span>{label}</span>
       </button>
+      {Badge ? <Badge channelId={channelId} id={badgeId} /> : null}
       <button
         aria-label={`Close ${label}`}
-        className="colony-work-area-icon-button"
+        className="colony-work-area-tab-close"
         data-testid={`work-area-close-tab-${tab.id}`}
         onClick={() => onClose(tab.id)}
         tabIndex={selected ? 0 : -1}
         type="button"
       >
-        <X aria-hidden="true" />
+        <X aria-hidden="true" strokeWidth={2.6} />
       </button>
     </div>
   );

@@ -407,9 +407,13 @@ export type Colony3Extras = {
   }>;
   /** Removes the signed-in user from channels, to show the not-a-member views. */
   leaveChannelIds?: string[];
+  /** Drops the history the reference workspace seeded in these channels, so a
+   *  board's own `messages` are the whole conversation. */
+  clearMessageChannelIds?: string[];
   messages?: Array<{
     channelId: string;
     id: string;
+    /** A pubkey, or "self" for the signed-in user. */
     pubkey: string;
     createdAt: number;
     kind?: number;
@@ -5678,12 +5682,15 @@ function applyColony3Extras(extras: Colony3Extras, self: string): void {
     );
     syncMockChannel(channel);
   }
+  for (const channelId of extras.clearMessageChannelIds ?? []) {
+    mockMessages.delete(channelId);
+  }
   const sig = "mocksig".repeat(20).slice(0, 128);
   for (const message of extras.messages ?? []) {
     const store = mockMessages.get(message.channelId) ?? [];
     store.push({
       id: message.id,
-      pubkey: message.pubkey,
+      pubkey: message.pubkey === "self" ? self : message.pubkey,
       created_at: message.createdAt,
       kind: message.kind ?? KIND_STREAM_MESSAGE,
       tags: [["h", message.channelId], ...(message.tags ?? [])],

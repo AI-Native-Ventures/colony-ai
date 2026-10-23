@@ -6,9 +6,11 @@ import {
   isWorkAreaTabKind,
   WORK_AREA_DEFAULT_WIDTH,
   type WorkAreaChannelState,
+  type WorkAreaFileRef,
   type WorkAreaTab,
   type WorkAreaTabKind,
 } from "./workAreaTypes";
+import { workAreaFileTabId } from "./workAreaFileTab";
 
 /**
  * Community-scoped work area state: per channel, which tabs are open, which is
@@ -50,11 +52,32 @@ function publish(next: Snapshot) {
   for (const listener of listeners) listener();
 }
 
+function parseFileRef(value: unknown): WorkAreaFileRef | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { agentPubkey, path } = value as Record<string, unknown>;
+  if (
+    typeof agentPubkey !== "string" ||
+    agentPubkey.length === 0 ||
+    agentPubkey.length > 128 ||
+    typeof path !== "string" ||
+    path.length === 0 ||
+    path.length > 1024
+  ) {
+    return null;
+  }
+  return { agentPubkey, path };
+}
+
 function parseTab(value: unknown): WorkAreaTab | null {
   if (typeof value !== "object" || value === null) return null;
-  const { id, kind } = value as Record<string, unknown>;
+  const { id, kind, file } = value as Record<string, unknown>;
   if (typeof id !== "string" || id.length === 0 || id.length > 128) return null;
   if (!isWorkAreaTabKind(kind)) return null;
+  if (kind === "file") {
+    // A file tab without the file it reads cannot be shown.
+    const ref = parseFileRef(file);
+    return ref ? { id, kind, file: ref } : null;
+  }
   return { id, kind };
 }
 
@@ -152,7 +175,9 @@ function sameChannel(a: WorkAreaChannelState, b: WorkAreaChannelState) {
     a.tabs.length === b.tabs.length &&
     a.tabs.every(
       (tab, index) =>
-        tab.id === b.tabs[index]?.id && tab.kind === b.tabs[index]?.kind,
+        tab.id === b.tabs[index]?.id &&
+        tab.kind === b.tabs[index]?.kind &&
+        tab.file?.path === b.tabs[index]?.file?.path,
     )
   );
 }
@@ -220,6 +245,7 @@ function withTab(
   current: WorkAreaChannelState,
   kind: WorkAreaTabKind,
   id: string,
+  file?: WorkAreaFileRef,
 ): WorkAreaChannelState {
   if (current.tabs.some((tab) => tab.id === id)) {
     return { ...current, open: true, activeTabId: id };
@@ -228,7 +254,7 @@ function withTab(
   return {
     ...current,
     open: true,
-    tabs: [...current.tabs, { id, kind }],
+    tabs: [...current.tabs, file ? { id, kind, file } : { id, kind }],
     activeTabId: id,
   };
 }
@@ -250,6 +276,13 @@ export function openWorkArea(
           open: true,
           activeTabId: current.activeTabId ?? current.tabs[0]?.id ?? null,
         },
+  );
+}
+
+/** Open the dock on one file's own tab (added when it is not open yet). */
+export function openWorkAreaFile(channelId: string, file: WorkAreaFileRef) {
+  commit(channelId, (current) =>
+    withTab(current, "file", workAreaFileTabId(file), file),
   );
 }
 
