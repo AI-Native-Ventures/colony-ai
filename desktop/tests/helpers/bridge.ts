@@ -198,6 +198,8 @@ type MockBridgeOptions = {
     kind: number;
     reason: string;
   }>;
+  /** Set false to run the real discovery runner instead of the simulated one. */
+  referenceWorkspaceDiscoveryStandIn?: boolean;
   ttsSettings?: {
     version: number;
     agentTextToSpeech: boolean;

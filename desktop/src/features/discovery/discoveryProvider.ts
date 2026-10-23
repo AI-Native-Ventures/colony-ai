@@ -1,5 +1,7 @@
 import * as React from "react";
 
+import { getRealDiscoveryProvider } from "./discoveryRuntime";
+
 export type DiscoveryAudience = "businesses" | "people";
 export type DiscoveryRunStatus =
   | "running"
@@ -42,6 +44,8 @@ export type DiscoveryCampaign = {
   postedInSales?: boolean;
   /** Unix seconds the campaign was approved. */
   createdAt?: number;
+  /** Places the search found that were already in Leads, so not added again. */
+  skippedDuplicates?: number;
 };
 
 export type DiscoveryCampaignInput = Omit<
@@ -70,9 +74,16 @@ declare global {
   }
 }
 
+/**
+ * The runner behind Find prospects. A test build may install a stand-in on
+ * `window`; it always wins. Otherwise the real runner for the active community
+ * (search through the relay, results saved as prospect records).
+ */
 export function getDiscoveryCampaignProvider(): DiscoveryCampaignProvider | null {
   if (typeof window === "undefined") return null;
-  return window.__BUZZ_E2E_W10_DISCOVERY_PROVIDER__ ?? null;
+  return (
+    window.__BUZZ_E2E_W10_DISCOVERY_PROVIDER__ ?? getRealDiscoveryProvider()
+  );
 }
 
 export function useDiscoveryCampaign() {
