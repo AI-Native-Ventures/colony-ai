@@ -104,20 +104,97 @@ test("owner hires from a role pack and the configured draft survives reload", as
   await expect(page.getByText(/Hello team\. I’ll coordinate/)).toBeVisible();
 });
 
-test("empty role catalog opens a blank role pack editor", async ({ page }) => {
+test("a business with no role personas is offered the built-in roles", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    relayRequiresMembership: true,
+    personas: [],
+    discoverAgentModels: {
+      models: [{ id: "gpt-5.5", name: "GPT-5.5" }],
+      supportsSwitching: true,
+      selectedModel: "gpt-5.5",
+    },
+  });
+  await page.goto("/#/hire/roles");
+
+  const names = [
+    "Hospitality researcher",
+    "Social media manager",
+    "Bookkeeper",
+    "Chief of Staff",
+    "Business development",
+    "Writer",
+  ];
+  for (const name of names) {
+    await expect(page.getByRole("heading", { name })).toBeVisible();
+  }
+  await expect(
+    page.getByRole("heading", { name: "Your role catalog starts here" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Create role pack" }),
+  ).toHaveCount(0);
+  const socialCard = page.getByTestId(
+    "hire-role-built-in-role-social-media-manager",
+  );
+  await expect(socialCard).toContainText("Client social content");
+  await expect(socialCard).toContainText("Social publishing");
+  await expect(socialCard).toContainText("External action");
+
+  const rolePersonas = () =>
+    page.evaluate(async () => {
+      const invoke = (
+        window as Window & {
+          __BUZZ_E2E_INVOKE_MOCK_COMMAND__?: (
+            command: string,
+            payload?: unknown,
+          ) => Promise<unknown>;
+        }
+      ).__BUZZ_E2E_INVOKE_MOCK_COMMAND__;
+      const personas = (await invoke?.("list_personas", {})) as Array<{
+        display_name: string;
+        company_role: unknown;
+      }>;
+      return personas
+        .filter((persona) => persona.company_role)
+        .map((persona) => persona.display_name);
+    });
+  expect(await rolePersonas()).toEqual([]);
+
+  // A double click on a built-in role creates its persona once and reaches Configure.
+  await socialCard
+    .getByRole("button", { name: "Configure this role" })
+    .dblclick();
+  await expect(page.getByTestId("hire-employee-name")).toBeVisible();
+  await expect(page).toHaveURL(/#\/hire\/configure\?.*personaId=/);
+  expect(await rolePersonas()).toEqual(["Social media manager"]);
+
+  // The role is now the business's own: it is listed once, and a second hire
+  // reuses the persona instead of adding another.
+  await page.goto("/#/hire/roles");
+  await expect(
+    page.getByRole("heading", { name: "Social media manager" }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByTestId("hire-role-built-in-role-social-media-manager"),
+  ).toHaveCount(0);
+  await page
+    .locator('[data-testid^="hire-role-"]', {
+      hasText: "Social media manager",
+    })
+    .getByRole("button", { name: "Configure this role" })
+    .click();
+  await expect(page.getByTestId("hire-employee-name")).toBeVisible();
+  expect(await rolePersonas()).toEqual(["Social media manager"]);
+});
+
+test("the role pack editor still opens a blank pack", async ({ page }) => {
   await installMockBridge(page, {
     relayRequiresMembership: true,
     personas: [],
   });
-  await page.goto("/#/hire/roles");
-
-  await expect(
-    page.getByRole("heading", { name: "Your role catalog starts here" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("There are no built-in role packs."),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Create role pack" }).click();
+  await page.goto("/#/agents?rolePack=create");
 
   await expect(page.getByTestId("company-role-pack-page")).toBeVisible();
   await expect(

@@ -158,6 +158,7 @@ function initialValues(
   members: readonly TeamMember[],
   identityPubkey: string | undefined,
   channelId: string,
+  availableRuntimeIds: ReadonlySet<string>,
 ): HireFormValues {
   const managers = activeMembers(members);
   const managerPubkey =
@@ -166,9 +167,13 @@ function initialValues(
     )?.pubkey ??
     managers.find((member) => member.role === "owner")?.pubkey ??
     "";
+  // A role may run on several harnesses: start on the persona's own, else the
+  // first one this Mac has.
   const runtimeId = rolePack.workerMenu.includes(persona?.runtime ?? "")
     ? (persona?.runtime ?? "")
-    : (rolePack.workerMenu[0] ?? "");
+    : (rolePack.workerMenu.find((id) => availableRuntimeIds.has(id)) ??
+      rolePack.workerMenu[0] ??
+      "");
   return {
     displayName: "",
     title: rolePack.title,
@@ -259,7 +264,7 @@ export function HireConfigureScreen({
       initialized.current = true;
       return;
     }
-    if (rolePack) {
+    if (rolePack && !runtimesQuery.isPending) {
       const channels = (channelsQuery.data ?? []).filter(
         (channel) =>
           channel.channelType === "stream" &&
@@ -273,6 +278,7 @@ export function HireConfigureScreen({
           members,
           identityQuery.data?.pubkey,
           channels[0]?.id ?? "",
+          new Set(runtimesById.keys()),
         ),
       );
       initialized.current = true;
@@ -286,6 +292,8 @@ export function HireConfigureScreen({
     relayUrl,
     remoteProposal,
     rolePack,
+    runtimesById,
+    runtimesQuery.isPending,
   ]);
 
   const providerForRuntime = React.useCallback(
@@ -361,6 +369,27 @@ export function HireConfigureScreen({
       choice.providerId === form?.providerId &&
       choice.modelId === form?.modelId,
   );
+  // No model chosen yet (a built-in role has none of its own): start on the
+  // first one the chosen worker offers.
+  React.useEffect(() => {
+    if (!form || form.modelId || !form.runtimeId) return;
+    const first = modelChoices.find(
+      (choice) =>
+        choice.runtimeId === form.runtimeId &&
+        (!form.providerId || choice.providerId === form.providerId),
+    );
+    if (!first) return;
+    setForm((current) =>
+      current && !current.modelId
+        ? {
+            ...current,
+            runtimeId: first.runtimeId,
+            providerId: first.providerId,
+            modelId: first.modelId,
+          }
+        : current,
+    );
+  }, [form, modelChoices]);
   const validChannels = (channelsQuery.data ?? []).filter(
     (channel) =>
       channel.channelType === "stream" &&

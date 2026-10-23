@@ -55,18 +55,18 @@ async function shot(page: Page, capture: Capture) {
   captures.push(capture);
 }
 
-test("HireRoles board: catalog with the no-runtime notice", async ({
+test("HireRoles board: the built-in roles with the no-runtime notice", async ({
   page,
 }) => {
   await openBoard(page, "roles-no-runtime", HIRE_ROUTES.roles, "hire-roles");
   await expect(
-    page.getByTestId(`hire-role-${HIRE_IDS.hospitality}`),
+    page.getByTestId(`hire-role-${HIRE_IDS.builtInHospitality}`),
   ).toBeVisible();
   await expect(page.getByText("No runtime is available")).toBeVisible();
   await shot(page, {
     name: "HireRoles",
     board: "HireRoles",
-    title: "Hire: role catalog, with the no-runtime notice",
+    title: "Hire: role catalog (built-in roles), with the no-runtime notice",
   });
 });
 
@@ -103,15 +103,30 @@ test("HireRoles: a role card selects and the preview follows", async ({
   await expect(page).toHaveURL(/#\/asks\/new\?.*type=hire/);
 });
 
-test("HireRoles: empty catalog", async ({ page }) => {
+test("HireRoles: a business with no role personas is offered the built-ins", async ({
+  page,
+}) => {
   await openBoard(page, "roles-empty", HIRE_ROUTES.roles, "hire-roles");
+  for (const name of [
+    "Hospitality researcher",
+    "Social media manager",
+    "Bookkeeper",
+    "Chief of Staff",
+    "Business development",
+    "Writer",
+  ]) {
+    await expect(page.getByRole("heading", { name })).toBeVisible();
+  }
   await expect(
     page.getByRole("heading", { name: "Your role catalog starts here" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Create role pack" }),
+  ).toHaveCount(0);
   await shot(page, {
-    name: "HireRoles-empty",
+    name: "HireRoles-built-in",
     board: "HireRoles",
-    title: "Hire: role catalog with no packs (the board's last card)",
+    title: "Hire: role catalog for a business with no role personas",
   });
 });
 

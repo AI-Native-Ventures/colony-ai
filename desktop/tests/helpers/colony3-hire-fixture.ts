@@ -30,6 +30,9 @@ export const HIRE_IDS = {
   hospitality: "company-role-hospitality-researcher",
   social: "company-role-social-media-manager",
   bookkeeper: "company-role-bookkeeper",
+  builtInHospitality: "built-in-role-hospitality-researcher",
+  builtInSocial: "built-in-role-social-media-manager",
+  builtInBookkeeper: "built-in-role-bookkeeper",
   scout: REFERENCE_AGENTS.scout.pubkey,
   birch: BIRCH_PUBKEY,
 } as const;
@@ -141,9 +144,9 @@ function birchProposal(input: { withAllowance: boolean }) {
 export type HireFixtureState =
   /** The catalog, with a runtime on this Mac. */
   | "roles"
-  /** The catalog with no runtime available: the notice card shows. */
+  /** A business with no role personas and no runtime: built-ins and the notice. */
   | "roles-no-runtime"
-  /** The catalog with no role packs yet. */
+  /** A business with no role personas yet: the catalog is the built-in roles. */
   | "roles-empty"
   /** Birch's draft on Configure, allowance not set yet. */
   | "configure"
@@ -206,7 +209,8 @@ export async function installHireFixture(
     companyMemberRelayPrivateKeyHex: RELAY_SECRET_HEX,
     relayRequiresMembership: true,
     relayRole: "owner",
-    personas: state === "roles-empty" ? [] : PERSONAS,
+    personas:
+      state === "roles-empty" || state === "roles-no-runtime" ? [] : PERSONAS,
     discoverAgentModels: {
       models: [{ id: "gpt-5.5", name: "GPT-5.5" }],
       supportsSwitching: true,

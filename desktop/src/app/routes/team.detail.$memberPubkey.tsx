@@ -19,6 +19,10 @@ function TeamMemberDetailRoute() {
   const { memberPubkey } = Route.useParams();
   const { tab } = Route.useSearch();
   return (
-    <TeamMemberScreen initialTab={tab} memberPubkey={memberPubkey} mode="detail" />
+    <TeamMemberScreen
+      initialTab={tab}
+      memberPubkey={memberPubkey}
+      mode="detail"
+    />
   );
 }

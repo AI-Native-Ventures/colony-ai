@@ -1,13 +1,25 @@
 import * as React from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useAppShell } from "@/app/AppShellContext";
-import { useAcpRuntimesQuery, usePersonasQuery } from "@/features/agents/hooks";
+import {
+  personasQueryKey,
+  useAcpRuntimesQuery,
+  useCreatePersonaMutation,
+  usePersonasQuery,
+} from "@/features/agents/hooks";
 import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
+import { useCommunities } from "@/features/communities/useCommunities";
+import { listPersonas } from "@/shared/api/tauriPersonas";
 import type { AgentPersona } from "@/shared/api/types";
-import { companyHireRolePackFromPersona } from "../companyHireModels";
 import type { HireProposal } from "@/features/company-asks/askRecords";
+import {
+  buildRoleCatalog,
+  materializeBuiltInRole,
+  type RoleCatalogEntry,
+} from "../builtInRoles";
 import {
   HireButton,
   HirePage,
@@ -15,22 +27,9 @@ import {
   HireSteps,
   HireTitle,
 } from "./HirePresentation";
-import {
-  AlertGlyph,
-  PlusGlyph,
-  RoleIcon,
-  ToolChip,
-  toolPlainText,
-} from "./hireTools";
+import { AlertGlyph, RoleIcon, ToolChip, toolPlainText } from "./hireTools";
 
 type RolePack = HireProposal["rolePack"];
-
-function rolePacks(personas: readonly AgentPersona[]) {
-  return personas.flatMap((persona) => {
-    const rolePack = companyHireRolePackFromPersona(persona);
-    return rolePack ? [{ persona, rolePack }] : [];
-  });
-}
 
 function allowanceText(rolePack: RolePack) {
   return rolePack.defaultAllowance
@@ -56,6 +55,7 @@ function ToolRows({ tools }: { tools: RolePack["tools"] }) {
 }
 
 function RoleCard({
+  busy,
   onConfigure,
   onSelect,
   persona,
@@ -63,6 +63,7 @@ function RoleCard({
   selected,
   workerLabels,
 }: {
+  busy: boolean;
   onConfigure: () => void;
   onSelect: () => void;
   persona: AgentPersona;
@@ -112,7 +113,7 @@ function RoleCard({
         </dd>
       </dl>
       <div className="colony-hire-role-actions">
-        <HireButton onClick={onConfigure} size="sm">
+        <HireButton disabled={busy} onClick={onConfigure} size="sm">
           Configure this role
         </HireButton>
       </div>
@@ -121,12 +122,14 @@ function RoleCard({
 }
 
 function RolePreview({
+  busy,
   onConfigure,
   onPropose,
   rolePack,
   saved,
   workerLabels,
 }: {
+  busy: boolean;
   onConfigure: () => void;
   onPropose: () => void;
   rolePack: RolePack;
@@ -178,11 +181,12 @@ function RolePreview({
         </div>
       </dl>
       <div className="colony-hire-panel-actions">
-        <HireButton block onClick={onConfigure} size="lg">
+        <HireButton block disabled={busy} onClick={onConfigure} size="lg">
           Configure this role
         </HireButton>
         <HireButton
           block
+          disabled={busy}
           onClick={onPropose}
           size="md"
           testId="hire-propose"
@@ -233,9 +237,15 @@ export function HireRolesScreen({
     useAppNavigation();
   const navigate = useNavigate();
   const appShell = useAppShell();
+  const queryClient = useQueryClient();
+  const createPersona = useCreatePersonaMutation();
+  const { activeCommunity } = useCommunities();
   const [selectedId, setSelectedId] = React.useState<string | null>(
     savedRolePackId ?? null,
   );
+  const [adding, setAdding] = React.useState(false);
+  const [addFailed, setAddFailed] = React.useState(false);
+  const addingRef = React.useRef(false);
   React.useEffect(() => {
     if (savedRolePackId) setSelectedId(savedRolePackId);
   }, [savedRolePackId]);
@@ -370,21 +380,75 @@ export function HireRolesScreen({
     );
   }
 
-  const options = rolePacks(personasQuery.data ?? []);
+  const options = buildRoleCatalog(personasQuery.data ?? []);
   const runtimeLabels = new Map(
     (runtimesQuery.data ?? []).map((runtime) => [runtime.id, runtime.label]),
   );
-  const workerLabelsFor = (rolePack: RolePack) =>
-    rolePack.workerMenu.map(
-      (runtimeId) => runtimeLabels.get(runtimeId) ?? "No runtime is available",
+  const availableRuntimes = new Set(
+    (runtimesQuery.data ?? [])
+      .filter((runtime) => runtime.availability === "available")
+      .map((runtime) => runtime.id),
+  );
+  // The harnesses a role may run on that this Mac has: the ones installed when
+  // there are any, otherwise the ones it knows about.
+  const workerLabelsFor = (rolePack: RolePack) => {
+    const known = rolePack.workerMenu.filter((id) => runtimeLabels.has(id));
+    const installed = known.filter((id) => availableRuntimes.has(id));
+    const labels = (installed.length > 0 ? installed : known).map(
+      (id) => runtimeLabels.get(id) ?? id,
     );
+    return labels.length > 0 ? labels : ["No runtime is available"];
+  };
   const selected =
     options.find(({ persona }) => persona.id === selectedId) ?? options[0];
-  const hasAvailableRuntime = (runtimesQuery.data ?? []).some(
-    (runtime) => runtime.availability === "available",
-  );
-  const configure = (personaId: string) =>
-    void goHireConfigure(personaId, crypto.randomUUID());
+  const hasAvailableRuntime = availableRuntimes.size > 0;
+
+  // A built-in role becomes a real persona the first time it is used; hiring
+  // carries on with that persona's id.
+  const personaIdFor = (entry: RoleCatalogEntry) =>
+    entry.builtIn
+      ? materializeBuiltInRole(entry.builtIn, {
+          createPersona: createPersona.mutateAsync,
+          listPersonas: () =>
+            queryClient.fetchQuery({
+              queryFn: listPersonas,
+              queryKey: personasQueryKey,
+              staleTime: 0,
+            }),
+          scope: activeCommunity?.relayUrl,
+        })
+      : Promise.resolve(entry.persona.id);
+  const addRole = async (
+    entry: RoleCatalogEntry,
+    next: (personaId: string) => void,
+  ) => {
+    if (addingRef.current) return;
+    addingRef.current = true;
+    setAdding(true);
+    setAddFailed(false);
+    try {
+      next(await personaIdFor(entry));
+    } catch {
+      setAddFailed(true);
+    } finally {
+      addingRef.current = false;
+      setAdding(false);
+    }
+  };
+  const configure = (entry: RoleCatalogEntry) =>
+    void addRole(
+      entry,
+      (personaId) => void goHireConfigure(personaId, crypto.randomUUID()),
+    );
+  const propose = (entry: RoleCatalogEntry) =>
+    void addRole(
+      entry,
+      () =>
+        void navigate({
+          to: "/asks/new",
+          search: { channelId: null, threadRootEventId: null, type: "hire" },
+        }),
+    );
 
   return (
     <HirePage testId="hire-roles">
@@ -395,55 +459,38 @@ export function HireRolesScreen({
       <HireSteps current={1} />
       <div className="colony-hire-columns">
         <section aria-label="Role packs" className="colony-hire-roles">
-          {options.map(({ persona, rolePack }) => (
+          {options.map((entry) => (
             <RoleCard
-              key={persona.id}
-              onConfigure={() => configure(persona.id)}
-              onSelect={() => setSelectedId(persona.id)}
-              persona={persona}
-              rolePack={rolePack}
-              selected={selected?.persona.id === persona.id}
-              workerLabels={workerLabelsFor(rolePack)}
+              busy={adding}
+              key={entry.persona.id}
+              onConfigure={() => configure(entry)}
+              onSelect={() => setSelectedId(entry.persona.id)}
+              persona={entry.persona}
+              rolePack={entry.rolePack}
+              selected={selected?.persona.id === entry.persona.id}
+              workerLabels={workerLabelsFor(entry.rolePack)}
             />
           ))}
-          {options.length === 0 ? (
-            <article className="colony-hire-role-empty">
-              <span className="colony-hire-icon-tile">
-                <PlusGlyph size={20} />
-              </span>
-              <h2>Your role catalog starts here</h2>
-              <p>
-                There are no built-in role packs. Create a pack with a job,
-                skills, scoped tools and an allowed worker menu.
-              </p>
-              <HireButton
-                onClick={() => void goAgentRolePack()}
-                size="sm"
-                variant="outline"
-              >
-                Create role pack
-              </HireButton>
-            </article>
-          ) : null}
         </section>
         <aside aria-label="Role pack preview" className="colony-hire-aside">
           {selected ? (
             <RolePreview
-              onConfigure={() => configure(selected.persona.id)}
-              onPropose={() =>
-                void navigate({
-                  to: "/asks/new",
-                  search: {
-                    channelId: null,
-                    threadRootEventId: null,
-                    type: "hire",
-                  },
-                })
-              }
+              busy={adding}
+              onConfigure={() => configure(selected)}
+              onPropose={() => propose(selected)}
               rolePack={selected.rolePack}
               saved={selected.persona.id === savedRolePackId}
               workerLabels={workerLabelsFor(selected.rolePack)}
             />
+          ) : null}
+          {addFailed ? (
+            <p
+              className="colony-hire-error"
+              data-testid="hire-role-add-error"
+              role="alert"
+            >
+              The role could not be added. Try again.
+            </p>
           ) : null}
           {hasAvailableRuntime ? null : (
             <NoRuntimeNotice

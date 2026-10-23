@@ -1208,21 +1208,26 @@
 /* Font sizes sit on the fallback itself and win over the old workspace avatar
    overrides, which set the initial's size with !important. */
 .colony-hire-avatar-26 [data-slot="avatar-fallback"] {
+  /* biome-ignore lint/complexity/noImportantStyles: beats the old workspace avatar override */
   font-size: calc(11 * var(--colony-px)) !important;
 }
 
 .colony-hire-avatar-44 [data-slot="avatar-fallback"] {
+  /* biome-ignore lint/complexity/noImportantStyles: beats the old workspace avatar override */
   font-size: calc(17 * var(--colony-px)) !important;
 }
 
 .colony-hire-avatar-56 [data-slot="avatar-fallback"] {
+  /* biome-ignore lint/complexity/noImportantStyles: beats the old workspace avatar override */
   font-size: calc(21 * var(--colony-px)) !important;
 }
 
 .colony-hire-avatar-60 [data-slot="avatar-fallback"] {
+  /* biome-ignore lint/complexity/noImportantStyles: beats the old workspace avatar override */
   font-size: calc(22 * var(--colony-px)) !important;
 }
 
 .colony-hire-avatar-104 [data-slot="avatar-fallback"] {
+  /* biome-ignore lint/complexity/noImportantStyles: beats the old workspace avatar override */
   font-size: calc(40 * var(--colony-px)) !important;
 }
