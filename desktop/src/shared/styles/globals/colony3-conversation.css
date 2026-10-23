@@ -203,14 +203,17 @@
 
 /* The conversation column: 28px gutters, content at most 920px, left aligned. */
 .c3c-timeline-scroller {
-  padding-inline: calc(var(--c3c-gutter) * var(--colony-px));
   padding-top: calc(
-    var(--buzz-channel-content-top-padding, 5.75rem) + 24 * var(--colony-px)
+    var(--buzz-channel-content-top-padding, 5.75rem) +
+    24 *
+    var(--colony-px)
   );
 }
 
 .c3c-timeline-column {
+  box-sizing: content-box;
   max-width: calc(var(--c3c-content-max) * var(--colony-px));
+  padding-inline: calc(var(--c3c-gutter) * var(--colony-px));
 }
 
 .c3c-day-label {
@@ -403,4 +406,54 @@
   box-shadow:
     -28px 0 60px -32px rgba(40, 20, 60, 0.45),
     0 0 0 1px hsl(var(--colony-border));
+}
+
+/* Focus thread drawer: a plain 64px header row, a 780px reading column. */
+.c3c-focus-drawer [data-testid="auxiliary-panel-header-backdrop"] {
+  display: none;
+}
+
+.c3c-focus-drawer [data-tauri-drag-region] {
+  min-height: calc(64 * var(--colony-px));
+  margin-bottom: 0;
+  border-bottom: 1px solid hsl(var(--colony-border));
+  padding: 0 calc(14 * var(--colony-px)) 0 calc(26 * var(--colony-px));
+  background-color: hsl(var(--colony-surface));
+  backdrop-filter: none;
+}
+
+.c3c-focus-drawer [data-testid="message-thread-body"] {
+  padding-top: 0;
+}
+
+.c3c-focus-drawer [data-image-gallery-scope="thread"] {
+  padding-inline: calc(32 * var(--colony-px));
+}
+
+.c3c-focus-drawer [data-testid="message-thread-head"],
+.c3c-focus-drawer [data-testid="message-thread-head-divider"],
+.c3c-focus-drawer [data-testid="message-thread-replies"] {
+  padding-inline: 0;
+}
+
+.c3c-focus-drawer [data-testid="message-thread-head"] {
+  padding-top: calc(26 * var(--colony-px));
+  padding-bottom: calc(18 * var(--colony-px));
+}
+
+/* @mentions in messages: a soft accent chip, no icon. */
+.message-markdown
+.mention-chip:not(.buzz-link-unavailable):not(.buzz-link-deleted):not(
+  .inbox-channel-chip
+):not(.search-channel-chip) {
+  border-radius: calc(7 * var(--colony-px));
+  padding: calc(1 * var(--colony-px)) calc(6 * var(--colony-px));
+  background-color: hsl(var(--colony-accent-soft));
+  color: hsl(var(--colony-accent-ink));
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.message-markdown .mention-chip svg {
+  display: none;
 }

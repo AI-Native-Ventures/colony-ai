@@ -56,6 +56,7 @@ type MessageTimelineProps = {
   directMessageIntro?: {
     displayName: string;
     participants: DirectMessageIntroParticipant[];
+    avatarParticipants?: DirectMessageIntroParticipant[];
   } | null;
   isError?: boolean;
   isLoading?: boolean;
@@ -649,7 +650,10 @@ const MessageTimelineBase = React.forwardRef<
         <DirectMessageIntroBlock
           className="pb-6"
           displayName={activeDirectMessageIntro.displayName}
-          participants={activeDirectMessageIntro.participants}
+          participants={
+            activeDirectMessageIntro.avatarParticipants ??
+            activeDirectMessageIntro.participants
+          }
         />
       ) : referenceWindowDayLabel ? (
         <div
@@ -846,7 +850,10 @@ const MessageTimelineBase = React.forwardRef<
                   <DirectMessageIntroBlock
                     className="mt-auto py-2"
                     displayName={activeDirectMessageIntro.displayName}
-                    participants={activeDirectMessageIntro.participants}
+                    participants={
+                      activeDirectMessageIntro.avatarParticipants ??
+                      activeDirectMessageIntro.participants
+                    }
                   />
                 ) : null}
 

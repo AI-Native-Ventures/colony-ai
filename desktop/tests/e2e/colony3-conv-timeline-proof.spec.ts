@@ -57,9 +57,34 @@ const aya = "a4a4".repeat(16);
 
 /** The agents the boards show are managed by Lerato where the board says so. */
 const OWNED_AGENT_PROFILES: NonNullable<Colony3Extras["profiles"]> = [
-  { pubkey: mina, displayName: "Mina", isAgent: true, ownerPubkey: "self" },
-  { pubkey: theo, displayName: "Theo", isAgent: true, ownerPubkey: "self" },
-  { pubkey: aya, displayName: "Aya", isAgent: true, ownerPubkey: "self" },
+  mina,
+  theo,
+  aya,
+].map((pubkey, index) => ({
+  pubkey,
+  displayName: ["Mina", "Theo", "Aya"][index],
+  isAgent: true,
+  ownerPubkey: "self",
+  presence: "online" as const,
+}));
+
+/** Agents managed on this device, so no "other setup" marker shows by a name. */
+const MANAGED_AGENTS = [
+  { pubkey: mina, name: "Mina" },
+  { pubkey: theo, name: "Theo" },
+  { pubkey: aya, name: "Aya" },
+].map((agent) => ({
+  ...agent,
+  status: "running" as const,
+  channelNames: ["The Olive House", "Marketing", "Sales"],
+}));
+
+/** Channels the boards read to the end, so no New divider shows by default. */
+const READ_CHANNELS = [
+  REFERENCE_CHANNEL_IDS.oliveHouse,
+  REFERENCE_CHANNEL_IDS.ayaDm,
+  REFERENCE_CHANNEL_IDS.marketing,
+  REFERENCE_CHANNEL_IDS.operations,
 ];
 
 async function openLerato(
@@ -84,8 +109,12 @@ async function openLerato(
     colony3Sidebar: true,
     windowFullscreen: true,
     ...colony3PositionOptions(),
+    managedAgents: MANAGED_AGENTS,
+    // The moderation items show to an owner.
+    relayMembers: [{ pubkey: "deadbeef".repeat(8), role: "owner" as const }],
     ...options.bridge,
     colony3Extras: colony3Extras({
+      readChannelIds: READ_CHANNELS,
       ...extras,
       profiles: [
         ...(options.owned ? OWNED_AGENT_PROFILES : []),
@@ -181,7 +210,10 @@ test("Channel board", async ({ page }) => {
       clearMessagesIn: [REFERENCE_CHANNEL_IDS.oliveHouse],
       messages: oliveChannelBoardMessages(),
     },
-    { owned: true, bridge: workAreaBridge },
+    {
+      owned: true,
+      bridge: { ...workAreaBridge, managedAgents: MANAGED_AGENTS },
+    },
   );
   await page.getByTestId("channel-The Olive House").click();
   await expect(page.getByTestId("chat-title")).toHaveText("The Olive House");
@@ -285,7 +317,8 @@ test("Channel join board", async ({ page }) => {
     leaveChannelIds: [REFERENCE_CHANNEL_IDS.marketing],
     messages: marketingMessages(),
   });
-  await page.getByTestId("channel-Marketing").click();
+  // The person has not joined, so the channel is not in the sidebar.
+  await page.goto(`/#/channels/${REFERENCE_CHANNEL_IDS.marketing}`);
   await expect(page.getByTestId("chat-title")).toHaveText("Marketing");
   await page.waitForTimeout(1500);
   await scrollTimelineTo(page, '[data-testid="message-channel-intro"]', 28);

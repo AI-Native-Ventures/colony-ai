@@ -45,7 +45,6 @@ import { getThreadPanelLayout } from "@/features/channels/lib/threadPanelLayout"
 import { useThreadViewMode } from "@/features/channels/lib/threadViewModePreference";
 import { useThreadViewModeSwitch } from "@/features/channels/ui/useThreadViewModeSwitch";
 import { useFocusDrawerPresence } from "@/features/channels/ui/useFocusDrawerPresence";
-import { useChannelWorkingAgentPubkeys } from "@/features/agents/agentWorkingSignal";
 import { useCardMintJobs } from "@/features/agents/cardMintStore";
 import { BotActivityComposerAction } from "@/features/channels/ui/BotActivityBar";
 import { ChannelComposerActivityAccessory } from "@/features/channels/ui/ChannelComposerActivityAccessory";
@@ -56,7 +55,6 @@ import {
 import { useWelcomeComposerBanner } from "@/features/channels/ui/useWelcomeComposerBanner";
 import {
   mentionsKnownAgent,
-  selectThreadComposerBotTypingPubkeys,
   shouldPrioritizeIdleAuxiliary,
   shouldUseFocusIdleDrawer,
 } from "@/features/channels/ui/ChannelPane.helpers";
@@ -77,6 +75,7 @@ import { isWelcomeExperienceChannel as isWelcomeExperience } from "@/features/on
 import { useIsThreadPanelOverlay } from "@/shared/hooks/use-mobile";
 import { channelChrome } from "@/shared/layout/chromeLayout";
 import { cn } from "@/shared/lib/cn";
+const NO_WORKING_BOT_PUBKEYS: string[] = [];
 const HUDDLE_TRANSCRIPT_ROOT_STYLE = {
   "--buzz-channel-content-top-padding": "0rem",
   "--channel-top-chrome-height": "0.25rem",
@@ -340,20 +339,15 @@ export const ChannelPane = React.memo(function ChannelPane({
     acceptsMainAttachments &&
     !isSinglePanelView;
   const hasTypingActivity = typingPubkeys.length > 0;
-  const composerWorkingBotPubkeys = useChannelWorkingAgentPubkeys(
-    activeChannel?.id ?? null,
-  );
-  const hasComposerBotActivity = composerWorkingBotPubkeys.length > 0;
+  // The live agent activity strip under the composer is cut in lean Colony 3.0;
+  // the sidebar shows which channels have agents at work.
+  const composerWorkingBotPubkeys = NO_WORKING_BOT_PUBKEYS;
+  const hasComposerBotActivity = false;
   const hasCardMintActivity = useCardMintJobs().length > 0;
   const hasComposerBottomActivity =
     hasComposerBotActivity || hasTypingActivity || hasCardMintActivity;
-  const threadComposerBotTypingPubkeys = React.useMemo(
-    () =>
-      selectThreadComposerBotTypingPubkeys(botTypingEntries, openThreadHeadId),
-    [botTypingEntries, openThreadHeadId],
-  );
-  const hasThreadComposerBotActivity =
-    threadComposerBotTypingPubkeys.length > 0;
+  const threadComposerBotTypingPubkeys = NO_WORKING_BOT_PUBKEYS;
+  const hasThreadComposerBotActivity = false;
   const directMessageIntro = React.useMemo(
     () =>
       buildDirectMessageIntro({

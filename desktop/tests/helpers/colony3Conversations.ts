@@ -138,6 +138,7 @@ export function colony3Extras(own: Partial<Colony3Extras> = {}): Colony3Extras {
     channels: own.channels ?? [],
     members: [...colony3OliveMembers(), ...(own.members ?? [])],
     patchChannels: own.patchChannels ?? [],
+    readChannelIds: own.readChannelIds ?? [],
     leaveChannelIds: own.leaveChannelIds ?? [],
     clearMessageChannelIds: own.clearMessageChannelIds ?? [],
     clearMessagesIn: own.clearMessagesIn ?? [],

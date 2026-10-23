@@ -1,5 +1,7 @@
 import { firstName } from "@/features/channels/ui/DmAgentSubtitle";
+import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { UserProfilePopover } from "@/features/profile/ui/UserProfilePopover";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 
 /**
  * What the header says about the sender besides their name: their job title
@@ -13,17 +15,33 @@ export function MessageAgentOwner({
   ownerLabel,
   ownerPubkey,
   selfName,
+  selfPubkey,
 }: {
   isAgent?: boolean;
   jobTitle?: string | null;
   ownerLabel?: string | null;
   ownerPubkey?: string | null;
   selfName?: string | null;
+  /** Needed to name you when the agent is yours and the lookup has no name. */
+  selfPubkey?: string | null;
 }) {
+  const needsSelfName =
+    ownerLabel === "you" && !selfName && Boolean(selfPubkey);
+  const selfQuery = useUsersBatchQuery(
+    needsSelfName && selfPubkey ? [selfPubkey] : [],
+    {
+      enabled: needsSelfName,
+    },
+  );
+  const resolvedSelfName =
+    selfName ??
+    (selfPubkey
+      ? selfQuery.data?.profiles[normalizePubkey(selfPubkey)]?.displayName
+      : null);
   const managedBy =
     isAgent && ownerPubkey && ownerLabel
       ? ownerLabel === "you"
-        ? (firstName(selfName) ?? "you")
+        ? (firstName(resolvedSelfName) ?? "you")
         : (firstName(ownerLabel) ?? ownerLabel)
       : null;
 

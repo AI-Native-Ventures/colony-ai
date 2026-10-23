@@ -411,6 +411,8 @@ export type Colony3Extras = {
   patchChannels?: Array<{ id: string; description?: string; name?: string }>;
   /** Removes the signed-in user from channels, to show the not-a-member views. */
   leaveChannelIds?: string[];
+  /** Channels read to the end, so no New divider or unread pill shows. */
+  readChannelIds?: string[];
   /** Drops the history the reference workspace seeded in these channels, so a
    *  board's own `messages` are the whole conversation. */
   clearMessageChannelIds?: string[];
@@ -5701,6 +5703,21 @@ function applyColony3Extras(extras: Colony3Extras, self: string): void {
     ...(extras.clearMessagesIn ?? []),
   ]) {
     mockMessages.delete(channelId);
+  }
+  if (extras.readChannelIds?.length) {
+    const key = `buzz.channel-read-state.v2:${self}`;
+    let readState: Record<string, string> = {};
+    try {
+      readState = JSON.parse(window.localStorage.getItem(key) ?? "{}");
+    } catch {
+      readState = {};
+    }
+    // Later than any message a board seeds, whatever the fixed clock says.
+    const readAt = "2026-10-23T23:59:00.000+02:00";
+    for (const channelId of extras.readChannelIds) {
+      readState[channelId] = new Date(readAt).toISOString();
+    }
+    window.localStorage.setItem(key, JSON.stringify(readState));
   }
   const sig = "mocksig".repeat(20).slice(0, 128);
   for (const message of extras.messages ?? []) {

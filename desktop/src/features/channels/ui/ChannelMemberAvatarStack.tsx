@@ -22,6 +22,13 @@ export function ChannelMemberAvatarStack({
   testIdPrefix?: string;
 }) {
   const orderedMembers = React.useMemo(() => {
+    if (size === "header") {
+      // You first, then the agents working here, then everyone else.
+      const self = currentPubkey ? normalizePubkey(currentPubkey) : null;
+      const rank = (member: ChannelMember) =>
+        normalizePubkey(member.pubkey) === self ? 0 : member.isAgent ? 1 : 2;
+      return [...members].sort((left, right) => rank(left) - rank(right));
+    }
     if (size !== "compact" || !currentPubkey) return members;
     const normalizedCurrentPubkey = normalizePubkey(currentPubkey);
     return [
@@ -70,7 +77,7 @@ export function ChannelMemberAvatarStack({
           pubkey: member.pubkey,
         });
         const avatarLabel =
-          size === "compact" &&
+          (size === "compact" || size === "header") &&
           currentPubkey &&
           normalizedPubkey === normalizePubkey(currentPubkey)
             ? (member.displayName ?? label)
@@ -107,7 +114,7 @@ export function ChannelMemberAvatarStack({
           </span>
         );
       })}
-      {overflowCount > 0 ? (
+      {overflowCount > 0 && size !== "header" ? (
         <span
           className={`${avatarOverlapClass} ${overflowSizeClass} flex items-center justify-center rounded-full border-2 border-background bg-muted text-2xs font-semibold text-muted-foreground`}
           data-testid={`${testIdPrefix}-avatar-overflow`}
