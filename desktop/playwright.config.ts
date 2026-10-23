@@ -212,7 +212,6 @@ export default defineConfig({
         "**/company-team-design.spec.ts",
         "**/company-team-scout.spec.ts",
         "**/company-spend.spec.ts",
-        "**/company-permissions.spec.ts",
         "**/company-work.spec.ts",
         "**/asks-2.spec.ts",
         "**/factory.spec.ts",

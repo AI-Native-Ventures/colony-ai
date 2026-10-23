@@ -115,7 +115,11 @@ test("HireRoles: a business with no role personas is offered the built-ins", asy
     "Business development",
     "Writer",
   ]) {
-    await expect(page.getByRole("heading", { name })).toBeVisible();
+    await expect(
+      page
+        .getByRole("region", { name: "Role packs" })
+        .getByRole("heading", { name }),
+    ).toBeVisible();
   }
   await expect(
     page.getByRole("heading", { name: "Your role catalog starts here" }),

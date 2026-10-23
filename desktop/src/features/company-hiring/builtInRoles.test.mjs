@@ -58,7 +58,9 @@ test("built-in roles are valid, distinct role packs in plain words", () => {
     for (const tool of entry.companyRole.tools) {
       assert.ok(RISKS.has(tool.risk), `${entry.displayName}: ${tool.name}`);
     }
-    const text = JSON.stringify(entry);
+    // The worker menu holds runtime ids ("buzz-agent"), which are never shown.
+    const { workerMenu: _runtimeIds, ...visibleRole } = entry.companyRole;
+    const text = JSON.stringify({ ...entry, companyRole: visibleRole });
     assert.equal(
       text.includes("—"),
       false,

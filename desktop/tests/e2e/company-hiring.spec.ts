@@ -127,7 +127,11 @@ test("a business with no role personas is offered the built-in roles", async ({
     "Writer",
   ];
   for (const name of names) {
-    await expect(page.getByRole("heading", { name })).toBeVisible();
+    await expect(
+      page
+        .getByRole("region", { name: "Role packs" })
+        .getByRole("heading", { name }),
+    ).toBeVisible();
   }
   await expect(
     page.getByRole("heading", { name: "Your role catalog starts here" }),
@@ -174,7 +178,9 @@ test("a business with no role personas is offered the built-in roles", async ({
   // reuses the persona instead of adding another.
   await page.goto("/#/hire/roles");
   await expect(
-    page.getByRole("heading", { name: "Social media manager" }),
+    page
+      .getByRole("region", { name: "Role packs" })
+      .getByRole("heading", { name: "Social media manager" }),
   ).toHaveCount(1);
   await expect(
     page.getByTestId("hire-role-built-in-role-social-media-manager"),
