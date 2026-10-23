@@ -98,6 +98,9 @@ test("HireRoles: a role card selects and the preview follows", async ({
     board: "HireRoles",
     title: "Hire: role catalog with a runtime on this Mac",
   });
+  // "Propose a hire" starts a hire proposal ask instead of configuring.
+  await page.getByTestId("hire-propose").click();
+  await expect(page).toHaveURL(/#\/asks\/new\?.*type=hire/);
 });
 
 test("HireRoles: empty catalog", async ({ page }) => {

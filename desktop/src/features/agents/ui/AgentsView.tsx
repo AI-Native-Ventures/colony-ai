@@ -391,7 +391,9 @@ export function AgentsView({
                   defaultsRef={fullAiDefaultsTriggerRef}
                   onAddAgent={() => openCommunityCatalog("agents")}
                   onHarnesses={() => appShell.onOpenSettings?.("agents")}
-                  onInvite={() => appShell.onOpenSettings?.("community-members")}
+                  onInvite={() =>
+                    appShell.onOpenSettings?.("community-members")
+                  }
                   onOpenDefaults={openAiDefaults}
                   onOpenPeople={() => void goTeam()}
                   peopleCount={directoryPeopleCount}

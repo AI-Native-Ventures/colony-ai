@@ -61,13 +61,13 @@ for (const size of sizes) {
     const team = page.getByTestId("company-team-screen");
     await expect(team).toBeVisible();
     if (!before) {
-      await expect(page.getByTestId("app-top-chrome")).toHaveCount(0);
-      await expect(
-        team.getByRole("navigation", { name: "Navigation history" }),
-      ).toHaveCount(1);
-      await expect(page.getByTestId("global-back")).toHaveCount(1);
-      const header = await team.locator("header").boundingBox();
-      const back = await team.getByTestId("global-back").boundingBox();
+      // Team uses the shell top bar like every other page now, so its history
+      // buttons sit inside the one 64px bar.
+      const chrome = page.getByTestId("app-top-chrome");
+      await expect(chrome).toHaveCount(1);
+      await expect(chrome.getByTestId("global-back")).toHaveCount(1);
+      const header = await chrome.boundingBox();
+      const back = await chrome.getByTestId("global-back").boundingBox();
       expect(header).not.toBeNull();
       expect(back).not.toBeNull();
       expect(back!.y).toBeGreaterThanOrEqual(header!.y);

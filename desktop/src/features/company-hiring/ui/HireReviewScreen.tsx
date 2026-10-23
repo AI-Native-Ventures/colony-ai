@@ -913,7 +913,10 @@ export function HireReviewScreen({
               {proposal.rolePack.tools.map((tool) => (
                 <React.Fragment key={tool.name}>
                   {tool.name}
-                  <ToolChip tool={tool} />
+                  <ToolChip
+                    detailed={proposal.rolePack.tools.length === 1}
+                    tool={tool}
+                  />
                 </React.Fragment>
               ))}
             </dd>

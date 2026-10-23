@@ -20,6 +20,7 @@ import {
   useUpdateProfileMutation,
   useUsersBatchQuery,
 } from "@/features/profile/hooks";
+import { resolveJobTitle } from "@/features/profile/lib/jobTitle";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { truncateNpub } from "@/shared/lib/pubkey";
 import { CloseIcon } from "@/shared/ui/colonyIcons";
@@ -55,6 +56,34 @@ function useMemberName(member: TeamMember) {
 
 function kindLabel(member: TeamMember) {
   return member.kind === "employee" ? "AI employee" : "Human";
+}
+
+/**
+ * The 400px dialog surface. Focus rests on the surface itself, not the close
+ * button, so no ring is drawn until someone tabs into the form.
+ */
+function TeamDialogSurface({
+  children,
+  testId,
+}: {
+  children: React.ReactNode;
+  testId: string;
+}) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  return (
+    <DialogContent
+      className="team-dialog"
+      data-testid={testId}
+      onOpenAutoFocus={(event) => {
+        event.preventDefault();
+        ref.current?.focus();
+      }}
+      ref={ref}
+      showCloseButton={false}
+    >
+      {children}
+    </DialogContent>
+  );
 }
 
 function DialogHeading({
@@ -122,7 +151,11 @@ export function EditRoleReportingDialog({
     profiles?.[candidate.pubkey]?.displayName?.trim() ||
     candidate.fallbackName?.trim() ||
     truncateNpub(candidate.pubkey);
-  const currentTitle = member.position?.head.title ?? "";
+  // The title on the person's own profile leads; the position title backs it.
+  const currentTitle = resolveJobTitle({
+    positionTitle: member.position?.head.title,
+    profile: profiles?.[member.pubkey],
+  });
   const currentManager = member.position?.head.managerPubkey ?? "";
   const [title, setTitle] = React.useState(currentTitle);
   const [manager, setManager] = React.useState(currentManager);
@@ -134,7 +167,7 @@ export function EditRoleReportingDialog({
       initialized.current = null;
       return;
     }
-    const key = `${member.pubkey}:${member.position?.event.id ?? "new"}`;
+    const key = `${member.pubkey}:${member.position?.event.id ?? "new"}:${currentTitle}`;
     if (initialized.current === key) return;
     initialized.current = key;
     setTitle(currentTitle);
@@ -151,6 +184,11 @@ export function EditRoleReportingDialog({
   const blocked = descendantsOf(member.pubkey, members);
   const isSelf =
     identity.data?.pubkey.toLowerCase() === member.pubkey.toLowerCase();
+  const role = teamQuery.data?.relayMembers.find(
+    (candidate) =>
+      candidate.pubkey.toLowerCase() === identity.data?.pubkey.toLowerCase(),
+  )?.role;
+  const canManage = role === "owner" || role === "admin";
   const saving = mutation.isPending || updateProfile.isPending;
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
@@ -159,16 +197,18 @@ export function EditRoleReportingDialog({
     const nextTitle = title.trim();
     if (!nextTitle) return;
     try {
-      await mutation.mutateAsync({
-        schemaVersion: 1,
-        pubkey: member.pubkey,
-        action: "set_position",
-        ...(member.position
-          ? { expectedHeadEventId: member.position.event.id }
-          : {}),
-        title: nextTitle,
-        managerPubkey: manager || null,
-      });
+      if (canManage) {
+        await mutation.mutateAsync({
+          schemaVersion: 1,
+          pubkey: member.pubkey,
+          action: "set_position",
+          ...(member.position
+            ? { expectedHeadEventId: member.position.event.id }
+            : {}),
+          title: nextTitle,
+          managerPubkey: manager || null,
+        });
+      }
       // A person's own job title also lives on their profile, so every client
       // sees it; only they can sign that change.
       if (isSelf && member.kind === "human") {
@@ -184,11 +224,7 @@ export function EditRoleReportingDialog({
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent
-        className="team-dialog"
-        data-testid="team-dialog-edit-role"
-        showCloseButton={false}
-      >
+      <TeamDialogSurface testId="team-dialog-edit-role">
         <form
           className="team-dialog-form"
           onSubmit={(event) => void save(event)}
@@ -222,6 +258,7 @@ export function EditRoleReportingDialog({
             <select
               className="team-dialog-input team-dialog-select"
               id="team-member-manager"
+              disabled={!canManage}
               onChange={(event) => setManager(event.target.value)}
               value={manager}
             >
@@ -279,7 +316,7 @@ export function EditRoleReportingDialog({
             </button>
           </div>
         </form>
-      </DialogContent>
+      </TeamDialogSurface>
     </Dialog>
   );
 }
@@ -373,11 +410,7 @@ export function TerminateEmployeeDialog({
   const busy = stopping || mutation.isPending;
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent
-        className="team-dialog"
-        data-testid="team-dialog-terminate"
-        showCloseButton={false}
-      >
+      <TeamDialogSurface testId="team-dialog-terminate">
         <form
           className="team-dialog-form"
           onSubmit={(event) => void terminate(event)}
@@ -445,7 +478,7 @@ export function TerminateEmployeeDialog({
             </button>
           </div>
         </form>
-      </DialogContent>
+      </TeamDialogSurface>
     </Dialog>
   );
 }
@@ -508,11 +541,7 @@ export function ReviewRehireDialog({
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent
-        className="team-dialog"
-        data-testid="team-dialog-rehire"
-        showCloseButton={false}
-      >
+      <TeamDialogSurface testId="team-dialog-rehire">
         <form
           className="team-dialog-form"
           onSubmit={(event) => void rehire(event)}
@@ -577,7 +606,7 @@ export function ReviewRehireDialog({
             </button>
           </div>
         </form>
-      </DialogContent>
+      </TeamDialogSurface>
     </Dialog>
   );
 }

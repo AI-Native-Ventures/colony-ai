@@ -99,7 +99,11 @@ export function requestedSourceLabel(
 }
 
 export function harnessAvailabilityLabel(
-  state: "loading" | "error" | "unknown" | AcpRuntimeCatalogEntry["availability"],
+  state:
+    | "loading"
+    | "error"
+    | "unknown"
+    | AcpRuntimeCatalogEntry["availability"],
   local: boolean,
 ): { label: string; ok: boolean } {
   if (state === "loading") return { label: "Loading", ok: false };

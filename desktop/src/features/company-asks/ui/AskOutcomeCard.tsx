@@ -248,26 +248,26 @@ export function AskThreadOutcomeCard({
       warn={isOverdue}
     >
       {open ? (
-        <>
-          <p className="colony-outcome-by">
-            <DecisionAvatar
-              isAgent={asker.isAgent}
-              name={asker.name}
-              profiles={profiles}
-              pubkey={asker.pubkey}
-              size={24}
-            />
-            {`Raised by ${asker.name}${decideBy ? ` · Decide by ${decideBy}` : ""}`}
-          </p>
-          {canAnswer ? (
-            detailLink
-          ) : (
-            <>
-              <CannotRespond alert={accessFailure} message={deniedMessage} />
-              {conversationLink}
-            </>
-          )}
-        </>
+        canAnswer ? (
+          <>
+            <p className="colony-outcome-by">
+              <DecisionAvatar
+                isAgent={asker.isAgent}
+                name={asker.name}
+                profiles={profiles}
+                pubkey={asker.pubkey}
+                size={24}
+              />
+              {`Raised by ${asker.name}${decideBy ? ` · Decide by ${decideBy}` : ""}`}
+            </p>
+            {detailLink}
+          </>
+        ) : (
+          <>
+            <CannotRespond alert={accessFailure} message={deniedMessage} />
+            {conversationLink}
+          </>
+        )
       ) : (
         <OutcomeBody
           canceller={canceller}

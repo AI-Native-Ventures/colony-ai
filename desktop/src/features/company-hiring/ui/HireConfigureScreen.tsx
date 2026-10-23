@@ -640,7 +640,7 @@ export function HireConfigureScreen({
               <div className="colony-hire-scope-tool" key={tool.name}>
                 <ToolGlyph size={18} tool={tool} />
                 {tool.name}
-                <ToolChip tool={tool} />
+                <ToolChip detailed={rolePack.tools.length === 1} tool={tool} />
               </div>
             ))}
             <p>

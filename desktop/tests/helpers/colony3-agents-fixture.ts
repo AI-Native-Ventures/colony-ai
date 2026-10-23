@@ -150,6 +150,39 @@ const PEOPLE = [
   { key: "jules", name: "Jules Adams", title: "Client Partner" },
 ] as const;
 
+const HARNESS_ENTRY = {
+  avatar_url: "",
+  availability: "available",
+  default_args: [],
+  mcp_command: null,
+  install_hint: "",
+  can_auto_install: false,
+  underlying_cli_path: null,
+  node_required: false,
+  auth_status: { status: "logged_in" },
+};
+
+/** Codex and Claude Code, installed and signed in: the board's two harnesses. */
+const ACP_CATALOG = [
+  {
+    ...HARNESS_ENTRY,
+    id: "claude",
+    label: "Claude Code",
+    command: "claude-agent-acp",
+    binary_path: "/usr/local/bin/claude-agent-acp",
+    install_instructions_url:
+      "https://github.com/agentclientprotocol/claude-agent-acp",
+  },
+  {
+    ...HARNESS_ENTRY,
+    id: "codex",
+    label: "Codex",
+    command: "codex-acp",
+    binary_path: "/usr/local/bin/codex-acp",
+    install_instructions_url: "https://developers.openai.com/codex/cli/",
+  },
+];
+
 export type Colony3AgentsOptions = {
   /** Aya's first start, so Last activity reads "Today, 13:20". */
   ayaLastStartedAt?: string;
@@ -262,6 +295,7 @@ export async function installColony3Agents(
       respondToAllowlist:
         agent.key === "aya" ? [PUBKEYS.owner, PUBKEYS.noluthando] : [],
     })),
+    acpRuntimesCatalog: ACP_CATALOG,
     globalAgentConfig: {
       env_vars: {},
       provider: "anthropic",

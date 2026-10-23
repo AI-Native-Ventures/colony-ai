@@ -319,3 +319,86 @@
   font-size: calc(15.5 * var(--colony-px));
   font-weight: 700;
 }
+
+/* ------------------------------------------------------------ person page -- */
+
+.team-profile-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.125rem 1.375rem;
+}
+
+.team-profile-avatar {
+  width: 4.875rem;
+  height: 4.875rem;
+  flex: none;
+  font-size: calc(30 * var(--colony-px));
+  font-weight: 800;
+}
+
+.team-profile-heading {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.team-profile-subtitle {
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(17 * var(--colony-px));
+  font-weight: 600;
+}
+
+.team-profile-card {
+  display: flex;
+  max-width: 23.75rem;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding: 1.25rem;
+  border-radius: 1.25rem;
+  background: #fff;
+  box-shadow:
+    0 0 0 1px hsl(var(--colony-border)),
+    0 1px 2px rgb(40 20 60 / 4%);
+}
+
+.team-profile-card-title {
+  margin: 0;
+  font-size: calc(17 * var(--colony-px));
+  font-weight: 800;
+}
+
+.team-profile-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.625rem 1rem;
+  margin: 0;
+  font-size: calc(15 * var(--colony-px));
+}
+
+.team-profile-facts dt {
+  color: hsl(var(--colony-muted));
+  font-weight: 600;
+}
+
+.team-profile-facts dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.team-profile-button {
+  display: inline-flex;
+  height: 2.625rem;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.6875rem;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px hsl(var(--colony-border-strong));
+  color: hsl(var(--colony-fg));
+  cursor: pointer;
+  font-family: inherit;
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 700;
+}

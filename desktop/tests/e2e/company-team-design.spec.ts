@@ -143,14 +143,19 @@ for (const viewport of [
     await page.goto("/#/team");
     const team = page.getByTestId("company-team-screen");
     await expect(team).toBeVisible();
-    await expect(team.locator("header")).toHaveText("Company / Team");
+    await expect(
+      page
+        .getByRole("navigation", { name: "Breadcrumb" })
+        .locator('[aria-current="page"]'),
+    ).toHaveText("Team");
     await expect(
       team.getByRole("button", { name: "Hire employee" }),
     ).toBeVisible();
     const row = page.getByTestId(`company-team-member-${employeePubkey}`);
-    await expect(row).toContainText("Social Media Manager · Employee");
-    await expect(row).toContainText("Reports to Lerato Molefe");
-    await expect(row.locator("span").filter({ hasText: /^Ready$/ })).toHaveCSS(
+    await expect(row).toContainText("Social Media Manager · AI employee");
+    await expect(row).toHaveAttribute("aria-label", /Reports to Lerato Molefe/);
+    await expect(row).toContainText("Reviewing the workload.");
+    await expect(row.getByText("Paused", { exact: true })).toHaveCSS(
       "text-transform",
       "none",
     );
@@ -162,14 +167,9 @@ for (const viewport of [
     expect(bounds?.height).toBeLessThanOrEqual(80);
     expect(bounds?.width).toBeGreaterThan(850);
     await capture("team");
-    await team.getByRole("tab", { name: "Reporting lines" }).click();
-    const items = page.getByRole("treeitem");
-    await expect(items).toHaveCount(8);
-    await items.first().focus();
-    await page.keyboard.press("ArrowRight");
-    await expect(items.nth(1)).toBeFocused();
-    await team.getByRole("heading", { name: "Team", exact: true }).click();
-    await capture("team-org");
+    await expect(
+      team.getByRole("tab", { name: "Reporting lines" }),
+    ).toHaveCount(0);
     await page.goto(`/#/team/detail/${employeePubkey}`);
     await expect(page.getByTestId("company-employee-profile")).toBeVisible();
     await expect(
@@ -195,7 +195,7 @@ for (const viewport of [
     await expect(page.getByLabel("Reports to")).toHaveValue(employeePubkey);
     await expect(
       page.getByLabel("Reports to").locator("option:checked"),
-    ).toHaveText("Mina · Employee, paused");
+    ).toHaveText("Mina");
     await expect(
       page.getByLabel("Reports to").locator("option:checked"),
     ).toBeDisabled();
@@ -203,15 +203,13 @@ for (const viewport of [
     await page.goto(`/#/team/archive/${employeePubkey}`);
     await expect(page.getByLabel("Reason")).toBeVisible();
     await expect(
-      page.getByText("This cannot be undone from this screen.", {
+      page.getByText("can’t be undone from this screen", {
         exact: false,
       }),
     ).toBeVisible();
     await capture("team-terminate-mina");
     await page.goto(`/#/team/pause/${employeePubkey}`);
-    await expect(
-      page.getByText("Pausing employees is unavailable."),
-    ).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/team/detail/${employeePubkey}$`));
     await expect(page.getByLabel("Reason")).toHaveCount(0);
     await capture("team-pause-unavailable-mina");
     await page.goto(`/#/team/detail/${TEST_IDENTITIES.alice.pubkey}`);
@@ -357,8 +355,8 @@ for (const state of [
           "Only a community owner or admin can make this change directly.",
         ),
       ).toBeVisible();
-      await page.getByRole("button", { name: "Back", exact: true }).click();
-      await expect(page).toHaveURL(/\/team$/);
+      await page.getByRole("button", { name: "Close", exact: true }).click();
+      await expect(page).toHaveURL(new RegExp(`/team/detail/${minaPk}$`));
     }
   });
 }

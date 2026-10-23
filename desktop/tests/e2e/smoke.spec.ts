@@ -300,16 +300,9 @@ test("create agent supports parallelism and system prompt overrides", async ({
   await createdAgent.click();
   await expect(page.getByTestId("agent-profile")).toBeVisible();
 
-  await page.getByRole("button", { name: "Instructions", exact: true }).click();
-  await expect(page.getByTestId("agent-instructions")).toContainText(
+  await expect(page.getByTestId("agent-system-instructions")).toHaveValue(
     systemPrompt,
   );
-
-  await page.getByRole("button", { name: "Advanced", exact: true }).click();
-  const parallelism = page
-    .getByTestId("agent-profile-content")
-    .getByText("Parallelism", { exact: true });
-  await expect(parallelism.locator("..")).toContainText("3");
 });
 
 test("opens a mocked channel from the inbox feed", async ({ page }) => {

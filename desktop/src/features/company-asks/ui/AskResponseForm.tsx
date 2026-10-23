@@ -82,6 +82,7 @@ export function AskResponseForm({
   );
   const [reason, setReason] = React.useState("");
   const [reasonTouched, setReasonTouched] = React.useState(false);
+  const [attempted, setAttempted] = React.useState(false);
   const [answer, setAnswer] = React.useState("");
   const [optionId, setOptionId] = React.useState("");
   const [checkedIds, setCheckedIds] = React.useState<string[]>([]);
@@ -263,7 +264,19 @@ export function AskResponseForm({
       <form
         className="colony-decision-form"
         data-ask-type={ask.type}
-        onSubmit={(event) => void submit(event)}
+        noValidate
+        onSubmit={(event) => {
+          if (!readyToSubmit) {
+            // The button stays inviting; an incomplete form says what is missing.
+            event.preventDefault();
+            if (!submitting) {
+              setAttempted(true);
+              setReasonTouched(true);
+            }
+            return;
+          }
+          void submit(event);
+        }}
       >
         {options ? (
           <fieldset className="colony-decision-fieldset">
@@ -374,6 +387,15 @@ export function AskResponseForm({
             ))}
           </fieldset>
         ) : null}
+        {attempted && !readyToSubmit && !needsReason ? (
+          <span className="colony-decision-error" role="alert">
+            {ask.type === "question"
+              ? "An answer is required."
+              : ask.type === "choice"
+                ? "Choose an option to continue."
+                : "Confirm every item to continue."}
+          </span>
+        ) : null}
         {notice ? <p className="colony-decision-note">{notice}</p> : null}
         {error ? (
           <p className="colony-decision-submit-error" role="alert">
@@ -383,8 +405,8 @@ export function AskResponseForm({
         ) : null}
         <div className="colony-decision-actions">
           <Button
+            aria-disabled={!readyToSubmit}
             className="colony-decision-submit"
-            disabled={!readyToSubmit}
             type="submit"
           >
             {submitLabel}

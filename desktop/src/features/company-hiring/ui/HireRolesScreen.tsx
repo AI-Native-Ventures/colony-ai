@@ -48,7 +48,7 @@ function ToolRows({ tools }: { tools: RolePack["tools"] }) {
       {tools.map((tool) => (
         <span className="colony-hire-tool" key={tool.name}>
           {tool.name}
-          <ToolChip tool={tool} />
+          <ToolChip detailed={tools.length === 1} tool={tool} />
         </span>
       ))}
     </span>

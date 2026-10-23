@@ -13,10 +13,7 @@ import {
   useRelayAgentsQuery,
 } from "@/features/agents/hooks";
 import { isManagedAgentActive } from "@/features/agents/lib/managedAgentControlActions";
-import {
-  useChannelsQuery,
-  useOpenDmMutation,
-} from "@/features/channels/hooks";
+import { useChannelsQuery, useOpenDmMutation } from "@/features/channels/hooks";
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 import { useEmployeeRuntime } from "@/features/company-team/useEmployeeRuntime";
 import {
@@ -258,6 +255,51 @@ export function AgentPage({
     }
   }
 
+  const moreMenu = (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <button
+          aria-haspopup="menu"
+          aria-label="More agent actions"
+          className="agents-c3-btn"
+          data-size="icon"
+          type="button"
+        >
+          {MORE_ICON}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {canManage && member ? (
+          <DropdownMenuItem onSelect={() => setDialog("edit")}>
+            Edit role and reporting
+          </DropdownMenuItem>
+        ) : null}
+        {canManage && member && position?.status === "active" ? (
+          <DropdownMenuItem onSelect={() => setDialog("terminate")}>
+            Terminate employee
+          </DropdownMenuItem>
+        ) : null}
+        {canManage && member && position?.status === "terminated" ? (
+          <DropdownMenuItem onSelect={() => setDialog("rehire")}>
+            Review rehire
+          </DropdownMenuItem>
+        ) : null}
+        {archive.canArchive && archive.isArchived !== undefined ? (
+          <DropdownMenuItem
+            disabled={archive.isPending}
+            onSelect={() =>
+              archive.isArchived
+                ? void archive.unarchive()
+                : setArchiveOpen(true)
+            }
+          >
+            {archive.isArchived ? "Unarchive agent" : "Archive agent"}
+          </DropdownMenuItem>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   const trail = (
     <AppTopChromePortal>
       <nav
@@ -289,7 +331,7 @@ export function AgentPage({
             <p className="agents-c3-quiet">Loading agent…</p>
           ) : member ? (
             <>
-              <div className="agents-c3-hero">
+              <header className="agents-c3-hero">
                 <EmployeeAvatar
                   className="agents-c3-hero-avatar"
                   name={name}
@@ -316,19 +358,37 @@ export function AgentPage({
                     {MESSAGE_ICON}
                     {opening ? "Opening…" : "Message"}
                   </button>
+                  {moreMenu}
                 </div>
-              </div>
+              </header>
               {messageError ? (
                 <p className="agents-c3-error" role="alert">
                   {messageError}
                 </p>
               ) : null}
-              <section className="agents-c3-card" data-testid="agent-unlinked">
+              <section
+                className="agents-c3-card"
+                data-testid="company-position-unlinked"
+              >
                 <h2 className="agents-c3-eyebrow">Not on this device</h2>
                 <p className="agents-c3-body">
                   {name} does not run on this device. Its model and instructions
                   can be changed from the device that runs it.
                 </p>
+                <dl className="agents-c3-tiles" data-testid="company-position-record">
+                  <div className="agents-c3-tile">
+                    <dt>Title</dt>
+                    <dd>{title || "Not set"}</dd>
+                  </div>
+                  <div className="agents-c3-tile">
+                    <dt>Reports to</dt>
+                    <dd>{managerName ?? "Reporting line not set"}</dd>
+                  </div>
+                  <div className="agents-c3-tile">
+                    <dt>Runtime status</dt>
+                    <dd>{employeeRuntime.label}</dd>
+                  </div>
+                </dl>
               </section>
             </>
           ) : (
@@ -347,6 +407,13 @@ export function AgentPage({
             </div>
           )}
         </div>
+        {member ? (
+          <PageDialogs
+            dialog={dialog}
+            member={member}
+            onClose={() => setDialog(null)}
+          />
+        ) : null}
       </div>
     );
   }
@@ -377,7 +444,7 @@ export function AgentPage({
     >
       <div className="agents-c3-page" data-kind="profile">
         {trail}
-        <div className="agents-c3-hero">
+        <header className="agents-c3-hero">
           <EmployeeAvatar
             className="agents-c3-hero-avatar"
             definition={persona?.avatarUrl}
@@ -452,50 +519,9 @@ export function AgentPage({
                 Start agent
               </button>
             )}
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <button
-                  aria-haspopup="menu"
-                  aria-label="More agent actions"
-                  className="agents-c3-btn"
-                  data-size="icon"
-                  type="button"
-                >
-                  {MORE_ICON}
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {canManage && member ? (
-                  <DropdownMenuItem onSelect={() => setDialog("edit")}>
-                    Edit role and reporting
-                  </DropdownMenuItem>
-                ) : null}
-                {canManage && member && position?.status === "active" ? (
-                  <DropdownMenuItem onSelect={() => setDialog("terminate")}>
-                    Terminate employee
-                  </DropdownMenuItem>
-                ) : null}
-                {canManage && member && position?.status === "terminated" ? (
-                  <DropdownMenuItem onSelect={() => setDialog("rehire")}>
-                    Review rehire
-                  </DropdownMenuItem>
-                ) : null}
-                {archive.canArchive && archive.isArchived !== undefined ? (
-                  <DropdownMenuItem
-                    disabled={archive.isPending}
-                    onSelect={() =>
-                      archive.isArchived
-                        ? void archive.unarchive()
-                        : setArchiveOpen(true)
-                    }
-                  >
-                    {archive.isArchived ? "Unarchive agent" : "Archive agent"}
-                  </DropdownMenuItem>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {moreMenu}
           </div>
-        </div>
+        </header>
         {messageError ? (
           <p className="agents-c3-error" role="alert">
             {messageError}
@@ -548,10 +574,7 @@ export function AgentPage({
           </div>
         ) : null}
 
-        <div
-          className="agents-c3-stack"
-          data-testid="agent-profile-content"
-        >
+        <div className="agents-c3-stack" data-testid="agent-profile-content">
           <AgentPageOverview
             activeTurns={activeTurns}
             agent={agent}
@@ -598,11 +621,13 @@ export function AgentPage({
         </div>
       </div>
 
-      <AgentInstanceEditDialog
-        agent={agent}
-        onOpenChange={setConfigOpen}
-        open={configOpen}
-      />
+      {configOpen ? (
+        <AgentInstanceEditDialog
+          agent={agent}
+          onOpenChange={setConfigOpen}
+          open
+        />
+      ) : null}
       <ArchiveConfirmDialog
         isBot
         isPending={archive.isPending}

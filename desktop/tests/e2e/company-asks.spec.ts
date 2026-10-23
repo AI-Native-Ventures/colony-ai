@@ -231,8 +231,7 @@ test("new ask thread drafts can be canceled from the destination step", async ({
   }
   await channel.selectOption(channelId);
 
-  await page.getByRole("button", { name: "Choose a thread" }).click();
-  await page.getByRole("button", { name: "Start a new thread" }).click();
+  await page.getByRole("radio", { name: "Start a new thread" }).check();
   await page
     .getByLabel("New thread title")
     .fill("A thread draft that will be canceled");

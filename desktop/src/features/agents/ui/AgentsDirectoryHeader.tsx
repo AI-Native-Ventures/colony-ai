@@ -35,8 +35,8 @@ export function AgentsDirectoryHeader({
         <div className="agents-c3-titleblock">
           <h1 className="agents-c3-title">Agents</h1>
           <span className="agents-c3-sub">
-            {agentCount} {agentCount === 1 ? "agent" : "agents"} ·{" "}
-            {peopleCount} {peopleCount === 1 ? "person" : "people"}
+            {agentCount} {agentCount === 1 ? "agent" : "agents"} · {peopleCount}{" "}
+            {peopleCount === 1 ? "person" : "people"}
           </span>
         </div>
         <div className="agents-c3-head-actions">
@@ -78,14 +78,14 @@ export function AgentsDirectoryHeader({
 
       <div className="agents-c3-tabrow">
         <nav aria-label="Agent views" className="agents-c3-tabs">
-          <button
-            aria-current="page"
-            className="agents-c3-tab"
-            type="button"
-          >
+          <button aria-current="page" className="agents-c3-tab" type="button">
             Agents
           </button>
-          <button className="agents-c3-tab" onClick={onOpenPeople} type="button">
+          <button
+            className="agents-c3-tab"
+            onClick={onOpenPeople}
+            type="button"
+          >
             People
           </button>
         </nav>

@@ -113,7 +113,7 @@ function AskDetailTopBar({
   }, []);
   const trail = (
     <>
-      <nav aria-label="Breadcrumb" className="colony-breadcrumb">
+      <nav aria-label="Breadcrumb" className="colony-decision-breadcrumb">
         <span>Company</span>
         <span aria-hidden="true">/</span>
         <span
@@ -226,6 +226,7 @@ function AskDetailMemberScreen({
     record?.head.ask.addresseePubkey,
     record?.head.resolution?.resolvedByPubkey,
     record?.head.cancellation?.cancelledByPubkey,
+    record?.head.ask.spendAllowanceProposal?.employeePubkey,
   ].filter((pubkey): pubkey is string => Boolean(pubkey));
   const profilesQuery = useUsersBatchQuery(profilePubkeys, {
     enabled: profilePubkeys.length > 0,

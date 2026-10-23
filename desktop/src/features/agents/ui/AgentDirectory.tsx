@@ -14,7 +14,7 @@ import {
   type AgentDirectoryPageSize,
 } from "@/features/agents/agentDirectoryModel";
 import { runtimeForAgent } from "@/features/agents/agentDirectoryModel";
-import { RuntimeIcon } from "@/features/onboarding/ui/RuntimeIcon";
+import { AgentHarnessGlyph } from "./AgentHarnessGlyph";
 import { useUserProfileQuery } from "@/features/profile/hooks";
 import type { AcpRuntimeCatalogEntry, ManagedAgent } from "@/shared/api/types";
 import { AgentStatusChip } from "./AgentStatusChip";
@@ -214,7 +214,7 @@ export function AgentDirectory({
       className="agents-c3 flex flex-col gap-[22px]"
       data-testid="agent-directory"
     >
-      <div className="agents-c3-filters" role="search">
+      <search className="agents-c3-filters">
         <label className="agents-c3-search" htmlFor="agent-directory-search">
           <SearchGlyph />
           <input
@@ -271,7 +271,7 @@ export function AgentDirectory({
           <option value="name">Name A–Z</option>
           <option value="status">Status</option>
         </select>
-      </div>
+      </search>
 
       {catalogError ? (
         <p className="agents-c3-notice" role="status">
@@ -297,20 +297,18 @@ export function AgentDirectory({
         ) : visible.length === 0 ? (
           <p className="agents-c3-empty">No agents match these filters.</p>
         ) : (
-          <table aria-label="Agents" className="agents-c3-table" role="table">
-            <thead role="rowgroup">
-              <tr role="row">
-                <th role="columnheader">Agent</th>
-                <th role="columnheader">Status</th>
-                <th role="columnheader">Harness</th>
-                <th role="columnheader">Provider / model</th>
-                <th role="columnheader">Runs on</th>
-                <th className="agents-c3-sr" role="columnheader">
-                  Actions
-                </th>
+          <table aria-label="Agents" className="agents-c3-table">
+            <thead>
+              <tr>
+                <th>Agent</th>
+                <th>Status</th>
+                <th>Harness</th>
+                <th>Provider / model</th>
+                <th>Runs on</th>
+                <th className="agents-c3-sr">Actions</th>
               </tr>
             </thead>
-            <tbody role="rowgroup">
+            <tbody>
               {visible.map((agent) => {
                 const agentStatus = agentDirectoryStatus(agent, statusInput);
                 const archived = agentStatus === "archived";
@@ -319,9 +317,8 @@ export function AgentDirectory({
                     data-archived={archived ? "true" : undefined}
                     data-testid={`managed-agent-${agent.pubkey}`}
                     key={agent.pubkey}
-                    role="row"
                   >
-                    <td role="cell">
+                    <td>
                       <AgentIdentityButton
                         agent={agent}
                         onOpenAgent={onOpenAgent}
@@ -331,7 +328,7 @@ export function AgentDirectory({
                         )}
                       />
                     </td>
-                    <td role="cell">
+                    <td>
                       <AgentStatusChip
                         label={
                           runtimeQuery.isLoading && !archived
@@ -342,28 +339,37 @@ export function AgentDirectory({
                     </td>
                     {archived ? (
                       <>
-                        <td role="cell">
-                          <span className="agents-c3-cell-text" data-muted="true">
+                        <td>
+                          <span
+                            className="agents-c3-cell-text"
+                            data-muted="true"
+                          >
                             Not reported
                           </span>
                         </td>
-                        <td role="cell">
-                          <span className="agents-c3-cell-text" data-muted="true">
+                        <td>
+                          <span
+                            className="agents-c3-cell-text"
+                            data-muted="true"
+                          >
                             Not reported
                           </span>
                         </td>
-                        <td role="cell">
-                          <span className="agents-c3-cell-text" data-muted="true">
+                        <td>
+                          <span
+                            className="agents-c3-cell-text"
+                            data-muted="true"
+                          >
                             Not reported
                           </span>
                         </td>
                       </>
                     ) : (
                       <>
-                        <td role="cell">
+                        <td>
                           <AgentHarnessCell agent={agent} runtimes={runtimes} />
                         </td>
-                        <td role="cell">
+                        <td>
                           <span className="agents-c3-cell-stack">
                             <span>
                               {agent.provider
@@ -373,7 +379,7 @@ export function AgentDirectory({
                             <span>{agent.model || "Not reported"}</span>
                           </span>
                         </td>
-                        <td role="cell">
+                        <td>
                           {agent.backend.type === "local" ? (
                             <span className="agents-c3-cell-text">
                               This Mac
@@ -387,7 +393,7 @@ export function AgentDirectory({
                         </td>
                       </>
                     )}
-                    <td role="cell">
+                    <td>
                       <div className="agents-c3-row-actions">
                         {archived ? null : (
                           <button
@@ -558,9 +564,7 @@ function AgentHarnessCell({
   const runtime = runtimeForAgent(agent, runtimes);
   return (
     <span className="agents-c3-harness">
-      {runtime ? (
-        <RuntimeIcon className="size-[1.0625rem] shrink-0" runtime={runtime} />
-      ) : null}
+      {runtime ? <AgentHarnessGlyph runtime={runtime} /> : null}
       <span className="truncate">{agentHarnessLabel(agent, runtimes)}</span>
     </span>
   );

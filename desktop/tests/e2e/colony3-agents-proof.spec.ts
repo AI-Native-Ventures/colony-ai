@@ -20,7 +20,8 @@ import { COLONY3_NOW } from "../helpers/colony3Fixture";
  *
  * COLONY3_PROOF_DIR chooses where the captures land.
  */
-const OUT = process.env.COLONY3_PROOF_DIR ?? "test-results/colony3-agents-proof";
+const OUT =
+  process.env.COLONY3_PROOF_DIR ?? "test-results/colony3-agents-proof";
 
 type Rect = [x: number, y: number, width: number, height: number];
 type Capture = {
@@ -112,7 +113,9 @@ test("Agent profile board", async ({ page }) => {
     now: PROFILE_NOW,
   });
   await expect(page.getByTestId("agent-profile")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Aya", level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Aya", level: 1 }),
+  ).toBeVisible();
   await shot(page, {
     name: "AgentProfile",
     board: "AgentProfile",
@@ -210,7 +213,9 @@ test("Agent instructions editor", async ({ page }) => {
   await editor.fill(`${await editor.inputValue()} `);
   const form = page.getByTestId("agent-instructions");
   await form.scrollIntoViewIfNeeded();
-  await expect(page.getByText("Unsaved changes · applies on the next start")).toBeVisible();
+  await expect(
+    page.getByText("Unsaved changes · applies on the next start"),
+  ).toBeVisible();
   await shot(
     page,
     {
@@ -221,4 +226,25 @@ test("Agent instructions editor", async ({ page }) => {
     },
     form,
   );
+});
+
+test("Employee board shows the same one page", async ({ page }) => {
+  // The owner replaced the Employee tabs (salary, duties, history, workers)
+  // with the agent page, so this capture is the page, not a copy of the board.
+  await openAgents(page, `/#/team/detail/${COLONY3_AGENT_PUBKEYS.scout}`, {
+    now: PROFILE_NOW,
+  });
+  await expect(page.getByTestId("agent-profile")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Scout", level: 1 }),
+  ).toBeVisible();
+  await expect(page.getByTestId("agent-page-breadcrumb")).toContainText(
+    "Company/Team/Scout",
+  );
+  await shot(page, {
+    name: "Employee",
+    board: "Employee",
+    title:
+      "Employee: the same one agent page (tabs, salary, duties and history are cut)",
+  });
 });

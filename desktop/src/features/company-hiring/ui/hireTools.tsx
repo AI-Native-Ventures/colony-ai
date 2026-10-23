@@ -14,19 +14,32 @@ const EFFECTS: Record<ToolRisk, { tone: string; label: string }> = {
   high: { tone: "external", label: "External action" },
 };
 
-export function toolChipText(tool: HireTool) {
+/**
+ * "Read · Low risk" when a pack has one tool and the reassurance fits; with
+ * several tools each chip is just its effect, as on the Social media manager
+ * card.
+ */
+export function toolChipText(tool: HireTool, detailed = true) {
   const effect = EFFECTS[tool.risk];
-  return tool.risk === "low" ? `${effect.label} · Low risk` : effect.label;
+  return tool.risk === "low" && detailed
+    ? `${effect.label} · Low risk`
+    : effect.label;
 }
 
-export function ToolChip({ tool }: { tool: HireTool }) {
+export function ToolChip({
+  detailed = true,
+  tool,
+}: {
+  detailed?: boolean;
+  tool: HireTool;
+}) {
   return (
     <span
       className="colony-hire-chip"
       data-tone={EFFECTS[tool.risk].tone}
       data-testid="hire-tool-chip"
     >
-      {toolChipText(tool)}
+      {toolChipText(tool, detailed)}
     </span>
   );
 }

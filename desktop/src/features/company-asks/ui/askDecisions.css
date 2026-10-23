@@ -131,6 +131,25 @@
 
 /* -------------------------------------------------------- top bar actions -- */
 
+.colony-decision-breadcrumb {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 0.5rem;
+  color: hsl(var(--colony-muted));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.colony-decision-breadcrumb [data-current="true"] {
+  overflow: hidden;
+  color: hsl(var(--colony-fg));
+  font-weight: 800;
+  text-overflow: ellipsis;
+}
+
 .colony-decision-topbar-spacer {
   flex: 1;
 }

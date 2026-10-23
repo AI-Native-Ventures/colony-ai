@@ -1,7 +1,6 @@
 import type * as React from "react";
 
 import type { useAgentConfigSurface } from "@/features/agents/hooks";
-import { RuntimeIcon } from "@/features/onboarding/ui/RuntimeIcon";
 import type { AcpRuntimeCatalogEntry, ManagedAgent } from "@/shared/api/types";
 import {
   authStatusLabel,
@@ -9,6 +8,7 @@ import {
   requestedSourceLabel,
   providerName,
 } from "./agentPageModel";
+import { AgentHarnessGlyph } from "./AgentHarnessGlyph";
 
 type RuntimeConfig = ReturnType<typeof useAgentConfigSurface>["data"];
 
@@ -97,7 +97,12 @@ export function AgentPageRuntime({
   const availabilityChip = harnessAvailabilityLabel(availability, local);
   const auth = authStatusLabel(authStatus);
   const source = requestedSourceLabel(agent.modelSource);
-  const effort = reportedValue(config, "thinkingEffort", observed, configLoading);
+  const effort = reportedValue(
+    config,
+    "thinkingEffort",
+    observed,
+    configLoading,
+  );
   const maxOutput = reportedValue(
     config,
     "maxOutputTokens",
@@ -155,8 +160,7 @@ export function AgentPageRuntime({
         ) : null}
         {config?.isPreSpawn ? (
           <p className="agents-c3-quiet">
-            The agent has not reported an effective model for a running
-            session.
+            The agent has not reported an effective model for a running session.
           </p>
         ) : null}
       </section>
@@ -178,12 +182,7 @@ export function AgentPageRuntime({
         </div>
         <dl className="agents-c3-dl">
           <Row align="center" label="Harness">
-            {runtime ? (
-              <RuntimeIcon
-                className="size-[1.0625rem] shrink-0"
-                runtime={runtime}
-              />
-            ) : null}
+            {runtime ? <AgentHarnessGlyph runtime={runtime} /> : null}
             {runtime?.label ?? "Not reported"}
           </Row>
           <Row align="center" label="Harness availability">
@@ -211,9 +210,7 @@ export function AgentPageRuntime({
             </span>
           </Row>
           <Row label="Provider route" muted={!agent.provider}>
-            {agent.provider
-              ? providerName(agent.provider)
-              : "Not reported"}
+            {agent.provider ? providerName(agent.provider) : "Not reported"}
           </Row>
         </dl>
       </section>

@@ -48,7 +48,9 @@ export function AgentStatusChip({
   testId?: string;
 }) {
   const resolved = tone ?? agentChipTone(label);
-  let lead: React.ReactNode = <span aria-hidden="true" className="agents-c3-dot" />;
+  let lead: React.ReactNode = (
+    <span aria-hidden="true" className="agents-c3-dot" />
+  );
   if (resolved === "needs") lead = ATTENTION_ICON;
   if (resolved === "archived") lead = ARCHIVE_ICON;
   if (resolved === "plain") lead = null;

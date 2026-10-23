@@ -16,14 +16,15 @@ export async function openAgentTemplatesView(page: Page): Promise<void> {
   await showAgentTemplates(page);
 }
 
-/** Switches an open Agents workspace from its directory to the Templates tab. */
+/**
+ * Opens the Templates & snapshots view. The Agents directory no longer has a
+ * Templates tab (agent templates are cut from the lean app), so the view is
+ * reached by its address; its code and coverage stay until it is removed.
+ */
 export async function showAgentTemplates(page: Page): Promise<void> {
-  const templatesTab = page.getByRole("button", {
-    name: "Templates",
-    exact: true,
+  await page.evaluate(() => {
+    window.location.hash = "/agents?view=templates";
   });
-  await expect(templatesTab).toBeVisible({ timeout: 10_000 });
-  await templatesTab.click();
   await expect(page.getByTestId("agents-library-personas")).toBeVisible({
     timeout: 10_000,
   });

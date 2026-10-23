@@ -40,7 +40,11 @@ function PeopleChips({ pubkeys }: { pubkeys: readonly string[] }) {
           <span className="agents-c3-person" key={pubkey}>
             <span aria-hidden="true" className="agents-c3-person-avatar">
               {profile?.avatarUrl ? (
-                <img alt="" referrerPolicy="no-referrer" src={profile.avatarUrl} />
+                <img
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  src={profile.avatarUrl}
+                />
               ) : (
                 personInitials(name)
               )}
@@ -75,7 +79,10 @@ export function AgentPageOverview({
   onOpenChannel: (channelId: string) => void;
   providerLabel: string;
 }) {
-  const lastError = friendlyAgentLastError(agent.lastError, agent.lastErrorCode);
+  const lastError = friendlyAgentLastError(
+    agent.lastError,
+    agent.lastErrorCode,
+  );
   const tiles: Array<[string, string, boolean]> = [
     ["Harness", harnessLabel, harnessLabel === "Not reported"],
     ["Provider", providerLabel, providerLabel === "Not reported"],
@@ -126,7 +133,11 @@ export function AgentPageOverview({
       </section>
 
       <div className="agents-c3-grid2">
-        <section aria-labelledby="where" className="agents-c3-card" data-gap="10">
+        <section
+          aria-labelledby="where"
+          className="agents-c3-card"
+          data-gap="10"
+        >
           <h2 className="agents-c3-eyebrow" id="where">
             Where this agent works
           </h2>
@@ -137,7 +148,9 @@ export function AgentPageOverview({
               Channel membership could not be loaded: {channelError.message}
             </p>
           ) : channelOptions.length === 0 ? (
-            <p className="agents-c3-quiet">No channel memberships are reported.</p>
+            <p className="agents-c3-quiet">
+              No channel memberships are reported.
+            </p>
           ) : (
             channelOptions.map((channel) => (
               <button

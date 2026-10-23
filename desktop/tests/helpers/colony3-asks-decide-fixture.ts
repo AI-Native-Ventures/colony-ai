@@ -47,6 +47,7 @@ export async function openDecisionWorkspace(page: Page) {
     referenceWorkspace: true,
     colony3Sidebar: true,
     windowFullscreen: true,
+    relayRequiresMembership: true,
     relaySelf: getPublicKey(relaySecret),
     companyAskRelayPrivateKeyHex: bytesToHex(relaySecret),
     searchProfiles: [

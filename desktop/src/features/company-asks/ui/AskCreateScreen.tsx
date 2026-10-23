@@ -9,7 +9,6 @@ import {
   useChannelsQuery,
 } from "@/features/channels/hooks";
 import { useCanAddChannelMembers } from "@/features/channels/useCanAddChannelMembers";
-import { ChannelMemberInviteCard } from "@/features/channels/ui/ChannelMemberInviteCard";
 import { useChannelMessagesQuery } from "@/features/messages/hooks";
 import { getThreadReference } from "@/features/messages/lib/threading";
 import { isTimelineContentEvent } from "@/features/messages/lib/formatTimelineMessages";
@@ -28,19 +27,16 @@ import {
 } from "./HireProposalComposer";
 import { AskCreateSuccess } from "./AskCreateSuccess";
 import { AskDestinationStep } from "./AskDestinationStep";
+import { AskInviteDialog } from "./AskInviteDialog";
+import { AskWhoCanAnswer } from "./AskWhoCanAnswer";
 import { AskStandardComposer } from "./AskStandardComposer";
 import { MoneyAllowanceComposer } from "./MoneyAllowanceComposer";
 import { MoneyAllowanceChooser } from "./MoneyAllowanceChooser";
+import { MoneyRequestHeader } from "./MoneyRequestHeader";
 import { MoneyReviewPanel } from "./MoneyReviewPanel";
 import { KIND_ASK_ACTION } from "@/shared/constants/kinds";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { normalizePubkey } from "@/shared/lib/pubkey";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/shared/ui/dialog";
 import { ColonySteps } from "@/shared/ui/ColonySteps";
 import { HashIcon, PrivateChannelIcon } from "@/shared/ui/colonyIcons";
 
@@ -54,44 +50,11 @@ import {
   type AskComposerMoneyAllowanceContext,
   type AskComposerType,
 } from "../askComposer";
-import { AskArrowRightIcon, AskInfoIcon } from "./askIcons";
-import { AskAvatar, AskTopBarTrail, formatThreadWhen } from "./AskPeople";
+import { AskArrowRightIcon } from "./askIcons";
+import { AskTopBarTrail, formatThreadWhen } from "./AskPeople";
+import { capitalize, formatEndDate, formatUsdFromCents } from "./askFormatting";
 import { recipientDescription, threadLabel } from "./askThreadLabels";
 import "./askCompose.css";
-
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-] as const;
-
-/** "2026-10-31" as "31 Oct 2026". */
-function formatEndDate(value: string) {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return value;
-  return `${Number(match[3])} ${MONTHS[Number(match[2]) - 1] ?? ""} ${match[1]}`;
-}
-
-/** Cents as the board writes money: whole amounts without decimals. */
-function formatUsdFromCents(amountCents: string) {
-  const cents = Number(amountCents);
-  if (!Number.isFinite(cents)) return `USD ${amountCents}`;
-  const amount = cents / 100;
-  return `USD ${Number.isInteger(amount) ? amount : amount.toFixed(2)}`;
-}
-
-function capitalize(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
 
 /** Ask creation surface for a real channel and discussion thread. */
 export function AskCreateScreen({
@@ -1035,13 +998,6 @@ export function AskCreateScreen({
     />
   );
 
-  const alone =
-    !isHireProposal &&
-    !isMoneyProposal &&
-    !recipientLoading &&
-    !recipientError &&
-    (!recipientOptionsReady || channelPeople === 0);
-
   const composeForm = (
     <form
       aria-label={isHireProposal ? "Hire proposal" : "Compose the ask"}
@@ -1096,28 +1052,7 @@ export function AskCreateScreen({
   } else if (isMoneyProposal && !moneyAllowanceChosen) {
     body = (
       <>
-        <header className="ask3-head-row">
-          <div className="ask3-head">
-            <h1
-              className="ask3-title"
-              data-size="38-money"
-              id="ask-create-title"
-            >
-              Request an allowance or cost approval
-            </h1>
-            <span className="ask3-sub">
-              Propose the change in its thread. An owner or administrator
-              decides.
-            </span>
-          </div>
-          <ColonySteps
-            align="end"
-            connector={32}
-            current={1}
-            label="Request steps"
-            steps={["Choose", "Allowance change", "Review"]}
-          />
-        </header>
+        <MoneyRequestHeader current={1} />
         <MoneyAllowanceChooser
           onSelect={() => {
             setMoneyAllowanceChosen(true);
@@ -1130,31 +1065,12 @@ export function AskCreateScreen({
   } else if (isMoneyProposal) {
     body = (
       <>
-        <header className="ask3-head-row">
-          <div className="ask3-head">
-            <h1
-              className="ask3-title"
-              data-size="38-money"
-              id="ask-create-title"
-            >
-              Request an allowance or cost approval
-            </h1>
-            <span className="ask3-sub">
-              Propose the change in its thread. An owner or administrator
-              decides.
-            </span>
-          </div>
-          <ColonySteps
-            align="end"
-            connector={32}
-            current={moneyProposalReview ? 3 : 2}
-            label="Request steps"
-            onStepSelect={(number) => {
-              if (number === 1) openMoneyChooser();
-            }}
-            steps={["Choose", "Allowance change", "Review"]}
-          />
-        </header>
+        <MoneyRequestHeader
+          current={moneyProposalReview ? 3 : 2}
+          onStepSelect={(number) => {
+            if (number === 1) openMoneyChooser();
+          }}
+        />
         <MoneyAllowanceChooser
           disabled={locked}
           onSelect={openMoneyChooser}
@@ -1226,7 +1142,7 @@ export function AskCreateScreen({
         {composeHeader}
         <div className="ask3-split">
           {composeForm}
-          {hireProposalReview || alone ? null : (
+          {hireProposalReview ? null : (
             <aside
               aria-labelledby={
                 isHireProposal ? "proposal-steps" : "who-can-answer"
@@ -1236,49 +1152,23 @@ export function AskCreateScreen({
               {isHireProposal ? (
                 <HireProposalReviewSteps />
               ) : (
-                <>
-                  <h2 className="ask3-aside-title" id="who-can-answer">
-                    Who can answer?
-                  </h2>
-                  <dl className="ask3-facts">
-                    <div className="ask3-fact" data-gap="6">
-                      <dt>Raised by</dt>
-                      <dd data-strong="true">
-                        <AskAvatar
-                          avatarUrl={profiles?.[currentPubkey]?.avatarUrl}
-                          label={raisedByLabel}
-                        />
-                        {raisedByLabel}
-                      </dd>
-                    </div>
-                    {addresseeLabel ? (
-                      <div className="ask3-fact" data-gap="6">
-                        <dt>Response from</dt>
-                        <dd data-strong="true">
-                          <AskAvatar
-                            avatarUrl={
-                              profiles?.[addressee?.pubkey ?? ""]?.avatarUrl
-                            }
-                            isAgent={addressee?.isAgent}
-                            label={addresseeLabel}
-                          />
-                          {addresseeLabel}
-                        </dd>
-                      </div>
-                    ) : null}
-                    <div className="ask3-fact">
-                      <dt>Visibility</dt>
-                      <dd>People in #{channelName}</dd>
-                    </div>
-                    <div className="ask3-fact">
-                      <dt>After a response</dt>
-                      <dd data-prose="true">
-                        The answer is recorded in this thread for everyone in
-                        the channel to see.
-                      </dd>
-                    </div>
-                  </dl>
-                </>
+                <AskWhoCanAnswer
+                  channelName={channelName}
+                  raisedBy={{
+                    label: raisedByLabel,
+                    avatarUrl: profiles?.[currentPubkey]?.avatarUrl,
+                  }}
+                  responseFrom={
+                    addresseeLabel
+                      ? {
+                          label: addresseeLabel,
+                          avatarUrl:
+                            profiles?.[addressee?.pubkey ?? ""]?.avatarUrl,
+                          isAgent: addressee?.isAgent,
+                        }
+                      : null
+                  }
+                />
               )}
             </aside>
           )}
@@ -1301,44 +1191,17 @@ export function AskCreateScreen({
       >
         {body}
       </div>
-      <Dialog onOpenChange={setInviteOpen} open={inviteOpen}>
-        <DialogContent
-          aria-describedby="ask-invite-description"
-          className="ask3-invite"
-          closeButtonClassName="ask3-invite-close"
-          surface="none"
-        >
-          <DialogTitle className="ask3-invite-title">
-            Invite someone
-          </DialogTitle>
-          <DialogDescription
-            className="ask3-invite-desc"
-            id="ask-invite-description"
-          >
-            Add a person to this conversation so they can be chosen as the
-            recipient. Their access stays limited to this channel.
-          </DialogDescription>
-          <ChannelMemberInviteCard
-            canAssignElevatedRoles={
-              currentChannelMember?.role === "owner" ||
-              currentChannelMember?.role === "admin"
-            }
-            existingMembers={membersQuery.data ?? []}
-            footerNote={
-              <p className="ask3-invite-note">
-                <AskInfoIcon size={16} />
-                An invitation does not make the person eligible to approve
-                money, hires or tools.
-              </p>
-            }
-            isPending={addMembersMutation.isPending}
-            onCancel={() => setInviteOpen(false)}
-            onSubmit={addInvitees}
-            open={inviteOpen}
-            requestErrorMessage={null}
-          />
-        </DialogContent>
-      </Dialog>
+      <AskInviteDialog
+        canAssignElevatedRoles={
+          currentChannelMember?.role === "owner" ||
+          currentChannelMember?.role === "admin"
+        }
+        existingMembers={membersQuery.data ?? []}
+        isPending={addMembersMutation.isPending}
+        onOpenChange={setInviteOpen}
+        onSubmit={addInvitees}
+        open={inviteOpen}
+      />
     </div>
   );
 }

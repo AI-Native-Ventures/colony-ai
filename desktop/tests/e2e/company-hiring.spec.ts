@@ -63,22 +63,14 @@ test("owner hires from a role pack and the configured draft survives reload", as
   await page.goto("/#/team");
   await page.getByRole("button", { name: "Hire employee" }).click();
   await expect(page.getByTestId(`hire-role-${PERSONA_ID}`)).toBeVisible();
-  await page.getByRole("button", { name: "Edit pack" }).click();
-  const roleEditor = page.getByTestId("company-role-editor");
-  await expect(roleEditor).toBeVisible();
-  await expect(page.getByLabel("Role title")).toHaveValue(
-    "Hospitality researcher",
-  );
-  await expect(page.getByLabel("Job description")).toHaveValue(
-    "Hospitality research",
-  );
-  await expect(page.getByLabel("Skills, one per line")).toHaveValue(
-    "Market research\nSynthesis",
-  );
-
-  await page.goto("/#/hire/roles");
-  await expect(page.getByTestId(`hire-role-${PERSONA_ID}`)).toBeVisible();
-  await page.getByRole("button", { name: "Configure this role" }).click();
+  await expect(page.getByRole("button", { name: "Edit pack" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Open role pack" }),
+  ).toHaveCount(0);
+  await page
+    .getByTestId(`hire-role-${PERSONA_ID}`)
+    .getByRole("button", { name: "Configure this role" })
+    .click();
 
   const name = page.getByTestId("hire-employee-name");
   const allowance = page.getByTestId("hire-weekly-allowance");
@@ -109,7 +101,6 @@ test("owner hires from a role pack and the configured draft survives reload", as
     timeout: 15_000,
   });
   await expect(page.getByText("Mina joined the team.")).toBeVisible();
-  await expect(page.getByText("Hire approved.", { exact: true })).toBeVisible();
   await expect(page.getByText(/Hello team\. I’ll coordinate/)).toBeVisible();
 });
 
@@ -307,8 +298,7 @@ test("role pack edits retain input after a failed save and then update the real 
     ],
     personaWriteErrors: ["Temporary persona write failure"],
   });
-  await page.goto("/#/hire/roles");
-  await page.getByRole("button", { name: "Edit pack" }).click();
+  await page.goto(`/#/agents?editRolePack=${PERSONA_ID}`);
   await expect(page.getByTestId("company-role-pack-page")).toBeVisible();
   await expect(page.getByTestId("community-catalog-dialog")).toHaveCount(0);
   await expect(page.getByLabel("Allowed worker model")).toHaveValue(
@@ -334,7 +324,9 @@ test("role pack edits retain input after a failed save and then update the real 
     page.getByRole("heading", { name: "Role pack saved" }),
   ).toBeVisible();
   await expect(
-    page.getByText("Research hospitality accounts and summarize evidence."),
+    page
+      .getByRole("complementary", { name: "Role pack preview" })
+      .getByText("Research hospitality accounts and summarize evidence."),
   ).toBeVisible();
   await page.goto("/#/hire/roles");
   await expect(page.getByTestId(`hire-role-${PERSONA_ID}`)).toContainText(
@@ -587,7 +579,9 @@ test("hire ask decisions use the reasoned handoff screen", async ({ page }) => {
   await expect(
     declinedCard.getByRole("heading", { name: "Decision requested" }),
   ).toBeVisible();
-  await expect(declinedCard.getByTestId("ask-status")).toHaveText("denied");
+  await expect(declinedCard.getByTestId("ask-status")).toHaveText(
+    "Request declined",
+  );
   await expect(
     declinedCard.getByText("Request declined", { exact: true }),
   ).toBeVisible();
@@ -635,7 +629,7 @@ test("hire ask card keeps its review and offers retry after a failed decline", a
     page.getByText("The proposal needs another review."),
   ).toBeVisible();
   await page.goto(`/#/asks/${channelId}/${askId}`);
-  await expect(card.getByTestId("ask-status")).toHaveText("denied");
+  await expect(card.getByTestId("ask-status")).toHaveText("Request declined");
   await expect(
     card.getByText("Request declined", { exact: true }),
   ).toBeVisible();
@@ -766,7 +760,7 @@ test("resolved hire ask card explains that the requester has the outcome", async
   await expect(
     card.getByRole("heading", { name: "Decision requested" }),
   ).toBeVisible();
-  await expect(card.getByTestId("ask-status")).toHaveText("resolved");
+  await expect(card.getByTestId("ask-status")).toHaveText("Approved");
   await expect(
     card.getByText("Decision recorded", { exact: true }),
   ).toBeVisible();

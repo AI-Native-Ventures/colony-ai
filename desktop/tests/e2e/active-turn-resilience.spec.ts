@@ -39,7 +39,10 @@ async function openAgentsView(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForBridge(page);
   await openAgentsDirectoryView(page);
-  await page.getByRole("button", { name: "Templates", exact: true }).click();
+  // The Templates tab is cut; the view opens by its address.
+  await page.evaluate(() => {
+    window.location.hash = "/agents?view=templates";
+  });
   await expect(page.getByTestId("unified-agents-groups")).toBeVisible({
     timeout: 10_000,
   });

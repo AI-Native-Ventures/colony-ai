@@ -62,7 +62,9 @@ function personaUpdateInput(
       ...(persona.parallelism !== null
         ? { parallelism: persona.parallelism }
         : {}),
-      ...(persona.sessionPolicy ? { sessionPolicy: persona.sessionPolicy } : {}),
+      ...(persona.sessionPolicy
+        ? { sessionPolicy: persona.sessionPolicy }
+        : {}),
     },
   };
 }
