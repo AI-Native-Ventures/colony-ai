@@ -378,3 +378,7 @@
   ) {
   color: hsl(var(--office-ink-quiet-dark));
 }
+
+:root.dark[data-colony-office] #root .w20-nav-item:not(.is-active) {
+  color: hsl(var(--office-ink-quiet-dark));
+}

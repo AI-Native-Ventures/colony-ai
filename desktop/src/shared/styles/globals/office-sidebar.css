@@ -11,13 +11,13 @@
   #root
   .app-sidebar-full-shell
   [data-testid="sidebar-pinned-header"] {
-  padding: 1.125rem 0.75rem 0.5rem;
+  padding: 1rem 0.75rem 0.25rem;
 }
 
 /* Company block: arch mark, name and context line. */
 :root[data-colony-office] #root .app-sidebar-full-shell .colony-sidebar-brand {
-  min-height: 3rem;
-  margin-bottom: 1rem;
+  min-height: 2.875rem;
+  margin-bottom: 0.5rem;
 }
 
 :root[data-colony-office]
@@ -145,10 +145,10 @@
   #root
   .app-sidebar-full-shell
   [data-sidebar="menu-button"] {
-  min-height: 1.875rem;
+  min-height: 1.8125rem;
   gap: 0.625rem;
   border-radius: var(--office-radius-row);
-  padding: 0.3125rem 0.625rem;
+  padding: 0.1875rem 0.625rem;
   color: hsl(var(--office-ink-2));
   font-size: var(--office-text-row);
   font-weight: 750;
@@ -184,9 +184,9 @@
     [data-testid^="custom-section-list"]
   )
   [data-sidebar="menu-button"] {
-  min-height: 1.8125rem;
+  min-height: 1.75rem;
   gap: 0.5625rem;
-  padding: 0.25rem 0.625rem;
+  padding: 0.1875rem 0.625rem;
   font-weight: 700;
 }
 
@@ -300,8 +300,8 @@
   #root
   .app-sidebar-full-shell
   .sidebar-navigation-group-toggle {
-  min-height: 2rem;
-  padding: 0.625rem 0.625rem 0.1875rem;
+  min-height: 1.875rem;
+  padding: 0.5rem 0.625rem 0.125rem;
   color: hsl(var(--office-ink-3));
   font-size: var(--office-text-caps);
   font-weight: 800;

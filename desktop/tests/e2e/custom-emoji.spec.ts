@@ -335,6 +335,8 @@ test("message reaction action stays neutral after selecting from the picker", as
 test("emoji picker keeps Frequently used live within the app session", async ({
   page,
 }) => {
+  // The office rows are taller; give the 435px picker room above the row.
+  await page.setViewportSize({ width: 1280, height: 860 });
   await page.addInitScript(() => {
     window.localStorage.setItem("emoji-mart.frequently", "{}");
     window.localStorage.removeItem("emoji-mart.last");

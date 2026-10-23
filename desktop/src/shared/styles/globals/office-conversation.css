@@ -293,6 +293,7 @@
 }
 
 :root[data-colony-office] #root [data-testid="message-input-scroll"] {
+  max-height: calc(5 * var(--conversation-message-line-height) + 1.25rem);
   color: hsl(var(--office-ink));
   font-weight: 550;
 }

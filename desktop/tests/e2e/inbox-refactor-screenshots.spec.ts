@@ -574,13 +574,13 @@ test.describe("inbox refactor screenshots", () => {
       ])
       .toEqual([
         "17.6px",
-        { fontSize: "16.5px", lineHeight: "23.5714px" },
+        { fontSize: "18.7px", lineHeight: "28.985px" },
         { paddingBottom: "4.4px", paddingTop: "4.4px" },
         2.2,
+        { fontSize: "14.3px", lineHeight: "20.735px" },
+        { fontSize: "18.7px", lineHeight: "28.985px" },
         { fontSize: "14.1429px", lineHeight: "18.8571px" },
-        { fontSize: "16.5px", lineHeight: "23.5714px" },
-        { fontSize: "14.1429px", lineHeight: "18.8571px" },
-        { fontSize: "16.5px", lineHeight: "23.5714px" },
+        { fontSize: "18.7px", lineHeight: "28.985px" },
       ]);
   });
 });
