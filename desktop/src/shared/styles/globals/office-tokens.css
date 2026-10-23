@@ -16,6 +16,7 @@
 :root {
   --office-rem: calc(var(--buzz-type-rem) * 14 / 15);
   --office-text-title: calc(var(--office-rem) * 3);
+  --office-text-page: calc(var(--office-rem) * 2.5);
   --office-text-heading: calc(var(--office-rem) * 1.125);
   --office-text-lede: var(--office-rem);
   --office-text-nav: calc(var(--office-rem) * 0.9375);

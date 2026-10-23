@@ -1,0 +1,149 @@
+/*
+ * Office restyle, Phase 2: shared page primitives for the workspace screens
+ * (Team, Agents, hiring, Goals, Work, Money and the rest). Page titles,
+ * underline tabs, breadcrumbs, section headings and form fields take the
+ * office type and shapes wherever a screen uses the common markup, so every
+ * page reads like the office without per-screen layout changes.
+ *
+ * Rules stay inside the content card (`[data-buzz-content-surface]`), so
+ * dialogs and menus keep their own treatment (office-overlays.css).
+ */
+
+/* Page titles: the office title block, one step below the conversation title. */
+:root[data-colony-office]
+  #root
+  [data-buzz-content-surface]
+  :is(h1.text-2xl.tracking-tight, h1.text-company-title) {
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-page);
+  font-weight: 800;
+  letter-spacing: var(--office-tracking-title);
+  line-height: 1.1;
+}
+
+/* Section headings inside pages. */
+:root[data-colony-office]
+  #root
+  [data-buzz-content-surface]
+  :is(h2, h3).font-semibold.tracking-tight {
+  color: hsl(var(--office-ink));
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+/* Breadcrumb bars above company pages. */
+:root[data-colony-office]
+  #root
+  [data-buzz-content-surface]
+  nav[aria-label="Breadcrumb"] {
+  color: hsl(var(--office-ink-2));
+  font-size: var(--office-text-label);
+  font-weight: 750;
+}
+
+:root[data-colony-office]
+  #root
+  [data-buzz-content-surface]
+  header:has(> nav[aria-label="Breadcrumb"]) {
+  border-bottom-color: hsl(var(--office-line));
+}
+
+/* Underline tabs: quiet ink, the selected tab in ink over the accent line. */
+:root[data-colony-office]
+  #root
+  [data-buzz-content-surface]
+  [role="tablist"]:has(> [role="tab"].border-b-2) {
+  border-bottom-color: hsl(var(--office-line));
+}
+
+:root[data-colony-office]
+  #root
+  [data-buzz-content-surface]
+  [role="tab"].border-b-2 {
+  color: hsl(var(--office-ink-3));
+  font-size: var(--office-text-label);
+  font-weight: 750;
+}
+
+:root[data-colony-office]
+  #root
+  [data-buzz-content-surface]
+  [role="tab"].border-b-2[aria-selected="true"] {
+  border-bottom-color: hsl(var(--primary));
+  color: hsl(var(--office-ink));
+  font-weight: 800;
+}
+
+:root[data-colony-office]
+  #root
+  [data-buzz-content-surface]
+  [role="tab"].border-b-2:not([aria-selected="true"]):hover {
+  color: hsl(var(--office-ink));
+}
+
+/* Form fields on pages: the office field shape and focus halo. */
+:root[data-colony-office]
+  #root
+  [data-buzz-content-surface]
+  :is(
+    input.border:not([type="checkbox"], [type="radio"], [type="range"]),
+    select.border,
+    textarea.border
+  ) {
+  border-color: hsl(var(--office-line-2));
+  border-radius: var(--office-radius-control);
+  background-color: hsl(var(--office-paper));
+  color: hsl(var(--office-ink));
+}
+
+:root[data-colony-office]
+  #root
+  [data-buzz-content-surface]
+  :is(
+    input.border:not([type="checkbox"], [type="radio"], [type="range"]),
+    select.border,
+    textarea.border
+  ):focus-visible {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 4px hsl(var(--primary) / 0.14);
+  outline: none;
+}
+
+/* Team: people and employees as office rows. */
+:root[data-colony-office]
+  #root
+  [data-testid^="company-team-member-"]
+  .text-compact {
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-nav);
+  font-weight: 800;
+}
+
+:root[data-colony-office]
+  #root
+  [data-testid^="company-team-member-"]
+  .text-2xs {
+  color: hsl(var(--office-ink-3));
+  font-size: var(--office-text-meta);
+  font-weight: 600;
+}
+
+:root[data-colony-office]
+  #root
+  [data-testid^="company-team-member-"]
+  .text-badge {
+  border-radius: 999px;
+  font-size: var(--office-text-small);
+  font-weight: 750;
+  padding-inline: 0.625rem;
+}
+
+:root[data-colony-office]
+  #root
+  [data-testid^="company-team-member-"]
+  .rounded-\[0\.625rem\] {
+  border-radius: 999px;
+  background: hsl(var(--office-char-soft));
+  color: hsl(var(--office-ink-2));
+  font-weight: 800;
+}

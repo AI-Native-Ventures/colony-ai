@@ -1,7 +1,13 @@
 import { mkdirSync } from "node:fs";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { expect, type Page, test } from "@playwright/test";
-import { generateSecretKey, getPublicKey } from "nostr-tools/pure";
+import {
+  finalizeEvent,
+  generateSecretKey,
+  getPublicKey,
+} from "nostr-tools/pure";
+
+import { KIND_MEMBER_POSITION_HEAD } from "../../src/shared/constants/kinds";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
@@ -105,7 +111,7 @@ function wants(surface: string) {
   return SURFACES.length === 0 || SURFACES.includes(surface);
 }
 
-async function seedAppearance(page: Page, variant: Variant) {
+async function seedAppearance(page: Page, variant: Variant, self = SELF) {
   await page.addInitScript(
     ({ variant, self, community }) => {
       const isDark = variant.theme === "buzz-dark";
@@ -136,7 +142,7 @@ async function seedAppearance(page: Page, variant: Variant) {
       document.documentElement.classList.toggle("dark", isDark);
       document.documentElement.classList.toggle("light", !isDark);
     },
-    { variant, self: SELF, community: COMMUNITY },
+    { variant, self, community: COMMUNITY },
   );
   await page.emulateMedia({
     colorScheme: variant.theme === "buzz-dark" ? "dark" : "light",
@@ -324,6 +330,161 @@ for (const variant of VARIANTS) {
       await expect(page.getByTestId("home-inbox-detail")).toBeVisible();
       await page.waitForTimeout(600);
       await shot(page, variant, "activity");
+    }
+  });
+
+  test(`office restyle proof: company ${variant.id}`, async ({ page }) => {
+    test.skip(
+      !["team", "team-org", "team-detail", "agents", "hire-roles"].some(wants),
+    );
+    test.setTimeout(150_000);
+    mkdirSync(OUT, { recursive: true });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const owner = TEST_IDENTITIES.tyler.pubkey;
+    await seedAppearance(page, variant, owner);
+    await page.addInitScript((identity) => {
+      localStorage.setItem(
+        "buzz:e2e-identity-override.v1",
+        JSON.stringify(identity),
+      );
+    }, TEST_IDENTITIES.tyler);
+    const relaySecret = generateSecretKey();
+    const mina = getPublicKey(generateSecretKey());
+    const people = [
+      { pubkey: owner, name: "Lerato Molefe", title: "Founder", kind: "human" },
+      {
+        pubkey: mina,
+        name: "Mina",
+        title: "Social Media Manager",
+        kind: "employee",
+        managerPubkey: owner,
+      },
+      {
+        pubkey: TEST_IDENTITIES.alice.pubkey,
+        name: "Noluthando Khumalo",
+        title: "Account Manager",
+        kind: "human",
+        managerPubkey: mina,
+      },
+      {
+        pubkey: getPublicKey(generateSecretKey()),
+        name: "Noor",
+        title: "Bookkeeper",
+        kind: "employee",
+        managerPubkey: owner,
+      },
+      {
+        pubkey: getPublicKey(generateSecretKey()),
+        name: "Aya",
+        title: "Business Development",
+        kind: "employee",
+        managerPubkey: owner,
+      },
+      {
+        pubkey: TEST_IDENTITIES.bob.pubkey,
+        name: "Sam Patel",
+        title: "Designer",
+        kind: "human",
+        managerPubkey: mina,
+      },
+    ];
+    await installMockBridge(page, {
+      relaySelf: getPublicKey(relaySecret),
+      companyHireRelayPrivateKeyHex: bytesToHex(relaySecret),
+      relayRequiresMembership: true,
+      searchProfiles: people.map((person) => ({
+        pubkey: person.pubkey,
+        displayName: person.name,
+      })),
+      relayMembers: people
+        .filter((person) => person.kind === "human")
+        .map((person) => ({
+          pubkey: person.pubkey,
+          role: person.pubkey === owner ? "owner" : "member",
+        })),
+      relayAgents: people
+        .filter((person) => person.kind === "employee")
+        .map((person) => ({
+          pubkey: person.pubkey,
+          ownerPubkey: owner,
+          name: person.name,
+          agentType: "agent",
+        })),
+      managedAgents: [
+        {
+          pubkey: mina,
+          name: "Mina",
+          status: "running",
+          channelNames: ["general"],
+        },
+      ],
+      personas: [
+        {
+          id: "company-role-hospitality-research",
+          displayName: "Hospitality researcher",
+          systemPrompt: "Research hospitality accounts and report findings.",
+          isActive: true,
+          runtime: "buzz-agent",
+          provider: "openai",
+          model: "gpt-5.5",
+          envVars: { BUZZ_AGENT_PROVIDER: "openai" },
+          companyRole: {
+            job: "Hospitality research",
+            skills: ["Market research", "Synthesis"],
+            tools: [{ name: "Web search", risk: "low" }],
+            workerMenu: ["buzz-agent"],
+          },
+        },
+      ],
+      companyMemberPositionEvents: people.map((person) =>
+        finalizeEvent(
+          {
+            kind: KIND_MEMBER_POSITION_HEAD,
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [["d", `company:member:${person.pubkey}`]],
+            content: JSON.stringify({
+              schemaVersion: 1,
+              pubkey: person.pubkey,
+              title: person.title,
+              kind: person.kind,
+              status: "active",
+              ...("managerPubkey" in person
+                ? { managerPubkey: person.managerPubkey }
+                : {}),
+              sourceActionEventId: "b".repeat(64),
+              updatedAt: new Date().toISOString(),
+            }),
+          },
+          relaySecret,
+        ),
+      ),
+    });
+    await page.goto("/#/team");
+    const team = page.getByTestId("company-team-screen");
+    await expect(team).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId(`company-team-member-${mina}`)).toBeVisible();
+    if (wants("team")) await shot(page, variant, "team");
+    if (wants("team-org")) {
+      await team.getByRole("tab", { name: "Reporting lines" }).click();
+      await expect(page.getByRole("treeitem").first()).toBeVisible();
+      await shot(page, variant, "team-org");
+    }
+    if (wants("team-detail")) {
+      await page.goto(`/#/team/detail/${mina}`);
+      await expect(page.getByTestId("company-employee-profile")).toBeVisible();
+      await shot(page, variant, "team-detail");
+    }
+    if (wants("agents")) {
+      await page.goto("/#/agents");
+      await expect(page.getByTestId("agents-page-content")).toBeVisible();
+      await shot(page, variant, "agents");
+    }
+    if (wants("hire-roles")) {
+      await page.goto("/#/hire/roles");
+      await expect(
+        page.getByTestId("hire-role-company-role-hospitality-research"),
+      ).toBeVisible();
+      await shot(page, variant, "hire-roles");
     }
   });
 }
