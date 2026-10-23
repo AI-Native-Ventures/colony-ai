@@ -221,44 +221,14 @@ test.describe("W07 agent workspace smoke", () => {
     }
   });
 
-  test("supervision and billing show only available backend state", async ({
-    page,
-  }) => {
+  test("supervision shows only available backend state", async ({ page }) => {
     await installMockBridge(page, {
       managedAgents: [],
-      colonyCreditsGatewayEnabled: true,
     });
-    await page.route("**/api/payments/**", (route) =>
-      route.fulfill({ status: 503, json: { error: "payments_unavailable" } }),
-    );
     await page.goto("/#/supervision", { waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("agent-supervision")).toBeVisible();
     await expect(
       page.getByText("No active sessions in this view."),
     ).toBeVisible();
-
-    await page.goto("/#/power?section=history", {
-      waitUntil: "domcontentloaded",
-    });
-    await expect(page.getByTestId("power-history")).toBeVisible();
-    await expect(
-      page.getByText(
-        "Billing history is unavailable while the payment service is disconnected.",
-      ),
-    ).toBeVisible();
-
-    await page.goto("/#/power?section=checkout", {
-      waitUntil: "domcontentloaded",
-    });
-    await expect(page.getByTestId("power-checkout")).toBeVisible();
-    await expect(
-      page.getByTestId("power-checkout").getByRole("alert"),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Continue to checkout" }),
-    ).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Retry loading prices" }),
-    ).toBeEnabled();
   });
 });

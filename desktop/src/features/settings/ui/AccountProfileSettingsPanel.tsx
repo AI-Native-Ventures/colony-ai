@@ -160,7 +160,7 @@ export function AccountProfileSettingsPanel({
             <div className="cs-photo-copy">
               <button
                 className="cs-button"
-                data-testid="profile-photo-change"
+                data-testid="profile-avatar-edit"
                 onClick={onEditAvatar}
                 type="button"
               >

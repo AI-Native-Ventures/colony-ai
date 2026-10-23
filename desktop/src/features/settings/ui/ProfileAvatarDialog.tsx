@@ -38,7 +38,12 @@ const AVATAR_OPTIONS = [
   { label: "Leaf", emoji: "\uD83C\uDF3F", color: "#e4ede5", Glyph: LeafGlyph },
   { label: "Diamond", emoji: "\u25C8", color: "#FFFFFF", Glyph: DiamondGlyph },
   { label: "Sun", emoji: "\u2600", color: "#FFF4CC", Glyph: SunGlyph },
-  { label: "Flower", emoji: "\uD83C\uDF38", color: "#f5dce9", Glyph: FlowerGlyph },
+  {
+    label: "Flower",
+    emoji: "\uD83C\uDF38",
+    color: "#f5dce9",
+    Glyph: FlowerGlyph,
+  },
 ] as const;
 
 type AvatarStage =
@@ -70,6 +75,30 @@ function initials(name: string) {
   );
 }
 
+/**
+ * Places the photo so the guide circle frames the saved crop. Everything is in
+ * guide widths (`--pa-guide`), so the preview follows the root font size.
+ */
+function cropImageStyle(
+  ratios: { x: number; y: number } | null,
+  point: { x: number; y: number },
+): React.CSSProperties {
+  if (!ratios) {
+    return {
+      height: "var(--pa-guide)",
+      left: "50%",
+      top: "50%",
+      width: "var(--pa-guide)",
+    };
+  }
+  return {
+    height: `calc(var(--pa-guide) * ${ratios.y})`,
+    left: `calc(50% - var(--pa-guide) / 2 - var(--pa-guide) * ${(ratios.x - 1) * point.x})`,
+    top: `calc(50% - var(--pa-guide) / 2 - var(--pa-guide) * ${(ratios.y - 1) * point.y})`,
+    width: `calc(var(--pa-guide) * ${ratios.x})`,
+  };
+}
+
 export function ProfileAvatarDialog({
   avatarUrl,
   displayName,
@@ -90,6 +119,13 @@ export function ProfileAvatarDialog({
   const cameraVideoRef = React.useRef<HTMLVideoElement>(null);
   const cameraStreamRef = React.useRef<MediaStream | null>(null);
   const cropRef = React.useRef<HTMLDivElement>(null);
+  const guideRef = React.useRef<HTMLDivElement>(null);
+  // Natural size of the picked image, so the preview can show the whole photo
+  // around the circle exactly as the saved crop will frame it.
+  const [naturalSize, setNaturalSize] = React.useState<{
+    width: number;
+    height: number;
+  } | null>(null);
   const pointerStartRef = React.useRef<{
     x: number;
     y: number;
@@ -126,6 +162,7 @@ export function ProfileAvatarDialog({
     setSelectedChoice(null);
     setFile(null);
     setPreviewUrl(null);
+    setNaturalSize(null);
     setZoom(1);
     setCropPoint({ x: 0.5, y: 0.5 });
     setIsCameraReady(false);
@@ -194,6 +231,7 @@ export function ProfileAvatarDialog({
 
     setProblem(null);
     setPreviewUrl(URL.createObjectURL(nextFile));
+    setNaturalSize(null);
     setFile(nextFile);
     setZoom(1);
     setCropPoint({ x: 0.5, y: 0.5 });
@@ -233,25 +271,40 @@ export function ProfileAvatarDialog({
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
+  /** How many guide circles wide and tall the image is at this zoom. */
+  function imageRatios() {
+    if (!naturalSize) return null;
+    const shortSide = Math.min(naturalSize.width, naturalSize.height);
+    return {
+      x: (zoom * naturalSize.width) / shortSide,
+      y: (zoom * naturalSize.height) / shortSide,
+    };
+  }
+
   function handleCropPointerMove(event: React.PointerEvent<HTMLDivElement>) {
     const start = pointerStartRef.current;
-    const bounds = cropRef.current?.getBoundingClientRect();
-    if (!start || !bounds) return;
+    const guide = guideRef.current?.getBoundingClientRect();
+    const ratios = imageRatios();
+    if (!start || !guide || !ratios) return;
+    // The photo follows the pointer: a drag of one guide width moves it one
+    // guide width, so a point moves by the drag over the room to move in.
+    const travelX = (ratios.x - 1) * guide.width;
+    const travelY = (ratios.y - 1) * guide.height;
     setCropPoint({
-      x: Math.max(
-        0,
-        Math.min(
-          1,
-          start.cropX - (event.clientX - start.x) / bounds.width / zoom,
-        ),
-      ),
-      y: Math.max(
-        0,
-        Math.min(
-          1,
-          start.cropY - (event.clientY - start.y) / bounds.height / zoom,
-        ),
-      ),
+      x:
+        travelX > 0
+          ? Math.max(
+              0,
+              Math.min(1, start.cropX - (event.clientX - start.x) / travelX),
+            )
+          : start.cropX,
+      y:
+        travelY > 0
+          ? Math.max(
+              0,
+              Math.min(1, start.cropY - (event.clientY - start.y) / travelY),
+            )
+          : start.cropY,
     });
   }
 
@@ -377,10 +430,15 @@ export function ProfileAvatarDialog({
 
   /** The avatar the highlighted preset would save, or null with none chosen. */
   function chosenPresetAvatar(): string | null {
-    if (selectedChoice === "initials" || (selectedChoice === null && !avatarUrl)) {
+    if (
+      selectedChoice === "initials" ||
+      (selectedChoice === null && !avatarUrl)
+    ) {
       return emojiAvatarDataUrl(initials(displayName), "#796782");
     }
-    const option = AVATAR_OPTIONS.find((entry) => entry.label === selectedChoice);
+    const option = AVATAR_OPTIONS.find(
+      (entry) => entry.label === selectedChoice,
+    );
     return option ? emojiAvatarDataUrl(option.emoji, option.color) : null;
   }
 
@@ -404,7 +462,6 @@ export function ProfileAvatarDialog({
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
-        aria-describedby={undefined}
         className="pa-dialog"
         data-stage={stage}
         data-testid="profile-avatar-dialog"
@@ -507,10 +564,7 @@ export function ProfileAvatarDialog({
                   testId="avatar-invalid"
                 />
               ) : null}
-              <label
-                className="pa-drop"
-                data-testid="avatar-file-drop-zone"
-              >
+              <label className="pa-drop" data-testid="avatar-file-drop-zone">
                 <UploadIcon size={20} />
                 <strong>Choose an image</strong>
                 <span>
@@ -601,21 +655,30 @@ export function ProfileAvatarDialog({
                 role="slider"
                 tabIndex={0}
               >
-                <div className="pa-crop-guide">
-                  {previewUrl ? (
-                    <img
-                      alt="Avatar crop preview"
-                      draggable={false}
-                      src={previewUrl}
-                      style={{
-                        objectPosition: `${cropPoint.x * 100}% ${cropPoint.y * 100}%`,
-                        transform: `scale(${zoom})`,
-                      }}
-                    />
-                  ) : (
-                    initials(displayName)
-                  )}
-                </div>
+                {previewUrl ? (
+                  <img
+                    alt="Avatar crop preview"
+                    className="pa-crop-image"
+                    draggable={false}
+                    onLoad={(event) =>
+                      setNaturalSize({
+                        height: event.currentTarget.naturalHeight,
+                        width: event.currentTarget.naturalWidth,
+                      })
+                    }
+                    src={previewUrl}
+                    style={cropImageStyle(imageRatios(), cropPoint)}
+                  />
+                ) : (
+                  <span className="pa-crop-initials">
+                    {initials(displayName)}
+                  </span>
+                )}
+                <span
+                  aria-hidden="true"
+                  className="pa-crop-guide"
+                  ref={guideRef}
+                />
               </div>
               {stage === "crop" ? (
                 <label className="pa-zoom" htmlFor="avatar-crop-zoom">
@@ -672,8 +735,7 @@ export function ProfileAvatarDialog({
               className="pa-save"
               data-testid={canRetryPreset ? "avatar-retry" : "avatar-save"}
               disabled={
-                isSaving ||
-                (!canRetryPreset && chosenPresetAvatar() === null)
+                isSaving || (!canRetryPreset && chosenPresetAvatar() === null)
               }
               onClick={() => void retrySave()}
               ref={recoveryButtonRef}

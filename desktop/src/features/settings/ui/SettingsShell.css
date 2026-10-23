@@ -177,6 +177,13 @@
   font-weight: 800;
 }
 
+/* Appearance, "Prominent selected tab": the open page takes the accent fill. */
+:root[data-prominent-active-tab] .cs-nav-item[aria-current="page"] {
+  background: hsl(var(--colony-accent));
+  box-shadow: none;
+  color: hsl(var(--colony-surface));
+}
+
 .cs-search-result {
   justify-content: space-between;
 }

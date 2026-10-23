@@ -78,7 +78,7 @@ export function breadcrumbForPath(pathname: string): Crumb[] | null {
         ? trail("Business", "Money", MONEY_PAGES[second] ?? "Details")
         : trail("Business", "Money");
     case "power":
-      return trail("AI spend & power");
+      return trail("Company", "AI spend & power");
     case "reminders":
       return trail("Saved for later");
     case "pulse":

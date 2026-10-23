@@ -95,6 +95,12 @@ for (const width of [1728, 1440]) {
         width,
         height: width === 1728 ? 1117 : 900,
       });
+      // A named theme is one the person already uses; the catalog is cut.
+      if (variant !== "default" && variant !== "field")
+        await page.addInitScript((theme) => {
+          localStorage.setItem("buzz-theme", theme);
+          localStorage.setItem("buzz-follow-system", "false");
+        }, variant);
       await start(page);
       await appearance(page);
       if (variant === "field") {
@@ -108,12 +114,6 @@ for (const width of [1728, 1440]) {
           "#9CC2F7",
           "#00ACE6",
         ]);
-      } else if (variant !== "default") {
-        await page.getByTestId("appearance-open-themes").click();
-        await page.getByTestId(`theme-catalog-${variant}`).click();
-        await page.getByTestId("theme-use").click();
-        await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-        await page.getByTestId("theme-done").click();
       }
       const dir = process.env.COLONY_APPEARANCE_PROOF_DIR;
       const capture = async (route: string) => {
@@ -234,12 +234,9 @@ for (const auth of ["unknown", "logged_out"])
     await expect(connection).toContainText(
       auth === "unknown" ? "connection not confirmed" : "needs sign-in",
     );
-    await page
-      .getByTestId("agent-defaults-openrouter-alternative")
-      .locator("summary")
-      .click();
-    const bullets = page.getByTestId("openrouter-connection").locator("ul");
-    await expect(bullets).toHaveCSS("padding-left", "20px");
+    await expect(page.getByTestId("agent-way-openrouter")).toContainText(
+      "Not connected",
+    );
   });
 
 test("Agent Defaults shows the saved OpenRouter connection first", async ({
@@ -273,30 +270,3 @@ test("Agent Defaults shows the saved OpenRouter connection first", async ({
   ).toHaveCount(0);
   await expect(page.getByTestId("openrouter-connection")).toBeVisible();
 });
-
-for (const width of [1728, 1440]) {
-  test(`approved named preview and applied states ${width}`, async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width, height: width === 1728 ? 1117 : 900 });
-    await start(page);
-    await appearance(page);
-    await page.getByTestId("appearance-open-themes").click();
-    await page.getByTestId("theme-catalog-buzz").click();
-    await expect(page.getByTestId("theme-use")).toHaveText("Use Colony");
-    const dir = process.env.COLONY_APPEARANCE_PROOF_DIR;
-    await waitForAnimations(page);
-    if (dir)
-      await page.screenshot({
-        path: `${dir}/reference-flow-${width}-preview.png`,
-      });
-    await page.getByTestId("theme-use").click();
-    await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-    await expect(page.getByTestId("theme-done")).toHaveText("Done");
-    await waitForAnimations(page);
-    if (dir)
-      await page.screenshot({
-        path: `${dir}/reference-flow-${width}-applied.png`,
-      });
-  });
-}

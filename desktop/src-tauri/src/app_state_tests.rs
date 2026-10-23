@@ -1429,10 +1429,7 @@ fn forgetting_identity_removes_only_the_identity() {
 
     forget_identity_with_store(&store, &legacy_path, dir.path()).unwrap();
 
-    assert_eq!(
-        *store.deleted.borrow(),
-        vec![IDENTITY_KEY_NAME.to_string()]
-    );
+    assert_eq!(*store.deleted.borrow(), vec![IDENTITY_KEY_NAME.to_string()]);
     assert!(!store.slot.borrow().contains_key(IDENTITY_KEY_NAME));
     assert!(!legacy_path.exists());
     assert!(!migration_marker_path(dir.path()).exists());

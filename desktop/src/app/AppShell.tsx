@@ -197,6 +197,7 @@ export function AppShell() {
     !settingsOpen &&
     !isHuddleRoom &&
     selectedView !== "pins" &&
+    location.pathname !== "/" &&
     location.pathname !== "/team" &&
     location.pathname !== "/team/org" &&
     !location.pathname.startsWith("/today/updates") &&

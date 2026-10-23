@@ -418,7 +418,7 @@ async function expectOwnedAgentProfileActions(
   ).toHaveCount(0);
   await expect(
     profilePopover.getByTestId(`user-profile-popover-huddle-${pubkey}`),
-  ).toBeVisible();
+  ).toHaveCount(0);
 }
 
 async function expectAgentProfileActionsHidden(
@@ -4980,9 +4980,7 @@ test("human profile popover does not show an owner", async ({ page }) => {
   ).toHaveCount(0);
 });
 
-test("owned bot profile exposes message and huddle actions", async ({
-  page,
-}) => {
+test("owned bot profile exposes the message action", async ({ page }) => {
   await installMockBridge(page, {
     managedAgents: [
       {
@@ -5010,25 +5008,9 @@ test("owned bot profile exposes message and huddle actions", async ({
     profilePopover,
     TEST_IDENTITIES.charlie.pubkey,
   );
-
-  await profilePopover
-    .getByTestId(
-      `user-profile-popover-huddle-${TEST_IDENTITIES.charlie.pubkey}`,
-    )
-    .click();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (window.__BUZZ_E2E_COMMAND_LOG__ ?? []).find(
-            (entry) => entry.command === "start_huddle",
-          )?.payload,
-      ),
-    )
-    .toMatchObject({ memberPubkeys: [TEST_IDENTITIES.charlie.pubkey] });
 });
 
-test("owned agent mention profile exposes message and huddle actions", async ({
+test("owned agent mention profile exposes the message action", async ({
   page,
 }) => {
   await installMockBridge(page, {
@@ -5101,7 +5083,7 @@ test("profile popover wave sends a direct message for a human profile", async ({
     profilePopover.getByTestId(
       `user-profile-popover-huddle-${TEST_IDENTITIES.bob.pubkey}`,
     ),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     profilePopover.getByTestId(
       `user-profile-popover-wave-${TEST_IDENTITIES.bob.pubkey}`,

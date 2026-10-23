@@ -28,8 +28,7 @@ async function waitForSeedHook(page: import("@playwright/test").Page) {
   );
 }
 
-// Helper: open the observer feed panel by navigating to #agents, clicking the
-// agent avatar to open the profile panel, then clicking "View activity".
+// Helper: open the observer feed panel through its #agents deep link.
 async function openObserverFeedPanel(
   page: import("@playwright/test").Page,
   agentPubkey: string,
@@ -40,22 +39,12 @@ async function openObserverFeedPanel(
   await page.getByTestId("channel-agents").click();
   await expect(page.getByTestId("chat-title")).toHaveText("agents");
 
-  // Click any message row button to open the profile panel.
-  const messageRow = page
-    .getByTestId("message-row")
-    .filter({ has: page.getByText("Observer Agent", { exact: false }) });
-  await expect(messageRow.first()).toBeVisible({ timeout: 8_000 });
-  await messageRow.first().getByRole("button").first().click();
-
-  const profilePanel = page.getByTestId("user-profile-panel");
-  await expect(profilePanel).toBeVisible({ timeout: 10_000 });
-
-  // Click "View activity" to open the observer feed panel.
-  const activityBtn = page.getByTestId(
-    `user-profile-view-activity-${agentPubkey}`,
-  );
-  await expect(activityBtn).toBeVisible({ timeout: 5_000 });
-  await activityBtn.click();
+  // The profile panel no longer links to the activity log, so open the pane
+  // through its deep link, as a reload would.
+  const channelId = await page
+    .getByTestId("channel-agents")
+    .getAttribute("data-channel-id");
+  await page.goto(`/#/channels/${channelId}?agentSession=${agentPubkey}`);
 
   const feedPanel = page.getByTestId("agent-session-thread-panel");
   await expect(feedPanel).toBeVisible({ timeout: 10_000 });

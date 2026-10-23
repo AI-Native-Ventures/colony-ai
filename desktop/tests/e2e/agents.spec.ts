@@ -2899,7 +2899,7 @@ test("start pill morphs into the running dot without remounting the avatar", asy
   ).toBe(true);
 });
 
-test("duplicate instances move from the agents gallery into the agent profile", async ({
+test("duplicate instances stay out of the agents gallery and the profile opens the live instance", async ({
   page,
 }) => {
   const personaId = "custom:duplicate-auditor";
@@ -2937,14 +2937,11 @@ test("duplicate instances move from the agents gallery into the agent profile", 
   ).toHaveCount(0);
 
   await page.getByTestId(`persona-agent-row-${personaId}`).click();
-  await page.getByTestId("user-profile-tab-runtime").click();
-  await page.getByTestId("user-profile-instances").click();
-  await page.getByTestId(`user-profile-instance-${additionalPubkey}`).click();
 
   await expect(page.getByTestId("user-profile-panel")).toBeVisible();
-  await expect(page.getByTestId("user-profile-agent-status")).toContainText(
-    "Stopped",
-  );
+  await expect(
+    page.getByTestId("user-profile-agent-primary-action"),
+  ).toHaveAttribute("aria-label", "Stop");
   await expect(
     page.getByTestId("user-profile-settings-menu-trigger"),
   ).toHaveCount(0);

@@ -51,13 +51,12 @@ test("message size follows the shared token ramp in previews and conversations",
     ["default", baseline],
     ["larger", baseline + step],
   ] as const) {
-    await page.getByTestId("appearance-message-size").selectOption(size);
+    await page.getByTestId(`appearance-message-size-${size}`).click();
     await expect(
       page
         .getByTestId("appearance-live-preview")
-        .locator(".ap-demo-message p")
-        .first(),
-    ).toHaveCSS("font-size", `${(pixels * 0.73).toFixed(2)}px`);
+        .locator(".cs-preview-message > span:last-child > span"),
+    ).toHaveCSS("font-size", `${pixels}px`);
     await page.getByTestId("settings-back-to-app").click();
     await page.getByTestId("channel-general").click();
     await expect(
@@ -72,7 +71,7 @@ test("message size follows the shared token ramp in previews and conversations",
   ).toHaveCSS("font-size", `${baseline + step}px`);
 });
 
-test("appearance exposes the approved controls and named themes preserve conversation preferences", async ({
+test("appearance exposes the approved controls and keeps conversation preferences", async ({
   page,
 }) => {
   await page.addInitScript(() =>
@@ -95,49 +94,24 @@ test("appearance exposes the approved controls and named themes preserve convers
     "appearance-field-bottom",
     "appearance-glass",
     "appearance-prominent",
-    "appearance-message-size",
+    "appearance-message-size-larger",
     "appearance-links-rich",
     "appearance-threads-focus",
+    "appearance-typeface",
     "appearance-reset",
   ])
     await expect(page.getByTestId(id)).toBeVisible();
   await expect(page.getByTestId("appearance-density")).toHaveCount(0);
-  await page.getByTestId("appearance-message-size").selectOption("larger");
-  await page.getByTestId("appearance-accent-violet").click();
-  await page.getByTestId("appearance-open-themes").click();
-  const catalog = page.getByTestId("settings-theme-catalog");
-  await expect(
-    catalog.getByRole("heading", { name: "Find your atmosphere." }),
-  ).toBeVisible();
-  await expect(catalog.locator(".d17-theme-tile")).toHaveCount(62);
-  await expect(catalog.getByTestId("theme-catalog-buzz")).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
-  await catalog.getByRole("button", { name: "Light", exact: true }).click();
-  await expect(catalog.getByTestId("theme-catalog-buzz-dark")).toHaveCount(0);
-  await catalog
-    .getByRole("searchbox", { name: "Search themes" })
-    .fill("github");
-  await expect(catalog.locator(".d17-theme-tile")).toHaveCount(3);
-  await page.getByTestId("theme-catalog-github-light").click();
-  await expect(page.getByTestId("theme-workspace-preview")).toContainText(
-    "The September designs are ready for feedback.",
-  );
-  await expect(page.getByTestId("appearance-preview-density")).toHaveCount(0);
-  await page.getByTestId("theme-use").click();
-  await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
+  await expect(page.getByTestId("appearance-open-themes")).toHaveCount(0);
+  await page.getByTestId("appearance-message-size-larger").click();
+  await page.getByTestId("appearance-accent-teal").click();
+  await page.getByTestId("appearance-apply").click();
   await expect
     .poll(() => appearanceSnapshot(page))
     .toMatchObject({
-      theme: "github-light",
       density: "compact",
-      followSystem: false,
-      accent: "#5B45BE",
+      accent: "#1F7A70",
     });
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
-    .toBe("github-light");
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute(
     "data-conversation-density",
@@ -152,83 +126,6 @@ test("appearance exposes the approved controls and named themes preserve convers
       ),
     )
     .toBe("calc(var(--text-sm) + 1rem / 16)");
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
-    .toBe("github-light");
-});
-
-test("theme preview cancel leaves the saved choice unchanged", async ({
-  page,
-}) => {
-  await openAppearance(page);
-  const before = await appearanceSnapshot(page);
-  await page.getByTestId("appearance-open-themes").click();
-  await page.getByTestId("theme-catalog-buzz-dark").click();
-  await expect(page.getByTestId("theme-workspace-preview")).toContainText(
-    "Campaign studio",
-  );
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
-    .toBe("buzz");
-  await page.getByRole("button", { name: "Back to themes" }).click();
-  await expect(page.getByTestId("settings-theme-catalog")).toBeVisible();
-  expect(await appearanceSnapshot(page)).toEqual(before);
-});
-
-test("the atomic saved theme survives failed legacy cache writes and reload", async ({
-  page,
-}) => {
-  await openAppearance(page);
-  await page.getByTestId("appearance-open-themes").click();
-  await page.getByTestId("theme-catalog-github-light").click();
-  await page.evaluate(() => {
-    const original = Storage.prototype.setItem;
-    Storage.prototype.setItem = function (key, value) {
-      if (key.startsWith("buzz-") && key.includes("theme"))
-        throw new DOMException("Cache unavailable", "QuotaExceededError");
-      original.call(this, key, value);
-    };
-  });
-  await page.getByTestId("theme-use").click();
-  await expect(page.getByTestId("settings-theme-applied")).toBeVisible();
-  await expect
-    .poll(() => appearanceSnapshot(page))
-    .toMatchObject({ theme: "github-light", followSystem: false });
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
-    .toBe("buzz");
-  await page.reload();
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
-    .toBe("github-light");
-  await page.getByRole("button", { name: "Back to themes" }).click();
-  await expect(page.getByTestId("theme-catalog-github-light")).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
-});
-
-test("failed theme save keeps the current theme and offers retry", async ({
-  page,
-}) => {
-  await openAppearance(page);
-  await page.getByTestId("appearance-open-themes").click();
-  await page.getByTestId("theme-catalog-buzz-dark").click();
-  await page.evaluate(() => {
-    const original = Storage.prototype.setItem;
-    Storage.prototype.setItem = function (key, value) {
-      if (key.startsWith("colony.appearance.v1:"))
-        throw new DOMException("Storage unavailable", "QuotaExceededError");
-      original.call(this, key, value);
-    };
-  });
-  await page.getByTestId("theme-use").click();
-  await expect(page.getByRole("alert")).toContainText("Could not save");
-  await expect(page.getByTestId("settings-theme-preview")).toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
-    .toBe("buzz");
-  await expect(page.getByTestId("theme-use")).toBeEnabled();
 });
 
 test("sidebar colours are chosen from a preset or by slot, survive reload, and reset can be undone", async ({
@@ -288,67 +185,13 @@ test("appearance controls remain usable at a narrow desktop width", async ({
   await page.setViewportSize({ width: 840, height: 900 });
   await openAppearance(page);
   await expect(page.getByTestId("appearance-density")).toHaveCount(0);
-  await page.getByTestId("appearance-message-size").selectOption("larger");
-  await expect(page.getByTestId("appearance-message-size")).toHaveValue(
-    "larger",
-  );
+  await page.getByTestId("appearance-message-size-larger").click();
+  await expect(
+    page.getByTestId("appearance-message-size-larger"),
+  ).toHaveAttribute("aria-pressed", "true");
 });
 
-test("a sidebar theme toggle supersedes an applied named theme across reload and Appearance", async ({
-  page,
-}) => {
-  await openAppearance(page);
-  await page.getByTestId("appearance-open-themes").click();
-  await page.getByTestId("theme-catalog-dracula").click();
-  await page.getByTestId("theme-use").click();
-  await expect
-    .poll(() => appearanceSnapshot(page))
-    .toMatchObject({ theme: "dracula" });
-  const olderSnapshot = await appearanceSnapshot(page);
-  await page.getByTestId("settings-back-to-app").click();
-  // The light/dark switch lives in the profile menu in Colony 3.0.
-  await page.getByTestId("sidebar-profile-avatar-button").click();
-  await page.getByTestId("sidebar-theme-toggle").click();
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
-    .toBe("buzz");
-  await expect
-    .poll(() => appearanceSnapshot(page))
-    .toMatchObject({ theme: "buzz" });
-  // Simulate a failed snapshot mirror: the newer durable theme keys still win.
-  await page.evaluate((snapshot) => {
-    const key = Object.keys(localStorage).find(
-      (candidate) =>
-        candidate.startsWith("colony.appearance.v1:") &&
-        !candidate.endsWith(":last-business") &&
-        !candidate.endsWith(":global-conversations"),
-    );
-    if (!key) throw new Error("Missing Appearance snapshot");
-    localStorage.setItem(key, JSON.stringify(snapshot));
-  }, olderSnapshot);
-  await page.reload();
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
-    .toBe("buzz");
-  const outboxThemes = await page.evaluate(() =>
-    Object.keys(localStorage)
-      .filter((key) => key.startsWith("buzz-community-theme-outbox.v1:"))
-      .map((key) => JSON.parse(localStorage.getItem(key) ?? "null")?.theme),
-  );
-  expect(outboxThemes).not.toContain("dracula");
-  await page.getByTestId("open-settings").click();
-  await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-group-appearance-group").click();
-  await expect(page.getByTestId("appearance-mode-light")).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
-    .toBe("buzz");
-});
-
-test("the person's sidebar colours survive the light/dark switch, a named theme and a reload", async ({
+test("the person's sidebar colours survive the light/dark switch and a reload", async ({
   page,
 }) => {
   const rootTop = () =>
@@ -382,21 +225,6 @@ test("the person's sidebar colours survive the light/dark switch, a named theme 
     .toBe("buzz-dark");
   await expect.poll(rootTop).toBe("#FFC2A6");
 
-  // Applying a named theme from the catalog.
-  await page.getByTestId("open-settings").click();
-  await page.getByTestId("profile-popover-settings").click();
-  await page.getByTestId("settings-group-appearance-group").click();
-  await page.getByTestId("appearance-open-themes").click();
-  await page.getByTestId("theme-catalog-dracula").click();
-  await page.getByTestId("theme-use").click();
-  await expect
-    .poll(() => appearanceSnapshot(page))
-    .toMatchObject({
-      theme: "dracula",
-      field: ["#FFC2A6", "#F5A4D5", "#C6B3F4"],
-    });
-  await expect.poll(rootTop).toBe("#FFC2A6");
-
   await page.reload();
   await expect.poll(rootTop).toBe("#FFC2A6");
 });
@@ -407,7 +235,7 @@ test("channel preferences supersede stale Appearance conversation fields on relo
   await openAppearance(page);
   await page.getByTestId("appearance-links-compact").click();
   await page.getByTestId("appearance-threads-split").click();
-  await page.getByTestId("appearance-message-size").selectOption("larger");
+  await page.getByTestId("appearance-message-size-larger").click();
   await page.evaluate(() => {
     localStorage.setItem("buzz.appearance.conversationDensity", "spacious");
     localStorage.setItem("buzz.appearance.linkPreviewStyle", "rich");

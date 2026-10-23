@@ -2446,9 +2446,7 @@ test("profile renders live activity for a viewer-owned relay agent", async ({
     .getByTestId(`sidebar-member-open-profile-${OWNED_RELAY_AGENT_PUBKEY}`)
     .click();
   await expect(page.getByTestId("members-sidebar")).not.toBeVisible();
-  await expect(
-    page.getByTestId(`user-profile-view-activity-${OWNED_RELAY_AGENT_PUBKEY}`),
-  ).toBeVisible();
+  await expect(page.getByTestId("user-profile-panel")).toBeVisible();
 
   await page.waitForFunction(
     () =>
@@ -2478,7 +2476,7 @@ test("profile renders live activity for a viewer-owned relay agent", async ({
     `user-profile-live-activity-${OWNED_RELAY_AGENT_PUBKEY}`,
   );
   await expect(liveActivity).toBeVisible();
-  await expect(liveActivity).toContainText("Latest Activity");
+  await expect(liveActivity).toContainText("Live activity");
   await expect(liveActivity).toContainText("#agents");
   await expect(
     page.getByTestId(`user-profile-activity-dot-${AGENTS_CHANNEL_ID}`),
@@ -2506,10 +2504,7 @@ test("profile renders live activity for a viewer-owned relay agent", async ({
   );
 
   await expect(liveActivity).toBeVisible();
-  await expect(liveActivity).toContainText("Latest Activity");
-  await expect(
-    page.getByTestId(`user-profile-view-activity-${OWNED_RELAY_AGENT_PUBKEY}`),
-  ).not.toBeVisible();
+  await expect(liveActivity).toContainText("Live activity");
 });
 
 test("profile activity carousel switches channels via progress dots", async ({
@@ -2522,9 +2517,7 @@ test("profile activity carousel switches channels via progress dots", async ({
     .getByTestId(`sidebar-member-open-profile-${OWNED_RELAY_AGENT_PUBKEY}`)
     .click();
   await expect(page.getByTestId("members-sidebar")).not.toBeVisible();
-  await expect(
-    page.getByTestId(`user-profile-view-activity-${OWNED_RELAY_AGENT_PUBKEY}`),
-  ).toBeVisible();
+  await expect(page.getByTestId("user-profile-panel")).toBeVisible();
 
   await page.waitForFunction(
     () =>
@@ -3649,7 +3642,7 @@ test("Inbox type labels keep the same height with and without a channel chip", a
   ).toBeLessThan(0.5);
 });
 
-test("Inbox All never lists drafts and unread-only hides reminders", async ({
+test("Inbox All never lists drafts and unread-only keeps the unread message", async ({
   page,
 }) => {
   const draftKey = `channel:${GENERAL_CHANNEL_ID}`;
@@ -3684,43 +3677,10 @@ test("Inbox All never lists drafts and unread-only hides reminders", async ({
     return typeof win.__BUZZ_E2E_PUSH_MOCK_FEED_ITEM__ === "function";
   });
 
-  const reminderId = "inbox-unread-only-reminder";
   const messageId = "inbox-unread-only-message";
   await page.evaluate(
-    async ({
-      channelId,
-      currentPubkey,
-      messageId,
-      reminderId,
-      senderPubkey,
-    }) => {
+    ({ channelId, currentPubkey, messageId, senderPubkey }) => {
       const now = Math.floor(Date.now() / 1_000);
-      window.__BUZZ_E2E_SEED_MOCK_REMINDERS__?.([
-        {
-          id: reminderId,
-          pubkey: currentPubkey,
-          created_at: now - 120,
-          kind: 30300,
-          tags: [
-            ["d", reminderId],
-            ["not_before", String(now - 60)],
-          ],
-          content: JSON.stringify({
-            target: {
-              eventId: "mock-general-alice",
-              channelId,
-              preview: "Due reminder in mixed Inbox",
-              authorPubkey: senderPubkey,
-            },
-            status: "pending",
-          }),
-          sig: "mocksig".repeat(20).slice(0, 128),
-        },
-      ]);
-      await window.__BUZZ_E2E_QUERY_CLIENT__?.invalidateQueries({
-        queryKey: ["reminders"],
-      });
-
       const pushFeedItem = (window as MockFeedWindow)
         .__BUZZ_E2E_PUSH_MOCK_FEED_ITEM__;
       if (!pushFeedItem) throw new Error("Mock feed helper is not installed.");
@@ -3744,16 +3704,13 @@ test("Inbox All never lists drafts and unread-only hides reminders", async ({
       channelId: GENERAL_CHANNEL_ID,
       currentPubkey: MOCK_IDENTITY_PUBKEY,
       messageId,
-      reminderId,
       senderPubkey: TEST_IDENTITIES.alice.pubkey,
     },
   );
 
   const messageRow = page.getByTestId(`home-inbox-item-${messageId}`);
-  const reminderRow = page.getByTestId(`home-all-reminders-${reminderId}`);
   const draftRow = page.getByTestId(`home-all-drafts-${draftKey}`);
   await expect(messageRow).toBeVisible();
-  await expect(reminderRow).toBeVisible();
   // Drafts belong to the dedicated Drafts filter - never the mixed All view.
   await expect(draftRow).toHaveCount(0);
 
@@ -3761,7 +3718,6 @@ test("Inbox All never lists drafts and unread-only hides reminders", async ({
   await page.getByRole("switch", { name: "Show unread only" }).click();
 
   await expect(messageRow).toBeVisible();
-  await expect(reminderRow).toHaveCount(0);
   await expect(draftRow).toHaveCount(0);
 
   // The draft is still reachable under the Drafts filter.
@@ -3769,180 +3725,6 @@ test("Inbox All never lists drafts and unread-only hides reminders", async ({
   await page.getByTestId("inbox-filter-trigger").click();
   await page.getByRole("menuitemradio", { name: "Drafts" }).click();
   await expect(page.getByTestId("home-inbox-drafts")).toBeVisible();
-});
-
-test("Inbox merges a due reminder into its represented conversation", async ({
-  page,
-}) => {
-  const messageId = "inbox-reminder-merge-message";
-  const reminderId = "inbox-reminder-merge";
-  await seedHomeInboxMention(page, messageId);
-
-  await page.evaluate(
-    async ({
-      authorPubkey,
-      channelId,
-      messageId: targetEventId,
-      pubkey,
-      reminderId: id,
-    }) => {
-      const now = Math.floor(Date.now() / 1_000);
-      window.__BUZZ_E2E_SEED_MOCK_REMINDERS__?.([
-        {
-          id,
-          pubkey,
-          created_at: now - 600,
-          kind: 30300,
-          tags: [
-            ["d", id],
-            ["not_before", String(now - 60)],
-          ],
-          content: JSON.stringify({
-            target: {
-              eventId: targetEventId,
-              channelId,
-              preview: "Please review the home panel routing.",
-              authorPubkey,
-            },
-            status: "pending",
-          }),
-          sig: "mocksig".repeat(20).slice(0, 128),
-        },
-      ]);
-      await window.__BUZZ_E2E_QUERY_CLIENT__?.invalidateQueries({
-        queryKey: ["reminders"],
-      });
-    },
-    {
-      authorPubkey: TEST_IDENTITIES.alice.pubkey,
-      channelId: GENERAL_CHANNEL_ID,
-      messageId,
-      pubkey: MOCK_IDENTITY_PUBKEY,
-      reminderId,
-    },
-  );
-
-  const conversationRow = page.getByTestId(`home-inbox-item-${messageId}`);
-  await expect(conversationRow.getByText("Reminder due")).toBeVisible();
-  await expect(
-    page.getByTestId(`home-all-reminders-${reminderId}`),
-  ).toHaveCount(0);
-
-  await page.getByTestId("inbox-filter-trigger").click();
-  await page.getByRole("menuitemradio", { name: "Mentions" }).click();
-  await expect(conversationRow.getByText("Reminder due")).toBeVisible();
-});
-
-test("Inbox All keeps its filter when opening a due reminder", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await expect(page.getByTestId("home-inbox")).toBeVisible();
-
-  const reminderId = "inbox-stable-reminder";
-  await page.evaluate(
-    async ({ channelId, id, pubkey }) => {
-      const now = Math.floor(Date.now() / 1000);
-      window.__BUZZ_E2E_SEED_MOCK_REMINDERS__?.([
-        {
-          id,
-          pubkey,
-          created_at: now - 300,
-          kind: 30300,
-          tags: [
-            ["d", id],
-            ["not_before", String(now - 60)],
-          ],
-          content: JSON.stringify({
-            target: {
-              eventId: "mock-general-alice",
-              channelId,
-              preview: "Review the Inbox behavior",
-              authorPubkey: pubkey,
-            },
-            status: "pending",
-          }),
-          sig: "mocksig".repeat(20).slice(0, 128),
-        },
-      ]);
-      await window.__BUZZ_E2E_QUERY_CLIENT__?.invalidateQueries({
-        queryKey: ["reminders"],
-      });
-    },
-    {
-      channelId: GENERAL_CHANNEL_ID,
-      id: reminderId,
-      pubkey: MOCK_IDENTITY_PUBKEY,
-    },
-  );
-
-  const reminderRow = page.getByTestId(`home-all-reminders-${reminderId}`);
-  await expect(reminderRow).toBeVisible();
-  await reminderRow.click();
-
-  await expect(page.getByTestId("inbox-filter-trigger")).toContainText("All");
-  await expect(page.getByTestId("home-reminder-detail")).toBeVisible();
-  await expect(page.getByTestId("home-inbox-list")).toBeVisible();
-});
-
-test("Inbox reminder rows and detail identify DM context", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.getByTestId("home-inbox")).toBeVisible();
-
-  const reminderId = "inbox-dm-reminder";
-  const dmChannelId = "f48efb06-0c93-5025-aac9-2e646bb6bfa8";
-  await page.evaluate(
-    async ({ authorPubkey, channelId, currentPubkey, reminderId }) => {
-      const now = Math.floor(Date.now() / 1_000);
-      window.__BUZZ_E2E_SEED_MOCK_REMINDERS__?.([
-        {
-          id: reminderId,
-          pubkey: currentPubkey,
-          created_at: now - 300,
-          kind: 30300,
-          tags: [
-            ["d", reminderId],
-            ["not_before", String(now - 60)],
-          ],
-          content: JSON.stringify({
-            target: {
-              eventId: "mock-dm-alice",
-              channelId,
-              preview: "Follow up with Alice",
-              authorPubkey,
-            },
-            status: "pending",
-          }),
-          sig: "mocksig".repeat(20).slice(0, 128),
-        },
-      ]);
-      await window.__BUZZ_E2E_QUERY_CLIENT__?.invalidateQueries({
-        queryKey: ["reminders"],
-      });
-    },
-    {
-      authorPubkey: TEST_IDENTITIES.alice.pubkey,
-      channelId: dmChannelId,
-      currentPubkey: MOCK_IDENTITY_PUBKEY,
-      reminderId,
-    },
-  );
-
-  await page.getByTestId("inbox-filter-trigger").click();
-  await page.getByRole("menuitemradio", { name: "Reminders" }).click();
-  const reminderRow = page.getByTestId(`home-reminder-item-${reminderId}`);
-  await expect(
-    reminderRow.getByText("DM with alice-tyler", { exact: true }),
-  ).toBeVisible();
-  await reminderRow.getByRole("button").click();
-
-  const detail = page.getByTestId("home-reminder-detail");
-  await expect(
-    detail.getByText("DM with alice-tyler", { exact: true }),
-  ).toBeVisible();
-  await expect(detail.getByText("#alice-tyler", { exact: true })).toHaveCount(
-    0,
-  );
 });
 
 test("Inbox detail title and source action navigate to the conversation", async ({

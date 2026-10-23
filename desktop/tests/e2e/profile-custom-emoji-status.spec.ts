@@ -118,7 +118,7 @@ test("set status dialog uses the desktop modal with shared status choices", asyn
   await expect(emojiButton.getByText("💬", { exact: true })).toBeVisible();
   await expect(emojiButton.locator("svg")).toHaveCount(0);
   await dialog.getByTestId("set-status-input").fill("");
-  await expect(dialog.getByText("Duration", { exact: true })).toHaveCount(2);
+  await expect(dialog.getByText("Clear after", { exact: true })).toBeVisible();
   await expect(
     dialog.getByText("Quick statuses", { exact: true }),
   ).toBeVisible();
@@ -133,22 +133,18 @@ test("set status dialog uses the desktop modal with shared status choices", asyn
     await expect(dialog.getByText(quickStatus, { exact: true })).toBeVisible();
   }
 
-  await dialog.getByTestId("set-status-duration").click();
-  for (const duration of [
-    "1 hour",
-    "8 hours",
-    "Today",
-    "This week",
-    "Custom",
-  ]) {
-    await expect(page.getByRole("menuitem", { name: duration })).toBeVisible();
+  for (const duration of ["Today", "This week", "Custom"]) {
+    await expect(dialog.getByRole("radio", { name: duration })).toBeVisible();
+  }
+  for (const removed of ["1 hour", "8 hours"]) {
+    await expect(dialog.getByRole("radio", { name: removed })).toHaveCount(0);
   }
   await waitForAnimations(page);
   await page.screenshot({
     clip: { height: 700, width: 600, x: 340, y: 10 },
     path: "test-results/profile-status/04-status-duration-options.png",
   });
-  await page.getByRole("menuitem", { name: "8 hours" }).click();
+  await dialog.getByRole("radio", { name: "This week" }).click();
 
   await dialog.getByTestId("set-status-preset-working-remotely").click();
   await expect(dialog.getByTestId("set-status-input")).toHaveValue(
@@ -159,21 +155,18 @@ test("set status dialog uses the desktop modal with shared status choices", asyn
 
   await openProfilePopover(page);
   await page.getByTestId("profile-popover-set-status").click();
-  await expect(dialog.getByText("Quick statuses", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    dialog.getByText("Quick statuses", { exact: true }),
+  ).toBeVisible();
   await expect(dialog.getByLabel("Save status")).toBeDisabled();
-  await expect(page.getByTestId("set-status-duration")).toContainText(
-    "8 hours",
-  );
+  await expect(dialog.getByRole("radio", { name: "This week" })).toBeChecked();
 
   await dialog.getByTestId("set-status-input").fill("Working remotely today");
   await expect(dialog.getByLabel("Save status")).toBeEnabled();
   await dialog.getByTestId("set-status-input").fill("Working remotely");
   await expect(dialog.getByLabel("Save status")).toBeDisabled();
 
-  await page.getByTestId("set-status-duration").click();
-  await page.getByRole("menuitem", { name: "Custom" }).click();
+  await dialog.getByRole("radio", { name: "Custom" }).click();
   await expect(dialog.getByText("Until", { exact: true })).toBeVisible();
   const expirationDate = dialog.getByLabel("Status expiration date");
   await expect(expirationDate).toBeVisible();
@@ -261,12 +254,11 @@ test("keeps an open status draft when the saved status expires", async ({
     "Choose a duration in the future.",
   );
   await expect(saveButton).toBeDisabled();
-  await page.getByTestId("set-status-duration").click();
-  await page.getByRole("menuitem", { name: "This week" }).click();
+  await dialog.getByRole("radio", { name: "This week" }).click();
   await expect(saveButton).toBeEnabled();
-  await expect(dialog.getByText("Quick statuses", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    dialog.getByText("Quick statuses", { exact: true }),
+  ).toBeVisible();
   await expect(dialog.getByTestId("set-status-clear")).toBeVisible();
 });
 
@@ -307,8 +299,7 @@ test("can apply Today to an existing status without an expiration", async ({
   const dialog = page.getByTestId("set-status-dialog");
   await expect(dialog.getByLabel("Save status")).toBeDisabled();
 
-  await page.getByTestId("set-status-duration").click();
-  await page.getByRole("menuitem", { name: "Today" }).click();
+  await dialog.getByRole("radio", { name: "Today" }).click();
   await expect(dialog.getByLabel("Save status")).toBeEnabled();
   await dialog.getByTestId("set-status-save").click();
 
@@ -334,7 +325,7 @@ test("applies Today when editing a legacy status without an expiration", async (
   });
   await page.getByTestId("profile-popover-set-status").click();
   const dialog = page.getByTestId("set-status-dialog");
-  await expect(page.getByTestId("set-status-duration")).toContainText("Today");
+  await expect(dialog.getByRole("radio", { name: "Today" })).toBeChecked();
   await dialog.getByTestId("set-status-input").fill("Legacy status edited");
   await dialog.getByTestId("set-status-save").click();
 

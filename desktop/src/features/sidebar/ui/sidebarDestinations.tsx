@@ -284,13 +284,13 @@ const library: SidebarDestination = {
   label: "Library",
   Icon: LibraryIcon,
   isActive: () => false,
-  onSelect: ({ handlers }) => handlers.onSelectSettings("channel-templates"),
+  onSelect: ({ handlers }) => handlers.onSelectSettings("custom-emoji"),
   rail: {
     testId: "sidebar-collapsed-library",
     label: "Library",
     Icon: LibraryIcon,
     isActive: () => false,
-    onSelect: ({ handlers }) => handlers.onSelectSettings("channel-templates"),
+    onSelect: ({ handlers }) => handlers.onSelectSettings("custom-emoji"),
   },
 };
 

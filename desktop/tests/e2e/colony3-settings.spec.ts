@@ -53,7 +53,9 @@ test.describe("Colony 3.0 Settings", () => {
     await expect(page.getByTestId("settings-panel-profile")).toBeVisible();
   });
 
-  test("tabs jump between the sections of one page", async ({ page }) => {
+  test("a page runs its sections one after another from the chosen tab", async ({
+    page,
+  }) => {
     await installMockBridge(page, OWNER);
     await page.goto("/");
     await openSettings(page);
@@ -64,13 +66,17 @@ test.describe("Colony 3.0 Settings", () => {
         1,
       );
     }
-    await page.getByTestId("settings-inner-shortcuts").click();
-    await expect(page.getByTestId("settings-inner-shortcuts")).toHaveAttribute(
+    await page.getByTestId("settings-inner-voice").click();
+    await expect(page.getByTestId("settings-inner-voice")).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    await expect(page.getByTestId("settings-shortcuts")).toBeInViewport();
-    await expect(page).toHaveURL(/section=shortcuts/);
+    await expect(page.getByTestId("settings-panel-notifications")).toHaveCount(
+      0,
+    );
+    await expect(page.getByTestId("settings-panel-voice")).toBeVisible();
+    await expect(page.getByTestId("settings-panel-shortcuts")).toHaveCount(1);
+    await expect(page).toHaveURL(/section=voice/);
   });
 
   test("Appearance offers six accents and a typeface, and no theme catalog", async ({

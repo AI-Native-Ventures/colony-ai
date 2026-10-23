@@ -6,7 +6,10 @@ import { useManagedAgentsQuery } from "@/features/agents/hooks";
 import { AgentDefaultsEditor } from "@/features/agents/ui/AgentDefaultsEditor";
 import { globalAgentConfigQueryKey } from "@/features/agents/useGlobalAgentConfig";
 import { getGlobalAgentConfig } from "@/shared/api/tauriGlobalAgentConfig";
-import { getOpenRouterConnection } from "@/shared/api/tauriOpenRouter";
+import {
+  connectOpenRouter,
+  getOpenRouterConnection,
+} from "@/shared/api/tauriOpenRouter";
 import { OpenRouterConnectionPanel } from "@/shared/ui/OpenRouterConnectionPanel";
 import { agentDefaultsConnection } from "../lib/agentDefaultsConnection";
 import { CheckSmallIcon } from "./settingsIcons";
@@ -29,6 +32,8 @@ export function AgentDefaultsSettingsCard({
   onOpenHarnesses,
 }: SettingsAgentsPageProps) {
   const [revision, setRevision] = React.useState(0);
+  const [connecting, setConnecting] = React.useState(false);
+  const [connectError, setConnectError] = React.useState<string | null>(null);
   const config = useQuery({
     queryKey: globalAgentConfigQueryKey,
     queryFn: getGlobalAgentConfig,
@@ -58,6 +63,26 @@ export function AgentDefaultsSettingsCard({
     connection.kind !== "unavailable";
   const usingSubscription = connection?.kind === "subscription";
   const usingOpenRouter = connection?.kind === "openrouter";
+  async function connect() {
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      const result = await connectOpenRouter();
+      if (
+        result.status === "connected" ||
+        result.status === "limit" ||
+        result.status === "linked"
+      ) {
+        setRevision((value) => value + 1);
+      } else if (result.status === "error") {
+        setConnectError(result.message);
+      }
+    } catch {
+      setConnectError("OpenRouter sign-in did not finish. Try again.");
+    } finally {
+      setConnecting(false);
+    }
+  }
   const agentNames = (managedAgents.data ?? []).map((agent) => agent.name);
 
   return (
@@ -98,6 +123,7 @@ export function AgentDefaultsSettingsCard({
               <>
                 <CheckSmallIcon size={13} strokeWidth={3} />
                 Connected
+                <span className="sr-only"> · {connection?.label}</span>
               </>
             ) : (
               (connection?.label ?? "Not connected")
@@ -165,11 +191,30 @@ export function AgentDefaultsSettingsCard({
             <span className="cs-way-copy">
               Reach many models with one API key.
             </span>
-            <div className="cs-way-panel">
-              <OpenRouterConnectionPanel
-                onSaved={() => setRevision((value) => value + 1)}
-              />
-            </div>
+            {usingOpenRouter ? (
+              <div className="cs-way-panel">
+                <OpenRouterConnectionPanel
+                  onSaved={() => setRevision((value) => value + 1)}
+                />
+              </div>
+            ) : (
+              <>
+                {connectError ? (
+                  <span className="cs-way-error" role="alert">
+                    {connectError}
+                  </span>
+                ) : null}
+                <button
+                  className="cs-button cs-way-button"
+                  data-testid="openrouter-connect"
+                  disabled={connecting}
+                  onClick={() => void connect()}
+                  type="button"
+                >
+                  {connecting ? "Connecting" : "Connect"}
+                </button>
+              </>
+            )}
           </div>
           <div
             className="cs-way"

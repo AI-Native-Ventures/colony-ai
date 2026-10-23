@@ -116,7 +116,7 @@ test("R17 connection setup discovers local apps and keeps its route choices avai
   await expect(
     page.getByRole("heading", { name: "Colony credits", exact: true }),
   ).toHaveCount(0);
-  await expect(page.getByLabel("Provider", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("LLM provider", { exact: true })).toHaveCount(0);
   await page
     .getByRole("radio", { name: "Claude Code or Codex", exact: true })
     .click();

@@ -416,6 +416,27 @@ export type Colony3Extras = {
     tags?: string[][];
     content: string;
   }>;
+  /** Agent workspace files the mock host reports as existing (message file cards). */
+  workspaceFiles?: string[];
+  /** Home feed buckets for the Activity board; they replace the reference inbox items. */
+  feed?: {
+    [bucket in
+      | "mentions"
+      | "needs_action"
+      | "activity"
+      | "agent_activity"]?: Array<{
+      id: string;
+      kind: number;
+      pubkey: string;
+      content: string;
+      created_at: number;
+      channel_id: string | null;
+      channel_name: string;
+      channel_type?: string | null;
+      tags: string[][];
+      category: "mention" | "needs_action" | "activity" | "agent_activity";
+    }>;
+  };
 };
 
 type E2eConfig = {
@@ -14489,6 +14510,27 @@ async function handleGetFeed(
 
   if (!isRelayMode(config) && referenceWorkspaceActive) {
     const now = Math.floor(Date.now() / 1000);
+    const extraFeed = config?.mock?.colony3Extras?.feed;
+    if (extraFeed) {
+      const feed = {
+        mentions: extraFeed.mentions ?? [],
+        needs_action: extraFeed.needs_action ?? [],
+        activity: extraFeed.activity ?? [],
+        agent_activity: extraFeed.agent_activity ?? [],
+      };
+      return {
+        feed,
+        meta: {
+          since: args.since ?? now - 7 * 24 * 60 * 60,
+          total: Object.values(feed).reduce(
+            (sum, list) => sum + list.length,
+            0,
+          ),
+          generated_at: now,
+        },
+        visual_fixture: REFERENCE_HOME_VISUAL_FIXTURE,
+      };
+    }
     const unreadItems =
       config?.mock?.referenceSidebarShell === true
         ? []
@@ -20113,7 +20155,7 @@ export function maybeInstallE2eTauriMocks() {
       case "sign_out_keep_data":
         // Production wipes local state (or, for the keep-data variant, only
         // forgets the identity) and restarts the app. In the browser harness
-        // there is nothing to wipe; resolving is enough — specs assert
+        // there is nothing to wipe; resolving is enough; specs assert
         // invocation via __BUZZ_E2E_COMMANDS__ and the pending UI.
         return;
       case "generate_backup_passphrase": {
@@ -21107,6 +21149,12 @@ export function maybeInstallE2eTauriMocks() {
           "open-directory",
         );
         return directory.channels ?? [];
+      }
+      case "resolve_agent_workspace_file": {
+        const path = (payload as { path?: string } | undefined)?.path ?? "";
+        return activeConfig?.mock?.colony3Extras?.workspaceFiles?.includes(path)
+          ? { path }
+          : null;
       }
       case "get_feed":
         return handleGetFeed(

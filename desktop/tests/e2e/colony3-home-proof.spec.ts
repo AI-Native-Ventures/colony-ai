@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { colony3TodayMockOptions } from "../helpers/colony3HomeFixture";
+import { r17Runtime } from "../helpers/onboarding";
 import {
   dumpTexts,
   openLerato,
@@ -59,8 +60,33 @@ for (const [section, board, title] of [
   ["mobile", "MobilePairing", "Settings: App and devices, Mobile"],
 ] as const) {
   test(`${board} board`, async ({ page }) => {
-    await openLerato(page, { route: `/#/settings?section=${section}` });
+    await openLerato(page, {
+      route: `/#/settings?section=${section}`,
+      // The Business board is drawn 1200 tall.
+      height: board === "SettingsBusiness" ? 1200 : undefined,
+      mock:
+        board === "SettingsAgents"
+          ? {
+              acpRuntimesCatalog: [
+                r17Runtime("claude", "available", { status: "logged_in" }),
+              ],
+              globalAgentConfig: {
+                env_vars: {},
+                provider: "anthropic",
+                model: null,
+                preferred_runtime: "claude",
+              },
+            }
+          : undefined,
+    });
     await expect(page.getByTestId("settings-view")).toBeVisible();
+    // The design shows Appearance with a pending change: Light chosen, not yet applied.
+    if (board === "SettingsAppearance") {
+      await page.getByTestId("appearance-mode-light").click();
+      await expect(page.getByTestId("appearance-apply-status")).toContainText(
+        "Preview only",
+      );
+    }
     await dumpTexts(page, board, '[data-testid="settings-view"]');
     await shot(page, { name: board, board, title });
   });

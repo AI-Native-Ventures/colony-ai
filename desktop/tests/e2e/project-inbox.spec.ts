@@ -105,7 +105,7 @@ test("Buzz Git pull request renders and stays actionable in Inbox", async ({
     fontWeightMatches: true,
     letterSpacingMatches: true,
     lineHeightMatches: true,
-    lineClamp: "2",
+    lineClamp: "4",
   });
   await inboxRow.locator(":scope > div").first().click();
 

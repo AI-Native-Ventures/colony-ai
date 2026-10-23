@@ -44,18 +44,12 @@ async function openObserverFeedPanel(
   await waitForSeedHook(page);
   await page.getByTestId("channel-agents").click();
   await expect(page.getByTestId("chat-title")).toHaveText("agents");
-  const messageRow = page
-    .getByTestId("message-row")
-    .filter({ has: page.getByText("Observer Agent", { exact: false }) });
-  await expect(messageRow.first()).toBeVisible({ timeout: 8_000 });
-  await messageRow.first().getByRole("button").first().click();
-  const profilePanel = page.getByTestId("user-profile-panel");
-  await expect(profilePanel).toBeVisible({ timeout: 10_000 });
-  const activityBtn = page.getByTestId(
-    `user-profile-view-activity-${agentPubkey}`,
-  );
-  await expect(activityBtn).toBeVisible({ timeout: 5_000 });
-  await activityBtn.click();
+  // The profile panel no longer links to the activity log, so open the pane
+  // through its deep link, as a reload would.
+  const channelId = await page
+    .getByTestId("channel-agents")
+    .getAttribute("data-channel-id");
+  await page.goto(`/#/channels/${channelId}?agentSession=${agentPubkey}`);
   const feedPanel = page.getByTestId("agent-session-thread-panel");
   await expect(feedPanel).toBeVisible({ timeout: 10_000 });
   return feedPanel;

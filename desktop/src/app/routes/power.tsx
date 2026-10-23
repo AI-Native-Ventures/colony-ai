@@ -11,15 +11,17 @@ type PowerSearch = {
   section?: PowerSection;
   panel?: PowerPanel;
   employee?: string;
-  record?: string;
 };
 
 function validatePowerSearch(search: Record<string, unknown>): PowerSearch {
-  const panel = parsePowerPanel(search.panel);
+  // Cost records are not edited in this build, so only the employee panel is
+  // an address; older cost-form addresses open the page without a panel.
+  const panel = search.panel === "employee" ? "employee" : undefined;
+  const section = parsePowerSection(
+    typeof search.section === "string" ? search.section : undefined,
+  );
   return {
-    section: parsePowerSection(
-      typeof search.section === "string" ? search.section : undefined,
-    ),
+    section: section === "overview" ? undefined : section,
     panel,
     employee:
       panel === "employee" &&
@@ -27,25 +29,7 @@ function validatePowerSearch(search: Record<string, unknown>): PowerSearch {
       /^[0-9a-f]{64}$/i.test(search.employee)
         ? search.employee.toLowerCase()
         : undefined,
-    record:
-      (panel === "source" ||
-        panel === "edit-cost" ||
-        panel === "remove-cost") &&
-      typeof search.record === "string" &&
-      /^cost:[0-9a-f-]{36}$/i.test(search.record)
-        ? search.record.toLowerCase()
-        : undefined,
   };
-}
-
-function parsePowerPanel(value: unknown): PowerPanel | undefined {
-  return value === "employee" ||
-    value === "new-cost" ||
-    value === "edit-cost" ||
-    value === "source" ||
-    value === "remove-cost"
-    ? value
-    : undefined;
 }
 
 export const Route = createFileRoute("/power")({
@@ -66,18 +50,6 @@ function PowerRouteComponent() {
             section: section === "overview" ? undefined : section,
             panel: undefined,
             employee: undefined,
-            record: undefined,
-          },
-        })
-      }
-      onOpenCost={(record) =>
-        void navigate({
-          to: "/power",
-          search: {
-            section: undefined,
-            panel: "source",
-            employee: undefined,
-            record,
           },
         })
       }
@@ -88,40 +60,6 @@ function PowerRouteComponent() {
             section: undefined,
             panel: "employee",
             employee,
-            record: undefined,
-          },
-        })
-      }
-      onOpenNewCost={() =>
-        void navigate({
-          to: "/power",
-          search: {
-            section: undefined,
-            panel: "new-cost",
-            employee: undefined,
-            record: undefined,
-          },
-        })
-      }
-      onEditCost={(record) =>
-        void navigate({
-          to: "/power",
-          search: {
-            section: undefined,
-            panel: "edit-cost",
-            employee: undefined,
-            record,
-          },
-        })
-      }
-      onRemoveCost={(record) =>
-        void navigate({
-          to: "/power",
-          search: {
-            section: undefined,
-            panel: "remove-cost",
-            employee: undefined,
-            record,
           },
         })
       }
@@ -132,14 +70,12 @@ function PowerRouteComponent() {
             section: undefined,
             panel: undefined,
             employee: undefined,
-            record: undefined,
           },
         })
       }
       section={search.section ?? "overview"}
       panel={search.panel}
       employeePubkey={search.employee}
-      recordId={search.record}
     />
   );
 }

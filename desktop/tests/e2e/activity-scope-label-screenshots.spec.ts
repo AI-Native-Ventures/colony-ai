@@ -21,20 +21,12 @@ async function openActivityFromChannel(
   await page.getByTestId(channelTestId).click();
   await expect(page.getByTestId("chat-title")).toHaveText(channelTitle);
 
-  const messageRow = page
-    .getByTestId("message-row")
-    .filter({ has: page.getByText("Observer Agent", { exact: false }) });
-  await expect(messageRow.first()).toBeVisible({ timeout: 8_000 });
-  await messageRow.first().getByRole("button").first().click();
-
-  const profilePanel = page.getByTestId("user-profile-panel");
-  await expect(profilePanel).toBeVisible({ timeout: 10_000 });
-
-  const activityBtn = page.getByTestId(
-    `user-profile-view-activity-${AGENT_PUBKEY}`,
-  );
-  await expect(activityBtn).toBeVisible({ timeout: 5_000 });
-  await activityBtn.click();
+  // The profile panel no longer links to the activity log, so open the pane
+  // through its deep link, as a reload would.
+  const channelId = await page
+    .getByTestId(channelTestId)
+    .getAttribute("data-channel-id");
+  await page.goto(`/#/channels/${channelId}?agentSession=${AGENT_PUBKEY}`);
 
   const panel = page.getByTestId("agent-session-thread-panel");
   await expect(panel).toBeVisible({ timeout: 10_000 });

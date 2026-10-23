@@ -288,7 +288,7 @@ export function AgentDefaultsEditor({
               className="text-sm font-medium text-foreground"
               htmlFor="global-agent-default-harness"
             >
-              Default harness
+              Harness
             </label>
             <AgentDropdownSelect
               className={flatLayout ? PERSONA_SELECT_TRIGGER_CLASS : undefined}

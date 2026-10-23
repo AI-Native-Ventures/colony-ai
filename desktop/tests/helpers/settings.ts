@@ -64,9 +64,9 @@ export async function openSettings(page: Page, section?: SettingsSection) {
 }
 
 /** The footer person opens the Account page, where Change photo lives. */
+/** The Account page carries the photo and its Change photo button itself. */
 export async function openAvatarProfileContext(page: Page) {
-  await page.getByTestId("settings-profile-avatar-context").click();
-  await expect(page.getByTestId("profile-photo-change")).toBeVisible();
+  await expect(page.getByTestId("profile-avatar-edit")).toBeVisible();
 }
 
 export async function selectSettingsSection(

@@ -85,7 +85,7 @@ export function BusinessProfileSettingsPanel() {
         <h2 className="cs-card-title" id="business-workspace-title">
           Workspace
         </h2>
-        <div className="cs-photo-row">
+        <div className="cs-photo-row" data-gap="small">
           <span aria-hidden="true" className="cs-workspace-mark">
             {icon ? (
               <img alt="" src={icon} />
@@ -96,7 +96,7 @@ export function BusinessProfileSettingsPanel() {
               </>
             )}
           </span>
-          <div className="cs-photo-copy">
+          <div className="cs-photo-copy" data-gap="small">
             <button
               aria-expanded={editingIcon}
               className="cs-button"
@@ -159,7 +159,7 @@ export function BusinessProfileSettingsPanel() {
             <button
               className="cs-primary"
               data-testid="business-save"
-              disabled={!trimmed || trimmed === community.name}
+              disabled={!trimmed}
               type="submit"
             >
               Save

@@ -1,10 +1,9 @@
 import {
   AlertCircle,
   ArrowLeft,
-  ExternalLink,
   LoaderCircle,
   Mail,
-  MoreHorizontal,
+  Settings2,
   Trash2,
 } from "lucide-react";
 import * as React from "react";
@@ -16,7 +15,6 @@ import type {
 } from "@/features/home/lib/inbox";
 import { getProjectInboxReference } from "@/features/home/lib/projectInbox";
 import { ProjectInboxDetail } from "@/features/home/ui/ProjectInboxDetail";
-import { ChannelMembersBar } from "@/features/channels/ui/ChannelMembersBar";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { formatInboxTypeLabel } from "@/features/home/lib/inbox";
 import {
@@ -48,9 +46,12 @@ import { useAnchoredScroll } from "@/features/messages/ui/useAnchoredScroll";
 import { useComposerHeightPadding } from "@/features/messages/ui/useComposerHeightPadding";
 import { UpdateIndicator } from "@/features/settings/UpdateIndicator";
 import type { Channel, UserProfileSummary } from "@/shared/api/types";
-import { TopChromeInsetHeader } from "@/shared/layout/TopChromeInsetHeader";
-import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
+import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
+import { InboxDecisionCards } from "@/features/home/ui/InboxDecisionCard";
+import { ExternalIcon } from "@/features/home/ui/homeIcons";
+import "./ActivityScreen.css";
 import { VideoReviewNavigationProvider } from "@/shared/ui/VideoReviewNavigation";
 import {
   DropdownMenu,
@@ -173,7 +174,6 @@ function InboxMessageDetailPane({
   isDeletingMessage = false,
   isEditingMessage = false,
   isSendingReply = false,
-  isSinglePanelView = false,
   hasThreadContextLoadError = false,
   isThreadContextLoading = false,
   item,
@@ -432,10 +432,20 @@ function InboxMessageDetailPane({
     conversationId,
   );
 
+  const teamQuery = useCompanyTeamQuery();
+  const jobTitles = React.useMemo(() => {
+    const titles = new Map<string, string>();
+    for (const member of teamQuery.data?.members ?? []) {
+      const title = member.position?.head.title.trim();
+      if (title) titles.set(member.pubkey.toLowerCase(), title);
+    }
+    return titles;
+  }, [teamQuery.data]);
+
   if (!item) {
     return (
       <section
-        className="flex min-h-0 min-w-0 items-center justify-center bg-background/60 px-6 py-10 pt-20 text-center"
+        className="ca-detail flex items-center justify-center px-6 py-10 text-center"
         data-testid="home-inbox-detail-empty"
       >
         <div className="max-w-sm">
@@ -520,6 +530,13 @@ function InboxMessageDetailPane({
       ? "Open conversation"
       : "Open in channel";
 
+  const displayMessageIds = new Set(
+    displayMessages.map((message) => message.id),
+  );
+  const threadSubject =
+    threadRootTags.find((tag) => tag[0] === "subject")?.[1]?.trim() || null;
+  const participants = collectParticipants(displayMessages, agentPubkeys);
+
   const handleSelectReplyTarget = (message: InboxDisplayMessage) => {
     setReplyTargetId((currentReplyTargetId) =>
       currentReplyTargetId === message.id ? null : message.id,
@@ -537,117 +554,77 @@ function InboxMessageDetailPane({
 
   return (
     <section
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-background/60"
+      className="ca-detail"
       data-testid="home-inbox-detail"
       ref={detailPaneRef}
     >
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-        <TopChromeInsetHeader flush transparent>
-          <div className="px-5 py-2">
-            <div className="flex min-h-9 min-w-0 items-center justify-between gap-3">
-              <div
-                className={cn(
-                  "flex min-w-0 items-center",
-                  isSinglePanelView ? "gap-[4px]" : "gap-1",
-                )}
-              >
-                {onBack ? (
-                  <Button
-                    aria-label="Back to inbox list"
-                    className="rounded-full text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                    onClick={onBack}
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <ArrowLeft />
-                  </Button>
-                ) : null}
-                <div className="min-w-0">
-                  {canOpenChannel && contextChannelId ? (
-                    <h2 className="min-w-0">
-                      <button
-                        className="block min-w-0 max-w-full text-left text-sm font-semibold leading-5 tracking-tight text-foreground hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                        data-testid="home-inbox-context-title"
-                        onClick={() =>
-                          onOpenContext(
-                            contextChannelId,
-                            sourceEventId,
-                            contextThreadRootId,
-                          )
-                        }
-                        title={openContextLabel}
-                        type="button"
-                      >
-                        <span className="block min-w-0 translate-y-px truncate">
-                          {contextLabel}
-                        </span>
-                      </button>
-                    </h2>
+        <header className="ca-detail-head" data-tauri-drag-region>
+          {onBack ? (
+            <Button
+              aria-label="Back to inbox list"
+              className="rounded-full text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+              onClick={onBack}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <ArrowLeft />
+            </Button>
+          ) : null}
+          <div className="ca-detail-title">
+            {canOpenChannel && contextChannelId ? (
+              <h2>
+                <button
+                  className="ca-detail-title-button"
+                  data-testid="home-inbox-context-title"
+                  onClick={() =>
+                    onOpenContext(
+                      contextChannelId,
+                      sourceEventId,
+                      contextThreadRootId,
+                    )
+                  }
+                  title={openContextLabel}
+                  type="button"
+                >
+                  <span>{contextLabel}</span>
+                </button>
+              </h2>
+            ) : (
+              <h2 title={item.fullTimestampLabel}>
+                <span className="ca-detail-title-text">{contextLabel}</span>
+              </h2>
+            )}
+            {threadSubject ? (
+              <span className="ca-detail-subtitle">{threadSubject}</span>
+            ) : null}
+          </div>
+          <span className="flex-1" />
+          <TooltipProvider>
+            <div className="ca-detail-tools">
+              <UpdateIndicator />
+              {reopenPending || reopenErrored ? (
+                <div
+                  aria-live="polite"
+                  className="ca-detail-status"
+                  data-tone={reopenErrored ? "bad" : undefined}
+                  data-testid="home-inbox-reopen-status"
+                  role="status"
+                >
+                  {reopenPending ? (
+                    <>
+                      <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                      <span>Reopening…</span>
+                    </>
                   ) : (
-                    <h2
-                      className="min-w-0 text-sm font-semibold leading-5 tracking-tight text-foreground"
-                      title={item.fullTimestampLabel}
-                    >
-                      <span className="block min-w-0 translate-y-px truncate">
-                        {contextLabel}
-                      </span>
-                    </h2>
-                  )}
-                </div>
-              </div>
-
-              <TooltipProvider>
-                <div className="flex shrink-0 items-center gap-1">
-                  <UpdateIndicator />
-                  {reopenPending || reopenErrored ? (
-                    <div
-                      aria-live="polite"
-                      className={cn(
-                        "flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium",
-                        reopenErrored
-                          ? "bg-destructive/10 text-destructive"
-                          : "bg-muted/60 text-muted-foreground",
-                      )}
-                      data-testid="home-inbox-reopen-status"
-                      role="status"
-                    >
-                      {reopenPending ? (
-                        <>
-                          <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                          <span>Reopening…</span>
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                          <span>Couldn’t reopen</span>
-                          {contextChannelId ? (
-                            <button
-                              className="ml-0.5 rounded font-semibold underline underline-offset-2 hover:no-underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                              data-testid="home-inbox-reopen-retry"
-                              onClick={() =>
-                                onOpenContext(
-                                  contextChannelId,
-                                  sourceEventId,
-                                  contextThreadRootId,
-                                )
-                              }
-                              type="button"
-                            >
-                              Retry
-                            </button>
-                          ) : null}
-                        </>
-                      )}
-                    </div>
-                  ) : null}
-                  {canOpenChannel && contextChannelId ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          aria-label={openContextLabel}
-                          className="rounded-full text-muted-foreground"
-                          data-testid="home-inbox-open-context"
+                    <>
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      <span>Couldn’t reopen</span>
+                      {contextChannelId ? (
+                        <button
+                          className="ml-0.5 rounded font-semibold underline underline-offset-2 hover:no-underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                          data-testid="home-inbox-reopen-retry"
                           onClick={() =>
                             onOpenContext(
                               contextChannelId,
@@ -655,45 +632,74 @@ function InboxMessageDetailPane({
                               contextThreadRootId,
                             )
                           }
-                          size="icon"
                           type="button"
-                          variant="ghost"
                         >
-                          <ExternalLink />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>{openContextLabel}</TooltipContent>
-                    </Tooltip>
-                  ) : null}
-                  {channel ? (
-                    <ChannelMembersBar
-                      channel={channel}
-                      currentPubkey={currentPubkey}
-                      onManageChannel={() => {
-                        if (contextChannelId) {
-                          onManageChannel(contextChannelId);
-                        }
-                      }}
-                      onToggleMembers={() =>
-                        setIsMembersSidebarOpen((open) => !open)
-                      }
-                    />
-                  ) : null}
-                  {canDelete ? (
-                    <HeaderMoreMenu
-                      isDeletingMessage={isDeletingMessage}
-                      onDelete={onDelete}
-                    />
-                  ) : null}
+                          Retry
+                        </button>
+                      ) : null}
+                    </>
+                  )}
                 </div>
-              </TooltipProvider>
+              ) : null}
+              {participants.length > 0 ? (
+                <button
+                  aria-label={
+                    channel ? "Show channel members" : "People in this thread"
+                  }
+                  className="ca-participants"
+                  data-testid="home-inbox-participants"
+                  disabled={!channel}
+                  onClick={() => setIsMembersSidebarOpen((open) => !open)}
+                  type="button"
+                >
+                  {participants.slice(0, 4).map((person) => (
+                    <ProfileAvatar
+                      avatarUrl={person.avatarUrl}
+                      className="ca-participant"
+                      key={person.pubkey}
+                      label={person.label}
+                      shape={person.isAgent ? "squircle" : "circle"}
+                    />
+                  ))}
+                </button>
+              ) : null}
+              {canOpenChannel && contextChannelId ? (
+                <button
+                  aria-label={openContextLabel}
+                  className="ca-open-button"
+                  data-testid="home-inbox-open-context"
+                  onClick={() =>
+                    onOpenContext(
+                      contextChannelId,
+                      sourceEventId,
+                      contextThreadRootId,
+                    )
+                  }
+                  type="button"
+                >
+                  {openContextLabel}
+                  <ExternalIcon size={15} strokeWidth={2.4} />
+                </button>
+              ) : null}
+              {canDelete || (channel && contextChannelId) ? (
+                <HeaderMoreMenu
+                  canDelete={canDelete}
+                  isDeletingMessage={isDeletingMessage}
+                  onDelete={onDelete}
+                  onManageChannel={
+                    channel && contextChannelId
+                      ? () => onManageChannel(contextChannelId)
+                      : undefined
+                  }
+                />
+              ) : null}
             </div>
-          </div>
-        </TopChromeInsetHeader>
+          </TooltipProvider>
+        </header>
 
         <div
           aria-busy={isThreadContextLoading}
-          className="-mt-13 min-h-0 flex-1 overflow-y-auto overscroll-contain pb-32 pt-13 [overflow-anchor:none]"
+          className="ca-detail-scroll"
           data-testid="home-inbox-detail-scroll"
           // Selection copy across a rendered mention chip: restores the sigil
           // and the identity sidecar the browser's default copy would drop.
@@ -764,6 +770,7 @@ function InboxMessageDetailPane({
                   isContinuation={isContinuation}
                   isFirst={index === 0}
                   isFocusHighlightVisible={isFocusHighlightVisible}
+                  jobTitle={jobTitles.get(message.authorPubkey.toLowerCase())}
                   key={message.id}
                   message={message}
                   onDelete={
@@ -785,6 +792,12 @@ function InboxMessageDetailPane({
                 />
               );
             })}
+            <InboxDecisionCards
+              channelId={item.item.channelId}
+              currentPubkey={currentPubkey}
+              messageIds={displayMessageIds}
+              profiles={profiles}
+            />
           </div>
         </div>
 
@@ -899,42 +912,86 @@ function InboxMessageDetailPane({
   );
 }
 
+type Participant = {
+  avatarUrl: string | null;
+  isAgent: boolean;
+  label: string;
+  pubkey: string;
+};
+
+/** The distinct people and agents who wrote in the thread, oldest first. */
+function collectParticipants(
+  messages: readonly InboxDisplayMessage[],
+  agentPubkeys: ReadonlySet<string> | undefined,
+): Participant[] {
+  const seen = new Map<string, Participant>();
+  for (const message of messages) {
+    const key = message.authorPubkey.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.set(key, {
+      avatarUrl: message.avatarUrl,
+      isAgent: Boolean(message.isAgent) || agentPubkeys?.has(key) === true,
+      label: message.authorLabel,
+      pubkey: key,
+    });
+  }
+  return [...seen.values()];
+}
+
 function HeaderMoreMenu({
+  canDelete,
   isDeletingMessage,
   onDelete,
+  onManageChannel,
 }: {
+  canDelete: boolean;
   isDeletingMessage: boolean;
   onDelete: () => void;
+  onManageChannel?: () => void;
 }) {
-  const trigger = (
-    <Button
-      aria-label="More actions"
-      className="rounded-full text-muted-foreground"
-      size="icon"
-      type="button"
-      variant="ghost"
-    >
-      <MoreHorizontal />
-    </Button>
-  );
-
   return (
     <DropdownMenu modal={false}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+          <DropdownMenuTrigger asChild>
+            <button
+              aria-label="More actions"
+              className="ca-more-button"
+              type="button"
+            >
+              <svg
+                aria-hidden="true"
+                fill="currentColor"
+                height="1.125rem"
+                viewBox="0 0 24 24"
+                width="1.125rem"
+              >
+                <circle cx="12" cy="5.5" r="1.8" />
+                <circle cx="12" cy="12" r="1.8" />
+                <circle cx="12" cy="18.5" r="1.8" />
+              </svg>
+            </button>
+          </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent>More actions</TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem
-          className="text-destructive focus:text-destructive"
-          disabled={isDeletingMessage}
-          onClick={onDelete}
-        >
-          <Trash2 className="h-4 w-4" />
-          Delete message
-        </DropdownMenuItem>
+        {onManageChannel ? (
+          <DropdownMenuItem onClick={onManageChannel}>
+            <Settings2 className="h-4 w-4" />
+            Channel settings
+          </DropdownMenuItem>
+        ) : null}
+        {canDelete ? (
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            disabled={isDeletingMessage}
+            onClick={onDelete}
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete message
+          </DropdownMenuItem>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

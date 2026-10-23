@@ -116,6 +116,7 @@ function SettingsGroupButton({
       aria-current={active ? "page" : undefined}
       aria-pressed={active}
       className="cs-nav-item"
+      data-active={active ? "true" : undefined}
       data-testid={`settings-group-${group.id}`}
       onClick={onSelect}
       type="button"
@@ -162,20 +163,12 @@ export function SettingsView({
   const [isAvatarDialogOpen, setIsAvatarDialogOpen] = React.useState(false);
   const [avatarSaved, setAvatarSaved] = React.useState(false);
   const mainRef = React.useRef<HTMLElement | null>(null);
-  // Scrolling to a section also fires scroll events; the tab the person chose
-  // stays selected until they scroll on their own.
-  const ignoreScrollUntil = React.useRef(0);
 
   const activeSection = canonicalSettingsSection(section);
   const activeGroup = routeGroup(activeSection);
   const businessName = activeCommunity?.name ?? "Business";
   const signedInDisplayName =
     profile.data?.displayName ?? fallbackDisplayName ?? "Signed-in identity";
-  // Which section's tab reads as selected. Following the route keeps a tab
-  // click honest; scrolling the long page moves it too (see the effect below).
-  const [visibleSection, setVisibleSection] =
-    React.useState<SettingsSection>(activeSection);
-
   React.useEffect(() => {
     const frameId = window.requestAnimationFrame(() => setIsLoaded(true));
     return () => window.cancelAnimationFrame(frameId);
@@ -212,52 +205,11 @@ export function SettingsView({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  // The page is one long scroll of its sections. Opening a section (from the
-  // sidebar, a tab, a link or the address) brings it to the top.
+  // A page shows its sections one after another, starting with the one the
+  // tab names; choosing a section starts the page at it.
   React.useLayoutEffect(() => {
-    setVisibleSection(activeSection);
-    const main = mainRef.current;
-    if (!main) return;
-    ignoreScrollUntil.current = Date.now() + 700;
-    const first = activeGroup.sections[0]?.value;
-    if (activeSection === first) {
-      main.scrollTop = 0;
-      return;
-    }
-    const target = main.querySelector<HTMLElement>(
-      `[data-testid="settings-panel-${activeSection}"]`,
-    );
-    if (target) {
-      const frame = main.getBoundingClientRect().top;
-      main.scrollTop += target.getBoundingClientRect().top - frame - 24;
-    }
-  }, [activeGroup, activeSection]);
-
-  // Scrolling the long page moves the selected tab to the section in view.
-  React.useEffect(() => {
-    const main = mainRef.current;
-    if (!main) return;
-    function handleScroll() {
-      if (!main || Date.now() < ignoreScrollUntil.current) return;
-      const sections = activeGroup.sections;
-      const top = main.getBoundingClientRect().top + 96;
-      let current = sections[0]?.value;
-      for (const entry of sections) {
-        const element = main.querySelector<HTMLElement>(
-          `[data-testid="settings-panel-${entry.value}"]`,
-        );
-        if (element && element.getBoundingClientRect().top <= top) {
-          current = entry.value;
-        }
-      }
-      if (main.scrollTop + main.clientHeight >= main.scrollHeight - 2) {
-        current = sections[sections.length - 1]?.value ?? current;
-      }
-      if (current) setVisibleSection(current);
-    }
-    main.addEventListener("scroll", handleScroll, { passive: true });
-    return () => main.removeEventListener("scroll", handleScroll);
-  }, [activeGroup]);
+    if (activeSection) mainRef.current?.scrollTo({ top: 0 });
+  }, [activeSection]);
 
   const matchingSections = React.useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -468,43 +420,52 @@ export function SettingsView({
             }
           >
             <SettingsPageHead
-              activeSection={visibleSection}
+              activeSection={activeSection}
               businessName={businessName}
               group={activeGroup}
               onSelect={chooseSection}
             />
-            {activeGroup.sections.map((entry) => (
-              <section
-                aria-label={`${entry.label} settings`}
-                className="cs-section"
-                data-testid={`settings-panel-${entry.value}`}
-                id={`settings-${entry.value}`}
-                key={entry.value}
-              >
-                {renderSettingsSection(entry.value, {
-                  currentPubkey,
-                  avatarSaved,
-                  fallbackDisplayName,
-                  onEditAvatar: () => {
-                    setAvatarSaved(false);
-                    setIsAvatarDialogOpen(true);
-                  },
-                  isUpdatingDesktopNotifications,
-                  notificationErrorMessage,
-                  notificationPermission,
-                  notificationSettings,
-                  onSetDesktopNotificationsEnabled,
-                  onSetHomeBadgeEnabled,
-                  onSetSlotAlertsEnabled,
-                  onSetNotifyWhileViewing,
-                  onSetAllSlotAlertsEnabled,
-                  onSetSoundForSlot,
-                  onClose,
-                  onOpenTeam: () => void goTeam(),
-                  onSectionChange: chooseSection,
-                })}
-              </section>
-            ))}
+            {activeGroup.sections
+              .slice(
+                Math.max(
+                  0,
+                  activeGroup.sections.findIndex(
+                    (entry) => entry.value === activeSection,
+                  ),
+                ),
+              )
+              .map((entry) => (
+                <section
+                  aria-label={`${entry.label} settings`}
+                  className="cs-section"
+                  data-testid={`settings-panel-${entry.value}`}
+                  id={`settings-${entry.value}`}
+                  key={entry.value}
+                >
+                  {renderSettingsSection(entry.value, {
+                    currentPubkey,
+                    avatarSaved,
+                    fallbackDisplayName,
+                    onEditAvatar: () => {
+                      setAvatarSaved(false);
+                      setIsAvatarDialogOpen(true);
+                    },
+                    isUpdatingDesktopNotifications,
+                    notificationErrorMessage,
+                    notificationPermission,
+                    notificationSettings,
+                    onSetDesktopNotificationsEnabled,
+                    onSetHomeBadgeEnabled,
+                    onSetSlotAlertsEnabled,
+                    onSetNotifyWhileViewing,
+                    onSetAllSlotAlertsEnabled,
+                    onSetSoundForSlot,
+                    onClose,
+                    onOpenTeam: () => void goTeam(),
+                    onSectionChange: chooseSection,
+                  })}
+                </section>
+              ))}
           </div>
         </main>
       </SidebarInset>

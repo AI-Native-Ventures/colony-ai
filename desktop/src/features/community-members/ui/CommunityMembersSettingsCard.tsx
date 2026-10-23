@@ -13,6 +13,7 @@ import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 import { UserProfilePopover } from "@/features/profile/ui/UserProfilePopover";
 import { mintInvite } from "@/shared/api/invites";
+import { CommunityInviteDialog } from "./CommunityInviteDialog";
 import type {
   RelayMember,
   RelayMemberRole,
@@ -150,7 +151,10 @@ function RelayMemberRow({
         />
       </UserProfilePopover>
       <span className="cs-member-copy">
-        <span className="cs-member-name" data-testid={`relay-member-name-${member.pubkey}`}>
+        <span
+          className="cs-member-name"
+          data-testid={`relay-member-name-${member.pubkey}`}
+        >
           {displayName}
           {isSelf ? <em> · you</em> : null}
         </span>
@@ -237,6 +241,7 @@ function InviteForm({ isOwner }: { isOwner: boolean }) {
     text: string;
   } | null>(null);
   const [pending, setPending] = React.useState(false);
+  const [dialogOpen, setDialogOpen] = React.useState(false);
 
   async function copyInviteLink(): Promise<boolean> {
     try {
@@ -294,15 +299,6 @@ function InviteForm({ isOwner }: { isOwner: boolean }) {
     }
   }
 
-  async function handleCopy() {
-    setMessage(null);
-    setPending(true);
-    const copied = await copyInviteLink();
-    setPending(false);
-    if (copied) toast.success("Invite link copied");
-    else toast.error("Couldn’t create an invite link.");
-  }
-
   return (
     <>
       <form
@@ -355,14 +351,19 @@ function InviteForm({ isOwner }: { isOwner: boolean }) {
         </button>
         <button
           className="cs-button cs-button-large cs-button-copy"
-          data-testid="community-invite-copy-link"
+          data-testid="community-invite-dialog-trigger"
           disabled={pending}
-          onClick={() => void handleCopy()}
+          onClick={() => setDialogOpen(true)}
           type="button"
         >
           Copy invite link
         </button>
       </form>
+      <CommunityInviteDialog
+        isOwner={isOwner}
+        onOpenChange={setDialogOpen}
+        open={dialogOpen}
+      />
       {message ? (
         <p
           className="cs-notice"
@@ -465,8 +466,8 @@ export function CommunityMembersSettingsCard({
         People &amp; access
       </h2>
       <span className="cs-section-note">
-        Invite people and choose what they can manage. AI employees are
-        managed in{" "}
+        Invite people and choose what they can manage. AI employees are managed
+        in{" "}
         <button
           className="cs-link"
           data-testid="people-open-team"
@@ -484,11 +485,7 @@ export function CommunityMembersSettingsCard({
     return (
       <div className="cs-led" data-testid="settings-community-members">
         {heading}
-        <p
-          aria-busy="true"
-          className="cs-section-note"
-          role="status"
-        >
+        <p aria-busy="true" className="cs-section-note" role="status">
           Checking permissions…
         </p>
       </div>

@@ -68,26 +68,14 @@ async function openAgentActivity(
     await seedActiveTurn(page, channelId);
   }
 
-  const messageRow = page
-    .getByTestId("message-row")
-    .filter({ hasText: "Indexing the channel catalog now." });
-  await expect(messageRow.first()).toBeVisible({ timeout: 8_000 });
-  await messageRow.first().getByRole("button").first().click();
-
-  const profile = page.getByTestId("user-profile-panel");
-  await expect(profile).toBeVisible({ timeout: 10_000 });
-  if (activityChannelId !== CHANNEL_AGENTS) {
-    const dot = page.getByRole("tab", {
-      name: "Show #general activity",
-    });
-    await expect(dot).toBeVisible({ timeout: 5_000 });
-    await dot.click();
-  }
-  const activity = page.getByRole("button", {
-    name: /Open full activity\./,
-  });
-  await expect(activity).toBeVisible({ timeout: 5_000 });
-  await activity.click();
+  // The profile panel no longer links to the activity log, so open it the way
+  // the sidebar does: from the channel's activity popover.
+  const channelName =
+    activityChannelId === CHANNEL_GENERAL ? "general" : "agents";
+  await page.getByTestId(`channel-${channelName}`).hover();
+  const popover = page.getByTestId(`channel-activity-popover-${channelName}`);
+  await expect(popover).toBeVisible({ timeout: 5_000 });
+  await popover.getByTestId(`channel-activity-agent-${AGENT_PUBKEY}`).click();
 
   const panel = page.getByTestId("agent-session-thread-panel");
   await expect(panel).toBeVisible({ timeout: 10_000 });

@@ -1503,7 +1503,7 @@ test.describe("signed-in canary company UI", () => {
       "11-workflows-list-read-only",
     );
 
-    for (const section of ["overview", "usage", "connections", "history"]) {
+    for (const section of ["overview", "usage", "connections"]) {
       await inspectRoute(
         `Power ${section}`,
         `/#/power${section === "overview" ? "" : `?section=${section}`}`,

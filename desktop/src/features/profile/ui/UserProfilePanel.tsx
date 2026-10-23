@@ -37,13 +37,11 @@ import {
   type PersonaDialogState,
 } from "@/features/agents/ui/personaDialogState";
 import { useChannelsQuery } from "@/features/channels/hooks";
+import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityArchive } from "@/features/identity-archive/hooks";
 import { useAgentAvailabilityLookup } from "@/features/agents/lib/useAgentAvailability";
 import {
-  useContactListQuery,
-  useFollowMutation,
   useProfileQuery,
-  useUnfollowMutation,
   useUserProfileQuery,
   useUsersBatchQuery,
 } from "@/features/profile/hooks";
@@ -151,21 +149,6 @@ export function UserProfilePanel({
     },
     [onTabChange],
   );
-  const [stickyChrome, setStickyChrome] = React.useState({
-    active: false,
-    height: 0,
-  });
-  const handleStickyChromeChange = React.useCallback(
-    (nextState: { active: boolean; height: number }) => {
-      setStickyChrome((currentState) =>
-        currentState.active === nextState.active &&
-        currentState.height === nextState.height
-          ? currentState
-          : nextState,
-      );
-    },
-    [],
-  );
   const {
     focus: editAgentFocus,
     open: editAgentOpen,
@@ -189,12 +172,11 @@ export function UserProfilePanel({
   );
   const personasQuery = usePersonasQuery();
   const managedAgentsQuery = useManagedAgentsQuery({ enabled: true });
-  const { instanceBuckets, linkedPersonaId, managedAgent } =
-    useCanonicalManagedAgentProfile({
-      managedAgents: managedAgentsQuery.data,
-      personaId: persona?.id,
-      pubkey,
-    });
+  const { linkedPersonaId, managedAgent } = useCanonicalManagedAgentProfile({
+    managedAgents: managedAgentsQuery.data,
+    personaId: persona?.id,
+    pubkey,
+  });
   const resolvedPersonaFromSource = React.useMemo(() => {
     if (pubkey && !managedAgent) return undefined;
     const personaId = linkedPersonaId ?? managedAgent?.personaId;
@@ -258,10 +240,8 @@ export function UserProfilePanel({
   const userStatusQuery = useUserStatusQuery(
     effectivePubkey ? [effectivePubkey] : [],
   );
-  const contactListQuery = useContactListQuery(currentPubkey);
-  const followMutation = useFollowMutation(currentPubkey);
-  const unfollowMutation = useUnfollowMutation(currentPubkey);
-  const { canOpenAgentActivity, openAgentActivity } = useOpenAgentActivity();
+  const { canOpenAgentActivity } = useOpenAgentActivity();
+  const { activeCommunity } = useCommunities();
   const { goChannel } = useAppNavigation();
   const profile = resolvePanelProfile({
     managedAgent,
@@ -343,13 +323,6 @@ export function UserProfilePanel({
     updatePersonaMutation.isPending ||
     deletePersonaMutation.isPending ||
     setPersonaActiveMutation.isPending;
-  const isFollowing =
-    !isSelf &&
-    pubkeyLower.length > 0 &&
-    (contactListQuery.data?.contacts.some(
-      (contact) => contact.pubkey.toLowerCase() === pubkeyLower,
-    ) ??
-      false);
 
   const profileChannels = React.useMemo(
     () =>
@@ -379,23 +352,15 @@ export function UserProfilePanel({
     setView("summary", { replace: true });
     setTab("info", { replace: true });
   }, [preserveRequestedInstance, setTab, setView, targetKey]);
-  const {
-    canHuddle,
-    canMessage,
-    canWave,
-    handleHuddle,
-    handleMessage,
-    handleWave,
-    isStartingHuddle,
-    pendingAction,
-  } = useProfileInteractionActions({
-    effectivePubkey,
-    enabled: onOpenDm !== undefined,
-    isBot,
-    isSelf,
-    onClose,
-    viewerIsOwner,
-  });
+  const { canMessage, canWave, handleMessage, handleWave, pendingAction } =
+    useProfileInteractionActions({
+      effectivePubkey,
+      enabled: onOpenDm !== undefined,
+      isBot,
+      isSelf,
+      onClose,
+      viewerIsOwner,
+    });
   const openResolvedPersonaEditor = React.useCallback(() => {
     if (!resolvedPersona) return false;
     setPersonaDialogState(
@@ -649,14 +614,6 @@ export function UserProfilePanel({
     ],
   );
 
-  const handleOpenActivity = React.useCallback(
-    (channelId?: string | null) => {
-      if (!effectivePubkey) return;
-      openAgentActivity(effectivePubkey, { channelId: channelId ?? null });
-    },
-    [effectivePubkey, openAgentActivity],
-  );
-
   const handleOpenChannel = React.useCallback(
     (channelId: string) => {
       void goChannel(channelId);
@@ -763,7 +720,6 @@ export function UserProfilePanel({
       logCopyValue: isDiagnosticsLikeView ? managedAgentLogContent : null,
       logSubtitle: logHeaderSubtitle,
       onBack: () => setView("summary"),
-      onEditAgent: canEditAgent ? handleEditAgent : undefined,
       view,
       viewerIsOwner,
     },
@@ -781,44 +737,39 @@ export function UserProfilePanel({
     >
       {view === "summary" ? (
         <ProfileSummaryView
+          agentInfoFields={agentInfoFields}
+          agentInstruction={agentInstruction}
+          agentSettingsFields={agentSettingsFields}
+          activityAgent={activityAgent}
+          archiveActions={archiveActions}
           canAddToChannel={managedAgent !== undefined && isOwner === true}
           canDeleteAgent={canDeleteProfileAgent}
           canEditAgent={canEditAgent}
           canInstantiateAgent={canInstantiateAgent}
-          canOpenAgentLogs={canOpenAgentLogs}
           canViewActivity={canViewActivity}
           channelCount={profileChannels.length}
           channelIdToName={channelIdToName}
           channels={profileChannels}
           channelsLoading={channelsQuery.isLoading}
+          communityName={activeCommunity?.name}
+          diagnosticsFields={diagnosticsFields}
           displayName={displayName}
-          followMutation={followMutation}
-          agentInstruction={agentInstruction}
           handleAgentPrimaryAction={handleAgentPrimaryAction}
           handleAgentRestart={handleAgentRestart}
           handleEditAgent={handleEditAgent}
-          handleToggleAgentAutoStart={handleToggleAgentAutoStart}
           handleEditPersona={canManagePersona ? handleEditPersona : undefined}
-          handleHuddle={canHuddle ? handleHuddle : undefined}
           handleInstantiateAgent={handleInstantiateAgent}
           handleMessage={canMessage ? handleMessage : undefined}
+          handleToggleAgentAutoStart={handleToggleAgentAutoStart}
           handleWave={canWave ? handleWave : undefined}
-          isArchived={archiveActions.isArchived === true}
-          isHuddlePending={pendingAction === "huddle" || isStartingHuddle}
-          isMessagePending={pendingAction === "message"}
-          isWavePending={pendingAction === "wave"}
-          isBot={isBot}
           isAgentActionPending={isAgentActionPending}
-          isFollowing={isFollowing}
+          isArchived={archiveActions.isArchived === true}
+          isBot={isBot}
+          isMessagePending={pendingAction === "message"}
           isOwner={viewerIsOwner}
           isSelf={isSelf}
-          instanceBuckets={instanceBuckets}
-          activityAgent={activityAgent}
+          isWavePending={pendingAction === "wave"}
           managedAgent={managedAgent}
-          agentInfoFields={agentInfoFields}
-          archiveActions={archiveActions}
-          agentSettingsFields={agentSettingsFields}
-          diagnosticsFields={diagnosticsFields}
           onAddToChannel={() => setAddToChannelOpen(true)}
           onCreateCard={isBot && canManagePersona ? cardMint.create : undefined}
           onDeleteAgent={handleDeleteProfileAgent}
@@ -828,22 +779,13 @@ export function UserProfilePanel({
           onExportAgent={
             isBot && canManagePersona ? handleExportPersona : undefined
           }
-          onOpenInstance={(instancePubkey) => {
-            setRequestedInstancePubkey(instancePubkey);
-            onOpenProfile?.(instancePubkey);
-            setTab("runtime");
-          }}
-          onOpenActivity={handleOpenActivity}
           onOpenChannel={handleOpenChannel}
-          onOpenDiagnostics={() => setView("diagnostics")}
-          onStickyChromeChange={handleStickyChromeChange}
           onTabChange={setTab}
           presenceStatus={presenceStatus}
           profile={profile}
           pubkey={effectivePubkey}
           relayAgent={relayAgent}
           tab={tab}
-          unfollowMutation={unfollowMutation}
           userStatus={userStatus}
         />
       ) : null}
@@ -988,9 +930,6 @@ export function UserProfilePanel({
       personaDialogs={personaDialogs}
       profileBody={profileBody}
       splitPaneClamp={splitPaneClamp}
-      stickyChromeActive={view === "summary" && stickyChrome.active}
-      stickyChromeEnabled={view === "summary" && isBot}
-      stickyChromeHeight={stickyChrome.height}
       widthPx={widthPx}
       transparentChrome={transparentChrome}
     />

@@ -241,22 +241,6 @@ test("conversation groups collapse independently with the keyboard", async ({
   await expect(page.getByTestId("stream-list")).toBeHidden();
 });
 
-test("Saved for later is its own row under Activity and keeps the reminder filter", async ({
-  page,
-}) => {
-  await page.goto("/");
-
-  const savedForLater = page.getByTestId("sidebar-saved-for-later");
-  await expect(savedForLater).toBeVisible();
-  await savedForLater.click();
-
-  await expect(page).toHaveURL(/filter=reminders/);
-  const reminders = page.getByTestId("home-inbox-reminders");
-  await expect(reminders).toBeVisible();
-  await expect(reminders).toContainText("No reminders");
-  await expect(savedForLater).toHaveAttribute("data-active", "true");
-});
-
 test("Software Factory exposes its designed Projects destination only", async ({
   page,
 }) => {
@@ -269,7 +253,7 @@ test("Software Factory exposes its designed Projects destination only", async ({
   await expect(page.getByTestId("sidebar-shared-compute")).toHaveCount(0);
 });
 
-test("Library is one row that opens Blocks and templates in Settings", async ({
+test("Library is one row that opens Custom emoji in Settings", async ({
   page,
 }) => {
   await page.goto("/");
@@ -280,9 +264,7 @@ test("Library is one row that opens Blocks and templates in Settings", async ({
   await blocksAndTemplates.click();
 
   await expect(page.getByTestId("settings-view")).toBeVisible();
-  await expect(
-    page.getByTestId("settings-panel-channel-templates"),
-  ).toBeVisible();
+  await expect(page.getByTestId("settings-panel-custom-emoji")).toBeVisible();
   await expect(page.getByTestId("settings-nav-channel-templates")).toHaveCount(
     0,
   );
