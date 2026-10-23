@@ -186,7 +186,11 @@ test("Channel settings board", async ({ page }) => {
     bridge: colony3MembersBridgeOptions(),
   });
   await openChannelSettings(page);
-  await expect(page.getByTestId("channel-pins-trigger")).toBeVisible();
+  await expect(
+    page
+      .getByTestId("channel-management-sheet")
+      .getByTestId("channel-pins-trigger"),
+  ).toBeVisible();
   await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
   await shot(page, {
     name: "ChannelSettings",
@@ -202,7 +206,9 @@ test("Edit, leave and delete channel board", async ({ page }) => {
   });
   await openChannelSettings(page);
   await page.getByTestId("channel-management-edit").click();
-  const edit = page.getByRole("dialog").last();
+  const edit = page.getByRole("dialog", {
+    name: /Edit (private|public) channel/,
+  });
   await expect(edit).toBeVisible();
   await page
     .getByTestId("channel-management-channel-type-option-temporary")
@@ -255,7 +261,11 @@ test("Channel members board", async ({ page }) => {
     channel: "The Olive House",
     bridge: colony3MembersBridgeOptions(),
   });
-  await page.getByTestId("channel-members-trigger").click();
+  const membersTrigger = page
+    .getByTestId("channel-members-trigger")
+    .or(page.getByTestId("channel-topbar-members-trigger"))
+    .first();
+  await membersTrigger.click();
   const members = page.getByTestId("members-sidebar");
   await expect(members).toBeVisible();
   await expect(members).toContainText("Members · 6");

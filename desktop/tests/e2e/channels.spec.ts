@@ -3190,7 +3190,10 @@ test("channel settings opens the pinned messages page", async ({ page }) => {
   await page.goto("/");
   await openChannelManagement(page, "general");
 
-  await page.getByTestId("channel-pins-trigger").click();
+  await page
+    .getByTestId("channel-management-sheet")
+    .getByTestId("channel-pins-trigger")
+    .click();
   await expect(page).toHaveURL(
     new RegExp(`/channels/pins/${GENERAL_CHANNEL_ID}`),
   );
