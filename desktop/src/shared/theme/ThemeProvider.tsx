@@ -14,6 +14,14 @@ import { isMacPlatform } from "@/shared/lib/platform";
 import { getStorageItem } from "@/shared/lib/safeStorage";
 import { createThemeVars, hexToHsl } from "./adaptive-theme";
 import {
+  applyFieldColors,
+  readStoredFieldColors,
+  sameFieldColors,
+  writeStoredFieldColors,
+  DEFAULT_FIELD_COLORS,
+  type FieldColors,
+} from "./sidebarField";
+import {
   SYNTAX_THEMES,
   type SyntaxThemeName,
   type ThemeInfo,
@@ -87,11 +95,15 @@ type ThemeContextValue = {
   setTheme: (name: string) => void;
   setAccentColor: (color: string) => void;
   setFollowSystem: (enabled: boolean) => void;
+  /** `field` omitted means the default sidebar field colours. */
   applyAppearance: (appearance: {
     theme: SyntaxThemeName;
     accent: string;
     followSystem: boolean;
+    field?: FieldColors;
   }) => void;
+  fieldColors: FieldColors;
+  setFieldColors: (colors: FieldColors) => void;
   setGlassBackground: (enabled: boolean) => void;
   setGlassOpacity: (opacity: number) => void;
   setProminentActiveTab: (enabled: boolean) => void;
@@ -533,6 +545,8 @@ function applyCachedVars(): string | null {
     const accent = getStorageItem(ACCENT_STORAGE_KEY) ?? DEFAULT_ACCENT;
     // Restore the saved accent with the cached palette before the first paint.
     applyAccentColor(resolveEffectiveAccent(themeName, accent));
+    // The person's sidebar field colours restore in the same paint.
+    applyFieldColors(readStoredFieldColors());
 
     return themeName;
   } catch {
@@ -628,6 +642,9 @@ export function ThemeProvider({
     // denied-storage origin would otherwise kill the root on first mount.
     return getStorageItem(ACCENT_STORAGE_KEY) ?? DEFAULT_ACCENT;
   });
+  const [fieldColors, setFieldColorsState] = useState<FieldColors>(() =>
+    readStoredFieldColors(),
+  );
   const [glassBackground, setGlassBackgroundState] = useState<boolean>(() => {
     const stored = getStorageItem(GLASS_BACKGROUND_STORAGE_KEY);
     // Glass is opt-in. Explicitly saved preferences remain intact, while a
@@ -766,6 +783,18 @@ export function ThemeProvider({
     window.localStorage.setItem(THEME_STORAGE_KEY, name);
   }, []);
 
+  // Idempotent, so it also covers the first render and any provider remount.
+  useEffect(() => {
+    applyFieldColors(fieldColors);
+  }, [fieldColors]);
+
+  const setFieldColors = useCallback((colors: FieldColors) => {
+    writeStoredFieldColors(colors);
+    setFieldColorsState((previous) =>
+      sameFieldColors(previous, colors) ? previous : colors,
+    );
+  }, []);
+
   const setAccentColor = useCallback((color: string) => {
     window.localStorage.setItem(ACCENT_STORAGE_KEY, color);
     setAccentColorState(color);
@@ -781,7 +810,9 @@ export function ThemeProvider({
       theme: SyntaxThemeName;
       accent: string;
       followSystem: boolean;
+      field?: FieldColors;
     }) => {
+      const field = appearance.field ?? DEFAULT_FIELD_COLORS;
       // Write the complete preference before updating state so applyTheme reads
       // the target community's accent in the same batch, never the previous one.
       try {
@@ -794,9 +825,13 @@ export function ThemeProvider({
       } catch {
         // Keep the active appearance responsive even if the local cache is full.
       }
+      writeStoredFieldColors(field);
       setSelectedTheme(appearance.theme);
       setAccentColorState(appearance.accent);
       setFollowSystemState(appearance.followSystem);
+      setFieldColorsState((previous) =>
+        sameFieldColors(previous, field) ? previous : field,
+      );
     },
     [],
   );
@@ -855,6 +890,8 @@ export function ThemeProvider({
     setAccentColor,
     setFollowSystem,
     applyAppearance,
+    fieldColors,
+    setFieldColors,
     setGlassBackground,
     setGlassOpacity,
     setProminentActiveTab,

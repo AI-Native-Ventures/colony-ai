@@ -2,30 +2,22 @@ import { Mic, PanelRight } from "lucide-react";
 import type * as React from "react";
 
 import {
-  LIGHT_THEMES,
-  type SyntaxThemeName,
-} from "@/shared/theme/theme-loader";
+  DEFAULT_FIELD_COLORS,
+  type FieldColors,
+} from "@/shared/theme/sidebarField";
 
-import {
-  blendColor,
-  customGradientStops,
-  type AppearanceSnapshot,
-} from "../lib/appearanceSnapshot";
+import { blendColor, type AppearanceSnapshot } from "../lib/appearanceSnapshot";
 import { conversationMessageSizeCss } from "../lib/conversationMessageSizePreference";
 import { THEME_CATALOG_PALETTES } from "../lib/themeCatalogPalettes";
 
+/** The six accents the Colony 3.0 design offers. */
 export const ACCENTS = [
-  ["Violet", "#895AF6"],
-  ["Neutral", "#74717B"],
-  ["Blue", "#3B82F6"],
-  ["Cyan", "#06B6D4"],
-  ["Green", "#22C55E"],
-  ["Orange", "#F97316"],
-  ["Red", "#EF4444"],
-  ["Pink", "#EC4899"],
-  ["Lilac", "#C0A2F1"],
-  ["Purple", "#A855F7"],
-  ["Indigo", "#6366F1"],
+  ["Violet", "#5B45BE"],
+  ["Rose", "#B23A6E"],
+  ["Teal", "#1F7A70"],
+  ["Blue", "#2B5899"],
+  ["Amber", "#9A5B00"],
+  ["Ink", "#25222C"],
 ] as const;
 
 const appearancePreviewIconPaths = {
@@ -61,25 +53,6 @@ function AppearancePreviewIcon({
   );
 }
 
-export function MiniTheme({ custom }: { custom: boolean }) {
-  return (
-    <span aria-hidden="true" className={`ap-mini${custom ? " custom" : ""}`}>
-      <i className="ap-mini-nav">
-        <b />
-        <b />
-        <b />
-        <b />
-      </i>
-      <i className="ap-mini-content">
-        <b />
-        <span />
-        <span />
-        <em />
-      </i>
-    </span>
-  );
-}
-
 export function LiveAppearancePreview({
   preferences,
   isDark,
@@ -94,7 +67,7 @@ export function LiveAppearancePreview({
   const baseColor =
     ACCENTS.find(
       ([, hex]) => hex.toLowerCase() === preferences.accent.toLowerCase(),
-    )?.[1] ?? "#895AF6";
+    )?.[1] ?? "#5B45BE";
   const color = blendColor(
     baseColor,
     isDark ? "#FFFFFF" : "#000000",
@@ -105,23 +78,11 @@ export function LiveAppearancePreview({
     isDark ? "#1C1C1C" : "#FFFFFF",
     isDark ? 0.86 : 0.88,
   );
-  const [first, second] = preferences.custom
-    ? customGradientStops(
-        preferences.customLight,
-        preferences.followSystem
-          ? isDark
-            ? "dark"
-            : "light"
-          : LIGHT_THEMES.has(preferences.theme as SyntaxThemeName)
-            ? "light"
-            : "dark",
-      )
-    : ["transparent", "transparent"];
+  const field: FieldColors = preferences.field ?? [...DEFAULT_FIELD_COLORS];
   return (
     <div
       className={[
         "ap-preview",
-        preferences.custom ? "ap-custom" : "",
         preferences.glassBackground ? "ap-glass" : "",
         preferences.prominentActiveTab ? "ap-prominent" : "",
       ]
@@ -132,8 +93,9 @@ export function LiveAppearancePreview({
         {
           "--ap-accent": color,
           "--ap-soft": softColor,
-          "--ap-t1": first,
-          "--ap-t2": second,
+          "--ap-field-top": field[0],
+          "--ap-field-middle": field[1],
+          "--ap-field-bottom": field[2],
           "--ap-message-size": conversationMessageSizeCss(
             preferences.messageSize,
           ),
@@ -153,9 +115,7 @@ export function LiveAppearancePreview({
                   palette.background,
                   0.85,
                 ),
-                "--ap-window-paint": preferences.custom
-                  ? `linear-gradient(155deg, ${first}, ${second})`
-                  : `linear-gradient(${palette.background}, ${palette.background})`,
+                "--ap-window-paint": `linear-gradient(${palette.background}, ${palette.background})`,
               }
             : {}),
         } as React.CSSProperties

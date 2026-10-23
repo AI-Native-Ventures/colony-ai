@@ -1,7 +1,6 @@
 import * as React from "react";
 import {
   ArrowRight,
-  Check,
   CheckCircle2,
   ChevronDown,
   PanelRight,
@@ -12,9 +11,14 @@ import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import {
   ACCENT_STORAGE_KEY,
+  DEFAULT_ACCENT,
   GLASS_BACKGROUND_STORAGE_KEY,
   useTheme,
 } from "@/shared/theme/ThemeProvider";
+import {
+  DEFAULT_FIELD_COLORS,
+  type FieldColors,
+} from "@/shared/theme/sidebarField";
 import {
   LIGHT_THEMES,
   SYNTAX_THEMES,
@@ -40,8 +44,6 @@ import {
 import {
   appearanceLastBusinessKey,
   appearanceSnapshotKey,
-  customGradientStops,
-  isValidHexColor,
   writeAppearanceSnapshot,
   readAppearanceSnapshot,
   mergeAppearanceSnapshot,
@@ -49,11 +51,8 @@ import {
   type AppearanceSnapshot,
 } from "../lib/appearanceSnapshot";
 import { applyConversationMessageSize } from "../lib/conversationMessageSizePreference";
-import {
-  ACCENTS,
-  LiveAppearancePreview,
-  MiniTheme,
-} from "./AppearanceLivePreview";
+import { AppearanceFieldColours } from "./AppearanceFieldColours";
+import { ACCENTS, LiveAppearancePreview } from "./AppearanceLivePreview";
 
 type AppearanceMode = "system" | "light" | "dark";
 type AppearanceSettingsPanelProps = {
@@ -61,7 +60,8 @@ type AppearanceSettingsPanelProps = {
   onBackToWorkspace?: () => void;
 };
 
-const DEFAULT_CUSTOM_COLORS: [string, string] = ["#895AF6", "#5A9CF6"];
+/** Kept in saved snapshots only so older ones still read; the field replaced it. */
+const LEGACY_CUSTOM_COLORS: [string, string] = ["#895AF6", "#5A9CF6"];
 
 function currentMode(followSystem: boolean, theme: string): AppearanceMode {
   if (followSystem) return "system";
@@ -96,6 +96,7 @@ function themeForMode(
 type CurrentAppearanceTheme = Pick<
   ReturnType<typeof useTheme>,
   | "accentColor"
+  | "fieldColors"
   | "followSystem"
   | "glassBackground"
   | "glassOpacity"
@@ -109,7 +110,7 @@ export function currentAppearanceSnapshot(
   let linkPreview: LinkPreviewStyle = "compact";
   let threadLayout: ThreadViewMode = "split";
   let glassBackground = theme.glassBackground;
-  let accent = theme.accentColor || "#895AF6";
+  let accent = theme.accentColor || DEFAULT_ACCENT;
   try {
     density = getConversationDensity();
     linkPreview = getLinkPreviewStyle();
@@ -119,7 +120,7 @@ export function currentAppearanceSnapshot(
   }
   try {
     const savedAccent = window.localStorage.getItem(ACCENT_STORAGE_KEY);
-    accent = savedAccent === null ? "#895AF6" : savedAccent;
+    accent = savedAccent === null ? DEFAULT_ACCENT : savedAccent;
     const savedGlass = window.localStorage.getItem(
       GLASS_BACKGROUND_STORAGE_KEY,
     );
@@ -133,7 +134,8 @@ export function currentAppearanceSnapshot(
     accent: accent === "neutral" ? "#74717B" : accent,
     followSystem: theme.followSystem,
     custom: false,
-    customLight: [...DEFAULT_CUSTOM_COLORS],
+    customLight: [...LEGACY_CUSTOM_COLORS],
+    field: [...theme.fieldColors],
     glassBackground,
     glassOpacity: theme.glassOpacity,
     prominentActiveTab: theme.prominentActiveTab,
@@ -158,6 +160,7 @@ function loadPreferences(
     ...businessSnapshot,
     theme: base.theme,
     accent: base.accent,
+    field: base.field,
     followSystem: base.followSystem,
     messageSize: globalSnapshot.messageSize,
     density: base.density,
@@ -282,9 +285,6 @@ export function AppearanceSettingsPanel({
     JSON.stringify(preferences) !== JSON.stringify(appliedPreferences);
   const [undoSnapshot, setUndoSnapshot] =
     React.useState<AppearanceSnapshot | null>(null);
-  const [hexDrafts, setHexDrafts] = React.useState<[string, string]>(() => [
-    ...preferences.customLight,
-  ]);
   const isDark = theme.isDark;
 
   React.useEffect(() => {
@@ -302,7 +302,6 @@ export function AppearanceSettingsPanel({
     const next = loadPreferences(base, business, global);
     setPreferences(next);
     setAppliedPreferences(next);
-    setHexDrafts([...next.customLight]);
     if (!business) {
       let snapshotWritten = false;
       try {
@@ -349,28 +348,17 @@ export function AppearanceSettingsPanel({
       ...previous,
       theme: theme.selectedThemeName,
       accent: theme.accentColor,
+      field: [...theme.fieldColors] as FieldColors,
       followSystem: theme.followSystem,
     });
     setPreferences(update);
     setAppliedPreferences(update);
-  }, [theme.selectedThemeName, theme.accentColor, theme.followSystem]);
-
-  React.useEffect(() => {
-    const root = document.documentElement;
-    if (appliedPreferences.custom) {
-      const [first, second] = customGradientStops(
-        appliedPreferences.customLight,
-        isDark ? "dark" : "light",
-      );
-      root.style.setProperty("--w20-custom-gradient-start", first);
-      root.style.setProperty("--w20-custom-gradient-end", second);
-      root.classList.add("w20-custom-appearance");
-    } else {
-      root.style.removeProperty("--w20-custom-gradient-start");
-      root.style.removeProperty("--w20-custom-gradient-end");
-      root.classList.remove("w20-custom-appearance");
-    }
-  }, [isDark, appliedPreferences]);
+  }, [
+    theme.selectedThemeName,
+    theme.accentColor,
+    theme.fieldColors,
+    theme.followSystem,
+  ]);
 
   const applyCommit = React.useCallback(
     (
@@ -395,7 +383,6 @@ export function AppearanceSettingsPanel({
         } else {
           setPreferences(next);
           setAppliedPreferences(next);
-          setHexDrafts([...next.customLight]);
         }
       } catch {
         setSaved(false);
@@ -405,11 +392,13 @@ export function AppearanceSettingsPanel({
       if (
         patch.theme !== undefined ||
         patch.accent !== undefined ||
+        patch.field !== undefined ||
         patch.followSystem !== undefined
       ) {
         theme.applyAppearance({
           theme: next.theme as SyntaxThemeName,
           accent: next.accent,
+          field: next.field,
           followSystem: next.followSystem,
         });
       }
@@ -453,7 +442,6 @@ export function AppearanceSettingsPanel({
     }
     const next = { ...preferences, ...patch };
     setPreferences(next);
-    setHexDrafts([...next.customLight]);
     setSaved(true);
   }
 
@@ -461,8 +449,9 @@ export function AppearanceSettingsPanel({
     return applyCommit({
       theme: snapshot.theme,
       accent: snapshot.accent,
+      field: snapshot.field,
       followSystem: snapshot.followSystem,
-      custom: snapshot.custom,
+      custom: false,
       customLight: snapshot.customLight,
       glassBackground: snapshot.glassBackground,
       glassOpacity: snapshot.glassOpacity,
@@ -477,7 +466,6 @@ export function AppearanceSettingsPanel({
 
   function cancelDraft() {
     setPreferences(appliedPreferences);
-    setHexDrafts([...appliedPreferences.customLight]);
     setSaved(true);
   }
 
@@ -488,13 +476,6 @@ export function AppearanceSettingsPanel({
     });
   }
 
-  function updateColor(index: 0 | 1, value: string) {
-    const colors: [string, string] = [...preferences.customLight];
-    colors[index] = value;
-    setHexDrafts([...colors]);
-    commit({ customLight: colors, custom: true });
-  }
-
   function resetAppearance() {
     setUndoSnapshot(preferences);
     const resetTheme = SYNTAX_THEMES.includes("buzz" as SyntaxThemeName)
@@ -502,10 +483,11 @@ export function AppearanceSettingsPanel({
       : preferences.theme;
     commit({
       theme: resetTheme,
-      accent: "#895AF6",
+      accent: DEFAULT_ACCENT,
+      field: [...DEFAULT_FIELD_COLORS],
       followSystem: true,
       custom: false,
-      customLight: [...DEFAULT_CUSTOM_COLORS],
+      customLight: [...LEGACY_CUSTOM_COLORS],
       glassBackground: false,
       glassOpacity: 65,
       prominentActiveTab: false,
@@ -560,14 +542,6 @@ export function AppearanceSettingsPanel({
           "--ap-accent": accentTint,
           "--ap-soft": accentSoft,
           "--ap-glass-alpha": `${preferences.glassOpacity}%`,
-          "--ap-t1": customGradientStops(
-            preferences.customLight,
-            isDark ? "dark" : "light",
-          )[0],
-          "--ap-t2": customGradientStops(
-            preferences.customLight,
-            isDark ? "dark" : "light",
-          )[1],
         } as React.CSSProperties
       }
     >
@@ -621,92 +595,6 @@ export function AppearanceSettingsPanel({
                 </fieldset>
               </div>
             </AppearanceRow>
-            <div className="ap-style-row">
-              <strong>Theme style</strong>
-              <fieldset className="ap-style-options">
-                <legend className="sr-only">Theme style</legend>
-                {([false, true] as const).map((custom) => (
-                  <button
-                    aria-label={`${custom ? "Custom" : "Default"} theme style`}
-                    aria-pressed={preferences.custom === custom}
-                    className="ap-style-option"
-                    data-testid={`appearance-theme-${custom ? "custom" : "default"}`}
-                    key={String(custom)}
-                    onClick={() => commit({ custom })}
-                    type="button"
-                  >
-                    <MiniTheme custom={custom} />
-                    <span>
-                      {custom ? "Custom" : "Default"}
-                      <i>
-                        {preferences.custom === custom ? (
-                          <Check aria-hidden="true" className="icon" />
-                        ) : null}
-                      </i>
-                    </span>
-                  </button>
-                ))}
-              </fieldset>
-            </div>
-            {preferences.custom ? (
-              <div className="ap-colours">
-                {([0, 1] as const).map((index) => (
-                  <label key={index}>
-                    {index === 0 ? "First colour" : "Second colour"}
-                    <span>
-                      <input
-                        aria-label={
-                          index === 0
-                            ? "Pick first gradient colour"
-                            : "Pick second gradient colour"
-                        }
-                        data-testid={`appearance-color-picker-${index + 1}`}
-                        onChange={(event) =>
-                          updateColor(index, event.target.value)
-                        }
-                        type="color"
-                        value={preferences.customLight[index]}
-                      />
-                      <input
-                        aria-invalid={!isValidHexColor(hexDrafts[index])}
-                        aria-label={
-                          index === 0
-                            ? "First gradient colour"
-                            : "Second gradient colour"
-                        }
-                        data-testid={`appearance-color-hex-${index + 1}`}
-                        maxLength={7}
-                        onBlur={() => {
-                          if (!isValidHexColor(hexDrafts[index])) {
-                            setHexDrafts([...preferences.customLight]);
-                          }
-                        }}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setHexDrafts((currentDrafts) => {
-                            const next: [string, string] = [...currentDrafts];
-                            next[index] = value;
-                            return next;
-                          });
-                          if (isValidHexColor(value)) updateColor(index, value);
-                        }}
-                        pattern="#[a-fA-F0-9]{6}"
-                        spellCheck={false}
-                        type="text"
-                        value={hexDrafts[index].toUpperCase()}
-                      />
-                    </span>
-                  </label>
-                ))}
-                <p
-                  className="ap-colour-error"
-                  role="alert"
-                  hidden={hexDrafts.every(isValidHexColor)}
-                >
-                  Use a six-digit hex colour, such as #895AF6.
-                </p>
-              </div>
-            ) : null}
             <AppearanceRow title="Accent colour">
               <fieldset className="ap-accents">
                 <legend className="sr-only">Accent colour</legend>
@@ -728,6 +616,10 @@ export function AppearanceSettingsPanel({
                 ))}
               </fieldset>
             </AppearanceRow>
+            <AppearanceFieldColours
+              colors={preferences.field}
+              onChange={(field) => commit({ field })}
+            />
           </section>
           <section className="ap-section">
             <h2>Window</h2>
@@ -929,10 +821,7 @@ export function AppearanceSettingsPanel({
             className="ap-apply-button"
             data-testid="appearance-apply"
             type="button"
-            disabled={
-              !appearancePending ||
-              hexDrafts.some((color) => !isValidHexColor(color))
-            }
+            disabled={!appearancePending}
             onClick={applyDraft}
           >
             Apply

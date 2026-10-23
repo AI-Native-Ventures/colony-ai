@@ -62,8 +62,13 @@ export function SidebarProfileCard({
   communities,
 }: SidebarProfileCardProps) {
   const selfProfileCache = useSelfProfileCache();
-  const { accentColor, applyAppearance, isDark, selectedThemeName } =
-    useTheme();
+  const {
+    accentColor,
+    applyAppearance,
+    fieldColors,
+    isDark,
+    selectedThemeName,
+  } = useTheme();
   const myMembershipQuery = useMyRelayMembershipLookupQuery();
   const activeRole = myMembershipQuery.data?.membership?.role;
   const canInvite = activeRole === "owner" || activeRole === "admin";
@@ -105,10 +110,11 @@ export function SidebarProfileCard({
     const pairedTheme = getThemePair(selectedThemeName as SyntaxThemeName);
     applyAppearance({
       accent: accentColor,
+      field: fieldColors,
       followSystem: false,
       theme: pairedTheme ?? (isDark ? "buzz" : "buzz-dark"),
     });
-  }, [accentColor, applyAppearance, isDark, selectedThemeName]);
+  }, [accentColor, applyAppearance, fieldColors, isDark, selectedThemeName]);
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: child buttons provide keyboard access; wrapper fills pointer gaps between them.

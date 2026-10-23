@@ -4,7 +4,6 @@ import { UserRound } from "lucide-react";
 import { useAvatarPresentation } from "@/features/profile/avatarPresentationStore";
 import { avatarSourceUrlForShape } from "@/features/profile/ui/ProfileAvatarEditor.utils";
 import { parseAnimatedAvatarUrl } from "@/shared/lib/animatedAvatar";
-import { agentGradientFor } from "@/shared/lib/agentGradient";
 import { cn } from "@/shared/lib/cn";
 import { getInitials } from "@/shared/lib/initials";
 import { rewriteRelayUrl } from "@/shared/lib/mediaUrl";
@@ -107,25 +106,26 @@ export function ProfileAvatar({
     : (liveSrc ?? avatarDataUrl ?? undefined);
   const shouldShowFallback = src === undefined || (!animated && liveFailed);
 
-  // People are round, agents are hexagon cells with their own colour pair.
-  const isCell = shape === "squircle";
-  const cellBackground =
-    isCell && !plain && !animated ? agentGradientFor(label) : undefined;
+  // People are round avatars in Colony 3.0. Agents keep the squircle and their
+  // own picture (owner decision A2: no hexagon cells).
+  const isAgentShape = shape === "squircle";
 
   return (
     <Avatar
       className={cn(
-        "shrink-0 text-colony-fg",
-        isCell && "rounded-squircle",
+        "shrink-0",
+        isAgentShape ? "text-primary shadow-xs" : "text-colony-fg",
+        isAgentShape && "rounded-squircle",
         // Animated avatars carry their own backdrop disc and transparent
         // surroundings — any container fill would flatten the pop-out.
         plain || animated
           ? "bg-transparent shadow-none"
-          : !isCell && "bg-colony-person",
+          : isAgentShape
+            ? "bg-primary/20"
+            : "bg-colony-person",
         className,
       )}
       data-testid={testId}
-      style={cellBackground ? { background: cellBackground } : undefined}
       onMouseEnter={animated ? () => setIsHovered(true) : undefined}
       onMouseLeave={animated ? () => setIsHovered(false) : undefined}
     >
@@ -151,8 +151,13 @@ export function ProfileAvatar({
       {shouldShowFallback ? (
         <AvatarFallback
           className={cn(
-            "bg-transparent font-extrabold text-colony-fg",
-            !plain && !animated && !isCell && "bg-colony-person",
+            "font-extrabold",
+            isAgentShape ? "text-primary" : "text-colony-fg",
+            plain || animated
+              ? "bg-transparent"
+              : isAgentShape
+                ? "bg-primary/20"
+                : "bg-colony-person",
           )}
           data-testid={testId ? `${testId}-fallback` : undefined}
           delayMs={src === undefined ? undefined : 200}

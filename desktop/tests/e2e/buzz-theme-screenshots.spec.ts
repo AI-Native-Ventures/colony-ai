@@ -841,7 +841,7 @@ test("workspace appearance keeps navigation controls within the frozen design", 
   const appearance = await openAppearance(page);
   const root = page.locator("html");
   await expect(appearance.getByTestId("appearance-prominent")).toBeVisible();
-  await expect(appearance.getByTestId("appearance-accent-cyan")).toBeVisible();
+  await expect(appearance.getByTestId("appearance-accent-teal")).toBeVisible();
   await expect(appearance.getByTestId("appearance-glass")).toBeVisible();
   await expect(root).not.toHaveAttribute("data-prominent-active-tab", "");
 
@@ -1411,7 +1411,7 @@ test("named appearance keeps density and theme in the same scoped snapshot", asy
   await installMockBridge(page);
   const panel = await openAppearance(page);
   await expect(panel.getByTestId("appearance-prominent")).toBeVisible();
-  await expect(panel.getByTestId("appearance-accent-cyan")).toBeVisible();
+  await expect(panel.getByTestId("appearance-accent-teal")).toBeVisible();
   await expect(panel.getByTestId("appearance-density")).toHaveCount(0);
   await panel.getByTestId("appearance-open-themes").click();
   await page.getByTestId("theme-catalog-github-dark").click();
