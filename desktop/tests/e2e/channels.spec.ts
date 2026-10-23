@@ -699,11 +699,13 @@ test("start a new direct message from the sidebar", async ({ page }) => {
   await expect(selectedAgent).toBeVisible();
   await selectedAgent.focus();
   await expect(selectedAgent).toBeFocused();
-  await expect(selectedAgent).toHaveCSS("clip-path", "none");
-  await expect(selectedAgent).not.toHaveClass(/rounded-squircle/);
+  // The Colony 3.0 "To:" chip shows the agent's squircle avatar beside a
+  // remove button, not an avatar that turns into the remove button on hover.
   await expect(
-    selectedAgent.locator("span.absolute[data-avatar-shape='squircle']"),
-  ).toHaveCSS("clip-path", /url\(["']?#rounded-squircle-clip["']?\)/);
+    page
+      .locator(".c3nm-chip", { has: selectedAgent })
+      .locator(".rounded-squircle"),
+  ).toBeVisible();
 
   await page.getByTestId("message-input").fill("Hello charlie");
   await page.getByTestId("send-message").click();

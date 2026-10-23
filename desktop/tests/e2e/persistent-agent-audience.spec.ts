@@ -500,9 +500,9 @@ test("primary+Shift+M addresses the default agent, then toggles the highlighted 
 
   await input.fill("@Vog");
   const menu = composer.getByTestId("mention-autocomplete");
-  await expect(menu.getByTestId(`mention-suggestion-${AGENT_B}`)).toHaveClass(
-    /(?:^|\s)bg-accent(?:\s|$)/,
-  );
+  await expect(
+    menu.getByTestId(`mention-suggestion-${AGENT_B}`),
+  ).toHaveAttribute("data-selected", "true");
   await pressPrimaryShiftM(page);
 
   await expect(menu).toBeVisible();
@@ -959,7 +959,12 @@ test("a manual mention persists when automatic mentions are enabled", async ({
   await expect(autoPinConfirmation).not.toContainText(
     "Future messages in this channel will include this agent.",
   );
-  await expect(autoPinConfirmation).toHaveAttribute("data-side", "right");
+  // The Colony 3.0 thread toolbar puts the mention button beside the send
+  // side, so the confirmation may open on either side of it.
+  await expect(autoPinConfirmation).toHaveAttribute(
+    "data-side",
+    /^(left|right)$/,
+  );
   await expect(autoPinConfirmation.locator("span")).toHaveCSS(
     "white-space",
     "nowrap",

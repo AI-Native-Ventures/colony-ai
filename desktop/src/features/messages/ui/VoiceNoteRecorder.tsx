@@ -126,7 +126,7 @@ export function VoiceNoteRecorder({
       <span aria-hidden="true" className="c3c-voice-dot" />
       {requesting || processing ? (
         <span className="c3c-voice-time" data-quiet="true">
-          {requesting ? "Waiting for microphone..." : "Preparing voice note..."}
+          {requesting ? "Waiting for microphone…" : "Preparing voice note…"}
         </span>
       ) : (
         <span className="c3c-voice-time">

@@ -203,16 +203,17 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
                 Address selected agents in thread replies
               </span>
             </span>
-            {/* biome-ignore lint/a11y/useKeyWithClickEvents: pointer-only label affordance; the associated switch remains the keyboard path. */}
-            <label
-              className="c3c-mention-pin-label"
-              htmlFor={keepPinnedSwitchId}
-              onClick={(event) => {
-                event.preventDefault();
-                onKeepMentionedAgentsPinnedChange(!keepMentionedAgentsPinned);
-              }}
-            >
-              Automatically mention agents
+            <span className="c3c-mention-pin-label">
+              {/* biome-ignore lint/a11y/useKeyWithClickEvents: pointer-only label affordance; the associated switch remains the keyboard path. */}
+              <label
+                htmlFor={keepPinnedSwitchId}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onKeepMentionedAgentsPinnedChange(!keepMentionedAgentsPinned);
+                }}
+              >
+                Automatically mention agents
+              </label>
               <Switch
                 aria-label="Automatically mention agents"
                 checked={keepMentionedAgentsPinned}
@@ -222,7 +223,7 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
                 onCheckedChange={onKeepMentionedAgentsPinnedChange}
                 onMouseDown={(event) => event.preventDefault()}
               />
-            </label>
+            </span>
           </div>
         ) : null}
         {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only guard keeps padding and scrollbar presses from blurring the owning editor. */}

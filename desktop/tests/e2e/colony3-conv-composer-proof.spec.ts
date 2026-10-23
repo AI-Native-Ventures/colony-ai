@@ -171,8 +171,8 @@ test("Composer: mention picker in a thread reply", async ({ page }) => {
     .filter({ hasText: "Where are we" })
     .hover();
   await page.getByTestId(`reply-message-${COMPOSER_IDS.root}`).click();
-  const thread = page.getByTestId("message-thread-panel");
-  await expect(thread).toBeVisible();
+  const thread = page.getByTestId("thread-composer-overlay");
+  await expect(page.getByTestId("message-thread-panel")).toBeVisible();
   await thread.getByTestId("message-input").click();
   await page.keyboard.type("Thanks both. @");
   const popover = thread.getByTestId("mention-autocomplete-layer");

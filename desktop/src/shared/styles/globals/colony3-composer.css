@@ -84,8 +84,11 @@
 /* ---------------------------------------------------------------- editor -- */
 
 .c3c-editor-row {
-  display: flex;
   min-width: 0;
+}
+
+.c3c-card[data-compact="true"] .c3c-editor-row {
+  display: flex;
   align-items: flex-end;
   gap: 0.5rem;
 }
@@ -107,6 +110,12 @@
   min-width: 0;
   flex: 1;
   max-height: 8rem;
+  font-size: calc(17 * var(--colony-px));
+  line-height: 1.5;
+}
+
+.c3c-card[data-compact="true"] .c3c-editor {
+  font-size: calc(16.5 * var(--colony-px));
 }
 
 .c3c-editor .tiptap {
@@ -741,6 +750,12 @@
   color: hsl(var(--colony-fg-secondary));
   font-size: calc(13.5 * var(--colony-px));
   font-weight: 700;
+  cursor: pointer;
+}
+
+.c3c-mention-pin-label label {
+  display: block;
+  line-height: calc(20 * var(--colony-px));
   cursor: pointer;
 }
 

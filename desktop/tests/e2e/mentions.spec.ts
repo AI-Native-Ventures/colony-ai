@@ -1185,7 +1185,7 @@ test("selecting a person mention inserts @Name into input", async ({
   await expect(
     input.locator(".mention-prefix-hidden", { hasText: "@" }),
   ).toHaveCSS("opacity", "0");
-  await expect(mentionChip).toHaveCSS("line-height", "19px");
+  await expect(mentionChip).toHaveCSS("line-height", "21px");
   const scrollViewport = page.getByTestId("message-input-scroll");
   const paintedBounds = await mentionChip.evaluate((element) => {
     const chip = element.getBoundingClientRect();
