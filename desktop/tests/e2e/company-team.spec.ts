@@ -19,6 +19,7 @@ import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 const OWNER_PUBKEY = TEST_IDENTITIES.tyler.pubkey;
 const EMPLOYEE_NAME = "Mina";
 const EMPLOYEE_TITLE = "Social Media Manager";
+const EMPLOYEE_WORK_ITEM_ID = "e3a4b5c6-d7e8-49f0-a1b2-c3d4e5f60718";
 const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 
 function positionHead(input: {

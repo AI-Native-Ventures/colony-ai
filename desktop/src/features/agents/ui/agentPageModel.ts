@@ -1,4 +1,8 @@
-import type { AcpRuntimeCatalogEntry, ManagedAgent } from "@/shared/api/types";
+import type {
+  AcpRuntimeCatalogEntry,
+  AgentPersona,
+  ManagedAgent,
+} from "@/shared/api/types";
 import {
   PERSONA_LLM_PROVIDER_OPTIONS,
   providerDisplayLabel,
@@ -141,4 +145,19 @@ export function personInitials(name: string): string {
   const first = parts[0]?.[0] ?? "";
   const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? "") : "";
   return `${first}${last}`.toUpperCase();
+}
+
+/**
+ * Where a save lands. An agent with no definition keeps its own instructions;
+ * an agent made from a definition you can edit saves into that definition
+ * (the instance cannot override it); built-in and team definitions are
+ * read-only here.
+ */
+export function instructionSource(
+  agent: Pick<ManagedAgent, "personaId">,
+  persona: Pick<AgentPersona, "isBuiltIn" | "sourceTeam"> | undefined,
+): "agent" | "definition" | "locked" {
+  if (agent.personaId === null) return "agent";
+  if (persona && !persona.isBuiltIn && !persona.sourceTeam) return "definition";
+  return "locked";
 }

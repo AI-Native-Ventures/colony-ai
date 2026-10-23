@@ -1207,6 +1207,5 @@
 .colony-hire-avatar-104 {
   width: 6.5rem;
   height: 6.5rem;
-  box-shadow: 0 0 0 0.625rem hsl(var(--colony-track));
   font-size: calc(40 * var(--colony-px));
 }

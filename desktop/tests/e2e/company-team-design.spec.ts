@@ -171,17 +171,11 @@ for (const viewport of [
       team.getByRole("tab", { name: "Reporting lines" }),
     ).toHaveCount(0);
     await page.goto(`/#/team/detail/${employeePubkey}`);
-    await expect(page.getByTestId("company-employee-profile")).toBeVisible();
-    await expect(
-      page.getByTestId("employee-salary-overview-unavailable"),
-    ).toHaveCount(0);
-    await expect(
-      page.getByTestId("company-employee-direct-reports"),
-    ).toContainText("Noluthando");
+    await expect(page.getByTestId("agent-profile")).toBeVisible();
+    await expect(page.getByTestId("company-position-header")).toContainText(
+      "Noluthando",
+    );
     await expect(page.getByTestId("company-paused-banner")).toBeVisible();
-    await page.getByRole("tab", { name: "Instructions", exact: true }).click();
-    await expect(page.getByTestId("company-paused-banner")).toHaveCount(0);
-    await page.getByRole("tab", { name: "Overview", exact: true }).click();
     await capture("team-detail-mina");
     await page.goto(`/#/team/edit/${employeePubkey}`);
     await expect(page.getByLabel("Title")).toHaveValue(employee.title);
@@ -214,14 +208,7 @@ for (const viewport of [
     await capture("team-pause-unavailable-mina");
     await page.goto(`/#/team/detail/${TEST_IDENTITIES.alice.pubkey}`);
     await expect(page.getByTestId("company-team-member-profile")).toBeVisible();
-    const overview = page.getByRole("tab", { name: "Overview", exact: true });
-    await overview.focus();
-    await page.keyboard.press("ArrowRight");
-    await expect(
-      page.getByRole("tab", { name: "History", exact: true }),
-    ).toBeFocused();
-    await page.keyboard.press("ArrowLeft");
-    await expect(overview).toBeFocused();
+    await expect(page.getByRole("tab")).toHaveCount(0);
     await capture("team-detail-noluthando");
   });
 }
@@ -266,25 +253,21 @@ test("Team does not infer an employee position from its running runtime", async 
     });
   }
   await row.click();
-  const profile = page.getByTestId("company-employee-profile");
+  const profile = page.getByTestId("agent-profile");
   await expect(profile).toBeVisible();
   await expect(page.getByTestId("company-position-header")).toContainText(
-    "Employee · Ready",
+    "AI employee",
   );
+  await expect(profile).toContainText("Runtime ready");
   await expect(page.getByTestId("company-terminated-banner")).toHaveCount(0);
   await expect(
     profile.getByRole("button", { name: "Pause employee", exact: true }),
   ).toHaveCount(0);
+  await profile.getByRole("button", { name: "More agent actions" }).click();
   await expect(
-    profile.getByRole("button", { name: "Terminate employee", exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    profile.getByRole("button", {
-      name: "Edit role and reporting",
-      exact: true,
-    }),
+    page.getByRole("menuitem", { name: "Edit role and reporting" }),
   ).toBeVisible();
-  await expect(profile).toContainText("Reporting line not set");
+  await page.keyboard.press("Escape");
   for (const viewport of [
     { width: 1728, height: 1117 },
     { width: 1440, height: 900 },
@@ -393,14 +376,14 @@ for (const width of [1728, 1440]) {
         ];
     });
     await page.getByRole("button", { name: "Approve and rehire" }).click();
-    await expect(page.getByRole("alert")).toContainText(
-      "The review is kept. Try again.",
-    );
+    await expect(
+      page.getByTestId("team-dialog-rehire").getByRole("alert"),
+    ).toContainText("The review is kept. Try again.");
     await expect(page.getByRole("checkbox")).toBeChecked();
     await page.getByRole("button", { name: "Approve and rehire" }).click();
-    await expect(page.getByTestId("company-rehire-review")).toHaveCount(0);
+    await expect(page.getByTestId("team-dialog-rehire")).toHaveCount(0);
     await expect(page.getByTestId("company-position-header")).toContainText(
-      "Employee · Offline",
+      "AI employee",
     );
     await expect
       .poll(() =>

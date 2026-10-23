@@ -51,11 +51,7 @@ export function breadcrumbForPath(pathname: string): Crumb[] | null {
         ? trail("Company", "Team", second === "org" ? "Org chart" : "Member")
         : trail("Company", "Team");
     case "hire":
-      return trail(
-        "Company",
-        "Team",
-        HIRE_PAGES[second ?? ""] ?? "Hire",
-      );
+      return trail("Company", "Team", HIRE_PAGES[second ?? ""] ?? "Hire");
     case "goals":
       return segments.length > 1
         ? trail("Company", "Goals", "Goal")

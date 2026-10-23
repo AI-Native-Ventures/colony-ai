@@ -4,6 +4,7 @@ import {
   useUpdateManagedAgentMutation,
   useUpdatePersonaMutation,
 } from "@/features/agents/hooks";
+import { instructionSource } from "./agentPageModel";
 import type {
   AgentPersona,
   ManagedAgent,
@@ -25,21 +26,6 @@ const BOOK_ICON = (
     <path d="M4.5 5.5A1.5 1.5 0 0 1 6 4h5v15H6a1.5 1.5 0 0 0-1.5 1.5zM19.5 5.5A1.5 1.5 0 0 0 18 4h-5v15h5a1.5 1.5 0 0 1 1.5 1.5z" />
   </svg>
 );
-
-/**
- * Where a save lands. An agent with no definition keeps its own instructions;
- * an agent made from a definition you can edit saves into that definition
- * (the instance cannot override it); built-in and team definitions are
- * read-only here.
- */
-export function instructionSource(
-  agent: Pick<ManagedAgent, "personaId">,
-  persona: AgentPersona | undefined,
-): "agent" | "definition" | "locked" {
-  if (agent.personaId === null) return "agent";
-  if (persona && !persona.isBuiltIn && !persona.sourceTeam) return "definition";
-  return "locked";
-}
 
 function personaUpdateInput(
   persona: AgentPersona,

@@ -26,6 +26,7 @@ import {
   useAskHireProposal,
 } from "./HireProposalComposer";
 import { AskCreateSuccess } from "./AskCreateSuccess";
+import { AskComposeHeader } from "./AskComposeHeader";
 import { AskDestinationStep } from "./AskDestinationStep";
 import { AskInviteDialog } from "./AskInviteDialog";
 import { AskWhoCanAnswer } from "./AskWhoCanAnswer";
@@ -37,8 +38,6 @@ import { MoneyReviewPanel } from "./MoneyReviewPanel";
 import { KIND_ASK_ACTION } from "@/shared/constants/kinds";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { normalizePubkey } from "@/shared/lib/pubkey";
-import { ColonySteps } from "@/shared/ui/ColonySteps";
-import { HashIcon, PrivateChannelIcon } from "@/shared/ui/colonyIcons";
 
 import {
   buildAskCreateAction,
@@ -728,8 +727,6 @@ export function AskCreateScreen({
     : isMoneyProposal
       ? ["Company", "Request an allowance"]
       : ["Company", "Raise an ask"];
-  const ChannelMark =
-    channel?.visibility === "private" ? PrivateChannelIcon : HashIcon;
   const raisedByLabel = currentPubkey
     ? resolveUserLabel({
         pubkey: currentPubkey,
@@ -787,45 +784,14 @@ export function AskCreateScreen({
   };
 
   const composeHeader = (
-    <header className="ask3-head-row">
-      <div className="ask3-head" data-gap="10">
-        {isHireProposal ? (
-          <span className="ask3-chip">
-            <ChannelMark size={14} strokeWidth={2.2} />
-            {destinationLabel}
-          </span>
-        ) : (
-          <button
-            className="ask3-chip"
-            disabled={locked}
-            onClick={changeDestination}
-            type="button"
-          >
-            <ChannelMark size={14} strokeWidth={2.2} />
-            {destinationLabel}
-            <span className="ask3-chip-change">Change</span>
-          </button>
-        )}
-        <h1 className="ask3-title" id="ask-create-title">
-          {pageTitle}
-        </h1>
-        {isHireProposal ? (
-          <span className="ask3-sub">
-            Describe the role you need. An owner reviews it, then the founder
-            signs off.
-          </span>
-        ) : null}
-      </div>
-      {isHireProposal ? null : (
-        <ColonySteps
-          align="end"
-          current={2}
-          label="Ask steps"
-          onStepSelect={changeDestination}
-          steps={["Destination", "Ask"]}
-        />
-      )}
-    </header>
+    <AskComposeHeader
+      destination={destinationLabel}
+      hire={isHireProposal}
+      locked={locked}
+      onChangeDestination={changeDestination}
+      privateChannel={channel?.visibility === "private"}
+      title={pageTitle}
+    />
   );
 
   const failureBanner = formError ? (

@@ -553,7 +553,7 @@ export function ReviewRehireDialog({
           <div className="team-dialog-summary">
             <EmployeeAvatar
               className="team-dialog-summary-avatar"
-              definition={member.managedAgent?.avatarUrl}
+              instance={member.managedAgent?.avatarUrl}
               name={name}
               personaId={member.managedAgent?.personaId}
             />
