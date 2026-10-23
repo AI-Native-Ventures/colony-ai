@@ -177,14 +177,7 @@ export function AskDecisionDetail({ model }: { model: DecisionDetailModel }) {
   );
 
   const card = (
-    <section
-      aria-label={`${model.typeText} ask`}
-      className="colony-decision-card"
-      data-ask-id={ask.askId}
-      data-ask-variant={model.specializedKind}
-      data-testid="ask-card"
-      data-variant={model.variant}
-    >
+    <div className="colony-decision-card" data-variant={model.variant}>
       {chips}
       {funding ? (
         <div className="colony-decision-message">
@@ -248,11 +241,17 @@ export function AskDecisionDetail({ model }: { model: DecisionDetailModel }) {
           reconnects.
         </p>
       ) : null}
-    </section>
+    </div>
   );
 
   return (
-    <div className="colony-decision-layout" data-testid="ask-decision-layout">
+    <section
+      aria-label={`${model.typeText} ask`}
+      className="colony-decision-layout"
+      data-ask-id={ask.askId}
+      data-ask-variant={model.specializedKind}
+      data-testid="ask-card"
+    >
       {funding ? (
         card
       ) : (
@@ -270,7 +269,7 @@ export function AskDecisionDetail({ model }: { model: DecisionDetailModel }) {
         overdue={model.overdue}
         profiles={model.profiles}
       />
-    </div>
+    </section>
   );
 }
 

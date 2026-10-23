@@ -123,15 +123,14 @@ export function HireAskCard({
     : null;
 
   return (
-    <div className="colony-decision-layout">
-      <section
-        aria-label="Approval ask"
-        className="colony-decision-card"
-        data-ask-id={askId}
-        data-ask-variant="hire"
-        data-testid="ask-card"
-        data-variant="funding"
-      >
+    <section
+      aria-label="Approval ask"
+      className="colony-decision-layout"
+      data-ask-id={askId}
+      data-ask-variant="hire"
+      data-testid="ask-card"
+    >
+      <div className="colony-decision-card" data-variant="funding">
         <div className="colony-decision-chips">
           <h2>Decision requested</h2>
           {needsYou ? (
@@ -258,7 +257,7 @@ export function HireAskCard({
             </Link>
           </div>
         ) : null}
-      </section>
+      </div>
       <DecisionContext
         addresseeName={addresseePubkey ? addresseeLabel : null}
         addresseePubkey={addresseePubkey ?? null}
@@ -268,6 +267,6 @@ export function HireAskCard({
         overdue={isOverdue}
         profiles={profiles}
       />
-    </div>
+    </section>
   );
 }

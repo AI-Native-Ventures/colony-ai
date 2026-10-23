@@ -1112,6 +1112,7 @@ input[type="date"].ask3-control {
 
 .ask3-invite-title {
   min-height: 2.25rem;
+  line-height: normal;
   margin: 0;
   padding-right: 3rem;
   font-size: calc(23 * var(--px));

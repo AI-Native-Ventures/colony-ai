@@ -27,6 +27,8 @@
 }
 
 .colony-decision-content {
+  /* The board caps the content box (1120px) and adds the side padding on top. */
+  box-sizing: content-box;
   display: flex;
   max-width: 70rem;
   flex-direction: column;
@@ -244,6 +246,8 @@
 }
 
 .colony-decision-card[data-variant="funding"] {
+  /* The board's flex-basis (520px) excludes the padding, as a content box does. */
+  box-sizing: content-box;
   flex: 999 1 32.5rem;
   gap: 1.25rem;
 }
@@ -483,10 +487,6 @@
   padding-block: 0;
 }
 
-.colony-decision-field > textarea::placeholder {
-  color: hsl(var(--colony-faint));
-}
-
 .colony-decision-field > textarea:focus-visible,
 .colony-decision-field > select:focus-visible {
   border-color: hsl(var(--colony-accent));
@@ -597,6 +597,7 @@
 /* ----------------------------------------------------------------- aside -- */
 
 .colony-decision-aside {
+  box-sizing: content-box;
   display: flex;
   min-width: 0;
   max-width: 21.25rem;

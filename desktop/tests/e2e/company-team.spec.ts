@@ -397,6 +397,10 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
   await expect(page.getByTestId("agent-profile")).toContainText(EMPLOYEE_TITLE);
   await expect(page.getByTestId("company-terminated-banner")).toBeVisible();
 
+  await page.evaluate(() => {
+    if (window.__BUZZ_E2E__?.mock)
+      window.__BUZZ_E2E__.mock.channelsReadErrors = [];
+  });
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
   await waitForMockLiveSubscription(page, "general");
   await emitEmployeeMessage(page, employeePubkey, "The handoff is complete.");

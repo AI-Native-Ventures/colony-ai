@@ -252,7 +252,9 @@ function AskDetailMemberScreen({
     record && mapSpecializedAskCard(record.head.ask)
       ? record.head.ask.title
       : null;
-  const pageTitle = specializedAskTitle ?? `Decision in ${threadTitle}`;
+  const pageTitle = formattedRoot
+    ? `Decision in ${threadTitle}`
+    : (specializedAskTitle ?? "Decision");
   const rootDisplayBody = formattedRoot
     ? rootThreadDisplayBody(formattedRoot.body)
     : "";

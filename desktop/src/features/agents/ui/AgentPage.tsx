@@ -159,6 +159,20 @@ export function AgentPage({
   const managedOwner = useIsManagedAgent(key);
   const profileQuery = useUserProfileQuery(key);
   const archive = useIdentityArchive(key);
+  // A profile that only came from the shared name lookup has no about text or
+  // job title yet; load the full profile once.
+  const refreshedSummary = React.useRef<string | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refetch is stable; the effect keys on the pubkey and the summary-only flag.
+  React.useEffect(() => {
+    if (
+      profileQuery.data?.hasProfileEvent !== false ||
+      refreshedSummary.current === key
+    ) {
+      return;
+    }
+    refreshedSummary.current = key;
+    void profileQuery.refetch();
+  }, [key, profileQuery.data?.hasProfileEvent]);
   const openDm = useOpenDmMutation();
   const appShell = useAppShell();
   const { goAgents, goChannel, goTeam } = useAppNavigation();

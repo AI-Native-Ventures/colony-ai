@@ -924,7 +924,7 @@ export function AskCreateScreen({
       employeesError={moneyEmployeesError}
       employeesLoading={moneyEmployeesLoading}
       errors={errors}
-      locked={locked || moneyProposalReview}
+      locked={locked}
       onChangeChannel={changeChannel}
       onChangeThread={changeHireThread}
       onInvite={() => setInviteOpen(true)}
@@ -976,7 +976,10 @@ export function AskCreateScreen({
         submitComposer();
       }}
     >
-      {formBody}
+      {/* In review the form stays as drawn but cannot be changed or focused. */}
+      <div className="contents" inert={moneyReviewing ? true : undefined}>
+        {formBody}
+      </div>
       {failureBanner}
       {actions}
     </form>
