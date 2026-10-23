@@ -205,9 +205,7 @@
 .c3c-timeline-scroller {
   padding-inline: calc(var(--c3c-gutter) * var(--colony-px));
   padding-top: calc(
-    var(--channel-top-chrome-height, 4.5rem) +
-    24 *
-    var(--colony-px)
+    var(--buzz-channel-content-top-padding, 5.75rem) + 24 * var(--colony-px)
   );
 }
 
@@ -384,4 +382,25 @@
   height: calc(46 * var(--colony-px));
   font-size: calc(16 * var(--colony-px));
   font-weight: 700;
+}
+
+/* Image tile caption: the alt text a person wrote, bottom left. */
+.c3c-mosaic-caption {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: calc(10 * var(--colony-px));
+  pointer-events: none;
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+  color: #3b3446;
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
+}
+
+/* The focus thread drawer sits over the channel with a soft edge. */
+.c3c-focus-drawer {
+  box-shadow:
+    -28px 0 60px -32px rgba(40, 20, 60, 0.45),
+    0 0 0 1px hsl(var(--colony-border));
 }
