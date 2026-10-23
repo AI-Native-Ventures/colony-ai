@@ -4442,6 +4442,22 @@
   height: 18px;
   flex-shrink: 0;
 }
+/* Advanced sign-in entry: a quiet line under the account actions. */
+.colony-onboarding-root .advanced-signin-entry {
+  display: flex;
+  justify-content: center;
+  margin-top: 18px;
+}
+.colony-onboarding-root .advanced-signin-entry .link {
+  font-weight: 500;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.colony-onboarding-root .advanced-signin-entry .link:hover {
+  color: var(--accent);
+}
 .colony-onboarding-root .account-google-help {
   color: var(--muted);
   margin: 12px 0 0;
