@@ -11,13 +11,17 @@ import {
 
 import type { FirstRunInvite } from "../firstRunInvite";
 import { describeInviteFailure, type InviteFailure } from "../inviteFailure";
+import {
+  BusinessMark,
+  FirstRunButton,
+  FirstRunError,
+  FirstRunLink,
+  FirstRunSectionDivider,
+  InviteCard,
+} from "./firstRunControls";
+import { FirstRunHead } from "./FirstRunFrame";
 import { JoinPolicyNotice } from "./JoinPolicyNotice";
 import { OnboardingScenePresentation } from "./OnboardingScenePresentation";
-import {
-  BackButton,
-  InlineAlert,
-  PrimaryButton,
-} from "./OnboardingScenePrimitives";
 
 const EMPTY_DATA = {
   name: "",
@@ -34,11 +38,9 @@ export function InviteBrand({
   invite: Pick<FirstRunInvite, "businessName" | "initial">;
 }) {
   return (
-    <div className="invite-brand" data-testid="invite-brand">
-      <span aria-hidden="true" className="business-initial">
-        {invite.initial}
-      </span>
-      <span>
+    <div className="c3fr-invite-brand" data-testid="invite-brand">
+      <BusinessMark dot="#c6b3f4" name={invite.businessName} size="small" />
+      <span className="c3fr-invite-brand-text">
         <strong>{invite.businessName}</strong>
         <small>You’ve been invited</small>
       </span>
@@ -65,16 +67,20 @@ function relayFromAddress(raw: string): string | null {
 }
 
 /**
- * "Have an invite link?" step. Accepts a full invite link (https or
+ * The invite link or code form. Accepts a full invite link (https or
  * colony/buzz join link) or a bare code plus the workspace address.
  */
-export function InviteLinkScene({
-  onBack,
+function InviteLinkForm({
+  autoFocus,
   onContinue,
+  onEscape,
+  submitLabel = "Continue",
 }: {
-  onBack: () => void;
+  autoFocus?: boolean;
   /** Returns an error to show, or null once the invite was accepted. */
   onContinue: (target: InviteTarget) => string | null;
+  onEscape?: () => void;
+  submitLabel?: string;
 }) {
   const [value, setValue] = React.useState("");
   const [address, setAddress] = React.useState("");
@@ -86,9 +92,10 @@ export function InviteLinkScene({
   // The scene presentation focuses the heading after mount; the first field
   // takes focus right after that.
   React.useEffect(() => {
+    if (!autoFocus) return;
     const timer = window.setTimeout(() => inputRef.current?.focus(), 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [autoFocus]);
 
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -119,68 +126,109 @@ export function InviteLinkScene({
     setError(onContinue({ relayUrl, code: parsed.code }));
   };
 
-  const content = (
+  return (
     <form
       aria-label="Invite link"
+      className="c3fr-form"
       onKeyDown={(event) => {
-        if (event.key === "Escape") {
+        if (event.key === "Escape" && onEscape) {
           event.stopPropagation();
-          onBack();
+          onEscape();
         }
       }}
       onSubmit={submit}
+      style={{ "--c3fr-gap": 14 } as React.CSSProperties}
     >
-      <h2>Have an invite?</h2>
-      <p className="lede">
-        Paste the link your teammate sent you to join their workspace.
-      </p>
-      <div className="fields">
-        <div className="field">
-          <label htmlFor="invite-link">Invite link or code</label>
-          <input
-            autoComplete="off"
-            id="invite-link"
-            onChange={(event) => {
-              setValue(event.currentTarget.value);
-              setError(null);
-            }}
-            placeholder="https://…/invite/…"
-            ref={inputRef}
-            required
-            spellCheck={false}
-            value={value}
-          />
-        </div>
-        {needsAddress ? (
-          <div className="field">
-            <label htmlFor="invite-address">Workspace address</label>
-            <input
-              autoComplete="off"
-              id="invite-address"
-              onChange={(event) => {
-                setAddress(event.currentTarget.value);
-                setError(null);
-              }}
-              placeholder="yourteam.colony.example"
-              required
-              spellCheck={false}
-              value={address}
-            />
-          </div>
+      <div className="c3fr-field-group">
+        <label className="c3fr-label" htmlFor="invite-link">
+          Invite link or code
+        </label>
+        <input
+          aria-describedby={error ? "invite-link-error" : undefined}
+          aria-invalid={error ? true : undefined}
+          autoComplete="off"
+          className="c3fr-input"
+          id="invite-link"
+          onChange={(event) => {
+            setValue(event.currentTarget.value);
+            setError(null);
+          }}
+          placeholder="https://…/invite/…"
+          ref={inputRef}
+          required
+          spellCheck={false}
+          value={value}
+        />
+        {error ? (
+          <FirstRunError id="invite-link-error">{error}</FirstRunError>
         ) : null}
       </div>
-      {error ? <InlineAlert>{error}</InlineAlert> : null}
-      <PrimaryButton testId="invite-link-continue" type="submit">
-        Continue
-      </PrimaryButton>
-      <BackButton onClick={onBack}>Back</BackButton>
+      {needsAddress ? (
+        <div className="c3fr-field-group">
+          <label className="c3fr-label" htmlFor="invite-address">
+            <span>
+              Workspace address <small>· optional</small>
+            </span>
+          </label>
+          <input
+            autoComplete="off"
+            className="c3fr-input"
+            id="invite-address"
+            onChange={(event) => {
+              setAddress(event.currentTarget.value);
+              setError(null);
+            }}
+            placeholder="yourteam.colony.example"
+            required
+            spellCheck={false}
+            value={address}
+          />
+        </div>
+      ) : null}
+      <FirstRunButton
+        data-testid="invite-link-continue"
+        fit="content"
+        type="submit"
+      >
+        {submitLabel}
+      </FirstRunButton>
     </form>
+  );
+}
+
+/**
+ * "Have an invite link?" step: no invite yet, so only the form. Accepts a full
+ * invite link or a bare code plus the workspace address.
+ */
+export function InviteLinkScene({
+  onBack,
+  onContinue,
+}: {
+  onBack: () => void;
+  /** Returns an error to show, or null once the invite was accepted. */
+  onContinue: (target: InviteTarget) => string | null;
+}) {
+  const content = (
+    <div
+      className="c3fr-form"
+      style={{ "--c3fr-gap": 22 } as React.CSSProperties}
+    >
+      <FirstRunHead
+        lede="Paste the link your teammate sent you to join their workspace."
+        title="Have an invite?"
+      />
+      <InviteLinkForm autoFocus onContinue={onContinue} onEscape={onBack} />
+      <FirstRunButton fit="content" onClick={onBack}>
+        Back
+      </FirstRunButton>
+    </div>
   );
 
   return (
     <OnboardingScenePresentation
       contentOverride={content}
       data={EMPTY_DATA}
+      onNavigate={() => onBack()}
       scene="invite"
     />
   );
@@ -192,24 +240,26 @@ type PolicyState =
   | { status: "error"; message: string };
 
 /**
- * Confirm step (design scene #invite): who invited you, which workspace, and
- * a single "Join" action that accepts any required terms and claims the
- * invite. A terminal failure explains why and offers a way forward.
+ * Confirm step (design scene #invite): which workspace, who invited you when
+ * the relay says, and a single "Join" action that accepts any required terms
+ * and claims the invite. A terminal failure explains why and offers a way
+ * forward.
  */
 export function InviteJoinScene({
-  email,
+  email: _email,
   invite,
-  name,
+  name: _name,
   onJoined,
   onTerminalFailure,
   onDismiss,
   onUseAnotherAccount,
   onUseAnotherLink,
+  onUseAnotherInvite,
   secondaryAction,
 }: {
   /** Account email, when known. */
   email?: string;
-  invite: FirstRunInvite;
+  invite: FirstRunInvite & { inviter?: string };
   name?: string;
   /** Invite claimed: the caller advances into the workspace. */
   onJoined: () => void;
@@ -219,6 +269,8 @@ export function InviteJoinScene({
   onDismiss?: { label: string; onClick: () => void };
   onUseAnotherAccount?: () => void;
   onUseAnotherLink?: () => void;
+  /** The "Have a different invite?" form on the join screen; returns an error to show. */
+  onUseAnotherInvite?: (target: InviteTarget) => string | null;
   /** The way forward after a failed invite, e.g. "Create my own business instead". */
   secondaryAction: { label: string; onClick: () => void };
 }) {
@@ -311,58 +363,48 @@ export function InviteJoinScene({
       : `Join ${invite.businessName}`;
 
   const content = terminal ? (
-    <div data-testid="invite-failed">
+    <div
+      className="c3fr-form"
+      data-testid="invite-failed"
+      style={{ "--c3fr-gap": 22 } as React.CSSProperties}
+    >
       <InviteBrand invite={invite} />
-      <h2>That invite didn’t work.</h2>
-      <p className="lede">{failure.message}</p>
+      <FirstRunHead lede={failure.message} title="That invite didn’t work." />
       {onUseAnotherLink ? (
-        <button
-          className="primary full form-submit"
+        <FirstRunButton
           data-testid="invite-use-another-link"
+          kind="primary"
           onClick={onUseAnotherLink}
-          type="button"
         >
           Try a different link
-        </button>
+        </FirstRunButton>
       ) : null}
-      <button
-        className={
-          onUseAnotherLink ? "secondary full" : "primary full form-submit"
-        }
+      <FirstRunButton
         data-testid="invite-create-own-business"
+        kind={onUseAnotherLink ? "secondary" : "primary"}
         onClick={secondaryAction.onClick}
-        type="button"
       >
         {secondaryAction.label}
-      </button>
+      </FirstRunButton>
     </div>
   ) : (
-    <>
-      <InviteBrand invite={invite} />
-      <h2>You’re invited.</h2>
-      <p className="lede">Join your team’s workspace on Colony.</p>
+    <div
+      className="c3fr-form"
+      style={{ "--c3fr-gap": 22 } as React.CSSProperties}
+    >
+      <FirstRunHead
+        lede="Join your team, their agents and the work already in motion."
+        title="You’re invited."
+      />
+      <InviteCard invite={invite} />
       <form
+        className="c3fr-form"
         onSubmit={(event) => {
           event.preventDefault();
           void join();
         }}
+        style={{ "--c3fr-gap": 22 } as React.CSSProperties}
       >
-        {name ? (
-          <div className="field">
-            <label htmlFor="invite-name">Your name</label>
-            <input id="invite-name" readOnly value={name} />
-          </div>
-        ) : null}
-        <div className="notice">
-          You’ll join as a team member
-          {email ? (
-            <>
-              {" "}
-              using <strong className="mail-address">{email}</strong>
-            </>
-          ) : null}
-          .
-        </div>
         {policyState.status === "ready" && policyNeedsConsent && policy ? (
           <JoinPolicyNotice
             ageConfirmed={ageConfirmed}
@@ -375,53 +417,71 @@ export function InviteJoinScene({
         ) : null}
         {policyState.status === "error" ? (
           <>
-            <InlineAlert>{policyState.message}</InlineAlert>
-            <button
-              className="secondary full"
+            <FirstRunError>{policyState.message}</FirstRunError>
+            <FirstRunButton
               data-testid="invite-policy-retry"
               onClick={() => setPolicyAttempt((current) => current + 1)}
-              type="button"
             >
               Retry
-            </button>
+            </FirstRunButton>
           </>
         ) : null}
-        {policyHint ? <InlineAlert>{policyHint}</InlineAlert> : null}
+        {policyHint ? <FirstRunError>{policyHint}</FirstRunError> : null}
         {failure && failure.kind === "retryable" ? (
-          <InlineAlert>{failure.message}</InlineAlert>
+          <FirstRunError>{failure.message}</FirstRunError>
         ) : null}
-        <PrimaryButton
+        <FirstRunButton
+          data-testid="invite-join"
           disabled={
             pending || policyState.status !== "ready" || Boolean(consentMissing)
           }
-          testId="invite-join"
+          kind="primary"
           type="submit"
         >
           {joinLabel}
-        </PrimaryButton>
+        </FirstRunButton>
       </form>
-      {onUseAnotherAccount ? (
-        <BackButton onClick={onUseAnotherAccount}>
-          Use another account
-        </BackButton>
-      ) : onDismiss ? (
-        <button
-          className="back"
-          data-testid="invite-dismiss"
-          onClick={onDismiss.onClick}
-          type="button"
-        >
-          {onDismiss.label}
-        </button>
+      <FirstRunLink
+        className="c3fr-center-link"
+        data-testid="invite-create-own-business-link"
+        onClick={secondaryAction.onClick}
+      >
+        {secondaryAction.label}
+      </FirstRunLink>
+      {onUseAnotherInvite ? (
+        <>
+          <FirstRunSectionDivider>
+            Have a different invite?
+          </FirstRunSectionDivider>
+          <InviteLinkForm onContinue={onUseAnotherInvite} />
+        </>
       ) : null}
-    </>
+    </div>
   );
+
+  const top = onUseAnotherAccount ? (
+    <FirstRunLink onClick={onUseAnotherAccount}>
+      Use another account
+    </FirstRunLink>
+  ) : onDismiss ? (
+    <FirstRunLink data-testid="invite-dismiss" onClick={onDismiss.onClick}>
+      {onDismiss.label}
+    </FirstRunLink>
+  ) : null;
 
   return (
     <OnboardingScenePresentation
       contentOverride={content}
-      data={{ ...EMPTY_DATA, name: name ?? "", email: email ?? "" }}
+      data={{
+        ...EMPTY_DATA,
+        scoutGuidance: undefined,
+        inviteScene: {
+          businessName: invite.businessName,
+          inviter: invite.inviter,
+        },
+      }}
       scene="invite"
+      topOverride={top}
     />
   );
 }

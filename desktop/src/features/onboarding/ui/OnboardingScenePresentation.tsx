@@ -1,59 +1,175 @@
 import * as React from "react";
-import { onboardingSceneStage } from "./onboardingScenes";
-import type { PresentationProps } from "./OnboardingSceneTypes";
-import {
-  accessScene,
-  BusinessForm,
-  BusinessChooser,
-  AccountForm,
-  InviteScene,
-  SignInForm,
-  StatusScene,
-  StoryPanel,
-} from "./OnboardingSceneForms";
-import {
-  ConnectionShell,
-  StaticConnectContent,
-} from "./OnboardingConnectionContent";
-import { ConnectedScene } from "./OnboardingSceneOverlays";
+
+import { ConnectChoice } from "./ConnectChoice";
 import {
   EmailCodePresentation,
   isEmailCodeScene,
+  resetStepIndex,
 } from "./EmailCodePresentation";
-import { Glyph, InlineAlert, PrimaryButton } from "./OnboardingScenePrimitives";
-import "./onboardingCalibration.css";
-import "./inviteScene.css";
-import "./onboardingTypography.css";
-import "./scoutPresence.css";
-import { ScoutAvatar } from "./ScoutAvatar";
+import {
+  FirstRunFrame,
+  FirstRunHead,
+  type FirstRunLayout,
+  type FirstRunStep,
+  type FirstRunStory,
+} from "./FirstRunFrame";
+import {
+  AccountHelpChip,
+  BusinessMark,
+  FirstRunButton,
+  FirstRunLink,
+  InviteCard,
+} from "./firstRunControls";
+import { ChevronLeftIcon } from "./firstRunIcons";
+import {
+  AccountForm,
+  BusinessChooser,
+  BusinessForm,
+  SignInForm,
+} from "./OnboardingSceneForms";
+import {
+  ConnectedScene,
+  ConnectionErrorScene,
+  ReadyScene,
+  SLOW_REPLY_COPY,
+  TestingScene,
+} from "./OnboardingResultScenes";
+import type { OnboardingSceneId } from "./onboardingScenes";
+import type { PresentationProps } from "./OnboardingSceneTypes";
+import { scoutGuidance, scoutTone, type ScoutContext } from "./scoutGuidance";
 
 export type {
   OnboardingSceneData,
   OnboardingBusinessChoice,
   OnboardingSceneActions,
 } from "./OnboardingSceneTypes";
+export { SLOW_REPLY_COPY };
 
-const SLOW_REPLY_MS = 20_000;
-export const SLOW_REPLY_COPY =
-  "Still waiting. When the AI is busy, this can take a few minutes. You can keep waiting or cancel.";
+const CONNECT_SCENE = /^(connect|funding|subscription|credits|openrouter)/;
 
-/** Reassures the owner when a first hello is slow: busy free models can take minutes. */
-function SlowReplyHint() {
-  const [slow, setSlow] = React.useState(false);
-  React.useEffect(() => {
-    const timer = window.setTimeout(() => setSlow(true), SLOW_REPLY_MS);
-    return () => window.clearTimeout(timer);
-  }, []);
+function isConnectScene(scene: OnboardingSceneId) {
+  return CONNECT_SCENE.test(scene);
+}
+
+function isVerifyScene(scene: OnboardingSceneId) {
+  return scene.startsWith("verify");
+}
+
+function step(label: string, state: FirstRunStep["state"]): FirstRunStep {
+  return { label, state };
+}
+
+/** The bars under Scout. Sign-in, reset and the returning list show none or their own. */
+function progressFor(
+  scene: OnboardingSceneId,
+  props: PresentationProps,
+): { steps: FirstRunStep[] | null; label?: string } {
+  const invited = props.inviteBrand !== undefined;
+  if (props.data.hideProgress || scene === "signin" || scene === "businesses")
+    return { steps: null };
+  const reset = resetStepIndex(scene);
+  if (reset !== null) {
+    const labels = ["Email", "Code", "New password", "Done"];
+    return {
+      label: "Reset steps",
+      steps: labels.map((label, index) =>
+        step(
+          label,
+          reset === 3 || index < reset
+            ? "done"
+            : index === reset
+              ? "current"
+              : "todo",
+        ),
+      ),
+    };
+  }
+  if (scene === "invite")
+    return {
+      label: "Joining progress",
+      steps: [
+        step("Invite", "current"),
+        step("Account", "todo"),
+        step("Connect", "todo"),
+      ],
+    };
+  if (scene === "account" || scene === "account-error" || isVerifyScene(scene))
+    return {
+      steps: invited
+        ? [
+            step("Invite", "done"),
+            step("Account", "current"),
+            step("Connect", "todo"),
+          ]
+        : [
+            step("Account", "current"),
+            step("Business", "todo"),
+            step("Connect", "todo"),
+          ],
+      label: invited ? "Joining progress" : undefined,
+    };
+  if (scene === "additional")
+    return { steps: [step("Business", "current"), step("Connect", "todo")] };
+  if (scene.includes("business"))
+    return {
+      steps: [
+        step("Account", "done"),
+        step("Business", "current"),
+        step("Connect", "todo"),
+      ],
+    };
+  if (scene === "connected" || scene.startsWith("community-entry"))
+    return {
+      steps: [
+        step("Account", "done"),
+        step("Business", "done"),
+        step("Connect", "done"),
+      ],
+    };
+  if (
+    isConnectScene(scene) ||
+    scene === "testing" ||
+    scene === "connection-error"
+  )
+    return {
+      steps: [
+        step("Account", "done"),
+        step("Business", "done"),
+        step("Connect", "current"),
+      ],
+    };
+  return { steps: null };
+}
+
+function BusinessPreview({
+  data,
+  onLogoError,
+}: Pick<PresentationProps, "data" | "onLogoError">) {
   return (
-    <p
-      aria-live="polite"
-      className="hint"
-      data-testid="onboarding-slow-reply"
-      role="status"
-    >
-      {slow ? SLOW_REPLY_COPY : null}
-    </p>
+    <section aria-label="Workspace preview" className="c3fr-preview">
+      <span className="c3fr-eyebrow">Your workspace</span>
+      <div className="c3fr-preview-head">
+        <BusinessMark
+          logoUrl={data.logoUrl}
+          name={data.business}
+          onLogoError={onLogoError}
+        />
+        <span className="c3fr-preview-text">
+          <span className="c3fr-preview-name">
+            {data.business || "Your business"}
+          </span>
+          <span className="c3fr-preview-kind">Company workspace</span>
+        </span>
+      </div>
+      <p className="c3fr-preview-copy">
+        {data.description || "Your idea takes shape here."}
+      </p>
+    </section>
   );
+}
+
+function firstNameOf(name: string) {
+  return name.trim().split(/\s+/)[0] ?? "";
 }
 
 function SceneBody(props: PresentationProps) {
@@ -61,11 +177,8 @@ function SceneBody(props: PresentationProps) {
     data,
     scene,
     onNavigate,
-    onResend,
     contentOverride,
     connectionContentOverride,
-    onSelectConnection,
-    onCreditsRetry,
   } = props;
   if (contentOverride) return <>{contentOverride}</>;
   if (isEmailCodeScene(scene)) return <EmailCodePresentation {...props} />;
@@ -82,15 +195,6 @@ function SceneBody(props: PresentationProps) {
     );
   }
   if (scene === "signin") return <SignInForm {...props} />;
-  if (
-    scene === "forgot" ||
-    scene === "email-sent" ||
-    scene === "new-password" ||
-    scene === "reset-done" ||
-    scene === "reset-expired"
-  ) {
-    return <StatusScene {...props} onResend={onResend} />;
-  }
   if (
     scene === "business" ||
     scene === "business-error" ||
@@ -114,221 +218,94 @@ function SceneBody(props: PresentationProps) {
         businessChoices={props.businessChoices}
         data={data}
         error={props.error}
+        headingRef={props.headingRef}
         onCreateBusiness={props.onCreateBusiness}
         onNavigate={onNavigate}
         onSelectBusiness={props.onSelectBusiness}
         pending={props.pending}
       />
     );
-  if (scene === "invite") return <InviteScene {...props} />;
-  if (
-    scene === "connect" ||
-    scene === "funding" ||
-    scene.startsWith("subscription") ||
-    scene.startsWith("credits") ||
-    scene.startsWith("openrouter")
-  ) {
+  if (isConnectScene(scene))
+    return connectionContentOverride ?? <ConnectChoice data={data} />;
+  if (scene === "community-entry" || scene === "community-entry-error")
     return (
-      <ConnectionShell
-        content={
-          connectionContentOverride ?? (
-            <StaticConnectContent
-              data={data}
-              onCreditsRetry={onCreditsRetry}
-              scene={scene}
-            />
-          )
-        }
+      <ReadyScene
         data={data}
-        harnessMark={props.harnessMark}
-        mode={props.connectionMode}
+        entry={props.entry}
+        headingRef={props.headingRef}
         onNavigate={onNavigate}
-        onSelectConnection={onSelectConnection}
-        onChooseHarness={props.onChooseHarness}
-        scene={scene}
       />
     );
-  }
-  if (scene === "community-entry" || scene === "community-entry-error") {
+  if (scene === "testing")
     return (
-      <>
-        <ScoutAvatar
-          className="agent-avatar large scout-rendered"
-          pose={data.error ? "waiting" : "working"}
-        />
-        <h2>
-          {data.error
-            ? "Your Colony isn’t ready yet."
-            : "Getting your Colony ready."}
-        </h2>
-        <p className="lede">
-          {data.error
-            ? "We couldn’t finish setting up this community."
-            : "We’re preparing your Welcome channel and Scout."}
-        </p>
-        {data.error ? (
-          <>
-            <InlineAlert>{data.error}</InlineAlert>
-            <PrimaryButton onClick={() => onNavigate?.("community-entry")}>
-              Try again
-            </PrimaryButton>
-            <button
-              className="secondary full"
-              type="button"
-              onClick={() => onNavigate?.("workspace")}
-            >
-              {data.entryCanOpen === false
-                ? "Change community"
-                : "Open my Colony for now"}
-            </button>
-          </>
-        ) : (
-          <p role="status">
-            <span className="spinner" /> Getting things ready
-          </p>
-        )}
-      </>
+      <TestingScene
+        data={data}
+        onCancelTest={props.onCancelTest}
+        onNavigate={onNavigate}
+      />
     );
-  }
-  if (scene === "testing") {
-    return (
-      <>
-        <ScoutAvatar
-          className="agent-avatar large scout-rendered"
-          pose="working"
-        />
-        <h2>A first hello.</h2>
-        <p className="lede" role="status" aria-live="polite">
-          We’re checking that your agent can reply.
-        </p>
-        <ol className="progress-list">
-          <li className={data.visualOnly ? "complete" : ""}>
-            {data.visualOnly ? (
-              <Glyph name="check" />
-            ) : (
-              <span className="spinner" />
-            )}
-            Connection saved
-          </li>
-          <li
-            className={
-              data.connectionPhase === "waiting" ||
-              data.connectionPhase === "saving" ||
-              data.visualOnly
-                ? "complete"
-                : ""
-            }
-          >
-            {data.connectionPhase === "waiting" ||
-            data.connectionPhase === "saving" ||
-            data.visualOnly ? (
-              <Glyph name="check" />
-            ) : (
-              <span className="spinner" />
-            )}
-            Starting your agent
-          </li>
-          <li className={data.connectionPhase === "saving" ? "complete" : ""}>
-            {data.connectionPhase === "saving" ? (
-              <Glyph name="check" />
-            ) : data.connectionPhase === "waiting" || data.visualOnly ? (
-              <span className="spinner" />
-            ) : (
-              <span className="waiting-dot" />
-            )}
-            {data.connectionPhase === "saving"
-              ? "Reply received"
-              : "Waiting for a reply"}
-          </li>
-        </ol>
-        {data.connectionPhase === "waiting" && !data.visualOnly ? (
-          <SlowReplyHint />
-        ) : null}
-        <button
-          className="secondary full"
-          onClick={props.onCancelTest ?? (() => onNavigate?.("connect"))}
-          type="button"
-          disabled={data.connectionPhase === "saving"}
-        >
-          Cancel test
-        </button>
-      </>
-    );
-  }
-  if (scene === "connected") {
+  if (scene === "connected")
     return (
       <ConnectedScene
         data={data}
-        focusTitle={data.visualOnly}
+        headingRef={props.headingRef}
         onNavigate={onNavigate}
       />
     );
-  }
-  if (scene === "connection-error") {
+  if (scene === "invite" && data.visualOnly)
     return (
-      <>
-        <div className="status-icon">
-          <Glyph name="link" />
-        </div>
-        <h2>No reply just yet.</h2>
-        <p className="lede">We couldn’t get a response from your agent.</p>
-        <InlineAlert>
-          {data.error ??
-            "Your connection isn’t working yet. Check that you’re signed in and that your account has usage available."}
-        </InlineAlert>
-        <div className="notice">
-          Your account and business details are saved. You won’t need to start
-          again.
-        </div>
-        <PrimaryButton onClick={() => onNavigate?.("testing")}>
-          Try again
-        </PrimaryButton>
-        <button
-          className="secondary full alternate-connection"
-          onClick={() => onNavigate?.("connect")}
-          type="button"
-        >
-          Choose another connection
-        </button>
-      </>
+      <div className="c3fr-form">
+        <FirstRunHead
+          lede="Join your team, their agents and the work already in motion."
+          title="You’re invited."
+        />
+        <InviteCard
+          invite={{ businessName: "Rosebank Studio", inviter: "Ayesha" }}
+        />
+        <FirstRunButton kind="primary">Join Rosebank Studio</FirstRunButton>
+      </div>
     );
-  }
+  if (scene === "connection-error")
+    return (
+      <ConnectionErrorScene
+        data={data}
+        headingRef={props.headingRef}
+        onNavigate={onNavigate}
+      />
+    );
   return null;
 }
 
+function layoutFor(scene: OnboardingSceneId): {
+  layout: FirstRunLayout;
+  width: number;
+} {
+  if (resetStepIndex(scene) !== null) return { layout: "reset", width: 480 };
+  if (scene.includes("business") || scene === "additional")
+    return { layout: "business", width: 460 };
+  if (isConnectScene(scene)) return { layout: "tight", width: 500 };
+  if (scene === "businesses") return { layout: "default", width: 500 };
+  if (
+    scene === "connected" ||
+    scene === "connection-error" ||
+    scene.startsWith("community-entry")
+  )
+    return { layout: "default", width: 480 };
+  return { layout: scene === "invite" ? "tight" : "default", width: 460 };
+}
+
 export function OnboardingScenePresentation(props: PresentationProps) {
-  const [focusTopic, setFocusTopic] = React.useState<{
-    scene: string;
-    id: string;
-  }>();
-  const rootRef = React.useRef<HTMLElement>(null);
-  React.useEffect(() => {
-    const root = rootRef.current;
-    const documentRoot = document.documentElement;
-    if (!root) return;
-
-    const syncTheme = () => {
-      root.classList.toggle("dark", documentRoot.classList.contains("dark"));
-    };
-    syncTheme();
-
-    const observer = new MutationObserver(syncTheme);
-    observer.observe(documentRoot, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-    return () => observer.disconnect();
-  }, []);
+  const rootRef = React.useRef<HTMLDivElement>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Focus follows rendered scene and new error feedback.
   React.useEffect(() => {
-    // Connection tabs keep roving keyboard focus within the same form.
+    // Connection choices keep roving keyboard focus within the same form.
     if (
       rootRef.current?.contains(document.activeElement) &&
       document.activeElement?.getAttribute("role") === "radio"
     )
       return;
     const heading = rootRef.current?.querySelector<HTMLElement>(
-      ".form-content h2, .form-content h1",
+      ".c3fr-title, .c3fr-callout-title",
     );
     if (heading) {
       heading.tabIndex = -1;
@@ -341,96 +318,130 @@ export function OnboardingScenePresentation(props: PresentationProps) {
     props.scene === "history-review";
   // The host router owns the full app. Never render the retired miniature shell.
   if (workspaceScene) return <>{props.contentOverride}</>;
-  const access = accessScene(props.scene);
-  const switchText = access ? null : props.scene === "account" ||
-    props.scene === "account-error" ? (
-    <div className="account-switch-stack">
+
+  const { scene, data } = props;
+  const context: ScoutContext = {
+    firstName: firstNameOf(data.name),
+    appLabel: data.harnessLabel,
+    businessName: data.inviteScene?.businessName,
+    inviter: data.inviteScene?.inviter,
+  };
+  const guidance = scoutGuidance(
+    scene,
+    props.error ?? data.error,
+    data.scoutGuidance,
+    undefined,
+    scene === "connect" &&
+      (data.visualOnly || data.harnessStatus === "Checking"),
+    context,
+  );
+  const progress = progressFor(scene, props);
+  const reset = resetStepIndex(scene) !== null;
+  const signedIn = data.signedInEmail;
+  const story: FirstRunStory = {
+    heading: guidance.title,
+    body: guidance.copy,
+    status: guidance.status,
+    tone: guidance.tone ?? scoutTone(guidance.status),
+    pose: guidance.pose,
+    bubble: guidance.bubble,
+    extra:
+      scene.includes("business") || scene === "additional" ? (
+        <BusinessPreview data={data} onLogoError={props.onLogoError} />
+      ) : undefined,
+    footer:
+      scene === "signin" ? (
+        <AccountHelpChip label="How your account stays yours" />
+      ) : scene === "businesses" && signedIn ? (
+        <span className="c3fr-story-plain">
+          Signed in as <strong>{signedIn}</strong>
+        </span>
+      ) : undefined,
+    progress: progress.steps,
+    progressLabel: progress.label,
+  };
+  const inviteLink = props.onHaveInviteLink ? (
+    <FirstRunLink
+      data-testid="have-invite-link"
+      onClick={props.onHaveInviteLink}
+    >
+      Have an invite link?
+    </FirstRunLink>
+  ) : null;
+  const top =
+    props.topOverride !== undefined ? (
+      props.topOverride
+    ) : scene === "account" || scene === "account-error" ? (
+      <>
+        <span>
+          Already have an account?{" "}
+          <FirstRunLink onClick={() => props.onNavigate?.("signin")}>
+            Sign in
+          </FirstRunLink>
+        </span>
+        {inviteLink}
+      </>
+    ) : scene === "signin" ? (
+      <>
+        <span>
+          New to Colony?{" "}
+          <FirstRunLink onClick={() => props.onNavigate?.("account")}>
+            Create an account
+          </FirstRunLink>
+        </span>
+        {inviteLink}
+      </>
+    ) : isVerifyScene(scene) && scene !== "verify-change-email" ? (
+      <FirstRunLink
+        onClick={
+          props.authCode?.onChangeEmail ??
+          (() => props.onNavigate?.("verify-change-email"))
+        }
+      >
+        Use a different email
+      </FirstRunLink>
+    ) : reset ? (
+      <FirstRunLink
+        className="c3fr-back-link"
+        onClick={() => props.onNavigate?.("signin")}
+      >
+        <ChevronLeftIcon size={16} strokeWidth={2.4} />
+        Back to sign in
+      </FirstRunLink>
+    ) : scene === "business" || scene === "business-error" ? (
+      inviteLink
+    ) : scene === "invite" ? (
       <span>
         Already have an account?{" "}
-        <button
-          className="link"
-          onClick={() => props.onNavigate?.("signin")}
-          type="button"
-        >
+        <FirstRunLink onClick={() => props.onNavigate?.("signin")}>
           Sign in
-        </button>
+        </FirstRunLink>
       </span>
-      {props.onHaveInviteLink ? (
-        <button
-          className="link invite-link-entry"
-          data-testid="have-invite-link"
-          onClick={props.onHaveInviteLink}
-          type="button"
-        >
-          Have an invite link?
-        </button>
-      ) : null}
-    </div>
-  ) : props.scene.startsWith("verify") ? (
-    <span>
-      Already have an account?{" "}
-      <button
-        className="link"
-        onClick={() => props.onNavigate?.("signin")}
-        type="button"
-      >
-        Sign in
-      </button>
-    </span>
-  ) : props.scene === "additional" ? (
-    <button
-      className="link"
-      onClick={() => props.onNavigate?.("workspace")}
-      type="button"
-    >
-      Cancel setup
-    </button>
-  ) : null;
-  const power = onboardingSceneStage(props.scene) === 2;
-  return (
-    <main className="colony-onboarding-root" ref={rootRef}>
-      <div className="onboarding-viewport">
-        <section className="app-frame onboarding-app-frame">
-          <div
-            className={`setup ${power ? "power-setup" : ""}`}
-            data-testid={`onboarding-scene-${props.scene}`}
+    ) : scene === "businesses" ? (
+      <>
+        {inviteLink}
+        {props.onSignOut ? (
+          <FirstRunLink
+            data-testid="onboarding-sign-out"
+            onClick={props.onSignOut}
           >
-            <div className="windowbar">
-              <span className="traffic" aria-hidden="true">
-                <i />
-                <i />
-                <i />
-              </span>
-              <span>Colony</span>
-            </div>
-            <StoryPanel
-              data={{ ...props.data, error: props.error ?? props.data.error }}
-              onLogoError={props.onLogoError}
-              scene={props.scene}
-              focusTopic={
-                focusTopic?.scene === props.scene ? focusTopic.id : undefined
-              }
-            />
-            <div
-              className="form-side"
-              onFocusCapture={(event) =>
-                setFocusTopic({
-                  scene: props.scene,
-                  id: (event.target as HTMLElement).id,
-                })
-              }
-            >
-              <div className="account-switch">{switchText}</div>
-              <div
-                className={`form-content screen-enter ${power ? "wide power-content" : ""} ${onboardingSceneStage(props.scene) === 1 ? "business-content" : ""}`}
-              >
-                <SceneBody {...props} />
-              </div>
-              <div className="form-side-foot" aria-hidden="true" />
-            </div>
-          </div>
-        </section>
-      </div>
-    </main>
+            Sign out
+          </FirstRunLink>
+        ) : null}
+      </>
+    ) : null;
+  const { layout, width } = layoutFor(scene);
+  return (
+    <div ref={rootRef}>
+      <FirstRunFrame
+        layout={layout}
+        story={story}
+        testId={`onboarding-scene-${scene}`}
+        top={top}
+        width={width}
+      >
+        <SceneBody {...props} />
+      </FirstRunFrame>
+    </div>
   );
 }

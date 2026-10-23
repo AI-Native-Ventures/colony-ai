@@ -1,11 +1,10 @@
 import * as React from "react";
-import { AlertCircle, Check, LoaderCircle } from "lucide-react";
 
 import { useCommunityOnboarding } from "@/features/onboarding/communityOnboarding";
+import { FirstRunButton } from "@/features/onboarding/ui/firstRunControls";
+import { CheckIcon, PlusIcon } from "@/features/onboarding/ui/firstRunIcons";
+import "@/features/onboarding/ui/firstRun.css";
 import { useIdentityQuery } from "@/shared/api/hooks";
-import { Button } from "@/shared/ui/button";
-import { Card } from "@/shared/ui/card";
-import { Input } from "@/shared/ui/input";
 
 import {
   communityCreateErrorMessage,
@@ -25,16 +24,14 @@ import {
 
 type SelfServeCommunityCreateFlowProps = {
   onComplete?: () => void;
+  /** "Cancel": leave without creating anything. */
   onBack: () => void;
-  showBackButton?: boolean;
-  showTitle?: boolean;
 };
 
+/** Create a new community: claim a Colony address for the team. */
 export function SelfServeCommunityCreateFlow({
   onComplete,
   onBack,
-  showBackButton = true,
-  showTitle = true,
 }: SelfServeCommunityCreateFlowProps) {
   const onboarding = useCommunityOnboarding();
   const identityQuery = useIdentityQuery();
@@ -244,176 +241,154 @@ export function SelfServeCommunityCreateFlow({
   const availabilityState = checking
     ? "Checking address…"
     : availabilityMessage;
+  const bad = availability === false || Boolean(visibleValidationError);
 
   return (
     <section
-      aria-labelledby={
-        showTitle ? "self-serve-community-title" : "add-community-dialog-title"
-      }
-      className="flex w-full max-w-[620px] flex-col items-center text-center"
+      aria-labelledby="self-serve-community-title"
+      className="c3fr-pane"
       data-testid="self-serve-community-create"
     >
-      {showTitle ? (
-        <div className="w-full">
-          <h1
-            className="text-title font-normal"
-            id="self-serve-community-title"
-          >
-            Create a community
-          </h1>
-          <p className="mt-3 text-sm leading-6 text-foreground/80">
-            Choose an address for your community. You’ll be its owner when you
-            connect.
-          </p>
+      <div className="c3fr-pane-head">
+        <span aria-hidden="true" className="c3fr-tile" data-tone="dark">
+          <PlusIcon size={20} strokeWidth={2.4} />
+        </span>
+        <span className="c3fr-pane-head-text">
+          <span className="c3fr-pane-title" id="self-serve-community-title">
+            Create a new community
+          </span>
+          <span className="c3fr-pane-desc">
+            Claim a Colony address for your team.
+          </span>
+        </span>
+      </div>
+      {configLoading ? (
+        <p className="c3fr-note" role="status">
+          <span aria-hidden="true" className="c3fr-spinner" /> Checking
+          community creation availability…
+        </p>
+      ) : configError ? (
+        <div aria-live="polite" className="c3fr-pane-body" role="status">
+          <p className="c3fr-error">{configError}</p>
+          <FirstRunButton fit="content" onClick={loadConfig}>
+            Try again
+          </FirstRunButton>
         </div>
-      ) : null}
-
-      <Card
-        className={`${showTitle ? "mt-8 " : ""}w-full rounded-2xl border border-border bg-card p-6 text-left shadow-sm`}
-      >
-        {configLoading ? (
-          <p
-            className="flex items-center gap-2 text-sm text-foreground/75"
-            role="status"
-          >
-            <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />
-            Checking community creation availability…
+      ) : selfServeDisabled ? (
+        <div aria-live="polite" className="c3fr-pane-body" role="status">
+          <p className="c3fr-note">
+            Community creation is not available right now.
           </p>
-        ) : configError ? (
-          <div aria-live="polite" className="space-y-4" role="status">
-            <p className="flex items-start gap-2 text-sm text-destructive">
-              <AlertCircle
-                aria-hidden="true"
-                className="mt-0.5 h-4 w-4 shrink-0"
-              />
-              {configError}
-            </p>
-            <Button onClick={loadConfig} type="button" variant="outline">
-              Try again
-            </Button>
-          </div>
-        ) : selfServeDisabled ? (
-          <div aria-live="polite" className="space-y-3" role="status">
-            <p className="text-sm text-foreground/75">
-              Community creation is not available right now.
-            </p>
-            {showBackButton ? (
-              <Button onClick={onBack} type="button" variant="outline">
-                Back
-              </Button>
-            ) : null}
-          </div>
-        ) : (
-          <form className="space-y-5" onSubmit={submit}>
-            <div className="space-y-2">
-              <label
-                className="text-sm font-medium text-foreground"
-                htmlFor="self-serve-community-name"
-              >
-                Community address
-              </label>
-              <div className="flex min-w-0 items-center gap-2">
-                <Input
-                  aria-describedby="self-serve-community-availability"
-                  aria-invalid={Boolean(
-                    visibleValidationError || availability === false,
-                  )}
-                  autoComplete="off"
-                  autoCapitalize="none"
-                  className="min-w-0 flex-1"
-                  data-testid="self-serve-community-name"
-                  id="self-serve-community-name"
-                  maxLength={63}
-                  onChange={(event) => {
-                    setName(event.currentTarget.value);
-                    setCreatedCommunity(null);
-                    setRetryable(false);
-                    setFeedback("");
-                  }}
-                  placeholder="north-star"
-                  value={name}
-                />
-                <span
-                  className="max-w-[48%] shrink truncate text-sm text-foreground/65"
-                  data-testid="self-serve-community-domain"
-                >
-                  .{provisioning?.domain}
-                </span>
-              </div>
-              <p
-                aria-live="polite"
-                className={
-                  availability === false || visibleValidationError
-                    ? "min-h-5 text-sm text-destructive"
-                    : "min-h-5 text-sm text-foreground/65"
-                }
-                data-testid="self-serve-community-availability"
-                id="self-serve-community-availability"
-                role="status"
-              >
-                {availabilityState ||
-                  "Use lowercase letters, numbers, and single hyphens."}
-              </p>
-            </div>
-
-            {identityUnavailable ? (
-              <p className="text-sm text-destructive" role="alert">
-                Sign in to your account before creating a community.
-              </p>
-            ) : null}
-            {provisioning?.maxPerOwner ? (
-              <p className="text-xs text-foreground/60">
-                Your account can own up to {provisioning.maxPerOwner}{" "}
-                communities.
-              </p>
-            ) : null}
-            {feedback ? (
-              <p
-                aria-live="polite"
-                className="text-sm text-destructive"
-                data-testid="self-serve-community-feedback"
-                role="status"
-              >
-                {feedback}
-              </p>
-            ) : null}
-
-            <div
-              className={`flex flex-wrap gap-3 ${showBackButton ? "justify-between" : "justify-end"}`}
+          <FirstRunButton fit="content" onClick={onBack}>
+            Cancel
+          </FirstRunButton>
+        </div>
+      ) : (
+        <form className="c3fr-pane-body c3fr-pane-form" onSubmit={submit}>
+          <div className="c3fr-field-group" style={{ gap: 6 }}>
+            <label className="c3fr-label" htmlFor="self-serve-community-name">
+              Community address
+            </label>
+            <span
+              className="c3fr-address"
+              data-state={
+                bad ? "bad" : availability === true ? "ok" : undefined
+              }
             >
-              {showBackButton ? (
-                <Button onClick={onBack} type="button" variant="outline">
-                  Back
-                </Button>
-              ) : null}
-              <Button
-                data-testid="self-serve-community-submit"
-                disabled={!canSubmit}
-                type="submit"
+              <input
+                aria-describedby="self-serve-community-availability"
+                aria-invalid={bad}
+                autoCapitalize="none"
+                autoComplete="off"
+                data-testid="self-serve-community-name"
+                id="self-serve-community-name"
+                maxLength={63}
+                onChange={(event) => {
+                  setName(event.currentTarget.value);
+                  setCreatedCommunity(null);
+                  setRetryable(false);
+                  setFeedback("");
+                }}
+                placeholder="north-star"
+                value={name}
+              />
+              <span
+                className="c3fr-address-suffix"
+                data-testid="self-serve-community-domain"
               >
-                {busy ? (
-                  <>
-                    <LoaderCircle
-                      aria-hidden="true"
-                      className="mr-2 h-4 w-4 animate-spin"
-                    />
-                    Creating…
-                  </>
-                ) : createdCommunity && !retryable ? (
-                  <>
-                    <Check aria-hidden="true" className="mr-2 h-4 w-4" />
-                    Connect to community
-                  </>
-                ) : retryable ? (
-                  "Retry setup"
-                ) : (
-                  "Create community"
-                )}
-              </Button>
-            </div>
-          </form>
-        )}
-      </Card>
+                .{provisioning?.domain}
+              </span>
+            </span>
+            <span
+              aria-live="polite"
+              className="c3fr-address-status"
+              data-state={
+                bad ? "bad" : availability === true ? "ok" : undefined
+              }
+              data-testid="self-serve-community-availability"
+              id="self-serve-community-availability"
+              role="status"
+            >
+              {availability === true && !checking ? (
+                <CheckIcon size={14} strokeWidth={3} />
+              ) : null}
+              {availabilityState ||
+                "Use lowercase letters, numbers, and single hyphens."}
+            </span>
+            {availabilityState ? (
+              <span className="c3fr-help">
+                Use lowercase letters, numbers, and single hyphens.
+              </span>
+            ) : null}
+          </div>
+
+          {identityUnavailable ? (
+            <p className="c3fr-error" role="alert">
+              Sign in to your account before creating a community.
+            </p>
+          ) : null}
+          {provisioning?.maxPerOwner ? (
+            <p className="c3fr-help">
+              Your account can own up to {provisioning.maxPerOwner} communities.
+            </p>
+          ) : null}
+          {feedback ? (
+            <p
+              aria-live="polite"
+              className="c3fr-error"
+              data-testid="self-serve-community-feedback"
+              role="status"
+            >
+              {feedback}
+            </p>
+          ) : null}
+
+          <div className="c3fr-pane-actions">
+            <button
+              className="c3fr-pane-primary"
+              data-testid="self-serve-community-submit"
+              disabled={!canSubmit}
+              type="submit"
+            >
+              {busy ? (
+                "Creating…"
+              ) : createdCommunity && !retryable ? (
+                <>
+                  <CheckIcon size={16} strokeWidth={3} />
+                  Connect to community
+                </>
+              ) : retryable ? (
+                "Retry setup"
+              ) : (
+                "Create community"
+              )}
+            </button>
+            <FirstRunButton className="c3fr-pane-cancel" onClick={onBack}>
+              Cancel
+            </FirstRunButton>
+          </div>
+        </form>
+      )}
     </section>
   );
 }

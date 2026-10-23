@@ -12,7 +12,7 @@ type ColonyIconProps = Omit<React.SVGProps<SVGSVGElement>, "children"> & {
   strokeWidth?: number;
 };
 
-function createIcon(
+export function createIcon(
   displayName: string,
   paths: React.ReactNode,
   defaults: { strokeWidth?: number; round?: boolean; fill?: string } = {},

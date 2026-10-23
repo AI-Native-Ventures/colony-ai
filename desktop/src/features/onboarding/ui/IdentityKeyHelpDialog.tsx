@@ -119,7 +119,7 @@ export function IdentityKeyHelpDialog({
   );
 }
 
-function IdentityKeyHelpBody() {
+export function IdentityKeyHelpBody() {
   return (
     <>
       <p>

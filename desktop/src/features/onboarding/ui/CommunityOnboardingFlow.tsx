@@ -64,6 +64,8 @@ export function CommunityOnboardingFlow({
     };
   }, []);
   const [isPending, setIsPending] = React.useState(false);
+  // "Open my Colony" was pressed before Welcome was ready: open the moment it is.
+  const [openRequested, setOpenRequested] = React.useState(false);
   const started = React.useRef<string | null>(null);
   const liveTransaction = React.useRef(transaction);
   liveTransaction.current = transaction;
@@ -74,6 +76,10 @@ export function CommunityOnboardingFlow({
   const isEnteringStage = transaction?.stage === "entering";
   React.useEffect(() => {
     if (!isEnteringStage) return;
+    if (openRequested) {
+      clear();
+      return;
+    }
     let fadeTimer: number | null = null;
     const beginFade = () => {
       if (fadeTimer !== null) return;
@@ -89,7 +95,7 @@ export function CommunityOnboardingFlow({
       window.clearTimeout(safetyTimer);
       if (fadeTimer !== null) window.clearTimeout(fadeTimer);
     };
-  }, [clear, isEnteringStage]);
+  }, [clear, isEnteringStage, openRequested]);
   const stage = transaction?.stage;
   const id = transaction?.id;
   const error = transaction?.error;
@@ -319,16 +325,21 @@ export function CommunityOnboardingFlow({
             description: "",
             error,
             entryCanOpen: stage !== "connecting" && stage !== "claiming",
-            scoutGuidance: {
-              status: error ? "Your turn" : "Working",
-              title: error
-                ? "Let’s try that again."
-                : "Getting your Colony ready.",
-              copy:
-                transaction.source === "first-community"
-                  ? "Your account and business details are saved."
-                  : "Your community connection is saved.",
-              pose: error ? "waiting" : "working",
+          }}
+          entry={{
+            stage:
+              stage === "team-intro" || !stage
+                ? "profile"
+                : (stage as
+                    | "connecting"
+                    | "claiming"
+                    | "profile"
+                    | "finalizing"
+                    | "entering"),
+            openRequested,
+            onOpen: () => {
+              if (stage === "entering") clear();
+              else setOpenRequested(true);
             },
           }}
           onNavigate={(scene) => {

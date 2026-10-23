@@ -760,6 +760,11 @@ function MachineBootstrap({ sharedIdentity }: { sharedIdentity: boolean }) {
         onRetry={() => window.location.reload()}
         title="Colony could not start"
         testId="machine-identity-error"
+        details={
+          machine.identityError instanceof Error
+            ? machine.identityError.message
+            : null
+        }
       />
     );
   }
@@ -822,7 +827,7 @@ export function App() {
   useCloseWindowShortcut();
   useInitialRenderReady();
   const [sharedIdentity, setSharedIdentity] = useState<boolean | null>(null);
-  const [startupError, setStartupError] = useState(false);
+  const [startupError, setStartupError] = useState<string | null>(null);
   const [queryClient] = useState(createBuzzQueryClient);
 
   useEffect(() => {
@@ -834,20 +839,21 @@ export function App() {
   useEffect(() => {
     getSharedIdentity()
       .then(setSharedIdentity)
-      .catch(() => {
+      .catch((cause) => {
         // The shell must fail closed. A bridge failure is not proof of a
         // non-shared identity and must never unlock the workspace path.
-        setStartupError(true);
+        setStartupError(cause instanceof Error ? cause.message : String(cause));
       });
   }, []);
 
-  if (startupError) {
+  if (startupError !== null) {
     return (
       <NativeUnavailableScreen
         body="Colony could not connect to the native startup bridge. Nothing was sent to the relay, and no fallback identity was created. Check the desktop host and try again."
         onRetry={() => window.location.reload()}
         title="Colony could not start"
         testId="native-startup-error"
+        details={startupError}
       />
     );
   }
