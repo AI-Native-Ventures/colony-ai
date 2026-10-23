@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { bytesToHex } from "@noble/hashes/utils.js";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { expect, type Page, test } from "@playwright/test";
 import {
   finalizeEvent,
@@ -11,6 +11,7 @@ import { KIND_MEMBER_POSITION_HEAD } from "../../src/shared/constants/kinds";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { seedActiveIdentity } from "../helpers/onboarding";
 
 /**
  * Proof captures for the office restyle (docs/superpowers/specs/
@@ -485,6 +486,115 @@ for (const variant of VARIANTS) {
         page.getByTestId("hire-role-company-role-hospitality-research"),
       ).toBeVisible();
       await shot(page, variant, "hire-roles");
+    }
+  });
+
+  test(`office restyle proof: money and projects ${variant.id}`, async ({
+    page,
+  }) => {
+    test.skip(!["money", "money-invoices", "projects"].some(wants));
+    test.setTimeout(120_000);
+    mkdirSync(OUT, { recursive: true });
+    await page.clock.install({ time: new Date("2026-09-23T12:00:00+02:00") });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await seedAppearance(page, variant);
+    await installMockBridge(page, {
+      referenceWorkspace: true,
+      referenceWorkspaceRole: "owner",
+      relayRequiresMembership: true,
+      relayRole: "owner",
+      referenceWorkspaceMoneyRecords: true,
+    });
+    if (wants("money")) {
+      await page.goto("/#/money");
+      await expect(page.getByRole("heading", { name: "Money" })).toBeVisible();
+      await page.waitForTimeout(800);
+      await shot(page, variant, "money");
+    }
+    if (wants("money-invoices")) {
+      await page.goto("/#/money/invoices");
+      await page.waitForTimeout(1200);
+      await shot(page, variant, "money-invoices");
+    }
+    if (wants("projects")) {
+      await page.goto("/#/projects");
+      await page.waitForTimeout(1200);
+      await shot(page, variant, "projects");
+    }
+  });
+
+  test(`office restyle proof: goals ${variant.id}`, async ({ page }) => {
+    test.skip(!["goals", "goal-detail"].some(wants));
+    test.setTimeout(120_000);
+    mkdirSync(OUT, { recursive: true });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await seedAppearance(page, variant, TEST_IDENTITIES.tyler.pubkey);
+    await seedActiveIdentity(page, TEST_IDENTITIES.tyler);
+    const relayKey = hexToBytes(TEST_IDENTITIES.charlie.privateKey);
+    const goal = (
+      goalId: string,
+      title: string,
+      target: string,
+      parentGoalId?: string,
+    ) =>
+      finalizeEvent(
+        {
+          kind: 30642,
+          created_at: Math.floor(Date.now() / 1_000),
+          tags: [["d", `company:goal:${goalId}`]],
+          content: JSON.stringify({
+            schemaVersion: 1,
+            goalId,
+            status: "active",
+            title,
+            goal: {
+              schemaVersion: 1,
+              goalId,
+              ...(parentGoalId ? { parentGoalId } : {}),
+              title,
+              ownerPubkey: TEST_IDENTITIES.bob.pubkey,
+              doneCondition: `${title} has clear evidence.`,
+              linkedChannelIds: [GENERAL_ID],
+              target: { value: target, unit: "qualified requests" },
+            },
+            sourceActionEventId: "f".repeat(64),
+          }),
+        },
+        relayKey,
+      );
+    const topGoal = "a1b2c3d4-e5f6-4789-8abc-1234567890ab";
+    await installMockBridge(page, {
+      goalEvents: [
+        goal(topGoal, "Increase qualified enquiries", "12"),
+        goal(
+          "c1d2e3f4-a5b6-4789-8abc-1234567890ab",
+          "Launch the spring campaign",
+          "5",
+          topGoal,
+        ),
+        goal(
+          "e1f2a3b4-c5d6-4789-8abc-1234567890ab",
+          "Refresh the studio portfolio",
+          "3",
+        ),
+      ],
+      goalRelayPrivateKey: TEST_IDENTITIES.charlie.privateKey,
+      relaySelf: getPublicKey(relayKey),
+      relayRequiresMembership: true,
+      relayRole: "owner",
+    });
+    if (wants("goals")) {
+      await page.goto("/#/goals");
+      await expect(
+        page.getByText("Increase qualified enquiries").first(),
+      ).toBeVisible();
+      await page.waitForTimeout(600);
+      await shot(page, variant, "goals");
+    }
+    if (wants("goal-detail")) {
+      await page.goto(`/#/goals/${topGoal}`);
+      await page.waitForTimeout(1200);
+      await shot(page, variant, "goal-detail");
     }
   });
 }

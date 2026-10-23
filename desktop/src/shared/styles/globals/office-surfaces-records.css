@@ -1,0 +1,126 @@
+/*
+ * Office restyle, Phase 2: record screens (Money, Clients, Work, sales and
+ * discovery records on the shared W10 frame, plus Projects and Goals). The
+ * W10 palette maps onto the office tokens, so these screens follow the
+ * office paper, ink, line and accent in light, dark and named themes; page
+ * heads, tabs, buttons, tables, pills and cards take the office shapes.
+ */
+
+:root[data-colony-office] #root .w10-root {
+  --w10-bg: hsl(var(--office-paper));
+  --w10-paper: hsl(var(--office-paper));
+  --w10-panel: hsl(var(--office-paper-2));
+  --w10-ink: hsl(var(--office-ink));
+  --w10-muted: hsl(var(--office-ink-3));
+  --w10-faint: hsl(var(--office-ink-3));
+  --w10-line: hsl(var(--office-line));
+  --w10-accent: hsl(var(--primary));
+  --w10-accent-wash: hsl(var(--primary) / 0.1);
+}
+
+/* Page heads: the office title block. */
+:root[data-colony-office] #root .w10-page-heading h1 {
+  font-size: var(--office-text-page);
+  font-weight: 800;
+  letter-spacing: var(--office-tracking-title);
+  line-height: 1.1;
+}
+
+:root[data-colony-office] #root .w10-page-heading p {
+  color: hsl(var(--office-ink-2));
+  font-size: var(--office-text-label);
+  font-weight: 600;
+}
+
+/* Tabs: office type over the accent line. */
+:root[data-colony-office] #root .w10-tabs a {
+  font-size: var(--office-text-label);
+  font-weight: 750;
+}
+
+:root[data-colony-office] #root .w10-tabs a.is-active {
+  font-weight: 800;
+}
+
+:root[data-colony-office] #root .money-operation-tabs a {
+  font-size: var(--office-text-meta);
+  font-weight: 700;
+}
+
+/* Buttons: office outline and the accent primary. */
+:root[data-colony-office] #root .w10-button {
+  border: 1.5px solid hsl(var(--office-line-2));
+  border-radius: var(--office-radius-control);
+  font-size: var(--office-text-label);
+  font-weight: 750;
+}
+
+:root[data-colony-office] #root .w10-button:hover:not(:disabled) {
+  border-color: hsl(var(--primary) / 0.7);
+  background: hsl(var(--office-paper));
+}
+
+:root[data-colony-office] #root .w10-button-primary,
+:root[data-colony-office] #root .w10-button-primary:hover:not(:disabled) {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+/* Tables: small caps heads and office ink rows. */
+:root[data-colony-office] #root .w10-table th {
+  color: hsl(var(--office-ink-3));
+  font-size: var(--office-text-caps);
+  font-weight: 800;
+  letter-spacing: var(--office-tracking-caps);
+  text-transform: uppercase;
+}
+
+:root[data-colony-office] #root .w10-table td {
+  font-size: var(--office-text-label);
+  font-weight: 600;
+}
+
+:root[data-colony-office] #root .w10-pill {
+  border-radius: 999px;
+  font-weight: 750;
+}
+
+/* Cards: the office card radius. */
+:root[data-colony-office]
+  #root
+  :is(
+    .money-metrics,
+    .money-panel,
+    .money-invoice-document,
+    .w10-table-wrap,
+    .w10-empty-state
+  ) {
+  border-radius: var(--office-radius-card);
+}
+
+:root[data-colony-office] #root .money-panel-heading h2 {
+  font-size: var(--office-text-heading);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+:root[data-colony-office] #root .money-metric strong {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+/* Projects: the activity head in the office title block. */
+:root[data-colony-office] #root [data-testid="projects-page-header"] {
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-page);
+  font-weight: 800;
+  letter-spacing: var(--office-tracking-title);
+  line-height: 1.1;
+}
+
+:root[data-colony-office] #root [data-testid="projects-activity-summary"] {
+  color: hsl(var(--office-ink-2));
+  font-size: var(--office-text-lede);
+  font-weight: 600;
+}
