@@ -18,7 +18,7 @@
   flex: none;
   align-items: center;
   gap: 0.75rem;
-  box-sizing: border-box;
+  box-sizing: content-box;
   padding: 0 1.25rem;
   border-bottom: 1px solid hsl(var(--colony-border));
   color: hsl(var(--colony-muted));
@@ -115,6 +115,10 @@
 
 .c3s-group + .c3s-group {
   margin-top: 0.5rem;
+}
+
+.c3s-group[data-actions] {
+  margin-top: 0.625rem;
 }
 
 .c3s-section {

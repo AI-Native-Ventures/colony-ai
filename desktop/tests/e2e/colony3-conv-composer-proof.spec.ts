@@ -29,7 +29,7 @@ type Rect = [x: number, y: number, width: number, height: number];
 type Capture = { name: string; board: string; refRect?: Rect; title: string };
 const captures: Capture[] = [];
 
-test.describe.configure({ mode: "serial", timeout: 120_000 });
+test.describe.configure({ timeout: 120_000 });
 
 async function openLerato(
   page: Page,
@@ -113,6 +113,8 @@ async function shot(
     await page.screenshot({ animations: "disabled", clip: target, path });
   }
   captures.push(capture);
+  // One file per capture: a failed test restarts the worker and loses memory.
+  writeFileSync(`${OUT}/${capture.name}.cap.json`, JSON.stringify(capture));
 }
 
 test.afterAll(() => {
@@ -169,14 +171,12 @@ test("Composer: mention picker in a thread reply", async ({ page }) => {
     .filter({ hasText: "Where are we" })
     .hover();
   await page.getByTestId(`reply-message-${COMPOSER_IDS.root}`).click();
-  const input = page.getByTestId("message-input").last();
-  await input.click();
+  const thread = page.getByTestId("message-thread-panel");
+  await expect(thread).toBeVisible();
+  await thread.getByTestId("message-input").click();
   await page.keyboard.type("Thanks both. @");
-  const popover = page.getByTestId("mention-autocomplete-layer");
+  const popover = thread.getByTestId("mention-autocomplete-layer");
   await expect(popover).toBeVisible();
-  await page
-    .getByTestId(`mention-always-address-${REFERENCE_AGENTS.mina.pubkey}`)
-    .click();
   await page.waitForTimeout(600);
   await narrowComposer(page, 704);
   await page.waitForTimeout(300);
@@ -190,23 +190,27 @@ test("Composer: mention picker in a thread reply", async ({ page }) => {
     },
     popover.locator(".c3c-mention-card"),
   );
+  await thread
+    .getByTestId(`mention-always-address-${REFERENCE_AGENTS.mina.pubkey}`)
+    .click();
+  await page.waitForTimeout(400);
   await shot(
     page,
     {
       name: "ComposerStates-mention-composer",
       board: "ComposerStates",
       refRect: [308, 813, 704, 127],
-      title: "Composer with the mention picker open",
+      title: "Composer with Mina addressed",
     },
-    page.getByTestId("message-composer"),
+    thread.getByTestId("message-composer"),
   );
 });
 
 test("Composer: formatting row", async ({ page }) => {
   await openOlive(page);
   await narrowComposer(page);
-  await page.getByTestId("message-input").click();
   await page.getByRole("button", { name: "Toggle formatting" }).click();
+  await page.getByTestId("message-input").click();
   await page.keyboard.type("Spring captions are ");
   await page.keyboard.press("ControlOrMeta+b");
   await page.keyboard.type("ready");
@@ -264,7 +268,16 @@ test("Composer: replying in a thread", async ({ page }) => {
   await page.getByTestId(`reply-message-${COMPOSER_IDS.minaReply}`).click();
   await expect(page.getByTestId("reply-target")).toBeVisible();
   await narrowComposer(page);
-  await captureState(page, "reply", "Replying to Mina");
+  await shot(
+    page,
+    {
+      name: "ComposerStates-reply",
+      board: "ComposerStates",
+      refRect: COMPOSER_STATE_RECTS.reply,
+      title: "Replying to Mina",
+    },
+    page.getByTestId("thread-composer-overlay").getByTestId("message-composer"),
+  );
 });
 
 test("Composer: attachments", async ({ page }) => {

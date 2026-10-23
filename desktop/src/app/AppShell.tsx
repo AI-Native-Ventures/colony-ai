@@ -200,6 +200,7 @@ export function AppShell() {
     location.pathname !== "/team" &&
     location.pathname !== "/team/org" &&
     location.pathname !== "/today" &&
+    location.pathname !== "/messages/new" &&
     !location.pathname.startsWith("/today/") &&
     !location.pathname.startsWith("/asks/") &&
     !location.pathname.startsWith("/navigation/") &&

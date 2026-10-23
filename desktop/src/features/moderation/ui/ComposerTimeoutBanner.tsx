@@ -1,5 +1,24 @@
 import { TimeoutGlyph } from "@/features/messages/ui/ComposerIcons";
-import { formatTimeoutRemaining } from "@/features/moderation/lib/timeout";
+
+function plural(count: number, unit: string) {
+  return `${count} ${unit}${count === 1 ? "" : "s"}`;
+}
+
+/** "52 minutes", "1 hour 5 minutes", "30 seconds"; null once it has expired. */
+function describeRemaining(expiresAtMs: number | null): string | null {
+  if (expiresAtMs === null) return null;
+  const seconds = Math.ceil((expiresAtMs - Date.now()) / 1000);
+  if (seconds <= 0) return null;
+  if (seconds < 60) return plural(seconds, "second");
+  const totalMinutes = Math.ceil(seconds / 60);
+  if (totalMinutes < 60) return plural(totalMinutes, "minute");
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const hoursText = plural(hours, "hour");
+  return minutes === 0
+    ? hoursText
+    : `${hoursText} ${plural(minutes, "minute")}`;
+}
 
 /**
  * The amber header at the top of the composer card while the member is timed
@@ -16,7 +35,7 @@ export function ComposerTimeoutBanner({
   /** Timeout expiry in epoch ms, or null when the relay gave no timestamp. */
   expiresAtMs: number | null;
 }) {
-  const remaining = formatTimeoutRemaining(expiresAtMs);
+  const remaining = describeRemaining(expiresAtMs);
 
   return (
     <div

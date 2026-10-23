@@ -91,6 +91,11 @@ export function composerTeamOptions(options: TitleOptions = {}) {
       name: agent.name,
       agentType: "agent",
     })),
+    managedAgents: [scout, aya, mina, theo, noor].map((agent) => ({
+      pubkey: agent.pubkey,
+      name: agent.name,
+      status: "running" as const,
+    })),
     personas: [mina, theo, noor].map((agent) => ({
       id: `colony3-${agent.name.toLowerCase()}`,
       displayName: agent.name,
@@ -238,6 +243,7 @@ export function composerRecency() {
     [OLIVE]: colony3At(9, 50),
     [REFERENCE_CHANNEL_IDS.sales]: colony3At(8, 55),
     [OPERATIONS]: colony3At(6, 55),
+    [REFERENCE_CHANNEL_IDS.cedarCafe]: colony3At(9, 48, 2),
   };
 }
 

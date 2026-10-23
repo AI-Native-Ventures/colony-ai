@@ -60,11 +60,6 @@ const COMPOSER_MEDIA_REMOVE_CLASS = cn(
 /** A 26px control inside a tile's tool pill (spoiler, draw, remove). */
 const COMPOSER_TILE_TOOL_CLASS = "c3c-tile-tool";
 
-const COMPOSER_MEDIA_HOVER_ACTION_CLASS = cn(
-  "absolute inset-0 z-[1] flex items-center justify-center rounded-2xl bg-black/35 text-white backdrop-blur-[1px] hover:bg-black/45",
-  COMPOSER_MEDIA_REVEAL_CLASS,
-);
-
 /** Dashed-border overlay shown when a file is dragged over the composer form. */
 export function DropZoneOverlay({ className }: { className?: string }) {
   return (

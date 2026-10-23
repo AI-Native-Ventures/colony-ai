@@ -17,12 +17,18 @@ import { type ChannelPin, pinEventsBy, pinPreview } from "../pinModels";
 const TEST_ID = "pinned-messages";
 
 /** "3 Oct, 09:12": the workspace's 24 hour clock beside the message's day. */
-const MESSAGE_WHEN_FORMATTER = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
+const MESSAGE_DAY_FORMATTER = new Intl.DateTimeFormat("en-US", {
   month: "short",
 });
+const MESSAGE_CLOCK_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+function formatMessageWhen(unixSeconds: number): string {
+  const date = new Date(unixSeconds * 1000);
+  return `${date.getDate()} ${MESSAGE_DAY_FORMATTER.format(date)}, ${MESSAGE_CLOCK_FORMATTER.format(date)}`;
+}
 
 function formatPinned(unixSeconds: number): string {
   const date = new Date(unixSeconds * 1000);
@@ -226,9 +232,7 @@ export function PinnedMessagesList({
             const author = target.author;
             const authorProfile = profiles?.[author.toLowerCase()];
             const title = lookupJobTitle(author);
-            const when = MESSAGE_WHEN_FORMATTER.format(
-              new Date(target.createdAt * 1000),
-            );
+            const when = formatMessageWhen(target.createdAt);
             return (
               <li
                 className="c3pin-card"

@@ -149,7 +149,7 @@ export function NewMessageResultRow({
         {isAlreadySelected
           ? "Added"
           : isKeyboardHighlighted
-            ? `Add ${name}`
+            ? `Add ${name.split(" ")[0]}`
             : "Add"}
       </span>
     </div>

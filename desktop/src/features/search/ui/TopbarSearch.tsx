@@ -969,7 +969,7 @@ export function TopbarSearch({
                   </div>
                 ) : null}
                 {suggestionActionResults.length > 0 ? (
-                  <div className="c3s-group">
+                  <div className="c3s-group" data-actions="true">
                     <div className={SEARCH_SECTION_TITLE_CLASS}>Actions</div>
                     {suggestionActionResults.map((result) =>
                       renderSearchResultRow(result, resultIndex++),
