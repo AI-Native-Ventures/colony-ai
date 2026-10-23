@@ -44,7 +44,10 @@ export function BusinessProfileSettingsPanel() {
 
   if (!activeCommunity) {
     return (
-      <section className="cs-card cs-card-body" data-testid="settings-business-profile">
+      <section
+        className="cs-card cs-card-body"
+        data-testid="settings-business-profile"
+      >
         <p className="cs-section-note">No active workspace is connected.</p>
       </section>
     );

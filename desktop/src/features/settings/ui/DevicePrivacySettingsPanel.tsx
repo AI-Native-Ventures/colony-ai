@@ -25,9 +25,10 @@ function DevicePrivacyPreferencesPanel({
 }: {
   pubkey: string | undefined;
 }) {
-  const [preferences, setPreferences] = React.useState<DevicePrivacyPreferences>(
-    () => readDevicePrivacyPreferences(pubkey),
-  );
+  const [preferences, setPreferences] =
+    React.useState<DevicePrivacyPreferences>(() =>
+      readDevicePrivacyPreferences(pubkey),
+    );
   const [saveFailed, setSaveFailed] = React.useState(false);
 
   function update(next: Partial<DevicePrivacyPreferences>) {

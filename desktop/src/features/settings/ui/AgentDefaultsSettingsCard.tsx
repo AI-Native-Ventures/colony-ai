@@ -171,17 +171,17 @@ export function AgentDefaultsSettingsCard({
               />
             </div>
           </div>
-          <div className="cs-way" data-muted="true" data-testid="agent-way-credits">
+          <div
+            className="cs-way"
+            data-muted="true"
+            data-testid="agent-way-credits"
+          >
             <span className="cs-badge">Coming soon</span>
             <strong>Colony credits</strong>
             <span className="cs-way-copy">
               Buy credits once and let any agent draw on them.
             </span>
-            <button
-              className="cs-button cs-way-button"
-              disabled
-              type="button"
-            >
+            <button className="cs-button cs-way-button" disabled type="button">
               Buy credits
             </button>
           </div>

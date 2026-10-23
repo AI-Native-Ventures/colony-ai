@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { colony3TodayMockOptions } from "../helpers/colony3HomeFixture";
 import {
   dumpTexts,
   openLerato,
@@ -22,9 +23,15 @@ test.afterAll(() => {
 });
 
 test("Today board", async ({ page }) => {
-  await openLerato(page, { route: "/#/today" });
+  await openLerato(page, {
+    route: "/#/today",
+    mock: colony3TodayMockOptions(),
+  });
   await waitForShell(page);
-  await dumpTexts(page, "Today", '[data-testid="today-screen"], main');
+  await expect(page.getByTestId("needs-me-show-more")).toBeVisible({
+    timeout: 20_000,
+  });
+  await dumpTexts(page, "Today", '[data-testid="today-screen"]');
   await shot(page, {
     name: "Today",
     board: "Today",

@@ -1,4 +1,3 @@
-import { File as FileIcon, Monitor, X } from "lucide-react";
 import * as React from "react";
 
 import {
@@ -11,24 +10,35 @@ import {
   describeCameraProblem,
 } from "@/features/profile/avatarUploadProblems";
 import { emojiAvatarDataUrl } from "@/features/profile/ui/ProfileAvatarEditor.utils";
+import {
+  CameraIcon,
+  DiamondGlyph,
+  FlowerGlyph,
+  LeafGlyph,
+  MonitorIcon,
+  StarGlyph,
+  SunGlyph,
+  UploadIcon,
+} from "@/features/profile/ui/profileIcons";
 import { uploadMediaFile } from "@/shared/api/tauriMedia";
-import { Button } from "@/shared/ui/button";
+import { CloseIcon } from "@/shared/ui/colonyIcons";
 import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogFooter,
-  DialogHeader,
+  DialogDescription,
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { ProfileAvatarProblem } from "./ProfileAvatarProblem";
+import "@/features/profile/ui/ProfileMenus.css";
 
+/** What each preset saves, and the glyph the board draws on its button. */
 const AVATAR_OPTIONS = [
-  { label: "Star", emoji: "✦", color: "#FFFFFF", background: "#ece5ed" },
-  { label: "Leaf", emoji: "🌿", color: "#e4ede5", background: "#ece5ed" },
-  { label: "Diamond", emoji: "◈", color: "#FFFFFF", background: "#ece5ed" },
-  { label: "Sun", emoji: "☀", color: "#FFF4CC", background: "#ece5ed" },
-  { label: "Flower", emoji: "🌸", color: "#f5dce9", background: "#ece5ed" },
+  { label: "Star", emoji: "\u2726", color: "#FFFFFF", Glyph: StarGlyph },
+  { label: "Leaf", emoji: "\uD83C\uDF3F", color: "#e4ede5", Glyph: LeafGlyph },
+  { label: "Diamond", emoji: "\u25C8", color: "#FFFFFF", Glyph: DiamondGlyph },
+  { label: "Sun", emoji: "\u2600", color: "#FFF4CC", Glyph: SunGlyph },
+  { label: "Flower", emoji: "\uD83C\uDF38", color: "#f5dce9", Glyph: FlowerGlyph },
 ] as const;
 
 type AvatarStage =
@@ -365,14 +375,21 @@ export function ProfileAvatarDialog({
     }, "image/png");
   }
 
-  async function chooseAvatar(option: (typeof AVATAR_OPTIONS)[number]) {
-    setSelectedChoice(option.label);
-    await savePreset(emojiAvatarDataUrl(option.emoji, option.color));
+  /** The avatar the highlighted preset would save, or null with none chosen. */
+  function chosenPresetAvatar(): string | null {
+    if (selectedChoice === "initials" || (selectedChoice === null && !avatarUrl)) {
+      return emojiAvatarDataUrl(initials(displayName), "#796782");
+    }
+    const option = AVATAR_OPTIONS.find((entry) => entry.label === selectedChoice);
+    return option ? emojiAvatarDataUrl(option.emoji, option.color) : null;
   }
 
   async function retrySave() {
-    if (stage === "choose" && lastPresetRef.current) {
-      await savePreset(lastPresetRef.current);
+    if (stage === "choose") {
+      const avatar = canRetryPreset
+        ? lastPresetRef.current
+        : chosenPresetAvatar();
+      if (avatar) await savePreset(avatar);
       return;
     }
     await saveCrop();
@@ -382,43 +399,35 @@ export function ProfileAvatarDialog({
   const isCropStage = stage === "crop" || stage === "failed";
   const canRetryPreset =
     stage === "choose" && problem !== null && lastPresetRef.current !== null;
-  const dialogHeight = {
-    choose: problem ? "h-[27.5rem]" : "h-[20.125rem]",
-    upload: "h-[24.625rem]",
-    camera: problem ? "h-[43rem]" : "h-[39.25rem]",
-    crop: "h-[38.0625rem]",
-    saving: "h-[24.1875rem]",
-    invalid: "h-[31.6875rem]",
-    failed: "h-[35.75rem]",
-  }[stage];
+  const narrow = stage === "camera" || stage === "saving";
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
         aria-describedby={undefined}
+        className="pa-dialog"
+        data-stage={stage}
+        data-testid="profile-avatar-dialog"
         onCloseAutoFocus={(event) => {
           event.preventDefault();
           const target = returnFocusRef.current;
           returnFocusRef.current = null;
           if (target?.isConnected) target.focus();
         }}
-        className={`flex max-h-[calc(100vh-2rem)] max-w-[540px] flex-col gap-0 overflow-hidden border-border/80 bg-card p-0 dark:bg-[#26232d] ${dialogHeight}`}
-        data-testid="profile-avatar-dialog"
         showCloseButton={false}
+        surface="none"
       >
-        <DialogHeader className="h-20 shrink-0 flex-row items-center justify-between gap-4 border-b border-border/70 px-[25px] py-5">
-          <DialogTitle className="text-base font-semibold tracking-tight">
-            Edit avatar
-          </DialogTitle>
-          <DialogClose
-            aria-label="Close"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <X aria-hidden="true" className="h-4 w-4" />
+        <div className="pa-head" data-hidden={isSaving ? "true" : undefined}>
+          <DialogTitle className="pa-title">Edit avatar</DialogTitle>
+          <DialogDescription className="sr-only">
+            Choose a picture for your profile.
+          </DialogDescription>
+          <DialogClose aria-label="Close" className="pa-close">
+            <CloseIcon size={narrow ? 15 : 17} strokeWidth={2.4} />
           </DialogClose>
-        </DialogHeader>
+        </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-[25px] py-6">
+        <div className="pa-body">
           {stage === "choose" ? (
             <>
               {problem ? (
@@ -427,23 +436,18 @@ export function ProfileAvatarDialog({
                   testId="avatar-save-error"
                 />
               ) : null}
-              <div
-                className="flex flex-wrap gap-3"
-                data-testid="avatar-options"
-              >
+              <div className="pa-options" data-testid="avatar-options">
                 <button
                   aria-label={`Choose ${initials(displayName)} avatar`}
                   aria-pressed={
                     selectedChoice === "initials" ||
                     (!avatarUrl && selectedChoice === null)
                   }
-                  className="grid h-[60px] w-[60px] place-items-center rounded-lg bg-[#ece5ed] text-2xl font-semibold text-[#796782] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-70"
+                  className="pa-option pa-option-initials"
                   data-testid="avatar-option-initials"
                   onClick={() => {
+                    setProblem(null);
                     setSelectedChoice("initials");
-                    void savePreset(
-                      emojiAvatarDataUrl(initials(displayName), "#796782"),
-                    );
                   }}
                   type="button"
                 >
@@ -453,20 +457,22 @@ export function ProfileAvatarDialog({
                   <button
                     aria-label={`Choose ${option.label} avatar`}
                     aria-pressed={selectedChoice === option.label}
-                    className="grid h-[60px] w-[60px] place-items-center rounded-lg text-2xl text-[#796782] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                    className="pa-option"
                     data-testid={`avatar-option-${option.label.toLowerCase()}`}
                     key={option.label}
-                    onClick={() => void chooseAvatar(option)}
-                    style={{ backgroundColor: option.background }}
+                    onClick={() => {
+                      setProblem(null);
+                      setSelectedChoice(option.label);
+                    }}
                     type="button"
                   >
-                    {option.emoji}
+                    <option.Glyph size={26} />
                   </button>
                 ))}
               </div>
-              <div className="mt-[22px] flex flex-wrap items-center gap-[10px]">
-                <Button
-                  className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
+              <div className="pa-actions">
+                <button
+                  className="pa-upload"
                   data-testid="avatar-upload-open"
                   onClick={() => {
                     setProblem(null);
@@ -474,20 +480,21 @@ export function ProfileAvatarDialog({
                   }}
                   type="button"
                 >
+                  <UploadIcon size={16} strokeWidth={2.3} />
                   Upload image
-                </Button>
-                <Button
-                  className="rounded-md text-xs"
+                </button>
+                <button
+                  className="pa-outline"
                   data-testid="avatar-camera-open"
                   onClick={() => {
                     setProblem(null);
                     setStage("camera");
                   }}
                   type="button"
-                  variant="outline"
                 >
+                  <CameraIcon size={16} strokeWidth={2.1} />
                   Use camera
-                </Button>
+                </button>
               </div>
             </>
           ) : null}
@@ -501,19 +508,16 @@ export function ProfileAvatarDialog({
                 />
               ) : null}
               <label
-                className="flex min-h-[190px] w-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-input bg-transparent px-6 py-6 text-sm text-muted-foreground"
+                className="pa-drop"
                 data-testid="avatar-file-drop-zone"
               >
-                <FileIcon aria-hidden="true" className="h-4 w-4" />
-                <strong className="font-semibold text-foreground">
-                  Choose an image
-                </strong>
+                <UploadIcon size={20} />
+                <strong>Choose an image</strong>
                 <span>
                   {AVATAR_ACCEPTED_LABEL}, up to {AVATAR_MAX_SOURCE_LABEL}
                 </span>
                 <input
                   accept={AVATAR_ACCEPT_ATTRIBUTE}
-                  className="mt-2 w-full text-xs file:mr-2 file:rounded-[3px] file:border file:border-[#c4c4c4] file:bg-[#efefef] file:px-1 file:py-0 file:text-2xs file:text-[#282532] dark:file:border-[#5a5264] dark:file:bg-[#3a3243] dark:file:text-[#e6e1ec]"
                   data-testid="avatar-file-input"
                   onChange={(event) => {
                     const nextFile = event.target.files?.[0];
@@ -535,40 +539,26 @@ export function ProfileAvatarDialog({
                   testId="avatar-camera-error"
                 />
               ) : null}
-              <p className="mb-[18px] rounded-[7px] border border-[#dce5ef] bg-[#f1f6fc] px-[18px] py-[15px] text-xs leading-[1.65] text-[#48637f] dark:border-[#43516a] dark:bg-[#293445] dark:text-[#b4c6e0]">
-                <strong className="mb-1 block font-medium">
-                  Camera permission
-                </strong>
+              <p className="pa-note">
+                <strong>Camera permission</strong>
                 Use your camera to take a profile photo. Nothing is captured
                 until you choose Take photo.
               </p>
-              <div className="relative grid h-[275px] place-content-center overflow-hidden rounded-lg border border-[#eae7eb] bg-[#f8f7f8] dark:border-[#3c3544] dark:bg-[#302b36]">
+              <div className="pa-camera">
                 <video
                   aria-label="Camera preview"
                   autoPlay
-                  className="h-full max-h-[275px] w-full object-cover"
                   data-testid="avatar-camera-preview"
                   muted
                   playsInline
                   ref={cameraVideoRef}
                 />
                 {!isCameraReady ? (
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-                    <Monitor aria-hidden="true" className="h-4 w-4" />
-                    <p>Camera preview</p>
+                  <div className="pa-camera-empty">
+                    <MonitorIcon size={20} />
+                    <span>Camera preview</span>
                   </div>
                 ) : null}
-              </div>
-              <div className="flex justify-start">
-                <Button
-                  className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
-                  data-testid="avatar-camera-capture"
-                  disabled={!isCameraReady}
-                  onClick={takePhoto}
-                  type="button"
-                >
-                  Take photo
-                </Button>
               </div>
             </>
           ) : null}
@@ -587,7 +577,7 @@ export function ProfileAvatarDialog({
                 aria-valuemin={0}
                 aria-valuenow={Math.round(cropPoint.x * 100)}
                 aria-valuetext={`Horizontal ${Math.round(cropPoint.x * 100)} percent, vertical ${Math.round(cropPoint.y * 100)} percent`}
-                className="relative mx-auto h-[275px] w-full touch-none overflow-hidden rounded-lg border border-[#eae7eb] bg-[#f8f7f8] focus-visible:outline-ring dark:border-[#3c3544] dark:bg-[#302b36]"
+                className="pa-crop"
                 data-testid="avatar-crop-preview"
                 onKeyDown={(event) => {
                   if (
@@ -611,11 +601,10 @@ export function ProfileAvatarDialog({
                 role="slider"
                 tabIndex={0}
               >
-                <div className="absolute left-1/2 top-1/2 grid size-[180px] -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-full bg-[#ebe5ef] text-[4rem] text-[#9f87ac] outline outline-2 outline-white shadow-[0_0_0_100px_#0002]">
+                <div className="pa-crop-guide">
                   {previewUrl ? (
                     <img
                       alt="Avatar crop preview"
-                      className="h-full w-full select-none object-cover"
                       draggable={false}
                       src={previewUrl}
                       style={{
@@ -629,26 +618,22 @@ export function ProfileAvatarDialog({
                 </div>
               </div>
               {stage === "crop" ? (
-                <label
-                  className="my-[19px] flex flex-col gap-6 text-xs leading-[1.5]"
-                  htmlFor="avatar-crop-zoom"
-                >
+                <label className="pa-zoom" htmlFor="avatar-crop-zoom">
                   <span>Zoom</span>
                   <input
-                    className="w-full p-0 accent-[#2655a0] dark:accent-[#a9bee8]"
                     data-testid="avatar-crop-zoom"
                     id="avatar-crop-zoom"
-                    max="2"
+                    max="3"
                     min="1"
                     onChange={(event) => setZoom(Number(event.target.value))}
-                    step="0.1"
+                    step="0.05"
                     type="range"
                     value={zoom}
                   />
                 </label>
               ) : null}
               {stage === "crop" ? (
-                <p className="mt-[30px] text-xs text-muted-foreground">
+                <p className="pa-hint">
                   Drag to position; use arrow keys when the crop is focused.
                 </p>
               ) : null}
@@ -657,15 +642,13 @@ export function ProfileAvatarDialog({
 
           {stage === "saving" ? (
             <div
-              className="flex min-h-[190px] flex-col items-center justify-center gap-3 text-center"
+              className="pa-saving"
               data-testid="avatar-saving"
+              role="status"
             >
-              <span
-                aria-hidden="true"
-                className="size-6 animate-spin rounded-full border-2 border-[#eae7eb] border-t-[#2655a0] dark:border-[#3c3544] dark:border-t-[#a9bee8]"
-              />
-              <p className="text-base font-medium">Saving your avatar…</p>
-              <p className="text-sm text-muted-foreground">
+              <span aria-hidden="true" className="pa-spinner" />
+              <h2>Saving your avatar…</h2>
+              <p>
                 Your current avatar stays visible until this completes. You can
                 cancel at any time.
               </p>
@@ -673,62 +656,84 @@ export function ProfileAvatarDialog({
           ) : null}
         </div>
 
-        <DialogFooter className="shrink-0 flex-row items-center justify-end gap-[10px] border-t border-border/70 px-[25px] py-[18px]">
+        <div className="pa-foot">
           <DialogClose asChild>
-            <Button
-              className="rounded-md bg-card text-xs"
+            <button
+              className="pa-cancel"
               data-testid="avatar-cancel"
               onClick={() => onOpenChange(false)}
               type="button"
-              variant="outline"
             >
               Cancel
-            </Button>
+            </button>
           </DialogClose>
-          {stage === "crop" || stage === "failed" || canRetryPreset ? (
-            <Button
-              className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
-              data-testid={
-                stage === "failed" || canRetryPreset
-                  ? "avatar-retry"
-                  : "avatar-save"
+          {stage === "choose" ? (
+            <button
+              className="pa-save"
+              data-testid={canRetryPreset ? "avatar-retry" : "avatar-save"}
+              disabled={
+                isSaving ||
+                (!canRetryPreset && chosenPresetAvatar() === null)
               }
+              onClick={() => void retrySave()}
+              ref={recoveryButtonRef}
+              type="button"
+            >
+              {canRetryPreset ? "Try again" : "Save avatar"}
+            </button>
+          ) : null}
+          {stage === "crop" || stage === "failed" ? (
+            <button
+              className="pa-save"
+              data-testid={stage === "failed" ? "avatar-retry" : "avatar-save"}
               disabled={isSaving}
               onClick={() => void retrySave()}
               ref={recoveryButtonRef}
               type="button"
             >
-              {stage === "failed" || canRetryPreset
-                ? "Try again"
-                : "Save avatar"}
-            </Button>
+              {stage === "failed" ? "Try again" : "Save avatar"}
+            </button>
           ) : null}
           {stage === "invalid" ? (
-            <Button
-              className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
+            <button
+              className="pa-save"
               data-testid="avatar-choose-another"
               onClick={() => fileInputRef.current?.click()}
               ref={recoveryButtonRef}
               type="button"
             >
               Choose another image
-            </Button>
+            </button>
           ) : null}
-          {stage === "camera" && problem ? (
-            <Button
-              className="rounded-md bg-[#2655a0] text-xs text-white hover:bg-[#2655a0] dark:bg-[#a9bee8] dark:text-[#202a3b] dark:hover:bg-[#a9bee8]"
-              data-testid="avatar-camera-use-upload"
-              onClick={() => {
-                setProblem(null);
-                setStage("upload");
-              }}
-              ref={recoveryButtonRef}
-              type="button"
-            >
-              Upload an image instead
-            </Button>
+          {stage === "camera" ? (
+            <>
+              {problem ? (
+                <button
+                  className="pa-save"
+                  data-testid="avatar-camera-use-upload"
+                  onClick={() => {
+                    setProblem(null);
+                    setStage("upload");
+                  }}
+                  ref={recoveryButtonRef}
+                  type="button"
+                >
+                  Upload an image instead
+                </button>
+              ) : null}
+              <button
+                className="pa-dark"
+                data-testid="avatar-camera-capture"
+                disabled={!isCameraReady}
+                onClick={takePhoto}
+                type="button"
+              >
+                <i aria-hidden="true" />
+                Take photo
+              </button>
+            </>
           ) : null}
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

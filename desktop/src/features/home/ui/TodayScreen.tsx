@@ -56,6 +56,10 @@ function todayLabel(now: Date) {
   return `${part("weekday")}, ${part("day")} ${part("month")}`;
 }
 
+function capitalise(label: string) {
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 function sameDay(first: Date, second: Date) {
   return (
     first.getFullYear() === second.getFullYear() &&
@@ -182,18 +186,14 @@ function AskNeedsMeRow({
         </small>
       </span>
       <span className="ct-chips">
-        <span className="ct-chip">{needsMeAskLabel(ask)}</span>
+        <span className="ct-chip">{capitalise(needsMeAskLabel(ask))}</span>
         {overdue ? (
           <span className="ct-chip" data-tone="need">
             Overdue
           </span>
         ) : null}
       </span>
-      <ChevronRightIcon
-        className="ct-chevron"
-        size={18}
-        strokeWidth={2.4}
-      />
+      <ChevronRightIcon className="ct-chevron" size={18} strokeWidth={2.4} />
     </button>
   );
 }
@@ -254,7 +254,10 @@ function MovingForwardRow({
       {copy}
     </button>
   ) : (
-    <article className="ct-forward-row" data-testid={`today-attention-${item.id}`}>
+    <article
+      className="ct-forward-row"
+      data-testid={`today-attention-${item.id}`}
+    >
       {lead}
       {copy}
     </article>

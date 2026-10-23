@@ -347,9 +347,9 @@ export function MobilePairingCard({
       <div className="cs-pairing-head">
         <h2 className="cs-section-title">Mobile</h2>
         <p>
-          Connect the Colony mobile app to this relay by scanning a QR code.
-          The connection is secured with end-to-end encryption and a
-          verification code.
+          Connect the Colony mobile app to this relay by scanning a QR code. The
+          connection is secured with end-to-end encryption and a verification
+          code.
         </p>
       </div>
 
@@ -467,7 +467,10 @@ export function MobilePairingCard({
               )}
             </div>
 
-            <div className="cs-pairing-copy" data-testid="mobile-pairing-copy-slot">
+            <div
+              className="cs-pairing-copy"
+              data-testid="mobile-pairing-copy-slot"
+            >
               {step === "qr" && qrUri ? (
                 <button
                   className="cs-text-button"

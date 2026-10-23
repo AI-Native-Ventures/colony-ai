@@ -38,7 +38,6 @@ import {
 import { membershipRoleLabel } from "./membershipRoleLabel";
 import { ProfileAvatarDialog } from "./ProfileAvatarDialog";
 import { SettingsPageHead } from "./SettingsPageHead";
-import "./SettingsView.css";
 import "./SettingsShell.css";
 import "./SettingsPages.css";
 
@@ -163,6 +162,9 @@ export function SettingsView({
   const [isAvatarDialogOpen, setIsAvatarDialogOpen] = React.useState(false);
   const [avatarSaved, setAvatarSaved] = React.useState(false);
   const mainRef = React.useRef<HTMLElement | null>(null);
+  // Scrolling to a section also fires scroll events; the tab the person chose
+  // stays selected until they scroll on their own.
+  const ignoreScrollUntil = React.useRef(0);
 
   const activeSection = canonicalSettingsSection(section);
   const activeGroup = routeGroup(activeSection);
@@ -216,6 +218,7 @@ export function SettingsView({
     setVisibleSection(activeSection);
     const main = mainRef.current;
     if (!main) return;
+    ignoreScrollUntil.current = Date.now() + 700;
     const first = activeGroup.sections[0]?.value;
     if (activeSection === first) {
       main.scrollTop = 0;
@@ -229,6 +232,32 @@ export function SettingsView({
       main.scrollTop += target.getBoundingClientRect().top - frame - 24;
     }
   }, [activeGroup, activeSection]);
+
+  // Scrolling the long page moves the selected tab to the section in view.
+  React.useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    function handleScroll() {
+      if (!main || Date.now() < ignoreScrollUntil.current) return;
+      const sections = activeGroup.sections;
+      const top = main.getBoundingClientRect().top + 96;
+      let current = sections[0]?.value;
+      for (const entry of sections) {
+        const element = main.querySelector<HTMLElement>(
+          `[data-testid="settings-panel-${entry.value}"]`,
+        );
+        if (element && element.getBoundingClientRect().top <= top) {
+          current = entry.value;
+        }
+      }
+      if (main.scrollTop + main.clientHeight >= main.scrollHeight - 2) {
+        current = sections[sections.length - 1]?.value ?? current;
+      }
+      if (current) setVisibleSection(current);
+    }
+    main.addEventListener("scroll", handleScroll, { passive: true });
+    return () => main.removeEventListener("scroll", handleScroll);
+  }, [activeGroup]);
 
   const matchingSections = React.useMemo(() => {
     const query = search.trim().toLowerCase();
