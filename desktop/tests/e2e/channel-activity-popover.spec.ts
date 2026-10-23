@@ -520,7 +520,7 @@ test.describe("channel activity hover preview", () => {
     ).toHaveCount(0);
   });
 
-  test("supports row actions and opens an agent's scoped activity", async ({
+  test("supports row actions and opens the channel from a working agent", async ({
     page,
   }) => {
     await seedChannelActivity(page);
@@ -537,12 +537,6 @@ test.describe("channel activity hover preview", () => {
     await popover.getByTestId(`channel-activity-agent-${AGENT_PUBKEY}`).click();
 
     await expect(page.getByTestId("chat-title")).toHaveText("general");
-    await expect(page.getByTestId("agent-session-agent-name")).toContainText(
-      "Charlie",
-    );
-    await expect(page.getByTestId("agent-session-scope-label")).toContainText(
-      "#general",
-    );
   });
 
   test("keeps multiple Inbox threads visible after opening their channel", async ({

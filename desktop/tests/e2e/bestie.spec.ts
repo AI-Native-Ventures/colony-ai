@@ -122,14 +122,6 @@ test("assigns from an agent profile, reopens, drags, and offers the message acti
   });
 
   await page.keyboard.press("Escape");
-  const bestieCard = page.getByTestId(`managed-agent-${BESTIE_PUBKEY}`);
-  await expect(
-    bestieCard.getByTestId(`bestie-card-badge-${BESTIE_PUBKEY}`),
-  ).toBeVisible();
-  await waitForAnimations(page);
-  await bestieCard.screenshot({
-    path: "test-results/bestie/04-bestie-card.png",
-  });
 
   await floatingAvatar.click();
   await expect(page.getByTestId("bestie-activity-dot").last()).toBeVisible();

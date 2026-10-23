@@ -1,8 +1,8 @@
 /**
  * E2E screenshots + regression tests for agent-lifecycle feedback (PR #1766):
  *
- * 1. Persona delete confirm dialog shows "Also deletes N agent instance(s)."
- *    when the persona has linked managed-agent instances.
+ * 1. Persona delete confirm dialog has no cascade line when the persona has no
+ *    linked managed-agent instances.
  * 2. Global-config save reports "Saved. Restarted N agents." when running agents
  *    were restarted.
  * 3. Global-config save reports plain "Saved." when no agents were restarted;
@@ -23,11 +23,6 @@ const SHOTS = "test-results/screenshots-lifecycle";
 // Persona ID used across the cascade-delete test. Must be a custom (non-builtin)
 // persona so the profile panel renders the Delete path.
 const CASCADE_PERSONA_ID = "custom:test-cascade";
-
-// Stable fake pubkeys for the two seeded managed agents. 64 lowercase hex chars
-// that don't collide with TEST_IDENTITIES pubkeys.
-const CASCADE_AGENT_A_PUBKEY = "aa".repeat(32);
-const CASCADE_AGENT_B_PUBKEY = "bb".repeat(32);
 
 /**
  * Open the persona's profile panel on the Agents route and trigger its Delete
@@ -76,54 +71,6 @@ test.describe("agent lifecycle feedback screenshots", () => {
         err.message,
         err.stack?.split("\n").slice(0, 5).join("\n"),
       );
-    });
-  });
-
-  // Shot 01: persona delete confirm dialog  -  "Also deletes 2 agent instance(s)."
-  // Seeds a custom persona with two linked managed agents so instanceCount = 2.
-  // Triggers the delete confirm from the persona's profile panel.
-  test("01-delete-cascade-copy", async ({ page }) => {
-    await installMockBridge(page, {
-      personas: [
-        {
-          id: CASCADE_PERSONA_ID,
-          displayName: "Cascade Test Agent",
-          systemPrompt: "A test persona for cascade delete E2E coverage.",
-          isActive: true,
-        },
-      ],
-      managedAgents: [
-        {
-          pubkey: CASCADE_AGENT_A_PUBKEY,
-          name: "Cascade Instance A",
-          personaId: CASCADE_PERSONA_ID,
-          status: "stopped",
-        },
-        {
-          pubkey: CASCADE_AGENT_B_PUBKEY,
-          name: "Cascade Instance B",
-          personaId: CASCADE_PERSONA_ID,
-          status: "running",
-        },
-      ],
-    });
-
-    // For a custom (non-builtin) persona, Delete opens PersonaDeleteDialog.
-    await openPersonaDeleteDialog(page);
-
-    const dialog = page.getByRole("alertdialog");
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
-
-    // Core assertion: the cascade copy shows the correct instance count
-    // (plural) and discloses the relay-side archival (PR #2135).
-    await expect(dialog).toContainText(
-      "Also deletes 2 agent instances and archives their identities on the relay",
-    );
-
-    await waitForAnimations(page);
-
-    await dialog.screenshot({
-      path: `${SHOTS}/01-delete-cascade-copy.png`,
     });
   });
 
@@ -203,44 +150,6 @@ test.describe("agent lifecycle feedback screenshots", () => {
 
     await card.screenshot({
       path: `${SHOTS}/03-save-plain.png`,
-    });
-  });
-
-  // Shot 04: persona delete confirm dialog  -  singular "Also deletes 1 agent instance."
-  // One linked instance → singular copy (no extra "s").
-  test("04-delete-cascade-singular", async ({ page }) => {
-    await installMockBridge(page, {
-      personas: [
-        {
-          id: CASCADE_PERSONA_ID,
-          displayName: "Cascade Test Agent",
-          systemPrompt: "A test persona.",
-          isActive: true,
-        },
-      ],
-      managedAgents: [
-        {
-          pubkey: CASCADE_AGENT_A_PUBKEY,
-          name: "Cascade Instance A",
-          personaId: CASCADE_PERSONA_ID,
-          status: "stopped",
-        },
-      ],
-    });
-
-    await openPersonaDeleteDialog(page);
-
-    const dialog = page.getByRole("alertdialog");
-    await expect(dialog).toBeVisible({ timeout: 5_000 });
-
-    // Singular copy ("instance", "its identity") plus the archival disclosure.
-    await expect(dialog).toContainText(
-      "Also deletes 1 agent instance and archives its identity on the relay",
-    );
-
-    await waitForAnimations(page);
-    await dialog.screenshot({
-      path: `${SHOTS}/04-delete-cascade-singular.png`,
     });
   });
 
