@@ -46,8 +46,12 @@ type SectionNameDialogProps = {
   initialValue: string;
   initialIcon?: string;
   confirmLabel: string;
+  /** Keeps the description for screen readers only (the designed dialog has none on screen). */
+  descriptionHidden?: boolean;
   isConfirmDisabled: (trimmed: string, icon: string) => boolean;
   onConfirm: (value: SectionDialogValue) => void;
+  /** Dialog width: 410px to create a section, 400px to rename one. */
+  widthClass?: string;
 };
 
 function SectionNameDialog({
@@ -58,8 +62,10 @@ function SectionNameDialog({
   initialValue,
   initialIcon = "",
   confirmLabel,
+  descriptionHidden = false,
   isConfirmDisabled,
   onConfirm,
+  widthClass = "max-w-[25.625rem]",
 }: SectionNameDialogProps) {
   const [name, setName] = React.useState(initialValue);
   const [icon, setIcon] = React.useState(initialIcon);
@@ -98,10 +104,14 @@ function SectionNameDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[25.625rem]" showCloseButton={false}>
+      <DialogContent className={widthClass} showCloseButton={false}>
         <DialogHeader className="space-y-1.5">
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          <DialogDescription
+            className={descriptionHidden ? "sr-only" : undefined}
+          >
+            {description}
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="flex items-center gap-2">
@@ -220,6 +230,8 @@ export function RenameSectionDialog({
       onOpenChange={onOpenChange}
       title="Rename section"
       description="Enter a new name for this section."
+      descriptionHidden
+      widthClass="max-w-[25rem]"
       initialValue={sectionName}
       initialIcon={sectionIcon}
       confirmLabel="Save"
