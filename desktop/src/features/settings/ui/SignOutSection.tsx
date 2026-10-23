@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { useManagedAgentsQuery } from "@/features/agents/hooks";
 import { isManagedAgentActive } from "@/features/agents/lib/managedAgentControlActions";
@@ -6,265 +7,191 @@ import {
   getActiveDraftEntries,
   useDraftsSnapshot,
 } from "@/features/messages/lib/useDrafts";
-import { signOut } from "@/shared/api/tauriIdentity";
-import { AlertCircle, LoaderCircle, X } from "lucide-react";
-import { Button } from "@/shared/ui/button";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/shared/ui/alert-dialog";
-import { SettingsAlertDialogContent } from "@/shared/ui/settings-alert-dialog-content";
+import { getAccountAuthClient } from "@/features/onboarding/accountAuthAdapter";
+import { signOut, signOutKeepData } from "@/shared/api/tauriIdentity";
+import { DeviceIcon, MinusIcon } from "./settingsIcons";
 
-type SignOutSectionProps = {
-  onOpenDraftRecovery?: () => void;
-  variant: "device" | "local-data";
-};
+const accountQueryKey = ["settings-account-auth"] as const;
 
-export function SignOutSection({
-  onOpenDraftRecovery,
-  variant,
-}: SignOutSectionProps) {
-  const [isOpen, setIsOpen] = React.useState(false);
-  const [isPending, setIsPending] = React.useState(false);
+function plural(count: number, one: string, many: string) {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+function listNames(names: string[]) {
+  return names.join(", ");
+}
+
+/**
+ * Sign-in & devices: "Sign out" ends the session on this computer and keeps
+ * its data; "Sign out & remove data" first says what goes (unsent drafts and
+ * the agents running here) and only then wipes the computer.
+ */
+export function SignOutSection() {
+  const [confirming, setConfirming] = React.useState(false);
+  const [isPending, setIsPending] = React.useState<"keep" | "wipe" | null>(
+    null,
+  );
   const [error, setError] = React.useState<string | null>(null);
   const managedAgentsQuery = useManagedAgentsQuery();
+  const accountQuery = useQuery({
+    queryKey: accountQueryKey,
+    queryFn: () => getAccountAuthClient().getAccount(),
+    retry: false,
+    staleTime: 60_000,
+  });
   useDraftsSnapshot();
   const drafts = getActiveDraftEntries();
-  const localAgents = (managedAgentsQuery.data ?? []).filter(
-    (agent) =>
-      agent.backend.type === "local" &&
-      agent.status === "running" &&
-      isManagedAgentActive(agent),
-  ).length;
+  const localAgentNames = (managedAgentsQuery.data ?? [])
+    .filter(
+      (agent) =>
+        agent.backend.type === "local" &&
+        agent.status === "running" &&
+        isManagedAgentActive(agent),
+    )
+    .map((agent) => agent.name);
   const attachmentCount = drafts.reduce(
     (total, { draft }) => total + draft.pendingImeta.length,
     0,
   );
-  const hasUnsyncedWork = drafts.length > 0 || attachmentCount > 0;
+  const email = accountQuery.data?.email;
 
-  async function handleSignOut() {
-    setIsPending(true);
+  async function run(kind: "keep" | "wipe") {
+    setIsPending(kind);
     setError(null);
     try {
-      await signOut();
+      if (kind === "keep") await signOutKeepData();
+      else await signOut();
     } catch (signOutError) {
       setError(
         signOutError instanceof Error
           ? signOutError.message
           : "Sign-out could not be completed.",
       );
-      setIsPending(false);
+      setIsPending(null);
     }
-  }
-
-  function openDialog() {
-    setError(null);
-    setIsOpen(true);
-  }
-
-  if (variant === "device") {
-    return (
-      <>
-        <Button
-          data-testid="signout-open-dialog"
-          onClick={openDialog}
-          size="sm"
-          variant="outline"
-        >
-          Sign out
-        </Button>
-        <SignOutDialog
-          attachmentCount={attachmentCount}
-          draftsCount={drafts.length}
-          error={error}
-          hasUnsyncedWork={hasUnsyncedWork}
-          isOpen={isOpen}
-          isPending={isPending}
-          localAgents={localAgents}
-          onCancel={() => setIsOpen(false)}
-          onOpenDraftRecovery={onOpenDraftRecovery}
-          onSignOut={() => void handleSignOut()}
-        />
-      </>
-    );
   }
 
   return (
     <>
-      <div className="flex min-h-16 items-center justify-between gap-4 border-b border-border/70 py-3">
-        <div className="min-w-0">
-          <p className="text-sm font-medium">Remove local data</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Choose what happens to cached data when you sign out.
-          </p>
-        </div>
-        <Button
-          data-testid="signout-open-dialog-remove-data"
-          onClick={openDialog}
-          size="sm"
-          variant="outline"
-        >
-          Sign out &amp; remove data
-        </Button>
-      </div>
-      <SignOutDialog
-        attachmentCount={attachmentCount}
-        draftsCount={drafts.length}
-        error={error}
-        hasUnsyncedWork={hasUnsyncedWork}
-        isOpen={isOpen}
-        isPending={isPending}
-        localAgents={localAgents}
-        onCancel={() => setIsOpen(false)}
-        onOpenDraftRecovery={onOpenDraftRecovery}
-        onSignOut={() => void handleSignOut()}
-      />
-    </>
-  );
-}
-
-function SignOutDialog({
-  attachmentCount,
-  draftsCount,
-  error,
-  hasUnsyncedWork,
-  isOpen,
-  isPending,
-  localAgents,
-  onCancel,
-  onOpenDraftRecovery,
-  onSignOut,
-}: {
-  attachmentCount: number;
-  draftsCount: number;
-  error: string | null;
-  hasUnsyncedWork: boolean;
-  isOpen: boolean;
-  isPending: boolean;
-  localAgents: number;
-  onCancel: () => void;
-  onOpenDraftRecovery?: () => void;
-  onSignOut: () => void;
-}) {
-  const details = [
-    draftsCount > 0
-      ? `${draftsCount} ${draftsCount === 1 ? "draft" : "drafts"}`
-      : null,
-    attachmentCount > 0
-      ? `${attachmentCount} pending ${attachmentCount === 1 ? "attachment" : "attachments"}`
-      : null,
-  ].filter(Boolean);
-
-  return (
-    <AlertDialog
-      onOpenChange={(open) => {
-        if (!open && !isPending) onCancel();
-      }}
-      open={isOpen}
-    >
-      <SettingsAlertDialogContent
-        className="flex w-[33.75rem] max-w-[calc(100vw-2rem)] max-h-[90vh] flex-col gap-0 overflow-hidden rounded-[0.75rem] border border-[#eae7eb] bg-[#fffefd] p-0 text-[#282532] shadow-[0_24px_80px_#30203824] dark:border-[#3c3544] dark:bg-[#26232d] dark:text-[#e6e1ec]"
-        data-testid="signout-dialog"
-      >
-        <div className="flex items-center justify-between border-b border-[#eae7eb] px-[1.5625rem] pt-6 pb-[1.3125rem] dark:border-[#3c3544]">
-          <AlertDialogHeader className="space-y-0">
-            <AlertDialogTitle className="text-lg font-semibold tracking-[-0.025em]">
-              Sign out of this device?
-            </AlertDialogTitle>
-          </AlertDialogHeader>
-          <Button
-            aria-label="Close"
-            data-testid="signout-close"
-            disabled={isPending}
-            onClick={onCancel}
-            size="icon"
-            variant="ghost"
-          >
-            <X aria-hidden="true" className="size-4" />
-          </Button>
-        </div>
-        <div className="flex flex-col px-[1.5625rem] pt-[1.5625rem] pb-12">
-          <AlertDialogDescription className="mb-[1.375rem] text-sm leading-5 text-[#79747f] dark:text-[#a9a1b4]">
-            Your remote business and conversations stay available.
-          </AlertDialogDescription>
-          {localAgents > 0 ? (
-            <div className="mb-[2.3125rem] space-y-1 rounded-[7px] border border-[#eee2c9] bg-[#fcf8ee] px-[1.125rem] py-3.5 text-xs leading-5 text-[#92713e] dark:border-[#594831] dark:bg-[#3c3428] dark:text-[#d3b879]">
-              <p className="font-medium">
-                {localAgents} local{" "}
-                {localAgents === 1 ? "agent is" : "agents are"} running
-              </p>
-              <p>
-                Sign-out stops local agents on this device. Remote agents
-                continue with their own permissions.
-              </p>
-            </div>
-          ) : null}
-          {hasUnsyncedWork ? (
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-sm font-medium">Unsynced work</p>
-                <p className="mt-1 text-xs text-[#79747f] dark:text-[#a9a1b4]">
-                  {details.join(" · ")}
-                </p>
-              </div>
-              <Button
-                className="shrink-0 rounded-md px-0 text-xs font-semibold text-[#2655a0] dark:text-[#a9bee8]"
-                data-testid="signout-review-work"
-                disabled={!onOpenDraftRecovery || isPending}
-                onClick={() => {
-                  onCancel();
-                  onOpenDraftRecovery?.();
-                }}
-                size="sm"
-                variant="link"
-              >
-                Review before leaving
-              </Button>
-            </div>
-          ) : null}
-          {error ? (
-            <div
-              className="flex items-start gap-2 rounded-md border border-destructive/35 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-              role="alert"
-            >
-              <AlertCircle
-                aria-hidden="true"
-                className="mt-0.5 size-4 shrink-0"
-              />
-              <span>{error}</span>
-            </div>
-          ) : null}
-        </div>
-        <AlertDialogFooter className="flex-row border-t border-[#eae7eb] px-[1.5625rem] py-[1.125rem] dark:border-[#3c3544]">
-          <AlertDialogCancel
-            className="h-9 rounded-md border-[#eae7eb] bg-transparent px-[13px] text-xs font-semibold text-[#282532] hover:bg-[#f4f0f7] dark:border-[#3c3544] dark:text-[#e6e1ec] dark:hover:bg-[#3a3243]"
-            disabled={isPending}
-            onClick={onCancel}
-          >
-            Stay signed in
-          </AlertDialogCancel>
-          <Button
-            data-testid="signout-confirm"
-            disabled={isPending}
-            onClick={onSignOut}
+      <div className="cs-card" data-testid="settings-account-security">
+        <div className="cs-device-row">
+          <span aria-hidden="true" className="cs-device-tile">
+            <DeviceIcon size={20} />
+          </span>
+          <div className="cs-device-copy">
+            <span className="cs-row-label">This device</span>
+            <span className="cs-signed-in">
+              <i aria-hidden="true" />
+              {email ? `Signed in as ${email}` : "Signed in"}
+            </span>
+          </div>
+          <button
+            className="cs-button"
+            data-testid="signout-keep-data"
+            disabled={isPending !== null}
+            onClick={() => void run("keep")}
             type="button"
-            variant="outline"
-            className="h-9 rounded-md border-[#a04f6440] bg-[#a04f6408] px-[13px] text-xs font-semibold text-[#a04f64] hover:bg-[#a04f6415] dark:border-[#63414e] dark:bg-[#402b34] dark:text-[#dcacb8] dark:hover:bg-[#402b34]"
           >
-            {isPending ? (
-              <LoaderCircle
-                aria-hidden="true"
-                className="mr-2 size-4 animate-spin"
-              />
+            {isPending === "keep" ? "Signing out" : "Sign out"}
+          </button>
+        </div>
+        <div className="cs-device-row">
+          <div className="cs-row-copy">
+            <span className="cs-row-label">Sign out &amp; remove data</span>
+            <span className="cs-row-help">
+              Removes this device’s drafts and stops the agents running here.
+              You’ll confirm what goes before anything is removed.
+            </span>
+          </div>
+          <button
+            className="cs-button"
+            data-testid="signout-open-dialog-remove-data"
+            data-tone="danger"
+            disabled={isPending !== null}
+            onClick={() => {
+              setError(null);
+              setConfirming(true);
+            }}
+            type="button"
+          >
+            Sign out &amp; remove data
+          </button>
+        </div>
+      </div>
+
+      {confirming ? (
+        <div
+          aria-labelledby="remove-device-data-title"
+          className="cs-confirm"
+          data-testid="signout-dialog"
+          role="group"
+        >
+          <h3 id="remove-device-data-title">Remove this device’s data?</h3>
+          <ul>
+            {drafts.length > 0 ? (
+              <li>
+                <MinusIcon size={16} strokeWidth={2.4} />
+                {plural(drafts.length, "unsent draft", "unsent drafts")}
+              </li>
             ) : null}
-            {isPending ? "Signing out" : `Stop local agents & sign out`}
-          </Button>
-        </AlertDialogFooter>
-      </SettingsAlertDialogContent>
-    </AlertDialog>
+            {attachmentCount > 0 ? (
+              <li>
+                <MinusIcon size={16} strokeWidth={2.4} />
+                {plural(
+                  attachmentCount,
+                  "pending attachment",
+                  "pending attachments",
+                )}
+              </li>
+            ) : null}
+            {localAgentNames.length > 0 ? (
+              <li>
+                <MinusIcon size={16} strokeWidth={2.4} />
+                Local agents managed on this Mac: {listNames(localAgentNames)}
+              </li>
+            ) : null}
+            {drafts.length === 0 &&
+            attachmentCount === 0 &&
+            localAgentNames.length === 0 ? (
+              <li>
+                <MinusIcon size={16} strokeWidth={2.4} />
+                Nothing unsent and no local agents running. Your business and
+                conversations stay available.
+              </li>
+            ) : null}
+          </ul>
+          {error ? (
+            <p className="cs-notice" data-tone="bad" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <div className="cs-confirm-actions">
+            <button
+              className="cs-danger-solid"
+              data-testid="signout-confirm"
+              disabled={isPending !== null}
+              onClick={() => void run("wipe")}
+              type="button"
+            >
+              {isPending === "wipe"
+                ? "Signing out"
+                : "Stop local agents & sign out"}
+            </button>
+            <button
+              className="cs-button cs-button-large"
+              disabled={isPending !== null}
+              onClick={() => setConfirming(false)}
+              type="button"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : error ? (
+        <p className="cs-notice" data-tone="bad" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </>
   );
 }

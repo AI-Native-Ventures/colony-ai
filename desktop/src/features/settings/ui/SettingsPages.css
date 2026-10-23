@@ -1,0 +1,271 @@
+/*
+ * Colony 3.0 Settings: the parts that belong to one page. Shared building
+ * blocks live in `SettingsShell.css`.
+ */
+
+/* --------------------------------------------------------------- account -- */
+
+.cs-photo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.125rem;
+}
+
+.cs-avatar-large {
+  position: relative;
+  display: grid;
+  width: 4.75rem;
+  height: 4.75rem;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--colony-person);
+}
+
+.cs-avatar-large .cs-avatar-large-image {
+  width: 100%;
+  height: 100%;
+  font-size: calc(26 * var(--colony-px));
+  font-weight: 800;
+}
+
+.cs-presence-dot {
+  position: absolute;
+  right: 0.125rem;
+  bottom: 0.125rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--colony-presence-online);
+  box-shadow: 0 0 0 3px #fff;
+}
+
+.cs-presence-dot[data-presence="away"] {
+  background: var(--colony-presence-away);
+}
+
+.cs-presence-dot[data-presence="offline"] {
+  background: hsl(var(--colony-faint));
+}
+
+.cs-photo-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cs-photo-copy .cs-button {
+  align-self: flex-start;
+  height: 2.5rem;
+}
+
+.cs-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(17.5rem, 100%), 1fr));
+  gap: 1.125rem;
+}
+
+.cs-status-field {
+  display: flex;
+  width: 100%;
+  height: 2.875rem;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0 0.875rem;
+  border: 1px solid hsl(var(--colony-border-strong));
+  border-radius: 0.75rem;
+  background: #fff;
+  box-sizing: border-box;
+  color: hsl(var(--colony-muted));
+  font-family: inherit;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 500;
+  text-align: left;
+}
+
+.cs-status-field[data-has-status="true"] {
+  color: hsl(var(--colony-fg));
+}
+
+.cs-status-field:focus-visible {
+  border-color: hsl(var(--colony-accent));
+  outline: none;
+}
+
+.cs-save-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding-top: 0.25rem;
+}
+
+.cs-business-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.125rem 1.5rem;
+  padding: 1.375rem 1.625rem;
+  overflow: visible;
+}
+
+.cs-business-mark {
+  display: grid;
+  width: 3.25rem;
+  height: 3.25rem;
+  flex: none;
+  place-items: center;
+  border-radius: 0.9375rem;
+  background: hsl(var(--colony-fg));
+  color: hsl(var(--colony-surface));
+  font-size: calc(22 * var(--colony-px));
+  font-weight: 800;
+}
+
+.cs-business-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 13.75rem;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cs-business-copy strong {
+  font-size: calc(18 * var(--colony-px));
+  font-weight: 800;
+}
+
+.cs-business-copy > span {
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 600;
+}
+
+.cs-business-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+}
+
+.cs-device-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem 1.375rem;
+  border-bottom: 1px solid hsl(var(--colony-border));
+}
+
+.cs-device-row:last-child {
+  border-bottom: 0;
+}
+
+.cs-device-row .cs-row-copy {
+  flex: 1 1 16.25rem;
+}
+
+.cs-device-tile {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: none;
+  place-items: center;
+  border-radius: 0.8125rem;
+  background: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg-secondary));
+}
+
+.cs-device-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 13.75rem;
+  flex-direction: column;
+  gap: 0.1875rem;
+}
+
+.cs-signed-in {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: hsl(var(--colony-success));
+  font-size: calc(14.5 * var(--colony-px));
+  font-weight: 600;
+}
+
+.cs-signed-in i {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--colony-presence-online);
+}
+
+.cs-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding: 1.375rem;
+  border-radius: 1.25rem;
+  background: #fff8fa;
+  box-shadow: 0 0 0 1px #f1c9d5;
+}
+
+.cs-confirm h3 {
+  margin: 0;
+  font-size: calc(18 * var(--colony-px));
+  font-weight: 800;
+}
+
+.cs-confirm ul {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 500;
+  list-style: none;
+}
+
+.cs-confirm li {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.cs-confirm li svg {
+  flex: none;
+  color: hsl(var(--colony-danger));
+}
+
+.cs-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+}
+
+.cs-danger-solid {
+  height: 2.75rem;
+  padding: 0 1.125rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: hsl(var(--colony-danger));
+  color: #fff;
+  font-family: inherit;
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 700;
+}
+
+.cs-danger-solid:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.cs-button.cs-button-large {
+  height: 2.75rem;
+  padding: 0 1.125rem;
+  border-radius: 0.75rem;
+  font-size: calc(15.5 * var(--colony-px));
+}

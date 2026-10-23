@@ -13,7 +13,8 @@
   flex: none;
   align-items: center;
   gap: 0.375rem;
-  box-sizing: border-box;
+  /* The design's bar is 64px with its hairline below, 65px in all. */
+  box-sizing: content-box;
   padding: 0 1.5rem;
   border-bottom: 1px solid hsl(var(--colony-border));
   background: hsl(var(--colony-surface));

@@ -20,10 +20,6 @@ import {
   Ticket,
   UserRound,
   Volume2,
-  BriefcaseBusiness,
-  HardDrive,
-  Layers3,
-  SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import type {
@@ -79,9 +75,17 @@ import {
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { AccountProfileSettingsPanel } from "./AccountProfileSettingsPanel";
 import { AccountSecuritySettingsPanel } from "./AccountSecuritySettingsPanel";
-import { AvatarEditorProfileContext } from "./AvatarEditorProfileContext";
 import { UpdateChecker } from "../UpdateChecker";
 import { SettingsSectionHeader } from "./SettingsSectionHeader";
+import {
+  AccountIcon,
+  AppearanceIcon,
+  BlocksIcon,
+  DeviceIcon,
+  PreferencesIcon,
+  SettingsAgentsIcon,
+  SettingsBusinessIcon,
+} from "./settingsIcons";
 import { VoiceSettingsCard } from "./VoiceSettingsCard";
 import { DevicePrivacySettingsPanel } from "./DevicePrivacySettingsPanel";
 import { AppearanceSettingsPanel } from "./AppearanceSettingsPanel";
@@ -140,9 +144,7 @@ export type SettingsGroupId =
   | "business"
   | "agents-group"
   | "blocks-templates"
-  | "administration"
-  | "app-devices"
-  | "storage-group";
+  | "app-devices";
 
 export type SettingsInnerSection = {
   value: SettingsSection;
@@ -152,16 +154,26 @@ export type SettingsInnerSection = {
 export type SettingsGroupDescriptor = {
   id: SettingsGroupId;
   label: string;
-  icon: LucideIcon;
+  icon: React.ComponentType<{ size?: number }>;
+  /** The page title (the Appearance page greets instead of naming itself). */
+  title: string;
+  /** The line under the page title; `{business}` is the business name. */
+  subtitle: string;
   sections: SettingsInnerSection[];
 };
 
-/** The nine r17 categories and their one internal section bar. */
+/**
+ * The Settings groups, one long page each (`Settings*.dc.html`). Storage,
+ * administration (reports) and channel templates are cut from the lean build,
+ * so they have no row; their code stays and nothing links to it.
+ */
 export const settingsGroups: SettingsGroupDescriptor[] = [
   {
     id: "account",
     label: "Account",
-    icon: UserRound,
+    icon: AccountIcon,
+    title: "Account",
+    subtitle: "How you appear to people and agents in {business}.",
     sections: [
       { value: "profile", label: "Profile" },
       { value: "security", label: "Sign-in & devices" },
@@ -170,7 +182,9 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
   {
     id: "appearance-group",
     label: "Appearance",
-    icon: Sun,
+    icon: AppearanceIcon,
+    title: "Make yourself at home.",
+    subtitle: "Your appearance in {business}.",
     sections: [
       { value: "appearance", label: "Theme & layout" },
       { value: "accessibility", label: "Accessibility" },
@@ -179,7 +193,9 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
   {
     id: "preferences",
     label: "Preferences",
-    icon: SlidersHorizontal,
+    icon: PreferencesIcon,
+    title: "Preferences",
+    subtitle: "When Colony gets your attention, and how it sounds.",
     sections: [
       { value: "notifications", label: "Notifications & sounds" },
       { value: "voice", label: "Voice & audio" },
@@ -189,7 +205,9 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
   {
     id: "business",
     label: "Business",
-    icon: BriefcaseBusiness,
+    icon: SettingsBusinessIcon,
+    title: "Business",
+    subtitle: "{business}\u2019s profile, and who can get in.",
     sections: [
       { value: "business-profile", label: "Profile" },
       { value: "people", label: "People & access" },
@@ -198,62 +216,79 @@ export const settingsGroups: SettingsGroupDescriptor[] = [
   {
     id: "agents-group",
     label: "Agents",
-    icon: Bot,
+    icon: SettingsAgentsIcon,
+    title: "Agents",
+    subtitle:
+      "How the agents in {business} reach AI, unless an agent is set up its own way.",
     sections: [
       { value: "agent-defaults", label: "Defaults" },
       { value: "harnesses", label: "Harnesses" },
     ],
   },
   {
+    // "Blocks & templates" without the templates (cut): custom emoji stays.
     id: "blocks-templates",
-    label: "Blocks & templates",
-    icon: Layers3,
-    sections: [
-      { value: "channel-templates", label: "Channel templates" },
-      { value: "custom-emoji", label: "Custom emoji" },
-    ],
-  },
-  {
-    id: "administration",
-    label: "Administration",
-    icon: ShieldAlert,
-    sections: [
-      { value: "moderation", label: "Moderation" },
-      { value: "audit", label: "Audit trail" },
-    ],
+    label: "Custom emoji",
+    icon: BlocksIcon,
+    title: "Custom emoji",
+    subtitle: "Emoji your business adds for everyone to use.",
+    sections: [{ value: "custom-emoji", label: "Custom emoji" }],
   },
   {
     id: "app-devices",
     label: "App & devices",
-    icon: Smartphone,
+    icon: DeviceIcon,
+    title: "App & devices",
+    subtitle: "Settings for this Mac only.",
     sections: [
       { value: "app", label: "App preferences" },
       { value: "privacy", label: "Privacy" },
+      { value: "experimental", label: "Experiments" },
       { value: "mobile", label: "Mobile" },
       { value: "updates", label: "Updates" },
-      { value: "experimental", label: "Experiments" },
       { value: "compute", label: "Compute" },
-    ],
-  },
-  {
-    id: "storage-group",
-    label: "Storage",
-    icon: HardDrive,
-    sections: [
-      { value: "storage", label: "Local storage" },
-      { value: "archived-records", label: "Archived records" },
-      { value: "recovery", label: "Draft recovery" },
     ],
   },
 ];
 
+/** The sidebar's three headings and the group rows under each. */
+export function settingsNavCategory(businessName: string) {
+  const byId = (...ids: SettingsGroupId[]) =>
+    ids
+      .map((id) => settingsGroups.find((group) => group.id === id))
+      .filter((group): group is SettingsGroupDescriptor => Boolean(group));
+  return [
+    {
+      label: "Personal",
+      groups: byId("account", "appearance-group", "preferences"),
+    },
+    {
+      label: businessName,
+      groups: byId("business", "agents-group", "blocks-templates"),
+    },
+    { label: "This device", groups: byId("app-devices") },
+  ];
+}
+
+/**
+ * Old addresses and links keep working: the theme catalog folds into
+ * Appearance, and the cut pages (storage, administration, templates) land on
+ * the default page.
+ */
 const SETTINGS_SECTION_ALIASES: Partial<Record<string, SettingsSection>> = {
   agents: "agent-defaults",
   "community-members": "people",
-  "custom-emoji": "custom-emoji",
-  "local-archive": "storage",
-  "channel-templates": "channel-templates",
-  "settings/admin": "audit",
+  "local-archive": "profile",
+  storage: "profile",
+  "archived-records": "profile",
+  recovery: "profile",
+  moderation: "profile",
+  audit: "profile",
+  "settings/admin": "profile",
+  "channel-templates": "profile",
+  "settings/themes": "appearance",
+  "settings/theme-preview": "appearance",
+  "settings/theme-applied": "appearance",
 };
 
 export function canonicalSettingsSection(
@@ -315,7 +350,6 @@ export type SettingsSectionDescriptor = {
 export type SettingsPanelProps = {
   currentPubkey?: string;
   fallbackDisplayName?: string;
-  avatarEditorContext?: boolean;
   avatarSaved?: boolean;
   onClose?: () => void;
   onSectionChange?: (section: SettingsSection) => void;
@@ -982,32 +1016,16 @@ export function renderSettingsSection(
 ): React.ReactNode {
   switch (section) {
     case "profile":
-      if (props.avatarEditorContext) {
-        return (
-          <AvatarEditorProfileContext
-            avatarSaved={props.avatarSaved ?? false}
-            fallbackDisplayName={props.fallbackDisplayName}
-            onEditAvatar={props.onEditAvatar ?? (() => undefined)}
-            onSectionChange={props.onSectionChange ?? (() => undefined)}
-          />
-        );
-      }
       return (
         <AccountProfileSettingsPanel
           avatarSaved={props.avatarSaved ?? false}
           fallbackDisplayName={props.fallbackDisplayName}
-          onClose={props.onClose ?? (() => undefined)}
           onEditAvatar={props.onEditAvatar}
           onSectionChange={props.onSectionChange ?? (() => undefined)}
         />
       );
     case "security":
-      return (
-        <AccountSecuritySettingsPanel
-          onClose={props.onClose ?? (() => undefined)}
-          onOpenDraftRecovery={props.onOpenDraftRecovery}
-        />
-      );
+      return <AccountSecuritySettingsPanel />;
     case "notifications":
       return (
         <NotificationSettingsCard
