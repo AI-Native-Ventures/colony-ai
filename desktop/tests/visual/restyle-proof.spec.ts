@@ -89,6 +89,10 @@ async function seedAppearance(page: Page, variant: Variant) {
 }
 
 async function shot(page: Page, variant: Variant, name: string) {
+  // Park the pointer in the gap between the sidebar and the card so no
+  // hover popover or action bar sits in the frame.
+  await page.mouse.move(264, 450);
+  await page.waitForTimeout(400);
   await waitForAnimations(page);
   await page.waitForTimeout(250);
   await page.screenshot({ path: `${OUT}/${name}--${variant.id}.png` });
@@ -208,6 +212,8 @@ for (const variant of VARIANTS) {
     await page.waitForTimeout(800);
     if (wants("direct-message")) await shot(page, variant, "direct-message");
     if (wants("sidebar")) {
+      await page.mouse.move(264, 450);
+      await page.waitForTimeout(400);
       await waitForAnimations(page);
       await page.screenshot({
         path: `${OUT}/sidebar--${variant.id}.png`,
