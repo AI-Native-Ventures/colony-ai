@@ -29,23 +29,6 @@
 }
 
 :root:has([data-colony-workspace-route="true"])
-  :is(
-    [data-testid="channel-composer-overlay"],
-    [data-testid="thread-composer-overlay"]
-  )
-  [data-testid="message-input-scroll"] {
-  padding: var(--colony-composer-input-padding, 0.75rem 0.75rem 0.4375rem);
-  font-size: var(--conversation-message-font-size);
-}
-
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="thread-composer-overlay"]
-  [data-testid="message-composer"]:has(.colony-thread-crosspost)
-  [data-testid="message-input-scroll"] {
-  padding: var(--colony-composer-input-padding, 0.75rem 0.75rem 0.4375rem);
-}
-
-:root:has([data-colony-workspace-route="true"])
   [data-testid="channel-composer-overlay"]
   [data-testid="composer-dock-backdrop"] {
   left: var(--colony-composer-gutter, 1.5rem);
@@ -82,27 +65,6 @@
   border: 0;
 }
 
-/* A narrow reply box must wrap actions instead of painting over its tools. */
-:root:has([data-colony-workspace-route="true"])
-  :is(
-    [data-testid="channel-composer-overlay"],
-    [data-testid="thread-composer-overlay"]
-  )
-  [data-testid="message-composer-toolbar"] {
-  height: auto;
-}
-
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="message-composer-tools"] {
-  min-width: max-content;
-}
-
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="message-composer-toolbar"]
-  > div:last-child {
-  margin-left: auto;
-}
-
 /* Keep the corner masks on the composer edges after the shared gutter change. */
 :root:has([data-colony-workspace-route="true"])
   :is(
@@ -126,15 +88,6 @@
   [data-testid="thread-composer-overlay"]
   .composer-dock-activity {
   padding-inline: var(--colony-composer-gutter, 1.5rem);
-}
-
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="thread-composer-overlay"]
-  :is(
-    .colony-message-composer-footer-content,
-    [data-testid="message-composer-toolbar"]
-  ) {
-  padding-inline: 0.75rem;
 }
 
 /* Settings page content keeps its own layout inside the shared frame. */

@@ -1,5 +1,4 @@
 import * as React from "react";
-import { useLocation, useNavigate } from "@tanstack/react-router";
 import { EditorContent } from "@tiptap/react";
 import {
   useChannelLinks,
@@ -46,7 +45,10 @@ import { ComposerReplyEditBanner } from "./ComposerReplyEditBanner";
 import { ComposerAttachments, DropZoneOverlay } from "./ComposerAttachments";
 import { focusMentionOptionsTrigger } from "./MentionAutocomplete";
 import { MessageComposerAutocompletes } from "./MessageComposerAutocompletes";
-import { ComposerDockToolbar } from "./ComposerDockToolbar";
+import {
+  type ComposerToolbarLayout,
+  MessageComposerToolbar,
+} from "./MessageComposerToolbar";
 import { ComposerUploadProgressPill } from "./ComposerUploadProgressPill";
 import { NonMemberMentionDialog } from "./NonMemberMentionDialog";
 import { useComposerVoiceNote } from "./useComposerVoiceNote";
@@ -64,24 +66,20 @@ import { useImplicitAgentMentionProvenance } from "./useImplicitAgentMentionProv
 import { useThreadAgentAudience } from "./useThreadAgentAudience";
 import { submitMessageEdit } from "./submitMessageEdit";
 import { prepareBackgroundLinkPreviews } from "@/features/messages/lib/linkPreviewPreparationStore";
-import {
-  COMPOSER_MESSAGE_LINK_NODE_NAME,
-  resolveComposerMessageLinkAttributes,
-} from "@/features/messages/lib/composerMessageLinkNode";
 import { useComposerLinkPreviews } from "./useComposerLinkPreviews";
 import { useAddressedAgentMentionRestore } from "./useAddressedAgentMentionRestore";
 import { scheduleSettleGatedAutoSubmit } from "./messageComposerAutoSubmit";
 import type { MessageComposerProps } from "./MessageComposer.types";
-import { buildGoalLink } from "@/shared/lib/entityLink";
-import { GoalReferenceComposerButton } from "@/features/goals/ui/GoalReferenceComposerButton";
+import { ComposerReferenceSlot } from "./ComposerReferenceSlot";
+import { ComposerSendButton } from "./ComposerAddressControls";
+import { FormattingToolbar } from "./FormattingToolbar";
+import { SelectionFormattingTray } from "./SelectionFormattingTray";
 function MessageComposerImpl({
   audienceContext = null,
   channelId = null,
   channelName,
   channelType = null,
   containerClassName,
-  layoutMode = "standalone",
-  workspaceChrome = false,
   disabled = false,
   draftKey,
   autoSubmitDraftKey = null,
@@ -104,15 +102,15 @@ function MessageComposerImpl({
   replyTarget = null,
   mediaController,
   showBackgroundUploadProgress = true,
-  showGoalReference = true,
   showTopBorder = false,
+  statusBanner,
+  toolbarAskAction,
   toolbarExtraActions,
+  toolbarLayout,
   footerContent,
   typingParentEventId = null,
   typingRootEventId = null,
 }: MessageComposerProps) {
-  const location = useLocation();
-  const navigate = useNavigate();
   const {
     contentRef,
     isContentEmpty,
@@ -231,7 +229,6 @@ function MessageComposerImpl({
       syncComposerContentFromEditor,
       getImplicitAgentMentionPrefix: implicitAgentMentionProvenance.getPrefix,
     });
-  const pendingGoalReferenceAppliedRef = React.useRef<string | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: effectiveDraftKey is the sole trigger
   React.useEffect(() => {
     media.setUploadState({ status: "idle" });
@@ -326,62 +323,6 @@ function MessageComposerImpl({
       }
     },
   });
-  React.useEffect(() => {
-    const locationState = location.state as
-      | {
-          pendingGoalReference?: { goalId?: unknown; token?: unknown };
-        }
-      | undefined;
-    const pendingReference = locationState?.pendingGoalReference;
-    const goalId = pendingReference?.goalId;
-    const token = pendingReference?.token;
-    const editor = richText.editor;
-    if (
-      typeof goalId !== "string" ||
-      typeof token !== "string" ||
-      !editor ||
-      editor.isDestroyed ||
-      pendingGoalReferenceAppliedRef.current === token
-    ) {
-      return;
-    }
-
-    const attrs = resolveComposerMessageLinkAttributes(
-      buildGoalLink(goalId),
-      () => undefined,
-    );
-    if (!attrs || !editor.schema.nodes[COMPOSER_MESSAGE_LINK_NODE_NAME]) return;
-
-    const text = editor.getText();
-    const content: Array<Record<string, unknown>> = [];
-    if (text.length > 0 && !/\s$/.test(text)) {
-      content.push({ type: "text", text: " " });
-    }
-    content.push({ type: COMPOSER_MESSAGE_LINK_NODE_NAME, attrs });
-    content.push({ type: "text", text: " " });
-    pendingGoalReferenceAppliedRef.current = token;
-    const inserted = editor.chain().focus("end").insertContent(content).run();
-    if (!inserted) {
-      pendingGoalReferenceAppliedRef.current = null;
-      return;
-    }
-
-    const { pendingGoalReference: _consumed, ...nextState } =
-      locationState ?? {};
-    void navigate({
-      to: location.pathname,
-      search: location.search,
-      state: Object.keys(nextState).length > 0 ? nextState : undefined,
-      replace: true,
-      resetScroll: false,
-    } as never);
-  }, [
-    location.pathname,
-    location.search,
-    location.state,
-    navigate,
-    richText.editor,
-  ]);
   const linkEditor = useLinkEditor(richText);
   syncContentRefFromEditorRef.current = () => {
     const markdown = richText.getMarkdown();
@@ -887,11 +828,39 @@ function MessageComposerImpl({
     if (!voiceNote.hasAttachmentRef.current) void media.handlePaperclip();
   }, [media.handlePaperclip, voiceNote.hasAttachmentRef]);
   const acceptsDrop = ownsDropZone && voiceNote.acceptsAttachment;
+  const resolvedToolbarLayout: ComposerToolbarLayout =
+    toolbarLayout ??
+    (channelType === "dm"
+      ? "dm"
+      : audienceContext?.type === "thread"
+        ? "thread"
+        : "channel");
+  const isVoiceActive = voiceNote.status !== "idle";
+  const hasBanner =
+    statusBanner != null || editTarget != null || replyTarget != null;
+  // Reply, edit and timeout states and the open formatting row use the compact
+  // card: the editor and a round send button share one row.
+  const isCompact = !isVoiceActive && (hasBanner || isFormattingOpen);
+  const composerMode = isVoiceActive
+    ? "voice"
+    : statusBanner != null
+      ? "timeout"
+      : editTarget != null
+        ? "edit"
+        : replyTarget != null
+          ? "reply"
+          : isFormattingOpen
+            ? "formatting"
+            : "normal";
+  const hasAttachmentRow =
+    media.pendingImeta.length > 0 ||
+    media.queuedAttachments.length > 0 ||
+    media.isUploading;
   return (
     <>
       <footer
         className={cn(
-          "relative z-10 shrink-0 bg-transparent px-4 pb-2 pt-0",
+          "c3c-footer relative z-10 shrink-0 bg-transparent px-4 pb-2 pt-0",
           showTopBorder ? "border-t border-border/40 pt-3" : "",
           containerClassName,
         )}
@@ -901,13 +870,6 @@ function MessageComposerImpl({
           className="absolute inset-x-0 bottom-0 h-5 bg-transparent"
         />
         <div className="relative flex w-full flex-col gap-0">
-          <ComposerReplyEditBanner
-            isEditing={editTarget != null}
-            isEditCancelDisabled={isDeferredEditPending}
-            replyTarget={replyTarget}
-            onCancelEdit={onCancelEdit}
-            onCancelReply={onCancelReply}
-          />
           {showBackgroundUploadProgress ? (
             <ComposerUploadProgressPill
               canCancel={backgroundUpload.canCancel}
@@ -918,13 +880,10 @@ function MessageComposerImpl({
             />
           ) : null}
           <form
-            className={cn(
-              "relative z-10 isolate rounded-2xl border border-border/50 bg-background/80 px-3 pb-2 pt-3 shadow-none supports-[backdrop-filter]:bg-background/70 dark:bg-background/70 dark:supports-[backdrop-filter]:bg-background/55 sm:px-4",
-              layoutMode === "standalone" &&
-                "backdrop-blur-md dark:backdrop-blur-xl",
-            )}
+            className="c3c-card relative z-10 isolate"
+            data-compact={isCompact ? "true" : undefined}
+            data-composer-mode={composerMode}
             data-submit-locked={isSubmitLocked ? "true" : "false"}
-            data-workspace-chrome={workspaceChrome ? "true" : undefined}
             data-testid="message-composer"
             onDragEnter={acceptsDrop ? media.handleDragEnter : undefined}
             onDragLeave={acceptsDrop ? media.handleDragLeave : undefined}
@@ -946,6 +905,19 @@ function MessageComposerImpl({
             ref={formRef}
           >
             {acceptsDrop && media.isDragOver && <DropZoneOverlay />}
+            <SelectionFormattingTray
+              disabled={composerDisabled}
+              editor={richText.editor}
+              onLinkButton={linkEditor.openFromToolbar}
+            />
+            {statusBanner}
+            <ComposerReplyEditBanner
+              isEditing={editTarget != null}
+              isEditCancelDisabled={isDeferredEditPending}
+              replyTarget={replyTarget}
+              onCancelEdit={onCancelEdit}
+              onCancelReply={onCancelReply}
+            />
             <MessageComposerAutocompletes
               audienceControlsEnabled={Boolean(
                 audienceScope && editTarget == null,
@@ -967,11 +939,36 @@ function MessageComposerImpl({
                 })
               }
             />
-            {media.uploadState.status === "error" ? (
-              <div className="mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                Upload failed: {media.uploadState.message}
+            {isFormattingOpen && !isVoiceActive ? (
+              <div
+                aria-label="Formatting"
+                className="c3c-fmt-row"
+                role="toolbar"
+              >
                 <button
-                  className="ml-2 underline"
+                  aria-label="Toggle formatting"
+                  aria-pressed="true"
+                  className="c3c-fmt-btn c3c-fmt-toggle"
+                  disabled={composerDisabled}
+                  onClick={() => handleFormattingToggle(false)}
+                  type="button"
+                >
+                  Aa
+                </button>
+                <FormattingToolbar
+                  disabled={composerDisabled}
+                  editor={richText.editor}
+                  onLinkButton={linkEditor.openFromToolbar}
+                />
+              </div>
+            ) : null}
+            {media.uploadState.status === "error" ? (
+              <div className="c3c-upload-error" role="alert">
+                <span className="c3c-upload-error-text">
+                  Upload failed: {media.uploadState.message}
+                </span>
+                <button
+                  className="c3c-upload-error-dismiss"
                   onClick={() => media.setUploadState({ status: "idle" })}
                   type="button"
                 >
@@ -987,95 +984,90 @@ function MessageComposerImpl({
             >
               {addressLockAnnouncement}
             </output>
-            {(media.pendingImeta.length > 0 ||
-              media.queuedAttachments.length > 0 ||
-              media.isUploading) && (
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                {media.pendingImeta.length > 0 ||
-                media.queuedAttachments.length > 0 ||
-                media.isUploading ? (
-                  <ComposerAttachments
-                    attachments={media.pendingImeta}
-                    isUploading={media.isUploading}
-                    onCancelUpload={media.cancelUpload}
-                    onRemoveQueued={media.removeQueuedAttachment}
-                    onToggleQueuedSpoiler={media.toggleQueuedAttachmentSpoiler}
-                    queuedPreviews={media.queuedPreviews}
-                    uploadingCount={media.uploadingCount}
-                    uploadingPreviews={media.uploadingPreviews}
-                    onEditSave={handleAttachmentEditSave}
-                    onRemove={handleRemoveAttachment}
-                    onRevert={handleAttachmentRevert}
-                    originalUrlByUrl={media.originalUrlByUrl}
-                    onToggleSpoiler={handleToggleAttachmentSpoiler}
-                    spoileredUrls={spoileredAttachmentUrls}
-                  />
-                ) : null}
+            {hasAttachmentRow && (
+              <div className="c3c-attachments">
+                <ComposerAttachments
+                  attachments={media.pendingImeta}
+                  isUploading={media.isUploading}
+                  onCancelUpload={media.cancelUpload}
+                  onRemoveQueued={media.removeQueuedAttachment}
+                  onToggleQueuedSpoiler={media.toggleQueuedAttachmentSpoiler}
+                  queuedPreviews={media.queuedPreviews}
+                  uploadingCount={media.uploadingCount}
+                  uploadingPreviews={media.uploadingPreviews}
+                  onEditSave={handleAttachmentEditSave}
+                  onRemove={handleRemoveAttachment}
+                  onRevert={handleAttachmentRevert}
+                  originalUrlByUrl={media.originalUrlByUrl}
+                  onToggleSpoiler={handleToggleAttachmentSpoiler}
+                  spoileredUrls={spoileredAttachmentUrls}
+                />
               </div>
             )}
-            {/* biome-ignore lint/a11y/noStaticElementInteractions: keydown handler bridges Tiptap editor to autocomplete and submit */}
-            <div
-              className="rich-text-composer relative max-h-32 overflow-y-auto"
-              data-testid="message-input-scroll"
-              ref={composerScrollRef}
-              onKeyDown={handleEditorKeyDown}
-            >
-              <EditorContent editor={richText.editor} />
-            </div>
-            {footerContent ? (
-              <div className="colony-message-composer-footer-content">
-                {footerContent}
+            <div className="c3c-editor-row">
+              {/* biome-ignore lint/a11y/noStaticElementInteractions: keydown handler bridges Tiptap editor to autocomplete and submit */}
+              <div
+                className="rich-text-composer c3c-editor relative overflow-y-auto"
+                data-testid="message-input-scroll"
+                ref={composerScrollRef}
+                onKeyDown={handleEditorKeyDown}
+              >
+                <EditorContent editor={richText.editor} />
               </div>
-            ) : null}
-            <ComposerDockToolbar
-              addressedAgents={
-                editTarget == null && !composerDisabled ? lockedAgents : []
-              }
-              autoPinConfirmationTitle={autoPinConfirmationTitle}
-              layoutMode={layoutMode}
-              workspaceChrome={workspaceChrome}
-              composerDisabled={composerDisabled}
-              editor={richText.editor}
-              extraActions={
-                <>
-                  {showGoalReference &&
-                  channelId &&
-                  channelType !== "forum" &&
-                  editTarget == null ? (
-                    <GoalReferenceComposerButton />
-                  ) : null}
-                  {toolbarExtraActions}
-                </>
-              }
-              formattingDisabled={composerDisabled}
-              gifMediaController={media}
-              isEmojiPickerOpen={isEmojiPickerOpen}
-              isFormattingOpen={isFormattingOpen}
-              isSending={isSending || mentionSendFlow.isPreparingMentionSend}
-              isUploading={media.isUploading}
-              isVoiceNoteProcessing={voiceNote.status !== "recording"}
-              isVoiceNoteRecording={voiceNote.status !== "idle"}
-              hasVoiceNoteAttachment={voiceNote.hasAttachment}
-              voiceNoteRecorder={voiceNote.recorderElement}
-              onCaptureSelection={handleCaptureSelection}
-              onAutoPinConfirmationDismiss={dismissAutoPinConfirmation}
-              onAutoPinConfirmationHoverChange={setAutoPinConfirmationHovered}
-              onAutoPinConfirmationTurnOff={mentionPicker.turnOff}
-              onEmojiPickerOpenChange={setIsEmojiPickerOpen}
-              onEmojiSelect={insertEmoji}
-              onFormattingToggle={handleFormattingToggle}
-              onLinkButton={linkEditor.openFromToolbar}
-              onOpenMentionPicker={mentionPicker.openMentionSettings}
-              onPaperclip={handlePaperclipClick}
-              onImagePicker={media.handleImagePicker}
-              onFinishVoiceNote={() => void voiceNote.finish()}
-              onVoiceNote={voiceNote.toggle}
-              onRemoveAddressedAgent={removeAddressedAgent}
-              pulseVersionByPubkey={addressPulse.pulseVersionByPubkey}
-              sendDisabled={sendDisabled}
-              shakeVersionByPubkey={addressPulse.shakeVersionByPubkey}
-            />
+              {isCompact ? (
+                <ComposerSendButton
+                  isSending={
+                    isSending || mentionSendFlow.isPreparingMentionSend
+                  }
+                  sendDisabled={sendDisabled}
+                  variant={editTarget != null ? "save" : "inline"}
+                />
+              ) : null}
+            </div>
+            {isCompact ? null : (
+              <MessageComposerToolbar
+                addressedAgents={
+                  editTarget == null && !composerDisabled ? lockedAgents : []
+                }
+                askAction={toolbarAskAction}
+                autoPinConfirmationTitle={autoPinConfirmationTitle}
+                composerDisabled={composerDisabled}
+                editor={richText.editor}
+                extraActions={toolbarExtraActions}
+                gifMediaController={media}
+                isEmojiPickerOpen={isEmojiPickerOpen}
+                isFormattingOpen={isFormattingOpen}
+                isSending={isSending || mentionSendFlow.isPreparingMentionSend}
+                isUploading={media.isUploading}
+                isVoiceNoteProcessing={voiceNote.status !== "recording"}
+                isVoiceNoteRecording={voiceNote.status !== "idle"}
+                hasVoiceNoteAttachment={voiceNote.hasAttachment}
+                layout={resolvedToolbarLayout}
+                referenceSlot={<ComposerReferenceSlot />}
+                voiceNoteRecorder={voiceNote.recorderElement}
+                onCaptureSelection={handleCaptureSelection}
+                onAutoPinConfirmationDismiss={dismissAutoPinConfirmation}
+                onAutoPinConfirmationHoverChange={setAutoPinConfirmationHovered}
+                onAutoPinConfirmationTurnOff={mentionPicker.turnOff}
+                onEmojiPickerOpenChange={setIsEmojiPickerOpen}
+                onEmojiSelect={insertEmoji}
+                onFormattingToggle={handleFormattingToggle}
+                onOpenMentionPicker={mentionPicker.openMentionSettings}
+                onPaperclip={handlePaperclipClick}
+                onFinishVoiceNote={() => void voiceNote.finish()}
+                onVoiceNote={voiceNote.toggle}
+                onRemoveAddressedAgent={removeAddressedAgent}
+                pulseVersionByPubkey={addressPulse.pulseVersionByPubkey}
+                sendDisabled={sendDisabled}
+                shakeVersionByPubkey={addressPulse.shakeVersionByPubkey}
+              />
+            )}
           </form>
+          {footerContent ? (
+            <div className="colony-message-composer-footer-content">
+              {footerContent}
+            </div>
+          ) : null}
         </div>
       </footer>
       <NonMemberMentionDialog

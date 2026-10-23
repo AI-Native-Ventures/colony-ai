@@ -1,22 +1,18 @@
 import * as React from "react";
-import { Bot, Pin, Users } from "lucide-react";
 import { OtherSetupAgentMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
+import { useJobTitleLookup } from "@/features/company-team/useJobTitleLookup";
 import type { TeamMentionMember } from "@/features/messages/lib/mentionCandidates";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
 
-import { Badge } from "@/shared/ui/badge";
 import { cn } from "@/shared/lib/cn";
-import {
-  POPOVER_CUSTOM_ENTER_MOTION_CLASS,
-  POPOVER_SHADOW_STYLE,
-  POPOVER_SURFACE_CLASS,
-} from "@/shared/ui/popoverSurface";
-import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { POPOVER_CUSTOM_ENTER_MOTION_CLASS } from "@/shared/ui/popoverSurface";
 import { Switch } from "@/shared/ui/switch";
 import { Toggle } from "@/shared/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { safeNpub } from "@/shared/lib/nostrUtils";
 import { truncateNpub } from "@/shared/lib/pubkey";
 import { getPlatformKeysById } from "@/shared/lib/keyboard-shortcuts";
+import { PinGlyph } from "./ComposerIcons";
 
 export type MentionSuggestion = {
   pubkey?: string;
@@ -31,6 +27,8 @@ export type MentionSuggestion = {
   notInChannel?: boolean;
   ownerLabel?: string | null;
   role?: string | null;
+  /** Job title from the team's position record; set by the menu itself. */
+  jobTitle?: string | null;
 };
 
 type MentionAutocompleteProps = {
@@ -89,6 +87,7 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
   const keepPinnedSwitchId = React.useId();
   const handledOptionsRequestRef = React.useRef(0);
   const alwaysAddressShortcut = getPlatformKeysById("always-address-agent");
+  const lookupJobTitle = useJobTitleLookup(suggestions.length > 0);
 
   React.useEffect(() => {
     const activeItem = listRef.current?.querySelector<HTMLElement>(
@@ -174,74 +173,65 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
     // biome-ignore lint/a11y/noStaticElementInteractions: the overlay's controls own keyboard interaction; Escape returns focus to the editor.
     <div
       className={cn(
-        "absolute left-0 right-0 z-50 px-3 sm:px-4",
-        position === "below" ? "top-full mt-1" : "bottom-full mb-1",
+        "c3c-mention-layer",
+        position === "below"
+          ? "c3c-mention-layer-below"
+          : "c3c-mention-layer-above",
       )}
       data-testid="mention-autocomplete-layer"
       onKeyDown={handleOverlayKeyDown}
       ref={rootRef}
     >
-      <div className="w-full max-w-2xl">
+      <div
+        className={cn(
+          "c3c-mention-card",
+          POPOVER_CUSTOM_ENTER_MOTION_CLASS,
+          position === "below" ? "origin-top" : "origin-bottom",
+        )}
+      >
         {onKeepMentionedAgentsPinnedChange ? (
-          <div className="mb-2 flex justify-end">
-            {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only guard, no behavior of its own — an unprevented mousedown on this surface (its padding, the switch's label) blurs the editor, and the focus gate above would unmount the overlay before the click lands. */}
-            <div
-              className={cn(
-                "w-80 max-w-full overflow-hidden rounded-xl text-popover-foreground ring-1 ring-border/50",
-                POPOVER_SURFACE_CLASS,
-              )}
-              data-testid="mention-options-settings"
-              onMouseDown={(event) => event.preventDefault()}
-              ref={optionsSurfaceRef}
-              style={POPOVER_SHADOW_STYLE}
+          // biome-ignore lint/a11y/noStaticElementInteractions: pointer-only guard, no behavior of its own — an unprevented mousedown on this surface (its padding, the switch's label) blurs the editor, and the focus gate above would unmount the overlay before the click lands.
+          <div
+            className="c3c-mention-head"
+            data-testid="mention-options-settings"
+            onMouseDown={(event) => event.preventDefault()}
+            ref={optionsSurfaceRef}
+          >
+            <span className="c3c-mention-head-copy">
+              <span className="c3c-mention-eyebrow">People and agents</span>
+              <span className="c3c-mention-hint">
+                Address selected agents in thread replies
+              </span>
+            </span>
+            {/* biome-ignore lint/a11y/useKeyWithClickEvents: pointer-only label affordance; the associated switch remains the keyboard path. */}
+            <label
+              className="c3c-mention-pin-label"
+              htmlFor={keepPinnedSwitchId}
+              onClick={(event) => {
+                event.preventDefault();
+                onKeepMentionedAgentsPinnedChange(!keepMentionedAgentsPinned);
+              }}
             >
-              <div className="flex min-h-14 items-center justify-between gap-4 px-3.5 py-2.5">
-                {/* biome-ignore lint/a11y/useKeyWithClickEvents: pointer-only label affordance; the associated switch remains the keyboard path. */}
-                <label
-                  className="flex min-w-0 flex-col"
-                  htmlFor={keepPinnedSwitchId}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    onKeepMentionedAgentsPinnedChange(
-                      !keepMentionedAgentsPinned,
-                    );
-                  }}
-                >
-                  <span className="whitespace-nowrap text-sm font-medium">
-                    Automatically mention agents
-                  </span>
-                  <span className="text-2xs text-muted-foreground">
-                    Address selected agents in thread replies
-                  </span>
-                </label>
-                <Switch
-                  aria-label="Automatically mention agents"
-                  checked={keepMentionedAgentsPinned}
-                  className="shrink-0 shadow-none [&>span]:shadow-none"
-                  data-testid="mention-keep-agents-pinned-toggle"
-                  id={keepPinnedSwitchId}
-                  onCheckedChange={onKeepMentionedAgentsPinnedChange}
-                  onMouseDown={(event) => event.preventDefault()}
-                />
-              </div>
-            </div>
+              Automatically mention agents
+              <Switch
+                aria-label="Automatically mention agents"
+                checked={keepMentionedAgentsPinned}
+                className="c3c-mention-switch"
+                data-testid="mention-keep-agents-pinned-toggle"
+                id={keepPinnedSwitchId}
+                onCheckedChange={onKeepMentionedAgentsPinnedChange}
+                onMouseDown={(event) => event.preventDefault()}
+              />
+            </label>
           </div>
         ) : null}
         {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only guard keeps padding and scrollbar presses from blurring the owning editor. */}
         <div
-          className={cn(
-            "max-h-48 w-full overflow-y-auto rounded-xl p-1",
-            POPOVER_CUSTOM_ENTER_MOTION_CLASS,
-            position === "below"
-              ? "origin-top slide-in-from-top-1"
-              : "origin-bottom slide-in-from-bottom-1",
-            POPOVER_SURFACE_CLASS,
-          )}
+          className="c3c-mention-list"
           data-testid="mention-autocomplete"
           onMouseDown={(event) => event.preventDefault()}
           onScroll={handleScroll}
           ref={listRef}
-          style={POPOVER_SHADOW_STYLE}
         >
           {suggestions.map((suggestion, index) => {
             const suggestionKey =
@@ -263,13 +253,29 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
               hasNameCollision && suggestion.pubkey
                 ? safeNpub(suggestion.pubkey)
                 : null;
-            const hasMetadataBeforeNpub = Boolean(
-              suggestion.kind === "team" ||
-                suggestion.isAgent ||
-                suggestion.role ||
-                ownerLabel ||
-                suggestion.notInChannel,
-            );
+            const jobTitle =
+              suggestion.jobTitle ?? lookupJobTitle(suggestion.pubkey);
+            // People show their job title (or their admin role when they have
+            // none); agents show title, owner and channel membership.
+            const personSubtitle =
+              !suggestion.isAgent && suggestion.kind !== "team"
+                ? (jobTitle ?? suggestion.role ?? null)
+                : null;
+            const agentSubtitleParts: string[] = [];
+            if (suggestion.isAgent) {
+              if (jobTitle) agentSubtitleParts.push(jobTitle);
+              if (ownerLabel)
+                agentSubtitleParts.push(`managed by ${ownerLabel}`);
+              if (suggestion.notInChannel) {
+                agentSubtitleParts.push("not in channel");
+              }
+            } else if (suggestion.notInChannel && suggestion.kind !== "team") {
+              agentSubtitleParts.push("not in channel");
+            }
+            const subtitle =
+              suggestion.kind === "team"
+                ? `team · ${suggestion.teamMembers?.length ?? 0} agents`
+                : (personSubtitle ?? agentSubtitleParts.join(" · "));
             const canAlwaysAddress = Boolean(
               onToggleAlwaysAddressAgent &&
                 suggestion.isAgent &&
@@ -282,22 +288,15 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
 
             return (
               <div
-                className={cn(
-                  "relative flex w-full items-stretch rounded-lg text-left text-sm",
-                  index === selectedIndex
-                    ? "bg-accent text-accent-foreground"
-                    : "text-popover-foreground hover:bg-accent/50",
-                )}
+                className="c3c-mention-row"
+                data-selected={index === selectedIndex ? "true" : undefined}
                 data-testid={`mention-suggestion-${suggestionKey}`}
                 data-mention-suggestion-index={index}
                 key={suggestionKey}
               >
                 <button
                   aria-label={`Mention ${suggestion.displayName}`}
-                  className={cn(
-                    "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-1.5 text-left",
-                    canAlwaysAddress && "pr-11",
-                  )}
+                  className="c3c-mention-main"
                   onMouseDown={(event) => {
                     event.preventDefault();
                     onSelect(suggestion);
@@ -306,84 +305,68 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
                   type="button"
                 >
                   {suggestion.kind === "team" ? (
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <Users aria-hidden="true" className="h-4 w-4" />
+                    <span className="c3c-mention-team" aria-hidden="true">
+                      {(suggestion.teamMembers ?? [])
+                        .slice(0, 3)
+                        .map((member) => (
+                          <ProfileAvatar
+                            avatarUrl={null}
+                            className="c3c-mention-team-cell"
+                            key={
+                              member.pubkey ??
+                              member.personaId ??
+                              member.displayName
+                            }
+                            label={member.displayName}
+                            shape="squircle"
+                          />
+                        ))}
                     </span>
                   ) : (
-                    <UserAvatar
+                    <ProfileAvatar
                       avatarUrl={suggestion.avatarUrl ?? null}
-                      displayName={suggestion.displayName}
+                      className={
+                        suggestion.isAgent || suggestion.kind === "persona"
+                          ? "c3c-mention-avatar"
+                          : "c3c-mention-avatar c3c-mention-avatar-person"
+                      }
+                      label={suggestion.displayName}
                       shape={
                         suggestion.isAgent || suggestion.kind === "persona"
                           ? "squircle"
                           : "circle"
                       }
-                      size="xs"
                       testId="mention-suggestion-avatar"
                     />
                   )}
-                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="c3c-mention-text">
                     <span
-                      className="min-w-0 break-words font-medium leading-snug"
+                      className="c3c-mention-name"
                       title={suggestion.displayName}
                     >
                       {suggestion.displayName}
+                      {suggestion.isAgent ? (
+                        <span
+                          className="c3c-mention-pill"
+                          data-testid="mention-agent-icon"
+                        >
+                          agent
+                        </span>
+                      ) : null}
+                      {showAgentProvenanceMarker ? (
+                        <OtherSetupAgentMarker testId="mention-agent-provenance" />
+                      ) : null}
                     </span>
-                    {hasMetadataBeforeNpub || collisionNpub ? (
-                      <span
-                        className={cn(
-                          "flex min-h-3.5 min-w-0 items-center gap-1.5 text-2xs leading-none",
-                          index === selectedIndex
-                            ? "text-accent-foreground/60"
-                            : "text-muted-foreground",
-                        )}
-                      >
-                        {suggestion.kind === "team" ? (
-                          <span className="inline-flex shrink-0 items-center gap-1">
-                            <Users aria-hidden="true" className="h-3.5 w-3.5" />
-                            team · {suggestion.teamMembers?.length ?? 0} agents
-                          </span>
-                        ) : suggestion.isAgent ? (
-                          <span className="inline-flex shrink-0 items-center gap-1">
-                            <Bot
-                              aria-hidden="true"
-                              className="h-3.5 w-3.5"
-                              data-testid="mention-agent-icon"
-                            />
-                            agent
-                            {showAgentProvenanceMarker ? (
-                              <OtherSetupAgentMarker testId="mention-agent-provenance" />
-                            ) : null}
-                          </span>
-                        ) : suggestion.role ? (
-                          <Badge
-                            className="max-w-24 shrink-0 truncate"
-                            variant="secondary"
-                          >
-                            {suggestion.role}
-                          </Badge>
-                        ) : null}
-                        {ownerLabel || suggestion.notInChannel ? (
-                          <span
-                            className="min-w-0 truncate"
-                            title={
-                              ownerLabel && suggestion.notInChannel
-                                ? `managed by ${ownerLabel} · not in channel`
-                                : ownerLabel
-                                  ? `managed by ${ownerLabel}`
-                                  : "not in channel"
-                            }
-                          >
-                            {ownerLabel && suggestion.notInChannel
-                              ? `managed by ${ownerLabel} · not in channel`
-                              : ownerLabel
-                                ? `managed by ${ownerLabel}`
-                                : "not in channel"}
+                    {subtitle || collisionNpub ? (
+                      <span className="c3c-mention-sub">
+                        {subtitle ? (
+                          <span className="min-w-0 truncate" title={subtitle}>
+                            {subtitle}
                           </span>
                         ) : null}
                         {collisionNpub ? (
                           <span
-                            className="-translate-y-0.5 shrink-0 font-mono leading-none"
+                            className="shrink-0 font-mono"
                             data-testid="mention-collision-npub"
                             title={collisionNpub}
                           >
@@ -397,10 +380,10 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
                 {canAlwaysAddress ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span className="absolute right-3 top-1/2 inline-flex -translate-y-1/2">
+                      <span className="c3c-mention-pin">
                         <Toggle
                           aria-label={`${isAlwaysAddressed ? "Don't automatically mention" : "Automatically mention"} ${suggestion.displayName}${isAlwaysAddressed ? " in this thread" : ""}`}
-                          className="h-6 w-6 p-0 data-[state=on]:bg-primary/15 data-[state=on]:text-primary"
+                          className="c3c-mention-pin-toggle"
                           data-always-address-pubkey={suggestion.pubkey?.toLowerCase()}
                           data-testid={`mention-always-address-${suggestion.pubkey}`}
                           onPressedChange={() =>
@@ -415,12 +398,16 @@ export const MentionAutocomplete = React.memo(function MentionAutocomplete({
                           size="xs"
                           type="button"
                         >
-                          <Pin
-                            aria-hidden="true"
-                            className="h-3.5 w-3.5"
+                          <span
+                            className="inline-flex"
                             data-testid="mention-auto-pin-icon"
-                            fill={isAlwaysAddressed ? "currentColor" : "none"}
-                          />
+                          >
+                            <PinGlyph
+                              className={
+                                isAlwaysAddressed ? "fill-current" : undefined
+                              }
+                            />
+                          </span>
                         </Toggle>
                       </span>
                     </TooltipTrigger>

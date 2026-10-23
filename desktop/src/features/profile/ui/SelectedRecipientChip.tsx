@@ -34,6 +34,7 @@ export function SelectedRecipientChip({
   poofOnRemove = true,
   testIds,
   user,
+  variant = "default",
 }: {
   disabled: boolean;
   inspectable?: boolean;
@@ -44,7 +45,83 @@ export function SelectedRecipientChip({
   poofOnRemove?: boolean;
   testIds?: SelectedRecipientChipTestIds;
   user: UserSearchResult;
+  /** `field` is the 38px "To:" chip of the New message board. */
+  variant?: "default" | "field";
 }) {
+  if (variant === "field") {
+    return (
+      <div className="c3nm-chip">
+        <ProfileAvatar
+          avatarUrl={user.avatarUrl}
+          className="c3nm-chip-avatar"
+          label={label}
+          shape={user.isAgent ? "squircle" : "circle"}
+        />
+        {inspectable ? (
+          <Popover onOpenChange={onInspectionOpenChange} open={inspectionOpen}>
+            <PopoverAnchor asChild>
+              <button
+                aria-expanded={inspectionOpen}
+                aria-haspopup="dialog"
+                aria-label={`Verify ${label} public key`}
+                className="c3nm-chip-name"
+                data-testid={testIds?.name}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onInspectionOpenChange?.(!inspectionOpen);
+                }}
+                type="button"
+              >
+                {label}
+              </button>
+            </PopoverAnchor>
+            <PopoverContent
+              align="start"
+              className="w-96 max-w-[90vw] space-y-2"
+              data-recipient-key-popover=""
+              data-testid={testIds?.keyPopover}
+              onOpenAutoFocus={(event) => event.preventDefault()}
+            >
+              <p className="text-sm font-medium">Verify {label}</p>
+              <PubKey
+                pubkey={user.pubkey}
+                testId={testIds?.pubkey}
+                variant="full"
+              />
+            </PopoverContent>
+          </Popover>
+        ) : (
+          <span className="c3nm-chip-name">{label}</span>
+        )}
+        <button
+          aria-label={`Remove ${label}`}
+          className={cn(
+            "c3nm-chip-remove",
+            poofOnRemove && POOF_TRIGGER_CLASS,
+            poofOnRemove && POOF_ORIGIN_CLASS,
+            poofOnRemove && POOF_POINTER_ORIGIN_CLASS,
+          )}
+          data-testid={testIds?.chip}
+          disabled={disabled}
+          onClick={(event) => {
+            event.stopPropagation();
+            onRemove();
+          }}
+          onPointerDown={(event) => {
+            if (event.button !== 0) {
+              return;
+            }
+            event.stopPropagation();
+            onRemove();
+          }}
+          type="button"
+        >
+          <X aria-hidden="true" className="size-3" strokeWidth={2.8} />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="inline-flex h-7 max-w-56 items-center gap-1.5 rounded-full bg-muted px-1 pr-2.5 text-sm transition-colors hover:bg-muted/80">
       <button

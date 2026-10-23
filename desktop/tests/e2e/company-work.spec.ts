@@ -275,7 +275,7 @@ test("company work keeps its chat source, review history, and goal link", async 
   });
   await expect(joinButton).toBeVisible({ timeout: 30_000 });
   await joinButton.click();
-  await expect(page.getByTestId("reference-goal-button")).toBeVisible();
+  await expect(page.getByTestId("message-composer")).toBeVisible();
   await waitForMockLiveSubscription(page, "general");
 
   const sourceEventId = await page.evaluate((goalId) => {
@@ -438,7 +438,7 @@ test("company work keeps its chat source, review history, and goal link", async 
   await page.keyboard.press("Enter");
   await expect(detail.getByText("Verification passed")).toBeVisible();
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
-  await expect(page.getByTestId("reference-goal-button")).toBeVisible();
+  await expect(page.getByTestId("message-composer")).toBeVisible();
   await waitForMockLiveSubscription(page, "general");
   const destinationRootId = await page.evaluate((pubkey) => {
     const event = window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
@@ -719,7 +719,7 @@ test("company work filters intersect real owners, statuses, and goal descendants
   );
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
   await page.getByRole("button", { name: "Join to participate" }).click();
-  await expect(page.getByTestId("reference-goal-button")).toBeVisible();
+  await expect(page.getByTestId("message-composer")).toBeVisible();
   await page.goto("/#/company-work");
 
   const list = page.getByTestId("company-work-list");
@@ -849,7 +849,7 @@ test("company work tracking reads current owner records and keeps unavailable au
   });
   await expect(joinButton).toBeVisible({ timeout: 30_000 });
   await joinButton.click();
-  await expect(page.getByTestId("reference-goal-button")).toBeVisible();
+  await expect(page.getByTestId("message-composer")).toBeVisible();
   await page.goto(`/#/work/tracking/person/${TEST_IDENTITIES.alice.pubkey}`);
   const commitments = page.getByTestId("company-work-person-commitments");
   await expect(commitments).toContainText("Prepare the client handover");
@@ -956,7 +956,7 @@ test("due date routes stay unavailable until the workspace timezone is configure
   );
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
   await page.getByRole("button", { name: "Join to participate" }).click();
-  await expect(page.getByTestId("reference-goal-button")).toBeVisible();
+  await expect(page.getByTestId("message-composer")).toBeVisible();
 
   await page.goto(`/#/work/detail/${workItemId}`);
   const detail = page.getByTestId("company-work-detail");
@@ -992,7 +992,7 @@ test("company work move keeps its destination on failure and preserves standalon
   );
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
   await page.getByRole("button", { name: "Join to participate" }).click();
-  await expect(page.getByTestId("reference-goal-button")).toBeVisible();
+  await expect(page.getByTestId("message-composer")).toBeVisible();
   await waitForMockLiveSubscription(page, "general");
   const destinationRootId = await page.evaluate((pubkey) => {
     const event = window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
@@ -1083,7 +1083,7 @@ test("company work keeps entered fields after a rejected create", async ({
   await installCompanyWorkMock(page, [failureMessage]);
   await page.goto(`/#/channels/${GENERAL_CHANNEL_ID}`);
   await page.getByRole("button", { name: "Join to participate" }).click();
-  await expect(page.getByTestId("reference-goal-button")).toBeVisible();
+  await expect(page.getByTestId("message-composer")).toBeVisible();
   await page.goto("/#/work/new");
 
   const form = page.getByTestId("company-work-form");

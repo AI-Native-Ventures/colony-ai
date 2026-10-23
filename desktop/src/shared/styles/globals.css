@@ -34,6 +34,10 @@
 @import "./globals/colony3-field.css";
 @import "./globals/colony3-sidebar.css";
 @import "./globals/colony3-shell.css";
+@import "./globals/colony3-composer.css";
+@import "./globals/colony3-new-message.css";
+@import "./globals/colony3-pins.css";
+@import "./globals/colony3-search.css";
 
 @config "../../../tailwind.config.js";
 

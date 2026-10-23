@@ -1,15 +1,20 @@
 import * as React from "react";
 import { useReducedMotion } from "motion/react";
-import { X } from "lucide-react";
 
 import {
   formatVoiceNoteDuration,
   voiceNoteBarHeight,
 } from "@/features/messages/lib/audioAttachment";
-import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+import { TrashGlyph } from "./ComposerIcons";
 
-const BAR_PITCH_PX = 5;
+/** 3px bars with a 3px gap, as the Composer states board draws the waveform. */
+const BAR_PITCH_PX = 6;
+
+/** The board's bars run 6 to 28px; the shared playback scale is 3 to 20px. */
+function recorderBarHeight(level: number): number {
+  return 6 + Math.round((voiceNoteBarHeight(level) - 3) * (22 / 17));
+}
 
 type WaveformSample = {
   id: string;
@@ -97,10 +102,7 @@ export function VoiceNoteRecorder({
   }, [barCount, levels.length, prefersReducedMotion]);
 
   return (
-    <fieldset
-      className="flex min-w-0 flex-1 items-center gap-1"
-      data-testid="voice-note-recorder"
-    >
+    <fieldset className="c3c-voice" data-testid="voice-note-recorder">
       <legend className="sr-only">
         {requesting
           ? "Waiting for microphone access"
@@ -110,58 +112,52 @@ export function VoiceNoteRecorder({
       </legend>
       <Tooltip disableHoverableContent>
         <TooltipTrigger asChild>
-          <Button
+          <button
             aria-label="Discard voice note"
-            className="shrink-0"
+            className="c3c-voice-discard"
             onClick={onCancel}
-            size="icon"
             type="button"
-            variant="ghost"
           >
-            <X />
-          </Button>
+            <TrashGlyph />
+          </button>
         </TooltipTrigger>
         <TooltipContent>Discard voice note</TooltipContent>
       </Tooltip>
-      <div className="mx-1 h-5 w-px shrink-0 bg-border/60" />
+      <span aria-hidden="true" className="c3c-voice-dot" />
       {requesting || processing ? (
-        <span className="shrink-0 whitespace-nowrap text-xs font-medium text-muted-foreground">
-          {requesting ? "Waiting for microphone…" : "Preparing voice note…"}
+        <span className="c3c-voice-time" data-quiet="true">
+          {requesting ? "Waiting for microphone..." : "Preparing voice note..."}
         </span>
       ) : (
-        <span className="shrink-0 whitespace-nowrap text-xs font-medium tabular-nums text-foreground">
+        <span className="c3c-voice-time">
           {formatVoiceNoteDuration(
             Math.min(elapsedSeconds, maxDurationSeconds),
           )}
-          <span className="text-muted-foreground">
-            {` / ${formatVoiceNoteDuration(maxDurationSeconds)}`}
-          </span>
+          {` / ${formatVoiceNoteDuration(maxDurationSeconds)}`}
         </span>
       )}
       <div
         aria-hidden="true"
-        className="h-6 min-w-0 flex-1 overflow-hidden"
+        className="c3c-voice-wave"
         data-testid="voice-note-live-waveform"
         ref={waveformRef}
-        style={{
-          maskImage:
-            "linear-gradient(to right, transparent, black 12px, black calc(100% - 12px), transparent)",
-          WebkitMaskImage:
-            "linear-gradient(to right, transparent, black 12px, black calc(100% - 12px), transparent)",
-        }}
       >
         <div
-          className="flex h-full items-center gap-0.5 will-change-transform"
+          className="c3c-voice-strip will-change-transform"
           data-testid="voice-note-waveform-strip"
           ref={trackRef}
         >
           {visibleSamples.map((sample) => (
             <span
-              className="w-[3px] shrink-0 rounded-full bg-primary/75"
+              className="c3c-voice-bar"
               data-recorded-sample={sample.recorded ? "true" : undefined}
               data-waveform-sample={sample.id}
               key={sample.id}
-              style={{ height: `${voiceNoteBarHeight(sample.level)}px` }}
+              style={
+                sample.recorded
+                  ? { height: `${recorderBarHeight(sample.level)}px` }
+                  : undefined
+              }
             />
           ))}
         </div>

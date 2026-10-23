@@ -1,13 +1,13 @@
-import { Clock } from "lucide-react";
-
+import { TimeoutGlyph } from "@/features/messages/ui/ComposerIcons";
 import { formatTimeoutRemaining } from "@/features/moderation/lib/timeout";
 
 /**
- * A banner docked to the top edge of the composer while the member is timed
- * out by community moderators. Shows a live countdown when the expiry is known;
- * otherwise states the block without a timer (the relay gave no timestamp).
+ * The amber header at the top of the composer card while the member is timed
+ * out by community moderators. Shows a live countdown when the expiry is
+ * known; otherwise states the block without a timer (the relay gave no
+ * timestamp).
  *
- * Purely presentational — the timeout state and its per-second tick are owned
+ * Purely presentational: the timeout state and its per-second tick are owned
  * by {@link useTimeoutState}; this only formats what it is handed.
  */
 export function ComposerTimeoutBanner({
@@ -20,13 +20,15 @@ export function ComposerTimeoutBanner({
 
   return (
     <div
-      className="relative z-0 mx-5 -mb-3 flex items-center gap-2 rounded-t-2xl border border-b-0 border-amber-500/30 bg-amber-500/15 px-4 pb-5 pt-2.5 text-sm leading-5 text-foreground backdrop-blur-sm"
+      className="c3c-banner"
+      data-kind="timeout"
       data-testid="composer-timeout-banner"
+      role="status"
     >
-      <Clock aria-hidden className="h-4 w-4 shrink-0 text-amber-600" />
-      <span className="min-w-0">
+      <TimeoutGlyph className="c3c-banner-icon" />
+      <span className="c3c-banner-text">
         {remaining
-          ? `You're timed out by community moderators — ${remaining} left.`
+          ? `You're timed out by community moderators - ${remaining} left.`
           : "You're timed out by community moderators."}
       </span>
     </div>
