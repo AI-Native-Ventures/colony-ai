@@ -142,10 +142,10 @@ test("OpenRouter and credit scenes select the Colony Agent path", () => {
         data: { ...data, visualOnly: true },
       }),
     );
-    assert.equal((html.match(/role="radio"/g) ?? []).length, 2, scene);
+    assert.equal((html.match(/type="radio"/g) ?? []).length, 3, scene);
     assert.match(
       html,
-      /aria-checked="true"[^>]*role="radio"[^>]*>(?:(?!<\/button>)[\s\S])*<strong>Colony Agent</,
+      /name="c3fr-ai" checked=""\/><span class="c3fr-choice-copy"[^>]*><span class="c3fr-choice-title"[^>]*>Colony Agent</,
       scene,
     );
   }
@@ -165,8 +165,13 @@ test("community entry and recovery retain the Connect step", () => {
     const html = renderToStaticMarkup(
       React.createElement(OnboardingScenePresentation, { scene, data }),
     );
-    assert.match(html, /aria-current="step"[^>]*>[\s\S]*?Connect<\/li>/);
-    assert.doesNotMatch(html, /aria-current="step"[^>]*>[\s\S]*?Account<\/li>/);
-    assert.match(html, /wide power-content/);
+    // The three bars are done; the only current step is inside the card.
+    assert.equal(
+      (html.match(/data-state="done"[^>]*><span[^>]*c3fr-progress-bar/g) ?? [])
+        .length,
+      3,
+      scene,
+    );
+    assert.match(html, /Connect<\/span><\/li>/, scene);
   }
 });

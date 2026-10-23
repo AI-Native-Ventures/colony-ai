@@ -222,8 +222,14 @@ export function ConnectNotice({
 }
 
 /** The Connect screen as the board draws it: sample state for visual scenes. */
-export function ConnectChoice(_props: { data: OnboardingSceneData }) {
-  const [choice, setChoice] = React.useState<ConnectChoiceId>("own");
+export function ConnectChoice({
+  initial = "own",
+}: {
+  data: OnboardingSceneData;
+  /** The card that starts selected (the OpenRouter and credits scenes start on Colony Agent). */
+  initial?: ConnectChoiceId;
+}) {
+  const [choice, setChoice] = React.useState<ConnectChoiceId>(initial);
   return (
     <form
       className="c3fr-form"

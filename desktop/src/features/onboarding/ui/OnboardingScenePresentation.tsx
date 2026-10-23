@@ -45,7 +45,8 @@ export type {
 } from "./OnboardingSceneTypes";
 export { SLOW_REPLY_COPY };
 
-const CONNECT_SCENE = /^(connect|funding|subscription|credits|openrouter)/;
+// "connected" and "connection-error" are the results of the test, not the choice.
+const CONNECT_SCENE = /^(connect$|funding|subscription|credits|openrouter)/;
 
 function isConnectScene(scene: OnboardingSceneId) {
   return CONNECT_SCENE.test(scene);
@@ -226,7 +227,14 @@ function SceneBody(props: PresentationProps) {
       />
     );
   if (isConnectScene(scene))
-    return connectionContentOverride ?? <ConnectChoice data={data} />;
+    return (
+      connectionContentOverride ?? (
+        <ConnectChoice
+          data={data}
+          initial={scene === "connect" ? "own" : "colony"}
+        />
+      )
+    );
   if (scene === "community-entry" || scene === "community-entry-error")
     return (
       <ReadyScene
