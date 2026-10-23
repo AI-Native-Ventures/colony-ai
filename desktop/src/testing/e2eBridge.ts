@@ -46,6 +46,7 @@ import {
   KIND_SERVICE_HEAD,
 } from "@/features/discovery/businessRecordContract";
 import {
+  COLONY3_BUSINESS_PEOPLE,
   REFERENCE_AGENTS,
   REFERENCE_CHANNEL_IDS,
   REFERENCE_HOME_VISUAL_FIXTURE,
@@ -438,6 +439,7 @@ type E2eConfig = {
     /** Colony 3.0 foundation: seed the Sidebar board's channels, sections,
      *  unread counts and Activity badge on top of the reference workspace. */
     colony3Sidebar?: boolean;
+    colony3Business?: boolean;
     /** Match only the row data shown in the approved C1 shell snapshot. */
     referenceSidebarShell?: boolean;
     /** Override the current member role in reference client channels. */
@@ -5419,6 +5421,23 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     });
   }
   const colony3 = config.mock?.colony3Sidebar === true;
+  if (config.mock?.colony3Business === true) {
+    for (const person of Object.values(COLONY3_BUSINESS_PEOPLE)) {
+      mockDisplayNames.set(person.pubkey, person.name);
+      if (person.isAgent) mockAgentPubkeys.add(person.pubkey);
+      mockProfiles.set(person.pubkey, {
+        pubkey: person.pubkey,
+        display_name: person.name,
+        name: person.name,
+        avatar_url: null,
+        about: null,
+        nip05_handle: null,
+        owner_pubkey: null,
+        is_agent: person.isAgent,
+        has_profile_event: true,
+      });
+    }
+  }
   const channelSeeds = colony3
     ? colony3ChannelSeeds()
     : sidebarShell
@@ -5513,6 +5532,7 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     workStatus: config.mock?.referenceWorkspaceWorkStatus,
     workShare: config.mock?.referenceWorkspaceWorkShare,
     moneyRecordsAvailable: config.mock?.referenceWorkspaceMoneyRecords,
+    colony3Business: config.mock?.colony3Business === true,
   })) {
     const channelId = event.tags.find((tag) => tag[0] === "h")?.[1];
     if (!channelId) continue;

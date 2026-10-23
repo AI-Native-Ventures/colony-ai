@@ -53,6 +53,26 @@ export const REFERENCE_AGENTS = {
   theo: { name: "Theo", pubkey: "c7c7".repeat(16) },
 } as const;
 
+/**
+ * Colony 3.0 business fixture people: Noor (the Bookkeeper agent who issues
+ * invoices and records payments) and Nandi (the client reviewer). Registered
+ * by the mock bridge when `colony3Business` is on.
+ */
+export const COLONY3_BUSINESS_PEOPLE = {
+  noor: { name: "Noor", pubkey: "e9e9".repeat(16), isAgent: true },
+  nandi: { name: "Nandi", pubkey: "f2f2".repeat(16), isAgent: false },
+} as const;
+
+const COLONY3_TODAY_1405 = Math.floor(
+  new Date("2026-10-23T14:05:00+02:00").getTime() / 1_000,
+);
+const COLONY3_OCT_20 = Math.floor(
+  new Date("2026-10-20T11:00:00+02:00").getTime() / 1_000,
+);
+const COLONY3_OCT_21 = Math.floor(
+  new Date("2026-10-21T10:00:00+02:00").getTime() / 1_000,
+);
+
 export const REFERENCE_CHANNEL_IDS = {
   sales: "1e1a7000-0000-4000-8000-000000000001",
   marketing: "1e1a7000-0000-4000-8000-000000000002",
@@ -113,8 +133,11 @@ export function referenceBusinessRecordEvents(
     workStatus?: string;
     workShare?: boolean;
     moneyRecordsAvailable?: boolean;
+    /** The Colony 3.0 business boards: the design's deliverables, people, dates. */
+    colony3Business?: boolean;
   } = {},
 ): RelayEvent[] {
+  const colony3 = overrides.colony3Business === true;
   const entries = [
     {
       channelId: REFERENCE_CHANNEL_IDS.oliveHouse,
@@ -176,9 +199,50 @@ export function referenceBusinessRecordEvents(
       sig: REFERENCE_EVENT_SIGNATURE,
     });
 
-    const deliverableSeeds =
+    type DeliverableSeed = {
+      deliverableId: string;
+      title: string;
+      content: string;
+      version: number;
+      previousContent?: string;
+      previousDecision?: "changes_requested";
+      previousNote?: string;
+      approvalDecision?: "approved";
+      approvalBy?: string;
+      versionAt?: number;
+      previousAt?: number;
+      approvalAt?: number;
+    };
+    const colony3Seeds: DeliverableSeed[] = [
+      {
+        deliverableId: "c1c17000-0000-4000-8000-000000000001",
+        title: "October carousel concepts",
+        content:
+          "Three calm slides: the first with one product and one line, then the season at The Olive House.",
+        version: 2,
+        previousContent: "First draft by Mina",
+        previousDecision: "changes_requested",
+        previousNote: "Please keep the first slide simple.",
+        versionAt: COLONY3_TODAY_1405,
+        previousAt: COLONY3_OCT_20,
+        approvalAt: COLONY3_OCT_20 + 3_600,
+      },
+      {
+        deliverableId: "c1c17000-0000-4000-8000-000000000002",
+        title: "Spring captions",
+        content: "Captions for the spring posts, left for Nandi to approve.",
+        version: 1,
+        approvalDecision: "approved",
+        approvalBy: COLONY3_BUSINESS_PEOPLE.nandi.pubkey,
+        versionAt: COLONY3_OCT_20,
+        approvalAt: COLONY3_OCT_21,
+      },
+    ];
+    const deliverableSeeds: DeliverableSeed[] =
       entry.clientId === REFERENCE_CHANNEL_IDS.oliveHouse
-        ? [
+        ? colony3
+          ? colony3Seeds
+          : [
             {
               deliverableId: "c1c17000-0000-4000-8000-000000000001",
               title: "Make room for slow mornings",
@@ -236,7 +300,7 @@ export function referenceBusinessRecordEvents(
         events.push({
           id: previousVersionEventId,
           pubkey: REFERENCE_AGENTS.mina.pubkey,
-          created_at: REFERENCE_RECORD_TIME + 400,
+          created_at: seed.previousAt ?? REFERENCE_RECORD_TIME + 400,
           kind: KIND_DELIVERABLE_VERSION,
           tags: previousTemplate.tags,
           content: previousTemplate.content,
@@ -257,7 +321,7 @@ export function referenceBusinessRecordEvents(
         events.push({
           id: referenceEventId(index++),
           pubkey: selfPubkey,
-          created_at: REFERENCE_RECORD_TIME + 500,
+          created_at: seed.approvalAt ?? REFERENCE_RECORD_TIME + 500,
           kind: KIND_DELIVERABLE_APPROVAL,
           tags: previousApproval.tags,
           content: previousApproval.content,
@@ -280,7 +344,7 @@ export function referenceBusinessRecordEvents(
       events.push({
         id: versionEventId,
         pubkey: REFERENCE_AGENTS.mina.pubkey,
-        created_at: REFERENCE_RECORD_TIME + 600,
+        created_at: seed.versionAt ?? REFERENCE_RECORD_TIME + 600,
         kind: KIND_DELIVERABLE_VERSION,
         tags: template.tags,
         content: template.content,
@@ -301,8 +365,8 @@ export function referenceBusinessRecordEvents(
         });
         events.push({
           id: referenceEventId(index++),
-          pubkey: selfPubkey,
-          created_at: REFERENCE_RECORD_TIME + 1_200,
+          pubkey: seed.approvalBy ?? selfPubkey,
+          created_at: seed.approvalAt ?? REFERENCE_RECORD_TIME + 1_200,
           kind: KIND_DELIVERABLE_APPROVAL,
           tags: approval.tags,
           content: approval.content,
@@ -324,7 +388,10 @@ export function referenceBusinessRecordEvents(
     events.push({
       id: referenceEventId(index++),
       pubkey: selfPubkey,
-      created_at: REFERENCE_RECORD_TIME + 300,
+      created_at:
+        colony3 && entry.status === "review"
+          ? COLONY3_TODAY_1405
+          : REFERENCE_RECORD_TIME + 300,
       kind: KIND_WORK_ITEM_HEAD,
       tags: [
         ["h", entry.channelId],
@@ -337,7 +404,10 @@ export function referenceBusinessRecordEvents(
         title: entry.title,
         status: overrides.workStatus ?? entry.status,
         assignedPubkeys: [...entry.assignedPubkeys],
-        approverPubkeys: [selfPubkey.toLowerCase()],
+        approverPubkeys:
+          colony3 && entry.clientId === REFERENCE_CHANNEL_IDS.oliveHouse
+            ? [COLONY3_BUSINESS_PEOPLE.nandi.pubkey]
+            : [selfPubkey.toLowerCase()],
         deliverables,
         sourceEventId: workSourceId,
       }),
@@ -366,15 +436,20 @@ export function referenceBusinessRecordEvents(
     }
   }
   if (overrides.moneyRecordsAvailable !== false) {
-    events.push(...referenceMoneyRecordEvents(selfPubkey, index));
+    events.push(...referenceMoneyRecordEvents(selfPubkey, index, colony3));
   }
   return events;
 }
 
-function referenceMoneyRecordEvents(selfPubkey: string, firstIndex: number) {
+function referenceMoneyRecordEvents(
+  selfPubkey: string,
+  firstIndex: number,
+  colony3 = false,
+) {
+  const noor = COLONY3_BUSINESS_PEOPLE.noor.pubkey;
   const events: RelayEvent[] = [];
   let index = firstIndex;
-  const seeds = [
+  const baseSeeds = [
     {
       clientId: REFERENCE_CHANNEL_IDS.oliveHouse,
       invoiceId: REFERENCE_MONEY_INVOICE_IDS.oliveAugustPaid,
@@ -448,6 +523,45 @@ function referenceMoneyRecordEvents(selfPubkey: string, firstIndex: number) {
       paymentDate: null,
     },
   ];
+  type MoneySeed = Omit<(typeof baseSeeds)[number], "invoiceId"> & {
+    invoiceId: string;
+    issuer?: string;
+    recorder?: string;
+  };
+  const at = (iso: string) => new Date(iso).getTime() / 1_000;
+  // The design's September: Noor issues, 0029 is awaiting payment and the
+  // draft is 0030; payments land on 12 and 18 September.
+  const colony3Money: Record<string, Partial<MoneySeed>> = {
+    [REFERENCE_MONEY_INVOICE_IDS.oliveAugustPaid]: {
+      dueAt: at("2026-08-15T12:00:00+02:00"),
+    },
+    [REFERENCE_MONEY_INVOICE_IDS.cedarAugustPaid]: {
+      dueAt: at("2026-08-15T12:00:00+02:00"),
+    },
+    [REFERENCE_MONEY_INVOICE_IDS.olivePaid]: {
+      dueAt: at("2026-09-15T12:00:00+02:00"),
+      paymentDate: at("2026-09-12T12:00:00+02:00"),
+      issuer: noor,
+    },
+    [REFERENCE_MONEY_INVOICE_IDS.cedarPartial]: {
+      paymentDate: at("2026-09-18T12:00:00+02:00"),
+      issuer: noor,
+      recorder: noor,
+    },
+    [REFERENCE_MONEY_INVOICE_IDS.oliveIssued]: {
+      invoiceId: "3e3a7000-0000-4000-8000-000000000029",
+      issuedAt: at("2026-09-30T12:00:00+02:00"),
+      dueAt: at("2026-10-30T12:00:00+02:00"),
+      issuer: noor,
+    },
+    [REFERENCE_MONEY_INVOICE_IDS.northlineDraft]: {
+      invoiceId: "3e3a7000-0000-4000-8000-000000000030",
+    },
+  };
+  const seeds: MoneySeed[] = baseSeeds.map((seed) => ({
+    ...seed,
+    ...(colony3 ? colony3Money[seed.invoiceId] : {}),
+  }));
   for (const seed of seeds) {
     const dTag = `client:${seed.clientId}:invoice:${seed.invoiceId}`;
     const proposalVersionEventId = referenceEventId(index++);
@@ -541,7 +655,7 @@ function referenceMoneyRecordEvents(selfPubkey: string, firstIndex: number) {
     };
     events.push({
       id: issueVersionId,
-      pubkey: selfPubkey,
+      pubkey: seed.issuer ?? selfPubkey,
       created_at: seed.issuedAt ?? REFERENCE_RECORD_TIME,
       kind: KIND_INVOICE_VERSION,
       tags: [
@@ -553,7 +667,7 @@ function referenceMoneyRecordEvents(selfPubkey: string, firstIndex: number) {
     });
     events.push({
       id: issueHeadId,
-      pubkey: selfPubkey,
+      pubkey: seed.issuer ?? selfPubkey,
       created_at: seed.issuedAt ?? REFERENCE_RECORD_TIME,
       kind: KIND_INVOICE_HEAD,
       tags: [
@@ -574,7 +688,7 @@ function referenceMoneyRecordEvents(selfPubkey: string, firstIndex: number) {
       const paymentId = `4e4a7000-0000-4000-8000-${seed.invoiceId.slice(-12)}`;
       events.push({
         id: referenceEventId(index++),
-        pubkey: selfPubkey,
+        pubkey: seed.recorder ?? selfPubkey,
         created_at: seed.paymentDate,
         kind: KIND_PAYMENT,
         tags: [
