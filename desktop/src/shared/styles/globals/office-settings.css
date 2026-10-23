@@ -85,6 +85,29 @@
   display: none;
 }
 
+/* The Prominent selection preference keeps its accent fill. */
+:root[data-colony-office][data-buzz-sidebar][data-prominent-active-tab]
+  #root
+  .w20-nav-item.is-active {
+  background: var(--w20-appearance-accent, #2655a0);
+  box-shadow: none;
+  color: #fff;
+}
+
+:root.dark[data-colony-office][data-buzz-sidebar][data-prominent-active-tab]
+  #root
+  .w20-nav-item.is-active {
+  background: var(--w20-appearance-accent, #9dc1fb);
+  color: #211e26;
+}
+
+:root[data-colony-office][data-buzz-sidebar][data-prominent-active-tab]
+  #root
+  .w20-nav-item.is-active
+  > svg {
+  color: currentColor;
+}
+
 /* Settings page header and tabs. */
 :root[data-colony-office] #root .w20-inner-tab {
   color: hsl(var(--office-ink-3));

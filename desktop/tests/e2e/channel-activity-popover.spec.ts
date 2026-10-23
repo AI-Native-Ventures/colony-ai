@@ -3,6 +3,11 @@ import { expect, test, type Page } from "@playwright/test";
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
+// Office restyle sidebar weights: rows read at 700 and the selected row at
+// 750. Unread rows keep the row weight; the dot carries the unread signal.
+const ROW_WEIGHT = "700";
+const SELECTED_ROW_WEIGHT = "750";
+
 const SELF_PUBKEY = "deadbeef".repeat(8);
 const CHANNEL_GENERAL = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const AGENT_PUBKEY = TEST_IDENTITIES.charlie.pubkey;
@@ -248,7 +253,7 @@ async function seedChannelActivity(
   // dot and does not add a numeric badge.
   await expect(page.getByTestId("channel-general")).toHaveCSS(
     "font-weight",
-    "450",
+    ROW_WEIGHT,
   );
   await expect(page.getByTestId("channel-unread-general")).toHaveCount(0);
   await expect(page.getByTestId("channel-unread-dot-general")).toBeVisible();
@@ -606,7 +611,7 @@ test.describe("channel activity hover preview", () => {
 
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "450",
+      ROW_WEIGHT,
     );
     for (const [index, itemId] of inboxItemIds.entries()) {
       const inboxRow = page.getByTestId(`home-inbox-item-${itemId}`);
@@ -615,7 +620,7 @@ test.describe("channel activity hover preview", () => {
       if (index === 0) {
         await expect(page.getByTestId("channel-general")).toHaveCSS(
           "font-weight",
-          "450",
+          ROW_WEIGHT,
         );
       }
     }
@@ -628,7 +633,7 @@ test.describe("channel activity hover preview", () => {
 
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "450",
+      ROW_WEIGHT,
     );
     await expect(page.getByTestId("channel-unread-dot-general")).toBeVisible();
     await page.getByTestId("channel-general").click();
@@ -654,7 +659,7 @@ test.describe("channel activity hover preview", () => {
     await expect(page.getByTestId("channel-unread-dot-general")).toBeVisible();
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "650",
+      SELECTED_ROW_WEIGHT,
     );
 
     await page.mouse.move(900, 680);
@@ -692,7 +697,7 @@ test.describe("channel activity hover preview", () => {
     await expect(page.getByTestId("chat-title")).toHaveText("random");
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "450",
+      ROW_WEIGHT,
     );
   });
 
@@ -754,7 +759,7 @@ test.describe("channel activity hover preview", () => {
     await page.getByTestId("channel-random").click();
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "450",
+      ROW_WEIGHT,
     );
   });
 
@@ -788,7 +793,7 @@ test.describe("channel activity hover preview", () => {
     }
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "450",
+      ROW_WEIGHT,
     );
     await expect.poll(() => getForcedUnreadSources(page)).toEqual(["inbox"]);
 
@@ -800,7 +805,7 @@ test.describe("channel activity hover preview", () => {
       if (index === 0) {
         await expect(page.getByTestId("channel-general")).toHaveCSS(
           "font-weight",
-          "450",
+          ROW_WEIGHT,
         );
         await expect
           .poll(() => getForcedUnreadSources(page))

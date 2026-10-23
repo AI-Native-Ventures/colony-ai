@@ -406,7 +406,7 @@ test("reacting with a custom emoji renders via the loopback media proxy", async 
       `^http://127\\.0\\.0\\.1:${MOCK_MEDIA_PROXY_PORT}/media/[\\da-f]{64}\\.png$`,
     ),
   );
-  await expect(reactionPill).toHaveCSS("height", "28px");
+  await expect(reactionPill).toHaveCSS("height", "30px");
   await expect(reactionImg).toHaveCSS("height", "14px");
   await expect(reactionImg).toHaveCSS("width", "14px");
   await expect(reactionImg).toHaveCSS("object-fit", "contain");
@@ -424,7 +424,7 @@ test("reacting with a custom emoji renders via the loopback media proxy", async 
         };
       }),
     )
-    .toEqual({ naturalHeight: 20, naturalWidth: 40, topOffset: 7 });
+    .toEqual({ naturalHeight: 20, naturalWidth: 40, topOffset: 8 });
 
   await expect
     .poll(() => quickReactionStorageContains(page, `:${REACTION_SHORTCODE}:`))

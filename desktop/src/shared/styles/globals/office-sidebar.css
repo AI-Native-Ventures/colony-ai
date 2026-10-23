@@ -4,19 +4,18 @@
  * take the reference's type, spacing and shapes.
  */
 :root[data-colony-office] #root .app-sidebar-full-shell {
-  color: hsl(var(--office-ink-2));
+  color: hsl(var(--colony-sidebar-foreground));
 }
 
-:root[data-colony-office]
-  #root
-  .app-sidebar-full-shell
-  [data-testid="sidebar-pinned-header"] {
-  padding: 1rem 0.75rem 0.25rem;
-}
+/*
+ * The pinned header keeps the shell's box (window-button band on macOS, 10px
+ * above the scrolling rows), so the company block and search sit where they
+ * always did.
+ */
 
 /* Company block: arch mark, name and context line. */
 :root[data-colony-office] #root .app-sidebar-full-shell .colony-sidebar-brand {
-  min-height: 2.875rem;
+  min-height: 2.5rem;
   margin-bottom: 0.5rem;
 }
 
@@ -26,7 +25,7 @@
   [data-testid="sidebar-business-switcher"] {
   gap: 0.75rem;
   border-radius: var(--office-radius-row);
-  padding: 0.25rem 0.5rem;
+  padding: 0 0.5rem;
   color: hsl(var(--office-ink));
 }
 
@@ -42,12 +41,12 @@
   .app-sidebar-full-shell
   .colony-sidebar-brand-mark {
   display: grid;
-  width: 2.5rem;
-  height: 2.875rem;
+  width: 2.25rem;
+  height: 2.5rem;
   flex: none;
   place-items: center;
   border: 0;
-  border-radius: 1.25rem 1.25rem 0.5625rem 0.5625rem;
+  border-radius: 1.125rem 1.125rem 0.5rem 0.5rem;
   background: linear-gradient(
     160deg,
     hsl(var(--primary)),
@@ -57,7 +56,7 @@
     0 1px 0 rgb(255 255 255 / 30%) inset,
     0 8px 16px -8px color-mix(in srgb, hsl(var(--primary)) 70%, transparent);
   color: hsl(var(--primary-foreground));
-  font-size: calc(var(--office-rem) * 1.125);
+  font-size: var(--office-rem);
   font-weight: 800;
   line-height: 1;
   padding-top: 0.125rem;
@@ -96,8 +95,6 @@
   [data-testid="sidebar-pinned-header"]
   [data-testid="open-search"] {
   height: 2.125rem;
-  margin: 0;
-  width: 100%;
   border: 1px solid hsl(var(--office-line) / 0.8);
   border-radius: var(--office-radius-row);
   background: rgb(255 255 255 / 45%);
@@ -130,7 +127,6 @@
   .app-sidebar-full-shell
   [data-testid="sidebar-scroll-content"] {
   gap: 0.25rem;
-  padding-inline: 0.5rem;
 }
 
 :root[data-colony-office]
@@ -149,7 +145,7 @@
   gap: 0.625rem;
   border-radius: var(--office-radius-row);
   padding: 0.1875rem 0.625rem;
-  color: hsl(var(--office-ink-2));
+  color: hsl(var(--colony-sidebar-foreground));
   font-size: var(--office-text-row);
   font-weight: 750;
   line-height: 1.35;
@@ -184,7 +180,7 @@
     [data-testid^="custom-section-list"]
   )
   [data-sidebar="menu-button"] {
-  min-height: 1.75rem;
+  min-height: 1.6875rem;
   gap: 0.5625rem;
   padding: 0.1875rem 0.625rem;
   font-weight: 700;
@@ -219,7 +215,15 @@
   .app-sidebar-full-shell
   [data-sidebar="menu-button"]:not([data-active="true"]):hover {
   background: var(--office-row-hover);
+}
+
+/* Unread rows keep their weight and read as ink; the dot or count says unread. */
+:root[data-colony-office]
+  #root
+  .app-sidebar-full-shell
+  [data-sidebar="menu-button"].font-bold {
   color: hsl(var(--office-ink));
+  font-weight: 700;
 }
 
 :root[data-colony-office]
@@ -240,13 +244,29 @@
   color: hsl(var(--primary));
 }
 
-/* Unread rows keep their weight and read as ink; the dot or count says unread. */
-:root[data-colony-office]
+/* The Prominent selection preference keeps its accent fill on the field. */
+:root[data-colony-office][data-buzz-sidebar][data-prominent-active-tab]
   #root
   .app-sidebar-full-shell
-  [data-sidebar="menu-button"].font-bold {
-  color: hsl(var(--office-ink));
-  font-weight: 700;
+  [data-sidebar="menu-button"][data-active="true"] {
+  background: var(--colony-workspace-link-color);
+  box-shadow: none;
+  color: #fff;
+}
+
+:root.dark[data-colony-office][data-buzz-sidebar][data-prominent-active-tab]
+  #root
+  .app-sidebar-full-shell
+  [data-sidebar="menu-button"][data-active="true"] {
+  color: #19171d;
+}
+
+:root[data-colony-office][data-buzz-sidebar][data-prominent-active-tab]
+  #root
+  .app-sidebar-full-shell
+  [data-sidebar="menu-button"][data-active="true"]
+  > svg {
+  color: currentColor;
 }
 
 :root[data-colony-office]
@@ -300,8 +320,8 @@
   #root
   .app-sidebar-full-shell
   .sidebar-navigation-group-toggle {
-  min-height: 1.875rem;
-  padding: 0.5rem 0.625rem 0.125rem;
+  min-height: 1.75rem;
+  padding: 0.375rem 0.625rem 0.125rem;
   color: hsl(var(--office-ink-3));
   font-size: var(--office-text-caps);
   font-weight: 800;

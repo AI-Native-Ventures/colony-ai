@@ -46,10 +46,12 @@ test("message size follows the shared token ramp in previews and conversations",
       Number.parseFloat(getComputedStyle(document.documentElement).fontSize) /
       16,
   );
+  // Office conversation contract: 16 / 17 / 18px, one to three steps above
+  // text-sm (docs/superpowers/specs/2026-10-23-app-restyle-design.md).
   for (const [size, pixels] of [
-    ["smaller", baseline - step],
-    ["default", baseline],
-    ["larger", baseline + step],
+    ["smaller", baseline + step],
+    ["default", baseline + 2 * step],
+    ["larger", baseline + 3 * step],
   ] as const) {
     await page.getByTestId("appearance-message-size").selectOption(size);
     await expect(
@@ -69,7 +71,7 @@ test("message size follows the shared token ramp in previews and conversations",
   await page.reload();
   await expect(
     page.locator('[data-testid="message-body"] .text-message').first(),
-  ).toHaveCSS("font-size", `${baseline + step}px`);
+  ).toHaveCSS("font-size", `${baseline + 3 * step}px`);
 });
 
 test("appearance exposes the approved controls and named themes preserve conversation preferences", async ({
@@ -146,7 +148,7 @@ test("appearance exposes the approved controls and named themes preserve convers
         ),
       ),
     )
-    .toBe("calc(var(--text-sm) + 1rem / 16)");
+    .toBe("calc(var(--text-sm) + 3rem / 16)");
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("buzz-theme")))
     .toBe("github-light");

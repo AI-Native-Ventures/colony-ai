@@ -691,7 +691,7 @@ test("conversation size and accessibility text size keep their own scopes", asyn
         ),
       ),
     )
-    .toBe("calc(var(--text-sm) + 1rem / 16)");
+    .toBe("calc(var(--text-sm) + 3rem / 16)");
 
   await page.getByTestId("settings-inner-accessibility").click();
   const accessibility = page.getByTestId("settings-accessibility");

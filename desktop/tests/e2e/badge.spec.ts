@@ -7,6 +7,12 @@ import { expectUnreadBadgeCount } from "../helpers/unreadBadge";
 
 const DEFAULT_MOCK_PUBKEY = "deadbeef".repeat(8);
 const SHOTS = "test-results/channel-row-decoration-pr";
+// Office restyle sidebar weights: conversation rows read at 700, and the
+// selected row and primary navigation at 750. Unread rows keep the row
+// weight; the dot or count carries the unread signal.
+const ROW_WEIGHT = "700";
+const SELECTED_ROW_WEIGHT = "750";
+const NAV_ICON_OPACITY = "1";
 
 async function waitForMockLiveSubscription(
   page: import("@playwright/test").Page,
@@ -116,7 +122,7 @@ test("Activity keeps its selected highlight and agent route remains reachable", 
 
   const activity = page.getByTestId("sidebar-activity-button");
   await expect(activity).toHaveAttribute("data-active", "true");
-  await expect(activity).toHaveCSS("font-weight", "650");
+  await expect(activity).toHaveCSS("font-weight", SELECTED_ROW_WEIGHT);
   await expect(
     page
       .getByTestId("app-sidebar")
@@ -147,7 +153,7 @@ test("primary navigation rows share the same inactive emphasis", async ({
       "opacity",
       "1",
     );
-    await expect(row.locator("svg")).toHaveCSS("opacity", "0.8");
+    await expect(row.locator("svg")).toHaveCSS("opacity", NAV_ICON_OPACITY);
   }
 
   const work = page.getByTestId("open-workflows-view");
@@ -157,7 +163,7 @@ test("primary navigation rows share the same inactive emphasis", async ({
     "opacity",
     "1",
   );
-  await expect(work.locator("svg")).toHaveCSS("opacity", "0.8");
+  await expect(work.locator("svg")).toHaveCSS("opacity", NAV_ICON_OPACITY);
 });
 
 test("hovering a channel keeps its text color", async ({ page }) => {
@@ -201,7 +207,7 @@ test("direct-message rows show unread counts without changing text weight", asyn
     page.getByTestId("channel-unread-alice-tyler"),
     1,
   );
-  await expect(directMessage).toHaveCSS("font-weight", "450");
+  await expect(directMessage).toHaveCSS("font-weight", ROW_WEIGHT);
 });
 
 test("light mode keeps conversation labels fully visible with unread counts", async ({
@@ -222,7 +228,7 @@ test("light mode keeps conversation labels fully visible with unread counts", as
     "opacity",
     "1",
   );
-  await expect(inbox.locator("svg")).toHaveCSS("opacity", "0.8");
+  await expect(inbox.locator("svg")).toHaveCSS("opacity", NAV_ICON_OPACITY);
   await expect(directMessage).toHaveCSS("opacity", "1");
   await expect(directMessage.locator("[data-sidebar-row-label]")).toHaveCSS(
     "opacity",
@@ -246,7 +252,7 @@ test("light mode keeps conversation labels fully visible with unread counts", as
     page.getByTestId("channel-unread-alice-tyler"),
     1,
   );
-  await expect(directMessage).toHaveCSS("font-weight", "450");
+  await expect(directMessage).toHaveCSS("font-weight", ROW_WEIGHT);
 });
 
 test("dark mode keeps selected rows semibold and unread rows regular", async ({
@@ -262,7 +268,7 @@ test("dark mode keeps selected rows semibold and unread rows regular", async ({
     .getByTestId("sidebar-primary-menu")
     .getByTestId("sidebar-activity-button");
   await expect(inbox).toHaveAttribute("data-active", "true");
-  await expect(inbox).toHaveCSS("font-weight", "650");
+  await expect(inbox).toHaveCSS("font-weight", SELECTED_ROW_WEIGHT);
   await expect(page.getByTestId("sidebar-activity-button")).toHaveCSS(
     "opacity",
     "1",
@@ -274,7 +280,7 @@ test("dark mode keeps selected rows semibold and unread rows regular", async ({
   ).toHaveCSS("opacity", "1");
   await expect(
     page.getByTestId("sidebar-activity-button").locator("svg"),
-  ).toHaveCSS("opacity", "0.8");
+  ).toHaveCSS("opacity", NAV_ICON_OPACITY);
 
   await page.getByTestId("channel-general").click();
   await expect(inbox).toHaveCSS("opacity", "1");
@@ -299,13 +305,13 @@ test("dark mode keeps selected rows semibold and unread rows regular", async ({
   await expect(engineeringLabel).toHaveCSS("opacity", "1");
   await expect(
     page.getByTestId("channel-engineering").locator("svg"),
-  ).toHaveCSS("opacity", "0.8");
+  ).toHaveCSS("opacity", NAV_ICON_OPACITY);
   await expect(unreadChannel.locator("[data-sidebar-row-label]")).toHaveCSS(
     "opacity",
     "1",
   );
   await expectUnreadBadgeCount(page.getByTestId("channel-unread-random"), 1);
-  await expect(unreadChannel).toHaveCSS("font-weight", "450");
+  await expect(unreadChannel).toHaveCSS("font-weight", ROW_WEIGHT);
   await waitForAnimations(page);
   await page.screenshot({
     path: `${SHOTS}/sidebar-dark-unread.png`,
@@ -547,7 +553,7 @@ test("regular message shows its channel unread count", async ({ page }) => {
   );
 
   const unreadChannel = page.getByTestId("channel-random");
-  await expect(unreadChannel).toHaveCSS("font-weight", "450");
+  await expect(unreadChannel).toHaveCSS("font-weight", ROW_WEIGHT);
   await expect(unreadChannel.locator("[data-sidebar-row-label]")).toHaveCSS(
     "opacity",
     "1",
@@ -565,7 +571,7 @@ test("regular message shows its channel unread count", async ({ page }) => {
   await expect(page.getByTestId("chat-title")).toHaveText("general");
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "450",
+    ROW_WEIGHT,
   );
 });
 
@@ -599,7 +605,7 @@ test("top-level @mention shows the channel unread count", async ({ page }) => {
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "450",
+    ROW_WEIGHT,
   );
   await expectUnreadBadgeCount(page.getByTestId("channel-unread-random"), 2);
   await expect(page.getByTestId("channel-unread-dot-random")).toHaveCount(0);
@@ -644,7 +650,7 @@ test("@mention inside a thread shows the unread dot and hover preview", async ({
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "450",
+    ROW_WEIGHT,
   );
   await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
   await expect(page.getByTestId("channel-unread-dot-random")).toBeVisible();
@@ -744,7 +750,7 @@ test("broadcast reply shows its channel unread count", async ({ page }) => {
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "450",
+    ROW_WEIGHT,
   );
   await expectUnreadBadgeCount(page.getByTestId("channel-unread-random"), 1);
   await waitForBadgeState(page, withAdditionalBadgeCount(baselineBadge, 1));
@@ -777,7 +783,7 @@ test("mark-as-read via context menu clears channel unread indicator", async ({
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "450",
+    ROW_WEIGHT,
   );
   await expectUnreadBadgeCount(page.getByTestId("channel-unread-random"), 1);
 
@@ -786,7 +792,7 @@ test("mark-as-read via context menu clears channel unread indicator", async ({
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "450",
+    ROW_WEIGHT,
   );
   await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
   await waitForBadgeState(page, baselineBadge);
@@ -807,7 +813,7 @@ test("mark-as-unread via context menu shows the unread dot", async ({
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "450",
+    ROW_WEIGHT,
   );
   await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
   await expect(page.getByTestId("channel-unread-dot-random")).toBeVisible();
@@ -848,7 +854,7 @@ test("marking a message unread keeps its unread signal after leaving", async ({
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "650",
+    SELECTED_ROW_WEIGHT,
   );
   await waitForAnimations(page);
   await page.screenshot({
@@ -859,7 +865,7 @@ test("marking a message unread keeps its unread signal after leaving", async ({
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "450",
+    ROW_WEIGHT,
   );
   await expect(page.getByTestId("channel-random")).toHaveAccessibleName(
     /unread/,
@@ -969,7 +975,7 @@ test("remote read-state rollback is ignored while local mark-unread still increm
   await page.getByText("Mark unread").click();
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "450",
+    ROW_WEIGHT,
   );
   await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
   await expect(page.getByTestId("channel-unread-dot-random")).toBeVisible();

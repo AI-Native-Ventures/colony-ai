@@ -66,3 +66,10 @@
   outline-offset: 2px;
   box-shadow: none;
 }
+
+/* Compact actions inside attachment cards stay flat. */
+:root[data-colony-office]
+  #root
+  [data-slot="attachment-action"][data-button-variant] {
+  box-shadow: none;
+}
