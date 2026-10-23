@@ -1,22 +1,17 @@
 import * as React from "react";
 
-import type { WorkspaceFileReference } from "../workspaceFiles";
-
 /**
- * What each channel's Files tab is showing: a file (reader) or a folder
- * (list). In memory only: a reference carries a relay URL and an agent key and
- * is only meaningful for the community it came from. Community-scoped module
+ * Which folder each channel's Files tab is showing. In memory only. A file
+ * opens on its own dock tab (see `workAreaStore.openWorkAreaFile`), so this
+ * holds the list's folder and nothing about any file. Community-scoped module
  * singleton, reset by `resetWorkAreaStore()` through `resetCommunityState()`.
  */
 export type WorkAreaFilesView = {
-  /** The open file, or null while the folder list is showing. */
-  reference: WorkspaceFileReference | null;
   /** The folder the list shows, relative to the workspace root. */
   directory: string;
 };
 
 const ROOT_VIEW: WorkAreaFilesView = Object.freeze({
-  reference: null,
   directory: "",
 });
 
@@ -33,25 +28,11 @@ export function parentDirectory(path: string): string {
   return cut < 0 ? "" : path.slice(0, cut);
 }
 
-/** Show a file. Its folder becomes the folder the list returns to. */
-export function setWorkAreaFileReference(
-  channelId: string,
-  reference: WorkspaceFileReference,
-) {
-  publish(
-    new Map(views).set(channelId, {
-      reference,
-      directory: parentDirectory(reference.path),
-    }),
-  );
-}
-
 /** Show the folder list, optionally at a folder. */
 export function showWorkAreaFileList(channelId: string, directory?: string) {
   const current = views.get(channelId) ?? ROOT_VIEW;
   publish(
     new Map(views).set(channelId, {
-      reference: null,
       directory: directory ?? current.directory,
     }),
   );

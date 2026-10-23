@@ -95,8 +95,9 @@ export function colony3Profiles(): NonNullable<Colony3Extras["profiles"]> {
  */
 export function colony3PositionOptions(
   titles: Record<string, string> = COLONY3_JOB_TITLES,
+  /** Pass a secret to sign other relay records (work heads) with the same relay key. */
+  relaySecret: Uint8Array = generateSecretKey(),
 ) {
-  const relaySecret = generateSecretKey();
   const events = Object.entries(titles).map(([pubkey, title]) =>
     finalizeEvent(
       {
@@ -138,6 +139,7 @@ export function colony3Extras(own: Partial<Colony3Extras> = {}): Colony3Extras {
     members: [...colony3OliveMembers(), ...(own.members ?? [])],
     patchChannels: own.patchChannels ?? [],
     leaveChannelIds: own.leaveChannelIds ?? [],
+    clearMessageChannelIds: own.clearMessageChannelIds ?? [],
     clearMessagesIn: own.clearMessagesIn ?? [],
     messages: own.messages ?? [],
   };

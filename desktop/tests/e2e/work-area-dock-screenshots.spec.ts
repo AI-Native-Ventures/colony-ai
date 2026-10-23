@@ -75,7 +75,11 @@ for (const viewport of [
 
       // Closing the last tab closes the dock; opening it again shows the
       // empty state with the tab kinds on offer.
-      await dock.getByRole("button", { name: "Close Files" }).click();
+      await dock
+        .getByRole("button", {
+          name: "Close GROKBOT_FILM_TEARDOWN_2026-09-04.md",
+        })
+        .click();
       await expect(dock).toHaveCount(0);
       await page.getByTestId("channel-work-area-trigger").click();
       await expect(page.getByTestId("work-area-empty")).toBeVisible();
