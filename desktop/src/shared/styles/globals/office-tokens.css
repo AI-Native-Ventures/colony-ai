@@ -127,6 +127,7 @@
   --office-ink: var(--foreground);
   --office-ink-2: var(--foreground);
   --office-ink-3: var(--muted-foreground);
+  --office-ink-quiet-dark: var(--sidebar-foreground);
   --office-paper: var(--background);
   --office-paper-2: var(--muted);
   --office-side: var(--sidebar-background);
@@ -162,6 +163,12 @@
   --colony-sidebar-hover-surface: var(--office-row-hover);
   --colony-text-message-author: var(--office-text-author);
   --colony-text-message-timestamp: var(--office-text-meta);
+}
+
+/* Quiet sidebar text on the dark field steps up to keep AA contrast. */
+:root.dark[data-buzz-sidebar][data-colony-office] {
+  --colony-sidebar-muted-foreground: hsl(var(--office-ink-quiet-dark));
+  --colony-sidebar-section-color: hsl(var(--office-ink-quiet-dark));
 }
 
 /*

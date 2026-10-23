@@ -108,23 +108,21 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
     "color",
     "var(--colony-sidebar-muted-foreground)",
   );
+  // Office restyle: the search sits on frosted white, hovered rows on a
+  // lighter frost and the selected row on the office paper.
   const searchSurface =
     mode === "light"
-      ? "rgba(255, 255, 255, 0.25)"
-      : "rgba(232, 227, 237, 0.06)";
+      ? "rgba(255, 255, 255, 0.45)"
+      : "rgba(255, 255, 255, 0.06)";
   const rowHoverSurface =
-    mode === "light"
-      ? "rgba(255, 255, 255, 0.31)"
-      : "rgba(255, 255, 255, 0.075)";
+    mode === "light" ? "rgba(255, 255, 255, 0.6)" : "rgba(255, 255, 255, 0.07)";
   const directMessageHoverSurface = await resolveSidebarColor(
     page,
     "background-color",
     "var(--buzz-hover-surface)",
   );
   const activeSurface =
-    mode === "light"
-      ? "rgba(255, 255, 255, 0.56)"
-      : "rgba(255, 255, 255, 0.075)";
+    mode === "light" ? "rgb(253, 250, 244)" : "rgb(34, 32, 44)";
   const search = page.getByTestId("open-search");
   const pinnedHeader = page.getByTestId("sidebar-pinned-header");
   const sidebarScroller = page.locator(".buzz-sidebar-scrollbar");
@@ -232,7 +230,7 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   );
   await expect(page.getByTestId("channel-general")).toHaveCSS(
     "font-weight",
-    "650",
+    "750",
   );
   await expect(
     page.getByTestId("channel-general").locator("[data-sidebar-row-label]"),
@@ -271,11 +269,11 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   expect(channelForeground).toBe(directMessageForeground);
   await expect(activityButton).toHaveCSS("color", sidebarForeground);
   await expect(hoverChannelLabel).toHaveCSS("opacity", "1");
-  await expect(hoverChannelIcon).toHaveCSS("opacity", "0.8");
+  await expect(hoverChannelIcon).toHaveCSS("opacity", "1");
   await expect(firstDmButton).toHaveCSS("opacity", "1");
   await expect(firstDmLabel).toHaveCSS("opacity", "1");
   await expect(activityLabel).toHaveCSS("opacity", "1");
-  await expect(activityIcon).toHaveCSS("opacity", "0.8");
+  await expect(activityIcon).toHaveCSS("opacity", "1");
   await firstDmItem.hover();
   await expect(closeDmButton).toBeVisible();
   await closeDmButton.hover();
@@ -466,8 +464,8 @@ async function expectBuzzSettingsPalette(page: Page, mode: "light" | "dark") {
 
   await expect(sectionLabel).toHaveCSS(
     "color",
-    // The reference is #a39aa9; the gradient needs this smallest AA step.
-    mode === "dark" ? "rgb(206, 201, 209)" : mutedColor,
+    // The office quiet ink steps up on the dark field to keep AA contrast.
+    mode === "dark" ? "rgb(212, 209, 219)" : mutedColor,
   );
   await expect(
     sidebar.locator('.w20-nav-item[data-active="true"]'),
@@ -540,9 +538,15 @@ for (const theme of ["buzz", "buzz-dark", "github-light", "github-dark"]) {
     await openChannel(page);
     await page.goto("/#/team");
     await expect(page.getByTestId("app-sidebar")).toBeVisible();
+    // The office arch mark is an accent tile, so its letter uses the
+    // accent's foreground.
     await expect(page.locator(".colony-sidebar-brand-mark")).toHaveCSS(
       "color",
-      await resolveSidebarColor(page, "color", "hsl(var(--foreground))"),
+      await resolveSidebarColor(
+        page,
+        "color",
+        "hsl(var(--primary-foreground))",
+      ),
     );
     await openSettings(page, "profile");
     await expect(page.locator(".w20-nav-person small")).toHaveCSS(
@@ -578,7 +582,7 @@ test("buzz dark sidebar gradient", async ({ page }) => {
   await expectIconlessSectionTitleAligned(page, "dm-list");
   await expect(page.locator("[data-buzz-content-surface]")).toHaveCSS(
     "background-color",
-    "rgb(33, 30, 38)",
+    "rgb(25, 24, 33)",
   );
   await waitForAnimations(page);
   await page
@@ -772,14 +776,14 @@ test("settings nav keeps its row geometry with Colony selection (light)", async 
   const profileRow = page.getByTestId("settings-group-account");
   const profileLabel = profileRow.locator(".truncate");
   await expect(profileRow).toHaveAttribute("data-active", "true");
-  await expect(profileRow).toHaveCSS("font-weight", "700");
+  await expect(profileRow).toHaveCSS("font-weight", "750");
   await page.evaluate(() => document.fonts.ready);
   const selectedRowBox = await profileRow.boundingBox();
   const selectedLabelBox = await profileLabel.boundingBox();
   // Manrope's bold glyphs can be wider. The row and label origin must stay
   // fixed when selection changes, without constraining intrinsic glyph width.
   await page.getByTestId("settings-group-appearance-group").click();
-  await expect(profileRow).toHaveCSS("font-weight", "400");
+  await expect(profileRow).toHaveCSS("font-weight", "750");
   const unselectedLabelBox = await profileLabel.boundingBox();
   const unselectedRowBox = await profileRow.boundingBox();
   expect(selectedLabelBox).not.toBeNull();
@@ -848,7 +852,7 @@ test("workspace appearance keeps navigation controls within the frozen design", 
   await page.getByTestId("settings-close").click();
   await page.getByTestId("channel-general").click();
   const activeRow = page.getByTestId("channel-general");
-  const subtleSurface = "rgba(255, 255, 255, 0.56)";
+  const subtleSurface = "rgb(253, 250, 244)";
   await expect(activeRow).toHaveCSS("background-color", subtleSurface);
 });
 
@@ -884,16 +888,20 @@ test("prominent channel and direct-message rows share one flat active state", as
   await expect(directMessageRow).toHaveCSS("background-color", activeSurface);
 });
 
-for (const { activeSurface, hoverSurface, mode, theme } of [
+for (const { activeSurface, activeShadow, hoverSurface, mode, theme } of [
   {
-    activeSurface: "rgba(255, 255, 255, 0.56)",
-    hoverSurface: "rgba(255, 255, 255, 0.31)",
+    activeSurface: "rgb(253, 250, 244)",
+    activeShadow:
+      "rgba(36, 31, 50, 0.08) 0px 1px 2px 0px, rgba(36, 31, 50, 0.35) 0px 6px 14px -10px",
+    hoverSurface: "rgba(255, 255, 255, 0.6)",
     mode: "light" as const,
     theme: "buzz",
   },
   {
-    activeSurface: "rgba(255, 255, 255, 0.075)",
-    hoverSurface: "rgba(255, 255, 255, 0.075)",
+    activeSurface: "rgb(34, 32, 44)",
+    activeShadow:
+      "rgba(0, 0, 0, 0.3) 0px 1px 2px 0px, rgba(0, 0, 0, 0.65) 0px 6px 14px -10px",
+    hoverSurface: "rgba(255, 255, 255, 0.07)",
     mode: "dark" as const,
     theme: "buzz-dark",
   },
@@ -918,14 +926,11 @@ for (const { activeSurface, hoverSurface, mode, theme } of [
     const subtleForeground = await resolveSidebarColor(
       page,
       "color",
-      "var(--colony-sidebar-foreground)",
+      "hsl(var(--colony-sidebar-selected-foreground))",
     );
     await expect(activeRow).toHaveCSS("background-color", activeSurface);
-    await expect(activeRow).toHaveCSS(
-      "box-shadow",
-      "rgba(48, 32, 56, 0.02) 0px 1px 3px 0px",
-    );
-    await expect(activeRow).toHaveCSS("font-weight", "650");
+    await expect(activeRow).toHaveCSS("box-shadow", activeShadow);
+    await expect(activeRow).toHaveCSS("font-weight", "750");
     await activeRow.hover();
     await expect(activeRow).toHaveCSS("background-color", activeSurface);
     const inactiveRow = page.getByTestId("channel-random");
@@ -961,9 +966,7 @@ for (const { mode, theme } of [
     await expect(root).not.toHaveAttribute("data-buzz-sidebar", "");
 
     const expectedBackground =
-      mode === "light"
-        ? "rgba(255, 255, 255, 0.56)"
-        : "rgba(255, 255, 255, 0.075)";
+      mode === "light" ? "rgb(255, 255, 255)" : "rgb(36, 41, 46)";
     const expectedForeground = await resolveSidebarColor(
       page,
       "color",
@@ -971,7 +974,7 @@ for (const { mode, theme } of [
     );
     await expect(activeRow).toHaveCSS("background-color", expectedBackground);
     await expect(activeRow).toHaveCSS("color", expectedForeground);
-    await expect(activeRow).toHaveCSS("font-weight", "650");
+    await expect(activeRow).toHaveCSS("font-weight", "750");
   });
 }
 
@@ -989,7 +992,7 @@ test("settings content uses the same inset surface as the main app", async ({
   const settingsView = page.getByTestId("settings-view");
   const contentSurface = page.getByTestId("settings-content-surface");
   await expect(settingsView).toHaveCSS("margin", "8px");
-  await expect(settingsView).toHaveCSS("border-radius", "11px");
+  await expect(settingsView).toHaveCSS("border-radius", "16px");
   const settingsTopChrome = page.getByTestId("settings-top-chrome");
   const settingsBackToApp = page.getByTestId("settings-back-to-app");
   const backToAppBox = await page
@@ -1026,7 +1029,7 @@ test("settings content uses the same inset surface as the main app", async ({
   const isMac = await page.evaluate(() =>
     /mac|iphone|ipad|ipod/i.test(navigator.platform),
   );
-  expect(searchBox.y - backToAppBox.y).toBe(isMac ? 69.25 : 51.25);
+  expect(searchBox.y - backToAppBox.y).toBe(isMac ? 69 : 51);
 
   // Header and content share one card. The frame carries the 8px margin;
   // the content starts directly below its 52px header.

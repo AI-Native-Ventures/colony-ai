@@ -396,8 +396,7 @@
     .w20-nav-heading,
     .w20-nav-back,
     .w20-nav-search,
-    .w20-nav-search input,
-    .w20-nav-person small
+    .w20-nav-search input::placeholder
   ) {
   color: hsl(var(--office-ink-quiet-dark));
 }

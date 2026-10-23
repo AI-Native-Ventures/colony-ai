@@ -201,6 +201,43 @@
   line-height: 2.5rem;
 }
 
+/* Short windows keep the conversation in view: the header steps down. */
+@media (max-height: 640px) {
+  :root[data-colony-office]
+    #root
+    [data-testid="chat-header"][data-office-kicker="true"] {
+    padding-block: 0.625rem 0.5rem;
+  }
+
+  :root[data-colony-office] #root .colony-chat-kicker {
+    margin-bottom: 0.125rem;
+    font-size: var(--office-text-small);
+    line-height: 1.125rem;
+  }
+
+  :root[data-colony-office]
+    #root
+    [data-office-kicker="true"]
+    [data-testid="chat-title"],
+  :root[data-colony-office]
+    #root
+    [data-office-kicker="true"]
+    [data-testid="chat-title"].text-channel-title {
+    font-size: calc(var(--office-rem) * 1.75);
+    line-height: 2.25rem;
+  }
+
+  :root[data-colony-office]
+    #root
+    [data-office-kicker="true"]
+    .colony-channel-description {
+    margin-top: 0.125rem;
+    font-size: var(--office-text-label);
+    line-height: 1.25rem;
+    -webkit-line-clamp: 1;
+  }
+}
+
 /* Channel views: quiet office tabs under the header. */
 :root[data-colony-office] #root .colony-channel-view-tabs {
   gap: 0.375rem;

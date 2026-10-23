@@ -129,13 +129,6 @@
   gap: 0.25rem;
 }
 
-:root[data-colony-office]
-  #root
-  .app-sidebar-full-shell
-  [data-testid="sidebar-primary-menu"] {
-  padding-inline: 0.5rem;
-}
-
 /* Rows: nav items, channels, direct messages and company links. */
 :root[data-colony-office]
   #root

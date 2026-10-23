@@ -84,13 +84,12 @@ test("sidebar rows separate hover, selected, and reorder states", async ({
   const hoverRow = page.getByTestId("channel-random");
 
   await page.mouse.move(600, 100);
-  await expect(selectedRow).toHaveCSS(
-    "background-color",
-    "rgba(255, 255, 255, 0.56)",
-  );
+  // Office restyle: the selected row sits on the theme's paper at the
+  // selected weight.
+  await expect(selectedRow).toHaveCSS("background-color", "rgb(255, 255, 255)");
   // The spacing and motion experiment must preserve the production selected
   // row typography.
-  await expect(selectedRow).toHaveCSS("font-weight", "650");
+  await expect(selectedRow).toHaveCSS("font-weight", "750");
 
   const rowGap = await page.evaluate(() => {
     const selected = document.querySelector<HTMLElement>(
@@ -534,8 +533,11 @@ test("aligns the sidebar search with the channel title outside the Buzz theme", 
 
   const searchCenter = searchBox.y + searchBox.height / 2;
   const channelTitleCenter = channelTitleBox.y + channelTitleBox.height / 2;
-  expect(Math.abs(searchCenter - channelTitleCenter)).toBeCloseTo(
-    process.platform === "darwin" ? 22.265625 : 4.265625,
+  // The office header sets its kicker above the large title, so the title
+  // sits a fixed step below the search; macOS adds the window-button band
+  // above the search.
+  expect(channelTitleCenter - searchCenter).toBeCloseTo(
+    process.platform === "darwin" ? 26 : 44,
     2,
   );
 });
