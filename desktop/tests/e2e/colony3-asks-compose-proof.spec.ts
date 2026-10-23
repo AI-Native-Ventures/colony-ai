@@ -67,7 +67,13 @@ async function shot(
   captures.push(capture);
 }
 
+/** Back to the top of the screen with nothing focused, as the boards are drawn. */
 async function settle(page: Page) {
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    const screen = document.querySelector('[data-testid="ask-create-screen"]');
+    if (screen) screen.scrollTop = 0;
+  });
   await page.waitForTimeout(900);
   await waitForAnimations(page);
 }

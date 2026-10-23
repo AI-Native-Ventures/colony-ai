@@ -375,7 +375,10 @@ export function AgentPage({
                   {name} does not run on this device. Its model and instructions
                   can be changed from the device that runs it.
                 </p>
-                <dl className="agents-c3-tiles" data-testid="company-position-record">
+                <dl
+                  className="agents-c3-tiles"
+                  data-testid="company-position-record"
+                >
                   <div className="agents-c3-tile">
                     <dt>Title</dt>
                     <dd>{title || "Not set"}</dd>
@@ -612,6 +615,7 @@ export function AgentPage({
           />
           <AgentPageInstructions
             agent={agent}
+            agents={actions.managedAgents}
             canEdit={managedOwner !== false}
             instruction={agent.systemPrompt ?? persona?.systemPrompt ?? null}
             key={agent.pubkey}

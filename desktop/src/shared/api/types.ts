@@ -739,6 +739,11 @@ export type RuntimeConfigSurface = {
 
 export type UpdateManagedAgentInput = {
   pubkey: string;
+  /**
+   * Absent = keep. Points the agent at another active definition, so a change
+   * to a definition shared with other agents can be made on a clone of it.
+   */
+  personaId?: string;
   name?: string;
   model?: string | null;
   provider?: string | null;

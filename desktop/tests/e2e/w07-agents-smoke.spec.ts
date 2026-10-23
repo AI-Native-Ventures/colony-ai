@@ -174,6 +174,75 @@ test.describe("W07 agent workspace smoke", () => {
       .toBe("Persona-owned instructions, edited on the agent page.");
   });
 
+  test("editing instructions shared with another agent copies the definition for this agent only", async ({
+    page,
+  }) => {
+    const mina =
+      "0000000000000000000000000000000000000000000000000000000000000011";
+    const noor =
+      "0000000000000000000000000000000000000000000000000000000000000012";
+    await installMockBridge(page, {
+      managedAgents: [
+        { pubkey: mina, name: "Mina", personaId: "shared", status: "stopped" },
+        { pubkey: noor, name: "Noor", personaId: "shared", status: "stopped" },
+      ],
+      personas: [
+        {
+          id: "shared",
+          displayName: "Shared definition",
+          systemPrompt: "Shared instructions.",
+        },
+      ],
+    });
+    await page.goto(`/#/agents?agent=${mina}`, {
+      waitUntil: "domcontentloaded",
+    });
+
+    const profile = page.getByTestId("agent-profile");
+    const editor = profile.getByRole("textbox", {
+      name: "System instructions",
+    });
+    await expect(editor).toHaveValue("Shared instructions.");
+    await editor.fill("Mina's own instructions.");
+    await profile.getByRole("button", { name: "Save changes" }).click();
+    await expect(
+      profile.getByRole("button", { name: "Save changes" }),
+    ).toBeDisabled();
+    await expect(editor).toHaveValue("Mina's own instructions.");
+
+    const state = await page.evaluate(async () => {
+      const bridge = window as typeof window & {
+        __BUZZ_E2E_INVOKE_MOCK_COMMAND__?: (c: string) => Promise<unknown>;
+      };
+      const personas = (await bridge.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.(
+        "list_personas",
+      )) as Array<{ id: string; system_prompt: string }>;
+      const agents = (await bridge.__BUZZ_E2E_INVOKE_MOCK_COMMAND__?.(
+        "list_managed_agents",
+      )) as Array<{ pubkey: string; persona_id: string | null }>;
+      return {
+        sharedPrompt: personas.find((persona) => persona.id === "shared")
+          ?.system_prompt,
+        minaPersona: agents.find(
+          (agent) => agent.pubkey === "0".repeat(62) + "11",
+        )?.persona_id,
+        noorPersona: agents.find(
+          (agent) => agent.pubkey === "0".repeat(62) + "12",
+        )?.persona_id,
+        minaPrompt: personas.find(
+          (persona) =>
+            persona.id ===
+            agents.find((agent) => agent.pubkey === "0".repeat(62) + "11")
+              ?.persona_id,
+        )?.system_prompt,
+      };
+    });
+    expect(state.sharedPrompt).toBe("Shared instructions.");
+    expect(state.noorPersona).toBe("shared");
+    expect(state.minaPersona).not.toBe("shared");
+    expect(state.minaPrompt).toBe("Mina's own instructions.");
+  });
+
   test("overview resolves profile role and seeded channel membership names", async ({
     page,
   }) => {

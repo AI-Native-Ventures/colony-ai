@@ -40,12 +40,14 @@ export function AskAvatar({
   size?: 24 | 28 | 30;
 }) {
   return (
-    <ProfileAvatar
-      avatarUrl={avatarUrl ?? null}
-      className={cn("ask3-av", AVATAR_SIZE_CLASS[size])}
-      label={label}
-      shape={isAgent ? "squircle" : "circle"}
-    />
+    <span aria-hidden="true" className="contents">
+      <ProfileAvatar
+        avatarUrl={avatarUrl ?? null}
+        className={cn("ask3-av", AVATAR_SIZE_CLASS[size])}
+        label={label}
+        shape={isAgent ? "squircle" : "circle"}
+      />
+    </span>
   );
 }
 

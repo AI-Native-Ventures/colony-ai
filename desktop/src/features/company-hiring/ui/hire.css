@@ -1183,29 +1183,46 @@
 .colony-hire-avatar-26 {
   width: 1.625rem;
   height: 1.625rem;
-  font-size: calc(11 * var(--colony-px));
 }
 
 .colony-hire-avatar-44 {
   width: 2.75rem;
   height: 2.75rem;
-  font-size: calc(17 * var(--colony-px));
 }
 
 .colony-hire-avatar-56 {
   width: 3.5rem;
   height: 3.5rem;
-  font-size: calc(21 * var(--colony-px));
 }
 
 .colony-hire-avatar-60 {
   width: 3.75rem;
   height: 3.75rem;
-  font-size: calc(22 * var(--colony-px));
 }
 
 .colony-hire-avatar-104 {
   width: 6.5rem;
   height: 6.5rem;
-  font-size: calc(40 * var(--colony-px));
+}
+
+/* Font sizes sit on the fallback itself and win over the old workspace avatar
+   overrides, which set the initial's size with !important. */
+.colony-hire-avatar-26 [data-slot="avatar-fallback"] {
+  font-size: calc(11 * var(--colony-px)) !important;
+}
+
+.colony-hire-avatar-44 [data-slot="avatar-fallback"] {
+  font-size: calc(17 * var(--colony-px)) !important;
+}
+
+.colony-hire-avatar-56 [data-slot="avatar-fallback"] {
+  font-size: calc(21 * var(--colony-px)) !important;
+}
+
+.colony-hire-avatar-60 [data-slot="avatar-fallback"] {
+  font-size: calc(22 * var(--colony-px)) !important;
+}
+
+.colony-hire-avatar-104 [data-slot="avatar-fallback"] {
+  font-size: calc(40 * var(--colony-px)) !important;
 }

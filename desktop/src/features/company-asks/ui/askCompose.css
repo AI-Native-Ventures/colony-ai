@@ -308,9 +308,16 @@ input[type="date"].ask3-control {
   padding: 0 0.75rem;
 }
 
+/* The boards use the browser's own placeholder grey, not the app's lighter one. */
+.ask3-control::placeholder,
+.ask3-textarea::placeholder {
+  color: #757575;
+  opacity: 1;
+}
+
 .ask3-control:disabled,
 .ask3-textarea:disabled {
-  opacity: 0.6;
+  cursor: default;
 }
 
 .ask3-control:focus-visible,
@@ -622,6 +629,10 @@ input[type="date"].ask3-control {
   border-radius: 1rem;
   background: #fff8ec;
   box-shadow: inset 0 0 0 1px #f0d9a8;
+}
+
+.ask3-notice > .ask3-btn {
+  align-self: flex-start;
 }
 
 .ask3-notice p {
@@ -1100,6 +1111,7 @@ input[type="date"].ask3-control {
 }
 
 .ask3-invite-title {
+  min-height: 2.25rem;
   margin: 0;
   padding-right: 3rem;
   font-size: calc(23 * var(--px));

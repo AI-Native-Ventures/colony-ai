@@ -72,28 +72,41 @@ test("people chips use their first and last initials", () => {
   assert.equal(personInitials("  "), "?");
 });
 
-test("instructions save to the agent, a definition you can edit, or nowhere", () => {
-  assert.equal(instructionSource({ personaId: null }, undefined), "agent");
+test("an instructions edit changes only the agent it is made on", () => {
+  const mine = { pubkey: "AA", personaId: "mine" };
+  const editable = { isBuiltIn: false, sourceTeam: null };
+  const other = { pubkey: "bb", personaId: "other" };
+  const sibling = { pubkey: "bb", personaId: "mine" };
+
+  // An agent with no definition keeps its own text.
   assert.equal(
-    instructionSource(
-      { personaId: "mine" },
-      { id: "mine", isBuiltIn: false, sourceTeam: null },
-    ),
+    instructionSource({ pubkey: "aa", personaId: null }, undefined, [other]),
+    "agent",
+  );
+  // The only agent using its definition edits that definition in place.
+  assert.equal(instructionSource(mine, editable, [mine, other]), "definition");
+  // A definition used by another agent is copied for this agent.
+  assert.equal(instructionSource(mine, editable, [mine, sibling]), "copy");
+  // Case in pubkeys does not make an agent its own sibling.
+  assert.equal(
+    instructionSource(mine, editable, [{ pubkey: "aa", personaId: "mine" }]),
     "definition",
   );
+  // Built-in and team definitions are always copied, even for one agent.
   assert.equal(
     instructionSource(
-      { personaId: "builtin:fizz" },
-      { id: "builtin:fizz", isBuiltIn: true, sourceTeam: null },
+      { pubkey: "aa", personaId: "builtin:fizz" },
+      { isBuiltIn: true, sourceTeam: null },
+      [],
     ),
-    "locked",
+    "copy",
   );
   assert.equal(
-    instructionSource(
-      { personaId: "team" },
-      { id: "team", isBuiltIn: false, sourceTeam: "Creative" },
-    ),
-    "locked",
+    instructionSource(mine, { isBuiltIn: false, sourceTeam: "Creative" }, [
+      mine,
+    ]),
+    "copy",
   );
-  assert.equal(instructionSource({ personaId: "gone" }, undefined), "locked");
+  // A definition that cannot be found cannot be copied.
+  assert.equal(instructionSource(mine, undefined, [mine]), "locked");
 });

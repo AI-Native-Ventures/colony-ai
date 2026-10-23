@@ -5,6 +5,7 @@ import { finalizeEvent, getPublicKey } from "nostr-tools/pure";
 import { KIND_HIRE_HEAD } from "@/shared/constants/kinds";
 import {
   companyHireDTag,
+  companyHireRolePackFromPersona,
   parseCompanyHireAction,
   parseCompanyHireHeadEvent,
 } from "./companyHireModels.ts";
@@ -249,4 +250,32 @@ test("hire action parser binds each action to its required coordinates", () => {
     parseCompanyHireAction({ ...founderApproval, reason: "x".repeat(1001) }),
     null,
   );
+});
+
+test("a persona's default allowance reaches its role pack only when it is a positive amount", () => {
+  const persona = (defaultAllowance) => ({
+    id: "bookkeeper",
+    displayName: "Bookkeeper",
+    isActive: true,
+    isBuiltIn: false,
+    companyRole: {
+      job: "Invoices and reconciliation",
+      skills: ["Invoicing"],
+      tools: [{ name: "Money records", risk: "medium" }],
+      workerMenu: ["buzz-agent"],
+      defaultAllowance,
+    },
+  });
+  assert.equal(
+    companyHireRolePackFromPersona(persona("50"))?.defaultAllowance,
+    "50",
+  );
+  for (const invalid of [undefined, null, "", "0", "-5", "abc", "1.234"]) {
+    assert.equal(
+      "defaultAllowance" in
+        (companyHireRolePackFromPersona(persona(invalid)) ?? {}),
+      false,
+      `${String(invalid)} is not a default allowance`,
+    );
+  }
 });

@@ -148,16 +148,30 @@ export function personInitials(name: string): string {
 }
 
 /**
- * Where a save lands. An agent with no definition keeps its own instructions;
- * an agent made from a definition you can edit saves into that definition
- * (the instance cannot override it); built-in and team definitions are
- * read-only here.
+ * Where an instructions save lands, so an edit changes only that agent:
+ * - `agent`: the agent keeps its own instructions.
+ * - `definition`: the agent is the only one using its (editable) definition,
+ *   so the definition is edited in place.
+ * - `copy`: the definition is built in, owned by a team, or used by other
+ *   agents. The definition is cloned, this agent is pointed at the clone, and
+ *   the edit lands in the clone, so no other agent changes.
+ * - `locked`: the agent's definition cannot be found, so there is nothing to
+ *   copy.
  */
+export type InstructionSource = "agent" | "definition" | "copy" | "locked";
+
 export function instructionSource(
-  agent: Pick<ManagedAgent, "personaId">,
+  agent: Pick<ManagedAgent, "personaId" | "pubkey">,
   persona: Pick<AgentPersona, "isBuiltIn" | "sourceTeam"> | undefined,
-): "agent" | "definition" | "locked" {
+  agents: ReadonlyArray<Pick<ManagedAgent, "personaId" | "pubkey">>,
+): InstructionSource {
   if (agent.personaId === null) return "agent";
-  if (persona && !persona.isBuiltIn && !persona.sourceTeam) return "definition";
-  return "locked";
+  if (!persona) return "locked";
+  if (persona.isBuiltIn || persona.sourceTeam) return "copy";
+  const key = agent.pubkey.toLowerCase();
+  const shared = agents.some(
+    (other) =>
+      other.personaId === agent.personaId && other.pubkey.toLowerCase() !== key,
+  );
+  return shared ? "copy" : "definition";
 }

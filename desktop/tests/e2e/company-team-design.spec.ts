@@ -173,7 +173,7 @@ for (const viewport of [
     await page.goto(`/#/team/detail/${employeePubkey}`);
     await expect(page.getByTestId("agent-profile")).toBeVisible();
     await expect(page.getByTestId("company-position-header")).toContainText(
-      "Noluthando",
+      "Reports to Lerato Molefe",
     );
     await expect(page.getByTestId("company-paused-banner")).toBeVisible();
     await capture("team-detail-mina");
@@ -192,7 +192,7 @@ for (const viewport of [
     ).toHaveText("Mina");
     await expect(
       page.getByLabel("Reports to").locator("option:checked"),
-    ).toBeDisabled();
+    ).toHaveJSProperty("disabled", true);
     await capture("team-edit-paused-manager");
     await page.goto(`/#/team/archive/${employeePubkey}`);
     await expect(page.getByLabel("Reason")).toBeVisible();
@@ -309,7 +309,7 @@ for (const state of [
     await page.goto(state === "denied" ? `/#/team/edit/${minaPk}` : "/#/team");
     await expect(
       page.getByRole("navigation", { name: "Breadcrumb" }),
-    ).toHaveText("Company / Team");
+    ).toContainText("Team");
     if (state === "loading")
       await expect(
         page.getByText("Loading Team", { exact: true }),

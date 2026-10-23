@@ -1,12 +1,15 @@
 import * as React from "react";
 
 import {
+  useCreatePersonaMutation,
+  useDeletePersonaMutation,
   useUpdateManagedAgentMutation,
   useUpdatePersonaMutation,
 } from "@/features/agents/hooks";
 import { instructionSource } from "./agentPageModel";
 import type {
   AgentPersona,
+  CreatePersonaInput,
   ManagedAgent,
   UpdatePersonaInput,
 } from "@/shared/api/types";
@@ -55,15 +58,47 @@ function personaUpdateInput(
   };
 }
 
+/** A copy of a definition that belongs to one agent, with the edited text. */
+function personaCloneInput(
+  persona: AgentPersona,
+  agentName: string,
+  systemPrompt: string,
+): CreatePersonaInput {
+  return {
+    displayName: agentName,
+    ...(persona.avatarUrl ? { avatarUrl: persona.avatarUrl } : {}),
+    description: persona.description,
+    systemPrompt,
+    ...(persona.runtime !== null ? { runtime: persona.runtime } : {}),
+    ...(persona.model !== null ? { model: persona.model } : {}),
+    ...(persona.provider !== null ? { provider: persona.provider } : {}),
+    namePool: persona.namePool,
+    envVars: persona.envVars,
+    behavior: {
+      ...(persona.respondTo ? { respondTo: persona.respondTo } : {}),
+      respondToAllowlist: persona.respondToAllowlist,
+      ...(persona.parallelism !== null
+        ? { parallelism: persona.parallelism }
+        : {}),
+      ...(persona.sessionPolicy
+        ? { sessionPolicy: persona.sessionPolicy }
+        : {}),
+    },
+  };
+}
+
 /** The instructions editor of the single agent page (`AgentInstructions.dc.html`). */
 export function AgentPageInstructions({
   agent,
+  agents,
   canEdit,
   instruction,
   ownerName,
   persona,
 }: {
   agent: ManagedAgent;
+  /** Every agent on this device, to tell whether the definition is shared. */
+  agents: readonly ManagedAgent[];
   canEdit: boolean;
   instruction: string | null;
   ownerName: string | null;
@@ -71,12 +106,15 @@ export function AgentPageInstructions({
 }) {
   const updateAgent = useUpdateManagedAgentMutation();
   const updatePersona = useUpdatePersonaMutation();
+  const createPersona = useCreatePersonaMutation();
+  const deletePersona = useDeletePersonaMutation();
   const [draft, setDraft] = React.useState(instruction ?? "");
   const [saveError, setSaveError] = React.useState<string | null>(null);
-  const source = instructionSource(agent, persona);
+  const source = instructionSource(agent, persona, agents);
   const editable = canEdit && source !== "locked";
   const isDirty = draft !== (instruction ?? "");
-  const isPending = updateAgent.isPending || updatePersona.isPending;
+  const [copying, setCopying] = React.useState(false);
+  const isPending = updateAgent.isPending || updatePersona.isPending || copying;
   const content = instruction?.trim();
   const name = agent.name || "This agent";
 
@@ -91,6 +129,23 @@ export function AgentPageInstructions({
     try {
       if (source === "definition" && persona) {
         await updatePersona.mutateAsync(personaUpdateInput(persona, draft));
+      } else if (source === "copy" && persona) {
+        // Copy on write: this agent gets its own definition holding the edit,
+        // so the shared or built-in one, and every other agent, stays as is.
+        setCopying(true);
+        const copy = await createPersona.mutateAsync(
+          personaCloneInput(persona, agent.name, draft),
+        );
+        try {
+          await updateAgent.mutateAsync({
+            pubkey: agent.pubkey,
+            personaId: copy.id,
+          });
+        } catch (error) {
+          // Do not leave an unused copy behind when the relink fails.
+          await deletePersona.mutateAsync(copy.id).catch(() => undefined);
+          throw error;
+        }
       } else {
         await updateAgent.mutateAsync({
           pubkey: agent.pubkey,
@@ -101,6 +156,8 @@ export function AgentPageInstructions({
       setSaveError(
         error instanceof Error ? error.message : "Could not save instructions.",
       );
+    } finally {
+      setCopying(false);
     }
   }
 
@@ -136,8 +193,8 @@ export function AgentPageInstructions({
         )}
         {source === "locked" && content ? (
           <p className="agents-c3-lede">
-            These instructions come from a built-in or team definition, so they
-            can only be changed there.
+            This agent’s definition could not be found, so its instructions
+            cannot be changed here.
           </p>
         ) : null}
       </section>

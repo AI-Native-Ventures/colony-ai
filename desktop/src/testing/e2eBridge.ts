@@ -16277,6 +16277,7 @@ async function handleGetManagedAgentLog(args: {
 async function handleUpdateManagedAgent(args: {
   input: {
     pubkey: string;
+    personaId?: string;
     name?: string;
     model?: string | null;
     systemPrompt?: string | null;
@@ -16286,6 +16287,9 @@ async function handleUpdateManagedAgent(args: {
   };
 }): Promise<{ agent: RawManagedAgent; profile_sync_error: string | null }> {
   const agent = getMockManagedAgent(args.input.pubkey);
+  if (args.input.personaId !== undefined) {
+    agent.persona_id = args.input.personaId;
+  }
   if (args.input.name !== undefined) {
     agent.name = args.input.name;
   }
