@@ -23,7 +23,7 @@ import {
 } from "./NostrKeyImportForm";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { CommunityChangeOverlay } from "@/features/communities/ui/CommunityChangeOverlay";
-import { FirstRunFrame, type FirstRunStory } from "./FirstRunFrame";
+import { ProfileFrame } from "./ProfileFrame";
 import { ProfileStep } from "./ProfileStep";
 import type {
   OnboardingActions,
@@ -348,18 +348,6 @@ export function OnboardingFlow({
   };
   // Machine-level identity and provider setup have already completed. This
   // relay-scoped flow now owns only the community profile.
-  const story: FirstRunStory = {
-    heading: "What should I call you?",
-    body: "Use the name you’d like your team to know. A face helps too, for people and agents alike.",
-    status: "Your turn",
-    tone: "turn",
-    pose: "waiting",
-    progress: [
-      { label: "Account", state: "current" },
-      { label: "Business", state: "done" },
-      { label: "Connect", state: "done" },
-    ],
-  };
 
   // Swapping the identity changes the pubkey, which remounts this flow
   // (keyed on pubkey in App.tsx) and re-runs the onboarding gate: the new
@@ -466,12 +454,7 @@ export function OnboardingFlow({
 
   return (
     <>
-      <FirstRunFrame
-        layout="profile"
-        story={story}
-        testId="onboarding-gate"
-        wide
-      >
+      <ProfileFrame stage="after" testId="onboarding-gate">
         <div className="c3fr-profile-wrap">
           <div className="c3fr-wide-top">
             {chromeBackAction ? (
@@ -596,7 +579,7 @@ export function OnboardingFlow({
             />
           )}
         </div>
-      </FirstRunFrame>
+      </ProfileFrame>
       {isCommunityChangeOpen ? (
         <CommunityChangeOverlay
           onClose={() => setIsCommunityChangeOpen(false)}

@@ -23,6 +23,11 @@ type AvatarStepProps = {
   };
   /** A "Skip for now" that always shows, not only after an error. */
   showAlwaysSkip?: boolean;
+  /**
+   * Turns a chosen photo into an inline picture instead of uploading it, for
+   * the step that comes before any relay exists.
+   */
+  processImage?: (file: File) => Promise<string>;
   state: Pick<
     ProfileStepState,
     "avatar" | "isSaving" | "isUploadingAvatar" | "name" | "saveRecovery"
@@ -52,6 +57,7 @@ export function initialsOf(name: string): string {
 export function AvatarStep({
   actions,
   showAlwaysSkip = false,
+  processImage,
   state,
 }: AvatarStepProps) {
   const { isSaving, isUploadingAvatar, name, saveRecovery } = state;
@@ -65,6 +71,7 @@ export function AvatarStep({
   const upload = useAvatarUpload({
     fallbackErrorMessage: "Could not upload that photo.",
     onUploadSuccess: actions.updateAvatarUrl,
+    processImage,
   });
   const { isUploading } = upload;
   const { onUploadingChange } = actions;

@@ -205,7 +205,6 @@ export function BusinessMark({
       style={{ "--fr-mark-dot": dot } as React.CSSProperties}
     >
       {logoUrl ? (
-        // biome-ignore lint/a11y/useAltText: decorative, the name sits beside it
         <img alt="" onError={onLogoError} src={logoUrl} />
       ) : (
         initial || <PlusIcon size={20} />

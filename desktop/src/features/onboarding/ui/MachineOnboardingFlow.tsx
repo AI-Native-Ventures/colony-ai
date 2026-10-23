@@ -18,6 +18,7 @@ import type {
 import { AccountAuthFlow } from "./AccountAuthFlow";
 import { AdvancedSignIn } from "./AdvancedSignIn";
 import { NativeUnavailableScreen } from "./NativeUnavailableScreen";
+import { PendingProfileStep } from "./PendingProfileStep";
 import {
   type MachineOnboardingPage,
   resolveInitialMachineOnboardingState,
@@ -108,8 +109,18 @@ export function MachineOnboardingFlow({
   // True once this computer has a sign-in in hand (an account's key or one of
   // the advanced routes), so a later invite link goes straight to Join.
   const [signedIn, setSignedIn] = React.useState(false);
-  // A key made here has no name or photo yet: the profile step follows.
-  const [madeNewKey, setMadeNewKey] = React.useState(false);
+  // The screen the person opened Advanced sign-in options from, so Back goes
+  // back to it (Sign in or Create account).
+  const [advancedFrom, setAdvancedFrom] = React.useState<"account" | "signin">(
+    "account",
+  );
+  // Which account screen to show when the person comes back from there.
+  const [accountStart, setAccountStart] = React.useState<"account" | "signin">(
+    "account",
+  );
+  React.useEffect(() => {
+    if (page !== "account-auth") setAccountStart("account");
+  }, [page]);
   const communityOnboarding = useCommunityOnboarding();
   // A returning person picking a business on a device with no working AI is
   // sent through Connect first, instead of into a workspace that cannot reply.
@@ -138,7 +149,7 @@ export function MachineOnboardingFlow({
     string | null
   >(null);
   const [businessBackPage, setBusinessBackPage] = React.useState<
-    "account-auth" | "businesses" | "identity"
+    "account-auth" | "businesses" | "profile"
   >("account-auth");
   const [selectedPubkey, setSelectedPubkey] = React.useState<string | null>(
     null,
@@ -155,7 +166,7 @@ export function MachineOnboardingFlow({
    * sign-in and the advanced key routes all end here.
    */
   const routeAfterSignIn = React.useCallback(
-    async (pubkey: string, backPage: "account-auth" | "identity") => {
+    async (pubkey: string, backPage: "account-auth" | "profile") => {
       setBusinessListError(null);
       // Invited people join the workspace they were invited to. They are
       // never sent to create a business of their own.
@@ -195,9 +206,8 @@ export function MachineOnboardingFlow({
       continueWithIdentity(identity.pubkey);
       setSelectedPubkey(identity.pubkey);
       setSignedIn(true);
-      setMadeNewKey(true);
       setAccountIdentity({ email: "", name: "" });
-      await routeAfterSignIn(identity.pubkey, "identity");
+      setPage("profile");
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Failed to load identity",
@@ -205,7 +215,7 @@ export function MachineOnboardingFlow({
     } finally {
       setIsPending(false);
     }
-  }, [continueWithIdentity, queryClient, routeAfterSignIn]);
+  }, [continueWithIdentity, queryClient]);
 
   const loadRecoveredIdentity = React.useCallback(async () => {
     if (!supportsNativeCapability("identity-recovery")) {
@@ -221,7 +231,7 @@ export function MachineOnboardingFlow({
       setSelectedPubkey(identity.pubkey);
       setSignedIn(true);
       setAccountIdentity({ email: "", name: "" });
-      await routeAfterSignIn(identity.pubkey, "identity");
+      setPage("profile");
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Failed to load identity",
@@ -229,12 +239,7 @@ export function MachineOnboardingFlow({
     } finally {
       setIsPending(false);
     }
-  }, [
-    continueWithRecoveredIdentity,
-    queryClient,
-    routeAfterSignIn,
-    showUnsupported,
-  ]);
+  }, [continueWithRecoveredIdentity, queryClient, showUnsupported]);
 
   const replaceLostIdentity = React.useCallback(async () => {
     if (!supportsNativeCapability("identity-create")) {
@@ -254,8 +259,7 @@ export function MachineOnboardingFlow({
       continueWithIdentity(identity.pubkey);
       setSelectedPubkey(identity.pubkey);
       setSignedIn(true);
-      setMadeNewKey(true);
-      await routeAfterSignIn(identity.pubkey, "identity");
+      setPage("profile");
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Failed to save identity",
@@ -263,7 +267,7 @@ export function MachineOnboardingFlow({
     } finally {
       setIsPending(false);
     }
-  }, [continueWithIdentity, queryClient, routeAfterSignIn, showUnsupported]);
+  }, [continueWithIdentity, queryClient, showUnsupported]);
 
   const importExistingIdentity = React.useCallback(
     async (nsec: string, password?: string) => {
@@ -276,11 +280,10 @@ export function MachineOnboardingFlow({
       queryClient.setQueryData(["identity"], identity);
       setSelectedPubkey(identity.pubkey);
       setSignedIn(true);
-      setMadeNewKey(false);
       setAccountIdentity({ email: "", name: "" });
-      await routeAfterSignIn(identity.pubkey, "identity");
+      setPage("profile");
     },
-    [continueWithIdentity, queryClient, routeAfterSignIn, showUnsupported],
+    [continueWithIdentity, queryClient, showUnsupported],
   );
 
   const installAccount = React.useCallback(
@@ -396,8 +399,10 @@ export function MachineOnboardingFlow({
           pendingInvite ? <InviteBrand invite={pendingInvite} /> : undefined
         }
         onHaveInviteLink={pendingInvite ? undefined : openInviteLink}
-        onAdvanced={() => {
+        initialScreen={accountStart}
+        onAdvanced={(from) => {
           setSignedIn(false);
+          setAdvancedFrom(from);
           setPage("identity");
         }}
         onAuthenticated={installAccount}
@@ -415,12 +420,23 @@ export function MachineOnboardingFlow({
         isPending={isPending}
         onBack={() => {
           setError(null);
+          setAccountStart(advancedFrom);
           setPage("account-auth");
         }}
         onCreate={() => void createSignIn()}
         onImport={importExistingIdentity}
         onRecovered={loadRecoveredIdentity}
         onStartNewIdentity={() => void replaceLostIdentity()}
+      />
+    );
+  }
+
+  if (page === "profile" && selectedPubkey) {
+    return (
+      <PendingProfileStep
+        onBack={() => setPage("identity")}
+        onDone={() => void routeAfterSignIn(selectedPubkey, "profile")}
+        pubkey={selectedPubkey}
       />
     );
   }
@@ -568,9 +584,6 @@ export function MachineOnboardingFlow({
           setError(null);
           recordBusinessVisit(community.id);
           complete(selectedPubkey, {
-            // A key made here has no name or photo yet: the profile step
-            // follows the business, as it did for new keys before.
-            continueToProfile: madeNewKey,
             openAiSettings: destination === "settings",
           });
         }}
