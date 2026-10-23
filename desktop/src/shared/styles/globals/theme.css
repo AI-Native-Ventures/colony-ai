@@ -25,6 +25,9 @@
     --colony-need-bg: 39.07 100% 91.569%;
     --colony-idle-bg: 285 13.333% 94.118%;
     --colony-canvas: 36 100% 99.02%;
+    --colony-person: #efe7e1;
+    --colony-presence-online: #2e9a62;
+    --colony-presence-away: #c9861a;
     --colony-focus: 250.909 48.207% 50.784%;
     --colony-field: var(--colony-surface);
     --colony-sidebar-foreground: 264 9.934% 29.608%;
@@ -243,6 +246,7 @@
     --colony-focus: 264 27.27% 56.86%;
     --colony-field: 263.08 15.29% 16.67%;
     --colony-fg-secondary: 270 15% 78%;
+    --colony-person: #4a4152;
     --colony-border-strong: 270 10% 30%;
     --colony-wash: 264 12% 18.5%;
     --colony-track: 264 12% 20%;

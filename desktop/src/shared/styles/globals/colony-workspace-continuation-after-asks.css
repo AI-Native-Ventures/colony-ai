@@ -29,11 +29,6 @@
 }
 
 :root:has([data-colony-workspace-route="true"])
-  [data-testid="self-presence-badge"] {
-  opacity: 0;
-}
-
-:root:has([data-colony-workspace-route="true"])
   [data-testid="message-composer"][data-workspace-chrome="true"] {
   border-color: hsl(var(--border));
   border-radius: 0.625rem;

@@ -64,6 +64,9 @@ export const REFERENCE_CHANNEL_IDS = {
   oliveHouse: "1e1a7000-0000-4000-8000-000000000011",
   cedarCafe: "1e1a7000-0000-4000-8000-000000000012",
   northline: "1e1a7000-0000-4000-8000-000000000013",
+  /** Colony 3.0 fixture: the private Welcome channel and the Scout DM. */
+  welcome: "1e1a7000-0000-4000-8000-000000000014",
+  scoutDm: "1e1a7000-0000-4000-8000-000000000015",
 } as const;
 
 export const REFERENCE_SERVICE_ID = "1e1a7000-0000-4000-9000-000000000021";
@@ -601,6 +604,12 @@ function referenceMoneyRecordEvents(selfPubkey: string, firstIndex: number) {
 export const REFERENCE_HOME_UNREAD_IDS = [
   "reference-home-inbox-olive-approval",
   "reference-home-inbox-cedar-access",
+] as const;
+/** The Colony 3.0 fixture shows four unread Activity items (the sidebar "4"). */
+export const COLONY3_HOME_UNREAD_IDS = [
+  ...REFERENCE_HOME_UNREAD_IDS,
+  "colony3-home-inbox-carousel",
+  "colony3-home-inbox-form-field",
 ] as const;
 // Offscreen unread thread activity reproduces the reference sidebar dot while
 // the read marker keeps visible top-level messages free of a New divider.
@@ -1257,7 +1266,9 @@ export const REFERENCE_HOME_VISUAL_FIXTURE: HomeFeedVisualFixture = {
 };
 
 /** The two unread review records that drive the reference Inbox badge. */
-export function referenceHomeInboxItems(): Array<{
+export function referenceHomeInboxItems(
+  options: { colony3?: boolean } = {},
+): Array<{
   id: string;
   kind: number;
   pubkey: string;
@@ -1270,9 +1281,9 @@ export function referenceHomeInboxItems(): Array<{
   category: "needs_action";
 }> {
   const createdAt = todayAt(10, 12);
-  return [
+  const items = [
     {
-      id: REFERENCE_HOME_UNREAD_IDS[0],
+      id: REFERENCE_HOME_UNREAD_IDS[0] as string,
       kind: 40007,
       pubkey: REFERENCE_AGENTS.aya.pubkey,
       content: "Review the Olive House campaign before approval.",
@@ -1281,10 +1292,10 @@ export function referenceHomeInboxItems(): Array<{
       channel_name: "",
       channel_type: null,
       tags: [],
-      category: "needs_action",
+      category: "needs_action" as const,
     },
     {
-      id: REFERENCE_HOME_UNREAD_IDS[1],
+      id: REFERENCE_HOME_UNREAD_IDS[1] as string,
       kind: 40007,
       pubkey: REFERENCE_AGENTS.theo.pubkey,
       content: "Restore Cedar Café publishing access.",
@@ -1293,9 +1304,38 @@ export function referenceHomeInboxItems(): Array<{
       channel_name: "",
       channel_type: null,
       tags: [],
-      category: "needs_action",
+      category: "needs_action" as const,
     },
   ];
+  if (options.colony3) {
+    items.push(
+      {
+        id: COLONY3_HOME_UNREAD_IDS[2],
+        kind: 40007,
+        pubkey: REFERENCE_AGENTS.mina.pubkey,
+        content: "Approve the October carousel concepts.",
+        created_at: createdAt - 120,
+        channel_id: null,
+        channel_name: "",
+        channel_type: null,
+        tags: [],
+        category: "needs_action" as const,
+      },
+      {
+        id: COLONY3_HOME_UNREAD_IDS[3],
+        kind: 40007,
+        pubkey: REFERENCE_AGENTS.aya.pubkey,
+        content: "Review the Form & Field proposal.",
+        created_at: createdAt - 180,
+        channel_id: null,
+        channel_name: "",
+        channel_type: null,
+        tags: [],
+        category: "needs_action" as const,
+      },
+    );
+  }
+  return items;
 }
 
 /** The reference #Sales discussion and the context for its side thread. */
@@ -1431,32 +1471,42 @@ export function referenceOliveHouseMessages(selfPubkey: string): RelayEvent[] {
 /** Writes reference sidebar storage and renames the seeded community. */
 export function seedReferenceSidebarStorage(
   selfPubkey: string,
-  options: { sidebarShell?: boolean } = {},
+  options: { sidebarShell?: boolean; colony3?: boolean } = {},
 ): void {
   const sidebarShell = options.sidebarShell === true;
+  const colony3 = options.colony3 === true;
   const storage = window.localStorage;
   let relayUrl: string | undefined;
   try {
     const communities = JSON.parse(
       storage.getItem("buzz-communities") ?? "[]",
     ) as Array<{ name?: string; relayUrl?: string }>;
+    // Only the community the app opens is Lerato Social; other communities
+    // seeded beside it (the rail boards) keep their own names.
+    const activeId = storage.getItem("buzz-active-community-id");
+    const active =
+      communities.find(
+        (community) => (community as { id?: string }).id === activeId,
+      ) ?? communities[0];
     for (const community of communities) {
-      community.name = REFERENCE_COMMUNITY_NAME;
+      if (community === active) community.name = REFERENCE_COMMUNITY_NAME;
       relayUrl ??= community.relayUrl;
     }
+    relayUrl = active?.relayUrl ?? relayUrl;
     storage.setItem("buzz-communities", JSON.stringify(communities));
   } catch {
     // No seeded community: the app shows its own setup, nothing to rename.
   }
 
   const now = Date.now();
-  const starred = sidebarShell
-    ? []
-    : [
-        REFERENCE_CHANNEL_IDS.sales,
-        REFERENCE_CHANNEL_IDS.marketing,
-        REFERENCE_CHANNEL_IDS.operations,
-      ];
+  const starred =
+    sidebarShell || colony3
+      ? []
+      : [
+          REFERENCE_CHANNEL_IDS.sales,
+          REFERENCE_CHANNEL_IDS.marketing,
+          REFERENCE_CHANNEL_IDS.operations,
+        ];
   storage.setItem(
     `buzz-channel-stars.v1:${selfPubkey}`,
     JSON.stringify({
@@ -1485,12 +1535,21 @@ export function seedReferenceSidebarStorage(
               todayAt(9, 0) * 1_000,
             ).toISOString(),
           }
-        : { [REFERENCE_CHANNEL_IDS.sales]: referenceSalesLastMessageAt() }),
+        : {
+            [REFERENCE_CHANNEL_IDS.sales]: referenceSalesLastMessageAt(),
+            ...(colony3
+              ? { [REFERENCE_CHANNEL_IDS.cedarCafe]: colony3CedarReadAt() }
+              : {}),
+          }),
     }),
   );
   storage.setItem(
     `buzz-home-feed-unread.v1:${selfPubkey}`,
-    JSON.stringify(sidebarShell ? [] : [...REFERENCE_HOME_UNREAD_IDS]),
+    JSON.stringify(
+      sidebarShell
+        ? []
+        : [...(colony3 ? COLONY3_HOME_UNREAD_IDS : REFERENCE_HOME_UNREAD_IDS)],
+    ),
   );
 
   const sections = {
@@ -1528,4 +1587,48 @@ export function seedReferenceSidebarStorage(
     const defaultRelaySortKey = `buzz-channel-sort.v1:${selfPubkey}:${encodeURIComponent(normalizeRelayUrl("ws://localhost:3000"))}`;
     storage.setItem(defaultRelaySortKey, sortPreferences);
   }
+}
+
+/**
+ * Colony 3.0 foundation fixture: the channels, sections and unread state the
+ * Sidebar board shows for Lerato Social. Client work holds The Olive House,
+ * Cedar Café and Northline Interiors; Channels lists Sales, Marketing,
+ * Operations and Welcome; Scout is the one direct message. Nothing is starred.
+ */
+export function colony3ChannelSeeds(): ReferenceChannelSeed[] {
+  const { scout } = REFERENCE_AGENTS;
+  return [
+    ...referenceChannelSeeds(),
+    {
+      id: REFERENCE_CHANNEL_IDS.welcome,
+      name: "Welcome",
+      description: "A private channel for getting oriented in this community.",
+      agentMembers: [scout.pubkey],
+      visibility: "private",
+    },
+    {
+      id: REFERENCE_CHANNEL_IDS.scoutDm,
+      name: "Scout",
+      description: "Direct message with Scout.",
+      agentMembers: [scout.pubkey],
+      channelType: "dm",
+    },
+  ];
+}
+
+/**
+ * Read marker for Cedar Café. The three unread messages the Sidebar board
+ * shows arrive live (see `seedColony3Activity` in the test helpers), because
+ * unread counts are built from observed events, not history.
+ */
+export function colony3CedarReadAt(): string {
+  return new Date(todayAt(9, 0) * 1_000).toISOString();
+}
+
+export function colony3CedarLastMessageAt(): string {
+  return new Date((todayAt(9, 48) + 1) * 1_000).toISOString();
+}
+
+export function colony3OliveLastMessageAt(): string {
+  return new Date((todayAt(9, 52) + 1) * 1_000).toISOString();
 }

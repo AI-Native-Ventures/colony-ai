@@ -178,6 +178,8 @@ type MockBridgeOptions = {
   referenceWorkspace?: boolean;
   /** Report the window as fullscreen (no macOS traffic-light inset). */
   windowFullscreen?: boolean;
+  /** Colony 3.0 foundation fixture (the Sidebar board's Lerato Social). */
+  colony3Sidebar?: boolean;
   /** Match the company shell review's conversation rows and empty badge state. */
   referenceSidebarShell?: boolean;
   /** Override the current member role in reference client channels. */

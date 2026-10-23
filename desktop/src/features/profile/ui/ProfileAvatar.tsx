@@ -4,6 +4,7 @@ import { UserRound } from "lucide-react";
 import { useAvatarPresentation } from "@/features/profile/avatarPresentationStore";
 import { avatarSourceUrlForShape } from "@/features/profile/ui/ProfileAvatarEditor.utils";
 import { parseAnimatedAvatarUrl } from "@/shared/lib/animatedAvatar";
+import { agentGradientFor } from "@/shared/lib/agentGradient";
 import { cn } from "@/shared/lib/cn";
 import { getInitials } from "@/shared/lib/initials";
 import { rewriteRelayUrl } from "@/shared/lib/mediaUrl";
@@ -106,17 +107,25 @@ export function ProfileAvatar({
     : (liveSrc ?? avatarDataUrl ?? undefined);
   const shouldShowFallback = src === undefined || (!animated && liveFailed);
 
+  // People are round, agents are hexagon cells with their own colour pair.
+  const isCell = shape === "squircle";
+  const cellBackground =
+    isCell && !plain && !animated ? agentGradientFor(label) : undefined;
+
   return (
     <Avatar
       className={cn(
-        "shrink-0 text-primary shadow-xs",
-        shape === "squircle" && "rounded-squircle",
+        "shrink-0 text-colony-fg",
+        isCell && "rounded-squircle",
         // Animated avatars carry their own backdrop disc and transparent
         // surroundings — any container fill would flatten the pop-out.
-        plain || animated ? "bg-transparent shadow-none" : "bg-primary/20",
+        plain || animated
+          ? "bg-transparent shadow-none"
+          : !isCell && "bg-colony-person",
         className,
       )}
       data-testid={testId}
+      style={cellBackground ? { background: cellBackground } : undefined}
       onMouseEnter={animated ? () => setIsHovered(true) : undefined}
       onMouseLeave={animated ? () => setIsHovered(false) : undefined}
     >
@@ -142,8 +151,8 @@ export function ProfileAvatar({
       {shouldShowFallback ? (
         <AvatarFallback
           className={cn(
-            "font-semibold text-primary",
-            plain || animated ? "bg-transparent" : "bg-primary/20",
+            "bg-transparent font-extrabold text-colony-fg",
+            !plain && !animated && !isCell && "bg-colony-person",
           )}
           data-testid={testId ? `${testId}-fallback` : undefined}
           delayMs={src === undefined ? undefined : 200}

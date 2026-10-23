@@ -16,7 +16,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CheckCheck, Link2, Plus, Settings2, Ticket } from "lucide-react";
+import { CheckCheck, Link2, Settings2, Ticket } from "lucide-react";
 import * as React from "react";
 
 import type { Community } from "@/features/communities/types";
@@ -38,6 +38,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { cn } from "@/shared/lib/cn";
 import { getInitials } from "@/shared/lib/initials";
+import { ColonyField } from "@/shared/ui/ColonyField";
+import { PlusIcon } from "@/shared/ui/colonyIcons";
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
 
 type CommunityRailProps = {
@@ -125,7 +127,7 @@ function CommunityButton({
               aria-current={isActive ? "true" : undefined}
               aria-label={tooltipLabel}
               className={cn(
-                "relative flex h-9 w-9 items-center justify-center touch-none outline-hidden focus:outline-none focus-visible:outline-none",
+                "colony-rail-button touch-none outline-hidden focus:outline-none focus-visible:outline-none",
                 isDragging && "opacity-30",
               )}
               data-testid={`community-rail-button-${community.id}`}
@@ -137,38 +139,34 @@ function CommunityButton({
               {isActive ? (
                 <span
                   aria-hidden="true"
-                  className="absolute -left-2.5 h-5 w-1 rounded-r-full bg-primary"
+                  className="colony-rail-active-bar"
                   data-testid={`community-rail-active-${community.id}`}
                 />
               ) : null}
-              <span
-                className={cn(
-                  "flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-sidebar-accent/60 text-xs font-semibold text-sidebar-foreground/80 outline-2 outline-offset-2 outline-primary/0 transition-[outline-color]",
-                  !isActive && "hover:outline-primary/50",
-                )}
-              >
-                {iconUrl ? (
-                  <img
-                    alt=""
-                    className="h-full w-full object-cover"
-                    data-testid={`community-rail-icon-${community.id}`}
-                    draggable={false}
-                    src={iconUrl}
-                  />
-                ) : (
-                  getInitials(community.name) || "C"
-                )}
-              </span>
+              {iconUrl ? (
+                <img
+                  alt=""
+                  data-testid={`community-rail-icon-${community.id}`}
+                  draggable={false}
+                  src={iconUrl}
+                />
+              ) : isActive ? (
+                // The open community reads as its single-letter brand mark,
+                // the same letter the sidebar header shows.
+                (community.name.trim().slice(0, 1).toUpperCase() ?? "C") || "C"
+              ) : (
+                getInitials(community.name) || "C"
+              )}
               {showBadge ? (
                 <span
-                  className="absolute -bottom-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-2xs font-semibold text-primary-foreground ring-2 ring-sidebar"
+                  className="colony-rail-badge"
                   data-testid={`community-rail-mentions-${community.id}`}
                 >
                   {badgeLabel}
                 </span>
               ) : showDot ? (
                 <span
-                  className="absolute -bottom-0.5 -right-0.5 h-2 w-2 shrink-0 rounded-full bg-primary ring-2 ring-sidebar"
+                  className="colony-rail-dot"
                   data-testid={`community-rail-unread-dot-${community.id}`}
                 >
                   <span className="sr-only">unread</span>
@@ -197,7 +195,7 @@ function CommunityDragOverlay({
 }) {
   return (
     <div
-      className="flex h-9 w-9 cursor-grabbing items-center justify-center overflow-hidden rounded-xl bg-primary text-xs font-semibold text-primary-foreground opacity-90 shadow-lg ring-1 ring-sidebar-border"
+      className="colony-rail-button cursor-grabbing opacity-90 shadow-lg"
       data-buzz-flat
     >
       {iconUrl ? (
@@ -373,11 +371,8 @@ export function CommunityRail({
   };
 
   return (
-    <nav
-      aria-label="Communities"
-      className="relative z-20 flex w-14 shrink-0 flex-col items-center gap-2.5 overflow-y-auto bg-sidebar px-2.5 pb-5 pt-[calc(var(--buzz-top-chrome-height,40px)+7px)]"
-      data-testid="community-rail"
-    >
+    <nav aria-label="Communities" data-testid="community-rail">
+      <ColonyField variant="rail" />
       <DndContext
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
@@ -418,12 +413,12 @@ export function CommunityRail({
         <TooltipTrigger asChild>
           <button
             aria-label="Add community"
-            className="flex h-9 w-9 items-center justify-center rounded-2xl bg-sidebar-accent/60 text-sidebar-foreground/70 outline-hidden transition-all hover:rounded-xl hover:bg-primary/80 hover:text-primary-foreground focus:outline-none focus-visible:outline-none"
+            className="colony-rail-add outline-hidden focus:outline-none focus-visible:outline-none"
             data-testid="community-rail-add"
             onClick={onAddCommunity}
             type="button"
           >
-            <Plus className="h-4 w-4" />
+            <PlusIcon size={16} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="right" sideOffset={8}>

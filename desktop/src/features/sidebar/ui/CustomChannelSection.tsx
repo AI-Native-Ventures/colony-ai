@@ -556,6 +556,7 @@ export function CustomChannelSection({
   activeWorkingByChannelId,
   selectedChannelId,
   unreadChannelIds,
+  unreadChannelCounts,
   sections,
   assignments,
   isFirst,
@@ -592,6 +593,7 @@ export function CustomChannelSection({
   activeWorkingByChannelId?: ReadonlyMap<string, ActiveChannelTurnSummary>;
   selectedChannelId: string | null;
   unreadChannelIds: ReadonlySet<string>;
+  unreadChannelCounts?: ReadonlyMap<string, number>;
   sections: ChannelSection[];
   assignments: Record<string, string>;
   isFirst: boolean;
@@ -750,6 +752,9 @@ export function CustomChannelSection({
                                   channel.id,
                                 )}
                                 hasUnread={unreadChannelIds.has(channel.id)}
+                                unreadCount={
+                                  unreadChannelCounts?.get(channel.id) ?? 0
+                                }
                                 isMuted={mutedChannelIds?.has(channel.id)}
                                 isActive={
                                   isActiveChannel &&

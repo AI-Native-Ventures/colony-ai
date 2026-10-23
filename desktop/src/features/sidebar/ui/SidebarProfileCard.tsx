@@ -1,18 +1,9 @@
 import * as React from "react";
 
-import { Sun } from "lucide-react";
 import { getPresenceLabel } from "@/features/presence/lib/presence";
 import { PresenceDot } from "@/features/presence/ui/PresenceBadge";
 import { useSelfProfileCache } from "@/features/profile/hooks";
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
-import {
-  DEFAULT_HOVER_PROFILE_STATUS_GEOMETRY,
-  scaleProfileAvatarStatusGeometry,
-} from "@/features/profile/ui/ProfileAvatarWithStatus";
-import {
-  MaskedAvatarBadgeFrame,
-  STATUS_DOT_MASK_CURVE,
-} from "@/features/profile/ui/MaskedAvatarBadgeFrame";
 import { ProfilePopover } from "@/features/profile/ui/ProfilePopover";
 import { StatusEmoji } from "@/features/user-status/ui/StatusEmoji";
 import type { UserStatusInput } from "@/features/user-status/types";
@@ -29,29 +20,6 @@ import {
   type SyntaxThemeName,
 } from "@/shared/theme/theme-loader";
 import { OPEN_SIDEBAR_PROFILE_POPOVER_EVENT } from "@/features/sidebar/lib/profilePopoverOpenEvent";
-
-const SIDEBAR_PROFILE_AVATAR_SIZE = 24;
-const SIDEBAR_PROFILE_STATUS_GEOMETRY = scaleProfileAvatarStatusGeometry(
-  DEFAULT_HOVER_PROFILE_STATUS_GEOMETRY,
-  SIDEBAR_PROFILE_AVATAR_SIZE,
-);
-const SIDEBAR_PROFILE_STATUS_CUTOUT = {
-  cx: SIDEBAR_PROFILE_STATUS_GEOMETRY.centerX,
-  cy: SIDEBAR_PROFILE_STATUS_GEOMETRY.centerY,
-  r: SIDEBAR_PROFILE_STATUS_GEOMETRY.cutoutSize / 2,
-};
-const SIDEBAR_PROFILE_STATUS_BADGE = {
-  bottom:
-    SIDEBAR_PROFILE_AVATAR_SIZE -
-    SIDEBAR_PROFILE_STATUS_GEOMETRY.centerY -
-    SIDEBAR_PROFILE_STATUS_GEOMETRY.dotSize / 2,
-  height: SIDEBAR_PROFILE_STATUS_GEOMETRY.dotSize,
-  right:
-    SIDEBAR_PROFILE_AVATAR_SIZE -
-    SIDEBAR_PROFILE_STATUS_GEOMETRY.centerX -
-    SIDEBAR_PROFILE_STATUS_GEOMETRY.dotSize / 2,
-  width: SIDEBAR_PROFILE_STATUS_GEOMETRY.dotSize,
-};
 
 type SidebarProfileCardProps = {
   activeCommunity: Community | null;
@@ -161,35 +129,24 @@ export function SidebarProfileCard({
           }}
           type="button"
         >
-          <MaskedAvatarBadgeFrame
-            badge={
-              <span
-                aria-label={getPresenceLabel(selfPresenceStatus)}
-                className="flex size-full items-center justify-center rounded-full"
-                data-testid="self-presence-badge"
-                role="img"
-              >
-                <PresenceDot
-                  className="size-full"
-                  status={selfPresenceStatus}
-                />
-              </span>
-            }
-            badgeBox={SIDEBAR_PROFILE_STATUS_BADGE}
-            className="colony-sidebar-profile-avatar-frame h-6 w-6"
-            curve={STATUS_DOT_MASK_CURVE}
-            cutout={SIDEBAR_PROFILE_STATUS_CUTOUT}
-            size={SIDEBAR_PROFILE_AVATAR_SIZE}
-          >
+          <span className="colony-sidebar-profile-avatar">
             <ProfileAvatar
               avatarDataUrl={selfProfileCache?.avatarDataUrl ?? null}
               avatarUrl={profile?.avatarUrl ?? null}
-              className="h-full w-full text-xs"
+              className="size-full text-sm"
               iconClassName="h-4 w-4"
               label={resolvedDisplayName}
               testId="sidebar-profile-avatar"
             />
-          </MaskedAvatarBadgeFrame>
+            <span
+              aria-label={getPresenceLabel(selfPresenceStatus)}
+              className="colony-sidebar-profile-presence"
+              data-testid="self-presence-badge"
+              role="img"
+            >
+              <PresenceDot className="size-full" status={selfPresenceStatus} />
+            </span>
+          </span>
         </button>
 
         <div className="min-w-0 flex-1">
@@ -206,6 +163,8 @@ export function SidebarProfileCard({
             onSendFeedback={onSendFeedback}
             onSetStatus={onSetPresenceStatus ?? (() => {})}
             onSetUserStatus={onSetUserStatus}
+            isDark={isDark}
+            onToggleTheme={toggleTheme}
             triggerContainerRef={profileCardRef}
             userStatusEmoji={selfUserStatus?.emoji}
             userStatusExpiresAt={selfUserStatus?.expiresAt}
@@ -278,18 +237,6 @@ export function SidebarProfileCard({
             </span>
           </button>
         </div>
-        <button
-          aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
-          className="colony-sidebar-theme-toggle flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/65 transition-colors hover:bg-sidebar-border/35 hover:text-sidebar-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-sidebar-ring"
-          data-testid="sidebar-theme-toggle"
-          onClick={(event) => {
-            event.stopPropagation();
-            toggleTheme();
-          }}
-          type="button"
-        >
-          <Sun aria-hidden="true" className="size-3.5" />
-        </button>
       </div>
     </div>
   );

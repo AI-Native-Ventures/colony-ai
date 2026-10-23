@@ -44,6 +44,7 @@ import {
   preferredUnreadTarget,
 } from "@/features/sidebar/ui/MoreUnreadButton";
 import { SidebarSection } from "@/features/sidebar/ui/SidebarSection";
+import { SidebarCollapsedNav } from "@/features/sidebar/ui/SidebarCollapsedNav";
 import { SidebarLibraryGroup } from "@/features/sidebar/ui/SidebarLibraryGroup";
 import { SidebarBusinessGroup } from "@/features/sidebar/ui/SidebarBusinessGroup";
 import { SidebarCompanyGroup } from "@/features/sidebar/ui/SidebarCompanyGroup";
@@ -171,8 +172,9 @@ export function AppSidebar({
   const activeWorkingByChannelId = useActiveWorkingChannelsById();
   const { status: updateStatus } = useUpdaterContext();
   const canShowSidebarUpdateCard = shouldShowSidebarUpdateCard(updateStatus);
-  const { open: sidebarOpen, openMobile } = useSidebar();
+  const { open: sidebarOpen, openMobile, toggleSidebar } = useSidebar();
   const isMobile = useIsMobile();
+  const isCollapsedRail = !isMobile && !sidebarOpen;
   const [isSidebarUpdateCardDismissed, setIsSidebarUpdateCardDismissed] =
     React.useState(false);
   const showSidebarUpdateCard =
@@ -619,21 +621,70 @@ export function AppSidebar({
               data-sidebar-background
               data-testid="sidebar-scroll-content"
             >
-              <AppSidebarPrimaryMenu
-                homeBadgeCount={homeBadgeCount}
-                isSavedForLaterActive={isSavedForLaterActive}
-                onSelectToday={onSelectToday}
-                onSelectSavedForLater={onSelectSavedForLater}
-                onSelectHome={onSelectHome}
-                suppressTodaySelection={suppressTodaySelection}
-                selectedView={selectedView}
-              />
+              {!isCollapsedRail ? (
+                <AppSidebarPrimaryMenu
+                  homeBadgeCount={homeBadgeCount}
+                  isSavedForLaterActive={isSavedForLaterActive}
+                  onSelectToday={onSelectToday}
+                  onSelectSavedForLater={onSelectSavedForLater}
+                  onSelectHome={onSelectHome}
+                  suppressTodaySelection={suppressTodaySelection}
+                  selectedView={selectedView}
+                />
+              ) : null}
 
-              {isLoading ? (
+              {isCollapsedRail ? (
+                <SidebarCollapsedNav
+                  directMessages={sortedDirectMessages.map((channel) => ({
+                    channel,
+                    isActive:
+                      selectedView === "channel" &&
+                      selectedChannelId === channel.id,
+                    label: dmChannelLabels[channel.id] ?? channel.name,
+                    participants: dmParticipantsByChannelId[channel.id],
+                    unreadCount: unreadChannelIds.has(channel.id)
+                      ? Math.max(unreadChannelCounts.get(channel.id) ?? 0, 1)
+                      : 0,
+                  }))}
+                  hasUnreadChannels={streamChannels.some((channel) =>
+                    unreadChannelIds.has(channel.id),
+                  )}
+                  homeBadgeCount={homeBadgeCount}
+                  isActivityActive={selectedView === "home"}
+                  isBusinessActive={
+                    selectedView === "business" || selectedView === "clients"
+                  }
+                  isCompanyActive={
+                    selectedView === "team" ||
+                    selectedView === "agents" ||
+                    selectedView === "goals" ||
+                    selectedView === "work" ||
+                    selectedView === "workflows"
+                  }
+                  isFactoryActive={selectedView === "factory"}
+                  isSavedForLaterActive={isSavedForLaterActive}
+                  isTodayActive={
+                    selectedView === "today" && !suppressTodaySelection
+                  }
+                  onExpand={toggleSidebar}
+                  onSelectBusiness={() => {
+                    window.location.hash = "#/discovery";
+                  }}
+                  onSelectChannel={onSelectChannel}
+                  onSelectCompany={onSelectTeam}
+                  onSelectFactory={onSelectFactory}
+                  onSelectHome={onSelectHome}
+                  onSelectLibrary={() => onSelectSettings("channel-templates")}
+                  onSelectSavedForLater={onSelectSavedForLater}
+                  onSelectToday={onSelectToday}
+                />
+              ) : null}
+
+              {!isCollapsedRail && isLoading ? (
                 <SidebarLoadingContent shape={sidebarLoadingShape} />
               ) : null}
 
-              {!isLoading ? (
+              {!isCollapsedRail && !isLoading ? (
                 <>
                   <div
                     className="colony-sidebar-nav"
@@ -693,6 +744,7 @@ export function AppSidebar({
                           activeWorkingByChannelId={activeWorkingByChannelId}
                           selectedChannelId={selectedChannelId}
                           unreadChannelIds={unreadChannelIds}
+                          unreadChannelCounts={unreadChannelCounts}
                           sections={channelSections}
                           assignments={channelAssignments}
                           isFirst={idx === 0}

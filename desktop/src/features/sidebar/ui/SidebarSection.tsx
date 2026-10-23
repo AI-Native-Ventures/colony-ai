@@ -10,7 +10,7 @@ import {
 import { AgentManagementMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
 import { ChannelContextMenuItems } from "@/features/sidebar/ui/ChannelContextMenu";
 import type { ActiveChannelTurnSummary } from "@/features/agents/activeAgentTurnsStore";
-import { formatElapsed } from "@/features/agents/ui/agentSessionUtils";
+import { formatElapsedClock } from "@/features/agents/ui/agentSessionUtils";
 import { ChannelGlyph } from "@/features/channels/ui/ChannelGlyph";
 import { getEphemeralChannelDisplay } from "@/features/channels/lib/ephemeralChannel";
 import { EphemeralChannelBadge } from "@/features/channels/ui/EphemeralChannelBadge";
@@ -125,9 +125,9 @@ function ChannelWorkingBadge({
   summary: ActiveChannelTurnSummary;
 }) {
   const now = useNow(1000);
-  const elapsed = formatElapsed(now - summary.anchorAt);
+  const elapsed = formatElapsedClock(now - summary.anchorAt);
   const label =
-    summary.agentCount > 1 ? `${elapsed} (${summary.agentCount})` : elapsed;
+    summary.agentCount > 1 ? `${elapsed} · ${summary.agentCount}` : elapsed;
   const title = formatWorkingTooltip(summary);
 
   return (
@@ -185,13 +185,13 @@ function DmChannelIcon({
 
   if (isPair || !participants || participants.length <= 1) {
     return (
-      <span className="relative flex h-[1.125rem] w-[1.125rem] shrink-0 items-center justify-center">
+      <span className="relative flex size-6 shrink-0 items-center justify-center">
         <ProfileAvatar
           avatarUrl={primaryParticipant.avatarUrl}
-          className="h-[1.125rem] w-[1.125rem] bg-sidebar-accent/80 text-3xs text-sidebar-foreground shadow-none"
+          className="size-6 text-3xs shadow-none"
           iconClassName="h-3.5 w-3.5"
           label={primaryParticipant.label}
-          shape="squircle"
+          shape={primaryParticipant.isAgent ? "squircle" : "circle"}
           testId={`channel-avatar-${channelName}`}
         />
       </span>
@@ -282,6 +282,7 @@ export function ChannelMenuButton({
       )}
       data-channel-id={channel.id}
       data-testid={`channel-${channel.name}`}
+      data-unread={hasUnread || hasThreadUnread ? "true" : undefined}
       isActive={isActive}
       onClick={() => onSelectChannel(channel.id)}
       tooltip={resolvedLabel}

@@ -55,6 +55,9 @@ import {
   REFERENCE_SALES_WINDOW_HAS_OLDER_HISTORY,
   REFERENCE_SELF_NAME,
   referenceChannelLastMessageAt,
+  colony3CedarLastMessageAt,
+  colony3OliveLastMessageAt,
+  colony3ChannelSeeds,
   referenceChannelSeeds,
   referenceHomeInboxItems,
   referenceSalesLastMessageAt,
@@ -432,6 +435,9 @@ type E2eConfig = {
     /** Report the window as fullscreen, which removes the macOS traffic-light
      *  inset so the sidebar header sits exactly as in the design. */
     windowFullscreen?: boolean;
+    /** Colony 3.0 foundation: seed the Sidebar board's channels, sections,
+     *  unread counts and Activity badge on top of the reference workspace. */
+    colony3Sidebar?: boolean;
     /** Match only the row data shown in the approved C1 shell snapshot. */
     referenceSidebarShell?: boolean;
     /** Override the current member role in reference client channels. */
@@ -1982,6 +1988,8 @@ declare global {
       channelId: string;
       turnId: string;
       kind?: "turn_started" | "turn_completed";
+      /** Back-date the event so a turn reads as already running this long. */
+      startedAgoMs?: number;
     }) => void;
     __BUZZ_E2E_SEED_OBSERVER_EVENTS__?: (input: {
       agentPubkey: string;
@@ -5410,9 +5418,12 @@ function applyReferenceWorkspace(config: E2eConfig): void {
       has_profile_event: true,
     });
   }
-  const channelSeeds = sidebarShell
-    ? referenceSidebarChannelSeeds()
-    : referenceChannelSeeds();
+  const colony3 = config.mock?.colony3Sidebar === true;
+  const channelSeeds = colony3
+    ? colony3ChannelSeeds()
+    : sidebarShell
+      ? referenceSidebarChannelSeeds()
+      : referenceChannelSeeds();
   const channels = channelSeeds.map((seed) =>
     createMockChannel({
       id: seed.id,
@@ -5444,7 +5455,11 @@ function applyReferenceWorkspace(config: E2eConfig): void {
                     : null
         : seed.id === REFERENCE_CHANNEL_IDS.sales
           ? referenceSalesLastMessageAt()
-          : null,
+          : colony3 && seed.id === REFERENCE_CHANNEL_IDS.cedarCafe
+            ? colony3CedarLastMessageAt()
+            : colony3 && seed.id === REFERENCE_CHANNEL_IDS.oliveHouse
+              ? colony3OliveLastMessageAt()
+              : null,
       archived_at: null,
       created_by: self,
       topic_set_by: null,
@@ -5490,6 +5505,9 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     }
     setMockPresenceStatus(REFERENCE_AGENTS.mina.pubkey, "online");
   }
+  if (colony3) {
+    setMockPresenceStatus(REFERENCE_AGENTS.scout.pubkey, "online");
+  }
   for (const event of referenceBusinessRecordEvents(self, {
     clientStatus: config.mock?.referenceWorkspaceClientStatus,
     workStatus: config.mock?.referenceWorkspaceWorkStatus,
@@ -5509,7 +5527,7 @@ function applyReferenceWorkspace(config: E2eConfig): void {
     store.push(event);
     mockMessages.set(channelId, store);
   }
-  seedReferenceSidebarStorage(self, { sidebarShell });
+  seedReferenceSidebarStorage(self, { sidebarShell, colony3 });
   mockBusinessRecordEvents.clear();
   const communityId = referenceCommunityId();
   if (communityId) {
@@ -14321,7 +14339,9 @@ async function handleGetFeed(
     const unreadItems =
       config?.mock?.referenceSidebarShell === true
         ? []
-        : referenceHomeInboxItems();
+        : referenceHomeInboxItems({
+            colony3: config?.mock?.colony3Sidebar === true,
+          });
     return {
       feed: {
         mentions: [],
@@ -19096,11 +19116,12 @@ export function maybeInstallE2eTauriMocks() {
     channelId,
     turnId,
     kind = "turn_started",
+    startedAgoMs = 0,
   }) => {
     seedTurnSeq += 1;
     const event = {
       seq: seedTurnSeq,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(Date.now() - startedAgoMs).toISOString(),
       kind,
       agentIndex: 0,
       channelId,

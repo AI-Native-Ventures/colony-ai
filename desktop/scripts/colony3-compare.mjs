@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // Compare an app screenshot with a Colony 3.0 design reference PNG.
 //
-//   node scripts/colony3-compare.mjs <reference.png> <app.png> <outPrefix> [--crop x,y,w,h]
+//   node scripts/colony3-compare.mjs <reference.png> <app.png> <outPrefix> [--crop x,y,w,h] [--scale n]
 //
 // Writes <outPrefix>-side.png (reference left, app right), <outPrefix>-overlay.png
 // (50 percent blend) and <outPrefix>-heat.png (5x channel difference), and
 // prints the difference metrics as JSON. `--crop` limits the comparison to one
-// region of both images, for boards where only part of the screen is in scope.
+// region of both images, for boards where only part of the screen is in scope;
+// `--scale` enlarges the written images by a whole factor for close reading.
 import { readFileSync, writeFileSync } from "node:fs";
 import UPNG from "upng-js";
 
@@ -68,10 +69,27 @@ if (reference.width !== app.width || reference.height !== app.height) {
   app = crop(app, [0, 0, width, height]);
 }
 
+function enlarge(image, factor) {
+  if (factor <= 1) return image;
+  const width = image.width * factor;
+  const height = image.height * factor;
+  const pixels = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const from =
+        (Math.floor(y / factor) * image.width + Math.floor(x / factor)) * 4;
+      pixels.set(image.pixels.subarray(from, from + 4), (y * width + x) * 4);
+    }
+  }
+  return { width, height, pixels };
+}
+
+const scaleIndex = rest.indexOf("--scale");
+const factor = scaleIndex === -1 ? 1 : Number(rest[scaleIndex + 1]);
 const result = compareImages(reference, app);
-encode(`${outPrefix}-side.png`, result.sideBySide);
-encode(`${outPrefix}-overlay.png`, result.overlay);
-encode(`${outPrefix}-heat.png`, result.heatmap);
+encode(`${outPrefix}-side.png`, enlarge(result.sideBySide, factor));
+encode(`${outPrefix}-overlay.png`, enlarge(result.overlay, factor));
+encode(`${outPrefix}-heat.png`, enlarge(result.heatmap, factor));
 console.log(
   JSON.stringify(
     {
