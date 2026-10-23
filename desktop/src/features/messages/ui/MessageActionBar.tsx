@@ -599,7 +599,7 @@ export const MessageActionBar = React.memo(function MessageActionBar({
               </Tooltip>
               <PopoverContent
                 align="end"
-                className="w-auto p-0 rounded-2xl overflow-hidden border-0 bg-transparent shadow-none"
+                className="max-h-(--radix-popover-content-available-height) w-auto p-0 rounded-2xl overflow-hidden border-0 bg-transparent shadow-none"
                 side="top"
                 sideOffset={10}
               >

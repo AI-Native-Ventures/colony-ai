@@ -693,7 +693,7 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
   await expect(agentChatPanel).toBeVisible();
   await expect(projectPanelLayout).toHaveAttribute("data-detached", "false");
   await expect(projectContentPod).toHaveCount(0);
-  await expect(appContentSurface).toHaveCSS("border-radius", "11px");
+  await expect(appContentSurface).toHaveCSS("border-radius", "16px");
   await expect
     .poll(() =>
       appContentSurface.evaluate(

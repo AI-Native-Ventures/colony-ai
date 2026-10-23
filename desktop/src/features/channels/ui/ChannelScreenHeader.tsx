@@ -6,6 +6,7 @@ import type { EphemeralChannelDisplay } from "@/features/channels/lib/ephemeralC
 import type { ActiveDmHeaderParticipant } from "@/features/channels/useActiveChannelHeader";
 import { getChannelDescription } from "@/features/channels/lib/channelDescription";
 import { getChannelKicker } from "@/features/channels/lib/channelKicker";
+import { useIsProjectHomeChannel } from "@/features/projects/lib/projectHomeChannel";
 import { getDmParticipantPreview } from "@/features/channels/lib/dmParticipantDisplay";
 import { ChannelGlyph } from "@/features/channels/ui/ChannelGlyph";
 import { ChannelHeaderStatusBadge } from "@/features/channels/ui/ChannelHeaderStatusBadge";
@@ -87,6 +88,9 @@ export function ChannelScreenHeader({
     onJoinChannel;
 
   const terminalPanel = useTerminalPanel();
+  // Project homes keep their compact header beside the project panel until
+  // the projects surfaces get the office treatment.
+  const isProjectHome = useIsProjectHomeChannel(activeChannel?.id);
   const terminalButton =
     activeChannel &&
     !referenceThreadPresentation &&
@@ -156,7 +160,7 @@ export function ChannelScreenHeader({
       actions={actions}
       channelType={activeChannel?.channelType}
       description={getChannelDescription(activeChannel)}
-      kicker={getChannelKicker(activeChannel)}
+      kicker={isProjectHome ? undefined : getChannelKicker(activeChannel)}
       leadingContent={
         activeChannel?.channelType === "dm" ? (
           isGroupDm ? (
@@ -219,7 +223,11 @@ export function ChannelScreenHeader({
           ) : null}
         </>
       }
-      showDescription={actionsVariant !== "compact"}
+      showDescription={
+        isProjectHome
+          ? actionsVariant === "reference" && !referenceThreadPresentation
+          : actionsVariant !== "compact"
+      }
       title={activeChannelTitle}
       titleClassName={
         referenceThreadPresentation ? "text-channel-title" : undefined

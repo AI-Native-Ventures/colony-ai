@@ -32,7 +32,7 @@
   --office-radius-card: 1rem;
   --office-radius-composer: 1.125rem;
   --office-column: 61.25rem;
-  --office-column-pad: 3rem;
+  --office-column-pad: clamp(1.5rem, 3.5vw, 3rem);
   --office-gutter: max(
     var(--office-column-pad),
     calc((100% - var(--office-column)) / 2 + var(--office-column-pad))
@@ -75,6 +75,7 @@
   --office-ink: 258.19 22.84% 93.73%;
   --office-ink-2: 258.52 11.46% 76.09%;
   --office-ink-3: 258.71 7.02% 59.1%;
+  --office-ink-quiet-dark: 258 12% 84%;
   --office-paper: 246.81 16.04% 11.26%;
   --office-paper-2: 249.5 15.33% 14.95%;
   --office-side: 254.2 20.47% 15.17%;

@@ -116,10 +116,11 @@ export function MessageThreadSummaryRow({
   const hoverLeftRem =
     indentRem + THREAD_REPLY_ROW_MARGIN_INLINE_REM + summaryIndentOffsetRem;
   const hoverLeft = threadReplyLength(hoverLeftRem);
-  const contentPaddingStart = threadReplyLength(
+  // Restyled timelines (office-conversation.css) set their own body offset.
+  const contentPaddingStart = `var(--thread-summary-content-offset, ${threadReplyLength(
     THREAD_SUMMARY_CONTENT_OFFSET_REM -
       (compactTimelineAvatar ? THREAD_SUMMARY_TIMELINE_AVATAR_INSET_REM : 0),
-  );
+  )})`;
   const surfaceInsetStart = `calc(${contentPaddingStart} - ${threadReplyLength(
     THREAD_SUMMARY_SURFACE_AVATAR_INSET_REM,
   )})`;

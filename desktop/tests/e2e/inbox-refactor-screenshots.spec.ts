@@ -396,8 +396,8 @@ test.describe("inbox refactor screenshots", () => {
     const firstUnreadRow = page.getByTestId(`home-inbox-item-${replyIds[0]}`);
     await expect(firstUnreadRow).toBeVisible();
     const listPreview = firstUnreadRow.locator(".inbox-preview-markdown");
-    await expect(listPreview).toHaveCSS("font-size", "15px");
-    await expect(listPreview).toHaveCSS("line-height", "21.4286px");
+    await expect(listPreview).toHaveCSS("font-size", "17px");
+    await expect(listPreview).toHaveCSS("line-height", "26.35px");
     await firstUnreadRow.click();
 
     const detail = page.getByTestId("home-inbox-detail");
@@ -489,13 +489,13 @@ test.describe("inbox refactor screenshots", () => {
     await expect
       .poll(readConversationMetrics)
       .toEqual([
-        { fontSize: "15px", lineHeight: "21.4286px" },
+        { fontSize: "17px", lineHeight: "26.35px" },
         { paddingBottom: "4px", paddingTop: "4px" },
         2,
+        { fontSize: "13px", lineHeight: "18.85px" },
+        { fontSize: "17px", lineHeight: "26.35px" },
         { fontSize: "12.8571px", lineHeight: "17.1429px" },
-        { fontSize: "15px", lineHeight: "21.4286px" },
-        { fontSize: "12.8571px", lineHeight: "17.1429px" },
-        { fontSize: "15px", lineHeight: "21.4286px" },
+        { fontSize: "17px", lineHeight: "26.35px" },
       ]);
     await waitForAnimations(page);
 
@@ -505,26 +505,26 @@ test.describe("inbox refactor screenshots", () => {
     await expect
       .poll(readConversationMetrics)
       .toEqual([
-        { fontSize: "15px", lineHeight: "21.4286px" },
+        { fontSize: "17px", lineHeight: "26.35px" },
         { paddingBottom: "4px", paddingTop: "4px" },
         0,
+        { fontSize: "13px", lineHeight: "18.85px" },
+        { fontSize: "17px", lineHeight: "26.35px" },
         { fontSize: "12.8571px", lineHeight: "17.1429px" },
-        { fontSize: "15px", lineHeight: "21.4286px" },
-        { fontSize: "12.8571px", lineHeight: "17.1429px" },
-        { fontSize: "15px", lineHeight: "21.4286px" },
+        { fontSize: "17px", lineHeight: "26.35px" },
       ]);
 
     await applyConversationPreferences(page, "smaller", "compact");
     await expect
       .poll(readConversationMetrics)
       .toEqual([
-        { fontSize: "14px", lineHeight: "20px" },
+        { fontSize: "16px", lineHeight: "24.8px" },
         { paddingBottom: "4px", paddingTop: "4px" },
         0,
+        { fontSize: "12.1333px", lineHeight: "17.5933px" },
+        { fontSize: "16px", lineHeight: "24.8px" },
         { fontSize: "12px", lineHeight: "16px" },
-        { fontSize: "14px", lineHeight: "20px" },
-        { fontSize: "12px", lineHeight: "16px" },
-        { fontSize: "14px", lineHeight: "20px" },
+        { fontSize: "16px", lineHeight: "24.8px" },
       ]);
     await waitForAnimations(page);
     await page.screenshot({ path: `${SHOTS}/05-thread-context-compact.png` });
@@ -533,13 +533,13 @@ test.describe("inbox refactor screenshots", () => {
     await expect
       .poll(readConversationMetrics)
       .toEqual([
-        { fontSize: "16px", lineHeight: "22.8571px" },
+        { fontSize: "18px", lineHeight: "27.9px" },
         { paddingBottom: "8px", paddingTop: "8px" },
         4,
+        { fontSize: "13.8667px", lineHeight: "20.1067px" },
+        { fontSize: "18px", lineHeight: "27.9px" },
         { fontSize: "13.7143px", lineHeight: "18.2857px" },
-        { fontSize: "16px", lineHeight: "22.8571px" },
-        { fontSize: "13.7143px", lineHeight: "18.2857px" },
-        { fontSize: "16px", lineHeight: "22.8571px" },
+        { fontSize: "18px", lineHeight: "27.9px" },
       ]);
     await waitForAnimations(page);
     await page.screenshot({ path: `${SHOTS}/06-thread-context-spacious.png` });

@@ -586,12 +586,14 @@ px:
   interface text. All of these derive from the virtual typography rem and
   therefore follow the user's font-size preference and Cmd +/- zoom.
 - ✅ Conversation text uses the named `text-message` token. Its
-  **Smaller / Default / Larger contract is 14 / 15 / 16px** before keyboard
-  zoom. Author names use the neighboring `text-xs` step; timestamps, system
-  rows, code, and reactions are deliberate neighboring steps on the shared
-  virtual-rem ramp. Keep those relationships tokenized rather than restoring a
-  fixed 16px chat baseline or hardcoding preference-specific values in
-  components.
+  **Smaller / Default / Larger contract is 16 / 17 / 18px** before keyboard
+  zoom: the office restyle's reference size, two px above `text-sm` (see
+  `docs/superpowers/specs/2026-10-23-app-restyle-design.md`). Author names,
+  timestamps, system rows, code, and reactions are deliberate neighboring
+  steps on the shared virtual-rem ramp (the office type tokens in
+  `desktop/src/shared/styles/globals/office-tokens.css`). Keep those
+  relationships tokenized rather than restoring a fixed 16px chat baseline or
+  hardcoding preference-specific values in components.
 - ✅ The `text-2xs` (0.6875rem / 11px at a 16px virtual rem) and `text-3xs`
   (0.5rem / 8px at a 16px virtual rem) meta-text
   tokens (in `desktop/tailwind.config.js` under `theme.extend.fontSize`) for the

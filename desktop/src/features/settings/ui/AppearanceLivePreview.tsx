@@ -204,7 +204,11 @@ export function LiveAppearancePreview({
               className={`ap-live-chat${preferences.threadLayout === "focus" ? " focused" : ""}`}
             >
               <header>
-                # the-olive-house <span>3 members</span>
+                <span className="ap-live-heading">
+                  <small># Channel</small>
+                  the-olive-house
+                </span>
+                <span>3 members</span>
               </header>
               <div className="ap-demo-message">
                 <span className="ap-demo-avatar">M</span>

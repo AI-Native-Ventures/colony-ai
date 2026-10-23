@@ -10,6 +10,12 @@
   --colony-composer-gutter: var(--office-gutter);
 }
 
+/* The narrow thread panel keeps its own gutters. */
+:root[data-colony-office] #root [data-testid="message-thread-panel"] {
+  --colony-conversation-gutter: 1.5rem;
+  --colony-composer-gutter: 1.5rem;
+}
+
 :root[data-colony-office]
   #root
   [data-buzz-content-surface]:not([data-buzz-content-unframed]) {
@@ -26,7 +32,6 @@
       transparent 70%
     );
   background-repeat: no-repeat;
-  box-shadow: var(--office-shadow-card);
 }
 
 /*
@@ -45,12 +50,10 @@
 }
 
 :root[data-colony-office] #root [data-testid="channel-shared-header-backdrop"] {
-  background: hsl(var(--office-paper) / 0.78);
+  background: hsl(var(--office-paper) / 0.92);
 }
 
 :root[data-colony-office] #root .colony-workspace-topbar {
-  height: 3.25rem;
-  min-height: 3.25rem;
   border-bottom-color: transparent;
   background: transparent;
   padding-inline: 1.25rem 1rem;
@@ -133,7 +136,7 @@
   color: hsl(var(--office-ink-2));
   font-size: var(--office-text-label);
   font-weight: 750;
-  line-height: 1.4;
+  line-height: 1.25rem;
 }
 
 :root[data-colony-office] #root .colony-chat-kicker-icon {
@@ -167,8 +170,8 @@
   font-size: var(--office-text-title);
   font-weight: 800;
   letter-spacing: var(--office-tracking-title);
-  line-height: 1.04;
-  padding-block: 0.06em 0.08em;
+  /* Whole-pixel line boxes keep the measured overlay header offset exact. */
+  line-height: 3.25rem;
   text-overflow: ellipsis;
   transform: none;
 }
@@ -183,7 +186,7 @@
   color: hsl(var(--office-ink-2));
   font-size: var(--office-text-lede);
   font-weight: 600;
-  line-height: 1.45;
+  line-height: 1.5rem;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   white-space: normal;
@@ -195,6 +198,7 @@
   [data-office-kicker="true"]
   [data-testid="chat-title"].text-channel-title {
   font-size: calc(var(--office-rem) * 2.25);
+  line-height: 2.5rem;
 }
 
 /* Channel views: quiet office tabs under the header. */

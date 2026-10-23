@@ -152,7 +152,7 @@ test.describe("channel muting", () => {
 
     await expect(page.getByTestId("channel-engineering")).toHaveCSS(
       "font-weight",
-      "450",
+      "700",
     );
     await expectUnreadBadgeCount(
       page.getByTestId("channel-unread-engineering"),

@@ -1,0 +1,380 @@
+/*
+ * Office restyle: the Settings frame and the Appearance panel. The local
+ * `.w20-appearance` palette follows the office tokens, and the live preview
+ * draws the office look so changes read the way the app will.
+ */
+
+/* Settings navigation on the field, in the app sidebar's office shapes. */
+:root[data-colony-office] #root .w20-settings-sidebar [data-sidebar="sidebar"] {
+  color: hsl(var(--office-ink-2));
+}
+
+:root[data-colony-office] #root .w20-settings-sidebar .w20-nav-back {
+  color: hsl(var(--office-ink-3));
+  font-size: var(--office-text-label);
+  font-weight: 700;
+}
+
+:root[data-colony-office] #root .w20-settings-sidebar .w20-nav-back:hover {
+  color: hsl(var(--office-ink));
+}
+
+:root[data-colony-office] #root .w20-nav-title {
+  color: hsl(var(--office-ink));
+  font-size: calc(var(--office-rem) * 1.5);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+:root[data-colony-office] #root .w20-nav-search {
+  border: 1px solid hsl(var(--office-line) / 0.8);
+  border-radius: var(--office-radius-row);
+  background: rgb(255 255 255 / 45%);
+  padding: 0.5rem 0.75rem;
+}
+
+:root.dark[data-colony-office] #root .w20-nav-search {
+  background: rgb(255 255 255 / 6%);
+}
+
+:root[data-colony-office] #root .w20-nav-search input {
+  font-size: var(--office-text-label);
+  font-weight: 650;
+}
+
+:root[data-colony-office] #root .w20-nav-heading {
+  color: hsl(var(--office-ink-3));
+  font-size: var(--office-text-caps);
+  font-weight: 800;
+  letter-spacing: var(--office-tracking-caps);
+  text-transform: uppercase;
+}
+
+:root[data-colony-office] #root .w20-nav-item {
+  min-height: 2.25rem;
+  border-radius: var(--office-radius-row);
+  padding: 0.4375rem 0.625rem;
+  color: hsl(var(--office-ink-2));
+  font-size: var(--office-text-row);
+  font-weight: 750;
+}
+
+:root[data-colony-office] #root .w20-nav-item > svg {
+  width: 1.1875rem;
+  height: 1.1875rem;
+  color: hsl(var(--office-ink-3));
+  opacity: 1;
+}
+
+:root[data-colony-office] #root .w20-nav-item:hover {
+  background: var(--office-row-hover);
+  color: hsl(var(--office-ink));
+}
+
+:root[data-colony-office] #root .w20-nav-item.is-active {
+  background: var(--office-row-active);
+  box-shadow: var(--office-shadow-row);
+  color: hsl(var(--office-ink));
+}
+
+:root[data-colony-office] #root .w20-nav-item.is-active > svg {
+  color: hsl(var(--primary));
+}
+
+:root[data-colony-office] #root .w20-nav-item.is-active::before {
+  display: none;
+}
+
+/* Settings page header and tabs. */
+:root[data-colony-office] #root .w20-inner-tab {
+  color: hsl(var(--office-ink-3));
+  font-size: var(--office-text-label);
+  font-weight: 750;
+}
+
+:root[data-colony-office] #root .w20-inner-tab[aria-selected="true"] {
+  color: hsl(var(--office-ink));
+  font-weight: 800;
+}
+
+:root[data-colony-office] #root .w20-settings-shell .text-settings-title {
+  color: hsl(var(--office-ink));
+  font-size: calc(var(--office-rem) * 2.5);
+  font-weight: 800;
+  letter-spacing: var(--office-tracking-title);
+  line-height: 1.05;
+}
+
+:root[data-colony-office] #root .w20-settings-shell [data-settings-subcopy] {
+  color: hsl(var(--office-ink-2));
+  font-size: var(--office-text-lede);
+  font-weight: 600;
+}
+
+/* Appearance panel. */
+:root[data-colony-office] #root .w20-appearance {
+  --ink: hsl(var(--office-ink));
+  --muted: hsl(var(--office-ink-3));
+  --line: hsl(var(--office-line));
+  --paper: hsl(var(--office-paper));
+  --panel: hsl(var(--office-paper-2));
+  --hover: hsl(var(--office-paper-2));
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-scope {
+  border: 1.5px solid hsl(var(--office-line));
+  color: hsl(var(--office-ink-2));
+  font-size: var(--office-text-meta);
+  font-weight: 700;
+  padding: 0.375rem 0.75rem;
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-named-themes {
+  border: 1.5px solid hsl(var(--office-line));
+  border-radius: 0.9375rem;
+  background: hsl(var(--office-paper));
+  box-shadow: 0 8px 20px -16px hsl(258 40% 25% / 0.5);
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-named-themes:hover {
+  border-color: hsl(var(--primary) / 0.6);
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-named-themes strong {
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-nav);
+  font-weight: 800;
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-named-themes small {
+  color: hsl(var(--office-ink-3));
+  font-size: var(--office-text-label);
+  font-weight: 600;
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-section > h2 {
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-heading);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-row strong,
+:root[data-colony-office] #root .w20-appearance .ap-style-row > strong {
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-nav);
+  font-weight: 750;
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-row p {
+  color: hsl(var(--office-ink-3));
+  font-size: var(--office-text-label);
+  font-weight: 600;
+}
+
+:root[data-colony-office] #root .ap-apply-actions button {
+  min-height: 2.5rem;
+  border: 1.5px solid hsl(var(--office-line-2));
+  border-radius: var(--office-radius-row);
+  background: hsl(var(--office-paper));
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-label);
+  font-weight: 750;
+  padding: 0.5rem 1rem;
+}
+
+:root[data-colony-office] #root .ap-apply-actions .ap-apply-button {
+  border-color: transparent;
+  background-color: hsl(var(--primary));
+  background-image: linear-gradient(
+    118deg,
+    hsl(var(--primary)),
+    color-mix(in srgb, hsl(var(--primary)) 84%, #1b1530)
+  );
+  color: hsl(var(--primary-foreground));
+}
+
+/* Live preview: the office look in miniature. */
+:root[data-colony-office] #root .w20-appearance .ap-live-nav > span {
+  border-radius: 0.375rem;
+  font-weight: 700;
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-live-nav > span.selected {
+  background: hsl(var(--office-paper));
+  box-shadow: 0 1px 2px hsl(254 23% 16% / 0.08);
+  color: hsl(var(--office-ink));
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-live-nav > small {
+  font-weight: 800;
+  letter-spacing: var(--office-tracking-caps);
+  text-transform: uppercase;
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-live-chat > header {
+  align-items: flex-end;
+  border-bottom: 0;
+  padding: 0.75rem 0.75rem 0.375rem;
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-live-heading {
+  display: flex;
+  flex-direction: column;
+  color: var(--ink);
+  font-size: calc(var(--office-rem) * 1.0625);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-live-heading small {
+  margin-bottom: 0.125rem;
+  color: var(--ap-accent);
+  font-size: var(--text-3xs);
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-demo-avatar {
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-demo-message strong {
+  font-weight: 800;
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-demo-message p {
+  font-weight: 550;
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-live-compose {
+  border: 1.5px solid hsl(var(--office-line-2));
+  border-radius: 0.625rem;
+}
+
+/* Segmented choices in the reference's shape. */
+:root[data-colony-office] #root .w20-appearance .ap-segment {
+  gap: 0.25rem;
+  border: 1.5px solid hsl(var(--office-line));
+  border-radius: 0.9375rem;
+  background: hsl(var(--office-paper) / 0.7);
+  padding: 0.3125rem;
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-segment button {
+  min-height: 2.25rem;
+  border-radius: 0.625rem;
+  color: hsl(var(--office-ink-3));
+  font-size: var(--office-text-label);
+  font-weight: 750;
+  padding: 0.375rem 0.875rem;
+}
+
+:root[data-colony-office]
+  #root
+  .w20-appearance
+  .ap-segment
+  button[aria-pressed="true"] {
+  background: hsl(var(--office-paper));
+  box-shadow: 0 2px 10px -3px hsl(258 40% 25% / 0.3);
+  color: hsl(var(--office-ink));
+}
+
+:root.dark[data-colony-office]
+  #root
+  .w20-appearance
+  .ap-segment
+  button[aria-pressed="true"] {
+  background: hsl(var(--office-paper-2));
+}
+
+/* Theme style cards and the selected outline. */
+:root[data-colony-office] #root .w20-appearance .ap-mini {
+  border: 1.5px solid hsl(var(--office-line));
+  border-radius: 0.9375rem;
+}
+
+:root[data-colony-office]
+  #root
+  .w20-appearance
+  .ap-style-option[aria-pressed="true"]
+  .ap-mini {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 4px hsl(var(--primary) / 0.14);
+}
+
+:root[data-colony-office]
+  #root
+  .w20-appearance
+  .ap-style-option
+  > span:last-child {
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-label);
+  font-weight: 750;
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-accents {
+  gap: 0.375rem;
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-accent {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+:root[data-colony-office]
+  #root
+  .w20-appearance
+  .ap-accent[aria-pressed="true"] {
+  border-color: hsl(var(--office-ink));
+}
+
+:root[data-colony-office] #root .w20-appearance .ap-colours label > span {
+  border: 1.5px solid hsl(var(--office-line-2));
+  border-radius: 0.75rem;
+  background: hsl(var(--office-paper));
+}
+
+:root[data-colony-office]
+  #root
+  .w20-appearance
+  .ap-colours
+  label
+  > span:focus-within {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 4px hsl(var(--primary) / 0.14);
+}
+
+/* The preview's thread column runs full height, as in the office. */
+:root[data-colony-office]
+  #root
+  .w20-appearance
+  .ap-live-chat:not(.focused)
+  > header {
+  width: 60%;
+}
+
+:root[data-colony-office]
+  #root
+  .w20-appearance
+  .ap-live-chat:not(.focused)
+  .ap-demo-thread {
+  top: 0;
+}
+
+/* On the dark field quiet settings text steps up to keep AA contrast. */
+:root.dark[data-colony-office]
+  #root
+  :is(
+    .w20-nav-heading,
+    .w20-nav-back,
+    .w20-nav-search,
+    .w20-nav-search input,
+    .w20-nav-person small
+  ) {
+  color: hsl(var(--office-ink-quiet-dark));
+}

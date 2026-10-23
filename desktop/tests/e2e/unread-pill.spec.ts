@@ -221,7 +221,7 @@ test.describe("unread pill & divider", () => {
     // A manually unread row keeps regular text weight and shows its unread dot.
     await expect(page.getByTestId("channel-general")).toHaveCSS(
       "font-weight",
-      "450",
+      "700",
     );
     await expect(page.getByTestId("channel-unread-dot-general")).toBeVisible();
 

@@ -31,7 +31,37 @@ const NAMES = [
   "TaskDuration",
 ];
 
-test("long channel: scroll and incoming messages", async ({ page }) => {
+type TraceEvent = {
+  name?: string;
+  ph?: string;
+  dur?: number;
+  args?: { elementCount?: number; data?: { elementCount?: number } };
+};
+
+/** Elements restyled by Blink: a CPU-independent measure of style work. */
+function styleWork(trace: Buffer) {
+  const parsed = JSON.parse(trace.toString("utf8")) as
+    | { traceEvents?: TraceEvent[] }
+    | TraceEvent[];
+  const events = Array.isArray(parsed) ? parsed : (parsed.traceEvents ?? []);
+  let styleElements = 0;
+  let styleEvents = 0;
+  let styleMs = 0;
+  for (const event of events) {
+    if (event.name !== "UpdateLayoutTree" && event.name !== "RecalculateStyles")
+      continue;
+    const count = event.args?.elementCount ?? event.args?.data?.elementCount;
+    if (typeof count === "number") styleElements += count;
+    if (event.ph === "X" || event.ph === "B") styleEvents += 1;
+    if (typeof event.dur === "number") styleMs += event.dur / 1000;
+  }
+  return { styleElements, styleEvents, styleMs: Math.round(styleMs) };
+}
+
+test("long channel: scroll and incoming messages", async ({
+  browser,
+  page,
+}) => {
   test.setTimeout(240_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await installMockBridge(page, { referenceWorkspace: true });
@@ -75,6 +105,9 @@ test("long channel: scroll and incoming messages", async ({ page }) => {
     );
   };
 
+  await browser.startTracing(page, {
+    categories: ["devtools.timeline", "blink"],
+  });
   const before = await read();
   const started = Date.now();
   for (let step = 0; step < 30; step += 1) {
@@ -97,6 +130,7 @@ test("long channel: scroll and incoming messages", async ({ page }) => {
   }
   await page.waitForTimeout(500);
   const after = await read();
+  const traced = styleWork(await browser.stopTracing());
 
   const delta = Object.fromEntries(
     NAMES.map((name) => {
@@ -110,6 +144,6 @@ test("long channel: scroll and incoming messages", async ({ page }) => {
   mkdirSync(OUT.replace(/\/[^/]+$/, ""), { recursive: true });
   appendFileSync(
     OUT,
-    `${JSON.stringify({ label: LABEL, rows: ROWS, incoming: INCOMING, wallMs: Date.now() - started, ...delta })}\n`,
+    `${JSON.stringify({ label: LABEL, rows: ROWS, incoming: INCOMING, wallMs: Date.now() - started, ...delta, ...traced })}\n`,
   );
 });

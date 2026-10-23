@@ -596,8 +596,8 @@ test("shows presence in sidebar, DM header, and member list", async ({
   );
   await expect(page.getByTestId("channel-presence-alice-tyler")).toBeVisible();
   const dmAvatar = page.getByTestId("channel-avatar-alice-tyler");
-  await expect(dmAvatar).toHaveCSS("width", "18px");
-  await expect(dmAvatar).toHaveCSS("height", "18px");
+  await expect(dmAvatar).toHaveCSS("width", "22px");
+  await expect(dmAvatar).toHaveCSS("height", "22px");
   await expect(dmAvatar).toHaveClass(/rounded-squircle/);
   const dmRow = page.getByTestId("channel-alice-tyler");
   const [rowBounds, avatarBounds, presenceBounds] = await Promise.all([
@@ -1654,7 +1654,8 @@ test("template picker returns a real template to the channel creation flow", asy
     .getByTestId("channel-template-card")
     .filter({ hasText: "Team updates" });
   const useTemplate = teamUpdates.getByTestId("channel-template-use");
-  await expect(useTemplate).toHaveCSS("background-color", "rgb(38, 85, 160)");
+  // Primary actions carry the person's accent (the default violet here).
+  await expect(useTemplate).toHaveCSS("background-color", "rgb(137, 90, 246)");
   await useTemplate.click();
 
   const createForum = page.getByTestId("create-channel-dialog");
@@ -1847,7 +1848,7 @@ test("create ephemeral stream shows sidebar and header affordances", async ({
 
   await expect(page.getByTestId(`channel-${channelName}`)).toHaveCSS(
     "font-weight",
-    "450",
+    "700",
   );
   await expectUnreadBadgeCount(
     page.getByTestId(`channel-unread-${channelName}`),
@@ -2676,7 +2677,7 @@ test("sidebar shows unread indicator for newly active channels", async ({
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "450",
+    "700",
   );
   await expectUnreadBadgeCount(page.getByTestId("channel-unread-random"), 1);
 
@@ -2709,7 +2710,7 @@ test("sidebar shows unread indicator for new forum posts", async ({ page }) => {
 
   await expect(page.getByTestId("channel-watercooler")).toHaveCSS(
     "font-weight",
-    "450",
+    "700",
   );
   await expectUnreadBadgeCount(
     page.getByTestId("channel-unread-watercooler"),

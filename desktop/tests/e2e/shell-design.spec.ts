@@ -127,7 +127,7 @@ for (const [width, height] of [
       await expect(sidebar).toHaveCSS("width", "260px");
       await expect(
         sidebar.locator('[data-sidebar="menu-button"]').first(),
-      ).toHaveCSS("font-size", "13.9286px");
+      ).toHaveCSS("font-size", "14.5px");
       await expect(
         sidebar.locator('[data-sidebar="menu-button"] > svg').first(),
       ).toHaveCSS("width", "18px");
@@ -143,7 +143,7 @@ for (const [width, height] of [
         )
         .first();
       await expect(frame).toHaveCSS("margin", "8px");
-      await expect(frame).toHaveCSS("border-radius", "11px");
+      await expect(frame).toHaveCSS("border-radius", "16px");
       await page.evaluate(() => document.fonts.ready);
       await waitForAnimations(page);
       const box = await frame.boundingBox();
@@ -153,7 +153,7 @@ for (const [width, height] of [
         const thread = page.getByTestId("message-thread-panel");
         const input = thread.getByTestId("message-input-scroll");
         await expect(input).toHaveCSS("padding", "12px 12px 7px");
-        await expect(input).toHaveCSS("font-size", "15px");
+        await expect(input).toHaveCSS("font-size", "17px");
         await expect(thread.locator(".composer-dock")).toHaveCSS(
           "padding",
           "10px 24px 15px",
@@ -233,9 +233,9 @@ for (const [width, height] of [
 }
 
 for (const [preference, px] of [
-  ["smaller", 14],
-  ["default", 15],
-  ["larger", 16],
+  ["smaller", 16],
+  ["default", 17],
+  ["larger", 18],
 ] as const) {
   test(`shared text ramp preserves ${preference} and keyboard zoom`, async ({
     page,

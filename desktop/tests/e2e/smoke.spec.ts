@@ -1038,10 +1038,12 @@ test("supports multiline drafts with Ctrl+Enter and sends with Enter", async ({
   for (const line of [firstLine, ...restOfLines]) {
     await expect(input).toContainText(line);
   }
-  const expandedInputHeight = await input.evaluate(
-    (element) => (element as HTMLElement).clientHeight,
-  );
-  expect(expandedInputHeight).toBeLessThanOrEqual(130);
+  const [expandedInputHeight, lineHeight] = await input.evaluate((element) => [
+    (element as HTMLElement).clientHeight,
+    Number.parseFloat(getComputedStyle(element).lineHeight),
+  ]);
+  // Five lines of the conversation line height, plus the editor's padding.
+  expect(expandedInputHeight).toBeLessThanOrEqual(5 * lineHeight + 4);
   await expect(page.getByTestId("message-timeline")).not.toContainText(
     firstLine,
   );

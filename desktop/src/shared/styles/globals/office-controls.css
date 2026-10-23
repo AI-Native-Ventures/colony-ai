@@ -3,14 +3,10 @@
  * reference's shapes. The accent picker recolours every primary control
  * through `--primary`.
  */
-:root[data-colony-office] #root [data-button-variant] {
-  border-radius: var(--office-radius-row);
-  font-weight: 750;
-  letter-spacing: -0.005em;
-}
 
 :root[data-colony-office] #root [data-button-variant="default"] {
-  background: linear-gradient(
+  background-color: hsl(var(--primary));
+  background-image: linear-gradient(
     118deg,
     hsl(var(--primary)),
     color-mix(in srgb, hsl(var(--primary)) 84%, #1b1530)
@@ -24,7 +20,7 @@
 :root[data-colony-office]
   #root
   [data-button-variant="default"]:not(:disabled):hover {
-  background: linear-gradient(
+  background-image: linear-gradient(
     118deg,
     color-mix(in srgb, hsl(var(--primary)) 92%, #000),
     color-mix(in srgb, hsl(var(--primary)) 78%, #1b1530)
@@ -32,8 +28,8 @@
 }
 
 :root[data-colony-office] #root [data-button-variant="outline"] {
-  border: 1.5px solid hsl(var(--office-line-2));
-  background: hsl(var(--office-paper));
+  border-color: hsl(var(--office-line-2));
+  background-color: hsl(var(--office-paper));
   color: hsl(var(--office-ink));
 }
 
@@ -41,11 +37,11 @@
   #root
   [data-button-variant="outline"]:not(:disabled):hover {
   border-color: hsl(var(--primary) / 0.7);
-  background: hsl(var(--office-paper));
+  background-color: hsl(var(--office-paper));
 }
 
 :root[data-colony-office] #root [data-button-variant="secondary"] {
-  background: hsl(var(--office-paper-2));
+  background-color: hsl(var(--office-paper-2));
   color: hsl(var(--office-ink));
 }
 
@@ -56,7 +52,7 @@
 :root[data-colony-office]
   #root
   [data-button-variant="ghost"]:not(:disabled):hover {
-  background: hsl(var(--office-paper-2));
+  background-color: hsl(var(--office-paper-2));
   color: hsl(var(--office-ink));
 }
 

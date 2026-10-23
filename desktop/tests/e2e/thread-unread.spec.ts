@@ -782,7 +782,7 @@ test.describe("thread unread indicator", () => {
     // the room itself does not show a numeric badge.
     await expect(page.getByTestId("channel-all-replies")).toHaveCSS(
       "font-weight",
-      "450",
+      "700",
     );
     await expect(page.getByTestId("channel-unread-all-replies")).toHaveCount(0);
     await expect(
@@ -799,7 +799,7 @@ test.describe("thread unread indicator", () => {
     await expect(page.getByTestId("chat-title")).toHaveText("general");
     await expect(page.getByTestId("channel-all-replies")).toHaveCSS(
       "font-weight",
-      "450",
+      "700",
     );
     await expect(
       page.getByTestId("channel-unread-dot-all-replies"),
