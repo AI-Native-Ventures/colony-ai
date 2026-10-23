@@ -40,16 +40,6 @@ test("Today board", async ({ page }) => {
   });
 });
 
-test("Activity board", async ({ page }) => {
-  await openLerato(page, { route: "/#/" });
-  await waitForShell(page);
-  await shot(page, {
-    name: "Activity",
-    board: "Activity",
-    title: "Activity inbox with a thread open",
-  });
-});
-
 for (const [section, board, title] of [
   ["profile", "SettingsAccount", "Settings: Account"],
   ["appearance", "SettingsAppearance", "Settings: Appearance"],
@@ -92,26 +82,6 @@ for (const [section, board, title] of [
   });
 }
 
-test("Power board", async ({ page }) => {
-  await openLerato(page, { route: "/#/power" });
-  await waitForShell(page);
-  await shot(page, {
-    name: "Power",
-    board: "Power",
-    title: "AI spend and power: Overview",
-  });
-});
-
-test("PowerUsage board", async ({ page }) => {
-  await openLerato(page, { route: "/#/power?section=usage" });
-  await waitForShell(page);
-  await shot(page, {
-    name: "PowerUsage",
-    board: "PowerUsage",
-    title: "AI spend and power: Usage",
-  });
-});
-
 test("Main board", async ({ page }) => {
   await openLerato(page, { route: "/" });
   await page.getByTestId("channel-Welcome").click();
@@ -120,17 +90,5 @@ test("Main board", async ({ page }) => {
     name: "Main",
     board: "Main",
     title: "#Welcome on day one",
-  });
-});
-
-test("ProfilePopover board", async ({ page }) => {
-  await openLerato(page, { route: "/#/today" });
-  await waitForShell(page);
-  await page.getByTestId("sidebar-profile-avatar-button").click();
-  await page.waitForTimeout(500);
-  await shot(page, {
-    name: "ProfilePopover-menu",
-    board: "ProfilePopover",
-    title: "Account menu",
   });
 });

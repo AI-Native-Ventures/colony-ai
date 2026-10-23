@@ -439,7 +439,7 @@ export function TodayScreen(_props: { showUpdatesAction?: boolean } = {}) {
                   </button>
                 ) : null}
                 {needItems.length > 0 ? (
-                  <fieldset className="cs-choice ct-group-by">
+                  <fieldset className="ct-group-by">
                     <legend className="sr-only">Group decisions</legend>
                     {(
                       [
@@ -532,7 +532,7 @@ export function TodayScreen(_props: { showUpdatesAction?: boolean } = {}) {
                     ))}
                   </ul>
                   <button
-                    className="cs-button"
+                    className="ct-button"
                     onClick={retryNeedsMe}
                     type="button"
                   >

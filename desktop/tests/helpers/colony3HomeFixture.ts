@@ -12,6 +12,7 @@ import {
 import type { RelayEvent } from "../../src/shared/api/types";
 import { KIND_ASK_HEAD } from "../../src/shared/constants/kinds";
 import { COLONY3_NOW } from "./colony3Fixture";
+import { colony3At } from "./colony3Conversations";
 
 /**
  * The open decisions the Today board shows for Lerato Social, as relay-signed
@@ -186,6 +187,61 @@ function askHead(spec: AskSpec, relaySecret: Uint8Array): RelayEvent {
   ) as unknown as RelayEvent;
 }
 
+/** Recent work the Today board lists under Moving forward. */
+function movingForward() {
+  const item = (
+    n: number,
+    agent: keyof typeof REFERENCE_AGENTS,
+    content: string,
+    channelId: string,
+    channelName: string,
+    hour: number,
+    minute: number,
+  ) => ({
+    id: (n.toString(16).padStart(2, "0") as string).repeat(32),
+    kind: 9,
+    pubkey: REFERENCE_AGENTS[agent].pubkey,
+    content,
+    created_at: colony3At(hour, minute),
+    channel_id: channelId,
+    channel_name: channelName,
+    channel_type: null,
+    tags: [["h", channelId]],
+    category: "activity" as const,
+  });
+  return {
+    activity: [
+      item(
+        0xb1,
+        "mina",
+        "Mina posted October carousel concepts for review",
+        REFERENCE_CHANNEL_IDS.oliveHouse,
+        "The Olive House",
+        14,
+        5,
+      ),
+      item(
+        0xb2,
+        "aya",
+        "Aya prepared the Form & Field proposal, version 1",
+        REFERENCE_CHANNEL_IDS.sales,
+        "Sales",
+        13,
+        20,
+      ),
+      item(
+        0xb3,
+        "theo",
+        "Theo’s run “Reconcile September costs” failed",
+        REFERENCE_CHANNEL_IDS.operations,
+        "Operations",
+        11,
+        48,
+      ),
+    ],
+  };
+}
+
 /** Mock-bridge options that give the Today board its Needs me decisions. */
 export function colony3TodayMockOptions() {
   const relaySecret = generateSecretKey();
@@ -193,5 +249,6 @@ export function colony3TodayMockOptions() {
     relaySelf: getPublicKey(relaySecret),
     companyAskRelayPrivateKeyHex: bytesToHex(relaySecret),
     companyAskHeads: ASKS.map((spec) => askHead(spec, relaySecret)),
+    colony3Extras: { feed: movingForward() },
   };
 }
