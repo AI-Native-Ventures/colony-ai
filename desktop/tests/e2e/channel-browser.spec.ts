@@ -84,34 +84,34 @@ test("channel browser sorts alphabetically or by member count", async ({
   const rows = page.locator('[data-testid^="browse-channel-"]');
 
   await expect(rows).toHaveText([
-    /#agents/,
-    /#all-replies/,
-    /#buzz/,
-    /#deep-history/,
-    /#design/,
-    /#engineering/,
-    /#general/,
-    /#random/,
-    /#sales/,
-    /#secret-projects/,
-    /#welcome-everyone/,
+    /^agents/,
+    /^all-replies/,
+    /^buzz/,
+    /^deep-history/,
+    /^design/,
+    /^engineering/,
+    /^general/,
+    /^random/,
+    /^sales/,
+    /^secret-projects/,
+    /^welcome-everyone/,
   ]);
 
   await page.getByTestId("channel-browser-sort").click();
   await page.getByTestId("channel-browser-sort-members").click();
 
   await expect(rows).toHaveText([
-    /#general/,
-    /#agents/,
-    /#engineering/,
-    /#random/,
-    /#all-replies/,
-    /#deep-history/,
-    /#design/,
-    /#sales/,
-    /#secret-projects/,
-    /#buzz/,
-    /#welcome-everyone/,
+    /^general/,
+    /^agents/,
+    /^engineering/,
+    /^random/,
+    /^all-replies/,
+    /^deep-history/,
+    /^design/,
+    /^sales/,
+    /^secret-projects/,
+    /^buzz/,
+    /^welcome-everyone/,
   ]);
   await expect(page.getByTestId("channel-browser-sort")).toHaveAttribute(
     "aria-label",
@@ -129,17 +129,17 @@ test("channel browser sorts by recent activity", async ({ page }) => {
   await page.getByTestId("channel-browser-sort-recent").click();
 
   await expect(rows).toHaveText([
-    /#all-replies/,
-    /#deep-history/,
-    /#general/,
-    /#agents/,
-    /#sales/,
-    /#engineering/,
-    /#design/,
-    /#buzz/,
-    /#random/,
-    /#secret-projects/,
-    /#welcome-everyone/,
+    /^all-replies/,
+    /^deep-history/,
+    /^general/,
+    /^agents/,
+    /^sales/,
+    /^engineering/,
+    /^design/,
+    /^buzz/,
+    /^random/,
+    /^secret-projects/,
+    /^welcome-everyone/,
   ]);
   await expect(page.getByTestId("channel-browser-sort")).toHaveAttribute(
     "aria-label",

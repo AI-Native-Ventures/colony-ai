@@ -15,8 +15,14 @@ import { AddChannelBotTeamsSection } from "@/features/channels/ui/AddChannelBotT
 import { useInChannelPersonaIds } from "@/features/channels/ui/useInChannelPersonaIds";
 import type { AcpRuntime } from "@/shared/api/types";
 import { Button } from "@/shared/ui/button";
-import { ChooserDialogContent } from "@/shared/ui/chooser-dialog-content";
-import { Dialog } from "@/shared/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/shared/ui/dialog";
+import { SearchGlyph } from "./dialogIcons";
+import { usePersonaJobTitles } from "@/features/channels/lib/personaJobTitles";
 
 type AddChannelBotDialogProps = {
   channelId: string | null;
@@ -69,6 +75,9 @@ export function AddChannelBotDialog({
     open && channelId !== null,
   );
   const createBotsMutation = useCreateChannelManagedAgentsMutation(channelId);
+  const jobTitleByPersonaId = usePersonaJobTitles(open);
+  const [agentQuery, setAgentQuery] = React.useState("");
+  const normalizedAgentQuery = agentQuery.trim().toLowerCase();
   const personas = React.useMemo(
     () => getActivePersonas(personasQuery.data ?? []),
     [personasQuery.data],
@@ -103,6 +112,7 @@ export function AddChannelBotDialog({
   }, [inChannelPersonaIds, personas]);
 
   function reset() {
+    setAgentQuery("");
     setSelectedPersonaIds([]);
     setSubmissionNotice(null);
     setSubmissionError(null);
@@ -204,98 +214,143 @@ export function AddChannelBotDialog({
 
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
-      <ChooserDialogContent
-        className="max-w-xl"
+      <DialogContent
+        aria-describedby={undefined}
+        className="flex max-h-[calc(100vh-2rem)] max-w-[500px] flex-col gap-4 overflow-hidden"
         data-testid="add-channel-bot-dialog"
-        description="Choose from your agents, or create a new one."
-        footer={
-          <>
-            <Button
-              onClick={() => handleOpenChange(false)}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={!canSubmit}
-              onClick={() => void handleSubmit()}
-              size="sm"
-              type="button"
-            >
-              {addButtonLabel}
-            </Button>
-          </>
-        }
-        footerClassName="justify-end gap-2"
-        footerTestId="add-channel-bot-dialog-footer"
-        headerTestId="add-channel-bot-dialog-header"
-        scrollAreaClassName="space-y-5"
-        scrollAreaTestId="add-channel-bot-dialog-scroll-area"
-        title="Add agents"
+        showCloseButton={false}
       >
-        <AddChannelBotPersonasSection
-          canToggleSelections={!createBotsMutation.isPending}
-          inChannelPersonaIds={inChannelPersonaIds}
-          isLoading={personasQuery.isLoading}
-          onCreateAgent={handleCreateAgent}
-          onTogglePersona={(personaId) => {
-            setSelectedPersonaIds((current) => toggleValue(current, personaId));
-            setSubmissionNotice(null);
-            setSubmissionError(null);
-          }}
-          personas={personas}
-          selectedPersonaIds={selectedPersonaIds}
-        />
+        <div
+          className="flex shrink-0 flex-col gap-1.5"
+          data-testid="add-channel-bot-dialog-header"
+        >
+          <DialogTitle className="tracking-[-0.025em] leading-[normal]">
+            Add agents
+          </DialogTitle>
+          <DialogDescription className="text-control font-medium text-colony-fg-secondary">
+            Choose from your agents, or create a new one.
+          </DialogDescription>
+        </div>
 
-        {teams.length > 0 ? (
-          <AddChannelBotTeamsSection
+        <label
+          className="flex h-11.5 shrink-0 cursor-text items-center gap-2.5 rounded-colony-control-lg border border-colony-border-strong bg-colony-pop px-3.5 text-colony-muted transition-colors focus-within:border-colony-accent"
+          htmlFor="add-channel-bot-search"
+        >
+          <SearchGlyph className="shrink-0" size={18} strokeWidth={2.2} />
+          <input
+            aria-label="Find an agent"
+            autoComplete="off"
+            className="block h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-colony-fg shadow-none outline-hidden placeholder:text-[#757575]"
+            data-testid="add-channel-bot-search"
+            id="add-channel-bot-search"
+            onChange={(event) => setAgentQuery(event.target.value)}
+            placeholder="Find an agent"
+            type="search"
+            value={agentQuery}
+          />
+        </label>
+
+        <div
+          className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto"
+          data-testid="add-channel-bot-dialog-scroll-area"
+        >
+          <AddChannelBotPersonasSection
             canToggleSelections={!createBotsMutation.isPending}
             inChannelPersonaIds={inChannelPersonaIds}
-            isLoading={teamsQuery.isLoading}
-            onToggleTeam={handleToggleTeam}
+            isLoading={personasQuery.isLoading}
+            jobTitleByPersonaId={jobTitleByPersonaId}
+            onTogglePersona={(personaId) => {
+              setSelectedPersonaIds((current) =>
+                toggleValue(current, personaId),
+              );
+              setSubmissionNotice(null);
+              setSubmissionError(null);
+            }}
             personas={personas}
+            query={normalizedAgentQuery}
             selectedPersonaIds={selectedPersonaIds}
-            teams={teams}
           />
-        ) : null}
 
-        {providers.length === 0 && !providersLoading ? (
-          <div className="flex gap-3 rounded-lg border border-warning/30 bg-warning-bg px-4 py-3">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-            <p className="text-sm text-warning">
-              Install an agent runtime before adding an agent to this channel.
+          {teams.length > 0 ? (
+            <AddChannelBotTeamsSection
+              canToggleSelections={!createBotsMutation.isPending}
+              inChannelPersonaIds={inChannelPersonaIds}
+              isLoading={teamsQuery.isLoading}
+              onToggleTeam={handleToggleTeam}
+              personas={personas}
+              query={normalizedAgentQuery}
+              selectedPersonaIds={selectedPersonaIds}
+              teams={teams}
+            />
+          ) : null}
+
+          {providers.length === 0 && !providersLoading ? (
+            <div className="flex gap-3 rounded-colony-chip bg-colony-need-bg px-4 py-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-colony-need" />
+              <p className="text-xs font-semibold text-colony-need">
+                Install an agent runtime before adding an agent to this channel.
+              </p>
+            </div>
+          ) : null}
+
+          {[
+            providersErrorMessage,
+            personasQuery.error instanceof Error
+              ? personasQuery.error.message
+              : null,
+            submissionError,
+            createBotsMutation.error instanceof Error
+              ? createBotsMutation.error.message
+              : null,
+          ]
+            .filter((message): message is string => Boolean(message))
+            .map((message) => (
+              <p
+                className="rounded-colony-chip bg-colony-danger-bg px-4 py-3 text-xs font-semibold text-colony-danger"
+                key={message}
+              >
+                {message}
+              </p>
+            ))}
+          {submissionNotice ? (
+            <p className="rounded-colony-chip bg-colony-track px-4 py-3 text-xs font-semibold text-colony-fg">
+              {submissionNotice}
             </p>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
 
-        {providersErrorMessage ? (
-          <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {providersErrorMessage}
-          </p>
-        ) : null}
-        {personasQuery.error instanceof Error ? (
-          <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {personasQuery.error.message}
-          </p>
-        ) : null}
-        {submissionNotice ? (
-          <p className="rounded-lg bg-muted px-4 py-3 text-sm text-foreground">
-            {submissionNotice}
-          </p>
-        ) : null}
-        {submissionError ? (
-          <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {submissionError}
-          </p>
-        ) : null}
-        {createBotsMutation.error instanceof Error ? (
-          <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {createBotsMutation.error.message}
-          </p>
-        ) : null}
-      </ChooserDialogContent>
+        <div
+          className="mt-1 flex shrink-0 items-center gap-2.5"
+          data-testid="add-channel-bot-dialog-footer"
+        >
+          <button
+            className="text-menu font-bold text-colony-accent-ink underline underline-offset-2 hover:text-colony-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40"
+            data-testid="add-channel-create-agent"
+            onClick={handleCreateAgent}
+            type="button"
+          >
+            Create an agent
+          </button>
+          <span className="flex-1" />
+          <Button
+            className="h-11.5 px-4.5 text-sm"
+            onClick={() => handleOpenChange(false)}
+            type="button"
+            variant="outline"
+          >
+            Cancel
+          </Button>
+          <Button
+            className="h-11.5 px-5 text-sm"
+            disabled={!canSubmit}
+            onClick={() => void handleSubmit()}
+            type="button"
+            variant="agent"
+          >
+            {addButtonLabel}
+          </Button>
+        </div>
+      </DialogContent>
     </Dialog>
   );
 }

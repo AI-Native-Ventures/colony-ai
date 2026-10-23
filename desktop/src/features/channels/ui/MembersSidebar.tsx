@@ -1,6 +1,5 @@
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { UserRoundPlus, X } from "lucide-react";
 import {
   invalidateChannelState,
   useAddChannelMembersMutation,
@@ -47,16 +46,20 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogHeader,
   DialogTitle,
 } from "@/shared/ui/dialog";
+import { CloseIcon } from "@/shared/ui/colonyIcons";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/shared/ui/dropdown-menu";
 import { useProfilePanel } from "@/shared/context/ProfilePanelContext";
 import { useFeedbackToasts } from "@/shared/hooks/useToastEffect";
 import { normalizePubkey, truncateNpub } from "@/shared/lib/pubkey";
-import {
-  MODAL_SEARCH_INPUT_CLASS,
-  MODAL_SEARCH_SHELL_CLASS,
-} from "@/shared/ui/modalSearchStyles";
+import { ChannelAddAgentsDialog } from "./ChannelAddAgentsDialog";
+import { ChevronRightGlyph, SearchGlyph } from "./dialogIcons";
 import {
   AddMemberSearchResultRow,
   formatAddCandidateName,
@@ -72,7 +75,9 @@ import { useMembersSidebarActions } from "./useMembersSidebarActions";
 import { useMembersSidebarModeration } from "./useMembersSidebarModeration";
 const MEMBER_ADD_RESULT_LIMIT = 50;
 const MEMBER_SEARCH_MIN_QUERY_LENGTH = 2;
-const MEMBER_ROW_ESTIMATE_PX = 60;
+const MEMBER_ROW_ESTIMATE_PX = 64;
+/** Up to this many rows the list renders plainly; beyond it, virtualized. */
+const MEMBER_PLAIN_LIST_LIMIT = 40;
 type AddMemberSearchCandidate = UserSearchResult & {
   isManagedAgent?: boolean;
   isMember?: boolean;
@@ -147,6 +152,7 @@ export function MembersSidebar({
   const queryClient = useQueryClient();
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = React.useState("");
+  const [isAddAgentsOpen, setIsAddAgentsOpen] = React.useState(false);
   const [inviteSubmissionErrors, setInviteSubmissionErrors] = React.useState<
     AddChannelMembersResult["errors"]
   >([]);
@@ -695,7 +701,7 @@ export function MembersSidebar({
       <Dialog onOpenChange={onOpenChange} open={open}>
         <DialogContent
           aria-describedby={undefined}
-          className="max-w-xl gap-0 overflow-hidden border-0 px-6 pb-0 pt-6"
+          className="flex max-h-[min(860px,calc(100vh-2rem))] max-w-[520px] flex-col gap-4 overflow-hidden"
           data-testid="members-sidebar"
           onOpenAutoFocus={(event) => {
             event.preventDefault();
@@ -703,23 +709,50 @@ export function MembersSidebar({
           }}
           showCloseButton={false}
         >
-          <DialogHeader className="space-y-0 pb-5">
-            <div className="flex items-center justify-between gap-4">
-              <DialogTitle>Channel members</DialogTitle>
-              <DialogClose className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:bg-accent hover:text-accent-foreground focus:outline-hidden focus:ring-1 focus:ring-ring">
-                <X className="h-4 w-4" />
-                <span className="sr-only">Close</span>
-              </DialogClose>
-            </div>
+          <div className="flex shrink-0 items-center gap-2.5">
+            <DialogTitle className="flex-1 tracking-[-0.025em] leading-[normal]">
+              Channel members
+            </DialogTitle>
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="h-[2.375rem] shrink-0 rounded-[0.6875rem] border border-colony-border-strong bg-colony-pop px-3 text-chip font-bold text-colony-fg transition-colors hover:bg-colony-track focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40"
+                  data-testid="members-sidebar-agent-actions"
+                  disabled={isArchived}
+                  type="button"
+                >
+                  Agent actions
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  data-testid="members-sidebar-add-agents"
+                  onSelect={() => {
+                    onOpenChange(false);
+                    setIsAddAgentsOpen(true);
+                  }}
+                >
+                  Add agents
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DialogClose
+              aria-label="Close"
+              className="flex size-[2.375rem] shrink-0 items-center justify-center rounded-[0.6875rem] bg-colony-track text-colony-fg transition-colors hover:bg-colony-border focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40"
+            >
+              <CloseIcon size={16} strokeWidth={2.4} />
+            </DialogClose>
+          </div>
+          <div className="shrink-0">
             <label
-              className={MODAL_SEARCH_SHELL_CLASS}
+              className="flex h-11.5 cursor-text items-center gap-2.5 rounded-colony-control-lg border border-colony-border-strong bg-colony-pop px-3.5 text-colony-muted transition-colors focus-within:border-colony-accent"
               htmlFor="channel-management-search-users"
             >
-              <UserRoundPlus className="h-4 w-4 shrink-0 text-muted-foreground/55 transition-colors duration-150 ease-out group-hover/search:text-muted-foreground group-focus-within/search:text-foreground" />
+              <SearchGlyph className="shrink-0" size={18} strokeWidth={2.2} />
               <input
                 autoCapitalize="none"
                 autoCorrect="off"
-                className={MODAL_SEARCH_INPUT_CLASS}
+                className="block h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-colony-fg shadow-none outline-hidden placeholder:text-[#757575]"
                 data-testid="channel-management-search-users"
                 disabled={isArchived}
                 id="channel-management-search-users"
@@ -747,26 +780,26 @@ export function MembersSidebar({
             </label>
             {showPrivateAddDeniedNotice ? (
               <p
-                className="pt-2 text-sm text-muted-foreground"
+                className="pt-2 text-xs font-medium text-colony-muted"
                 data-testid="members-sidebar-add-denied"
               >
                 {PRIVATE_CHANNEL_ADD_DENIED_MESSAGE}
               </p>
             ) : null}
-          </DialogHeader>
+          </div>
 
-          <div className="max-h-[calc(100vh-12rem)] overflow-y-auto pb-6">
-            <section>
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            <section className="flex min-h-0 flex-col gap-4">
+              <SearchResultSectionTitle>
+                {normalizedSearchQuery
+                  ? "Members"
+                  : `Members · ${activeMembers.length}`}
+              </SearchResultSectionTitle>
               <div
-                className="h-[min(50vh,24rem)] overflow-y-auto rounded-xl border border-border/70 bg-background/70"
+                className="flex min-h-0 flex-col"
                 data-testid="members-sidebar-people"
                 onScroll={handlePeopleSearchScroll}
               >
-                <SearchResultSectionTitle>
-                  {normalizedSearchQuery
-                    ? "Members"
-                    : `Members · ${activeMembers.length}`}
-                </SearchResultSectionTitle>
                 {normalizedSearchQuery ? (
                   <div>
                     {filteredActiveMembers.map((member) =>
@@ -775,7 +808,7 @@ export function MembersSidebar({
                     {canAddMembers ? (
                       <>
                         {addSearchResults.length > 0 || isAddSearchLoading ? (
-                          <SearchResultSectionTitle>
+                          <SearchResultSectionTitle className="pt-4">
                             Not in this channel
                           </SearchResultSectionTitle>
                         ) : null}
@@ -797,7 +830,7 @@ export function MembersSidebar({
                           />
                         ))}
                         {isAddSearchLoading ? (
-                          <p className="px-4 py-3 text-sm text-muted-foreground">
+                          <p className="py-3 text-xs font-medium text-colony-muted">
                             Searching...
                           </p>
                         ) : null}
@@ -806,14 +839,14 @@ export function MembersSidebar({
                     {filteredActiveMembers.length === 0 &&
                     addSearchResults.length === 0 &&
                     !isAddSearchLoading ? (
-                      <p className="px-4 py-3 text-sm text-muted-foreground">
+                      <p className="py-3 text-xs font-medium text-colony-muted">
                         No matching people or agents.
                       </p>
                     ) : null}
                   </div>
-                ) : filteredActiveMembers.length > 0 ? (
+                ) : filteredActiveMembers.length > MEMBER_PLAIN_LIST_LIMIT ? (
                   <VirtualizedList
-                    className="h-[calc(100%_-_2.25rem)]"
+                    className="h-[min(50vh,24rem)]"
                     estimateSize={MEMBER_ROW_ESTIMATE_PX}
                     getItemKey={(member) => member.pubkey}
                     items={filteredActiveMembers}
@@ -821,8 +854,12 @@ export function MembersSidebar({
                       renderMemberCard(member, isBot(member))
                     }
                   />
+                ) : filteredActiveMembers.length > 0 ? (
+                  filteredActiveMembers.map((member) =>
+                    renderMemberCard(member, isBot(member)),
+                  )
                 ) : (
-                  <p className="px-4 py-3 text-sm text-muted-foreground">
+                  <p className="py-3 text-xs font-medium text-colony-muted">
                     {membersQuery.isLoading
                       ? "Loading members..."
                       : normalizedSearchQuery
@@ -834,34 +871,28 @@ export function MembersSidebar({
             </section>
 
             {archived.length > 0 ? (
-              <section className="mt-4">
+              <section>
                 <details
                   className="group/archived"
                   data-testid="members-sidebar-archived"
                 >
-                  <summary className="flex cursor-pointer items-center gap-2 list-none [&::-webkit-details-marker]:hidden">
-                    <h2 className="text-sm font-semibold tracking-tight text-muted-foreground">
-                      Archived
-                    </h2>
-                    <span
-                      className="text-muted-foreground"
-                      data-testid="members-sidebar-archived-count"
-                    >
+                  <summary className="flex h-12 cursor-pointer list-none items-center gap-2 text-chip font-extrabold text-colony-fg-secondary [&::-webkit-details-marker]:hidden">
+                    <ChevronRightGlyph
+                      className="shrink-0 transition-transform group-open/archived:rotate-90"
+                      size={15}
+                      strokeWidth={2.4}
+                    />
+                    <span>Archived</span>
+                    <span data-testid="members-sidebar-archived-count">
                       ({archived.length})
                     </span>
-                    <span className="ml-auto text-xs text-muted-foreground transition-transform group-open/archived:rotate-90">
-                      ▸
-                    </span>
                   </summary>
-                  <div
-                    className="mt-2 space-y-2"
-                    data-testid="members-sidebar-archived-list"
-                  >
+                  <div data-testid="members-sidebar-archived-list">
                     {filteredArchivedMembers.map((member) =>
                       renderDeferredMemberCard(member, isBot(member)),
                     )}
                     {filteredArchivedMembers.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
+                      <p className="py-2 text-xs font-medium text-colony-muted">
                         No archived members match your search.
                       </p>
                     ) : null}
@@ -872,7 +903,7 @@ export function MembersSidebar({
 
             {changeRoleError ? (
               <p
-                className="mt-4 text-sm text-destructive"
+                className="mt-4 text-xs font-semibold text-colony-danger"
                 data-testid="members-sidebar-action-error"
               >
                 {changeRoleError}
@@ -880,13 +911,13 @@ export function MembersSidebar({
             ) : null}
 
             {addMembersMutation.error instanceof Error ? (
-              <p className="mt-4 text-sm text-destructive">
+              <p className="mt-4 text-xs font-semibold text-colony-danger">
                 {addMembersMutation.error.message}
               </p>
             ) : null}
 
             {inviteSubmissionErrors.length > 0 ? (
-              <div className="mt-4 space-y-1 text-sm text-destructive">
+              <div className="mt-4 space-y-1 text-xs font-semibold text-colony-danger">
                 {inviteSubmissionErrors.map((error) => (
                   <p key={`${error.pubkey}-${error.error}`}>
                     {truncateNpub(error.pubkey)}: {error.error}
@@ -897,6 +928,11 @@ export function MembersSidebar({
           </div>
         </DialogContent>
       </Dialog>
+      <ChannelAddAgentsDialog
+        channel={channel}
+        onOpenChange={setIsAddAgentsOpen}
+        open={isAddAgentsOpen}
+      />
       <EditRespondToDialog
         agent={editRespondToAgent}
         currentPubkey={currentPubkey}
@@ -912,12 +948,16 @@ export function MembersSidebar({
 function SearchResultSectionTitle({
   action,
   children,
+  className,
 }: {
   action?: React.ReactNode;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="sticky top-0 z-10 mr-3 flex min-h-9 items-center gap-2 bg-background/95 px-4 pb-1.5 pt-3 text-xs font-medium text-muted-foreground/75 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+    <div
+      className={`flex items-center gap-2 text-2xs font-extrabold uppercase tracking-[0.09em] text-colony-muted ${className ?? ""}`}
+    >
       <span>{children}</span>
       {action ? <span>{action}</span> : null}
     </div>
