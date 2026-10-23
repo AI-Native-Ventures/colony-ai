@@ -99,6 +99,14 @@ buzz lessons approve --lesson <uuid> --confidence <low|moderate|high>
 buzz lessons deprecate --lesson <uuid>
 buzz lessons restore --lesson <uuid>
 
+# Leads (prospects found in Discovery)
+buzz leads list --stage in_conversation --query cape
+buzz leads get --lead <uuid|buzz://lead/uuid>
+buzz leads note --lead <uuid> --content "Spoke to the owner, wants a quote" [--kind contact]
+buzz leads stage --lead <uuid> --stage lost --reason "Budget"
+buzz leads qualify --lead <uuid> --qualification qualified
+buzz leads save --lead <uuid> [--unsave]
+
 # Forum
 buzz messages vote --event <event-id> --direction up
 
