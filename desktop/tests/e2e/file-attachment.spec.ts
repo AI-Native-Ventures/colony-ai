@@ -14,8 +14,12 @@ async function openMoreActionsMenu(page: Page, messageId: string) {
       behavior: "instant",
     });
   });
-  await row.hover();
-  await page.getByTestId(`more-actions-${messageId}`).click();
+  // Open the menu from the keyboard: focus reveals the action bar and Enter
+  // opens the same menu. Pointer hit-testing raced the virtualized timeline
+  // re-measuring under the composer overlay while the upload settled.
+  const moreActions = page.getByTestId(`more-actions-${messageId}`);
+  await moreActions.focus();
+  await moreActions.press("Enter");
   await expect(page.locator('[role="menuitem"]').first()).toBeVisible({
     timeout: 5_000,
   });
