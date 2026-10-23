@@ -17,6 +17,7 @@ import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 import { useEmployeeAllowanceHeadsQuery } from "@/features/power/spendRelay";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
+import { resolveJobTitle } from "@/features/profile/lib/jobTitle";
 import { relayClient } from "@/shared/api/relayClient";
 import { signRelayEvent } from "@/shared/api/tauri";
 import type { RelayEvent } from "@/shared/api/types";
@@ -30,21 +31,18 @@ import { AskDestinationStep } from "./AskDestinationStep";
 import { AskStandardComposer } from "./AskStandardComposer";
 import { MoneyAllowanceComposer } from "./MoneyAllowanceComposer";
 import { MoneyAllowanceChooser } from "./MoneyAllowanceChooser";
+import { MoneyReviewPanel } from "./MoneyReviewPanel";
 import { KIND_ASK_ACTION } from "@/shared/constants/kinds";
-import { Button } from "@/shared/ui/button";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogHeader,
   DialogTitle,
 } from "@/shared/ui/dialog";
-import {
-  GoalRouteBackLink,
-  GoalRouteHeader,
-} from "@/features/goals/ui/GoalRouteHeader";
+import { ColonySteps } from "@/shared/ui/ColonySteps";
+import { HashIcon, PrivateChannelIcon } from "@/shared/ui/colonyIcons";
 
 import {
   buildAskCreateAction,
@@ -56,16 +54,44 @@ import {
   type AskComposerMoneyAllowanceContext,
   type AskComposerType,
 } from "../askComposer";
+import { AskArrowRightIcon, AskInfoIcon } from "./askIcons";
+import { AskAvatar, AskTopBarTrail, formatThreadWhen } from "./AskPeople";
 import { recipientDescription, threadLabel } from "./askThreadLabels";
+import "./askCompose.css";
 
-const ASK_TYPES: Array<{ value: AskComposerType; label: string }> = [
-  { value: "approval", label: "Approval" },
-  { value: "question", label: "Question" },
-  { value: "choice", label: "Choice" },
-  { value: "checklist", label: "Checklist" },
-  { value: "verdict", label: "Verdict" },
-  { value: "hire_proposal", label: "Hire proposal" },
-];
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+/** "2026-10-31" as "31 Oct 2026". */
+function formatEndDate(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value;
+  return `${Number(match[3])} ${MONTHS[Number(match[2]) - 1] ?? ""} ${match[1]}`;
+}
+
+/** Cents as the board writes money: whole amounts without decimals. */
+function formatUsdFromCents(amountCents: string) {
+  const cents = Number(amountCents);
+  if (!Number.isFinite(cents)) return `USD ${amountCents}`;
+  const amount = cents / 100;
+  return `USD ${Number.isInteger(amount) ? amount : amount.toFixed(2)}`;
+}
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
 
 /** Ask creation surface for a real channel and discussion thread. */
 export function AskCreateScreen({
@@ -87,9 +113,6 @@ export function AskCreateScreen({
     threadRootEventId ?? "",
   );
   const [startNewThread, setStartNewThread] = React.useState(false);
-  const [destinationMode, setDestinationMode] = React.useState<
-    "channel" | "threads" | "new-thread"
-  >(channelId ? "threads" : "channel");
   const [step, setStep] = React.useState<"destination" | "compose">(
     channelId && threadRootEventId ? "compose" : "destination",
   );
@@ -106,12 +129,32 @@ export function AskCreateScreen({
     (candidate) => candidate.id === selectedChannelId,
   );
   const messagesQuery = useChannelMessagesQuery(channel ?? null);
-  const memberPubkeys = React.useMemo(
-    () => (membersQuery.data ?? []).map((member) => member.pubkey),
-    [membersQuery.data],
+  const threadRoots = React.useMemo(
+    () =>
+      (messagesQuery.data ?? [])
+        .filter(
+          (message) =>
+            isTimelineContentEvent(message) &&
+            getThreadReference(message.tags).parentId === null,
+        )
+        .sort(
+          (first, second) =>
+            second.created_at - first.created_at ||
+            first.id.localeCompare(second.id),
+        ),
+    [messagesQuery.data],
   );
-  const profilesQuery = useUsersBatchQuery(memberPubkeys, {
-    enabled: memberPubkeys.length > 0,
+  const profilePubkeys = React.useMemo(
+    () => [
+      ...new Set([
+        ...(membersQuery.data ?? []).map((member) => member.pubkey),
+        ...threadRoots.map((thread) => thread.pubkey),
+      ]),
+    ],
+    [membersQuery.data, threadRoots],
+  );
+  const profilesQuery = useUsersBatchQuery(profilePubkeys, {
+    enabled: profilePubkeys.length > 0,
   });
   const { goChannel, goToday, goHireRoles, goPower } = useAppNavigation();
   const [draft, setDraft] = React.useState(() => ({
@@ -122,10 +165,11 @@ export function AskCreateScreen({
     initialType !== "money_allowance_proposal",
   );
   const isMoneyProposal = draft.type === "money_allowance_proposal";
+  const isHireProposal = draft.type === "hire_proposal";
   const personasQuery = usePersonasQuery({
-    enabled: draft.type === "hire_proposal",
+    enabled: isHireProposal,
   });
-  const moneyTeamQuery = useCompanyTeamQuery(isMoneyProposal);
+  const moneyTeamQuery = useCompanyTeamQuery(isMoneyProposal || isHireProposal);
   const moneyAllowancesQuery = useEmployeeAllowanceHeadsQuery(isMoneyProposal);
   const moneyEmployees = React.useMemo(
     () =>
@@ -164,7 +208,6 @@ export function AskCreateScreen({
     setSelectedChannelId(channelId ?? "");
     setSelectedThreadRootId(threadRootEventId ?? "");
     setStartNewThread(false);
-    setDestinationMode(channelId ? "threads" : "channel");
     setStep(channelId && threadRootEventId ? "compose" : "destination");
   }, [channelId, threadRootEventId]);
 
@@ -178,25 +221,52 @@ export function AskCreateScreen({
   }, [initialType]);
 
   const currentPubkey = identityQuery.data?.pubkey ?? "";
+  const profiles = profilesQuery.data?.profiles;
+  const teamByPubkey = React.useMemo(
+    () =>
+      new Map(
+        (moneyTeamQuery.data?.members ?? []).map((member) => [
+          member.pubkey.toLowerCase(),
+          member,
+        ]),
+      ),
+    [moneyTeamQuery.data?.members],
+  );
+  /** The job title shown beside a name: the profile's, else the position's. */
+  const companyRoleOf = (pubkey: string) => {
+    const member = teamByPubkey.get(pubkey.toLowerCase());
+    return (
+      resolveJobTitle({
+        profile:
+          profiles?.[pubkey] ??
+          moneyEmployeeProfilesQuery.data?.profiles?.[pubkey] ??
+          null,
+        positionTitle: member?.position?.head.title,
+        isOwner: member?.role === "owner",
+      }) || undefined
+    );
+  };
   const moneyEmployeeOptions = moneyEmployees.flatMap((employee) => {
     const allowance = moneyAllowancesQuery.data?.records.find(
       (record) =>
         record.head.employeePubkey.toLowerCase() ===
         employee.pubkey.toLowerCase(),
     );
-    return allowance
-      ? [
-          {
-            pubkey: employee.pubkey,
-            label: resolveUserLabel({
-              pubkey: employee.pubkey,
-              currentPubkey,
-              fallbackName: employee.fallbackName ?? "AI employee",
-              profiles: moneyEmployeeProfilesQuery.data?.profiles,
-            }),
-          },
-        ]
-      : [];
+    if (!allowance) return [];
+    const name = resolveUserLabel({
+      pubkey: employee.pubkey,
+      currentPubkey,
+      fallbackName: employee.fallbackName ?? "AI employee",
+      profiles: moneyEmployeeProfilesQuery.data?.profiles,
+    });
+    const title = companyRoleOf(employee.pubkey);
+    return [
+      {
+        pubkey: employee.pubkey,
+        name,
+        label: title ? `${name} · ${title}` : name,
+      },
+    ];
   });
   const selectedMoneyEmployee = moneyEmployeeOptions.find(
     (employee) =>
@@ -221,21 +291,32 @@ export function AskCreateScreen({
   const contextReady = Boolean(
     selectedChannelId && (selectedThreadRootId || startNewThread),
   );
-  const threadRoots = React.useMemo(
-    () =>
-      (messagesQuery.data ?? [])
-        .filter(
-          (message) =>
-            isTimelineContentEvent(message) &&
-            getThreadReference(message.tags).parentId === null,
-        )
-        .sort(
-          (first, second) =>
-            second.created_at - first.created_at ||
-            first.id.localeCompare(second.id),
-        ),
-    [messagesQuery.data],
+  const agentPubkeys = new Set(
+    (membersQuery.data ?? [])
+      .filter((member) => member.isAgent)
+      .map((member) => normalizePubkey(member.pubkey)),
   );
+  const nowForThreads = new Date();
+  const threadOptions = threadRoots.map((thread) => {
+    const startedBy = resolveUserLabel({
+      pubkey: thread.pubkey,
+      currentPubkey,
+      profiles,
+      preferResolvedSelfLabel: true,
+    });
+    return {
+      id: thread.id,
+      label: threadLabel(thread),
+      startedBy,
+      startedByAvatarUrl: profiles?.[thread.pubkey]?.avatarUrl ?? null,
+      startedByIsAgent: agentPubkeys.has(normalizePubkey(thread.pubkey)),
+      when: formatThreadWhen(thread.created_at, nowForThreads),
+    };
+  });
+  const threadOptionLabels = threadOptions.map((thread) => ({
+    id: thread.id,
+    label: thread.label,
+  }));
   const currentChannelMember = (membersQuery.data ?? []).find(
     (member) =>
       normalizePubkey(member.pubkey) === normalizePubkey(currentPubkey),
@@ -267,20 +348,21 @@ export function AskCreateScreen({
       pubkey: member.pubkey,
       currentPubkey,
       fallbackName: member.displayName,
-      profiles: profilesQuery.data?.profiles,
+      profiles,
     }),
     description: recipientDescription(member.isAgent),
+    role: companyRoleOf(member.pubkey),
   }));
-  const moneyApproverPubkeys = new Set(
+  const moneyApproverRoles = new Map(
     (moneyTeamQuery.data?.relayMembers ?? [])
       .filter((member) => member.role === "owner" || member.role === "admin")
-      .map((member) => normalizePubkey(member.pubkey)),
+      .map((member) => [normalizePubkey(member.pubkey), member.role]),
   );
   const moneyRecipientMembers = (membersQuery.data ?? []).filter(
     (member) =>
       !member.isAgent &&
       normalizePubkey(member.pubkey) !== normalizePubkey(currentPubkey) &&
-      moneyApproverPubkeys.has(normalizePubkey(member.pubkey)),
+      moneyApproverRoles.has(normalizePubkey(member.pubkey)),
   );
   const moneyRecipientOptions = moneyRecipientMembers.map((member) => ({
     pubkey: member.pubkey,
@@ -288,9 +370,11 @@ export function AskCreateScreen({
       pubkey: member.pubkey,
       currentPubkey,
       fallbackName: member.displayName,
-      profiles: profilesQuery.data?.profiles,
+      profiles,
     }),
-    description: "Owner or administrator",
+    description: capitalize(
+      moneyApproverRoles.get(normalizePubkey(member.pubkey)) ?? "owner",
+    ),
   }));
   const recipientLoading = membersQuery.isPending;
   const recipientError = membersQuery.isError;
@@ -358,15 +442,17 @@ export function AskCreateScreen({
     setFormError(null);
   };
 
-  const changeAskType = () => {
+  const changeDestination = () => {
     if (locked) return;
-    if (draft.type === "hire_proposal") {
-      setDraft((current) => ({ ...current, type: "approval" }));
-      setHireProposalReview(false);
-      setFormError(null);
-      return;
-    }
     setStep("destination");
+  };
+
+  /** Leaves the hire proposal for the ask types again. */
+  const leaveHireProposal = () => {
+    if (locked) return;
+    setDraft((current) => ({ ...current, type: "approval" }));
+    setHireProposalReview(false);
+    setFormError(null);
   };
 
   const retryRecipients = React.useCallback(() => {
@@ -401,59 +487,29 @@ export function AskCreateScreen({
   };
 
   const changeChannel = (nextChannelId: string) => {
-    const nextThreadIsNew = destinationMode === "new-thread" || startNewThread;
     setSelectedChannelId(nextChannelId);
     setSelectedThreadRootId("");
-    setStartNewThread(nextThreadIsNew);
     setDraft((current) => ({ ...current, addresseePubkey: "" }));
     setErrors((current) => ({ ...current, addresseePubkey: undefined }));
     setFormError(null);
   };
 
-  const changeHireThread = (threadRootId: string) => {
-    if (threadRootId === "new") {
-      setSelectedThreadRootId("");
-      setStartNewThread(true);
-      return;
-    }
+  const chooseExistingThread = React.useCallback((threadRootId: string) => {
     setSelectedThreadRootId(threadRootId);
     setStartNewThread(false);
-  };
+  }, []);
 
-  const goBack = () => {
-    if (isMoneyProposal && !moneyAllowanceChosen) {
-      returnedToPower();
+  const chooseNewThread = React.useCallback(() => {
+    setSelectedThreadRootId("");
+    setStartNewThread(true);
+  }, []);
+
+  const changeHireThread = (threadRootId: string) => {
+    if (threadRootId === "new") {
+      chooseNewThread();
       return;
     }
-    if (step !== "compose") {
-      if (destinationMode === "new-thread") {
-        setDestinationMode("threads");
-        setStartNewThread(false);
-        return;
-      }
-      if (destinationMode === "threads") {
-        setDestinationMode("channel");
-        return;
-      }
-      returnedToThread();
-      return;
-    }
-    if (isHireProposal && hireProposalReview) {
-      setHireProposalReview(false);
-      setFormError(null);
-      return;
-    }
-    if (isMoneyProposal && moneyProposalReview) {
-      setMoneyProposalReview(false);
-      setFormError(null);
-      return;
-    }
-    if (isMoneyProposal && moneyAllowanceChosen) {
-      setMoneyAllowanceChosen(false);
-      setFormError(null);
-      return;
-    }
-    changeAskType();
+    chooseExistingThread(threadRootId);
   };
 
   const continueToAsk = () => {
@@ -482,8 +538,7 @@ export function AskCreateScreen({
     setStep("compose");
   };
 
-  const sendAsk = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const sendAsk = async () => {
     if (isSending || pendingEvent || !selectedChannelId || !contextReady)
       return;
     const validation = validateAskComposerDraft(
@@ -557,8 +612,7 @@ export function AskCreateScreen({
     }
   };
 
-  const reviewHireProposal = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const reviewHireProposal = () => {
     const validation = validateAskComposerDraft(
       draft,
       {
@@ -574,8 +628,7 @@ export function AskCreateScreen({
     setHireProposalReview(true);
   };
 
-  const reviewMoneyProposal = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const reviewMoneyProposal = () => {
     const validation = validateAskComposerDraft(
       draft,
       {
@@ -591,8 +644,7 @@ export function AskCreateScreen({
     setMoneyProposalReview(true);
   };
 
-  const retryAsk = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const retryAsk = async () => {
     if (isSending || !pendingEvent || !selectedChannelId) return;
     setIsSending(true);
     setFormError(null);
@@ -625,8 +677,6 @@ export function AskCreateScreen({
   };
 
   const retryCurrentEvent = Boolean(pendingEvent);
-  const submitForm = retryCurrentEvent ? retryAsk : sendAsk;
-  const isHireProposal = draft.type === "hire_proposal";
   const activeRecipientError = isMoneyProposal
     ? moneyRecipientError
     : recipientError;
@@ -649,9 +699,6 @@ export function AskCreateScreen({
             ? "Submit request"
             : "Review request"
           : "Send ask";
-  const recipientLoadingText = recipientLoading
-    ? "Loading teammates…"
-    : "Choose a person or AI employee";
   const canCreate =
     step === "compose" &&
     contextReady &&
@@ -669,14 +716,12 @@ export function AskCreateScreen({
   const canContinue = Boolean(
     selectedChannelId &&
       channel?.isMember &&
-      (destinationMode === "threads"
-        ? threadRoots.some((message) => message.id === selectedThreadRootId)
-        : destinationMode === "new-thread" &&
-          draft.threadTitle.trim().length > 0 &&
+      (startNewThread
+        ? draft.threadTitle.trim().length > 0 &&
           draft.threadTitle.trim().length <= 180 &&
-          draft.threadContext.length <= 4000),
+          draft.threadContext.length <= 4000
+        : threadRoots.some((message) => message.id === selectedThreadRootId)),
   );
-  const canChooseThreads = Boolean(selectedChannelId && channel?.isMember);
 
   const openSentConversation = () => {
     if (!sentContext) return;
@@ -687,509 +732,611 @@ export function AskCreateScreen({
     });
   };
 
-  const submitComposer = (event: React.FormEvent<HTMLFormElement>) => {
+  const submitComposer = () => {
     if (retryCurrentEvent) {
-      submitForm(event);
+      void retryAsk();
       return;
     }
     if (isHireProposal && !hireProposalReview) {
-      reviewHireProposal(event);
+      reviewHireProposal();
       return;
     }
     if (isMoneyProposal && !moneyProposalReview) {
-      reviewMoneyProposal(event);
+      reviewMoneyProposal();
       return;
     }
-    submitForm(event);
+    void sendAsk();
   };
 
-  return (
-    <div className="colony-ask-detail-screen">
-      <GoalRouteHeader
-        title={
-          isHireProposal
-            ? "Propose a hire"
-            : isMoneyProposal
-              ? "Request an allowance or cost approval"
-              : "Raise an ask"
-        }
-      />
-      <div
-        className={`colony-ask-detail-scroll${step === "destination" ? " colony-ask-detail-scroll--destination" : ""}${isHireProposal ? " colony-ask-detail-scroll--hire" : ""}${isMoneyProposal ? " colony-ask-detail-scroll--money" : ""}`}
-      >
-        <section
-          aria-labelledby="ask-create-title"
-          className={`colony-ask-create-content${isHireProposal ? " colony-ask-create-content--hire" : ""}${hireProposalReview ? " colony-ask-create-content--hire-review" : ""}${isMoneyProposal ? " colony-ask-create-content--money" : ""}${moneyProposalReview ? " colony-ask-create-content--money-review" : ""}`}
-        >
-          <GoalRouteBackLink
-            label={
-              step !== "compose"
-                ? "Back"
-                : isHireProposal
-                  ? "Back"
-                  : isMoneyProposal
-                    ? "Back"
-                    : "Change destination"
-            }
-            onClick={goBack}
-            disabled={locked}
-          />
-          {sentContext ? (
-            <AskCreateSuccess
-              title={
-                isHireProposal
-                  ? "Proposal raised"
-                  : isMoneyProposal
-                    ? "Money request submitted"
-                    : "Ask raised in its thread"
-              }
-              description={
-                isHireProposal
-                  ? "The proposal is waiting for review. No position or agent has been created."
-                  : undefined
-              }
-              message={
-                isMoneyProposal
-                  ? "No balance or spending limit changes until an authorized human approves."
-                  : `${draft.title.trim()} · #${channelName} / ${startNewThread ? draft.threadTitle.trim() : threadLabel(threadRoots.find((message) => message.id === sentContext.threadRootId) ?? threadRoots[0])}`
-              }
-              actionLabel={
-                isHireProposal
-                  ? "View proposal"
-                  : isMoneyProposal
-                    ? "Open decision"
-                    : "Open the conversation"
-              }
-              onAction={openSentConversation}
-            />
-          ) : isMoneyProposal && !moneyAllowanceChosen ? (
-            <MoneyAllowanceChooser
-              onSelect={() => {
-                setMoneyAllowanceChosen(true);
-                setStep("compose");
-              }}
-            />
-          ) : step === "destination" ? (
-            <AskDestinationStep
-              channels={(channelsQuery.data ?? []).filter(
-                (candidate) => candidate.channelType !== "dm",
-              )}
-              channelsPending={channelsQuery.isPending}
-              channelsError={channelsQuery.isError}
-              selectedChannelId={selectedChannelId}
-              channelIsMember={Boolean(channel?.isMember)}
-              selectedChannelExists={Boolean(channel)}
-              destinationMode={destinationMode}
-              selectedThreadRootId={selectedThreadRootId}
-              threadOptions={threadRoots.map((thread) => ({
-                id: thread.id,
-                label: threadLabel(thread),
-              }))}
-              threadsPending={messagesQuery.isPending}
-              threadsError={messagesQuery.isError}
-              draft={draft}
-              errors={errors}
-              canChooseThreads={canChooseThreads}
-              canContinue={canContinue}
-              onChangeChannel={changeChannel}
-              onChooseThreads={() => {
-                setSelectedThreadRootId("");
-                setStartNewThread(false);
-                setDestinationMode("threads");
-              }}
-              onStartNewThread={() => {
-                setSelectedThreadRootId("");
-                setStartNewThread(true);
-                setDestinationMode("new-thread");
-              }}
-              onSelectThread={(threadRootId) => {
-                setSelectedThreadRootId(threadRootId);
-                setStartNewThread(false);
-              }}
-              onRetryChannels={() => void channelsQuery.refetch()}
-              onRetryThreads={retryThreads}
-              onContinue={continueToAsk}
-              onCancel={returnedToThread}
-              onUpdateDraft={updateDraft}
-            />
-          ) : (!contextReady || !channel?.isMember) && !isMoneyProposal ? (
-            <div className="colony-ask-route-state" role="alert">
-              <h1 id="ask-create-title">
-                {isHireProposal
-                  ? "Propose a hire"
-                  : isMoneyProposal
-                    ? "Request an allowance or cost approval"
-                    : "Raise an ask"}
-              </h1>
-              <p>
-                This conversation is unavailable. Choose a conversation you can
-                access to continue.
-              </p>
-            </div>
-          ) : (
-            <>
-              <h1 id="ask-create-title">
-                {isHireProposal
-                  ? "Propose a hire"
-                  : isMoneyProposal
-                    ? "Request an allowance or cost approval"
-                    : "Raise an ask"}
-              </h1>
-              <div
-                className={`colony-ask-create-grid${isHireProposal ? " colony-ask-create-grid--hire" : ""}${hireProposalReview ? " colony-ask-create-grid--hire-review" : ""}${isMoneyProposal ? " colony-ask-create-grid--money" : ""}`}
-              >
-                <section
-                  aria-label="Ask details"
-                  className="colony-ask-create-main"
-                >
-                  {!isHireProposal && !isMoneyProposal ? (
-                    <p className="colony-ask-create-context">
-                      <strong>#{channelName}</strong>
-                      {startNewThread
-                        ? draft.threadTitle.trim()
-                        : threadLabel(
-                            threadRoots.find(
-                              (message) => message.id === selectedThreadRootId,
-                            ) ?? threadRoots[0],
-                          )}
-                    </p>
-                  ) : null}
-                  <fieldset
-                    aria-label="Ask type"
-                    className="colony-ask-create-types"
-                    hidden={isHireProposal || isMoneyProposal}
-                  >
-                    <legend className="sr-only">Ask type</legend>
-                    {ASK_TYPES.map((type) => (
-                      <Button
-                        aria-pressed={draft.type === type.value}
-                        className="colony-ask-create-type"
-                        disabled={locked}
-                        key={type.value}
-                        onClick={() => chooseAskType(type.value)}
-                        type="button"
-                        variant={
-                          draft.type === type.value ? "secondary" : "ghost"
-                        }
-                      >
-                        {type.label}
-                      </Button>
-                    ))}
-                  </fieldset>
-                  {!isHireProposal && !isMoneyProposal && recipientLoading ? (
-                    <p
-                      className="colony-ask-create-recipient-state"
-                      role="status"
-                    >
-                      {recipientLoadingText}
-                    </p>
-                  ) : !isHireProposal && !isMoneyProposal && recipientError ? (
-                    <div
-                      className="colony-ask-create-recipient-state"
-                      role="alert"
-                    >
-                      <p>Teammates could not load. Your draft is kept.</p>
-                      <Button
-                        onClick={retryRecipients}
-                        type="button"
-                        variant="outline"
-                      >
-                        Retry teammates
-                      </Button>
-                    </div>
-                  ) : !isHireProposal &&
-                    !isMoneyProposal &&
-                    (!recipientOptionsReady || channelPeople === 0) ? (
-                    <div
-                      className="colony-ask-create-recipient-state"
-                      role="status"
-                    >
-                      <strong>You’re the only member here</strong>
-                      <p>
-                        An ask needs another recipient. Invite a teammate, then
-                        return to finish it. Your draft stays here.
-                      </p>
-                      {canInviteToChannel ? (
-                        <Button
-                          onClick={() => setInviteOpen(true)}
-                          type="button"
-                          variant="outline"
-                        >
-                          Invite someone
-                        </Button>
-                      ) : null}
-                      <p>
-                        Send is unavailable. You cannot address this ask to
-                        yourself.
-                      </p>
-                    </div>
-                  ) : null}
-                  <form
-                    className={`colony-ask-compose-form${isHireProposal && !hireProposalReview ? " colony-ask-hire-form" : ""}${hireProposalReview ? " colony-ask-hire-review-form" : ""}${isMoneyProposal ? " colony-ask-money-form" : ""}${isMoneyProposal && moneyProposalReview ? " colony-ask-money-review-form" : ""}`}
-                    noValidate={isHireProposal || isMoneyProposal}
-                    onSubmit={submitComposer}
-                  >
-                    {isHireProposal ? (
-                      <HireProposalComposer
-                        draft={draft}
-                        errors={errors}
-                        hireProposalReview={hireProposalReview}
-                        selectedHireRole={selectedHireRole}
-                        roleOptions={hireRoleOptions}
-                        roleOptionsPending={personasQuery.isPending}
-                        roleOptionsError={personasQuery.isError}
-                        roleOptionsReady={personasQuery.isSuccess}
-                        recipientOptions={recipientOptions}
-                        recipientLoading={recipientLoading}
-                        recipientError={recipientError}
-                        channelPeople={channelPeople}
-                        channelOptions={(channelsQuery.data ?? [])
-                          .filter(
-                            (candidate) =>
-                              candidate.channelType !== "dm" &&
-                              candidate.isMember,
-                          )
-                          .map((candidate) => ({
-                            id: candidate.id,
-                            name: candidate.name,
-                          }))}
-                        selectedChannelId={selectedChannelId}
-                        selectedThreadRootId={selectedThreadRootId}
-                        startNewThread={startNewThread}
-                        threadOptions={threadRoots.map((thread) => ({
-                          id: thread.id,
-                          label: threadLabel(thread),
-                        }))}
-                        threadsPending={messagesQuery.isPending}
-                        threadsError={messagesQuery.isError}
-                        proposalDestination={`#${channelName} / ${startNewThread ? draft.threadTitle.trim() : threadLabel(threadRoots.find((message) => message.id === selectedThreadRootId) ?? threadRoots[0])}`}
-                        locked={locked}
-                        onUpdateDraft={updateDraft}
-                        onChangeChannel={changeChannel}
-                        onChangeThread={changeHireThread}
-                        onRetryThreads={retryThreads}
-                        onRetryRoleOptions={() => void personasQuery.refetch()}
-                        onOpenRoleCatalog={() => void goHireRoles()}
-                      />
-                    ) : isMoneyProposal ? (
-                      <MoneyAllowanceComposer
-                        draft={draft}
-                        errors={errors}
-                        locked={locked}
-                        review={moneyProposalReview}
-                        channelOptions={(channelsQuery.data ?? [])
-                          .filter(
-                            (candidate) =>
-                              candidate.channelType !== "dm" &&
-                              candidate.isMember,
-                          )
-                          .map((candidate) => ({
-                            id: candidate.id,
-                            name: candidate.name,
-                          }))}
-                        selectedChannelId={selectedChannelId}
-                        selectedThreadRootId={selectedThreadRootId}
-                        startNewThread={startNewThread}
-                        threadOptions={threadRoots.map((thread) => ({
-                          id: thread.id,
-                          label: threadLabel(thread),
-                        }))}
-                        threadsPending={messagesQuery.isPending}
-                        threadsError={messagesQuery.isError}
-                        recipientOptions={moneyRecipientOptions}
-                        recipientLoading={moneyRecipientLoading}
-                        recipientError={moneyRecipientError}
-                        channelsPending={channelsQuery.isPending}
-                        channelsError={channelsQuery.isError}
-                        employeeOptions={moneyEmployeeOptions}
-                        employeesLoading={moneyEmployeesLoading}
-                        employeesError={moneyEmployeesError}
-                        channelHasOtherMembers={
-                          moneyRecipientMembers.length > 0 ||
-                          (membersQuery.data ?? []).some(
-                            (member) =>
-                              normalizePubkey(member.pubkey) !==
-                              normalizePubkey(currentPubkey),
-                          )
-                        }
-                        canInviteToChannel={canInviteToChannel}
-                        onUpdateDraft={updateDraft}
-                        onChangeChannel={changeChannel}
-                        onChangeThread={changeHireThread}
-                        onRetryChannels={() => void channelsQuery.refetch()}
-                        onRetryThreads={retryThreads}
-                        onRetryEmployees={() => {
-                          void moneyTeamQuery.refetch();
-                          void moneyAllowancesQuery.refetch();
-                        }}
-                        onRetryRecipients={retryRecipients}
-                        onInvite={() => setInviteOpen(true)}
-                      />
-                    ) : (
-                      <AskStandardComposer
-                        draft={draft}
-                        errors={errors}
-                        recipientOptions={recipientOptions}
-                        recipientLoading={recipientLoading}
-                        recipientError={recipientError}
-                        channelPeople={channelPeople}
-                        locked={locked}
-                        onUpdateDraft={updateDraft}
-                      />
-                    )}
+  const threadTitleForDestination = startNewThread
+    ? draft.threadTitle.trim()
+    : threadLabel(
+        threadRoots.find((message) => message.id === selectedThreadRootId) ??
+          threadRoots[0],
+      );
+  const destinationLabel = `${channelName} · ${threadTitleForDestination}`;
+  const pageTitle = isHireProposal
+    ? "Propose a hire"
+    : isMoneyProposal
+      ? "Request an allowance or cost approval"
+      : "Raise an ask";
+  const trail = isHireProposal
+    ? ["Company", "Raise an ask", "Propose a hire"]
+    : isMoneyProposal
+      ? ["Company", "Request an allowance"]
+      : ["Company", "Raise an ask"];
+  const ChannelMark =
+    channel?.visibility === "private" ? PrivateChannelIcon : HashIcon;
+  const raisedByLabel = currentPubkey
+    ? resolveUserLabel({
+        pubkey: currentPubkey,
+        currentPubkey,
+        fallbackName: "You",
+        preferResolvedSelfLabel: true,
+        profiles,
+      })
+    : "Your account";
+  const addressee = recipients.find(
+    (member) =>
+      normalizePubkey(member.pubkey) === normalizePubkey(draft.addresseePubkey),
+  );
+  const addresseeLabel = addressee
+    ? resolveUserLabel({
+        pubkey: addressee.pubkey,
+        currentPubkey,
+        fallbackName: addressee.displayName,
+        profiles,
+      })
+    : null;
+  const moneyRecipient = moneyRecipientOptions.find(
+    (option) =>
+      normalizePubkey(option.pubkey) === normalizePubkey(draft.addresseePubkey),
+  );
+  const moneySummary = {
+    recipient: moneyRecipient?.label ?? "",
+    employee: selectedMoneyEmployee?.name ?? "",
+    duration:
+      draft.moneyDuration === "permanent"
+        ? "Permanent"
+        : draft.moneyDuration === "temporary"
+          ? draft.moneyEndDate
+            ? `Temporary · until ${formatEndDate(draft.moneyEndDate)}`
+            : "Temporary"
+          : "",
+    amount: draft.moneyAllowance.trim()
+      ? `USD ${draft.moneyAllowance.trim()}`
+      : "",
+    conversation: contextReady
+      ? `#${channelName} · ${threadTitleForDestination || "New thread"}`
+      : "",
+  };
+  const currentAllowanceLabel = selectedMoneyAllowance
+    ? `${formatUsdFromCents(selectedMoneyAllowance.head.allowance.amountCents)} per ${selectedMoneyAllowance.head.allowance.period}`
+    : null;
+  const moneyReviewing =
+    isMoneyProposal && moneyProposalReview && !pendingEvent;
 
-                    {formError ? (
-                      <div className="colony-ask-compose-failure" role="alert">
-                        <strong>
-                          {isHireProposal
-                            ? "Could not save"
-                            : isMoneyProposal
-                              ? "Could not save"
-                              : "Ask was not sent"}
-                        </strong>
-                        <p>
-                          {isMoneyProposal
-                            ? "Your inputs are kept. Review them or retry without starting again."
-                            : formError}
-                        </p>
-                        {pendingEvent && !isMoneyProposal ? (
-                          <p className="colony-ask-compose-retained">
-                            {isHireProposal
-                              ? "Your inputs are kept. Retry sends the same proposal."
-                              : "Your wording and response details are kept. Retry sends the same ask."}
-                          </p>
-                        ) : null}
+  const openMoneyChooser = () => {
+    if (locked) return;
+    setMoneyAllowanceChosen(false);
+    setMoneyProposalReview(false);
+    setFormError(null);
+  };
+
+  const composeHeader = (
+    <header className="ask3-head-row">
+      <div className="ask3-head" data-gap="10">
+        {isHireProposal ? (
+          <span className="ask3-chip">
+            <ChannelMark size={14} strokeWidth={2.2} />
+            {destinationLabel}
+          </span>
+        ) : (
+          <button
+            className="ask3-chip"
+            disabled={locked}
+            onClick={changeDestination}
+            type="button"
+          >
+            <ChannelMark size={14} strokeWidth={2.2} />
+            {destinationLabel}
+            <span className="ask3-chip-change">Change</span>
+          </button>
+        )}
+        <h1 className="ask3-title" id="ask-create-title">
+          {pageTitle}
+        </h1>
+        {isHireProposal ? (
+          <span className="ask3-sub">
+            Describe the role you need. An owner reviews it, then the founder
+            signs off.
+          </span>
+        ) : null}
+      </div>
+      {isHireProposal ? null : (
+        <ColonySteps
+          align="end"
+          current={2}
+          label="Ask steps"
+          onStepSelect={changeDestination}
+          steps={["Destination", "Ask"]}
+        />
+      )}
+    </header>
+  );
+
+  const failureBanner = formError ? (
+    <div className="ask3-notice" data-tone="bad" role="alert">
+      <strong>
+        {isHireProposal || isMoneyProposal
+          ? "Could not save"
+          : "Ask was not sent"}
+      </strong>
+      <p>
+        {isMoneyProposal
+          ? "Your inputs are kept. Review them or retry without starting again."
+          : formError}
+      </p>
+      {pendingEvent && !isMoneyProposal ? (
+        <p>
+          {isHireProposal
+            ? "Your inputs are kept. Retry sends the same proposal."
+            : "Your wording and response details are kept. Retry sends the same ask."}
+        </p>
+      ) : null}
+    </div>
+  ) : null;
+
+  const actions = (
+    <div className="ask3-actions">
+      {moneyReviewing ? null : (
+        <button className="ask3-btn" disabled={!canSubmit} type="submit">
+          {submitLabel}
+          {!retryCurrentEvent &&
+          ((isHireProposal && !hireProposalReview) ||
+            (isMoneyProposal && !moneyProposalReview)) ? (
+            <AskArrowRightIcon size={16} strokeWidth={2.4} />
+          ) : null}
+        </button>
+      )}
+      {isHireProposal && hireProposalReview ? (
+        <button
+          className="ask3-btn"
+          data-variant="secondary"
+          disabled={locked}
+          onClick={() => {
+            setHireProposalReview(false);
+            setFormError(null);
+          }}
+          type="button"
+        >
+          Edit proposal
+        </button>
+      ) : moneyReviewing ? null : (
+        <button
+          className="ask3-btn"
+          data-variant="secondary"
+          disabled={locked}
+          onClick={
+            isMoneyProposal
+              ? returnedToPower
+              : isHireProposal
+                ? leaveHireProposal
+                : returnedToThread
+          }
+          type="button"
+        >
+          Cancel
+        </button>
+      )}
+    </div>
+  );
+
+  const formBody = isHireProposal ? (
+    <HireProposalComposer
+      channelOptions={(channelsQuery.data ?? [])
+        .filter(
+          (candidate) => candidate.channelType !== "dm" && candidate.isMember,
+        )
+        .map((candidate) => ({
+          id: candidate.id,
+          name: candidate.name,
+        }))}
+      channelPeople={channelPeople}
+      draft={draft}
+      errors={errors}
+      hireProposalReview={hireProposalReview}
+      locked={locked}
+      onChangeChannel={changeChannel}
+      onChangeThread={changeHireThread}
+      onOpenRoleCatalog={() => void goHireRoles()}
+      onRetryRoleOptions={() => void personasQuery.refetch()}
+      onRetryThreads={retryThreads}
+      onUpdateDraft={updateDraft}
+      proposalDestination={`#${channelName} / ${threadTitleForDestination}`}
+      recipientError={recipientError}
+      recipientLoading={recipientLoading}
+      recipientOptions={recipientOptions}
+      roleOptions={hireRoleOptions}
+      roleOptionsError={personasQuery.isError}
+      roleOptionsPending={personasQuery.isPending}
+      roleOptionsReady={personasQuery.isSuccess}
+      selectedChannelId={selectedChannelId}
+      selectedHireRole={selectedHireRole}
+      selectedThreadRootId={selectedThreadRootId}
+      startNewThread={startNewThread}
+      threadOptions={threadOptionLabels}
+      threadsError={messagesQuery.isError}
+      threadsPending={messagesQuery.isPending}
+    />
+  ) : isMoneyProposal ? (
+    <MoneyAllowanceComposer
+      canInviteToChannel={canInviteToChannel}
+      channelHasOtherMembers={
+        moneyRecipientMembers.length > 0 ||
+        (membersQuery.data ?? []).some(
+          (member) =>
+            normalizePubkey(member.pubkey) !== normalizePubkey(currentPubkey),
+        )
+      }
+      channelOptions={(channelsQuery.data ?? [])
+        .filter(
+          (candidate) => candidate.channelType !== "dm" && candidate.isMember,
+        )
+        .map((candidate) => ({
+          id: candidate.id,
+          name: candidate.name,
+        }))}
+      channelsError={channelsQuery.isError}
+      channelsPending={channelsQuery.isPending}
+      currentAllowanceLabel={currentAllowanceLabel}
+      draft={draft}
+      employeeOptions={moneyEmployeeOptions}
+      employeesError={moneyEmployeesError}
+      employeesLoading={moneyEmployeesLoading}
+      errors={errors}
+      locked={locked || moneyProposalReview}
+      onChangeChannel={changeChannel}
+      onChangeThread={changeHireThread}
+      onInvite={() => setInviteOpen(true)}
+      onRetryChannels={() => void channelsQuery.refetch()}
+      onRetryEmployees={() => {
+        void moneyTeamQuery.refetch();
+        void moneyAllowancesQuery.refetch();
+      }}
+      onRetryRecipients={retryRecipients}
+      onRetryThreads={retryThreads}
+      onUpdateDraft={updateDraft}
+      recipientError={moneyRecipientError}
+      recipientLoading={moneyRecipientLoading}
+      recipientOptions={moneyRecipientOptions}
+      selectedChannelId={selectedChannelId}
+      selectedThreadRootId={selectedThreadRootId}
+      startNewThread={startNewThread}
+      threadOptions={threadOptionLabels}
+      threadsError={messagesQuery.isError}
+      threadsPending={messagesQuery.isPending}
+    />
+  ) : (
+    <AskStandardComposer
+      canInvite={canInviteToChannel}
+      channelPeople={channelPeople}
+      draft={draft}
+      errors={errors}
+      locked={locked}
+      onChooseType={chooseAskType}
+      onInvite={() => setInviteOpen(true)}
+      onRetryRecipients={retryRecipients}
+      onUpdateDraft={updateDraft}
+      recipientError={recipientError}
+      recipientLoading={recipientLoading}
+      recipientOptions={recipientOptions}
+      recipientOptionsReady={recipientOptionsReady}
+    />
+  );
+
+  const alone =
+    !isHireProposal &&
+    !isMoneyProposal &&
+    !recipientLoading &&
+    !recipientError &&
+    (!recipientOptionsReady || channelPeople === 0);
+
+  const composeForm = (
+    <form
+      aria-label={isHireProposal ? "Hire proposal" : "Compose the ask"}
+      aria-labelledby={isMoneyProposal ? "allowance-change" : undefined}
+      className="ask3-card"
+      data-gap={isHireProposal || isMoneyProposal ? "20" : undefined}
+      noValidate={isHireProposal || isMoneyProposal}
+      onSubmit={(event) => {
+        event.preventDefault();
+        submitComposer();
+      }}
+    >
+      {formBody}
+      {failureBanner}
+      {actions}
+    </form>
+  );
+
+  let body: React.ReactNode;
+  if (sentContext) {
+    body = (
+      <div className="ask3-success-wrap">
+        <AskCreateSuccess
+          actionLabel={
+            isHireProposal
+              ? "View proposal"
+              : isMoneyProposal
+                ? "Open decision"
+                : "Open the conversation"
+          }
+          description={
+            isHireProposal
+              ? "The proposal is waiting for review. No position or agent has been created."
+              : undefined
+          }
+          message={
+            isMoneyProposal
+              ? "No balance or spending limit changes until an authorized human approves."
+              : `${draft.title.trim()} · #${channelName} / ${startNewThread ? draft.threadTitle.trim() : threadLabel(threadRoots.find((message) => message.id === sentContext.threadRootId) ?? threadRoots[0])}`
+          }
+          onAction={openSentConversation}
+          title={
+            isHireProposal
+              ? "Proposal raised"
+              : isMoneyProposal
+                ? "Money request submitted"
+                : "Ask raised in its thread"
+          }
+        />
+      </div>
+    );
+  } else if (isMoneyProposal && !moneyAllowanceChosen) {
+    body = (
+      <>
+        <header className="ask3-head-row">
+          <div className="ask3-head">
+            <h1
+              className="ask3-title"
+              data-size="38-money"
+              id="ask-create-title"
+            >
+              Request an allowance or cost approval
+            </h1>
+            <span className="ask3-sub">
+              Propose the change in its thread. An owner or administrator
+              decides.
+            </span>
+          </div>
+          <ColonySteps
+            align="end"
+            connector={32}
+            current={1}
+            label="Request steps"
+            steps={["Choose", "Allowance change", "Review"]}
+          />
+        </header>
+        <MoneyAllowanceChooser
+          onSelect={() => {
+            setMoneyAllowanceChosen(true);
+            setStep("compose");
+          }}
+          selected={false}
+        />
+      </>
+    );
+  } else if (isMoneyProposal) {
+    body = (
+      <>
+        <header className="ask3-head-row">
+          <div className="ask3-head">
+            <h1
+              className="ask3-title"
+              data-size="38-money"
+              id="ask-create-title"
+            >
+              Request an allowance or cost approval
+            </h1>
+            <span className="ask3-sub">
+              Propose the change in its thread. An owner or administrator
+              decides.
+            </span>
+          </div>
+          <ColonySteps
+            align="end"
+            connector={32}
+            current={moneyProposalReview ? 3 : 2}
+            label="Request steps"
+            onStepSelect={(number) => {
+              if (number === 1) openMoneyChooser();
+            }}
+            steps={["Choose", "Allowance change", "Review"]}
+          />
+        </header>
+        <MoneyAllowanceChooser
+          disabled={locked}
+          onSelect={openMoneyChooser}
+          selected
+        />
+        <div className="ask3-split">
+          {composeForm}
+          <div className="ask3-review">
+            <MoneyReviewPanel
+              busy={locked}
+              canSubmit={canSubmit}
+              onEdit={() => {
+                setMoneyProposalReview(false);
+                setFormError(null);
+              }}
+              onSubmit={submitComposer}
+              reviewing={moneyReviewing}
+              submitLabel={isSending ? "Sending…" : "Submit request"}
+              summary={moneySummary}
+            />
+          </div>
+        </div>
+      </>
+    );
+  } else if (step === "destination") {
+    body = (
+      <AskDestinationStep
+        canContinue={canContinue}
+        channelIsMember={Boolean(channel?.isMember)}
+        channels={(channelsQuery.data ?? []).filter(
+          (candidate) => candidate.channelType !== "dm",
+        )}
+        channelsError={channelsQuery.isError}
+        channelsPending={channelsQuery.isPending}
+        draft={draft}
+        errors={errors}
+        onCancel={returnedToThread}
+        onChangeChannel={changeChannel}
+        onContinue={continueToAsk}
+        onRetryChannels={() => void channelsQuery.refetch()}
+        onRetryThreads={retryThreads}
+        onSelectThread={chooseExistingThread}
+        onStartNewThread={chooseNewThread}
+        onUpdateDraft={updateDraft}
+        selectedChannelExists={Boolean(channel)}
+        selectedChannelId={selectedChannelId}
+        selectedThreadRootId={selectedThreadRootId}
+        startNewThread={startNewThread}
+        threadOptions={threadOptions}
+        threadsError={messagesQuery.isError}
+        threadsPending={messagesQuery.isPending}
+      />
+    );
+  } else if (!contextReady || !channel?.isMember) {
+    body = (
+      <div className="ask3-notice" data-tone="bad" role="alert">
+        <h1 className="ask3-heading-2" id="ask-create-title">
+          {pageTitle}
+        </h1>
+        <p>
+          This conversation is unavailable. Choose a conversation you can access
+          to continue.
+        </p>
+      </div>
+    );
+  } else {
+    body = (
+      <>
+        {composeHeader}
+        <div className="ask3-split">
+          {composeForm}
+          {hireProposalReview || alone ? null : (
+            <aside
+              aria-labelledby={
+                isHireProposal ? "proposal-steps" : "who-can-answer"
+              }
+              className="ask3-aside"
+            >
+              {isHireProposal ? (
+                <HireProposalReviewSteps />
+              ) : (
+                <>
+                  <h2 className="ask3-aside-title" id="who-can-answer">
+                    Who can answer?
+                  </h2>
+                  <dl className="ask3-facts">
+                    <div className="ask3-fact" data-gap="6">
+                      <dt>Raised by</dt>
+                      <dd data-strong="true">
+                        <AskAvatar
+                          avatarUrl={profiles?.[currentPubkey]?.avatarUrl}
+                          label={raisedByLabel}
+                        />
+                        {raisedByLabel}
+                      </dd>
+                    </div>
+                    {addresseeLabel ? (
+                      <div className="ask3-fact" data-gap="6">
+                        <dt>Response from</dt>
+                        <dd data-strong="true">
+                          <AskAvatar
+                            avatarUrl={
+                              profiles?.[addressee?.pubkey ?? ""]?.avatarUrl
+                            }
+                            isAgent={addressee?.isAgent}
+                            label={addresseeLabel}
+                          />
+                          {addresseeLabel}
+                        </dd>
                       </div>
                     ) : null}
-                    <div className="colony-ask-compose-actions">
-                      <Button disabled={!canSubmit} type="submit">
-                        {submitLabel}
-                      </Button>
-                      {isHireProposal && hireProposalReview ? (
-                        <Button
-                          disabled={locked}
-                          onClick={() => {
-                            setHireProposalReview(false);
-                            setFormError(null);
-                          }}
-                          type="button"
-                          variant="outline"
-                        >
-                          Edit proposal
-                        </Button>
-                      ) : isMoneyProposal && moneyProposalReview ? (
-                        <Button
-                          disabled={locked}
-                          onClick={() => {
-                            setMoneyProposalReview(false);
-                            setFormError(null);
-                          }}
-                          type="button"
-                          variant="outline"
-                        >
-                          Back
-                        </Button>
-                      ) : (
-                        <Button
-                          disabled={locked}
-                          onClick={isMoneyProposal ? goBack : returnedToThread}
-                          type="button"
-                          variant="outline"
-                        >
-                          Cancel
-                        </Button>
-                      )}
+                    <div className="ask3-fact">
+                      <dt>Visibility</dt>
+                      <dd>People in #{channelName}</dd>
                     </div>
-                  </form>
-                </section>
-
-                {!isMoneyProposal && !hireProposalReview ? (
-                  <aside
-                    aria-label={
-                      isHireProposal
-                        ? "Proposal review steps"
-                        : "Who can answer?"
-                    }
-                    className="colony-ask-create-aside"
-                  >
-                    {isHireProposal ? (
-                      <HireProposalReviewSteps />
-                    ) : (
-                      <>
-                        <h2>Who can answer?</h2>
-                        <p>
-                          Questions and verdicts can go to a person or an AI
-                          employee. Sensitive decisions stay with authorized
-                          people.
-                        </p>
-                        <dl>
-                          <div>
-                            <dt>Raised by</dt>
-                            <dd>
-                              {currentPubkey
-                                ? resolveUserLabel({
-                                    pubkey: currentPubkey,
-                                    currentPubkey,
-                                    fallbackName: "You",
-                                    preferResolvedSelfLabel: true,
-                                    profiles: profilesQuery.data?.profiles,
-                                  })
-                                : "Your account"}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>Visibility</dt>
-                            <dd>People in #{channelName}</dd>
-                          </div>
-                          <div>
-                            <dt>After a response</dt>
-                            <dd>
-                              The decision stays linked to this conversation.
-                            </dd>
-                          </div>
-                        </dl>
-                      </>
-                    )}
-                    {membersQuery.isError ? (
-                      <Button
-                        onClick={retryRecipients}
-                        type="button"
-                        variant="outline"
-                      >
-                        Retry teammates
-                      </Button>
-                    ) : null}
-                  </aside>
-                ) : null}
-              </div>
-            </>
+                    <div className="ask3-fact">
+                      <dt>After a response</dt>
+                      <dd data-prose="true">
+                        The answer is recorded in this thread for everyone in
+                        the channel to see.
+                      </dd>
+                    </div>
+                  </dl>
+                </>
+              )}
+            </aside>
           )}
-        </section>
+        </div>
+      </>
+    );
+  }
+
+  const narrowLayout =
+    !sentContext && !isMoneyProposal && step === "destination";
+
+  return (
+    <div className="ask3-screen" data-testid="ask-create-screen">
+      <AskTopBarTrail trail={trail} />
+      <div
+        className="ask3-page"
+        data-layout={
+          narrowLayout ? "narrow" : isMoneyProposal ? "money" : undefined
+        }
+      >
+        {body}
       </div>
       <Dialog onOpenChange={setInviteOpen} open={inviteOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Invite someone</DialogTitle>
-            <DialogDescription>
-              Add a person to this conversation so they can be chosen as the
-              recipient. Their access stays limited to this channel.
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent
+          aria-describedby="ask-invite-description"
+          className="ask3-invite"
+          closeButtonClassName="ask3-invite-close"
+          surface="none"
+        >
+          <DialogTitle className="ask3-invite-title">
+            Invite someone
+          </DialogTitle>
+          <DialogDescription
+            className="ask3-invite-desc"
+            id="ask-invite-description"
+          >
+            Add a person to this conversation so they can be chosen as the
+            recipient. Their access stays limited to this channel.
+          </DialogDescription>
           <ChannelMemberInviteCard
             canAssignElevatedRoles={
               currentChannelMember?.role === "owner" ||
               currentChannelMember?.role === "admin"
             }
             existingMembers={membersQuery.data ?? []}
+            footerNote={
+              <p className="ask3-invite-note">
+                <AskInfoIcon size={16} />
+                An invitation does not make the person eligible to approve
+                money, hires or tools.
+              </p>
+            }
             isPending={addMembersMutation.isPending}
+            onCancel={() => setInviteOpen(false)}
             onSubmit={addInvitees}
             open={inviteOpen}
             requestErrorMessage={null}
           />
-          <p className="text-xs text-muted-foreground">
-            An invitation does not make the person eligible to approve money,
-            hires or tools.
-          </p>
         </DialogContent>
       </Dialog>
     </div>

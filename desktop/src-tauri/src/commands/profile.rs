@@ -42,6 +42,7 @@ pub async fn update_profile(
     avatar_url: Option<String>,
     about: Option<String>,
     nip05_handle: Option<String>,
+    job_title: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<ProfileInfo, String> {
     // Read-merge-write: kind 0 is a full profile snapshot.
@@ -77,7 +78,13 @@ pub async fn update_profile(
         .as_deref()
         .or_else(|| current.get("nip05").and_then(Value::as_str));
 
-    let builder = events::build_profile(dn, name, picture, ab, nip05)?;
+    // An empty string clears the job title; no value keeps the published one.
+    let job = match job_title.as_deref() {
+        Some(value) => Some(value),
+        None => current.get("job_title").and_then(Value::as_str),
+    };
+
+    let builder = events::build_profile_with_job_title(dn, name, picture, ab, nip05, job)?;
     submit_event(builder, &state).await?;
 
     // Re-fetch to return canonical profile.
@@ -156,13 +163,19 @@ fn build_deferred_profile_event(
     let name = current.get("name").and_then(Value::as_str);
     let about = current.get("about").and_then(Value::as_str);
     let nip05 = current.get("nip05").and_then(Value::as_str);
+    let job_title = current.get("job_title").and_then(Value::as_str);
 
-    Ok(
-        events::build_profile(display_name, name, Some(avatar_url), about, nip05)?
-            .custom_created_at(monotonic_created_at(
-                prior_event.map(|event| event.created_at.as_secs() as i64),
-            )),
-    )
+    Ok(events::build_profile_with_job_title(
+        display_name,
+        name,
+        Some(avatar_url),
+        about,
+        nip05,
+        job_title,
+    )?
+    .custom_created_at(monotonic_created_at(
+        prior_event.map(|event| event.created_at.as_secs() as i64),
+    )))
 }
 
 fn capture_expected_signer(state: &AppState, expected_pubkey: &str) -> Result<nostr::Keys, String> {
@@ -408,6 +421,7 @@ fn empty_profile_info(pubkey: &str) -> ProfileInfo {
         avatar_url: None,
         about: None,
         nip05_handle: None,
+        job_title: None,
         owner_pubkey: None,
         has_profile_event: false,
     }

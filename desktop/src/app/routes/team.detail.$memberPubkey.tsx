@@ -3,6 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { TeamMemberScreen } from "@/features/company-team/ui/TeamMemberScreen";
 
 export const Route = createFileRoute("/team/detail/$memberPubkey")({
+  // `tab` and `panel` are retired (history and salary are cut); older links
+  // still open the member page.
   validateSearch: (search: Record<string, unknown>) => ({
     tab: search.tab === "history" ? ("history" as const) : undefined,
     panel:
@@ -15,15 +17,8 @@ export const Route = createFileRoute("/team/detail/$memberPubkey")({
 
 function TeamMemberDetailRoute() {
   const { memberPubkey } = Route.useParams();
-  const { panel, tab } = Route.useSearch();
+  const { tab } = Route.useSearch();
   return (
-    <TeamMemberScreen
-      initialTab={tab}
-      memberPubkey={memberPubkey}
-      mode="detail"
-      salaryPanel={
-        panel === "salary" || panel === "salary-edit" ? panel : undefined
-      }
-    />
+    <TeamMemberScreen initialTab={tab} memberPubkey={memberPubkey} mode="detail" />
   );
 }

@@ -1,12 +1,5 @@
 import * as React from "react";
-import {
-  EllipsisVertical,
-  OctagonX,
-  ArrowRight,
-  Plus,
-  Sun,
-  Settings2,
-} from "lucide-react";
+import { EllipsisVertical, OctagonX, Settings2 } from "lucide-react";
 import {
   consumePendingSnapshotImport,
   subscribeSnapshotImport,
@@ -39,7 +32,8 @@ import { useGlobalAgentConfig } from "@/features/agents/useGlobalAgentConfig";
 import { useArchivedIdentitiesQuery } from "@/features/identity-archive/hooks";
 import { useActiveAgentTurnsByChannel } from "@/features/agents/activeAgentTurnsStore";
 import { AgentDirectory } from "./AgentDirectory";
-import { AgentProfileView, type AgentProfileTab } from "./AgentProfileView";
+import { AgentPage } from "./AgentPage";
+import { AgentsDirectoryHeader } from "./AgentsDirectoryHeader";
 import { parseAgentDirectoryPageSize } from "@/features/agents/agentDirectoryModel";
 import { useAppShell } from "@/app/AppShellContext";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
@@ -63,44 +57,28 @@ import {
 
 export type AgentWorkspaceView = "directory" | "teams" | "templates";
 
-const AGENT_WORKSPACE_TABS: Array<{ id: AgentWorkspaceView; label: string }> = [
-  { id: "directory", label: "Directory" },
-  { id: "teams", label: "Agent teams" },
-  { id: "templates", label: "Templates & snapshots" },
-];
-
 export function AgentsView({
   view,
   agentPubkey,
-  agentTab,
   pageSize,
+  onPageSizeChange,
   createRolePack = false,
   editRolePackPersonaId,
   resumeRolePack = false,
-  onWorkspaceViewChange,
   onOpenAgent,
   onMessageAgent,
-  onOpenChannel,
-  onCloseAgent,
-  onAgentTabChange,
-  onOpenSupervision,
 }: {
   view: AgentWorkspaceView;
   agentPubkey?: string;
-  agentTab: AgentProfileTab;
   pageSize?: string;
+  onPageSizeChange?: (size: 10 | 20 | 30) => void;
   createRolePack?: boolean;
   editRolePackPersonaId?: string;
   resumeRolePack?: boolean;
-  onWorkspaceViewChange: (view: AgentWorkspaceView) => void;
   onOpenAgent: (pubkey: string) => void;
   onMessageAgent: (pubkey: string) => Promise<void>;
-  onOpenChannel: (channelId: string) => void;
-  onCloseAgent: () => void;
-  onAgentTabChange: (tab: AgentProfileTab) => void;
-  onOpenSupervision: () => void;
 }) {
-  const { goHireRoleRecovery, goHireRoles } = useAppNavigation();
+  const { goHireRoleRecovery, goHireRoles, goTeam } = useAppNavigation();
   const handleRoleRecovery = React.useCallback(
     (kind: "runtime" | "provider" | "model", draftPersonaId: string) => {
       void goHireRoleRecovery(kind, draftPersonaId);
@@ -266,17 +244,10 @@ export function AgentsView({
       ]),
     [agents.managedAgents, agents.relayAgentsQuery.data],
   );
-  const directoryAgentCount = agents.managedAgents.filter(
-    (agent) => !archivedPubkeys.has(agent.pubkey.toLowerCase()),
-  ).length;
+  const directoryAgentCount = agents.managedAgents.length;
   const directoryPeopleCount = (relayMembersQuery.data ?? []).filter(
     (member) => !directoryAgentPubkeys.has(member.pubkey.toLowerCase()),
   ).length;
-  const selectedAgent = agentPubkey
-    ? agents.managedAgents.find(
-        (agent) => agent.pubkey.toLowerCase() === agentPubkey.toLowerCase(),
-      )
-    : undefined;
   const hasSavedAgentDefaults = Boolean(
     globalConfig.preferred_runtime?.trim() ||
       globalConfig.provider?.trim() ||
@@ -396,94 +367,35 @@ export function AgentsView({
   return (
     <>
       <div
-        className={`flex-1 overflow-y-auto overflow-x-hidden overscroll-contain ${selectedAgent || view === "directory" ? "" : "px-4 py-7 sm:px-6 sm:py-8"}`}
+        className={`flex-1 overflow-y-auto overflow-x-hidden overscroll-contain ${agentPubkey || view === "directory" ? "" : "px-4 py-7 sm:px-6 sm:py-8"}`}
         style={showRolePackPage ? { display: "none" } : undefined}
       >
         <div
-          className={`mx-auto w-full ${selectedAgent ? "h-full min-h-0 max-w-none" : view === "directory" ? "flex h-full min-h-0 max-w-none flex-col" : "max-w-6xl space-y-8 [container-type:inline-size]"}`}
+          className={`w-full ${agentPubkey ? "h-full min-h-0" : view === "directory" ? "" : "mx-auto max-w-6xl space-y-8 [container-type:inline-size]"}`}
           data-testid="agents-page-content"
         >
-          {selectedAgent ? (
-            <AgentProfileView
-              agent={selectedAgent}
-              isActionPending={isActionPending}
-              onBack={onCloseAgent}
-              onMessage={onMessageAgent}
-              onOpenChannel={onOpenChannel}
-              onOpenHarnesses={() => appShell.onOpenSettings?.("agents")}
-              onRestartAgent={(pubkey) => void agents.handleRestart(pubkey)}
-              onStopAgent={(pubkey) => void agents.handleStop(pubkey)}
-              onTabChange={onAgentTabChange}
-              personas={personas.personasQuery.data ?? []}
-              tab={agentTab}
-            />
-          ) : agentPubkey && agents.managedAgentsQuery.isLoading ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">
-              Loading agent…
-            </p>
-          ) : agentPubkey ? (
-            <div className="space-y-4 py-10 text-center">
-              <p className="text-sm font-medium">Agent not found.</p>
-              <Button
-                onClick={onCloseAgent}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                Back to directory
-              </Button>
-            </div>
+          {agentPubkey ? (
+            <AgentPage pubkey={agentPubkey} />
           ) : (
-            <>
+            <div
+              className={view === "directory" ? "agents-c3 agents-c3-page" : ""}
+            >
               {view === "directory" ? (
-                <header className="flex flex-wrap items-center justify-between gap-4 px-7 pb-4 pt-5">
-                  <div>
-                    <h1 className="text-2xl font-semibold leading-tight tracking-tight text-foreground">
-                      Your team
-                    </h1>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {directoryAgentCount} agents · {directoryPeopleCount}{" "}
-                      {directoryPeopleCount === 1 ? "person" : "people"}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <Button
-                      className="h-7 px-2.5 text-xs"
-                      data-testid="agent-defaults-button"
-                      onClick={(event) => openAiDefaults(event.currentTarget)}
-                      ref={fullAiDefaultsTriggerRef}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      <Sun aria-hidden="true" className="size-3.5" />
-                      {hasSavedAgentDefaults
-                        ? "Agent defaults"
-                        : "Set agent defaults"}
-                    </Button>
-                    <Button
-                      className="h-7 px-2.5 text-xs"
-                      onClick={() =>
-                        appShell.onOpenSettings?.("community-members")
-                      }
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      Invite a person
-                    </Button>
-                    <Button
-                      className="h-7 px-2.5 text-xs"
-                      data-testid="agent-add-button"
-                      onClick={() => openCommunityCatalog("agents")}
-                      size="sm"
-                      type="button"
-                    >
-                      <Plus aria-hidden="true" className="size-3.5" />
-                      Add agent
-                    </Button>
-                  </div>
-                </header>
+                <AgentsDirectoryHeader
+                  agentCount={directoryAgentCount}
+                  defaultsLabel={
+                    hasSavedAgentDefaults
+                      ? "Agent defaults"
+                      : "Set agent defaults"
+                  }
+                  defaultsRef={fullAiDefaultsTriggerRef}
+                  onAddAgent={() => openCommunityCatalog("agents")}
+                  onHarnesses={() => appShell.onOpenSettings?.("agents")}
+                  onInvite={() => appShell.onOpenSettings?.("community-members")}
+                  onOpenDefaults={openAiDefaults}
+                  onOpenPeople={() => void goTeam()}
+                  peopleCount={directoryPeopleCount}
+                />
               ) : (
                 <PageHeader
                   action={
@@ -564,70 +476,6 @@ export function AgentsView({
                 />
               )}
               {view === "directory" ? (
-                <nav
-                  aria-label="Team views"
-                  className="flex items-center gap-6 border-b border-border/60 px-7 pt-2.5"
-                >
-                  <button
-                    aria-current="page"
-                    className="border-b-2 border-[#2655a0] px-1 pb-2.5 text-sm font-medium text-foreground dark:border-[#adbfdf]"
-                    type="button"
-                  >
-                    Agents
-                  </button>
-                  <button
-                    className="border-b-2 border-transparent px-1 pb-2.5 text-sm font-medium text-muted-foreground hover:text-foreground"
-                    onClick={() =>
-                      appShell.onOpenSettings?.("community-members")
-                    }
-                    type="button"
-                  >
-                    People
-                  </button>
-                  <button
-                    className="border-b-2 border-transparent px-1 pb-2.5 text-sm font-medium text-muted-foreground hover:text-foreground"
-                    onClick={() => onWorkspaceViewChange("templates")}
-                    type="button"
-                  >
-                    Templates
-                  </button>
-                  <button
-                    className="ml-auto inline-flex items-center gap-1 border-b-2 border-transparent px-1 pb-2.5 text-sm font-medium text-muted-foreground hover:text-foreground"
-                    onClick={() => appShell.onOpenSettings?.("agents")}
-                    type="button"
-                  >
-                    Harnesses &amp; connections
-                    <ArrowRight aria-hidden="true" className="size-3.5" />
-                  </button>
-                </nav>
-              ) : (
-                <nav
-                  aria-label="Agent workspace sections"
-                  className="overflow-x-auto border-b border-border/60"
-                >
-                  <div className="flex min-w-max gap-5">
-                    <button
-                      className="border-b-2 border-transparent px-1 pb-3 text-sm font-medium text-muted-foreground hover:text-foreground"
-                      onClick={onOpenSupervision}
-                      type="button"
-                    >
-                      Runs
-                    </button>
-                    {AGENT_WORKSPACE_TABS.map((tab) => (
-                      <button
-                        aria-current={view === tab.id ? "page" : undefined}
-                        className={`border-b-2 px-1 pb-3 text-sm font-medium ${view === tab.id ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-                        key={tab.id}
-                        onClick={() => onWorkspaceViewChange(tab.id)}
-                        type="button"
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
-                </nav>
-              )}
-              {view === "directory" ? (
                 <AgentDirectory
                   activePubkeys={activePubkeys}
                   agents={agents.managedAgents}
@@ -654,6 +502,7 @@ export function AgentsView({
                   }
                   onOpenAgent={(agent) => onOpenAgent(agent.pubkey)}
                   onMessageAgent={(pubkey) => void onMessageAgent(pubkey)}
+                  onPageSizeChange={onPageSizeChange}
                   pageSize={parseAgentDirectoryPageSize(pageSize)}
                   runtimes={runtimeCatalogQuery.data ?? []}
                 />
@@ -774,7 +623,7 @@ export function AgentsView({
                   />
                 </div>
               ) : null}
-            </>
+            </div>
           )}
         </div>
       </div>

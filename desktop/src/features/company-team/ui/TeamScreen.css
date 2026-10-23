@@ -1,0 +1,321 @@
+/*
+ * Team (`Team.dc.html`): the flat list of people and AI employees.
+ * Boxes are rem (design px / 16); type is calc(N * var(--colony-px)).
+ */
+
+.team-page {
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  background: hsl(var(--colony-surface));
+  color: hsl(var(--colony-fg));
+  line-height: normal;
+}
+
+.team-page-inner {
+  display: flex;
+  box-sizing: content-box;
+  max-width: 70rem;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin: 0 auto;
+  padding: 2.25rem 2.5rem 3.5rem;
+}
+
+.team-page-title {
+  margin: 0;
+  font-size: calc(40 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  outline: none;
+}
+
+.team-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem 1.5rem;
+}
+
+.team-head-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.team-subtitle {
+  color: hsl(var(--colony-muted));
+  font-size: calc(17 * var(--colony-px));
+  font-weight: 600;
+}
+
+.team-hire-button {
+  display: inline-flex;
+  height: 2.875rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  padding: 0 1.25rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: hsl(var(--colony-fg));
+  color: hsl(var(--colony-surface));
+  cursor: pointer;
+  font-family: inherit;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 700;
+}
+
+.team-hire-button:hover {
+  background: hsl(var(--colony-fg) / 0.9);
+}
+
+.team-hire-button:focus-visible {
+  outline: 2px solid hsl(var(--colony-accent));
+  outline-offset: 2px;
+}
+
+.team-card {
+  overflow-x: auto;
+  border-radius: 1.25rem;
+  background: #fff;
+  box-shadow:
+    0 0 0 1px hsl(var(--colony-border)),
+    0 1px 2px rgb(40 20 60 / 4%);
+}
+
+.team-table {
+  min-width: 47.5rem;
+}
+
+.team-row,
+.team-table-head {
+  box-sizing: content-box;
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) minmax(0, 1.2fr) 2.5rem;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 1.375rem;
+  border-bottom: 1px solid hsl(var(--colony-border));
+}
+
+.team-table-head {
+  height: 3rem;
+  color: hsl(var(--colony-muted));
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.team-row {
+  /* A button shrink-wraps even as a block, so name the width the padding leaves. */
+  width: calc(100% - 2.75rem);
+  min-height: 4.5rem;
+  margin: 0;
+  border-top: 0;
+  border-right: 0;
+  border-left: 0;
+  background: transparent;
+  color: hsl(var(--colony-fg));
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.team-row:last-child {
+  border-bottom: 0;
+}
+
+.team-row:hover {
+  background: hsl(var(--colony-surface) / 0.7);
+}
+
+.team-row:focus-visible {
+  outline: 2px solid hsl(var(--colony-accent));
+  outline-offset: -2px;
+}
+
+.team-person {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.875rem;
+}
+
+.team-person-avatar {
+  width: 2.625rem;
+  height: 2.625rem;
+  flex: none;
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 800;
+}
+
+.team-person-avatar-agent {
+  width: 2.75rem;
+  height: 2.75rem;
+  font-size: calc(16 * var(--colony-px));
+}
+
+.team-person-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.team-person-name {
+  overflow: hidden;
+  font-size: calc(16.5 * var(--colony-px));
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-person-role {
+  overflow: hidden;
+  color: hsl(var(--colony-muted));
+  font-size: calc(14.5 * var(--colony-px));
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-reports-to {
+  overflow: hidden;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-status {
+  display: flex;
+  justify-self: start;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.team-status-plain {
+  display: inline-flex;
+  justify-self: start;
+  align-items: center;
+  gap: 0.5rem;
+  color: hsl(var(--colony-success));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 700;
+}
+
+.team-status-chip {
+  display: inline-flex;
+  justify-self: start;
+  height: 1.875rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.75rem;
+  border-radius: 999px;
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.team-status-chip[data-tone="working"] {
+  background: hsl(var(--colony-accent-soft));
+  color: hsl(var(--colony-accent-ink));
+}
+
+.team-status-chip[data-tone="ready"] {
+  background: hsl(var(--colony-success-bg));
+  color: hsl(var(--colony-success));
+}
+
+.team-status-chip[data-tone="attention"] {
+  background: hsl(var(--colony-need-bg));
+  color: hsl(var(--colony-need));
+}
+
+.team-status-chip[data-tone="idle"] {
+  background: hsl(var(--colony-idle-bg));
+  color: hsl(var(--colony-fg-secondary));
+}
+
+.team-status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  border-radius: 50%;
+  background: var(--colony-presence-online);
+}
+
+.team-status-chip[data-tone="working"] .team-status-dot {
+  background: hsl(var(--colony-accent));
+  animation: team-status-pulse 1.6s ease-in-out infinite;
+}
+
+.team-status-dot[data-hollow="true"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+@keyframes team-status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .team-status-chip[data-tone="working"] .team-status-dot {
+    animation: none;
+  }
+}
+
+.team-status-reason {
+  color: hsl(var(--colony-muted));
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 500;
+}
+
+.team-chevron {
+  color: hsl(var(--colony-muted));
+}
+
+.team-note {
+  max-width: 45rem;
+  margin: 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(15 * var(--colony-px));
+  line-height: 1.55;
+}
+
+.team-message {
+  margin: 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 600;
+}
+
+.team-message-error {
+  color: hsl(var(--colony-danger));
+}
+
+.team-retry {
+  align-self: flex-start;
+  height: 2.875rem;
+  padding: 0 1.125rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px hsl(var(--colony-border-strong));
+  color: hsl(var(--colony-fg));
+  cursor: pointer;
+  font-family: inherit;
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 700;
+}

@@ -5,11 +5,18 @@ import { resolveUserLabel } from "@/features/profile/lib/identity";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 import { Button } from "@/shared/ui/button";
-import { UserAvatar } from "@/shared/ui/UserAvatar";
-import { hirePrimaryButtonClass } from "@/features/company-hiring/ui/HirePresentation";
 import { useCompanyHireHeadQuery } from "@/features/company-hiring/hireRelay";
 import type { AskHeadRecord, HireProposal } from "../askRecords";
-import { formatAskDate } from "./askCardFormatting";
+import {
+  CannotRespond,
+  DecisionAvatar,
+  DecisionChip,
+  DecisionContext,
+} from "./AskDecisionParts";
+import { OutcomeBody } from "./AskOutcomeCard";
+import type { OutcomeActorView } from "./AskOutcomeCard";
+import { formatClockTime, formatDeadline } from "./askCardFormatting";
+import "./askDecisions.css";
 
 type HireAskCardProps = {
   askId: string;
@@ -55,7 +62,6 @@ export function HireAskCard({
     currentPubkey,
     profiles,
   });
-  const askerProfile = profiles?.[normalizePubkey(head.askerPubkey)];
   const addresseePubkey = head.ask.addresseePubkey;
   const addresseeIsCurrentUser = Boolean(
     addresseePubkey &&
@@ -90,168 +96,178 @@ export function HireAskCard({
     membershipRole === "owner" &&
     hireHeadQuery.data?.head.status === "awaiting_founder";
 
+  const hireOutcome = hireDeclined || hireApproved;
+  const statusLabel = hireDeclined
+    ? "Request declined"
+    : hireApproved
+      ? "Approved"
+      : (statusText ?? "Open");
+  const statusTone = hireDeclined
+    ? "bad"
+    : hireApproved
+      ? "ok"
+      : isOverdue
+        ? "bad"
+        : "idle";
+  const resolverPubkey = head.resolution?.resolvedByPubkey;
+  const resolver: OutcomeActorView | null = resolverPubkey
+    ? {
+        pubkey: resolverPubkey,
+        name: resolveUserLabel({
+          pubkey: resolverPubkey,
+          currentPubkey,
+          profiles,
+        }),
+        isAgent: profiles?.[normalizePubkey(resolverPubkey)]?.isAgent === true,
+      }
+    : null;
+
   return (
-    <section
-      aria-label="Approval ask"
-      className="colony-ask-card colony-ask-card-hire colony-ask-card-specialized-detail"
-      data-ask-id={askId}
-      data-ask-variant="hire"
-      data-testid="ask-card"
-    >
-      <div className="colony-ask-special-grid">
-        <section aria-label="Hire ask" className="colony-ask-special-request">
+    <div className="colony-decision-layout">
+      <section
+        aria-label="Approval ask"
+        className="colony-decision-card"
+        data-ask-id={askId}
+        data-ask-variant="hire"
+        data-testid="ask-card"
+        data-variant="funding"
+      >
+        <div className="colony-decision-chips">
           <h2>Decision requested</h2>
-          <header className="colony-ask-special-header">
-            <div className="colony-ask-special-identity">
-              <span aria-hidden="true">
-                <UserAvatar
-                  avatarUrl={askerProfile?.avatarUrl ?? null}
-                  displayName={asker}
-                  size="md"
-                />
+          {needsYou ? (
+            <DecisionChip testId="ask-needs-you" tone="need">
+              Needs you
+            </DecisionChip>
+          ) : null}
+          <DecisionChip testId="ask-status" tone={statusTone}>
+            {statusLabel}
+          </DecisionChip>
+        </div>
+        <div className="colony-decision-message">
+          <DecisionAvatar
+            isAgent={askerIsAgent}
+            name={asker}
+            profiles={profiles}
+            pubkey={head.askerPubkey}
+            size={42}
+          />
+          <div className="colony-decision-message-body">
+            <div className="colony-decision-message-head">
+              <strong>{asker}</strong>
+              <span>
+                {askerIsAgent ? "AI employee" : "Person"} · #{channelName}
+                {formatClockTime(head.createdAt)
+                  ? ` · ${formatClockTime(head.createdAt)}`
+                  : ""}
               </span>
-              <div>
-                <strong>{asker}</strong>
-                <p>
-                  {askerIsAgent ? "AI employee" : "Person"} · #{channelName} ·{" "}
-                  {new Intl.DateTimeFormat("en-GB", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }).format(new Date(Date.parse(head.createdAt)))}
-                </p>
-              </div>
             </div>
-            <span
-              className={`colony-ask-status colony-ask-status-${hireDeclined ? "denied" : hireApproved ? "resolved" : isOverdue ? "overdue" : head.status}`}
-              data-testid="ask-status"
-            >
-              {hireDeclined
-                ? "denied"
-                : hireApproved
-                  ? "resolved"
-                  : needsYou
-                    ? "Needs you"
-                    : statusText}
-            </span>
-          </header>
-          {head.ask.body ? (
-            <p className="colony-ask-special-description">{head.ask.body}</p>
-          ) : null}
-          {hireDeclined || hireApproved ? (
-            <div
-              className="colony-ask-hire-outcome"
-              data-outcome={hireDeclined ? "denied" : "resolved"}
-            >
-              <strong>
-                {hireDeclined ? "Request declined" : "Decision recorded"}
-              </strong>
-              <p>
-                {hireDeclined
-                  ? `No authority or funding changed. ${asker} will keep the work paused.`
-                  : "The requester has the outcome in the original thread."}
-              </p>
-            </div>
-          ) : null}
-          {head.status === "open" ? (
-            checksReady && !deniedReason ? (
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  className={hirePrimaryButtonClass}
-                  onClick={() =>
-                    void goHireReview(hireProposal.hireId, {
-                      channelId,
-                      askId,
-                    })
-                  }
-                  type="button"
-                >
-                  Review hire
-                </Button>
-                <Button
-                  className="colony-ask-special-work-link"
-                  onClick={() =>
-                    void goHireReview(hireProposal.hireId, {
-                      channelId,
-                      askId,
-                    })
-                  }
-                  type="button"
-                  variant="outline"
-                >
-                  Decline
-                </Button>
-              </div>
+            {head.ask.body ? (
+              <p className="colony-decision-message-text">{head.ask.body}</p>
+            ) : null}
+          </div>
+        </div>
+        {hireOutcome ? (
+          <div
+            className="colony-outcome-body"
+            data-outcome={hireDeclined ? "denied" : "resolved"}
+          >
+            {hireDeclined ? (
+              <OutcomeBody
+                canceller={null}
+                head={head}
+                profiles={profiles}
+                resolver={resolver}
+              />
             ) : (
-              <div
-                className="colony-ask-denied"
-                data-testid="ask-cannot-resolve"
-                role={accessFailure ? "alert" : "status"}
+              <strong>Decision recorded</strong>
+            )}
+            <p className="colony-outcome-by">
+              {hireDeclined
+                ? `No authority or funding changed. ${asker} will keep the work paused.`
+                : "The requester has the outcome in the original thread."}
+            </p>
+          </div>
+        ) : null}
+        {head.status === "open" ? (
+          checksReady && !deniedReason ? (
+            <div className="colony-decision-actions">
+              <Button
+                className="colony-decision-submit"
+                onClick={() =>
+                  void goHireReview(hireProposal.hireId, {
+                    channelId,
+                    askId,
+                  })
+                }
+                type="button"
               >
-                <strong>You can view this ask, but cannot respond.</strong>
-                <p>
-                  {accessFailure
-                    ? "Access could not be verified. Try again after the relay is available."
-                    : !checksReady
-                      ? "Checking whether you can respond…"
-                      : deniedReason}
-                </p>
-              </div>
-            )
-          ) : null}
-          {head.status !== "open" ? (
-            <div className="flex flex-wrap items-center gap-3">
-              {founderReviewReady ? (
-                <Button
-                  className={hirePrimaryButtonClass}
-                  data-testid="hire-founder-review"
-                  onClick={() =>
-                    void goHireReview(hireProposal.hireId, { channelId, askId })
-                  }
-                  type="button"
-                >
-                  Open founder review
-                </Button>
-              ) : null}
-              <Link
-                className="colony-ask-special-work-link"
-                params={{ channelId }}
-                search={{
-                  messageId: head.ask.threadRootEventId,
-                  threadRootId: head.ask.threadRootEventId,
-                  thread: head.ask.threadRootEventId,
-                }}
-                to="/channels/$channelId"
+                Review hire
+              </Button>
+              <Button
+                className="colony-decision-submit"
+                onClick={() =>
+                  void goHireReview(hireProposal.hireId, {
+                    channelId,
+                    askId,
+                  })
+                }
+                type="button"
+                variant="outline"
               >
-                Open conversation
-              </Link>
+                Decline
+              </Button>
             </div>
-          ) : null}
-        </section>
-        <aside
-          aria-label="Decision context"
-          className="colony-ask-special-context"
-        >
-          <h2>Decision context</h2>
-          <dl>
-            <div>
-              <dt>Addressed to</dt>
-              <dd>{addresseeLabel}</dd>
-            </div>
-            <div>
-              <dt>Can decide</dt>
-              <dd>Owner or administrator</dd>
-            </div>
-            <div>
-              <dt>Deadline</dt>
-              <dd>
-                {head.ask.decideBy
-                  ? (formatAskDate(head.ask.decideBy) ?? head.ask.decideBy)
-                  : "No deadline"}
-              </dd>
-            </div>
-          </dl>
-        </aside>
-      </div>
-    </section>
+          ) : (
+            <CannotRespond
+              alert={accessFailure}
+              message={
+                accessFailure
+                  ? "Access could not be verified. Try again after the relay is available."
+                  : !checksReady
+                    ? "Checking whether you can respond…"
+                    : (deniedReason ?? "")
+              }
+            />
+          )
+        ) : null}
+        {head.status !== "open" ? (
+          <div className="colony-decision-actions" data-passive="true">
+            {founderReviewReady ? (
+              <Button
+                className="colony-decision-submit"
+                data-testid="hire-founder-review"
+                onClick={() =>
+                  void goHireReview(hireProposal.hireId, { channelId, askId })
+                }
+                type="button"
+              >
+                Open founder review
+              </Button>
+            ) : null}
+            <Link
+              className="colony-decision-link"
+              params={{ channelId }}
+              search={{
+                messageId: head.ask.threadRootEventId,
+                threadRootId: head.ask.threadRootEventId,
+                thread: head.ask.threadRootEventId,
+              }}
+              to="/channels/$channelId"
+            >
+              Open conversation
+            </Link>
+          </div>
+        ) : null}
+      </section>
+      <DecisionContext
+        addresseeName={addresseePubkey ? addresseeLabel : null}
+        addresseePubkey={addresseePubkey ?? null}
+        deadline={formatDeadline(head.ask.decideBy)}
+        funding
+        linkedWork={null}
+        overdue={isOverdue}
+        profiles={profiles}
+      />
+    </div>
   );
 }

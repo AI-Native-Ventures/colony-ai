@@ -432,6 +432,18 @@ pub fn build_profile(
     about: Option<&str>,
     nip05: Option<&str>,
 ) -> Result<EventBuilder, String> {
+    build_profile_with_job_title(display_name, name, picture, about, nip05, None)
+}
+
+/// Like [`build_profile`], also publishing the person's `job_title`.
+pub fn build_profile_with_job_title(
+    display_name: Option<&str>,
+    name: Option<&str>,
+    picture: Option<&str>,
+    about: Option<&str>,
+    nip05: Option<&str>,
+    job_title: Option<&str>,
+) -> Result<EventBuilder, String> {
     let mut map = serde_json::Map::new();
     if let Some(v) = display_name {
         map.insert("display_name".into(), serde_json::Value::String(v.into()));
@@ -447,6 +459,9 @@ pub fn build_profile(
     }
     if let Some(v) = nip05 {
         map.insert("nip05".into(), serde_json::Value::String(v.into()));
+    }
+    if let Some(v) = job_title.map(str::trim).filter(|v| !v.is_empty()) {
+        map.insert("job_title".into(), serde_json::Value::String(v.into()));
     }
     let content = serde_json::Value::Object(map).to_string();
     Ok(EventBuilder::new(Kind::Custom(0), content))

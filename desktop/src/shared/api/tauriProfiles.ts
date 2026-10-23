@@ -14,6 +14,7 @@ type RawProfile = {
   avatar_url: string | null;
   about: string | null;
   nip05_handle: string | null;
+  job_title?: string | null;
   owner_pubkey: string | null;
   has_profile_event?: boolean;
 };
@@ -42,6 +43,7 @@ function fromRawProfile(profile: RawProfile): Profile {
     avatarUrl: profile.avatar_url,
     about: profile.about,
     nip05Handle: profile.nip05_handle,
+    jobTitle: profile.job_title ?? null,
     ownerPubkey: profile.owner_pubkey,
     hasProfileEvent: profile.has_profile_event ?? false,
   };
@@ -55,6 +57,7 @@ function fromRawUserProfileSummary(
     name: profile.name ?? null,
     avatarUrl: profile.avatar_url,
     nip05Handle: profile.nip05_handle,
+    jobTitle: profile.job_title ?? null,
     ownerPubkey: profile.owner_pubkey,
     isAgent: profile.is_agent ?? false,
   };

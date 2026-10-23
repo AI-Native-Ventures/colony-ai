@@ -107,6 +107,8 @@ export type Profile = {
   avatarUrl: string | null;
   about: string | null;
   nip05Handle: string | null;
+  /** Job title published in the kind:0 `job_title` field. */
+  jobTitle?: string | null;
   ownerPubkey: string | null;
   /** True when a real kind:0 metadata event exists on the relay for this pubkey.
    * False for the synthesized fallback returned when no event is present.
@@ -123,6 +125,8 @@ export type UserProfileSummary = {
   name?: string | null;
   avatarUrl: string | null;
   nip05Handle: string | null;
+  /** Job title published in the kind:0 `job_title` field. */
+  jobTitle?: string | null;
   ownerPubkey: string | null;
   isAgent?: boolean;
 };
@@ -151,6 +155,8 @@ export type UpdateProfileInput = {
   avatarUrl?: string;
   about?: string;
   nip05Handle?: string;
+  /** Empty string clears the job title. */
+  jobTitle?: string;
 };
 
 export type PresenceStatus = "online" | "away" | "offline";

@@ -1,4 +1,4 @@
-import { Button } from "@/shared/ui/button";
+import { AskApprovalIcon } from "./askIcons";
 
 type AskCreateSuccessProps = {
   title: string;
@@ -8,6 +8,7 @@ type AskCreateSuccessProps = {
   onAction: () => void;
 };
 
+/** The green confirmation card ("Money request submitted") of the boards. */
 export function AskCreateSuccess({
   title,
   description,
@@ -16,13 +17,18 @@ export function AskCreateSuccess({
   onAction,
 }: AskCreateSuccessProps) {
   return (
-    <div className="colony-ask-create-success" role="status">
-      <h1 id="ask-create-title">{title}</h1>
-      {description ? <p>{description}</p> : null}
-      <p>{message}</p>
-      <Button onClick={onAction} type="button">
-        {actionLabel}
-      </Button>
+    <div className="ask3-success" role="status">
+      <span aria-hidden="true" className="ask3-success-mark">
+        <AskApprovalIcon size={16} strokeWidth={3} />
+      </span>
+      <span className="ask3-success-copy">
+        <h1 id="ask-create-title">{title}</h1>
+        {description ? <p>{description}</p> : null}
+        <p>{message}</p>
+        <button onClick={onAction} type="button">
+          {actionLabel}
+        </button>
+      </span>
     </div>
   );
 }

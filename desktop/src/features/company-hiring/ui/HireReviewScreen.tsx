@@ -22,7 +22,6 @@ import type {
 } from "@/features/company-asks/askRecords";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
-import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { relayClient } from "@/shared/api/relayClient";
@@ -30,16 +29,19 @@ import { signRelayEvent } from "@/shared/api/tauri";
 import { sendManagedAgentChannelMessage } from "@/shared/api/tauriManagedAgentMessages";
 import type { AcpRuntimeCatalogEntry } from "@/shared/api/types";
 import { KIND_ASK_RESPONSE } from "@/shared/constants/kinds";
-import { Button } from "@/shared/ui/button";
+import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import {
-  HireBackButton,
-  HireFlash,
-  HirePageContent,
-  HirePageHeader,
-  hirePrimaryButtonClass,
+  HireBanner,
+  HireButton,
+  HirePage,
+  HireSteps,
+  HireTitle,
 } from "./HirePresentation";
 import { HireHandoffScreen } from "./HireHandoffScreen";
+import { MemberAvatar, memberOptionLabel } from "./hireMembers";
+import { ToolChip } from "./hireTools";
 import { readHireDraft, removeHireDraft, writeHireDraft } from "../hireDraft";
+import { hireIntroductionText } from "../hireIntroduction";
 import {
   useCompanyHireActionMutation,
   useCompanyHireHeadQuery,
@@ -49,9 +51,6 @@ import {
   parseCompanyHireAction,
 } from "../companyHireModels";
 import type { CompanyHireHeadRecord } from "../companyHireModels";
-
-const INTRODUCTION_TEXT = (role: string) =>
-  `Hello team. I’ll coordinate ${role} and bring decisions back to the right people.`;
 
 function activeMembers(members: readonly TeamMember[]) {
   return members.filter(
@@ -97,34 +96,6 @@ function formatAllowance(value: string | undefined) {
   if (!value) return "";
   const amount = Number(value);
   return Number.isFinite(amount) ? amount.toFixed(2) : value;
-}
-
-function ManagerLabel({
-  managerPubkey,
-  identityPubkey,
-  members,
-  profiles,
-}: {
-  managerPubkey?: string;
-  identityPubkey?: string;
-  members: readonly TeamMember[];
-  profiles: UserProfileLookup;
-}) {
-  const manager = managerPubkey
-    ? members.find(
-        (member) => member.pubkey.toLowerCase() === managerPubkey.toLowerCase(),
-      )
-    : members.find((member) => member.role === "owner");
-  if (!manager) return <>Company owner</>;
-  return (
-    <>
-      {resolveUserLabel({
-        pubkey: manager.pubkey,
-        currentPubkey: identityPubkey,
-        profiles,
-      })}
-    </>
-  );
 }
 
 function useWorkerModelLabel(input: {
@@ -179,6 +150,7 @@ export function HireReviewScreen({
     goChannel,
     goHireConfigure,
     goHireReview,
+    goHireRoles,
     goHireSuccess,
     goTeam,
   } = useAppNavigation();
@@ -544,7 +516,7 @@ export function HireReviewScreen({
     const introduction = await sendManagedAgentChannelMessage({
       agentPubkey: employeePubkey,
       channelId: selectedProposal.introductionChannelId,
-      content: INTRODUCTION_TEXT(selectedProposal.title),
+      content: hireIntroductionText(selectedProposal.title),
       marker: `company-hire:${hireId}:introduction`,
       markerScope: "agent",
     });
@@ -855,148 +827,216 @@ export function HireReviewScreen({
     return null;
 
   const reportingMembers = activeMembers(teamQuery.data?.members ?? []);
+  const manager = proposal.managerPubkey
+    ? reportingMembers.find(
+        (member) =>
+          member.pubkey.toLowerCase() === proposal.managerPubkey?.toLowerCase(),
+      )
+    : reportingMembers.find((member) => member.role === "owner");
+  const managerName = manager
+    ? memberOptionLabel(manager, profiles)
+    : "Company owner";
+  const managerFirstName = managerName.split(" · ")[0];
+  const channelName = homeChannel?.name ?? "";
+  const employeeName = proposal.displayName;
+  const rolePackTitle = proposal.rolePack.title;
+  const editDetails = () =>
+    void goHireConfigure(proposal.rolePack.personaId, hireId, source);
 
   return (
-    <>
-      <HirePageHeader title="Review hire" />
-      <HirePageContent>
-        <HireBackButton
-          onClick={() =>
-            void goHireConfigure(proposal.rolePack.personaId, hireId, source)
-          }
-        />
-        <h1 className="mb-2 text-2xl font-semibold tracking-tight text-foreground">
-          Review hire
-        </h1>
-        <HireFlash>Review the exact scope before hiring.</HireFlash>
+    <HirePage testId="hire-review">
+      <HireTitle
+        subtitle={`One last look before ${employeeName} joins the team.`}
+        title="Review hire"
+      />
+      <HireSteps
+        current={3}
+        onSelect={(step) => {
+          if (step === 1) void goHireRoles();
+          else editDetails();
+        }}
+      />
+      <HireBanner>Review the exact scope before hiring.</HireBanner>
+      <div className="colony-hire-columns">
         <form
-          className="grid max-w-[40.625rem] gap-5 rounded-[10px] border border-border bg-card p-[25px]"
+          aria-labelledby="hire-summary"
+          className="colony-hire-card colony-hire-review"
           data-testid="hire-review-form"
           onSubmit={(event) => void approveAndHire(event)}
         >
-          <h2 className="text-base font-semibold text-foreground">
-            {proposal.displayName} · {proposal.title}
-          </h2>
-          <dl className="grid gap-3 text-sm sm:grid-cols-[5.75rem_minmax(0,1fr)]">
-            <dt className="font-medium text-foreground">Reports to</dt>
-            <dd className="text-muted-foreground">
-              <ManagerLabel
-                managerPubkey={proposal.managerPubkey}
-                identityPubkey={identityPubkey}
-                members={reportingMembers}
-                profiles={profiles}
-              />
-            </dd>
-            <dt className="font-medium text-foreground">Channel</dt>
-            <dd className="text-muted-foreground">
-              #{homeChannel?.name ?? ""}
-            </dd>
-            <dt className="font-medium text-foreground">Allowance</dt>
-            <dd className="text-muted-foreground">
-              USD {formatAllowance(proposal.weeklyAllowance)} / week
-            </dd>
-            <dt className="font-medium text-foreground">Workers</dt>
-            <dd className="text-muted-foreground">{workerModelLabel}</dd>
-            <dt className="font-medium text-foreground">Lead tools</dt>
-            <dd className="text-muted-foreground">
-              {proposal.rolePack.tools.map((tool) => tool.name).join(", ")}
-            </dd>
-          </dl>
-          {linkedAsk ? (
-            <div className="colony-hire-decision-reason">
-              <label htmlFor="hire-decision-reason">Reason</label>
-              <textarea
-                aria-describedby={`hire-decision-reason-count${decisionReasonInvalid ? " hire-decision-reason-error" : ""}`}
-                aria-invalid={decisionReasonInvalid}
-                disabled={submitting}
-                id="hire-decision-reason"
-                maxLength={1000}
-                onBlur={() => setDecisionReasonTouched(true)}
-                onChange={(reasonEvent) => {
-                  setDecisionReasonTouched(true);
-                  setDecisionReason(reasonEvent.target.value);
-                  setPendingAskResponse(null);
-                }}
-                required
-                rows={3}
-                value={decisionReason}
-              />
-              <small id="hire-decision-reason-count">
-                {Array.from(decisionReason).length} / 1,000 characters ·
-                Required
-              </small>
-              <p>
-                This explanation appears beside your decision in the thread and
-                history.
-              </p>
-              {decisionReasonInvalid ? (
-                <span
-                  className="colony-ask-compose-error"
-                  id="hire-decision-reason-error"
-                  role="alert"
-                >
-                  A reason is required. Use 1 to 1,000 characters. Spaces alone
-                  are not a reason.
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-          <label
-            className="flex items-start gap-3 border-b border-border px-1 py-4 text-sm text-foreground"
-            htmlFor="hire-founder-confirm"
-          >
-            <input
-              checked={founderConfirmed}
-              data-testid="hire-founder-confirm"
-              id="hire-founder-confirm"
-              onChange={(event) => setFounderConfirmed(event.target.checked)}
-              type="checkbox"
+          <div className="colony-hire-review-head">
+            <EmployeeAvatar
+              className="colony-hire-avatar-60"
+              definition={persona?.avatarUrl}
+              name={employeeName}
+              personaId={persona?.id}
             />
-            <span>
-              I am the founder and approve this employee, scope and allowance.
-            </span>
-          </label>
-          {failure ? (
-            <p
-              className="text-sm text-destructive"
-              data-testid="hire-review-error"
-              role="alert"
-            >
-              Hire could not be published. The review is kept. Retry when
-              connected.
-            </p>
-          ) : null}
-          <div className="mt-1 flex gap-3 border-t border-border pt-5">
-            <Button
-              className={hirePrimaryButtonClass}
-              data-testid="hire-approve"
-              disabled={
-                !founderConfirmed ||
-                currentRole !== "owner" ||
-                (linkedAsk && !decisionReason.trim()) ||
-                submitting
-              }
-              type="submit"
-            >
-              Approve and hire
-            </Button>
-            <Button
-              data-testid="hire-edit-details"
-              onClick={() =>
-                void goHireConfigure(
-                  proposal.rolePack.personaId,
-                  hireId,
-                  source,
-                )
-              }
+            <div>
+              <h2 id="hire-summary">
+                {employeeName} · {proposal.title}
+              </h2>
+              <span>AI employee · {rolePackTitle} role pack</span>
+            </div>
+            <button
+              className="colony-hire-link"
+              data-testid="hire-edit-details-link"
+              onClick={editDetails}
               type="button"
-              variant="outline"
             >
               Edit details
-            </Button>
+            </button>
+          </div>
+          <dl className="colony-hire-rows">
+            <dt>Reports to</dt>
+            <dd>
+              {manager ? (
+                <MemberAvatar
+                  className="colony-hire-avatar-26"
+                  member={manager}
+                  personas={personasQuery.data}
+                  profiles={profiles}
+                />
+              ) : null}
+              {managerName}
+            </dd>
+            <dt>Channel</dt>
+            <dd># {channelName}</dd>
+            <dt>Allowance</dt>
+            <dd>
+              USD {formatAllowance(proposal.weeklyAllowance)} / week{" "}
+              <small>· API-equivalent</small>
+            </dd>
+            <dt>Workers</dt>
+            <dd>{workerModelLabel}</dd>
+            <dt>Lead tools</dt>
+            <dd>
+              {proposal.rolePack.tools.map((tool) => (
+                <React.Fragment key={tool.name}>
+                  {tool.name}
+                  <ToolChip tool={tool} />
+                </React.Fragment>
+              ))}
+            </dd>
+          </dl>
+          <div className="colony-hire-approval">
+            {linkedAsk ? (
+              <div className="colony-hire-reason">
+                <label htmlFor="hire-decision-reason">Reason</label>
+                <textarea
+                  aria-describedby={`hire-decision-reason-count${decisionReasonInvalid ? " hire-decision-reason-error" : ""}`}
+                  aria-invalid={decisionReasonInvalid}
+                  disabled={submitting}
+                  id="hire-decision-reason"
+                  maxLength={1000}
+                  onBlur={() => setDecisionReasonTouched(true)}
+                  onChange={(reasonEvent) => {
+                    setDecisionReasonTouched(true);
+                    setDecisionReason(reasonEvent.target.value);
+                    setPendingAskResponse(null);
+                  }}
+                  required
+                  rows={3}
+                  value={decisionReason}
+                />
+                <small id="hire-decision-reason-count">
+                  {Array.from(decisionReason).length} / 1,000 characters ·
+                  Required
+                </small>
+                <p>
+                  This explanation appears beside your decision in the thread
+                  and history.
+                </p>
+                {decisionReasonInvalid ? (
+                  <p
+                    className="colony-hire-error"
+                    id="hire-decision-reason-error"
+                    role="alert"
+                  >
+                    A reason is required. Use 1 to 1,000 characters. Spaces
+                    alone are not a reason.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            <label
+              className="colony-hire-confirm"
+              htmlFor="hire-founder-confirm"
+            >
+              <input
+                checked={founderConfirmed}
+                data-testid="hire-founder-confirm"
+                id="hire-founder-confirm"
+                onChange={(event) => setFounderConfirmed(event.target.checked)}
+                type="checkbox"
+              />
+              <span>
+                I am the founder and approve this employee, scope and allowance.
+              </span>
+            </label>
+            {failure ? (
+              <p
+                className="colony-hire-error"
+                data-testid="hire-review-error"
+                role="alert"
+              >
+                Hire could not be published. The review is kept. Retry when
+                connected.
+              </p>
+            ) : null}
+            <div className="colony-hire-approval-actions">
+              <HireButton
+                disabled={
+                  !founderConfirmed ||
+                  currentRole !== "owner" ||
+                  (linkedAsk && !decisionReason.trim()) ||
+                  submitting
+                }
+                testId="hire-approve"
+                type="submit"
+              >
+                Approve and hire
+              </HireButton>
+              <HireButton
+                onClick={editDetails}
+                testId="hire-edit-details"
+                variant="outline"
+              >
+                Edit details
+              </HireButton>
+              <span>Only the company owner can approve a hire.</span>
+            </div>
           </div>
         </form>
-      </HirePageContent>
-    </>
+        <aside
+          aria-labelledby="after-approve"
+          className="colony-hire-card colony-hire-summary"
+        >
+          <h2 className="colony-hire-eyebrow" id="after-approve">
+            After you approve
+          </h2>
+          <ol className="colony-hire-steps-list">
+            <li>
+              <span>1</span>
+              <span>
+                {employeeName} joins the team and reports to {managerFirstName}.
+              </span>
+            </li>
+            <li>
+              <span>2</span>
+              <span>
+                {employeeName} introduces itself in #{channelName}.
+              </span>
+            </li>
+            <li>
+              <span>3</span>
+              <span>
+                You can change {employeeName}’s model and instructions later on
+                their profile.
+              </span>
+            </li>
+          </ol>
+        </aside>
+      </div>
+    </HirePage>
   );
 }

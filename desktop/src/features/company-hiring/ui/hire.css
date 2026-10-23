@@ -1,0 +1,1210 @@
+/*
+ * Colony 3.0 hiring boards: Role catalog, Configure employee, Review hire and
+ * Hired (`HireRoles`, `HireConfigure`, `HireReview`, `HireSuccess`). Box sizes
+ * are design px / 16 in rem; type uses calc(N * var(--colony-px)) so Cmd +/-
+ * zoom and the font-size preference scale it with the rest of the app.
+ */
+
+/* ------------------------------------------------------------------ page -- */
+
+.colony-hire-page {
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  background: hsl(var(--colony-surface));
+  color: hsl(var(--colony-fg));
+  font-family: var(--colony-font-sans);
+}
+
+.colony-hire-content {
+  display: flex;
+  max-width: 70rem;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin: 0 auto;
+  /* As on the boards: 1120px of content at most, with the side padding outside it. */
+  box-sizing: content-box;
+  padding: 2.25rem 2.5rem 3.5rem;
+}
+
+.colony-hire-content[data-centered="true"] {
+  align-items: center;
+  gap: 1.875rem;
+}
+
+.colony-hire-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.colony-hire-title > h1 {
+  margin: 0;
+  font-size: calc(40 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+}
+
+.colony-hire-title > span {
+  color: hsl(var(--colony-muted));
+  font-size: calc(17 * var(--colony-px));
+  font-weight: 600;
+}
+
+.colony-hire-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem 1.5rem;
+}
+
+.colony-hire-columns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1.75rem;
+}
+
+.colony-hire-card {
+  border-radius: 1.25rem;
+  background: var(--colony-pop);
+  box-shadow:
+    0 0 0 1px hsl(var(--colony-border)),
+    0 1px 2px rgb(40 20 60 / 4%);
+}
+
+.colony-hire-eyebrow {
+  margin: 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+/* --------------------------------------------------------------- buttons -- */
+
+.colony-hire-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 0;
+  background: transparent;
+  color: hsl(var(--colony-fg));
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.colony-hire-button:focus-visible,
+.colony-hire-link:focus-visible {
+  outline: 2px solid hsl(var(--colony-accent));
+  outline-offset: 2px;
+}
+
+.colony-hire-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.colony-hire-button[data-variant="ink"] {
+  background: hsl(var(--colony-fg));
+  color: hsl(var(--colony-surface));
+  font-weight: 700;
+}
+
+.colony-hire-button[data-variant="outline"] {
+  background: var(--colony-pop);
+  box-shadow: inset 0 0 0 1px hsl(var(--colony-border-strong));
+  font-weight: 600;
+}
+
+.colony-hire-button[data-variant="ink"]:not(:disabled):hover {
+  background: hsl(var(--colony-fg) / 90%);
+}
+
+.colony-hire-button[data-variant="outline"]:not(:disabled):hover {
+  background: hsl(var(--colony-track));
+}
+
+.colony-hire-button[data-size="sm"] {
+  height: 2.5rem;
+  padding: 0 1rem;
+  border-radius: 0.6875rem;
+  font-size: calc(15 * var(--colony-px));
+}
+
+.colony-hire-button[data-size="md"] {
+  height: 2.625rem;
+  padding: 0 1rem;
+  border-radius: 0.75rem;
+  font-size: calc(15 * var(--colony-px));
+}
+
+.colony-hire-button[data-size="lg"] {
+  height: 2.875rem;
+  padding: 0 1rem;
+  border-radius: 0.75rem;
+  font-size: calc(15.5 * var(--colony-px));
+}
+
+.colony-hire-button[data-size="xl"] {
+  height: 2.875rem;
+  padding: 0 1.375rem;
+  border-radius: 0.75rem;
+  font-size: calc(16 * var(--colony-px));
+}
+
+.colony-hire-button[data-variant="outline"][data-size="xl"] {
+  padding: 0 1.125rem;
+}
+
+.colony-hire-button[data-block="true"] {
+  width: 100%;
+}
+
+.colony-hire-link {
+  border: 0;
+  background: transparent;
+  color: hsl(var(--colony-accent-ink));
+  cursor: pointer;
+  font-family: inherit;
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 800;
+  padding: 0;
+  text-decoration: underline;
+}
+
+/* ---------------------------------------------------------------- chips --- */
+
+.colony-hire-chip {
+  display: inline-flex;
+  height: 1.625rem;
+  align-items: center;
+  padding: 0 0.5625rem;
+  border-radius: 999px;
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.colony-hire-chip[data-tone="read"] {
+  background: hsl(var(--colony-success-bg));
+  color: hsl(var(--colony-success));
+}
+
+.colony-hire-chip[data-tone="external"] {
+  background: hsl(var(--colony-danger-bg));
+  color: hsl(var(--colony-danger));
+}
+
+.colony-hire-chip[data-tone="change"] {
+  background: hsl(var(--colony-need-bg));
+  color: hsl(var(--colony-need));
+}
+
+.colony-hire-skill {
+  display: inline-flex;
+  height: 1.75rem;
+  align-items: center;
+  padding: 0 0.625rem;
+  border-radius: 999px;
+  background: hsl(var(--colony-idle-bg));
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(13.5 * var(--colony-px));
+  font-weight: 800;
+}
+
+.colony-hire-icon-tile {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: none;
+  place-items: center;
+  border-radius: 0.8125rem;
+  background: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg-secondary));
+}
+
+.colony-hire-icon-tile[data-active="true"] {
+  background: hsl(var(--colony-accent-soft));
+  color: hsl(var(--colony-accent-ink));
+}
+
+/* ------------------------------------------------------------ role cards -- */
+
+.colony-hire-roles {
+  display: grid;
+  min-width: 0;
+  flex: 999 1 32.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(20.625rem, 100%), 1fr));
+  gap: 1rem;
+}
+
+.colony-hire-role {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.375rem;
+  border-radius: 1.25rem;
+  background: var(--colony-pop);
+  box-shadow:
+    0 0 0 1px hsl(var(--colony-border)),
+    0 1px 2px rgb(40 20 60 / 4%);
+}
+
+.colony-hire-role[data-selected="true"] {
+  box-shadow:
+    0 0 0 2px hsl(var(--colony-accent)),
+    0 10px 30px -18px rgb(70 40 110 / 35%);
+}
+
+.colony-hire-role-head {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 0.875rem;
+}
+
+/* The title button stretches over the whole card, so a click anywhere selects
+   the role while the card keeps one keyboard stop. */
+.colony-hire-role-title {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+}
+
+.colony-hire-role-title::after {
+  position: absolute;
+  inset: 0;
+  border-radius: 1.25rem;
+  content: "";
+}
+
+.colony-hire-role-title:focus-visible {
+  outline: none;
+}
+
+.colony-hire-role-title:focus-visible::after {
+  outline: 2px solid hsl(var(--colony-accent));
+  outline-offset: 3px;
+}
+
+.colony-hire-role-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.colony-hire-role-copy > h2 {
+  margin: 0;
+  font-size: calc(18 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.colony-hire-role-copy > span {
+  color: hsl(var(--colony-muted));
+  font-size: calc(14.5 * var(--colony-px));
+  font-weight: 500;
+}
+
+.colony-hire-facts {
+  display: grid;
+  align-items: center;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.625rem 0.75rem;
+  margin: 0;
+}
+
+.colony-hire-facts > dt {
+  margin: 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(13 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.colony-hire-facts > dd {
+  margin: 0;
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 600;
+}
+
+.colony-hire-facts > dd[data-muted="true"] {
+  color: hsl(var(--colony-fg-secondary));
+}
+
+.colony-hire-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+}
+
+.colony-hire-tools[data-stacked="true"] {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.375rem;
+}
+
+.colony-hire-tool {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.colony-hire-role-actions {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.colony-hire-role-empty {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  border-radius: 1.25rem;
+  background: #fbf8fc;
+  box-shadow: inset 0 0 0 1.5px hsl(var(--colony-border-strong));
+}
+
+.colony-hire-role-empty > .colony-hire-icon-tile {
+  background: var(--colony-pop);
+  box-shadow: 0 0 0 1px hsl(var(--colony-border-strong));
+}
+
+.colony-hire-role-empty > h2 {
+  margin: 0;
+  font-size: calc(18 * var(--colony-px));
+  font-weight: 800;
+}
+
+.colony-hire-role-empty > p {
+  margin: 0;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(15.5 * var(--colony-px));
+  line-height: 1.55;
+}
+
+.colony-hire-role-empty > .colony-hire-button {
+  align-self: flex-start;
+}
+
+/* ---------------------------------------------------------- side column --- */
+
+.colony-hire-aside {
+  display: flex;
+  min-width: 0;
+  max-width: 22.5rem;
+  flex: 1 1 18.75rem;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.colony-hire-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.375rem;
+}
+
+.colony-hire-panel-title {
+  margin: 0;
+  font-size: calc(21 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+
+.colony-hire-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.colony-hire-detail > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.colony-hire-detail > div[data-chips="true"] {
+  gap: 0.375rem;
+}
+
+.colony-hire-detail dt {
+  color: hsl(var(--colony-muted));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 700;
+}
+
+.colony-hire-detail dd {
+  margin: 0;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 600;
+}
+
+.colony-hire-detail dd[data-chips="true"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.colony-hire-panel-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.colony-hire-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 1.125rem 1.25rem;
+  border-radius: 1.125rem;
+  background: #fff6e6;
+  color: #5f3a00;
+}
+
+.colony-hire-notice > strong {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 800;
+}
+
+.colony-hire-notice > p {
+  margin: 0;
+  font-size: calc(15 * var(--colony-px));
+  line-height: 1.5;
+}
+
+.colony-hire-notice > .colony-hire-button {
+  align-self: flex-start;
+  height: 2.5rem;
+  padding: 0 0.875rem;
+  border-radius: 0.6875rem;
+  background: var(--colony-pop);
+  box-shadow: inset 0 0 0 1px #f0d9ae;
+  color: #5f3a00;
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 700;
+}
+
+.colony-hire-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-radius: 1rem;
+  background: hsl(var(--colony-info-bg));
+  color: #1f4278;
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 700;
+}
+
+.colony-hire-banner[data-tone="warning"] {
+  background: hsl(var(--colony-need-bg));
+  color: #5f3a00;
+}
+
+.colony-hire-banner > svg {
+  flex: none;
+  color: hsl(var(--colony-info));
+}
+
+/* ------------------------------------------------------------- recovery --- */
+
+.colony-hire-recovery {
+  display: flex;
+  max-width: 40rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1.375rem;
+}
+
+.colony-hire-recovery[data-centered="true"] {
+  align-items: center;
+  margin: 3rem auto 0;
+  text-align: center;
+}
+
+.colony-hire-recovery > h2 {
+  margin: 0;
+  font-size: calc(18 * var(--colony-px));
+  font-weight: 800;
+}
+
+.colony-hire-recovery > p {
+  margin: 0;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(15.5 * var(--colony-px));
+  line-height: 1.55;
+}
+
+.colony-hire-loading {
+  display: grid;
+  max-width: 60rem;
+  gap: 1rem;
+}
+
+.colony-hire-skeleton {
+  height: 10rem;
+  border-radius: 1.25rem;
+  background: hsl(var(--colony-track));
+  animation: colony-hire-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes colony-hire-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* ------------------------------------------------------------ configure --- */
+
+.colony-hire-form {
+  display: flex;
+  min-width: 0;
+  flex: 999 1 32.5rem;
+  flex-direction: column;
+  gap: 1.375rem;
+  padding: 1.75rem;
+}
+
+.colony-hire-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid hsl(var(--colony-border));
+}
+
+.colony-hire-preview-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.colony-hire-preview-copy > strong {
+  overflow: hidden;
+  font-size: calc(19 * var(--colony-px));
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.colony-hire-preview-copy > span {
+  color: hsl(var(--colony-muted));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 500;
+}
+
+.colony-hire-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+  gap: 1.25rem;
+}
+
+.colony-hire-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 700;
+}
+
+.colony-hire-field > small {
+  color: hsl(var(--colony-muted));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 500;
+}
+
+.colony-hire-field > small[data-tone="error"] {
+  color: hsl(var(--colony-danger));
+  font-weight: 600;
+}
+
+.colony-hire-input,
+.colony-hire-select {
+  width: 100%;
+  height: 2.875rem;
+  box-sizing: border-box;
+  border: 1px solid hsl(var(--colony-border-strong));
+  border-radius: 0.75rem;
+  background: var(--colony-pop);
+  color: hsl(var(--colony-fg));
+  font-family: inherit;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 600;
+}
+
+.colony-hire-input {
+  padding: 0 0.875rem;
+}
+
+.colony-hire-select {
+  padding: 0 0.75rem;
+}
+
+.colony-hire-input:focus-visible,
+.colony-hire-select:focus-visible,
+.colony-hire-prefixed:focus-within {
+  border-color: hsl(var(--colony-accent));
+  outline: 2px solid hsl(var(--colony-accent) / 25%);
+  outline-offset: 0;
+}
+
+.colony-hire-input::placeholder {
+  color: hsl(var(--colony-faint));
+}
+
+.colony-hire-prefixed {
+  display: flex;
+  height: 2.875rem;
+  align-items: center;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid hsl(var(--colony-border-strong));
+  border-radius: 0.75rem;
+  background: var(--colony-pop);
+}
+
+.colony-hire-prefixed > span {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  padding: 0 0.75rem;
+  border-right: 1px solid hsl(var(--colony-border-strong));
+  background: hsl(var(--colony-surface-raised));
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 800;
+}
+
+.colony-hire-prefixed > input {
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  box-sizing: border-box;
+  padding: 0 0.75rem;
+  border: 0;
+  background: transparent;
+  color: hsl(var(--colony-fg));
+  font-family: inherit;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 600;
+}
+
+.colony-hire-prefixed > input:focus-visible {
+  outline: none;
+}
+
+.colony-hire-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.125rem 1.25rem;
+  border-radius: 1rem;
+  background: hsl(var(--colony-surface-raised));
+}
+
+.colony-hire-scope > p {
+  margin: 0;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(15 * var(--colony-px));
+  line-height: 1.5;
+}
+
+.colony-hire-scope-tool {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 700;
+}
+
+.colony-hire-scope-tool > svg {
+  color: hsl(var(--colony-fg-secondary));
+}
+
+.colony-hire-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  padding-top: 0.25rem;
+}
+
+.colony-hire-summary {
+  display: flex;
+  min-width: 0;
+  max-width: 21.25rem;
+  flex: 1 1 17.5rem;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.375rem;
+}
+
+.colony-hire-summary-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: calc(18 * var(--colony-px));
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.colony-hire-summary .colony-hire-link {
+  align-self: flex-start;
+}
+
+/* --------------------------------------------------------------- review --- */
+
+.colony-hire-review {
+  display: flex;
+  min-width: 0;
+  flex: 999 1 32.5rem;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.colony-hire-review-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem 1.75rem;
+  border-bottom: 1px solid hsl(var(--colony-border));
+}
+
+.colony-hire-review-head > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1875rem;
+}
+
+.colony-hire-review-head h2 {
+  margin: 0;
+  font-size: calc(22 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.colony-hire-review-head span {
+  color: hsl(var(--colony-muted));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 500;
+}
+
+.colony-hire-review-head .colony-hire-link {
+  margin-left: auto;
+}
+
+.colony-hire-rows {
+  display: grid;
+  grid-template-columns: minmax(8.75rem, 12.5rem) 1fr;
+  margin: 0;
+  padding: 0.5rem 1.75rem;
+}
+
+.colony-hire-rows > dt,
+.colony-hire-rows > dd {
+  margin: 0;
+  padding: 1rem 0;
+  border-bottom: 1px solid hsl(var(--colony-border));
+}
+
+.colony-hire-rows > dt:nth-last-of-type(1),
+.colony-hire-rows > dd:last-of-type {
+  border-bottom: 0;
+}
+
+.colony-hire-rows > dt {
+  color: hsl(var(--colony-muted));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 700;
+}
+
+.colony-hire-rows > dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.625rem;
+  font-size: calc(16.5 * var(--colony-px));
+  font-weight: 700;
+}
+
+.colony-hire-rows > dd small {
+  color: hsl(var(--colony-muted));
+  font-size: inherit;
+  font-weight: 500;
+}
+
+.colony-hire-approval {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.375rem 1.75rem 1.625rem;
+  border-top: 1px solid hsl(var(--colony-border));
+  background: hsl(var(--colony-surface-raised));
+}
+
+.colony-hire-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  color: hsl(var(--colony-fg));
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.colony-hire-confirm > input {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+  margin: 0.125rem 0 0;
+  accent-color: hsl(var(--colony-fg));
+}
+
+.colony-hire-approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.colony-hire-approval-actions > span {
+  color: hsl(var(--colony-muted));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 500;
+}
+
+.colony-hire-error {
+  margin: 0;
+  color: hsl(var(--colony-danger));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 600;
+}
+
+.colony-hire-reason {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 700;
+}
+
+.colony-hire-reason > textarea {
+  min-height: 5.5rem;
+  box-sizing: border-box;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid hsl(var(--colony-border-strong));
+  border-radius: 0.75rem;
+  background: var(--colony-pop);
+  color: hsl(var(--colony-fg));
+  font-family: inherit;
+  font-size: calc(16 * var(--colony-px));
+  font-weight: 600;
+  resize: vertical;
+}
+
+.colony-hire-reason > textarea:focus-visible {
+  border-color: hsl(var(--colony-accent));
+  outline: 2px solid hsl(var(--colony-accent) / 25%);
+}
+
+.colony-hire-reason > textarea[aria-invalid="true"] {
+  border-color: hsl(var(--colony-danger));
+}
+
+.colony-hire-reason > small,
+.colony-hire-reason > p {
+  margin: 0;
+  color: hsl(var(--colony-muted));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 500;
+}
+
+.colony-hire-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.colony-hire-steps-list > li {
+  display: flex;
+  gap: 0.75rem;
+  font-size: calc(15.5 * var(--colony-px));
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.colony-hire-steps-list > li > span:first-child {
+  display: grid;
+  width: 1.875rem;
+  height: 1.875rem;
+  flex: none;
+  place-items: center;
+  border-radius: 0.625rem;
+  background: hsl(var(--colony-track));
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(14 * var(--colony-px));
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* ------------------------------------------------------------- success --- */
+
+.colony-hire-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding-top: 0.75rem;
+  text-align: center;
+}
+
+.colony-hire-hero > h1 {
+  margin: 0.5rem 0 0;
+  font-size: calc(44 * var(--colony-px));
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+}
+
+.colony-hire-hero > span {
+  color: hsl(var(--colony-muted));
+  font-size: calc(17.5 * var(--colony-px));
+  font-weight: 600;
+}
+
+.colony-hire-intro {
+  display: flex;
+  width: 100%;
+  max-width: 42.5rem;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.colony-hire-intro-card {
+  display: flex;
+  gap: 0.875rem;
+  padding: 1.25rem 1.375rem;
+  border-radius: 1.25rem;
+  background: var(--colony-pop);
+  box-shadow:
+    0 0 0 1px hsl(var(--colony-border)),
+    0 12px 32px -22px rgb(60 40 90 / 35%);
+}
+
+.colony-hire-intro-card > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.colony-hire-intro-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.colony-hire-intro-meta > strong {
+  font-size: calc(16.5 * var(--colony-px));
+  font-weight: 800;
+}
+
+.colony-hire-intro-meta > span {
+  color: hsl(var(--colony-muted));
+  font-size: calc(14.5 * var(--colony-px));
+  font-weight: 600;
+}
+
+.colony-hire-intro-card p {
+  margin: 0;
+  font-size: calc(17.5 * var(--colony-px));
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.colony-hire-success-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.625rem;
+}
+
+/* -------------------------------------------------------------- handoff --- */
+
+.colony-hire-handoff {
+  display: grid;
+  max-width: 60rem;
+  gap: 1.25rem;
+}
+
+.colony-hire-handoff[data-columns="2"] {
+  grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr));
+}
+
+.colony-hire-handoff-card {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  padding: 1.375rem;
+}
+
+.colony-hire-handoff-card > h2 {
+  margin: 0;
+  font-size: calc(18 * var(--colony-px));
+  font-weight: 800;
+}
+
+.colony-hire-handoff-card > dl {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  gap: 0.75rem;
+  margin: 0;
+  font-size: calc(15.5 * var(--colony-px));
+}
+
+.colony-hire-handoff-card > dl > dt {
+  color: hsl(var(--colony-muted));
+  font-weight: 700;
+}
+
+.colony-hire-handoff-card > dl > dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.colony-hire-handoff-card p {
+  margin: 0;
+  color: hsl(var(--colony-fg-secondary));
+  font-size: calc(15.5 * var(--colony-px));
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.colony-hire-handoff-card h3 {
+  margin: 0 0 0.25rem;
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 800;
+}
+
+.colony-hire-handoff-card .colony-hire-reason > textarea {
+  min-height: 7rem;
+}
+
+.colony-hire-handoff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid hsl(var(--colony-border));
+}
+
+.colony-hire-error-box {
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: hsl(var(--colony-danger-bg));
+  color: hsl(var(--colony-danger));
+}
+
+.colony-hire-error-box > strong {
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 800;
+}
+
+.colony-hire-error-box > p {
+  margin: 0.25rem 0 0;
+  color: inherit;
+  font-size: calc(14.5 * var(--colony-px));
+}
+
+/* New employees have no picture yet: the initial is drawn big and bold, as on
+   the boards. Agents with a picture keep it (their squircle ant head). */
+.colony-hire-avatar-26,
+.colony-hire-avatar-44,
+.colony-hire-avatar-56,
+.colony-hire-avatar-60,
+.colony-hire-avatar-104 {
+  flex: none;
+  font-weight: 800;
+}
+
+.colony-hire-avatar-26 [data-slot="avatar-fallback"],
+.colony-hire-avatar-44 [data-slot="avatar-fallback"],
+.colony-hire-avatar-56 [data-slot="avatar-fallback"],
+.colony-hire-avatar-60 [data-slot="avatar-fallback"],
+.colony-hire-avatar-104 [data-slot="avatar-fallback"] {
+  color: hsl(var(--colony-fg));
+  font-weight: 800;
+}
+
+.colony-hire-avatar-26 {
+  width: 1.625rem;
+  height: 1.625rem;
+  font-size: calc(11 * var(--colony-px));
+}
+
+.colony-hire-avatar-44 {
+  width: 2.75rem;
+  height: 2.75rem;
+  font-size: calc(17 * var(--colony-px));
+}
+
+.colony-hire-avatar-56 {
+  width: 3.5rem;
+  height: 3.5rem;
+  font-size: calc(21 * var(--colony-px));
+}
+
+.colony-hire-avatar-60 {
+  width: 3.75rem;
+  height: 3.75rem;
+  font-size: calc(22 * var(--colony-px));
+}
+
+.colony-hire-avatar-104 {
+  width: 6.5rem;
+  height: 6.5rem;
+  box-shadow: 0 0 0 0.625rem hsl(var(--colony-track));
+  font-size: calc(40 * var(--colony-px));
+}

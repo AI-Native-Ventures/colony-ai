@@ -219,6 +219,24 @@ fn profile_info_parses_content() {
 }
 
 #[test]
+fn profile_info_reads_job_title() {
+    let e = ev(
+        0,
+        r#"{"display_name":"Alice","job_title":"  Designer "}"#,
+        vec![],
+    );
+    let p = profile_info_from_event(&e).unwrap();
+    assert_eq!(p.job_title.as_deref(), Some("Designer"));
+
+    let blank = ev(0, r#"{"display_name":"Alice","job_title":"  "}"#, vec![]);
+    assert!(profile_info_from_event(&blank).unwrap().job_title.is_none());
+
+    let batch = users_batch_from_events(&[e.clone()], &[e.pubkey.to_hex()]);
+    let summary = batch.profiles.get(&e.pubkey.to_hex()).unwrap();
+    assert_eq!(summary.job_title.as_deref(), Some("Designer"));
+}
+
+#[test]
 fn profile_info_extracts_valid_nip_oa_owner() {
     let (event, owner_pubkey) = oa_profile_event(r#"{"display_name":"Mira"}"#);
     let p = profile_info_from_event(&event).unwrap();

@@ -12,12 +12,10 @@ import { useMyRelayMembershipQuery } from "@/features/community-members/hooks";
 import { useCompanyTeamQuery } from "@/features/company-team/teamRelay";
 import type { TeamMember } from "@/features/company-team/teamModels";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
-import { resolveUserLabel } from "@/features/profile/lib/identity";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import type { AcpRuntimeCatalogEntry, AgentPersona } from "@/shared/api/types";
-import { Button } from "@/shared/ui/button";
-import { Input } from "@/shared/ui/input";
+import { EmployeeAvatar } from "@/features/company-team/ui/EmployeeAvatar";
 import { useCompanyHireHeadQuery } from "../hireRelay";
 import {
   companyHireRolePackFromPersona,
@@ -28,12 +26,14 @@ import type { CompanyHireHeadRecord } from "../companyHireModels";
 import { readHireDraft, writeHireDraft } from "../hireDraft";
 import type { HireProposal } from "@/features/company-asks/askRecords";
 import {
-  HireBackButton,
+  HireButton,
   HireField,
-  HirePageContent,
-  HirePageHeader,
-  hirePrimaryButtonClass,
+  HirePage,
+  HireSteps,
+  HireTitle,
 } from "./HirePresentation";
+import { memberOptionLabel } from "./hireMembers";
+import { ArrowGlyph, RoleIcon, ToolChip, ToolGlyph } from "./hireTools";
 
 type HireFormValues = {
   displayName: string;
@@ -53,9 +53,6 @@ type ModelChoice = {
   modelId: string;
   label: string;
 };
-
-const SELECT_CLASS =
-  "h-10 w-full rounded-[7px] border border-input/40 bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 function formFromProposal(proposal: HireProposal): HireFormValues {
   return {
@@ -206,7 +203,7 @@ export function HireConfigureScreen({
   const headQuery = useCompanyHireHeadQuery(hireId);
   const { activeCommunity } = useCommunities();
   const relayUrl = activeCommunity?.relayUrl ?? null;
-  const { goHireReview, goTeam } = useAppNavigation();
+  const { goHireReview, goHireRoles } = useAppNavigation();
   const persona = personasQuery.data?.find((item) => item.id === personaId);
   const remoteProposal = currentRecordProposal(headQuery.data ?? undefined);
   const rolePack = React.useMemo(
@@ -453,188 +450,264 @@ export function HireConfigureScreen({
     void goHireReview(hireId, source);
   };
 
+  const previewName = form.displayName.trim() || "New employee";
+
   return (
-    <>
-      <HirePageHeader title="Configure employee" />
-      <HirePageContent>
-        <HireBackButton onClick={() => void goHireReview(hireId, source)} />
-        <h1 className="mb-2 text-2xl font-semibold tracking-tight text-foreground">
-          Configure employee
-        </h1>
-        <section className="mb-6 border-l-2 border-border bg-muted p-[15px]">
-          <h2 className="text-base font-semibold text-foreground">
-            {rolePack.title}
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">{rolePack.job}</p>
-        </section>
-        {workerMenu.map((runtimeId) => {
-          const runtime = runtimesById.get(runtimeId);
-          if (!runtime) return null;
-          return (
-            <WorkerModelProbe
-              envVars={inheritedDefaults.inheritedEnvVars}
-              key={`${runtimeId}:${providerForRuntime(runtime)}`}
-              onOptions={receiveModelOptions}
-              providerId={providerForRuntime(runtime)}
-              runtime={runtime}
-            />
-          );
-        })}
+    <HirePage testId="hire-configure">
+      <HireTitle
+        subtitle={`From the ${rolePack.title} role pack`}
+        title="Configure employee"
+      />
+      <HireSteps current={2} onSelect={() => void goHireRoles()} />
+      {workerMenu.map((runtimeId) => {
+        const runtime = runtimesById.get(runtimeId);
+        if (!runtime) return null;
+        return (
+          <WorkerModelProbe
+            envVars={inheritedDefaults.inheritedEnvVars}
+            key={`${runtimeId}:${providerForRuntime(runtime)}`}
+            onOptions={receiveModelOptions}
+            providerId={providerForRuntime(runtime)}
+            runtime={runtime}
+          />
+        );
+      })}
+      <div className="colony-hire-columns">
         <form
-          className="grid max-w-[46.25rem] gap-5"
+          aria-label="Configure employee"
+          className="colony-hire-card colony-hire-form"
           onSubmit={saveDraftAndReview}
         >
-          <HireField htmlFor="hire-employee-name" label="Employee name">
-            <Input
-              autoComplete="off"
-              data-testid="hire-employee-name"
-              id="hire-employee-name"
-              maxLength={180}
-              onChange={(event) => {
-                setNameTaken(false);
-                updateForm("displayName", event.target.value);
-              }}
-              required
-              value={form.displayName}
+          <div className="colony-hire-preview">
+            <EmployeeAvatar
+              className="colony-hire-avatar-56"
+              definition={persona?.avatarUrl}
+              name={previewName}
+              personaId={persona?.id}
             />
-            {nameTaken ? (
-              <span
-                className="text-sm text-destructive"
-                data-testid="hire-name-taken"
-                role="alert"
+            <div className="colony-hire-preview-copy">
+              <strong data-testid="hire-preview-name">{previewName}</strong>
+              <span>{form.title.trim() || rolePack.title} · AI employee</span>
+            </div>
+          </div>
+          <div className="colony-hire-fields">
+            <HireField
+              hint={
+                <>
+                  <small>Each name is used once in your team.</small>
+                  {nameTaken ? (
+                    <small
+                      data-testid="hire-name-taken"
+                      data-tone="error"
+                      role="alert"
+                    >
+                      That name is already in the team. Choose a distinct name.
+                    </small>
+                  ) : null}
+                </>
+              }
+              htmlFor="hire-employee-name"
+              label="Employee name"
+            >
+              <input
+                autoComplete="off"
+                className="colony-hire-input"
+                data-testid="hire-employee-name"
+                id="hire-employee-name"
+                maxLength={180}
+                onChange={(event) => {
+                  setNameTaken(false);
+                  updateForm("displayName", event.target.value);
+                }}
+                required
+                value={form.displayName}
+              />
+            </HireField>
+            <HireField htmlFor="hire-title" label="Title">
+              <input
+                className="colony-hire-input"
+                data-testid="hire-title"
+                id="hire-title"
+                maxLength={180}
+                onChange={(event) => updateForm("title", event.target.value)}
+                required
+                value={form.title}
+              />
+            </HireField>
+            <HireField htmlFor="hire-manager" label="Reports to">
+              <select
+                className="colony-hire-select"
+                data-testid="hire-manager"
+                id="hire-manager"
+                onChange={(event) =>
+                  updateForm("managerPubkey", event.target.value)
+                }
+                value={form.managerPubkey}
               >
-                That name is already in the team. Choose a distinct name.
+                <option value="">Company owner</option>
+                {members.map((member) => (
+                  <option
+                    key={member.pubkey}
+                    value={member.pubkey.toLowerCase()}
+                  >
+                    {memberOptionLabel(member, profiles)}
+                  </option>
+                ))}
+              </select>
+            </HireField>
+            <HireField htmlFor="hire-channel" label="Home channel">
+              <select
+                className="colony-hire-select"
+                data-testid="hire-channel"
+                id="hire-channel"
+                onChange={(event) =>
+                  updateForm("introductionChannelId", event.target.value)
+                }
+                required
+                value={form.introductionChannelId}
+              >
+                {validChannels.map((channel) => (
+                  <option key={channel.id} value={channel.id}>
+                    # {channel.name}
+                  </option>
+                ))}
+              </select>
+            </HireField>
+            <HireField
+              hint={<small>Work pauses when the allowance runs out.</small>}
+              htmlFor="hire-weekly-allowance"
+              label="Weekly allowance (USD, API-equivalent)"
+            >
+              <span className="colony-hire-prefixed">
+                <span aria-hidden="true">USD</span>
+                <input
+                  data-testid="hire-weekly-allowance"
+                  id="hire-weekly-allowance"
+                  min="0.01"
+                  onChange={(event) =>
+                    updateForm("weeklyAllowance", event.target.value)
+                  }
+                  placeholder="0.00"
+                  required
+                  step="0.01"
+                  type="number"
+                  value={form.weeklyAllowance}
+                />
               </span>
-            ) : null}
-          </HireField>
-          <HireField htmlFor="hire-title" label="Title">
-            <Input
-              data-testid="hire-title"
-              id="hire-title"
-              maxLength={180}
-              onChange={(event) => updateForm("title", event.target.value)}
-              required
-              value={form.title}
-            />
-          </HireField>
-          <HireField htmlFor="hire-manager" label="Reports to">
-            <select
-              className={SELECT_CLASS}
-              data-testid="hire-manager"
-              id="hire-manager"
-              onChange={(event) =>
-                updateForm("managerPubkey", event.target.value)
-              }
-              value={form.managerPubkey}
+            </HireField>
+            <HireField
+              hint={<small>Allowed by the role pack.</small>}
+              htmlFor="hire-worker-model"
+              label="Worker model"
             >
-              <option value="">Company owner</option>
-              {members.map((member) => (
-                <option key={member.pubkey} value={member.pubkey.toLowerCase()}>
-                  {resolveUserLabel({
-                    pubkey: member.pubkey,
-                    currentPubkey: identityQuery.data?.pubkey,
-                    profiles,
-                  })}
-                </option>
-              ))}
-            </select>
-          </HireField>
-          <HireField htmlFor="hire-channel" label="Home channel">
-            <select
-              className={SELECT_CLASS}
-              data-testid="hire-channel"
-              id="hire-channel"
-              onChange={(event) =>
-                updateForm("introductionChannelId", event.target.value)
-              }
-              required
-              value={form.introductionChannelId}
-            >
-              {validChannels.map((channel) => (
-                <option key={channel.id} value={channel.id}>
-                  {channel.name}
-                </option>
-              ))}
-            </select>
-          </HireField>
-          <HireField
-            htmlFor="hire-weekly-allowance"
-            label="Weekly allowance (USD API-equivalent)"
-          >
-            <Input
-              data-testid="hire-weekly-allowance"
-              id="hire-weekly-allowance"
-              min="0.01"
-              onChange={(event) =>
-                updateForm("weeklyAllowance", event.target.value)
-              }
-              required
-              step="0.01"
-              type="number"
-              value={form.weeklyAllowance}
-            />
-          </HireField>
-          <HireField htmlFor="hire-worker-model" label="Worker model">
-            <select
-              className={SELECT_CLASS}
-              data-testid="hire-worker-model"
-              id="hire-worker-model"
-              onChange={(event) => {
-                const selected = modelChoices.find(
-                  (choice) => choice.value === event.target.value,
-                );
-                if (!selected) return;
-                setForm((current) =>
-                  current
-                    ? {
-                        ...current,
-                        runtimeId: selected.runtimeId,
-                        providerId: selected.providerId,
-                        modelId: selected.modelId,
-                      }
-                    : current,
-                );
-              }}
-              required
-              value={currentChoice?.value ?? ""}
-            >
-              <option value="">Select a model</option>
-              {modelChoices.map((choice) => (
-                <option key={choice.value} value={choice.value}>
-                  {choice.label}
-                </option>
-              ))}
-            </select>
-          </HireField>
-          <section className="grid gap-2 border-l-2 border-border bg-muted p-[15px]">
-            <h2 className="text-sm font-semibold text-foreground">
+              <select
+                className="colony-hire-select"
+                data-testid="hire-worker-model"
+                id="hire-worker-model"
+                onChange={(event) => {
+                  const selected = modelChoices.find(
+                    (choice) => choice.value === event.target.value,
+                  );
+                  if (!selected) return;
+                  setForm((current) =>
+                    current
+                      ? {
+                          ...current,
+                          runtimeId: selected.runtimeId,
+                          providerId: selected.providerId,
+                          modelId: selected.modelId,
+                        }
+                      : current,
+                  );
+                }}
+                required
+                value={currentChoice?.value ?? ""}
+              >
+                <option value="">Select a model</option>
+                {modelChoices.map((choice) => (
+                  <option key={choice.value} value={choice.value}>
+                    {choice.label}
+                  </option>
+                ))}
+              </select>
+            </HireField>
+          </div>
+          <section aria-labelledby="tool-scope" className="colony-hire-scope">
+            <h2 className="colony-hire-eyebrow" id="tool-scope">
               Included tool scope
             </h2>
-            <p className="text-sm text-muted-foreground">
-              {rolePack.tools
-                .map((tool) => `${tool.name} · ${tool.risk}`)
-                .join(" · ")}
+            {rolePack.tools.map((tool) => (
+              <div className="colony-hire-scope-tool" key={tool.name}>
+                <ToolGlyph size={18} tool={tool} />
+                {tool.name}
+                <ToolChip tool={tool} />
+              </div>
+            ))}
+            <p>
+              Tools come from the role pack. Spending money, messaging
+              outsiders, deleting data or publishing still needs approval.
             </p>
           </section>
-          <div className="flex gap-3">
-            <Button
-              className={hirePrimaryButtonClass}
-              data-testid="hire-review"
+          <div className="colony-hire-form-actions">
+            <HireButton
               disabled={!createAction || !currentChoice}
+              testId="hire-review"
               type="submit"
             >
               Review hire
-            </Button>
-            <Button
-              onClick={() => void goTeam()}
-              type="button"
-              variant="outline"
-            >
+              <ArrowGlyph size={16} />
+            </HireButton>
+            <HireButton onClick={() => void goHireRoles()} variant="outline">
               Cancel
-            </Button>
+            </HireButton>
           </div>
         </form>
-      </HirePageContent>
-    </>
+        <aside
+          aria-label="Role summary"
+          className="colony-hire-card colony-hire-summary"
+        >
+          <span className="colony-hire-eyebrow">Role pack</span>
+          <div className="colony-hire-summary-title">
+            <span className="colony-hire-icon-tile" data-active="true">
+              <RoleIcon job={rolePack.job} title={rolePack.title} />
+            </span>
+            {rolePack.title}
+          </div>
+          <dl className="colony-hire-detail">
+            <div>
+              <dt>Job</dt>
+              <dd>{rolePack.job}</dd>
+            </div>
+            <div data-chips="true">
+              <dt>Skills</dt>
+              <dd data-chips="true">
+                {rolePack.skills.length > 0
+                  ? rolePack.skills.map((skill) => (
+                      <span className="colony-hire-skill" key={skill}>
+                        {skill}
+                      </span>
+                    ))
+                  : "None selected"}
+              </dd>
+            </div>
+            <div>
+              <dt>Default allowance</dt>
+              <dd>
+                {rolePack.defaultAllowance
+                  ? `USD ${rolePack.defaultAllowance} / week`
+                  : "No default amount"}
+              </dd>
+            </div>
+          </dl>
+          <button
+            className="colony-hire-link"
+            onClick={() => void goHireRoles()}
+            type="button"
+          >
+            Change role
+          </button>
+        </aside>
+      </div>
+    </HirePage>
   );
 }

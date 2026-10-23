@@ -21,7 +21,6 @@ import {
 import { useHistorySearchState } from "@/shared/hooks/useHistorySearchState";
 import { useThreadPanelWidth } from "@/shared/hooks/useThreadPanelWidth";
 import { ViewLoadingFallback } from "@/shared/ui/ViewLoadingFallback";
-import { parseAgentProfileTab, type AgentProfileTab } from "./AgentProfileView";
 import type { AgentWorkspaceView } from "./AgentsView";
 
 function workspaceViewFromSearch(value: string | null): AgentWorkspaceView {
@@ -77,7 +76,7 @@ export function AgentsScreen() {
   }, [personasQuery.data, values.profile, values.profilePersona]);
   const threadPanelWidth = useThreadPanelWidth();
   const openDmMutation = useOpenDmMutation();
-  const { goChannel, goSupervision } = useAppNavigation();
+  const { goChannel } = useAppNavigation();
 
   const handleOpenProfilePanel = React.useCallback(
     (pubkey: string, options?: ProfilePanelOpenOptions) => {
@@ -118,7 +117,7 @@ export function AgentsScreen() {
     (pubkey: string) =>
       applyPatch({
         agent: pubkey,
-        agentTab: "overview",
+        agentTab: null,
         profile: null,
         profilePersona: null,
         profileTab: null,
@@ -127,21 +126,8 @@ export function AgentsScreen() {
       }),
     [applyPatch],
   );
-  const handleCloseAgent = React.useCallback(
-    () => applyPatch({ agent: null, agentTab: null }),
-    [applyPatch],
-  );
-  const handleAgentTabChange = React.useCallback(
-    (agentTab: AgentProfileTab) => applyPatch({ agentTab }),
-    [applyPatch],
-  );
-  const handleWorkspaceViewChange = React.useCallback(
-    (view: AgentWorkspaceView) =>
-      applyPatch({
-        agent: null,
-        agentTab: null,
-        view: view === "directory" ? null : view,
-      }),
+  const handlePageSizeChange = React.useCallback(
+    (size: 10 | 20 | 30) => applyPatch({ rows: String(size) }),
     [applyPatch],
   );
   const handleProfilePanelViewChange = React.useCallback(
@@ -173,14 +159,9 @@ export function AgentsScreen() {
           <React.Suspense fallback={<ViewLoadingFallback kind="agents" />}>
             <AgentsView
               agentPubkey={values.agent ?? undefined}
-              agentTab={parseAgentProfileTab(values.agentTab)}
-              onAgentTabChange={handleAgentTabChange}
-              onCloseAgent={handleCloseAgent}
               onMessageAgent={(pubkey) => handleOpenDm([pubkey])}
               onOpenAgent={handleOpenAgent}
-              onOpenChannel={(channelId) => void goChannel(channelId)}
-              onOpenSupervision={() => void goSupervision()}
-              onWorkspaceViewChange={handleWorkspaceViewChange}
+              onPageSizeChange={handlePageSizeChange}
               pageSize={values.rows ?? undefined}
               createRolePack={values.rolePack === "create"}
               editRolePackPersonaId={values.editRolePack ?? undefined}
