@@ -1,19 +1,3 @@
-import {
-  BellOff,
-  BellRing,
-  Clock,
-  Copy,
-  CornerUpLeft,
-  EllipsisVertical,
-  Flag,
-  Link2,
-  MailCheck,
-  MailOpen,
-  Pencil,
-  Plus,
-  SmilePlus,
-  Trash2,
-} from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
@@ -43,7 +27,24 @@ import { MessagePinMenuItem } from "@/features/pins/ui/MessagePinMenuItem";
 import { PINNABLE_MESSAGE_KINDS } from "@/features/pins/pinModels";
 import { KIND_HUDDLE_STARTED } from "@/shared/constants/kinds";
 import { Button } from "@/shared/ui/button";
-import { HashArrowIn } from "@/shared/ui/icons";
+import {
+  AskGlyph,
+  CheckCircleGlyph,
+  CopyGlyph,
+  EditGlyph,
+  FlagGlyph,
+  FollowThreadGlyph,
+  HeartGlyph,
+  KebabIcon,
+  LinkGlyph,
+  MarkUnreadGlyph,
+  ReactIcon,
+  RemindIcon,
+  ReplyBubbleIcon,
+  SendToChannelGlyph,
+  ThumbsUpGlyph,
+  TrashGlyph,
+} from "@/shared/ui/conversationIcons";
 import { DeleteMessageConfirmDialog } from "./DeleteMessageConfirmDialog";
 import {
   DropdownMenu,
@@ -57,8 +58,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { ProtectedMessageAction } from "@protected-feature-components";
 
-const ACTION_BUTTON_CLASS = "h-8 w-8 rounded-full p-0";
-const ACTION_ICON_CLASS = "!h-4 !w-4";
+const ACTION_BUTTON_CLASS =
+  "size-[calc(34*var(--colony-px))] rounded-[calc(9*var(--colony-px))] p-0 text-colony-fg-secondary hover:bg-colony-track hover:text-colony-fg";
 
 /** Copying a message link is offered from both the hover action bar and the
  *  More menu; both paths share this exact link-building + toast behavior. */
@@ -169,9 +170,9 @@ function MoreActionsMenu({
                 data-testid={`more-actions-${message.id}`}
                 size="sm"
                 type="button"
-                variant={open ? "secondary" : "ghost"}
+                variant="ghost"
               >
-                <EllipsisVertical className={ACTION_ICON_CLASS} />
+                <KebabIcon size={17} />
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
@@ -197,7 +198,7 @@ function MoreActionsMenu({
                 pendingEditRef.current = () => onEdit(message);
               }}
             >
-              <Pencil className="h-4 w-4" />
+              <EditGlyph size={17} />
               Edit message
             </DropdownMenuItem>
           ) : null}
@@ -213,11 +214,7 @@ function MoreActionsMenu({
                 }
               }}
             >
-              {isUnread ? (
-                <MailCheck className="h-4 w-4" />
-              ) : (
-                <MailOpen className="h-4 w-4" />
-              )}
+              <MarkUnreadGlyph size={17} />
               {isUnread ? "Mark read" : "Mark unread"}
             </DropdownMenuItem>
           ) : null}
@@ -232,11 +229,7 @@ function MoreActionsMenu({
                 }
               }}
             >
-              {isFollowingThread ? (
-                <BellOff className="h-4 w-4" />
-              ) : (
-                <BellRing className="h-4 w-4" />
-              )}
+              <FollowThreadGlyph size={17} />
               {isFollowingThread ? "Unfollow thread" : "Follow thread"}
             </DropdownMenuItem>
           ) : null}
@@ -254,7 +247,7 @@ function MoreActionsMenu({
                 );
               }}
             >
-              <Copy className="h-4 w-4" />
+              <CopyGlyph size={17} />
               Copy message
             </DropdownMenuItem>
           ) : null}
@@ -265,7 +258,7 @@ function MoreActionsMenu({
                 onRemindLater(message);
               }}
             >
-              <Clock className="h-4 w-4" />
+              <RemindIcon size={17} />
               Remind me later
             </DropdownMenuItem>
           ) : null}
@@ -275,7 +268,7 @@ function MoreActionsMenu({
               data-testid={`raise-ask-message-${message.id}`}
               onSelect={() => onRaiseAsk(message)}
             >
-              <Plus className="h-4 w-4" />
+              <AskGlyph size={17} />
               Raise an ask
             </DropdownMenuItem>
           ) : null}
@@ -296,10 +289,9 @@ function MoreActionsMenu({
                   });
               }}
             >
-              <HashArrowIn
-                aria-hidden="true"
-                className="h-4 w-4"
+              <SendToChannelGlyph
                 data-testid="send-to-channel-icon"
+                size={17}
               />
               Send to channel
             </DropdownMenuItem>
@@ -312,7 +304,7 @@ function MoreActionsMenu({
                 copyMessageLink(channelId, message);
               }}
             >
-              <Link2 className="h-4 w-4" />
+              <LinkGlyph size={17} />
               Copy link
             </DropdownMenuItem>
           ) : null}
@@ -338,7 +330,7 @@ function MoreActionsMenu({
                 setIsReportDialogOpen(true);
               }}
             >
-              <Flag className="h-4 w-4" />
+              <FlagGlyph size={17} />
               Report message
             </DropdownMenuItem>
           ) : null}
@@ -351,7 +343,7 @@ function MoreActionsMenu({
                 setIsDeleteDialogOpen(true);
               }}
             >
-              <Trash2 className="h-4 w-4" />
+              <TrashGlyph size={17} />
               Delete message
             </DropdownMenuItem>
           ) : null}
@@ -385,6 +377,22 @@ function MoreActionsMenu({
   );
 }
 
+/** The design draws the common reactions as brand-coloured vectors. */
+const QUICK_GLYPHS: Record<string, { glyph: React.ReactNode; tone?: string }> =
+  {
+    "\u2764\uFE0F": {
+      glyph: <HeartGlyph className="text-[#C2416A]" size={17} />,
+    },
+    "\u{1F44D}": {
+      glyph: <ThumbsUpGlyph size={17} />,
+      tone: "text-colony-need",
+    },
+    "\u2705": {
+      glyph: <CheckCircleGlyph size={17} />,
+      tone: "text-colony-success",
+    },
+  };
+
 function QuickReactionButton({
   customEmojiUrl,
   emoji,
@@ -402,7 +410,10 @@ function QuickReactionButton({
       <TooltipTrigger asChild>
         <button
           aria-label={`React with ${displayName}`}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-base leading-none text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+          className={cn(
+            "flex size-[calc(34*var(--colony-px))] items-center justify-center rounded-[calc(9*var(--colony-px))] text-base leading-none text-colony-fg-secondary transition-colors hover:bg-colony-track focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+            QUICK_GLYPHS[emoji]?.tone,
+          )}
           onClick={() => onSelect(emoji)}
           title={displayName}
           type="button"
@@ -416,7 +427,7 @@ function QuickReactionButton({
             />
           ) : (
             <span aria-hidden="true" className="translate-y-px">
-              {emoji}
+              {QUICK_GLYPHS[emoji]?.glyph ?? emoji}
             </span>
           )}
         </button>
@@ -560,7 +571,7 @@ export const MessageActionBar = React.memo(function MessageActionBar({
       data-testid={`message-action-bar-${message.id}`}
       ref={ref}
     >
-      <div className="overflow-hidden rounded-full border border-border/70 bg-background/95 shadow-xs backdrop-blur-sm supports-[backdrop-filter]:bg-background/85">
+      <div className="c3c-action-bar rounded-[calc(13*var(--colony-px))] bg-white">
         <div className="flex items-center gap-0.5 p-1">
           {hasReactionAction && quickReactionItems.length > 0 ? (
             <div className="hidden items-center gap-0.5 sm:flex">
@@ -591,7 +602,7 @@ export const MessageActionBar = React.memo(function MessageActionBar({
                       type="button"
                       variant={isReactionPickerOpen ? "secondary" : "ghost"}
                     >
-                      <SmilePlus className={ACTION_ICON_CLASS} />
+                      <ReactIcon size={17} />
                     </Button>
                   </PopoverTrigger>
                 </TooltipTrigger>
@@ -627,7 +638,7 @@ export const MessageActionBar = React.memo(function MessageActionBar({
           {hasReactionAction && quickReactionItems.length > 0 ? (
             <div
               aria-hidden="true"
-              className="mx-0.5 hidden h-4 w-px bg-border/70 sm:block"
+              className="mx-1 hidden h-5 w-px bg-colony-border sm:block"
               data-testid="message-action-divider"
             />
           ) : null}
@@ -646,7 +657,7 @@ export const MessageActionBar = React.memo(function MessageActionBar({
                   type="button"
                   variant="ghost"
                 >
-                  <CornerUpLeft className={ACTION_ICON_CLASS} />
+                  <ReplyBubbleIcon size={17} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Reply</TooltipContent>
@@ -667,7 +678,7 @@ export const MessageActionBar = React.memo(function MessageActionBar({
                   type="button"
                   variant="ghost"
                 >
-                  <Link2 className={ACTION_ICON_CLASS} />
+                  <LinkGlyph size={17} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Copy link</TooltipContent>

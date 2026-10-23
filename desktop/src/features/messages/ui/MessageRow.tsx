@@ -1,6 +1,5 @@
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { AlertTriangle } from "lucide-react";
 import {
   depthGuideActionsEqual,
   numberArrayEqual,
@@ -45,7 +44,6 @@ import { getConfigNudgeAuthorPubkey } from "@/features/messages/ui/configNudgeAu
 import { cn } from "@/shared/lib/cn";
 import { useMeasuredCssVariable } from "@/shared/layout/useMeasuredCssVariable";
 import { normalizePubkey } from "@/shared/lib/pubkey";
-import { UserAvatar } from "@/shared/ui/UserAvatar";
 import { useChannelNavigation } from "@/shared/context/ChannelNavigationContext";
 import { parseImetaTags } from "@/shared/ui/markdown/parseImeta";
 import { useMessageEmoji } from "@/features/messages/lib/useMessageEmoji";
@@ -59,11 +57,9 @@ import { editMessage } from "@/shared/api/tauri";
 import { hasLinkPreviewSuppression } from "@/features/messages/lib/formatTimelineMessages";
 import { toast } from "sonner";
 import { MessageAgentOwner } from "./MessageAgentOwner";
-import {
-  MessageAuthorText,
-  MessageHeaderRow,
-  MessageMetaSegments,
-} from "./MessageHeader";
+import { MessageAvatar } from "./MessageAvatar";
+import { useMemberJobTitle } from "@/features/company-team/useMemberJobTitle";
+import { MessageAuthorText, MessageHeaderRow } from "./MessageHeader";
 import { MessageTimestamp } from "./MessageTimestamp";
 import { SentFromThreadLine } from "./SentFromThreadLine";
 import { WaveMessageAttachment } from "./WaveMessageAttachment";
@@ -356,7 +352,7 @@ export const MessageRow = React.memo(
       message.body,
       message.tags,
     );
-    const bodyOffsetClass = emojiOnly ? "mt-1" : "mt-conversation-body";
+    const bodyOffsetClass = emojiOnly ? "mt-1" : "mt-1.5";
 
     const { nonDmChannelNames: channelNames } = useChannelNavigation();
 
@@ -546,62 +542,25 @@ export const MessageRow = React.memo(
     const isThreadReplyLayout = layoutVariant === "thread-reply";
     const guideBleedRem = isThreadReplyLayout ? 0.25 : 0;
 
-    const showRespondToIndicator =
-      message.respondTo === "anyone" || message.respondTo === "allowlist";
-
     const avatarNode = (
-      <div className="relative shrink-0">
-        <UserAvatar
-          accent={message.accent}
-          avatarUrl={message.avatarUrl ?? null}
-          className={cn(
-            "h-7 w-7 shrink-0 rounded-md text-2xs",
-            message.isAgent
-              ? "colony-workspace-agent-message-avatar"
-              : "colony-workspace-human-message-avatar",
-          )}
-          displayName={message.author}
-          fallbackVariant="muted"
-          shape="square"
-          testId="message-avatar"
-        />
-        {showRespondToIndicator &&
-        !hideAgentAccessBadge &&
-        !isThreadReplyLayout ? (
-          <span
-            className={cn(
-              "absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-background",
-            )}
-            role="img"
-            aria-label={
-              message.respondTo === "anyone"
-                ? "Anyone can send instructions to this agent"
-                : "Selected people can send instructions to this agent"
-            }
-            title={
-              message.respondTo === "anyone"
-                ? "Anyone can send instructions to this agent"
-                : "Selected people can send instructions to this agent"
-            }
-          >
-            {message.respondTo === "anyone" ? (
-              <AlertTriangle
-                aria-hidden="true"
-                className="h-2.5 w-2.5 fill-background text-amber-500"
-              />
-            ) : (
-              <span className="h-2 w-2 rounded-full bg-blue-500" />
-            )}
-          </span>
-        ) : null}
-      </div>
+      <MessageAvatar
+        author={message.author}
+        avatarUrl={message.avatarUrl ?? null}
+        hideAgentAccessBadge={hideAgentAccessBadge}
+        isAgent={Boolean(message.isAgent)}
+        isThreadReply={isThreadReplyLayout}
+        respondTo={message.respondTo}
+        sizePx={
+          isThreadReplyLayout ? (message.depth <= 1 ? 40 : 36) : undefined
+        }
+      />
     );
 
     const continuationTimestampGutter = (
       <div
         aria-hidden="true"
         className={cn(
-          "flex w-9 shrink-0 justify-end items-start pt-0.5",
+          "flex w-[calc(40*var(--colony-px))] shrink-0 justify-end items-start pt-0.5",
           isThreadReplyLayout ? "self-start" : "self-stretch",
         )}
       >
@@ -621,7 +580,7 @@ export const MessageRow = React.memo(
         role={profilePopoverRole}
         botIdenticonValue={message.author}
         triggerAriaLabel={`Open profile for ${message.author}`}
-        triggerClassName="rounded-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+        triggerClassName="rounded-full focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
       >
         <div aria-hidden="true" className="flex shrink-0 items-start">
           {avatarNode}
@@ -632,30 +591,30 @@ export const MessageRow = React.memo(
     );
 
     const authorNode = message.pubkey ? (
-      <MessageAuthorText
-        className={message.isAgent ? "colony-agent-message-author" : undefined}
-        hoverUnderline
-      >
-        {message.author}
-      </MessageAuthorText>
+      <MessageAuthorText hoverUnderline>{message.author}</MessageAuthorText>
     ) : (
       <MessageAuthorText as="h3">{message.author}</MessageAuthorText>
     );
-    const agentOwnerNode = message.isAgent ? (
+    const jobTitle = useMemberJobTitle(message.pubkey, !message.pending);
+    const selfName = currentPubkey
+      ? profiles?.[normalizePubkey(currentPubkey)]?.displayName
+      : null;
+    const agentOwnerNode = (
       <MessageAgentOwner
+        isAgent={Boolean(message.isAgent)}
+        jobTitle={jobTitle}
         ownerLabel={message.ownerLabel}
         ownerPubkey={message.ownerPubkey}
+        selfName={selfName}
       />
-    ) : null;
+    );
 
     const actionBarNode = (
       <div
         className={cn(
-          "absolute right-2 top-1 z-10 sm:pointer-events-none",
+          "absolute right-4 top-1 z-10 sm:pointer-events-none",
           actionBarPlacement === "floating"
-            ? isContinuation
-              ? "sm:-top-3 sm:-translate-y-1/2"
-              : "sm:top-0 sm:-translate-y-1/2"
+            ? "sm:top-[calc(-32*var(--colony-px))]"
             : "sm:top-1 sm:translate-y-0",
         )}
       >
@@ -764,14 +723,9 @@ export const MessageRow = React.memo(
             {employeeStatusLabel}
           </span>
         ) : null}
-        {/* Author is not a segment: "Alice 9:53 AM" needs no divider. */}
-        <MessageMetaSegments
-          segments={[
-            { key: "owner", node: agentOwnerNode },
-            { key: "timestamp", node: inlineMetadataNode },
-            { key: "persona", node: personaNode },
-          ]}
-        />
+        {agentOwnerNode}
+        {inlineMetadataNode}
+        {personaNode}
       </MessageHeaderRow>
     );
     const bodyContainerClass = isDisplayedAsContinuation
@@ -900,7 +854,9 @@ export const MessageRow = React.memo(
                       aria-hidden
                       className={cn(
                         "pointer-events-none absolute bottom-0 top-0 border-l transition-[border-color]",
-                        isHighlighted ? "border-primary" : "border-border/45",
+                        isHighlighted
+                          ? "border-primary"
+                          : "border-colony-border-strong",
                       )}
                       style={{
                         borderLeftWidth: threadReplyLength(
@@ -953,7 +909,9 @@ export const MessageRow = React.memo(
                   aria-hidden
                   className={cn(
                     "pointer-events-none absolute bottom-0 top-0 border-l transition-[border-color]",
-                    isHighlighted ? "border-primary" : "border-border/45",
+                    isHighlighted
+                      ? "border-primary"
+                      : "border-colony-border-strong",
                   )}
                   key={`${message.id}-depth-guide-${offset}`}
                   style={{
@@ -973,7 +931,9 @@ export const MessageRow = React.memo(
               aria-hidden
               className={cn(
                 "pointer-events-none absolute bottom-0 z-0 border-l transition-[border-color]",
-                highlightDescendantRail ? "border-primary" : "border-border/45",
+                highlightDescendantRail
+                  ? "border-primary"
+                  : "border-colony-border-strong",
               )}
               style={{
                 bottom: threadReplyLength(-guideBleedRem),
@@ -1009,7 +969,9 @@ export const MessageRow = React.memo(
             aria-hidden
             className={cn(
               "pointer-events-none absolute left-0 top-0 rounded-bl-2xl border-b border-l transition-[border-color]",
-              highlightReplyConnector ? "border-primary" : "border-border/45",
+              highlightReplyConnector
+                ? "border-primary"
+                : "border-colony-border-strong",
             )}
             style={{
               borderBottomWidth: threadReplyLength(THREAD_REPLY_LINE_WIDTH_REM),
@@ -1026,20 +988,13 @@ export const MessageRow = React.memo(
 
         <article
           className={cn(
-            "group/message relative z-10 rounded-2xl transition-colors",
+            "group/message relative z-10 transition-colors",
+            hoverBackground ? "c3c-row" : "c3c-row--inner",
             playEntrance && "motion-enter-conversation",
-            "py-conversation-row",
-            hoverBackground
-              ? "mx-1 px-2 hover:bg-muted/50 focus-within:bg-muted/50"
-              : isThreadReplyLayout
-                ? "mx-1 px-2"
-                : "px-2",
-            "flex gap-2.5",
+            "flex gap-3.5",
             isDisplayedAsContinuation ? "items-center" : "items-start",
-            hasActiveReminder ? "bg-blue-500/10" : "",
-            highlighted
-              ? "-mx-4 rounded-none px-6 before:absolute before:-inset-y-1.5 before:inset-x-0 before:animate-[route-target-highlight-fade_2s_ease-out_forwards] before:bg-primary/10 before:content-[''] motion-reduce:before:animate-none sm:-mx-6 sm:px-8"
-              : "",
+            hasActiveReminder ? "c3c-row--reminder" : "",
+            highlighted ? "c3c-row--highlighted" : "",
           )}
           data-message-id={message.id}
           data-testid="message-row"

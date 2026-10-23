@@ -53,25 +53,6 @@
 }
 
 :root:has([data-colony-workspace-route="true"])
-  [data-testid="message-timeline"] {
-  padding-inline: var(--colony-conversation-gutter, 1.5rem);
-}
-
-:root:has([data-colony-workspace-route="true"])
-  :is(
-    [data-testid="message-thread-head"],
-    [data-testid="message-thread-head-divider"],
-    [data-testid="message-thread-replies"]
-  ) {
-  padding-inline: var(--colony-conversation-gutter, 1.5rem);
-}
-
-:root:has([data-colony-workspace-route="true"])
-  [data-testid="channel-view-tabs"] {
-  padding-inline: var(--colony-conversation-gutter, 1.5rem);
-}
-
-:root:has([data-colony-workspace-route="true"])
   [data-testid="thread-composer-overlay"]
   [data-testid="composer-dock-backdrop"] {
   left: var(--colony-composer-gutter, 1.5rem);
@@ -152,21 +133,4 @@
 
 :root:has(.w20-settings-shell) .w20-nav-person small {
   color: hsl(var(--foreground));
-}
-
-@media (max-width: 75rem) {
-  :root:has([data-colony-workspace-route="true"])
-    [data-testid="chat-header"]
-    > div {
-    flex-wrap: wrap;
-    height: auto;
-    min-height: 2.25rem;
-  }
-
-  :root:has([data-colony-workspace-route="true"])
-    [data-testid="chat-header"]
-    > div
-    > div:first-child {
-    min-width: 10rem;
-  }
 }

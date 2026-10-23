@@ -1,3 +1,4 @@
+import { MessageSquare } from "lucide-react";
 import * as React from "react";
 
 import {
@@ -29,7 +30,7 @@ import { useAnchoredScroll } from "./useAnchoredScroll";
 import { useLoadOlderOnScroll } from "./useLoadOlderOnScroll";
 import { useBufferedTimelineMessages } from "./useBufferedTimelineMessages";
 import {
-  DirectMessageIntroAvatarStack,
+  DirectMessageIntroBlock,
   type DirectMessageIntroParticipant,
 } from "./DirectMessageIntroAvatarStack";
 import { useSettleGatedPrependMessages } from "./useSettleGatedPrependMessages";
@@ -456,7 +457,13 @@ const MessageTimelineBase = React.forwardRef<
   const activeDirectMessageIntro = showDirectMessageIntro
     ? directMessageIntro
     : null;
-  const activeChannelIntro = showChannelIntro ? channelIntro : null;
+  // An empty channel shows the empty state; its intro appears once there is
+  // history, unless the intro carries first steps (the welcome channel).
+  const activeChannelIntro =
+    showChannelIntro &&
+    !(timelineBodySurface === "empty" && !channelIntro?.actions?.length)
+      ? channelIntro
+      : null;
   const activePinnedIntro = pinnedIntro ?? null;
   const showIntro =
     activeDirectMessageIntro !== null ||
@@ -639,24 +646,11 @@ const MessageTimelineBase = React.forwardRef<
       ) : activeChannelIntro ? (
         <ChannelIntroBlock className="pb-4 pt-2" intro={activeChannelIntro} />
       ) : activeDirectMessageIntro ? (
-        <div
-          className="mb-2 flex w-full flex-col items-start px-3 pb-2 pt-2 text-left"
-          data-testid="message-dm-intro"
-        >
-          <DirectMessageIntroAvatarStack
-            participants={activeDirectMessageIntro.participants}
-          />
-          <p className="mt-4 max-w-full truncate text-xl font-semibold leading-7 tracking-tight text-foreground">
-            {activeDirectMessageIntro.displayName}
-          </p>
-          <p className="mt-1 max-w-full truncate whitespace-nowrap text-sm leading-5 text-muted-foreground">
-            This is the beginning of your direct message with{" "}
-            <span className="font-medium text-foreground">
-              {activeDirectMessageIntro.displayName}
-            </span>
-            .
-          </p>
-        </div>
+        <DirectMessageIntroBlock
+          className="pb-6"
+          displayName={activeDirectMessageIntro.displayName}
+          participants={activeDirectMessageIntro.participants}
+        />
       ) : referenceWindowDayLabel ? (
         <div
           className="relative flex flex-col py-3 before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-border/35 before:content-['']"
@@ -748,9 +742,11 @@ const MessageTimelineBase = React.forwardRef<
           >
             <UnreadPill
               direction="up"
+              emphasis="primary"
               label={unreadCountLabel(unreadCount)}
               onClick={handleJumpToOldestUnread}
               testId="message-unread-pill"
+              variant="conversation"
             />
           </div>
         ) : null}
@@ -847,24 +843,11 @@ const MessageTimelineBase = React.forwardRef<
                   <MessageTimelineErrorCard onRetry={onRetry} />
                 ) : null}
                 {activeDirectMessageIntro ? (
-                  <div
-                    className="mt-auto flex w-full flex-col items-start px-3 py-2 text-left"
-                    data-testid="message-dm-intro"
-                  >
-                    <DirectMessageIntroAvatarStack
-                      participants={activeDirectMessageIntro.participants}
-                    />
-                    <p className="mt-4 max-w-full truncate text-xl font-semibold leading-7 tracking-tight text-foreground">
-                      {activeDirectMessageIntro.displayName}
-                    </p>
-                    <p className="mt-1 max-w-full truncate whitespace-nowrap text-sm leading-5 text-muted-foreground">
-                      This is the beginning of your direct message with{" "}
-                      <span className="font-medium text-foreground">
-                        {activeDirectMessageIntro.displayName}
-                      </span>
-                      .
-                    </p>
-                  </div>
+                  <DirectMessageIntroBlock
+                    className="mt-auto py-2"
+                    displayName={activeDirectMessageIntro.displayName}
+                    participants={activeDirectMessageIntro.participants}
+                  />
                 ) : null}
 
                 {activePinnedIntro ? (
@@ -882,15 +865,17 @@ const MessageTimelineBase = React.forwardRef<
 
                 {showGenericEmpty ? (
                   <div
-                    className="mt-auto rounded-2xl border border-dashed border-border/80 bg-card/70 px-6 py-10 text-center shadow-xs"
+                    className="my-auto flex flex-col items-center justify-center gap-2.5 px-7 py-[18px] text-center"
                     data-testid="message-empty"
                   >
-                    <p className="text-base font-semibold tracking-tight">
-                      {emptyTitle}
-                    </p>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      {emptyDescription}
-                    </p>
+                    <span className="grid size-[calc(54*var(--colony-px))] place-items-center rounded-2xl bg-colony-accent-soft text-colony-accent-ink">
+                      <MessageSquare
+                        aria-hidden
+                        className="size-[calc(24*var(--colony-px))]"
+                      />
+                    </span>
+                    <h3 className="c3c-empty-title mt-1.5">{emptyTitle}</h3>
+                    <p className="c3c-empty-text">{emptyDescription}</p>
                   </div>
                 ) : null}
 
@@ -927,6 +912,12 @@ const MessageTimelineBase = React.forwardRef<
           >
             <UnreadPill
               direction="down"
+              emphasis={
+                bufferedTimeline.pendingCount > 0 || newMessageCount > 0
+                  ? "primary"
+                  : "default"
+              }
+              variant="conversation"
               label={
                 bufferedTimeline.pendingCount > 0
                   ? unreadCountLabel(bufferedTimeline.pendingCount)

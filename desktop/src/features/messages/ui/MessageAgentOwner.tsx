@@ -1,50 +1,70 @@
-import { Bot } from "lucide-react";
-
+import { firstName } from "@/features/channels/ui/DmAgentSubtitle";
 import { UserProfilePopover } from "@/features/profile/ui/UserProfilePopover";
 
+/**
+ * What the header says about the sender besides their name: their job title
+ * and, for an agent, who manages it ("Social Media Manager · managed by
+ * Lerato"). Shows only what is known. An agent with neither is marked "Agent"
+ * so a person can still tell who is an AI.
+ */
 export function MessageAgentOwner({
+  isAgent,
+  jobTitle,
   ownerLabel,
   ownerPubkey,
+  selfName,
 }: {
+  isAgent: boolean;
+  jobTitle?: string | null;
   ownerLabel?: string | null;
   ownerPubkey?: string | null;
+  selfName?: string | null;
 }) {
+  const managedBy =
+    isAgent && ownerPubkey && ownerLabel
+      ? ownerLabel === "you"
+        ? (firstName(selfName) ?? "you")
+        : (firstName(ownerLabel) ?? ownerLabel)
+      : null;
+
+  if (!jobTitle && !managedBy) {
+    return isAgent ? (
+      <span
+        aria-hidden="true"
+        className="colony-agent-badge c3c-sender-meta min-w-0 truncate"
+        data-testid="message-agent-owner"
+      >
+        Agent
+      </span>
+    ) : null;
+  }
+
   return (
     <span
-      className="inline-flex min-w-0 max-w-56 items-baseline gap-1 text-xs leading-4 text-muted-foreground/65"
-      data-testid="message-agent-owner"
+      className="c3c-sender-meta inline-flex min-w-0 items-baseline gap-x-1"
+      data-testid={isAgent ? "message-agent-owner" : "message-job-title"}
     >
       <span className="sr-only">
-        {ownerLabel ? "Agent managed by" : "Agent"}
+        {isAgent ? (managedBy ? "Agent managed by" : "Agent") : "Job title"}
       </span>
-      {/* Keep the icon on managed agents. Ownerless agents use the workspace badge. */}
-      {ownerPubkey && ownerLabel ? (
+      {jobTitle ? <span className="truncate">{jobTitle}</span> : null}
+      {jobTitle && managedBy ? <span aria-hidden="true">·</span> : null}
+      {managedBy && ownerPubkey ? (
         <>
-          <Bot
-            aria-hidden="true"
-            className="h-3.5 w-3.5 shrink-0 translate-y-[0.125em] self-center"
-          />
           <span aria-hidden="true" className="shrink-0">
             managed by
           </span>
           <UserProfilePopover
             pubkey={ownerPubkey}
-            triggerAriaLabel={ownerLabel}
+            triggerAriaLabel={ownerLabel ?? managedBy}
             triggerElement="span"
           >
-            <span className="min-w-0 truncate rounded font-semibold text-foreground/85 hover:text-foreground hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
-              {ownerLabel}
+            <span className="min-w-0 truncate rounded hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
+              {managedBy}
             </span>
           </UserProfilePopover>
         </>
-      ) : (
-        <span
-          aria-hidden="true"
-          className="colony-agent-badge min-w-0 truncate"
-        >
-          Agent
-        </span>
-      )}
+      ) : null}
     </span>
   );
 }

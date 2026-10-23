@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Bot, FolderPlus, Plus, Sparkles, UserPlus } from "lucide-react";
+import { Bot, Plus, Sparkles } from "lucide-react";
 
 import {
   getChannelIntroDescription,
@@ -30,14 +30,13 @@ type ChannelIntroAction = {
  */
 export function useChannelIntro({
   activeChannel,
-  onAddAgent,
-  onAddFiles,
+  currentPubkey,
   onBrowseChannels,
   onCreateChannel,
-  onOpenMembers,
   onWelcomeAddAgent,
 }: {
   activeChannel: Channel | null;
+  currentPubkey?: string;
   onAddAgent?: (options?: { beforeSend?: () => void }) => void;
   onAddFiles?: () => void;
   onBrowseChannels?: () => void;
@@ -83,6 +82,9 @@ export function useChannelIntro({
 
       return {
         actions,
+        channelId: activeChannel.id,
+        currentPubkey,
+        visibility: activeChannel.visibility,
         channelKindLabel: isWelcomeChannel(activeChannel)
           ? "private welcome channel"
           : getChannelIntroKind(activeChannel, projectHome),
@@ -94,40 +96,10 @@ export function useChannelIntro({
       };
     }
 
-    if (!activeChannel.archivedAt && activeChannel.isMember) {
-      if (onAddFiles) {
-        actions.push({
-          description: "Add a repo.",
-          icon: <FolderPlus aria-hidden className="h-5 w-5" />,
-          label: "Add files",
-          onClick: onAddFiles,
-          testId: "channel-intro-action-add-files",
-        });
-      }
-
-      if (onAddAgent) {
-        actions.push({
-          description: "Add an agent here.",
-          icon: <Bot aria-hidden className="h-5 w-5" />,
-          label: "Add agent",
-          onClick: onAddAgent,
-          testId: "channel-intro-action-create-agent",
-        });
-      }
-
-      if (onOpenMembers) {
-        actions.push({
-          description: "Invite members.",
-          icon: <UserPlus aria-hidden className="h-5 w-5" />,
-          label: "Add people",
-          onClick: onOpenMembers,
-          testId: "channel-intro-action-add-people",
-        });
-      }
-    }
-
     return {
       actions,
+      channelId: activeChannel.id,
+      currentPubkey,
       channelKindLabel: getChannelIntroKind(activeChannel, projectHome),
       channelName: activeChannel.name,
       description: getChannelIntroDescription(activeChannel),
@@ -135,14 +107,13 @@ export function useChannelIntro({
       icon: projectHome ? (
         <ProjectChannelIcon className="h-7 w-7" />
       ) : undefined,
+      visibility: activeChannel.visibility,
     };
   }, [
     activeChannel,
-    onAddAgent,
-    onAddFiles,
+    currentPubkey,
     onBrowseChannels,
     onCreateChannel,
-    onOpenMembers,
     onWelcomeAddAgent,
     projectHome,
   ]);

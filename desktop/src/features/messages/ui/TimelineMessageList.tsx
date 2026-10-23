@@ -429,7 +429,7 @@ function VirtualizedTimelineItemShell({
       ref={ref}
       style={preserveVisibility ? style : { ...style, visibility: undefined }}
     >
-      {children}
+      <div className="c3c-timeline-column">{children}</div>
     </div>
   );
 }
@@ -757,7 +757,7 @@ function VirtualizedTimelineRows({
       <PreserveVirtualizedItemVisibilityContext value={isPrepend}>
         <VList
           ref={listRef}
-          className="h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain px-2 pt-[var(--channel-top-chrome-height,4.5rem)]"
+          className="c3c-timeline-scroller h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-contain pt-[var(--channel-top-chrome-height,4.5rem)]"
           data={items}
           item={VirtualizedTimelineItemShell}
           itemSize={estimateItemSize}
@@ -785,7 +785,7 @@ function VirtualizedTimelineRows({
               const dayLabel = formatDayGroupLabel(item.headingTimestamp);
               return (
                 <div
-                  className="relative flex flex-col before:absolute before:inset-x-0 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-border/35 before:content-['']"
+                  className="relative flex flex-col pb-6"
                   data-day-label={dayLabel}
                   data-testid="message-timeline-day-group"
                   key={virtualizedItemKey(item)}

@@ -18,7 +18,6 @@ import {
 } from "@/features/channels/readState/readStateFormat";
 import { ChannelScreenEmptyState } from "@/features/channels/ui/ChannelScreenEmptyState";
 import { ChannelScreenHeader } from "@/features/channels/ui/ChannelScreenHeader";
-import { ChannelWorkspaceTopBar } from "@/features/channels/ui/ChannelWorkspaceTopBar";
 import { WorkAreaLayout } from "@/features/workarea/dock/WorkAreaLayout";
 import { WelcomeAgentCreateDialog } from "@/features/channels/ui/WelcomeAgentCreateDialog";
 import { ForumChannelContent } from "@/features/channels/ui/ForumChannelContent";
@@ -60,7 +59,11 @@ import { useChannelTyping } from "@/features/messages/useChannelTyping";
 import type { TimelineMessage } from "@/features/messages/types";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { useRelaySelfQuery } from "@/features/moderation/hooks";
-import type { RelayEvent, RespondToMode } from "@/shared/api/types";
+import type {
+  ChannelMember,
+  RelayEvent,
+  RespondToMode,
+} from "@/shared/api/types";
 import { ChannelScreenLoadingFallback } from "@/features/channels/ui/ChannelScreenLoadingFallback";
 import {
   useHuddleChannelMessages,
@@ -91,12 +94,14 @@ const EMPTY_RELAY_EVENTS: RelayEvent[] = [];
 // The Colony sidebar is 220px, narrower than the previous shell. A 640px
 // content breakpoint keeps the same window widths single-panel as before.
 const CHANNEL_SINGLE_PANEL_CONTENT_BREAKPOINT_PX = 640;
+const EMPTY_CHANNEL_MEMBERS: ChannelMember[] = [];
+
 export function ChannelScreen({
   activeChannel,
   autoSendDraftKey,
   currentIdentity,
   currentProfile,
-  headerEndActions, hideWorkspaceTopBar = false, idleAuxiliaryPanel,
+  headerEndActions, idleAuxiliaryPanel,
   idleAuxiliaryHeaderActions, idleAuxiliaryOverridesThread,
   idleAuxiliaryTitle,
   onAddFiles, onCloseIdleAuxiliaryPanel,
@@ -770,6 +775,7 @@ export function ChannelScreen({
         {...{ currentPubkey, headerEndActions }}
         isAddBotOpen={isAddBotOpen}
         isJoining={joinChannelMutation.isPending}
+        members={channelMembers ?? EMPTY_CHANNEL_MEMBERS}
         onAddBotOpenChange={setIsAddBotOpen}
         onJoinChannel={joinChannelMutation.mutateAsync}
         onManageChannel={handleManageChannel}
@@ -792,6 +798,7 @@ export function ChannelScreen({
       currentPubkey,
       headerEndActions,
       isAddBotOpen,
+      channelMembers,
       joinChannelMutation.isPending,
       joinChannelMutation.mutateAsync,
       handleManageChannel,
@@ -832,17 +839,6 @@ export function ChannelScreen({
               <button type="button" onClick={() => void goSettings("agents")}>Open AI settings</button>
               <button type="button" onClick={retryKickoff}>Retry</button>
             </div>
-          ) : null}
-          {activeChannel && !hideWorkspaceTopBar && !isHuddleTranscript ? (
-            <ChannelWorkspaceTopBar
-              channelTitle={activeChannelTitle}
-              currentPubkey={currentPubkey}
-              channelId={activeChannel.id}
-              isThreadOpen={Boolean(openThreadHeadId)}
-              members={channelMembers ?? []}
-              onToggleMembers={handleToggleMembers}
-              onOpenInbox={() => void goHome()}
-            />
           ) : null}
           <WorkAreaLayout
             channel={

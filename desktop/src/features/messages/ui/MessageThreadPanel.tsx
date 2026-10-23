@@ -34,7 +34,6 @@ import {
   THREAD_PANEL_MESSAGE_GUTTER_CLASS,
 } from "@/features/messages/lib/messageThreadPanelLayout";
 import { Button } from "@/shared/ui/button";
-import { Separator } from "@/shared/ui/separator";
 import { ComposerActivityAccessory } from "./ComposerActivityAccessory";
 import { ComposerDockBackdrop } from "./ComposerDockBackdrop";
 import { MessageComposer } from "./MessageComposer";
@@ -54,7 +53,6 @@ import { useStableSendToChannel } from "./useStableSendToChannel";
 import { useAnchoredScroll } from "./useAnchoredScroll";
 import { selectDeferredListRenderState } from "@/features/messages/lib/timelineSnapshot";
 import { selectThreadRowHighlight } from "@/features/messages/lib/threadReplyHighlight";
-import { CompanyWorkThreadContextPanel } from "@/features/company-work/ui/CompanyWorkThreadContextPanel";
 
 type MessageThreadPanelProps = ThreadPanelLayoutProps & {
   channel: Channel | null;
@@ -162,6 +160,7 @@ export function MessageThreadPanel({
   layout = "standalone",
   editTarget,
   enterMotion,
+  headerChannelPrivate,
   headerLeading,
   headerTitle,
   headerTitleAriaLabel,
@@ -370,7 +369,6 @@ export function MessageThreadPanel({
   // over an empty region or a placeholder.
   const showThreadHeadDivider =
     !isHuddleTranscript &&
-    isFocusMode &&
     (threadRepliesPending || repliesRenderState === "list");
 
   const threadMessages = React.useMemo(
@@ -571,6 +569,7 @@ export function MessageThreadPanel({
                 className="colony-workspace-thread-context"
                 data-testid="workspace-thread-context"
               >
+                <span className="c3c-eyebrow">Thread context</span>
                 <h2>{workspaceThreadContext.title}</h2>
                 {workspaceThreadContext.description ? (
                   <p>{workspaceThreadContext.description}</p>
@@ -633,20 +632,21 @@ export function MessageThreadPanel({
           </div>
         )}
 
-        <CompanyWorkThreadContextPanel
-          channelId={channelId}
-          enabled={Boolean(
-            channelId && !isHuddleTranscript && !workspaceThreadContext,
-          )}
-          threadRootId={threadHead.id}
-        />
-
         {showThreadHeadDivider ? (
           <div
             className={cn(THREAD_PANEL_MESSAGE_GUTTER_CLASS, "pb-3 pt-2")}
             data-testid="message-thread-head-divider"
           >
-            <Separator className="bg-border/60" />
+            <section
+              aria-label={`${threadReplies.length} ${threadReplies.length === 1 ? "reply" : "replies"}`}
+              className="flex items-center gap-3"
+            >
+              <span className="c3c-eyebrow">
+                {threadReplies.length}{" "}
+                {threadReplies.length === 1 ? "reply" : "replies"}
+              </span>
+              <span aria-hidden className="h-px flex-1 bg-colony-border" />
+            </section>
           </div>
         ) : null}
 
@@ -981,6 +981,7 @@ export function MessageThreadPanel({
         header={
           isHuddleTranscript ? undefined : (
             <MessageThreadPanelHeader
+              headerChannelPrivate={headerChannelPrivate}
               headerLeading={headerLeading}
               headerTitle={headerTitle}
               headerTitleAriaLabel={headerTitleAriaLabel}

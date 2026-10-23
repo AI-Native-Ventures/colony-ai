@@ -19,6 +19,9 @@ import { COLONY3_NOW } from "./colony3Fixture";
  * here is specific to one board.
  */
 
+/** The signed-in user (Lerato Molefe) as a message author or tag target. */
+export const COLONY3_SELF = "self";
+
 /** People the conversation boards show besides Lerato and the reference agents. */
 export const COLONY3_PEOPLE = {
   noluthando: { name: "Noluthando Khumalo", pubkey: "e1".repeat(32) },
@@ -133,7 +136,9 @@ export function colony3Extras(own: Partial<Colony3Extras> = {}): Colony3Extras {
     profiles: [...colony3Profiles(), ...(own.profiles ?? [])],
     channels: own.channels ?? [],
     members: [...colony3OliveMembers(), ...(own.members ?? [])],
+    patchChannels: own.patchChannels ?? [],
     leaveChannelIds: own.leaveChannelIds ?? [],
+    clearMessagesIn: own.clearMessagesIn ?? [],
     messages: own.messages ?? [],
   };
 }

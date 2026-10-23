@@ -18,55 +18,6 @@
   --colony-workspace-link-color: #9dc1fb;
 }
 
-:root:has([data-colony-workspace-route="true"]) .colony-channel-view-tabs {
-  align-items: center;
-  border-bottom: 1px solid hsl(var(--border));
-  display: flex;
-  flex: none;
-  gap: 1.625rem;
-  height: 45px;
-  padding-inline: 0;
-  position: relative;
-  z-index: 1000 !important;
-}
-
-:root:has([data-colony-workspace-route="true"])
-  .colony-channel-view-tabs
-  > span {
-  align-items: center;
-  align-self: stretch;
-  color: hsl(var(--muted-foreground));
-  display: flex;
-  height: 45px;
-  font-size: var(--text-sm);
-  line-height: 1.25rem;
-  position: relative;
-  z-index: 1;
-  text-indent: 0;
-  visibility: visible;
-  -webkit-text-fill-color: currentColor;
-}
-
-:root:has([data-colony-workspace-route="true"])
-  .colony-channel-view-tabs
-  > [aria-current="page"] {
-  color: hsl(var(--foreground));
-  font-weight: 600;
-}
-
-:root:has([data-colony-workspace-route="true"])
-  .colony-channel-view-tabs
-  > [aria-current="page"]::after {
-  background: var(--colony-workspace-link-color);
-  border-radius: 2px;
-  bottom: -1px;
-  content: "";
-  height: 2px;
-  left: 0;
-  position: absolute;
-  right: 0;
-}
-
 :root:has([data-colony-workspace-route="true"])
   [data-testid="channel-composer-overlay"]
   .composer-dock {

@@ -1,7 +1,12 @@
+import { Globe, Hash } from "lucide-react";
 import type * as React from "react";
-import { Hash } from "lucide-react";
 
+import { useChannelMembersQuery } from "@/features/channels/hooks";
+import { useUsersBatchQuery } from "@/features/profile/hooks";
+import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
+import { normalizePubkey } from "@/shared/lib/pubkey";
 import { cn } from "@/shared/lib/cn";
+import { PrivateChannelIcon } from "@/shared/ui/colonyIcons";
 
 export type ChannelIntroAction = {
   description?: string;
@@ -13,19 +18,87 @@ export type ChannelIntroAction = {
 
 export type ChannelIntro = {
   actions?: ChannelIntroAction[];
+  channelId?: string;
   channelKindLabel: string;
   channelName: string;
+  currentPubkey?: string;
   description?: string | null;
   hideBeginning?: boolean;
   icon?: React.ReactNode;
+  visibility?: "open" | "private";
 };
 
+const PEOPLE_SHOWN = 3;
+
+function formatPeopleHere(names: string[]): string {
+  if (names.length === 1) return `${names[0]} is here`;
+  const head = names.slice(0, -1).join(", ");
+  return `${head} and ${names[names.length - 1]} are here`;
+}
+
+/** Who is in the channel: a small stack of faces and a line naming them. */
+function ChannelIntroPeople({
+  channelId,
+  currentPubkey,
+}: {
+  channelId: string;
+  currentPubkey?: string;
+}) {
+  const membersQuery = useChannelMembersQuery(channelId);
+  const self = currentPubkey ? normalizePubkey(currentPubkey) : null;
+  const others = (membersQuery.data ?? [])
+    .filter((member) => normalizePubkey(member.pubkey) !== self)
+    .slice(0, PEOPLE_SHOWN);
+  const profilesQuery = useUsersBatchQuery(
+    others.map((member) => member.pubkey),
+    { enabled: others.length > 0 },
+  );
+  if (others.length === 0) return null;
+  const profiles = profilesQuery.data?.profiles;
+  const names = others.map(
+    (member) =>
+      profiles?.[normalizePubkey(member.pubkey)]?.displayName?.trim() ||
+      member.displayName?.trim() ||
+      "Someone",
+  );
+  return (
+    <>
+      <span
+        aria-hidden="true"
+        className="flex"
+        data-testid="message-channel-intro-faces"
+      >
+        {others.map((member, index) => (
+          <ProfileAvatar
+            avatarUrl={
+              profiles?.[normalizePubkey(member.pubkey)]?.avatarUrl ?? null
+            }
+            className={cn(
+              "size-[calc(30*var(--colony-px))] text-3xs ring-2 ring-colony-surface",
+              index > 0 && "-ml-1.5",
+            )}
+            key={member.pubkey}
+            label={names[index]}
+            shape={member.isAgent ? "squircle" : "circle"}
+          />
+        ))}
+      </span>
+      <span
+        className="c3c-intro-people"
+        data-testid="message-channel-intro-people"
+      >
+        {formatPeopleHere(names)}
+      </span>
+    </>
+  );
+}
+
 /**
- * The empty-channel intro block: channel icon, heading, kind label, and
- * action cards. Rendered both as the virtualized timeline's leading row and
- * as the non-virtualized empty state — one component so the two surfaces
- * cannot drift and the first message always lands below it without layout
- * shift.
+ * The top of a channel's history: what the channel is, who is in it, and (for
+ * a welcome or onboarding channel) the first things to do. Rendered both as
+ * the virtualized timeline's leading row and as the non-virtualized state, so
+ * the two cannot drift and the first message always lands below it without
+ * layout shift.
  */
 export function ChannelIntroBlock({
   className,
@@ -34,95 +107,90 @@ export function ChannelIntroBlock({
   className?: string;
   intro: ChannelIntro;
 }) {
+  const isPrivate = intro.visibility === "private";
   return (
-    <div
+    <section
+      aria-label={`About #${intro.channelName}`}
       className={cn(
-        "flex w-full flex-col items-start px-3 text-left",
+        "flex w-full flex-col items-start gap-2.5 border-b border-colony-border pb-6",
         className,
       )}
       data-testid="message-channel-intro"
     >
-      <div
-        className="flex h-[60px] w-[60px] items-center justify-center rounded-2xl border border-border/70 bg-muted/40 text-muted-foreground"
+      <span
+        className="grid size-[calc(58*var(--colony-px))] place-items-center rounded-[calc(17*var(--colony-px))] bg-colony-accent-soft text-colony-accent-ink"
         data-testid="message-channel-intro-icon"
       >
-        {intro.icon ?? <Hash aria-hidden className="h-7 w-7" />}
-      </div>
-      <p className="mt-4 max-w-2xl truncate text-xl font-semibold leading-7 tracking-tight text-foreground">
-        #{intro.channelName}
-      </p>
-      {intro.hideBeginning ? null : (
-        <p className="mt-1 max-w-2xl text-sm leading-5 text-muted-foreground">
-          This is the beginning of the{" "}
-          <span className="font-medium text-foreground">
-            {intro.channelKindLabel}
-          </span>
-          .
-        </p>
-      )}
+        {intro.icon ??
+          (isPrivate ? (
+            <PrivateChannelIcon aria-hidden size={26} />
+          ) : (
+            <Hash aria-hidden className="size-[calc(26*var(--colony-px))]" />
+          ))}
+      </span>
+      <h2
+        className="c3c-intro-title mt-1"
+        data-testid="message-channel-intro-title"
+      >
+        {intro.channelName}
+      </h2>
       {intro.description ? (
-        <p className="mt-2 max-w-xl whitespace-pre-line text-sm leading-5 text-muted-foreground">
+        <p className="c3c-intro-text max-w-[calc(620*var(--colony-px))] whitespace-pre-line">
           {intro.description}
         </p>
       ) : null}
-      {intro.actions?.length ? (
-        <div className="mt-4 flex max-w-full flex-nowrap gap-2 overflow-x-auto p-1">
-          {intro.actions.map((action) => {
-            const hasDescription = Boolean(action.description);
-
-            return (
-              <button
-                className={cn(
-                  "flex shrink-0 border border-border/70 bg-background/70 text-left transition-colors hover:bg-muted/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
-                  hasDescription
-                    ? "h-52 w-48 flex-col rounded-2xl p-3"
-                    : "h-24 w-56 flex-col rounded-2xl p-3",
-                )}
-                data-testid={action.testId}
-                key={action.label}
-                onClick={action.onClick}
-                type="button"
-              >
-                <span
-                  className={cn(
-                    "flex shrink-0 items-center justify-center rounded-full bg-muted/70 text-muted-foreground",
-                    hasDescription
-                      ? "h-10 w-10 [&_svg]:h-5 [&_svg]:w-5"
-                      : "h-9 w-9 [&_svg]:h-4 [&_svg]:w-4",
-                  )}
-                  data-testid={
-                    action.testId ? `${action.testId}-icon` : undefined
-                  }
-                >
-                  {action.icon}
-                </span>
-                <span className="mt-auto min-w-0">
-                  <span
-                    className="block whitespace-normal break-words text-sm font-medium leading-5 text-foreground"
-                    data-testid={
-                      action.testId ? `${action.testId}-title` : undefined
-                    }
-                  >
-                    {action.label}
-                  </span>
-                  {action.description ? (
-                    <span
-                      className="mt-1 block whitespace-normal break-words text-sm leading-5 text-muted-foreground"
-                      data-testid={
-                        action.testId
-                          ? `${action.testId}-description`
-                          : undefined
-                      }
-                    >
-                      {action.description}
-                    </span>
-                  ) : null}
-                </span>
-              </button>
-            );
-          })}
+      {intro.channelId ? (
+        <div className="mt-0.5 flex flex-wrap items-center gap-2.5">
+          <ChannelIntroPeople
+            channelId={intro.channelId}
+            currentPubkey={intro.currentPubkey}
+          />
+          <span aria-hidden="true" className="text-colony-faint">
+            ·
+          </span>
+          <span
+            className="c3c-intro-chip"
+            data-testid="message-channel-intro-visibility"
+          >
+            {isPrivate ? (
+              <PrivateChannelIcon aria-hidden size={14} />
+            ) : (
+              <Globe aria-hidden className="size-[calc(14*var(--colony-px))]" />
+            )}
+            {isPrivate ? "Private channel" : "Open channel"}
+          </span>
         </div>
       ) : null}
-    </div>
+      {intro.actions?.length ? (
+        <div className="mt-2 flex max-w-full flex-nowrap gap-2 overflow-x-auto p-1">
+          {intro.actions.map((action) => (
+            <button
+              className="flex h-[calc(46*var(--colony-px))] shrink-0 items-center gap-2.5 rounded-xl bg-colony-wash px-3.5 text-left text-colony-fg transition-colors hover:bg-colony-accent-soft focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              data-testid={action.testId}
+              key={action.label}
+              onClick={action.onClick}
+              type="button"
+            >
+              <span
+                className="flex shrink-0 items-center text-colony-fg-secondary"
+                data-testid={
+                  action.testId ? `${action.testId}-icon` : undefined
+                }
+              >
+                {action.icon}
+              </span>
+              <span
+                className="c3c-button whitespace-nowrap"
+                data-testid={
+                  action.testId ? `${action.testId}-title` : undefined
+                }
+              >
+                {action.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }

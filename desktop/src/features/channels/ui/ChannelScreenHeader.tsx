@@ -1,31 +1,42 @@
-import { LogIn, SquareTerminal } from "lucide-react";
 import type * as React from "react";
 
-import { ChatHeader } from "@/features/chat/ui/ChatHeader";
+import { AgentManagementMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
 import type { EphemeralChannelDisplay } from "@/features/channels/lib/ephemeralChannel";
-import type { ActiveDmHeaderParticipant } from "@/features/channels/useActiveChannelHeader";
-import { getChannelDescription } from "@/features/channels/lib/channelDescription";
+import { getChannelDetail } from "@/features/channels/lib/channelDescription";
 import { getDmParticipantPreview } from "@/features/channels/lib/dmParticipantDisplay";
+import { ChannelAddAgentHost } from "@/features/channels/ui/ChannelAddAgentHost";
 import { ChannelGlyph } from "@/features/channels/ui/ChannelGlyph";
 import { ChannelHeaderStatusBadge } from "@/features/channels/ui/ChannelHeaderStatusBadge";
-import { ChannelMembersBar } from "@/features/channels/ui/ChannelMembersBar";
+import { ChannelMemberAvatarStack } from "@/features/channels/ui/ChannelMemberAvatarStack";
+import { ChannelWorkspaceTabs } from "@/features/channels/ui/ChannelWorkspaceTabs";
+import { ConversationHeader } from "@/features/channels/ui/ConversationHeader";
+import { DmAgentSubtitle } from "@/features/channels/ui/DmAgentSubtitle";
+import type { ActiveDmHeaderParticipant } from "@/features/channels/useActiveChannelHeader";
 import {
   DEFAULT_HOVER_PROFILE_STATUS_GEOMETRY,
   ProfileAvatarWithStatus,
   scaleProfileAvatarStatusGeometry,
 } from "@/features/profile/ui/ProfileAvatarWithStatus";
-import { AgentManagementMarker } from "@/features/agents/ui/OtherSetupAgentMarker";
 import { UserProfilePopover } from "@/features/profile/ui/UserProfilePopover";
 import { UserNameIndicators } from "@/features/user-status/ui/UserNameIndicators";
-import { Button } from "@/shared/ui/button";
-import type { Channel, PresenceStatus } from "@/shared/api/types";
-import { UserAvatar } from "@/shared/ui/UserAvatar";
+import { WORK_AREA_PANEL_ID } from "@/features/workarea/dock/WorkAreaPanel";
+import { toggleWorkAreaFrom } from "@/features/workarea/dock/workAreaActions";
+import { useWorkAreaDock } from "@/features/workarea/dock/useWorkAreaDock";
+import { requestChannelSearch } from "@/shared/lib/channelSearchRequest";
+import type {
+  Channel,
+  ChannelMember,
+  PresenceStatus,
+} from "@/shared/api/types";
 import {
-  toggleTerminalPanel,
-  useTerminalPanel,
-} from "@/features/terminal/terminalPanelStore";
+  JoinGlyph,
+  KebabIcon,
+  SearchGlyph,
+  WorkAreaToggleIcon,
+} from "@/shared/ui/conversationIcons";
+import { UserAvatar } from "@/shared/ui/UserAvatar";
 
-const DM_HEADER_AVATAR_SIZE = 32;
+const DM_HEADER_AVATAR_SIZE = 40;
 const DM_HEADER_AVATAR_STATUS_GEOMETRY = scaleProfileAvatarStatusGeometry(
   DEFAULT_HOVER_PROFILE_STATUS_GEOMETRY,
   DM_HEADER_AVATAR_SIZE,
@@ -45,6 +56,7 @@ type ChannelScreenHeaderProps = {
   headerEndActions?: React.ReactNode;
   isAddBotOpen?: boolean;
   isJoining?: boolean;
+  members?: ChannelMember[];
   showHeaderContent?: boolean;
   transparentChrome?: boolean;
   onAddBotOpenChange?: (open: boolean) => void;
@@ -58,7 +70,6 @@ export function ChannelScreenHeader({
   activeChannelEphemeralDisplay,
   activeChannelTitle,
   referenceThreadPresentation = false,
-  actionsVariant = "inline",
   activeDmAvatarUrl,
   activeDmHeaderParticipants,
   activeDmPresenceStatus,
@@ -67,16 +78,15 @@ export function ChannelScreenHeader({
   headerEndActions,
   isAddBotOpen,
   isJoining = false,
+  members = [],
   onAddBotOpenChange,
   showHeaderContent = true,
-  transparentChrome = false,
   onJoinChannel,
   onManageChannel,
   onToggleMembers,
 }: ChannelScreenHeaderProps) {
-  const isGroupDm =
-    activeChannel?.channelType === "dm" &&
-    activeDmHeaderParticipants.length > 1;
+  const isDm = activeChannel?.channelType === "dm";
+  const isGroupDm = isDm && activeDmHeaderParticipants.length > 1;
   const activeDmParticipant = activeDmHeaderParticipants[0] ?? null;
   const showJoinButton =
     activeChannel !== null &&
@@ -84,128 +94,155 @@ export function ChannelScreenHeader({
     activeChannel.visibility === "open" &&
     !activeChannel.archivedAt &&
     onJoinChannel;
-
-  const terminalPanel = useTerminalPanel();
-  const terminalButton =
-    activeChannel &&
-    !referenceThreadPresentation &&
-    actionsVariant !== "reference" ? (
-      <Button
-        aria-label={
-          terminalPanel.mode === "closed"
-            ? "Open Colony Term"
-            : "Hide Colony Term"
-        }
-        onClick={toggleTerminalPanel}
-        size="icon"
-        title="Colony Term (⌘J)"
-        type="button"
-        variant={terminalPanel.mode === "closed" ? "outline" : "secondary"}
-      >
-        <SquareTerminal />
-      </Button>
-    ) : null;
-  const channelActions = activeChannel ? (
-    showJoinButton ? (
-      <div className="flex items-center gap-1">
-        <Button
-          disabled={isJoining}
-          onClick={() => void onJoinChannel()}
-          size="sm"
-          variant="default"
-        >
-          <LogIn className="mr-1.5 h-4 w-4" />
-          {isJoining ? "Joining…" : "Join"}
-        </Button>
-        {headerEndActions}
-      </div>
-    ) : (
-      <ChannelMembersBar
-        channel={activeChannel}
-        currentPubkey={currentPubkey}
-        endActions={headerEndActions}
-        isAddBotOpen={isAddBotOpen}
-        onAddBotOpenChange={onAddBotOpenChange}
-        onManageChannel={onManageChannel}
-        onToggleMembers={onToggleMembers}
-        variant={actionsVariant}
-      />
-    )
-  ) : (
-    headerEndActions
-  );
-  const actions =
-    terminalButton || channelActions ? (
-      <div className="flex items-center gap-1">
-        {terminalButton}
-        {channelActions}
-      </div>
-    ) : null;
+  const workArea = useWorkAreaDock(activeChannel?.id ?? null);
+  const memberCount = members.length || (activeChannel?.memberCount ?? 0);
 
   if (!showHeaderContent) {
     return null;
   }
 
-  const header = (
-    <ChatHeader
-      belowSystemChrome={
-        !referenceThreadPresentation && actionsVariant !== "reference"
-      }
-      chromeWrapperRef={chromeWrapperRef}
-      actions={actions}
-      channelType={activeChannel?.channelType}
-      description={getChannelDescription(activeChannel)}
-      leadingContent={
-        activeChannel?.channelType === "dm" ? (
-          isGroupDm ? (
-            <DmHeaderParticipantStack
-              participants={activeDmHeaderParticipants}
-            />
-          ) : activeDmParticipant ? (
-            <UserProfilePopover
-              pubkey={activeDmParticipant.pubkey}
-              role={activeDmParticipant.isAgent ? "bot" : undefined}
-              triggerAriaLabel={`Open profile for ${activeChannelTitle}`}
-              triggerElement="span"
-            >
-              <ProfileAvatarWithStatus
-                avatarClassName="text-xs"
-                avatarUrl={activeDmAvatarUrl}
-                className="mr-1.5 h-8 w-8"
-                geometry={DM_HEADER_AVATAR_STATUS_GEOMETRY}
-                iconClassName="h-4 w-4"
-                label={activeChannelTitle}
-                shape={activeDmParticipant.isAgent ? "squircle" : "circle"}
-                size={DM_HEADER_AVATAR_SIZE}
-                status={activeDmPresenceStatus ?? "offline"}
-                statusTestId="chat-presence-badge"
-                testId="chat-header-dm-avatar"
-              />
-            </UserProfilePopover>
-          ) : (
-            <ProfileAvatarWithStatus
-              avatarClassName="text-xs"
-              avatarUrl={activeDmAvatarUrl}
-              className="mr-1.5 h-8 w-8"
-              geometry={DM_HEADER_AVATAR_STATUS_GEOMETRY}
-              iconClassName="h-4 w-4"
-              label={activeChannelTitle}
-              shape="circle"
-              size={DM_HEADER_AVATAR_SIZE}
-              status={activeDmPresenceStatus ?? "offline"}
-              statusTestId="chat-presence-badge"
-              testId="chat-header-dm-avatar"
-            />
-          )
-        ) : activeChannel ? (
-          <ChannelGlyph
-            channel={activeChannel}
-            className="h-4 w-4 translate-y-px text-muted-foreground"
+  const actions = activeChannel ? (
+    <>
+      {showJoinButton ? (
+        <button
+          className="c3c-button mr-1 inline-flex h-10 items-center gap-2 rounded-xl bg-colony-accent px-4 text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+          data-testid="channel-header-join"
+          disabled={isJoining}
+          onClick={() => void onJoinChannel()}
+          type="button"
+        >
+          <JoinGlyph size={17} />
+          {isJoining ? "Joining…" : "Join"}
+        </button>
+      ) : !isDm ? (
+        <button
+          aria-label={`View channel members (${memberCount})`}
+          className="flex h-10 items-center gap-2 rounded-xl pl-1.5 pr-2.5 text-colony-fg transition-colors hover:bg-colony-accent-soft"
+          data-testid="channel-members-trigger"
+          onClick={onToggleMembers}
+          type="button"
+        >
+          <ChannelMemberAvatarStack
+            currentPubkey={currentPubkey}
+            members={members}
+            size="header"
+            testIdPrefix="channel-topbar-member"
           />
-        ) : undefined
+          <span className="c3c-button font-bold tabular-nums">
+            {memberCount}
+          </span>
+        </button>
+      ) : null}
+      {showJoinButton || !workArea ? null : (
+        <button
+          aria-controls={workArea.open ? WORK_AREA_PANEL_ID : undefined}
+          aria-expanded={workArea.open}
+          aria-label="Open work area"
+          className="c3c-icon-button"
+          data-active={workArea.open ? "true" : undefined}
+          data-testid="channel-work-area-trigger"
+          onClick={(event) =>
+            toggleWorkAreaFrom(activeChannel.id, event.currentTarget)
+          }
+          type="button"
+        >
+          <WorkAreaToggleIcon />
+        </button>
+      )}
+      <button
+        aria-label={isDm ? "Search this conversation" : "Search this channel"}
+        className="c3c-icon-button"
+        data-testid="channel-search-trigger"
+        onClick={requestChannelSearch}
+        type="button"
+      >
+        <SearchGlyph />
+      </button>
+      <button
+        aria-label="Manage channel"
+        className="c3c-icon-button"
+        data-testid="channel-management-trigger"
+        onClick={onManageChannel}
+        type="button"
+      >
+        <KebabIcon />
+      </button>
+      {headerEndActions}
+      <ChannelAddAgentHost
+        channel={activeChannel}
+        onOpenChange={onAddBotOpenChange}
+        open={isAddBotOpen}
+      />
+    </>
+  ) : (
+    headerEndActions
+  );
+
+  const leading = isDm ? (
+    isGroupDm ? (
+      <DmHeaderParticipantStack participants={activeDmHeaderParticipants} />
+    ) : activeDmParticipant ? (
+      <UserProfilePopover
+        pubkey={activeDmParticipant.pubkey}
+        role={activeDmParticipant.isAgent ? "bot" : undefined}
+        triggerAriaLabel={`Open profile for ${activeChannelTitle}`}
+        triggerElement="span"
+      >
+        <ProfileAvatarWithStatus
+          avatarClassName="text-sm"
+          avatarUrl={activeDmAvatarUrl}
+          className="h-10 w-10"
+          geometry={DM_HEADER_AVATAR_STATUS_GEOMETRY}
+          iconClassName="h-4 w-4"
+          label={activeChannelTitle}
+          shape={activeDmParticipant.isAgent ? "squircle" : "circle"}
+          size={DM_HEADER_AVATAR_SIZE}
+          status={activeDmPresenceStatus ?? "offline"}
+          statusTestId="chat-presence-badge"
+          testId="chat-header-dm-avatar"
+        />
+      </UserProfilePopover>
+    ) : (
+      <ProfileAvatarWithStatus
+        avatarClassName="text-sm"
+        avatarUrl={activeDmAvatarUrl}
+        className="h-10 w-10"
+        geometry={DM_HEADER_AVATAR_STATUS_GEOMETRY}
+        iconClassName="h-4 w-4"
+        label={activeChannelTitle}
+        shape="circle"
+        size={DM_HEADER_AVATAR_SIZE}
+        status={activeDmPresenceStatus ?? "offline"}
+        statusTestId="chat-presence-badge"
+        testId="chat-header-dm-avatar"
+      />
+    )
+  ) : activeChannel ? (
+    <ChannelGlyph channel={activeChannel} className="!size-5 text-colony-fg" />
+  ) : undefined;
+
+  const header = (
+    <ConversationHeader
+      actions={actions}
+      chromeWrapperRef={chromeWrapperRef}
+      description={
+        isDm
+          ? undefined
+          : showJoinButton
+            ? "Read-only until you join this open channel."
+            : activeChannel
+              ? (getChannelDetail(activeChannel) ?? undefined)
+              : undefined
       }
+      descriptionBelow={Boolean(showJoinButton)}
+      leading={leading}
       statusBadge={
         <>
+          {activeChannel?.archivedAt ? (
+            <span className="c3c-archived-badge" data-testid="chat-archived-badge">
+              Archived
+            </span>
+          ) : null}
           <ChannelHeaderStatusBadge
             ephemeralDisplay={activeChannelEphemeralDisplay}
           />
@@ -217,15 +254,20 @@ export function ChannelScreenHeader({
           ) : null}
         </>
       }
-      showDescription={
-        actionsVariant === "reference" && !referenceThreadPresentation
+      subtitle={
+        isDm && !isGroupDm && activeDmParticipant?.isAgent ? (
+          <DmAgentSubtitle pubkey={activeDmParticipant.pubkey} />
+        ) : undefined
+      }
+      tabs={
+        activeChannel?.channelType === "stream" &&
+        !referenceThreadPresentation ? (
+          <ChannelWorkspaceTabs channelId={activeChannel.id} />
+        ) : undefined
       }
       title={activeChannelTitle}
-      titleClassName={
-        referenceThreadPresentation ? "text-channel-title" : undefined
-      }
       titleAdornment={
-        activeChannel?.channelType === "dm" && !isGroupDm ? (
+        isDm && !isGroupDm ? (
           <UserNameIndicators
             className="ml-1"
             pubkey={activeDmParticipant?.pubkey}
@@ -233,8 +275,6 @@ export function ChannelScreenHeader({
           />
         ) : null
       }
-      transparentChrome={transparentChrome}
-      visibility={activeChannel?.visibility}
     />
   );
 

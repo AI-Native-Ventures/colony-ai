@@ -1,5 +1,5 @@
 import * as React from "react";
-import { LogIn, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
@@ -62,7 +62,7 @@ import {
 } from "@/features/channels/ui/ChannelPane.helpers";
 import { HuddleStartingView, HuddleTranscriptIntro } from "@/features/huddle";
 import { ChannelGlyph } from "@/features/channels/ui/ChannelGlyph";
-import { ChannelWorkspaceTabs } from "@/features/channels/ui/ChannelWorkspaceTabs";
+import { JoinGlyph } from "@/shared/ui/conversationIcons";
 import { useSearchHighlightProps } from "@/features/channels/ui/useSearchHighlightProps";
 import { useChannelIntro } from "@/features/channels/ui/useChannelIntro";
 import type { ChannelPaneProps } from "@/features/channels/ui/ChannelPane.types";
@@ -371,6 +371,7 @@ export const ChannelPane = React.memo(function ChannelPane({
   }, [onAddAgent]);
   const standardChannelIntro = useChannelIntro({
     activeChannel,
+    currentPubkey,
     onAddAgent,
     onAddFiles,
     onBrowseChannels,
@@ -649,6 +650,7 @@ export const ChannelPane = React.memo(function ChannelPane({
   ) : undefined;
   const threadLayoutProps = getThreadPanelLayout({
     headerLeading: threadHeaderLeading,
+    headerChannelPrivate: activeChannel?.visibility === "private",
     headerTitleSuffix: activeChannel ? `# ${activeChannel.name}` : undefined,
     isFocusDrawer: useFocusThreadDrawer,
     isSinglePanelView,
@@ -700,9 +702,6 @@ export const ChannelPane = React.memo(function ChannelPane({
             }
           >
             {isHuddleTranscript ? null : header}
-            {workspaceChrome && activeChannel?.channelType === "stream" ? (
-              <ChannelWorkspaceTabs />
-            ) : null}
             {isHuddleTranscript && huddleThreadRepliesError ? (
               <div className="px-5 pt-3">
                 <ThreadRepliesErrorCard onRetry={onRetryHuddleThreadReplies} />
@@ -746,7 +745,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                 emptyDescription={
                   activeChannel?.channelType === "forum"
                     ? "Select a stream or DM to load real message history in this first integration pass."
-                    : "Messages and sub-replies will appear here once the relay has history for this channel."
+                    : undefined
                 }
                 emptyTitle={
                   activeChannel
@@ -793,33 +792,33 @@ export const ChannelPane = React.memo(function ChannelPane({
               {isNonMemberView ? (
                 <div
                   data-testid="join-banner"
-                  className="flex items-center gap-3 border-t border-border/80 bg-card/50 px-5 py-3"
+                  className="flex flex-wrap items-center gap-3.5 border-t border-colony-border bg-[#fbf8f6] px-7 py-3.5"
                 >
-                  <div className="flex min-w-0 flex-1 items-center gap-2 text-sm text-muted-foreground">
+                  <div className="flex min-w-0 flex-1 items-center gap-2.5 text-colony-muted">
                     {activeChannel ? (
                       <ChannelGlyph
                         channel={activeChannel}
-                        className="h-4 w-4 shrink-0"
+                        className="!size-[calc(18*var(--colony-px))] shrink-0"
                       />
                     ) : null}
-                    <span className="truncate">
+                    <span className="c3c-join-viewing truncate">
                       Viewing{" "}
-                      <span className="font-medium text-foreground">
+                      <strong className="font-extrabold text-colony-fg">
                         #{activeChannel?.name}
-                      </span>
+                      </strong>
                     </span>
                   </div>
-                  <Button
+                  <button
+                    className="c3c-join-button inline-flex items-center gap-2 rounded-xl bg-colony-accent px-5 text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                     disabled={isJoining}
                     onClick={() => {
                       void onJoinChannel?.();
                     }}
-                    size="sm"
-                    variant="default"
+                    type="button"
                   >
-                    <LogIn className="mr-1.5 h-4 w-4" />
+                    <JoinGlyph size={17} />
                     {isJoining ? "Joining..." : "Join to participate"}
-                  </Button>
+                  </button>
                 </div>
               ) : (
                 <div
