@@ -15,6 +15,7 @@
 
 /* Company block: arch mark, name and context line. */
 :root[data-colony-office] #root .app-sidebar-full-shell .colony-sidebar-brand {
+  gap: 0.5rem;
   min-height: 2.5rem;
   margin-bottom: 0.5rem;
 }
@@ -110,6 +111,17 @@
   [data-testid="sidebar-pinned-header"]
   [data-testid="open-search"] {
   background: rgb(255 255 255 / 6%);
+}
+
+:root[data-colony-office]
+  #root
+  .app-sidebar-full-shell
+  [data-testid="sidebar-pinned-header"]
+  [data-testid="open-search"]
+  span {
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
 }
 
 :root[data-colony-office]
@@ -385,6 +397,7 @@
   #root
   .app-sidebar-full-shell
   [data-testid="sidebar-profile-card"] {
+  margin: 0 0.625rem;
   border-radius: var(--office-radius-row);
   padding: 0.625rem 0.5rem 0.375rem;
 }
@@ -424,15 +437,19 @@
   color: hsl(var(--office-ink));
   font-size: var(--office-text-label);
   font-weight: 800;
+  line-height: 1.3;
 }
 
 :root[data-colony-office]
   #root
   .app-sidebar-full-shell
   [data-testid="sidebar-profile-user-status"] {
+  margin: 0.125rem 0 0;
+  padding: 0;
   color: hsl(var(--office-ink-3));
   font-size: var(--office-text-small);
   font-weight: 650;
+  line-height: 1.35;
 }
 
 :root[data-colony-office]

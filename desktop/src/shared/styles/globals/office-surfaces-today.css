@@ -1,0 +1,257 @@
+/*
+ * Office restyle, Phase 2: Today, Updates and Activity. Page heads take the
+ * office title block; asks, updates and inbox rows sit in office cards and
+ * rounded rows. Layout and behaviour stay as they are.
+ */
+
+/* Today and Updates: one centred office column. */
+:root[data-colony-office] #root .colony-today-scroll {
+  padding: 3.5rem var(--office-gutter) 2rem;
+}
+
+:root[data-colony-office]
+  #root
+  :is(
+    .colony-today-heading,
+    .colony-today-needs-me,
+    .colony-today-moving-forward
+  ) {
+  width: 100%;
+}
+
+:root[data-colony-office]
+  #root
+  :is(.colony-today-heading, .colony-updates-heading)
+  h1 {
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-title);
+  font-weight: 800;
+  letter-spacing: var(--office-tracking-title);
+  line-height: 1.05;
+}
+
+:root[data-colony-office]
+  #root
+  :is(.colony-today-heading, .colony-updates-heading)
+  p {
+  margin-top: 0.5rem;
+  color: hsl(var(--office-ink-2));
+  font-size: var(--office-text-lede);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/* Section headings read as the office's small caps. */
+:root[data-colony-office]
+  #root
+  :is(
+    .colony-today-needs-me-heading p,
+    .colony-today-moving-forward > h2,
+    .colony-today-section-heading > span
+  ) {
+  color: hsl(var(--office-ink-3));
+  font-size: var(--office-text-caps);
+  font-weight: 800;
+  letter-spacing: var(--office-tracking-caps);
+  text-transform: uppercase;
+}
+
+:root[data-colony-office]
+  #root
+  :is(
+    .colony-today-section-heading h2,
+    .colony-today-card-heading h2,
+    .colony-today-card > h2,
+    .colony-needs-me-group h3
+  ) {
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-heading);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+:root[data-colony-office] #root .colony-today-section-heading {
+  border-bottom-color: hsl(var(--office-line));
+}
+
+/* Ask groups and cards: paper cards with the office line and radius. */
+:root[data-colony-office]
+  #root
+  :is(.colony-needs-me-group, .colony-today-card) {
+  border: 1.5px solid hsl(var(--office-line));
+  border-radius: var(--office-radius-card);
+  background: hsl(var(--office-paper));
+  box-shadow: var(--office-shadow-card);
+}
+
+/* Rows: quiet dividers and a soft hover. */
+:root[data-colony-office]
+  #root
+  :is(.colony-needs-me-row, .colony-today-attention-row) {
+  border-bottom-color: hsl(var(--office-line));
+  color: hsl(var(--office-ink));
+  padding-inline: 0.625rem;
+}
+
+:root[data-colony-office]
+  #root
+  :is(button.colony-needs-me-row, button.colony-today-attention-row):hover {
+  background: hsl(var(--office-paper-2));
+}
+
+:root[data-colony-office]
+  #root
+  :is(.colony-needs-me-copy, .colony-today-attention-copy)
+  strong {
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-nav);
+  font-weight: 800;
+}
+
+:root[data-colony-office]
+  #root
+  :is(.colony-needs-me-copy, .colony-today-attention-copy)
+  small {
+  color: hsl(var(--office-ink-3));
+  font-size: var(--office-text-meta);
+  font-weight: 600;
+}
+
+:root[data-colony-office] #root .colony-needs-me-type {
+  border-radius: 999px;
+  background: hsl(var(--office-paper-2));
+  color: hsl(var(--office-ink-2));
+  font-size: var(--office-text-caps);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 0.25rem 0.625rem;
+  text-transform: uppercase;
+}
+
+:root[data-colony-office] #root .colony-needs-me-dot {
+  background: hsl(var(--primary));
+}
+
+:root[data-colony-office] #root .colony-today-attention-icon {
+  border-radius: var(--office-radius-row);
+  background: hsl(var(--office-paper-2));
+  color: hsl(var(--office-ink-2));
+}
+
+/* Grouping and overdue toggles: office pills; the pressed one carries the accent. */
+:root[data-colony-office]
+  #root
+  :is(.colony-needs-me-group-controls button, .colony-needs-me-overdue-toggle) {
+  border: 1.5px solid hsl(var(--office-line-2));
+  border-radius: 999px;
+  background: hsl(var(--office-paper));
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-meta);
+  font-weight: 750;
+  padding: 0.4375rem 0.875rem;
+}
+
+:root[data-colony-office]
+  #root
+  :is(
+    .colony-needs-me-group-controls button[aria-pressed="true"],
+    .colony-needs-me-overdue-toggle[aria-pressed="true"]
+  ) {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+:root[data-colony-office] #root .colony-needs-me-overdue-note {
+  border-color: hsl(var(--office-line));
+  border-left-color: hsl(var(--office-gold));
+  border-radius: var(--office-radius-row);
+  background: hsl(var(--office-paper-2));
+}
+
+/* Secondary buttons on workspace screens: the office outline shape. */
+:root[data-colony-office] #root .colony-secondary-button {
+  border: 1.5px solid hsl(var(--office-line-2));
+  border-radius: var(--office-radius-control);
+  background: hsl(var(--office-paper));
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-label);
+  font-weight: 750;
+}
+
+:root[data-colony-office] #root .colony-secondary-button:hover {
+  border-color: hsl(var(--primary) / 0.7);
+}
+
+/* Errors and empty states keep their words, in office type. */
+:root[data-colony-office]
+  #root
+  :is(
+    .colony-today-query-error,
+    .colony-today-needs-me-empty,
+    .colony-today-needs-me-loading,
+    .colony-today-empty
+  ) {
+  border-radius: var(--office-radius-row);
+  font-size: var(--office-text-label);
+  font-weight: 600;
+}
+
+/* Activity: the inbox list in office rows, the detail on paper. */
+:root[data-colony-office] #root [data-testid^="home-inbox-item-"] {
+  margin: 0.125rem 0.5rem;
+  overflow: hidden;
+  border-radius: var(--office-radius-row);
+}
+
+:root[data-colony-office]
+  #root
+  [data-testid^="home-inbox-item-"][aria-current="true"] {
+  box-shadow: var(--office-shadow-row);
+}
+
+:root[data-colony-office]
+  #root
+  [data-testid^="home-inbox-item-"]
+  [data-inbox-profile-trigger]
+  .truncate {
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-nav);
+  font-weight: 800;
+}
+
+:root[data-colony-office]
+  #root
+  [data-testid^="home-inbox-item-"]
+  [data-testid="inbox-message-timestamp"] {
+  color: hsl(var(--office-ink-3));
+  font-size: var(--office-text-small);
+  font-weight: 650;
+}
+
+:root[data-colony-office]
+  #root
+  [data-testid="home-inbox-detail"]
+  [data-testid="home-inbox-context-title"] {
+  color: hsl(var(--office-ink));
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+:root[data-colony-office]
+  #root
+  [data-testid="home-inbox-detail-empty"]
+  p.font-semibold {
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-heading);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+:root[data-colony-office]
+  #root
+  [data-testid="home-inbox-detail-empty"]
+  .rounded-full {
+  background: hsl(var(--office-paper-2));
+  color: hsl(var(--primary));
+}
