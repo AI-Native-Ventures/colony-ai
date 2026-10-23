@@ -130,7 +130,7 @@ export function oliveChannelBoardMessages(
         colony3ImageTag(1, "Behind the counter"),
         colony3ImageTag(2, "Spring table"),
       ],
-      content: `The Olive House’s next post is ready. I drafted three carousel concepts from the spring brief; the farm-visit story leads.\n\n${IMAGE_SHAS.map((sha, index) => `![${["Farm visit", "Behind the counter", "Spring table"][index]}](http://localhost:3000/media/${sha}.png)`).join("\n")}`,
+      content: `The Olive House’s next post is ready. I drafted three carousel concepts from the spring brief; the farm-visit story leads.\n\n${IMAGE_SHAS.map((sha, index) => `![${["Farm visit", "Behind the counter", "Spring table"][index]}](http://localhost:3000/media/${sha}.png)`).join("\n")}\n\n\`mina/october-carousel-concepts.md\``,
     },
     {
       channelId: olive,

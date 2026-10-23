@@ -1006,7 +1006,10 @@ export const MessageRow = React.memo(
               {avatarGutterNode}
               <div className="flex min-w-0 flex-1 flex-col">
                 {headerNode}
-                <div className={bodyContainerClass} data-testid="message-body">
+                <div
+                  className={cn(bodyContainerClass, "c3c-body")}
+                  data-testid="message-body"
+                >
                   {messageBodyNode}
                 </div>
               </div>
@@ -1016,7 +1019,10 @@ export const MessageRow = React.memo(
               {avatarGutterNode}
               <div className="flex min-w-0 flex-1 flex-col">
                 {headerNode}
-                <div className={bodyContainerClass} data-testid="message-body">
+                <div
+                  className={cn(bodyContainerClass, "c3c-body")}
+                  data-testid="message-body"
+                >
                   {messageBodyNode}
                 </div>
               </div>

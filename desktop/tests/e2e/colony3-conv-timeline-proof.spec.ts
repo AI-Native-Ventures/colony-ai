@@ -60,7 +60,12 @@ const OWNED_AGENT_PROFILES: NonNullable<Colony3Extras["profiles"]> = [
 async function openLerato(
   page: Page,
   extras: Partial<Colony3Extras>,
-  options: { owned?: boolean; threadMode?: "focus" | "split" } = {},
+  options: {
+    owned?: boolean;
+    threadMode?: "focus" | "split";
+    /** Bridge options that replace the plain ones (the work area fixture). */
+    bridge?: Record<string, unknown>;
+  } = {},
 ) {
   mkdirSync(OUT, { recursive: true });
   await page.setViewportSize({ width: 1440, height: 960 });
@@ -74,6 +79,7 @@ async function openLerato(
     colony3Sidebar: true,
     windowFullscreen: true,
     ...colony3PositionOptions(),
+    ...options.bridge,
     colony3Extras: colony3Extras({
       ...extras,
       profiles: [
@@ -157,6 +163,12 @@ const oliveDescription = {
 };
 
 test("Channel board", async ({ page }) => {
+  // Mina's file is a real workspace file, so the message shows its card, and
+  // two open commitments give the Work tab its count.
+  const workspace = await createColony3WorkAreaWorkspace();
+  await installWorkspaceFileHost(page, workspace);
+  const { colony3Extras: _unused, ...workAreaBridge } =
+    colony3WorkAreaBridgeOptions();
   await openLerato(
     page,
     {
@@ -164,7 +176,7 @@ test("Channel board", async ({ page }) => {
       clearMessagesIn: [REFERENCE_CHANNEL_IDS.oliveHouse],
       messages: oliveChannelBoardMessages(),
     },
-    { owned: true },
+    { owned: true, bridge: workAreaBridge },
   );
   await page.getByTestId("channel-The Olive House").click();
   await expect(page.getByTestId("chat-title")).toHaveText("The Olive House");
