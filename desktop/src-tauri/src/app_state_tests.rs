@@ -1416,3 +1416,35 @@ fn corrupt_keyring_no_marker_no_file_generates_fresh() {
         "fresh key must be stored after generate_and_persist"
     );
 }
+
+#[test]
+fn forgetting_identity_removes_only_the_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let legacy_path = dir.path().join("identity.key");
+    save_key_file(&legacy_path, &Keys::generate()).unwrap();
+    write_migration_marker(&migration_marker_path(dir.path())).unwrap();
+    let other = dir.path().join("drafts.json");
+    std::fs::write(&other, b"{}").unwrap();
+    let store = FakeIdentityStore::present_with("nsec-placeholder");
+
+    forget_identity_with_store(&store, &legacy_path, dir.path()).unwrap();
+
+    assert_eq!(
+        *store.deleted.borrow(),
+        vec![IDENTITY_KEY_NAME.to_string()]
+    );
+    assert!(!store.slot.borrow().contains_key(IDENTITY_KEY_NAME));
+    assert!(!legacy_path.exists());
+    assert!(!migration_marker_path(dir.path()).exists());
+    assert!(other.exists(), "data that is not the identity stays");
+}
+
+#[test]
+fn forgetting_identity_twice_is_not_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let legacy_path = dir.path().join("identity.key");
+    let store = FakeIdentityStore::reachable_but_empty();
+
+    forget_identity_with_store(&store, &legacy_path, dir.path()).unwrap();
+    forget_identity_with_store(&store, &legacy_path, dir.path()).unwrap();
+}

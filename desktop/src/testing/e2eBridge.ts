@@ -19957,9 +19957,11 @@ export function maybeInstallE2eTauriMocks() {
         });
       }
       case "sign_out":
-        // Production wipes local state and restarts the app. In the browser
-        // harness there is nothing to wipe; resolving is enough — specs
-        // assert invocation via __BUZZ_E2E_COMMANDS__ and the pending UI.
+      case "sign_out_keep_data":
+        // Production wipes local state (or, for the keep-data variant, only
+        // forgets the identity) and restarts the app. In the browser harness
+        // there is nothing to wipe; resolving is enough — specs assert
+        // invocation via __BUZZ_E2E_COMMANDS__ and the pending UI.
         return;
       case "generate_backup_passphrase": {
         const request = payload as {
