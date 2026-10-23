@@ -1,0 +1,74 @@
+/*
+ * Office restyle, Phase 2: portalled surfaces (dialogs, menus, popovers,
+ * tooltips and toasts). They mount on <body>, outside #root, so the rules
+ * key off the root attribute and the Radix and Sonner markup. Colours
+ * already follow the office palette through the semantic slots on <body>;
+ * these rules add the office shapes and type. Inline shadows stay as they
+ * are.
+ */
+
+/* Dialogs: paper cards with the office radius, line and heading. */
+:root[data-colony-office] [role="dialog"].rounded-2xl.bg-background {
+  border: 1px solid hsl(var(--office-line));
+  border-radius: 1.25rem;
+  background: hsl(var(--office-paper));
+  box-shadow:
+    0 24px 60px -30px hsl(258 40% 20% / 0.55),
+    0 2px 6px hsl(258 40% 20% / 0.06);
+}
+
+:root[data-colony-office] [role="dialog"] h2.text-xl.tracking-tight {
+  color: hsl(var(--office-ink));
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+/* Menus: rounded office menus with roomy rows. */
+:root[data-colony-office] [role="menu"] {
+  border-color: hsl(var(--office-line));
+  border-radius: 0.875rem;
+}
+
+:root[data-colony-office] [role="menu"] [role^="menuitem"] {
+  border-radius: 0.5625rem;
+  color: hsl(var(--office-ink));
+  font-size: var(--office-text-label);
+  font-weight: 650;
+}
+
+:root[data-colony-office] [role="menu"] [role="separator"] {
+  background: hsl(var(--office-line));
+}
+
+/* Popovers: the office card shape. */
+:root[data-colony-office]
+  [data-radix-popper-content-wrapper]
+  > [role="dialog"] {
+  border-color: hsl(var(--office-line));
+  border-radius: var(--office-radius-card);
+}
+
+/* Tooltips: the office's ink tip with paper text. */
+:root[data-colony-office]
+  [data-radix-popper-content-wrapper]
+  > .bg-popover[data-side] {
+  border-radius: 0.625rem;
+  background: hsl(var(--office-ink));
+  color: hsl(var(--office-paper));
+  font-size: var(--office-text-small);
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+/* Toasts: paper cards with the office line and float shadow. */
+:root[data-colony-office] [data-sonner-toast] {
+  border-color: hsl(var(--office-line));
+  border-radius: 0.875rem;
+  background: hsl(var(--office-paper));
+  box-shadow: var(--office-shadow-float);
+}
+
+:root[data-colony-office] [data-sonner-toast] [data-title] {
+  color: hsl(var(--office-ink));
+  font-weight: 750;
+}

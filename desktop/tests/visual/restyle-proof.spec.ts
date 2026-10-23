@@ -10,7 +10,11 @@ import {
 import { KIND_MEMBER_POSITION_HEAD } from "../../src/shared/constants/kinds";
 
 import { waitForAnimations } from "../helpers/animations";
-import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import {
+  installMockBridge,
+  openCreateChannelDialog,
+  TEST_IDENTITIES,
+} from "../helpers/bridge";
 import { seedActiveIdentity } from "../helpers/onboarding";
 
 /**
@@ -595,6 +599,42 @@ for (const variant of VARIANTS) {
       await page.goto(`/#/goals/${topGoal}`);
       await page.waitForTimeout(1200);
       await shot(page, variant, "goal-detail");
+    }
+  });
+
+  test(`office restyle proof: overlays ${variant.id}`, async ({ page }) => {
+    test.skip(!["dialog", "search", "menu", "tooltip"].some(wants));
+    test.setTimeout(120_000);
+    await start(page, variant, false);
+    await openChannel(page, "Marketing");
+    if (wants("dialog")) {
+      await openCreateChannelDialog(page);
+      await expect(page.getByTestId("create-channel-name")).toBeVisible();
+      await page.getByTestId("create-channel-name").fill("spring-launch");
+      await shot(page, variant, "dialog");
+      await page.keyboard.press("Escape");
+    }
+    if (wants("search")) {
+      await page.getByTestId("open-search").click();
+      await expect(page.getByTestId("search-dialog-input")).toBeVisible();
+      await page.getByTestId("search-dialog-input").fill("olive");
+      await page.waitForTimeout(800);
+      await shot(page, variant, "search");
+      await page.keyboard.press("Escape");
+    }
+    if (wants("menu")) {
+      await page.getByTestId("channel-Sales").click({ button: "right" });
+      await expect(page.getByRole("menu").first()).toBeVisible();
+      await waitForAnimations(page);
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: `${OUT}/menu--${variant.id}.png` });
+      await page.keyboard.press("Escape");
+    }
+    if (wants("tooltip")) {
+      await page.getByTestId("channel-Operations").hover();
+      await page.waitForTimeout(1400);
+      await waitForAnimations(page);
+      await page.screenshot({ path: `${OUT}/tooltip--${variant.id}.png` });
     }
   });
 }
