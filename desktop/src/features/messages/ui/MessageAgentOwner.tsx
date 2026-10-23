@@ -8,13 +8,13 @@ import { UserProfilePopover } from "@/features/profile/ui/UserProfilePopover";
  * so a person can still tell who is an AI.
  */
 export function MessageAgentOwner({
-  isAgent,
+  isAgent = true,
   jobTitle,
   ownerLabel,
   ownerPubkey,
   selfName,
 }: {
-  isAgent: boolean;
+  isAgent?: boolean;
   jobTitle?: string | null;
   ownerLabel?: string | null;
   ownerPubkey?: string | null;
