@@ -76,7 +76,7 @@ export function SendFeedbackDialog({
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
         aria-describedby={undefined}
-        className="max-w-[27rem] gap-4 p-6"
+        className="max-w-[21.3125rem] gap-4 p-6"
         data-testid="send-feedback-dialog"
         showCloseButton={false}
       >

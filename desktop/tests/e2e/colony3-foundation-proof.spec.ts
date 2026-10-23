@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
@@ -11,17 +11,28 @@ import {
 } from "../helpers/colony3Fixture";
 
 /**
- * Colony 3.0 foundation proof. Captures the app at each board's size with the
- * Lerato Social fixture, so `scripts/colony3-compare.mjs` can lay each capture
- * next to the design reference. Not a regression gate: it only writes PNGs
- * (and checks that each state can be reached).
+ * Colony 3.0 foundation proof. Captures the app at each board's size (and each
+ * component at its board rectangle) with the Lerato Social fixture, so
+ * `scripts/colony3-proof-report.mjs` can lay every capture next to the design
+ * reference. Not a regression gate: it writes PNGs and checks that each state
+ * can be reached.
  *
  * COLONY3_PROOF_DIR chooses where the captures land.
  */
 const OUT = process.env.COLONY3_PROOF_DIR ?? "test-results/colony3-proof";
-const captures: Array<{ board: string; file: string; note?: string }> = [];
 
-test.describe.configure({ mode: "serial" });
+type Rect = [x: number, y: number, width: number, height: number];
+type Capture = {
+  name: string;
+  /** Reference board the capture is judged against. */
+  board: string;
+  /** Part of the board the capture covers; the whole board when omitted. */
+  refRect?: Rect;
+  title: string;
+};
+const captures: Capture[] = [];
+
+test.describe.configure({ mode: "serial", timeout: 120_000 });
 
 async function openLerato(
   page: Page,
@@ -45,14 +56,30 @@ async function openLerato(
 
 async function shot(
   page: Page,
-  board: string,
-  name: string,
-  clip?: { x: number; y: number; width: number; height: number },
+  capture: Capture,
+  target?: Locator | { x: number; y: number; width: number; height: number },
 ) {
   await waitForAnimations(page);
-  const file = `${name}.png`;
-  await page.screenshot({ path: `${OUT}/${file}`, clip });
-  captures.push({ board, file });
+  const path = `${OUT}/${capture.name}.png`;
+  if (target && "screenshot" in target) {
+    // A clip of the element's box, not an element screenshot: those wait for
+    // the element to hold still, which a live popover never quite does.
+    const box = await target.boundingBox();
+    if (!box) throw new Error(`No box to capture for ${capture.name}`);
+    await page.screenshot({
+      animations: "disabled",
+      clip: {
+        x: Math.round(box.x),
+        y: Math.round(box.y),
+        width: Math.round(box.width),
+        height: Math.round(box.height),
+      },
+      path,
+    });
+  } else {
+    await page.screenshot({ animations: "disabled", clip: target, path });
+  }
+  captures.push(capture);
 }
 
 /** Writes the text geometry of one region, to line up with the design's DOM. */
@@ -96,123 +123,258 @@ test.afterAll(() => {
   writeFileSync(`${OUT}/captures.json`, JSON.stringify(captures, null, 2));
 });
 
+async function openShowcase(page: Page, showcase: string, height: number) {
+  mkdirSync(OUT, { recursive: true });
+  await page.setViewportSize({ width: 1440, height });
+  await installMockBridge(page, {});
+  await page.addInitScript((name) => {
+    const config = (window as unknown as { __BUZZ_E2E__?: object })
+      .__BUZZ_E2E__;
+    (window as unknown as { __BUZZ_E2E__: object }).__BUZZ_E2E__ = {
+      ...config,
+      showcase: name,
+    };
+  }, showcase);
+  await page.goto("/");
+}
+
+test("Foundations board", async ({ page }) => {
+  await openShowcase(page, "colony3", 1180);
+  await expect(page.getByTestId("colony3-foundations")).toBeVisible();
+  await shot(page, {
+    name: "Foundations",
+    board: "Foundations",
+    title: "Foundations: type, colour, states, people and agents, controls",
+  });
+});
+
 test("Sidebar board", async ({ page }) => {
   await openLerato(page);
   await dumpTexts(page, "Sidebar", '[data-testid="app-sidebar"]');
-  await shot(page, "Sidebar", "Sidebar", {
-    x: 0,
-    y: 0,
-    width: 280,
-    height: 960,
-  });
+  await shot(
+    page,
+    {
+      name: "Sidebar",
+      board: "Sidebar",
+      title: "Sidebar: full workspace, Today open",
+    },
+    { x: 0, y: 0, width: 280, height: 960 },
+  );
 });
 
 test("Sidebar collapsed board", async ({ page }) => {
   await openLerato(page, { rail: true });
   await page.getByTestId("channel-The Olive House").click();
   await page.getByRole("button", { name: "Toggle Sidebar" }).click();
-  await setColony3RelayState(page, "reconnecting");
-  await page.waitForTimeout(800);
-  await shot(page, "SidebarCollapsed", "SidebarCollapsed");
+  await shot(page, {
+    name: "SidebarCollapsed",
+    board: "SidebarCollapsed",
+    title: "Collapsed sidebar and community rail (whole screen)",
+  });
+  await shot(
+    page,
+    {
+      name: "SidebarCollapsed-rail",
+      board: "SidebarCollapsed",
+      refRect: [0, 0, 141, 960],
+      title: "Collapsed sidebar and community rail (rail strip only)",
+    },
+    { x: 0, y: 0, width: 141, height: 960 },
+  );
 });
 
-test("Foundations board", async ({ page }) => {
-  mkdirSync(OUT, { recursive: true });
-  await page.setViewportSize({ width: 1440, height: 1180 });
-  await installMockBridge(page, {});
-  await page.addInitScript(() => {
-    const config = (window as unknown as { __BUZZ_E2E__?: object })
-      .__BUZZ_E2E__;
-    (window as unknown as { __BUZZ_E2E__: object }).__BUZZ_E2E__ = {
-      ...config,
-      showcase: "colony3",
-    };
-  });
-  await page.goto("/");
-  await expect(page.getByTestId("colony3-foundations")).toBeVisible();
-  await shot(page, "Foundations", "Foundations");
-});
-
-test("Shell notices board", async ({ page }) => {
-  mkdirSync(OUT, { recursive: true });
-  await page.setViewportSize({ width: 1440, height: 960 });
-  await installMockBridge(page, {});
-  await page.addInitScript(() => {
-    const config = (window as unknown as { __BUZZ_E2E__?: object })
-      .__BUZZ_E2E__;
-    (window as unknown as { __BUZZ_E2E__: object }).__BUZZ_E2E__ = {
-      ...config,
-      showcase: "colony3-notices",
-    };
-  });
-  await page.goto("/");
-  await expect(page.getByTestId("colony3-notices")).toBeVisible();
-  await shot(page, "ShellNotices", "ShellNotices-components");
+test("Relay notice in the collapsed layout", async ({ page }) => {
+  await openLerato(page, { rail: true });
+  await page.getByTestId("channel-The Olive House").click();
+  await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+  await setColony3RelayState(page, "disconnected");
+  const card = page.getByTestId("sidebar-relay-unreachable");
+  await expect(card).toBeVisible({ timeout: 15000 });
+  await shot(
+    page,
+    {
+      name: "SidebarCollapsed-notice",
+      board: "SidebarCollapsed",
+      refRect: [152, 876, 300, 62],
+      title: "Floating relay notice while the sidebar is collapsed",
+    },
+    card,
+  );
 });
 
 test("Sidebar menus board", async ({ page }) => {
   await openLerato(page);
   await page.getByTestId("channel-The Olive House").click();
-  await page.getByTestId("channel-working-The Olive House").hover();
+  // A channel hands focus to its composer a moment after it opens. Wait for
+  // that, then focus the row: focus opens the preview at once (hover waits half
+  // a second of dwell), and nothing takes the focus away afterwards.
+  await expect(page.getByTestId("message-input")).toBeFocused();
+  await page.getByTestId("channel-The Olive House").focus();
   const popover = page.getByTestId("channel-activity-popover-The Olive House");
-  await expect(popover).toBeVisible({ timeout: 8000 });
-  await shot(page, "SidebarMenus", "SidebarMenus-activity");
+  await expect(popover).toBeVisible({ timeout: 20000 });
+  await shot(
+    page,
+    {
+      name: "SidebarMenus-activity",
+      board: "SidebarMenus",
+      refRect: [288, 96, 384, 418],
+      title: "Channel activity popover",
+    },
+    popover,
+  );
   await page.mouse.move(700, 600);
   await page.getByTestId("channel-Cedar Café").click({ button: "right" });
   await page.getByRole("menuitem", { name: "Move to section" }).hover();
-  await page.waitForTimeout(400);
-  await shot(page, "SidebarMenus", "SidebarMenus-context");
+  await page.waitForTimeout(500);
+  const menus = page.getByRole("menu");
+  await shot(
+    page,
+    {
+      name: "SidebarMenus-channel-menu",
+      board: "SidebarMenus",
+      refRect: [288, 522, 262, 414],
+      title: "Channel menu",
+    },
+    menus.first(),
+  );
+  await shot(
+    page,
+    {
+      name: "SidebarMenus-section-submenu",
+      board: "SidebarMenus",
+      refRect: [556, 571, 240, 148],
+      title: "Move to section submenu",
+    },
+    menus.last(),
+  );
 });
 
 test("Sidebar sections board", async ({ page }) => {
   await openLerato(page);
   await page.getByTestId("channel-The Olive House").click();
-  // Section menu
-  await page
-    .getByRole("button", { name: "More actions for Client work" })
-    .click({ force: true });
+  const sectionActions = page.getByTestId(
+    "section-actions-reference-client-work",
+  );
+  const openSectionMenu = async () => {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await page.mouse.move(700, 500);
+      await page.waitForTimeout(300);
+      await sectionActions.click({ force: true });
+      if (
+        await page
+          .getByRole("menu")
+          .first()
+          .isVisible()
+          .catch(() => false)
+      ) {
+        return;
+      }
+      await page.waitForTimeout(500);
+    }
+    throw new Error("The section menu did not open");
+  };
+  await openSectionMenu();
   await page.getByRole("menuitem", { name: "Sort" }).hover();
-  await page.waitForTimeout(400);
-  await shot(page, "SidebarSections", "SidebarSections-menu");
+  await page.waitForTimeout(500);
+  const menus = page.getByRole("menu");
+  await shot(
+    page,
+    {
+      name: "SidebarSections-menu",
+      board: "SidebarSections",
+      refRect: [268, 446, 252, 271],
+      title: "Section menu",
+    },
+    menus.first(),
+  );
+  await shot(
+    page,
+    {
+      name: "SidebarSections-sort",
+      board: "SidebarSections",
+      refRect: [526, 610, 190, 97],
+      title: "Sort submenu",
+    },
+    menus.last(),
+  );
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
-  // Rename dialog
-  await page
-    .getByRole("button", { name: "More actions for Client work" })
-    .click({ force: true });
+  await openSectionMenu();
   await page.getByRole("menuitem", { name: "Rename section" }).click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await shot(page, "SidebarSections", "SidebarSections-rename");
+  const rename = page.getByRole("dialog");
+  await expect(rename).toBeVisible();
+  await shot(
+    page,
+    {
+      name: "SidebarSections-rename",
+      board: "SidebarSections",
+      refRect: [1008, 84, 400, 217],
+      title: "Rename section dialog",
+    },
+    rename,
+  );
   await page.keyboard.press("Escape");
-  // Delete dialog
-  await page
-    .getByRole("button", { name: "More actions for Client work" })
-    .click({ force: true });
+  await expect(rename).toBeHidden();
+  await openSectionMenu();
   await page.getByRole("menuitem", { name: "Delete section" }).click();
-  await expect(page.getByRole("alertdialog")).toBeVisible();
-  await shot(page, "SidebarSections", "SidebarSections-delete");
+  const remove = page.getByRole("alertdialog");
+  await expect(remove).toBeVisible();
+  await shot(
+    page,
+    {
+      name: "SidebarSections-delete",
+      board: "SidebarSections",
+      refRect: [1008, 380, 400, 212],
+      title: "Delete section dialog",
+    },
+    remove,
+  );
   await page.keyboard.press("Escape");
-  // Create dialog from the channel menu
+  await expect(remove).toBeHidden();
   await page.getByTestId("channel-Cedar Café").click({ button: "right" });
   await page.getByRole("menuitem", { name: "Move to section" }).hover();
   await page.getByRole("menuitem", { name: /New section/ }).click();
-  await expect(page.getByRole("dialog")).toBeVisible();
+  const create = page.getByRole("dialog");
+  await expect(create).toBeVisible();
   await page.getByPlaceholder("Section name").fill("Retainers");
-  await shot(page, "SidebarSections", "SidebarSections-create");
+  await shot(
+    page,
+    {
+      name: "SidebarSections-create",
+      board: "SidebarSections",
+      refRect: [576, 84, 410, 270],
+      title: "Create section dialog",
+    },
+    create,
+  );
+});
+
+test("Shell notices board", async ({ page }) => {
+  await openShowcase(page, "colony3-notices", 960);
+  await expect(page.getByTestId("colony3-notices")).toBeVisible();
+  const cards: Array<[string, Rect, string]> = [
+    ["notice-relay-unreachable", [320, 72, 341, 66], "Can’t reach the relay"],
+    ["notice-relay-reconnecting", [320, 150, 341, 50], "Connecting"],
+    ["notice-relay-waiting", [320, 212, 341, 89], "Waiting to reconnect"],
+    ["notice-relay-connected", [320, 313, 341, 52], "Connected"],
+    ["notice-update-ready", [320, 427, 341, 66], "Ready to update"],
+    ["notice-update-available", [320, 505, 341, 90], "Update available"],
+  ];
+  for (const [testId, refRect, title] of cards) {
+    await shot(
+      page,
+      { name: `ShellNotices-${testId}`, board: "ShellNotices", refRect, title },
+      page.getByTestId(testId),
+    );
+  }
 });
 
 test("Shell notices in the app", async ({ page }) => {
   await openLerato(page);
-  await shot(page, "ShellNotices", "ShellNotices-sidebar", {
-    x: 0,
-    y: 0,
-    width: 280,
-    height: 960,
-  });
-  // Feedback dialog
   await page.getByTestId("sidebar-profile-avatar-button").click();
   await page.getByTestId("profile-popover-send-feedback").click();
-  await expect(page.getByTestId("send-feedback-dialog")).toBeVisible();
+  const dialog = page.getByTestId("send-feedback-dialog");
+  await expect(dialog).toBeVisible();
   await page.getByRole("radio", { name: "Something is broken" }).check();
   await page
     .getByTestId("feedback-message")
@@ -220,9 +382,26 @@ test("Shell notices in the app", async ({ page }) => {
       "Mina’s carousel previews don’t load in the work area after I switch channels.",
     );
   await page.getByTestId("feedback-include-logs").click();
-  await waitForAnimations(page);
-  await page
-    .getByTestId("send-feedback-dialog")
-    .screenshot({ path: `${OUT}/ShellNotices-feedback.png` });
-  captures.push({ board: "ShellNotices", file: "ShellNotices-feedback.png" });
+  await shot(
+    page,
+    {
+      name: "ShellNotices-feedback",
+      board: "ShellNotices",
+      refRect: [1059, 72, 341, 555],
+      title: "Send feedback dialog",
+    },
+    dialog,
+  );
+});
+
+test("Main board", async ({ page }) => {
+  await openLerato(page, { route: "/" });
+  await page.getByTestId("channel-Welcome").click();
+  await page.waitForTimeout(1500);
+  await shot(page, {
+    name: "Main",
+    board: "Main",
+    title:
+      "#Welcome channel (shell and chrome; channel content is a later task)",
+  });
 });

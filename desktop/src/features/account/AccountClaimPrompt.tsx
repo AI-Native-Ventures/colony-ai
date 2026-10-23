@@ -80,7 +80,7 @@ export function AccountClaimPrompt({
   return (
     <aside
       aria-label="Account setup"
-      className="fixed bottom-4 right-4 z-40 w-[min(26rem,calc(100vw-2rem))] rounded-colony-popover bg-colony-pop p-5 text-colony-fg shadow-[0_0_0_1px_hsl(var(--colony-border)),0_18px_40px_-24px_rgba(40,20,60,0.4)]"
+      className="fixed bottom-4 right-4 z-40 w-[min(21.3125rem,calc(100vw-2rem))] rounded-colony-popover bg-colony-pop p-5 text-colony-fg shadow-[0_0_0_1px_hsl(var(--colony-border)),0_18px_40px_-24px_rgba(40,20,60,0.4)]"
       data-testid="account-claim-prompt"
     >
       {isClaimOpen ? (

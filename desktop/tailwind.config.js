@@ -15,9 +15,15 @@ export default {
           { lineHeight: "1.35" },
         ],
         menu: "calc(15 * var(--colony-px))", // menu rows and compact controls
-        hero: ["calc(56 * var(--colony-px))", { lineHeight: "1.02", letterSpacing: "-0.042em" }], // Foundations headline
+        hero: [
+          "calc(56 * var(--colony-px))",
+          { lineHeight: "1.02", letterSpacing: "-0.042em" },
+        ], // Foundations headline
         chip: "calc(14.5 * var(--colony-px))", // choice chips
-        "title-md": ["calc(24 * var(--colony-px))", { lineHeight: "1.2", letterSpacing: "-0.02em" }], // dialog titles
+        "title-md": [
+          "calc(24 * var(--colony-px))",
+          { lineHeight: "1.2", letterSpacing: "-0.02em" },
+        ], // dialog titles
         control: "calc(15.5 * var(--colony-px))", // dialog and form buttons
         "2xs": "var(--text-2xs)", // 13px label (Colony 3.0 ramp)
         "3xs": "var(--text-3xs)", // 11px tiny count and glyph text

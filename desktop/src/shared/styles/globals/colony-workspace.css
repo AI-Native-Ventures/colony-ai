@@ -155,10 +155,11 @@
   right: 18px;
 }
 
-/* The channel drop overlay follows the common content surface corners. */
+/* The channel drop overlay follows the common content surface corners, and
+   the Colony 3.0 main area is flat (see colony3-shell.css). */
 :root:has([data-colony-workspace-route="true"])
   [data-testid="drop-zone-overlay"] {
-  border-radius: var(--colony-shell-radius);
+  border-radius: 0;
 }
 
 .focus-thread-drawer-responsive {
