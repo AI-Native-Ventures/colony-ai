@@ -394,11 +394,7 @@ export function AgentDefinitionDialog({
       return;
     }
 
-    await onSubmit(
-      baseInput,
-      { publishCatalogUpdates: false },
-      onSavedPersona,
-    );
+    await onSubmit(baseInput, { publishCatalogUpdates: false }, onSavedPersona);
   }
 
   function handleSubmitForm(event: React.FormEvent<HTMLFormElement>) {
@@ -532,7 +528,6 @@ export function AgentDefinitionDialog({
     discoveredModelOptions,
     modelDiscoveryLoading,
     modelDiscoveryStatus,
-    modelDiscoverySuccessfulEmpty,
   } = usePersonaModelDiscovery({
     envVars: envVarsForDiscovery,
     isCustomProviderEditing,
@@ -835,9 +830,7 @@ export function AgentDefinitionDialog({
               >
                 LLM provider
                 {!providerIsRequired ? (
-                  <span className={PERSONA_LABEL_OPTIONAL_CLASS}>
-                    Optional
-                  </span>
+                  <span className={PERSONA_LABEL_OPTIONAL_CLASS}>Optional</span>
                 ) : null}
               </RequiredFieldLabel>
               <PersonaDropdownField
@@ -904,8 +897,7 @@ export function AgentDefinitionDialog({
                 modelSelectValue={modelSelectValue}
                 onCustomModelChange={setModel}
                 showSharedComputeAutoHint={
-                  isRelayMesh &&
-                  modelSelectValue === AUTO_MODEL_DROPDOWN_VALUE
+                  isRelayMesh && modelSelectValue === AUTO_MODEL_DROPDOWN_VALUE
                 }
                 onModelValueChange={handleModelDropdownChange}
                 showCustomModelInput={showCustomModelInput}
@@ -978,9 +970,7 @@ export function AgentDefinitionDialog({
                 transition={advancedFieldsTransition}
               >
                 <PersonaAdvancedFields
-                  afterRespondTo={
-                    isCreateMode ? createRunSection : undefined
-                  }
+                  afterRespondTo={isCreateMode ? createRunSection : undefined}
                   behaviorDraft={behaviorDraft}
                   disabled={isPending}
                   envVars={envVars}

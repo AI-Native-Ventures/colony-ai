@@ -133,10 +133,7 @@ test.describe("inline add custom harness", () => {
         },
       ],
     });
-    const dialog = await openDefinitionEditDialog(
-      page,
-      "persona-editable-e2e",
-    );
+    const dialog = await openDefinitionEditDialog(page, "persona-editable-e2e");
 
     const harness = dialog.locator("#persona-runtime");
     await openDropdown(harness);

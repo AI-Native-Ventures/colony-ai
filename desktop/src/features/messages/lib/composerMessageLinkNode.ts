@@ -5,11 +5,11 @@ import type { EditorView } from "@tiptap/pm/view";
 import { find as findLinks } from "linkifyjs";
 
 import {
-  buildGoalLink,
   buildIssueLink,
   buildProjectLink,
   buildPullRequestLink,
   buildRepoLink,
+  type ParsedEntityLink,
   parseEntityLink,
 } from "@/shared/lib/entityLink";
 import {
@@ -36,10 +36,24 @@ export type ComposerMessageLinkAttributes = {
 };
 
 const BARE_BUZZ_LINK_AT_START =
-  /^buzz:\/\/(?:message\?|channel\/|goal\/|(?:pr|issue|repo|project)\?)[^\s<>"')\]}*]+/i;
+  /^buzz:\/\/(?:message\?|channel\/|(?:pr|issue|repo|project)\?)[^\s<>"')\]}*]+/i;
 const BUZZ_LINK_SUFFIX_AT_START =
-  /^:\/\/(?:message\?|channel\/|goal\/|(?:pr|issue|repo|project)\?)[^\s<>"')\]}*]+/i;
+  /^:\/\/(?:message\?|channel\/|(?:pr|issue|repo|project)\?)[^\s<>"')\]}*]+/i;
 const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
+
+type ComposerEntityLink = Exclude<ParsedEntityLink, { type: "goal" }>;
+
+/** Goals are no longer part of the app, so their links never become chips. */
+function parseComposerEntityLink(
+  href: string,
+): { ok: true; value: ComposerEntityLink } | { ok: false; reason: string } {
+  const parsed = parseEntityLink(href);
+  if (!parsed.ok) return parsed;
+  if (parsed.value.type === "goal") {
+    return { ok: false, reason: "goal links are not supported" };
+  }
+  return { ok: true, value: parsed.value };
+}
 
 function trimBareBuzzLink(value: string): string {
   let trimmed = value.replace(TRAILING_PUNCTUATION, "");
@@ -81,14 +95,9 @@ export function resolveComposerMessageLinkAttributes(
     };
   }
 
-  const entity = parseEntityLink(href);
+  const entity = parseComposerEntityLink(href);
   if (!entity.ok) return null;
   switch (entity.value.type) {
-    case "goal":
-      return {
-        channelName: "",
-        href: buildGoalLink(entity.value.id),
-      };
     case "repo":
       return {
         channelName: "",
@@ -118,7 +127,7 @@ function unwrapExactBuzzLink(text: string): string | null {
   if (!href || /\s/.test(href)) return null;
   return parseMessageLink(href).ok ||
     parseChannelLink(href).ok ||
-    parseEntityLink(href).ok
+    parseComposerEntityLink(href).ok
     ? href
     : null;
 }
@@ -386,7 +395,7 @@ function composerLinkPresentation(
     };
   }
 
-  const entity = parseEntityLink(href);
+  const entity = parseComposerEntityLink(href);
   if (!entity.ok) {
     return {
       ariaLabel: "Colony link",
@@ -401,15 +410,6 @@ function composerLinkPresentation(
     entity.value.type === "repo" || entity.value.type === "project"
       ? ""
       : entity.value.id.slice(0, 8);
-  if (entity.value.type === "goal") {
-    return {
-      ariaLabel: `Open goal ${shortId}`,
-      channelName: "",
-      dataAttributes: { "data-buzz-link-kind": "goal" },
-      icon: "goal",
-      label: `Goal ${shortId}`,
-    };
-  }
   return {
     ariaLabel:
       entity.value.type === "repo"

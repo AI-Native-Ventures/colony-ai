@@ -177,26 +177,8 @@ export function useAppNavigation() {
   );
 
   const goHireRoles = React.useCallback(
-    (savedRolePackId?: string, behavior?: NavigationBehavior) =>
-      commitNavigation(
-        {
-          to: "/hire/roles",
-          search: { savedRolePack: savedRolePackId },
-        },
-        behavior,
-      ),
-    [commitNavigation],
-  );
-
-  const goHireRoleRecovery = React.useCallback(
-    (kind: "runtime" | "provider" | "model", draftPersonaId: string) =>
-      commitNavigation({
-        to: "/hire/roles",
-        search: {
-          roleRecovery: `${kind}-empty`,
-          rolePersonaId: draftPersonaId,
-        },
-      }),
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/hire/roles" }, behavior),
     [commitNavigation],
   );
 
@@ -297,8 +279,6 @@ export function useAppNavigation() {
     (
       channelId: string,
       options?: {
-        /** Open the agent activity pane for this agent pubkey on arrival. */
-        agentSession?: string;
         /**
          * When set, the main composer auto-submits the draft with this key
          * once on mount. Clears itself (via `?autoSend` search param) after
@@ -331,9 +311,6 @@ export function useAppNavigation() {
                   messageId: options.messageId,
                   threadRootId: options.threadRootId ?? undefined,
                 }
-              : {}),
-            ...(options?.agentSession
-              ? { agentSession: options.agentSession }
               : {}),
             ...(options?.thread ? { thread: options.thread } : {}),
             ...(options?.autoSend ? { autoSend: options.autoSend } : {}),
@@ -453,7 +430,6 @@ export function useAppNavigation() {
     goTeamPause,
     goTeamArchive,
     goHireRoles,
-    goHireRoleRecovery,
     goHireConfigure,
     goHireReview,
     goHireSuccess,

@@ -419,7 +419,8 @@ type EntityEventFetcher = (
  */
 export async function fetchBuzzEntityMetadata(
   _href: string,
-  _fetchEvents: EntityEventFetcher = (filter) => relayClient.fetchEvents(filter),
+  _fetchEvents: EntityEventFetcher = (filter) =>
+    relayClient.fetchEvents(filter),
 ): Promise<LinkPreviewMetadata | null> {
   return null;
 }

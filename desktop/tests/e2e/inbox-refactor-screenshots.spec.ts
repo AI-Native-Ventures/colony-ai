@@ -206,9 +206,7 @@ test.describe("inbox refactor screenshots", () => {
     });
   });
 
-  test("01 - filter menu with Drafts divider and counts", async ({
-    page,
-  }) => {
+  test("01 - filter menu with Drafts divider and counts", async ({ page }) => {
     await patchCommunityPubkey(page);
     await seedTwoDrafts(page);
     await installMockBridge(page, { mode: "mock" });

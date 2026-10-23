@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
-import { openAgentsDirectoryView } from "../helpers/agentWorkspace";
+import {
+  openAgentProfilePanel,
+  openAgentsDirectoryView,
+} from "../helpers/agentWorkspace";
 
 // Mock agent pubkeys (distinct from the relay agents seeded by default).
 const AGENT_PAUL = "aa".repeat(32);
@@ -39,10 +42,6 @@ async function openAgentsView(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForBridge(page);
   await openAgentsDirectoryView(page);
-  await page.getByRole("button", { name: "Templates", exact: true }).click();
-  await expect(page.getByTestId("unified-agents-groups")).toBeVisible({
-    timeout: 10_000,
-  });
 }
 
 async function seedTurns(
@@ -65,10 +64,8 @@ async function openAgentProfile(
   page: import("@playwright/test").Page,
   pubkey: string,
 ) {
-  await page.getByTestId(`managed-agent-${pubkey}`).click();
-  const panel = page.getByTestId("user-profile-panel");
-  await expect(panel).toBeVisible({ timeout: 5_000 });
-  return panel;
+  await openAgentProfilePanel(page, pubkey);
+  return page.getByTestId("user-profile-panel");
 }
 
 test.describe("active turn badge resilience", () => {

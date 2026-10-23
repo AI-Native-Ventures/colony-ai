@@ -66,11 +66,8 @@ import { MessageTimestamp } from "./MessageTimestamp";
 import { SentFromThreadLine } from "./SentFromThreadLine";
 import { WaveMessageAttachment } from "./WaveMessageAttachment";
 import { WorkItemReferenceCard } from "@/features/clients/ui/WorkItemReferenceCard";
-import { CompanyWorkMessageProvider } from "@/features/company-work/companyWorkMessageContext";
-import { CompanyWorkSuggestionMessageCard } from "@/features/company-work/ui/CompanyWorkSuggestionMessageCard";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useMessageAgentAddressPrefix } from "./MessageAgentAddressPrefix";
-import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { useCompanyTeamMemberQuery } from "@/features/company-team/teamRelay";
 const DiffMessage = React.lazy(() => import("./DiffMessage"));
 const DiffMessageExpanded = React.lazy(() => import("./DiffMessageExpanded"));
@@ -284,7 +281,6 @@ export const MessageRow = React.memo(
       (message.pubkey && isKnownAgentPubkey(message.pubkey))
         ? "bot"
         : message.role;
-    const { goTeamMemberHistory } = useAppNavigation();
     const memberQuery = useCompanyTeamMemberQuery(
       message.pubkey ?? "",
       Boolean(
@@ -771,33 +767,7 @@ export const MessageRow = React.memo(
           </p>
         ) : null}
         <SentFromThreadLine channelId={channelId} tags={message.tags} />
-        {channelId && message.pubkey && !message.pending ? (
-          <CompanyWorkMessageProvider
-            value={{
-              channelId,
-              sourceEventId: message.id,
-              threadRootEventId:
-                getThreadReference(message.tags ?? []).rootId ?? message.id,
-            }}
-          >
-            {renderBody()}
-            <CompanyWorkSuggestionMessageCard />
-          </CompanyWorkMessageProvider>
-        ) : (
-          renderBody()
-        )}
-        {employeeStatus && !isDisplayedAsContinuation ? (
-          <button
-            className="mt-1 inline-flex min-h-8 items-center rounded-md border border-border bg-background px-3 py-1 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            data-testid="open-employee-history"
-            onClick={() =>
-              void goTeamMemberHistory(memberQuery.data?.pubkey ?? "")
-            }
-            type="button"
-          >
-            Open employee history
-          </button>
-        ) : null}
+        {renderBody()}
         {continuationMetadataNode}
         <MessageReactions
           messageId={message.id}

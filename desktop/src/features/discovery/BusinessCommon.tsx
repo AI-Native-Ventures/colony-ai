@@ -21,11 +21,7 @@ export function W10Page({
   );
 }
 
-export function BusinessTabs({
-  active,
-}: {
-  active: "leads" | "pipeline";
-}) {
+export function BusinessTabs({ active }: { active: "leads" | "pipeline" }) {
   const tabs = [
     ["leads", "Leads", "/leads"],
     ["pipeline", "Pipeline", "/pipeline"],

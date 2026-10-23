@@ -522,8 +522,9 @@ test("channel browser does not show DM or private channels", async ({
   await expect(page.getByTestId("browse-channel-alice-tyler")).toHaveCount(0);
   await expect(page.getByTestId("browse-channel-bob-tyler")).toHaveCount(0);
 
-  // Private forum should not appear
+  // Forum channels are no longer part of the app, private or not
   await expect(page.getByTestId("browse-channel-announcements")).toHaveCount(0);
+  await expect(page.getByTestId("browse-channel-watercooler")).toHaveCount(0);
 });
 
 test("channel browser closes on escape", async ({ page }) => {

@@ -95,10 +95,7 @@ export function useNeedsMeQuery() {
       }),
     [askHeads.query.data, currentPubkey, membershipQuery.data?.role],
   );
-  const data = React.useMemo<NeedsMeData>(
-    () => ({ asks }),
-    [asks],
-  );
+  const data = React.useMemo<NeedsMeData>(() => ({ asks }), [asks]);
   const isPending =
     identityQuery.isPending ||
     channelsQuery.isPending ||

@@ -1,4 +1,4 @@
-import * as React from "react";
+import type * as React from "react";
 
 import { isEntityLink, type ParsedEntityLink } from "@/shared/lib/entityLink";
 import { parseSupportedLinkPreview } from "@/shared/lib/linkPreview";
@@ -33,7 +33,7 @@ function resolveEntityHref(
 }
 
 /**
- * Render a Buzz entity link (`buzz://` or an HTTPS relay clone URL whose
+ * Render an entity link (`buzz://` or an HTTPS relay clone URL whose
  * origin matches the active relay) as plain text. Returns null when the href
  * is not an entity link so the caller can fall through to its default anchor.
  */

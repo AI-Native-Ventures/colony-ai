@@ -293,4 +293,3 @@ test("Appearance write failure retains the draft for retry and leaves the live t
     page.getByTestId("appearance-field-preset-dawn"),
   ).toHaveAttribute("aria-pressed", "true");
 });
-

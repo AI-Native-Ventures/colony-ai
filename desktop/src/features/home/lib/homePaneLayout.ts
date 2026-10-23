@@ -25,9 +25,7 @@ export function getHomePaneLayout(options: HomePaneLayoutOptions) {
     options.selectedDraft &&
     !options.isSinglePanelAuxiliaryView;
   const showList =
-    !singleMessage &&
-    !singleDraft &&
-    !options.isSinglePanelAuxiliaryView;
+    !singleMessage && !singleDraft && !options.isSinglePanelAuxiliaryView;
   const showDetail =
     !options.isSinglePanelAuxiliaryView &&
     ((options.isMessagesMode && (!options.isNarrow || singleMessage)) ||

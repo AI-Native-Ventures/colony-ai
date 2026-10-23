@@ -52,7 +52,6 @@ import { useStableSendToChannel } from "./useStableSendToChannel";
 import { useAnchoredScroll } from "./useAnchoredScroll";
 import { selectDeferredListRenderState } from "@/features/messages/lib/timelineSnapshot";
 import { selectThreadRowHighlight } from "@/features/messages/lib/threadReplyHighlight";
-import { CompanyWorkThreadContextPanel } from "@/features/company-work/ui/CompanyWorkThreadContextPanel";
 
 type MessageThreadPanelProps = ThreadPanelLayoutProps & {
   channel: Channel | null;
@@ -607,12 +606,6 @@ export function MessageThreadPanel({
             </div>
           )}
         </div>
-
-        <CompanyWorkThreadContextPanel
-          channelId={channelId}
-          enabled={Boolean(channelId && !workspaceThreadContext)}
-          threadRootId={threadHead.id}
-        />
 
         {showThreadHeadDivider ? (
           <div

@@ -128,16 +128,7 @@ export function useCreateChannelForm({
         }
       })();
     },
-    [
-      description,
-      ephemeral,
-      kindLabel,
-      name,
-      onCreate,
-      onCreated,
-      ttlSeconds,
-      visibility,
-    ],
+    [description, ephemeral, name, onCreate, onCreated, ttlSeconds, visibility],
   );
 
   return {

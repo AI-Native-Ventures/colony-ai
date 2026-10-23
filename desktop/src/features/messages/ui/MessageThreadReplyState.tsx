@@ -86,7 +86,7 @@ export function ThreadRepliesEmptyDivider() {
  * the surface selection (`selectThreadRepliesSurface`, keyed off the same raw
  * query/render state the panel already holds) AND the surface→content dispatch.
  * Fusing them here removes the last falsifiable seam: the panel passes only its
- * raw state — pending/error flags and the deferred vs. live reply counts — so
+ * raw state (pending/error flags and the deferred vs. live reply counts), so
  * there is no precomputed `surface` prop at the
  * panel boundary to statically mis-set (e.g. a stray `surface="empty"` that would
  * silently restore the false-empty bug on every fetch failure). The load-bearing

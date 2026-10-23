@@ -125,7 +125,7 @@ test("queue cancellation fences an in-flight channel-message activation", async 
             {
               force: behavior?.force,
               goChannel: async () => calls.push("channel"),
-                      signal: behavior?.signal,
+              signal: behavior?.signal,
             },
             () => destination,
           ),

@@ -8,11 +8,7 @@ import {
 } from "@/features/sidebar/ui/sidebarDestinations";
 import type { SidebarDmParticipant } from "@/features/sidebar/ui/SidebarSection";
 import type { Channel } from "@/shared/api/types";
-import {
-  ActivityIcon,
-  HashIcon,
-  TodayIcon,
-} from "@/shared/ui/colonyIcons";
+import { ActivityIcon, HashIcon, TodayIcon } from "@/shared/ui/colonyIcons";
 
 type CollapsedDirectMessage = {
   channel: Channel;

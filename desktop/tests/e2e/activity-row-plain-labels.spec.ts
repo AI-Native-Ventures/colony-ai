@@ -229,32 +229,4 @@ test.describe("agent activity shows plain labels", () => {
     await page.keyboard.press("Escape");
     await expect(details).toHaveCount(0);
   });
-
-  test("transcript rows use the same plain wording by default", async ({
-    page,
-  }) => {
-    await workingAgentRow(page);
-    await seedToolCalls(page, [LIST_COMMAND, SEND_COMMAND]);
-    await page.getByTestId("bot-activity-composer-trigger").click();
-    await page
-      .getByTestId(`bot-activity-composer-item-${AGENT}`)
-      .click({ force: true });
-    const panel = page.getByTestId("agent-session-thread-panel");
-    await expect(panel).toBeVisible();
-
-    const rows = panel.locator(
-      '[data-testid="transcript-tool-item"], [data-testid="transcript-same-kind-summary"]',
-    );
-    await expect(rows.first()).toBeVisible();
-    const count = await rows.count();
-    expect(count).toBeGreaterThan(0);
-    for (let index = 0; index < count; index += 1) {
-      const text = await visibleTextAndNames(rows.nth(index));
-      // Closed details are not rendered, so innerText is what people see.
-      const rendered = text.split("\n")[0] ?? "";
-      expect(rendered).not.toMatch(/buzz/i);
-      expect(rendered).not.toContain("|");
-    }
-    await capture(page, "transcript-default");
-  });
 });

@@ -675,7 +675,9 @@ export const ChannelPane = React.memo(function ChannelPane({
                 hasComposerOverlay={hasMainComposerOverlay}
                 hasOlderMessages={hasOlderMessages}
                 historyExhausted={historyExhausted}
-                alwaysShowMessageIdentity={workspaceChrome && hasOpenMessageThread}
+                alwaysShowMessageIdentity={
+                  workspaceChrome && hasOpenMessageThread
+                }
                 compactThreadSummaryAvatars
                 isFetchingOlder={isFetchingOlder}
                 isFollowingThreadById={isFollowingThreadById}

@@ -90,9 +90,7 @@ export function AppSidebarPinnedHeader({
           aria-label={`Open business switcher, current business ${activeCommunityName || "No community"}`}
           data-testid="sidebar-business-switcher"
           onClick={() =>
-            window.dispatchEvent(
-              new Event(OPEN_SIDEBAR_PROFILE_POPOVER_EVENT),
-            )
+            window.dispatchEvent(new Event(OPEN_SIDEBAR_PROFILE_POPOVER_EVENT))
           }
           type="button"
         >

@@ -67,9 +67,7 @@ export function HumanMemberProfile({
             className="border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-[2.1875rem]"
             data-testid="company-human-role"
           >
-            <h2 className="mb-5 text-base font-semibold">
-              Role and reporting
-            </h2>
+            <h2 className="mb-5 text-base font-semibold">Role and reporting</h2>
             <p className="text-xs text-muted-foreground">
               {title || "Member"}
               <br />
@@ -95,12 +93,10 @@ export function HumanMemberProfile({
             <p className="text-xs text-muted-foreground">
               Contribute, discuss, own commitments and review outcomes.
             </p>
-            <h3 className="mb-4 mt-6 text-sm font-semibold">
-              Manager actions
-            </h3>
+            <h3 className="mb-4 mt-6 text-sm font-semibold">Manager actions</h3>
             <p className="text-xs text-muted-foreground">
-              Assign work, propose hires and raises. Money and sensitive
-              access require an authorized human.
+              Assign work, propose hires and raises. Money and sensitive access
+              require an authorized human.
             </p>
           </section>
         </div>

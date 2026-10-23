@@ -940,4 +940,3 @@ test("workspace appearance saves conversation size in its global preference", as
     path: `${SHOTS}/04-appearance-saved.png`,
   });
 });
-

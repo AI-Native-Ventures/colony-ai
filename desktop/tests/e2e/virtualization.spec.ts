@@ -3,7 +3,6 @@ import type { Locator, Page } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
 
-
 // Mock-mode current-user pubkey (DEFAULT_MOCK_IDENTITY). Custom channel
 // sections persist under buzz-channel-sections.v1:<pubkey>, so shot 6 seeds two
 // sections for this key before the app boots.

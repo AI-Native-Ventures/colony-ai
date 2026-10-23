@@ -3,7 +3,6 @@ import { useAppShell } from "@/app/AppShellContext";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import type { ActiveChannelTurnSummary } from "@/features/agents/activeAgentTurnsStore";
 import { formatElapsedClock } from "@/features/agents/ui/agentSessionUtils";
-import { useOpenAgentActivity } from "@/features/agents/useOpenAgentActivity";
 import { buildInboxItems, type InboxItem } from "@/features/home/lib/inbox";
 import { getGroupedInboxItemIds } from "@/features/home/useHomeInboxReadState";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
@@ -231,7 +230,6 @@ export function ChannelActivityPopover({
   const { undoUnread } = feedItemState;
   const identityQuery = useIdentityQuery();
   const { goChannel } = useAppNavigation();
-  const { openAgentActivity } = useOpenAgentActivity();
 
   const unreadChannelFeedItems = React.useMemo(() => {
     return unreadThreadFeedItems.filter(
@@ -400,9 +398,9 @@ export function ChannelActivityPopover({
                 <WorkingAgentRows
                   activeWorking={activeWorking}
                   channelId={channel.id}
-                  onOpen={(pubkey, channelId) => {
+                  onOpen={(_pubkey, channelId) => {
                     setOpen(false);
-                    openAgentActivity(pubkey, { channelId });
+                    void goChannel(channelId);
                   }}
                   profiles={profiles}
                 />

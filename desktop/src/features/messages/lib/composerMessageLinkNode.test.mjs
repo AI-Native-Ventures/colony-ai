@@ -76,9 +76,10 @@ test("resolves channel and entity links as composer chips", () => {
     resolveComposerMessageLinkAttributes(ISSUE_HREF, () => undefined),
     { channelName: "", href: ISSUE_HREF },
   );
-  assert.deepEqual(
+  // Goals are no longer part of the app: their links never become chips.
+  assert.equal(
     resolveComposerMessageLinkAttributes(GOAL_HREF, () => undefined),
-    { channelName: "", href: GOAL_HREF },
+    null,
   );
 });
 
@@ -106,7 +107,6 @@ const EXACT_LINK_PASTE_ACCEPTED_CASES = [
   ["project", PROJECT_HREF, PROJECT_HREF],
   ["pull request", PR_HREF, PR_HREF],
   ["issue", ISSUE_HREF, ISSUE_HREF],
-  ["goal", GOAL_HREF, GOAL_HREF],
 ];
 
 for (const [label, input, expectedHref] of EXACT_LINK_PASTE_ACCEPTED_CASES) {
@@ -706,11 +706,6 @@ test("composer node renders channel and entity chip presentations", () => {
   assert.equal(pullRequest[1]["data-buzz-link-kind"], "pr");
   assert.match(pullRequest[1].class, /inline-chip-icon-pr/);
   assert.equal(renderedChipLabel(pullRequest), "buzz-world");
-
-  const goal = render(GOAL_HREF);
-  assert.equal(goal[1]["data-buzz-link-kind"], "goal");
-  assert.match(goal[1].class, /inline-chip-icon-goal/);
-  assert.equal(renderedChipLabel(goal), "Goal 123e4567");
 });
 
 test("markdown rendering stores identity in attributes, not visible id text", () => {

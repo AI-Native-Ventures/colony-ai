@@ -1,11 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { npubEncode } from "nostr-tools/nip19";
 
-import {
-  createMockAgentMemoryListing,
-  installMockBridge,
-  TEST_IDENTITIES,
-} from "../helpers/bridge";
+import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
 import {
   openAvatarProfileContext,
@@ -13,7 +9,11 @@ import {
   openSettings,
   selectSettingsSection,
 } from "../helpers/settings";
-import { openAgentTemplatesView } from "../helpers/agentWorkspace";
+import {
+  openAgentProfilePanel,
+  openAgentsDirectoryView,
+  openPersonaProfilePanel,
+} from "../helpers/agentWorkspace";
 
 async function expectHomeView(page: import("@playwright/test").Page) {
   await expect(page.getByTestId("home-inbox-list")).toBeVisible();
@@ -106,7 +106,7 @@ async function readVisibleProfileSurface(page: Page) {
 }
 
 async function readOwnedAgentProfileContract(page: Page) {
-  const tabs = ["info", "runtime", "channels", "memories"] as const;
+  const tabs = ["info", "runtime", "channels"] as const;
   const contract: Partial<
     Record<
       (typeof tabs)[number],
@@ -121,9 +121,6 @@ async function readOwnedAgentProfileContract(page: Page) {
       await trigger.click();
     }
     await expect(trigger).toHaveAttribute("data-state", "active");
-    if (tab === "memories") {
-      await expect(page.getByTestId("agent-memory-section")).toBeVisible();
-    }
     await waitForAnimations(page);
     contract[tab] = await readVisibleProfileSurface(page);
   }
@@ -295,10 +292,8 @@ test("profile panel shows communication actions as quick action tiles", async ({
   await expect(actionGroup).toHaveClass(/auto-cols-fr/);
   const waveAction = panel.getByTestId("user-profile-wave");
   const messageAction = panel.getByTestId("user-profile-message");
-  const huddleAction = panel.getByTestId("user-profile-huddle");
   await expect(waveAction).toHaveClass(/flex-col/);
   await expect(messageAction).toHaveClass(/flex-col/);
-  await expect(huddleAction).toHaveClass(/flex-col/);
   const communicationActionOrder = await actionGroup
     .locator("button[data-testid]")
     .evaluateAll((buttons) =>
@@ -306,7 +301,6 @@ test("profile panel shows communication actions as quick action tiles", async ({
     );
   expect(communicationActionOrder).toEqual([
     "user-profile-message",
-    "user-profile-huddle",
     "user-profile-wave",
   ]);
   await expect(panel.getByTestId("user-profile-copy-pubkey")).toBeVisible();
@@ -320,7 +314,6 @@ test("owned agent profile stays in parity between Agents and its DM", async ({
   page,
 }) => {
   await installMockBridge(page, {
-    agentMemory: createMockAgentMemoryListing(),
     oaOwnerIsMe: true,
   });
   await page.goto("/");
@@ -332,10 +325,8 @@ test("owned agent profile stays in parity between Agents and its DM", async ({
     "Keep every profile entry point in sync.",
   );
 
-  await openAgentTemplatesView(page);
-  await page
-    .getByRole("button", { name: `${agentName} agent profile` })
-    .click();
+  await openAgentsDirectoryView(page);
+  await openAgentProfilePanel(page, agentPubkey);
   await page.getByTestId("user-profile-message").click();
   await expect(page.getByTestId("chat-header-dm-avatar")).toBeVisible();
   const dmChannelId = await page.evaluate(() => {
@@ -373,10 +364,8 @@ test("owned agent profile stays in parity between Agents and its DM", async ({
     { dmChannelId, pubkey: agentPubkey },
   );
 
-  await openAgentTemplatesView(page);
-  await page
-    .getByRole("button", { name: `${agentName} agent profile` })
-    .click();
+  await openAgentsDirectoryView(page);
+  await openAgentProfilePanel(page, agentPubkey);
   const agentsSurface = await readOwnedAgentProfileContract(page);
 
   await page.getByTestId("user-profile-message").click();
@@ -750,7 +739,6 @@ test("renders agent profile ingress subviews from the Playwright mock bridge", a
   test.setTimeout(60_000);
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await installMockBridge(page, {
-    agentMemory: createMockAgentMemoryListing(),
     // The viewer is the agent's verified NIP-OA owner, so archiveActions
     // grants the Archive row (canArchive gate; the relay re-verifies on submit).
     oaOwnerIsMe: true,
@@ -826,7 +814,6 @@ test("renders agent profile ingress subviews from the Playwright mock bridge", a
 
   await expect(page.getByTestId("user-profile-panel")).toBeVisible();
   await expect(page.getByTestId("user-profile-message")).toBeVisible();
-  await expect(page.getByTestId("user-profile-huddle")).toHaveCount(0);
   await expect(page.getByTestId("user-profile-wave")).toHaveCount(0);
   await expectHashSearchParam(page, "profile", agentPubkey);
   const agentPresenceBadge = page.getByTestId("user-profile-presence-badge");
@@ -1169,9 +1156,6 @@ test("renders agent profile ingress subviews from the Playwright mock bridge", a
   await deleteAgentRow.click();
   await expect(page.getByTestId("agent-delete-confirm-dialog")).toBeVisible();
   await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByTestId("user-profile-tab-memories")).toHaveText(
-    "Memories",
-  );
   await expect(page.getByTestId("user-profile-tab-runtime")).toHaveText(
     "Runtime",
   );
@@ -1466,14 +1450,6 @@ test("renders agent profile ingress subviews from the Playwright mock bridge", a
     page.getByTestId("user-profile-tab-content-transition"),
   ).toHaveAttribute("data-transition-direction", "backward");
   await expectHashSearchParam(page, "profileTab", null);
-  await page.getByTestId(`user-profile-view-activity-${agentPubkey}`).click();
-  await expect(page.getByTestId("agent-session-thread-panel")).toBeVisible();
-  await page.getByTestId("agent-session-back").click();
-  await expect(page.getByTestId("user-profile-panel")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { level: 2, name: "Profile" }),
-  ).toBeVisible();
-
   await page.getByTestId("user-profile-tab-channels").click();
   await expectHashSearchParam(page, "profileTab", "channels");
   await expect(
@@ -1491,38 +1467,6 @@ test("renders agent profile ingress subviews from the Playwright mock bridge", a
   await expect(page.getByTestId("user-profile-channels-list")).toContainText(
     "#general",
   );
-
-  await page.getByTestId("user-profile-tab-memories").click();
-  await expectHashSearchParam(page, "profileTab", "memories");
-  await expect(
-    page.getByTestId("user-profile-panel").getByRole("heading", {
-      exact: true,
-      level: 2,
-      name: "Memories",
-    }),
-  ).toHaveCount(0);
-  await expect(
-    page
-      .getByTestId("user-profile-memories-section")
-      .locator('[data-slot="panel-section-header"]'),
-  ).toHaveCount(0);
-  await expect(page.getByTestId("agent-memory-section")).toBeVisible();
-  await expect(page.getByTestId("agent-memory-list")).toContainText(
-    "ui-density",
-  );
-  await page.goBack();
-  await expectHashSearchParam(page, "profileTab", "channels");
-  await expect(page.getByTestId("user-profile-channels-list")).toContainText(
-    "#general",
-  );
-  await page.goForward();
-  await expectHashSearchParam(page, "profileTab", "memories");
-  await expect(page.getByTestId("agent-memory-section")).toBeVisible();
-  await expect(page.getByTestId("agent-memory-truncated")).toContainText(
-    "View all (9)",
-  );
-  await page.getByTestId("agent-memory-truncated").click();
-  await expect(page.getByTestId("agent-memory-list")).toContainText("orphan");
 });
 
 test("an older agent message stays exact while persona navigation selects the live instance", async ({
@@ -1532,7 +1476,6 @@ test("an older agent message stays exact while persona navigation selects the li
   const historicalPubkey = TEST_IDENTITIES.charlie.pubkey;
   const currentPubkey = "d".repeat(64);
   await installMockBridge(page, {
-    agentMemory: createMockAgentMemoryListing(),
     managedAgents: [
       {
         channelNames: ["agents"],
@@ -1561,8 +1504,8 @@ test("an older agent message stays exact while persona navigation selects the li
   });
   await page.goto("/");
 
-  await openAgentTemplatesView(page);
-  await page.getByTestId(`persona-agent-row-${personaId}`).click();
+  await openAgentsDirectoryView(page);
+  await openPersonaProfilePanel(page, personaId);
   await expect(
     page.getByTestId("user-profile-agent-primary-action"),
   ).toHaveAttribute("aria-label", "Stop");
@@ -1599,52 +1542,6 @@ test("an older agent message stays exact while persona navigation selects the li
   await page.screenshot({
     path: testInfo.outputPath("historical-exact-instance.png"),
   });
-});
-
-test("restored Inbox deep link hides the back arrow", async ({ page }) => {
-  // Charlie is a `bot` member of #agents and authors a seeded message there;
-  // seeding a managed agent with the same pubkey makes that message's avatar
-  // open a managed-agent profile panel with the Inbox ingress. Unlike an
-  // agent created at runtime through the bridge, this seed survives
-  // `page.reload()` because init scripts re-run on navigation.
-  const agentPubkey = TEST_IDENTITIES.charlie.pubkey;
-  await installMockBridge(page, {
-    managedAgents: [
-      {
-        channelNames: ["agents"],
-        name: "Charlie",
-        pubkey: agentPubkey,
-        status: "running",
-      },
-    ],
-  });
-  await page.goto("/");
-
-  await page.getByTestId("channel-agents").click();
-  await expect(page.getByTestId("chat-title")).toHaveText("agents");
-
-  const messageRow = page
-    .getByTestId("message-row")
-    .filter({ hasText: "Indexing the channel catalog now." });
-  await expect(messageRow).toBeVisible();
-  await messageRow.locator("button").first().click();
-  await expect(page.getByTestId("user-profile-panel")).toBeVisible();
-
-  // Opened from the profile panel: a return target was captured, so the
-  // header shows the back arrow.
-  await page.getByTestId(`user-profile-view-activity-${agentPubkey}`).click();
-  await expect(page.getByTestId("agent-session-thread-panel")).toBeVisible();
-  await expect(page.getByTestId("agent-session-back")).toBeVisible();
-
-  // A reload keeps the `agentSession` URL param but drops the in-memory
-  // return target, so the restored panel hides the back arrow and close is
-  // the only affordance - never a blind history pop.
-  await page.reload();
-  await expect(page.getByTestId("agent-session-thread-panel")).toBeVisible();
-  await expect(page.getByTestId("agent-session-back")).toHaveCount(0);
-  await expect(page.getByTestId("auxiliary-panel-close")).toBeVisible();
-  await page.getByTestId("auxiliary-panel-close").click();
-  await expect(page.getByTestId("agent-session-thread-panel")).toHaveCount(0);
 });
 
 test("declared owner sees runtime tab for a remote relay agent", async ({
@@ -2030,80 +1927,6 @@ test("notification settings drive the Inbox badge and desktop alerts", async ({
   await expectHomeView(page);
   await expect(page.getByTestId("sidebar-home-count")).toHaveCount(0);
   await expect.poll(getAppBadgeCount).toBe(baseline);
-});
-
-test("desktop notification clicks open the matching forum thread", async ({
-  page,
-}) => {
-  await page.goto("/");
-
-  await openSettings(page, "notifications");
-  await expect(page.getByTestId("notifications-desktop-state")).toContainText(
-    "On",
-  );
-  await page.getByTestId("settings-back-to-app").click();
-  await expectHomeView(page);
-
-  await page.evaluate(() => {
-    const win = window as Window & {
-      __BUZZ_E2E_PUSH_MOCK_FEED_ITEM__?: (item: {
-        category: "mention" | "needs_action" | "activity" | "agent_activity";
-        channel_id: string | null;
-        channel_name: string;
-        content: string;
-        created_at: number;
-        id: string;
-        kind: number;
-        pubkey: string;
-        tags: string[][];
-      }) => unknown;
-    };
-
-    win.__BUZZ_E2E_PUSH_MOCK_FEED_ITEM__?.({
-      category: "mention",
-      channel_id: "a27e1ee9-76a6-5bdf-a5d5-1d85610dad11",
-      channel_name: "watercooler",
-      content: "Release checklist: async feedback thread.",
-      created_at: Math.floor(Date.now() / 1000) + 5,
-      id: "mock-forum-release-thread",
-      kind: 45001,
-      pubkey:
-        "953d3363262e86b770419834c53d2446409db6d918a57f8f339d495d54ab001f",
-      tags: [["h", "a27e1ee9-76a6-5bdf-a5d5-1d85610dad11"]],
-    });
-  });
-
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const win = window as Window & {
-          __BUZZ_E2E_NOTIFICATIONS__?: Array<{
-            body: string | null;
-            title: string;
-          }>;
-        };
-
-        return win.__BUZZ_E2E_NOTIFICATIONS__?.length ?? 0;
-      }),
-    )
-    .toBe(1);
-
-  const clickedNotification = await page.evaluate(() => {
-    const win = window as Window & {
-      __BUZZ_E2E_CLICK_NOTIFICATION__?: (index: number) => boolean;
-    };
-
-    return win.__BUZZ_E2E_CLICK_NOTIFICATION__?.(0) ?? false;
-  });
-  expect(clickedNotification).toBe(true);
-
-  await expect(page.getByTestId("chat-title")).toHaveText("watercooler");
-  await expect(
-    page.getByRole("button", { name: "Back to posts" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Release checklist: async feedback thread."),
-  ).toBeVisible();
 });
 
 test("opens and closes settings with the keyboard shortcut", async ({

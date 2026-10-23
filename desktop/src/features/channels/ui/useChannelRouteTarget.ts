@@ -101,10 +101,7 @@ export function useChannelRouteTarget({
       handledThreadRouteTargetRef.current = null;
     }
 
-    if (
-      handledThreadRouteTargetRef.current === targetKey ||
-      !activeChannel
-    ) {
+    if (handledThreadRouteTargetRef.current === targetKey || !activeChannel) {
       return;
     }
 

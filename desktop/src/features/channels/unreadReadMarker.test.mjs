@@ -104,8 +104,14 @@ test("notification event guard suppresses reconnect replay and stays bounded", (
 
 test("huddle cards are not unread triggers in any channel", () => {
   for (const isDmChannel of [true, false]) {
-    assert.equal(isChannelUnreadTriggerKind(KIND_HUDDLE_STARTED, isDmChannel), false);
-    assert.equal(isChannelUnreadTriggerKind(KIND_HUDDLE_ENDED, isDmChannel), false);
+    assert.equal(
+      isChannelUnreadTriggerKind(KIND_HUDDLE_STARTED, isDmChannel),
+      false,
+    );
+    assert.equal(
+      isChannelUnreadTriggerKind(KIND_HUDDLE_ENDED, isDmChannel),
+      false,
+    );
   }
 });
 

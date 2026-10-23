@@ -13,10 +13,7 @@ import type {
   UserStatus,
 } from "@/shared/api/types";
 
-export type CollapsibleSidebarGroup =
-  | "starred"
-  | "channels"
-  | "directMessages";
+export type CollapsibleSidebarGroup = "starred" | "channels" | "directMessages";
 
 export type CreateChannelKind = "stream";
 
