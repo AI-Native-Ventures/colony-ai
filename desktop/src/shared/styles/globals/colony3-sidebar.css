@@ -272,7 +272,10 @@
   opacity: 1;
 }
 
-.app-sidebar-full-shell [data-sidebar="menu-button"]:hover {
+.app-sidebar-full-shell [data-sidebar="menu-button"]:hover,
+.app-sidebar-full-shell
+  [data-sidebar="menu-item"]:hover
+  > [data-sidebar="menu-button"]:not([data-active="true"]) {
   background: var(--colony-sidebar-glass);
 }
 

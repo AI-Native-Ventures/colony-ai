@@ -923,8 +923,9 @@ test("settings content uses the same inset surface as the main app", async ({
     /mac|iphone|ipad|ipod/i.test(navigator.platform),
   );
   // The Colony 3.0 sidebar puts the search 78px down on a Mac (below the
-  // window buttons) and 50px down elsewhere.
-  expect(searchBox.y - backToAppBox.y).toBe(isMac ? 78 : 50);
+  // window buttons) and 50px down elsewhere; the settings sidebar starts at
+  // the window top, 8px higher than before.
+  expect(searchBox.y - backToAppBox.y).toBe(isMac ? 86 : 58);
 
   // Header and content share one card. The frame carries the 8px margin;
   // the content starts directly below its 52px header.
