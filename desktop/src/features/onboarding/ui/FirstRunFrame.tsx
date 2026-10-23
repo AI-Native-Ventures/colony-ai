@@ -244,7 +244,11 @@ export function FirstRunStoryPanel({ story }: { story: FirstRunStory }) {
             <span className="c3fr-scout-name">
               Scout <span>· Chief of Staff</span>
             </span>
-            <span className="c3fr-status" data-tone={story.tone} role="status">
+            <span
+              className="c3fr-status scout-status"
+              data-tone={story.tone}
+              role="status"
+            >
               <i
                 aria-hidden="true"
                 className={story.tone === "working" ? "c3fr-live" : undefined}
