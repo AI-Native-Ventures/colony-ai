@@ -71,7 +71,54 @@ async function shot(
   } else {
     await page.screenshot({ animations: "disabled", clip: target, path });
   }
+  await dumpTexts(page, capture.name);
   captures.push(capture);
+}
+
+/**
+ * Writes the text geometry of the page and of the dialog (when one is open),
+ * to line up with the design's DOM (`scripts` side: scratch comparison tool).
+ */
+async function dumpTexts(page: Page, name: string) {
+  const dump = await page.evaluate(() => {
+    const dialog = document.querySelector('[role="dialog"]');
+    const box = dialog?.getBoundingClientRect();
+    const out: Array<Record<string, unknown>> = [];
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+    );
+    let node = walker.nextNode();
+    while (node) {
+      const text = node.textContent?.trim() ?? "";
+      const parent = node.parentElement;
+      if (text && parent && !parent.closest("script,style")) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const rect = range.getBoundingClientRect();
+        const style = getComputedStyle(parent);
+        if (rect.width > 0 && rect.height > 0) {
+          out.push({
+            t: text.slice(0, 48),
+            x: Math.round(rect.x * 10) / 10,
+            y: Math.round(rect.y * 10) / 10,
+            w: Math.round(rect.width * 10) / 10,
+            h: Math.round(rect.height * 10) / 10,
+            fs: style.fontSize,
+            fw: style.fontWeight,
+            c: style.color,
+            ls: style.letterSpacing,
+          });
+        }
+      }
+      node = walker.nextNode();
+    }
+    return {
+      dialog: box ? { x: box.x, y: box.y, w: box.width, h: box.height } : null,
+      texts: out,
+    };
+  });
+  writeFileSync(`${OUT}/${name}.rects.json`, JSON.stringify(dump, null, 1));
 }
 
 test.afterAll(() => {
@@ -214,8 +261,16 @@ test("Lead dialogs board", async ({ page }) => {
   await page.getByRole("button", { name: "Add lead" }).first().click();
   const addLead = page.getByTestId("w10-add-lead-dialog");
   await addLead.getByLabel("Business name").fill("The Olive House");
+  // The other fields are required, so fill them to submit, then empty them:
+  // the board shows the message above an otherwise empty form.
+  const required = ["Contact name", "Email", "Industry", "Location"] as const;
+  const values = ["Nandi", "nandi@olive.example", "Home & Living", "Parkhurst"];
+  for (const [index, label] of required.entries()) {
+    await addLead.getByLabel(label).fill(values[index]);
+  }
   await addLead.getByRole("button", { name: "Add lead" }).click();
   await expect(addLead.getByRole("alert")).toBeVisible();
+  for (const label of required) await addLead.getByLabel(label).fill("");
   await shot(
     page,
     {
