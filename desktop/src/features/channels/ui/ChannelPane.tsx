@@ -920,6 +920,7 @@ export const ChannelPane = React.memo(function ChannelPane({
                                   : "Select a channel"
                       }
                       showGoalReference={!isActiveWelcomeChannel}
+                      showLeadReference={!isActiveWelcomeChannel}
                       showTopBorder={false}
                     />
                     <ChannelComposerActivityAccessory

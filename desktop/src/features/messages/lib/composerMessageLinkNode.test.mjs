@@ -31,6 +31,7 @@ const ISSUE_HREF = `buzz://issue?id=${ISSUE_ID}&owner=${OWNER}&d=buzz-world`;
 const PR_ID = "c".repeat(64);
 const PR_HREF = `buzz://pr?id=${PR_ID}&owner=${OWNER}&d=buzz-world`;
 const GOAL_HREF = "buzz://goal/123e4567-e89b-12d3-a456-426614174000";
+const LEAD_HREF = "buzz://lead/123e4567-e89b-12d3-a456-426614174000";
 
 test("resolves a composer preview and canonicalizes the underlying href", () => {
   assert.deepEqual(
@@ -107,6 +108,12 @@ const EXACT_LINK_PASTE_ACCEPTED_CASES = [
   ["pull request", PR_HREF, PR_HREF],
   ["issue", ISSUE_HREF, ISSUE_HREF],
   ["goal", GOAL_HREF, GOAL_HREF],
+  ["lead", LEAD_HREF, LEAD_HREF],
+  [
+    "lead with uppercase id",
+    LEAD_HREF.toUpperCase().replace("BUZZ://LEAD/", "buzz://lead/"),
+    LEAD_HREF,
+  ],
 ];
 
 for (const [label, input, expectedHref] of EXACT_LINK_PASTE_ACCEPTED_CASES) {
@@ -711,6 +718,39 @@ test("composer node renders channel and entity chip presentations", () => {
   assert.equal(goal[1]["data-buzz-link-kind"], "goal");
   assert.match(goal[1].class, /inline-chip-icon-goal/);
   assert.equal(renderedChipLabel(goal), "Goal 123e4567");
+});
+
+test("composer node renders a lead chip with the lead name, or its short id", () => {
+  const render = (channelName) =>
+    globalThis.structuredClone(
+      ComposerMessageLinkNode.config.renderHTML.call(
+        { options: { resolveChannelName: () => undefined } },
+        {
+          HTMLAttributes: {},
+          node: { attrs: { channelName, href: LEAD_HREF } },
+        },
+      ),
+    );
+
+  const named = render("Form & Field");
+  assert.equal(named[1]["data-buzz-link-kind"], "lead");
+  assert.match(named[1].class, /inline-chip-icon-lead/);
+  assert.equal(named[1]["aria-label"], "Open lead Form & Field");
+  assert.equal(renderedChipLabel(named), "Form & Field");
+
+  const unnamed = render("");
+  assert.equal(unnamed[1]["aria-label"], "Open lead 123e4567");
+  assert.equal(renderedChipLabel(unnamed), "Lead 123e4567");
+});
+
+test("a lead link canonicalizes through the composer attribute resolver", () => {
+  assert.deepEqual(
+    resolveComposerMessageLinkAttributes(
+      "buzz://lead/123E4567-E89B-12D3-A456-426614174000",
+      () => undefined,
+    ),
+    { channelName: "", href: LEAD_HREF },
+  );
 });
 
 test("markdown rendering stores identity in attributes, not visible id text", () => {

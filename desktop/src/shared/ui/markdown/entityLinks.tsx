@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import { GoalReferenceCard } from "@/features/goals/ui/GoalReferenceCard";
+import { LeadReferenceCard } from "@/features/leads/LeadReferenceCard";
 import { useProjectsQuery } from "@/features/projects/hooks";
 import type { Project } from "@/features/projects/projectModels";
 import {
@@ -164,6 +165,13 @@ function entityLinkPresentation(link: ParsedEntityLink) {
         label: `Goal ${link.id.slice(0, 8)}`,
         tooltipFooter: "Goal",
       };
+    case "lead":
+      return {
+        ariaLabel: `Open lead ${link.id.slice(0, 8)}`,
+        icon: "lead" as const,
+        label: `Lead ${link.id.slice(0, 8)}`,
+        tooltipFooter: "Lead",
+      };
   }
 }
 
@@ -173,11 +181,15 @@ function entityLinkPresentation(link: ParsedEntityLink) {
  * route id, so no read-model resolution is needed.
  */
 export function useOpenEntityLink(): (link: ParsedEntityLink) => void {
-  const { goGoal, goProject } = useAppNavigation();
+  const { goGoal, goLead, goProject } = useAppNavigation();
   return React.useCallback(
     (link: ParsedEntityLink) => {
       if (link.type === "goal") {
         void goGoal(link.id, { entityNavigationId: crypto.randomUUID() });
+        return;
+      }
+      if (link.type === "lead") {
+        void goLead(link.id);
         return;
       }
       const tab =
@@ -198,7 +210,7 @@ export function useOpenEntityLink(): (link: ParsedEntityLink) => void {
           : {}),
       });
     },
-    [goGoal, goProject],
+    [goGoal, goLead, goProject],
   );
 }
 
@@ -246,6 +258,11 @@ export function EntityLinkAnchor({
   if (parsed?.ok && parsed.value.type === "goal") {
     return (
       <GoalReferenceCard goalId={parsed.value.id} interactive={interactive} />
+    );
+  }
+  if (parsed?.ok && parsed.value.type === "lead") {
+    return (
+      <LeadReferenceCard leadId={parsed.value.id} interactive={interactive} />
     );
   }
   return (

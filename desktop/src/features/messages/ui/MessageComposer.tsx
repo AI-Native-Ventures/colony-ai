@@ -74,6 +74,7 @@ import { scheduleSettleGatedAutoSubmit } from "./messageComposerAutoSubmit";
 import type { MessageComposerProps } from "./MessageComposer.types";
 import { buildGoalLink } from "@/shared/lib/entityLink";
 import { GoalReferenceComposerButton } from "@/features/goals/ui/GoalReferenceComposerButton";
+import { LeadReferenceComposerButton } from "@/features/leads/LeadReferenceComposerButton";
 function MessageComposerImpl({
   audienceContext = null,
   channelId = null,
@@ -105,6 +106,7 @@ function MessageComposerImpl({
   mediaController,
   showBackgroundUploadProgress = true,
   showGoalReference = true,
+  showLeadReference = true,
   showTopBorder = false,
   toolbarExtraActions,
   footerContent,
@@ -1043,6 +1045,12 @@ function MessageComposerImpl({
                   channelType !== "forum" &&
                   editTarget == null ? (
                     <GoalReferenceComposerButton />
+                  ) : null}
+                  {showLeadReference &&
+                  channelId &&
+                  channelType !== "forum" &&
+                  editTarget == null ? (
+                    <LeadReferenceComposerButton editor={richText.editor} />
                   ) : null}
                   {toolbarExtraActions}
                 </>

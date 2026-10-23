@@ -7,6 +7,7 @@ import { find as findLinks } from "linkifyjs";
 import {
   buildGoalLink,
   buildIssueLink,
+  buildLeadLink,
   buildProjectLink,
   buildPullRequestLink,
   buildRepoLink,
@@ -36,9 +37,9 @@ export type ComposerMessageLinkAttributes = {
 };
 
 const BARE_BUZZ_LINK_AT_START =
-  /^buzz:\/\/(?:message\?|channel\/|goal\/|(?:pr|issue|repo|project)\?)[^\s<>"')\]}*]+/i;
+  /^buzz:\/\/(?:message\?|channel\/|goal\/|lead\/|(?:pr|issue|repo|project)\?)[^\s<>"')\]}*]+/i;
 const BUZZ_LINK_SUFFIX_AT_START =
-  /^:\/\/(?:message\?|channel\/|goal\/|(?:pr|issue|repo|project)\?)[^\s<>"')\]}*]+/i;
+  /^:\/\/(?:message\?|channel\/|goal\/|lead\/|(?:pr|issue|repo|project)\?)[^\s<>"')\]}*]+/i;
 const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
 
 function trimBareBuzzLink(value: string): string {
@@ -88,6 +89,11 @@ export function resolveComposerMessageLinkAttributes(
       return {
         channelName: "",
         href: buildGoalLink(entity.value.id),
+      };
+    case "lead":
+      return {
+        channelName: "",
+        href: buildLeadLink(entity.value.id),
       };
     case "repo":
       return {
@@ -408,6 +414,18 @@ function composerLinkPresentation(
       dataAttributes: { "data-buzz-link-kind": "goal" },
       icon: "goal",
       label: `Goal ${shortId}`,
+    };
+  }
+  if (entity.value.type === "lead") {
+    // A lead chip shows the lead's name when the picker supplied one (the
+    // draft keeps only the link, so a restored draft falls back to the id).
+    const leadName = channelName.trim();
+    return {
+      ariaLabel: leadName ? `Open lead ${leadName}` : `Open lead ${shortId}`,
+      channelName: leadName,
+      dataAttributes: { "data-buzz-link-kind": "lead" },
+      icon: "lead",
+      label: leadName || `Lead ${shortId}`,
     };
   }
   return {

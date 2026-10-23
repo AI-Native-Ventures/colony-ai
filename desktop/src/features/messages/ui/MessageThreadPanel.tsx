@@ -891,6 +891,9 @@ export function MessageThreadPanel({
               showGoalReference={
                 !channel || !isWelcomeExperienceChannel(channel)
               }
+              showLeadReference={
+                !channel || !isWelcomeExperienceChannel(channel)
+              }
               audienceContext={{
                 type: "thread",
                 rootTags: threadHead.tags,
