@@ -96,3 +96,20 @@
 [data-testid="app-sidebar-layer"] {
   background: hsl(var(--colony-surface));
 }
+
+/* Glass with a named theme: no field is drawn, so the sidebar and rail carry
+   the theme's own sidebar colour at the glass opacity over the vibrancy. */
+:root:not([data-buzz-sidebar])[data-glass-background]
+  :is([data-testid="app-sidebar-layer"], [data-testid="community-rail"]) {
+  background: hsl(
+    var(--sidebar-background) /
+    var(--glass-background-opacity, 65%)
+  );
+}
+
+/* The app surface is a fixed frame. `hidden` still lets a focus or
+   scroll-into-view call nudge it a pixel, shifting the top bar out of sight;
+   `clip` cannot be scrolled at all. */
+.buzz-huddle-app-surface {
+  overflow: clip;
+}

@@ -1,15 +1,16 @@
 import type * as React from "react";
 
 import { ProfileAvatar } from "@/features/profile/ui/ProfileAvatar";
+import { GatedDestination } from "@/features/sidebar/ui/SidebarDestinationList";
+import {
+  SIDEBAR_DESTINATIONS,
+  type SidebarDestinationContext,
+} from "@/features/sidebar/ui/sidebarDestinations";
 import type { SidebarDmParticipant } from "@/features/sidebar/ui/SidebarSection";
 import type { Channel } from "@/shared/api/types";
 import {
   ActivityIcon,
-  BusinessIcon,
-  CompanyIcon,
-  FactoryIcon,
   HashIcon,
-  LibraryIcon,
   SavedIcon,
   TodayIcon,
 } from "@/shared/ui/colonyIcons";
@@ -23,22 +24,17 @@ type CollapsedDirectMessage = {
 };
 
 type SidebarCollapsedNavProps = {
+  /** The same context the expanded destination list draws from. */
+  destinationContext: SidebarDestinationContext;
   directMessages: CollapsedDirectMessage[];
   homeBadgeCount: number;
   isActivityActive: boolean;
-  isBusinessActive: boolean;
-  isCompanyActive: boolean;
-  isFactoryActive: boolean;
   isSavedForLaterActive: boolean;
   isTodayActive: boolean;
   hasUnreadChannels: boolean;
   onExpand: () => void;
-  onSelectBusiness: () => void;
   onSelectChannel: (channelId: string) => void;
-  onSelectCompany: () => void;
-  onSelectFactory: () => void;
   onSelectHome: () => void;
-  onSelectLibrary?: () => void;
   onSelectSavedForLater: () => void;
   onSelectToday: () => void;
 };
@@ -76,24 +72,19 @@ function CollapsedItem({
  * The collapsed sidebar: one icon per destination, a single Channels icon
  * that carries the unread dot, and the direct messages as small avatars. It
  * replaces the expanded lists while the sidebar is collapsed to its icon rail.
+ * The destination icons come from `SIDEBAR_DESTINATIONS`.
  */
 export function SidebarCollapsedNav({
+  destinationContext,
   directMessages,
   homeBadgeCount,
   isActivityActive,
-  isBusinessActive,
-  isCompanyActive,
-  isFactoryActive,
   isSavedForLaterActive,
   isTodayActive,
   hasUnreadChannels,
   onExpand,
-  onSelectBusiness,
   onSelectChannel,
-  onSelectCompany,
-  onSelectFactory,
   onSelectHome,
-  onSelectLibrary,
   onSelectSavedForLater,
   onSelectToday,
 }: SidebarCollapsedNavProps) {
@@ -131,39 +122,23 @@ export function SidebarCollapsedNav({
         <SavedIcon size={20} />
       </CollapsedItem>
       <span aria-hidden="true" className="colony-collapsed-divider" />
-      <CollapsedItem
-        active={isCompanyActive}
-        ariaLabel="Company"
-        onClick={onSelectCompany}
-        testId="sidebar-collapsed-company"
-      >
-        <CompanyIcon size={20} />
-      </CollapsedItem>
-      <CollapsedItem
-        active={isBusinessActive}
-        ariaLabel="Business"
-        onClick={onSelectBusiness}
-        testId="sidebar-collapsed-business"
-      >
-        <BusinessIcon size={20} />
-      </CollapsedItem>
-      <CollapsedItem
-        active={isFactoryActive}
-        ariaLabel="Software Factory"
-        onClick={onSelectFactory}
-        testId="sidebar-collapsed-factory"
-      >
-        <FactoryIcon size={20} />
-      </CollapsedItem>
-      {onSelectLibrary ? (
-        <CollapsedItem
-          ariaLabel="Library"
-          onClick={onSelectLibrary}
-          testId="sidebar-collapsed-library"
-        >
-          <LibraryIcon size={20} />
-        </CollapsedItem>
-      ) : null}
+      {SIDEBAR_DESTINATIONS.map((entry) => {
+        const rail = entry.rail;
+        if (!rail) return null;
+        const Icon = rail.Icon;
+        return (
+          <GatedDestination feature={entry.feature} key={entry.id}>
+            <CollapsedItem
+              active={rail.isActive(destinationContext)}
+              ariaLabel={rail.label}
+              onClick={() => rail.onSelect(destinationContext)}
+              testId={rail.testId}
+            >
+              <Icon size={20} />
+            </CollapsedItem>
+          </GatedDestination>
+        );
+      })}
       <span aria-hidden="true" className="colony-collapsed-divider" />
       <CollapsedItem
         ariaLabel={hasUnreadChannels ? "Channels, unread messages" : "Channels"}

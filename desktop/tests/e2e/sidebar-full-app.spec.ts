@@ -23,20 +23,24 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
   await expect(page.getByTestId("sidebar-activity-button")).toContainText(
     "Activity",
   );
+  await expect(page.getByTestId("sidebar-saved-for-later")).toContainText(
+    "Saved for later",
+  );
 
+  // Colony 3.0 order: the destinations first, the conversations below them.
   const navigationOrder = await sidebar
     .locator(
-      "[data-testid='sidebar-nav-conversations'], section[data-testid='sidebar-nav-company'], section[data-testid='sidebar-nav-business'], section[data-testid='sidebar-software-factory-group'], section[data-testid='sidebar-nav-library']",
+      "[data-testid='sidebar-nav-conversations'], [data-testid='sidebar-nav-company'], [data-testid='sidebar-nav-business'], [data-testid='sidebar-software-factory-group'], [data-testid='sidebar-nav-library']",
     )
     .evaluateAll((groups) =>
       groups.map((group) => group.getAttribute("data-testid")),
     );
   expect(navigationOrder).toEqual([
-    "sidebar-nav-conversations",
     "sidebar-nav-company",
     "sidebar-nav-business",
     "sidebar-software-factory-group",
     "sidebar-nav-library",
+    "sidebar-nav-conversations",
   ]);
 
   const conversations = page.getByTestId("sidebar-nav-conversations");
@@ -54,15 +58,27 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
       "true",
     );
   }
+  // Every conversation section has its designed "+" quick action.
   await expect(
     page.getByTestId("section-actions-channels-quick-create"),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await expect(
     page.getByTestId("section-actions-dms-quick-create"),
-  ).toHaveCount(0);
-  await expect(page.getByTestId("open-workflows-view")).toBeVisible();
-  await expect(page.getByTestId("sidebar-company-goals")).toBeVisible();
-  await expect(page.getByTestId("sidebar-company-work")).toBeVisible();
+  ).toBeVisible();
+  // Company starts collapsed; opening it shows every company destination.
+  const company = page.getByTestId("sidebar-nav-company-toggle");
+  await expect(company).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("sidebar-company-goals")).toBeHidden();
+  await company.click();
+  await expect(company).toHaveAttribute("aria-expanded", "true");
+  for (const id of [
+    "open-workflows-view",
+    "sidebar-company-goals",
+    "sidebar-company-work",
+    "sidebar-company-team",
+    "sidebar-company-agents",
+  ])
+    await expect(page.getByTestId(id)).toBeVisible();
   await expect(page.getByTestId("open-factory-view")).toBeVisible();
   await expect(page.getByTestId("sidebar-software-factory-toggle")).toHaveCount(
     0,
@@ -71,23 +87,12 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
   await expect(page.getByTestId("sidebar-settings")).toBeVisible();
   await expect(page.getByTestId("sidebar-profile-name")).toBeVisible();
 
-  for (const group of ["conversations", "company", "business", "library"]) {
-    const chevron = sidebar
-      .getByTestId(`sidebar-nav-${group}-toggle`)
-      .locator("svg");
-    await expect(chevron).toHaveCSS("width", "20px");
-    await expect(chevron).toHaveCSS("border-top-width", "1px");
-    await expect(chevron).toHaveCSS("border-radius", "4px");
-  }
-
-  await expect(sidebar.locator(".sidebar-navigation-utility")).toHaveCSS(
-    "border-top-width",
-    "1px",
-  );
-  await expect(sidebar.locator(".sidebar-navigation-profile")).toHaveCSS(
-    "border-top-width",
-    "1px",
-  );
+  // Company and Business open and close; Library is a single row.
+  for (const group of ["company", "business"])
+    await expect(
+      sidebar.getByTestId(`sidebar-nav-${group}-toggle`),
+    ).toBeVisible();
+  await expect(sidebar.getByTestId("sidebar-blocks-templates")).toBeVisible();
 
   await expect(sidebar.getByTestId("sidebar-company-team")).toBeVisible();
   await sidebar.getByTestId("sidebar-company-team").click();
@@ -114,6 +119,7 @@ test("full app sidebar follows the approved navigation hierarchy", async ({
 test("Company Goals opens the existing goals route", async ({ page }) => {
   await page.goto("/");
 
+  await page.getByTestId("sidebar-nav-company-toggle").click();
   const goals = page.getByTestId("sidebar-company-goals");
   await expect(goals).toBeVisible();
   await goals.click();
@@ -134,6 +140,7 @@ test("Company Work and Business destinations open existing routes", async ({
 }) => {
   await page.goto("/");
 
+  await page.getByTestId("sidebar-nav-company-toggle").click();
   await page.getByTestId("sidebar-company-work").click();
   await expect(page).toHaveURL(/#\/work$/);
   await expect(
@@ -182,21 +189,25 @@ test("navigation groups collapse independently with the keyboard", async ({
 
   const company = page.getByTestId("sidebar-nav-company-toggle");
   const business = page.getByTestId("sidebar-nav-business-toggle");
-  const library = page.getByTestId("sidebar-nav-library-toggle");
 
-  await expect(company).toHaveAttribute("aria-expanded", "true");
+  // Both start collapsed, as designed.
+  await expect(company).toHaveAttribute("aria-expanded", "false");
   await expect(business).toHaveAttribute("aria-expanded", "false");
-  await expect(library).toHaveAttribute("aria-expanded", "false");
 
   await company.focus();
   await page.keyboard.press("Enter");
-  await expect(company).toHaveAttribute("aria-expanded", "false");
+  await expect(company).toHaveAttribute("aria-expanded", "true");
+  await expect(business).toHaveAttribute("aria-expanded", "false");
 
   await business.focus();
   await page.keyboard.press("Space");
   await expect(business).toHaveAttribute("aria-expanded", "true");
+  await expect(company).toHaveAttribute("aria-expanded", "true");
+
+  await company.focus();
+  await page.keyboard.press("Enter");
   await expect(company).toHaveAttribute("aria-expanded", "false");
-  await expect(library).toHaveAttribute("aria-expanded", "false");
+  await expect(business).toHaveAttribute("aria-expanded", "true");
 });
 
 test("conversation groups collapse independently with the keyboard", async ({
@@ -230,12 +241,11 @@ test("conversation groups collapse independently with the keyboard", async ({
   await expect(page.getByTestId("stream-list")).toBeHidden();
 });
 
-test("Saved for later remains under Activity and keeps the reminder filter", async ({
+test("Saved for later is its own row under Activity and keeps the reminder filter", async ({
   page,
 }) => {
   await page.goto("/");
 
-  await page.getByTestId("sidebar-activity-toggle").click();
   const savedForLater = page.getByTestId("sidebar-saved-for-later");
   await expect(savedForLater).toBeVisible();
   await savedForLater.click();
@@ -259,11 +269,10 @@ test("Software Factory exposes its designed Projects destination only", async ({
   await expect(page.getByTestId("sidebar-shared-compute")).toHaveCount(0);
 });
 
-test("Blocks and templates stays in Library and opens its existing settings panel", async ({
+test("Library is one row that opens Blocks and templates in Settings", async ({
   page,
 }) => {
   await page.goto("/");
-  await page.getByTestId("sidebar-nav-library-toggle").click();
 
   const blocksAndTemplates = page.getByTestId("sidebar-blocks-templates");
   await expect(blocksAndTemplates).toBeVisible();

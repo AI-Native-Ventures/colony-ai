@@ -287,6 +287,16 @@
   font-weight: 800;
 }
 
+/* Appearance, "Prominent selected tab": the open row takes the accent as a
+   flat fill instead of the soft white one. */
+:root[data-prominent-active-tab]
+  .app-sidebar-full-shell
+  [data-sidebar="menu-button"][data-active="true"] {
+  background: hsl(var(--colony-accent));
+  box-shadow: none;
+  color: hsl(var(--colony-surface));
+}
+
 .app-sidebar-full-shell [data-sidebar="menu-button"]:focus-visible {
   outline: 2px solid hsl(var(--colony-accent));
   outline-offset: -2px;
@@ -522,7 +532,9 @@
   text-transform: uppercase;
 }
 
-.app-sidebar-full-shell [data-sidebar="group-label"] [aria-hidden="true"] {
+/* The caret goes (the design has none); a section's own icon stays. */
+.app-sidebar-full-shell [data-sidebar="group-label"]
+  [aria-hidden="true"]:not([data-testid^="section-icon-"]) {
   display: none;
 }
 

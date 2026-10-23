@@ -669,11 +669,11 @@ test("opens Send feedback from the profile menu", async ({ page }) => {
   await expect(dialog.getByTestId("send-feedback-title")).toHaveText(
     "Send feedback",
   );
-  await expect(dialog.getByTestId("feedback-type")).toHaveValue("suggestion");
+  await expect(dialog.getByRole("radio", { name: "Suggestion" })).toBeChecked();
   await expect(dialog.getByTestId("feedback-message")).toBeVisible();
   await expect(dialog.getByTestId("feedback-include-logs")).not.toBeChecked();
 
-  await dialog.getByTestId("feedback-diagnostics-toggle").click();
+  // The designed form always shows what diagnostics include.
   await expect(
     dialog.getByTestId("feedback-diagnostics-details"),
   ).toBeVisible();

@@ -596,8 +596,8 @@ test("shows presence in sidebar, DM header, and member list", async ({
   );
   await expect(page.getByTestId("channel-presence-alice-tyler")).toBeVisible();
   const dmAvatar = page.getByTestId("channel-avatar-alice-tyler");
-  await expect(dmAvatar).toHaveCSS("width", "18px");
-  await expect(dmAvatar).toHaveCSS("height", "18px");
+  await expect(dmAvatar).toHaveCSS("width", "24px");
+  await expect(dmAvatar).toHaveCSS("height", "24px");
   await expect(dmAvatar).toHaveClass(/rounded-squircle/);
   const dmRow = page.getByTestId("channel-alice-tyler");
   const [rowBounds, avatarBounds, presenceBounds] = await Promise.all([
@@ -1847,7 +1847,7 @@ test("create ephemeral stream shows sidebar and header affordances", async ({
 
   await expect(page.getByTestId(`channel-${channelName}`)).toHaveCSS(
     "font-weight",
-    "450",
+    "600",
   );
   await expectUnreadBadgeCount(
     page.getByTestId(`channel-unread-${channelName}`),
@@ -2676,7 +2676,7 @@ test("sidebar shows unread indicator for newly active channels", async ({
 
   await expect(page.getByTestId("channel-random")).toHaveCSS(
     "font-weight",
-    "450",
+    "600",
   );
   await expectUnreadBadgeCount(page.getByTestId("channel-unread-random"), 1);
 
@@ -2709,7 +2709,7 @@ test("sidebar shows unread indicator for new forum posts", async ({ page }) => {
 
   await expect(page.getByTestId("channel-watercooler")).toHaveCSS(
     "font-weight",
-    "450",
+    "600",
   );
   await expectUnreadBadgeCount(
     page.getByTestId("channel-unread-watercooler"),

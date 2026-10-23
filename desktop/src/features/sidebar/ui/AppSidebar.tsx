@@ -1,4 +1,5 @@
 // biome-ignore format: keep compact to stay within file size limit
+import { useLocation } from "@tanstack/react-router";
 import * as React from "react";
 import { FeatureGate } from "@/shared/features";
 import { SidebarDndContext } from "@/features/sidebar/ui/SidebarDnd";
@@ -45,10 +46,8 @@ import {
 } from "@/features/sidebar/ui/MoreUnreadButton";
 import { SidebarSection } from "@/features/sidebar/ui/SidebarSection";
 import { SidebarCollapsedNav } from "@/features/sidebar/ui/SidebarCollapsedNav";
-import { SidebarLibraryGroup } from "@/features/sidebar/ui/SidebarLibraryGroup";
-import { SidebarBusinessGroup } from "@/features/sidebar/ui/SidebarBusinessGroup";
-import { SidebarCompanyGroup } from "@/features/sidebar/ui/SidebarCompanyGroup";
-import { SidebarSoftwareFactoryGroup } from "@/features/sidebar/ui/SidebarSoftwareFactoryGroup";
+import { SidebarDestinationList } from "@/features/sidebar/ui/SidebarDestinationList";
+import type { SidebarDestinationContext } from "@/features/sidebar/ui/sidebarDestinations";
 import {
   ChannelGroupSection,
   CustomChannelSection,
@@ -179,6 +178,7 @@ export function AppSidebar({
     React.useState(false);
   const showSidebarUpdateCard =
     canShowSidebarUpdateCard && !isSidebarUpdateCardDismissed;
+  const { pathname } = useLocation();
   const factoryScope = React.useMemo<FactoryScope>(
     () => ({
       relayUrl: activeCommunity?.relayUrl ?? "unavailable",
@@ -195,6 +195,38 @@ export function AppSidebar({
       activeCommunity?.id,
       activeCommunity?.relayUrl,
       currentPubkey,
+    ],
+  );
+  const destinationContext = React.useMemo<SidebarDestinationContext>(
+    () => ({
+      factoryScope,
+      handlers: {
+        onSelectAgents,
+        onSelectClients,
+        onSelectFactory,
+        onSelectGoals,
+        onSelectSettings,
+        onSelectTeam,
+        onSelectWork,
+        onSelectWorkflows,
+      },
+      pathname,
+      selectedChannelId: selectedView === "channel" ? selectedChannelId : null,
+      selectedView,
+    }),
+    [
+      factoryScope,
+      onSelectAgents,
+      onSelectClients,
+      onSelectFactory,
+      onSelectGoals,
+      onSelectSettings,
+      onSelectTeam,
+      onSelectWork,
+      onSelectWorkflows,
+      pathname,
+      selectedChannelId,
+      selectedView,
     ],
   );
   const [dmActionsMenuOpen, setDmActionsMenuOpen] = React.useState(false);
@@ -635,6 +667,7 @@ export function AppSidebar({
 
               {isCollapsedRail ? (
                 <SidebarCollapsedNav
+                  destinationContext={destinationContext}
                   directMessages={sortedDirectMessages.map((channel) => ({
                     channel,
                     isActive:
@@ -651,30 +684,13 @@ export function AppSidebar({
                   )}
                   homeBadgeCount={homeBadgeCount}
                   isActivityActive={selectedView === "home"}
-                  isBusinessActive={
-                    selectedView === "business" || selectedView === "clients"
-                  }
-                  isCompanyActive={
-                    selectedView === "team" ||
-                    selectedView === "agents" ||
-                    selectedView === "goals" ||
-                    selectedView === "work" ||
-                    selectedView === "workflows"
-                  }
-                  isFactoryActive={selectedView === "factory"}
                   isSavedForLaterActive={isSavedForLaterActive}
                   isTodayActive={
                     selectedView === "today" && !suppressTodaySelection
                   }
                   onExpand={toggleSidebar}
-                  onSelectBusiness={() => {
-                    window.location.hash = "#/discovery";
-                  }}
                   onSelectChannel={onSelectChannel}
-                  onSelectCompany={onSelectTeam}
-                  onSelectFactory={onSelectFactory}
                   onSelectHome={onSelectHome}
-                  onSelectLibrary={() => onSelectSettings("channel-templates")}
                   onSelectSavedForLater={onSelectSavedForLater}
                   onSelectToday={onSelectToday}
                 />
@@ -690,31 +706,7 @@ export function AppSidebar({
                     className="colony-sidebar-nav"
                     data-testid="sidebar-nav-destinations"
                   >
-                    <SidebarCompanyGroup
-                      onSelectAgents={onSelectAgents}
-                      onSelectGoals={onSelectGoals}
-                      onSelectTeam={onSelectTeam}
-                      onSelectWork={onSelectWork}
-                      onSelectWorkflows={onSelectWorkflows}
-                      selectedView={selectedView}
-                    />
-
-                    <SidebarBusinessGroup
-                      onSelectClients={onSelectClients}
-                      selectedView={selectedView}
-                    />
-
-                    <SidebarSoftwareFactoryGroup
-                      isActive={selectedView === "factory"}
-                      isProjectsActive={selectedView === "projects"}
-                      selectedChannelId={
-                        selectedView === "channel" ? selectedChannelId : null
-                      }
-                      onSelectFactory={onSelectFactory}
-                      scope={factoryScope}
-                    />
-
-                    <SidebarLibraryGroup onSelectSettings={onSelectSettings} />
+                    <SidebarDestinationList context={destinationContext} />
                   </div>
 
                   <div

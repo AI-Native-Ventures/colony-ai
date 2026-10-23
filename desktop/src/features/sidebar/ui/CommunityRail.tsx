@@ -38,6 +38,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { cn } from "@/shared/lib/cn";
 import { getInitials } from "@/shared/lib/initials";
+import { isMacPlatform } from "@/shared/lib/platform";
+import { useIsFullscreen } from "@/shared/lib/useIsFullscreen";
 import { ColonyField } from "@/shared/ui/ColonyField";
 import { PlusIcon } from "@/shared/ui/colonyIcons";
 import { writeTextToClipboard } from "@/shared/lib/clipboard";
@@ -311,6 +313,7 @@ export function CommunityRail({
   onUpdateCommunity,
   onReorderCommunities,
 }: CommunityRailProps) {
+  const isFullscreen = useIsFullscreen();
   const { unreadByCommunity, markCommunityRead } = useCommunityUnread(
     communities,
     activeCommunityId,
@@ -371,7 +374,12 @@ export function CommunityRail({
   };
 
   return (
-    <nav aria-label="Communities" data-testid="community-rail">
+    <nav
+      aria-label="Communities"
+      // The native window buttons sit over the rail's top-left corner.
+      data-mac-chrome={isMacPlatform() && !isFullscreen ? "true" : undefined}
+      data-testid="community-rail"
+    >
       <ColonyField variant="rail" />
       <DndContext
         collisionDetection={closestCenter}

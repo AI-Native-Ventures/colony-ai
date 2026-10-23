@@ -160,6 +160,11 @@
   scrollbar-width: none;
 }
 
+/* Clear the macOS window buttons, as the sidebar header does. */
+[data-testid="community-rail"][data-mac-chrome="true"] {
+  padding-top: 2.75rem;
+}
+
 [data-testid="community-rail"]::-webkit-scrollbar {
   display: none;
 }
