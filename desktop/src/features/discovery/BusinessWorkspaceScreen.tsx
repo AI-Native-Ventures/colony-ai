@@ -21,13 +21,13 @@ export function BusinessWorkspaceScreen() {
   const discoveryProvider = getDiscoveryCampaignProvider();
 
   React.useEffect(() => {
-    if (pathname === "/campaign" && !discoveryProvider) {
+    if (pathname === "/campaign" && !discoveryProvider?.getCurrent()) {
       void navigate({ to: "/discovery", replace: true });
     }
   }, [discoveryProvider, navigate, pathname]);
 
   if (pathname === "/discovery") return <DiscoveryScreen />;
-  if (pathname === "/campaign" && !discoveryProvider) return null;
+  if (pathname === "/campaign" && !discoveryProvider?.getCurrent()) return null;
   return <BusinessRecordsRoute pathname={pathname} />;
 }
 
