@@ -364,6 +364,12 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
   await expect(
     page.getByRole("menuitem", { name: "Pause employee" }),
   ).toHaveCount(0);
+  await page.getByRole("menuitem", { name: "Edit role and reporting" }).click();
+  await expect(page.getByTestId("team-dialog-edit-role")).toBeVisible();
+  await expect(page.getByLabel("Title")).toHaveValue(EMPLOYEE_TITLE);
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByTestId("team-dialog-edit-role")).toHaveCount(0);
+  await page.getByRole("button", { name: "More agent actions" }).click();
   await page.getByRole("menuitem", { name: "Terminate employee" }).click();
   await expect(page.getByTestId("team-dialog-terminate")).toBeVisible();
   await page.getByLabel("Reason").fill("The role has ended after review.");
