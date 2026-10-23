@@ -5,6 +5,7 @@ import { ChatHeader } from "@/features/chat/ui/ChatHeader";
 import type { EphemeralChannelDisplay } from "@/features/channels/lib/ephemeralChannel";
 import type { ActiveDmHeaderParticipant } from "@/features/channels/useActiveChannelHeader";
 import { getChannelDescription } from "@/features/channels/lib/channelDescription";
+import { getChannelKicker } from "@/features/channels/lib/channelKicker";
 import { getDmParticipantPreview } from "@/features/channels/lib/dmParticipantDisplay";
 import { ChannelGlyph } from "@/features/channels/ui/ChannelGlyph";
 import { ChannelHeaderStatusBadge } from "@/features/channels/ui/ChannelHeaderStatusBadge";
@@ -155,6 +156,7 @@ export function ChannelScreenHeader({
       actions={actions}
       channelType={activeChannel?.channelType}
       description={getChannelDescription(activeChannel)}
+      kicker={getChannelKicker(activeChannel)}
       leadingContent={
         activeChannel?.channelType === "dm" ? (
           isGroupDm ? (
@@ -217,9 +219,7 @@ export function ChannelScreenHeader({
           ) : null}
         </>
       }
-      showDescription={
-        actionsVariant === "reference" && !referenceThreadPresentation
-      }
+      showDescription={actionsVariant !== "compact"}
       title={activeChannelTitle}
       titleClassName={
         referenceThreadPresentation ? "text-channel-title" : undefined

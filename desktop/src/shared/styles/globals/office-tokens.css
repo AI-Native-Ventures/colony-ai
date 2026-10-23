@@ -1,0 +1,191 @@
+/*
+ * Office restyle tokens (docs/superpowers/specs/2026-10-23-app-restyle-design.md).
+ *
+ * The prototype office sets type, space and component shapes for every
+ * screen after onboarding. The Default style keeps the pink-to-blue field and
+ * Custom keeps the owner's two colours. Office rules are scoped by the
+ * `data-colony-office` root attribute (set while the workspace shell or
+ * Settings is mounted, see app/useOfficeShellMarker.ts) and `#root`, whose ID
+ * weight outranks the stacked earlier restyle layers without `!important`.
+ * Onboarding and the gate screens never mount the shell, so they keep their
+ * 1.0.12 look.
+ *
+ * Text sizes ride on a 16px office rem derived from the virtual typography
+ * rem, so the Font size preference and Cmd +/- zoom keep scaling them.
+ */
+:root {
+  --office-rem: calc(var(--buzz-type-rem) * 14 / 15);
+  --office-text-title: calc(var(--office-rem) * 3);
+  --office-text-heading: calc(var(--office-rem) * 1.125);
+  --office-text-lede: var(--office-rem);
+  --office-text-nav: calc(var(--office-rem) * 0.9375);
+  --office-text-row: calc(var(--office-rem) * 0.90625);
+  --office-text-label: calc(var(--office-rem) * 0.875);
+  --office-text-meta: calc(var(--office-rem) * 0.8125);
+  --office-text-small: calc(var(--office-rem) * 0.75);
+  --office-text-caps: calc(var(--office-rem) * 0.6875);
+  --office-tracking-title: -0.045em;
+  --office-tracking-caps: 0.09em;
+
+  --office-radius-row: 0.6875rem;
+  --office-radius-control: 0.8125rem;
+  --office-radius-card: 1rem;
+  --office-radius-composer: 1.125rem;
+  --office-column: 61.25rem;
+  --office-column-pad: 3rem;
+  --office-gutter: max(
+    var(--office-column-pad),
+    calc((100% - var(--office-column)) / 2 + var(--office-column-pad))
+  );
+
+  /* Reference light palette, stored as HSL channels like the colony tokens. */
+  --office-ink: 254.64 22.85% 15.96%;
+  --office-ink-2: 259.52 10.49% 33.42%;
+  --office-ink-3: 258.94 6.44% 48.75%;
+  --office-paper: 37.05 68.15% 97.48%;
+  --office-paper-2: 35.84 53.31% 94.71%;
+  --office-side: 258.33 65.85% 96.51%;
+  --office-line: 258.38 18.78% 87.26%;
+  --office-line-2: 258.67 17.15% 79.13%;
+  --office-gold: 39.31 87.06% 69.37%;
+  --office-presence: 137.32 44% 48.3%;
+  --office-presence-ring: 129.91 49.81% 87.17%;
+  --office-char-soft: 129.33 36.23% 89.5%;
+  --office-row-active: hsl(var(--office-paper));
+  --office-row-hover: rgb(255 255 255 / 60%);
+  --office-shadow-row:
+    0 1px 2px hsl(254 23% 16% / 0.08), 0 6px 14px -10px hsl(254 23% 16% / 0.35);
+  --office-shadow-float: 0 16px 34px -24px hsl(258 40% 25% / 0.5);
+  --office-shadow-menu: 0 8px 18px -12px hsl(258 40% 25% / 0.5);
+  --office-shadow-card: 0 1px 2px hsl(254 23% 16% / 0.04);
+  --office-glow-warm: color-mix(
+    in srgb,
+    var(--colony-field-light-rose-start) 26%,
+    transparent
+  );
+  --office-glow-cool: color-mix(
+    in srgb,
+    var(--colony-field-light-blue-start) 13%,
+    transparent
+  );
+}
+
+/* Designed dark version in the same language: violet ink paper, quiet lines. */
+:root.dark {
+  --office-ink: 258.19 22.84% 93.73%;
+  --office-ink-2: 258.52 11.46% 76.09%;
+  --office-ink-3: 258.71 7.02% 59.1%;
+  --office-paper: 246.81 16.04% 11.26%;
+  --office-paper-2: 249.5 15.33% 14.95%;
+  --office-side: 254.2 20.47% 15.17%;
+  --office-line: 252.87 10.83% 22.55%;
+  --office-line-2: 252.99 10.86% 32.57%;
+  --office-gold: 39.31 70% 62%;
+  --office-presence: 135.45 42.41% 54.87%;
+  --office-presence-ring: 135 28% 20%;
+  --office-char-soft: 140 14% 22%;
+  --office-row-active: hsl(var(--office-paper-2));
+  --office-row-hover: rgb(255 255 255 / 7%);
+  --office-shadow-row:
+    0 1px 2px rgb(0 0 0 / 0.3), 0 6px 14px -10px rgb(0 0 0 / 0.65);
+  --office-shadow-float: 0 16px 34px -24px rgb(0 0 0 / 0.75);
+  --office-shadow-menu: 0 8px 18px -12px rgb(0 0 0 / 0.7);
+  --office-shadow-card: 0 1px 2px rgb(0 0 0 / 0.2);
+  --office-glow-warm: color-mix(
+    in srgb,
+    var(--colony-field-dark-rose) 20%,
+    transparent
+  );
+  --office-glow-cool: color-mix(
+    in srgb,
+    var(--colony-field-dark-blue) 16%,
+    transparent
+  );
+}
+
+/* The Custom style tints the card glow with the owner's two colours. */
+:root.w20-custom-appearance {
+  --office-glow-warm: color-mix(
+    in srgb,
+    var(--w20-custom-gradient-start) 75%,
+    transparent
+  );
+  --office-glow-cool: color-mix(
+    in srgb,
+    var(--w20-custom-gradient-end) 60%,
+    transparent
+  );
+}
+
+/*
+ * Named catalog themes keep their palettes: the office tokens alias the
+ * theme's semantic slots, so only layout, type and shapes change, and the
+ * glow follows the theme's accent.
+ */
+:root[data-colony-office]:not([data-buzz-sidebar]) {
+  --office-ink: var(--foreground);
+  --office-ink-2: var(--foreground);
+  --office-ink-3: var(--muted-foreground);
+  --office-paper: var(--background);
+  --office-paper-2: var(--muted);
+  --office-side: var(--sidebar-background);
+  --office-line: var(--border);
+  --office-line-2: var(--border);
+  --office-row-active: hsl(var(--background));
+  --office-row-hover: hsl(var(--muted) / 0.7);
+}
+
+:root:not([data-buzz-sidebar]):not(.w20-custom-appearance) {
+  --office-glow-warm: hsl(var(--primary) / 0.08);
+  --office-glow-cool: hsl(var(--primary) / 0.05);
+}
+
+/*
+ * Office palette for the Default and Custom styles. The colony tokens live on
+ * the root, so components that read them directly follow at once.
+ */
+:root[data-buzz-sidebar][data-colony-office] {
+  --colony-fg: var(--office-ink);
+  --colony-muted: var(--office-ink-3);
+  --colony-faint: var(--office-ink-3);
+  --colony-border: var(--office-line);
+  --colony-surface: var(--office-paper);
+  --colony-surface-raised: var(--office-paper-2);
+  --colony-hover: var(--office-paper-2);
+  --colony-canvas: var(--office-side);
+  --colony-field: var(--office-paper);
+  --colony-sidebar-foreground: var(--office-ink-2);
+  --colony-sidebar-selected-foreground: var(--office-ink);
+  --colony-sidebar-muted-foreground: hsl(var(--office-ink-3));
+  --colony-sidebar-active-surface: var(--office-row-active);
+  --colony-sidebar-hover-surface: var(--office-row-hover);
+  --colony-text-message-author: var(--office-text-author);
+  --colony-text-message-timestamp: var(--office-text-meta);
+}
+
+/*
+ * ThemeProvider writes the semantic slots inline on the root when a theme
+ * loads. Re-derive the palette slots one level down so every in-app surface,
+ * portals included, reads the office palette. Accent slots (primary, ring,
+ * sidebar-primary, sidebar-active) are left to the accent picker.
+ */
+:root[data-buzz-sidebar][data-colony-office] body {
+  --background: var(--colony-canvas);
+  --foreground: var(--colony-fg);
+  --card: var(--colony-surface);
+  --card-foreground: var(--colony-fg);
+  --popover: var(--colony-surface);
+  --popover-foreground: var(--colony-fg);
+  --secondary: var(--colony-surface-raised);
+  --secondary-foreground: var(--colony-fg);
+  --muted: var(--colony-surface-raised);
+  --muted-foreground: var(--colony-muted);
+  --accent: var(--colony-hover);
+  --accent-foreground: var(--colony-fg);
+  --border: var(--colony-border);
+  --input: var(--colony-border);
+  --sidebar-foreground: var(--colony-sidebar-foreground);
+  --sidebar-accent: var(--colony-hover);
+  --sidebar-accent-foreground: var(--colony-sidebar-selected-foreground);
+  --sidebar-border: var(--colony-border);
+}

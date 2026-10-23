@@ -110,8 +110,10 @@ import { AppShellTrayMenu } from "@/app/useAppShellTrayMenu";
 import { AppProfilePanelProvider } from "@/app/AppProfilePanelProvider";
 import { AppWorkflowEditorOverlayProvider } from "@/app/AppWorkflowEditorOverlayProvider";
 import { LazySettingsScreen } from "@/app/LazySettingsScreen";
+import { useOfficeShellMarker } from "@/app/useOfficeShellMarker";
 const EMPTY_CHANNELS: Channel[] = [];
 export function AppShell() {
+  useOfficeShellMarker();
   useWebviewZoomShortcuts();
   useTauriWindowDrag();
   useWebviewScrollBoundaryLock();

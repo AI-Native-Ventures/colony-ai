@@ -1,0 +1,72 @@
+/*
+ * Office restyle: shared controls (buttons, fields, checks) in the
+ * reference's shapes. The accent picker recolours every primary control
+ * through `--primary`.
+ */
+:root[data-colony-office] #root [data-button-variant] {
+  border-radius: var(--office-radius-row);
+  font-weight: 750;
+  letter-spacing: -0.005em;
+}
+
+:root[data-colony-office] #root [data-button-variant="default"] {
+  background: linear-gradient(
+    118deg,
+    hsl(var(--primary)),
+    color-mix(in srgb, hsl(var(--primary)) 84%, #1b1530)
+  );
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 28%) inset,
+    0 10px 22px -14px color-mix(in srgb, hsl(var(--primary)) 80%, transparent);
+  color: hsl(var(--primary-foreground));
+}
+
+:root[data-colony-office]
+  #root
+  [data-button-variant="default"]:not(:disabled):hover {
+  background: linear-gradient(
+    118deg,
+    color-mix(in srgb, hsl(var(--primary)) 92%, #000),
+    color-mix(in srgb, hsl(var(--primary)) 78%, #1b1530)
+  );
+}
+
+:root[data-colony-office] #root [data-button-variant="outline"] {
+  border: 1.5px solid hsl(var(--office-line-2));
+  background: hsl(var(--office-paper));
+  color: hsl(var(--office-ink));
+}
+
+:root[data-colony-office]
+  #root
+  [data-button-variant="outline"]:not(:disabled):hover {
+  border-color: hsl(var(--primary) / 0.7);
+  background: hsl(var(--office-paper));
+}
+
+:root[data-colony-office] #root [data-button-variant="secondary"] {
+  background: hsl(var(--office-paper-2));
+  color: hsl(var(--office-ink));
+}
+
+:root[data-colony-office] #root [data-button-variant="ghost"] {
+  color: hsl(var(--office-ink-2));
+}
+
+:root[data-colony-office]
+  #root
+  [data-button-variant="ghost"]:not(:disabled):hover {
+  background: hsl(var(--office-paper-2));
+  color: hsl(var(--office-ink));
+}
+
+:root[data-colony-office] #root [data-button-variant="link"] {
+  color: hsl(var(--primary));
+  font-weight: 700;
+}
+
+:root[data-colony-office] #root [data-button-variant]:focus-visible {
+  outline: 2.5px solid hsl(var(--ring));
+  outline-offset: 2px;
+  box-shadow: none;
+}

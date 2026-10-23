@@ -8,6 +8,7 @@ import {
   Hash,
   House,
   Lock,
+  Reply,
   Zap,
 } from "lucide-react";
 import type * as React from "react";
@@ -28,6 +29,8 @@ type ChatHeaderProps = {
   title: string;
   titleClassName?: string;
   description?: string;
+  /** Small label above the title naming the conversation type ("Private channel"). */
+  kicker?: string;
   channelType?: ChannelType;
   visibility?: ChannelVisibility;
   leadingContent?: React.ReactNode;
@@ -88,6 +91,22 @@ function ChannelIcon({
   return <Hash className={CHANNEL_HASH_ICON_CLASS} color="gray" />;
 }
 
+function KickerIcon({
+  channelType,
+  visibility,
+}: {
+  channelType?: ChannelType;
+  visibility?: ChannelVisibility;
+}) {
+  const className = "colony-chat-kicker-icon";
+  if (channelType === "dm") return <Reply aria-hidden className={className} />;
+  if (visibility === "private")
+    return <Lock aria-hidden className={className} />;
+  if (channelType === "forum")
+    return <FileText aria-hidden className={className} />;
+  return <Hash aria-hidden className={className} />;
+}
+
 export function ChatHeader({
   actions,
   belowSystemChrome = false,
@@ -95,6 +114,7 @@ export function ChatHeader({
   title,
   titleClassName,
   description,
+  kicker,
   channelType,
   visibility,
   leadingContent,
@@ -127,9 +147,16 @@ export function ChatHeader({
       )}
       data-testid="chat-header"
       data-tauri-drag-region
+      data-office-kicker={kicker ? "true" : undefined}
     >
-      <div className="flex h-9 min-w-0 items-center gap-2.5">
+      <div className="colony-chat-header-row flex h-9 min-w-0 items-center gap-2.5">
         <div className="min-w-0 flex-1">
+          {kicker ? (
+            <p className="colony-chat-kicker" data-testid="chat-kicker">
+              <KickerIcon channelType={channelType} visibility={visibility} />
+              <span>{kicker}</span>
+            </p>
+          ) : null}
           <div className="group/title flex min-w-0 items-center gap-[4px] overflow-hidden">
             <div className="flex shrink-0 items-center">
               {leadingContent ?? (

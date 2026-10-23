@@ -712,6 +712,14 @@ export function ChannelScreen({
     !isHuddleTranscript &&
     activeChannel?.channelType === "stream" &&
     window.innerWidth >= 1440;
+  // The office header is in normal flow in the reference presentation and
+  // overlays the timeline otherwise; the timeline pads past an overlay.
+  const channelHeaderLayout =
+    isSinglePanelView || isHuddleTranscript
+      ? undefined
+      : referenceThreadPresentation || referenceWorkspaceChannel
+        ? "in-flow"
+        : "overlay";
   const channelHeaderChromeRef = useMeasuredCssVariable({
     targetRef: mainInsetRef,
     ...channelContentTopPaddingMeasurement,
@@ -825,7 +833,10 @@ export function ChannelScreen({
           }}
           open={emptyDeleteId !== null}
         />
-        <div className="colony-channel-route">
+        <div
+          className="colony-channel-route"
+          data-channel-header-layout={channelHeaderLayout}
+        >
           {kickoffError ? (
             <div role="alert" data-testid="welcome-kickoff-recovery" className="flex items-center gap-3 border-b border-border px-4 py-3 text-sm">
               <p>{kickoffError}</p>

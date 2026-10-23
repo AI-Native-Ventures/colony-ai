@@ -46,10 +46,15 @@
     /*
      * Default conversation type and comfy spacing for channels, DMs, threads,
      * Inbox, and the composer. Font size changes the type tokens only;
-     * Conversation density overrides only spacing.
+     * Conversation density overrides only spacing. The office restyle sets
+     * the default to the reference's 17px text (two px above `text-sm`)
+     * with its 1.55 line height.
      */
-    --conversation-message-font-size: calc(var(--buzz-type-rem) * 0.875);
-    --conversation-message-line-height: calc(var(--buzz-type-rem) * 1.25);
+    --conversation-message-font-size: calc(var(--text-sm) + 0.125rem);
+    --conversation-message-line-height: calc(
+      var(--conversation-message-font-size) *
+      1.55
+    );
     --conversation-author-line-height: var(--buzz-type-rem);
     --conversation-body-gap: 0.125rem;
     --conversation-row-padding-block: 0.25rem;
@@ -59,7 +64,7 @@
     --conversation-timestamp-line-height: var(--buzz-type-rem);
   }
 
-  /* Conversation text contract: 14 / 15 / 16px before keyboard zoom. */
+  /* Conversation text contract: 16 / 17 / 18px before keyboard zoom. */
   :root[data-font-size="smaller"] {
     --buzz-type-scale: 1;
   }

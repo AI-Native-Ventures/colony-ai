@@ -31,6 +31,11 @@
 @import "./globals/colony-workspace-updates.css";
 @import "./globals/colony-shell.css";
 @import "./globals/appearance-chrome.css";
+@import "./globals/office-tokens.css";
+@import "./globals/office-controls.css";
+@import "./globals/office-shell.css";
+@import "./globals/office-sidebar.css";
+@import "./globals/office-conversation.css";
 
 @config "../../../tailwind.config.js";
 
