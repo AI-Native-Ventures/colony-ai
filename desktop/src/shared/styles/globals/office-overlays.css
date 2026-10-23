@@ -48,13 +48,11 @@
   border-radius: var(--office-radius-card);
 }
 
-/* Tooltips: the office's ink tip with paper text. */
+/* Tooltips: the office tip shape; colours stay on the popover slots. */
 :root[data-colony-office]
   [data-radix-popper-content-wrapper]
   > .bg-popover[data-side] {
   border-radius: 0.625rem;
-  background: hsl(var(--office-ink));
-  color: hsl(var(--office-paper));
   font-size: var(--office-text-small);
   font-weight: 650;
   line-height: 1.45;
