@@ -290,8 +290,10 @@ test.describe("W07 agent workspace smoke", () => {
           const browserWindow = window as Window & {
             __BUZZ_E2E_COMMANDS__?: string[];
           };
-          return browserWindow.__BUZZ_E2E_COMMANDS__?.includes(
-            "get_user_profile",
+          // The profile arrives by its own lookup or from the shared batch.
+          return (
+            browserWindow.__BUZZ_E2E_COMMANDS__?.includes("get_user_profile") ||
+            browserWindow.__BUZZ_E2E_COMMANDS__?.includes("get_users_batch")
           );
         }),
       )

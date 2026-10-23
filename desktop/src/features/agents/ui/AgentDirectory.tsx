@@ -225,7 +225,7 @@ export function AgentDirectory({
               setPage(0);
             }}
             placeholder="Find an agent, role or model…"
-            type="search"
+            type="text"
             value={query}
           />
         </label>

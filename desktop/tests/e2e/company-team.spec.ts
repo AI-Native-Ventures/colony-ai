@@ -342,10 +342,11 @@ test("Team shows mixed reporting lines and lets an owner edit, terminate and reh
   );
 
   await page.goto(`/#/team/detail/${unlinkedPubkey}`);
-  await expect(page.getByTestId("agent-unlinked")).toBeVisible();
-  await expect(page.getByTestId("agent-profile")).toContainText(
-    "Campaign Designer",
-  );
+  await expect(
+    page.getByRole("heading", { name: "Unlinked Mina", level: 1 }),
+  ).toBeVisible();
+  await expect(page.getByText("Campaign Designer").first()).toBeVisible();
+  await expect(page.getByText("Not on this device")).toBeVisible();
   await captureRoute("team-unlinked");
   await page.goto("/#/team");
   await page.getByTestId(`company-team-member-${employeePubkey}`).click();
