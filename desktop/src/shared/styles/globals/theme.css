@@ -26,6 +26,8 @@
     --colony-idle-bg: 285 13.333% 94.118%;
     --colony-canvas: 36 100% 99.02%;
     --colony-person: #efe7e1;
+    --colony-pop: #ffffff;
+    --colony-scrim: rgb(37 34 44 / 40%);
     --colony-presence-online: #2e9a62;
     --colony-presence-away: #c9861a;
     --colony-focus: 250.909 48.207% 50.784%;
@@ -207,7 +209,7 @@
     --colony-work-row-gap: 0.8125rem;
     --colony-inbox-row-padding: var(--colony-inbox-row-padding-block)
       var(--colony-inbox-row-padding-inline);
-    --colony-line-height-body: 1.5;
+    --colony-line-height-body: normal;
     --colony-shadow-menu:
       0 0 0 1px #ede7ef, 0 30px 70px -28px rgb(40 20 60 / 45%);
     --colony-shadow-dialog: 0 30px 80px -30px rgb(40 20 60 / 45%);
@@ -247,6 +249,8 @@
     --colony-field: 263.08 15.29% 16.67%;
     --colony-fg-secondary: 270 15% 78%;
     --colony-person: #4a4152;
+    --colony-pop: #2a2532;
+    --colony-scrim: rgb(0 0 0 / 60%);
     --colony-border-strong: 270 10% 30%;
     --colony-wash: 264 12% 18.5%;
     --colony-track: 264 12% 20%;

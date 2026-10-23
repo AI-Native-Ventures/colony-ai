@@ -1,11 +1,14 @@
 import * as React from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { CircleArrowUp, ExternalLink } from "lucide-react";
 
 import { useUpdaterContext } from "./hooks/UpdaterProvider";
 import { shouldShowSidebarUpdateCard } from "./sidebarUpdateCardVisibility";
 import { SidebarCompactActionCard } from "@/shared/ui/sidebar-action-card";
-import { Spinner } from "@/shared/ui/spinner";
+import {
+  ConnectingIcon,
+  UpdateAvailableIcon,
+  UpdateReadyIcon,
+} from "@/shared/ui/colonyIcons";
 
 type SidebarUpdateCardProps = {
   onDismiss: () => void;
@@ -73,9 +76,9 @@ export function SidebarUpdateCompactCard({
       dismissLabel="Dismiss update notification"
       icon={
         pending ? (
-          <Spinner aria-hidden="true" className="h-5 w-5 border-2" />
+          <ConnectingIcon className="motion-safe:animate-spin" size={20} />
         ) : (
-          <CircleArrowUp aria-hidden="true" className="h-5 w-5" />
+          <UpdateReadyIcon size={20} />
         )
       }
       iconKey={pending ? "pending" : "idle"}
@@ -83,6 +86,7 @@ export function SidebarUpdateCompactCard({
       onDismiss={onDismiss}
       testId={testId}
       title="Ready to update!"
+      tone="accent"
     />
   );
 }
@@ -101,12 +105,13 @@ export function SidebarUpdateCard({ onDismiss }: SidebarUpdateCardProps) {
         actionTestId="sidebar-update-download-github"
         description={`v${status.version} available. Download the new version from GitHub.`}
         dismissLabel="Dismiss update notification"
-        icon={<ExternalLink aria-hidden="true" className="h-5 w-5" />}
+        icon={<UpdateAvailableIcon size={20} />}
         iconKey="manual"
         onAction={() => void openUrl(status.releaseUrl)}
         onDismiss={onDismiss}
         testId="sidebar-update-card-manual"
         title="Update available"
+        tone="info"
       />
     );
   }

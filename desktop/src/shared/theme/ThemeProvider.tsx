@@ -41,7 +41,22 @@ const VIDEO_REVIEW_TEXT_CONTRAST = 4.5;
 const VIDEO_REVIEW_CHIP_BACKGROUND_ALPHAS = [0.15, 0.3] as const;
 const GLASS_VIBRANCY_MATERIAL = "sidebar";
 
+/** The accent choices Colony 3.0 offers (Settings, Appearance). */
 export const ACCENT_COLORS = [
+  { name: "Violet", value: "#5B45BE" },
+  { name: "Rose", value: "#B23A6E" },
+  { name: "Teal", value: "#1F7A70" },
+  { name: "Blue", value: "#2B5899" },
+  { name: "Amber", value: "#9A5B00" },
+  { name: "Ink", value: "#25222C" },
+] as const;
+
+/**
+ * Accents earlier versions offered. They are no longer in the picker, but a
+ * stored or synced one keeps applying, so no one's appearance changes
+ * underneath them.
+ */
+export const LEGACY_ACCENT_COLORS = [
   { name: "Neutral", value: NEUTRAL_ACCENT },
   { name: "Blue", value: "#3b82f6" },
   { name: "Cyan", value: "#06b6d4" },
@@ -54,7 +69,7 @@ export const ACCENT_COLORS = [
   { name: "Indigo", value: "#6366f1" },
 ] as const;
 
-export const DEFAULT_ACCENT = "#895AF6";
+export const DEFAULT_ACCENT = "#5B45BE";
 
 type ThemeContextValue = {
   themeName: string;
@@ -236,6 +251,19 @@ function applyAccentColor(value: string) {
     return;
   }
 
+  if (value.toLowerCase() === DEFAULT_ACCENT.toLowerCase()) {
+    // The default accent is the token itself: drop every override so the
+    // palette's own accent, soft tint and ink apply exactly.
+    for (const name of [
+      "--colony-accent",
+      "--colony-focus",
+      "--colony-accent-soft",
+      "--colony-accent-ink",
+    ]) {
+      root.style.removeProperty(name);
+    }
+  }
+
   const hex = value;
   const accentHsl = hexToHsl(hex);
   const fgHsl = hexToHsl(getContrastColor(hex));
@@ -248,8 +276,22 @@ function applyAccentColor(value: string) {
   root.style.setProperty("--primary", accentHsl);
   root.style.setProperty("--ring", accentHsl);
   root.style.setProperty("--sidebar-ring", accentHsl);
-  root.style.setProperty("--colony-accent", accentHsl);
-  root.style.setProperty("--colony-focus", accentHsl);
+  if (value.toLowerCase() !== DEFAULT_ACCENT.toLowerCase()) {
+    root.style.setProperty("--colony-accent", accentHsl);
+    root.style.setProperty("--colony-focus", accentHsl);
+    // The soft tint and the ink follow a chosen accent: a light wash of it
+    // and a deeper shade of it.
+    root.style.setProperty(
+      "--colony-accent-soft",
+      hexToHsl(
+        rgbToHex(mixRgb(hexToRgb(hex), { r: 255, g: 255, b: 255 }, 0.9)),
+      ),
+    );
+    root.style.setProperty(
+      "--colony-accent-ink",
+      hexToHsl(rgbToHex(mixRgb(hexToRgb(hex), { r: 0, g: 0, b: 0 }, 0.15))),
+    );
+  }
   root.style.setProperty("--primary-foreground", fgHsl);
   root.style.setProperty("--sidebar-primary", accentHsl);
   root.style.setProperty("--sidebar-primary-foreground", fgHsl);

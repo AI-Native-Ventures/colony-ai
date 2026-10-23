@@ -14,6 +14,11 @@ export default {
           "calc(var(--buzz-type-rem) * 1.625)",
           { lineHeight: "1.35" },
         ],
+        menu: "calc(15 * var(--colony-px))", // menu rows and compact controls
+        hero: ["calc(56 * var(--colony-px))", { lineHeight: "1.02", letterSpacing: "-0.042em" }], // Foundations headline
+        chip: "calc(14.5 * var(--colony-px))", // choice chips
+        "title-md": ["calc(24 * var(--colony-px))", { lineHeight: "1.2", letterSpacing: "-0.02em" }], // dialog titles
+        control: "calc(15.5 * var(--colony-px))", // dialog and form buttons
         "2xs": "var(--text-2xs)", // 13px label (Colony 3.0 ramp)
         "3xs": "var(--text-3xs)", // 11px tiny count and glyph text
         "update-author": "calc(var(--buzz-type-rem) * 0.83)",
@@ -149,6 +154,11 @@ export default {
         "colony-toast": "var(--colony-radius-toast)",
         "colony-frame": "var(--colony-radius-frame)",
         "colony-card": "var(--colony-radius-card)",
+        "colony-menu": "1.125rem",
+        "colony-menu-item": "0.625rem",
+        "colony-popover": "1.25rem",
+        "colony-control-lg": "0.75rem",
+        "colony-chip": "0.875rem",
         "colony-dialog": "var(--colony-radius-dialog)",
         "colony-onboarding-control": "var(--colony-radius-onboarding-control)",
         "colony-onboarding-dialog": "var(--colony-radius-onboarding-dialog)",
@@ -276,6 +286,8 @@ export default {
           "need-bg": "hsl(var(--colony-need-bg) / <alpha-value>)",
           idle: "hsl(var(--colony-idle-bg) / <alpha-value>)",
           person: "var(--colony-person)",
+          pop: "var(--colony-pop)",
+          scrim: "var(--colony-scrim)",
           online: "var(--colony-presence-online)",
           away: "var(--colony-presence-away)",
           canvas: "hsl(var(--colony-canvas) / <alpha-value>)",

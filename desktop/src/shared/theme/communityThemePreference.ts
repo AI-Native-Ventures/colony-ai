@@ -1,5 +1,9 @@
 import { normalizeRelayUrl } from "@/features/profile/lib/selfProfileStorage";
-import { ACCENT_COLORS, DEFAULT_ACCENT } from "./ThemeProvider";
+import {
+  ACCENT_COLORS,
+  DEFAULT_ACCENT,
+  LEGACY_ACCENT_COLORS,
+} from "./ThemeProvider";
 import { SYNTAX_THEMES, type SyntaxThemeName } from "./theme-loader";
 import {
   nextPreferenceWriteTime,
@@ -27,6 +31,7 @@ export const DEFAULT_COMMUNITY_THEME: CommunityThemePreference = Object.freeze({
 const THEME_NAMES = new Set<string>(SYNTAX_THEMES);
 const ACCENTS = new Set<string>([
   ...ACCENT_COLORS.map(({ value }) => value.toLowerCase()),
+  ...LEGACY_ACCENT_COLORS.map(({ value }) => value.toLowerCase()),
   "#895af6",
   "#74717b",
 ]);

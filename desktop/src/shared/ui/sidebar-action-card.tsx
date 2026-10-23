@@ -1,6 +1,5 @@
 import * as React from "react";
 import type { ReactNode } from "react";
-import { X } from "lucide-react";
 import {
   AnimatePresence,
   motion,
@@ -9,13 +8,20 @@ import {
 } from "motion/react";
 
 import { cn } from "@/shared/lib/cn";
+import { CloseIcon } from "@/shared/ui/colonyIcons";
 import {
   POOF_DURATION_MS,
   POOF_ORIGIN_CLASS,
   POOF_TRIGGER_CLASS,
 } from "@/shared/ui/PoofBurstProvider";
 
-type SidebarActionCardTone = "neutral" | "success";
+type SidebarActionCardTone =
+  | "neutral"
+  | "success"
+  | "danger"
+  | "accent"
+  | "need"
+  | "info";
 export type SidebarActionCardSurface = "background" | "secondary";
 
 type SidebarCompactActionCardProps = {
@@ -153,7 +159,7 @@ function SidebarActionDismissButton({
     <button
       aria-label={label}
       className={cn(
-        "group/dismiss pointer-events-none absolute -right-1 -top-2 z-10 h-6 w-6 rounded-full text-muted-foreground/45 transition-colors duration-150 ease-out hover:text-foreground/80 focus-visible:pointer-events-auto focus-visible:text-foreground/80 focus-visible:outline-hidden group-hover/sidebar-action-card:pointer-events-auto group-hover/sidebar-compact-action-card:pointer-events-auto",
+        "colony-sidebar-notice-dismiss",
         POOF_TRIGGER_CLASS,
         className,
       )}
@@ -172,9 +178,7 @@ function SidebarActionDismissButton({
       }}
       type="button"
     >
-      <span className="flex h-full w-full scale-95 items-center justify-center rounded-full bg-background opacity-0 shadow-sm ring-1 ring-border/70 transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:scale-100 group-focus-visible/dismiss:scale-100 group-focus-visible/dismiss:opacity-100 group-focus-visible/dismiss:ring-2 group-focus-visible/dismiss:ring-muted-foreground/40 group-hover/sidebar-action-card:scale-100 group-hover/sidebar-action-card:opacity-100 group-hover/sidebar-compact-action-card:scale-100 group-hover/sidebar-compact-action-card:opacity-100">
-        <X aria-hidden="true" className="h-4 w-4" />
-      </span>
+      <CloseIcon size={14} />
     </button>
   );
 }
@@ -204,7 +208,6 @@ export function SidebarCompactActionCard({
   tone = "neutral",
 }: SidebarCompactActionCardProps) {
   const shouldReduceMotion = useReducedMotion();
-  const isSuccess = tone === "success";
   const [isDismissing, setIsDismissing] = React.useState(false);
   const resolvedIconKey = iconKey ?? title;
   const cardTransition: Transition = shouldReduceMotion
@@ -236,94 +239,77 @@ export function SidebarCompactActionCard({
     <motion.div
       animate={isDismissing ? cardHiddenState : cardVisibleState}
       className={cn(
-        "group/sidebar-compact-action-card relative w-full origin-bottom",
+        "colony-sidebar-notice group/sidebar-compact-action-card w-full origin-bottom",
         POOF_ORIGIN_CLASS,
         isDismissing && "pointer-events-none",
         className,
       )}
+      data-dismissible={onDismiss ? "true" : undefined}
       data-dismissing={isDismissing ? "true" : undefined}
+      data-surface={surface}
       data-testid={testId}
+      data-tone={tone}
       exit={cardHiddenState}
       initial={cardHiddenState}
       role={role}
       transition={cardTransition}
     >
+      <motion.span
+        aria-hidden="true"
+        className="colony-sidebar-notice-icon"
+        layout="position"
+        transition={contentTransition}
+      >
+        <AnimatePresence initial={false} mode="wait">
+          <motion.span
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex items-center justify-center"
+            exit={{ opacity: 0, scale: shouldReduceMotion ? 1 : 0.95 }}
+            initial={{ opacity: 0, scale: shouldReduceMotion ? 1 : 0.95 }}
+            key={resolvedIconKey}
+            transition={contentTransition}
+          >
+            {icon}
+          </motion.span>
+        </AnimatePresence>
+      </motion.span>
       <button
         aria-label={actionAriaLabel}
-        className={cn(
-          "flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left shadow-xs transition-[background-color,border-color,color,box-shadow] duration-150 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-muted-foreground/40 disabled:cursor-default disabled:opacity-100",
-          isSuccess
-            ? "buzz-sidebar-action-card--success disabled:cursor-default disabled:opacity-100"
-            : surface === "secondary"
-              ? "border-border/70 bg-secondary/80 text-secondary-foreground hover:border-border hover:bg-secondary dark:bg-secondary/60 dark:hover:bg-secondary/70"
-              : "border-border/70 bg-background/70 text-foreground hover:border-border hover:bg-muted/40 dark:bg-background/50 dark:hover:bg-muted/30",
-        )}
+        className="colony-sidebar-notice-copy focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-colony-accent/40"
         data-testid={actionTestId}
         disabled={actionDisabled}
         onClick={onAction}
         type="button"
       >
-        <motion.span
-          className={cn(
-            "relative flex min-h-10 min-w-0 flex-1 flex-col justify-center",
-            description && "top-[0.1875rem]",
-          )}
-          layout="position"
-          transition={contentTransition}
-        >
-          <AnimatePresence initial={false} mode="wait">
+        <AnimatePresence initial={false} mode="wait">
+          <motion.span
+            animate={{ opacity: 1, y: 0 }}
+            className="colony-sidebar-notice-title"
+            exit={contentExit}
+            initial={contentInitial}
+            key={title}
+            transition={contentTransition}
+          >
+            {title}
+          </motion.span>
+        </AnimatePresence>
+        <AnimatePresence initial={false}>
+          {description ? (
             <motion.span
               animate={{ opacity: 1, y: 0 }}
-              className="block text-sm font-semibold leading-tight"
+              className="colony-sidebar-notice-detail"
               exit={contentExit}
               initial={contentInitial}
-              key={title}
+              key="description"
               transition={contentTransition}
             >
-              {title}
+              <SidebarActionDescriptionText
+                shouldReduceMotion={Boolean(shouldReduceMotion)}
+                value={description}
+              />
             </motion.span>
-          </AnimatePresence>
-          <AnimatePresence initial={false}>
-            {description ? (
-              <motion.span
-                animate={{ opacity: 1, y: 0 }}
-                className="mt-1 block text-xs leading-snug text-muted-foreground"
-                exit={contentExit}
-                initial={contentInitial}
-                key="description"
-                transition={contentTransition}
-              >
-                <SidebarActionDescriptionText
-                  shouldReduceMotion={Boolean(shouldReduceMotion)}
-                  value={description}
-                />
-              </motion.span>
-            ) : null}
-          </AnimatePresence>
-        </motion.span>
-        <motion.span
-          className={cn(
-            "ml-auto flex h-10 w-10 shrink-0 items-center justify-center transition-colors duration-150 ease-out",
-            isSuccess
-              ? "buzz-sidebar-action-card__success-icon"
-              : "text-muted-foreground group-hover/sidebar-compact-action-card:text-foreground",
-          )}
-          layout="position"
-          transition={contentTransition}
-        >
-          <AnimatePresence initial={false} mode="wait">
-            <motion.span
-              animate={{ opacity: 1, scale: 1 }}
-              className="flex h-5 w-5 items-center justify-center"
-              exit={{ opacity: 0, scale: shouldReduceMotion ? 1 : 0.95 }}
-              initial={{ opacity: 0, scale: shouldReduceMotion ? 1 : 0.95 }}
-              key={resolvedIconKey}
-              transition={contentTransition}
-            >
-              {icon}
-            </motion.span>
-          </AnimatePresence>
-        </motion.span>
+          ) : null}
+        </AnimatePresence>
       </button>
       {onDismiss ? (
         <SidebarActionDismissButton

@@ -51,6 +51,20 @@
     --text-4xl: calc(40 * var(--colony-px));
     --text-5xl: calc(52 * var(--colony-px));
     --text-6xl: calc(64 * var(--colony-px));
+    /* The design leaves line height at the font's own (normal) unless a block
+       sets one, so the ramp does too. */
+    --text-3xs--line-height: normal;
+    --text-2xs--line-height: normal;
+    --text-xs--line-height: normal;
+    --text-sm--line-height: normal;
+    --text-base--line-height: normal;
+    --text-lg--line-height: normal;
+    --text-xl--line-height: normal;
+    --text-2xl--line-height: normal;
+    --text-3xl--line-height: normal;
+    --text-4xl--line-height: normal;
+    --text-5xl--line-height: normal;
+    --text-6xl--line-height: normal;
 
     /*
      * Default conversation type and comfy spacing for channels, DMs, threads,

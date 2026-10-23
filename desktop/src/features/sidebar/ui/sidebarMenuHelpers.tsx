@@ -1,8 +1,5 @@
 import type * as React from "react";
 
-const SIDEBAR_CONTEXT_ICON_SLOT_CLASS =
-  "flex h-4 w-4 shrink-0 items-center justify-center";
-
 /**
  * Run a menu action on the next tick. Radix closes the menu on select and
  * restores focus; deferring the action avoids opening a modal dialog while
@@ -14,22 +11,11 @@ export function deferMenuAction(action: () => void) {
 }
 
 /**
- * A fixed-width leading slot for context-menu rows so that labels stay
- * left-aligned whether or not a given row has an icon. Pass no children for
- * an intentionally blank (but still aligned) slot.
+ * Context-menu rows in Colony 3.0 are text only (`SidebarMenus.dc.html`), so
+ * the leading icon slot that used to keep labels aligned now renders nothing.
+ * Call sites keep passing their icon so a row can regain one without a new
+ * component.
  */
-export function ContextMenuIconSlot({
-  children,
-}: {
-  children?: React.ReactNode;
-}) {
-  return (
-    <span
-      aria-hidden="true"
-      className={SIDEBAR_CONTEXT_ICON_SLOT_CLASS}
-      data-sidebar-context-icon-slot
-    >
-      {children}
-    </span>
-  );
+export function ContextMenuIconSlot(_props: { children?: React.ReactNode }) {
+  return null;
 }

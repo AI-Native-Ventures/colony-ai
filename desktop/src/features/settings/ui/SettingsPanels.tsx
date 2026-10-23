@@ -936,7 +936,6 @@ export function ThemeSettingsCard() {
             accentPickerHidden ? null : (
               <AccentPickerContent
                 accentColor={accentColor}
-                isDark={isDark}
                 setAccentColor={setAccentColor}
               />
             )
@@ -953,7 +952,6 @@ export function ThemeSettingsCard() {
                 >
                   <AccentPickerContent
                     accentColor={accentColor}
-                    isDark={isDark}
                     setAccentColor={setAccentColor}
                   />
                 </motion.div>

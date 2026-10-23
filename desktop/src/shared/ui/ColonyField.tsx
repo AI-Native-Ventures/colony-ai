@@ -4,8 +4,11 @@ import { cn } from "@/shared/lib/cn";
 
 type ColonyFieldProps = {
   className?: string;
-  /** `rail` paints the narrow community rail variant (no blobs, one wash). */
-  variant?: "sidebar" | "rail";
+  /**
+   * `rail` paints the narrow community rail (one wash, no blobs); `swatch`
+   * is the taller sample the Foundations board shows.
+   */
+  variant?: "sidebar" | "rail" | "swatch";
 };
 
 /**
@@ -28,7 +31,7 @@ export function ColonyField({
       data-colony-field={variant}
     >
       <div className="colony-field-base" />
-      {variant === "sidebar" ? (
+      {variant !== "rail" ? (
         <>
           <div className="colony-field-blob colony-field-blob-top" />
           <div className="colony-field-blob colony-field-blob-middle" />

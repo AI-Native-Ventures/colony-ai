@@ -117,3 +117,38 @@ export async function seedColony3Communities(page: Page) {
     window.localStorage.setItem("buzz-active-community-id", communities[0].id);
   });
 }
+
+type RelayConnectionState =
+  | "connected"
+  | "connecting"
+  | "disconnected"
+  | "idle"
+  | "reconnecting"
+  | "stalled";
+
+/** Drives the mock relay into a degraded connection state (the notice cards). */
+export async function setColony3RelayState(
+  page: Page,
+  state: RelayConnectionState,
+) {
+  await page.waitForFunction(
+    () =>
+      typeof (
+        window as Window & {
+          __BUZZ_E2E_SET_RELAY_CONNECTION_STATE__?: unknown;
+        }
+      ).__BUZZ_E2E_SET_RELAY_CONNECTION_STATE__ === "function" &&
+      (
+        window as Window & {
+          __BUZZ_E2E_GET_RELAY_CONNECTION_STATE__?: () => string;
+        }
+      ).__BUZZ_E2E_GET_RELAY_CONNECTION_STATE__?.() === "connected",
+  );
+  await page.evaluate((next) => {
+    (
+      window as Window & {
+        __BUZZ_E2E_SET_RELAY_CONNECTION_STATE__?: (s: string) => void;
+      }
+    ).__BUZZ_E2E_SET_RELAY_CONNECTION_STATE__?.(next);
+  }, state);
+}

@@ -25,7 +25,7 @@ const AlertDialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-50 bg-black/60",
+      "fixed inset-0 z-50 bg-colony-scrim",
       MODAL_OVERLAY_MOTION_CLASS,
       MODAL_BACKDROP_BLUR_CLASS,
       className,
@@ -73,7 +73,8 @@ const AlertDialogContent = React.forwardRef<
         <AlertDialogPrimitive.Content
           className={cn(
             "pointer-events-auto grid w-[calc(100vw-2rem)] max-w-md gap-4 outline-hidden",
-            surface === "default" && "rounded-3xl bg-background p-6 shadow-2xl",
+            surface === "default" &&
+              "gap-3.5 rounded-colony-dialog bg-colony-pop p-7 shadow-colony-dialog",
             surface === "textured" &&
               texturedSurfaceClasses({
                 size: textureSize,
@@ -108,7 +109,7 @@ const AlertDialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+      "flex flex-col-reverse gap-2.5 pt-1.5 sm:flex-row sm:justify-end",
       className,
     )}
     {...props}
@@ -121,7 +122,7 @@ const AlertDialogTitle = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Title>
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Title
-    className={cn("text-xl font-semibold tracking-tight", className)}
+    className={cn("text-title-md font-extrabold", className)}
     ref={ref}
     {...props}
   />
@@ -133,7 +134,10 @@ const AlertDialogDescription = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Description>
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Description
-    className={cn("text-sm text-muted-foreground", className)}
+    className={cn(
+      "text-control font-medium leading-relaxed text-colony-fg-secondary",
+      className,
+    )}
     ref={ref}
     {...props}
   />
@@ -146,7 +150,7 @@ const AlertDialogAction = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action>
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Action
-    className={cn(buttonVariants(), className)}
+    className={cn(buttonVariants({ size: "dialog" }), className)}
     ref={ref}
     {...props}
   />
@@ -158,7 +162,10 @@ const AlertDialogCancel = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Cancel>
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Cancel
-    className={cn(buttonVariants({ variant: "outline" }), className)}
+    className={cn(
+      buttonVariants({ variant: "outline", size: "dialog" }),
+      className,
+    )}
     ref={ref}
     {...props}
   />

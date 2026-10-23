@@ -60,18 +60,18 @@ export function RelayConnectionOverlay({
         <motion.div
           animate={{ opacity: 1, y: 0 }}
           className={cn(
-            "pointer-events-none fixed z-50 w-[284px]",
-            hasCommunityRail ? "left-[68px]" : "left-3",
+            "colony-floating-notice pointer-events-none fixed z-50 w-75",
+            hasCommunityRail ? "left-38" : "left-22",
             isHuddleDrawerOpen
-              ? "bottom-[calc(var(--buzz-huddle-drawer-height,0px)+12px)]"
-              : "bottom-3",
+              ? "bottom-[calc(var(--buzz-huddle-drawer-height,0px)+1.375rem)]"
+              : "bottom-5.5",
           )}
           exit={{ opacity: 0, y: 20 }}
           initial={{ opacity: 0, y: -20 }}
           key="relay-connection-overlay"
           transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
         >
-          <div className="pointer-events-auto rounded-xl bg-background shadow-md">
+          <div className="pointer-events-auto">
             <SidebarRelayConnectionCard
               isConnected={card.isRelayConnectionSuccess}
               isReconnectPending={card.isRelayReconnectPending}
