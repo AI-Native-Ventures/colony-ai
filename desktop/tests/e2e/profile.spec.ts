@@ -2403,7 +2403,6 @@ test("settings subtitles share the Appearance secondary color", async ({
   }
 
   await page.goto("/");
-  await page.getByTestId("sidebar-nav-library-toggle").click();
   const blocksAndTemplates = page.getByTestId("sidebar-blocks-templates");
   await expect(blocksAndTemplates).toBeVisible();
   await expect(blocksAndTemplates).toHaveCount(1);

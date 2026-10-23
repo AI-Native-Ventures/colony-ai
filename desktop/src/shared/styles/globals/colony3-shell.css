@@ -100,6 +100,12 @@
   );
 }
 
+/* On the field the section labels use the sidebar's soft ink; the pale grey
+   they had on a flat sidebar does not read on the pink. */
+:root[data-buzz-sidebar]:not(.dark) .w20-settings-sidebar .w20-nav-heading {
+  color: var(--colony-sidebar-ink-soft);
+}
+
 /* The Settings sidebar is the same field as the app sidebar, edge to edge. */
 .w20-settings-sidebar.w20-settings-sidebar.w20-settings-sidebar {
   top: 0;

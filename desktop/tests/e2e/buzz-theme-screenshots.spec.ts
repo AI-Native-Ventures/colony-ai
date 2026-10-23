@@ -64,6 +64,175 @@ function contrastRatio(foreground: string, background: string) {
   return (high + 0.05) / (low + 0.05);
 }
 
+/**
+ * The Colony 3.0 sidebar's palette and geometry: the checks the C1 sidebar had
+ * (text tones, search surface, header insets, row alignment, active and hover
+ * surfaces, row opacities), with the design's values.
+ */
+async function expectColonySidebarPalette(page: Page, mode: "light" | "dark") {
+  const inkSoft = await resolveSidebarColor(
+    page,
+    "color",
+    "var(--colony-sidebar-ink-soft)",
+  );
+  const ink = await resolveSidebarColor(
+    page,
+    "color",
+    "var(--colony-sidebar-ink)",
+  );
+  const glass = await resolveSidebarColor(
+    page,
+    "background-color",
+    "var(--colony-sidebar-glass)",
+  );
+  const activeSurface =
+    mode === "light"
+      ? "rgba(255, 255, 255, 0.84)"
+      : "rgba(255, 255, 255, 0.15)";
+  const search = page.getByTestId("open-search");
+  const pinnedHeader = page.getByTestId("sidebar-pinned-header");
+  const sidebarScroller = page.locator(".buzz-sidebar-scrollbar");
+  const scrollContent = page.getByTestId("sidebar-scroll-content");
+  const sectionLabel = page
+    .locator('[data-sidebar="group-label"]')
+    .filter({ hasText: "Channels" })
+    .first();
+
+  await expect(sectionLabel.locator("[data-sidebar-section-title]")).toHaveCSS(
+    "color",
+    inkSoft,
+  );
+  await expect(search).toHaveCSS("background-color", glass);
+  await expect(search).toHaveCSS("height", "42px");
+  await expect(search).toHaveCSS("padding-left", "12px");
+  await expect(search.locator("svg").first()).toHaveCSS("color", inkSoft);
+  await expect(search.locator("span").first()).toHaveCSS("color", inkSoft);
+  const isMac = await page.evaluate(() =>
+    /mac|iphone|ipad|ipod/i.test(navigator.platform),
+  );
+  if (isMac)
+    await expect(pinnedHeader).toHaveAttribute("data-mac-chrome", "true");
+  else
+    await expect(pinnedHeader).not.toHaveAttribute("data-mac-chrome", "true");
+  // 2.75rem clears the window buttons on a Mac; 1rem elsewhere.
+  await expect(pinnedHeader).toHaveCSS("padding-top", isMac ? "44px" : "16px");
+  await expect(pinnedHeader).toHaveCSS("padding-bottom", "10px");
+  await expect(pinnedHeader).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(pinnedHeader).toHaveCSS("margin-left", "0px");
+  await expect(pinnedHeader).toHaveCSS("margin-right", "0px");
+  await expect(pinnedHeader).toHaveCSS("padding-left", "14px");
+  await expect(pinnedHeader).toHaveCSS("padding-right", "14px");
+  await expect(sidebarScroller).toHaveCSS("padding-left", "0px");
+  await expect(sidebarScroller).toHaveCSS("padding-right", "0px");
+  await expect(scrollContent).toHaveCSS("padding-left", "14px");
+  await expect(scrollContent).toHaveCSS("padding-right", "14px");
+  const pinnedSpacerColor = await pinnedHeader.evaluate(
+    (element) => getComputedStyle(element, "::before").backgroundColor,
+  );
+  expect(pinnedSpacerColor).toBe("rgba(0, 0, 0, 0)");
+  const activityButton = page.getByTestId("sidebar-activity-button");
+  await expect(
+    sidebarScroller.getByTestId("sidebar-activity-button"),
+  ).toBeVisible();
+  await sidebarScroller.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  const searchBox = await search.boundingBox();
+  const pinnedHeaderBox = await pinnedHeader.boundingBox();
+  const primaryRowBox = await activityButton.boundingBox();
+  const activeRowBox = await page.getByTestId("channel-general").boundingBox();
+  const hoverRowBox = await page.getByTestId("channel-random").boundingBox();
+  const scrollContentBox = await scrollContent.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return { left: box.left, right: box.right };
+  });
+  if (
+    !searchBox ||
+    !pinnedHeaderBox ||
+    !primaryRowBox ||
+    !activeRowBox ||
+    !hoverRowBox
+  ) {
+    throw new Error("Sidebar search or primary navigation geometry is missing");
+  }
+  expect(
+    pinnedHeaderBox.y +
+      pinnedHeaderBox.height -
+      (searchBox.y + searchBox.height),
+  ).toBe(10);
+  // Every row lines up with the search box, with equal room either side.
+  for (const rowBox of [primaryRowBox, activeRowBox, hoverRowBox]) {
+    expect(Math.abs(rowBox.x - searchBox.x)).toBeLessThanOrEqual(1);
+    const rowLeftSpacing = rowBox.x - scrollContentBox.left;
+    const rowRightSpacing = scrollContentBox.right - (rowBox.x + rowBox.width);
+    expect(Math.abs(rowLeftSpacing - rowRightSpacing)).toBeLessThanOrEqual(1);
+  }
+  await expect(page.locator("[data-buzz-sidebar-secondary]").first()).toHaveCSS(
+    "color",
+    inkSoft,
+  );
+  await expect(
+    page.locator('[data-testid="app-sidebar"] [data-sidebar="trigger"]'),
+  ).toHaveCSS("color", inkSoft);
+  await expect(page.getByTestId("channel-general")).toHaveCSS("color", ink);
+  await expect(page.getByTestId("channel-general")).toHaveCSS(
+    "font-weight",
+    "800",
+  );
+  await expect(
+    page.getByTestId("channel-general").locator("[data-sidebar-row-label]"),
+  ).toHaveCSS("opacity", "1");
+  await page.mouse.move(600, 100);
+  await expect(page.getByTestId("channel-general")).toHaveCSS(
+    "background-color",
+    activeSurface,
+  );
+  const hoverChannel = page.getByTestId("channel-random");
+  await hoverChannel.hover();
+  await expect(hoverChannel).toHaveCSS("background-color", glass);
+
+  const firstDmItem = page
+    .getByTestId("dm-list")
+    .locator('[data-sidebar="menu-item"]')
+    .first();
+  const firstDmButton = firstDmItem.locator('[data-sidebar="menu-button"]');
+  const firstDmLabel = firstDmButton.locator("[data-sidebar-row-label]");
+  const closeDmButton = firstDmItem.getByRole("button", {
+    name: "Close direct message",
+  });
+  const hoverChannelLabel = hoverChannel.locator("[data-sidebar-row-label]");
+  const hoverChannelIcon = hoverChannel.locator("svg").first();
+  const activityLabel = activityButton.locator('[data-sidebar="menu-label"]');
+  const activityIcon = activityButton.locator("svg").first();
+  const sidebarForeground = await page
+    .getByTestId("app-sidebar")
+    .evaluate((element) => getComputedStyle(element).color);
+  const channelForeground = await hoverChannel.evaluate(
+    (element) => getComputedStyle(element).color,
+  );
+  const directMessageForeground = await firstDmButton.evaluate(
+    (element) => getComputedStyle(element).color,
+  );
+  expect(channelForeground).toBe(directMessageForeground);
+  await expect(activityButton).toHaveCSS("color", sidebarForeground);
+  await expect(hoverChannelLabel).toHaveCSS("opacity", "1");
+  await expect(hoverChannelIcon).toHaveCSS("opacity", "1");
+  await expect(firstDmButton).toHaveCSS("opacity", "1");
+  await expect(firstDmLabel).toHaveCSS("opacity", "1");
+  await expect(activityLabel).toHaveCSS("opacity", "1");
+  await expect(activityIcon).toHaveCSS("opacity", "1");
+  await firstDmItem.hover();
+  await expect(closeDmButton).toBeVisible();
+  await closeDmButton.hover();
+  await expect(firstDmButton).toHaveCSS("background-color", glass);
+
+  const scrollbarTrackColor = await sidebarScroller.evaluate(
+    (element) =>
+      getComputedStyle(element, "::-webkit-scrollbar-track").backgroundColor,
+  );
+  expect(scrollbarTrackColor).toBe("rgba(0, 0, 0, 0)");
+}
+
 /** The Colony 3.0 shell: the person's field in the sidebar, a flat main area. */
 async function expectColonyShell(page: Page, mode: "light" | "dark") {
   await expect(page.locator("html")).toHaveAttribute(
@@ -87,6 +256,13 @@ async function expectColonyShell(page: Page, mode: "light" | "dark") {
     "rgb(198, 179, 244)",
     "rgb(148, 180, 250)",
   ]);
+  // No app stroke around the shell and no card shadow under the main area.
+  expect(
+    await page.evaluate(() => {
+      const shell = document.querySelector(".buzz-huddle-shell");
+      return shell ? getComputedStyle(shell, "::before").boxShadow : "";
+    }),
+  ).toBe("none");
   const content = page.locator("[data-buzz-content-surface]").first();
   await expect(content).toHaveCSS("box-shadow", "none");
   await expect(content).toHaveCSS("border-radius", "0px");
@@ -100,14 +276,16 @@ async function expectColonyShell(page: Page, mode: "light" | "dark") {
       .getByTestId(`${list}-section-label`)
       .locator("[data-sidebar-section-title]")
       .boundingBox();
-    const row = await page
+    const rowIconX = await page
       .getByTestId(list)
       .locator('[data-sidebar="menu-button"]')
       .first()
-      .boundingBox();
+      .evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return box.x + Number.parseFloat(getComputedStyle(element).paddingLeft);
+      });
     expect(title).not.toBeNull();
-    expect(row).not.toBeNull();
-    expect(Math.abs((title?.x ?? 0) - (row?.x ?? 0))).toBeLessThanOrEqual(12);
+    expect(Math.abs((title?.x ?? 0) - rowIconX)).toBeLessThanOrEqual(1);
   }
 }
 
@@ -188,20 +366,31 @@ async function expectBuzzGradientPaint(
 }
 
 async function expectBuzzSettingsPalette(page: Page, mode: "light" | "dark") {
+  const mutedColor = await resolveSidebarColor(
+    page,
+    "color",
+    "var(--colony-sidebar-ink-soft)",
+  );
   const sidebar = page.getByTestId("settings-sidebar");
   const sectionLabel = sidebar
     .locator(".w20-nav-heading")
     .filter({ hasText: "Personal" });
-  const activeItem = sidebar.locator('.w20-nav-item[data-active="true"]');
 
-  // Section labels are the quiet tone; the open item reads stronger.
-  const activeColor = await activeItem.evaluate(
-    (element) => getComputedStyle(element).color,
+  await expect(sectionLabel).toHaveCSS(
+    "color",
+    // Dark keeps the smallest AA step over the field.
+    mode === "dark" ? "rgb(206, 201, 209)" : mutedColor,
   );
-  await expect(sectionLabel).not.toHaveCSS("color", activeColor);
-  await expect(page.locator("html")).toHaveClass(
-    mode === "dark" ? /(^|\s)dark($|\s)/ : /(^|\s)light($|\s)/,
-  );
+  await expect(
+    sidebar.locator('.w20-nav-item[data-active="true"]'),
+  ).not.toHaveCSS("color", mutedColor);
+
+  await expectBuzzGradientPaint(page, mode);
+
+  const version = page.getByTestId("settings-version");
+  if ((await version.count()) > 0) {
+    await expect(version).toHaveCSS("color", mutedColor);
+  }
 }
 
 async function expectAppliedBuzzTheme(
@@ -285,6 +474,7 @@ test("buzz light sidebar field", async ({ page }) => {
   await installMockBridge(page);
   await openChannel(page);
   await expectColonyShell(page, "light");
+  await expectColonySidebarPalette(page, "light");
   await waitForAnimations(page);
   await page
     .getByTestId("app-sidebar")
@@ -296,6 +486,7 @@ test("buzz dark sidebar field", async ({ page }) => {
   await installMockBridge(page);
   await openChannel(page);
   await expectColonyShell(page, "dark");
+  await expectColonySidebarPalette(page, "dark");
   await waitForAnimations(page);
   await page
     .getByTestId("app-sidebar")
