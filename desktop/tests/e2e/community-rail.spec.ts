@@ -1395,9 +1395,9 @@ test.describe("community rail", () => {
     expect(contentBox).not.toBeNull();
     expect(buttonBox?.y ?? 0).toBeGreaterThanOrEqual(32);
     // 2.75rem below the rail's top: clear of the window buttons.
-    expect(Math.abs((buttonBox?.y ?? 0) - (railBox?.y ?? 0) - 44)).toBeLessThan(
-      0.5,
-    );
+    expect(
+      Math.abs((buttonBox?.y ?? 0) - (railBox?.y ?? 0) - 44),
+    ).toBeLessThan(0.5);
     expect(Math.abs((railBox?.y ?? 0) - (appSurfaceBox?.y ?? 0))).toBeLessThan(
       0.5,
     );
