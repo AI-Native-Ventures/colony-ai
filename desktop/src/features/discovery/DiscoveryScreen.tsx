@@ -78,6 +78,25 @@ function standInInstalled(): boolean {
   );
 }
 
+/**
+ * The design lists whole sentences only, as many as fit the two-line row
+ * (about 190 characters). The taxonomy keeps the long market notes; the row
+ * shows the first sentences of them.
+ */
+const SUMMARY_LIMIT = 190;
+export function summarizeDescription(description: string | undefined): string {
+  const text = (description ?? "").trim();
+  if (text.length <= SUMMARY_LIMIT) return text;
+  const sentences = text.match(/.+?(?:[.!?](?=\s|$)|$)/g) ?? [text];
+  let summary = "";
+  for (const sentence of sentences) {
+    const next = `${summary} ${sentence}`.trim();
+    if (summary && next.length > SUMMARY_LIMIT) break;
+    summary = next;
+  }
+  return summary;
+}
+
 export function DiscoveryScreen() {
   const navigate = useNavigate();
   const { campaign, provider } = useDiscoveryCampaign();
@@ -168,7 +187,7 @@ export function DiscoveryScreen() {
           <AppTopChromePortal>
             <nav
               aria-label="Breadcrumb"
-              className="colony-breadcrumb"
+              className="c3d-crumbs"
               data-testid="discovery-category-breadcrumb"
             >
               <span>Business</span>
@@ -495,7 +514,8 @@ function VerticalList({
             <span>
               {searching
                 ? row.parentName
-                : row.description || "Find professionals in this role"}
+                : summarizeDescription(row.description) ||
+                  "Find professionals in this role"}
             </span>
           </span>
           <button

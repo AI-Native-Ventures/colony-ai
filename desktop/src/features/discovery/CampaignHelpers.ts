@@ -27,7 +27,8 @@ export const STAGE_LABELS: Record<ProspectStage, string> = {
 
 /** The run status as the resume card and campaign list word it. */
 export function campaignStatusLabel(status: DiscoveryRunStatus): string {
-  return status === "complete" ? "Ready to review" : status;
+  if (status === "complete") return "Ready to review";
+  return `${status.charAt(0).toUpperCase()}${status.slice(1)}`;
 }
 
 const STAGE_TONES: Record<ProspectStage, PillTone> = {

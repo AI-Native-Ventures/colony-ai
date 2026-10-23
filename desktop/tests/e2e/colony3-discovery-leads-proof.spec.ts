@@ -52,6 +52,7 @@ async function shot(
   target?: Locator | { x: number; y: number; width: number; height: number },
 ) {
   await waitForAnimations(page);
+  await dumpTexts(page, capture.name);
   const path = `${OUT}/${capture.name}.png`;
   if (target && "screenshot" in target) {
     // A clip of the element's box, not an element screenshot: those wait for
@@ -71,7 +72,6 @@ async function shot(
   } else {
     await page.screenshot({ animations: "disabled", clip: target, path });
   }
-  await dumpTexts(page, capture.name);
   captures.push(capture);
 }
 

@@ -111,6 +111,30 @@
   font-weight: 800;
 }
 
+/*
+ * The industry page's own top bar trail. It carries the shell breadcrumb's
+ * look under its own class: the shell hides every `.colony-breadcrumb` once a
+ * screen portals content into the bar.
+ */
+.c3d-crumbs {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 0.5rem;
+  color: hsl(var(--colony-muted));
+  font-size: calc(15 * var(--colony-px));
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.c3d-crumbs [data-current="true"] {
+  overflow: hidden;
+  color: hsl(var(--colony-fg));
+  font-weight: 800;
+  text-overflow: ellipsis;
+}
+
 .c3d-crumb-link {
   padding: 0;
   border: 0;
@@ -541,7 +565,6 @@ button.c3d-search-chip {
   height: 2rem;
   padding: 0 0.8125rem;
   font-size: calc(14 * var(--colony-px));
-  text-transform: capitalize;
 }
 
 .c3d-pill--ok {
@@ -829,6 +852,7 @@ button.c3d-search-chip {
 }
 
 .c3d-tab {
+  box-sizing: content-box;
   display: flex;
   height: 2.75rem;
   align-items: center;
@@ -1145,6 +1169,7 @@ button.c3d-search-chip {
 }
 
 .c3d-table tr {
+  box-sizing: content-box;
   display: grid;
   grid-template-columns: 2.5rem minmax(0, 2.2fr) minmax(0, 1.5fr) 9.375rem 10rem 1.75rem;
   align-items: center;
