@@ -66,3 +66,14 @@ export function useMemberJobTitle(
   });
   return query.data ?? null;
 }
+
+/**
+ * A person's own job title, from the `job_title` of their profile (C3-TEAM
+ * stores it there as `jobTitle`). Read through a structural check so this
+ * works before and after that field lands on the profile types.
+ */
+export function profileJobTitle(profile: unknown): string | null {
+  if (typeof profile !== "object" || profile === null) return null;
+  const title = (profile as { jobTitle?: unknown }).jobTitle;
+  return typeof title === "string" && title.trim() ? title.trim() : null;
+}

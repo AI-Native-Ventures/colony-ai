@@ -1,4 +1,7 @@
-import { useMemberJobTitle } from "@/features/company-team/useMemberJobTitle";
+import {
+  profileJobTitle,
+  useMemberJobTitle,
+} from "@/features/company-team/useMemberJobTitle";
 import { useUsersBatchQuery } from "@/features/profile/hooks";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 
@@ -14,8 +17,11 @@ export function firstName(name: string | null | undefined): string | null {
  * known and nothing for what is not.
  */
 export function DmAgentSubtitle({ pubkey }: { pubkey: string }) {
-  const title = useMemberJobTitle(pubkey);
+  const positionTitle = useMemberJobTitle(pubkey);
   const agentQuery = useUsersBatchQuery([pubkey]);
+  const title =
+    profileJobTitle(agentQuery.data?.profiles[normalizePubkey(pubkey)]) ??
+    positionTitle;
   const ownerPubkey =
     agentQuery.data?.profiles[normalizePubkey(pubkey)]?.ownerPubkey ?? null;
   const ownerQuery = useUsersBatchQuery(ownerPubkey ? [ownerPubkey] : [], {

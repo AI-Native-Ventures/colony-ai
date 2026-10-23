@@ -58,7 +58,10 @@ import { hasLinkPreviewSuppression } from "@/features/messages/lib/formatTimelin
 import { toast } from "sonner";
 import { MessageAgentOwner } from "./MessageAgentOwner";
 import { MessageAvatar } from "./MessageAvatar";
-import { useMemberJobTitle } from "@/features/company-team/useMemberJobTitle";
+import {
+  profileJobTitle,
+  useMemberJobTitle,
+} from "@/features/company-team/useMemberJobTitle";
 import { MessageAuthorText, MessageHeaderRow } from "./MessageHeader";
 import { MessageTimestamp } from "./MessageTimestamp";
 import { SentFromThreadLine } from "./SentFromThreadLine";
@@ -595,7 +598,12 @@ export const MessageRow = React.memo(
     ) : (
       <MessageAuthorText as="h3">{message.author}</MessageAuthorText>
     );
-    const jobTitle = useMemberJobTitle(message.pubkey, !message.pending);
+    const positionTitle = useMemberJobTitle(message.pubkey, !message.pending);
+    // Their own title on the profile first, then the team position.
+    const jobTitle =
+      profileJobTitle(
+        message.pubkey ? profiles?.[normalizePubkey(message.pubkey)] : null,
+      ) ?? positionTitle;
     const selfName = currentPubkey
       ? profiles?.[normalizePubkey(currentPubkey)]?.displayName
       : null;
